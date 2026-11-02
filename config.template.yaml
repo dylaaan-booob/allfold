@@ -1,4 +1,5 @@
 name: Allfold
+# Legacy seed used only for this configuration's first validated SQLite migration.
 venue_whitelist: list.md
 keyword_expression: 'machine AND learn*'
 provider_order:
