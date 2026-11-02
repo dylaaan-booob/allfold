@@ -90,9 +90,9 @@ markup.innerHTML=`<header class="s-header">
 <div class="s-files">
 <button id="s-files" class="s-button" aria-expanded="false" aria-controls="s-file-menu">FILES ↓</button>
 <div id="s-file-menu" class="s-file-menu" popover="auto" aria-label="Files">
-<button data-file-action="import">Import complete list.md</button>
-<button data-file-action="export">Export saved list.md</button>
-<button data-file-action="pack">Export AI Mapping Pack</button>
+<button data-file-action="import">Import Research Scope</button>
+<button data-file-action="export">Export User Data</button>
+
 <button data-file-action="reload">Reload Settings from Disk</button>
 </div>
 </div>
@@ -851,7 +851,28 @@ function renderJournalDetail() {
   detail.querySelector('[data-cover=search]').addEventListener('click',()=>startCovers(j.id));
   detail.querySelector('[data-cover=upload]').addEventListener('click',()=>uploadCover(j));
   detail.querySelector('[data-cover=crop]').addEventListener('click',()=>cropCover(j));
+  const resourceButton=document.createElement('button');resourceButton.className='s-button';resourceButton.textContent='Discover / choose Service';resourceButton.disabled=!isSaved;resourceButton.addEventListener('click',()=>void journalResources(j).catch(error=>message(error.message,'error')));detail.append(resourceButton);
   detail.querySelector('[data-cover=cancel]')?.addEventListener('click',()=>void coverAction('/settings/covers/search/cancel',{request_id:coverJob.request_id}));
+}
+async function journalResources(j) {
+  if(dirty()){message('请先 Save 或 Reload Settings，再同步或选择 Service。','error');return;}
+  const base='/api/ui-next/settings/journals/'+encodeURIComponent(j.id);
+  let catalog=await formRequest('/api/ui-next/settings/catalog');
+  const catalogOptions=()=>catalog.resources.map(r=>`<option value="${esc(r.production)}">${esc(r.production)}</option>`).join('');
+  const choice=async(method)=>{
+    const result=await formRequest(base+'/service',{selection_method:method,selection_name:method==='manual'?$('s-resource-name').value:$('s-resource-catalog').value,selection_url:$('s-resource-url').value});
+    if(await acceptOperation(result))dialog.close();
+  };
+  showDialog('Journal Service · '+j.name,`<p>当前默认：${esc(list().services.find(s=>s.id===j.serviceId)?.name || 'Unresolved')}。同步只读取共享证据，保存选择仅影响此 Journal 与当前配置。</p><p id="s-catalog-status">Catalog: ${esc(catalog.status)} ${esc(catalog.error || '')}</p><label>Official CARSI Resource<select id="s-resource-catalog">${catalogOptions()}</select></label><label>Manual Service name<input id="s-resource-name"></label><label>Manual public HTTP(S) URL<input id="s-resource-url" type="url"></label><details open><summary>GOKB / CARSI evidence</summary><pre id="s-resource-evidence">尚未查询 GOKB。可直接选择官方 CARSI、Manual 或 Unresolved。</pre></details>`,[
+    cancel,
+    {label:'Refresh Catalog',run:async()=>{catalog=await formRequest('/api/ui-next/settings/catalog',{refresh:'yes'});$('s-resource-catalog').innerHTML=catalogOptions();$('s-catalog-status').textContent='Catalog: '+catalog.status+' '+(catalog.error || '')+' '+JSON.stringify(catalog.changes);return false;}},
+    {label:'Discover GOKB',run:async()=>{$('s-resource-evidence').textContent=JSON.stringify(await formRequest(base+'/resolve'),null,2);return false;}},
+    {label:'Refresh GOKB / Catalog',run:async()=>{$('s-resource-evidence').textContent=JSON.stringify(await formRequest(base+'/resolve',{refresh:'yes'}),null,2);return false;}},
+    {label:'Use unique candidate',run:()=>choice('auto')},
+    {label:'Save CARSI',primary:true,run:()=>choice('carsi')},
+    {label:'Save Manual',run:()=>choice('manual')},
+    {label:'Keep Unresolved',run:()=>choice('unresolved')},
+  ]);
 }
 function renderJournalsPage() {renderDirectory();renderJournals();renderEntityDetail();renderJournalDetail();syncJournalDeveloperTools();syncLayouts();}
 function assignLabel(j,name,assigned) {
@@ -1077,18 +1098,47 @@ function beginPreview(kind,title,filename,summary,columns,choices) {
   updateDirty();$('s-preview-title').tabIndex=-1;$('s-preview-title').focus({preventScroll:true});
 }
 function selectImport() {
-  showDialog('Import complete list.md','<label>Complete Markdown file<input id="s-import-file" type="file" accept=".md,text/markdown"></label><p class="s-help">Preview 比较整个已保存文件；Confirm 将完整替换 list.md。</p><p id="s-import-error" role="alert"></p>',[cancel,{label:'Preview',primary:true,run:async()=>{
-    const file=$('s-import-file').files[0];if(!file){$('s-import-error').textContent='请选择完整 .md 文件。';return false;}
-    await openImport(file);
+  showDialog('Import Research Scope','<label>Markdown file<input id="s-import-file" type="file" accept=".md,text/markdown"></label><label><input id="s-import-query" type="checkbox"> 对缺少有效 Service 的 Journal 查询 GOKB（可选）</label><p class="s-help">支持期刊名称列表或表格。Preview 后选择身份、补充名称/ISSN 或 Service，再确认增量添加。</p><p id="s-import-error" role="alert"></p>',[cancel,{label:'Preview',primary:true,run:async()=>{
+    const file=$('s-import-file').files[0];if(!file){$('s-import-error').textContent='请选择 .md 文件。';return false;}
+    await openImport(file,{},$('s-import-query').checked);
   }}]);
 }
-async function openImport(file) {
-  const data=await formRequest('/settings/import/preview',{markdown_file:file});
+function importChoices() {
+  const choices={};
+  $('s-preview-columns').querySelectorAll('[data-scope-row]').forEach(element=>{
+    const choice={skip:element.querySelector('[data-import-skip]').checked};
+    for(const field of ['journal','issn','eissn'])choice[field]=element.querySelector(`[data-import-field="${field}"]`).value;
+    const candidate=element.querySelector('[data-import-candidate]').value;
+    if(candidate)choice.candidate=candidate;
+    const method=element.querySelector('[data-import-method]').value;
+    if(method!=='keep') {
+      choice['service']=method==='unresolved'?'':element.querySelector('[data-import-service]').value;
+      choice['access method']=method==='unresolved'?'carsi':method;
+      choice['access url']=element.querySelector('[data-import-url]').value;
+      choice.unresolved=method==='unresolved';
+    }
+    choices[element.dataset.scopeRow]=choice;
+  });
+  return choices;
+}
+async function openImport(file,choices={},query=false) {
+  const data=await formRequest('/settings/import/preview',{markdown_file:file,import_choices:JSON.stringify(choices),query_gokb:query?'yes':'no'});
   showIssues(data);
   if(!data.import_plan)return false;
   const p=data.import_plan;
-  beginPreview('import','Import Preview / complete list.md',data.import_filename,p.changes.join('\n'),[{title:'Saved baseline / entire file',text:p.original},{title:'Selected source / entire replacement',text:p.proposed}],[{label:'Cancel Import',run:closePreview},{label:'Confirm Import',primary:true,run:confirmImport}]);
-  Object.assign(preview,{data,file});return true;
+  beginPreview('import','Import Research Scope Preview',data.import_filename,p.changes.join('\n') || '没有待添加的已识别 Journal；可补充或选择候选。',[],[
+    {label:'Cancel Import',run:closePreview},
+    {label:'Update Preview',run:()=>openImport(file,importChoices(),$('s-preview-query').checked)},
+    {label:'Confirm Import',primary:true,run:confirmImport}]);
+  Object.assign(preview,{data,file});
+  $('s-preview-columns').innerHTML=`<div><label><input type="checkbox" id="s-preview-query" ${query?'checked':''}> 对缺少有效 Service 的 Journal 查询 GOKB</label>${p.services.map(s=>`<p>${esc(s.name)} · ${esc(s.status)} · ${esc(s.message)}</p>`).join('')}${p.rows.map(row=>{
+    const input=(field,label)=>`<label>${label}<input data-import-field="${field}" value="${esc(row.supplied[field] || '')}"></label>`;
+    const current=p.proposed.access_services.find(s=>s.id===row.journal?.access_service_id);
+    return `<fieldset data-scope-row="${row.index}"><legend>${esc(row.supplied.journal || row.supplied.issn || 'Journal')} · ${esc(row.status)}</legend><p>${row.messages.map(esc).join(' · ')} · Service: ${esc(row.service_status)}</p><p>Group: ${esc(row.supplied.group || 'Ungrouped')} · Labels: ${esc(row.supplied.label || '(none)')}</p><label><input type="checkbox" data-import-skip ${choices[row.index]?.skip?'checked':''}> Skip this row</label>${input('journal','Name')}${input('issn','ISSN')}${input('eissn','eISSN')}<label>Identity candidate<select data-import-candidate><option value="">Automatic exact match / correct fields above</option>${row.candidates.map(c=>`<option value="${esc(c.issn || c.eissn)}" ${choices[row.index]?.candidate===(c.issn || c.eissn)?'selected':''}>${esc(c.name)} · ${esc([c.issn,c.eissn].filter(Boolean).join(' / '))}</option>`).join('')}</select></label><details><summary>Identity / Resolver evidence</summary><pre>${esc(JSON.stringify({candidates:row.candidates,resolution:row.resolution},null,2))}</pre></details><label>Service choice<select data-import-method><option value="keep">Keep supplied Service / Resolver result</option><option value="carsi">Official CARSI production</option><option value="manual">Manual Service</option><option value="unresolved" ${choices[row.index]?.unresolved?'selected':''}>Unresolved</option></select></label><label>Service name<input data-import-service value="${esc(current?.name || row.supplied.service || '')}"></label><label>Manual access URL<input data-import-url value="${esc(current?.access_url || row.supplied['access url'] || '')}"></label></fieldset>`;
+  }).join('')}</div>`;
+  const confirmButton=$('s-preview-actions').lastElementChild;
+  $('s-preview-columns').addEventListener('input',()=>{confirmButton.disabled=true;$('s-preview-summary').textContent='Selections changed. Choose Update Preview before Confirm.';},{once:true});
+  return true;
 }
 async function executeImport(discard=false) {
   const current=preview;if(!current || current.kind!=='import')return;
@@ -1099,7 +1149,7 @@ async function executeImport(discard=false) {
 }
 function confirmImport() {
   if(!dirty())return executeImport();
-  showDialog('Resolve unsaved Settings','<p>Import 会替换整个 list.md。明确 Discard 会丢弃全部 Settings 草稿，包括 Monitor、Institution 和 Workflow；Import 只写 list.md。</p>',[
+  showDialog('Resolve unsaved Settings','<p>Import 将增量添加到当前配置。明确 Discard 会丢弃全部 Settings 草稿；已保存的其他 Journal 保留。</p>',[
     cancel,{label:'Save & refresh Preview',run:async()=>{const file=preview.file;dialog.close();await saveDraft(()=>openImport(file));}},
     {label:'Discard all Draft & Import',primary:true,run:()=>executeImport(true)},
   ]);
@@ -1110,11 +1160,11 @@ async function exportFile(kind='list',discard=false) {
       {label:'Save & export',run:async()=>{dialog.close();await saveDraft(()=>exportFile(kind));}},
       {label:'Discard all Draft & export',primary:true,run:()=>exportFile(kind,true)}]);return;
   }
-  const result=await formRequest(kind==='pack'?'/settings/export-ai-mapping-pack':'/settings/export',discard?{export_discard:'yes'}:{},{download:true});
+  const result=await formRequest('/settings/export',discard?{export_discard:'yes'}:{},{download:true});
   if(!result.blob){showIssues(result);return;}
   if(discard){await loadSettings();await refreshSavedWorkspace();}
   const text=await result.blob.text();
-  beginPreview(kind,kind==='pack'?'AI Mapping Pack / work file':'Export saved list.md',result.filename,kind==='pack'?'独立工作文件，不能作为 list.md 导入。':'已保存完整文件，不包含未保存草稿或 monitor.yaml。',[{title:'Saved file',text}],[
+  beginPreview(kind,'Export User Data',result.filename,'当前配置已保存的 Journal、Group、Label、Service 与顺序；不含凭据和外部缓存。',[{title:'Saved file',text}],[
     {label:'Return to Settings',run:closePreview},{label:'Download',primary:true,run:()=>{const url=URL.createObjectURL(result.blob),link=document.createElement('a');link.href=url;link.download=result.filename;link.click();setTimeout(()=>URL.revokeObjectURL(url),1000);}}]);
 }
 function reloadSettings() {
@@ -1127,7 +1177,7 @@ void refreshRun();return;}
 }
 root.querySelectorAll('[data-file-action]').forEach(button=>button.addEventListener('click',()=>{
   closeMenu();if(preview || operationPending){message('请先完成或退出当前操作。');return;}
-  const actions={import:selectImport,export:()=>exportFile(),pack:()=>exportFile('pack'),reload:reloadSettings};
+  const actions={import:selectImport,export:()=>exportFile(),reload:reloadSettings};
   Promise.resolve(actions[button.dataset.fileAction]()).catch(error=>message(error.message,'error'));
 }));
 

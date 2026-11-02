@@ -107,13 +107,18 @@ def _row(connection, config_path):
     return connection.execute("SELECT revision, payload, migration_source, migration_digest FROM user_scopes WHERE config_path = ?", (str(config_path),)).fetchone()
 
 
-def read_user_state(config_path: Path) -> UserStateSnapshot:
+def read_user_state(config_path: Path, *, allow_missing: bool = False) -> UserStateSnapshot:
     config_path = config_path.resolve()
     path = user_state_path(config_path)
     try:
+        _safe_path(path)
+        if allow_missing and not path.exists():
+            return UserStateSnapshot(config_path, path, SettingsList((), (), (), ()), ContentRevision(False, None))
         with closing(_connect(path)) as connection:
             row = _row(connection, config_path)
             if row is None:
+                if allow_missing:
+                    return UserStateSnapshot(config_path, path, SettingsList((), (), (), ()), ContentRevision(False, None))
                 raise UserStateError("Current configuration has no user state", path=path)
             return _snapshot(config_path, row)
     except (sqlite3.Error, ValueError, OSError) as error:

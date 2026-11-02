@@ -25,3 +25,58 @@ GOKB and the CARSI Catalog use shared local caches; explicit refresh replaces a 
 For backup at the same configuration paths, preserve the private `.allfold/` directory along with YAML and other user data. For transfer to another location or configuration, export and import Markdown. Renaming a configuration changes its canonical scope identity.
 
 On first migration, Allfold validates the old managed Markdown sections before creating the scope, records the source and digest, and keeps the original file unchanged. Damaged, incomplete or conflicting source data is not silently repaired or used to overwrite valid SQLite state. Conferences are not imported into the new model; their original Markdown remains available in the legacy file. After migration, editing that file does not update saved Journal state.
+
+## Markdown formats
+
+For a name-only list, use bullets. A heading is optional:
+
+```markdown
+# Research Scope
+
+- Biometrics
+- Annals of Applied Statistics
+```
+
+For identifiers, assignments or a supplied Service, use a table. Column order is flexible; optional columns may be omitted. Recognized Journal columns are `Journal` (also `Name` or `Title`), `ISSN`, `eISSN`, `Group`, `Label` (also `Labels`), `Service`, `Access URL` and `Access Method`. Separate multiple Labels with `;`. Names and cells must not contain literal pipes or newlines.
+
+```markdown
+## Journals
+
+| Journal | ISSN | Group | Labels | Service | Access Method | Access URL |
+| --- | --- | --- | --- | --- | --- | --- |
+| Biometrics | 0006-341X | Statistics | Methods; Follow | EBSCO | carsi | |
+| Annals of Applied Statistics | 1932-6157 | Statistics | Follow | Project Euclid | manual | https://projecteuclid.org/ |
+```
+
+A supplied CARSI production must match the official Catalog exactly. Its official URL is used; an imported URL does not replace that authority. `manual` requires the supplied public HTTP(S) URL. A blank Service means Unresolved unless the user opts into GOKB and a unique reliable candidate is found. Choosing Unresolved explicitly in Preview keeps it unresolved. A valid supplied Service skips GOKB even when the query option is enabled. Service choices are configuration-local preferences, not proof of access or entitlement.
+
+To share independent Services or preserve empty Group/Label entries and their order, add the following tables. Journal `Service` cells refer to these definitions by name:
+
+```markdown
+## Groups
+
+| Group |
+| --- |
+| Statistics |
+| Later |
+
+## Custom Labels
+
+| Label |
+| --- |
+| Methods |
+| Follow |
+| Unused |
+
+## Access Services
+
+| Service | Access URL | Access Method |
+| --- | --- | --- |
+| EBSCO | | carsi |
+| Web of Science | | carsi |
+| Project Euclid | https://projecteuclid.org/ | manual |
+```
+
+Export User Data writes this portable named format, preserving Journal, registry and Service order and assignments. The previous six-column `Journal / ISSN / eISSN / Access Service ID / Group / Labels` table is also accepted with its accompanying `Service ID / Service / Access URL / Access Method` definitions. Those foreign IDs are references within the imported file only; Allfold verifies definitions and creates or reuses local Service identities. Missing, invalid or conflicting Service definitions remain visible for correction while valid Journals can still be added without a Service.
+
+Preview offers per-row Skip, identity candidates with source evidence, editable names/ISSNs and CARSI/Manual/Unresolved corrections. Choose **Update Preview** after edits; Confirm uses only that verified Preview. Imported identifiers that overlap multiple saved Journals are conflicts requiring correction. A single existing identity is skipped before lookup, preserving its saved fields. Preview tokens are temporary and are invalidated by changed source, choices or Settings revisions; they do not survive application restart.

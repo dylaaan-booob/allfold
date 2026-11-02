@@ -181,7 +181,7 @@ def settings_form_from_submission(form: FormData) -> SettingsFormValues:
         "service_id", "service_name", "service_access_url", "service_access_method",
         "settings_deletion_proof", "confirm_settings_deletions",
         "markdown_file", "markdown_import_payload", "markdown_import_filename",
-        "markdown_import_proof", "confirm_full_import", "import_discard",
+        "markdown_import_proof", "confirm_full_import", "import_discard", "import_choices", "query_gokb",
         "export_discard", "reload_step", "reload_word",
     }
     forbidden = any(key not in supported_fields for key in form)
