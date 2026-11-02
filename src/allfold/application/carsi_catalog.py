@@ -164,7 +164,7 @@ def fetch_carsi_directory(*, transport: httpx.BaseTransport | None = None) -> tu
                         raise CatalogError("CARSI directory request exceeded total time limit")
     except httpx.TimeoutException as error:
         raise CatalogError("CARSI directory request timed out") from error
-    except httpx.RequestError as error:
+    except (httpx.RequestError, httpx.InvalidURL) as error:
         raise CatalogError("CARSI directory request failed") from error
     try:
         return parse_carsi_directory(data.decode("utf-8"))

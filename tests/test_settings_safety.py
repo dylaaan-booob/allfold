@@ -107,7 +107,7 @@ def form_data(values):
 def test_monitor_conflict_after_target_preparation_blocks_journal_write(tmp_path: Path, monkeypatch):
     config, path, draft = start(tmp_path)
     draft = replace(draft, access_services=(
-        draft.access_services[0].model_copy(update={"name": "Edited Service"}),))
+        draft.access_services[0].model_copy(update={"access_url": "https://example.org/edited"}),))
     journal_before = stamp(path)
     original_render = settings_module.render_settings_list_text
     def render(*args, **kwargs):
@@ -124,7 +124,7 @@ def test_monitor_conflict_after_target_preparation_blocks_journal_write(tmp_path
 def test_second_file_cas_conflict_reports_written_list(tmp_path: Path, monkeypatch):
     config, path, draft = start(tmp_path)
     draft = replace(draft, name="Edited Monitor", access_services=(
-        draft.access_services[0].model_copy(update={"name": "Edited Service"}),))
+        draft.access_services[0].model_copy(update={"access_url": "https://example.org/edited"}),))
     original = settings_module.compare_write_user_state
     def change_monitor_after_state(config_path, state, revision):
         saved = original(config_path, state, revision)
@@ -134,5 +134,5 @@ def test_second_file_cas_conflict_reports_written_list(tmp_path: Path, monkeypat
     result = save_settings(config, draft)
     assert result.outcome is SettingsSaveOutcome.PARTIAL_SAVE
     assert result.journal_written and not result.monitor_written
-    assert result.state.draft.access_services[0].name == "Edited Service"
+    assert result.state.draft.access_services[0].access_url == "https://example.org/edited"
     assert result.state.draft.name != "Edited Monitor"
