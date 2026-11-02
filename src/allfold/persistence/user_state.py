@@ -8,6 +8,7 @@ import hashlib
 import json
 from pathlib import Path
 import sqlite3
+import stat
 import yaml
 
 from allfold.config import (
@@ -88,6 +89,16 @@ def _connect(path: Path, *, create: bool = False):
     _safe_path(path)
     if path.exists() and path.stat().st_nlink != 1:
         raise UserStateError("User state must be a single-link regular file", path=path)
+    # SQLite may recover or modify sidecars even while reading the main file.
+    # Validate them before opening the connection, not after its first query.
+    for suffix in ("-journal", "-wal", "-shm"):
+        sidecar = path.with_name(path.name + suffix)
+        try:
+            info = sidecar.lstat()
+        except FileNotFoundError:
+            continue
+        if not stat.S_ISREG(info.st_mode) or info.st_nlink != 1:
+            raise UserStateError("User state sidecar must be a single-link regular file", path=sidecar)
     if create:
         path.parent.mkdir(exist_ok=True)
         _safe_path(path)

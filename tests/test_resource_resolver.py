@@ -286,6 +286,32 @@ def test_new_cache_rejects_a_preexisting_journal_symlink_without_touching_its_ta
     assert not cache.exists()
 
 
+@pytest.mark.parametrize("suffix", ["-journal", "-wal", "-shm"])
+@pytest.mark.parametrize("kind", ["hardlink", "symlink", "directory"])
+@pytest.mark.parametrize("operation", ["read", "write"])
+def test_resource_cache_rejects_unsafe_sidecars_before_opening(tmp_path, suffix, kind, operation):
+    from allfold.persistence.resource_cache import ResourceCacheError, read_snapshot, write_snapshot
+
+    cache = tmp_path / "resources.sqlite"
+    write_snapshot(cache, "fixture", {"complete": True})
+    target = tmp_path / "unrelated.txt"
+    original = b"\x00" + b"preserve user bytes\n" * 100
+    target.write_bytes(original)
+    sidecar = cache.with_name(cache.name + suffix)
+    if kind == "hardlink":
+        sidecar.hardlink_to(target)
+    elif kind == "symlink":
+        sidecar.symlink_to(target)
+    else:
+        sidecar.mkdir()
+    with pytest.raises(ResourceCacheError, match="sidecar"):
+        if operation == "read":
+            read_snapshot(cache, "fixture")
+        else:
+            write_snapshot(cache, "fixture", {"complete": False})
+    assert target.read_bytes() == original
+
+
 def test_default_resource_path_is_shared_across_configurations_and_never_stores_user_choices(tmp_path):
     from allfold.application.journal_resolver import resolve_journal
 

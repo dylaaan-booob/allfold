@@ -75,6 +75,81 @@ def test_portable_export_import_restores_independent_services_order_and_local_id
     assert saved.journals[0].access_service_id == saved.access_services[-1].id
 
 
+@pytest.mark.parametrize("operation", ["import", "choose"])
+def test_verified_carsi_production_reuses_saved_service_and_local_url(tmp_path, operation):
+    from dataclasses import replace
+    from safety_config_helpers import current_mapping_document
+    from allfold.application.carsi_catalog import get_carsi_catalog
+    from allfold.application.journal_services import choose_journal_service
+    from allfold.application.settings import load_settings
+    from allfold.persistence.user_state import application_data_dir, compare_write_user_state
+
+    config, path, journal, _ = current_mapping_document(tmp_path)
+    initial = load_user_state(config)
+    local = AccessService.create('EBSCO', 'https://library.example.org/ebsco')
+    before = compare_write_user_state(config, replace(initial.state,
+        access_services=(*initial.state.access_services, local)), initial.revision)
+    get_carsi_catalog(application_data_dir(config) / 'resources.sqlite', transport=catalog_transport())
+    if operation == 'import':
+        source = '| Journal | Service | Access URL | Access Method |\n| --- | --- | --- | --- |\n| Annals | EBSCO | https://untrusted.example.org/login | carsi |\n'
+        plan = preview_research_scope(config, path, source, filename='scope.md', query_gokb=True, transport=catalog_transport())
+        assert plan.rows[0].service_status == 'verified'
+        assert load_user_state(config) == before
+        saved = confirm_research_scope(plan)
+        selected = saved.state.journals[-1]
+    else:
+        saved = choose_journal_service(config, journal.key, method='carsi', name='EBSCO',
+            expected_revision=before.revision, expected_monitor_revision=load_settings(config).draft.monitor_revision)
+        selected = saved.state.journals[0]
+    assert selected.access_service_id == local.id
+    assert saved.state.access_services == before.state.access_services
+    assert load_user_state(config).state.access_services[-1] == local
+
+
+@pytest.mark.parametrize("operation", ["import", "choose"])
+@pytest.mark.parametrize(("saved_method", "chosen_method", "name"), [
+    ('manual', 'carsi', 'EBSCO'),
+    ('carsi', 'manual', 'EBSCO'),
+    ('manual', 'manual', 'EBSCO'),
+    ('carsi', 'carsi', 'ebsco'),
+])
+def test_service_reuse_preserves_method_manual_url_and_exact_production_boundaries(
+        tmp_path, operation, saved_method, chosen_method, name):
+    from dataclasses import replace
+    from safety_config_helpers import current_mapping_document
+    from allfold.application.carsi_catalog import get_carsi_catalog
+    from allfold.application.journal_services import choose_journal_service
+    from allfold.application.settings import load_settings
+    from allfold.persistence.user_state import application_data_dir, compare_write_user_state
+
+    config, path, journal, _ = current_mapping_document(tmp_path)
+    initial = load_user_state(config)
+    local = AccessService.create('EBSCO', 'https://library.example.org/ebsco', access_method=saved_method)
+    before = compare_write_user_state(config, replace(initial.state,
+        access_services=(*initial.state.access_services, local)), initial.revision)
+    get_carsi_catalog(application_data_dir(config) / 'resources.sqlite', transport=catalog_transport())
+    if operation == 'import':
+        source = f'| Journal | Service | Access URL | Access Method |\n| --- | --- | --- | --- |\n| Annals | {name} | https://other.example.org/ | {chosen_method} |\n'
+        plan = preview_research_scope(config, path, source, filename='scope.md', transport=catalog_transport())
+        assert plan.rows[0].service_status == 'invalid'
+        assert plan.rows[0].journal.access_service_id is None
+        assert plan.proposed.access_services == before.state.access_services
+    else:
+        with pytest.raises(ValueError):
+            choose_journal_service(config, journal.key, method=chosen_method, name=name, url='https://other.example.org/',
+                expected_revision=before.revision, expected_monitor_revision=load_settings(config).draft.monitor_revision)
+    assert load_user_state(config) == before
+
+
+def test_new_imported_carsi_service_uses_official_url_instead_of_imported_url(tmp_path):
+    registry(tmp_path)
+    source = '| Journal | Service | Access URL | Access Method |\n| --- | --- | --- | --- |\n| Annals | EBSCO | https://untrusted.example.org/login | carsi |\n'
+    plan = preview_research_scope(tmp_path / 'monitor.yaml', tmp_path / 'list.md', source,
+        filename='scope.md', transport=catalog_transport())
+    assert plan.rows[0].service_status == 'verified'
+    assert plan.proposed.access_services[0].access_url == 'https://search.ebscohost.com/'
+
+
 def test_http_import_preview_confirm_binds_source_choices_and_revisions(tmp_path):
     import base64
     from fastapi.testclient import TestClient
@@ -119,13 +194,35 @@ def test_ambiguous_and_substring_names_require_choice_and_corrected_identifiers_
     assert [r.status for r in first.rows] == ['unresolved','unresolved','unresolved']
     assert not (tmp_path/'.allfold').exists()
     corrected = preview_research_scope(config, tmp_path/'list.md', source, filename='scope.md', choices={
-        '0': {'candidate':'0090-5364'},
+        '0': {'candidate': {'issn': '0090-5364', 'eissn': None}},
         '1': {'journal':'Biometrics','issn':'0006-341X'},
         '2': {'journal':'Biometrics','issn':'0006-3411'},
     })
     assert [r.status for r in corrected.rows] == ['add','add','unresolved']
     confirm_research_scope(corrected)
     assert [j.key for j in load_user_state(config).state.journals] == ['0090-5364','0006-341X']
+
+
+@pytest.mark.parametrize('eissn', ['1541-0420', '0090-5364'])
+def test_ambiguous_candidates_sharing_print_issn_can_select_either_complete_pair(tmp_path, eissn):
+    registry(tmp_path, [
+        ('Biometrics', '0006-341X', '1541-0420', 'Wiley', 'SCIE', None),
+        ('Biometrics', '0006-341X', '0090-5364', 'Wiley', 'Scopus', 'Active'),
+    ])
+    config, path = tmp_path / 'target.yaml', tmp_path / 'list.md'
+    source = '- Biometrics\n'
+    first = preview_research_scope(config, path, source, filename='scope.md')
+    assert first.rows[0].status == 'unresolved'
+    assert len(first.rows[0].candidates) == 2
+    assert not (tmp_path / '.allfold').exists()
+    chosen = preview_research_scope(config, path, source, filename='scope.md', choices={
+        '0': {'candidate': {'issn': '0006-341X', 'eissn': eissn}},
+    })
+    assert chosen.rows[0].status == 'add', chosen.rows[0].messages
+    expected = JournalConfig(name='Biometrics', issn='0006-341X', eissn=eissn)
+    assert chosen.rows[0].journal == expected
+    confirm_research_scope(chosen)
+    assert load_user_state(config).state.journals == (expected,)
 
 
 def test_invalid_supplied_service_and_remote_failure_do_not_block_identified_journal(tmp_path):
