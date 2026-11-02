@@ -12,6 +12,7 @@ from uuid import uuid4
 import yaml
 
 from allfold.config import parse_monitor_definition
+from allfold.persistence.user_state import application_data_dir
 from allfold.persistence.safe_write import (
     CompareReadError, ContentChangedError,
     _open_directory_nofollow, workspace_path_lock,
@@ -40,7 +41,7 @@ def _safe_location(config_path: Path, workspace: Path) -> None:
     # macOS commonly treats case variants as the same directory.
     folded_workspace = Path(str(workspace).casefold())
     folded_repository = Path(str(repository).casefold())
-    forbidden = (Path('/'), Path.home().resolve(), repository, config_path.parent,
+    forbidden = (application_data_dir(config_path), Path('/'), Path.home().resolve(), repository, config_path.parent,
                  Path('/tmp').resolve(), Path('/var'), Path('/usr'), Path('/etc'),
                  Path('/Users'), Path('/Library'), Path('/System'), Path('/Applications'), Path('/Volumes'))
     if (not workspace.is_absolute() or '..' in workspace.parts or os.path.ismount(workspace)

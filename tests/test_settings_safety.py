@@ -125,12 +125,12 @@ def test_second_file_cas_conflict_reports_written_list(tmp_path: Path, monkeypat
     config, path, draft = start(tmp_path)
     draft = replace(draft, name="Edited Monitor", access_services=(
         draft.access_services[0].model_copy(update={"name": "Edited Service"}),))
-    original = settings_module._write_snapshot_target
-    def change_monitor_after_list(target, contents, snapshot):
-        original(target, contents, snapshot)
-        if target == path:
-            config.write_bytes(config.read_bytes() + b"# concurrent monitor edit\n")
-    monkeypatch.setattr(settings_module, "_write_snapshot_target", change_monitor_after_list)
+    original = settings_module.compare_write_user_state
+    def change_monitor_after_state(config_path, state, revision):
+        saved = original(config_path, state, revision)
+        config.write_bytes(config.read_bytes() + b"# concurrent monitor edit\n")
+        return saved
+    monkeypatch.setattr(settings_module, "compare_write_user_state", change_monitor_after_state)
     result = save_settings(config, draft)
     assert result.outcome is SettingsSaveOutcome.PARTIAL_SAVE
     assert result.journal_written and not result.monitor_written

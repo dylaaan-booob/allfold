@@ -7,13 +7,13 @@ import secrets
 import threading
 from pydantic import ValidationError
 from allfold.config import (
-    AccessService, ConfigurationError, InstitutionConfig, load_config, parse_settings_list_text,
+    AccessService, ConfigurationError, InstitutionConfig, load_config,
     resolve_config_path, validate_access_mapping,
 )
 from allfold.browser_diagnostics import format_browser_diagnostic, normalize_browser_diagnostic
-from allfold.persistence.safe_write import ContentChangedError, source_file_identity
-from allfold.application.full_markdown_import import MAX_MARKDOWN_BYTES
-from allfold.application.settings import SettingsIssueSource, _read_snapshot, load_settings
+from allfold.persistence.safe_write import ContentChangedError
+from allfold.persistence.user_state import load_user_state, read_user_state
+from allfold.application.settings import load_settings
 from allfold.application.workspace import journals_for_paper, load_workspace
 
 CARSI_LOGIN_URL = "https://ds.carsi.edu.cn/Shibboleth.sso/Login"
@@ -64,31 +64,23 @@ def institution_login_url(entity_id: str | None) -> str | None:
 def read_saved_preparation_services(config_path: Path) -> tuple[AccessService, ...]:
     """Snapshot Services needed by current Kept Papers, using saved configuration only."""
     state = load_settings(config_path)
-    path = state.journal_path.absolute()
     try:
-        identity = source_file_identity(path)
-        if path.stat().st_size > MAX_MARKDOWN_BYTES:
-            raise ConfigurationError("Saved list.md exceeds size boundary")
-        snapshot = _read_snapshot(path, source=SettingsIssueSource.JOURNAL_DATA)
-        if snapshot.issue or snapshot.contents is None:
-            raise ConfigurationError("Saved list.md is missing or unsafe")
-        settings_list = parse_settings_list_text(snapshot.contents, path=path)
-        journals, services = settings_list.journals, settings_list.access_services
+        if state.issues:
+            raise ConfigurationError("Saved configuration has unresolved issues")
+        snapshot = load_user_state(config_path, state.journal_path)
+        journals, services = snapshot.state.journals, snapshot.state.access_services
         validate_access_mapping(journals, services)
         workspace = load_workspace(resolve_config_path(config_path, state.draft.output_dir, "workspace"), journals)
         if workspace.issues:
             raise ConfigurationError("Workspace Paper data cannot safely be read")
         needed = {journal.access_service_id for paper in workspace.kept
                   for journal in journals_for_paper(paper, journals) if journal.access_service_id}
-        if source_file_identity(path) != identity:
-            raise ContentChangedError("list.md identity changed while reading")
-        again = _read_snapshot(path, source=SettingsIssueSource.JOURNAL_DATA)
-        if (again.issue or again.revision != snapshot.revision
-                or again.contents != snapshot.contents
-                or source_file_identity(path) != identity):
-            raise ContentChangedError("list.md changed while preparing snapshot")
+        if read_user_state(config_path).revision != snapshot.revision:
+            raise ContentChangedError("User state changed while preparing snapshot")
+        if load_settings(config_path).draft.monitor_revision != state.draft.monitor_revision:
+            raise ContentChangedError("Configuration changed while preparing snapshot")
     except (OSError, ConfigurationError, ContentChangedError) as error:
-        raise ConfigurationError("Saved current-schema list.md cannot safely start Preparation") from error
+        raise ConfigurationError("Saved user state cannot safely start Preparation") from error
     return tuple(service for service in services if service.id in needed)
 
 
@@ -116,10 +108,13 @@ class PreparationCoordinator:
         self._snapshot = replace(self._snapshot, **changes)
 
     def start(self, config_path, *, service=None, browser_owner=None):
+        state_revision = load_user_state(config_path).revision
         relevant = (service,) if service else read_saved_preparation_services(config_path)
         services = tuple(s for s in relevant if s.access_method == 'carsi')
         manual = tuple(s for s in relevant if s.access_method == 'manual')
         config = load_config(config_path)
+        if config.user_state_revision != state_revision.digest:
+            raise ContentChangedError("User state changed before Preparation start")
         login = institution_login_url(config.institution.idp_entity_id if config.institution else None)
         institution = config.institution
         if services and not (institution and (institution.name or (institution.use_shibboleth and login))):
