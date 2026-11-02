@@ -204,13 +204,16 @@ def test_ambiguous_and_substring_names_require_choice_and_corrected_identifiers_
 
 
 @pytest.mark.parametrize('eissn', ['1541-0420', '0090-5364'])
-def test_ambiguous_candidates_sharing_print_issn_can_select_either_complete_pair(tmp_path, eissn):
+@pytest.mark.parametrize('source', [
+    '- Biometrics\n',
+    '| Journal | ISSN |\n| --- | --- |\n| Biometrics | 0006-341X |\n',
+])
+def test_ambiguous_candidates_sharing_print_issn_can_select_either_complete_pair(tmp_path, eissn, source):
     registry(tmp_path, [
         ('Biometrics', '0006-341X', '1541-0420', 'Wiley', 'SCIE', None),
         ('Biometrics', '0006-341X', '0090-5364', 'Wiley', 'Scopus', 'Active'),
     ])
     config, path = tmp_path / 'target.yaml', tmp_path / 'list.md'
-    source = '- Biometrics\n'
     first = preview_research_scope(config, path, source, filename='scope.md')
     assert first.rows[0].status == 'unresolved'
     assert len(first.rows[0].candidates) == 2

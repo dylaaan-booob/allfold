@@ -200,9 +200,10 @@ def preview_research_scope(config_path: Path, list_path: Path, contents: str, *,
             if selected:
                 titles = {normalized_title(selected['name']), *(normalized_title(s['title']) for s in selected['sources'])}
                 name = row.get('journal', '')
+                preserve_supplied_identity = choice.get('candidate') is None and bool(row.get('issn') or row.get('eissn'))
                 journal = JournalConfig(name=name if normalized_title(name) in titles else selected['name'],
-                                        issn=(row.get('issn') or None) if row.get('issn') or row.get('eissn') else selected['issn'],
-                                        eissn=(row.get('eissn') or None) if row.get('issn') or row.get('eissn') else selected['eissn'])
+                                        issn=(row.get('issn') or None) if preserve_supplied_identity else selected['issn'],
+                                        eissn=(row.get('eissn') or None) if preserve_supplied_identity else selected['eissn'])
                 overlaps = [old for old in journals if set(journal.identifiers) & set(old.identifiers)]
                 if overlaps:
                     status = 'conflict' if len(overlaps) > 1 else 'skip'
