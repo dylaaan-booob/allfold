@@ -244,3 +244,16 @@ def test_load_config_rejects_symlink_legacy_source_before_migration(tmp_path):
         load_config(config)
     assert held.read_bytes() == before
     assert not (tmp_path / ".allfold").exists()
+
+
+def test_sqlite_state_rejects_hardlinks_before_in_place_write(tmp_path):
+    from allfold.persistence.user_state import UserStateError
+
+    config, legacy, _, _ = current_mapping_document(tmp_path)
+    snapshot = load_user_state(config)
+    other = tmp_path / "retained-user-data.sqlite"
+    other.hardlink_to(snapshot.database_path)
+    original = other.read_bytes()
+    with pytest.raises(UserStateError, match="single-link"):
+        compare_write_user_state(config, replace(snapshot.state, groups=("Statistics", "Added")), snapshot.revision)
+    assert other.read_bytes() == original
