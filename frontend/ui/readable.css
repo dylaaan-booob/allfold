@@ -1,0 +1,65 @@
+/* Approved readable sizing over the RhinE DOM adaptation. See SOURCES.md. */
+body{font-size:14px}
+@media(min-width:1201px){:root{--workspace-index:252px;--workspace-context:340px}}
+@media(min-width:601px) and (max-width:1200px){:root{--workspace-index:212px;--workspace-context:300px}}
+.view-nav>button,.nav-inverse>span{height:32px;font-size:12px}
+.view-nav small{font-size:10px}
+#view-nav-plate{height:32px}
+#settings-shell .s-dirty{font-size:12px}
+.header-browse>#s-save{height:32px;min-height:32px;font-size:11px}
+.kept-manager-row{height:30px;min-height:30px;line-height:30px}
+.kept-manager-row::before{top:14px}
+.kept-manager-row[aria-current=true]::after{top:12px}
+.rhine-index-number,.rhine-index-count{font-size:12px}
+.rhine-index-name{font-size:13px}
+.kept-manager-heading,.s-directory-heading{font-size:12px;line-height:16px;letter-spacing:.1em}
+.paper-row{height:30px}
+.title-text{font-size:14px}
+.row-number{font-size:13px}
+.paper-row time{font-size:12px}
+
+
+
+
+.profile-heading{font-size:12px;letter-spacing:.08em;flex-wrap:wrap;gap:4px 12px}
+.journal-profile{font-size:14px;grid-template-columns:minmax(0,1fr);gap:8px}
+.journal-profile div{grid-template-columns:132px minmax(0,1fr)}
+.journal-profile dt{font-size:12px;white-space:normal}
+.journal-profile dd{white-space:normal;overflow-wrap:anywhere}
+
+.paper-metadata{font-size:14px}
+.paper-metadata dt{font-size:12px}
+.paper-navigation{font-size:12px}
+.kept-record-heading{font-size:12px}
+#kept-record-summary,#kept-record-items li{font-size:14px}
+#kept-record-items small,.import-result-details{font-size:12px}
+#configuration-workspace .s-browser-title h2{font-size:22px}
+#configuration-workspace .s-context h2{font-size:22px!important}
+.s-help,.s-field-error,.s-card-meta,.s-context dt,.s-cover-status,.s-cover-controls{font-size:12px}
+.s-context dd,.s-journal-row strong{font-size:14px}
+.s-journal-row small{font-size:12px}
+.s-journal-card h3{font-size:14px!important}
+.s-context-title{font-size:12px;line-height:22px;letter-spacing:.08em}
+.s-settings-main{gap:32px}
+:is(#s-settings,#s-run) .s-setting-label{font-size:13px}
+:is(#s-settings,#s-run) .s-setting-group legend{font-size:14px}
+:is(#configuration-workspace,#settings-shell) :is(input,select,textarea){font-size:14px;height:42px}
+:is(#s-settings,#s-run) .s-setting-row :is(input,select){height:42px;font-size:14px}
+/* Keep checkboxes square and search compact instead of stretching them with fields. */
+:is(#configuration-workspace,#settings-shell) input[type=checkbox]{width:18px;height:18px}
+:is(#configuration-workspace,#settings-shell,#kept-view) .s-button{font-size:11px;height:auto;min-height:28px;line-height:26px}
+#configuration-workspace .s-directory-tools .s-button{font-size:11px;height:auto;min-height:28px;line-height:26px}
+.s-header-search input::placeholder{font-size:11px;line-height:28px}
+.s-header-search svg{height:28px}
+.s-layout{font-size:11px;letter-spacing:.08em}
+.s-layout-options,.s-layout-options>button{height:22px;min-height:22px}
+.s-run-record summary,.s-run-record h4,.s-run-journals>li>span{font-size:12px}
+.s-run-outcome,.s-run-impact,.s-run-metrics,#s-run-expression{font-size:14px}
+.s-run-record h3{font-size:14px}
+.s-diagnostic-name,.s-diagnostic p{font-size:14px}
+.s-diagnostic-summary,.s-reset code{font-size:12px}
+@media(max-width:700px){
+  .journal-profile div{grid-template-columns:minmax(0,1fr)}
+  .s-layout{flex-wrap:wrap;white-space:normal}
+  
+}

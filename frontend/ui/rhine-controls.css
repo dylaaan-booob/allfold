@@ -1,0 +1,122 @@
+/* DOM port of RhinE aa92ac9aa8fd8c611f5121583ae7c2a406b52607.
+   Control geometry: header.js, manager.js, head.js, style.js, archive.js,
+   grid.js, card.js and lib/draw.js. See SOURCES.md. */
+:root{--prototype-header:73px;--index-rail-start:14px}
+/* header.js::drawNav: measured text + 14 / 9 / 14, 28 high, 6 gap. */
+.masthead{border-bottom:1px solid var(--rule);height:auto;min-height:73px;display:grid;grid-template-columns:auto minmax(0,1fr) auto;grid-template-areas:"identity browse actions";gap:0 24px;align-items:center;padding:13px 0;margin-inline:var(--workspace-gutter)}
+.identity{grid-area:identity;flex-shrink:0;min-width:0}
+.header-browse{grid-area:browse;display:flex;align-items:center;min-width:0;justify-content:flex-start;flex-wrap:wrap;gap:6px}
+.view-nav-scroll{padding:3px;min-width:0;flex:0 1 auto}
+.view-nav{display:flex;position:relative;gap:6px;align-items:center;isolation:isolate;width:max-content;max-width:100%;flex-wrap:wrap}
+.view-nav>button,.nav-inverse>span{display:flex;align-items:center;justify-content:flex-start;gap:9px;flex-shrink:0;min-width:0;height:28px;padding:0 14px;font:400 11px/1 var(--font);letter-spacing:.08em;white-space:nowrap}
+.view-nav>button{position:relative;color:var(--ink)}
+.view-nav small{font-size:9px;font-weight:400;letter-spacing:.08em;margin:0;color:var(--muted)}
+#kept-count{position:static;font:inherit;font-variant-numeric:tabular-nums;letter-spacing:0}
+#view-nav-plate{position:absolute;left:0;top:0;height:28px;z-index:2;pointer-events:none;transition:transform .24s cubic-bezier(.16,1,.3,1)}
+.nav-clip{position:absolute;inset:0;overflow:hidden;background:var(--ink)}
+.nav-inverse{position:absolute;inset:0 auto auto 0;transition:transform .24s cubic-bezier(.16,1,.3,1)}
+.nav-inverse>span{position:absolute;color:var(--paper)}
+.nav-inverse small{color:#a6a99f}
+#view-nav-plate::after{content:'';position:absolute;right:-3px;top:-3px;width:6px;height:6px;background:var(--orange)}
+#settings-shell{display:flex;min-width:0}
+#settings-shell .s-header-actions{display:flex;align-items:center;flex-wrap:nowrap;gap:8px 12px}
+#settings-shell .s-dirty{font-size:9px}
+#settings-shell .s-button{height:28px;min-height:28px;padding:0 12px}
+.message-region{flex:1;min-width:min(260px,100%);letter-spacing:normal}
+.message-region:has(#app-notice[hidden]){display:none}
+/* header.js::drawRight search, with semantic input and original magnifier. */
+.s-header-search input::placeholder{font:500 9.5px/24px var(--font);letter-spacing:.14em;color:var(--muted)}
+.s-header-search svg{position:absolute;right:0;top:0;width:20px;height:24px;fill:none;stroke:currentColor;stroke-width:1;pointer-events:none}
+.s-header-search input::-webkit-search-cancel-button{margin-right:0}
+/* grid.js::drawArchiveBar / segToggle: source 22dp plates and 12dp title gap.
+   Journals readable sizing follows below; Search uses the global header. */
+.s-browser-title{min-height:28px;align-items:flex-start;gap:16px}
+#configuration-workspace .s-editor-grid .s-browser-title h2{padding-top:0}
+.s-layout{display:flex;align-items:center;gap:12px;white-space:nowrap;margin:0 0 0 auto;font:500 9px/1 var(--font);letter-spacing:.14em}
+.s-editor-grid>.s-browser>.s-browser-head{min-height:28px;align-content:start}
+/* manager.js::drawManager, TOP 52 / ROW 26; rail length uses real counts. */
+.kept-manager-heading,.s-directory-heading{display:flex;align-items:center;justify-content:space-between;font:600 9px/14px var(--font);letter-spacing:.16em;color:var(--muted);padding:0 24px 14px}
+.s-directory-list,#array-index{padding:0;scrollbar-width:thin}
+.kept-manager-row{--index-rail:6px;position:relative;display:grid;grid-template-columns:24px minmax(0,1fr) auto;gap:2px;width:100%;height:26px;min-height:26px;padding:0 18px 0 50px;align-items:center;text-align:left;line-height:26px;color:var(--ink)}
+.kept-manager-row::before{content:'';position:absolute;left:var(--index-rail-start);top:12px;width:var(--index-rail);height:2px;background:var(--muted)}
+.rhine-index-number{font-size:11px;font-weight:500;color:var(--muted)}
+.rhine-index-name{font-size:12px;font-weight:400;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
+.rhine-index-count{font-size:10.5px;color:var(--muted);margin-left:8px}
+.kept-manager-row:hover:not([aria-current=true]):not(:disabled){background:#25282108;color:var(--ink)}
+.kept-manager-row[aria-current=true]{background:var(--ink);color:var(--paper)}
+.kept-manager-row[aria-current=true]>span{color:var(--paper)}
+.kept-manager-row[aria-current=true] .rhine-index-name{font-weight:600}
+.kept-manager-row[aria-current=true]::before{background:var(--paper)}
+.kept-manager-row[aria-current=true]::after{content:'';position:absolute;left:calc(var(--index-rail-start) + var(--index-rail));top:10px;width:6px;height:6px;background:var(--orange)}
+.s-directory-tools{display:grid;gap:10px;margin-top:12px;padding:15px 24px 0}
+#configuration-workspace .s-directory-tools .s-button{min-height:22px;height:22px;font:500 9px/22px var(--font);padding:0 10px;letter-spacing:0;text-align:left}
+#configuration-workspace .s-directory-tools>.s-button{font-size:8.5px;font-weight:600;letter-spacing:.14em}
+.s-directory-tools .s-actions{gap:12px}
+/* style.js::drawIntroButton compact action, archive.js 40px main actions.
+   Browser controls keep business labels; music-only play glyphs are omitted. */
+:is(#configuration-workspace,#settings-shell,#kept-view) .s-button{height:22px;min-height:22px;padding:0 10px;border:1px solid var(--ink);background:var(--paper);font:500 9px/20px var(--font);letter-spacing:.14em;max-width:100%;white-space:normal;overflow-wrap:anywhere}
+/* Directory icon controls retain their original unframed geometry. */
+#configuration-workspace .s-directory-order .s-button{border:0;background:transparent}
+:is(#configuration-workspace,#settings-shell) :is(.s-primary,[data-run-provider]){background:var(--ink);color:var(--paper)}
+:is(#configuration-workspace,#settings-shell) :is(.s-primary,[data-run-provider]):hover:not(:disabled){background:var(--orange);color:var(--ink)}
+.kept-actions>button,.left-review-actions>button{height:auto;min-height:40px;border:1px solid var(--ink);background:var(--paper);padding:0 14px;font:600 11px/38px var(--font);letter-spacing:.1em;text-align:left;max-width:100%;white-space:normal;overflow-wrap:anywhere}
+#kept-start,#keep-paper{background:var(--ink);color:var(--paper)}
+#kept-start:hover:not(:disabled),#keep-paper:hover:not(:disabled){color:var(--orange)}
+#kept-import-only{position:relative;outline:1px solid var(--orange);outline-offset:3px}
+#cancel-enrich{height:22px;padding:0 10px;border:1px solid var(--ink);background:var(--paper);font:500 9px/20px var(--font);letter-spacing:.14em}
+/* style.js::cardFrame selection, 4px outer frame and 6px registration marks. */
+:is(.s-journal-card,.s-journal-row):hover{border-color:var(--orange)}
+:is(.s-journal-card,.s-journal-row)[data-current=true]{border-color:transparent;outline:none}
+:is(.s-journal-card,.s-journal-row)[data-current=true]::after{content:'';position:absolute;inset:-5px;width:auto;height:auto;border:1.5px solid var(--ink);background:none;pointer-events:none}
+:is(.s-journal-card,.s-journal-row)[data-current=true]::before{content:'';position:absolute;inset:-8px;pointer-events:none;background:linear-gradient(var(--orange),var(--orange)) left top/6px 6px no-repeat,linear-gradient(var(--orange),var(--orange)) right top/6px 6px no-repeat,linear-gradient(var(--orange),var(--orange)) left bottom/6px 6px no-repeat,linear-gradient(var(--orange),var(--orange)) right bottom/6px 6px no-repeat}
+.s-journal-grid{padding:20px 8px 24px;gap:20px}
+.s-journal-list{padding:20px 8px 24px}
+/* lib/draw.js::chip, inverse and regular variants; card.js profile labels. */
+.s-context-title{font:600 9.5px/20px var(--font);letter-spacing:.1em;padding:0 8px;min-height:20px}
+.s-context-title::after{content:none}
+.date-precision{font:500 9.5px/18px var(--font);letter-spacing:.1em;border:1px solid var(--rule);padding:0 8px}
+.kept-record-heading{font:500 9.5px/18px var(--font);letter-spacing:.1em}
+.profile-heading{font-size:9px;font-weight:600;letter-spacing:.14em}
+@media(max-width:1250px){
+  .masthead{grid-template-columns:minmax(0,1fr) auto;grid-template-areas:"identity actions" "browse browse";gap:12px 24px;padding:13px 0}
+  .header-browse{justify-content:flex-start}
+}
+@media(max-width:700px){
+  .masthead{column-gap:12px}
+  .identity{gap:10px}
+  .identity-mark{width:44px;height:34px}
+  .view-nav-scroll{flex:1 1 100%}
+  #settings-shell .s-dirty{font-size:9px;flex-basis:auto}
+  .s-browser-title{flex-wrap:wrap}
+  .s-layout{margin-left:0}
+}
+@media(max-width:600px){
+  .s-directory-heading{padding:0 14px 10px}
+  .s-directory-tools{padding:10px 14px 0;margin-top:8px}
+  .s-directory-list{display:flex;gap:4px;overflow-x:auto;overflow-y:hidden;flex:none}
+  .s-directory-row{flex:0 0 228px;width:228px}
+  .s-browser{min-height:350px}
+}
+@media(prefers-reduced-motion:reduce){#view-nav-plate,.nav-inverse{transition:none}}
+.header-browse>#s-save{display:inline-flex;align-items:center;justify-content:center;flex-shrink:0;height:28px;min-height:28px;padding:0 12px;border:1px solid var(--ink);background:var(--ink);color:var(--paper);font:500 11px/1 var(--font);letter-spacing:.14em;white-space:nowrap}
+.header-browse>#s-save:hover:not(:disabled){background:var(--orange);color:var(--ink)}
+body:not([data-settings-open]) .header-browse>#s-save{display:none}
+
+/* archive.js::drawInfo track rows: 24px, 34px number slot. Dates keep their business width. */
+.paper-row{height:24px;padding:0;grid-template-columns:34px minmax(0,1fr) 80px;gap:0}
+.row-number{font-size:12px}
+#kept-import-only{display:flex;align-items:center;justify-content:space-between;gap:24px;color:var(--ink)}
+#kept-import-only svg{width:14px;height:14px;stroke:var(--orange);stroke-width:1.5;fill:none;flex-shrink:0}
+@media(max-width:600px){
+  /* Preserve the Archive scene geometry; pan its original control strip locally. */
+  .collection-bottom{left:18px;right:12px;max-width:calc(100% - 30px);overflow-x:auto;overflow-y:hidden;padding-bottom:8px;scrollbar-width:thin}
+  .collection-bottom>*{flex-shrink:0}
+}
+
+@media(max-width:600px){.kept-actions{flex-direction:column}.kept-actions>button{width:100%}}
+
+@media(max-width:600px){.kept-manager{padding:12px 0;border-bottom:1px solid var(--rule)}.kept-manager-row{flex:0 0 228px}.kept-manager-heading{padding:0 14px 10px}}
+
+#s-journals-page .s-layout{font-size:11px;line-height:28px;letter-spacing:.12em;flex-wrap:nowrap;white-space:nowrap}
+#s-journals-page .s-layout-options,#s-journals-page .s-layout-options button{height:28px;min-height:28px}
+#s-journals-page .s-layout-options button{padding-inline:9px}

@@ -1,0 +1,26 @@
+'use strict';
+// Exercise shared verification against workflow fixtures without creating native windows.
+const {inspectPage,waitForPage}=require('../src/browser/browser-navigation.cjs');
+function attachBrowserMechanisms(browser) {
+  const solverDocuments=new Map();
+  browser.beginPageLoad=function(tab,signal) {
+    this.taskTab=tab;this.taskActive=true;tab.taskSignal=signal;tab.loadAllowed=true;
+    tab.recoveryActive=true;tab.reloads ??= 0;
+  };
+  browser.finishPageLoad=tab=>{tab.recoveryActive=false;tab.loadAllowed=false;};
+  browser.enterBusiness=()=>{for(const tab of browser.tabs?.values() || [])browser.finishPageLoad(tab);};
+  browser.inspectPage=async(tab,options={})=>{
+    if(tab.view.webContents.isLoadingMainFrame())return {loading:true};
+    return inspectPage({...options,solverDocuments,
+      snapshot:()=>browser.snapshot(tab),current:doc=>browser.documentCurrent(doc),
+      authentication:()=>browser.checkAuthentication?.(tab) || false,
+      inspectAuthentication:()=>browser.inspectAuthentication?.(tab) || {waiting:false},
+      solveCloudflare:browser.solveCloudflare});
+  };
+  browser.waitForPage=async(tab,options)=>{
+    try{return await waitForPage(()=>browser.inspectPage(tab,options),options);}
+    finally{browser.finishPageLoad(tab);}
+  };
+  return browser;
+}
+module.exports={attachBrowserMechanisms};

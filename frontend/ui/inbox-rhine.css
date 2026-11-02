@@ -1,0 +1,241 @@
+/* Source-led RhinE Archive browser adaptation; not a screenshot replica.
+   Native CSS/DOM controls; the existing Canvas owns case artwork only. */
+@font-face{font-family:Geist Mono SemiBold;src:url('assets/fonts/GeistMono-SemiBold.ttf');font-weight:600;font-display:swap}
+.masthead{position:relative;z-index:10}
+.header-utilities{grid-area:actions;display:flex;align-items:center;justify-self:end;gap:18px;min-width:0}
+#workspace-search{position:relative;width:210px;flex:0 1 210px;min-width:160px}
+#workspace-search .s-header-search{position:relative;display:block;height:28px;color:var(--muted)}
+#workspace-search input{width:100%;height:28px;border:0;border-bottom:1px solid var(--rule);border-radius:0;background:transparent;padding:0 25px 0 0;color:var(--ink);font:12px/28px var(--font);caret-color:var(--orange)}
+#workspace-search input::placeholder{font:500 10px/28px var(--font);letter-spacing:.1em;color:var(--muted)}
+#workspace-search svg{position:absolute;right:0;top:0;width:20px;height:28px;fill:none;stroke:currentColor;stroke-width:1;pointer-events:none}
+#workspace-search-results{position:absolute;right:0;top:calc(100% + 10px);z-index:20;width:min(420px,calc(100vw - 48px));max-height:336px;overflow:auto;background:var(--paper);border:1px solid var(--ink);padding:4px}
+#workspace-search-results button{display:block;width:100%;min-height:52px;text-align:left;padding:8px 10px}
+#workspace-search-results button[aria-selected=true]{background:var(--ink);color:var(--paper)}
+#workspace-search-results strong{display:block;font-size:12px;font-weight:500;overflow-wrap:anywhere}
+#workspace-search-results small{display:block;font-size:10px;margin-top:3px;opacity:.7}
+#workspace-search-results p{font-size:12px;margin:8px}
+#selected-view{--archive-pane-width:504px;--archive-gap:24px;--archive-right-margin:24px;--reader-pane-width:640px;--archive-control-height:40px;grid-template-columns:minmax(0,1fr) var(--archive-pane-width);margin-right:0}
+#selected-view #archive{width:100vw}
+#journal-view .review-left{right:var(--reader-pane-width)}
+#journal-view .review-right{left:calc(100% - var(--reader-pane-width))}
+#selected-view .archive-eyebrow{display:flex;align-items:baseline;color:var(--muted);font-size:11px;line-height:16px;letter-spacing:.12em;flex-shrink:0}
+#selected-view .archive-context{display:inline-flex;align-items:baseline;gap:12px;min-width:0}
+#selected-view .archive-eyebrow strong{color:var(--ink);font-weight:500}
+#selected-view .file-panel #journal-title{font:600 25px/42px 'Geist Mono SemiBold','Geist Mono','MiSans',sans-serif;letter-spacing:0;margin:20px 0 18px;display:flex;flex-direction:column;align-items:flex-start;gap:2px;overflow:visible}
+#selected-view .file-panel #journal-title>span{display:block;flex:0 0 42px;width:max-content;max-width:100%;height:42px;margin:0;padding:0 12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;background:var(--ink);color:var(--paper)}
+#selected-view .profile-heading{font-size:11px;line-height:18px;letter-spacing:.08em;margin:0 0 8px;flex-shrink:0;flex-wrap:wrap}
+#selected-view .journal-profile{font-size:14px;margin:0 8px 18px;gap:8px;flex-shrink:0}
+#selected-view .journal-profile div{grid-template-columns:132px minmax(0,1fr);line-height:20px}
+#selected-view .journal-profile dt{font-size:11px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+#selected-view .journal-profile dd{min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;overflow-wrap:normal}
+/* RhinE aa92ac9 archive.js::drawRuler/drawInspection and grid.js::segToggle,
+   adapted to DOM/Canvas. MIT, Copyright (c) 2026 the Audio Archive authors.
+   Archive controls retain the readable sizing of the other screens. */
+#selected-view .file-panel{padding:24px var(--archive-right-margin) 24px var(--archive-gap);overflow-x:hidden;overflow-y:auto}
+#selected-view .file-panel #journal-title{flex:0 0 86px;height:86px}
+#archive-preview{flex:1;min-height:40px;display:flex;flex-direction:column}
+#selected-view .file-panel #paper-lists{flex:0 0 auto;min-height:0}
+#selected-view .file-panel .paper-list{height:auto;overflow:visible;padding-right:0}
+#selected-view .file-panel .paper-row[hidden]{display:none}
+#open-journal-more{display:block;flex:0 0 28px;width:100%;height:28px;min-height:28px;margin-top:12px;padding:0 0 0 33px;text-align:left;color:var(--muted);font:11px/28px var(--font);letter-spacing:.06em}
+#open-journal-more:hover:not(:disabled){color:var(--ink);text-decoration:underline;text-underline-offset:4px}
+#selected-view .file-panel h1{margin-top:0}
+#selected-view .file-panel .paper-row{position:relative;height:30px;padding:0;grid-template-columns:34px minmax(0,1fr) 80px;gap:0}
+#selected-view .file-panel .paper-row:hover{background:transparent;color:var(--ink);outline:none}
+#selected-view .file-panel .paper-row::before{content:'';position:absolute;left:-8px;top:0;width:3px;height:100%;background:var(--orange);opacity:0;pointer-events:none}
+#selected-view .file-panel .paper-row:hover::before{opacity:1}
+#selected-view .file-panel .title-clip{height:21px}
+#selected-view .file-panel .title-text{display:block;-webkit-line-clamp:unset;line-clamp:unset;white-space:nowrap;width:100%;max-width:100%;font-size:14px;line-height:21px;overflow:hidden;text-overflow:ellipsis;overflow-wrap:normal;animation:none;transform:none}
+#selected-view .file-panel .row-number{font-size:13px}
+#selected-view .file-panel time{font-size:12px}
+#selected-view .file-panel[data-ghost-hidden=true] #ghost-subject{visibility:hidden}
+#selected-view .collection-bottom{inset:0;display:block;padding:0;max-width:none;overflow:visible;pointer-events:none}
+#selected-view .collection-bottom>*{pointer-events:auto}
+#selected-view.inspecting .collection-bottom>*{pointer-events:none}
+#selected-view .selection-count{position:absolute;bottom:auto;width:max-content;height:auto;display:block}
+#selected-view .selection-count>span{display:block;width:max-content;background:transparent;white-space:nowrap;font-size:9px;line-height:14px;letter-spacing:.11em}
+#selected-view .selection-count>div{gap:9px;align-items:baseline;margin-top:8px}
+#selected-view .selection-count strong{font-size:51px;font-weight:400;line-height:1;letter-spacing:-.04em}
+#selected-view .selection-count small{font-size:12px}
+#selected-view .journal-navigation{position:absolute;display:block;bottom:auto;height:var(--archive-control-height);margin:0}
+#selected-view .journal-navigation>button{position:absolute;top:calc((var(--archive-control-height) - 32px)/2);width:32px;height:32px;padding:0;font-size:16px;line-height:32px}
+#previous-journal{left:0}
+#selected-view #journal-ticks{position:absolute;left:40px;top:0;display:block;height:var(--archive-control-height);overflow:hidden;touch-action:none}
+#selected-view #journal-ticks button{position:absolute;padding:0;margin:0;background:#8d9185;transform:none}
+#selected-view #journal-ticks button[aria-current=true]{background:var(--ink)}
+#selected-view .group-navigation{position:absolute;bottom:auto;display:grid;grid-template-columns:36px minmax(0,1fr) 36px;align-items:center;width:232px;min-height:var(--archive-control-height);height:auto;margin:0}
+#selected-view .group-navigation>div{min-width:0}
+#selected-view .group-navigation small{font-size:9px;line-height:12px;letter-spacing:.08em;margin-bottom:3px;white-space:nowrap}
+#selected-view .group-navigation strong{display:block;font-size:11px;font-weight:600;line-height:16px;letter-spacing:normal}
+#selected-view .group-navigation strong>span{display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+#selected-view .group-navigation>button{width:36px;height:36px;padding:0;font-size:16px}
+#journal-tick-label{position:absolute;z-index:5;max-width:min(320px,calc(100% - 16px));width:max-content;padding:6px 8px;background:var(--ink);color:var(--paper);font:12px/1.5 var(--font);pointer-events:none}
+#journal-tick-label>span{display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+#journal-tick-label::after{content:'';position:absolute;top:100%;left:var(--ruler-stem-left);height:10px;width:1px;background:var(--ink)}
+.inspecting #journal-tick-label{display:none}
+#journal-view .review-left:not([data-ready=true]){visibility:hidden}
+#journal-view .inspection-heading{position:absolute;transform:none;width:max-content;pointer-events:none}
+#journal-view .inspection-info{display:grid;gap:4px;font-size:11px;line-height:16px;letter-spacing:.08em}
+#journal-view .review-back{height:auto;width:max-content;max-width:none;display:flex;align-items:center}
+#journal-view #back{font-size:11px;line-height:18px;min-height:28px;padding:4px 10px;border:1px solid var(--ink);background:var(--paper);text-align:left;max-width:100%;white-space:normal}
+#directory-position{font-size:11px;color:var(--muted);font-variant-numeric:tabular-nums;white-space:nowrap}
+#journal-view .left-review-actions{position:absolute;bottom:auto;display:flex;width:max-content;height:auto;gap:12px;margin:0}
+#journal-view .left-review-actions>button{height:auto;min-height:28px;line-height:26px;padding:0 12px;font-size:11px;max-width:100%}
+#journal-view .paper-navigation{display:none}
+#journal-view .review-right{padding-top:24px;background:transparent;isolation:isolate}
+#journal-view .review-right::before{content:'';position:absolute;inset:0;z-index:0;background:var(--paper);opacity:var(--journal-reveal-progress,0);pointer-events:none}
+#journal-view .review-right>*{position:relative;z-index:1}
+:is(#journal-view,#kept-reader-body) .review-controls{display:flex;align-items:flex-start;gap:12px;padding:0;margin:0 0 16px}
+:is(#journal-view,#kept-reader-body) #enrich-status{flex:1;min-width:0;min-height:0;font-size:12px;margin:0;overflow-wrap:anywhere}
+:is(#journal-view,#kept-reader-body) #cancel-enrich{flex-shrink:0;height:auto;min-height:26px;padding:2px 10px;border:1px solid var(--ink);font-size:11px;line-height:20px}
+:is(#journal-view,#kept-reader-body,.array-paper-infos) button.missing-field{width:100%;text-align:left;font:inherit}
+:is(#journal-view,#kept-reader-body,.array-paper-infos) button.missing-field:disabled{opacity:1}
+:is(#journal-view,#kept-reader-body,.array-paper-infos) .date-precision{margin:0;padding:0;border:0;font:inherit;color:inherit;white-space:nowrap}
+:is(#journal-view,#kept-reader-body,.array-paper-infos) .date-precision [data-enrich]{padding:0 2px;font:inherit;text-decoration:underline;text-underline-offset:3px}
+#selected-view.returning-complete #empty-inbox{left:calc(100% - var(--archive-pane-width));padding:24px;align-items:flex-start}
+#selected-view.returning-complete #empty-inbox h1{font-size:22px}
+#selected-view.returning-complete #empty-inbox p{max-width:40ch}
+:is(#journal-view,#kept-reader-body) #paper-detail.abstract-locked{overflow:auto}
+:is(#journal-view,#kept-reader-body) #paper-detail.abstract-locked #paper-abstract{min-height:56px}
+:is(#journal-view,#kept-reader-body,.array-paper-infos) .paper-author{display:inline;overflow-wrap:anywhere}
+:is(#journal-view,#kept-reader-body) #paper-abstract .missing-field::after{content:'摘要尚未获得';display:block;position:absolute;top:0;left:0;right:0;margin:0;text-align:center;font:12px/20px var(--font);color:var(--muted)}
+
+/* Array moves the shared full Paper title above its Abstract, without a rule. */
+#array-paper-heading{min-width:0;flex-shrink:0}
+#kept-view[data-status=kept] .kept-manager-row{grid-template-columns:24px minmax(0,1fr)}
+.array-paper-infos{min-width:0;margin-top:24px}
+.array-paper-infos:empty{display:none}
+.array-paper-infos .paper-metadata{margin:0;font-size:14px}
+.array-paper-infos .paper-metadata>div{display:block;margin:12px 0}
+.array-paper-infos .paper-metadata dd{margin:4px 0 0}
+#array-candidate-infos #paper-metadata-summary{display:none}
+#kept-view[data-status=candidates] .kept-card{display:flex;flex-direction:column;overflow:hidden}
+#kept-view[data-status=candidates] .array-context-scroll{flex:1;min-height:0;overflow:auto;overscroll-behavior:contain;scrollbar-width:thin}
+#kept-reading-tools{display:flex;flex-direction:column;flex-shrink:0;align-items:stretch;min-height:28px;margin-top:24px}
+#kept-reader-body .abstract-heading .paper-navigation{flex:0 1 180px;min-width:0;min-height:28px;margin:0 0 0 auto;padding:0;border:0}
+#kept-reader-body .abstract-heading .paper-stepper{width:100%;justify-content:space-between;gap:6px}
+#kept-reader-body .abstract-heading .paper-stepper button{height:28px;padding:0 6px;font-size:16px}
+#kept-reader-body .abstract-heading .paper-stepper strong{font-size:12px;min-width:58px}
+@media(max-width:600px){#kept-view[data-status=candidates] .kept-card{max-height:350px;flex-shrink:0}}
+#kept-view #kept-reader{padding-top:16px}
+#kept-view .kept-actions{margin-top:10px}
+#kept-view #kept-record-items strong{display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2;line-clamp:2;overflow:hidden}
+/* Keep the Kept reader on one content measure after the font change. */
+#kept-reader-body .abstract-heading,#kept-reader-body #paper-abstract{max-width:none}
+
+/* Reading roles. Keep the reader's column measure and all type sizes;
+   select content, never the Kept film or a whole page/control container. */
+.title-text,
+#view-paper-title,
+#paper-authors,
+.abstract-heading,
+#paper-abstract,
+#enrich-status,
+#load-status,
+#empty-inbox :is(h1,p),
+#workspace-search-results :is(strong,p){font-family:var(--font-reading)}
+#kept-view :is(#kept-empty,#kept-record-summary,
+  #kept-record-items strong,#kept-record-items small,.import-result-details p){font-family:var(--font-reading)}
+#configuration-workspace :where(.s-browser-title h2,.s-journals-head>h2,.s-run-head>h2,.s-context h2,.s-reset h2,
+  .s-journal-card h3,.s-journal-row strong,.s-lookup-candidate strong,
+  .s-help,.s-field-error,.s-message,.s-empty,.s-cover-status,.s-diagnostic p,
+  .s-diagnostic-summary,.s-preview-summary,#s-dialog-title,#s-dialog-body p,
+  #s-dialog-body li,
+  .s-run-operation strong,.s-run-operation p,.s-run-record h3,.s-run-record p,
+  .s-run-impact li,.s-run-journals>li>strong,.s-run-journals>li>span){font-family:var(--font-reading)}
+/* The first two Journal context values are ISSN/eISSN, not reading copy. */
+#configuration-workspace #s-journal-detail dl>div:nth-child(n+3)>dd{font-family:var(--font-reading)}
+#run-view :is(#run-title,#run-stage,#run-description),
+#app-notice-summary,#app-notice-messages p{font-family:var(--font-reading)}
+/* Explicit leaves protect identifiers, native controls and short labels from
+   reading-content inheritance. Technical result rows retain their mono base. */
+#paper-detail button.missing-field,
+#paper-detail :is(button,input,select,textarea,code,pre,kbd),
+#paper-doi,#paper-date,.paper-uuid,.file-path,
+#configuration-workspace :is(button,input,select,textarea,code,pre,kbd,.s-card-meta,
+  .s-setting-label,.s-run-metrics,.s-run-timing),
+#configuration-workspace .s-run-journals>li>details>ul>li>span,
+#kept-view .import-result-details summary,
+#kept-view #kept-record-items :is(button,input,select,textarea,code,pre,kbd),
+#app-notice :is(button,summary,code,pre,kbd){font-family:var(--font-mono)}
+
+/* Mono functional labels. Reading content, controls and mixed-heading values
+   keep their separate roles; no geometry or animation styles change. */
+#selected-view .archive-context,
+#selected-view .profile-heading>span:first-child,
+#selected-view .selection-count>span,
+#kept-view :is(.kept-manager-heading,.kept-record-heading)>span:first-child,
+#configuration-workspace :is(.s-eyebrow,.s-context-title,.s-context dt,.s-layout-caption,.s-directory-heading),
+#configuration-workspace .s-run-metrics dt,
+#run-view .run-time{font-family:var(--font-label)}
+#archive-subject{font-family:var(--font-mono)}
+.view-nav small,.nav-inverse small,
+#kept-count,#profile-identity,#directory-position,#run-elapsed,
+#kept-record-count,
+#configuration-workspace :is(#s-preview-file,#s-group-count,#s-service-count),
+#configuration-workspace .s-run-metrics dd{font-family:var(--font-mono)}
+
+/* Display lettering; preserve the existing metrics and decoration. */
+.identity strong,#ghost-subject{font-family:var(--font-display)}
+
+/* Developer tuning strip. Values are local to this browser origin. */
+body>footer{height:auto;min-height:35px;gap:8px 20px;flex-wrap:wrap;padding:4px 0}
+html.archive-debug-active body>footer{flex-wrap:nowrap;gap:8px 12px}
+body>footer>span{white-space:nowrap}
+#archive-debug{display:flex;align-items:center;justify-content:flex-start;flex:0 1 auto;flex-wrap:nowrap;gap:12px;min-width:0;max-width:100%;overflow-x:auto;scrollbar-width:thin;font:10px/20px var(--font);letter-spacing:0}
+#archive-debug .debug-parameters,#archive-debug .debug-actions{display:flex;align-items:center;flex-wrap:nowrap;flex-shrink:0;gap:8px;min-width:0}
+#archive-debug label{display:flex;align-items:center;gap:5px;white-space:nowrap}
+#archive-debug input[type=number]{width:58px;height:23px;border:1px solid var(--rule);border-radius:0;background:transparent;color:var(--ink);font:11px var(--font);padding:2px 4px}
+#archive-debug input[type=checkbox]{margin:0;accent-color:var(--orange)}
+#archive-debug button{border:1px solid var(--rule);padding:0 6px;height:23px;font-size:10px}
+#archive-debug .debug-panel-parameter input{width:50px}
+#debug-status{color:var(--muted);min-width:7ch}
+.archive-debug-handle{display:none;position:absolute;z-index:8;touch-action:none;outline-offset:-3px}
+#selected-view.debug-resize.debug-editable #debug-split,
+#selected-view[data-debug-view=selected].debug-resize.debug-editable #debug-bottom{display:block}
+.archive-widget-handle{display:none;position:absolute;z-index:4;left:0;top:-18px;width:24px;height:18px;cursor:move;touch-action:none;text-align:center;color:var(--orange);font:16px/18px var(--font);background:transparent;pointer-events:auto}
+#selected-view[data-debug-view=selected].debug-resize.debug-editable .collection-bottom .archive-widget-handle,
+#selected-view[data-debug-view=journal].debug-resize.debug-editable #journal-view .archive-widget-handle{display:block}
+#debug-split{top:0;bottom:0;left:calc(100% - var(--archive-pane-width) - 5px);width:10px;cursor:col-resize}
+#selected-view[data-debug-view=journal] #debug-split{left:calc(100% - var(--reader-pane-width) - 5px)}
+#debug-bottom{left:0;right:0;bottom:-5px;height:10px;cursor:row-resize}
+.archive-debug-handle::after{content:'';position:absolute;background:var(--orange);opacity:.55}
+#debug-split::after{left:4px;top:0;bottom:0;width:1px}
+#debug-bottom::after{top:4px;left:0;right:0;height:1px}
+.archive-debug-handle:hover::after{opacity:1}
+.debug-dragging{user-select:none}
+html:not(.archive-debug-active) #archive-debug,
+html:not(.archive-debug-active) .archive-debug-handle,
+html:not(.archive-debug-active) .archive-widget-handle{display:none!important}
+#selected-view .archive-eyebrow{overflow:hidden}
+#selected-view .archive-context{display:flex;white-space:nowrap;overflow:hidden}
+#selected-view .archive-context strong{overflow:hidden;text-overflow:ellipsis}
+#selected-view .profile-heading{flex-wrap:nowrap;white-space:nowrap;gap:10px}
+#selected-view .profile-heading>span{min-width:0;overflow:hidden;text-overflow:ellipsis}
+#selected-view .profile-heading>span:last-child{margin-left:auto}
+/* Workspace layouts share one root; Archive keeps its own camera and geometry. */
+#selected-view{--workspace-control-inset:var(--index-rail-start);--workspace-control-top:24px}
+#archive-layout-controls{position:absolute;left:calc(var(--workspace-gutter) + var(--workspace-control-inset));top:var(--workspace-control-top);z-index:9;background:var(--paper)}
+#selected-view[data-workspace-layout=array]>#archive-layout-controls{display:none}
+#workspace-layout,#array-status{display:flex;align-items:center;flex-wrap:nowrap;gap:10px;margin:0;min-width:0;max-width:100%;font:500 11px/16px var(--font);letter-spacing:.08em;white-space:nowrap}
+#workspace-layout .s-layout-options,#array-status .s-layout-options{max-width:100%;height:28px}
+#workspace-layout .s-layout-options>button,#array-status .s-layout-options>button{height:28px;min-height:28px;white-space:nowrap;padding-inline:9px}
+#kept-view .kept-manager{padding-top:var(--workspace-control-top)}
+#array-layout-controls{min-width:0;padding:0 0 14px var(--workspace-control-inset)}
+#array-status{padding-bottom:14px}
+@media(max-width:1200px){
+  #workspace-layout,#array-status{gap:8px}
+  #workspace-layout .s-layout-options>button,#array-status .s-layout-options>button{padding-inline:5px}
+}
+@media(max-width:600px){#selected-view{--workspace-control-top:12px}}
+#selected-view[data-workspace-layout=array]{grid-template-columns:minmax(0,1fr);height:calc(100dvh - var(--prototype-header) - var(--prototype-footer,35px))!important}
+#selected-view[data-workspace-layout=array]>:is(.collection,.file-panel,#journal-view,#empty-inbox,.archive-debug-handle){display:none!important}
+#selected-view>#kept-view{grid-area:1/1/2/-1;height:auto;max-height:none}
+#array-decision-tools{position:static;inset:auto;display:grid;grid-template-columns:repeat(2,minmax(0,1fr));align-items:center;gap:12px;height:auto;pointer-events:auto}
+#array-decision-tools>button{min-height:28px;line-height:26px;padding:0 10px}
+:is(#array-journal-profile,#array-import-profile){grid-column:1/-1;min-width:0}
+#array-journal-name{font:500 20px/1.5 var(--font-reading);overflow-wrap:anywhere;margin:0 0 20px}
+.array-profile{margin:0;display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:18px 12px}
+.array-profile div{min-width:0}
+.array-profile dt{font:11px/1.5 var(--font);letter-spacing:.08em;color:var(--muted)}
+.array-profile dd{font:14px/1.7 var(--font-reading);margin:4px 0 0;overflow-wrap:anywhere}

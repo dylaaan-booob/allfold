@@ -1,0 +1,214 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Allfold</title>
+  <base href="/static/ui_next/">
+  <link rel="icon" href="data:,">
+  <link rel="stylesheet" href="style.css">
+  <link rel="stylesheet" href="document-decryption.css">
+  <link rel="stylesheet" href="run.css">
+  <link rel="stylesheet" href="kept.css">
+  <link rel="stylesheet" href="kept-app.css">
+  <link rel="stylesheet" href="notifications.css">
+  <link rel="stylesheet" href="assets/vendor/cropperjs-1.7.0/cropper.min.css">
+  <link rel="stylesheet" href="settings.css">
+  <link rel="stylesheet" href="rhine-controls.css">
+  <link rel="stylesheet" href="readable.css">
+  <link rel="stylesheet" href="inbox-rhine.css">
+  <link rel="stylesheet" href="browser-workspace.css">
+  <script defer src="document-decryption.js"></script>
+  <script defer src="ui-transitions.js"></script>
+  <script defer src="api.js"></script>
+  <script defer src="workspace-search.js"></script>
+  <script defer src="workspace-navigation.js"></script>
+  <script defer src="archive-debug.js"></script>
+  <script defer src="justice.js"></script>
+  <script defer src="paragraph-layout.js"></script>
+  <script defer src="assets/vendor/cropperjs-1.7.0/cropper.min.js"></script>
+  <script defer src="app.js"></script>
+  <script defer src="browser-workspace.js"></script>
+  <script type="module" src="run.js"></script>
+  <script type="module" src="kept-app.js"></script>
+  <script type="module" src="settings.js"></script>
+</head>
+<body>
+  <header class="masthead">
+    <div class="identity"><svg class="identity-mark" viewBox="0 0 66 46" aria-hidden="true"><path d="M9 8h18v30H9zM39 8h18v30H39zM27 8l12 4v26l-12-4z" fill="none" stroke="currentColor"/><path d="M33 4v38" stroke="#ff7a01"/></svg><div><strong>ALLFOLD</strong><small>研究档案馆 / Local journal archive</small></div></div>
+    <div class="header-browse"><div class="view-nav-scroll"><nav class="view-nav" aria-label="Workspace views">
+      <span id="view-nav-plate" aria-hidden="true"><span class="nav-clip"><span class="nav-inverse"><span><small>01</small><span class="nav-label">WORKSPACE</span></span><span><small>02</small><span class="nav-label">RUN</span></span><span><small>03</small><span class="nav-label">JOURNALS</span></span><span><small>04</small><span class="nav-label">SETTINGS</span></span></span></span></span>
+      <button id="workspace-open" aria-current="page" disabled><small>01</small><span class="nav-label">WORKSPACE</span></button>
+      <button id="run-open" disabled><small>02</small><span class="nav-label">RUN</span></button>
+      <button id="journals-open" disabled><small>03</small><span class="nav-label">JOURNALS</span></button>
+      <button id="settings-open" disabled><small>04</small><span class="nav-label">SETTINGS</span></button>
+    </nav></div>
+    <button id="browser-open" class="s-button" aria-label="打开 Browser 窗口">BROWSER</button>
+    </div>
+    <div class="header-utilities">
+      <div id="workspace-search" hidden>
+        <label class="s-header-search"><input id="s-search" type="search" placeholder="SEARCH JOURNALS" aria-label="Search Journals" autocomplete="off" disabled><svg viewBox="0 0 20 24" aria-hidden="true"><circle cx="10" cy="11" r="3.5"/><path d="m12.6 13.6 3.4 3.4"/></svg></label>
+        <div id="workspace-search-results" role="listbox" aria-label="匹配期刊" hidden></div>
+      </div>
+    </div>
+  </header>
+  <main id="selected-view" data-workspace-layout="archive">
+    <div id="archive-layout-controls"><div id="workspace-layout" class="s-layout" role="group" aria-label="Workspace layout"><span class="s-layout-caption">LAYOUT</span><span class="s-layout-options"><button id="workspace-archive" data-layout="archive" aria-pressed="true" disabled>ARCHIVE</button><button id="workspace-array" data-layout="array" aria-pressed="false" disabled>ARRAY</button></span></div></div>
+    <section class="collection" aria-label="Journal archive">
+      <canvas id="archive" tabindex="0" aria-label="期刊档案架：上键下一本，下键上一本，左键下一个货架，右键上一个货架，Enter 查看"></canvas>
+      <p id="load-status" role="status">正在载入本地档案…</p>
+      <div id="journal-tick-label" role="tooltip" hidden></div>
+      <div class="collection-bottom">
+        <div class="selection-count"><i class="archive-widget-handle" data-widget="count" role="button" tabindex="0" aria-label="移动期刊计数" title="拖动此手柄移动控件；方向键微调">⠿</i><span>JOURNAL / SELECT</span><div><strong id="selection-number">00</strong><small id="selection-total">/ 00</small></div></div>
+        <div class="journal-navigation"><i class="archive-widget-handle" data-widget="ruler" role="button" tabindex="0" aria-label="移动期刊刻度" title="拖动此手柄移动控件；方向键微调">⠿</i><button id="previous-journal" aria-label="上一本期刊">↑</button><div id="journal-ticks" aria-label="期刊刻度"></div><button id="next-journal" aria-label="下一本期刊">↓</button></div>
+        <div class="group-navigation"><i class="archive-widget-handle" data-widget="group" role="button" tabindex="0" aria-label="移动货架导航" title="拖动此手柄移动控件；方向键微调">⠿</i><button id="previous-group" aria-label="上一个货架">←</button><div><small id="group-number"></small><strong id="group-name"></strong></div><button id="next-group" aria-label="下一个货架">→</button></div>
+      </div>
+    </section>
+    <aside class="file-panel" aria-label="选中期刊">
+      <div class="archive-eyebrow"><span class="archive-context">JOURNAL ARCHIVE <span>/</span> <strong id="archive-subject"></strong></span></div>
+      <h1 id="journal-title"></h1>
+      <dl class="journal-profile">
+        <div><dt>PUBLISHER</dt><dd id="profile-publisher"></dd></div>
+        <div><dt>ACCESS SERVICE</dt><dd id="profile-service"></dd></div>
+      </dl>
+      <div class="profile-heading"><span>JOURNAL PROFILE</span><span id="profile-identity"></span></div>
+      <div id="archive-preview">
+        <div id="paper-lists"></div>
+        <button id="open-journal-more" type="button" hidden disabled></button>
+      </div>
+      <span id="ghost-subject" aria-hidden="true"></span>
+    </aside>
+    <section id="journal-view" hidden aria-label="Paper Detail">
+      <div class="review-left">
+        <div class="inspection-heading" data-journal-widget="inspectionHeading"><i class="archive-widget-handle" data-widget="inspectionHeading" role="button" tabindex="0" aria-label="移动 INSPECTION 与论文计数" title="拖动此手柄移动控件；方向键微调">⠿</i><div class="inspection-info"><span>INSPECTION</span><span id="directory-position"></span></div></div>
+        <div class="review-back" data-journal-widget="inspectionBack"><i class="archive-widget-handle" data-widget="inspectionBack" role="button" tabindex="0" aria-label="移动 RETURN 按钮" title="拖动此手柄移动控件；方向键微调">⠿</i><button id="back">← RETURN TO ARCHIVE / ESC</button></div>
+        <div class="left-review-actions" data-journal-widget="inspectionActions"><i class="archive-widget-handle" data-widget="inspectionActions" role="button" tabindex="0" aria-label="移动 Keep 与 Reject 按钮组" title="拖动此手柄移动控件；方向键微调">⠿</i><button id="keep-paper">Keep</button><button id="reject-paper">Reject</button></div>
+      </div>
+      <div class="review-right">
+      <div class="paper-navigation"><div class="paper-stepper"><button id="previous-paper" aria-label="上一篇 Paper">←</button><strong id="paper-position"></strong><button id="next-paper" aria-label="下一篇 Paper">→</button></div></div>
+      <article id="paper-detail" tabindex="-1">
+        <h1 id="view-paper-title" tabindex="-1"></h1>
+        <details id="paper-metadata-details">
+        <summary id="paper-metadata-summary">Infos</summary>
+        <dl class="paper-metadata">
+          <div><dt>Authors</dt><dd id="paper-authors"></dd></div>
+          <div><dt>Publication date</dt><dd id="paper-date"></dd></div>
+          <div><dt>DOI</dt><dd><a id="paper-doi" target="_blank" rel="noopener noreferrer"></a></dd></div>
+        </dl>
+        </details>
+        <div class="review-controls" hidden><p id="enrich-status" role="status" aria-live="polite"></p><button id="cancel-enrich" hidden>Cancel</button></div>
+        <div id="paper-abstract-heading" class="abstract-heading"><h2>Abstract</h2></div>
+        <div id="paper-abstract"></div>
+        <p id="view-paper-id" class="paper-uuid"></p>
+      </article>
+      </div>
+    </section>
+    <section id="empty-inbox" hidden><span>Inbox / Complete</span><h1>本轮审阅完成</h1><p>当前没有待审阅文献。可选择 Run OpenAlex、Run Crossref、Run PubMed 或 Run WoS 检索新文献。</p></section>
+    <div id="debug-split" class="archive-debug-handle" role="separator" aria-label="拖动左右分界线" aria-orientation="vertical" tabindex="0"></div>
+    <div id="debug-bottom" class="archive-debug-handle" role="separator" aria-label="拖动下侧分界线" aria-orientation="horizontal" tabindex="0"></div>
+  <section id="kept-view" hidden inert aria-label="Workspace Array">
+    <aside class="kept-manager" aria-label="Index"><div id="array-layout-controls" class="kept-manager-heading"></div><div id="array-index" tabindex="-1" aria-label="Candidate Journals"></div></aside>
+    <div class="kept-center">
+      <header id="array-paper-heading"></header>
+      <p id="kept-empty" hidden>尚无保留文献。审阅时点击 Keep，论文会出现在这里。</p>
+      <div id="kept-reader" hidden><div id="kept-reader-body"></div></div>
+    </div>
+    <aside class="kept-card" aria-label="Workspace context">
+      <div id="array-status" class="s-layout" role="group" aria-label="Array status" hidden><span class="s-layout-caption">STATUS</span><span class="s-layout-options"><button id="array-candidates" aria-pressed="true" disabled>CANDIDATES</button><button id="array-kept" aria-pressed="false" disabled>KEPT <span id="kept-count">00</span></button></span></div>
+      <div class="array-context-scroll">
+      <section id="array-journal-profile"><h2 id="array-journal-name"></h2><dl class="array-profile"><div><dt>ISSN</dt><dd id="array-journal-issn"></dd></div><div><dt>eISSN</dt><dd id="array-journal-eissn"></dd></div><div><dt>SUBJECT</dt><dd id="array-journal-subject"></dd></div><div><dt>LABEL</dt><dd id="array-journal-labels"></dd></div></dl></section>
+      <div id="array-candidate-infos" class="array-paper-infos"></div>
+      <section id="array-import-profile" hidden><div class="kept-actions"><button id="kept-start">PREPARE &amp; IMPORT ↗</button><button id="kept-import-only"><span>IMPORT ONLY</span><svg viewBox="0 0 14 14" aria-hidden="true"><path d="M2 12 11 3M4.5 3H11v6.5"/></svg></button></div><div class="kept-record-heading"><span>IMPORT / LATEST</span><span id="kept-record-count">—</span></div><p id="kept-record-summary" role="status">本次尚未导入。</p><ol id="kept-record-items"></ol></section>
+      <div id="array-kept-infos" class="array-paper-infos"></div>
+      </div>
+      <div id="kept-reading-tools" hidden><span id="array-decision-tools" class="left-review-actions" hidden></span></div>
+    </aside>
+  </section>
+  </main>
+  <section id="configuration-workspace" hidden class="configuration-ui" aria-label="Workspace configuration">
+    <div class="s-content">
+      <section id="journals-view" hidden class="configuration-page" aria-label="Journals"></section>
+      <section id="run-page" hidden class="configuration-page" aria-label="Run"></section>
+      <section id="settings-view" hidden class="configuration-page" aria-label="Settings"></section>
+    </div>
+  </section>
+  <footer><span><i></i> <span id="section-label">WORKSPACE</span> <b id="mode-label">ARCHIVE / BROWSE</b></span>
+    <aside class="message-region" aria-label="消息">
+      <section id="app-notice" class="app-notice" hidden>
+        <div class="message-body">
+          <p id="app-notice-summary" role="status" aria-live="polite"></p>
+          <details id="app-notice-details" hidden><summary>详情</summary><div id="app-notice-messages"></div></details>
+        </div>
+        <button id="message-close" type="button" aria-label="关闭消息">×</button>
+      </section>
+    </aside>
+    <div id="archive-debug" aria-label="Workspace 调试">
+      <div class="debug-parameters">
+        <label class="debug-archive-parameter">SLOTS / SHELF <input id="debug-shelf-capacity" type="number" min="1" step="1" value="15" inputmode="numeric" aria-label="每排货架容量"></label>
+        <label class="debug-toggle"><input id="debug-resize" type="checkbox"> RESIZE</label>
+        <label class="debug-panel-parameter">LIFT END (MS) <input id="debug-liftEndMs" type="number" min="50" max="1000" step="1" value="180" inputmode="numeric" aria-label="档案抬升结束时间，毫秒"></label>
+        <label class="debug-panel-parameter">TOTAL (MS) <input id="debug-totalDurationMs" type="number" min="181" max="3000" step="1" value="600" inputmode="numeric" aria-label="档案转场总时长，毫秒"></label>
+        <label class="debug-panel-parameter">SHIFT PX <input id="debug-panelShift" type="number" min="0" max="80" step="1" value="12" inputmode="numeric" aria-label="论文内容初始水平位移像素"></label>
+      </div>
+      <div class="debug-actions">
+        <button id="debug-save" type="button" title="保存为本浏览器的调试基线">SAVE</button>
+        <button id="debug-reset" type="button" title="恢复最近保存的调试参数">RESET</button>
+        <button id="debug-origin" type="button" title="恢复源码默认参数，不覆盖已保存基线">ORIGIN</button>
+        <span id="debug-status" role="status"></span>
+      </div>
+    </div>
+    <div id="settings-shell" hidden></div>
+    <div id="journals-dev-tools" hidden aria-label="Journals developer tools"></div>
+    <div id="paper-dev-tools" hidden role="group" aria-label="Paper developer tools">
+      <span>PAPER</span>
+      <label><input type="checkbox" data-paper-reset="abstract"> Abstract</label>
+      <label><input type="checkbox" data-paper-reset="authors"> Authors</label>
+      <label><input type="checkbox" data-paper-reset="publication_date"> Date</label>
+      <button id="paper-reset-fields" type="button" disabled>REST</button>
+      <button id="paper-dev-enrich" type="button" disabled>ENRICH</button>
+      <button id="paper-abstract-input" type="button" disabled>INPUT</button>
+      <button id="paper-diagnostics" type="button">DIAGNOSTICS</button>
+      <span id="paper-tools-status" role="status" aria-live="polite"></span>
+    </div>
+    <span id="snapshot-label">WORKSPACE</span></footer>
+  <dialog id="paper-tools-dialog" class="s-dialog" aria-labelledby="paper-tools-title">
+    <h2 id="paper-tools-title"></h2>
+    <div class="s-dialog-body">
+      <p id="paper-tools-paper"></p>
+      <label id="paper-input-label" hidden>Abstract<textarea id="paper-input-text" rows="12"></textarea></label>
+      <pre id="paper-diagnostic-text" hidden tabindex="0"></pre>
+      <p id="paper-dialog-error" class="s-field-error" role="status" aria-live="polite"></p>
+    </div>
+    <div class="s-actions">
+      <button id="paper-dialog-cancel" class="s-button" type="button">Cancel</button>
+      <button id="paper-dialog-copy" class="s-button" type="button" hidden>Copy diagnostics</button>
+      <button id="paper-dialog-save" class="s-button s-primary" type="button" hidden>Save</button>
+    </div>
+  </dialog>
+  <dialog id="kept-flow" aria-label="Kept import animation">
+    <div id="kept-film" aria-hidden="true"><div id="kept-scene"></div><video muted playsinline preload="auto"></video><video muted playsinline preload="auto"></video></div>
+    <div id="kept-flow-actions">
+      <section id="kept-flow-gate" hidden aria-label="Continue import"><p id="kept-gate-message" role="status"></p><div id="kept-manual-services"></div><button id="kept-continue">CONTINUE TO IMPORT ↗</button></section>
+      <div id="kept-skip-slot" hidden><button id="kept-skip">CLICK TO SKIP</button><span id="kept-skip-status" role="status" tabindex="-1" hidden></span></div>
+      <button id="kept-leave" aria-label="结束本次流程">结束本次流程</button>
+    </div>
+  </dialog>
+  <dialog id="run-view" aria-labelledby="run-title">
+    <div class="run-background" aria-hidden="true">
+      <img class="run-poster" src="assets/run/poster.png" alt="">
+      <video class="run-loop" src="assets/run/idle.mp4" poster="assets/run/poster.png" preload="auto" loop muted playsinline hidden></video>
+      <video class="run-intro" src="assets/run/intro.mp4" preload="auto" muted playsinline hidden></video>
+    </div>
+    <div id="run-stage-layer" class="run-stage-layer">
+      <h1 id="run-title">SELECTING FILES...</h1>
+      <div class="run-status-area">
+        <p class="run-time">ELAPSED <span id="run-elapsed">0:00</span></p>
+        <p id="run-stage" role="status">CHECKING MONITOR</p>
+        <p id="run-description">Validating monitor settings</p>
+        <button id="run-wos-cancel" class="s-button" hidden>取消 Run WoS</button>
+      </div>
+    </div>
+    <div id="run-wash" hidden aria-hidden="true"></div>
+  </dialog>
+</body>
+</html>

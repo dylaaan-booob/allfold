@@ -1,0 +1,60 @@
+# macOS and editor artifacts
+.DS_Store
+*.swp
+*~
+
+# Local secrets and overrides
+.env
+.env.*
+!.env.example
+
+# Logs, temporary files, and disposable caches
+*.log
+.cache/
+tmp/
+
+# Common generated build and coverage output
+build/
+dist/
+coverage/
+
+# Python local environments and caches
+.venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# JavaScript dependencies
+node_modules/
+
+# Local application state and configuration
+/workspace/
+/journal-assets/
+/src/.obsidian/
+/*.yaml
+/*.yml
+!/config.template.yaml
+/.work/
+
+# Publish only the read-only Registry, not its local source lists
+/journal-lists/*
+!/journal-lists/journal-registry.sqlite
+
+# Test output belongs outside the source tree
+.coverage
+.coverage.*
+htmlcov/
+test-results/
+playwright-report/
+junit.xml
+coverage.xml
+
+# Local PubMed API credentials
+*.pubmed-secrets.json
+
+*.openalex-secrets.json
+
+# UI delivery files are rebuilt from frontend/ui
+/src/allfold/web/static/ui_next/

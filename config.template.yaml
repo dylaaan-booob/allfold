@@ -1,0 +1,22 @@
+name: Allfold
+venue_whitelist: list.md
+keyword_expression: 'machine AND learn*'
+provider_order:
+  - openalex
+  - crossref
+  - pubmed
+  - wos
+provider_aliases: {}
+crossref_mailto: ''
+output_dir: workspace
+from_month: '2026-01'
+to_month: '2026-01'
+log_level: INFO
+institution:
+  name: ''
+  idp_entity_id: ''
+  use_shibboleth: false
+kept_workflow:
+  auto_import_after_preparation: false
+  transition_delay_seconds: 3.0
+  display_name: ''
