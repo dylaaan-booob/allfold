@@ -221,7 +221,7 @@ class GokbClient:
                                     tuple(tipps[key] for key in sorted(tipps)), tuple(platforms))
         except httpx.TimeoutException as error:
             raise GokbError("GOKB request timed out") from error
-        except httpx.RequestError as error:
+        except (httpx.RequestError, httpx.InvalidURL) as error:
             raise GokbError("GOKB request failed") from error
 
 

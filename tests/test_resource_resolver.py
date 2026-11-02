@@ -335,3 +335,20 @@ def test_default_resource_path_is_shared_across_configurations_and_never_stores_
     assert unassigned.access_service_id is None
     assert config.read_text() == "keep statistics config bytes"
     assert other.read_text() == "keep machine learning config bytes"
+
+
+@pytest.mark.parametrize("cached", [False, True])
+def test_invalid_proxy_environment_returns_unavailable_or_last_valid_gokb_cache(tmp_path, monkeypatch, cached):
+    from allfold.providers.gokb import get_journal_resources
+
+    path = tmp_path / "resources.sqlite"
+    journal = JournalConfig(name="Fixture Journal", issn="1234-5679")
+    previous = get_journal_resources(path, journal, transport=gokb_transport()) if cached else None
+    # httpx cannot parse IPv6 CIDR NO_PROXY patterns during Client creation.
+    # This must follow the same failure path as a failed remote request.
+    monkeypatch.setenv("NO_PROXY", "fc00::/7")
+    monkeypatch.setenv("no_proxy", "fc00::/7")
+    result = get_journal_resources(path, journal, refresh=True)
+    assert result.status == ("stale" if cached else "unavailable")
+    assert result.error == "GOKB request failed"
+    assert result.snapshot == (previous.snapshot if previous else None)
