@@ -86,6 +86,8 @@ def _decode(payload: str) -> SettingsList:
 
 def _connect(path: Path, *, create: bool = False):
     _safe_path(path)
+    if path.exists() and path.stat().st_nlink != 1:
+        raise UserStateError("User state must be a single-link regular file", path=path)
     if create:
         path.parent.mkdir(exist_ok=True)
         _safe_path(path)
