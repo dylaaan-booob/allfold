@@ -12,7 +12,7 @@ from allfold.web.app import create_app
 def write_valid_config(tmp_path: Path) -> tuple[Path, Path]:
     journal_path = tmp_path / "list.md"
     journal_path.write_text(
-        '# Venues\n\n## Journals\n\n| Journal | ISSN | eISSN | Access Service ID | Group | Labels |\n| --- | --- | --- | --- | --- | --- |\n| Biometrics | 0006-341X |  |  |  |  |\n',
+        '# Venues\n\n## Journals\n\n| Journal | ISSN | eISSN | Access Service ID | Group | Labels |\n| --- | --- | --- | --- | --- | --- |\n| Biometrics | 0006-341X |  |  |  |  |\n\n## Groups\n\n| Group |\n| --- |\n\n## Custom Labels\n\n| Label |\n| --- |\n\n## Access Services\n\n| Service ID | Service | Access URL | Access Method |\n| --- | --- | --- | --- |\n',
         encoding="utf-8",
     )
     config_path = tmp_path / "monitor.yaml"

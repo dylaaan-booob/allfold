@@ -16,6 +16,7 @@ class _ImportTarget:
     workspace_identity: tuple[int, int, int] | None
     papers_identity: tuple[int, int, int] | None
     lock_identity: tuple[int, int, int] | None
+    user_state_revision: str | None
 
     @classmethod
     def read(cls, config_path: Path) -> tuple[_ImportTarget, LoadedConfig]:
@@ -34,7 +35,7 @@ class _ImportTarget:
         target = cls(config_path, hashlib.sha256(contents).hexdigest(), config_identity[:2],
                      config.output_dir, identity(config.output_dir),
                      identity(config.output_dir / 'Papers'),
-                     identity(config.output_dir / '.allfold-operation.lock'))
+                     identity(config.output_dir / '.allfold-operation.lock'), config.user_state_revision)
         if config_path.read_bytes() != contents or identity(config_path) != config_identity:
             raise ContentChangedError("Configuration changed while reading the Workspace target")
         return target, config

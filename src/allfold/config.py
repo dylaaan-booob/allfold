@@ -6,7 +6,7 @@ import re
 import unicodedata
 import uuid
 from collections.abc import Sequence
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import date
 from enum import Enum
 from pathlib import Path
@@ -305,6 +305,7 @@ class LoadedConfig:
     provider_aliases: dict[str, str] = field(default_factory=dict)
     provider_order: tuple[str, ...] = DEFAULT_PROVIDER_ORDER
     crossref_mailto: str = ""
+    user_state_revision: str | None = None
 
 
 @dataclass(frozen=True)
@@ -714,18 +715,22 @@ def load_config(path: Path) -> LoadedConfig:
         ) from error
 
     definition = parse_monitor_definition(path, raw)
-    whitelist = resolve_config_path(path, definition.venue_whitelist, "list.md")
+    # Retain the lexical source until migration has rejected symlinks.
+    whitelist = definition.venue_whitelist
+    if not whitelist.is_absolute():
+        whitelist = path.parent / whitelist
     try:
-        # Run 只依赖有效的 Journal 身份；不完整的可选 Access Mapping
-        # 仍由 Settings/Import 严格校验，不参与文献检索准入判定。
-        journals = parse_journal_whitelist_text(_read_text(whitelist), path=whitelist)
+        # Normal Runs read only the local authoritative state, without Resolver/network work.
+        from allfold.persistence.user_state import load_user_state
+        snapshot = load_user_state(path, whitelist)
+        journals = snapshot.state.journals
     except ConfigurationError as error:
         raise ConfigurationError(
             f"{path}: field 'venue_whitelist': {error}",
             field="venue_whitelist",
             path=path,
         ) from error
-    return build_loaded_config(path, definition, journals)
+    return replace(build_loaded_config(path, definition, journals), user_state_revision=snapshot.revision.digest)
 
 
 def validate_access_services(services: Sequence[AccessService]) -> tuple[AccessService, ...]:

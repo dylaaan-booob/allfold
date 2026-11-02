@@ -9,7 +9,7 @@ from allfold.browser_diagnostics import format_browser_diagnostic, normalize_bro
 from allfold.application.journal_covers import (
     MAX_IMAGE_BYTES, CoverConflict, _save_cover, cover_details, save_crop, upload_cover,
 )
-from allfold.persistence.safe_write import read_text_exact, source_file_identity
+from allfold.persistence.user_state import load_user_state, read_user_state
 from allfold.url_safety import normalize_public_http_url
 
 MAX_IMAGE_BASE64 = 4 * ((MAX_IMAGE_BYTES + 2) // 3)
@@ -39,7 +39,7 @@ class JournalCoverSearch:
                     'phase', 'request_id', 'journal_key', 'result', 'message', 'waiting_for_user')})
             return state
 
-    def start(self, list_path: Path, journals, journal_key):
+    def start(self, list_path: Path, journals, journal_key, *, config_path: Path):
         if not isinstance(journal_key, str) or not journal_key.strip():
             raise ValueError('journal_key is required')
         journal = next((j for j in journals if j.key == journal_key), None)
@@ -57,7 +57,7 @@ class JournalCoverSearch:
                 task = dict(request_id=secrets.token_hex(16), journal_key=journal.key, result=None,
                     phase='Running', message='Searching this Journal', waiting_for_user=False, settled=False,
                     stop=threading.Event(), owner=owner, list_path=list_path,
-                    list_identity=source_file_identity(list_path), list_contents=read_text_exact(list_path))
+                    config_path=config_path, state_revision=load_user_state(config_path, list_path).revision)
                 self._task = task
                 self._worker = threading.Thread(target=self._run, args=(task, journal),
                     name='electron-cover-search', daemon=False)
@@ -97,10 +97,9 @@ class JournalCoverSearch:
                 with self._lock:
                     if task['stop'].is_set():
                         raise InterruptedError()
-                    if (source_file_identity(task['list_path']) != task['list_identity']
-                            or read_text_exact(task['list_path']) != task['list_contents']):
+                    if read_user_state(task['config_path']).revision != task['state_revision']:
                         raise ValueError('Saved Journal configuration changed')
-                    _save_cover(task['list_path'], journal.key, data, source_type='downloaded', source_url=source)
+                    _save_cover(task['list_path'], journal.key, data, source_type='downloaded', source_url=source, config_path=task['config_path'])
                     task.update(phase='Completed', message='Saved', result=cover_details(task['list_path'], journal.key))
         except InterruptedError:
             task.update(phase='Cancelled', message='Cancelled')
@@ -138,7 +137,7 @@ class JournalCoverSearch:
         if self._worker:
             self._worker.join()
 
-    def upload(self, list_path, journal_key, data):
+    def upload(self, list_path, journal_key, data, *, config_path: Path):
         if not self._asset_lock.acquire(blocking=False):
             raise ValueError('Cover assets are busy')
         try:
@@ -147,20 +146,20 @@ class JournalCoverSearch:
                     raise ValueError('Cover search is running')
                 self._uploading = True
             try:
-                return upload_cover(list_path, journal_key, data)
+                return upload_cover(list_path, journal_key, data, config_path=config_path)
             finally:
                 with self._lock:
                     self._uploading = False
         finally:
             self._asset_lock.release()
 
-    def crop(self, list_path, journal_key, sha256, crop):
+    def crop(self, list_path, journal_key, sha256, crop, *, config_path: Path):
         if not self._asset_lock.acquire(blocking=False):
             raise CoverConflict('Cover assets are busy')
         try:
             with self._lock:
                 if self.state()['busy']:
                     raise CoverConflict('Cover search or upload is running')
-                return save_crop(list_path, journal_key, sha256, crop)
+                return save_crop(list_path, journal_key, sha256, crop, config_path=config_path)
         finally:
             self._asset_lock.release()

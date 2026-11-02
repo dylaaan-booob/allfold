@@ -32,7 +32,7 @@ def dedicated(tmp_path: Path):
         "output_dir: workspace\nfrom_month: 2026-01\nto_month: 2026-01\nlog_level: INFO\n", encoding="utf-8",
     )
     (tmp_path / "list.md").write_text(
-        '# Venues\n\n## Journals\n\n| Journal | ISSN | eISSN | Access Service ID | Group | Labels |\n| --- | --- | --- | --- | --- | --- |\n| Biometrics | 0006-341X |  |  |  |  |\n', encoding="utf-8",
+        '# Venues\n\n## Journals\n\n| Journal | ISSN | eISSN | Access Service ID | Group | Labels |\n| --- | --- | --- | --- | --- | --- |\n| Biometrics | 0006-341X |  |  |  |  |\n\n## Groups\n\n| Group |\n| --- |\n\n## Custom Labels\n\n| Label |\n| --- |\n\n## Access Services\n\n| Service ID | Service | Access URL | Access Method |\n| --- | --- | --- | --- |\n', encoding="utf-8",
     )
     workspace = tmp_path / "workspace"
     source = CanonicalPaper(

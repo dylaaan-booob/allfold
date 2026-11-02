@@ -7,7 +7,7 @@ from fastapi.encoders import jsonable_encoder
 from fastapi.responses import JSONResponse
 
 from allfold.application.journal_covers import cover_details
-from allfold.application.settings import load_settings, _read_snapshot, SettingsIssueSource, SettingsIssue
+from allfold.application.settings import load_settings, _read_journal_snapshot, SettingsIssueSource, SettingsIssue
 from allfold.application.journal_lookup import journal_metadata, search_journals
 from allfold.providers.openalex import OpenAlexError
 from allfold.config import ConfigurationError
@@ -25,7 +25,7 @@ def settings_error(message: str, status_code=403):
 
 def settings_state(config_path: Path, csrf_token: str, *, disk=None):
     disk = disk or load_settings(config_path)
-    snapshot = _read_snapshot(disk.journal_path, source=SettingsIssueSource.JOURNAL_DATA)
+    snapshot = _read_journal_snapshot(config_path, disk.journal_path)
     issues = list(disk.issues)
     metadata = {}
     try:

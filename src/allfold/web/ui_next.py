@@ -18,7 +18,8 @@ from allfold.application.journal_covers import cover_details
 from allfold.application.run_state import RunProvider, read_last_run_snapshot
 from allfold.application.workspace import journal_for_paper, load_workspace
 from allfold.application.journal_lookup import journal_metadata
-from allfold.config import ConfigurationError, load_config, parse_settings_list_text
+from allfold.persistence.user_state import load_user_state, read_user_state
+from allfold.config import ConfigurationError, load_config
 from allfold.models import WorkflowStatus
 from allfold.keywords import parse_keyword_expression
 from allfold.persistence.safe_write import ContentChangedError
@@ -92,12 +93,12 @@ def install_ui_next(app: FastAPI, config_path: Path, csrf_token: str, *, read_ta
     def workspace_data():
         try:
             target, config = read_target(config_path)
-            settings_list = parse_settings_list_text(
-                config.venue_whitelist.read_text(encoding="utf-8"), path=config.venue_whitelist)
+            state_snapshot = load_user_state(config_path, config.venue_whitelist)
+            settings_list = state_snapshot.state
             journals, services = settings_list.journals, settings_list.access_services
             workspace = load_workspace(target.workspace, journals=journals)
             current, _ = read_target(config_path)
-            if current != target:
+            if current != target or read_user_state(config_path).revision != state_snapshot.revision:
                 raise ContentChangedError("Workspace/configuration changed; refresh before continuing")
             with app.state.import_submission_lock:
                 import_token = target.form_token(app.state.import_token)

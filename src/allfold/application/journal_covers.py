@@ -16,7 +16,8 @@ from uuid import uuid4
 
 from PIL import Image, ImageOps, UnidentifiedImageError
 
-from allfold.config import JournalConfig, parse_journal_whitelist_text
+from allfold.config import JournalConfig
+from allfold.persistence.user_state import load_user_state
 from allfold.persistence.safe_write import _open_directory_nofollow
 
 MAX_IMAGE_BYTES = 5 * 1024 * 1024
@@ -209,18 +210,12 @@ def _write_exclusive(directory: int, name: str, data: bytes) -> None:
         os.close(fd)
 
 
-def _saved_journal(list_path: Path, journal_key: str) -> JournalConfig:
-    # Do not resolve the lexical path: Settings and downloads share the same on-disk list.md.
-    directory = _open_directory_nofollow(list_path.absolute().parent)
-    try:
-        contents = _regular_bytes(directory, list_path.name, MAX_MANIFEST_BYTES).decode("utf-8")
-        journal = next((j for j in parse_journal_whitelist_text(contents, path=list_path)
-                        if j.key == journal_key), None)
-        if journal is None:
-            raise CoverError("Journal does not exist in saved list.md")
-        return journal
-    finally:
-        os.close(directory)
+def _saved_journal(list_path: Path, journal_key: str, *, config_path: Path) -> JournalConfig:
+    journal = next((j for j in load_user_state(config_path, list_path).state.journals
+                    if j.key == journal_key), None)
+    if journal is None:
+        raise CoverError("Journal does not exist in saved user state")
+    return journal
 
 
 def _has_record(list_path: Path, journal_key: str) -> bool:
@@ -231,9 +226,9 @@ def _has_record(list_path: Path, journal_key: str) -> bool:
         return False
 
 
-def upload_cover(list_path: Path, journal_key: str, data: bytes) -> str:
-    _saved_journal(list_path, journal_key)
-    return _save_cover(list_path, journal_key, data, source_type="uploaded")
+def upload_cover(list_path: Path, journal_key: str, data: bytes, *, config_path: Path) -> str:
+    _saved_journal(list_path, journal_key, config_path=config_path)
+    return _save_cover(list_path, journal_key, data, source_type="uploaded", config_path=config_path)
 
 
 @contextmanager
@@ -273,9 +268,9 @@ def _write_manifest(root: int, records: dict) -> None:
             pass
 
 
-def save_crop(list_path: Path, journal_key: str, sha256: str, crop: dict) -> dict:
+def save_crop(list_path: Path, journal_key: str, sha256: str, crop: dict, *, config_path: Path) -> dict:
     with _assets(list_path) as root, _manifest_lock(root):
-        _saved_journal(list_path, journal_key)
+        _saved_journal(list_path, journal_key, config_path=config_path)
         records = _manifest(root)
         record = records.get(journal_key)
         if record is None:
@@ -303,14 +298,14 @@ def save_crop(list_path: Path, journal_key: str, sha256: str, crop: dict) -> dic
 
 
 def _save_cover(list_path: Path, journal_key: str, data: bytes, *, source_type: str,
-                source_url: str = "") -> str:
+                source_url: str = "", config_path: Path) -> str:
     normalized, image_format, width, height = _normalize_image(data)
     digest = hashlib.sha256(normalized).hexdigest()
     extension = "png" if image_format == "PNG" else "jpg"
     filename = f"covers/{journal_key}-{digest[:16]}.{extension}"
     with _assets(list_path, create=True) as root, _manifest_lock(root):
         records = _manifest(root)
-        _saved_journal(list_path, journal_key)
+        _saved_journal(list_path, journal_key, config_path=config_path)
         try:
             os.mkdir("covers", mode=0o700, dir_fd=root)
         except FileExistsError:

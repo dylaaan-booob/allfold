@@ -527,7 +527,7 @@ def create_app(config_path: Path, *, electron_bridge: ElectronBridge) -> FastAPI
     def local_journal_cover(journal_key: str) -> Response:
         disk = load_settings(resolved_config_path)
         try:
-            _saved_journal(disk.journal_path, journal_key)
+            _saved_journal(disk.journal_path, journal_key, config_path=resolved_config_path)
             found = cover_image(disk.journal_path, journal_key)
         except (OSError, ValueError, ConfigurationError):
             found = None
@@ -552,7 +552,7 @@ def create_app(config_path: Path, *, electron_bridge: ElectronBridge) -> FastAPI
         disk = load_settings(resolved_config_path)
         try:
             state = app.state.journal_cover_search.start(disk.journal_path, disk.draft.journals,
-                                                        journal_key)
+                                                        journal_key, config_path=resolved_config_path)
             return JSONResponse(state)
         except (ValueError, OSError) as error:
             return JSONResponse({'message': str(error)}, status_code=409)
@@ -574,7 +574,7 @@ def create_app(config_path: Path, *, electron_bridge: ElectronBridge) -> FastAPI
             crop = {key: float(form.get(key, "")) for key in ("x", "y", "size")}
             disk = load_settings(resolved_config_path)
             detail = await run_in_threadpool(app.state.journal_cover_search.crop,
-                disk.journal_path, journal_key, str(form.get("sha256", "")), crop)
+                disk.journal_path, journal_key, str(form.get("sha256", "")), crop, config_path=resolved_config_path)
             return JSONResponse({"ok": True, "cover": detail})
         except CoverConflict as error:
             return JSONResponse({"ok": False, "message": str(error)}, status_code=409)
@@ -594,7 +594,7 @@ def create_app(config_path: Path, *, electron_bridge: ElectronBridge) -> FastAPI
             data = await upload.read(MAX_IMAGE_BYTES + 1)
         disk = load_settings(resolved_config_path)
         try:
-            outcome = await run_in_threadpool(app.state.journal_cover_search.upload, disk.journal_path, journal_key, data)
+            outcome = await run_in_threadpool(app.state.journal_cover_search.upload, disk.journal_path, journal_key, data, config_path=resolved_config_path)
             state = await run_in_threadpool(cover_details, disk.journal_path, journal_key)
             return JSONResponse({"ok": True, "result": outcome, "state": state["state"]})
         except (OSError, ValueError, ConfigurationError) as error:
