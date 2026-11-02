@@ -292,3 +292,29 @@ def test_sqlite_state_rejects_hardlinks_before_in_place_write(tmp_path):
     with pytest.raises(UserStateError, match="single-link"):
         compare_write_user_state(config, replace(snapshot.state, groups=("Statistics", "Added")), snapshot.revision)
     assert other.read_bytes() == original
+
+
+@pytest.mark.parametrize("suffix", ["-journal", "-wal", "-shm"])
+@pytest.mark.parametrize("kind", ["hardlink", "symlink", "directory"])
+@pytest.mark.parametrize("operation", ["read", "write"])
+def test_user_state_rejects_unsafe_sidecars_before_opening(tmp_path, suffix, kind, operation):
+    from allfold.persistence.user_state import UserStateError, read_user_state
+
+    config, _, _, _ = current_mapping_document(tmp_path)
+    snapshot = load_user_state(config)
+    target = tmp_path / "unrelated.txt"
+    original = b"\x00" + b"preserve user bytes\n" * 100
+    target.write_bytes(original)
+    sidecar = snapshot.database_path.with_name(snapshot.database_path.name + suffix)
+    if kind == "hardlink":
+        sidecar.hardlink_to(target)
+    elif kind == "symlink":
+        sidecar.symlink_to(target)
+    else:
+        sidecar.mkdir()
+    with pytest.raises(UserStateError, match="sidecar"):
+        if operation == "read":
+            read_user_state(config)
+        else:
+            compare_write_user_state(config, replace(snapshot.state, groups=("Statistics", "Added")), snapshot.revision)
+    assert target.read_bytes() == original

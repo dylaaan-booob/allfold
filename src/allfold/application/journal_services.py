@@ -46,7 +46,8 @@ def choose_journal_service(config_path: Path, key: str, *, method: str, name: st
     if service:
         previous = next((s for s in services if s.name.casefold() == service.name.casefold()), None)
         if previous:
-            if (previous.name, previous.access_url, previous.access_method) != (service.name, service.access_url, service.access_method):
+            if ((previous.name, previous.access_method) != (service.name, service.access_method)
+                    or (service.access_method == 'manual' and previous.access_url != service.access_url)):
                 raise ConfigurationError('Local Service name has different settings; edit it in Settings first')
             service = previous
         else:

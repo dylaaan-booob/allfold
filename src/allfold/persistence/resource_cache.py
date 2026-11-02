@@ -48,8 +48,12 @@ def _check_path(path: Path, *, create: bool) -> None:
         raise ResourceCacheError("Resource cache is not a single-link regular file")
     for suffix in ("-journal", "-wal", "-shm"):
         sidecar = path.with_name(path.name + suffix)
-        if sidecar.is_symlink():
-            raise ResourceCacheError("Resource cache sidecar cannot be a symlink")
+        try:
+            info = sidecar.lstat()
+        except FileNotFoundError:
+            continue
+        if not stat.S_ISREG(info.st_mode) or info.st_nlink != 1:
+            raise ResourceCacheError("Resource cache sidecar must be a single-link regular file")
 
 
 @contextmanager

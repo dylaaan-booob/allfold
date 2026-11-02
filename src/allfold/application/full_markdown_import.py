@@ -107,7 +107,7 @@ def _service(source, existing, catalog):
     url = source.get('access url', '').strip() or None
     if method == 'carsi':
         resource = validate_carsi_service(name, catalog=catalog())
-        # Official catalog is the URL authority; a shared file cannot inject a
+        # New Services use the official URL; a shared file cannot inject a
         # credential URL under a trusted production name.
         url = resource.access_url
     elif method == 'manual':
@@ -118,7 +118,8 @@ def _service(source, existing, catalog):
     candidate = AccessService.create(name, url, access_method=method)
     same_name = next((service for service in existing if service.name.casefold() == name.casefold()), None)
     if same_name is not None:
-        if (same_name.name, same_name.access_method, same_name.access_url) != (name, method, url):
+        if ((same_name.name, same_name.access_method) != (name, method)
+                or (method == 'manual' and same_name.access_url != url)):
             raise ValueError('Same Service name has different local settings; preserved local Service')
         return same_name, 'verified', 'Reused local Service'
     return candidate, 'verified', 'Validated Service'
@@ -188,7 +189,11 @@ def preview_research_scope(config_path: Path, list_path: Path, contents: str, *,
                 continue
             candidates, selected = _identity(list_path, row, client=client)
             if choice.get('candidate') is not None:
-                matching = [item for item in candidates if (item['issn'] or item['eissn']) == choice['candidate']]
+                identity = choice['candidate']
+                if not isinstance(identity, dict) or set(identity) != {'issn', 'eissn'}:
+                    raise ValueError('Selected identity must include the ISSN/eISSN pair')
+                matching = [item for item in candidates if (item['issn'], item['eissn']) ==
+                            (identity['issn'], identity['eissn'])]
                 if len(matching) != 1:
                     raise ValueError('Selected identity is no longer a candidate')
                 selected = matching[0]

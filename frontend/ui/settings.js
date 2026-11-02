@@ -1,6 +1,7 @@
 // RhinE / RhineLabUI MIT adaptation; see SOURCES.md and licenses/.
 import {renderRunResult} from './run-results.js';
 import {createJournalLayout} from './journal-layout.js';
+import {readImportChoices,renderImportRows} from './research-scope-import.js';
 const providerDefaults={openalex:'OpenAlex',crossref:'Crossref',pubmed:'PubMed',wos:'Web of Science'};
 const keyMask='••••••••';
 const root=document.getElementById('configuration-workspace');
@@ -1104,22 +1105,7 @@ function selectImport() {
   }}]);
 }
 function importChoices() {
-  const choices={};
-  $('s-preview-columns').querySelectorAll('[data-scope-row]').forEach(element=>{
-    const choice={skip:element.querySelector('[data-import-skip]').checked};
-    for(const field of ['journal','issn','eissn'])choice[field]=element.querySelector(`[data-import-field="${field}"]`).value;
-    const candidate=element.querySelector('[data-import-candidate]').value;
-    if(candidate)choice.candidate=candidate;
-    const method=element.querySelector('[data-import-method]').value;
-    if(method!=='keep') {
-      choice['service']=method==='unresolved'?'':element.querySelector('[data-import-service]').value;
-      choice['access method']=method==='unresolved'?'carsi':method;
-      choice['access url']=element.querySelector('[data-import-url]').value;
-      choice.unresolved=method==='unresolved';
-    }
-    choices[element.dataset.scopeRow]=choice;
-  });
-  return choices;
+  return readImportChoices($('s-preview-columns'));
 }
 async function openImport(file,choices={},query=false) {
   const data=await formRequest('/settings/import/preview',{markdown_file:file,import_choices:JSON.stringify(choices),query_gokb:query?'yes':'no'});
@@ -1131,11 +1117,7 @@ async function openImport(file,choices={},query=false) {
     {label:'Update Preview',run:()=>openImport(file,importChoices(),$('s-preview-query').checked)},
     {label:'Confirm Import',primary:true,run:confirmImport}]);
   Object.assign(preview,{data,file});
-  $('s-preview-columns').innerHTML=`<div><label><input type="checkbox" id="s-preview-query" ${query?'checked':''}> 对缺少有效 Service 的 Journal 查询 GOKB</label>${p.services.map(s=>`<p>${esc(s.name)} · ${esc(s.status)} · ${esc(s.message)}</p>`).join('')}${p.rows.map(row=>{
-    const input=(field,label)=>`<label>${label}<input data-import-field="${field}" value="${esc(row.supplied[field] || '')}"></label>`;
-    const current=p.proposed.access_services.find(s=>s.id===row.journal?.access_service_id);
-    return `<fieldset data-scope-row="${row.index}"><legend>${esc(row.supplied.journal || row.supplied.issn || 'Journal')} · ${esc(row.status)}</legend><p>${row.messages.map(esc).join(' · ')} · Service: ${esc(row.service_status)}</p><p>Group: ${esc(row.supplied.group || 'Ungrouped')} · Labels: ${esc(row.supplied.label || '(none)')}</p><label><input type="checkbox" data-import-skip ${choices[row.index]?.skip?'checked':''}> Skip this row</label>${input('journal','Name')}${input('issn','ISSN')}${input('eissn','eISSN')}<label>Identity candidate<select data-import-candidate><option value="">Automatic exact match / correct fields above</option>${row.candidates.map(c=>`<option value="${esc(c.issn || c.eissn)}" ${choices[row.index]?.candidate===(c.issn || c.eissn)?'selected':''}>${esc(c.name)} · ${esc([c.issn,c.eissn].filter(Boolean).join(' / '))}</option>`).join('')}</select></label><details><summary>Identity / Resolver evidence</summary><pre>${esc(JSON.stringify({candidates:row.candidates,resolution:row.resolution},null,2))}</pre></details><label>Service choice<select data-import-method><option value="keep">Keep supplied Service / Resolver result</option><option value="carsi">Official CARSI production</option><option value="manual">Manual Service</option><option value="unresolved" ${choices[row.index]?.unresolved?'selected':''}>Unresolved</option></select></label><label>Service name<input data-import-service value="${esc(current?.name || row.supplied.service || '')}"></label><label>Manual access URL<input data-import-url value="${esc(current?.access_url || row.supplied['access url'] || '')}"></label></fieldset>`;
-  }).join('')}</div>`;
+  $('s-preview-columns').innerHTML=`<div><label><input type="checkbox" id="s-preview-query" ${query?'checked':''}> 对缺少有效 Service 的 Journal 查询 GOKB</label>${p.services.map(s=>`<p>${esc(s.name)} · ${esc(s.status)} · ${esc(s.message)}</p>`).join('')}${renderImportRows(p,choices)}</div>`;
   const confirmButton=$('s-preview-actions').lastElementChild;
   $('s-preview-columns').addEventListener('input',()=>{confirmButton.disabled=true;$('s-preview-summary').textContent='Selections changed. Choose Update Preview before Confirm.';},{once:true});
   return true;

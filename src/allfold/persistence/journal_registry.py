@@ -1,5 +1,6 @@
 """Read-only access to the local Journal Registry."""
 from contextlib import closing
+from itertools import batched
 from pathlib import Path
 import sqlite3
 
@@ -27,12 +28,16 @@ def local_candidates(list_path: Path, query: str) -> list[dict]:
                 ids = {value for row in seen for value in row[1:3] if value}
                 if not ids:
                     break
-                marks = ",".join("?" for _ in ids)
-                related = connection.execute(
-                    f"SELECT title, issn, eissn, publisher, source, status FROM journals "
-                    f"WHERE issn IN ({marks}) OR eissn IN ({marks})", (*ids, *ids),
-                ).fetchall()
-                extra = set(related) - seen
+                related = set()
+                # Both media bind the batch. Broad title searches can return
+                # more identifiers than SQLite permits in one statement.
+                for batch in batched(ids, connection.getlimit(sqlite3.SQLITE_LIMIT_VARIABLE_NUMBER) // 2):
+                    marks = ",".join("?" for _ in batch)
+                    related.update(connection.execute(
+                        f"SELECT title, issn, eissn, publisher, source, status FROM journals "
+                        f"WHERE issn IN ({marks}) OR eissn IN ({marks})", (*batch, *batch),
+                    ).fetchall())
+                extra = related - seen
                 if not extra:
                     break
                 seen.update(extra)
@@ -41,26 +46,33 @@ def local_candidates(list_path: Path, query: str) -> list[dict]:
     except sqlite3.Error as error:
         raise ConfigurationError(f"Journal Registry unavailable: {path}: {error}",
                                  field="journal_registry", path=path) from error
-    components = []
-    for title, issn, eissn, publisher, source, status in rows:
+    components, by_identifier = {}, {}
+    for position, (title, issn, eissn, publisher, source, status) in enumerate(rows):
         try:
             journal = JournalConfig(name=title, issn=issn, eissn=eissn)
         except ValueError:
             continue
-        overlaps = [component for component in components if component["identifiers"] & set(journal.identifiers)]
+        # At most two identifier lookups, preserving the first source's order
+        # when a newly encountered pair joins previously separate components.
+        overlaps = sorted({by_identifier[value] for value in journal.identifiers if value in by_identifier})
         if overlaps:
-            component = overlaps[0]
-            for other in overlaps[1:]:
+            position = overlaps[0]
+            component = components[position]
+            for other_position in overlaps[1:]:
+                other = components.pop(other_position)
                 component["identifiers"].update(other["identifiers"])
                 component["records"].extend(other["records"])
-                components.remove(other)
+                for value in other["identifiers"]:
+                    by_identifier[value] = position
         else:
             component = {"identifiers": set(), "records": []}
-            components.append(component)
+            components[position] = component
         component["identifiers"].update(journal.identifiers)
         component["records"].append((journal, publisher, source, status))
+        for value in journal.identifiers:
+            by_identifier[value] = position
     candidates = []
-    for component in components:
+    for component in components.values():
         records = component["records"]
         # More than two connected identifiers cannot fit the existing Journal
         # model safely. Keep each pair visible for an explicit choice.
