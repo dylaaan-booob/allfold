@@ -113,17 +113,52 @@ def test_identity_conflicts_and_unsafe_paths_preserve_authoritative_state(tmp_pa
 
 
 def test_reset_preserves_database_and_refuses_data_directory(tmp_path):
+    import httpx
+    from allfold.application.carsi_catalog import get_carsi_catalog
     from allfold.application.workspace_reset import execute_reset, preview_reset, ResetRefused
     config, legacy, journal, service = current_mapping_document(tmp_path)
     snapshot = load_user_state(config)
+    cache = snapshot.database_path.parent / "resources.sqlite"
+    catalog = get_carsi_catalog(cache, transport=httpx.MockTransport(lambda request: httpx.Response(
+        200, headers={"content-type": "text/html"},
+        text='<script>var SPList=[{"production":"EBSCO","searchStr":"EBSCO",'
+             '"url":"https://search.ebscohost.com/","sptype":"1"}];</script>')))
     workspace = tmp_path / "workspace"
     workspace.mkdir()
     (workspace / "paper.md").write_text("isolated paper")
     assert execute_reset(config, preview_reset(config)).success
     assert load_user_state(config).state == snapshot.state
+    assert get_carsi_catalog(cache).resources == catalog.resources
     config.write_text(config.read_text().replace("output_dir: workspace", "output_dir: .allfold"))
     with pytest.raises(ResetRefused):
         preview_reset(config)
+
+
+def test_statistics_and_machine_learning_keep_distinct_complete_scopes(tmp_path):
+    from allfold.application.settings import load_settings, save_settings, SettingsSaveOutcome
+    from allfold.config import AccessService, load_config
+
+    original, legacy, journal, service = current_mapping_document(tmp_path)
+    statistics, machine_learning = tmp_path / "statistics.yaml", tmp_path / "machine-learning.yaml"
+    statistics.write_bytes(original.read_bytes())
+    machine_learning.write_bytes(original.read_bytes())
+    statistics_opened = load_settings(statistics).draft
+    machine_opened = load_settings(machine_learning).draft
+    euclid = AccessService.create("Project Euclid", "https://projecteuclid.org/", access_method="manual")
+    machine_journal = JournalConfig(name="Fixture Journal", issn="0090-5364", group="Learning", labels=("Priority",),
+                                    access_service_id=euclid.id)
+    # Persistence already validates identity collisions; use the saved identity
+    # at this boundary so the test exercises scope ownership without a provider.
+    machine_state = SettingsList((machine_journal,), ("Learning", "Unused"), ("Priority", "Later"), (euclid,))
+    compare_write_user_state(machine_learning, machine_state, machine_opened.journal_revision)
+    statistics_changed = replace(statistics_opened, groups=("Statistics", "Inference"), custom_labels=("Read",),
+                                 journals=(journal.model_copy(update={"labels": ("Read",)}),))
+    assert save_settings(statistics, statistics_changed).outcome is SettingsSaveOutcome.SAVED
+    assert load_user_state(machine_learning).state == machine_state
+    assert load_config(machine_learning).journals == (machine_journal,)
+    assert load_settings(statistics).draft.access_services == (service,)
+    assert load_settings(statistics).draft.groups == ("Statistics", "Inference")
+    assert load_settings(statistics).draft.custom_labels == ("Read",)
 
 
 def test_saved_service_order_labels_and_manual_mapping_survive_reload(tmp_path):
