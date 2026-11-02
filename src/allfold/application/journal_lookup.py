@@ -8,13 +8,17 @@ from allfold.config import ConfigurationError, JournalConfig, normalize_journal_
 from allfold.persistence.journal_registry import local_candidates
 
 
-def search_journals(list_path: Path, query: str, *, client=None) -> list[dict]:
+def normalized_title(value):
+    return " ".join(unicodedata.normalize("NFKC", value).casefold().split())
+
+
+def search_journals(list_path: Path, query: str, *, client=None, limit: int | None = 50) -> list[dict]:
     query = query.strip()
     if not query:
         return []
     local = local_candidates(list_path, query)
     if local:
-        return local[:50]
+        return local[:limit] if limit is not None else local
     from allfold.providers.openalex import OpenAlexClient, OpenAlexNotFoundError
     try:
         identifier = normalize_journal_issn(query)
@@ -45,13 +49,13 @@ def search_journals(list_path: Path, query: str, *, client=None) -> list[dict]:
             continue
         # OpenAlex does not classify print/electronic media. Keep one generic ISSN.
         results.append(dict(name=payload["display_name"], issn=selected, eissn=None,
-                            publisher=payload.get("host_organization_name"), sources=[], origin="openalex"))
+                            publisher=payload.get("host_organization_name"), sources=[], origin="openalex", identifiers=identifiers))
     return results
 
 
 def verify_journal(list_path: Path, journal: JournalConfig, *, client=None) -> JournalConfig:
     candidates = search_journals(list_path, journal.key, client=client)
-    matches = [c for c in candidates if (c["issn"], c["eissn"]) == (journal.issn, journal.eissn)]
+    matches = [c for c in candidates if set(journal.identifiers).issubset(c.get("identifiers") or {c["issn"], c["eissn"]})]
     if len(matches) != 1:
         raise ConfigurationError(f"Journal {journal.key}: select a matching ISSN/eISSN candidate",
                                  field="journals")
@@ -79,5 +83,9 @@ def journal_metadata(list_path: Path, journals) -> dict[str, dict]:
                 raise ConfigurationError(f"Journal {journal.key}: metadata unavailable: {error}",
                                          field="journal_registry") from error
         selected = next((r for r in rows if (r["issn"], r["eissn"]) == (journal.issn, journal.eissn)), None)
+        if selected is None:
+            compatible = [row for row in rows if set(journal.identifiers).issubset({row['issn'], row['eissn']})]
+            if len(compatible) == 1:
+                selected = compatible[0]
         metadata[journal.key] = selected or dict(publisher=None, sources=[])
     return metadata

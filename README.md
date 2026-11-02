@@ -21,7 +21,7 @@ Setup installs locked dependencies, obtains fixed Zotero sources, builds the UI 
 
 ## Basic workflow
 
-1. In **Journals**, edit the example journal list, Groups, Labels and assigned Access Services.
+1. In **Journals**, manage your followed Journals, Groups, Labels and default Access Services. Each running configuration has its own saved scope. Import a Markdown research scope through Preview / Confirm, or export **User Data** to share it.
 2. Set keywords and publication months, save changes, then choose OpenAlex, Crossref, PubMed or Web of Science in **Run**. Runs are independent and create-only; existing Paper files are not rewritten.
 3. Review candidates in **Workspace**, using ARCHIVE or ARRAY. Keep and Reject are explicit actions; notes and other human-managed content remain in Paper Markdown.
 4. From ARRAY / KEPT, use **PREPARE & IMPORT** or **IMPORT ONLY**. Zotero Desktop must be running for Import. Use **BROWSER** for manual page interaction when required.
@@ -36,7 +36,9 @@ Parent acceptance and PDF evidence are separate. If a save result is uncertain, 
 | --- | --- | --- |
 | `config.template.yaml` | Public starting configuration | Yes |
 | `config.example.yaml` or a custom root YAML file | Local settings | No |
-| `list.md` | Editable journal example, Groups, Labels and Services | Yes |
+| `list.md` | Legacy migration seed and importable example | Yes |
+| `.allfold/user-data.sqlite` | Journals, Groups, Labels and Services, isolated by configuration | No |
+| `.allfold/resources.sqlite` | Shared GOKB and official CARSI resource cache | No |
 | `journal-lists/journal-registry.sqlite` | Read-only journal metadata | Yes |
 | `workspace/` | Paper Markdown, review status and local diagnostics | No |
 | `journal-assets/` | Journal covers | No |
@@ -44,7 +46,9 @@ Parent acceptance and PDF evidence are separate. If a save result is uncertain, 
 
 Save API keys through Settings. Optional institution credentials use Electron safeStorage separately from YAML. Discovery and page workflows contact the selected external providers and sites. The application is not a Zotero Library mirror.
 
-Configuration, journal list and Workspace paths must stay inside the project directory. Workspace Reset permanently deletes the entire configured Workspace after confirmation; it does not reset configuration, covers or Zotero data. Keep independent backups of important local data before upgrading a pre-release version. No cross-version migration guarantee is declared for this pre-release.
+Configuration, legacy journal seed and Workspace paths must stay inside the project directory. On first use, each configuration validates and copies its legacy managed Markdown data into SQLite without changing the source file; later changes use SQLite. Include `.allfold/` in local backups. Use **Export User Data** to transfer a research scope to another configuration or application location, since canonical configuration paths identify saved scopes. Export contains no provider credentials, resource caches, Workspace papers or Zotero data. Conferences are outside the new scope model and remain only in the untouched legacy source.
+
+Workspace Reset permanently deletes the entire configured Workspace after confirmation; user state and shared resources stay outside its deletion range. It does not reset configuration, covers or Zotero data. Keep independent backups of important local data before upgrading a pre-release version. See [research scope exchange](docs/research-scope.md) for Markdown and Service resolution.
 
 ## Development and source
 

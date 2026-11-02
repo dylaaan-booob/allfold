@@ -15,7 +15,8 @@ from allfold.application.run_state import (
     RunJournalFact, RunIssueFact, validate_saved_facts,
 )
 from allfold.application.runtime_metadata import metadata_directory
-from allfold.config import ConfigurationError, load_config, parse_access_services_text
+from allfold.config import ConfigurationError, load_config
+from allfold.persistence.user_state import load_user_state, read_user_state
 from allfold.persistence.journal_registry import local_candidates
 from allfold.date_range import resolve_date_range
 from allfold.persistence.safe_write import CompareReadError, ContentChangedError, read_text_exact, workspace_operation_lock, workspace_text_directory
@@ -45,7 +46,10 @@ class WoSCoordinator:
     def _configuration(self):
         config = load_config(self.path)
         compiled = compile_wos_query(config.keyword_ast)
-        services = parse_access_services_text(read_text_exact(config.venue_whitelist), path=config.venue_whitelist)
+        snapshot = load_user_state(self.path, config.venue_whitelist)
+        if snapshot.revision.digest != config.user_state_revision:
+            raise ContentChangedError('User state changed while reading Run WoS configuration')
+        services = snapshot.state.access_services
         matches = [s for s in services if s.name == 'Web of Science' and s.access_method == 'carsi']
         if len(matches) != 1:
             raise ValueError('Run WoS requires exactly one saved CARSI Service named Web of Science')
@@ -131,8 +135,9 @@ class WoSCoordinator:
             except ConfigurationError as error:
                 not_listed = []
                 warnings.append(f'无法核对本地 WoS 来源清单；仍使用保存的标识检索：{error}')
-            config_text, list_text = read_text_exact(self.path), read_text_exact(config.venue_whitelist)
-            if load_config(self.path) != config:
+            config_text = read_text_exact(self.path)
+            state_revision = read_user_state(self.path).revision
+            if state_revision.digest != config.user_state_revision or load_config(self.path) != config:
                 raise ContentChangedError('Configuration changed before Run WoS start')
             if not self.run_slot.acquire(blocking=False):
                 raise ValueError('Another Run is already active')
@@ -142,7 +147,7 @@ class WoSCoordinator:
                 raise ValueError('Another browser workflow is active')
             task = dict(id=secrets.token_hex(16), owner=owner, config=config,
                 compiled=compiled, service=service, dates=dates,
-                config_text=config_text, list_text=list_text,
+                config_text=config_text, state_revision=state_revision,
                 workspace_identity=workspace_identity, status='RUNNING', stage='Access Check', message='Starting CARSI',
                 started_at=datetime.now(timezone.utc).isoformat(), started_clock=time.monotonic(),
                 cancelled=threading.Event(), records=WoSRecords(), query=dict(text=query, next_first=1, total=None, seen=set(), finished=False),
@@ -176,7 +181,7 @@ class WoSCoordinator:
             return True
 
     def _current(self, task):
-        if read_text_exact(self.path) != task['config_text'] or read_text_exact(task['config'].venue_whitelist) != task['list_text']:
+        if read_text_exact(self.path) != task['config_text'] or read_user_state(self.path).revision != task['state_revision']:
             raise ContentChangedError('Saved configuration changed during Run WoS')
         path = task['config'].output_dir
         if task['workspace_identity'] is not None:
@@ -364,7 +369,7 @@ class WoSCoordinator:
         except InterruptedError:
             task['cancelled'].set()
         except Exception as error:
-            task['issues'].append(str(error) if isinstance(error, (ValueError, OSError)) else 'WoS browser execution failed')
+            task['issues'].append(str(error) if isinstance(error, (ValueError, OSError, ContentChangedError)) else 'WoS browser execution failed')
         finally:
             try:
                 self.preparation.join()

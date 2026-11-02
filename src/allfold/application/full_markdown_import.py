@@ -1,195 +1,284 @@
-"""Complete, revision-bound list.md import and export for the shared Settings editor."""
+"""Incremental, revision-bound portable Research Scope exchange.
 
+Preview reads user state, verifies Journal identities, and may fill shared remote
+caches. Only Confirm writes the receiving configuration's user scope.
+"""
 from __future__ import annotations
 
-import hashlib
-import difflib
+import re
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Callable
 
-from allfold.persistence.safe_write import source_file_identity
-from allfold.application.settings import SettingsIssueSource, _read_snapshot
-from allfold.config import ConfigurationError, parse_settings_list_text
-from allfold.providers.openalex import OpenAlexClient
-from allfold.application.journal_lookup import verify_journal
-from allfold.persistence.safe_write import (
-    ContentChangedError, TextWriteCommittedError, replace_regular_text_at_identity,
+from allfold.application.carsi_catalog import get_carsi_catalog, validate_carsi_service, CatalogError
+from allfold.application.journal_lookup import search_journals, normalized_title
+from allfold.application.journal_resolver import resolve_journal
+from allfold.config import ConfigurationError, JournalConfig, AccessService, SettingsList, normalize_journal_issn
+from allfold.persistence.user_state import ContentRevision
+from allfold.persistence.user_state import (
+    read_user_state, compare_write_user_state, application_data_dir, validate_user_state,
 )
+from allfold.providers.openalex import OpenAlexError
 
 MAX_MARKDOWN_BYTES = 1024 * 1024
-MANAGED = {"Journals", "Groups", "Custom Labels", "Access Services"}
-AI_MAPPING_PACK_MARKER = "<!-- allfold-file-type: ai-mapping-pack/v1 -->"
-
-
-class MarkdownImportCommittedWarning(RuntimeError):
-    """Atomic replacement occurred but directory synchronization reported an error."""
-
-    def __init__(self, revision: str):
-        super().__init__("list.md replacement committed, but directory fsync failed")
-        self.revision = revision
 
 
 @dataclass(frozen=True)
-class FullMarkdownPreview:
-    path: Path
-    original: str
-    proposed: str
-    directory_identity: tuple[int, int]
-    file_identity: tuple[int, int]
+class ScopeRow:
+    index: int
+    supplied: dict
+    candidates: tuple[dict, ...]
+    journal: JournalConfig | None
+    status: str
+    service_status: str
+    messages: tuple[str, ...] = ()
+    resolution: object | None = None
+
+
+@dataclass(frozen=True)
+class ResearchScopePreview:
+    config_path: Path
+    revision: ContentRevision
+    proposed: SettingsList
+    rows: tuple[ScopeRow, ...]
+    services: tuple[dict, ...]
     changes: tuple[str, ...]
-    verification_journal_keys: tuple[str, ...]
-
-    @property
-    def target_digest(self) -> str:
-        return hashlib.sha256(self.original.encode("utf-8")).hexdigest()
-
-    @property
-    def source_digest(self) -> str:
-        return hashlib.sha256(self.proposed.encode("utf-8")).hexdigest()
 
 
-def _other_content(contents: str) -> str:
-    """Non-managed headings plus any surrounding prose are whole-file user data."""
-    lines = contents.splitlines(keepends=True)
-    output = []
-    in_managed = False
-    for line in lines:
-        if line.startswith("## "):
-            in_managed = line[3:].strip() in MANAGED
-        if not in_managed:
-            output.append(line)
-    return "".join(output)
+def _cells(line):
+    return [cell.strip() for cell in line.strip().strip('|').split('|')]
 
 
-def preview_full_markdown(path: Path, proposed: str, *, filename: str) -> FullMarkdownPreview:
-    path = path.absolute()
-    if proposed.lstrip("\ufeff \t\r\n").startswith(AI_MAPPING_PACK_MARKER):
-        raise ConfigurationError("AI Mapping Pack is a work file, not importable list.md; import the AI-produced complete list.md instead")
-    if not filename.lower().endswith(".md") or Path(filename).name != filename:
-        raise ConfigurationError("Import requires a complete .md file, not CSV/TSV or a filesystem path")
-    if not proposed or len(proposed.encode("utf-8")) > MAX_MARKDOWN_BYTES or "\x00" in proposed:
-        raise ConfigurationError("Markdown Import source is empty, contains NUL, or exceeds 1 MiB")
-    if any(candidate.is_symlink() for candidate in (path, *path.parents)):
-        raise ConfigurationError("unsafe list.md path: symlink")
-    original_identity = source_file_identity(path)
-    disk = _read_snapshot(path, source=SettingsIssueSource.JOURNAL_DATA)
-    if disk.issue or disk.contents is None:
-        raise ConfigurationError(disk.issue.message if disk.issue else "list.md is missing")
-    old_list = parse_settings_list_text(disk.contents, path=path)
-    new_list = parse_settings_list_text(proposed, path=path)
-    old_journals, old_services = old_list.journals, old_list.access_services
-    new_journals, new_services = new_list.journals, new_list.access_services
-    if source_file_identity(path) != original_identity:
-        raise ContentChangedError("list.md identity changed during Import Preview")
-
-    previous_j = {j.key: j for j in old_journals}
-    next_j = {j.key: j for j in new_journals}
-    previous_s = {s.id: s for s in old_services}
-    next_s = {s.id: s for s in new_services}
-    def service_label(service_id: str | None, services: dict) -> str:
-        if service_id is None:
-            return "Unassigned"
-        service = services[service_id]  # The full-file parser rejects dangling IDs.
-        return f"{service.name} ({service_id})"
-
-    changes = []
-    for title, before, after in (("Groups", old_list.groups, new_list.groups),
-                                 ("Custom Labels", old_list.custom_labels, new_list.custom_labels)):
-        for name in before:
-            if name not in after:
-                changes.append(f"Remove {title} registry entry: {name}")
-        for name in after:
-            if name not in before:
-                changes.append(f"Add {title} registry entry: {name}")
-        if before != after:
-            changes.append(f"{title} registry order: {list(before)} → {list(after)}")
-    new_ids = []
-    for identity, current in next_j.items():
-        old = previous_j.get(identity)
-        if old is None or (old.issn, old.eissn) != (current.issn, current.eissn):
-            new_ids.append(identity)
-            changes.append(f"Add/change Journal identity: {current.name} ({identity}); Registry verification required")
-        elif old.name != current.name:
-            new_ids.append(identity)
-            changes.append(f"Journal name: {identity}: {old.name} → {current.name}; Registry verification required")
-        if (old is None and current.group) or (old is not None and old.group != current.group):
-            changes.append(f"Journal Group: {identity}: {old.group if old and old.group else 'Ungrouped'} → {current.group or 'Ungrouped'}")
-        if (old is None and current.labels) or (old is not None and old.labels != current.labels):
-            changes.append(f"Journal Labels: {identity}: {'; '.join(old.labels) if old and old.labels else '(none)'} → "
-                           f"{'; '.join(current.labels) or '(none)'}")
-        if old is None or old.access_service_id != current.access_service_id:
-            changes.append(f"Journal default Service: {current.name}: "
-                           f"{service_label(old.access_service_id, previous_s) if old else '(new)'} → "
-                           f"{service_label(current.access_service_id, next_s)}")
-    for identity, old in previous_j.items():
-        if identity not in next_j:
-            changes.append(f"Remove Journal: {old.name} ({identity})")
-    for identity, current in next_s.items():
-        old = previous_s.get(identity)
-        if old is None:
-            changes.append(f"Add Access Service: {current.name} ({identity})")
-        elif (old.name, old.access_url) != (current.name, current.access_url):
-            changes.append(f"Access Service edit: {identity}: {old.name} / {old.access_url or '(blank)'} → {current.name} / {current.access_url or '(blank)'}")
-        if old is not None and old.access_method != current.access_method:
-            labels = {"carsi": "CARSI", "manual": "Manual Login"}
-            changes.append(f"Access Method: {current.name} ({identity}): "
-                           f"{labels[old.access_method]} → {labels[current.access_method]}")
-    for identity, old in previous_s.items():
-        if identity not in next_s:
-            members = [j for j in old_journals if j.access_service_id == identity]
-            changes.append(f"Delete Access Service: {old.name} ({identity}); {len(members)} previous Journals")
-            for journal in members:
-                replacement = next_j.get(journal.key)
-                destination = service_label(replacement.access_service_id, next_s) if replacement else "Journal removed"
-                changes.append(f"Service deletion affects Journal: {journal.name} ({journal.key}): "
-                               f"{service_label(identity, previous_s)} → {destination}")
-    old_extra, new_extra = _other_content(disk.contents), _other_content(proposed)
-    if old_extra != new_extra:
-        changes.append(f"Replace Conferences / unknown sections / manual text ({len(old_extra)} → {len(new_extra)} characters); all previous non-managed content is discarded")
-        diff = list(difflib.unified_diff(old_extra.splitlines(), new_extra.splitlines(),
-                                         fromfile="saved non-managed text", tofile="imported non-managed text",
-                                         lineterm=""))
-        changes.extend(f"Non-managed: {line[:180]}" for line in diff[:70])
-        if len(diff) > 70:
-            changes.append(f"Non-managed diff truncated after 70 lines; {len(diff) - 70} more lines differ")
-    if disk.contents != proposed and not changes:
-        changes.append("Whole-file Markdown formatting, table order or surrounding content changes")
-    return FullMarkdownPreview(path, disk.contents, proposed, original_identity[0], original_identity[1],
-                               tuple(changes), tuple(new_ids))
+def _parse(contents):
+    sections = {'journals': [], 'groups': [], 'custom labels': [], 'access services': []}
+    section, header = 'journals', None
+    for line in contents.lstrip('\ufeff').splitlines():
+        text = line.strip()
+        if text.startswith('#'):
+            heading = text.lstrip('#').strip().casefold()
+            section = heading if heading in sections else ('journals' if text.startswith('# ') else heading)
+            header = None
+            continue
+        if not text or text.startswith('<!--'):
+            continue
+        if section not in sections:
+            continue
+        if '|' in text:
+            cells = _cells(text)
+            if all(re.fullmatch(r':?-+:?', cell) for cell in cells):
+                continue
+            if header is None:
+                header = [cell.casefold() for cell in cells]
+                aliases = {'name': 'journal', 'title': 'journal', 'e-issn': 'eissn', 'labels': 'label',
+                           'custom labels': 'label', 'access service': 'service', 'access service id': 'service id', 'url': 'access url',
+                           'method': 'access method'}
+                header = [aliases.get(key, key) for key in header]
+                if len(set(header)) != len(header):
+                    raise ConfigurationError('Duplicate Markdown table columns')
+                continue
+            if len(cells) != len(header):
+                raise ConfigurationError('Markdown table row has a different number of columns')
+            sections[section].append(dict(zip(header, cells)))
+        elif text.startswith(('- ', '* ', '+ ')):
+            key = {'journals': 'journal', 'groups': 'group', 'custom labels': 'label', 'access services': 'service'}[section]
+            sections[section].append({key: text[2:].strip()})
+    return sections
 
 
-def confirm_full_markdown(
-    preview: FullMarkdownPreview, *, client: OpenAlexClient | None = None,
-    before_write: Callable[[], None] | None = None,
-) -> str:
-    """Revalidate every part of the preview, then atomically CAS one complete file."""
-    current = preview_full_markdown(preview.path, preview.proposed, filename="list.md")
-    if current != preview:
-        raise ContentChangedError("Import source, target contents or target identity changed since Preview")
-    new_journals = parse_settings_list_text(preview.proposed, path=preview.path).journals
-    for journal in new_journals:
-        if journal.key in preview.verification_journal_keys:
-            verify_journal(preview.path, journal, client=client)
-    # Provider resolution is transient; the originally previewed file and object must still match.
-    current = preview_full_markdown(preview.path, preview.proposed, filename="list.md")
-    if current != preview:
-        raise ContentChangedError("list.md changed during Import verification")
-    if preview.proposed != preview.original:
+def _identity(list_path, row, *, client):
+    name = row.get('journal', '').strip()
+    identifiers = [normalize_journal_issn(row[key]) for key in ('issn', 'eissn') if row.get(key)]
+    query = identifiers[0] if identifiers else name
+    if not query:
+        raise ValueError('Provide a Journal name or ISSN/eISSN')
+    candidates = search_journals(list_path, query, client=client, limit=None)
+    if identifiers:
+        candidates = [candidate for candidate in candidates if set(identifiers).issubset(
+            candidate.get('identifiers') or {candidate['issn'], candidate['eissn']})]
+    exact = [candidate for candidate in candidates if not name or normalized_title(name) in {
+        normalized_title(candidate['name']), *(normalized_title(s['title']) for s in candidate['sources'])}]
+    selected = exact[0] if len(exact) == 1 and not exact[0].get('identity_conflict') else None
+    return candidates, selected
+
+
+def _service(source, existing, catalog):
+    name, method = source.get('service', '').strip(), source.get('access method', 'carsi').strip().lower() or 'carsi'
+    if not name:
+        return None, 'unresolved', 'No Service supplied'
+    url = source.get('access url', '').strip() or None
+    if method == 'carsi':
+        resource = validate_carsi_service(name, catalog=catalog())
+        # New Services use the official URL; a shared file cannot inject a
+        # credential URL under a trusted production name.
+        url = resource.access_url
+    elif method == 'manual':
+        if not url:
+            raise ValueError('Manual Service requires a public HTTP(S) access URL')
+    else:
+        raise ValueError('Access Method must be carsi or manual')
+    candidate = AccessService.create(name, url, access_method=method)
+    same_name = next((service for service in existing if service.name.casefold() == name.casefold()), None)
+    if same_name is not None:
+        if ((same_name.name, same_name.access_method) != (name, method)
+                or (method == 'manual' and same_name.access_url != url)):
+            raise ValueError('Same Service name has different local settings; preserved local Service')
+        return same_name, 'verified', 'Reused local Service'
+    return candidate, 'verified', 'Validated Service'
+
+
+def preview_research_scope(config_path: Path, list_path: Path, contents: str, *, filename: str,
+                           choices: dict | None = None, query_gokb=False, client=None, transport=None):
+    if not filename.lower().endswith('.md') or Path(filename).name != filename:
+        raise ConfigurationError('Choose a UTF-8 .md file')
+    if not contents.strip() or len(contents.encode('utf-8')) > MAX_MARKDOWN_BYTES or '\x00' in contents:
+        raise ConfigurationError('Markdown is empty, contains NUL, or exceeds 1 MiB')
+    choices = choices or {}
+    snapshot = read_user_state(config_path, allow_missing=True)
+    parsed = _parse(contents)
+    if not any(parsed.values()):
+        raise ConfigurationError('No recognized Journal list or scope tables found')
+    journals, services = list(snapshot.state.journals), list(snapshot.state.access_services)
+    groups, labels = list(snapshot.state.groups), list(snapshot.state.custom_labels)
+    reports, service_reports, changes = [], [], []
+    catalog_value = None
+    def catalog():
+        nonlocal catalog_value
+        if catalog_value is None:
+            catalog_value = get_carsi_catalog(application_data_dir(config_path) / 'resources.sqlite', transport=transport)
+        return catalog_value
+    definitions = {}
+    for index, definition in enumerate(parsed['access services']):
+        key = definition.get('service id') or definition.get('service', '')
+        if not key or key in definitions:
+            raise ConfigurationError('Duplicate or missing Service definition')
+        definitions[key] = definition
         try:
-            replace_regular_text_at_identity(
-                preview.path, preview.proposed, expected_contents=preview.original,
-                expected_directory_identity=preview.directory_identity,
-                expected_file_identity=preview.file_identity,
-                validate_before_replace=before_write,
-            )
-        except TextWriteCommittedError:
-            # Failure after replace must not be misreported as zero writes.
-            observed = _read_snapshot(preview.path, source=SettingsIssueSource.JOURNAL_DATA)
-            if observed.issue is None and observed.contents == preview.proposed:
-                raise MarkdownImportCommittedWarning(observed.revision.digest or "") from None
-            raise
-    saved = _read_snapshot(preview.path, source=SettingsIssueSource.JOURNAL_DATA)
-    if saved.issue or saved.contents != preview.proposed:
-        raise ConfigurationError("Import write could not be confirmed by reading saved list.md")
-    return saved.revision.digest or ""
+            service, status, detail = _service(definition, services, catalog)
+            if service and all(s.id != service.id for s in services):
+                services.append(service)
+            service_reports.append(dict(name=definition.get('service', ''), status=status, message=detail))
+        except (ValueError, CatalogError) as error:
+            service_reports.append(dict(name=definition.get('service', ''), status='invalid', message=str(error)))
+    # Independent registries are portable, including entries without members.
+    for target, source, key, insensitive in ((groups, parsed['groups'], 'group', True), (labels, parsed['custom labels'], 'label', False)):
+        for row in source:
+            value = row.get(key, '').strip()
+            if value and not any((old.casefold() == value.casefold()) if insensitive else old == value for old in target):
+                target.append(value)
+    for index, supplied in enumerate(parsed['journals']):
+        row = dict(supplied)
+        choice = choices.get(str(index), {})
+        if not isinstance(choice, dict):
+            raise ConfigurationError('Invalid Import choices')
+        for field in ('journal', 'issn', 'eissn', 'service', 'access url', 'access method'):
+            if field in choice:
+                row[field] = str(choice[field])
+        messages, candidates, journal, status, service_status, resolution = [], [], None, 'unresolved', 'unresolved', None
+        try:
+            if choice.get('skip'):
+                reports.append(ScopeRow(index, row, (), None, 'skip', 'unresolved', ('Skipped by user',)))
+                continue
+            supplied_ids = {normalize_journal_issn(row[field]) for field in ('issn', 'eissn') if row.get(field)}
+            overlaps = [old for old in journals if supplied_ids & set(old.identifiers)]
+            if overlaps:
+                status = 'conflict' if len(overlaps) > 1 else 'skip'
+                journal = overlaps[0] if len(overlaps) == 1 else None
+                message = ('Identifiers overlap multiple saved Journals; correct the identity' if len(overlaps) > 1
+                           else 'Existing identity; name, Group, Labels and Service preserved' if overlaps
+                           else 'Skipped by user')
+                reports.append(ScopeRow(index, row, (), journal, status, 'preserved' if overlaps else 'unresolved', (message,)))
+                continue
+            candidates, selected = _identity(list_path, row, client=client)
+            if choice.get('candidate') is not None:
+                identity = choice['candidate']
+                if not isinstance(identity, dict) or set(identity) != {'issn', 'eissn'}:
+                    raise ValueError('Selected identity must include the ISSN/eISSN pair')
+                matching = [item for item in candidates if (item['issn'], item['eissn']) ==
+                            (identity['issn'], identity['eissn'])]
+                if len(matching) != 1:
+                    raise ValueError('Selected identity is no longer a candidate')
+                selected = matching[0]
+            if selected:
+                titles = {normalized_title(selected['name']), *(normalized_title(s['title']) for s in selected['sources'])}
+                name = row.get('journal', '')
+                preserve_supplied_identity = choice.get('candidate') is None and bool(row.get('issn') or row.get('eissn'))
+                journal = JournalConfig(name=name if normalized_title(name) in titles else selected['name'],
+                                        issn=(row.get('issn') or None) if preserve_supplied_identity else selected['issn'],
+                                        eissn=(row.get('eissn') or None) if preserve_supplied_identity else selected['eissn'])
+                overlaps = [old for old in journals if set(journal.identifiers) & set(old.identifiers)]
+                if overlaps:
+                    status = 'conflict' if len(overlaps) > 1 else 'skip'
+                    messages.append('Identifiers overlap multiple saved Journals; correct the identity' if len(overlaps) > 1
+                                    else 'Existing identity; name, Group, Labels and Service preserved')
+                elif choice.get('skip'):
+                    status = 'skip'
+                    messages.append('Skipped by user')
+                else:
+                    group = row.get('group', '').strip() or None
+                    assigned = tuple(value.strip() for value in row.get('label', '').split(';') if value.strip())
+                    definition = definitions.get(row.get('service id', ''), definitions.get(row.get('service', ''), row))
+                    if row.get('service id') and row['service id'] not in definitions:
+                        messages.append('Unknown foreign Service ID; never reused as local identity')
+                    # Explicit corrections supersede a legacy Service definition.
+                    if any(field in choice for field in ('service', 'access url', 'access method')):
+                        definition = row
+                    try:
+                        service, service_status, detail = _service(definition, services, catalog)
+                        messages.append(detail)
+                    except (ValueError, CatalogError) as error:
+                        service, service_status = None, 'invalid'
+                        messages.append(str(error))
+                    if not service and query_gokb and not choice.get('unresolved'):
+                        try:
+                            resolution = resolve_journal(config_path, journal, transport=transport)
+                            if resolution.unique_candidate:
+                                candidate = resolution.unique_candidate
+                                service, service_status, _ = _service({'service': candidate.production}, services, catalog)
+                            messages.append(f'Resolver: {resolution.status}')
+                        except (ConfigurationError, ValueError, OSError) as error:
+                            messages.append(f'Resolver unavailable: {error}')
+                    elif not service:
+                        messages.append('Unresolved by user choice' if choice.get('unresolved') else 'Optional GOKB query pending')
+                    if service and all(s.id != service.id for s in services):
+                        services.append(service)
+                    if group and group.casefold() not in {g.casefold() for g in groups}:
+                        groups.append(group)
+                    group = next((g for g in groups if group and g.casefold() == group.casefold()), None)
+                    for value in assigned:
+                        if value not in labels:
+                            labels.append(value)
+                    journal = journal.model_copy(update=dict(group=group, labels=assigned, access_service_id=service.id if service else None))
+                    journals.append(journal)
+                    status = 'add'
+                    changes.append(f'Add Journal: {journal.name} ({journal.key}); Service {service.name if service else "Unresolved"}')
+            else:
+                messages.append('Choose a candidate or correct the name/identifiers and Preview again')
+        except (ValueError, ConfigurationError, OpenAlexError) as error:
+            messages.append(str(error))
+        reports.append(ScopeRow(index, row, tuple(candidates), journal, status, service_status, tuple(messages), resolution))
+    proposed = SettingsList(tuple(journals), tuple(groups), tuple(labels), tuple(services))
+    if journals:
+        proposed = validate_user_state(proposed)
+    changes.extend(f'Add Group: {name}' for name in groups if name not in snapshot.state.groups)
+    changes.extend(f'Add Label: {name}' for name in labels if name not in snapshot.state.custom_labels)
+    previous_ids = {service.id for service in snapshot.state.access_services}
+    changes.extend(f'Add Service: {service.name} ({service.access_method}); {service.access_url or "(no URL)"}'
+                   for service in services if service.id not in previous_ids)
+    return ResearchScopePreview(config_path.resolve(), snapshot.revision, proposed, tuple(reports), tuple(service_reports), tuple(changes))
+
+
+def confirm_research_scope(preview: ResearchScopePreview, *, before_write=None):
+    if before_write:
+        before_write()
+    return compare_write_user_state(preview.config_path, preview.proposed, preview.revision)
+
+
+def export_user_data(config_path: Path) -> str:
+    state = read_user_state(config_path).state
+    services = {service.id: service.name for service in state.access_services}
+    output = '# Allfold User Data\n\n## Journals\n\n| Journal | ISSN | eISSN | Group | Label | Service |\n| --- | --- | --- | --- | --- | --- |\n'
+    output += ''.join(f'| {j.name} | {j.issn or ""} | {j.eissn or ""} | {j.group or ""} | {"; ".join(j.labels)} | {services.get(j.access_service_id, "")} |\n' for j in state.journals)
+    for title, key, values in (('Groups', 'Group', state.groups), ('Custom Labels', 'Label', state.custom_labels)):
+        output += f'\n## {title}\n\n| {key} |\n| --- |\n' + ''.join(f'| {value} |\n' for value in values)
+    output += '\n## Access Services\n\n| Service | Access URL | Access Method |\n| --- | --- | --- |\n'
+    output += ''.join(f'| {s.name} | {s.access_url or ""} | {s.access_method} |\n' for s in state.access_services)
+    return output

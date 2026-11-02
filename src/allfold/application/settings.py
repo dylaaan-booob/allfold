@@ -19,6 +19,7 @@ from allfold.integrations.pubmed_credentials import read_credential, write_crede
 
 from allfold.config import (
     AccessService,
+    SettingsList,
     DEFAULT_PROVIDER_ORDER,
     parse_access_services_text,
     parse_settings_list_text,
@@ -56,6 +57,10 @@ from allfold.persistence.safe_write import (
     replace_regular_text_if_unchanged as replace_text_if_unchanged,
 )
 from allfold.search import SearchBackendError, SearchExpressionError
+from allfold.persistence.user_state import (
+    ContentRevision, UserStateError, load_user_state, user_state_path,
+    compare_write_user_state,
+)
 
 __all__ = [
     "ContentRevision",
@@ -74,12 +79,6 @@ __all__ = [
     "validate_settings",
     "save_settings",
 ]
-
-
-@dataclass(frozen=True)
-class ContentRevision:
-    exists: bool
-    digest: str | None
 
 
 @dataclass(frozen=True)
@@ -441,12 +440,9 @@ def load_settings(config_path: Path) -> SettingsLoadResult:
     )
     fields, monitor_issues = _monitor_fields(config_path, monitor_snapshot)
     journal_path = _journal_path(config_path, fields)
-    journal_snapshot = _read_snapshot(
-        journal_path,
-        source=SettingsIssueSource.JOURNAL_DATA,
-    )
+    journal_snapshot = _read_journal_snapshot(config_path, journal_path)
 
-    journal_issues: list[SettingsIssue] = []
+    journal_issues: list[SettingsIssue] = [journal_snapshot.issue] if journal_snapshot.issue else []
     journals: tuple[JournalConfig, ...] = ()
     access_services: tuple[AccessService, ...] = ()
     groups: tuple[str, ...] = ()
@@ -461,7 +457,6 @@ def load_settings(config_path: Path) -> SettingsLoadResult:
         )
     elif journal_snapshot.contents is None:
         assert journal_snapshot.issue is not None
-        journal_issues.append(journal_snapshot.issue)
     else:
         contents = journal_snapshot.contents
         # 单个受管理区段损坏时，保留其他区段以及 Journals 中仍可信的行；
@@ -537,6 +532,25 @@ def load_settings(config_path: Path) -> SettingsLoadResult:
         draft=draft,
         issues=tuple((*monitor_issues, *journal_issues)),
     )
+
+
+def _read_journal_snapshot(config_path: Path, legacy_path: Path) -> _FileSnapshot:
+    """Project SQLite for existing editor/exchange adapters; never read it as authority."""
+    try:
+        snapshot = load_user_state(config_path, legacy_path)
+        state = snapshot.state
+        contents = render_settings_list_text(None, state.journals, path=legacy_path,
+                                            groups=state.groups, custom_labels=state.custom_labels,
+                                            access_services=state.access_services)
+        return _FileSnapshot(snapshot.revision, contents, None)
+    except ConfigurationError as error:
+        # Invalid initial Markdown can still be inspected, but its issue blocks Save.
+        path = user_state_path(config_path)
+        legacy = _read_snapshot(legacy_path, source=SettingsIssueSource.JOURNAL_DATA) if not path.exists() else None
+        return _FileSnapshot(ContentRevision(True, None) if legacy is None else legacy.revision,
+                             legacy.contents if legacy else None,
+                             SettingsIssue(SettingsIssueSource.JOURNAL_DATA, str(error),
+                                           field=error.field, path=path))
 
 
 def _draft_monitor_mapping(
@@ -803,7 +817,7 @@ def _save_settings(
     *, client: OpenAlexClient | None = None, operation_locks: tuple = (),
     deletion_approval: SettingsDeletionApproval | None = None,
 ) -> SettingsSaveResult:
-    """Validate and persist Settings with explicit two-file failure semantics."""
+    """Validate and persist SQLite state and YAML with explicit partial-save semantics."""
 
     config_path = config_path.absolute()
     validation = validate_settings(config_path, draft)
@@ -825,10 +839,7 @@ def _save_settings(
         config_path,
         source=SettingsIssueSource.MONITOR_CONFIG,
     )
-    journal_snapshot = _read_snapshot(
-        journal_path,
-        source=SettingsIssueSource.JOURNAL_DATA,
-    )
+    journal_snapshot = _read_journal_snapshot(config_path, journal_path)
     read_issues = tuple(
         issue
         for issue in (monitor_snapshot.issue, journal_snapshot.issue)
@@ -925,7 +936,7 @@ def _save_settings(
 
     # Provider work is transient. Recheck BOTH original revisions before any write.
     monitor_snapshot = _read_snapshot(config_path, source=SettingsIssueSource.MONITOR_CONFIG)
-    journal_snapshot = _read_snapshot(journal_path, source=SettingsIssueSource.JOURNAL_DATA)
+    journal_snapshot = _read_journal_snapshot(config_path, journal_path)
     if monitor_snapshot.revision != draft.monitor_revision or journal_snapshot.revision != draft.journal_revision:
         return _result_from_state(
             outcome=SettingsSaveOutcome.REVISION_CONFLICT, validation=validation,
@@ -934,7 +945,7 @@ def _save_settings(
             journal_written=False, monitor_written=False,
         )
     try:
-        # 数据归属决定写入目标。即使原 YAML 排序或排版不同，纯 Markdown 编辑也不触及它。
+        # 数据归属决定写入目标。纯用户状态编辑不触及 YAML。
         journal_changed = (
             (draft.journals, draft.access_services, draft.groups, draft.custom_labels)
             != (stored_state.draft.journals, stored_state.draft.access_services,
@@ -968,13 +979,15 @@ def _save_settings(
     try:
         for lock in operation_locks:
             lock.verify()
-        # list-only Save 仍在实际写入边界检查未写的 monitor 原始版本。
+        # State-only Save still checks the monitor revision at the actual write boundary.
         if journal_changed and _read_snapshot(
             config_path, source=SettingsIssueSource.MONITOR_CONFIG,
         ).revision != draft.monitor_revision:
             raise ContentChangedError("monitor config changed before journal data write")
         if journal_changed:
-            _write_snapshot_target(journal_path, journal_target, journal_snapshot)
+            compare_write_user_state(config_path,
+                SettingsList(draft.journals, draft.groups, draft.custom_labels, draft.access_services),
+                journal_snapshot.revision)
     except (ContentChangedError, FileExistsError) as error:
         state = load_settings(config_path)
         return _result_from_state(
@@ -990,10 +1003,12 @@ def _save_settings(
             journal_written=False,
             monitor_written=False,
         )
-    except (CompareReadError, OSError) as error:
+    except (CompareReadError, OSError, UserStateError) as error:
         state = load_settings(config_path)
-        # 安全写入在替换成功后也可能于目录 fsync 抛错；以真实磁盘内容确认结果。
-        committed = journal_changed and state.draft.journal_revision.digest == _digest(journal_target)
+        # A storage error can follow commit; reload the scope to report the actual result.
+        committed = journal_changed and not state.issues and (
+            state.draft.journals, state.draft.groups, state.draft.custom_labels, state.draft.access_services
+        ) == (draft.journals, draft.groups, draft.custom_labels, draft.access_services)
         return _result_from_state(
             outcome=SettingsSaveOutcome.PARTIAL_SAVE if committed else SettingsSaveOutcome.WRITE_FAILED,
             validation=validation,
@@ -1012,7 +1027,7 @@ def _save_settings(
     try:
         for lock in operation_locks:
             lock.verify()
-        if not journal_changed and _read_snapshot(journal_path, source=SettingsIssueSource.JOURNAL_DATA).revision != draft.journal_revision:
+        if not journal_changed and _read_journal_snapshot(config_path, journal_path).revision != draft.journal_revision:
             raise ContentChangedError("journal data changed before monitor configuration write")
         if monitor_changed:
             _write_snapshot_target(config_path, monitor_target, monitor_snapshot)
@@ -1067,6 +1082,21 @@ def _resolve_settings_targets(config_path: Path, draft: MonitorDraft, snapshot: 
     list_path = _journal_path(config_path, fields)
     persisted = parse_journal_whitelist_text(snapshot.contents, path=list_path)
     saved = {(j.issn, j.eissn): j for j in persisted}
+    from allfold.application.carsi_catalog import get_carsi_catalog, validate_carsi_service, CatalogError
+    from allfold.persistence.user_state import application_data_dir
+    old_services = {service.id: service for service in parse_access_services_text(snapshot.contents, path=list_path)}
+    catalog = None
+    for service in draft.access_services:
+        old = old_services.get(service.id)
+        if service.access_method == "carsi" and (old is None or (old.name, old.access_method) != (service.name, service.access_method)):
+            if catalog is None:
+                catalog = get_carsi_catalog(application_data_dir(config_path) / "resources.sqlite")
+            try:
+                validate_carsi_service(service.name, catalog=catalog)
+            except CatalogError as error:
+                raise ConfigurationError(str(error), field="access_services") from error
+        elif service.access_method == "manual" and service != old and not service.access_url:
+            raise ConfigurationError("Manual Service requires a public HTTP(S) URL", field="access_services")
     journals = []
     for journal in draft.journals:
         old = saved.get((journal.issn, journal.eissn))

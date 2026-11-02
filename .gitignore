@@ -32,6 +32,7 @@ node_modules/
 # Local application state and configuration
 /workspace/
 /journal-assets/
+.allfold/
 /src/.obsidian/
 /*.yaml
 /*.yml

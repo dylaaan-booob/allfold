@@ -12,6 +12,8 @@ Setup checks tools, creates `config.example.yaml` only if absent, installs locke
 
 Configure keywords, months and optional credentials through Settings. The public template is separate from local configuration; setup does not create or copy credentials.
 
+Journal state is stored in `.allfold/user-data.sqlite`, isolated by canonical configuration path. The YAML `venue_whitelist` remains the first-migration source, not the live data store. Shared GOKB/CARSI data lives in `.allfold/resources.sqlite`; neither database belongs in a source candidate. Use temporary project/configuration directories and injected HTTP transports for migration, exchange and Resolver tests. Do not launch tests against personal YAML, Workspace, covers or Zotero.
+
 ## Start and stop
 
 ```sh

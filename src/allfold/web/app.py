@@ -5,7 +5,7 @@ from __future__ import annotations
 import hashlib
 import hmac
 import base64
-import binascii
+import json
 import secrets
 import threading
 from contextlib import asynccontextmanager
@@ -47,9 +47,8 @@ from allfold.application.settings import (
 from allfold.application.workspace import WorkspaceSnapshot, load_workspace
 from allfold.config import ConfigurationError, LoadedConfig, load_config, parse_settings_list_text
 from allfold.application.full_markdown_import import (
-    MAX_MARKDOWN_BYTES, MarkdownImportCommittedWarning, preview_full_markdown, confirm_full_markdown,
+    MAX_MARKDOWN_BYTES, preview_research_scope, confirm_research_scope, export_user_data,
 )
-from allfold.application.ai_mapping_pack import generate_ai_mapping_pack, MappingPackError
 from allfold.web.electron_bridge import ElectronBridge
 from allfold.application.coordinators.journal_covers import JournalCoverSearch
 from allfold.providers.openalex import OpenAlexError
@@ -527,7 +526,7 @@ def create_app(config_path: Path, *, electron_bridge: ElectronBridge) -> FastAPI
     def local_journal_cover(journal_key: str) -> Response:
         disk = load_settings(resolved_config_path)
         try:
-            _saved_journal(disk.journal_path, journal_key)
+            _saved_journal(disk.journal_path, journal_key, config_path=resolved_config_path)
             found = cover_image(disk.journal_path, journal_key)
         except (OSError, ValueError, ConfigurationError):
             found = None
@@ -552,7 +551,7 @@ def create_app(config_path: Path, *, electron_bridge: ElectronBridge) -> FastAPI
         disk = load_settings(resolved_config_path)
         try:
             state = app.state.journal_cover_search.start(disk.journal_path, disk.draft.journals,
-                                                        journal_key)
+                                                        journal_key, config_path=resolved_config_path)
             return JSONResponse(state)
         except (ValueError, OSError) as error:
             return JSONResponse({'message': str(error)}, status_code=409)
@@ -574,7 +573,7 @@ def create_app(config_path: Path, *, electron_bridge: ElectronBridge) -> FastAPI
             crop = {key: float(form.get(key, "")) for key in ("x", "y", "size")}
             disk = load_settings(resolved_config_path)
             detail = await run_in_threadpool(app.state.journal_cover_search.crop,
-                disk.journal_path, journal_key, str(form.get("sha256", "")), crop)
+                disk.journal_path, journal_key, str(form.get("sha256", "")), crop, config_path=resolved_config_path)
             return JSONResponse({"ok": True, "cover": detail})
         except CoverConflict as error:
             return JSONResponse({"ok": False, "message": str(error)}, status_code=409)
@@ -594,11 +593,13 @@ def create_app(config_path: Path, *, electron_bridge: ElectronBridge) -> FastAPI
             data = await upload.read(MAX_IMAGE_BYTES + 1)
         disk = load_settings(resolved_config_path)
         try:
-            outcome = await run_in_threadpool(app.state.journal_cover_search.upload, disk.journal_path, journal_key, data)
+            outcome = await run_in_threadpool(app.state.journal_cover_search.upload, disk.journal_path, journal_key, data, config_path=resolved_config_path)
             state = await run_in_threadpool(cover_details, disk.journal_path, journal_key)
             return JSONResponse({"ok": True, "result": outcome, "state": state["state"]})
         except (OSError, ValueError, ConfigurationError) as error:
             return JSONResponse({"ok": False, "message": str(error)}, status_code=400)
+
+    scope_previews = {}
 
     @app.post("/settings/import/preview", response_class=JSONResponse)
     async def preview_markdown_import(request: Request) -> JSONResponse:
@@ -608,21 +609,28 @@ def create_app(config_path: Path, *, electron_bridge: ElectronBridge) -> FastAPI
         values, draft, issues, disk, dirty = submitted_settings(form)
         upload = form.get("markdown_file")
         try:
-            if draft is None or issues:
-                raise ConfigurationError("Invalid Settings draft; preserve it and correct errors before Import")
+            if draft is None or issues or disk.issues:
+                raise ConfigurationError("Resolve Settings errors before Import")
             if not isinstance(upload, UploadFile) or not upload.filename:
-                raise ConfigurationError("Choose a complete UTF-8 .md file")
-            filename = upload.filename
-            if not filename.lower().endswith(".md") or Path(filename).name != filename:
-                raise ConfigurationError("Import requires a complete .md file")
+                raise ConfigurationError("Choose a UTF-8 .md file")
             blob = await upload.read(MAX_MARKDOWN_BYTES + 1)
             if len(blob) > MAX_MARKDOWN_BYTES:
                 raise ConfigurationError("Markdown Import file exceeds 1 MiB")
             contents = blob.decode("utf-8", errors="strict")
-            plan = preview_full_markdown(disk.journal_path, contents, filename=filename)
-            proof = hmac.new(deletion_key, repr((plan, draft)).encode("utf-8"), hashlib.sha256).hexdigest()
-            return markdown_reply(request, values, message="Full Markdown replacement Preview; no files changed.",
-                plan=plan, contents=contents, filename=filename, proof=proof, dirty=dirty)
+            choices = json.loads(str(form.get("import_choices", "{}")))
+            if not isinstance(choices, dict):
+                raise ValueError("Import choices must be an object")
+            plan = await run_in_threadpool(preview_research_scope, resolved_config_path,
+                disk.journal_path, contents, filename=upload.filename, choices=choices,
+                query_gokb=form.get("query_gokb") == "yes")
+            proof = secrets.token_urlsafe(32)
+            # A server-held preview binds the exact verified selections and remote
+            # evidence; Confirm never re-resolves them against a changed network.
+            if len(scope_previews) >= 32:
+                scope_previews.pop(next(iter(scope_previews)))
+            scope_previews[proof] = (plan, draft, contents, upload.filename, choices)
+            return markdown_reply(request, values, message="Research Scope Preview; no user data changed.",
+                plan=plan, contents=contents, filename=upload.filename, proof=proof, dirty=dirty)
         except (ConfigurationError, ContentChangedError, OSError, UnicodeError, ValueError) as error:
             return markdown_reply(request, values, message=f"Import Preview blocked: {error}", issues=issues)
 
@@ -632,51 +640,35 @@ def create_app(config_path: Path, *, electron_bridge: ElectronBridge) -> FastAPI
         if not require_settings_csrf(form):
             return settings_error("Invalid or missing CSRF token.")
         values, draft, issues, disk, dirty = submitted_settings(form)
-        payload = str(form.get("markdown_import_payload", ""))
-        filename = str(form.get("markdown_import_filename", ""))
         try:
-            if draft is None or issues:
-                raise ConfigurationError("Invalid draft; cannot confirm Import")
+            if draft is None or issues or disk.issues:
+                raise ConfigurationError("Resolve Settings errors before Import")
             if form.get("confirm_full_import") != "yes":
                 raise ConfigurationError("Explicit Confirm Import required")
             if dirty and form.get("import_discard") != "yes":
                 raise ConfigurationError("Unsaved Settings Draft: Save or explicitly Discard before Import")
-            # Base64 preserves the uploaded bytes exactly: browser FormData normalizes
-            # textarea newlines, which would otherwise invalidate a valid LF-based source.
-            try:
-                binary = base64.b64decode(payload, validate=True)
-                if len(binary) > MAX_MARKDOWN_BYTES:
-                    raise ValueError("source exceeds 1 MiB")
-                contents = binary.decode("utf-8", errors="strict")
-            except (ValueError, UnicodeError, binascii.Error) as error:
-                raise ConfigurationError("Import source payload changed or is invalid; Preview again") from error
-            plan = preview_full_markdown(disk.journal_path, contents, filename=filename)
-            expected = hmac.new(deletion_key, repr((plan, draft)).encode("utf-8"), hashlib.sha256).hexdigest()
-            if not hmac.compare_digest(str(form.get("markdown_import_proof", "")), expected):
-                raise ContentChangedError("Import source, draft, plan or target revision changed; Preview again")
-            if (draft.journal_revision != disk.draft.journal_revision
-                    or draft.monitor_revision != disk.draft.monitor_revision):
+            proof = str(form.get("markdown_import_proof", ""))
+            stored = scope_previews.get(proof)
+            if stored is None:
+                raise ContentChangedError("Import Preview expired or invalid; Preview again")
+            plan, preview_draft, contents, filename, choices = stored
+            expected_payload = base64.b64encode(contents.encode()).decode()
+            if (draft != preview_draft or form.get("markdown_import_payload") != expected_payload
+                    or form.get("markdown_import_filename") != filename
+                    or (form.get("import_choices") is not None and json.loads(str(form.get("import_choices"))) != choices)):
+                raise ContentChangedError("Import source, draft or choices changed; Preview again")
+            if draft.journal_revision != disk.draft.journal_revision or draft.monitor_revision != disk.draft.monitor_revision:
                 raise ContentChangedError("Settings revisions changed; Reload and Preview again")
-            def verify_monitor_before_list_write() -> None:
-                monitor_snapshot = _read_snapshot(
-                    resolved_config_path, source=SettingsIssueSource.MONITOR_CONFIG,
-                )
-                if monitor_snapshot.issue or monitor_snapshot.revision != draft.monitor_revision:
-                    raise ContentChangedError("monitor.yaml changed before list.md Import replacement")
-            digest = confirm_full_markdown(plan, before_write=verify_monitor_before_list_write)
+            def verify_monitor_before_write():
+                current = _read_snapshot(resolved_config_path, source=SettingsIssueSource.MONITOR_CONFIG)
+                if current.issue or current.revision != draft.monitor_revision:
+                    raise ContentChangedError("Monitor configuration changed; Preview again")
+            await run_in_threadpool(confirm_research_scope, plan, before_write=verify_monitor_before_write)
+            scope_previews.pop(proof, None)
             saved = load_settings(resolved_config_path)
-            response = markdown_reply(request, settings_form_from_draft(saved.draft),
-                message=f"Full Markdown Import saved to list.md. New revision: {digest}", saved=True)
-            return response
-        except MarkdownImportCommittedWarning as warning:
-            saved = load_settings(resolved_config_path)
-            response = markdown_reply(
-                request, settings_form_from_draft(saved.draft),
-                message=f"Import reached list.md but directory synchronization failed. Actual saved revision: {warning.revision}. Verify storage health.",
-                issues=saved.issues, saved=True,
-            )
-            return response
-        except (ConfigurationError, ContentChangedError, CompareReadError, OSError, UnicodeError, ValueError, OpenAlexError) as error:
+            return markdown_reply(request, settings_form_from_draft(saved.draft),
+                message="Research Scope added to saved User Data.", saved=True)
+        except (ConfigurationError, ContentChangedError, CompareReadError, OSError, UnicodeError, ValueError) as error:
             return markdown_reply(request, values, message=f"Import not written: {error}", issues=issues)
 
     @app.post("/settings/export", response_class=JSONResponse)
@@ -689,41 +681,14 @@ def create_app(config_path: Path, *, electron_bridge: ElectronBridge) -> FastAPI
             return markdown_reply(request, values, message="Unsaved Settings Draft: Save or explicitly Discard before Export.",
                 issues=issues, export_guard=True)
         try:
-            snap = _read_snapshot(disk.journal_path, source=SettingsIssueSource.JOURNAL_DATA)
-            if snap.issue or snap.contents is None:
-                raise ConfigurationError(snap.issue.message if snap.issue else "list.md missing")
-            parse_settings_list_text(snap.contents, path=disk.journal_path)
-            if any(candidate.is_symlink() for candidate in (disk.journal_path, *disk.journal_path.parents)):
-                raise ConfigurationError("Unsafe saved Markdown path")
-            return Response(content=snap.contents.encode("utf-8"),
+            if disk.issues:
+                raise ConfigurationError("Resolve Settings errors before Export")
+            return Response(content=export_user_data(resolved_config_path).encode("utf-8"),
                 media_type="text/markdown; charset=utf-8",
-                headers={"Content-Disposition": 'attachment; filename="list.md"',
+                headers={"Content-Disposition": 'attachment; filename="allfold-user-data.md"',
                          "Cache-Control": "no-store"})
         except (ConfigurationError, OSError) as error:
             return markdown_reply(request, values, message=f"Export blocked: {error}", issues=issues)
-
-    @app.post("/settings/export-ai-mapping-pack", response_class=JSONResponse)
-    async def export_ai_mapping_pack(request: Request):
-        form = await request.form()
-        if not require_settings_csrf(form):
-            return settings_error("Invalid or missing CSRF token.")
-        values, draft, issues, disk, dirty = submitted_settings(form)
-        if dirty and form.get("export_discard") != "yes":
-            return markdown_reply(
-                request, values, message="Unsaved Settings Draft: Save or explicitly Discard before AI Mapping Pack export.",
-                issues=issues, export_guard=True,
-            )
-        try:
-            pack = await run_in_threadpool(generate_ai_mapping_pack, disk.journal_path)
-            return Response(
-                content=pack.markdown.encode("utf-8"), media_type="text/markdown; charset=utf-8",
-                headers={
-                    "Content-Disposition": f'attachment; filename="{pack.filename}"',
-                    "Cache-Control": "no-store",
-                },
-            )
-        except MappingPackError as error:
-            return markdown_reply(request, values, message=f"AI Mapping Pack export blocked: {error}", issues=issues)
 
     @app.post("/settings/reload", response_class=JSONResponse)
     async def reload_markdown(request: Request) -> JSONResponse:
@@ -737,7 +702,7 @@ def create_app(config_path: Path, *, electron_bridge: ElectronBridge) -> FastAPI
                 reload_guard=True)
         saved = load_settings(resolved_config_path)
         response = markdown_reply(request, settings_form_from_draft(saved.draft),
-            message="Reloaded both Settings files from disk. Prior unsaved edits discarded.", issues=saved.issues, saved=True)
+            message="Reloaded saved User Data and monitor configuration. Prior unsaved edits discarded.", issues=saved.issues, saved=True)
         return response
 
     @app.post("/settings/save", response_class=JSONResponse)
