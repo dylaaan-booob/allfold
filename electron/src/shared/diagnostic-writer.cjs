@@ -126,7 +126,7 @@ class DiagnosticWriter {
     try {
       this.checkFiles();const token=randomBytes(24).toString('hex');
       const files=[...this.files].map(([name,id])=>({name,...id,size:this.fileStat(name).size,mtimeMs:this.fileStat(name).mtimeMs}));
-      this.tokens.clear();this.tokens.set(token,{expires:Date.now()+300000,files});
+      this.tokens.clear();this.tokens.set(token,{files});
       return {available:true,scope_id:this.scopeId,token,status:this.status()};
     }catch(_){this.failure();return {available:false,scope_id:this.scopeId,status:this.status()};}
   }
@@ -134,7 +134,7 @@ class DiagnosticWriter {
     const preview=this.tokens.get(expected?.token);this.tokens.delete(expected?.token);
     const result={scope_id:this.scopeId,success:false,partial:false,deleted:0,failed:0};
     try {
-      if(!preview || preview.expires<Date.now() || expected.scope_id!==this.scopeId)throw Error('invalid_preview');
+      if(!preview || expected.scope_id!==this.scopeId)throw Error('invalid_preview');
       this.checkFiles();
       if(preview.files.length!==this.files.size)throw Error('files_changed');
       for(const file of preview.files) {

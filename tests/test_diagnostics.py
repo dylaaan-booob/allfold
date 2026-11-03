@@ -93,6 +93,26 @@ def test_logs_reset_is_one_use_configuration_and_file_identity_bound(tmp_path):
     assert history.read_text() == 'replacement private file'
 
 
+def test_logs_confirmation_survives_wait_and_remains_single_use(tmp_path, monkeypatch):
+    import pytest
+    from types import SimpleNamespace
+    import allfold.diagnostics as diagnostics
+    from allfold.diagnostics import DiagnosticRefused
+    clock = [1.0]
+    monkeypatch.setattr(diagnostics, 'time', SimpleNamespace(monotonic=lambda: clock[0]), raising=False)
+    config = tmp_path / 'config.yaml'
+    config.write_text('keyword_expression: synthetic\n')
+    store = DiagnosticStore(config, root=tmp_path / 'logs')
+    store.begin('run', 'run_one')
+    plan = store.preview_reset()
+    clock[0] += 90 * 24 * 60 * 60
+    store.validate_reset(plan)
+    assert store.reset(plan)['success']
+    assert store.history()['records'] == []
+    with pytest.raises(DiagnosticRefused):
+        store.reset(plan)
+
+
 def test_bounded_history_rotation_and_native_failure_remain_visible_after_restart(tmp_path):
     store = DiagnosticStore(tmp_path / 'config.yaml', root=tmp_path / 'logs', runtime_id='first',
                             max_file_bytes=1024, max_files=2, max_history=3)

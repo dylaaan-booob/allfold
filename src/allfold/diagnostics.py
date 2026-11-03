@@ -18,7 +18,6 @@ import secrets
 import stat
 import sys
 import threading
-import time
 from uuid import UUID, uuid4
 import zipfile
 
@@ -706,7 +705,7 @@ class DiagnosticStore:
             with self._directory() as directory:
                 plan = dict(scope_id=self.scope_id, token=secrets.token_urlsafe(32),
                     configuration=self._configuration_identity(), identities=tuple(self._identities),
-                    files=self._managed_snapshot(directory), created_at=time.monotonic())
+                    files=self._managed_snapshot(directory))
             self._reset_nonce = plan
             return deepcopy(plan)
 
@@ -714,9 +713,8 @@ class DiagnosticStore:
         """Check the saved plan before coordinating any destructive native step."""
         with self._lock:
             if (self._reset_nonce is None or expected != self._reset_nonce
-                    or time.monotonic() - expected['created_at'] > 300
                     or expected['configuration'] != self._configuration_identity()):
-                raise DiagnosticRefused('Logs target changed or confirmation expired')
+                raise DiagnosticRefused('Logs target changed or confirmation is no longer current')
             with self._directory() as directory:
                 if self._managed_snapshot(directory) != expected['files']:
                     raise DiagnosticRefused('Diagnostic files changed since preview')
@@ -725,8 +723,7 @@ class DiagnosticStore:
         """Delete only identity-verified owned files; all attempts consume the preview."""
         with self._lock:
             plan, self._reset_nonce = self._reset_nonce, None
-            if (plan is None or expected != plan
-                    or time.monotonic() - plan['created_at'] > 300):
+            if plan is None or expected != plan:
                 raise DiagnosticRefused('Logs confirmation is stale or already used')
             if plan['configuration'] != self._configuration_identity():
                 raise DiagnosticRefused('Configuration changed since Logs preview')

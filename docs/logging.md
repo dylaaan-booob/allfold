@@ -101,11 +101,13 @@ to share it, and Reset never deletes previously downloaded packages.
 ## Reset boundaries
 
 Settings Reset selects **Workspace** or **Logs**, then previews and confirms that
-one scope. Neither action requires typing `RESET`. CSRF validation, expiring
-one-use confirmation, current configuration/target identity checks, path safety
-and active-work exclusion remain enforced. A changed scope or target requires a
-new preview. A partial deletion is reported as partial and does not authorize a
-business retry.
+one scope. Neither action requires typing `RESET`. Confirmations do not expire
+with elapsed time. CSRF validation, one-use confirmation, current
+configuration/target identity checks, path safety and active-work exclusion
+remain enforced. A changed scope, target, configuration or managed log content,
+a replacement preview, a consumed confirmation, or an application restart
+requires a new preview. Waiting alone does not invalidate it. A partial deletion
+is reported as partial and does not authorize a business retry.
 
 - **Workspace** retains its existing deletion boundary, including its latest Run
   snapshots. Independent logs survive. Earlier history is marked as historical

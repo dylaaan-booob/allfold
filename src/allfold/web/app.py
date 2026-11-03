@@ -8,7 +8,6 @@ import base64
 import json
 import secrets
 import threading
-import time
 from contextlib import asynccontextmanager
 from dataclasses import replace
 from pathlib import Path
@@ -454,7 +453,7 @@ def create_app(config_path: Path, *, electron_bridge: ElectronBridge, diagnostic
             try:
                 plan = preview_reset(resolved_config_path)
                 token = secrets.token_urlsafe(32)
-                app.state.reset_confirmation = (token, plan, 'workspace', None, time.monotonic())
+                app.state.reset_confirmation = (token, plan, 'workspace', None)
                 return {"reset_plan": plan, "reset_token": token, "reset_error": None}
             except (ResetRefused, OSError, ValueError) as error:
                 return {"reset_plan": None, "reset_token": None, "reset_error": str(error)}
@@ -471,8 +470,7 @@ def create_app(config_path: Path, *, electron_bridge: ElectronBridge, diagnostic
             token = form.get("reset_token")
             if (saved is None or len(saved) < 3 or saved[2] != 'workspace' or not isinstance(token, str)
                     or not token.isascii()
-                    or not secrets.compare_digest(token, saved[0])
-                    or len(saved) < 5 or time.monotonic() - saved[4] > 300):
+                    or not secrets.compare_digest(token, saved[0])):
                 app.state.reset_confirmation = None
                 result_message, status = "Reset confirmation is stale or already used. Reload Settings.", 409
             elif app.state.run_coordinator.snapshot().status is CoordinatorStatus.RUNNING:
@@ -669,7 +667,7 @@ def create_app(config_path: Path, *, electron_bridge: ElectronBridge, diagnostic
             proof = str(form.get("markdown_import_proof", ""))
             stored = scope_previews.get(proof)
             if stored is None:
-                raise ContentChangedError("Import Preview expired or invalid; Preview again")
+                raise ContentChangedError("Import Preview is no longer valid; Preview again")
             plan, preview_draft, contents, filename, choices = stored
             expected_payload = base64.b64encode(contents.encode()).decode()
             if (draft != preview_draft or form.get("markdown_import_payload") != expected_payload

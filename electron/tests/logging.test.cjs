@@ -36,10 +36,11 @@ test('bounded rotation persists incompleteness across restart and files are priv
   const reopened=createLogger({root,runtimeId:'restart',scopeId:'a'.repeat(64),stderr(){},maxBytes:512,maxFiles:2});
   assert.ok(reopened.status().rotations>0);assert.equal(reopened.readEvents().at(-1).request_id,'request_11');
 });
-test('reset is one use and writer records new events after deleting its verified files',t=>{
+test('reset survives elapsed time, remains one use and writer records new events',t=>{
   const {logger}=fixture(t);const scope_id='a'.repeat(64);
   logger.log('info','manual_wait',{waiting:true});
   const expected=logger.reset({operation:'preview',scope_id});assert.equal(expected.available,true);
+  const now=Date.now();t.mock.method(Date,'now',()=>now+90*24*60*60*1000);
   const result=logger.reset({operation:'reset',scope_id,expected});assert.equal(result.success,true);
   assert.equal(logger.reset({operation:'reset',scope_id,expected}).success,false);
   logger.log('info','manual_wait',{waiting:false});assert.equal(logger.readEvents().length,1);assert.equal(logger.readEvents()[0].waiting,false);

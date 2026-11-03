@@ -145,8 +145,11 @@ def test_native_partial_reset_reports_failure_and_preserves_python_history(tmp_p
         assert client.post('/settings/logs-reset', data=data).status_code == 409
 
 
-def test_workspace_confirmation_expires_without_deleting_target(tmp_path, monkeypatch):
+def test_workspace_confirmation_survives_wait_and_remains_single_use(tmp_path, monkeypatch):
     import allfold.web.app as web
+    from types import SimpleNamespace
+    clock = [1.0]
+    monkeypatch.setattr(web, 'time', SimpleNamespace(monotonic=lambda: clock[0]), raising=False)
     config = configuration(tmp_path)
     workspace = tmp_path / 'workspace'
     workspace.mkdir()
@@ -154,12 +157,12 @@ def test_workspace_confirmation_expires_without_deleting_target(tmp_path, monkey
     app = create_app(config, electron_bridge=OfflineBridge(), diagnostics_root=tmp_path / 'logs')
     with TestClient(app, base_url='http://localhost') as client:
         preview = client.get('/api/ui-next/settings/reset-preview').json()
-        original = web.time.monotonic
-        monkeypatch.setattr(web.time, 'monotonic', lambda: original() + 301)
-        response = client.post('/settings/workspace-reset', data={
-            'csrf_token': app.state.csrf_token, 'reset_token': preview['reset_token']})
-        assert response.status_code == 409
-        assert (workspace / 'data').read_text() == 'preserved'
+        clock[0] += 90 * 24 * 60 * 60
+        data = {'csrf_token': app.state.csrf_token, 'reset_token': preview['reset_token']}
+        response = client.post('/settings/workspace-reset', data=data)
+        assert response.status_code == 200
+        assert not workspace.exists()
+        assert client.post('/settings/workspace-reset', data=data).status_code == 409
 
 
 def test_logs_reset_and_run_start_finish_without_a_diagnostic_lock_deadlock(tmp_path):
