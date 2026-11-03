@@ -7,6 +7,7 @@ import pytest
 
 from allfold.application.carsi_catalog import CatalogError, get_carsi_catalog, parse_carsi_directory
 from allfold.config import JournalConfig
+from http_test_helpers import http_server, isolate_proxy_environment
 
 
 def directory(*records):
@@ -338,17 +339,61 @@ def test_default_resource_path_is_shared_across_configurations_and_never_stores_
 
 
 @pytest.mark.parametrize("cached", [False, True])
-def test_invalid_proxy_environment_returns_unavailable_or_last_valid_gokb_cache(tmp_path, monkeypatch, cached):
+@pytest.mark.parametrize("source", ["carsi", "gokb"])
+def test_ipv6_proxy_environment_fetches_valid_complete_resources(tmp_path, monkeypatch, cached, source):
     from allfold.providers.gokb import get_journal_resources
 
+    isolate_proxy_environment(monkeypatch)
     path = tmp_path / "resources.sqlite"
     journal = JournalConfig(name="Fixture Journal", issn="1234-5679")
-    previous = get_journal_resources(path, journal, transport=gokb_transport()) if cached else None
-    # httpx cannot parse IPv6 CIDR NO_PROXY patterns during Client creation.
-    # This must follow the same failure path as a failed remote request.
-    monkeypatch.setenv("NO_PROXY", "fc00::/7")
-    monkeypatch.setenv("no_proxy", "fc00::/7")
-    result = get_journal_resources(path, journal, refresh=True)
+    lookup = (lambda **kw: get_carsi_catalog(path, **kw)) if source == "carsi" else (
+        lambda **kw: get_journal_resources(path, journal, **kw))
+    fixture = resolver_transport([resource()]) if source == "carsi" else gokb_transport()
+    if cached:
+        assert lookup(transport=fixture).status == "fresh"
+    monkeypatch.setenv("NO_PROXY", "fe80::/10,fc00::/7")
+    monkeypatch.setenv("no_proxy", "fe80::/10,fc00::/7")
+    monkeypatch.setenv("HTTPS_PROXY", "http://fixture-proxy.test:8000")
+    used_proxies = []
+
+    def transport(**options):
+        def handle(request):
+            used_proxies.append(options["proxy"].url.host)
+            return fixture.handle_request(request)
+        return httpx.MockTransport(handle)
+
+    monkeypatch.setattr(httpx, "HTTPTransport", transport)
+    result = lookup(refresh=True)
+    assert result.status == "fresh"
+    assert result.error is None
+    assert used_proxies and set(used_proxies) == {"fixture-proxy.test"}
+    if source == "carsi":
+        assert result.resources[0].production == "Springer Link"
+    else:
+        assert result.snapshot.platforms[0].name == "SpringerLink"
+
+
+@pytest.mark.parametrize("cached", [False, True])
+@pytest.mark.parametrize("source", ["carsi", "gokb"])
+def test_proxy_http_failure_preserves_last_good_cache(tmp_path, monkeypatch, cached, source):
+    from allfold.providers.gokb import get_journal_resources
+
+    isolate_proxy_environment(monkeypatch)
+    path = tmp_path / "resources.sqlite"
+    journal = JournalConfig(name="Fixture Journal", issn="1234-5679")
+    lookup = (lambda **kw: get_carsi_catalog(path, **kw)) if source == "carsi" else (
+        lambda **kw: get_journal_resources(path, journal, **kw))
+    fixture = resolver_transport([resource()]) if source == "carsi" else gokb_transport()
+    previous = lookup(transport=fixture) if cached else None
+    with http_server(lambda _: (503, {}, b"proxy unavailable")) as proxy:
+        monkeypatch.setenv("HTTPS_PROXY", proxy.url)
+        result = lookup(refresh=True)
+        assert len(proxy.requests) == 1
     assert result.status == ("stale" if cached else "unavailable")
-    assert result.error == "GOKB request failed"
-    assert result.snapshot == (previous.snapshot if previous else None)
+    if source == "carsi":
+        assert result.resources == (previous.resources if previous else ())
+    else:
+        assert result.snapshot == (previous.snapshot if previous else None)
+    assert result.error is not None
+    if previous:
+        assert lookup().fetched_at == previous.fetched_at
