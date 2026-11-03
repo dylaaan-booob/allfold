@@ -65,6 +65,21 @@ def format_browser_diagnostic(value: object) -> str:
     diagnostic = normalize_browser_diagnostic(value)
     if diagnostic is None:
         return 'Browser operation failed.'
+    if diagnostic.get('stage') == 'attachment':
+        reasons = {
+            'no_resolver':'未找到可用的附件来源', 'mime_mismatch':'返回内容不是预期附件类型',
+            'empty_response':'附件响应为空', 'network_error':'附件网络请求失败',
+            'redirect_rejected':'附件重定向未被接受', 'attachment_rejected':'附件保存请求未被接受',
+            'timeout':'附件操作超时', 'http_error':'附件请求失败',
+            'document_changed':'附件来源页面已变化', 'page_closed':'附件来源页面已关闭',
+            'canceled':'附件操作已取消',
+        }
+        message = reasons.get(diagnostic.get('code'), '附件操作未完成')
+        if 'status' in diagnostic:
+            message += f"（HTTP {diagnostic['status']}）"
+        if 'net_error' in diagnostic:
+            message += f"（{diagnostic['net_error']}）"
+        return message + '；PDF 是否保存仍未验证。'
     translation_reasons = {
         'translator_no_items': '官方 Translator 未返回条目。',
         'translator_multiple_items': '官方 Translator 返回多个条目，无法确认唯一父条目。',
@@ -88,9 +103,6 @@ def format_browser_diagnostic(value: object) -> str:
               'content_access_blocked': 'ScienceDirect content access blocked (CPE00001)',
               'http_error': 'HTTP request failed', 'load_failed': 'page load failed',
               'document_changed': 'source page changed',
-              'no_resolver': 'no attachment resolver found', 'mime_mismatch': 'attachment MIME type did not match',
-              'empty_response': 'attachment response was empty', 'network_error': 'attachment network request failed',
-              'redirect_rejected': 'attachment redirect was rejected', 'attachment_rejected': 'attachment was rejected',
               'doi_mismatch': 'parent DOI did not match'}
     reason = reasons.get(diagnostic.get('code'), 'operation failed')
     step = f" [{diagnostic['step']}]" if 'step' in diagnostic else ''

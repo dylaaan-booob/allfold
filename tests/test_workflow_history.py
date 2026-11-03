@@ -11,7 +11,7 @@ import pytest
 def test_attachment_diagnostic_preserves_cross_runtime_evidence():
     value = dict(stage='attachment', step='hidden_iframe', code='timeout', net_error='ERR_ABORTED', status=403, message='secret')
     assert normalize_browser_diagnostic(value) == {k: value[k] for k in ('stage', 'step', 'code', 'net_error', 'status')}
-    assert 'Attachment' in format_browser_diagnostic(value)
+    assert '附件操作超时' in format_browser_diagnostic(value)
 
 
 @pytest.mark.parametrize('result,outcome', [(confirmed(), 'confirmed'),
@@ -371,3 +371,18 @@ def test_import_history_keeps_reviewed_attachment_failure_without_unconfirming_p
     assert 'sensitive body' not in str(record)
     assert 'secret=token' not in str(record)
     lock.release(owner)
+
+
+@pytest.mark.parametrize('code,text', [
+    ('no_resolver','未找到可用的附件来源'), ('mime_mismatch','返回内容不是预期附件类型'),
+    ('empty_response','附件响应为空'), ('network_error','附件网络请求失败'),
+    ('redirect_rejected','附件重定向未被接受'), ('attachment_rejected','附件保存请求未被接受'),
+    ('timeout','附件操作超时'),
+])
+def test_attachment_message_describes_problem_and_preserves_pdf_uncertainty(code, text):
+    message = format_browser_diagnostic({'stage':'attachment','code':code,'status':403,'net_error':'ERR_ABORTED'})
+    assert text in message
+    assert 'PDF 是否保存仍未验证' in message
+    assert '403' in message and 'ERR_ABORTED' in message
+    assert '父条目失败' not in message
+    assert '重试' not in message
