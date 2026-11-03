@@ -5,6 +5,7 @@ const {randomBytes,createHash} = require('node:crypto');
 const path = require('node:path');
 const fs = require('node:fs');
 const {BrowserRuntime} = require('./browser/browser-runtime.cjs');
+const {installBrowserIPC}=require('./browser/browser-ipc.cjs');
 const {TranslatorSandbox} = require('./zotero/translator.cjs');
 const {saveOnce,normalizeDOI} = require('./zotero/item-saver.cjs');
 const {failedImport}=require('./workflows/import-errors.cjs');
@@ -309,21 +310,16 @@ async function main() {
   window.webContents.on('will-navigate',(event,url)=>{if(new URL(url).origin !== base)event.preventDefault();});
   // Keep the window alive while native saving and Python Paper writes settle.
   window.on('close',event=>{if(!readyToExit){event.preventDefault();app.quit();}});
-  browser=new BrowserRuntime({cdpURL,solveCloudflare,isTaskRunning:()=>!!activeRequest,readCASCredentials:async()=>{
+  browser=new BrowserRuntime({hostWindow:window,cdpURL,solveCloudflare,isTaskRunning:()=>!!activeRequest,readCASCredentials:async()=>{
     if(exiting)return null;
     const credentials=await readCASCredentials();
     return exiting?null:credentials;
   }});
   await browser.ready;
   translator=new TranslatorSandbox();
-  ipcMain.handle('browser:show',event=>{
-    if(!trusted(event))throw Error('Untrusted Browser sender');
-    return browser.show();
-  });
-  ipcMain.handle('browser:state',event=>{
-    if(!trusted(event))throw Error('Untrusted Browser state sender');
-    return browser.state();
-  });
+  const removeBrowserIPC=installBrowserIPC({ipcMain,hostWindow:window,origin:base,browser});
+  window.once('closed',removeBrowserIPC);
+  window.webContents.on('did-finish-load',()=>browser.publish());
   for(const [channel,handler] of Object.entries({'cas:status':casStatus,'cas:save':saveCASCredentials,'cas:clear':clearCASCredentials})) {
     ipcMain.handle(channel,async(event,value)=>{
       if(!trusted(event))throw Error('Untrusted CAS sender');
