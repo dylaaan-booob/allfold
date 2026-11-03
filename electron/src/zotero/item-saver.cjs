@@ -57,6 +57,7 @@ async function saveOnce({item,proxy,doi,doc,browser,signal,logContext}) {
           // The official payload omits binary attachments; count the actual prepared items.
           log('info','attachment_inventory',{...logContext,stage:'attachment',step:'prepared',...attachmentCounts(savingItems)});
           parentID=data.items[0].id; dispatched=true; parent={outcome:'uncertain'};
+          log('info','parent_save_dispatched',{...logContext,stage:'parent_save',parent:'uncertain',outcome:'submitted'});
         }
         const contentType=spec.headers?.['Content-Type'] || 'application/json';
         let response;
@@ -79,8 +80,10 @@ async function saveOnce({item,proxy,doi,doc,browser,signal,logContext}) {
             parent={outcome:'confirmed',status:201,requested_id:parentID,
               accepted_id:body?.items?.[0]?.id ?? null,empty_response:body === '' || body === null};
           }
+          if(spec.method==='saveItems')log('info','parent_save_result',{...logContext,stage:'parent_save',parent:parent.outcome,status:parent.status});
           return body;
         } catch (error) {
+          if(spec.method==='saveItems')log('warn','parent_save_result',{...logContext,stage:'parent_save',parent:parent.outcome,status:parent.status});
           if(spec.method!=='saveItems')recordFailure(spec.method==='saveAttachmentFromResolver' || spec.method==='hasAttachmentResolvers'?'oa_resolver':'desktop_attachment',error,undefined,response?.status);
           log('warn','zotero_request_failed',{...logContext,stage:spec.method==='saveItems'?'parent_save':'attachment',
             host:'127.0.0.1',method:spec.method,code:response?(response.ok?'unattributable_response':'http_error'):errorCode(error),status:response?.status});
@@ -204,6 +207,8 @@ async function saveOnce({item,proxy,doi,doc,browser,signal,logContext}) {
   } catch (_) {error='Save failed or is uncertain. Inspect Zotero before retrying.';}
   const diagnostic=parent.outcome === 'uncertain'
     ? {stage:'parent_save',code:parent.status?'http_error':'failed',...(parent.status?{status:parent.status}:{})} : null;
+  log(parent.outcome==='confirmed'?'info':'warn','item_save_result',{...logContext,stage:'parent_save',parent:parent.outcome,
+    pdf:'unverified',status:parent.status,...attachmentCounts(savingItems)});
   return {parent,pdf:{outcome:'unverified',receipts,failures},...(error?{error}:{}),...(diagnostic?{diagnostic}:{}),settled:true};
 }
 module.exports={saveOnce,verifyParent,normalizeDOI};

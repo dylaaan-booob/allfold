@@ -1,7 +1,7 @@
 'use strict';
 const {app,BrowserWindow,ipcMain,protocol,dialog} = require('electron');
 const {spawn,spawnSync} = require('node:child_process');
-const {randomBytes} = require('node:crypto');
+const {randomBytes,createHash} = require('node:crypto');
 const path = require('node:path');
 const fs = require('node:fs');
 const {BrowserRuntime} = require('./browser/browser-runtime.cjs');
@@ -9,7 +9,8 @@ const {TranslatorSandbox} = require('./zotero/translator.cjs');
 const {saveOnce,normalizeDOI} = require('./zotero/item-saver.cjs');
 const {failedImport}=require('./workflows/import-errors.cjs');
 const {BrowserFailure,diagnosticFor}=require('./browser/browser-errors.cjs');
-const {log,errorCode} = require('./shared/logging.cjs');
+const {log,errorCode,initializeLogging,withLogContext,associationLogContext,diagnosticsReset,diagnosticsStatus,setLogLevel} = require('./shared/logging.cjs');
+const {operationAssociation}=require('./browser/page-association.cjs');
 const {prepareService,searchJournalCover,newTaskPage}=require('./workflows/browser-operations.cjs');
 const {wosQuery,wosExport}=require('./workflows/wos-operations.cjs');
 const {readCASCredentials,casStatus,saveCASCredentials,clearCASCredentials,casErrorCode}=require('./auth/cas-credentials.cjs');
@@ -77,6 +78,18 @@ async function solveCloudflare(doc,{signal,deadline=Infinity}={}) {
   }
 }
 async function execute(message) {
+  if(message.action==='diagnostics_reset') {
+    if(activeRequest || exiting)throw Error('Native operation is active');
+    send({type:'result',id:message.id,action:message.action,data:diagnosticsReset(message.data)});
+    return;
+  }
+  let association;
+  try {association=operationAssociation({...message.data,request_id:message.id});}catch(_){association=null;}
+  // beginOperation retains the existing validation and failure protocol.
+  setLogLevel(message.data?.log_level);
+  return withLogContext({...associationLogContext(association),action:message.action},()=>executeOperation(message));
+}
+async function executeOperation(message) {
   if (activeRequest || exiting) {
     // Python serializes dispatch and stops new work before shutdown.
     throw Error('Concurrent browser dispatch refused');
@@ -164,8 +177,8 @@ async function execute(message) {
     log(canceled?'info':failed?'warn':'info','task_finished',{...context,page_id:resultPageId,
       duration_ms:Date.now()-started,outcome:canceled?'canceled':outcome,
       parent:data.parent?.outcome,pdf:data.pdf?.outcome,stage:diagnostic.stage || stage,
-      step:diagnostic.step,code:diagnostic.net_error || diagnostic.code || data.reason,status:diagnostic.status});
-    send({type:'result',id:message.id,action:message.action,data});
+      step:diagnostic.step,code:diagnostic.code || data.reason,net_error:diagnostic.net_error,status:diagnostic.status});
+    send({type:'result',id:message.id,action:message.action,data:{...data,diagnostics_status:diagnosticsStatus()}});
   })();
   activeRequest=operation;
   browser.publish();
@@ -189,7 +202,7 @@ async function startPython(config,cdpURL) {
   python.on('exit',(code,signal)=>{
     activeOperation?.controller.abort();
     activeOperation?.challenge?.resolve({outcome:'failed',reason:'python_exited'});
-    if (!exiting && base) log('error','python_exited',{code:signal || code});
+    if (!exiting && base) log('error','python_exited',{exit_code:code});
     if (!exiting && base) dialog.showErrorBox('Allfold','Python exited. Inspect the terminal output before restarting.');
     readyToExit=true;
     if(base || exiting)app.quit();
@@ -259,6 +272,14 @@ async function connect() {
 async function main() {
   const configFlag=process.argv.indexOf('--config');
   const config=path.resolve(configFlag>=0?process.argv[configFlag+1]:path.join(ROOT,'config.example.yaml'));
+  const logRoot=path.resolve(process.env.ALLFOLD_DIAGNOSTICS_ROOT || path.join(app.getPath('logs'),'diagnostics'));
+  // Both producers share one startup identity and the canonical configuration scope.
+  process.env.ALLFOLD_DIAGNOSTICS_ROOT=logRoot;
+  process.env.ALLFOLD_RUNTIME_ID=randomBytes(16).toString('hex');
+  let canonicalConfig;try {canonicalConfig=fs.realpathSync(config);}catch(_){canonicalConfig=config;}
+  initializeLogging({root:logRoot,runtimeId:process.env.ALLFOLD_RUNTIME_ID,
+    scopeId:createHash('sha256').update(canonicalConfig).digest('hex')});
+  log('info','app_started');
   let cdpURL='';
   const filename=path.join(app.getPath('sessionData'),'DevToolsActivePort');
   // Chromium writes this file asynchronously; never reuse a previous run's endpoint.
@@ -332,6 +353,7 @@ app.on('before-quit',event=>{
   event.preventDefault();
   if(exiting)return;
   exiting=true;
+  log('info','app_exiting');
   if(bridgeReady) {
     // Sent immediately: Python stops the next dispatch while this request settles.
     send({type:'shutdown'});
