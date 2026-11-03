@@ -971,6 +971,10 @@ function stepInspection(dt) {
   return inspection.time !== target;
 }
 function openView(paperId = null, source = canvas) {
+  if(window.allfoldUIPreferences.archiveDisabled()){
+    if(paperId)window.workspaceArray?.openPaper(paperId);
+    return;
+  }
   if (state.view !== 'selected' || !shelves.length || decisionPending || snapshotApplying || enrichment?.phase==='Saving' || inspection.time) return;
   $('paper-metadata-details').open=false;
   const journal = selectedJournal();
@@ -1247,7 +1251,7 @@ function renderEnrich() {
   });
   $('cancel-enrich').hidden=phase!=='Retrieving';
   const candidateReader=readerContext?.status==='candidates' && arrayActive();
-  $('keep-paper').disabled=$('reject-paper').disabled=decisionPending || Boolean(snapshotApplying) || paperToolsBusy() || phase==='Saving' ||
+  $('keep-paper').disabled=$('reject-paper').disabled=decisionPending || Boolean(snapshotApplying) || paperToolsBusy() || phase==='Saving' || window.workspaceArray?.workflowBusy() ||
     (readerContext ? !candidateReader : inspection.time!==inspection.duration || !inspection.target);
   $('back').disabled=decisionPending || Boolean(snapshotApplying) || paperToolsBusy() || phase==='Saving' || !inspection.target;
   const status=$('enrich-status'); status.dataset.phase=phase; status.dataset.warning=String(paper.syncWarning || false);
@@ -1259,7 +1263,7 @@ function renderEnrich() {
 }
 function canEnrich(paper=currentPaper(),developerRetry=false) {
   const reading=readerContext ? arrayActive() : state.view==='journal' && inspection.target && inspection.time===inspection.duration && !inspection.removeAfter;
-  return Boolean(reading && paper && (developerRetry || !paper.enriched) && missingFields(paper).length && !decisionPending && !snapshotApplying && !paperToolsBusy() &&
+  return Boolean(reading && paper && (developerRetry || !paper.enriched) && missingFields(paper).length && !decisionPending && !snapshotApplying && !paperToolsBusy() && !window.workspaceArray?.workflowBusy() &&
     !['Retrieving','Saving'].includes(paper.enrichPhase) && !['Retrieving','Saving'].includes(enrichment?.phase));
 }
 
@@ -1444,7 +1448,7 @@ async function startEnrich(developerRetry=false) {
 }
 async function reviewPaper(status) {
   const arrayCandidate=readerContext?.status==='candidates' && arrayActive();
-  if (decisionPending || snapshotApplying || paperToolsBusy() || enrichment?.phase==='Saving' ||
+  if (decisionPending || snapshotApplying || paperToolsBusy() || enrichment?.phase==='Saving' || window.workspaceArray?.workflowBusy() ||
       (readerContext ? !arrayCandidate : state.view!=='journal' || inspection.time!==inspection.duration || inspection.removeAfter)) return;
   const paperId=state.pendingPaper;
   decisionPending=true;renderEnrich();
@@ -1782,7 +1786,9 @@ async function load() {
     const rails=await Promise.all(['front','mid','back'].map(n=>image(`assets/rail/rail-${n}.png`)));
     railImages=Object.fromEntries(['front','mid','back'].map((n,i)=>[n,rails[i]]));
     inspectionFrames=await Promise.all(Array.from({length:60},(_,i)=>image(`assets/journal/inspect-${pad(i)}.png`)));
-    await applySnapshot(data,undefined,coverVersion);state.ready=true;$('load-status').hidden=true;resize();wake();
+    await applySnapshot(data,undefined,coverVersion);state.ready=true;
+    if(window.allfoldUIPreferences.archiveDisabled())window.inboxKept.setLayout('array');
+    $('load-status').hidden=true;resize();wake();
     const pending=[...paperObjects().values()].find(p=>['Retrieving','Saving'].includes(p.enrichPhase) && p.enrichment_request_id);
     if(pending){enrichment={paperId:pending.id,paper:pending,phase:pending.enrichPhase,requestID:pending.enrichment_request_id,cancelled:false};void pollEnrich(enrichment);}
     window.dispatchEvent(new Event('inbox-ready'));
@@ -1821,7 +1827,7 @@ window.inboxKept={
   papers:()=>[...keptPapers.values()],
   candidates:candidateEntries,
   setLayout(layout) {
-    if(!this.available()) return false;
+    if(!['archive','array'].includes(layout) || (layout==='archive' && window.allfoldUIPreferences.archiveDisabled()) || !this.available())return false;
     leaveInboxReview();
     if(!closeArrayReader())return false;
     $('selected-view').dataset.workspaceLayout=layout;
@@ -1859,6 +1865,7 @@ window.inboxKept={
   },
   closeReader:closeArrayReader,
   openArchivePaper(id) {
+    if(window.allfoldUIPreferences.archiveDisabled())return window.workspaceArray?.openPaper(id) || false;
     if(!inboxActive())return false;
     const group=shelves.findIndex(group=>group.journals.some(journal=>journal.papers.some(paper=>paper.id===id)));
     if(group<0)return false;
@@ -1872,7 +1879,7 @@ window.inboxKept={
 };
 new ResizeObserver(()=>{if(readerContext && arrayActive()) fillAbstractPlaceholder();}).observe($('kept-reader'));
 window.inboxRun={
-  available:()=>state.ready && !decisionPending && !snapshotApplying && !paperToolsBusy() && enrichment?.phase!=='Saving' && !['Retrieving','Saving'].includes(enrichment?.phase) && !$('kept-flow').open &&
+  available:()=>state.ready && !decisionPending && !snapshotApplying && !paperToolsBusy() && enrichment?.phase!=='Saving' && !['Retrieving','Saving'].includes(enrichment?.phase) && !$('kept-flow').open && !window.workspaceArray?.workflowBusy() && !window.uiRun?.active() &&
     (inspection.time===0 || inspection.time===inspection.duration),
   selection:()=>({issn:selectedJournal()?.key,scroll:lists.get(selectedJournal()?.key)?.scrollTop || 0}),
   prepare:async(_papers,selection)=>{await refreshWorkspace(selection);},
@@ -1884,10 +1891,10 @@ window.uiWorkspace={
   },
   ready:()=>state.ready,
 };
-window.addEventListener('focus',()=>{if(!configurationActive() && state.ready && !decisionPending && !paperToolsBusy() && !['Retrieving','Saving'].includes(enrichment?.phase))void refreshWorkspace().catch(error=>uiNext.notice(error.message));});
+window.addEventListener('focus',()=>{if(!window.allfoldWorkbench?.presentationChanging?.() && !configurationActive() && state.ready && !decisionPending && !paperToolsBusy() && !['Retrieving','Saving'].includes(enrichment?.phase))void refreshWorkspace().catch(error=>uiNext.notice(error.message));});
 window.addEventListener('pagehide',event=>{cancelRetrieval();if(!event.persisted)paragraphLayout?.destroy();});
 window.workspaceNavigation.register('workspace',{
-  canNavigate:({to,workflowRecovery})=>!navigationBusy() && (!window.workspaceArray?.workflowBusy() || (workflowRecovery===true && to==='workspace')),
+  canNavigate:({to,workflowRecovery})=>!navigationBusy() && (!(window.workspaceArray?.navigationBusy?.() ?? window.workspaceArray?.workflowBusy()) || (workflowRecovery===true && to==='workspace')),
   canEnter:()=>state.ready,
   search:()=>inboxActive()?'inbox':window.workspaceArray?.search() || 'candidates',
   leave:()=>{
