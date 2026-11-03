@@ -348,3 +348,26 @@ def test_app_composition_keeps_workflow_ids_through_import_and_http_export(tmp_p
         summary = json.loads(zipfile.ZipFile(io.BytesIO(response.content)).read('summary.json'))
         assert len(summary['records']) == 2
         assert {r['workflow_id'] for r in summary['records']} == {root['workflow_id']}
+
+
+def test_import_history_keeps_reviewed_attachment_failure_without_unconfirming_parent(tmp_path):
+    paper(tmp_path / 'workspace', 'fixture')
+    store = DiagnosticStore(tmp_path / 'config.yaml', root=tmp_path / 'logs')
+    bridge, lock = Bridge(), BrowserTaskLock()
+    owner = lock.acquire('kept')
+    batch = BatchImportService(bridge, lock, diagnostics=store)
+    batch.start(tmp_path / 'workspace', browser_owner=owner)
+    assert bridge.dispatched.wait(2)
+    result = confirmed()
+    result['pdf']['failures'] = [{'phase':'initial_fetch','code':'http_error','status':403,
+        'url':'https://example.org/?secret=token','message':'sensitive body'}]
+    bridge.future.set_result(result)
+    batch.join()
+    record = store.history()['records'][0]
+    assert record['outcome'] == 'confirmed'
+    assert record['details']['results'][0]['diagnostic'] == {'stage':'attachment','code':'http_error','status':403}
+    assert record['statistics']['warnings'] == 1
+    assert record['details']['pdf_outcome'] == 'unverified'
+    assert 'sensitive body' not in str(record)
+    assert 'secret=token' not in str(record)
+    lock.release(owner)

@@ -22,7 +22,8 @@ _CODES = frozenset({'failed', 'canceled', 'timeout', 'site_restricted', 'verific
     'core_collection_unverified', 'stale_search_results', 'export_range_unverified',
     'download_observer_busy', 'action_expired', 'export_content_unverified', 'unknown_dom_step',
     'dom_step_failed', 'download_interrupted', 'download_cancelled', 'download_incomplete',
-    'download_failed', 'download_ambiguous', 'download_not_attributable'})
+    'download_failed', 'download_ambiguous', 'download_not_attributable',
+    'no_resolver', 'mime_mismatch', 'empty_response', 'network_error', 'redirect_rejected', 'attachment_rejected'})
 
 
 def normalize_browser_diagnostic(value: object) -> dict[str, object] | None:
@@ -40,6 +41,24 @@ def normalize_browser_diagnostic(value: object) -> dict[str, object] | None:
     if isinstance(net_error, str) and re.fullmatch(r'ERR_[A-Z0-9_]{1,80}', net_error):
         result['net_error'] = net_error
     return result or None
+
+
+def first_attachment_diagnostic(value: object) -> dict[str, object] | None:
+    """Retain one reviewed ItemSaver failure; native events retain the bounded sequence.
+
+    A failed transfer is evidence of an attachment problem, not proof of PDF
+    persistence or rejection of an already accepted parent.
+    """
+    if not isinstance(value, list):
+        return None
+    for failure in value[:20]:
+        if not isinstance(failure, dict):
+            continue
+        diagnostic = normalize_browser_diagnostic({
+            'stage':'attachment', 'code':failure.get('code'), 'status':failure.get('status')})
+        if diagnostic and 'code' in diagnostic:
+            return diagnostic
+    return None
 
 
 def format_browser_diagnostic(value: object) -> str:
@@ -69,6 +88,9 @@ def format_browser_diagnostic(value: object) -> str:
               'content_access_blocked': 'ScienceDirect content access blocked (CPE00001)',
               'http_error': 'HTTP request failed', 'load_failed': 'page load failed',
               'document_changed': 'source page changed',
+              'no_resolver': 'no attachment resolver found', 'mime_mismatch': 'attachment MIME type did not match',
+              'empty_response': 'attachment response was empty', 'network_error': 'attachment network request failed',
+              'redirect_rejected': 'attachment redirect was rejected', 'attachment_rejected': 'attachment was rejected',
               'doi_mismatch': 'parent DOI did not match'}
     reason = reasons.get(diagnostic.get('code'), 'operation failed')
     step = f" [{diagnostic['step']}]" if 'step' in diagnostic else ''

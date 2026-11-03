@@ -23,6 +23,7 @@ def batch_history(snapshot):
         'needs_attention' if phase in {'blocked', 'paused'} else 'no_effect')
     counts = dict(confirmed=sum(r.parent_outcome == "confirmed" for r in snapshot.results), exported=stats.exported_parent, no_effect=stats.no_effect, uncertain=stats.uncertain,
         skipped=stats.skipped_blocked, excluded=stats.normal_excluded,
+        warnings=sum(bool(r.diagnostic and r.diagnostic.get("stage") == "attachment") for r in snapshot.results),
         total=len(snapshot.plan.papers) if snapshot.plan else 0, processed=sum(r.outcome != 'skipped' for r in snapshot.results))
     results = [dict(paper_id=str(r.paper_id), outcome={'exported':'confirmed', 'blocked':'needs_attention',
         'skipped':'no_effect'}.get(r.outcome, r.outcome), parent_outcome=r.parent_outcome,

@@ -7,7 +7,7 @@ from uuid import UUID
 import threading
 import secrets
 from allfold.application.history import observe, batch_history
-from allfold.browser_diagnostics import normalize_browser_diagnostic
+from allfold.browser_diagnostics import normalize_browser_diagnostic, first_attachment_diagnostic
 from allfold.application.access import AccessObservation
 from allfold.application.export_attempts import (
     PdfOutcome, _reserve_export_attempt_locked, complete_electron_import, ExportCompletionOutcome,
@@ -211,10 +211,12 @@ class BatchImportService:
                         in_flight = False
                         outcome = {ExportCompletionOutcome.EXPORTED:"exported", ExportCompletionOutcome.NO_EFFECT:"no_effect",
                             ExportCompletionOutcome.UNCERTAIN:"uncertain"}.get(completion.outcome,"blocked")
+                        pdf = result.get("pdf")
+                        attachment_diagnostic = first_attachment_diagnostic(pdf.get("failures")) if isinstance(pdf, dict) else None
                         results.append(BatchPaperResult(paper.paper_id,outcome,completion.message,PdfOutcome.UNVERIFIED,
                             parent_outcome="confirmed" if outcome in {"exported", "blocked"} else outcome,
                             reason_code="write_failed" if outcome == "blocked" else "result_unconfirmed" if outcome == "uncertain" else "no_effect" if outcome == "no_effect" else "pdf_unverified",
-                            diagnostic=normalize_browser_diagnostic(result.get("diagnostic"))))
+                            diagnostic=normalize_browser_diagnostic(result.get("diagnostic")) or attachment_diagnostic))
                         if outcome in {"uncertain", "blocked"}:
                             phase, message = BatchPhase.PAUSED, completion.message
                             break
