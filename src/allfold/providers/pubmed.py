@@ -12,6 +12,7 @@ import httpx
 
 from allfold.config import JournalConfig, normalize_journal_issn
 from allfold.coverage import CoverageComponent, CoverageStatus, CoverageUnit
+from allfold.http_client import create_http_client
 from allfold.models import ProviderWorkEvidence
 from allfold.progress import ActivityKind, ActivityUpdate, ProgressEvent
 from allfold.providers.pubmed_normalize import identity, match_journal, normalize_article, text
@@ -73,13 +74,7 @@ class PubMedClient:
         self._interval = .11 if api_key else .34
         self._last_request = None
         self._progress = progress_callback
-        try:
-            self._http = httpx.Client(timeout=30, transport=transport)
-        except httpx.InvalidURL:
-            if transport is not None:
-                raise
-            # Same invalid environment-proxy handling as the existing clients.
-            self._http = httpx.Client(timeout=30, trust_env=False)
+        self._http = create_http_client(timeout=30, transport=transport)
 
     def __enter__(self):
         return self

@@ -29,6 +29,7 @@ Main starts one Python process. The HTTP origin remains loopback-only on port 18
 | `src/allfold/persistence/` | Paper/Markdown projection, safe file operations, Registry and local state |
 | `src/allfold/integrations/` | Python-side Zotero, credential and Pydoll adapters |
 | `src/allfold/web/` | HTTP projection, validation, composition and Electron WebSocket transport |
+| `src/allfold/http_client.py` | Shared synchronous Python HTTP client, proxy parsing, bypass rules and per-request transport routing; independent of Chromium Session |
 | `electron/src/main.cjs` | Application lifecycle, trusted IPC and native dispatch |
 | `electron/src/browser/` | Native tabs, document identity, navigation and shared Session |
 | `electron/src/auth/` | Task-scoped institution authentication and credentials |

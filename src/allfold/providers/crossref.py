@@ -19,6 +19,7 @@ import httpx
 from pydantic import Field, ValidationError, model_validator
 
 from allfold.config import JournalConfig
+from allfold.http_client import create_http_client
 from allfold.identifiers import normalize_doi
 from allfold.models import (
     Author,
@@ -171,21 +172,11 @@ class CrossrefClient:
         self.mailto = mailto.strip() if mailto and mailto.strip() else None
         self.base_url = base_url.rstrip("/")
         self.timeout = timeout
-        try:
-            self._http_client = httpx.Client(
-                transport=transport,
-                timeout=timeout,
-                follow_redirects=False,
-            )
-        except httpx.InvalidURL:
-            if transport is not None:
-                raise
-            # No URL configuration is passed here; InvalidURL comes from env proxies.
-            self._http_client = httpx.Client(
-                timeout=timeout,
-                follow_redirects=False,
-                trust_env=False,
-            )
+        self._http_client = create_http_client(
+            transport=transport,
+            timeout=timeout,
+            follow_redirects=False,
+        )
         self._sleep = sleep
         self._pacing_state = _CrossrefPacingState()
 

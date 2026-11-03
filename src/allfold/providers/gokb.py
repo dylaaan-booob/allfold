@@ -15,6 +15,7 @@ from typing import Literal
 import httpx
 
 from allfold.config import JournalConfig, normalize_journal_issn
+from allfold.http_client import create_http_client
 from allfold.persistence.resource_cache import read_snapshot, write_snapshot
 
 
@@ -168,7 +169,7 @@ class GokbClient:
         """Fetch every local ISSN/eISSN and every linked Current TIPP before return."""
         started = time.monotonic()
         try:
-            with httpx.Client(transport=self.transport, timeout=GOKB_TIMEOUT, follow_redirects=False) as client:
+            with create_http_client(transport=self.transport, timeout=GOKB_TIMEOUT, follow_redirects=False) as client:
                 journals = {}
                 for identifier in journal.identifiers:
                     # A bare identifier value matches any namespace: print ISSN

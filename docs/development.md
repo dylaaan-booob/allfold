@@ -59,6 +59,10 @@ The retained suite covers data preservation, path/identity safety, authority, ca
 
 CI prepares sources and runs offline checks on macOS. It does not publish or use real credentials. A local pass does not prove that GitHub Actions ran, that the UI is visually correct or that real institutional access and Zotero/PDF saving work. Changes to those paths need relevant manual acceptance with explicit browser authorization.
 
+Python HTTPX callers share the [HTTP client and proxy layer](http.md). Its focused
+tests cover isolated request routing, TLS, transport lifecycle and cache failures;
+Chromium authentication remains a separate manual acceptance boundary.
+
 ## Troubleshooting
 
 - Missing `.venv`, UI, vendor or Runtime: complete setup and inspect the failing step.

@@ -13,6 +13,7 @@ from urllib.parse import urlsplit
 
 import httpx
 
+from allfold.http_client import create_http_client
 from allfold.persistence.resource_cache import read_snapshot, write_snapshot
 from allfold.url_safety import normalize_public_http_url
 
@@ -137,7 +138,7 @@ def fetch_carsi_directory(*, transport: httpx.BaseTransport | None = None) -> tu
     """One bounded public GET. A failure never returns an empty catalog."""
     started = time.monotonic()
     try:
-        with httpx.Client(transport=transport, timeout=CARSI_TIMEOUT, follow_redirects=False) as client:
+        with create_http_client(transport=transport, timeout=CARSI_TIMEOUT, follow_redirects=False) as client:
             with client.stream("GET", CARSI_DIRECTORY_URL, headers={
                 "Accept": "text/html", "User-Agent": "allfold/0.1.0 (public CARSI catalog)",
             }) as response:

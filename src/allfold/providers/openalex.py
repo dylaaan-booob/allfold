@@ -18,6 +18,7 @@ import httpx
 from pydantic import ValidationError, field_validator
 
 from allfold.config import JournalConfig, normalize_journal_issn
+from allfold.http_client import create_http_client
 from allfold.url_safety import normalize_public_http_url
 from allfold.coverage import (
     CoverageComponent,
@@ -214,21 +215,11 @@ class OpenAlexClient:
         self.api_key = api_key.strip() if api_key and api_key.strip() else None
         self.base_url = base_url.rstrip("/")
         self.timeout = timeout
-        try:
-            self._http_client = httpx.Client(
-                transport=transport,
-                timeout=timeout,
-                follow_redirects=True,
-            )
-        except httpx.InvalidURL:
-            if transport is not None:
-                raise
-            # No URL configuration is passed here; InvalidURL comes from env proxies.
-            self._http_client = httpx.Client(
-                timeout=timeout,
-                follow_redirects=True,
-                trust_env=False,
-            )
+        self._http_client = create_http_client(
+            transport=transport,
+            timeout=timeout,
+            follow_redirects=True,
+        )
         self._sleep = sleep
         self._terminal_failure: OpenAlexRequestError | None = None
 

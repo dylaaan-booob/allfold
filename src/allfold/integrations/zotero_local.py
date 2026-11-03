@@ -10,6 +10,8 @@ import logging
 
 import httpx
 
+from allfold.http_client import create_http_client
+
 
 LOCAL_API_BASE = "http://localhost:23119/api"
 _sensitive_local_read = ContextVar("zotero_sensitive_local_read", default=False)
@@ -75,10 +77,11 @@ class ZoteroLocalClient:
         timeout: float = 10.0,
         transport: httpx.BaseTransport | None = None,
     ) -> None:
-        self._http = httpx.Client(
+        self._http = create_http_client(
             headers={"Zotero-API-Version": "3", "Accept": "application/json"},
             timeout=timeout,
             transport=transport,
+            proxy_policy="direct",
             trust_env=False,
             follow_redirects=False,
         )
