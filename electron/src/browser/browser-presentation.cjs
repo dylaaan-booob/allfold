@@ -46,10 +46,10 @@ class BrowserPresentation {
   apply() {
     if(!this.host || this.host.isDestroyed() || !this.visible || this.suspended || !this.bounds
       || !this.selected || this.selected.view.webContents.isDestroyed()){this.detach();return;}
-    const [width,height]=this.host.getContentSize(),rect=this.bounds;
-    // Renderer CSS pixels and Electron content coordinates are logical pixels; no DPR scaling.
-    const x=Math.ceil(rect.x),y=Math.ceil(rect.y);
-    const right=Math.min(width,Math.floor(rect.x+rect.width)),bottom=Math.min(height,Math.floor(rect.y+rect.height));
+    const [width,height]=this.host.getContentSize(),rect=this.bounds,zoom=this.host.webContents.getZoomFactor();
+    // Renderer bounds are CSS pixels; host page zoom converts them to DIP without DPR scaling.
+    const x=Math.ceil(rect.x*zoom),y=Math.ceil(rect.y*zoom);
+    const right=Math.min(width,Math.floor((rect.x+rect.width)*zoom)),bottom=Math.min(height,Math.floor((rect.y+rect.height)*zoom));
     if(x>=right || y>=bottom){this.detach();return;}
     const tab=this.selected;
     tab.view.setBounds({x,y,width:right-x,height:bottom-y});

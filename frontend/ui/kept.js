@@ -432,7 +432,7 @@ async function restoreWorkflow() {
   try {
     const state=await uiNext.request('/api/kept-workflow/state');if(epoch!==workspaceEpoch)return false;
     const useInline=presentationInline ?? (window.allfoldUIPreferences?.fullscreenDisabled()===true);
-    if(state.active && useInline && recovering){status='kept';ui=states.kept;}
+    if(state.active && useInline && recovering && !$('run-view').open && !window.uiRun?.active())openKept();
     const restored=state.active && (useInline || (!$('run-view').open && !window.uiRun?.active() && openKept()));
     await acceptState(state,{restored:true,open:Boolean(restored),epoch});
     if(state.active || state.navigation)void pollWorkflow();

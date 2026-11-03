@@ -29,6 +29,7 @@ async function settle(){for(let i=0;i<35;i++)await Promise.resolve();}
 async function taskUI(script,{inline=true,request,ready=false,reduced=false,archiveDisabled=false,layout='array',page='run',initialLink=null,bridgeReady=true}={}){
   const elements=new Map(),get=id=>{const find=node=>node.id===id?node:node.children.map(find).find(Boolean);for(const node of elements.values()){const found=find(node);if(found)return found;}if(!elements.has(id)){const node=new Element();node.id=id;elements.set(id,node);}return elements.get(id);};
   get('allfold-pane').append(get('selected-view'));get('selected-view').append(get('kept-view'));
+  get('kept-view').hidden=get('kept-view').inert=layout!=='array';get('kept-view').append(get('array-import-profile'));
   get('selected-view').dataset.workspaceLayout=layout;get('workspace-layout').parentElement=get('array-layout-controls');
   get('s-run').append(Object.assign(new Element(),{className:'s-run-body'}));get('run-view').querySelector=selector=>selector==='.run-status-area'?get('run-status-area'):new Element();get('run-stage-layer').append(get('run-title'));get('run-stage-layer').append(get('run-status-area'));get('run-view').append(get('run-stage-layer'));get('run-status-area').append(get('run-wos-cancel'));
   get('kept-flow').append(get('kept-flow-actions'));get('kept-flow-actions').append(get('kept-flow-gate'),get('kept-leave'),get('kept-skip-slot'));get('kept-flow-gate').append(get('kept-gate-message'),get('kept-manual-services'),get('kept-continue'));
@@ -40,7 +41,7 @@ async function taskUI(script,{inline=true,request,ready=false,reduced=false,arch
   window.allfoldUIPreferences={fullscreenDisabled:()=>inline,archiveDisabled:()=>archiveDisabled};window.uiWorkspace={ready:()=>ready,refresh:async()=>{refreshes++;}};
   window.uiRunPage={providerName:id=>id,open:()=>{opens++;currentPage='run';},report:(...args)=>calls.push(['report',...args]),canRun:()=>true,updateButtons(){},refresh:async()=>{refreshes++;}};
   window.inboxRun={available:()=>true,selection:()=>({}),prepare:async()=>{prepares++;}};
-  window.uiNextInitialLink=initialLink;window.inboxKept={available:()=>bridgeReady,busy:()=>false,papers:()=>entries,candidates:()=>entries,data:()=>data,openReader:()=>true,closeReader:()=>true,openArchivePaper:id=>window.workspaceArray?.openPaper(id)||false,setLayout:value=>{get('selected-view').dataset.workspaceLayout=value;get('kept-view').hidden=value!=='array';return true;},suspend(){},exported(){}};
+  window.uiNextInitialLink=initialLink;window.inboxKept={available:()=>bridgeReady,busy:()=>false,papers:()=>entries,candidates:()=>entries,data:()=>data,openReader:()=>true,closeReader:()=>true,openArchivePaper:id=>window.workspaceArray?.openPaper(id)||false,setLayout:value=>{get('selected-view').dataset.workspaceLayout=value;get('kept-view').hidden=get('kept-view').inert=value!=='array';return true;},suspend(){},exported(){}};
   window.workspaceNavigation={current:()=>currentPage,go:page=>{currentPage=page;return true;},refresh(){}};
   window.allfoldWorkbench={showTaskPage:async identity=>{presentations.push(identity);return true;}};
   const uiNext={data:{import_token:'token'},notice:message=>calls.push(['notice',message]),request:async(url,body)=>{calls.push([String(url),body]);return request(String(url),body);}};

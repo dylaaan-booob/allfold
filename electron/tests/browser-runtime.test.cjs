@@ -37,6 +37,7 @@ function fixture(t) {
     setWindowOpenHandler(fn){this.popup=fn;}
     setUserAgent(ua){this.ua=ua;}
     getURL(){return this.url;}
+    getZoomFactor(){return this.zoomFactor ?? 1;}
     getTitle(){return this.url;}
     isLoading(){return false;}
     isLoadingMainFrame(){return !!this.loading;}
@@ -108,6 +109,20 @@ test('main-window Browser uses measured bounds, preserves pages when suspended a
   assert.equal(host.children.size,0);assert.equal(browser.tabs.size,1);
   assert.equal(browser.setPresentation({sequence:0,visible:false,suspended:false,bounds:null}),true);
   browser.close();assert.equal(host.destroyed,undefined);
+});
+test('Browser converts host-zoomed CSS bounds to DIP before clipping to native content',async t=>{
+  const {BrowserRuntime,host}=fixture(t),browser=new BrowserRuntime({hostWindow:host});
+  t.after(()=>browser.close());await browser.show();
+  const tab=browser.selected,bounds={x:10.2,y:156.2,width:899.6,height:650.5};
+  browser.setPresentation({sequence:1,visible:true,suspended:false,bounds});
+  assert.deepEqual(tab.view.bounds,{x:11,y:157,width:898,height:649});
+  host.webContents.zoomFactor=1.5;
+  browser.setPresentation({sequence:2,visible:true,suspended:false,bounds});
+  assert.deepEqual(tab.view.bounds,{x:16,y:235,width:1184,height:615});
+  assert.equal(host.children.has(tab.view),true);
+  assert.equal(tab.view.webContents.focused,undefined);
+  browser.setPresentation({sequence:1,visible:false,suspended:false,bounds:null});
+  assert.equal(host.children.has(tab.view),true);
 });
 test('Browser rejects malformed commands and layout rectangles before changing native presentation',async t=>{
   const {BrowserRuntime,host}=fixture(t),browser=new BrowserRuntime({hostWindow:host});t.after(()=>browser.close());await browser.show();

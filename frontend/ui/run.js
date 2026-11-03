@@ -16,7 +16,7 @@ dialog.querySelector('.run-status-area').append(taskPageButton);
 taskPageButton.addEventListener('click',async()=>{
   if(!active)return;
   try {
-    if(!await window.allfoldWorkbench?.showTaskPage({workflowId:active.taskID,taskId:active.taskID}))uiNext.notice('当前任务尚无可查看的页面。');
+    if(!await window.allfoldWorkbench?.showTaskPage({workflowId:active.taskID}))uiNext.notice('当前任务尚无可查看的页面。');
   }catch(error){uiNext.notice(error.message);}
 });
 function present(run) {

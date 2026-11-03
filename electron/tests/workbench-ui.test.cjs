@@ -50,6 +50,16 @@ test('Browser presentation preserves business DOM and suspends native content fo
   assert.equal(reader.scrollTop,230);
   assert.equal(input.value,'unsaved');assert.equal(f.document.activeElement,input);
 });
+test('Browser body resize after host zoom publishes freshly measured CSS bounds',async()=>{
+  const f=fixture();await f.window.allfoldWorkbench.show();f.flush();
+  const previous=f.calls.filter(call=>call.sequence).at(-1);
+  f.document.getElementById('browser-body').getBoundingClientRect=()=>({left:0,top:120,width:480,height:400});
+  f.resize();f.flush();
+  const current=f.calls.filter(call=>call.sequence).at(-1);
+  assert.ok(current.sequence>previous.sequence);
+  assert.deepEqual({...current.bounds},{x:0,y:120,width:480,height:400});
+  assert.equal(current.visible,true);
+});
 test('task handoff selects its existing active Page and leaves fullscreen flow open for return',async()=>{
   const f=fixture(),flow=f.document.getElementById('kept-flow');flow.open=true;
   const association=(workflow_id,task_id,role,active)=>({workflow_id,task_id,role,active});
@@ -63,6 +73,20 @@ test('task handoff selects its existing active Page and leaves fullscreen flow o
   assert.equal(flow.open,true);assert.equal(f.calls.at(-1).suspended,false);
   f.window.allfoldWorkbench.hide();f.flush();assert.equal(flow.open,true);
   assert.equal(await f.window.allfoldWorkbench.showTaskPage({workflowId:'missing'}),false);
+});
+test('WoS handoff finds a CARSI child task by owning Run workflow and precise Kept tasks stay scoped',async()=>{
+  const f=fixture();
+  f.setState({selected:4,taskPageId:8,tabs:[
+    {id:4,association:null},
+    {id:8,association:{workflow_id:'run-1',task_id:'prepare-2',parent_task_id:'run-1',role:'carsi-portal',active:true}},
+    {id:9,association:{workflow_id:'run-other',task_id:'prepare-other',role:'carsi-portal',active:true}},
+    {id:10,association:{workflow_id:'kept-1',task_id:'prepare-3',role:'service-resource',active:false}},
+    {id:11,association:{workflow_id:'kept-1',task_id:'import-4',role:'import',active:true}}]});
+  assert.equal(await f.window.allfoldWorkbench.showTaskPage({workflowId:'run-1'}),true);
+  assert.equal(f.calls.filter(call=>call.action==='select').at(-1).id,8);
+  assert.equal(await f.window.allfoldWorkbench.showTaskPage({workflowId:'kept-1',taskId:'prepare-3'}),true);
+  assert.equal(f.calls.filter(call=>call.action==='select').at(-1).id,10);
+  assert.equal(f.calls.some(call=>call.action==='new'),false);
 });
 test('tabs and Services expose the same Page IDs, isolate scope and update a reused ImportPage',async()=>{
   const f=fixture({services:{scope:{scope_id:'scope-a'},services:[{id:'service-a',name:'Library',access_method:'manual'}]}});
