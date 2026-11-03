@@ -79,7 +79,7 @@ function queryFixture(stages,{cancel=false,authError=false,advance=()=>{}}={}) {
       {signal:controller.signal,progress:value=>progress.push(value)})};
 }
 const advanced='https://www.webofscience.com/wos/woscc/advanced-search';
-function fixture(t,{attributable=true,hold=false,challenge=false,domError=null,query=false,verification=false,cancelVerification=false}={}) {
+function fixture(t,{attributable=true,hold=false,challenge=false,domError=null,query=false,verification=false,cancelVerification=false,deferExportMenu=false,dialogInitiallyClosed=false}={}) {
   const root=fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(),'allfold-wos-test-')));
   t.after(()=>fs.rmSync(root,{force:true,recursive:true}));
   const filename=path.join(root,'allfold-wos','a'.repeat(32),'b'.repeat(32)+'.txt');
@@ -94,14 +94,21 @@ function fixture(t,{attributable=true,hold=false,challenge=false,domError=null,q
   item.getURLChain=()=>['https://www.webofscience.com/native-export'];
   item.cancel=()=>{item.cancelled=true;};
   let challengeActive=challenge;
+  let exportMenuReady=!deferExportMenu;
+  let dialogOpen=!dialogInitiallyClosed;
   const wc={getURL:()=>doc.url,isLoadingMainFrame:()=>false,async executeJavaScript(code){
     const [op,args]=JSON.parse(code.slice(code.lastIndexOf('(...')+4,-1));ops.push(op);
     if(op==='search')doc.url='https://www.webofscience.com/wos/woscc/summary/test';
     if(op==='result')return {total:94};
-    if(op==='plainText')authentication?.open(verification);
+    if(op==='controlReady' && args.control==='exportMenu') {
+      if(!exportMenuReady){exportMenuReady=true;return {ready:false};}
+      return {ready:true};
+    }
+    if(op==='exportMenu' && !exportMenuReady)return {error:'control_not_unique'};
+    if(op==='plainText'){dialogOpen=true;authentication?.open(verification);}
     if(op==='verification')return {ready:!challengeActive};
     if(op==='export' && domError)return {error:domError};
-    if(op==='dialog')return {ready:true,limit:1000};
+    if(op==='dialog')return {ready:dialogOpen,limit:1000};
     if(op==='export') {
       ops.push({exportRange:args});
       partition.emit('will-download',{}, {cancel(){throw Error('unrelated download intercepted');}}, {});
@@ -122,7 +129,7 @@ function fixture(t,{attributable=true,hold=false,challenge=false,domError=null,q
   const context=vm.createContext({module:{exports:{}},Date,URL,AbortSignal,setTimeout,clearTimeout,
     require:name=>name==='./page-actions.cjs'?{pageStep:function(){},SELECTORS:{}}:
       name==='../browser/browser-task.cjs'?{...require('../src/browser/browser-task.cjs'),async pause(){
-        if(authentication) {
+        if(authentication && verification) {
           if(!authentication.waitingForCode)throw Error('Unexpected authentication wait on business dialog');
           if(cancelVerification)controller.abort();else authentication.complete();
         }
@@ -164,6 +171,20 @@ test('WoS query and consecutive exports keep the prepared page/document while an
   const before=f.ops.length;
   await assert.rejects(f.run({...identity,service_scope:{...identity.service_scope,scope_id:'d'.repeat(64)}}),/document_changed/);
   assert.equal(f.ops.length,before);
+  assert.equal(f.browser.partition.listenerCount('will-download'),0);
+});
+test('WoS waits for a result toolbar that mounts after the result count, then opens export once',async t=>{
+  const f=fixture(t,{query:true,deferExportMenu:true});
+  const result=await f.runQuery();
+  assert.equal(result.total,94);
+  assert.equal(result.page_id,71);
+  assert.equal(f.ops.filter(op=>op==='exportMenu').length,1);
+});
+test('a later export waits for the toolbar before reopening its closed dialog',async t=>{
+  const f=fixture(t,{deferExportMenu:true,dialogInitiallyClosed:true});
+  assert.equal((await f.run()).filename,f.filename);
+  assert.equal(f.ops.filter(op=>op==='exportMenu').length,1);
+  assert.equal(f.ops.filter(op=>op==='export').length,1);
   assert.equal(f.browser.partition.listenerCount('will-download'),0);
 });
 test('WoS refuses an unattributable completed download and a replaced document',async t=>{

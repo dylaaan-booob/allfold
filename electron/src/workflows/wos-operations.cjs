@@ -101,6 +101,7 @@ async function wosQueryWithinDeadline(browser,data,{signal,progress},deadline) {
   if(!Number.isSafeInteger(result.total) || result.total<0)throw Error('invalid_result_count');
   let batchLimit=1000;
   if(result.total) {
+    await run('controlReady',{control:'exportMenu'});
     await run('exportMenu');
     await run('controlReady',{control:'plainText'});
     await run('plainText');
@@ -130,6 +131,7 @@ async function wosExport(browser,data,{signal,progress}) {
   checkCanceled(signal);
   let dialog=await page(browser,doc,'dialog',{});
   if(!dialog.ready) {
+    await step(browser,tab,'controlReady',{control:'exportMenu'},signal,progress);
     await step(browser,tab,'exportMenu',{},signal,progress);
     await step(browser,tab,'controlReady',{control:'plainText'},signal,progress);
     await step(browser,tab,'plainText',{},signal,progress);
