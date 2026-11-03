@@ -231,7 +231,7 @@ async function startPython(config,cdpURL) {
 async function connect() {
   socket=new WebSocket(base.replace('http:','ws:')+'/api/electron/ws');
   await new Promise((resolve,reject)=>{
-    socket.addEventListener('open',()=>send({type:'hello',token}),{once:true});
+    socket.addEventListener('open',()=>send({type:'hello',token,diagnostics_status:diagnosticsStatus()}),{once:true});
     socket.addEventListener('error',()=>reject(Error('Electron bridge connection failed')),{once:true});
     socket.addEventListener('message',event=>{
       try {

@@ -11,10 +11,12 @@ test('authenticated bridge ready installs saved detail level before manual brows
     close(){throw Error('unexpected close');}
   }
   const context=vm.createContext({WebSocket:Socket,base:'http://127.0.0.1:18767',token:'fixture',bridgeReady:false,
+    diagnosticsStatus:()=>({available:true,incomplete:false,write_failures:0}),
     setLogLevel:value=>levels.push(value),send:value=>messages.push(value)});
   vm.runInContext(source.slice(source.indexOf('async function connect('),source.indexOf('async function main(')),context);
   const connecting=context.connect();Socket.current.emit('open');
   assert.equal(messages[0].type,'hello');assert.equal(messages[0].token,'fixture');
+  assert.equal(messages[0].diagnostics_status?.available,true);
   Socket.current.emit('message',{data:JSON.stringify({type:'ready',log_level:'warn'})});await connecting;
   assert.deepEqual(levels,['warn']);assert.equal(context.bridgeReady,true);
 });

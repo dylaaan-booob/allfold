@@ -43,6 +43,52 @@ def test_import_history_waits_for_settlement_and_preserves_parent_pdf(tmp_path, 
     lock.release(owner)
 
 
+@pytest.mark.parametrize('available', [True, False])
+def test_authenticated_handshake_reports_native_health_before_any_task(tmp_path, available):
+    from fastapi import FastAPI
+    from fastapi.testclient import TestClient
+    from allfold.web.electron_bridge import ElectronBridge
+    store = DiagnosticStore(tmp_path / 'config.yaml', root=tmp_path / 'logs')
+    bridge = ElectronBridge('secret', 'testserver', diagnostics=store)
+    app = FastAPI()
+    app.websocket('/ws')(bridge.connect)
+    app.get('/history')(store.history)
+    with TestClient(app) as client:
+        with client.websocket_connect('/ws') as socket:
+            socket.send_json({'token': 'secret', 'diagnostics_status': {
+                'available': available, 'incomplete': not available,
+                'rotations': 0, 'write_failures': 0 if available else 1, 'omitted': 0,
+                'message': 'PRIVATE_SENTINEL',
+            }})
+            assert socket.receive_json()['type'] == 'ready'
+            history = client.get('/history').json()
+            assert history['records'] == []
+            native = history['integrity']['native']
+            assert native['status_known'] is True
+            assert native['available'] is available
+            assert native['incomplete'] is not available
+            assert 'PRIVATE_SENTINEL' not in str(history)
+
+
+def test_invalid_handshake_cannot_replace_known_native_health(tmp_path):
+    from fastapi import FastAPI
+    from fastapi.testclient import TestClient
+    from starlette.websockets import WebSocketDisconnect
+    from allfold.web.electron_bridge import ElectronBridge
+    store = DiagnosticStore(tmp_path / 'config.yaml', root=tmp_path / 'logs')
+    store.native_status({'available': False, 'incomplete': True, 'write_failures': 1})
+    bridge = ElectronBridge('secret', 'testserver', diagnostics=store)
+    app = FastAPI()
+    app.websocket('/ws')(bridge.connect)
+    with TestClient(app) as client:
+        with client.websocket_connect('/ws') as socket:
+            socket.send_json({'token': 'wrong', 'diagnostics_status': {'available': True, 'incomplete': False}})
+            with pytest.raises(WebSocketDisconnect):
+                socket.receive_json()
+    assert store.history()['integrity']['native']['available'] is False
+    assert store.history()['integrity']['native']['write_failures'] == 1
+
+
 def test_bridge_logs_actual_envelope_and_safe_native_result(tmp_path):
     import json, zipfile, io
     from fastapi import FastAPI

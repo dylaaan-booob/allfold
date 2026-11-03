@@ -55,6 +55,7 @@ class ElectronBridge:
                 await socket.close(code=1008)
                 return
             self._socket, self._loop = socket, asyncio.get_running_loop()
+            observe(self.diagnostics, "native_status", hello.get("diagnostics_status"))
             await socket.send_json({"type": "ready", "log_level": getattr(self.diagnostics, "level", "info")})
             while True:
                 message = await socket.receive_json()
