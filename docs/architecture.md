@@ -31,7 +31,7 @@ Main starts one Python process. The HTTP origin remains loopback-only on port 18
 | `src/allfold/web/` | HTTP projection, validation, composition and Electron WebSocket transport |
 | `src/allfold/http_client.py` | Shared synchronous Python HTTP client, proxy parsing, bypass rules and per-request transport routing; independent of Chromium Session |
 | `electron/src/main.cjs` | Application lifecycle, trusted IPC and native dispatch |
-| `electron/src/browser/` | Native tabs, document identity, navigation and shared Session |
+| `electron/src/browser/` | Native pages, main-window presentation, document identity, navigation and shared Session |
 | `electron/src/auth/` | Task-scoped institution authentication and credentials |
 | `electron/src/workflows/` | Prepare, Covers and WoS native page operations |
 | `electron/src/zotero/` | Translation/saving VMs and host document/HTTP adapters |
@@ -67,7 +67,17 @@ safety checks and marks surviving history when Workspace is reset. See
 
 Prepare's CARSI Portal is shared and unassigned; resource and observed target pages carry the saved Service, and popups inherit their attributable source. Query and Export validate that the original prepared page still has the expected scoped Service/revisions, in addition to the existing document checks. Import replaces the reused ImportPage's association for each Paper, including an explicit unassigned Service. Covers and Enrich remain temporary auxiliary pages. Generic Manual Service URL opening retains its existing behavior.
 
-`bindTaskPage` and explicit `navigate(..., {tab})` control task targets. `select` only presents a page in the existing Browser window; task navigation and WoS handoff do not select tabs. New task pages are registered without replacing an existing selection, and remain available for manual login or inspection through the existing tabs. Service associations confer no document, task or institution-credential authority. Page/frame identity, task signals, navigation recovery and native-save settlement remain separate checks.
+`bindTaskPage` and explicit `navigate(..., {tab})` control task targets. `select` presents a page in the main-window Browser pane; task navigation and WoS handoff do not select tabs. Background creation does not select even the first page, open Browser or focus a webpage. New task pages remain available for explicit manual login or inspection through the existing tabs. Service associations confer no document, task or institution-credential authority. Page/frame identity, task signals, navigation recovery and native-save settlement remain separate checks.
+
+## Workbench and task presentation
+
+The main Window contains Chrome, a flexible Workbench Content region and Status. Content switches between the existing Allfold pane and a Browser pane without calling business workspace navigation or recreating business pages. Workspace, Run, Journals and Settings retain their own entry/exit and save guards. Container measurements own available height; the Browser toolbar, tabs and Services occupy trusted DOM space outside the native webpage rectangle.
+
+BrowserRuntime owns physical pages, task associations and their shared Session. Browser Presentation owns attaching, showing, hiding, sizing and explicitly focusing a selected WebContentsView on the main window. The trusted renderer reports its measured webpage body in Electron logical pixels through a restricted, sequenced IPC. Main validates sender, main frame, command, Page ID and rectangle against the host content bounds. Hiding Browser or suspending it for a trusted dialog does not destroy pages or cancel operations. Fullscreen task surfaces can be suspended for explicit Browser interaction and resumed without restarting their player or changing task state.
+
+Tabs and Services project the same Page IDs. A Service group is keyed by scope ID and saved Service ID; saved names supply labels. Unassigned/shared pages retain their actual roles and source-page relationships. Grouping does not infer institutions from URLs or become another Service mapping. User panel width and collapse preferences are separate from a window-constrained effective width.
+
+Archive availability and fullscreen task presentation are local UI preferences, outside YAML Save and business SQLite. Archive defaults disabled while its existing resources and layout preference remain available. Legacy Paper links resolve against the current ARRAY candidate/kept collection or report a missing Paper. Run and Kept keep one business coordinator each: polling, workflow identity/generation, Continue/Cancel permissions, terminal acknowledgement, result writes and refresh do not depend on a visual player. The presentation choice is captured at start or restore; changing the preference does not restart work. Inline mode allows safe workspace navigation and does not force a page change at completion.
 
 ## Resources and third-party code
 
