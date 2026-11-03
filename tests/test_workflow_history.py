@@ -214,7 +214,7 @@ def test_history_keeps_accepted_parent_distinct_from_conflicted_paper(tmp_path):
     assert record['statistics']['confirmed'] == 1
     assert record['statistics']['exported'] == 0
     assert record['details']['results'][0]['parent_outcome'] == 'confirmed'
-    assert record['details']['results'][0]['reason'] == 'workspace_changed'
+    assert record['details']['results'][0]['reason'] == 'write_failed'
     lock.release(owner)
 
 

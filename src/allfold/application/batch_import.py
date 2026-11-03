@@ -213,7 +213,7 @@ class BatchImportService:
                             ExportCompletionOutcome.UNCERTAIN:"uncertain"}.get(completion.outcome,"blocked")
                         results.append(BatchPaperResult(paper.paper_id,outcome,completion.message,PdfOutcome.UNVERIFIED,
                             parent_outcome="confirmed" if outcome in {"exported", "blocked"} else outcome,
-                            reason_code="workspace_changed" if outcome == "blocked" else "result_unconfirmed" if outcome == "uncertain" else "no_effect" if outcome == "no_effect" else "pdf_unverified",
+                            reason_code="write_failed" if outcome == "blocked" else "result_unconfirmed" if outcome == "uncertain" else "no_effect" if outcome == "no_effect" else "pdf_unverified",
                             diagnostic=normalize_browser_diagnostic(result.get("diagnostic"))))
                         if outcome in {"uncertain", "blocked"}:
                             phase, message = BatchPhase.PAUSED, completion.message
