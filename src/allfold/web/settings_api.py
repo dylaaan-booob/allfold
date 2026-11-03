@@ -79,6 +79,19 @@ def install_settings_api(app, config_path, csrf_token, *, workspace_health,
         state["cover_search"] = app.state.journal_cover_search.state()
         return json_response(state)
 
+    @app.get('/api/ui-next/browser-services')
+    def browser_services():
+        from allfold.application.browser_services import BrowserServiceSnapshot
+        from allfold.persistence.safe_write import ContentChangedError
+        try:
+            snapshot = BrowserServiceSnapshot.read(config_path)
+            return json_response({'scope': snapshot.scope, 'services': [
+                {'id': service.id, 'name': service.name,
+                 'access_method': service.access_method, 'access_url': service.access_url}
+                for service in snapshot.services]})
+        except (ConfigurationError, ContentChangedError, ValueError, OSError):
+            return settings_error('Saved Browser Services are unavailable; check Settings.', 409)
+
     @app.get("/api/ui-next/settings/journals/search")
     def lookup_journals(q: str):
         disk = load_settings(config_path)

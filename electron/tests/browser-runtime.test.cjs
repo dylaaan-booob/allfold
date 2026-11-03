@@ -44,7 +44,8 @@ function fixture(t) {
     isCrashed(){return false;}
     stop(){this.stopped=true;}
     reload(){this.reloads=(this.reloads || 0)+1;this.emit('did-start-navigation',{},this.url || 'https://example.org/',false,true);}
-    send(){}
+    send(channel,value){this.messages ||= [];this.messages.push({channel,value});}
+    focus(){this.focused=(this.focused || 0)+1;}
     async loadURL(url){this.emit('did-start-navigation',{},url,false,true);this.url=url;this.mainFrame.url=url;this.emit('did-navigate',{},url,200);this.emit('did-frame-navigate',{},url,200);this.emit('did-finish-load');}
     async executeJavaScriptInIsolatedWorld(){return {html:this.html || '<title>Article</title>',title:this.title || 'Article',url:this.url,type:'text/html'};}
     close(){this.destroyed=true;this.emit('destroyed');}
@@ -59,7 +60,7 @@ function fixture(t) {
     hide(){this.visible=false;}
     destroy(){this.destroyed=true;}
   }
-  class View {constructor(options){this.options=options;this.webContents=options.webContents || new Contents();}setBounds(bounds){this.bounds=bounds;}}
+  class View {constructor(options){this.options=options;this.webContents=options.webContents || new Contents();}setBounds(bounds){this.bounds=bounds;}setVisible(value){this.visible=value;}}
   const electron={app:{getName:()=> 'allfold-desktop',getPath:()=>profile},session:{fromPartition:()=>partition},
     webFrameMain:{fromFrameToken:(_process,token)=>frames.get(token) || null},
     BrowserWindow:Window,WebContentsView:View,Menu:{buildFromTemplate:items=>({popup(){menus.push(items);}})},
@@ -72,8 +73,51 @@ function fixture(t) {
     }}:name==='../shared/logging.cjs'?{...require('../src/shared/logging.cjs'),
       log:(level,event,details)=>logs.push({level,event,...details})}:hostRequire(name)});
   vm.runInContext(fs.readFileSync(path.join(__dirname,'../src/browser/browser-runtime.cjs'),'utf8'),context);
-  return {...context.module.exports,partition,handlers,logs,menus};
+  return {...context.module.exports,partition,handlers,logs,menus,host:new Window()};
 }
+test('a first background page never selects, presents or focuses the Browser',async t=>{
+  const {BrowserRuntime,host}=fixture(t),browser=new BrowserRuntime({hostWindow:host});
+  t.after(()=>browser.close());await browser.ready;
+  const tab=browser.createTab({present:false});
+  assert.equal(browser.state().selected,null);
+  assert.equal(host.children.size,0);
+  assert.equal(tab.view.webContents.focused,undefined);
+  assert.equal(host.webContents.messages?.some(message=>message.channel==='browser:presentation'),false);
+  assert.equal(host.destroyed,undefined);
+});
+test('main-window Browser uses measured bounds, preserves pages when suspended and ignores stale layout',async t=>{
+  const {BrowserRuntime,host}=fixture(t),browser=new BrowserRuntime({hostWindow:host});
+  t.after(()=>browser.close());await browser.show();
+  const tab=browser.selected;
+  browser.setPresentation({sequence:1,visible:true,suspended:false,bounds:{x:10.2,y:156.2,width:899.6,height:650.5}});
+  assert.deepEqual(tab.view.bounds,{x:11,y:157,width:898,height:649});
+  assert.equal(host.children.has(tab.view),true);
+  await browser.command({action:'select',id:tab.id});
+  assert.equal(tab.view.webContents.focused,1);
+  browser.setPresentation({sequence:3,visible:true,suspended:true,bounds:{x:11,y:157,width:898,height:649}});
+  assert.equal(host.children.size,0);assert.equal(browser.tabs.size,1);
+  assert.equal(browser.setPresentation({sequence:2,visible:true,suspended:false,bounds:{x:0,y:0,width:1200,height:850}}),false);
+  assert.equal(host.children.size,0);
+  browser.setPresentation({sequence:4,visible:true,suspended:false,bounds:{x:11,y:157,width:898,height:649}});
+  assert.equal(host.children.has(tab.view),true);assert.equal(tab.view.webContents.focused,1);
+  host.emit('resize');assert.equal(host.children.size,0);
+  assert.equal(host.webContents.messages.at(-1).channel,'browser:layout');
+  browser.setPresentation({sequence:5,visible:true,suspended:false,bounds:{x:0,y:160,width:1400,height:900}});
+  assert.deepEqual(tab.view.bounds,{x:0,y:160,width:1200,height:690});
+  host.webContents.emit('did-start-navigation',{},'http://127.0.0.1:18767/',false,true);
+  assert.equal(host.children.size,0);assert.equal(browser.tabs.size,1);
+  assert.equal(browser.setPresentation({sequence:0,visible:false,suspended:false,bounds:null}),true);
+  browser.close();assert.equal(host.destroyed,undefined);
+});
+test('Browser rejects malformed commands and layout rectangles before changing native presentation',async t=>{
+  const {BrowserRuntime,host}=fixture(t),browser=new BrowserRuntime({hostWindow:host});t.after(()=>browser.close());await browser.show();
+  for(const command of [null,[],{action:'select',id:'1'},{action:'select'},{action:'new',unexpected:true},
+    {action:'navigate',url:7},{action:'reload',url:'https://one.test/'},{action:'close',id:-1},{action:'arbitrary'}])
+    await assert.rejects(browser.command(command),/Invalid Browser command/);
+  for(const bounds of [{x:-1,y:0,width:10,height:10},{x:0,y:0,width:Infinity,height:10},
+    {x:0,y:0,width:10,height:10,extra:1}])assert.throws(()=>browser.setPresentation({sequence:1,visible:true,suspended:false,bounds}),/Invalid Browser bounds/);
+  assert.equal(host.children.size,0);assert.equal(browser.tabs.size,1);
+});
 test('institution auth is task-scoped and a popup cannot submit after cancellation',async t=>{
   let resolveCredentials,reads=0,actions=0;
   const {BrowserRuntime}=fixture(t),controller=new AbortController();
@@ -324,8 +368,8 @@ test('closing the shared Portal keeps the Prepare initialization marker and refu
     assert.equal(browser.tabs.size,1);
   } finally {browser.events.removeListener('tab-created',recreated);}
 });
-test('remote popups remain native managed tabs; shell IPC and unsafe URLs are refused',async t=>{
-  const {BrowserRuntime,handlers}=fixture(t),browser=new BrowserRuntime();await browser.show();
+test('remote popups remain hidden managed tabs and unsafe URLs are refused',async t=>{
+  const {BrowserRuntime,host}=fixture(t),browser=new BrowserRuntime({hostWindow:host});t.after(()=>browser.close());await browser.show();
   const source=browser.selected.view.webContents;
   assert.equal(source.popup({url:'file:///etc/passwd'}).action,'deny');
   const popup=source.popup({url:'https://example.org/popup'});
@@ -342,10 +386,25 @@ test('remote popups remain native managed tabs; shell IPC and unsafe URLs are re
   assert.equal(view.options.webPreferences.sandbox,true);assert.equal(view.options.webPreferences.nodeIntegration,false);
   await assert.rejects(browser.command({action:'navigate',url:'javascript:alert(1)'}));
   await assert.rejects(browser.command({action:'navigate',url:'https://user:password@example.org/'}));
-  assert.throws(()=>handlers.get('browser:command')({sender:source},{action:'state'}),/Untrusted/);
-  let prevented=false;
-  browser.window.emit('close',{preventDefault(){prevented=true;}});
-  assert.equal(prevented,true);assert.equal(browser.window.visible,false);assert.equal(browser.tabs.size,2);
+  assert.equal(browser.selected.view.webContents,source);
+  browser.setPresentation({sequence:1,visible:false,suspended:false,bounds:null});
+  assert.equal(host.children.size,0);assert.equal(browser.tabs.size,2);
+});
+test('explicit saved Service opening retains descriptive identity without task or credential authority',async t=>{
+  const {BrowserRuntime}=fixture(t),browser=new BrowserRuntime();t.after(()=>browser.close());await browser.ready;
+  const command={action:'open-service',url:'https://library.example.org/',service_scope:serviceScope,
+    service_id:serviceId,workflow_id:'kept_a',task_id:'prepare_a'};
+  await browser.command(command);
+  const page=browser.selected;
+  assert.equal(browser.pageAssociation(page.id).role,'manual-service');
+  assert.equal(browser.pageAssociation(page.id).service_id,serviceId);
+  assert.equal(browser.pageAssociation(page.id).active,false);
+  assert.equal(page.authContext,undefined);assert.equal(browser.taskTab,null);
+  await browser.command({...command,workflow_id:'kept_b',task_id:'prepare_b'});
+  assert.equal(browser.tabs.size,1);assert.equal(browser.selected,page);
+  assert.equal(browser.pageAssociation(page.id).workflow_id,'kept_b');
+  assert.equal(browser.pageAssociation(page.id).task_id,'prepare_b');
+  await assert.rejects(browser.command({...command,service_id:'invalid'}),/Invalid browser Service/);
 });
 const cloudflarePageOptions='<script>window._cf_chl_opt = {cType:"managed"};</script>';
 const cloudflarePageScript='<script src="/cdn-cgi/challenge-platform/h/g/orchestrate/chl_page/v1"></script>';
