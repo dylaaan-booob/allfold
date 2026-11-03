@@ -9,6 +9,7 @@ import time
 from typing import TYPE_CHECKING
 
 from allfold.application.batch_import import BatchImportService, BatchPhase, BatchSnapshot
+from allfold.application.history import observe, batch_history
 from allfold.config import ConfigurationError, KeptWorkflowConfig, LoadedConfig
 from allfold.persistence.safe_write import ContentChangedError
 from allfold.application.coordinators.preparation_coordinator import (
@@ -53,7 +54,9 @@ class KeptWorkflow:
                  lock: threading.RLock, *,
                  begin_import: Callable[[_ImportTarget, str], BatchSnapshot],
                  has_kept: Callable[[_ImportTarget], bool],
-                 clock: Callable[[], float] = time.monotonic, browser_lock):
+                 clock: Callable[[], float] = time.monotonic, browser_lock, diagnostics=None):
+        self.diagnostics = diagnostics
+        self._cancel_requested = False
         self.preparation = preparation
         self.batch = batch
         self._lock = lock
@@ -101,13 +104,16 @@ class KeptWorkflow:
                 mode=mode, phase="preparing", settings=config.kept_workflow,
                 institution_name=config.institution.name if config.institution else None,
             )
+            self._cancel_requested = False
+            observe(self.diagnostics, "begin", "kept", self._snapshot.workflow_id)
             try:
                 if not self._has_kept(target):
-                    self._interrupt("No Kept Papers to import.")
+                    self._interrupt("No Kept Papers to import.", reason="no_kept_papers")
                 elif mode == "import_only":
                     self._start_import()
                 else:
-                    preparation = self.preparation.start(target.config_path, browser_owner=self.browser_owner)
+                    preparation = self.preparation.start(target.config_path, browser_owner=self.browser_owner,
+                        workflow_id=self._snapshot.workflow_id, parent_task_id=self._snapshot.workflow_id)
                     self._publish(preparation_task_id=preparation.task_id,
                                   preparation_generation=preparation.generation)
                     if preparation.phase in {PreparationPhase.BLOCKED, PreparationPhase.STOPPED}:
@@ -117,9 +123,17 @@ class KeptWorkflow:
             except (ConfigurationError, ContentChangedError, OSError, RuntimeError, ValueError) as error:
                 self._interrupt(str(error))
             if self._snapshot.active:
-                threading.Thread(target=self._run,
-                                 args=(self._snapshot.workflow_id, self._snapshot.generation, self._stop),
-                                 daemon=True, name="kept-workflow").start()
+                try:
+                    threading.Thread(target=self._run,
+                                     args=(self._snapshot.workflow_id, self._snapshot.generation, self._stop),
+                                     daemon=True, name="kept-workflow").start()
+                except BaseException:
+                    # This observation cannot release native/Workspace ownership or settle a save.
+                    observe(self.diagnostics, "finish", self._snapshot.workflow_id,
+                        "uncertain" if self._snapshot.import_started else "interrupted",
+                        details={"reason":"result_unconfirmed", "result_known":False,
+                            "mode":self._snapshot.mode})
+                    raise
             return self._snapshot
 
     def _release_browser(self) -> None:
@@ -127,8 +141,11 @@ class KeptWorkflow:
             self.browser_lock.release(self.browser_owner)
             self.browser_owner = None
 
-    def _interrupt(self, message: str) -> None:
+    def _interrupt(self, message: str, *, reason="failed") -> None:
         self._release_browser()
+        observe(self.diagnostics, "finish", self._snapshot.workflow_id,
+            "cancelled" if self._cancel_requested else "interrupted",
+            details={"reason":"cancelled" if self._cancel_requested else reason, "mode":self._snapshot.mode})
         self._authorization = None
         self._publish(phase="interrupted", message=message, transition_deadline=None,
                       waiting_for_login=False, navigation="kept")
@@ -141,7 +158,8 @@ class KeptWorkflow:
                       message="Importing all eligible Workspace Kept Papers.")
         authorization, self._authorization = self._authorization, None
         try:
-            result = self._begin_import(self._target, authorization)
+            result = self._begin_import(self._target, authorization,
+                workflow_id=self._snapshot.workflow_id, parent_task_id=self._snapshot.workflow_id)
             self._finish_import(result)
         except (ConfigurationError, ContentChangedError, OSError) as error:
             self._interrupt(str(error))
@@ -152,6 +170,13 @@ class KeptWorkflow:
             if self._snapshot.phase == "importing":
                 self._publish(message=result.message)
             return
+        outcome, counts, details = batch_history(result)
+        if self._cancel_requested and outcome != "uncertain":
+            outcome = "cancelled"
+            details["reason"] = "cancelled"
+        details["mode"] = self._snapshot.mode
+        observe(self.diagnostics, "finish", self._snapshot.workflow_id,
+            "completed" if outcome == "confirmed" else outcome, statistics=counts, details=details)
         if result.phase is not BatchPhase.COMPLETED:
             self._interrupt(result.message)
             return
@@ -213,6 +238,7 @@ class KeptWorkflow:
         with self._lock:
             if not self._matches(workflow_id, generation) or not self._snapshot.can_cancel:
                 return False
+            self._cancel_requested = True
             if self._snapshot.import_started:
                 self.batch.stop()
                 self._publish(phase="stopping", message="Stopping; waiting for the current operation to settle",

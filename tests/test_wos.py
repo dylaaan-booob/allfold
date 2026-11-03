@@ -119,7 +119,9 @@ def test_coordinator_preserves_saved_service_scope_and_prepared_page_across_batc
     saved = BrowserServiceSnapshot.read(path)
 
     class Preparation:
-        def start(self, config_path, *, service, browser_owner):
+        def start(self, config_path, *, service, browser_owner, workflow_id, parent_task_id):
+            assert workflow_id == parent_task_id
+            self.workflow_id = workflow_id
             assert service.name == 'Web of Science'
             self.service = service
             return self.snapshot()
@@ -151,7 +153,9 @@ def test_coordinator_preserves_saved_service_scope_and_prepared_page_across_batc
             return future
 
     bridge, prep, lock = Bridge(), Preparation(), BrowserTaskLock()
-    coordinator = WoSCoordinator(path, prep, threading.Lock(), bridge=bridge, browser_lock=lock)
+    from allfold.diagnostics import DiagnosticStore
+    store = DiagnosticStore(path, root=tmp_path / "logs")
+    coordinator = WoSCoordinator(path, prep, threading.Lock(), bridge=bridge, browser_lock=lock, diagnostics=store)
     coordinator.start()
     coordinator.join()
     assert [action for action, _ in bridge.calls] == (['wos_query'] if change_after_query else
@@ -159,6 +163,9 @@ def test_coordinator_preserves_saved_service_scope_and_prepared_page_across_batc
     assert all(data['page_id'] == 71 and data['service_id'] == prep.service.id
                and data['service_scope'] == saved.scope for _, data in bridge.calls)
     assert len({data['task_id'] for _, data in bridge.calls}) == 1
+    assert all(data['workflow_id'] == prep.workflow_id for _,data in bridge.calls)
+    assert store.history()['records'][0]['task_id'] == prep.workflow_id
+    assert store.history()['records'][0]['outcome'] == ('failed' if change_after_query else 'completed')
     assert coordinator.state()['snapshot']['status'] == 'FINISHED'
     assert lock.owner is None
 

@@ -237,7 +237,7 @@ def test_wos_uses_independent_sqlite_service_and_detects_changes(tmp_path, chang
     from electron_test_helpers import PendingBridge
 
     class Preparation:
-        def start(self, config_path, *, service, browser_owner):
+        def start(self, config_path, *, service, browser_owner, workflow_id, parent_task_id):
             assert service.name == "Web of Science"
             return SimpleNamespace(task_id="fixture", generation=1)
         def snapshot(self):

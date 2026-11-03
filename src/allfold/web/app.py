@@ -256,6 +256,7 @@ def create_app(config_path: Path, *, electron_bridge: ElectronBridge, diagnostic
     from allfold.application.browser_runtime import BrowserTaskLock
     app.state.browser_task_lock = BrowserTaskLock()
     app.state.electron_bridge = electron_bridge
+    electron_bridge.diagnostics = app.state.diagnostics
 
     @app.websocket("/api/electron/ws")
     async def electron_socket(socket: WebSocket):
@@ -272,13 +273,13 @@ def create_app(config_path: Path, *, electron_bridge: ElectronBridge, diagnostic
         return await call_next(request)
 
     run_slot = threading.Lock()
-    app.state.run_coordinator = RunCoordinator(resolved_config_path, run_slot=run_slot)
-    app.state.paper_enrichment = PaperEnrichment(electron_bridge, app.state.browser_task_lock)
-    app.state.journal_cover_search = JournalCoverSearch(electron_bridge, app.state.browser_task_lock)
-    app.state.batch_import = BatchImportService(electron_bridge, app.state.browser_task_lock)
-    app.state.preparation_coordinator = PreparationCoordinator(electron_bridge, app.state.browser_task_lock)
+    app.state.run_coordinator = RunCoordinator(resolved_config_path, run_slot=run_slot, diagnostics=app.state.diagnostics)
+    app.state.paper_enrichment = PaperEnrichment(electron_bridge, app.state.browser_task_lock, diagnostics=app.state.diagnostics)
+    app.state.journal_cover_search = JournalCoverSearch(electron_bridge, app.state.browser_task_lock, diagnostics=app.state.diagnostics)
+    app.state.batch_import = BatchImportService(electron_bridge, app.state.browser_task_lock, diagnostics=app.state.diagnostics)
+    app.state.preparation_coordinator = PreparationCoordinator(electron_bridge, app.state.browser_task_lock, diagnostics=app.state.diagnostics)
     app.state.wos_coordinator = WoSCoordinator(resolved_config_path, app.state.preparation_coordinator, run_slot,
-        bridge=electron_bridge, browser_lock=app.state.browser_task_lock)
+        bridge=electron_bridge, browser_lock=app.state.browser_task_lock, diagnostics=app.state.diagnostics)
     app.state.import_token = secrets.token_urlsafe(32)
     app.state.reset_confirmation = None
     app.state.reset_lock = threading.Lock()
@@ -294,7 +295,7 @@ def create_app(config_path: Path, *, electron_bridge: ElectronBridge, diagnostic
         workspace = load_workspace(target.workspace, journals=config.journals)
         return bool(workspace.papers_for(WorkflowStatus.KEPT))
 
-    def begin_import(target: _ImportTarget, authorization: str):
+    def begin_import(target: _ImportTarget, authorization: str, *, workflow_id=None, parent_task_id=None):
         # The caller holds import_submission_lock, including automatic transitions.
         current, _ = _ImportTarget.read(resolved_config_path)
         if authorization != app.state.import_token or current != target:
@@ -303,12 +304,13 @@ def create_app(config_path: Path, *, electron_bridge: ElectronBridge, diagnostic
             raise ContentChangedError("No Kept Papers to import.")
         app.state.import_token = secrets.token_urlsafe(32)
         return app.state.batch_import.start(target.workspace, validate_target=target.verify,
-            browser_owner=app.state.kept_workflow.browser_owner, config_path=target.config_path)
+            browser_owner=app.state.kept_workflow.browser_owner, config_path=target.config_path,
+            workflow_id=workflow_id, parent_task_id=parent_task_id)
 
     app.state.kept_workflow = KeptWorkflow(
         app.state.preparation_coordinator, app.state.batch_import, import_submission_lock,
         begin_import=begin_import, has_kept=has_kept,
-        browser_lock=app.state.browser_task_lock,
+        browser_lock=app.state.browser_task_lock, diagnostics=app.state.diagnostics,
     )
 
     def start_workflow(import_token: str | None, mode: str):

@@ -5,12 +5,12 @@ import re
 
 
 _STAGES = frozenset({'navigation', 'authentication', 'preparation', 'translation', 'parent_save',
-                     'wos_dom', 'wos_download'})
+                     'wos_dom', 'wos_download', 'attachment'})
 _STEPS = frozenset({'request', 'page_load', 'resource_ready', 'resource_filter', 'resource_search',
                     'visit_target', 'verification', 'ready', 'search', 'result', 'exportMenu',
                     'controlReady', 'plainText', 'dialog', 'configure', 'contentReady',
                     'selectContent', 'export', 'arm', 'links', 'download', 'sandbox_load', 'sandbox_init',
-                    'translator', 'document_operation', 'dom_observer'})
+                    'translator', 'document_operation', 'dom_observer', 'hidden_iframe'})
 _CODES = frozenset({'failed', 'canceled', 'timeout', 'site_restricted', 'verification_page',
     'content_access_blocked', 'http_error', 'load_failed', 'renderer_gone', 'page_closed',
     'document_changed', 'navigation_active', 'document_operation_failed', 'doi_mismatch',
@@ -63,7 +63,7 @@ def format_browser_diagnostic(value: object) -> str:
     stage = {'navigation': 'Page navigation', 'authentication': 'Institution authentication',
              'preparation': 'Service preparation', 'wos_dom': 'WoS page operation',
              'wos_download': 'WoS download', 'translation': 'Official Translator',
-             'parent_save': 'Native parent save'}.get(diagnostic.get('stage'), 'Browser operation')
+             'attachment': 'Attachment', 'parent_save': 'Native parent save'}.get(diagnostic.get('stage'), 'Browser operation')
     reasons = {'canceled': 'operation canceled', 'timeout': 'operation timed out',
               'site_restricted': 'site restricted access', 'verification_page': 'site verification page',
               'content_access_blocked': 'ScienceDirect content access blocked (CPE00001)',

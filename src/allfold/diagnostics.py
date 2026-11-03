@@ -67,7 +67,9 @@ STATISTICS = frozenset({'retrieved', 'created', 'updated', 'total', 'processed',
 REASONS = frozenset({'runtime_interrupted', 'connection_lost', 'cancelled', 'partial', 'failed',
     'needs_attention', 'result_unconfirmed', 'pdf_unverified', 'no_effect', 'configuration_changed',
     'workspace_changed', 'service_unassigned', 'no_candidates', 'no_kept_papers', 'blocked',
-    'browser_unavailable', 'invalid_configuration', 'write_failed', 'unknown'})
+    'browser_unavailable', 'invalid_configuration', 'write_failed', 'unknown',
+    'target_opened', 'manual_action_required', 'ambiguous_resource', 'unverified_official_page',
+    'resource_not_found', 'navigation_failed', 'timeout', 'institution_credentials_rejected', 'carsi_session_expired'})
 IDENTIFIER = re.compile(r'[A-Za-z0-9_-]{1,128}\Z')
 SCOPE = re.compile(r'[a-f0-9]{64}\Z')
 LEVELS = frozenset({'debug', 'info', 'warn', 'error'})
@@ -97,7 +99,7 @@ def _details(value):
     if not isinstance(value, dict):
         return {}
     result = {}
-    for key in ('submitted', 'result_known', 'pdf_verified', 'requires_attention', 'blocked'):
+    for key in ('submitted', 'result_known', 'pdf_verified', 'requires_attention', 'blocked', 'sync_warning'):
         if type(value.get(key)) is bool:
             result[key] = value[key]
     if _enum(value.get('reason'), REASONS):
@@ -106,6 +108,16 @@ def _details(value):
         result['parent_outcome'] = value['parent_outcome']
     if _enum(value.get('pdf_outcome'), {'confirmed', 'failed', 'unverified', 'not_requested', 'uncertain'}):
         result['pdf_outcome'] = value['pdf_outcome']
+    for key, allowed in (('result_status', {'completed', 'completed_with_notices', 'incomplete', 'capture_issues', 'failed', 'cancelled'}),
+                         ('coverage_status', {'complete', 'partial', 'failed', 'unavailable', 'unknown'}),
+                         ('batch_phase', {'idle', 'running', 'completed', 'stopped', 'paused', 'blocked'}),
+                         ('mode', {'full', 'import_only'})):
+        if _enum(value.get(key), allowed):
+            result[key] = value[key]
+    for key in ('saved_fields', 'requested_fields'):
+        fields = value.get(key)
+        if isinstance(fields, list):
+            result[key] = sorted({field for field in fields if _enum(field, {'abstract', 'authors', 'publication_date'})})
     items = value.get('results')
     if isinstance(items, list):
         results = []
