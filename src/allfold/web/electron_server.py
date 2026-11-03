@@ -1,4 +1,4 @@
-"""Electron-owned single-process FastAPI host; all logs remain on stderr."""
+"""Electron-owned FastAPI host; raw runtime messages remain on stderr."""
 from __future__ import annotations
 import asyncio
 import os
@@ -34,8 +34,9 @@ def main():
     bridge = ElectronBridge(token, f"127.0.0.1:{port}",
         cdp_url=os.environ.pop("ALLFOLD_ELECTRON_CDP_URL", ""))
     application = create_app(config_path, electron_bridge=bridge)
-    log_level = os.environ.get('ALLFOLD_LOG_LEVEL', 'info').lower()
-    if log_level not in {'debug', 'info', 'warn', 'error'}:
+    from allfold.logging_setup import effective_log_level
+    log_level = effective_log_level(config.log_level.value).lower()
+    if log_level not in {'debug', 'info', 'warn', 'warning', 'error'}:
         log_level = 'info'
     if log_level == 'warn':
         log_level = 'warning'

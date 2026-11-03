@@ -13,10 +13,14 @@ from concurrent.futures import Future
 from fastapi import WebSocket, WebSocketDisconnect
 from allfold.integrations.cloudflare_solver import solve_cloudflare
 from allfold.application.browser_runtime import ElectronDisconnected
+from allfold.application.history import observe
+from allfold.browser_diagnostics import normalize_browser_diagnostic
 
 
 class ElectronBridge:
-    def __init__(self, token: str, authority: str, *, cdp_url: str = ""):
+    def __init__(self, token: str, authority: str, *, cdp_url: str = "", diagnostics=None):
+        self.diagnostics = diagnostics
+        self._pending_context = {}
         self._token = token
         self._authority = authority
         self._cdp_url = cdp_url
@@ -51,7 +55,8 @@ class ElectronBridge:
                 await socket.close(code=1008)
                 return
             self._socket, self._loop = socket, asyncio.get_running_loop()
-            await socket.send_json({"type": "ready"})
+            observe(self.diagnostics, "native_status", hello.get("diagnostics_status"))
+            await socket.send_json({"type": "ready", "log_level": getattr(self.diagnostics, "level", "info")})
             while True:
                 message = await socket.receive_json()
                 if not isinstance(message, dict):
@@ -102,6 +107,14 @@ class ElectronBridge:
                     if pending[3]:
                         pending[3](data)
                 elif message.get("type") == "result" and not pending[2].done():
+                    if pending[1] != "diagnostics_reset":
+                        observe(self.diagnostics, "native_status", data.get("diagnostics_status"))
+                        diagnostic = normalize_browser_diagnostic(data.get("diagnostic")) or {}
+                        parent = data.get("parent")
+                        outcome = parent.get("outcome") if isinstance(parent, dict) else data.get("outcome")
+                        if outcome is None:
+                            outcome = "failed" if diagnostic else "retrieved" if data.get("item") or data.get("image_base64") else "downloaded" if data.get("filename") else "queried" if type(data.get("total")) is int else "no_result"
+                        observe(self.diagnostics, "event", "task_finished", {**self._pending_context, **diagnostic, "outcome": outcome})
                     pending[2].set_result(data)
                 else:
                     raise ValueError("Unexpected Electron message")
@@ -112,6 +125,9 @@ class ElectronBridge:
                 self._challenge_stop[2].set()
             if self._socket is socket:
                 self._socket = None
+                if self._pending is not None and not self._pending[2].done() and self._pending[1] != "diagnostics_reset":
+                    observe(self.diagnostics, "event", "bridge_disconnected", {**self._pending_context, "code": "bridge_disconnected", "outcome": "uncertain"})
+                    observe(self.diagnostics, "native_status", {"available": False, "incomplete": True})
                 if self._pending is not None and self._pending[3]:
                     self._pending[3]({"message": "Electron disconnected; waiting for application shutdown, no replay"})
             try:
@@ -163,6 +179,14 @@ class ElectronBridge:
         request_id = uuid4().hex
         result = asyncio.get_running_loop().create_future()
         self._pending = request_id, action, result, progress
+        self._pending_context = {key: data[key] for key in ("workflow_id", "task_id", "parent_task_id", "service_id", "paper_id") if key in data}
+        scope = data.get("service_scope")
+        if isinstance(scope, dict):
+            self._pending_context.update({key:scope[key] for key in ("config_revision", "user_state_revision") if key in scope})
+        self._pending_context.update(request_id=request_id, action=action)
+        if action != "diagnostics_reset":
+            data = {**data, "log_level": getattr(self.diagnostics, "level", "info")}
+            observe(self.diagnostics, "event", "task_started", self._pending_context)
         try:
             await self._socket.send_json({"type": "execute", "id": request_id, "action": action, "data": data})
             # An active ItemSaver must settle. Timeout must not release Workspace ownership.
@@ -173,6 +197,7 @@ class ElectronBridge:
             if self._challenge_stop is not None and self._challenge_stop[0] is self._pending:
                 self._challenge_stop[2].set()
             self._pending = None
+            self._pending_context = {}
 
     def execute(self, action: str, data: dict, progress: Callable | None = None) -> Future[dict]:
         """Register from a business worker; await the returned Future outside its stop mutex."""

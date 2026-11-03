@@ -5,6 +5,9 @@ from enum import Enum
 from pathlib import Path
 from uuid import UUID
 import threading
+import secrets
+from allfold.application.history import observe, batch_history
+from allfold.browser_diagnostics import normalize_browser_diagnostic, first_attachment_diagnostic
 from allfold.application.access import AccessObservation
 from allfold.application.export_attempts import (
     PdfOutcome, _reserve_export_attempt_locked, complete_electron_import, ExportCompletionOutcome,
@@ -33,6 +36,9 @@ class BatchPaperResult:
     pdf_outcome: PdfOutcome | None = None
     access: AccessObservation | None = None
     failure_stage: str | None = None
+    parent_outcome: str = "no_effect"
+    reason_code: str = "unknown"
+    diagnostic: dict | None = None
 
 @dataclass(frozen=True)
 class BatchStatistics:
@@ -76,8 +82,9 @@ class BatchSnapshot:
 
 
 class BatchImportService:
-    def __init__(self, bridge: BrowserGateway, browser_lock: BrowserTaskLock):
+    def __init__(self, bridge: BrowserGateway, browser_lock: BrowserTaskLock, *, diagnostics=None):
         self.bridge, self.browser_lock = bridge, browser_lock
+        self.diagnostics = diagnostics
         self._mutex = threading.Lock()
         self._worker = None
         self._stop = threading.Event()
@@ -95,21 +102,41 @@ class BatchImportService:
         with self._mutex:
             self._snapshot = replace(self._snapshot, **changes)
 
-    def start(self, workspace: Path, *, browser_owner: BrowserOwner, validate_target=None, config_path=None):
+    def start(self, workspace: Path, *, browser_owner: BrowserOwner, validate_target=None, config_path=None, workflow_id=None, parent_task_id=None):
         self.browser_lock.require(browser_owner)
         with self._mutex:
             if self.running:
                 return self._snapshot
+            task_id = secrets.token_hex(16)
+            self._history_context = dict(task_id=task_id, workflow_id=workflow_id or task_id, parent_task_id=parent_task_id)
+            observe(self.diagnostics, "begin", "import", **self._history_context)
             if not self.bridge.connected:
                 self._snapshot = BatchSnapshot(BatchPhase.BLOCKED, None, None, (), "Electron runtime unavailable")
+                self._finish_history(reason="browser_unavailable")
                 return self._snapshot
-            services = BrowserServiceSnapshot.read(config_path) if config_path is not None else None
+            try:
+                services = BrowserServiceSnapshot.read(config_path) if config_path is not None else None
+            except BaseException:
+                self._snapshot = BatchSnapshot(BatchPhase.BLOCKED, None, None, (), "Saved configuration unavailable")
+                self._finish_history(reason="configuration_changed")
+                raise
             self._stop.clear()
             self._snapshot = BatchSnapshot(BatchPhase.RUNNING, None, None, (), "Scanning Kept Papers")
             self._worker = threading.Thread(target=self._execute,
                 args=(workspace, browser_owner, validate_target, services), daemon=False, name="electron-import")
-            self._worker.start()
+            try:
+                self._worker.start()
+            except BaseException:
+                self._snapshot = replace(self._snapshot, phase=BatchPhase.BLOCKED)
+                self._finish_history()
+                raise
         return self.snapshot()
+
+    def _finish_history(self, *, reason=None):
+        outcome, counts, details = batch_history(self._snapshot)
+        if reason:
+            details["reason"] = reason
+        observe(self.diagnostics, "finish", self._history_context["task_id"], outcome, statistics=counts, details=details)
 
     def stop(self):
         # End navigation/verification waiting, but let an escaped ItemSaver settle.
@@ -149,9 +176,10 @@ class BatchImportService:
                         reservation = _reserve_export_attempt_locked(lock, paper.paper_id,
                             expected_paper=paper, expected_papers_identity=plan.papers_identity)
                     except (RuntimeError, OSError) as error:
-                        results.append(BatchPaperResult(paper.paper_id, "skipped", str(error)))
+                        results.append(BatchPaperResult(paper.paper_id, "skipped", str(error), reason_code="blocked"))
                         continue
                     self._publish(current_paper_id=paper.paper_id, message="Translating and saving once")
+                    in_flight = False
                     try:
                         # Serialize stop with dispatch registration; the actual result waits outside the mutex.
                         with self._mutex:
@@ -171,23 +199,38 @@ class BatchImportService:
                                     "authors": list(state.authors), "journal_issns": list(state.journal_issns),
                                 }.items() if value is not None})
                             pending = self.bridge.execute("import_paper", {
-                                "doi": paper.doi, "metadata": metadata, "task_id": owner.id,
+                                "doi": paper.doi, "metadata": metadata, "task_id": reservation.attempt.attempt_id,
+                                "workflow_id": self._history_context["workflow_id"],
+                                "parent_task_id": self._history_context["task_id"],
                                 "paper_id": str(paper.paper_id), "service_id": paper.service_id,
                                 "service_scope": services.scope if services else None},
                                 lambda progress: self._publish(message=str(progress.get("message", "Import running"))))
+                            in_flight = True
                         result = pending.result()
                         completion = complete_electron_import(reservation, result, operation_lock=lock)
+                        in_flight = False
                         outcome = {ExportCompletionOutcome.EXPORTED:"exported", ExportCompletionOutcome.NO_EFFECT:"no_effect",
                             ExportCompletionOutcome.UNCERTAIN:"uncertain"}.get(completion.outcome,"blocked")
-                        results.append(BatchPaperResult(paper.paper_id,outcome,completion.message,PdfOutcome.UNVERIFIED))
+                        pdf = result.get("pdf")
+                        attachment_diagnostic = first_attachment_diagnostic(pdf.get("failures")) if isinstance(pdf, dict) else None
+                        results.append(BatchPaperResult(paper.paper_id,outcome,completion.message,PdfOutcome.UNVERIFIED,
+                            parent_outcome="confirmed" if outcome in {"exported", "blocked"} else outcome,
+                            reason_code="write_failed" if outcome == "blocked" else "result_unconfirmed" if outcome == "uncertain" else "no_effect" if outcome == "no_effect" else "pdf_unverified",
+                            diagnostic=normalize_browser_diagnostic(result.get("diagnostic")) or attachment_diagnostic))
                         if outcome in {"uncertain", "blocked"}:
                             phase, message = BatchPhase.PAUSED, completion.message
                             break
                     except ElectronDisconnected:
                         results.append(BatchPaperResult(paper.paper_id,"uncertain",
-                            "Electron disconnected; inspect Zotero before retrying",PdfOutcome.UNVERIFIED))
+                            "Electron disconnected; inspect Zotero before retrying",PdfOutcome.UNVERIFIED, parent_outcome="uncertain", reason_code="connection_lost"))
                         phase, message = BatchPhase.PAUSED, "Connection lost; no save replayed"
                         break
+                    except Exception:
+                        if in_flight:
+                            results.append(BatchPaperResult(paper.paper_id, "uncertain",
+                                "Native operation result unconfirmed; inspect Zotero before retrying", PdfOutcome.UNVERIFIED,
+                                parent_outcome="uncertain", reason_code="result_unconfirmed"))
+                        raise
                     self._publish(results=tuple(results))
                 if self._stop.is_set() and phase is BatchPhase.COMPLETED:
                     phase, message = BatchPhase.STOPPED, "Stopped after current save settled"
@@ -200,7 +243,9 @@ class BatchImportService:
                 message = f"Import finished: {exported} imported, {len(results) - exported} not imported; PDF unverified"
             if plan is not None and phase is not BatchPhase.COMPLETED:
                 finished = {result.paper_id for result in results}
-                results.extend(BatchPaperResult(paper.paper_id, "skipped", message)
+                results.extend(BatchPaperResult(paper.paper_id, "skipped", message,
+                    reason_code="cancelled" if phase is BatchPhase.STOPPED else "blocked")
                     for paper in plan.papers if paper.paper_id not in finished)
             # KeptWorkflow releases browser ownership after observing this terminal state.
             self._publish(phase=phase,results=tuple(results),current_paper_id=None,message=message)
+            self._finish_history()

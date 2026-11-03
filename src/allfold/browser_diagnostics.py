@@ -5,12 +5,12 @@ import re
 
 
 _STAGES = frozenset({'navigation', 'authentication', 'preparation', 'translation', 'parent_save',
-                     'wos_dom', 'wos_download'})
+                     'wos_dom', 'wos_download', 'attachment'})
 _STEPS = frozenset({'request', 'page_load', 'resource_ready', 'resource_filter', 'resource_search',
                     'visit_target', 'verification', 'ready', 'search', 'result', 'exportMenu',
                     'controlReady', 'plainText', 'dialog', 'configure', 'contentReady',
                     'selectContent', 'export', 'arm', 'links', 'download', 'sandbox_load', 'sandbox_init',
-                    'translator', 'document_operation', 'dom_observer'})
+                    'translator', 'document_operation', 'dom_observer', 'hidden_iframe'})
 _CODES = frozenset({'failed', 'canceled', 'timeout', 'site_restricted', 'verification_page',
     'content_access_blocked', 'http_error', 'load_failed', 'renderer_gone', 'page_closed',
     'document_changed', 'navigation_active', 'document_operation_failed', 'doi_mismatch',
@@ -22,7 +22,8 @@ _CODES = frozenset({'failed', 'canceled', 'timeout', 'site_restricted', 'verific
     'core_collection_unverified', 'stale_search_results', 'export_range_unverified',
     'download_observer_busy', 'action_expired', 'export_content_unverified', 'unknown_dom_step',
     'dom_step_failed', 'download_interrupted', 'download_cancelled', 'download_incomplete',
-    'download_failed', 'download_ambiguous', 'download_not_attributable'})
+    'download_failed', 'download_ambiguous', 'download_not_attributable',
+    'no_resolver', 'mime_mismatch', 'empty_response', 'network_error', 'redirect_rejected', 'attachment_rejected'})
 
 
 def normalize_browser_diagnostic(value: object) -> dict[str, object] | None:
@@ -42,10 +43,43 @@ def normalize_browser_diagnostic(value: object) -> dict[str, object] | None:
     return result or None
 
 
+def first_attachment_diagnostic(value: object) -> dict[str, object] | None:
+    """Retain one reviewed ItemSaver failure; native events retain the bounded sequence.
+
+    A failed transfer is evidence of an attachment problem, not proof of PDF
+    persistence or rejection of an already accepted parent.
+    """
+    if not isinstance(value, list):
+        return None
+    for failure in value[:20]:
+        if not isinstance(failure, dict):
+            continue
+        diagnostic = normalize_browser_diagnostic({
+            'stage':'attachment', 'code':failure.get('code'), 'status':failure.get('status')})
+        if diagnostic and 'code' in diagnostic:
+            return diagnostic
+    return None
+
+
 def format_browser_diagnostic(value: object) -> str:
     diagnostic = normalize_browser_diagnostic(value)
     if diagnostic is None:
         return 'Browser operation failed.'
+    if diagnostic.get('stage') == 'attachment':
+        reasons = {
+            'no_resolver':'未找到可用的附件来源', 'mime_mismatch':'返回内容不是预期附件类型',
+            'empty_response':'附件响应为空', 'network_error':'附件网络请求失败',
+            'redirect_rejected':'附件重定向未被接受', 'attachment_rejected':'附件保存请求未被接受',
+            'timeout':'附件操作超时', 'http_error':'附件请求失败',
+            'document_changed':'附件来源页面已变化', 'page_closed':'附件来源页面已关闭',
+            'canceled':'附件操作已取消',
+        }
+        message = reasons.get(diagnostic.get('code'), '附件操作未完成')
+        if 'status' in diagnostic:
+            message += f"（HTTP {diagnostic['status']}）"
+        if 'net_error' in diagnostic:
+            message += f"（{diagnostic['net_error']}）"
+        return message + '；PDF 是否保存仍未验证。'
     translation_reasons = {
         'translator_no_items': '官方 Translator 未返回条目。',
         'translator_multiple_items': '官方 Translator 返回多个条目，无法确认唯一父条目。',
@@ -63,7 +97,7 @@ def format_browser_diagnostic(value: object) -> str:
     stage = {'navigation': 'Page navigation', 'authentication': 'Institution authentication',
              'preparation': 'Service preparation', 'wos_dom': 'WoS page operation',
              'wos_download': 'WoS download', 'translation': 'Official Translator',
-             'parent_save': 'Native parent save'}.get(diagnostic.get('stage'), 'Browser operation')
+             'attachment': 'Attachment', 'parent_save': 'Native parent save'}.get(diagnostic.get('stage'), 'Browser operation')
     reasons = {'canceled': 'operation canceled', 'timeout': 'operation timed out',
               'site_restricted': 'site restricted access', 'verification_page': 'site verification page',
               'content_access_blocked': 'ScienceDirect content access blocked (CPE00001)',

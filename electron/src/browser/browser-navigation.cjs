@@ -117,6 +117,7 @@ class NavigationRecovery {
       deadline:sameOwner?Math.min(deadline,previous.deadline):deadline,
       loadDeadline:sameOwner?previous.loadDeadline:null,active:true,pendingStart:true,started:false,
       loaded:false,failure:null,url:null};
+    this.report('info','page_load_started',{page_id:this.tab.id,generation:nav.generation});
     const abort=()=>{if(this.current===nav && nav.active){nav.failure=signal.reason instanceof BrowserFailure?signal.reason:new BrowserFailure('navigation','canceled');this.finish();}};
     nav.detach=()=>signal?.removeEventListener('abort',abort);
     signal?.addEventListener('abort',abort,{once:true});

@@ -16,6 +16,8 @@ from allfold.persistence.user_state import load_user_state, read_user_state
 from allfold.application.settings import load_settings
 from allfold.application.workspace import journals_for_paper, load_workspace
 from allfold.application.browser_services import BrowserServiceSnapshot
+from allfold.application.history import observe
+from allfold.application.browser_runtime import ElectronDisconnected
 
 CARSI_LOGIN_URL = "https://ds.carsi.edu.cn/Shibboleth.sso/Login"
 CARSI_PORTAL_URL = "https://ds.carsi.edu.cn/wxds"
@@ -86,8 +88,9 @@ def read_saved_preparation_services(config_path: Path) -> tuple[AccessService, .
 
 
 class PreparationCoordinator:
-    def __init__(self, bridge, browser_lock):
+    def __init__(self, bridge, browser_lock, *, diagnostics=None):
         self.bridge, self.browser_lock = bridge, browser_lock
+        self.diagnostics = diagnostics
         self._lock = threading.RLock()
         self._worker = None
         self._stop = threading.Event()
@@ -108,7 +111,7 @@ class PreparationCoordinator:
     def _publish(self, **changes):
         self._snapshot = replace(self._snapshot, **changes)
 
-    def start(self, config_path, *, service=None, browser_owner=None):
+    def start(self, config_path, *, service=None, browser_owner=None, workflow_id=None, parent_task_id=None):
         saved = BrowserServiceSnapshot.read(config_path)
         if service is not None and service not in saved.services:
             raise ContentChangedError('Preparation Service no longer matches saved User State')
@@ -143,6 +146,9 @@ class PreparationCoordinator:
                 secrets.token_hex(16), self._snapshot.generation + 1, services, None, (),
                 'Preparing saved Services' if services else 'No related CARSI Services; review Manual Service URLs',
                 authorization_pending=bool(services), manual_services=manual)
+            self._history_context = dict(workflow_id=workflow_id or self._snapshot.task_id, parent_task_id=parent_task_id)
+            self._history_reason = None
+            observe(self.diagnostics, "begin", "prepare", self._snapshot.task_id, **self._history_context)
             if services:
                 self._worker = threading.Thread(target=self._run,
                     args=(owner, browser_owner is None, authentication, saved), name='electron-preparation', daemon=False)
@@ -150,10 +156,33 @@ class PreparationCoordinator:
                     self._worker.start()
                 except BaseException:
                     self._publish(phase=PreparationPhase.BLOCKED, authorization_pending=False)
+                    self._finish_history()
                     if browser_owner is None:
                         self.browser_lock.release(owner)
                     raise
+            else:
+                self._finish_history()
             return self._snapshot
+
+    def _finish_history(self):
+        state = self._snapshot
+        results = [dict(service_id=r.service_id, outcome={PreparationOutcome.OPENED:"opened",
+            PreparationOutcome.NEEDS_ATTENTION:"needs_attention", PreparationOutcome.FAILED:"failed"}[r.outcome],
+            reason=r.reason, diagnostic=r.diagnostic) for r in state.results]
+        results.extend(dict(service_id=service.id, outcome="needs_attention", reason="manual_action_required")
+            for service in state.manual_services)
+        opened = sum(r.outcome is PreparationOutcome.OPENED for r in state.results)
+        attention = sum(r.outcome is PreparationOutcome.NEEDS_ATTENTION for r in state.results) + len(state.manual_services)
+        failed = sum(r.outcome is PreparationOutcome.FAILED for r in state.results)
+        outcome = ("interrupted" if self._history_reason == "connection_lost" else "cancelled" if state.phase is PreparationPhase.STOPPED else
+            "partial" if opened and (attention or failed or state.phase is PreparationPhase.BLOCKED) else
+            "failed" if state.phase is PreparationPhase.BLOCKED or failed else
+            "needs_attention" if attention else "opened" if opened else "no_effect")
+        observe(self.diagnostics, "finish", state.task_id, outcome,
+            statistics=dict(services=len(state.services)+len(state.manual_services), opened=opened, needs_attention=attention, failed=failed),
+            diagnostic=next((r.diagnostic for r in reversed(state.results) if r.diagnostic), None),
+            details=dict(results=results, reason=self._history_reason or ("cancelled" if outcome == "cancelled" else
+                "needs_attention" if attention else "failed" if failed or state.phase is PreparationPhase.BLOCKED else None)))
 
     def _run(self, owner, release_owner, authentication, saved):
         try:
@@ -168,7 +197,7 @@ class PreparationCoordinator:
                     self._publish(current_service_id=service.id, waiting_for_user=False,
                                   message=f'Preparing {service.name}')
                     pending = self.bridge.execute('prepare_service', {
-                        'task_id': self._snapshot.task_id, 'service_id': service.id,
+                        'task_id': self._snapshot.task_id, **self._history_context, 'service_id': service.id,
                         'service_scope': saved.scope, 'name': service.name, **authentication}, self._progress)
                 result = pending.result()
                 with self._lock:
@@ -216,11 +245,13 @@ class PreparationCoordinator:
                 self._publish(phase=PreparationPhase.STOPPED if self._stop.is_set() else PreparationPhase.COMPLETED,
                               message='Preparation canceled' if self._stop.is_set() else 'Preparation queue finished')
         except ContentChangedError:
+            self._history_reason = "configuration_changed"
             with self._lock:
                 self._target_page = None
                 self._publish(phase=PreparationPhase.BLOCKED,
                     message='Saved configuration or User State changed; Preparation stopped without migration')
-        except Exception:
+        except Exception as error:
+            self._history_reason = "connection_lost" if isinstance(error, ElectronDisconnected) else "browser_unavailable" if not self.bridge.connected else "failed"
             with self._lock:
                 self._publish(phase=PreparationPhase.BLOCKED, message='Electron Preparation failed; no automatic retry')
         finally:
@@ -228,6 +259,7 @@ class PreparationCoordinator:
                 self._publish(authorization_pending=False, waiting_for_user=False, current_service_id=None)
                 if release_owner:
                     self.browser_lock.release(owner)
+                self._finish_history()
 
     def _progress(self, data):
         with self._lock:

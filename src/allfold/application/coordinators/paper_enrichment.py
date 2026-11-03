@@ -8,7 +8,9 @@ from allfold.application.paper_enrichment import (
 )
 from allfold.identifiers import normalize_doi
 from allfold.persistence.safe_write import TextWriteCommittedError
-from allfold.browser_diagnostics import format_browser_diagnostic
+from allfold.browser_diagnostics import format_browser_diagnostic, normalize_browser_diagnostic
+from allfold.application.history import observe
+from allfold.application.browser_runtime import ElectronDisconnected
 
 
 from allfold.models import parse_publication_date
@@ -57,8 +59,9 @@ def authors_candidate(item):
 
 
 class PaperEnrichment:
-    def __init__(self, bridge, browser_lock):
+    def __init__(self, bridge, browser_lock, *, diagnostics=None):
         self.bridge, self.browser_lock = bridge, browser_lock
+        self.diagnostics = diagnostics
         self._lock = threading.RLock()
         self._task = None
         self._worker = None
@@ -100,11 +103,13 @@ class PaperEnrichment:
             task = dict(target=target, owner=owner, request_id=secrets.token_hex(16), phase='Retrieving',
                 message='Retrieving missing fields…', saved={}, waiting_for_user=False,
                 stop=threading.Event(), started_at=datetime.now(timezone.utc).isoformat())
+            observe(self.diagnostics, 'begin', 'enrich', task['request_id'])
             self._task = task
             self._worker = threading.Thread(target=self._run, args=(task,), name='electron-enrichment', daemon=False)
             try:
                 self._worker.start()
             except BaseException:
+                observe(self.diagnostics, "finish", task["request_id"], "failed", details={"reason":"failed"})
                 self.browser_lock.release(owner)
                 self._task = None
                 raise
@@ -116,8 +121,10 @@ class PaperEnrichment:
             with self._lock:
                 if task['stop'].is_set():
                     raise InterruptedError()
-                pending = self.bridge.execute('enrich_paper', {'doi': target.doi}, lambda data: self._progress(task, data))
+                pending = self.bridge.execute('enrich_paper', {'doi': target.doi,
+                    'task_id':task['request_id'], 'workflow_id':task['request_id'], 'paper_id':str(target.paper_id)}, lambda data: self._progress(task, data))
             result = pending.result()
+            task['diagnostic'] = normalize_browser_diagnostic(result.get('diagnostic'))
             with self._lock:
                 if task['stop'].is_set():
                     raise InterruptedError()
@@ -144,12 +151,15 @@ class PaperEnrichment:
                                     authors=candidate.get('authors'))
                     task['message'] = 'Enrichment saved'
                 except TextWriteCommittedError:
+                    task["sync_warning"] = True
                     task['message'] = 'Enrichment saved; filesystem sync failed'
                 task.update(phase='Completed', saved=candidate)
                 self._completed_papers.add(target.paper_id)
         except InterruptedError:
             task.update(phase='Cancelled', message='Enrichment cancelled')
         except Exception as error:
+            if isinstance(error, ElectronDisconnected):
+                task["history_interrupted"] = True
             task.update(phase='Failed', message=str(error) if isinstance(error, (ValueError, OSError)) else 'Enrichment failed')
         finally:
             with self._lock:
@@ -159,6 +169,13 @@ class PaperEnrichment:
                     requirements=dict(abstract=target.missing_abstract, authors=target.missing_authors,
                         publication_date='any' if target.missing_date else 'none'), saved_fields=list(task['saved']), attempts=[])
                 self.browser_lock.release(task['owner'])
+                observe(self.diagnostics, 'finish', task['request_id'], 'interrupted' if task.get('history_interrupted') else task['phase'].lower(),
+                    statistics={'enriched':int(task['phase'] == 'Completed'), 'updated':len(task['saved'])},
+                    diagnostic=task.get('diagnostic'), details={'saved_fields':list(task['saved']),
+                        'requested_fields':[field for field, missing in (('abstract',target.missing_abstract),
+                            ('authors',target.missing_authors),('publication_date',target.missing_date)) if missing],
+                        'sync_warning':task.get('sync_warning',False),
+                        'reason':'connection_lost' if task.get('history_interrupted') else 'cancelled' if task['phase'] == 'Cancelled' else 'failed' if task['phase'] == 'Failed' else None})
 
     def _progress(self, task, data):
         with self._lock:

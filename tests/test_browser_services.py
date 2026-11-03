@@ -51,7 +51,9 @@ def test_import_dispatch_uses_saved_mapping_and_keeps_ambiguous_or_missing_unass
     assert [data['service_id'] for _, data in bridge.calls] == [service.id, other.id, None, None,
         service.id, None, service.id, None]
     assert [data['paper_id'] for _, data in bridge.calls] == [str(p.id) for p in papers]
-    assert all(data['task_id'] == owner.id for _, data in bridge.calls)
+    assert len({data['task_id'] for _, data in bridge.calls}) == len(papers)
+    assert len({data['parent_task_id'] for _, data in bridge.calls}) == 1
+    assert all(data['task_id'] != owner.id for _, data in bridge.calls)
     assert all(data['service_scope'] == BrowserServiceSnapshot.read(config).scope for _, data in bridge.calls)
 
 

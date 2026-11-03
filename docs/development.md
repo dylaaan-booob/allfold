@@ -68,6 +68,14 @@ Chromium authentication remains a separate manual acceptance boundary.
 - Missing `.venv`, UI, vendor or Runtime: complete setup and inspect the failing step.
 - Modified vendor or Runtime: inspect the reported path. Preserve unknown files; do not use reset/clean to make verification pass.
 - Download failure: correct connectivity to the named registry or GitHub before rerunning setup. Dependency pins remain unchanged.
-- Need application diagnostics: use `ALLFOLD_LOG_LEVEL=debug npm --prefix electron start`. Supported levels are debug, info, warn and error. Application logs go to stderr; no automatic log file is created. Raw Chromium stderr can contain addresses, so inspect output before sharing.
+- Need application diagnostics: use HISTORY's task export or Settings' recent
+  diagnostic export. Both runtimes persist bounded, validated JSONL alongside
+  stderr, independently of Workspace and SQLite. Settings Log Level controls
+  optional detail after restarting; it also shows the current active level.
+  `ALLFOLD_LOG_LEVEL=debug npm --prefix electron start` explicitly
+  overrides it for both runtimes. Supported levels are debug, info, warn and error;
+  necessary task results and errors survive all levels. Raw Chromium stderr can
+  contain addresses and is excluded from diagnostic exports. See [logging](logging.md)
+  for the schema, paths, limits, privacy and Reset rules.
 
 See [architecture](architecture.md) before changing ownership and [safety](safety.md) before changing data, authorization or settlement paths.

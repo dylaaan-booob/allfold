@@ -2,7 +2,8 @@
 import {renderRunResult} from './run-results.js';
 import {createJournalLayout} from './journal-layout.js';
 import {readImportChoices,renderImportRows} from './research-scope-import.js';
-const providerDefaults={openalex:'OpenAlex',crossref:'Crossref',pubmed:'PubMed',wos:'Web of Science'};
+import {providerNames as providerDefaults} from './business-results.js';
+import {resetImpact} from './history-view.js';
 const keyMask='••••••••';
 const root=document.getElementById('configuration-workspace');
 const markup=document.createElement('template');
@@ -44,6 +45,7 @@ markup.innerHTML=`<header class="s-header">
 <option>ERROR</option>
 </select>
 </label>
+<p id="s-log-help" class="s-help s-field-wide">级别修改后重启应用生效；运行记录与关键结果始终保留。</p>
 <label class="s-setting-row" data-field="delay">
 <span class="s-setting-label">Transition Delay / seconds</span>
 <input type="number" data-monitor="delay" min="0" step="any">
@@ -122,16 +124,23 @@ markup.innerHTML=`<header class="s-header">
 <button data-diagnostic="health" class="s-button">Refresh</button>
 </div>
 </details>
+      <details>
+<summary>Diagnostics</summary>
+<div class="s-diagnostic">
+<p class="s-help">导出当前配置中保留的最近诊断，不含网页正文、凭据或 Workspace 文件。仅在本地下载，不自动上传。</p>
+<button id="s-export-diagnostics" class="s-button" type="button">导出最近诊断</button>
+<p id="s-export-diagnostics-status" class="s-help" role="status"></p>
+</div>
+</details>
       <div class="s-reset">
 <div>
-<span class="s-eyebrow">WORKSPACE RESET / SEPARATE ACTION</span>
-<h2>Reset saved workspace</h2>
+<span class="s-eyebrow">RESET / SEPARATE ACTION</span>
+<h2>Reset</h2>
 <code id="s-reset-path">
 </code>
 </div>
 <div class="s-reset-confirm">
-<label>Type RESET<input id="s-reset-word" autocomplete="off" spellcheck="false" placeholder="RESET">
-</label>
+<label>范围<select id="s-reset-scope"><option value="workspace">Workspace</option><option value="logs">Logs</option></select></label>
 <div class="s-actions">
 <button id="s-reset-cancel" class="s-button">Cancel</button>
 <button id="s-reset-workspace" class="s-button s-primary" disabled>CONFIRM RESET ↗</button>
@@ -295,7 +304,7 @@ for(const button of root.querySelectorAll('[data-diagnostic]')){
 }
 const reset=root.querySelector('.s-reset'),resetDisclosure=document.createElement('details'),resetSummary=document.createElement('summary');
 resetDisclosure.id='s-reset-section';resetDisclosure.className='s-reset';
-resetSummary.append(Object.assign(document.createElement('span'),{className:'s-diagnostic-name',textContent:'Workspace Reset'}),$('s-reset-path'));
+resetSummary.append(Object.assign(document.createElement('span'),{className:'s-diagnostic-name',textContent:'Reset'}),$('s-reset-path'));
 resetDisclosure.append(resetSummary,reset.querySelector('.s-reset-confirm'));reset.replaceWith(resetDisclosure);
 
 const esc=value=>String(value??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -344,7 +353,9 @@ function updateDirty() {
   $('settings-open').setAttribute('aria-label',unsaved?'04 Settings · Unsaved changes':'04 Settings');
   $('s-save').disabled=loading || operationPending || !unsaved || Boolean(preview);
   $('s-undo').disabled=loading || operationPending || reconcileRequired || Boolean(preview) || !assignmentUndo;
-  $('s-reset-path').textContent=serverState?.saved_workspace || 'Unavailable';
+  $('s-reset-path').textContent=$('s-reset-scope').value==='logs'?'当前配置的 Logs':serverState?.saved_workspace || 'Unavailable';
+  const logging=serverState?.logging;
+  $('s-log-help').textContent=`${logging?`当前采集级别：${logging.effective_level.toUpperCase()}${logging.environment_override?'（ALLFOLD_LOG_LEVEL 控制）':''}。`:''}级别修改后重启应用生效；运行记录与关键结果始终保留。`;
   window.workspaceNavigation.refresh();window.dispatchEvent(new Event('settings-draft-changed'));
 }
 function changed() {revision++;updateDirty();renderRun();}
@@ -1242,7 +1253,7 @@ async function formRequest(path,extra={},options={}) {
     }
     let data;
     try{data=await response.json();}catch{if(path==='/settings/save')reconcileRequired=true;throw new Error('服务响应无法读取；请 Reload 核对磁盘状态，当前草稿保留。');}
-    if(!response.ok)throw new Error(data.message || data.reset_error || `请求失败 (${response.status})`);
+    if(!response.ok){const error=new Error(data.message || data.reset_error || `请求失败 (${response.status})`);error.state=data;throw error;}
     return data;
   } finally {setOperationPending(false);}
 }
@@ -1336,28 +1347,47 @@ async function refreshDiagnostic(kind) {
   finally {button.disabled=false;}
 }
 root.querySelectorAll('[data-diagnostic]').forEach(button=>button.addEventListener('click',()=>void refreshDiagnostic(button.dataset.diagnostic)));
-let resetPlan=null;
+let resetPlan=null,resetVersion=0;
 async function refreshResetPreview() {
-  try {resetPlan=await uiNext.request('/api/ui-next/settings/reset-preview');
-    $('s-reset-result').textContent=resetPlan.reset_error || '确认后将删除此已保存 Workspace 的全部内容。';
-    if(resetPlan.reset_plan)$('s-reset-path').textContent=resetPlan.reset_plan.workspace;
-  }catch(error){resetPlan=null;$('s-reset-result').textContent=error.message;}
-  $('s-reset-workspace').disabled=$('s-reset-word').value!=='RESET' || !resetPlan?.reset_token;
+  const version=++resetVersion,scope=$('s-reset-scope').value;
+  resetPlan=null;$('s-reset-workspace').disabled=true;$('s-reset-result').textContent='正在确认目标…';
+  try {
+    const data=await uiNext.request('/api/ui-next/settings/reset-preview?scope='+scope);
+    if(version!==resetVersion || scope!==$('s-reset-scope').value)return;
+    resetPlan={...data,scope};$('s-reset-result').textContent=data.reset_error || resetImpact(scope,data.reset_plan);
+    $('s-reset-path').textContent=scope==='logs'?'当前配置的 Logs':data.reset_plan?.workspace || 'Unavailable';
+  }catch(error){if(version===resetVersion){resetPlan=null;$('s-reset-result').textContent=error.message;}}
+  if(version===resetVersion)$('s-reset-workspace').disabled=!resetPlan?.reset_token;
 }
 $('s-reset-section').addEventListener('toggle',()=>{if($('s-reset-section').open)void refreshResetPreview();});
-$('s-reset-word').addEventListener('input',()=>{$('s-reset-workspace').disabled=$('s-reset-word').value!=='RESET' || !resetPlan?.reset_token;});
-function clearReset() {$('s-reset-word').value='';$('s-reset-workspace').disabled=true;resetPlan=null;}
-$('s-reset-cancel').addEventListener('click',()=>{clearReset();$('s-reset-result').textContent='Reset cancelled。';});
+$('s-reset-scope').addEventListener('change',()=>{clearReset();void refreshResetPreview();});
+function clearReset() {resetVersion++;$('s-reset-workspace').disabled=true;resetPlan=null;}
+$('s-reset-cancel').addEventListener('click',()=>{clearReset();$('s-reset-section').open=false;});
+function resetReport(data) {
+  const producers=data?.reset_result;
+  const values=[producers?.native,producers?.python].filter(Boolean);
+  return [data?.reset_error,values.length?`日志文件：已删除 ${values.reduce((n,p)=>n+(p.deleted || 0),0)}；未删除 ${values.reduce((n,p)=>n+(p.failed || 0),0)}。`:''].filter(Boolean).join(' ');
+}
 $('s-reset-workspace').addEventListener('click',()=>{
-  if($('s-reset-word').value!=='RESET' || !resetPlan?.reset_token)return;
-  const current=resetPlan;
-  confirm('Confirm Workspace Reset',`删除已保存目标：${current.reset_plan.workspace}。该 Workspace 内的 Paper、Author、索引和其他文件均会移除；配置与 Zotero Library 不受影响。`,async()=>{
+  if(!resetPlan?.reset_token)return;
+  const current=resetPlan,scope=current.scope;
+  confirm(`Confirm ${scope==='logs'?'Logs':'Workspace'} Reset`,resetImpact(scope,current.reset_plan),async()=>{
     try {
-      const result=await formRequest('/settings/workspace-reset',{reset_token:current.reset_token,reset_word:'RESET'},{draft:false});
-      $('s-reset-result').textContent=result.reset_error;
-      if(result.reset_success){window.dispatchEvent(new Event('workspace-reset'));await refreshSavedWorkspace();await refreshDiagnostic('health');}
-    }catch(error){$('s-reset-result').textContent=error.message;}finally{clearReset();}
-  },'Confirm RESET');
+      const result=await formRequest(`/settings/${scope}-reset`,{reset_token:current.reset_token},{draft:false});
+      $('s-reset-result').textContent=resetReport(result);
+      if(result.reset_success){
+        window.dispatchEvent(new Event(scope==='logs'?'logs-reset':'workspace-reset'));
+        if(scope==='workspace'){await refreshSavedWorkspace();await refreshDiagnostic('health');}
+      }
+    }catch(error){$('s-reset-result').textContent=error.state?resetReport(error.state):error.message;}finally{clearReset();}
+  },scope==='logs'?'清除 Logs':'永久删除 Workspace');
+});
+$('s-export-diagnostics').addEventListener('click',async()=>{
+  const button=$('s-export-diagnostics');button.disabled=true;
+  $('s-export-diagnostics-status').textContent='正在生成本地诊断包…';
+  try {await window.allfoldHistory.exportTask();$('s-export-diagnostics-status').textContent='诊断包已生成，仅在本地下载。';}
+  catch(error){$('s-export-diagnostics-status').textContent=error.message;}
+  finally {button.disabled=false;}
 });
 async function loadSettings() {
   loading=true;root.querySelector('.s-content').inert=true;updateDirty();

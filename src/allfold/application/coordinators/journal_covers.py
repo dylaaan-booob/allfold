@@ -6,6 +6,8 @@ import secrets
 import threading
 
 from allfold.browser_diagnostics import format_browser_diagnostic, normalize_browser_diagnostic
+from allfold.application.history import observe
+from allfold.application.browser_runtime import ElectronDisconnected
 from allfold.application.journal_covers import (
     MAX_IMAGE_BYTES, CoverConflict, _save_cover, cover_details, save_crop, upload_cover,
 )
@@ -17,8 +19,9 @@ FAILED_MESSAGE = "未获取到图片"
 
 
 class JournalCoverSearch:
-    def __init__(self, bridge=None, browser_lock=None):
+    def __init__(self, bridge=None, browser_lock=None, *, diagnostics=None):
         self.bridge, self.browser_lock = bridge, browser_lock
+        self.diagnostics = diagnostics
         self._lock = threading.RLock()
         self._asset_lock = threading.Lock()
         self._uploading = False
@@ -58,11 +61,14 @@ class JournalCoverSearch:
                     phase='Running', message='Searching this Journal', waiting_for_user=False, settled=False,
                     stop=threading.Event(), owner=owner, list_path=list_path,
                     config_path=config_path, state_revision=load_user_state(config_path, list_path).revision)
+                observe(self.diagnostics, "begin", "covers", task["request_id"])
                 self._task = task
                 self._worker = threading.Thread(target=self._run, args=(task, journal),
                     name='electron-cover-search', daemon=False)
                 self._worker.start()
             except BaseException:
+                if self._task is not None:
+                    observe(self.diagnostics, "finish", self._task["request_id"], "failed", details={"reason":"failed"})
                 self.browser_lock.release(owner)
                 self._task = None
                 raise
@@ -74,12 +80,13 @@ class JournalCoverSearch:
                 if task['stop'].is_set():
                     raise InterruptedError()
                 pending = self.bridge.execute('search_journal_cover',
-                    {'journal_key': journal.key, 'name': journal.name}, lambda data: self._progress(task, data))
+                    {'journal_key': journal.key, 'name': journal.name, 'task_id':task['request_id'], 'workflow_id':task['request_id']}, lambda data: self._progress(task, data))
             result = pending.result()
             with self._lock:
                 if task['stop'].is_set():
                     raise InterruptedError()
                 diagnostic = normalize_browser_diagnostic(result.get('diagnostic'))
+                task['diagnostic'] = diagnostic
                 if diagnostic:
                     task.update(phase='Failed', message=format_browser_diagnostic(diagnostic))
                     return
@@ -105,13 +112,18 @@ class JournalCoverSearch:
             task.update(phase='Cancelled', message='Cancelled')
         except (ValueError, OSError, binascii.Error):
             task.update(phase='Failed', message=FAILED_MESSAGE)
-        except Exception:
+        except Exception as error:
+            if isinstance(error, ElectronDisconnected):
+                task["history_interrupted"] = True
             task.update(phase='Failed', message='Electron cover search failed')
         finally:
             with self._lock:
                 task['waiting_for_user'] = False
                 self.browser_lock.release(task['owner'])
                 task['settled'] = True
+                observe(self.diagnostics, 'finish', task['request_id'], 'interrupted' if task.get('history_interrupted') else task['phase'].lower(),
+                    statistics={'downloaded':int(task['phase'] == 'Completed')}, diagnostic=task.get('diagnostic'),
+                    details={'reason':'connection_lost' if task.get('history_interrupted') else 'cancelled' if task['phase'] == 'Cancelled' else 'failed' if task['phase'] == 'Failed' else None})
 
     def _progress(self, task, data):
         with self._lock:

@@ -10,6 +10,9 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from allfold.application.wos import WoSWrites, persist_wos
+from allfold.application.history import observe, finish_run
+from allfold.application.browser_runtime import ElectronDisconnected
+from allfold.browser_diagnostics import normalize_browser_diagnostic
 from allfold.application.run_state import (
     LAST_RUN_SCHEMA_VERSION, RunProvider, RunFacts, RunIdentifierFact,
     RunJournalFact, RunIssueFact, validate_saved_facts,
@@ -26,7 +29,8 @@ from allfold.providers.wos import WoSRecords, compile_wos_query, combined_query,
 
 
 class WoSCoordinator:
-    def __init__(self, config_path, preparation, run_slot, *, bridge, browser_lock):
+    def __init__(self, config_path, preparation, run_slot, *, bridge, browser_lock, diagnostics=None):
+        self.diagnostics = diagnostics
         self.path, self.preparation, self.run_slot = config_path, preparation, run_slot
         self.lock = threading.RLock()
         self.task = None
@@ -160,6 +164,7 @@ class WoSCoordinator:
                 not_listed=not_listed, batches={}, download_root=None, waiting_for_user=False, date_warnings=[],
                 issues=[], warnings=warnings, raw_records=0, matched_journal_records=0, unmatched_journal_records=0, no_doi=0,
                 eligible_records=0, journal_counts={}, writes=WoSWrites(), result=None, prep=None)
+            observe(self.diagnostics, "begin", "run", task["id"], provider="wos")
             self.task = task
             worker = self._worker = threading.Thread(target=self._run, args=(task,), name='allfold-wos', daemon=False)
             try:
@@ -168,6 +173,7 @@ class WoSCoordinator:
                 self._release_owner(owner)
                 self.run_slot.release()
                 task['status'] = 'FINISHED'
+                observe(self.diagnostics, 'finish', task['id'], 'failed', details={'reason':'failed'})
                 raise
             return self.state()
 
@@ -263,7 +269,7 @@ class WoSCoordinator:
             if task['cancelled'].is_set():
                 raise InterruptedError()
             self.browser_lock.require(task['owner'])
-            pending = self.bridge.execute(action, {**data, 'task_id': task['id'],
+            pending = self.bridge.execute(action, {**data, 'task_id': task['id'], 'workflow_id':task['id'],
                 'service_id': task['service'].id, 'service_scope': task['service_scope']},
                 lambda value: self._electron_progress(task, value))
         result = pending.result()
@@ -272,6 +278,7 @@ class WoSCoordinator:
             raise InterruptedError()
         if 'diagnostic' in result:
             diagnostic = result['diagnostic']
+            task['diagnostic'] = normalize_browser_diagnostic(diagnostic)
             if (isinstance(diagnostic, dict) and diagnostic.get('stage') == 'wos_dom'
                     and diagnostic.get('code') == 'server_unexpected_error'):
                 raise ValueError('WoS 服务端异常（Server.unexpectedError），本次运行已终止，请稍后重试。')
@@ -305,7 +312,8 @@ class WoSCoordinator:
                 self._current(task)
                 if task['cancelled'].is_set():
                     raise InterruptedError()
-                prep = self.preparation.start(self.path, service=task['service'], browser_owner=task['owner'])
+                prep = self.preparation.start(self.path, service=task['service'], browser_owner=task['owner'],
+                    workflow_id=task['id'], parent_task_id=task['id'])
                 task['prep'] = prep
             while self.preparation.snapshot().authorization_pending:
                 snapshot = self.preparation.snapshot()
@@ -378,6 +386,7 @@ class WoSCoordinator:
         except InterruptedError:
             task['cancelled'].set()
         except Exception as error:
+            task['history_interrupted'] = isinstance(error, ElectronDisconnected)
             task['issues'].append(str(error) if isinstance(error, (ValueError, OSError, ContentChangedError)) else 'WoS browser execution failed')
         finally:
             try:
@@ -388,6 +397,7 @@ class WoSCoordinator:
                     task.update(status='FINISHED', waiting_for_user=False)
                     self._release_owner(task['owner'])
                     self.run_slot.release()
+                    finish_run(self.diagnostics, task['id'], {'provider':'wos','result':task['result']}, provider='wos', diagnostic=task.get('diagnostic'), interrupted=task.get('history_interrupted', False))
 
     def shutdown(self):
         if self.task:

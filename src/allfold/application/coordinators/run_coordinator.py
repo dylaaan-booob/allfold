@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import logging
 import threading
+import secrets
+from allfold.application.history import observe, finish_run
 from contextlib import AbstractContextManager
 from dataclasses import dataclass
 from datetime import datetime, timezone
@@ -82,7 +84,9 @@ class CoordinatorSnapshot:
 class RunCoordinator:
     """Coordinate one transient production run without persisting run state."""
 
-    def __init__(self, config_path: Path, *, run_slot=None) -> None:
+    def __init__(self, config_path: Path, *, run_slot=None, diagnostics=None) -> None:
+        self.diagnostics = diagnostics
+        self._task_id = None
         self._config_path = config_path
         self._run_slot = run_slot or threading.Lock()
         self._slot_owned = False
@@ -110,6 +114,8 @@ class RunCoordinator:
             if not self._run_slot.acquire(blocking=False):
                 return StartResult(StartOutcome.ALREADY_RUNNING)
             self._slot_owned = True
+            self._task_id = secrets.token_hex(16)
+            observe(self.diagnostics, "begin", "run", self._task_id, provider=provider.value)
             self._provider = provider
             self._status = CoordinatorStatus.RUNNING
             self._progress_state = ProgressState()
@@ -147,6 +153,7 @@ class RunCoordinator:
                     message="Run could not acquire exclusive Workspace ownership.",
                 )
                 self._release_slot()
+                observe(self.diagnostics, "finish", self._task_id, "failed", details={"reason":"workspace_changed"})
                 return StartResult(StartOutcome.START_FAILED)
             worker = threading.Thread(
                 target=self._run_worker,
@@ -169,6 +176,7 @@ class RunCoordinator:
                     message="The monitor worker could not be started.",
                 )
                 self._release_slot()
+                observe(self.diagnostics, "finish", self._task_id, "failed", details={"reason":"failed"})
                 start_error = error
             else:
                 start_error = None
@@ -269,3 +277,4 @@ class RunCoordinator:
                 self._finished_at = datetime.now(timezone.utc)
                 self._status = CoordinatorStatus.FINISHED
                 self._release_slot()
+                finish_run(self.diagnostics, self._task_id, self._result, provider=self._provider.value)

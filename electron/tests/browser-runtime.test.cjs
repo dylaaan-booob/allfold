@@ -296,7 +296,8 @@ test('Manual URL opening preserves the task; Covers use an auxiliary page withou
   assert.equal(browser.selected,manual);
   browser.endTask();assert.equal(browser.tabs.size,3);
   assert.doesNotMatch(JSON.stringify(browser.pageAssociation(cover.id)),/PRIVATE|secret/);
-  assert.doesNotMatch(JSON.stringify(logs),/PRIVATE|scope_id|config_revision|service_id/);
+  assert.doesNotMatch(JSON.stringify(logs),/PRIVATE|secret/);
+  assert.equal(logs.find(event=>event.event==='page_associated').scope_id,serviceScope.scope_id);
   assert.throws(()=>browser.beginOperation(signal,{service_id:serviceId}),/Invalid browser Service identity/);
   browser.close();assert.equal(browser.tabs.size,0);assert.equal(browser.selected,null);
 });
@@ -532,4 +533,18 @@ test('attachment capture timeout and source replacement cannot leak listeners or
   await assert.rejects(second.url,error=>error.diagnostic?.code==='document_changed');assert.equal(browser.attachmentCaptures.size,0);
   browser.operation.action='enrich_paper';
   assert.throws(()=>browser.captureAttachment(tab,doc));
+});
+test('reused page lifecycle records retain each workflow association before replacement and renderer invalidation',async t=>{
+  const {BrowserRuntime,logs}=fixture(t),browser=new BrowserRuntime();t.after(()=>browser.close());await browser.ready;
+  const controller=new AbortController(),tab=browser.createTab();
+  browser.beginOperation(controller.signal,{request_id:'request_a',task_id:'task_a',workflow_id:'workflow_a',service_scope:serviceScope,service_id:serviceId});
+  browser.associatePage(tab,{role:'import'});browser.bindTaskPage(tab,controller.signal);browser.endTask();
+  assert.equal(browser.pageAssociation(tab.id).workflow_id,'workflow_a');
+  browser.beginOperation(controller.signal,{request_id:'request_b',task_id:'task_b',workflow_id:'workflow_b',service_scope:serviceScope,service_id:serviceId});
+  browser.associatePage(tab,{role:'import'});browser.bindTaskPage(tab,controller.signal);
+  tab.view.webContents.emit('render-process-gone',{}, {reason:'crashed',exitCode:1});
+  assert.equal(browser.pageAssociation(tab.id),null);
+  const replaced=logs.find(e=>e.event==='page_association_replaced');assert.equal(replaced.workflow_id,'workflow_a');assert.equal(replaced.request_id,'request_a');
+  const crashed=logs.find(e=>e.event==='page_renderer_gone');assert.equal(crashed.workflow_id,'workflow_b');assert.equal(crashed.service_id,serviceId);
+  tab.view.webContents.close();assert.equal(logs.find(e=>e.event==='page_closed').page_id,tab.id);
 });

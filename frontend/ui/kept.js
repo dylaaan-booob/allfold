@@ -1,6 +1,17 @@
 import {KeptPlayer} from './kept-player.js';
 import {sceneReady,shots} from './kept/scene';
+import {importOutcomeMessage,preparationReason} from './business-results.js';
 const $=id=>document.getElementById(id),bridge=window.inboxKept;
+const exportButton=document.createElement('button');
+exportButton.type='button';exportButton.className='s-button';exportButton.textContent='导出本次诊断';exportButton.hidden=true;
+$('array-import-profile').append(exportButton);
+exportButton.addEventListener('click',async()=>{
+  if(!lastRun?.workflow_id)return;
+  exportButton.disabled=true;
+  try {await window.allfoldHistory.exportTask(lastRun.workflow_id);uiNext.notice('诊断包已在本地生成，未上传。');}
+  catch(error){uiNext.notice(error.message);}
+  finally {exportButton.disabled=false;}
+});
 const reduced=matchMedia('(prefers-reduced-motion: reduce)'),dialog=$('kept-flow');
 const states=Object.fromEntries(['candidates','kept'].map(status=>[status,{filter:null,selected:null,reader:false,indexPosition:0,indexScroll:0,indexLeft:0,bodyScroll:0,bodyPaper:null,missingLinkPaper:false}]));
 let status='candidates',ui=states.candidates;
@@ -44,6 +55,7 @@ function refreshActions() {
   workspaceSearch.refresh();
 }
 function renderRecord() {
+  exportButton.hidden=!lastRun?.workflow_id;
   const results=lastRun?.results || [],exported=results.filter(r=>r.outcome==='exported').length;
   $('kept-record-count').textContent=lastRun?`${exported} / ${lastRun.total}`:'—';
   $('kept-record-summary').textContent=lastRun?.message || '本次尚未导入。';
@@ -51,7 +63,7 @@ function renderRecord() {
     const item=document.createElement('li'),title=document.createElement('strong'),reason=document.createElement('small');
     item.dataset.outcome=result.outcome;title.textContent=result.title;title.title=result.title;
     reason.textContent=result.outcome==='exported'
-      ? (result.pdf_outcome==='verified failure'?'文献已导入，PDF 未保存，请在 Zotero 中查看':'导入成功，请在 Zotero 中查看')
+      ? importOutcomeMessage(result.outcome,result.pdf_outcome)
       : result.reason;
     const details=document.createElement('details'),summary=document.createElement('summary'),raw=document.createElement('p');
     details.className='import-result-details';summary.textContent='详情';
@@ -200,7 +212,7 @@ function publishResults(state) {
   const batch=state.batch;
   const titles=new Map([...(active?.queue || []),...allEntries()].map(e=>[e.paper.id,e.paper.title]));
   const results=(batch?.results || []).map(result=>({...result,title:titles.get(result.paper_id) || data.titles[result.paper_id] || result.paper_id}));
-  lastRun={total:batch?.total || active?.queue.length || results.length,results,message:state.message};
+  lastRun={total:batch?.total || active?.queue.length || results.length,results,message:state.message,workflow_id:state.workflow_id};
   renderRecord();
 }
 function identity(state) {return {workflow_id:state.workflow_id,generation:state.generation};}
@@ -243,7 +255,7 @@ function displayGate(run,state) {
     const diagnostic=result.diagnostic;
     const detail=diagnostic?[diagnostic.stage,diagnostic.step,diagnostic.code,
       Number.isInteger(diagnostic.status)?`HTTP ${diagnostic.status}`:null,diagnostic.net_error].filter(Boolean).join(' / '):'';
-    messages.push(`${service?.name || result.service_id}: ${result.outcome} · ${result.reason}${detail?` · ${detail}`:''}`);
+    messages.push(`${service?.name || result.service_id}: ${result.outcome} · ${preparationReason(result.reason) || result.reason}${detail?` · ${detail}`:''}`);
     if(service && result.outcome!=='Opened')manual.set(service.id,service);
   }
   $('kept-gate-message').textContent=messages.filter(Boolean).join('\n');

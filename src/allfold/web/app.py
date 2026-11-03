@@ -213,7 +213,7 @@ def _settings_result_context(
     }
 
 
-def create_app(config_path: Path, *, electron_bridge: ElectronBridge) -> FastAPI:
+def create_app(config_path: Path, *, electron_bridge: ElectronBridge, diagnostics_root: Path | None = None) -> FastAPI:
     """Create the local Web adapter without requiring valid configuration."""
 
     if electron_bridge is None:
@@ -246,9 +246,16 @@ def create_app(config_path: Path, *, electron_bridge: ElectronBridge) -> FastAPI
     )
     app.state.config_path = resolved_config_path
     app.state.csrf_token = csrf_token
+    from allfold.diagnostics import DiagnosticStore
+    try:
+        diagnostic_level = load_config(resolved_config_path).log_level.value
+    except (ConfigurationError, ValueError, OSError):
+        diagnostic_level = 'info'
+    app.state.diagnostics = DiagnosticStore(resolved_config_path, root=diagnostics_root, level=diagnostic_level)
     from allfold.application.browser_runtime import BrowserTaskLock
     app.state.browser_task_lock = BrowserTaskLock()
     app.state.electron_bridge = electron_bridge
+    electron_bridge.diagnostics = app.state.diagnostics
 
     @app.websocket("/api/electron/ws")
     async def electron_socket(socket: WebSocket):
@@ -265,13 +272,13 @@ def create_app(config_path: Path, *, electron_bridge: ElectronBridge) -> FastAPI
         return await call_next(request)
 
     run_slot = threading.Lock()
-    app.state.run_coordinator = RunCoordinator(resolved_config_path, run_slot=run_slot)
-    app.state.paper_enrichment = PaperEnrichment(electron_bridge, app.state.browser_task_lock)
-    app.state.journal_cover_search = JournalCoverSearch(electron_bridge, app.state.browser_task_lock)
-    app.state.batch_import = BatchImportService(electron_bridge, app.state.browser_task_lock)
-    app.state.preparation_coordinator = PreparationCoordinator(electron_bridge, app.state.browser_task_lock)
+    app.state.run_coordinator = RunCoordinator(resolved_config_path, run_slot=run_slot, diagnostics=app.state.diagnostics)
+    app.state.paper_enrichment = PaperEnrichment(electron_bridge, app.state.browser_task_lock, diagnostics=app.state.diagnostics)
+    app.state.journal_cover_search = JournalCoverSearch(electron_bridge, app.state.browser_task_lock, diagnostics=app.state.diagnostics)
+    app.state.batch_import = BatchImportService(electron_bridge, app.state.browser_task_lock, diagnostics=app.state.diagnostics)
+    app.state.preparation_coordinator = PreparationCoordinator(electron_bridge, app.state.browser_task_lock, diagnostics=app.state.diagnostics)
     app.state.wos_coordinator = WoSCoordinator(resolved_config_path, app.state.preparation_coordinator, run_slot,
-        bridge=electron_bridge, browser_lock=app.state.browser_task_lock)
+        bridge=electron_bridge, browser_lock=app.state.browser_task_lock, diagnostics=app.state.diagnostics)
     app.state.import_token = secrets.token_urlsafe(32)
     app.state.reset_confirmation = None
     app.state.reset_lock = threading.Lock()
@@ -287,7 +294,7 @@ def create_app(config_path: Path, *, electron_bridge: ElectronBridge) -> FastAPI
         workspace = load_workspace(target.workspace, journals=config.journals)
         return bool(workspace.papers_for(WorkflowStatus.KEPT))
 
-    def begin_import(target: _ImportTarget, authorization: str):
+    def begin_import(target: _ImportTarget, authorization: str, *, workflow_id=None, parent_task_id=None):
         # The caller holds import_submission_lock, including automatic transitions.
         current, _ = _ImportTarget.read(resolved_config_path)
         if authorization != app.state.import_token or current != target:
@@ -296,12 +303,13 @@ def create_app(config_path: Path, *, electron_bridge: ElectronBridge) -> FastAPI
             raise ContentChangedError("No Kept Papers to import.")
         app.state.import_token = secrets.token_urlsafe(32)
         return app.state.batch_import.start(target.workspace, validate_target=target.verify,
-            browser_owner=app.state.kept_workflow.browser_owner, config_path=target.config_path)
+            browser_owner=app.state.kept_workflow.browser_owner, config_path=target.config_path,
+            workflow_id=workflow_id, parent_task_id=parent_task_id)
 
     app.state.kept_workflow = KeptWorkflow(
         app.state.preparation_coordinator, app.state.batch_import, import_submission_lock,
         begin_import=begin_import, has_kept=has_kept,
-        browser_lock=app.state.browser_task_lock,
+        browser_lock=app.state.browser_task_lock, diagnostics=app.state.diagnostics,
     )
 
     def start_workflow(import_token: str | None, mode: str):
@@ -430,14 +438,22 @@ def create_app(config_path: Path, *, electron_bridge: ElectronBridge) -> FastAPI
     def workspace_page():
         return ui_next_page()
 
-    def reset_preview_context() -> dict[str, object]:
+    from allfold.web.diagnostics_api import install_diagnostics_api
+    logs_reset_preview = install_diagnostics_api(app, run_slot=run_slot)
+
+    def reset_preview_context(scope: str = 'workspace') -> dict[str, object]:
         with app.state.reset_lock:
+            if scope == 'logs':
+                return logs_reset_preview()
+            if scope != 'workspace':
+                app.state.reset_confirmation = None
+                return {'reset_plan': None, 'reset_token': None, 'reset_error': 'Unknown Reset scope.'}
             # Each display supersedes its predecessor; POST cannot choose a path.
             app.state.reset_confirmation = None
             try:
                 plan = preview_reset(resolved_config_path)
                 token = secrets.token_urlsafe(32)
-                app.state.reset_confirmation = (token, plan)
+                app.state.reset_confirmation = (token, plan, 'workspace', None)
                 return {"reset_plan": plan, "reset_token": token, "reset_error": None}
             except (ResetRefused, OSError, ValueError) as error:
                 return {"reset_plan": None, "reset_token": None, "reset_error": str(error)}
@@ -452,12 +468,11 @@ def create_app(config_path: Path, *, electron_bridge: ElectronBridge) -> FastAPI
         with import_submission_lock, app.state.reset_lock:
             saved = app.state.reset_confirmation
             token = form.get("reset_token")
-            if (saved is None or not isinstance(token, str)
+            if (saved is None or len(saved) < 3 or saved[2] != 'workspace' or not isinstance(token, str)
+                    or not token.isascii()
                     or not secrets.compare_digest(token, saved[0])):
-                result_message, status = "Reset confirmation is stale or already used. Reload Settings.", 409
-            elif form.get("reset_word") != "RESET":
                 app.state.reset_confirmation = None
-                result_message, status = "Type the complete RESET confirmation. Reload Settings to retry.", 400
+                result_message, status = "Reset confirmation is stale or already used. Reload Settings.", 409
             elif app.state.run_coordinator.snapshot().status is CoordinatorStatus.RUNNING:
                 app.state.reset_confirmation = None
                 result_message, status = "A Run is active; Reset refused.", 409
@@ -484,6 +499,8 @@ def create_app(config_path: Path, *, electron_bridge: ElectronBridge) -> FastAPI
                         reset_result = result
                         result_message = result.message
                         status = 200 if result.success else 409
+                        if result.success or result.workspace_invalidated:
+                            app.state.diagnostics.workspace_reset()
                         if result.success:
                             app.state.batch_import.clear_terminal()
                             app.state.kept_workflow.clear_terminal()
@@ -650,7 +667,7 @@ def create_app(config_path: Path, *, electron_bridge: ElectronBridge) -> FastAPI
             proof = str(form.get("markdown_import_proof", ""))
             stored = scope_previews.get(proof)
             if stored is None:
-                raise ContentChangedError("Import Preview expired or invalid; Preview again")
+                raise ContentChangedError("Import Preview is no longer valid; Preview again")
             plan, preview_draft, contents, filename, choices = stored
             expected_payload = base64.b64encode(contents.encode()).decode()
             if (draft != preview_draft or form.get("markdown_import_payload") != expected_payload
