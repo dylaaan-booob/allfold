@@ -8,6 +8,7 @@ import base64
 import json
 import secrets
 import threading
+import time
 from contextlib import asynccontextmanager
 from dataclasses import replace
 from pathlib import Path
@@ -213,7 +214,7 @@ def _settings_result_context(
     }
 
 
-def create_app(config_path: Path, *, electron_bridge: ElectronBridge) -> FastAPI:
+def create_app(config_path: Path, *, electron_bridge: ElectronBridge, diagnostics_root: Path | None = None) -> FastAPI:
     """Create the local Web adapter without requiring valid configuration."""
 
     if electron_bridge is None:
@@ -246,6 +247,12 @@ def create_app(config_path: Path, *, electron_bridge: ElectronBridge) -> FastAPI
     )
     app.state.config_path = resolved_config_path
     app.state.csrf_token = csrf_token
+    from allfold.diagnostics import DiagnosticStore
+    try:
+        diagnostic_level = load_config(resolved_config_path).log_level.value
+    except (ConfigurationError, ValueError, OSError):
+        diagnostic_level = 'info'
+    app.state.diagnostics = DiagnosticStore(resolved_config_path, root=diagnostics_root, level=diagnostic_level)
     from allfold.application.browser_runtime import BrowserTaskLock
     app.state.browser_task_lock = BrowserTaskLock()
     app.state.electron_bridge = electron_bridge
@@ -430,14 +437,22 @@ def create_app(config_path: Path, *, electron_bridge: ElectronBridge) -> FastAPI
     def workspace_page():
         return ui_next_page()
 
-    def reset_preview_context() -> dict[str, object]:
+    from allfold.web.diagnostics_api import install_diagnostics_api
+    logs_reset_preview = install_diagnostics_api(app, run_slot=run_slot)
+
+    def reset_preview_context(scope: str = 'workspace') -> dict[str, object]:
         with app.state.reset_lock:
+            if scope == 'logs':
+                return logs_reset_preview()
+            if scope != 'workspace':
+                app.state.reset_confirmation = None
+                return {'reset_plan': None, 'reset_token': None, 'reset_error': 'Unknown Reset scope.'}
             # Each display supersedes its predecessor; POST cannot choose a path.
             app.state.reset_confirmation = None
             try:
                 plan = preview_reset(resolved_config_path)
                 token = secrets.token_urlsafe(32)
-                app.state.reset_confirmation = (token, plan)
+                app.state.reset_confirmation = (token, plan, 'workspace', None, time.monotonic())
                 return {"reset_plan": plan, "reset_token": token, "reset_error": None}
             except (ResetRefused, OSError, ValueError) as error:
                 return {"reset_plan": None, "reset_token": None, "reset_error": str(error)}
@@ -452,12 +467,11 @@ def create_app(config_path: Path, *, electron_bridge: ElectronBridge) -> FastAPI
         with import_submission_lock, app.state.reset_lock:
             saved = app.state.reset_confirmation
             token = form.get("reset_token")
-            if (saved is None or not isinstance(token, str)
-                    or not secrets.compare_digest(token, saved[0])):
-                result_message, status = "Reset confirmation is stale or already used. Reload Settings.", 409
-            elif form.get("reset_word") != "RESET":
+            if (saved is None or len(saved) < 3 or saved[2] != 'workspace' or not isinstance(token, str)
+                    or not secrets.compare_digest(token, saved[0])
+                    or len(saved) < 5 or time.monotonic() - saved[4] > 300):
                 app.state.reset_confirmation = None
-                result_message, status = "Type the complete RESET confirmation. Reload Settings to retry.", 400
+                result_message, status = "Reset confirmation is stale or already used. Reload Settings.", 409
             elif app.state.run_coordinator.snapshot().status is CoordinatorStatus.RUNNING:
                 app.state.reset_confirmation = None
                 result_message, status = "A Run is active; Reset refused.", 409
@@ -485,6 +499,7 @@ def create_app(config_path: Path, *, electron_bridge: ElectronBridge) -> FastAPI
                         result_message = result.message
                         status = 200 if result.success else 409
                         if result.success:
+                            app.state.diagnostics.workspace_reset()
                             app.state.batch_import.clear_terminal()
                             app.state.kept_workflow.clear_terminal()
                             app.state.import_token = secrets.token_urlsafe(32)

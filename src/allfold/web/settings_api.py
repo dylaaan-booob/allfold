@@ -87,8 +87,8 @@ def install_settings_api(app, config_path, csrf_token, *, workspace_health,
         return json_response({"message": "Unknown diagnostic"}, 404)
 
     @app.get("/api/ui-next/settings/reset-preview")
-    def get_reset_preview():
-        return json_response(reset_preview())
+    def get_reset_preview(scope: str = 'workspace'):
+        return json_response(reset_preview(scope))
 
 
 def install_resource_api(app, config_path, csrf_token):

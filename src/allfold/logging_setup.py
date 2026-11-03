@@ -3,10 +3,19 @@
 from __future__ import annotations
 
 import logging
+import os
 import sys
 
 LOGGER_NAME = "allfold"
 _HANDLER_MARKER = "_allfold_handler"
+
+
+def effective_log_level(saved: str = "INFO") -> str:
+    """An explicit process override wins; otherwise use the saved setting."""
+    value = os.environ.get('ALLFOLD_LOG_LEVEL', saved).upper()
+    if value == 'WARN':
+        value = 'WARNING'
+    return value if value in {'DEBUG', 'INFO', 'WARNING', 'ERROR'} else 'INFO'
 
 
 def configure_logging(level: str = "INFO") -> logging.Logger:
@@ -22,6 +31,6 @@ def configure_logging(level: str = "INFO") -> logging.Logger:
         logging.Formatter("%(asctime)s %(levelname)s %(name)s: %(message)s")
     )
     logger.addHandler(handler)
-    logger.setLevel(level.upper())
+    logger.setLevel(effective_log_level(level))
     logger.propagate = False
     return logger
