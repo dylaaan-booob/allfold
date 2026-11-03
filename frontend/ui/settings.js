@@ -530,7 +530,7 @@ function moveDirectoryIndex(container,delta) {
 document.addEventListener('keydown',event=>{
   if(event.defaultPrevented || !['ArrowUp','ArrowDown'].includes(event.key) ||
       event.altKey || event.metaKey || event.ctrlKey || event.shiftKey ||
-      loading || reconcileRequired || root.hidden || root.inert || !configurationAvailable() ||
+      loading || reconcileRequired || root.hidden || root.closest('[inert]') || !configurationAvailable() ||
       document.querySelector('dialog[open], [popover]:popover-open') || event.target.isContentEditable ||
       event.target.closest('input,textarea,select,[contenteditable],[role=separator],[inert]'))return;
   const page=window.workspaceNavigation.current();

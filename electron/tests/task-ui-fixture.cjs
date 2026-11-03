@@ -16,6 +16,7 @@ class Element extends Target {
   setAttribute(name,value){this.attributes[name]=String(value);}
   getAttribute(name){return this.attributes[name];}
   removeAttribute(name){delete this.attributes[name];}
+  closest(selector){for(let node=this;node;node=node.parentElement)if(selector.split(',').some(value=>value==='[inert]'?node.inert:value.toUpperCase()===node.tagName))return node;return null;}
   contains(node){return this.children.includes(node);}
   querySelector(selector){return this.children.find(node=>selector.startsWith('.')?node.className===selector.slice(1):node.id===selector.slice(1)) || new Element();}
   querySelectorAll(){return [];}
@@ -27,6 +28,7 @@ class Element extends Target {
 async function settle(){for(let i=0;i<35;i++)await Promise.resolve();}
 async function taskUI(script,{inline=true,request,ready=false,reduced=false,archiveDisabled=false,layout='array',page='run',initialLink=null,bridgeReady=true}={}){
   const elements=new Map(),get=id=>{const find=node=>node.id===id?node:node.children.map(find).find(Boolean);for(const node of elements.values()){const found=find(node);if(found)return found;}if(!elements.has(id)){const node=new Element();node.id=id;elements.set(id,node);}return elements.get(id);};
+  get('allfold-pane').append(get('selected-view'));get('selected-view').append(get('kept-view'));
   get('selected-view').dataset.workspaceLayout=layout;get('workspace-layout').parentElement=get('array-layout-controls');
   get('s-run').append(Object.assign(new Element(),{className:'s-run-body'}));get('run-view').querySelector=selector=>selector==='.run-status-area'?get('run-status-area'):new Element();get('run-stage-layer').append(get('run-title'));get('run-stage-layer').append(get('run-status-area'));get('run-view').append(get('run-stage-layer'));get('run-status-area').append(get('run-wos-cancel'));
   get('kept-flow').append(get('kept-flow-actions'));get('kept-flow-actions').append(get('kept-flow-gate'),get('kept-leave'),get('kept-skip-slot'));get('kept-flow-gate').append(get('kept-gate-message'),get('kept-manual-services'),get('kept-continue'));
@@ -53,7 +55,7 @@ async function taskUI(script,{inline=true,request,ready=false,reduced=false,arch
   vm.createContext(context);
   const source=fs.readFileSync(path.resolve(__dirname,'../../frontend/ui',script),'utf8').replace(/^import .*;\n/gm,'');
   vm.runInContext(source,context,{filename:script});await settle();
-  return {window,get,calls,presentations,entries,setInline:value=>{inline=value;},setArchiveDisabled:value=>{archiveDisabled=value;},setBridgeReady:value=>{bridgeReady=value;},setPage:page=>{currentPage=page;},page:()=>currentPage,
+  return {window,document,get,calls,presentations,entries,setInline:value=>{inline=value;},setArchiveDisabled:value=>{archiveDisabled=value;},setBridgeReady:value=>{bridgeReady=value;},setPage:page=>{currentPage=page;},page:()=>currentPage,
     stats:()=>({prepares,refreshes,opens,visuals}),async tick(){const pending=[...timers.values()];timers.clear();for(const fn of pending)fn();await settle();},settle};
 }
 module.exports={taskUI,settle};

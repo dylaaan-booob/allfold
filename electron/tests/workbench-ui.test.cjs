@@ -40,11 +40,13 @@ test('Browser presentation preserves business DOM and suspends native content fo
   f.document.getElementById('allfold-pane').querySelectorAll=()=>[reader];
   page.append(input);input.value='unsaved';input.focus();await f.window.allfoldWorkbench.show();f.flush();
   assert.equal(f.document.body.dataset.workbench,'browser');assert.equal(page.children[0].value,'unsaved');
+  assert.equal(f.document.getElementById('allfold-pane').inert,true);
   assert.equal(f.calls.at(-1).visible,true);
   const history=f.document.getElementById('history-dialog');history.open=true;f.mutate();f.flush();
   assert.equal(f.calls.at(-1).suspended,true);
   history.open=false;f.mutate();f.flush();assert.equal(f.calls.at(-1).suspended,false);
   reader.scrollTop=80;f.window.allfoldWorkbench.hide();f.flush();assert.equal(f.calls.at(-1).visible,false);
+  assert.equal(f.document.getElementById('allfold-pane').inert,false);
   assert.equal(reader.scrollTop,230);
   assert.equal(input.value,'unsaved');assert.equal(f.document.activeElement,input);
 });
