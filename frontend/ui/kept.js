@@ -490,7 +490,7 @@ $('run-view').addEventListener('close',()=>void restoreWorkflow());
 document.addEventListener('visibilitychange',()=>{if(!document.hidden){active?.player.resume();if(workflow?.active)void pollWorkflow();}});
 
 document.addEventListener('keydown',event=>{
-  if(event.defaultPrevented || !arrayShown() || !['ArrowUp','ArrowDown','ArrowLeft','ArrowRight'].includes(event.key) ||
+  if(event.defaultPrevented || $('selected-view').closest('[inert]') || !arrayShown() || !['ArrowUp','ArrowDown','ArrowLeft','ArrowRight'].includes(event.key) ||
       event.altKey || event.metaKey || event.ctrlKey || event.shiftKey || switchBusy() || document.querySelector('dialog[open]') ||
       event.target.isContentEditable || event.target.closest('input,textarea,select,[contenteditable]'))return;
   if(['ArrowLeft','ArrowRight'].includes(event.key)){

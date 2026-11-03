@@ -1549,7 +1549,7 @@ $('next-journal').addEventListener('click', () => moveJournal(1));
 $('previous-group').addEventListener('click', () => moveShelf(-1));
 $('next-group').addEventListener('click', () => moveShelf(1));
 document.addEventListener('keydown', event => {
-  if (event.defaultPrevented || !inboxActive() || !state.ready || event.altKey || event.metaKey || event.ctrlKey) return;
+  if (event.defaultPrevented || $('selected-view').closest('[inert]') || !inboxActive() || !state.ready || event.altKey || event.metaKey || event.ctrlKey) return;
   if(document.querySelector('dialog[open]'))return;
   if (event.key === 'Escape' && state.view === 'journal') { back(); event.preventDefault(); }
   else if (state.view === 'journal' && ['ArrowUp','ArrowDown'].includes(event.key)) {
