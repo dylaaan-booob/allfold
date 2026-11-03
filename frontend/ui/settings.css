@@ -137,6 +137,17 @@
 .s-dialog .s-help{margin-top:10px!important}
 .s-dialog img{height:90px;max-width:120px;object-fit:contain}
 .s-dialog.s-crop-dialog{width:min(720px,calc(100vw - 36px))}
+#history-dialog{width:min(780px,calc(100vw - 36px))}
+.history-record{padding:18px 0;border-bottom:1px solid var(--rule);font-size:12px;line-height:1.8}
+.history-record-title{display:flex;align-items:baseline;justify-content:space-between;gap:16px;flex-wrap:wrap}
+.history-record h3{margin:0;font-size:15px}
+.history-record p{margin:7px 0}
+.history-record .history-counts{font-weight:600}
+.history-record .history-impact{color:var(--muted)}
+.history-record details{margin:10px 0}
+.history-record details ol{max-height:240px;overflow:auto;padding-left:22px}
+.history-record summary{cursor:pointer}
+.history-record .s-button{margin-top:8px}
 .s-crop-stage{height:clamp(180px,48dvh,440px);min-width:0;overflow:hidden;background:#25282108}
 .s-crop-dialog .s-crop-stage img{display:block;height:auto;max-width:100%;object-fit:fill}
 .s-crop-dialog .s-crop-stage .cropper-container img{max-width:none!important}

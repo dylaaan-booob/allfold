@@ -1307,6 +1307,7 @@ function openPaperDialog(kind) {
   $('paper-tools-paper').textContent=paper.title;
   $('paper-input-label').hidden=kind!=='input';$('paper-diagnostic-text').hidden=kind!=='diagnostics';
   $('paper-dialog-save').hidden=kind!=='input';$('paper-dialog-copy').hidden=kind!=='diagnostics';
+  $('paper-dialog-export').hidden=kind!=='diagnostics';$('paper-dialog-export').disabled=true;
   $('paper-dialog-cancel').textContent=kind==='input'?'Cancel':'Close';
   $('paper-dialog-error').textContent='';$('paper-input-text').value='';$('paper-dialog-save').disabled=true;
   $('paper-tools-dialog').showModal();renderEnrich();
@@ -1327,6 +1328,8 @@ function renderPaperDiagnostics(diagnostic) {
     ? `${['Retrieving','Saving'].includes(diagnostic.phase)?'任务运行中，尝试详情在结果返回后显示。\n\n':''}${JSON.stringify(diagnostic,null,2)}${diagnostic.finished_at && !diagnostic.attempts.length?'\n\n本次未收到 Translator 尝试详情。':''}`
     : '当前 Paper 暂无 Enrich 诊断。服务重启后记录会清空。';
   $('paper-dialog-copy').disabled=!diagnostic;
+  $('paper-dialog-export').dataset.taskId=diagnostic?.request_id || '';
+  $('paper-dialog-export').disabled=!diagnostic?.request_id;
 }
 async function submitPaperEdit(kind) {
   const paper=currentPaper();
@@ -1374,6 +1377,13 @@ $('paper-tools-dialog').addEventListener('close',()=>{
 $('paper-dialog-copy').addEventListener('click',async()=>{
   try{await navigator.clipboard.writeText($('paper-diagnostic-text').textContent);$('paper-dialog-error').textContent='诊断已复制。';}
   catch{$('paper-dialog-error').textContent='无法复制，请选中诊断文本后手动复制。';}
+});
+$('paper-dialog-export').addEventListener('click',async()=>{
+  const button=$('paper-dialog-export');if(!button.dataset.taskId)return;
+  button.disabled=true;
+  try {await window.allfoldHistory.exportTask(button.dataset.taskId);$('paper-dialog-error').textContent='诊断包已在本地生成，未上传。';}
+  catch(error){$('paper-dialog-error').textContent=error.message;}
+  finally {button.disabled=!button.dataset.taskId;}
 });
 
 function enrichmentURL(operation) {return `/api/papers/${operation.paperId}/enrichment`;}

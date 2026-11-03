@@ -1,6 +1,7 @@
 """UI Next projections of the shared Settings operations."""
 from pathlib import Path
 from dataclasses import replace
+import os
 
 from fastapi import Request
 from fastapi.encoders import jsonable_encoder
@@ -46,6 +47,7 @@ def settings_response(request: Request, context, *, status_code=200, saved=False
     """Project the existing Settings result onto the UI Next JSON contract."""
     state = settings_state(request.app.state.config_path, context["csrf_token"],
                            disk=context.get("settings_disk_state"))
+    state['logging'] = logging_state(request.app)
     state.update(saved=saved, values=replace(context["settings_form"], pubmed_api_key=None, openalex_api_key=None), issues=tuple((*state["issues"], *context["settings_issues"])),
                  message=context["settings_message"], save=context["settings_save"],
                  validation=context["settings_validation"],
@@ -60,6 +62,12 @@ def settings_response(request: Request, context, *, status_code=200, saved=False
     return json_response(state, status_code)
 
 
+def logging_state(app):
+    return {'effective_level': app.state.diagnostics.level,
+            'environment_override': 'ALLFOLD_LOG_LEVEL' in os.environ,
+            'restart_required': True}
+
+
 def install_settings_api(app, config_path, csrf_token, *, workspace_health,
                          zotero_integration, reset_preview):
     install_resource_api(app, config_path, csrf_token)
@@ -67,6 +75,7 @@ def install_settings_api(app, config_path, csrf_token, *, workspace_health,
     @app.get("/api/ui-next/settings")
     def get_settings():
         state = settings_state(config_path, csrf_token)
+        state['logging'] = logging_state(app)
         state["cover_search"] = app.state.journal_cover_search.state()
         return json_response(state)
 

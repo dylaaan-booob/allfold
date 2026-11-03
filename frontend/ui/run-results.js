@@ -23,6 +23,7 @@ const labels={
   PD_PY_year_conflict:'出版日期与出版年份不一致',unusable_PD:'出版日期无法解析',date_unavailable:'无法确定出版日期',
 };
 const label=value=>labels[value] || value;
+export const resultLabel=label;
 const identifierProblem=item=>!['resolved','complete','empty','unknown'].includes(item.status);
 const journalProblem=journal=>!['complete','empty','observed','unknown'].includes(journal.status) || journal.identifiers.some(identifierProblem);
 

@@ -53,6 +53,33 @@ def test_non_ascii_reset_confirmation_preserves_both_stores(tmp_path, scope):
     assert application.state.diagnostics.history()['records'][0]['task_id'] == 'protected_task'
 
 
+@pytest.mark.parametrize('override', [None, 'ERROR'])
+def test_settings_reports_active_level_and_saved_changes_take_effect_after_restart(tmp_path, monkeypatch, override):
+    from electron_test_helpers import OfflineBridge
+    from fastapi.testclient import TestClient
+    from safety_config_helpers import current_mapping_document
+    from settings_api_helpers import form
+    from allfold.web.app import create_app
+
+    monkeypatch.delenv('ALLFOLD_LOG_LEVEL', raising=False)
+    if override:
+        monkeypatch.setenv('ALLFOLD_LOG_LEVEL', override)
+    config, *_ = current_mapping_document(tmp_path)
+    application = create_app(config, electron_bridge=OfflineBridge(), diagnostics_root=tmp_path / 'logs')
+    with TestClient(application, base_url='http://127.0.0.1') as client:
+        state = client.get('/api/ui-next/settings').json()
+        assert state['logging']['effective_level'] == ('error' if override else 'info')
+        submitted = form(state)
+        submitted['log_level'] = 'WARNING'
+        saved = client.post('/settings/save', data=submitted).json()
+        assert saved['saved']
+        assert saved['values']['log_level'] == 'WARNING'
+        assert saved['logging'] == {'effective_level': 'error' if override else 'info',
+                                    'environment_override': bool(override), 'restart_required': True}
+    restarted = create_app(config, electron_bridge=OfflineBridge(), diagnostics_root=tmp_path / 'logs')
+    assert restarted.state.diagnostics.level == ('error' if override else 'warn')
+
+
 def test_native_evidence_survives_restart_and_export_filters_exact_scope_and_workflow(tmp_path):
     config = tmp_path / 'synthetic.yaml'
     config.write_text('keyword_expression: synthetic\n')

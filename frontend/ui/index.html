@@ -32,6 +32,7 @@
   <script type="module" src="run.js"></script>
   <script type="module" src="kept-app.js"></script>
   <script type="module" src="settings.js"></script>
+  <script type="module" src="history.js"></script>
 </head>
 <body>
   <header class="masthead">
@@ -44,6 +45,7 @@
       <button id="settings-open" disabled><small>04</small><span class="nav-label">SETTINGS</span></button>
     </nav></div>
     <button id="browser-open" class="s-button" aria-label="打开 Browser 窗口">BROWSER</button>
+    <button id="history-open" class="s-button" aria-label="运行历史">HISTORY</button>
     </div>
     <div class="header-utilities">
       <div id="workspace-search" hidden>
@@ -171,6 +173,13 @@
       <span id="paper-tools-status" role="status" aria-live="polite"></span>
     </div>
     <span id="snapshot-label">WORKSPACE</span></footer>
+  <dialog id="history-dialog" class="s-dialog" aria-labelledby="history-title">
+    <h2 id="history-title">运行历史</h2>
+    <p class="s-help">最近任务与结果；历史仅供回顾。诊断包只含受限的结构化记录，在本地下载，不自动上传。</p>
+    <p id="history-status" class="s-help" role="status" aria-live="polite"></p>
+    <div id="history-records"></div>
+    <div class="s-actions"><button id="history-refresh" class="s-button" type="button">Refresh</button><button id="history-close" class="s-button" type="button">Close</button></div>
+  </dialog>
   <dialog id="paper-tools-dialog" class="s-dialog" aria-labelledby="paper-tools-title">
     <h2 id="paper-tools-title"></h2>
     <div class="s-dialog-body">
@@ -182,6 +191,7 @@
     <div class="s-actions">
       <button id="paper-dialog-cancel" class="s-button" type="button">Cancel</button>
       <button id="paper-dialog-copy" class="s-button" type="button" hidden>Copy diagnostics</button>
+      <button id="paper-dialog-export" class="s-button" type="button" hidden>导出本次诊断</button>
       <button id="paper-dialog-save" class="s-button s-primary" type="button" hidden>Save</button>
     </div>
   </dialog>

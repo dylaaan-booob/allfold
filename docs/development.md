@@ -71,7 +71,8 @@ Chromium authentication remains a separate manual acceptance boundary.
 - Need application diagnostics: use HISTORY's task export or Settings' recent
   diagnostic export. Both runtimes persist bounded, validated JSONL alongside
   stderr, independently of Workspace and SQLite. Settings Log Level controls
-  optional detail; `ALLFOLD_LOG_LEVEL=debug npm --prefix electron start` explicitly
+  optional detail after restarting; it also shows the current active level.
+  `ALLFOLD_LOG_LEVEL=debug npm --prefix electron start` explicitly
   overrides it for both runtimes. Supported levels are debug, info, warn and error;
   necessary task results and errors survive all levels. Raw Chromium stderr can
   contain addresses and is excluded from diagnostic exports. See [logging](logging.md)

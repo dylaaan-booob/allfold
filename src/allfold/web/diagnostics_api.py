@@ -12,6 +12,7 @@ from starlette.concurrency import run_in_threadpool
 
 from allfold.application.coordinators.run_coordinator import CoordinatorStatus
 from allfold.diagnostics import DiagnosticRefused
+from allfold.browser_diagnostics import format_browser_diagnostic
 from allfold.persistence.safe_write import _open_directory_nofollow
 
 
@@ -81,7 +82,14 @@ def install_diagnostics_api(app, *, run_slot):
 
     @app.get('/api/history')
     def history():
-        return _json(store.history())
+        data = store.history()
+        for record in data['records']:
+            if record.get('diagnostic'):
+                record['diagnostic_message'] = format_browser_diagnostic(record['diagnostic'])
+            for result in record.get('details', {}).get('results', []):
+                if result.get('diagnostic'):
+                    result['diagnostic_message'] = format_browser_diagnostic(result['diagnostic'])
+        return _json(data)
 
     @app.post('/api/diagnostics/export')
     def export(body: _ExportRequest):
