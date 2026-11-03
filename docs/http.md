@@ -14,7 +14,11 @@ This preserves standard-library environment precedence: lowercase overrides
 uppercase, including empty lowercase values; CGI ignores uppercase `HTTP_PROXY`.
 It also preserves the macOS system-proxy fallback when no environment map is
 available. HTTP and HTTPS use their scheme-specific proxy, then `ALL_PROXY`, then
-direct access if neither is configured. Scheme-less proxy addresses mean HTTP.
+the macOS system SOCKS proxy, then direct access if none is configured. The system
+SOCKS fallback is only initialized when a scheme would otherwise lack a proxy.
+CPython's `socks` entry uses an `http://` address wrapper; it is normalized to
+SOCKS5 without changing the endpoint or credentials. Scheme-less HTTP/HTTPS/ALL
+proxy addresses mean HTTP.
 
 HTTPX handles HTTP/HTTPS proxies and CONNECT. SOCKS5/SOCKS5H require HTTPX's optional
 `socksio` dependency, absent from the current lock. Missing SOCKS support and
@@ -69,5 +73,7 @@ Mechanism references: [HTTPX public transports](https://www.python-httpx.org/adv
 [Mistral Vibe explicit proxy transport](https://github.com/mistralai/mistral-vibe/blob/338ad4bf0f73c4dd879d667cf7ab011555ae1751/vibe/utils/http.py),
 [HTTPX2 CIDR matching](https://github.com/pydantic/httpx2/pull/1165) and
 [invalid-entry handling](https://github.com/pydantic/httpx2/pull/1267).
+The [CPython system proxy adapter](https://github.com/python/cpython/blob/v3.12.14/Modules/_scproxy.c)
+defines the macOS SOCKS configuration format.
 The implementation uses original HTTPX and the standard library; upstream source
 is not vendored or modified.

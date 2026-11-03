@@ -129,7 +129,15 @@ def _proxy(value: str, scheme: str) -> httpx.Proxy:
     try:
         if re.search(r"\s", value) or value.endswith(":"):
             raise ValueError
-        url = httpx.URL(value if "://" in value else f"http://{value}")
+        value = value if "://" in value else f"http://{value}"
+        if scheme == "socks":
+            # CPython's macOS getproxies() labels even SOCKS addresses http://.
+            # Replace before URL parsing so an explicit port 80 is not lost.
+            protocol, authority = value.split("://", 1)
+            if protocol.lower() not in ("http", "socks5", "socks5h"):
+                raise ValueError
+            value = f"socks5://{authority}" if protocol.lower() == "http" else value
+        url = httpx.URL(value)
         if (not url.host or url.port is not None and not 1 <= url.port <= 65535
                 or url.path != "/" or url.query or url.fragment
                 or url.netloc.endswith(b":")):
@@ -145,6 +153,9 @@ class _EnvironmentProxyTransport(httpx.BaseTransport):
         settings = urllib.request.getproxies()
         proxies = {scheme: _proxy(settings[scheme], scheme) for scheme in ("http", "https", "all")
                    if settings.get(scheme)}
+        if ("all" not in proxies and not all(scheme in proxies for scheme in ("http", "https"))
+                and settings.get("socks")):
+            proxies["socks"] = _proxy(settings["socks"], "socks")
         self._bypass = tuple(rule for value in settings.get("no", "").split(",")
                              if (rule := _bypass_rule(value)) is not None)
         self._resources = ExitStack()
@@ -169,7 +180,8 @@ class _EnvironmentProxyTransport(httpx.BaseTransport):
         if any(rule.matches(request.url) for rule in self._bypass):
             transport = self._direct
         else:
-            transport = self._proxies.get(request.url.scheme, self._proxies.get("all", self._direct))
+            transport = (self._proxies.get(request.url.scheme) or self._proxies.get("all")
+                         or self._proxies.get("socks") or self._direct)
         return transport.handle_request(request)
 
     def close(self) -> None:

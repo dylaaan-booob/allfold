@@ -156,6 +156,33 @@ def test_system_proxy_source_and_no_dns_for_cidrs(monkeypatch, routes):
         assert client.get("https://internal.example").text == "system-proxy.test"
 
 
+@pytest.mark.parametrize(("settings", "http_route", "https_route"), [
+    ({"socks": "http://system-socks.test:1080"}, "system-socks.test", "system-socks.test"),
+    ({"http": "http://specific.test", "socks": "http://system-socks.test:1080"}, "specific.test", "system-socks.test"),
+    ({"all": "http://fallback.test", "socks": "http://system-socks.test:1080"}, "fallback.test", "fallback.test"),
+    ({"http": "http://specific.test", "https": "http://secure.test", "socks": "http://system-socks.test:1080"},
+     "specific.test", "secure.test"),
+])
+def test_macos_system_socks_fallback_and_priority(monkeypatch, routes, settings, http_route, https_route):
+    monkeypatch.setattr(urllib.request, "getproxies", lambda: settings)
+    with create_http_client() as client:
+        assert client.get("http://example.com").text == http_route
+        assert client.get("https://example.com").text == https_route
+    socks_pools = [t for t in routes if t.options.get("proxy") and t.options["proxy"].url.host == "system-socks.test"]
+    if "system-socks.test" in (http_route, https_route):
+        assert len(socks_pools) == 1
+        assert socks_pools[0].options["proxy"].url.scheme == "socks5"
+    else:
+        assert not socks_pools  # Overridden SOCKS must not require an unused optional dependency.
+
+
+def test_system_socks_normalization_preserves_explicit_port_80(monkeypatch, routes):
+    monkeypatch.setattr(urllib.request, "getproxies", lambda: {"socks": "http://system-socks.test:80"})
+    with create_http_client():
+        pass
+    assert routes[1].options["proxy"].url.port == 80
+
+
 @pytest.mark.parametrize("value", ["ftp://user:secret@private-proxy.test", "http://user:secret@private-proxy.test:bad",
                                      "http://", "http://private-proxy.test/path", "http://private-proxy.test:",
                                      "http://private-proxy.test:99999", "http://bad host"])
@@ -178,6 +205,17 @@ def test_socks_uses_httpx_optional_dependency_error(monkeypatch, protocol):
         pytest.skip("This locked environment has SOCKS support")
     monkeypatch.setenv("ALL_PROXY", f"{protocol}://user:secret@127.0.0.1:9000")
     with pytest.raises(ProxyConfigurationError, match="optional SOCKS dependency"):
+        create_http_client()
+
+
+def test_system_socks_without_optional_dependency_fails_explicitly(monkeypatch):
+    import importlib.util
+    from allfold.http_client import ProxyConfigurationError
+
+    if importlib.util.find_spec("socksio") is not None:
+        pytest.skip("This locked environment has SOCKS support")
+    monkeypatch.setattr(urllib.request, "getproxies", lambda: {"socks": "http://system-socks.test:1080"})
+    with pytest.raises(ProxyConfigurationError, match="SOCKS_PROXY.*socksio"):
         create_http_client()
 
 
