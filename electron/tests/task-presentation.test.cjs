@@ -1,0 +1,89 @@
+'use strict';
+const {test}=require('node:test');
+const assert=require('node:assert/strict');
+const {taskUI}=require('./task-ui-fixture.cjs');
+function runData(status='RUNNING',provider='openalex') {return {snapshot:{status,provider,task_id:'run-1',waiting_for_user:provider==='wos'},progress:{stage_label:'Retrieving papers',elapsed_text:'2s',announcement_message:'Waiting for source'},result_summary:{status:'completed'},providers:{wos:{snapshot:{status:'IDLE'}}}};}
+test('inline Run polls and refreshes results without constructing a player or returning from another workspace',async()=>{
+  let state=runData();
+  const ui=await taskUI('run.js',{request:async()=>state});
+  await ui.window.uiRun.start('openalex');await ui.settle();
+  assert.equal(ui.get('run-view').open,false);
+  assert.equal(ui.stats().visuals,0);
+  assert.match(ui.get('run-inline').textContent || ui.get('run-stage').textContent,/Retrieving/);
+  ui.setPage('journals');state=runData('FINISHED');await ui.tick();
+  assert.equal(ui.window.uiRun.active(),false);assert.equal(ui.stats().prepares,1);
+  assert.equal(ui.page(),'journals');assert.equal(ui.stats().opens,0);
+});
+function keptState(phase='waiting_for_user',changes={}) {return {workflow_id:'workflow-1',generation:7,phase,active:['preparing','waiting_for_user','transition','importing','stopping'].includes(phase),can_continue:phase==='waiting_for_user',can_cancel:!['completed','stopping','idle'].includes(phase),waiting_for_login:false,settings:{display_name:'Synthetic researcher',auto_import_after_preparation:false},preparation:{services:[],manual_services:[],results:[]},message:'Review access before import',...changes};}
+test('inline Kept restores the same confirmation gate and can continue, cancel, settle and acknowledge without a player',async()=>{
+  let state=keptState();
+  const ui=await taskUI('kept.js',{request:async(path,body)=>{
+    if(path.includes('clips.json'))return {};
+    if(path.endsWith('/continue'))state=keptState('importing',{import_started:true});
+    if(path.endsWith('/cancel'))state=keptState('stopping',{can_cancel:false});
+    if(path.endsWith('/acknowledge'))return {};
+    return state;
+  }});
+  assert.equal(ui.get('kept-flow').open,false);assert.equal(ui.stats().visuals,0);
+  assert.equal(ui.get('kept-continue').hidden,false);assert.equal(ui.get('kept-leave').disabled,false);
+  assert.equal(ui.window.workspaceArray.workflowBusy(),true);assert.equal(ui.window.workspaceArray.navigationBusy(),false);
+  assert.equal(ui.calls.some(([url])=>url.endsWith('/start') || url.endsWith('/continue')),false);
+  await ui.get('kept-continue').emit('click');
+  const continuation=ui.calls.find(([url])=>url.endsWith('/continue'));
+  assert.deepEqual(JSON.parse(JSON.stringify(continuation[1])),{workflow_id:'workflow-1',generation:7});
+  await ui.get('kept-leave').emit('click');
+  assert.deepEqual(JSON.parse(JSON.stringify(ui.calls.find(([url])=>url.endsWith('/cancel'))[1])),{workflow_id:'workflow-1',generation:7});
+  assert.equal(ui.get('kept-leave').disabled,true);
+  ui.setPage('settings');state=keptState('completed',{import_started:true,navigation:'kept',batch:{total:1,results:[{paper_id:'paper-1',outcome:'exported',reason:'Imported'}]}});await ui.tick();
+  assert.ok(ui.calls.some(([url])=>url.endsWith('/acknowledge')));assert.equal(ui.window.workspaceArray.workflowBusy(),false);
+  assert.equal(ui.get('kept-record-count').textContent,'1 / 1');assert.equal(ui.page(),'settings');assert.equal(ui.stats().visuals,0);
+});
+test('restored inline Run WoS opens its existing task page and cancels with the restored task identity',async()=>{
+  const wos=runData('RUNNING','wos');
+  const ui=await taskUI('run.js',{ready:true,request:async path=>path==='/api/ui-next/run'?{...runData('IDLE'),providers:{wos:{snapshot:wos.snapshot}}}:wos});
+  assert.equal(ui.get('run-view').open,false);assert.equal(ui.stats().visuals,0);
+  const button=ui.get('run-status-area').children.find(node=>node.textContent==='查看任务页面');
+  assert.equal(button.hidden,false);await button.emit('click');
+  assert.deepEqual(JSON.parse(JSON.stringify(ui.presentations)),[{workflowId:'run-1',taskId:'run-1'}]);
+  await ui.get('run-wos-cancel').emit('click');
+  assert.deepEqual(JSON.parse(JSON.stringify(ui.calls.find(([path])=>path.endsWith('/cancel'))[1])),{task_id:'run-1'});
+  assert.equal(ui.calls.filter(([path,body])=>path==='/api/ui-next/run-wos' && body).length,0);
+});
+test('Kept inline login and manual gates obey server permission flags and never auto-continue from animation settings',async()=>{
+  let state=keptState('waiting_for_user',{waiting_for_login:true,can_continue:false,settings:{auto_import_after_preparation:true},preparation:{services:[],manual_services:[{id:'manual',name:'Manual service'}],results:[]}});
+  const ui=await taskUI('kept.js',{request:async path=>path.includes('clips.json')?{}:state});
+  assert.equal(ui.get('kept-continue').hidden,true);await ui.get('kept-continue').emit('click');
+  assert.equal(ui.calls.some(([path])=>path.endsWith('/continue')),false);
+  assert.equal(ui.get('kept-phase').textContent,'等待机构登录');
+  const button=ui.get('kept-flow-actions').children.find(node=>node.textContent==='查看任务页面');await button.emit('click');
+  assert.equal(ui.presentations[0].workflowId,'workflow-1');
+  state={...state,waiting_for_login:false,can_continue:true};await ui.tick();
+  assert.equal(ui.get('kept-phase').textContent,'等待确认');assert.equal(ui.get('kept-continue').hidden,false);
+  assert.equal(ui.calls.some(([path])=>path.endsWith('/continue')),false);
+});
+test('fullscreen Kept keeps its player while controls and terminal acknowledgement use backend snapshots',async()=>{
+  let state=keptState();
+  const ui=await taskUI('kept.js',{inline:false,request:async path=>path.includes('clips.json')?{}:state});
+  assert.equal(ui.get('kept-flow').open,true);assert.equal(ui.stats().visuals,1);assert.equal(ui.window.workspaceArray.navigationBusy(),true);
+  state=keptState('completed',{navigation:'kept'});await ui.tick();
+  // The player double never finishes a clip. Acknowledgement and results still settle.
+  assert.ok(ui.calls.some(([path])=>path.endsWith('/acknowledge')));
+});
+test('display preference changes apply on the next Run and do not cancel the current task',async()=>{
+  let state=runData();
+  const ui=await taskUI('run.js',{request:async()=>state,reduced:true});
+  await ui.window.uiRun.start('crossref');ui.setInline(false);
+  ui.window.dispatchEvent({type:'ui-preferences-changed',detail:{name:'fullscreenDisabled',value:false}});
+  await ui.tick();assert.equal(ui.get('run-view').open,false);assert.equal(ui.window.uiRun.active(),true);
+  state=runData('FINISHED');await ui.tick();state=runData();await ui.window.uiRun.start('openalex');await ui.settle();
+  assert.equal(ui.get('run-view').open,true);assert.equal(ui.stats().visuals,1);
+});
+test('inline recovery is independent of the animation manifest and font scene readiness',async()=>{
+  const ui=await taskUI('kept.js',{request:async path=>{
+    if(path.includes('clips.json'))throw Error('Animation asset unavailable');
+    return keptState('preparing',{can_continue:false});
+  }});
+  assert.equal(ui.window.workspaceArray.workflowBusy(),true);
+  assert.equal(ui.get('kept-phase').textContent,'Preparation');
+  assert.equal(ui.get('kept-flow').open,false);assert.equal(ui.stats().visuals,0);
+});
