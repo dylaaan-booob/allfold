@@ -66,7 +66,9 @@ raw exception objects and unreviewed stacks. Page destruction or reuse does not
 remove already retained events. Associations are never reconstructed from time
 proximity or a page's domain.
 
-The saved Settings Log Level controls optional technical detail. An explicit
+The saved Settings Log Level controls optional technical detail on application
+startup; changes take effect after restarting. Settings also shows the active
+level for the current startup. An explicit
 `ALLFOLD_LOG_LEVEL` environment value overrides it for both runtimes. Necessary
 task starts, final results, state transitions and failures remain recorded at all
 levels; user history is independent of technical verbosity. Configuration changes
