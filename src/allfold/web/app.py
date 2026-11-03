@@ -296,7 +296,7 @@ def create_app(config_path: Path, *, electron_bridge: ElectronBridge) -> FastAPI
             raise ContentChangedError("No Kept Papers to import.")
         app.state.import_token = secrets.token_urlsafe(32)
         return app.state.batch_import.start(target.workspace, validate_target=target.verify,
-            browser_owner=app.state.kept_workflow.browser_owner)
+            browser_owner=app.state.kept_workflow.browser_owner, config_path=target.config_path)
 
     app.state.kept_workflow = KeptWorkflow(
         app.state.preparation_coordinator, app.state.batch_import, import_submission_lock,

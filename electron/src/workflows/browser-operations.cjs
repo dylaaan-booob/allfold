@@ -18,14 +18,14 @@ async function pageAction(browser,tab,fn,args=[],signal,allowNavigation=false,de
   if(!allowNavigation && !browser.documentCurrent(doc))throw new BrowserFailure('navigation','document_changed');
   return result;
 }
-async function newTaskPage(browser,signal) {
+async function newTaskPage(browser,signal,association={role:'auxiliary',service:false}) {
   await waitFor(()=>browser.ready,signal);
-  const tab=browser.createTab();browser.beginPageLoad(tab,signal);
+  const tab=browser.createTab({present:false});
+  browser.associatePage(tab,association);browser.beginPageLoad(tab,signal);
   return tab;
 }
 async function navigate(browser,tab,url,signal,progress,deadline) {
-  browser.taskTab=tab;
-  return waitFor(()=>browser.navigate(url,{signal,deadline,onWaiting:()=>progress({waiting_for_user:true})}),signal,deadline);
+  return waitFor(()=>browser.navigate(url,{tab,signal,deadline,onWaiting:()=>progress({waiting_for_user:true})}),signal,deadline);
 }
 function official(url,path) {
   if(!url)return false;
@@ -221,12 +221,14 @@ async function ensureCARSIPortal(browser,data,{signal,progress},deadline) {
   if(browser.carsiPortal?.task===data.task_id) {
     const portal=browser.tabs.get(browser.carsiPortal.id);
     if(!portal || portal.view.webContents.isDestroyed())throw new BrowserFailure('navigation','page_closed');
+    browser.associatePage(portal,{role:'carsi-portal',service:false});
     checkCARSISession([portal],signal);
     return portal;
   }
   browser.carsiPortal={task:data.task_id,id:null};
-  let portal=await newTaskPage(browser,signal);
+  let portal=await newTaskPage(browser,signal,{role:'carsi-portal',service:false});
   browser.carsiPortal={task:data.task_id,id:portal.id};
+  browser.associatePage(portal,{role:'carsi-portal',service:false});
   try {portal=await loginCARSI(browser,portal,data,signal,progress,deadline);}
   catch(error) {browser.carsiPortal={task:data.task_id,id:null};throw error;}
   browser.carsiPortal={task:data.task_id,id:portal.id};
@@ -238,7 +240,7 @@ async function visitCARSIResource(browser,portal,data,{signal,progress},requestD
   if(!portal.authContext?.active || portal.authContext.signal!==signal)
     browser.beginAuthentication(portal,signal,{institution:false});
   portal.taskSignal=signal;
-  browser.taskTab=portal;browser.taskActive=true;browser.select(portal);
+  browser.bindTaskPage(portal,signal);
   let detail,visitDeadline;
   checkCARSISession([portal],signal);
   browser.beginPageLoad(portal,signal,requestDeadline);
@@ -307,7 +309,7 @@ async function visitCARSIResource(browser,portal,data,{signal,progress},requestD
       diagnostic:{stage:'preparation',step:'resource_search',code:'ambiguous_resource'}};
     if(selected.status!=='selected')throw new BrowserFailure('preparation','unverified_official_page');
     if(!official(selected.url,'/resource/resourceDetail.php'))throw Error('Invalid CARSI resource');
-    detail=await newTaskPage(browser,signal);
+    detail=await newTaskPage(browser,signal,{role:'service-resource',source:portal});
     detail.authContext=portal.authContext;
     await navigate(browser,detail,selected.url,signal,progress,requestDeadline);
     checkCARSISession([portal,detail],signal);
@@ -366,7 +368,8 @@ async function visitCARSIResource(browser,portal,data,{signal,progress},requestD
     if(!target && clicked?.status!=='visited_click')return {outcome:'Needs attention',reason:'unverified_official_page'};
     while(!target)await waitFor(()=>pause(signal),signal,visitDeadline,'preparation','visit_target');
     if(ambiguous)return {outcome:'Needs attention',reason:'unverified_official_page'};
-    browser.taskTab=target;
+    browser.associatePage(target,{role:'service-target',source:target===detail?portal:detail});
+    browser.bindTaskPage(target,signal);
     await browser.waitForPage(target,{signal,deadline:requestDeadline,
       onWaiting:waiting=>progress({waiting_for_user:waiting})});
     if(ambiguous)return {outcome:'Needs attention',reason:'unverified_official_page'};

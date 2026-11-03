@@ -99,3 +99,67 @@ def config_files(tmp_path):
     return path, venues
 
 
+@pytest.mark.parametrize('change_after_query', [False, True])
+def test_coordinator_preserves_saved_service_scope_and_prepared_page_across_batches(tmp_path, change_after_query):
+    from concurrent.futures import Future
+    from types import SimpleNamespace
+    from allfold.application.browser_runtime import BrowserTaskLock
+    from allfold.application.browser_services import BrowserServiceSnapshot
+    from allfold.application.coordinators.preparation_coordinator import PreparationPhase
+    from allfold.application.coordinators.wos_coordinator import WoSCoordinator
+
+    from safety_config_helpers import current_mapping_document
+    from allfold.config import AccessService
+    from allfold.persistence.user_state import load_user_state, compare_write_user_state
+    path, _, _, _ = current_mapping_document(tmp_path)
+    path.write_text(path.read_text() + 'institution:\n  name: Test University\n')
+    initial = load_user_state(path)
+    compare_write_user_state(path, replace(initial.state, access_services=(*initial.state.access_services,
+        AccessService.create('Web of Science', 'https://www.webofscience.com/'))), initial.revision)
+    saved = BrowserServiceSnapshot.read(path)
+
+    class Preparation:
+        def start(self, config_path, *, service, browser_owner):
+            assert service.name == 'Web of Science'
+            self.service = service
+            return self.snapshot()
+        def snapshot(self):
+            return SimpleNamespace(task_id='preparation', generation=1, phase=PreparationPhase.COMPLETED,
+                authorization_pending=False, message='Prepared', waiting_for_user=False)
+        def wos_handoff(self, task_id, generation):
+            assert (task_id, generation) == ('preparation', 1)
+            return 71
+        def join(self):
+            pass
+
+    class Bridge:
+        connected = True
+        calls = []
+        def execute(self, action, data, progress=None):
+            self.calls.append((action, data))
+            future = Future()
+            if action == 'wos_query':
+                if change_after_query:
+                    path.write_text(path.read_text() + '\n# changed during Query\n')
+                result = dict(page_id=71, total=2, batch_limit=1)
+            else:
+                assert action == 'wos_export'
+                Path(data['filename']).write_text(tagged([record(doi=f"10.1234/{data['first']}",
+                    ut=f"WOS:{data['first']}", PD='JAN')]))
+                result = dict(filename=data['filename'])
+            future.set_result(result)
+            return future
+
+    bridge, prep, lock = Bridge(), Preparation(), BrowserTaskLock()
+    coordinator = WoSCoordinator(path, prep, threading.Lock(), bridge=bridge, browser_lock=lock)
+    coordinator.start()
+    coordinator.join()
+    assert [action for action, _ in bridge.calls] == (['wos_query'] if change_after_query else
+                                                     ['wos_query', 'wos_export', 'wos_export'])
+    assert all(data['page_id'] == 71 and data['service_id'] == prep.service.id
+               and data['service_scope'] == saved.scope for _, data in bridge.calls)
+    assert len({data['task_id'] for _, data in bridge.calls}) == 1
+    assert coordinator.state()['snapshot']['status'] == 'FINISHED'
+    assert lock.owner is None
+
+

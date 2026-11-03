@@ -131,9 +131,9 @@ function fixture(t,{attributable=true,hold=false,challenge=false,domError=null,q
       name==='./import-errors.cjs'?{ImportFailure,checkPage}:hostRequire(name)});
   vm.runInContext(fs.readFileSync(path.join(__dirname,'../src/workflows/wos-operations.cjs'),'utf8'),context);
   return {browser,controller,item,ops,ready,settle:()=>settle(),
-    runQuery:()=>context.module.exports.wosQuery(browser,{page_id:71,query:'fixture query'},
+    runQuery:(data={})=>context.module.exports.wosQuery(browser,{page_id:71,query:'fixture query',...data},
       {signal:controller.signal,progress:value=>progress.push(value)}),
-    progress,run:()=>context.module.exports.wosExport(browser,{page_id:71,download_root:root,filename,first:1,last:1},
+    progress,run:(data={})=>context.module.exports.wosExport(browser,{page_id:71,download_root:root,filename,first:1,last:1,...data},
       {signal:controller.signal,progress(value){progress.push(value);if(challenge && value.waiting_for_user) {
         challengeActive=false;setImmediate(()=>settle());
       }}}),filename};
@@ -143,6 +143,28 @@ test('WoS accepts only an observed native export URL into its issued file',async
   assert.equal(f.browser.taskTab.taskSignal,f.controller.signal);
   assert.equal(f.item.filename,f.filename);assert.equal(f.ops.filter(op=>op==='export').length,1);
   assert.equal(f.browser.partition.listenerCount('will-download'),0);assert.equal(f.ops.at(-1),'cleanup');
+});
+test('WoS query and consecutive exports keep the prepared page/document while another tab is visible',async t=>{
+  const f=fixture(t,{query:true}),tab=f.browser.tabs.get(71);
+  const identity={service_id:'svc_'+'1'.repeat(32),service_scope:{scope_id:'a'.repeat(64),
+    config_revision:'b'.repeat(64),user_state_revision:'c'.repeat(64)}};
+  tab.association={...identity,source_page_id:55};
+  f.browser.selected={id:99};
+  f.browser.select=()=>{throw Error('Task must not change presentation');};
+  const query=await f.runQuery(identity);
+  assert.equal(query.page_id,71);assert.equal(query.total,94);
+  const document=f.browser.wosDocument;
+  await f.run(identity);
+  f.browser.taskTab=null;
+  await f.run({...identity,first:2,last:2});
+  assert.equal(f.browser.taskTab,tab);
+  assert.equal(f.browser.wosDocument,document);
+  assert.equal(f.browser.selected.id,99);
+  assert.deepEqual(f.ops.filter(op=>op?.exportRange).map(op=>op.exportRange),[{first:1,last:1},{first:2,last:2}]);
+  const before=f.ops.length;
+  await assert.rejects(f.run({...identity,service_scope:{...identity.service_scope,scope_id:'d'.repeat(64)}}),/document_changed/);
+  assert.equal(f.ops.length,before);
+  assert.equal(f.browser.partition.listenerCount('will-download'),0);
 });
 test('WoS refuses an unattributable completed download and a replaced document',async t=>{
   const f=fixture(t,{attributable:false});await assert.rejects(f.run(),/download_not_attributable/);

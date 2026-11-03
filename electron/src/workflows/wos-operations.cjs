@@ -10,9 +10,15 @@ const {BrowserFailure,checkPage}=require('../browser/browser-errors.cjs');
 function taskPage(browser,data,signal) {
   const tab=browser.tabs.get(data.page_id);
   if(!tab)throw Error('wos_target_lost');
+  const association=browser.pageAssociation(tab.id);
+  if(data.service_id!=null && (association?.service_id!==data.service_id
+    || ['scope_id','config_revision','user_state_revision'].some(key=>association?.service_scope?.[key]!==data.service_scope?.[key])))
+    throw new BrowserFailure('navigation','document_changed');
+  browser.associatePage(tab,{role:browser.operation?.action==='wos_export'?'wos-export':'wos-query',
+    source:browser.tabs.get(association?.source_page_id)});
   if(tab.carsiOwned && !tab.authContext?.active)browser.beginAuthentication(tab,signal,{institution:false});
   tab.taskSignal=signal;
-  browser.taskTab=tab;browser.taskActive=true;browser.select(tab);
+  browser.bindTaskPage(tab,signal);
   return tab;
 }
 async function page(browser,doc,op,args,signal,deadline=Infinity) {

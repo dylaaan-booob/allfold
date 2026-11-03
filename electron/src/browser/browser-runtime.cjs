@@ -13,6 +13,7 @@ const {institutionAuthPage}=require('../auth/institution-auth.cjs');
 const {casErrorCode}=require('../auth/cas-credentials.cjs');
 const {waitFor,checkCanceled}=require('./browser-task.cjs');
 const {NavigationRecovery,inspectPage,waitForPage}=require('./browser-navigation.cjs');
+const {operationAssociation}=require('./page-association.cjs');
 
 function chromiumUserAgent(userAgent, productName) {
   return userAgent.split(' ').filter(token => !token.startsWith('Electron/')
@@ -134,6 +135,7 @@ class BrowserRuntime {
       tab.navigation.finish();
       tab.status=null;
       tab.error={kind:'renderer',reason:details.reason,exitCode:details.exitCode};
+      tab.association=null;tab.associationOwner=null;
       log('warn','page_renderer_gone',{page_id:tab.id,host:hostname(contents.getURL()),
         reason:details.reason,exit_code:details.exitCode});
       this.publish();
@@ -180,16 +182,29 @@ class BrowserRuntime {
     for (const name of ['page-title-updated', 'did-navigate-in-page', 'did-start-loading', 'did-stop-loading'])
       contents.on(name, () => this.publish());
     contents.on('destroyed', () => {
+      tab.association=null;tab.associationOwner=null;
       this.tabs.delete(tab.id);
-      if (this.destroying) return;
       if (this.taskTab === tab) this.taskTab=null;
+      if (this.importPage === tab) this.importPage=null;
+      if (this.carsiPortal?.id === tab.id) this.carsiPortal=null;
+      if (this.wosDocument?.pageId === tab.id) this.wosDocument=null;
+      for(const page of this.tabs.values()) {
+        if(page.opener===tab)page.opener=null;
+        if(page.association?.source_page_id===tab.id)
+          page.association=Object.freeze({...page.association,source_page_id:null});
+      }
+      if (this.destroying) return;
       if (this.selected === tab) {
         this.window.contentView.removeChildView(tab.view);
         this.selected=null;this.select([...this.tabs.values()].at(-1));
       }
       this.publish();
     });
-    this.select(tab);
+    if(opener?.association) {
+      tab.association=Object.freeze({...opener.association,role:'popup',source_page_id:opener.id});
+      tab.associationOwner=opener.associationOwner===this.operation?this.operation:null;
+    }
+    if(options.present!==false || !this.selected)this.select(tab);
     this.events.emit('tab-created',null,tab);
     return tab;
   }
@@ -419,8 +434,33 @@ class BrowserRuntime {
     }
     return this.state();
   }
-  beginOperation(signal) {
-    this.operation={signal,phase:'loading',solverDocuments:new Map()};
+  beginOperation(signal,data={}) {
+    this.operation={signal,phase:'loading',solverDocuments:new Map(),association:operationAssociation(data)};
+    this.taskTab=null;this.taskActive=false;
+  }
+  associatePage(tab,{role,source=null,service=true,doi=null}={}) {
+    if(this.tabs.get(tab?.id)!==tab || tab.view.webContents.isDestroyed())
+      throw new BrowserFailure('navigation','page_closed');
+    const association=this.operation?.association || operationAssociation();
+    tab.association=Object.freeze({...association,service_id:service?association.service_id:null,
+      role,doi,source_page_id:source && source!==tab && this.tabs.get(source.id)===source?source.id:null});
+    tab.associationOwner=this.operation || null;
+  }
+  pageAssociation(id) {
+    const tab=this.tabs.get(id);
+    if(!tab?.association || tab.view.webContents.isDestroyed())return null;
+    return Object.freeze({page_id:id,...tab.association,
+      active:!!(this.taskActive && this.operation && tab.associationOwner===this.operation && !this.operation.signal?.aborted)});
+  }
+  servicePages(scopeId,serviceId) {
+    return [...this.tabs.values()].filter(tab=>tab.association?.service_scope?.scope_id===scopeId
+      && tab.association?.service_id===serviceId).map(tab=>this.pageAssociation(tab.id)).filter(Boolean);
+  }
+  bindTaskPage(tab,signal=this.operation?.signal) {
+    checkCanceled(signal);
+    if(this.destroying || this.tabs.get(tab?.id)!==tab || tab.view.webContents.isDestroyed())
+      throw new BrowserFailure('navigation','page_closed');
+    this.taskTab=tab;this.taskActive=true;tab.taskSignal=signal;
   }
   navigationOptions(tab,{signal,deadline}={}) {
     const owner=this.operation;
@@ -431,7 +471,7 @@ class BrowserRuntime {
       enabled:!this.destroying && (!automatic || (owner?.phase!=='business' && tab.loadAllowed!==false))};
   }
   beginPageLoad(tab,signal,deadline=Infinity,{fresh=false}={}) {
-    this.taskTab=tab;this.taskActive=true;tab.taskSignal=signal;tab.loadOwner=this.operation;tab.loadAllowed=true;
+    this.bindTaskPage(tab,signal);tab.loadOwner=this.operation;tab.loadAllowed=true;
     const options=this.navigationOptions(tab,{signal,deadline});
     return fresh?tab.navigation.begin(options):tab.navigation.adopt(options);
   }
@@ -477,18 +517,24 @@ class BrowserRuntime {
     } catch(error){if(tab.navigation.current?.chain===chain)this.finishPageLoad(tab);throw error;}
   }
 
-  async navigate(url,{signal,deadline=Infinity,onWaiting,solveCloudflare=this.solveCloudflare}={}) {
+  async navigate(url,{tab=this.taskTab,signal=this.operation?.signal,deadline=Infinity,onWaiting,solveCloudflare=this.solveCloudflare}={}) {
+    const owner=this.operation;
     await waitFor(()=>this.ready,signal,deadline);
     checkCanceled(signal);
     if(this.destroying)throw new BrowserFailure('navigation','canceled');
     if(this.navigationAbort)throw new BrowserFailure('navigation','navigation_active');
     const target=browserURL(url);
-    this.taskTab ||= this.createTab();
-    const tab=this.taskTab,controller=new AbortController();
+    if(owner!==this.operation)throw new BrowserFailure('navigation','canceled');
+    if(!tab) {
+      if(owner)throw new BrowserFailure('navigation','page_closed');
+      tab=this.createTab({present:false});
+    }
+    this.bindTaskPage(tab,signal);
+    const controller=new AbortController();
     const cancel=()=>controller.abort(signal.reason);
     signal?.addEventListener('abort',cancel,{once:true});
     this.navigationAbort=controller;
-    this.taskActive=true;tab.taskSignal=signal || controller.signal;tab.loadOwner=this.operation;tab.loadAllowed=true;this.select(tab);
+    tab.taskSignal=signal || controller.signal;tab.loadOwner=owner;tab.loadAllowed=true;
     let chain;
     try {
       const loading=tab.navigation.dispatch(()=>tab.view.webContents.loadURL(target),
@@ -581,6 +627,7 @@ class BrowserRuntime {
       throw new BrowserFailure('attachment','document_changed');
     const source=this.tabs.get(doc.pageId),deadline=Date.now()+(visible?60000:5000);
     const tab=visible?this.createTab():source,contents=tab.view.webContents;
+    if(visible)this.associatePage(tab,{role:'attachment',source,doi:source.association?.doi});
     if(visible)tab.attachmentOwner=owner;
     const id='allfold-attachment-'+randomBytes(12).toString('hex');
     let capture,observing=false,again=false,solverController;
@@ -671,14 +718,19 @@ class BrowserRuntime {
     for(const observation of this.domObservations)void observation.dispose();
     for(const tab of this.tabs.values())if(tab.navigation.current?.automatic)tab.navigation.finish();
     this.operation=null;
-    for(const tab of this.tabs.values())if(tab.authContext)tab.authContext.active=false;
-    this.taskActive=false;this.publish();
+    for(const tab of this.tabs.values()) {
+      if(tab.authContext)tab.authContext.active=false;
+      tab.associationOwner=null;tab.taskSignal=null;tab.loadOwner=null;tab.loadAllowed=false;
+    }
+    this.taskTab=null;this.taskActive=false;this.publish();
   }
   close() {
     this.navigationAbort?.abort();
     this.destroying=true;
     for (const tab of [...this.tabs.values()]) tab.view.webContents.close();
+    this.taskTab=null;this.importPage=null;this.carsiPortal=null;this.wosDocument=null;this.operation=null;
     this.window?.destroy();
+    this.selected=null;this.taskActive=false;
     this.partition.webRequest.onErrorOccurred(null);
     this.partition.webRequest.onHeadersReceived(null);
     for(const capture of this.attachmentCaptures)capture.dispose();
