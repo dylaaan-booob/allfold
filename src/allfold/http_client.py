@@ -115,8 +115,8 @@ def _bypass_rule(value: str) -> _BypassRule | None:
     elif value.startswith("*"):
         mode, value = "domain", value[1:]
     try:
-        host = value.removesuffix(".").encode("idna").decode("ascii").lower()
-    except UnicodeError:
+        host = httpx.URL(scheme="http", host=value.removesuffix(".")).raw_host.decode("ascii")
+    except httpx.InvalidURL:
         return None
     if not host or any(not re.fullmatch(r"[a-z0-9_](?:[a-z0-9_-]*[a-z0-9_])?", label)
                        for label in host.split(".")):

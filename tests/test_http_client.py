@@ -59,6 +59,7 @@ def routes(monkeypatch):
     ("localhost", "http://localhost", "http://sub.localhost"),
     ("EXAMPLE.COM.", "https://a.example.com.", "https://notexample.com"),
     ("bücher.example", "https://bücher.example", "https://books.example"),
+    ("faß.example", "https://faß.example", "https://fass.example"),
     ("192.168.1.7", "http://192.168.1.7", "http://192.168.1.8"),
     ("::1", "http://[0:0:0:0:0:0:0:1]", "http://[::2]"),
     ("[::1]", "http://[::1]", "http://[::2]"),
