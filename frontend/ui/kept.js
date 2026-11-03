@@ -16,10 +16,39 @@ const reduced=matchMedia('(prefers-reduced-motion: reduce)'),dialog=$('kept-flow
 const states=Object.fromEntries(['candidates','kept'].map(status=>[status,{filter:null,selected:null,reader:false,indexPosition:0,indexScroll:0,indexLeft:0,bodyScroll:0,bodyPaper:null,missingLinkPaper:false}]));
 let status='candidates',ui=states.candidates;
 let data,metadata,active=null,lastRun=null,workflow=null,pollTimer=null,submitting=false,acknowledging=false,recovering=true,readerRefreshPending=false;
-let workspaceEpoch=0;
+let workspaceEpoch=0,presentationInline=null,taskQueue=[],openingWorkflow=null;
+const inline=document.createElement('section'),phaseLabel=document.createElement('strong');
+inline.id='kept-inline';inline.hidden=true;inline.setAttribute('aria-label','当前 Prepare / Import');
+phaseLabel.id='kept-phase';phaseLabel.setAttribute('role','status');
+$('array-import-profile').prepend(inline);inline.append(phaseLabel);
+const taskPageButton=document.createElement('button');
+taskPageButton.type='button';taskPageButton.className='s-button';taskPageButton.textContent='查看任务页面';taskPageButton.hidden=true;
+$('kept-flow-actions').prepend(taskPageButton);
+taskPageButton.addEventListener('click',async()=>{
+  if(!workflow?.workflow_id)return;
+  try {
+    if(!await window.allfoldWorkbench?.showTaskPage({workflowId:workflow.workflow_id,
+      taskId:workflow.phase==='importing'?workflow.batch?.task_id:workflow.preparation_task_id}))uiNext.notice('当前任务尚无可查看的页面。');
+  }catch(error){uiNext.notice(error.message);}
+});
+function presentInline() {
+  inline.hidden=false;inline.append($('kept-flow-actions'));
+  $('kept-flow-actions').hidden=false;$('kept-skip-slot').hidden=true;
+}
+const archiveDisabled=()=>window.allfoldUIPreferences?.archiveDisabled()===true;
+let archivePreferenceQueued=false;
+function queueArchivePreference() {
+  if(archivePreferenceQueued)return;
+  archivePreferenceQueued=true;
+  void Promise.resolve().then(()=>{
+    archivePreferenceQueued=false;
+    if(archiveDisabled() && $('selected-view').dataset.workspaceLayout!=='array')setLayout('array');
+  });
+}
 const arrayShown=()=>window.workspaceNavigation.current()==='workspace' && $('selected-view').dataset.workspaceLayout==='array';
 const workflowBusy=()=>submitting || acknowledging || Boolean(workflow?.active || workflow?.navigation);
-const switchBusy=()=>recovering || !data || !metadata || !bridge.available() || bridge.busy() || workflowBusy() || $('run-view').open || dialog.open;
+const navigationBusy=()=>submitting || acknowledging || (!presentationInline && Boolean(workflow?.active || workflow?.navigation));
+const switchBusy=()=>recovering || !data || !bridge.available() || bridge.busy() || navigationBusy() || $('run-view').open || dialog.open;
 const allEntries=()=>bridge.papers();
 const visibleEntries=()=>status==='candidates'?bridge.candidates():allEntries();
 const key=entry=>entry.journal.key || entry.journal.name;
@@ -44,6 +73,9 @@ function refreshActions() {
   window.workspaceNavigation.refresh();
   const busy=switchBusy();
   for(const id of ['workspace-archive','workspace-array','array-candidates','array-kept'])$(id).disabled=busy;
+  $('workspace-archive').hidden=archiveDisabled();
+  $('workspace-archive').disabled=busy || archiveDisabled();
+  queueArchivePreference();
   $('workspace-archive').setAttribute('aria-pressed',String($('selected-view').dataset.workspaceLayout==='archive'));
   $('workspace-array').setAttribute('aria-pressed',String($('selected-view').dataset.workspaceLayout==='array'));
   $('array-candidates').setAttribute('aria-pressed',String(status==='candidates'));
@@ -185,7 +217,7 @@ function closeReader() {
   ui.reader=false;$('kept-reader').hidden=true;return true;
 }
 function setLayout(layout) {
-  if(window.workspaceNavigation.current()!=='workspace' || switchBusy() || !['archive','array'].includes(layout))return false;
+  if(window.workspaceNavigation.current()!=='workspace' || switchBusy() || !['archive','array'].includes(layout) || (layout==='archive' && archiveDisabled()))return false;
   if($('selected-view').dataset.workspaceLayout===layout)return true;
   if(!closeReader() || !bridge.setLayout(layout))return false;
   render();refreshActions();return true;
@@ -196,6 +228,16 @@ function setStatus(next) {
   if(!closeReader())return false;
   status=next;ui=states[status];render();return true;
 }
+function openPaper(id) {
+  if(switchBusy())return false;
+  const candidate=bridge.candidates().find(entry=>entry.paper.id===id);
+  const entry=candidate || allEntries().find(entry=>entry.paper.id===id);
+  if(!entry || !window.workspaceNavigation.go('workspace') || !setLayout('array'))return false;
+  if(!closeReader())return false;
+  status=candidate?'candidates':'kept';ui=states[status];
+  ui.filter=candidate?key(entry):null;ui.selected=id;ui.missingLinkPaper=false;
+  render();return true;
+}
 // Recovery selects its existing business context before opening the modal.
 function openKept() {
   if(!window.workspaceNavigation.go('workspace',{workflowRecovery:true}))return false;
@@ -203,23 +245,22 @@ function openKept() {
   status='kept';ui=states.kept;render();return true;
 }
 window.workspaceArray={
-  workflowBusy,search:()=>status,readerEntries:orderedEntries,
+  workflowBusy,navigationBusy,openPaper,search:()=>status,readerEntries:orderedEntries,
   leave(){closeReader();bridge.suspend();},
-  enter(){render();$('array-index').focus({preventScroll:true});},
+  enter(){queueArchivePreference();render();$('array-index').focus({preventScroll:true});},
 };
 function publishResults(state) {
   if(!state.import_started && !state.batch){lastRun=null;renderRecord();return;}
   const batch=state.batch;
-  const titles=new Map([...(active?.queue || []),...allEntries()].map(e=>[e.paper.id,e.paper.title]));
+  const titles=new Map([...taskQueue,...allEntries()].map(e=>[e.paper.id,e.paper.title]));
   const results=(batch?.results || []).map(result=>({...result,title:titles.get(result.paper_id) || data.titles[result.paper_id] || result.paper_id}));
-  lastRun={total:batch?.total || active?.queue.length || results.length,results,message:state.message,workflow_id:state.workflow_id};
+  lastRun={total:batch?.total || taskQueue.length || results.length,results,message:state.message,workflow_id:state.workflow_id};
   renderRecord();
 }
 function identity(state) {return {workflow_id:state.workflow_id,generation:state.generation};}
 function closeRun(run) {
   if(active!==run)return;
   run.player.stop();active=null;dialog.close();render();$('array-index').focus({preventScroll:true});
-  if(workflow?.navigation && !workflow.active)void acknowledgeWorkflow().catch(error=>uiNext.notice(error.message));
 }
 async function acknowledgeWorkflow() {
   if(acknowledging || !workflow?.navigation || workflow.active)return;
@@ -245,10 +286,13 @@ function onClipEnd(run,clip) {
   if(clip==='scan' && !run.scanSkipped)void run.player.play('scan-loop');
   reconcile(run);
 }
-function displayGate(run,state) {
+function displayGate(state) {
+  phaseLabel.textContent=({preparing:'Preparation',waiting_for_user:state.waiting_for_login?'等待机构登录':'等待确认',transition:'Transition',importing:'Importing',stopping:'正在停止',completed:'Import 完成',interrupted:'流程已停止 / 失败'})[state.phase] || state.phase;
+  taskPageButton.hidden=!state.active;
+  $('kept-leave').hidden=!state.active;
   const preparation=state.preparation;
   const manual=new Map((preparation?.manual_services || []).map(service=>[service.id,service]));
-  const messages=[state.waiting_for_login?'请在顶栏 BROWSER 工作区完成机构登录。':state.message];
+  const messages=[state.waiting_for_login?'请查看任务页面，完成机构登录后返回。':state.message];
   if(state.phase==='transition')messages.push(`${Math.max(0,state.transition_deadline-Date.now()/1000).toFixed(1)} s`);
   for(const result of preparation?.results || []) {
     const service=preparation.services.find(s=>s.id===result.service_id);
@@ -261,16 +305,24 @@ function displayGate(run,state) {
   $('kept-gate-message').textContent=messages.filter(Boolean).join('\n');
   $('kept-manual-services').replaceChildren(...[...manual.values()].map(service=>{
     const link=document.createElement(service.access_url?'a':'span');link.textContent=service.name+(service.access_url?' ↗':' · 未配置访问链接');
-    if(service.access_url){link.href=service.access_url;link.target='_blank';link.rel='noopener noreferrer';}return link;
+    if(service.access_url){
+      link.href=service.access_url;link.target='_blank';link.rel='noopener noreferrer';
+      link.addEventListener('click',event=>{
+        if(!window.allfoldDesktop || !window.allfoldWorkbench?.openService)return;
+        event.preventDefault();
+        void window.allfoldWorkbench.openService({serviceId:service.id,workflowId:state.workflow_id,taskId:state.preparation_task_id})
+          .catch(error=>uiNext.notice(error.message));
+      });
+    }return link;
   }));
-  $('kept-flow-gate').hidden=state.phase==='importing';
+  $('kept-flow-gate').hidden=!presentationInline && state.phase==='importing';
   $('kept-continue').hidden=!state.can_continue;$('kept-continue').disabled=submitting;
   $('kept-leave').disabled=submitting || !state.can_cancel;
 }
 function reconcile(run) {
   if(active!==run || run.ending)return;
   const state=run.state;
-  displayGate(run,state);
+  displayGate(state);
   if(!state.active){terminal(run);return;}
   if(state.phase==='stopping'){closeRun(run);return;}
   if(run.scanSkipped)return;
@@ -284,12 +336,27 @@ function reconcile(run) {
     $('kept-skip-slot').hidden=false;
   } else if(run.player.clip!=='processing')void run.player.play('processing');
 }
-function openWorkflow(state,restored=false) {
-  if(active)return;
+async function openWorkflow(state,restored=false) {
+  if(active || openingWorkflow)return;
+  const target=openingWorkflow=identity(state),epoch=workspaceEpoch;
+  try {
+    if(!metadata)metadata=await uiNext.request(new URL('assets/kept/clips.json',document.baseURI));
+    await sceneReady();
+    if(epoch!==workspaceEpoch || workflow?.workflow_id!==target.workflow_id || workflow?.generation!==target.generation || !workflow.active)return;
+    state=workflow;
+    mountWorkflow(state,restored);
+  }catch(error){
+    if(epoch!==workspaceEpoch || workflow?.workflow_id!==target.workflow_id || workflow?.generation!==target.generation)return;
+    uiNext.notice(`全屏界面未就绪：${error.message}；请使用当前流程控制。`);
+    presentationInline=true;presentInline();displayGate(workflow);
+  }finally{if(openingWorkflow===target)openingWorkflow=null;refreshActions();}
+}
+function mountWorkflow(state,restored) {
   const run=active={state,queue:[...allEntries()],accessDone:restored || state.mode==='import_only',
     identityDone:restored || state.mode==='import_only',continued:false,scanSkipped:false,ending:false};
   run.player=new KeptPlayer($('kept-film'),metadata,state.settings.display_name || 'LOCAL RESEARCHER',reduced.matches,clip=>onClipEnd(run,clip));
   $('kept-flow-actions').hidden=false;$('kept-flow-gate').hidden=true;$('kept-skip-slot').hidden=true;
+  inline.hidden=true;dialog.append($('kept-flow-actions'));
   $('kept-skip').hidden=false;$('kept-skip-status').hidden=true;dialog.show();refreshActions();
   if(restored && state.phase==='waiting_for_user' && !state.preparation?.manual_services?.length && !state.import_started) {
     run.player.clip='access';run.player.draw(shots.access.duration);
@@ -298,8 +365,13 @@ function openWorkflow(state,restored=false) {
 }
 async function acceptState(state,{restored=false,open=false,epoch=workspaceEpoch}={}) {
   if(epoch!==workspaceEpoch)return;
+  const changed=workflow?.workflow_id!==state.workflow_id || workflow?.generation!==state.generation;
+  if(state.workflow_id && (changed || presentationInline===null)){
+    presentationInline=window.allfoldUIPreferences?.fullscreenDisabled()===true;taskQueue=[...allEntries()];
+  }
   workflow=state;publishResults(state);
-  if(open && state.active && state.phase!=='stopping')openWorkflow(state,restored);
+  if(presentationInline && state.workflow_id){presentInline();displayGate(state);}
+  if(open && !presentationInline && state.active && state.phase!=='stopping')void openWorkflow(state,restored);
   if(active && active.state.workflow_id===state.workflow_id){active.state=state;reconcile(active);}
   const completed=(state.batch?.results || []).filter(r=>r.outcome==='exported').map(r=>r.paper_id);
   const previous=new Set(bridge.papers().map(e=>e.paper.id));
@@ -307,7 +379,7 @@ async function acceptState(state,{restored=false,open=false,epoch=workspaceEpoch
   if(completed.some(id=>previous.has(id)) || !state.active) {
     await window.uiWorkspace.refresh();if(epoch!==workspaceEpoch)return;data=bridge.data();render();
   }
-  if(state.navigation && !active && !state.active) {
+  if(state.navigation && !state.active) {
     await acknowledgeWorkflow();
   }
   refreshActions();
@@ -320,7 +392,7 @@ async function pollWorkflow() {
   if(epoch===workspaceEpoch && (workflow?.active || workflow?.navigation))pollTimer=setTimeout(()=>void pollWorkflow(),1000);
 }
 async function start(mode) {
-  if(status!=='kept' || !arrayShown() || recovering || active || workflowBusy() || bridge.busy() || !allEntries().length)return;
+  if(status!=='kept' || !arrayShown() || recovering || active || window.uiRun?.active() || workflowBusy() || bridge.busy() || !allEntries().length)return;
   if(!closeReader())return;
   submitting=true;refreshActions();uiNext.notice('');
   try {
@@ -331,16 +403,17 @@ async function start(mode) {
     if(!state.active)uiNext.notice(state.message);
     void pollWorkflow();
   }catch(error){uiNext.notice(error.message);if(error.state?.workflow_id){await acceptState(error.state);void pollWorkflow();}}
-  finally{submitting=false;refreshActions();if(active)displayGate(active,active.state);}
+  finally{submitting=false;refreshActions();if(workflow)displayGate(workflow);}
 }
 async function continueImport() {
-  const run=active;if(!run || submitting || !run.state.can_continue)return;
-  submitting=true;displayGate(run,run.state);
+  const state=workflow;if(submitting || acknowledging || !state?.can_continue)return;
+  submitting=true;refreshActions();displayGate(state);
   try {
-    const state=await uiNext.request('/api/kept-workflow/continue',identity(run.state));
-    run.continued=true;await acceptState(state);void pollWorkflow();
+    const next=await uiNext.request('/api/kept-workflow/continue',identity(state));
+    if(active && active.state.workflow_id===state.workflow_id)active.continued=true;
+    await acceptState(next);void pollWorkflow();
   }catch(error){uiNext.notice(error.message);if(error.state?.workflow_id)await acceptState(error.state);}
-  finally{submitting=false;if(active)displayGate(active,active.state);}
+  finally{submitting=false;refreshActions();if(workflow)displayGate(workflow);}
 }
 function skipScan() {
   const run=active;if(!run || run.scanSkipped || run.state.phase!=='importing')return;
@@ -348,27 +421,26 @@ function skipScan() {
   void run.player.play('welcome',0,shots.welcome.holdAt);
 }
 async function leaveWorkflow() {
-  const run=active;if(!run || submitting)return;
-  if(run.ending){closeRun(run);return;}
-  if(!run.state.can_cancel)return;
-  const state=run.state;closeRun(run);submitting=true;refreshActions();
+  const state=workflow;if(submitting || acknowledging || !state?.can_cancel)return;
+  submitting=true;refreshActions();displayGate(state);
   try {await acceptState(await uiNext.request('/api/kept-workflow/cancel',identity(state)));void pollWorkflow();}
   catch(error){uiNext.notice(`停止请求未确认：${error.message}`);await restoreWorkflow();}
-  finally{submitting=false;refreshActions();}
+  finally{submitting=false;refreshActions();if(workflow)displayGate(workflow);}
 }
 async function restoreWorkflow() {
   const epoch=workspaceEpoch;
   try {
-    const state=await uiNext.request('/api/kept-workflow/state');if(epoch!==workspaceEpoch)return false;workflow=state;
-    const restored=state.active && !$('run-view').open && openKept();
+    const state=await uiNext.request('/api/kept-workflow/state');if(epoch!==workspaceEpoch)return false;
+    const useInline=presentationInline ?? (window.allfoldUIPreferences?.fullscreenDisabled()===true);
+    if(state.active && useInline && recovering){status='kept';ui=states.kept;}
+    const restored=state.active && (useInline || (!$('run-view').open && !window.uiRun?.active() && openKept()));
     await acceptState(state,{restored:true,open:Boolean(restored),epoch});
     if(state.active || state.navigation)void pollWorkflow();
     return state.active;
   }catch(error){if(epoch===workspaceEpoch)uiNext.notice(error.message);}
 }
 async function initialize() {
-  data=bridge.data();metadata=await uiNext.request(new URL('assets/kept/clips.json',document.baseURI));
-  await sceneReady();render();const restored=await restoreWorkflow();recovering=false;refreshActions();
+  data=bridge.data();render();const restored=await restoreWorkflow();recovering=false;render();
   if(restored)return;
   const initial=window.uiNextInitialLink;
   if(initial?.view==='kept'){
@@ -389,7 +461,7 @@ window.addEventListener('enrich-state',()=>{if(arrayShown() && !bridge.busy() &&
 window.addEventListener('workspace-data-changed',()=>{data=bridge.data();if(data && arrayShown()){saveScroll();render();}});
 window.addEventListener('workspace-reset',()=>{
   workspaceEpoch++;clearTimeout(pollTimer);
-  active?.player.stop();active=null;workflow=null;lastRun=null;readerRefreshPending=false;
+  active?.player.stop();active=null;workflow=null;lastRun=null;readerRefreshPending=false;presentationInline=null;taskQueue=[];inline.hidden=true;
   dialog.close();bridge.suspend();
   data=bridge.data();
   for(const value of Object.values(states))Object.assign(value,{filter:null,selected:null,reader:false,
@@ -403,11 +475,17 @@ for(const next of ['candidates','kept'])$('array-'+next).addEventListener('click
 window.addEventListener('workspace-navigation-state',()=>{
   const busy=switchBusy();
   for(const id of ['workspace-archive','workspace-array','array-candidates','array-kept'])$(id).disabled=busy;
+  $('workspace-archive').disabled=busy || archiveDisabled();
+  $('workspace-archive').hidden=archiveDisabled();
+  queueArchivePreference();
+});
+window.addEventListener('ui-preferences-changed',event=>{
+  if(event.detail?.name==='archiveDisabled')refreshActions();
 });
 window.addEventListener('resize',()=>active?.player.resize());
 reduced.addEventListener('change',event=>active?.player.setReduced(event.matches));
 window.addEventListener('pagehide',()=>{clearTimeout(pollTimer);active?.player.stop();});
-dialog.addEventListener('cancel',event=>{event.preventDefault();void leaveWorkflow();});
+dialog.addEventListener('cancel',event=>{event.preventDefault();if(active?.ending)closeRun(active);else void leaveWorkflow();});
 $('run-view').addEventListener('close',()=>void restoreWorkflow());
 document.addEventListener('visibilitychange',()=>{if(!document.hidden){active?.player.resume();if(workflow?.active)void pollWorkflow();}});
 

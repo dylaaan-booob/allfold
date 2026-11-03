@@ -18,3 +18,11 @@
 #run-wos-cancel{pointer-events:auto;position:absolute;left:0;bottom:calc(100% + 12px);padding:8px 12px;border:1px solid var(--ink);background:var(--paper);font:12px var(--font);max-width:100%;overflow-wrap:anywhere}
 
 #run-view[data-waiting-for-user="true"] .run-status-area{left:clamp(24px,4vw,64px);right:24px;width:auto;max-width:460px;height:auto;min-height:126px;overflow-wrap:anywhere}
+
+#run-inline{border-block:1px solid var(--rule);margin:0 0 24px;padding:18px 0;min-width:0}
+#run-inline .run-stage-layer{position:static;padding:0;pointer-events:auto}
+#run-inline #run-title{font-size:18px;margin:0 0 12px}
+#run-inline .run-status-area{position:static;width:auto;height:auto;min-height:0;padding:0;border:0;background:transparent}
+#run-inline .run-time{margin-bottom:10px}
+#run-inline #run-wos-cancel{position:static;margin-top:12px}
+.run-task-page{pointer-events:auto;margin-top:12px}

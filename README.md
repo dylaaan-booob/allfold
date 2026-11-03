@@ -23,10 +23,14 @@ Setup installs locked dependencies, obtains fixed Zotero sources, builds the UI 
 
 1. In **Journals**, manage your followed Journals, Groups, Labels and default Access Services. Each running configuration has its own saved scope. Import a Markdown research scope through Preview / Confirm, or export **User Data** to share it.
 2. Set keywords and publication months, save changes, then choose OpenAlex, Crossref, PubMed or Web of Science in **Run**. Runs are independent and create-only; existing Paper files are not rewritten.
-3. Review candidates in **Workspace**, using ARCHIVE or ARRAY. Keep and Reject are explicit actions; notes and other human-managed content remain in Paper Markdown.
+3. Review candidates in **Workspace / ARRAY**, using CANDIDATES and KEPT. Keep and Reject are explicit actions; notes and other human-managed content remain in Paper Markdown. Settings defaults **禁用 Archive 视图** on; turn it off to restore ARCHIVE.
 4. From ARRAY / KEPT, use **PREPARE & IMPORT** or **IMPORT ONLY**. Zotero Desktop must be running for Import. Use **BROWSER** for manual page interaction when required.
 
-Enrich retrieves eligible missing metadata without saving a Zotero item. Covers Search targets one saved Journal; Upload and Crop use local assets. Closing BROWSER hides its window and does not cancel an active workflow.
+Enrich retrieves eligible missing metadata without saving a Zotero item. Covers Search targets one saved Journal; Upload and Crop use local assets.
+
+**BROWSER** opens a work view inside the main window. Return to Allfold to resume the same business page and draft. Tabs and the collapsible, resizable **Services** panel select the same existing pages; hiding Browser keeps their navigation history, authentication and tasks. Services groups use saved scoped Service identities and existing page associations, including shared authentication and auxiliary pages. Task controls offer **查看任务页面** when manual interaction is needed. Opening a page does not continue or cancel its task.
+
+Settings' **禁用全屏运行界面** keeps Run progress in Run and Prepare / Import controls in ARRAY / KEPT. It defaults off. Both modes use the same task state, confirmation and cancellation rules; Continue is available only when the workflow permits it. The choice applies when a task starts or is restored, so changing it does not restart a task. These two interface preferences are saved locally, independently of configuration Save. The old Run animation preference and system reduced-motion setting remain separate from fullscreen presentation.
 
 **HISTORY** shows recent task results across restarts and offers **导出本次诊断**.
 Settings also offers **导出最近诊断** for startup or connection problems, limited to
