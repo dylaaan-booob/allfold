@@ -60,3 +60,23 @@ test('legacy Paper navigation locates the current Candidate or Kept entry and re
   assert.equal(f.get('selected-view').dataset.workspaceLayout,'array');
   assert.equal(f.get('kept-view').hidden,false);
 });
+
+test('startup waits for Inbox readiness before applying the disabled Archive layout',async()=>{
+  const f=await taskUI('kept.js',{request,archiveDisabled:true,layout:'archive',page:'workspace',bridgeReady:false});
+  assert.equal(f.get('selected-view').dataset.workspaceLayout,'archive');
+  assert.equal(f.window.workspaceArray.openPaper('paper-1'),false);
+  f.setBridgeReady(true);
+  await f.window.emit('inbox-ready');
+  assert.equal(f.get('selected-view').dataset.workspaceLayout,'array');
+  assert.equal(f.get('kept-view').hidden,false);
+});
+
+test('a missing legacy Inbox Paper leaves a usable Array page and an explicit notice',async()=>{
+  const f=await taskUI('kept.js',{request,archiveDisabled:true,layout:'archive',page:'workspace',
+    initialLink:{view:'inbox',paper:'missing-1'}});
+  assert.equal(f.get('selected-view').dataset.workspaceLayout,'array');
+  assert.equal(f.get('selected-view').hidden,false);
+  assert.equal(f.get('kept-view').hidden,false);
+  assert.equal(f.calls.filter(call=>call[0]==='notice').length,1);
+  assert.match(f.calls.find(call=>call[0]==='notice')[1],/Paper.*不在当前/);
+});
