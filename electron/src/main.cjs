@@ -202,7 +202,7 @@ async function startPython(config,cdpURL) {
   python.on('exit',(code,signal)=>{
     activeOperation?.controller.abort();
     activeOperation?.challenge?.resolve({outcome:'failed',reason:'python_exited'});
-    if (!exiting && base) log('error','python_exited',{exit_code:code});
+    if (!exiting) log('error','python_exited',{exit_code:code});
     if (!exiting && base) dialog.showErrorBox('Allfold','Python exited. Inspect the terminal output before restarting.');
     readyToExit=true;
     if(base || exiting)app.quit();
@@ -236,7 +236,7 @@ async function connect() {
     socket.addEventListener('message',event=>{
       try {
         const message=JSON.parse(event.data);
-        if(message.type === 'ready') {bridgeReady=true;resolve();}
+        if(message.type === 'ready') {setLogLevel(message.log_level);bridgeReady=true;resolve();}
         else if(message.type === 'cancel') {
           if(activeOperation?.id===message.id && activeOperation.action===message.action)
             activeOperation.controller.abort();
