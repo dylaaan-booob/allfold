@@ -300,6 +300,29 @@ test('Manual URL opening preserves the task; Covers use an auxiliary page withou
   assert.throws(()=>browser.beginOperation(signal,{service_id:serviceId}),/Invalid browser Service identity/);
   browser.close();assert.equal(browser.tabs.size,0);assert.equal(browser.selected,null);
 });
+
+test('closing the shared Portal keeps the Prepare initialization marker and refuses login replay',async t=>{
+  const {prepareService}=require('../src/workflows/browser-operations.cjs');
+  const {BrowserRuntime}=fixture(t),browser=new BrowserRuntime();
+  t.after(()=>browser.close());await browser.ready;
+  const signal=new AbortController().signal;
+  browser.beginOperation(signal,{request_id:'first',task_id:'prepare',service_id:serviceId,service_scope:serviceScope});
+  const portal=browser.createTab(),detail=browser.createTab();
+  browser.carsiPortal={task:'prepare',id:portal.id};
+  browser.bindTaskPage(detail);
+  await browser.command({action:'close',id:portal.id});
+  browser.endTask();
+  browser.beginOperation(signal,{request_id:'second',task_id:'prepare',service_id:serviceId,service_scope:serviceScope});
+  const recreated=()=>{throw Error('Unexpected Portal recreation');};
+  browser.events.once('tab-created',recreated);
+  try {
+    await assert.rejects(prepareService(browser,{task_id:'prepare',name:'Next saved Service',institution_name:'Test'},
+      {signal,progress(){}}),/page_closed/);
+    assert.equal(browser.carsiPortal.task,'prepare');
+    assert.equal(browser.carsiPortal.id,null);
+    assert.equal(browser.tabs.size,1);
+  } finally {browser.events.removeListener('tab-created',recreated);}
+});
 test('remote popups remain native managed tabs; shell IPC and unsafe URLs are refused',async t=>{
   const {BrowserRuntime,handlers}=fixture(t),browser=new BrowserRuntime();await browser.show();
   const source=browser.selected.view.webContents;

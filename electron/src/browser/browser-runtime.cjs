@@ -186,7 +186,8 @@ class BrowserRuntime {
       this.tabs.delete(tab.id);
       if (this.taskTab === tab) this.taskTab=null;
       if (this.importPage === tab) this.importPage=null;
-      if (this.carsiPortal?.id === tab.id) this.carsiPortal=null;
+      // Keep the task's initialization marker: closing A must not replay login for B.
+      if (this.carsiPortal?.id === tab.id) this.carsiPortal={task:this.carsiPortal.task,id:null};
       if (this.wosDocument?.pageId === tab.id) this.wosDocument=null;
       for(const page of this.tabs.values()) {
         if(page.opener===tab)page.opener=null;

@@ -228,10 +228,10 @@ async function ensureCARSIPortal(browser,data,{signal,progress},deadline) {
   browser.carsiPortal={task:data.task_id,id:null};
   let portal=await newTaskPage(browser,signal,{role:'carsi-portal',service:false});
   browser.carsiPortal={task:data.task_id,id:portal.id};
-  browser.associatePage(portal,{role:'carsi-portal',service:false});
   try {portal=await loginCARSI(browser,portal,data,signal,progress,deadline);}
   catch(error) {browser.carsiPortal={task:data.task_id,id:null};throw error;}
   browser.carsiPortal={task:data.task_id,id:portal.id};
+  browser.associatePage(portal,{role:'carsi-portal',service:false});
   portal.institutionOrigins=new Set(portal.authContext?.origins || []);
   return portal;
 }
