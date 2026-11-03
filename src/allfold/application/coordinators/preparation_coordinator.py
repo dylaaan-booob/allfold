@@ -15,6 +15,7 @@ from allfold.persistence.safe_write import ContentChangedError
 from allfold.persistence.user_state import load_user_state, read_user_state
 from allfold.application.settings import load_settings
 from allfold.application.workspace import journals_for_paper, load_workspace
+from allfold.application.browser_services import BrowserServiceSnapshot
 
 CARSI_LOGIN_URL = "https://ds.carsi.edu.cn/Shibboleth.sso/Login"
 CARSI_PORTAL_URL = "https://ds.carsi.edu.cn/wxds"
@@ -108,13 +109,16 @@ class PreparationCoordinator:
         self._snapshot = replace(self._snapshot, **changes)
 
     def start(self, config_path, *, service=None, browser_owner=None):
-        state_revision = load_user_state(config_path).revision
+        saved = BrowserServiceSnapshot.read(config_path)
+        if service is not None and service not in saved.services:
+            raise ContentChangedError('Preparation Service no longer matches saved User State')
         relevant = (service,) if service else read_saved_preparation_services(config_path)
         services = tuple(s for s in relevant if s.access_method == 'carsi')
         manual = tuple(s for s in relevant if s.access_method == 'manual')
         config = load_config(config_path)
-        if config.user_state_revision != state_revision.digest:
+        if config.user_state_revision != saved.revision.digest:
             raise ContentChangedError("User state changed before Preparation start")
+        saved.verify()
         login = institution_login_url(config.institution.idp_entity_id if config.institution else None)
         institution = config.institution
         if services and not (institution and (institution.name or (institution.use_shibboleth and login))):
@@ -141,7 +145,7 @@ class PreparationCoordinator:
                 authorization_pending=bool(services), manual_services=manual)
             if services:
                 self._worker = threading.Thread(target=self._run,
-                    args=(owner, browser_owner is None, authentication), name='electron-preparation', daemon=False)
+                    args=(owner, browser_owner is None, authentication, saved), name='electron-preparation', daemon=False)
                 try:
                     self._worker.start()
                 except BaseException:
@@ -151,7 +155,7 @@ class PreparationCoordinator:
                     raise
             return self._snapshot
 
-    def _run(self, owner, release_owner, authentication):
+    def _run(self, owner, release_owner, authentication, saved):
         try:
             if not self.bridge.connected:
                 raise ValueError('Electron runtime is unavailable')
@@ -160,15 +164,17 @@ class PreparationCoordinator:
                     if self._stop.is_set():
                         break
                     self.browser_lock.require(owner)
+                    saved.verify()
                     self._publish(current_service_id=service.id, waiting_for_user=False,
                                   message=f'Preparing {service.name}')
                     pending = self.bridge.execute('prepare_service', {
                         'task_id': self._snapshot.task_id, 'service_id': service.id,
-                        'name': service.name, **authentication}, self._progress)
+                        'service_scope': saved.scope, 'name': service.name, **authentication}, self._progress)
                 result = pending.result()
                 with self._lock:
                     if self._stop.is_set():
                         break
+                    saved.verify()
                     diagnostic = normalize_browser_diagnostic(result.get('diagnostic'))
                     if (isinstance(diagnostic, dict) and diagnostic.get('stage') == 'authentication'
                             and diagnostic.get('code') in {'institution_credentials_rejected', 'carsi_session_expired'}):
@@ -209,6 +215,11 @@ class PreparationCoordinator:
             with self._lock:
                 self._publish(phase=PreparationPhase.STOPPED if self._stop.is_set() else PreparationPhase.COMPLETED,
                               message='Preparation canceled' if self._stop.is_set() else 'Preparation queue finished')
+        except ContentChangedError:
+            with self._lock:
+                self._target_page = None
+                self._publish(phase=PreparationPhase.BLOCKED,
+                    message='Saved configuration or User State changed; Preparation stopped without migration')
         except Exception:
             with self._lock:
                 self._publish(phase=PreparationPhase.BLOCKED, message='Electron Preparation failed; no automatic retry')

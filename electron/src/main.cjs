@@ -86,13 +86,13 @@ async function execute(message) {
   const started=Date.now(),context={request_id:message.id,action:message.action};
   log('debug','task_started',context);
   activeOperation=current;
-  browser.beginOperation(controller.signal);
-  browser.operation.action=message.action;
   const operation=(async()=>{
     let saving=false;
     let stage='navigation';
-    let data;
+    let data,resultPageId;
     try {
+      browser.beginOperation(controller.signal,{...message.data,request_id:message.id});
+      browser.operation.action=message.action;
       let lastProgress,waiting=false;
       const progress=(data,progressStage=stage)=>{
         const signature=JSON.stringify([progressStage,data.message,data.waiting_for_user]);
@@ -116,12 +116,13 @@ async function execute(message) {
         data=await (message.action==='wos_query'?wosQuery:wosExport)(browser,message.data,{signal:controller.signal,progress});
       } else {
         if(!['import_paper','enrich_paper'].includes(message.action)) throw Error('Unsupported Electron operation');
-        if(message.action==='enrich_paper')await newTaskPage(browser);
-        else {
-          if(!browser.importPage || !browser.tabs.has(browser.importPage.id))browser.importPage=await newTaskPage(browser);
-          browser.taskTab=browser.importPage;
-        }
         const doi=normalizeDOI(message.data.doi);
+        if(message.action==='enrich_paper')await newTaskPage(browser,controller.signal);
+        else {
+          if(!browser.importPage || !browser.tabs.has(browser.importPage.id))browser.importPage=await newTaskPage(browser,controller.signal);
+          browser.associatePage(browser.importPage,{role:'import',doi});
+          browser.bindTaskPage(browser.importPage,controller.signal);
+        }
         progress({message:'Opening DOI in Browser'});
         const doc=await browser.navigate('https://doi.org/'+encodeURIComponent(doi),{signal:controller.signal,
           onWaiting:()=>progress({waiting_for_user:true,message:'Checking verification; open BROWSER for manual verification if needed, or Cancel to stop'})});
@@ -152,6 +153,7 @@ async function execute(message) {
         :{diagnostic:diagnosticFor(error,stage)};
     } finally {
       current.challenge?.cancel();
+      resultPageId=browser.taskTab?.id;
       browser.endTask();
     }
     const diagnostic=data.diagnostic || {};
@@ -159,7 +161,7 @@ async function execute(message) {
     const canceled=(controller.signal.aborted || diagnostic.code==='canceled')
       && !['confirmed','uncertain'].includes(data.parent?.outcome);
     const failed=!!data.diagnostic || !!data.error || data.outcome==='Needs attention' || outcome==='no_result' || ['no_effect','uncertain'].includes(data.parent?.outcome);
-    log(canceled?'info':failed?'warn':'info','task_finished',{...context,page_id:browser.taskTab?.id,
+    log(canceled?'info':failed?'warn':'info','task_finished',{...context,page_id:resultPageId,
       duration_ms:Date.now()-started,outcome:canceled?'canceled':outcome,
       parent:data.parent?.outcome,pdf:data.pdf?.outcome,stage:diagnostic.stage || stage,
       step:diagnostic.step,code:diagnostic.net_error || diagnostic.code || data.reason,status:diagnostic.status});

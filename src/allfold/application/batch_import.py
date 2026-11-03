@@ -14,6 +14,7 @@ from allfold.persistence.safe_write import workspace_operation_lock
 from allfold.application.browser_runtime import BrowserTaskLock, BrowserOwner
 from allfold.persistence.markdown_state import parse_paper_state
 from allfold.application.browser_runtime import BrowserGateway, ElectronDisconnected
+from allfold.application.browser_services import BrowserServiceSnapshot
 
 
 class BatchPhase(str, Enum):
@@ -94,7 +95,7 @@ class BatchImportService:
         with self._mutex:
             self._snapshot = replace(self._snapshot, **changes)
 
-    def start(self, workspace: Path, *, browser_owner: BrowserOwner, validate_target=None):
+    def start(self, workspace: Path, *, browser_owner: BrowserOwner, validate_target=None, config_path=None):
         self.browser_lock.require(browser_owner)
         with self._mutex:
             if self.running:
@@ -102,10 +103,11 @@ class BatchImportService:
             if not self.bridge.connected:
                 self._snapshot = BatchSnapshot(BatchPhase.BLOCKED, None, None, (), "Electron runtime unavailable")
                 return self._snapshot
+            services = BrowserServiceSnapshot.read(config_path) if config_path is not None else None
             self._stop.clear()
             self._snapshot = BatchSnapshot(BatchPhase.RUNNING, None, None, (), "Scanning Kept Papers")
             self._worker = threading.Thread(target=self._execute,
-                args=(workspace, browser_owner, validate_target), daemon=False, name="electron-import")
+                args=(workspace, browser_owner, validate_target, services), daemon=False, name="electron-import")
             self._worker.start()
         return self.snapshot()
 
@@ -125,7 +127,7 @@ class BatchImportService:
         if self._worker is not None:
             self._worker.join()
 
-    def _execute(self, workspace, owner, validate_target):
+    def _execute(self, workspace, owner, validate_target, services):
         results = []
         plan = None
         phase, message = BatchPhase.COMPLETED, "No eligible Papers to import"
@@ -134,7 +136,9 @@ class BatchImportService:
             with workspace_operation_lock(workspace) as lock:
                 if validate_target:
                     validate_target(lock)
-                plan = plan_workspace_import(lock)
+                if services:
+                    services.verify()
+                plan = plan_workspace_import(lock, services.journals if services else ())
                 self._publish(plan=plan)
                 for paper in plan.papers:
                     if self._stop.is_set():
@@ -154,6 +158,10 @@ class BatchImportService:
                             if self._stop.is_set():
                                 phase, message = BatchPhase.STOPPED, "Stopped before next Paper"
                                 break
+                            if validate_target:
+                                validate_target(lock)
+                            if services:
+                                services.verify()
                             state = parse_paper_state(paper.path, paper.contents)
                             metadata = {"doi": paper.doi}
                             if state is not None:
@@ -162,7 +170,10 @@ class BatchImportService:
                                     "abstract": state.abstract, "publication_date": state.publication_date,
                                     "authors": list(state.authors), "journal_issns": list(state.journal_issns),
                                 }.items() if value is not None})
-                            pending = self.bridge.execute("import_paper", {"doi": paper.doi, "metadata": metadata},
+                            pending = self.bridge.execute("import_paper", {
+                                "doi": paper.doi, "metadata": metadata, "task_id": owner.id,
+                                "paper_id": str(paper.paper_id), "service_id": paper.service_id,
+                                "service_scope": services.scope if services else None},
                                 lambda progress: self._publish(message=str(progress.get("message", "Import running"))))
                         result = pending.result()
                         completion = complete_electron_import(reservation, result, operation_lock=lock)

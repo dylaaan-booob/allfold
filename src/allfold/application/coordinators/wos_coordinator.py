@@ -15,6 +15,7 @@ from allfold.application.run_state import (
     RunJournalFact, RunIssueFact, validate_saved_facts,
 )
 from allfold.application.runtime_metadata import metadata_directory
+from allfold.application.browser_services import BrowserServiceSnapshot
 from allfold.config import ConfigurationError, load_config
 from allfold.persistence.user_state import load_user_state, read_user_state
 from allfold.persistence.journal_registry import local_candidates
@@ -139,6 +140,9 @@ class WoSCoordinator:
             state_revision = read_user_state(self.path).revision
             if state_revision.digest != config.user_state_revision or load_config(self.path) != config:
                 raise ContentChangedError('Configuration changed before Run WoS start')
+            saved = BrowserServiceSnapshot.read(self.path)
+            if saved.config_contents != config_text or saved.revision != state_revision:
+                raise ContentChangedError('Configuration changed before Run WoS start')
             if not self.run_slot.acquire(blocking=False):
                 raise ValueError('Another Run is already active')
             owner = self.browser_lock.acquire('wos')
@@ -147,6 +151,7 @@ class WoSCoordinator:
                 raise ValueError('Another browser workflow is active')
             task = dict(id=secrets.token_hex(16), owner=owner, config=config,
                 compiled=compiled, service=service, dates=dates,
+                service_scope=saved.scope,
                 config_text=config_text, state_revision=state_revision,
                 workspace_identity=workspace_identity, status='RUNNING', stage='Access Check', message='Starting CARSI',
                 started_at=datetime.now(timezone.utc).isoformat(), started_clock=time.monotonic(),
@@ -258,8 +263,11 @@ class WoSCoordinator:
             if task['cancelled'].is_set():
                 raise InterruptedError()
             self.browser_lock.require(task['owner'])
-            pending = self.bridge.execute(action, data, lambda value: self._electron_progress(task, value))
+            pending = self.bridge.execute(action, {**data, 'task_id': task['id'],
+                'service_id': task['service'].id, 'service_scope': task['service_scope']},
+                lambda value: self._electron_progress(task, value))
         result = pending.result()
+        self._current(task)
         if task['cancelled'].is_set():
             raise InterruptedError()
         if 'diagnostic' in result:
@@ -294,6 +302,7 @@ class WoSCoordinator:
         try:
             config = task['config']
             with self.lock:
+                self._current(task)
                 if task['cancelled'].is_set():
                     raise InterruptedError()
                 prep = self.preparation.start(self.path, service=task['service'], browser_owner=task['owner'])

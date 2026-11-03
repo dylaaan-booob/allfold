@@ -18,10 +18,12 @@ Journal state is stored in `.allfold/user-data.sqlite`, isolated by canonical co
 
 ```sh
 npm --prefix electron start
-npm --prefix electron start -- --config ./my-config.yaml
+npm --prefix electron start -- --config "$PWD/my-config.yaml"
 ```
 
 The local origin is `http://127.0.0.1:18767`. An occupied port is an error; close the other instance rather than changing ports. Project configuration, journal list and Workspace must stay under the project root.
+
+Pass an absolute `--config` path. The example expands `$PWD` from the project root before npm runs the Electron package script from `electron/`; a relative configuration argument would otherwise resolve under that directory.
 
 Normal exit stops further dispatch and waits for an already-started native save and guarded Paper result write. If the process was externally killed or the save result is uncertain, inspect Zotero and remaining processes before restarting or saving again.
 

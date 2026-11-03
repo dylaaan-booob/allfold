@@ -117,7 +117,9 @@ function institutionAuthPage(action='inspect',credentials=null,expectedStep=null
     } else {
       const switches=controls.filter(node=>/密码登录|密码登陆|账号登录|帐号登录|账户登录|账号密码|password\s+(?:login|sign.in)|(?:use|sign.in.with).{0,15}password/i.test(caption(node))
         && (institution || /登录|登陆|sign\s*in|log\s*in/i.test(heading(scope(node)))));
-      if(switches.length===1){step='account';target=switches[0];}
+      // A publisher's optional sign-in entry does not establish a page barrier.
+      // Only the authorized institution flow may switch authentication methods.
+      if(institution && switches.length===1){step='account';target=switches[0];}
       // A personalization heading is not a login barrier; require a form or explicit QR login.
       else if(loginScopes.size || regions.some(root=>/扫码登录|二维码登录|scan.{0,15}(?:QR|code).{0,15}(?:login|sign.in)/i.test(heading(root))
         && root.querySelector('img,canvas')))

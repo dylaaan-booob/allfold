@@ -253,6 +253,7 @@ class PlannedImportPaper:
     path: Path
     contents: str
     file_identity: tuple[int, int]
+    service_id: str | None = None
 
 
 @dataclass(frozen=True)
@@ -271,7 +272,7 @@ class WorkspaceImportPlan:
     papers_identity: tuple[int, int]
 
 
-def plan_workspace_import(lock) -> WorkspaceImportPlan:
+def plan_workspace_import(lock, journals: Sequence[JournalConfig] = ()) -> WorkspaceImportPlan:
     """Build one invocation-local candidate inventory with safe path/DOI uniqueness.
 
     Old export_attempt data is preserved as human-owned historical metadata; it
@@ -326,8 +327,12 @@ def plan_workspace_import(lock) -> WorkspaceImportPlan:
                 kind = "normal" if non_target else "error"
                 exclusions.append(ImportExclusion(state.path, "; ".join(reasons) or "Paper is not safely eligible", kind))
             else:
+                matches = journals_for_paper(_project_paper(state), journals)
+                services = {journal.access_service_id for journal in matches}
+                # Multiple Journal matches are safe only when every saved choice agrees.
+                service_id = next(iter(services)) if len(services) == 1 and None not in services else None
                 papers.append(PlannedImportPaper(state.paper_id, state.external_ids.doi, state.path,
-                                                read.contents, read.file_identity))
+                                                read.contents, read.file_identity, service_id))
         lock.verify()
         located = os.stat("Papers", dir_fd=lock.directory, follow_symlinks=False)
         if not stat.S_ISDIR(located.st_mode) or (located.st_dev, located.st_ino) != identity:

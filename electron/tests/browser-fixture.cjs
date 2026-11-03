@@ -3,6 +3,9 @@
 const {inspectPage,waitForPage}=require('../src/browser/browser-navigation.cjs');
 function attachBrowserMechanisms(browser) {
   const solverDocuments=new Map();
+  browser.bindTaskPage=function(tab,signal){this.taskTab=tab;this.taskActive=true;tab.taskSignal=signal;};
+  browser.associatePage=(tab,association)=>{tab.association={...tab.association,...association};};
+  browser.pageAssociation=id=>browser.tabs?.get(id)?.association;
   browser.beginPageLoad=function(tab,signal) {
     this.taskTab=tab;this.taskActive=true;tab.taskSignal=signal;tab.loadAllowed=true;
     tab.recoveryActive=true;tab.reloads ??= 0;

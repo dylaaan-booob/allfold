@@ -10,6 +10,8 @@ const os=require('node:os');
 const {ImportFailure,checkPage,failedImport}=require('../src/workflows/import-errors.cjs');
 const {institutionAuthPage}=require('../src/auth/institution-auth.cjs');
 const chromiumVersion='123.4.5.6';
+const serviceScope={scope_id:'a'.repeat(64),config_revision:'b'.repeat(64),user_state_revision:'c'.repeat(64)};
+const serviceId='svc_'+'1'.repeat(32);
 function fixture(t) {
   const profile=fs.mkdtempSync(path.join(os.tmpdir(),'allfold-browser-runtime-test-'));
   t.after(()=>fs.rmSync(profile,{recursive:true,force:true}));
@@ -135,6 +137,191 @@ test('selecting another tab does not retarget the document, but reload/navigatio
   assert.equal(browser.documentCurrent(doc),false);
   browser.endTask();await browser.command({action:'close',id:task.id});
   assert.equal(browser.tabs.has(task.id),false);
+});
+test('Service queries isolate configurations without pages and task navigation preserves presentation',async t=>{
+  const {BrowserRuntime}=fixture(t),browser=new BrowserRuntime();
+  t.after(()=>browser.close());await browser.ready;
+  const visible=browser.createTab();
+  browser.beginOperation(new AbortController().signal,{request_id:'first',task_id:'batch',
+    service_scope:serviceScope,service_id:serviceId});
+  assert.equal(browser.servicePages(serviceScope.scope_id,serviceId).length,0);
+  assert.equal(browser.tabs.size,1);
+  const tab=browser.createTab({present:false});
+  browser.associatePage(tab,{role:'import',doi:'10.5555/first'});
+  browser.bindTaskPage(tab);
+  const doc=await browser.navigate('https://example.org/first');
+  assert.equal(browser.selected,visible);
+  assert.equal(doc.pageId,tab.id);
+  assert.equal(browser.servicePages(serviceScope.scope_id,serviceId)[0].active,true);
+  const otherScope={...serviceScope,scope_id:'d'.repeat(64)};
+  browser.endTask();
+  assert.equal(browser.taskTab,null);
+  assert.equal(browser.pageAssociation(tab.id).active,false);
+  browser.beginOperation(new AbortController().signal,{request_id:'second',task_id:'batch',
+    service_scope:otherScope,service_id:serviceId});
+  browser.associatePage(tab,{role:'import',doi:'10.5555/second'});
+  browser.bindTaskPage(tab);
+  await browser.navigate('https://example.org/second');
+  assert.equal(browser.servicePages(serviceScope.scope_id,serviceId).length,0);
+  assert.equal(browser.servicePages(otherScope.scope_id,serviceId).length,1);
+  assert.equal(browser.tabs.size,2);
+  assert.equal(browser.selected,visible);
+  browser.endTask();
+  browser.beginOperation(new AbortController().signal,{request_id:'third',task_id:'batch',service_scope:otherScope});
+  browser.associatePage(tab,{role:'import',doi:'10.5555/unmatched'});
+  browser.bindTaskPage(tab);
+  assert.equal(browser.pageAssociation(tab.id).service_id,null);
+  assert.equal(browser.servicePages(otherScope.scope_id,serviceId).length,0);
+});
+test('popup provenance is descriptive, disappears on destruction, and never authorizes credentials',async t=>{
+  let reads=0;
+  const {BrowserRuntime}=fixture(t),browser=new BrowserRuntime({readCASCredentials:async()=>{reads++;return {};}});
+  t.after(()=>browser.close());await browser.ready;
+  const controller=new AbortController();
+  browser.beginOperation(controller.signal,{request_id:'first',service_scope:serviceScope,service_id:serviceId});
+  const source=browser.createTab();browser.associatePage(source,{role:'service-resource'});
+  browser.bindTaskPage(source);
+  const wc=source.view.webContents.popup({url:'https://idp.example.edu/login'}).createWindow({});
+  const popup=browser.tabs.get(wc.id);
+  await wc.loadURL('https://idp.example.edu/login');
+  wc.runAuth=()=>({step:'login',waiting:true});
+  await browser.handleAuthentication(popup);
+  assert.equal(reads,0);
+  assert.equal(browser.pageAssociation(popup.id).service_id,serviceId);
+  assert.equal(browser.pageAssociation(popup.id).source_page_id,source.id);
+  source.view.webContents.close();
+  assert.equal(popup.opener,null);
+  assert.equal(browser.pageAssociation(source.id),null);
+  assert.equal(browser.pageAssociation(popup.id).source_page_id,null);
+  await assert.rejects(browser.navigate('https://example.org/late'),/page_closed/);
+  assert.equal(browser.tabs.size,1);
+  controller.abort();assert.equal(browser.pageAssociation(popup.id).active,false);
+  browser.endTask();
+  assert.equal(browser.tabs.size,1);
+  browser.beginOperation(new AbortController().signal,{request_id:'second'});
+  assert.equal(browser.taskTab,null);
+  await assert.rejects(browser.navigate('https://example.org/new'),/page_closed/);
+  wc.emit('render-process-gone',{}, {reason:'crashed',exitCode:1});
+  assert.equal(browser.pageAssociation(popup.id),null);
+  assert.equal(browser.servicePages(serviceScope.scope_id,serviceId).length,0);
+});
+
+test('a failed/canceled ImportPage can be explicitly reused, and a delayed old navigation cannot bind a new task',async t=>{
+  const {BrowserRuntime}=fixture(t),browser=new BrowserRuntime();
+  t.after(()=>browser.close());await browser.ready;
+  const first=new AbortController(),tab=browser.createTab();
+  browser.beginOperation(first.signal,{request_id:'old'});browser.bindTaskPage(tab);
+  tab.navigation.begin({automatic:true,owner:browser.operation,signal:first.signal});
+  first.abort();browser.endTask();
+  browser.beginOperation(new AbortController().signal,{request_id:'new'});
+  browser.bindTaskPage(tab);
+  assert.equal((await browser.navigate('https://example.org/new')).pageId,tab.id);
+  browser.endTask();
+  browser.beginOperation(new AbortController().signal,{request_id:'late'});browser.bindTaskPage(tab);
+  let ready;browser.ready=new Promise(resolve=>{ready=resolve;});
+  const pending=browser.navigate('https://example.org/old-late');
+  browser.endTask();browser.beginOperation(new AbortController().signal,{request_id:'latest'});
+  const other=browser.createTab({present:false});browser.bindTaskPage(other);
+  ready();await assert.rejects(pending,/canceled/);
+  assert.equal(browser.taskTab,other);
+  assert.equal(other.view.webContents.getURL(),'');
+  assert.equal(tab.view.webContents.getURL(),'https://example.org/new');
+});
+
+test('Prepare reuses an unassigned Portal across Services and records resource/target popup provenance',async t=>{
+  const {prepareService}=require('../src/workflows/browser-operations.cjs');
+  const {BrowserRuntime}=fixture(t),browser=new BrowserRuntime();
+  t.after(()=>browser.close());await browser.ready;
+  const portal=browser.createTab(),wc=portal.view.webContents;
+  await wc.loadURL('https://ds.carsi.edu.cn/resource/resource.php');
+  browser.carsiPortal={task:'prepare',id:portal.id};
+  wc.runAuth=code=>{
+    const [action]=JSON.parse(code.slice(code.lastIndexOf('(...')+4,-1));
+    if(action==='ready')return {status:'ready',checked:false};
+    if(action==='poll')return {status:'complete',selection:{status:'selected',url:'https://ds.carsi.edu.cn/resource/resourceDetail.php?id=fixture'}};
+    return {status:'pending'};
+  };
+  browser.events.on('tab-created',(_event,tab)=>{
+    const contents=tab.view.webContents,original=contents.executeJavaScriptInIsolatedWorld.bind(contents);
+    contents.executeJavaScriptInIsolatedWorld=async(world,scripts)=>{
+      if(!scripts)return original();
+      const [action]=JSON.parse(scripts[0].code.slice(scripts[0].code.lastIndexOf('(...')+4,-1));
+      if(action==='check')return {status:'ready'};
+      assert.equal(action,'visit');
+      const popup=contents.popup({url:'https://example.org/target'}).createWindow({});
+      await popup.loadURL('https://example.org/target');
+      return {status:'visited_click'};
+    };
+  });
+  for(const [index,id] of [serviceId,'svc_'+'2'.repeat(32)].entries()) {
+    const controller=new AbortController();
+    browser.beginOperation(controller.signal,{request_id:'prepare'+index,task_id:'prepare',service_id:id,service_scope:serviceScope});
+    const result=await prepareService(browser,{task_id:'prepare',service_id:id,name:'Saved Service',institution_name:'Test'},
+      {signal:controller.signal,progress(){}});
+    assert.equal(result.outcome,'Opened');
+    const {source_page_id:detail,target_page_id:target}=result.evidence;
+    assert.equal(browser.pageAssociation(portal.id).service_id,null);
+    assert.equal(browser.pageAssociation(detail).service_id,id);
+    assert.equal(browser.pageAssociation(detail).source_page_id,portal.id);
+    assert.equal(browser.pageAssociation(target).service_id,id);
+    assert.equal(browser.pageAssociation(target).source_page_id,detail);
+    assert.equal(browser.pageAssociation(target).role,'service-target');
+    assert.equal(browser.carsiPortal.id,portal.id);
+    assert.equal(browser.events.listenerCount('tab-created'),1);
+    browser.endTask();
+  }
+  assert.equal(browser.tabs.size,5);
+});
+
+test('Manual URL opening preserves the task; Covers use an auxiliary page without Service authority',async t=>{
+  const {searchJournalCover}=require('../src/workflows/browser-operations.cjs');
+  const {BrowserRuntime,logs}=fixture(t),browser=new BrowserRuntime();
+  t.after(()=>browser.close());await browser.ready;
+  const signal=new AbortController().signal;
+  browser.beginOperation(signal,{request_id:'import',service_scope:serviceScope,service_id:serviceId});
+  const task=browser.createTab();browser.associatePage(task,{role:'import'});browser.bindTaskPage(task);
+  const manual=await browser.openURL('https://manual.example.org/');
+  assert.equal(browser.taskTab,task);assert.equal(browser.selected,manual);
+  assert.equal(browser.pageAssociation(manual.id),null);
+  browser.endTask();
+  browser.beginOperation(signal,{request_id:'cover',service_scope:{...serviceScope,secret:'PRIVATE'},service_id:serviceId});
+  browser.events.once('tab-created',(_event,tab)=>{
+    const original=tab.view.webContents.executeJavaScriptInIsolatedWorld.bind(tab.view.webContents);
+    tab.view.webContents.executeJavaScriptInIsolatedWorld=async(world,scripts)=>scripts?{ready:true,source_url:null}:original();
+  });
+  assert.equal((await searchJournalCover(browser,{name:'Saved Journal'},{signal,progress(){}})).source_url,null);
+  const cover=browser.taskTab;
+  assert.equal(browser.pageAssociation(cover.id).role,'auxiliary');
+  assert.equal(browser.pageAssociation(cover.id).service_id,null);
+  assert.equal(browser.selected,manual);
+  browser.endTask();assert.equal(browser.tabs.size,3);
+  assert.doesNotMatch(JSON.stringify(browser.pageAssociation(cover.id)),/PRIVATE|secret/);
+  assert.doesNotMatch(JSON.stringify(logs),/PRIVATE|scope_id|config_revision|service_id/);
+  assert.throws(()=>browser.beginOperation(signal,{service_id:serviceId}),/Invalid browser Service identity/);
+  browser.close();assert.equal(browser.tabs.size,0);assert.equal(browser.selected,null);
+});
+
+test('closing the shared Portal keeps the Prepare initialization marker and refuses login replay',async t=>{
+  const {prepareService}=require('../src/workflows/browser-operations.cjs');
+  const {BrowserRuntime}=fixture(t),browser=new BrowserRuntime();
+  t.after(()=>browser.close());await browser.ready;
+  const signal=new AbortController().signal;
+  browser.beginOperation(signal,{request_id:'first',task_id:'prepare',service_id:serviceId,service_scope:serviceScope});
+  const portal=browser.createTab(),detail=browser.createTab();
+  browser.carsiPortal={task:'prepare',id:portal.id};
+  browser.bindTaskPage(detail);
+  await browser.command({action:'close',id:portal.id});
+  browser.endTask();
+  browser.beginOperation(signal,{request_id:'second',task_id:'prepare',service_id:serviceId,service_scope:serviceScope});
+  const recreated=()=>{throw Error('Unexpected Portal recreation');};
+  browser.events.once('tab-created',recreated);
+  try {
+    await assert.rejects(prepareService(browser,{task_id:'prepare',name:'Next saved Service',institution_name:'Test'},
+      {signal,progress(){}}),/page_closed/);
+    assert.equal(browser.carsiPortal.task,'prepare');
+    assert.equal(browser.carsiPortal.id,null);
+    assert.equal(browser.tabs.size,1);
+  } finally {browser.events.removeListener('tab-created',recreated);}
 });
 test('remote popups remain native managed tabs; shell IPC and unsafe URLs are refused',async t=>{
   const {BrowserRuntime,handlers}=fixture(t),browser=new BrowserRuntime();await browser.show();
@@ -298,6 +485,26 @@ test('page is the default mode and cannot execute a recognized institution login
   const page=authDOM({fields:[{label:'Username'},{type:'password',label:'Password'}]});
   assert.equal(page.runDefault('act','login').waiting,true);
   assert.equal(page.clicks(),0);assert.equal(page.inputs[0].value,'');assert.equal(page.inputs[1].value,'');
+});
+test('an optional password sign-in entry does not block an ordinary article, while institution switching stays authorized',()=>{
+  const page=authDOM({title:'Article abstract',formHeading:'Sign in',buttons:['Sign in with password'],
+    url:'https://academic.oup.com/biometrics/article/doi/10.1093/biomtc/ujag169/fixture'});
+  assert.equal(page.runDefault().step,'none');
+  assert.equal(page.runDefault().waiting,false);
+  assert.equal(page.runDefault('act','account').acted,false);
+  assert.equal(page.clicks(),0);
+  assert.equal(page.run().step,'account');
+  assert.equal(page.run('act','account').acted,true);
+  assert.equal(page.clicks(),1);
+});
+
+test('ordinary verification controls and explicit QR login still wait for manual completion',()=>{
+  const otp=authDOM({fields:[{label:'Verification code',autocomplete:'one-time-code'}],buttons:['Verify']});
+  assert.equal(otp.runDefault().waiting,true);
+  const qr=authDOM({formHeading:'扫码登录',buttons:['密码登录'],widgets:[{tagName:'IMG'}]});
+  assert.equal(qr.runDefault().waiting,true);
+  assert.equal(qr.runDefault('act','account').acted,false);
+  assert.equal(qr.clicks(),0);
 });
 
 

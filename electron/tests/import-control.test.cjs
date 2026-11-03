@@ -17,7 +17,10 @@ function fixture() {
     newTaskPage:async()=>({id:1}),
     send(message) {messages.push(JSON.parse(JSON.stringify(message)));},
     browser: {tabs:new Map([[1,{}]]),async navigate() {return {pageId:1,url: 'https://example.org/article'};}, documentCurrent: () => true,
-      beginOperation() {this.operation={};},enterBusiness() {},publish() {},endTask() {calls.end++;}},
+      beginOperation(_signal,data) {this.operation={association:data};},
+      associatePage(tab,data){tab.association={...this.operation.association,...data};},
+      bindTaskPage(tab){this.taskTab=tab;},
+      enterBusiness() {},publish() {},endTask() {calls.end++;}},
     translator: {async translate(doc) {calls.translation++;return {item:{},sourceDocument:doc,metadataSource:'web'}; }},
     async saveOnce() {calls.save++;return {parent: {outcome: 'confirmed'}};}});
   vm.runInContext(execute, context);
@@ -71,6 +74,26 @@ test('Enrich runs the official read-only Translator and never dispatches ItemSav
   await f.context.execute({id:'enrich',action:'enrich_paper',data:{doi:'10.5555/test'}});
   assert.equal(enrichment,true);assert.equal(f.calls.save,0);assert.equal(f.calls.end,1);
   assert.equal(f.messages.find(m=>m.type==='result').data.item.DOI,'10.5555/test');
+});
+
+test('Import reuses one page and replaces Paper/Service context, including an unmatched Paper',async()=>{
+  const f=fixture();let created=0;
+  f.context.newTaskPage=async()=>{created++;return {id:1};};
+  const scope={scope_id:'a'.repeat(64),config_revision:'b'.repeat(64),user_state_revision:'c'.repeat(64)};
+  const records=[];
+  f.context.browser.navigate=async function(url){
+    records.push({page:this.taskTab.id,url,association:JSON.parse(JSON.stringify(this.taskTab.association))});
+    return {pageId:this.taskTab.id,url};
+  };
+  for(const [index,service] of ['svc_'+'1'.repeat(32),'svc_'+'2'.repeat(32),null].entries()) {
+    await f.context.execute({id:'request'+index,action:'import_paper',data:{doi:'10.5555/'+index,
+      task_id:'batch',paper_id:'paper'+index,service_scope:scope,service_id:service}});
+  }
+  assert.equal(created,1);
+  assert.deepEqual(records.map(value=>value.page),[1,1,1]);
+  assert.deepEqual(records.map(value=>value.association.service_id),['svc_'+'1'.repeat(32),'svc_'+'2'.repeat(32),null]);
+  assert.deepEqual(records.map(value=>value.association.paper_id),['paper0','paper1','paper2']);
+  assert.deepEqual(records.map(value=>value.association.doi),['10.5555/0','10.5555/1','10.5555/2']);
 });
 
 
