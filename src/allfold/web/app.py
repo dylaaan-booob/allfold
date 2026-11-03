@@ -468,6 +468,7 @@ def create_app(config_path: Path, *, electron_bridge: ElectronBridge, diagnostic
             saved = app.state.reset_confirmation
             token = form.get("reset_token")
             if (saved is None or len(saved) < 3 or saved[2] != 'workspace' or not isinstance(token, str)
+                    or not token.isascii()
                     or not secrets.compare_digest(token, saved[0])
                     or len(saved) < 5 or time.monotonic() - saved[4] > 300):
                 app.state.reset_confirmation = None

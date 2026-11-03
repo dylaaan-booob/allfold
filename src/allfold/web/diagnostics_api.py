@@ -30,7 +30,8 @@ def install_diagnostics_api(app, *, run_slot):
     bridge = app.state.electron_bridge
 
     def valid_csrf(value):
-        return isinstance(value, str) and hmac.compare_digest(value, app.state.csrf_token)
+        return (isinstance(value, str) and value.isascii()
+                and hmac.compare_digest(value, app.state.csrf_token))
 
     def native_call(operation, expected=None):
         data = {'operation': operation, 'scope_id': store.scope_id}
@@ -102,7 +103,8 @@ def install_diagnostics_api(app, *, run_slot):
             app.state.reset_confirmation = None  # Every submitted attempt consumes the authorization.
             token = form.get('reset_token')
             if (saved is None or len(saved) < 3 or saved[2] != 'logs'
-                    or not isinstance(token, str) or not secrets.compare_digest(token, saved[0])):
+                    or not isinstance(token, str) or not token.isascii()
+                    or not secrets.compare_digest(token, saved[0])):
                 message = 'Logs confirmation is stale or already used. Reopen Reset.'
             elif (app.state.run_coordinator.snapshot().status is CoordinatorStatus.RUNNING
                     or app.state.wos_coordinator.running or app.state.batch_import.running
