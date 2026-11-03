@@ -21,9 +21,11 @@ Allfold is an Electron-managed Python application with a Web UI. Keep changes wi
 
 ## Agent skills
 
+Use `mattpocock-skills` as the default engineering workflow. Select the steps needed for the requested result; supporting skills do not add separate approval gates or replace that workflow. Reuse settled requirements and existing test interfaces, and include uncommitted work when reviewing the current change. Local implementation and validation do not require a commit or an issue first; external actions still follow the authorization requirements above.
+
 ### Issue tracker
 
-Track work in this repository's GitHub Issues. See docs/agents/issue-tracker.md.
+Use GitHub Issues for adopted specs and tickets that need persistent tracking. Small, well-defined changes can proceed from the user's request without creating an issue. See docs/agents/issue-tracker.md for tracker operations and their authorization boundary.
 
 ### Triage labels
 
