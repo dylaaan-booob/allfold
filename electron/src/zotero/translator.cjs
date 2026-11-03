@@ -134,6 +134,7 @@ class TranslatorSandbox {
             const detected=await this.run(doc,'detect',{html:doc.html,url:doc.url,rootURL:doc.rootURL},
               {signal:bounded,deadline,logContext});
             failed(detected);remember(doc,detected);
+            log('info','translator_detected',{...logContext,stage:'translation',candidate_count:detected.candidates?.length || 0});
             if(!detected.ok)last=detected;
             for(const candidate of detected.candidates || [])candidates.push({doc,candidate,index});
           }catch(error){current();checkCanceled(bounded);if(doc.rootFrameToken&&!browser.documentCurrent(doc)){frameChanged=true;continue;}throw error;}

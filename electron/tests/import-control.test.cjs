@@ -12,6 +12,8 @@ const deferred = () => {let resolve;const promise = new Promise(r => {resolve = 
 function fixture() {
   const messages = [], logs=[], calls = {translation: 0, save: 0, end: 0};
   const context = vm.createContext({activeRequest: null, activeOperation: null, exiting: false,
+    ...require('../src/shared/logging.cjs'),
+    operationAssociation:require('../src/browser/page-association.cjs').operationAssociation,
     log:(level,event,details)=>logs.push({level,event,...details}),
     AbortController, ImportFailure, BrowserFailure, diagnosticFor, failedImport, normalizeDOI: value => value,
     newTaskPage:async()=>({id:1}),
@@ -117,4 +119,20 @@ test('DOM translation cycles share one ten-minute deadline and dispose the activ
   assert.equal(observations.length,2);assert.equal(observations[0].disposed,true);
   t.mock.timers.tick(300000);await rejected;
   assert.deepEqual(deadlines,[601000,601000]);assert.equal(observations[1].disposed,true);
+});
+test('native diagnostics reset bypasses browser task and document authority and refuses active work',async()=>{
+  const f=fixture();let data;
+  f.context.browser.beginOperation=()=>{throw Error('must not begin browser work');};
+  f.context.diagnosticsReset=value=>{data=value;return {available:true,scope_id:value.scope_id,token:'preview'};};
+  await f.context.execute({id:'reset_preview',action:'diagnostics_reset',data:{operation:'preview',scope_id:'a'.repeat(64)}});
+  assert.equal(data.operation,'preview');assert.equal(f.calls.end,0);assert.equal(f.calls.save,0);assert.equal(f.logs.length,0);
+  assert.equal(f.messages[0].data.token,'preview');
+  f.context.activeRequest=Promise.resolve();
+  await assert.rejects(f.context.execute({id:'reset_busy',action:'diagnostics_reset',data:{operation:'preview'}}),/active/);
+});
+test('native final diagnostic keeps stable attachment code separate from its network error',async()=>{
+  const f=fixture();f.context.saveOnce=async()=>({parent:{outcome:'confirmed'},pdf:{outcome:'unverified'},diagnostic:{stage:'attachment',code:'http_error',net_error:'ERR_CONNECTION_RESET',status:403}});
+  await f.run();const final=f.logs.find(event=>event.event==='task_finished');
+  assert.equal(final.stage,'attachment');assert.equal(final.code,'http_error');assert.equal(final.net_error,'ERR_CONNECTION_RESET');
+  assert.equal(f.messages.find(m=>m.type==='result').data.parent.outcome,'confirmed');
 });

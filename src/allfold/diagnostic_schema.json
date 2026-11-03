@@ -1,0 +1,611 @@
+{
+  "schema_version": 1,
+  "required": [
+    "schema_version",
+    "time",
+    "level",
+    "event",
+    "source",
+    "runtime_id"
+  ],
+  "fields": {
+    "runtime_id": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9_-]{1,128}$"
+    },
+    "workflow_id": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9_-]{1,128}$"
+    },
+    "task_id": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9_-]{1,128}$"
+    },
+    "parent_task_id": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9_-]{1,128}$"
+    },
+    "request_id": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9_-]{1,128}$"
+    },
+    "scope_id": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{64}$"
+    },
+    "service_id": {
+      "type": "string",
+      "pattern": "^svc_[a-f0-9]{32}$"
+    },
+    "paper_id": {
+      "type": "string",
+      "pattern": "^[a-fA-F0-9]{8}-[a-fA-F0-9]{4}-[a-fA-F0-9]{4}-[a-fA-F0-9]{4}-[a-fA-F0-9]{12}$"
+    },
+    "translator_id": {
+      "type": "string",
+      "pattern": "^[a-fA-F0-9]{8}-[a-fA-F0-9]{4}-[a-fA-F0-9]{4}-[a-fA-F0-9]{4}-[a-fA-F0-9]{12}$"
+    },
+    "time": {
+      "type": "string",
+      "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(?:\\.\\d{1,6})?Z$"
+    },
+    "schema_version": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 1
+    },
+    "level": {
+      "type": "string",
+      "enum": [
+        "debug",
+        "error",
+        "info",
+        "warn"
+      ]
+    },
+    "source": {
+      "type": "string",
+      "enum": [
+        "electron",
+        "python"
+      ]
+    },
+    "event": {
+      "type": "string",
+      "enum": [
+        "app_exiting",
+        "app_ready",
+        "app_started",
+        "attachment_bypass",
+        "attachment_failed",
+        "attachment_failure",
+        "attachment_http",
+        "attachment_inventory",
+        "attachment_request_failed",
+        "bridge_disconnected",
+        "browser_cache_failed",
+        "cloudflare_solver_failed",
+        "cloudflare_solver_finished",
+        "cloudflare_solver_started",
+        "cloudflare_solver_unavailable",
+        "diagnostic_write_failed",
+        "institution_auth_action",
+        "institution_auth_failed",
+        "institution_auth_skipped",
+        "item_save_result",
+        "logs_reset",
+        "manual_wait",
+        "metadata_selected",
+        "navigation_ready",
+        "page_associated",
+        "page_association_released",
+        "page_association_replaced",
+        "page_close_requested",
+        "page_closed",
+        "page_created",
+        "page_load_completed",
+        "page_load_failed",
+        "page_load_recovery",
+        "page_load_started",
+        "page_renderer_gone",
+        "page_request_failed",
+        "parent_save_dispatched",
+        "parent_save_result",
+        "python_exited",
+        "startup_failed",
+        "task_finished",
+        "task_progress",
+        "task_started",
+        "translation_attempt_failed",
+        "translation_completed",
+        "translation_failed",
+        "translation_frame_skipped",
+        "translator_detected",
+        "translator_http",
+        "workflow_finished",
+        "workflow_interrupted",
+        "workflow_started",
+        "workspace_reset",
+        "zotero_request_failed"
+      ]
+    },
+    "action": {
+      "type": "string",
+      "enum": [
+        "diagnostics_reset",
+        "enrich_paper",
+        "import_paper",
+        "prepare_service",
+        "search_journal_cover",
+        "wos_export",
+        "wos_query"
+      ]
+    },
+    "kind": {
+      "type": "string",
+      "enum": [
+        "covers",
+        "enrich",
+        "import",
+        "kept",
+        "prepare",
+        "run"
+      ]
+    },
+    "provider": {
+      "type": "string",
+      "enum": [
+        "crossref",
+        "openalex",
+        "pubmed",
+        "wos"
+      ]
+    },
+    "role": {
+      "type": "string",
+      "enum": [
+        "attachment",
+        "auxiliary",
+        "carsi-portal",
+        "import",
+        "popup",
+        "service-resource",
+        "service-target",
+        "wos-export",
+        "wos-query"
+      ]
+    },
+    "stage": {
+      "type": "string",
+      "enum": [
+        "attachment",
+        "authentication",
+        "navigation",
+        "parent_save",
+        "preparation",
+        "translation",
+        "wos_dom",
+        "wos_download"
+      ]
+    },
+    "step": {
+      "type": "string",
+      "enum": [
+        "account",
+        "arm",
+        "configure",
+        "consent",
+        "contentReady",
+        "controlReady",
+        "credentials",
+        "dialog",
+        "document_operation",
+        "dom_observer",
+        "download",
+        "export",
+        "exportMenu",
+        "hidden_iframe",
+        "institution",
+        "links",
+        "login",
+        "none",
+        "page_load",
+        "plainText",
+        "portal",
+        "prepared",
+        "ready",
+        "release",
+        "request",
+        "resource",
+        "resource_filter",
+        "resource_ready",
+        "resource_search",
+        "result",
+        "sandbox_init",
+        "sandbox_load",
+        "search",
+        "select",
+        "selectContent",
+        "submit",
+        "terms",
+        "translator",
+        "verification",
+        "visit_target"
+      ]
+    },
+    "code": {
+      "type": "string",
+      "enum": [
+        "action_expired",
+        "ambiguous_resource",
+        "attachment_rejected",
+        "auth_action_dispatched",
+        "auth_action_unconfirmed",
+        "auth_execution_failed",
+        "bridge_disconnected",
+        "bridge_unavailable",
+        "cache_size_failed",
+        "canceled",
+        "carsi_session_expired",
+        "cas_credentials_required",
+        "cas_encryption_unavailable",
+        "cas_invalid_credentials",
+        "cas_store_clear_failed",
+        "cas_store_unavailable",
+        "cas_store_unreadable",
+        "cas_store_write_failed",
+        "cdp_unavailable",
+        "content_access_blocked",
+        "control_disabled",
+        "control_not_unique",
+        "controls_unavailable",
+        "core_collection_unverified",
+        "document_changed",
+        "document_operation_failed",
+        "doi_mismatch",
+        "dom_step_failed",
+        "download_ambiguous",
+        "download_cancelled",
+        "download_failed",
+        "download_incomplete",
+        "download_interrupted",
+        "download_not_attributable",
+        "download_observer_busy",
+        "empty_response",
+        "export_content_unverified",
+        "export_range_unverified",
+        "failed",
+        "http_error",
+        "input_value_mismatch",
+        "institution_credentials_rejected",
+        "institution_name_required",
+        "institution_search_failed",
+        "load_failed",
+        "manual_action_required",
+        "mime_mismatch",
+        "navigation_active",
+        "navigation_failed",
+        "network_error",
+        "no_resolver",
+        "not_found",
+        "page_closed",
+        "page_ready",
+        "python_exited",
+        "redirect_rejected",
+        "refresh_unconfirmed",
+        "renderer_gone",
+        "resource_not_found",
+        "resource_request_failed",
+        "save_uncertain",
+        "server_unexpected_error",
+        "site_restricted",
+        "solver_disabled",
+        "solver_failed",
+        "stale_search_results",
+        "succeeded",
+        "timeout",
+        "translator_doi_missing",
+        "translator_failed",
+        "translator_invalid_item",
+        "translator_multiple_items",
+        "translator_no_items",
+        "unattributable_response",
+        "unknown_dom_step",
+        "unverified_official_page",
+        "unverified_results_page",
+        "verification_page"
+      ]
+    },
+    "transport_code": {
+      "type": "string",
+      "enum": [
+        "failed",
+        "network_error",
+        "redirect_rejected",
+        "timeout"
+      ]
+    },
+    "net_error": {
+      "type": "string",
+      "pattern": "^ERR_[A-Z0-9_]{1,80}$"
+    },
+    "outcome": {
+      "type": "string",
+      "enum": [
+        "Needs attention",
+        "Opened",
+        "canceled",
+        "cancelled",
+        "completed",
+        "confirmed",
+        "downloaded",
+        "failed",
+        "interrupted",
+        "needs_attention",
+        "no_effect",
+        "no_result",
+        "not_executed",
+        "not_found",
+        "opened",
+        "partial",
+        "queried",
+        "retrieved",
+        "submitted",
+        "succeeded",
+        "uncertain"
+      ]
+    },
+    "parent": {
+      "type": "string",
+      "enum": [
+        "confirmed",
+        "no_effect",
+        "uncertain"
+      ]
+    },
+    "pdf": {
+      "type": "string",
+      "enum": [
+        "unverified"
+      ]
+    },
+    "metadata_source": {
+      "type": "string",
+      "enum": [
+        "doi",
+        "web",
+        "workspace"
+      ]
+    },
+    "attachment_phase": {
+      "type": "string",
+      "enum": [
+        "bypass",
+        "callback",
+        "desktop_attachment",
+        "initial_fetch",
+        "oa_resolver",
+        "refetch",
+        "hidden_iframe"
+      ]
+    },
+    "error_kind": {
+      "type": "string",
+      "enum": [
+        "host_api_missing",
+        "http_status",
+        "translator",
+        "transport"
+      ]
+    },
+    "error_name": {
+      "type": "string",
+      "enum": [
+        "AbortError",
+        "Error",
+        "RangeError",
+        "ReferenceError",
+        "SyntaxError",
+        "TypeError"
+      ]
+    },
+    "api_name": {
+      "type": "string",
+      "enum": [
+        "HTTP.doGet",
+        "HTTP.doPost",
+        "HTTP.processDocuments",
+        "HTTP.request",
+        "getItemArray",
+        "loadDocuments",
+        "processDocuments",
+        "selectItems"
+      ]
+    },
+    "content_type": {
+      "type": "string",
+      "enum": [
+        "application/epub+zip",
+        "application/json",
+        "application/pdf",
+        "application/x-bibtex",
+        "application/x-research-info-systems",
+        "application/xml",
+        "text/html",
+        "text/plain",
+        "text/xml"
+      ]
+    },
+    "challenge": {
+      "type": "string",
+      "enum": [
+        "cf-mitigated"
+      ]
+    },
+    "reason": {
+      "type": "string",
+      "enum": [
+        "abnormal-exit",
+        "app_exit",
+        "clean-exit",
+        "crashed",
+        "current",
+        "integrity-failure",
+        "killed",
+        "launch-failed",
+        "load_promise_rejected",
+        "native_call_failed",
+        "navigation_pending",
+        "oom",
+        "reload_failed",
+        "stale_frame",
+        "url_mismatch",
+        "user"
+      ]
+    },
+    "method": {
+      "type": "string",
+      "enum": [
+        "GET",
+        "HEAD",
+        "OPTIONS",
+        "POST",
+        "getSelectedCollection",
+        "hasAttachmentResolvers",
+        "saveAttachment",
+        "saveAttachmentFromResolver",
+        "saveItems"
+      ]
+    },
+    "resource_type": {
+      "type": "string",
+      "enum": [
+        "cspReport",
+        "font",
+        "image",
+        "mainFrame",
+        "media",
+        "object",
+        "other",
+        "ping",
+        "script",
+        "stylesheet",
+        "subFrame",
+        "webSocket",
+        "xhr"
+      ]
+    },
+    "page_id": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 2147483647
+    },
+    "source_page_id": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 2147483647
+    },
+    "generation": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 2147483647
+    },
+    "attempt": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 2147483647
+    },
+    "item_count": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 2147483647
+    },
+    "attachment_count": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 2147483647
+    },
+    "pdf_attachment_count": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 2147483647
+    },
+    "candidate_count": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 2147483647
+    },
+    "response_bytes": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 2147483647
+    },
+    "duration_ms": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 2147483647
+    },
+    "omitted_count": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 2147483647
+    },
+    "status": {
+      "type": "integer",
+      "minimum": 100,
+      "maximum": 599
+    },
+    "exit_code": {
+      "type": "integer",
+      "minimum": -2147483648,
+      "maximum": 2147483647
+    },
+    "net_code": {
+      "type": "integer",
+      "minimum": -99999,
+      "maximum": 0
+    },
+    "port": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 65535
+    },
+    "waiting": {
+      "type": "boolean"
+    },
+    "config_revision": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{64}$"
+    },
+    "user_state_revision": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{64}$"
+    }
+  },
+  "optional_detail_events": [
+    "task_progress",
+    "page_request_failed",
+    "translator_http",
+    "attachment_http",
+    "translation_frame_skipped"
+  ],
+  "events_require": {
+    "task_started": [
+      "request_id",
+      "action"
+    ],
+    "task_finished": [
+      "request_id",
+      "action"
+    ],
+    "page_created": [
+      "page_id"
+    ],
+    "page_closed": [
+      "page_id"
+    ],
+    "page_renderer_gone": [
+      "page_id"
+    ]
+  }
+}
