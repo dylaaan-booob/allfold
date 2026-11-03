@@ -28,6 +28,11 @@ Setup installs locked dependencies, obtains fixed Zotero sources, builds the UI 
 
 Enrich retrieves eligible missing metadata without saving a Zotero item. Covers Search targets one saved Journal; Upload and Crop use local assets. Closing BROWSER hides its window and does not cancel an active workflow.
 
+**HISTORY** shows recent task results across restarts and offers **导出本次诊断**.
+Settings also offers **导出最近诊断** for startup or connection problems. Diagnostic
+packages are local downloads; sharing them is your choice. See [local history and
+diagnostics](docs/logging.md) for retention, privacy and evidence limits.
+
 Parent acceptance and PDF evidence are separate. If a save result is uncertain, inspect Zotero before retrying. CAPTCHA, MFA and ambiguous authentication pages can require manual intervention.
 
 ## Local data and privacy
@@ -42,13 +47,21 @@ Parent acceptance and PDF evidence are separate. If a save result is uncertain, 
 | `journal-lists/journal-registry.sqlite` | Read-only journal metadata | Yes |
 | `workspace/` | Paper Markdown, review status and local diagnostics | No |
 | `journal-assets/` | Journal covers | No |
+| Electron application logs directory | Bounded configuration-scoped run history and structured diagnostics | No |
 | `*.openalex-secrets.json`, `*.pubmed-secrets.json` | API keys beside the configuration | No |
 
 Save API keys through Settings. Optional institution credentials use Electron safeStorage separately from YAML. Discovery and page workflows contact the selected external providers and sites. The application is not a Zotero Library mirror.
 
 Configuration, legacy journal seed and Workspace paths must stay inside the project directory. On first use, each configuration validates and copies its legacy managed Markdown data into SQLite without changing the source file; later changes use SQLite. Include `.allfold/` in local backups. Use **Export User Data** to transfer a research scope to another configuration or application location, since canonical configuration paths identify saved scopes. Export contains no provider credentials, resource caches, Workspace papers or Zotero data. Conferences are outside the new scope model and remain only in the untouched legacy source.
 
-Workspace Reset permanently deletes the entire configured Workspace after confirmation; user state and shared resources stay outside its deletion range. It does not reset configuration, covers or Zotero data. Keep independent backups of important local data before upgrading a pre-release version. See [research scope exchange](docs/research-scope.md) for Markdown and Service resolution.
+Settings Reset selects one scope without requiring a typed word. **Workspace**
+permanently deletes the confirmed Workspace, including its latest Run snapshots;
+independent history and diagnostics survive and earlier history is marked as
+pre-reset. **Logs** clears only the current configuration's managed history and
+diagnostics. Both preserve configuration, Journals/Services, covers, Zotero,
+browser authentication and already downloaded diagnostic packages. Keep independent
+backups of important local data before upgrading a pre-release version. See
+[research scope exchange](docs/research-scope.md) for Markdown and Service resolution.
 
 ## Development and source
 

@@ -47,7 +47,23 @@ FastAPI composes these implementations. ImportTarget belongs to the application 
 
 Python snapshots the saved Journals and Access Services for each invocation. The browser bridge carries an opaque hash of the canonical configuration path, the configuration revision and User State revision alongside the saved Service ID. Import matches saved ISSN/eISSN identifiers with the existing Workspace rules: every matching Journal must select the same nonempty Service; otherwise the Paper remains unassigned. These are invocation snapshots of SQLite state, never a second authoritative mapping. Preparation and subsequent Import dispatches verify the original snapshot, while WoS retains its existing configuration and Workspace checks. Detected changes stop further work without migrating it to a new mapping. Already-dispatched native saves still settle through the existing result protocol.
 
-BrowserRuntime keeps one current association per physical page, including the task/request, role, optional Paper/DOI and source page. `pageAssociation(pageId)` returns descriptive metadata with an explicit active flag; `servicePages(scopeId, serviceId)` filters existing pages without creating them. Task completion clears live ownership while retaining the page's last association for inspection. Destruction removes its association and live source/opener references; renderer exit invalidates the association. No history store, new Session, page recycling or automatic closure is involved.
+BrowserRuntime keeps one current association per physical page, including the workflow/task/request, role, optional Paper/DOI and source page. `pageAssociation(pageId)` returns descriptive metadata with an explicit active flag; `servicePages(scopeId, serviceId)` filters existing pages without creating them. Task completion clears live ownership while retaining the page's last association for inspection. Destruction removes its association and live source/opener references; renderer exit invalidates the association. Reviewed diagnostic events capture the last association before invalidation. They do not restore live associations or change Session, page recycling or closure behavior.
+
+## History and diagnostics
+
+Python coordinators publish bounded business history independently of their
+Workspace result snapshots. Electron and Python write separately owned, rotating
+JSONL under a common configuration scope and startup runtime ID. Explicit workflow,
+task and request identities link native observations with coordinator-confirmed
+results. Page association snapshots are descriptive evidence, never browser or
+credential authority. A versioned data-only schema validates producer events and
+independently filters exports; neither arbitrary log messages nor raw exceptions
+enter this store.
+
+The Web adapter exposes recent history, local diagnostic ZIP export and guarded
+Logs Reset. Reset coordinates the native writer, preserves existing Workspace
+safety checks and marks surviving history when Workspace is reset. See
+[logging](logging.md) for storage limits, field meanings and evidence boundaries.
 
 Prepare's CARSI Portal is shared and unassigned; resource and observed target pages carry the saved Service, and popups inherit their attributable source. Query and Export validate that the original prepared page still has the expected scoped Service/revisions, in addition to the existing document checks. Import replaces the reused ImportPage's association for each Paper, including an explicit unassigned Service. Covers and Enrich remain temporary auxiliary pages. Generic Manual Service URL opening retains its existing behavior.
 
