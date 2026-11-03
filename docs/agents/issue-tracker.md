@@ -1,10 +1,14 @@
 # Issue tracker: GitHub
 
-Issues and specs for this repo live as GitHub issues. Use the `gh` CLI for all operations.
+Specs and tickets that need persistent tracking live as GitHub issues. Use the `gh` CLI for tracker operations. A small, well-defined change can use the user's request or agreed plan as its spec; creating an issue is not a prerequisite for implementation, testing, or review.
+
+## Authorization
+
+Tracker instructions describe how to perform an operation, not permission to perform it. Create, comment, label, assign, close, or otherwise publish changes only when the user's request explicitly covers that action, including an explicitly invoked workflow with that output. Reuse authorization for the same unfinished task; do not ask again at each step. Without authorization for a tracker write, finish the local work and prepare the proposed tracker content for review.
 
 ## Conventions
 
-- **Create an issue**: `gh issue create --title "..." --body "..."`. Use a heredoc for multi-line bodies.
+- **Create an issue**: `gh issue create --title "..." --body-file <body-file>`. Write multi-line content to a temporary file with literal newlines, then pass it with `--body-file`.
 - **Read an issue**: `gh issue view <number> --json number,title,body,labels,comments`.
 - **List issues**: `gh issue list --state open --json number,title,body,labels,comments --jq '[.[] | {number, title, body, labels: [.labels[].name], comments: [.comments[].body]}]'` with appropriate `--label` and `--state` filters.
 - **Make an issue a sub-issue of a parent**: `gh issue create --parent <parent> ...`, or `gh issue edit <parent> --add-sub-issue <child>` afterwards (`gh` 2.94+). Older `gh`: `gh api --method POST repos/<owner>/<repo>/issues/<parent>/sub_issues -F sub_issue_id=<child-db-id>` (database id, as in **Blocking** below). Without sub-issues, put `Part of #<parent>` at the top of the child body.
@@ -32,7 +36,7 @@ GitHub shares one number space across issues and PRs, so a bare `#42` may be eit
 
 ## When a skill says "publish to the issue tracker"
 
-Create a GitHub issue.
+Create a GitHub issue when that publication is authorized under the rule above; otherwise prepare the spec and identify publication as the remaining action. Do not block unrelated local implementation or validation.
 
 ## When a skill says "fetch the relevant ticket"
 
