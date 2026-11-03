@@ -486,6 +486,26 @@ test('page is the default mode and cannot execute a recognized institution login
   assert.equal(page.runDefault('act','login').waiting,true);
   assert.equal(page.clicks(),0);assert.equal(page.inputs[0].value,'');assert.equal(page.inputs[1].value,'');
 });
+test('an optional password sign-in entry does not block an ordinary article, while institution switching stays authorized',()=>{
+  const page=authDOM({title:'Article abstract',formHeading:'Sign in',buttons:['Sign in with password'],
+    url:'https://academic.oup.com/biometrics/article/doi/10.1093/biomtc/ujag169/fixture'});
+  assert.equal(page.runDefault().step,'none');
+  assert.equal(page.runDefault().waiting,false);
+  assert.equal(page.runDefault('act','account').acted,false);
+  assert.equal(page.clicks(),0);
+  assert.equal(page.run().step,'account');
+  assert.equal(page.run('act','account').acted,true);
+  assert.equal(page.clicks(),1);
+});
+
+test('ordinary verification controls and explicit QR login still wait for manual completion',()=>{
+  const otp=authDOM({fields:[{label:'Verification code',autocomplete:'one-time-code'}],buttons:['Verify']});
+  assert.equal(otp.runDefault().waiting,true);
+  const qr=authDOM({formHeading:'扫码登录',buttons:['密码登录'],widgets:[{tagName:'IMG'}]});
+  assert.equal(qr.runDefault().waiting,true);
+  assert.equal(qr.runDefault('act','account').acted,false);
+  assert.equal(qr.clicks(),0);
+});
 
 
 
