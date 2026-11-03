@@ -72,7 +72,8 @@ def test_bridge_logs_actual_envelope_and_safe_native_result(tmp_path):
     assert all(e['task_id'] == 'business' and e['workflow_id'] == 'workflow' for e in correlated)
     assert correlated[-1]['stage'] == 'attachment'
     assert correlated[-1]['net_error'] == 'ERR_ABORTED'
-    assert b'SECRET TITLE' not in payload
+    assert 'SECRET TITLE' not in json.dumps(events)
+    assert '10.5555/secret' not in json.dumps(events)
 
 
 def test_enrich_history_confirms_only_saved_fields_and_exact_task(tmp_path):
