@@ -60,6 +60,40 @@ def test_workspace_reset_needs_no_word_and_keeps_pre_reset_history(tmp_path):
         assert history['records'][0]['before_workspace_reset']
 
 
+def test_partial_workspace_reset_marks_old_history_after_the_target_moves(tmp_path, monkeypatch):
+    import allfold.application.workspace_reset as reset
+
+    config = configuration(tmp_path)
+    app = create_app(config, electron_bridge=OfflineBridge(), diagnostics_root=tmp_path / 'logs')
+    app.state.diagnostics.begin('run', 'old_run')
+    app.state.diagnostics.finish('old_run', 'completed')
+    workspace = tmp_path / 'workspace'
+    workspace.mkdir()
+    (workspace / 'snapshot.json').write_text('old result')
+    unrelated = tmp_path / 'unrelated.txt'
+    unrelated.write_text('preserved')
+    def fail_delete(name, *, dir_fd):
+        raise OSError('synthetic deletion failure after custody rename')
+    fail_delete.avoids_symlink_attacks = True
+    monkeypatch.setattr(reset.shutil, 'rmtree', fail_delete)
+    with TestClient(app, base_url='http://localhost') as client:
+        preview = client.get('/api/ui-next/settings/reset-preview?scope=workspace').json()
+        data = {'csrf_token': app.state.csrf_token, 'reset_token': preview['reset_token']}
+        import_token = app.state.import_token
+        response = client.post('/settings/workspace-reset', data=data)
+        assert response.status_code == 409, response.text
+        assert not response.json()['reset_success']
+        assert response.json()['reset_result']['workspace_invalidated']
+        assert not workspace.exists()
+        assert client.get('/api/history').json()['records'][0]['before_workspace_reset']
+        assert app.state.import_token == import_token
+        assert client.post('/settings/workspace-reset', data=data).status_code == 409
+    captured = next(tmp_path.glob('.allfold-reset-*/workspace'))
+    assert (captured / 'snapshot.json').read_text() == 'old result'
+    assert unrelated.read_text() == 'preserved'
+    assert config.read_text().startswith('keyword_expression: synthetic')
+
+
 def test_logs_reset_refuses_active_work_and_disconnected_native_files(tmp_path):
     config = configuration(tmp_path)
     app = create_app(config, electron_bridge=OfflineBridge(), diagnostics_root=tmp_path / 'logs')
@@ -126,3 +160,86 @@ def test_workspace_confirmation_expires_without_deleting_target(tmp_path, monkey
             'csrf_token': app.state.csrf_token, 'reset_token': preview['reset_token']})
         assert response.status_code == 409
         assert (workspace / 'data').read_text() == 'preserved'
+
+
+def test_logs_reset_and_run_start_finish_without_a_diagnostic_lock_deadlock(tmp_path):
+    # A subprocess bounds failure even if both real request threads deadlock.
+    import subprocess
+    import sys
+    import textwrap
+
+    probe = textwrap.dedent('''
+        import os
+        import sys
+        import threading
+        import time
+        from pathlib import Path
+        sys.path.insert(0, sys.argv[2])
+        from fastapi.testclient import TestClient
+        from allfold.web.app import create_app
+        import allfold.application.coordinators.run_coordinator as runs
+        from allfold.application.run_state import RunProvider
+        from electron_test_helpers import OfflineBridge
+
+        root = Path(sys.argv[1])
+        config = root / 'monitor.yaml'
+        config.write_text('keyword_expression: synthetic\\noutput_dir: workspace\\n')
+        app = create_app(config, electron_bridge=OfflineBridge(), diagnostics_root=root / 'logs')
+        coordinator = app.state.run_coordinator
+        beginning = threading.Event()
+        checking = threading.Event()
+        monitor_started = threading.Event()
+        monitor_release = threading.Event()
+        observe = runs.observe
+        snapshot = coordinator.snapshot
+
+        def held_begin(store, method, *args, **kwargs):
+            if method == 'begin':
+                beginning.set()
+                assert checking.wait(3), 'Reset did not reach the Run gate'
+            return observe(store, method, *args, **kwargs)
+
+        def checked_snapshot():
+            checking.set()
+            return snapshot()
+
+        def monitor(*args, **kwargs):
+            monitor_started.set()
+            assert monitor_release.wait(3), 'Run was not released'
+
+        runs.observe = held_begin
+        runs.run_monitor = monitor
+        coordinator.snapshot = checked_snapshot
+        with TestClient(app, base_url='http://localhost') as client:
+            preview = client.get('/api/ui-next/settings/reset-preview?scope=logs').json()
+            results = {}
+            def start():
+                results['start'] = coordinator.start(RunProvider.PUBMED).outcome.value
+            def reset():
+                response = client.post('/settings/logs-reset', data={
+                    'csrf_token': app.state.csrf_token, 'reset_token': preview['reset_token']})
+                results['reset'] = response.status_code
+            starter = threading.Thread(target=start, daemon=True)
+            resetter = threading.Thread(target=reset, daemon=True)
+            starter.start()
+            assert beginning.wait(3)
+            resetter.start()
+            starter.join(3)
+            resetter.join(3)
+            if starter.is_alive() or resetter.is_alive():
+                print('Run start / Logs Reset deadlocked', flush=True)
+                os._exit(1)
+            assert results == {'start': 'STARTED', 'reset': 409}, results
+            assert monitor_started.wait(3)
+            monitor_release.set()
+            deadline = time.monotonic() + 3
+            while snapshot().status.value == 'RUNNING' and time.monotonic() < deadline:
+                time.sleep(0.01)
+            assert snapshot().status.value == 'FINISHED'
+            assert app.state.diagnostics.history()['records'][0]['outcome'] == 'failed'
+        print('Run started and Logs Reset refused without blocking', flush=True)
+    ''')
+    from pathlib import Path
+    result = subprocess.run([sys.executable, '-c', probe, str(tmp_path), str(Path(__file__).parent)],
+                            capture_output=True, text=True, timeout=12)
+    assert result.returncode == 0, result.stdout + result.stderr

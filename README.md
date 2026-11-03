@@ -29,8 +29,10 @@ Setup installs locked dependencies, obtains fixed Zotero sources, builds the UI 
 Enrich retrieves eligible missing metadata without saving a Zotero item. Covers Search targets one saved Journal; Upload and Crop use local assets. Closing BROWSER hides its window and does not cancel an active workflow.
 
 **HISTORY** shows recent task results across restarts and offers **导出本次诊断**.
-Settings also offers **导出最近诊断** for startup or connection problems. Diagnostic
-packages are local downloads; sharing them is your choice. See [local history and
+Settings also offers **导出最近诊断** for startup or connection problems, limited to
+the last seven UTC days across application starts. Task exports keep all retained
+evidence for that workflow. Diagnostic packages are local downloads; sharing them
+is your choice. See [local history and
 diagnostics](docs/logging.md) for retention, privacy and evidence limits.
 
 Parent acceptance and PDF evidence are separate. If a save result is uncertain, inspect Zotero before retrying. CAPTCHA, MFA and ambiguous authentication pages can require manual intervention.
@@ -57,7 +59,9 @@ Configuration, legacy journal seed and Workspace paths must stay inside the proj
 Settings Reset selects one scope without requiring a typed word. **Workspace**
 permanently deletes the confirmed Workspace, including its latest Run snapshots;
 independent history and diagnostics survive and earlier history is marked as
-pre-reset. **Logs** clears only the current configuration's managed history and
+pre-reset, including when the confirmed Workspace has moved out of its original
+path but deletion then fails. A partial deletion remains a reported failure.
+**Logs** clears only the current configuration's managed history and
 diagnostics. Both preserve configuration, Journals/Services, covers, Zotero,
 browser authentication and already downloaded diagnostic packages. Keep independent
 backups of important local data before upgrading a pre-release version. See

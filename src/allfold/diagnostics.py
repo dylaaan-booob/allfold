@@ -7,7 +7,7 @@ from enum import Enum
 
 from contextlib import contextmanager
 from copy import deepcopy
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 import hashlib
 import io
 import json
@@ -545,12 +545,24 @@ class DiagnosticStore:
 
     def export(self, task_id=None):
         with self._lock:
+            exported_at = _now()
+            export_time = datetime.fromisoformat(exported_at.replace('Z', '+00:00'))
+            range_start = export_time - timedelta(days=7)
+            def in_recent_range(value):
+                return range_start <= datetime.fromisoformat(value.replace('Z', '+00:00')) <= export_time
             records = self.history()['records']
+            excluded_history = 0
             if task_id is not None:
                 selected = next((r for r in records if r['task_id'] == task_id), None)
                 if selected is None:
                     raise DiagnosticRefused('Task history is no longer retained')
                 records = [r for r in records if r['workflow_id'] == selected['workflow_id']]
+            else:
+                recent = [r for r in records if in_recent_range(max(
+                    (r[key] for key in ('started_at', 'ended_at', 'recovered_at') if key in r),
+                    key=lambda value: datetime.fromisoformat(value.replace('Z', '+00:00'))))]
+                excluded_history = len(records) - len(recent)
+                records = recent
             events = []
             roots_valid = True
             try:
@@ -601,6 +613,11 @@ class DiagnosticStore:
                                if linked(value) and 'request_id' in value}
                 events = [value for value in events if linked(value)
                           or ('workflow_id' not in value and value.get('request_id') in request_ids)]
+            else:
+                recent = [value for value in events if in_recent_range(value['time'])]
+                integrity['range_excluded_history'] = excluded_history
+                integrity['range_excluded_events'] = len(events) - len(recent)
+                events = recent
             events.sort(key=lambda value: datetime.fromisoformat(value['time'].replace('Z', '+00:00')))
             lines = []
             included_events = []
@@ -615,12 +632,16 @@ class DiagnosticStore:
                 included_events.append(value)
                 total += size
             manifest = dict(format_version=1, schema_version=1, application='Allfold', application_version='0.1.0',
-                exported_at=_now(), scope_id=self.scope_id, runtime_id=self.runtime_id,
-                collection='workflow' if task_id else 'recent_scope', integrity=integrity,
+                exported_at=exported_at, scope_id=self.scope_id, runtime_id=self.runtime_id,
+                collection='workflow' if task_id is not None else 'recent_scope', integrity=integrity,
+                collection_range=None if task_id is not None else {
+                    'from': range_start.isoformat(timespec='milliseconds').replace('+00:00', 'Z'),
+                    'to': exported_at, 'days': 7, 'intentionally_limited': True},
                 time_range={'from': included_events[-1]['time'] if included_events else None,
                             'to': included_events[0]['time'] if included_events else None},
                 retained_runtime_ids=sorted({e['runtime_id'] for e in included_events}),
-                scope_description='Retained current-configuration evidence across application starts; bounded by size and rotation.',
+                scope_description=('Retained exact-workflow evidence across application starts; bounded by size and rotation.'
+                    if task_id is not None else 'Current-configuration evidence in the last seven UTC days across application starts; bounded by size and rotation.'),
                 limits=dict(event_bytes=self.max_export_bytes, history_records=self.max_history,
                     file_bytes=self.max_file_bytes, producer_files=self.max_files),
                 environment={'platform': sys.platform, 'python': f'{sys.version_info.major}.{sys.version_info.minor}'})
@@ -647,7 +668,12 @@ class DiagnosticStore:
                     'source distinguishes Python/Electron; event, stage, step, code, status and net_error are fixed technical facts. '
                     'History outcome is coordinator-confirmed business state; a native event outcome describes only that operation. '
                     'parent and pdf distinguish parent-item evidence from unverified attachment persistence. '
-                    'recent_scope includes retained events across startups, with manifest time_range/runtime IDs and explicit capacity limits.\n')
+                    'recent_scope includes only the last seven UTC days across startups, using one export time. '
+                    'History uses its latest recorded start, finish or recovery time. '
+                    'collection_range is the intentional collection window; time_range is the included event range. '
+                    'range_excluded_history/events count intentionally excluded older or future-dated evidence; '
+                    'rotation, omissions and write failures separately limit completeness. '
+                    'A workflow export keeps all retained exact-workflow evidence regardless of age.\n')
             return output.getvalue()
 
     def _configuration_identity(self):

@@ -106,7 +106,7 @@ def install_diagnostics_api(app, *, run_slot):
     def reset_logs(form):
         result = None
         status = 409
-        with app.state.import_submission_lock, app.state.reset_lock, store.reset_guard():
+        with app.state.import_submission_lock, app.state.reset_lock:
             saved = app.state.reset_confirmation
             app.state.reset_confirmation = None  # Every submitted attempt consumes the authorization.
             token = form.get('reset_token')
@@ -126,24 +126,28 @@ def install_diagnostics_api(app, *, run_slot):
                 try:
                     if owner is None:
                         raise DiagnosticRefused('A browser workflow is active')
-                    # Validate before any producer deletes data. Revalidation
-                    # inside reset protects the later Python deletion as well.
-                    store.validate_reset(saved[1])
-                    native = saved[3]
-                    if native is not None:
-                        if not bridge.connected:
-                            raise DiagnosticRefused('Native connection changed')
-                        native_result = native_call('reset', native)
-                        result = {'native': native_result, 'python': None}
-                        if native_result.get('success') is not True:
-                            raise DiagnosticRefused('Native logs were not fully cleared')
-                    elif bridge.connected or not offline_native_absent():
-                        raise DiagnosticRefused('Native writer changed since preview')
-                    python_result = store.reset(saved[1])
-                    result = {**(result or {}), 'python': python_result}
-                    status = 200 if python_result['success'] else 409
-                    message = ('Logs cleared for this configuration.' if status == 200 else
-                               'Logs Reset incomplete; some diagnostic files remain. Reopen Reset to inspect the current target.')
+                    # Check coordinators and own their dispatch exclusions before
+                    # taking the writer lock: Run observes diagnostics while it
+                    # holds its coordinator lock. Never invert that lock order.
+                    with store.reset_guard():
+                        # Validate before any producer deletes data. Revalidation
+                        # inside reset protects the later Python deletion as well.
+                        store.validate_reset(saved[1])
+                        native = saved[3]
+                        if native is not None:
+                            if not bridge.connected:
+                                raise DiagnosticRefused('Native connection changed')
+                            native_result = native_call('reset', native)
+                            result = {'native': native_result, 'python': None}
+                            if native_result.get('success') is not True:
+                                raise DiagnosticRefused('Native logs were not fully cleared')
+                        elif bridge.connected or not offline_native_absent():
+                            raise DiagnosticRefused('Native writer changed since preview')
+                        python_result = store.reset(saved[1])
+                        result = {**(result or {}), 'python': python_result}
+                        status = 200 if python_result['success'] else 409
+                        message = ('Logs cleared for this configuration.' if status == 200 else
+                                   'Logs Reset incomplete; some diagnostic files remain. Reopen Reset to inspect the current target.')
                 except (OSError, ValueError, RuntimeError, TimeoutError):
                     message = ('Logs Reset could not complete. Some files may have been deleted; '
                                'the result is unconfirmed. No automatic retry was performed.' if result else

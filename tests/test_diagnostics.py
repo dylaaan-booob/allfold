@@ -203,3 +203,53 @@ def test_effective_level_filters_optional_details_but_keeps_business_results(tmp
     assert 'translator_http' not in {event['event'] for event in events}
     assert 'workflow_finished' in {event['event'] for event in events}
     assert store.history()['records'][0]['outcome'] == 'completed'
+
+
+def test_recent_export_uses_one_seven_day_utc_window_but_task_export_keeps_older_evidence(tmp_path, monkeypatch):
+    import allfold.diagnostics as diagnostics
+
+    clock = ['2020-01-01T00:00:00.000Z']
+    monkeypatch.setattr(diagnostics, '_now', lambda: clock[0])
+    config, root = tmp_path / 'config.yaml', tmp_path / 'logs'
+    store = DiagnosticStore(config, root=root, runtime_id='old_runtime')
+    store.begin('run', 'old_task')
+    store.finish('old_task', 'completed')
+    clock[0] = '2026-10-27T09:59:59.999Z'
+    store.begin('run', 'before_boundary')
+    store.finish('before_boundary', 'completed')
+    clock[0] = '2026-10-27T10:00:00.000Z'
+    store.begin('run', 'at_boundary')
+    store.finish('at_boundary', 'completed')
+    clock[0] = '2026-11-03T09:00:00.000Z'
+    restarted = DiagnosticStore(config, root=root, runtime_id='current_runtime')
+    restarted.begin('run', 'recent_task')
+    restarted.finish('recent_task', 'partial')
+    clock[0] = '2026-11-03T10:00:00.001Z'
+    restarted.begin('run', 'future_task')
+    restarted.finish('future_task', 'completed')
+    export_times = []
+    def export_time():
+        export_times.append(True)
+        return '2026-11-03T10:00:00.000Z'
+    monkeypatch.setattr(diagnostics, '_now', export_time)
+
+    recent = bundle(restarted)
+    assert len(export_times) == 1
+    manifest = json.loads(recent['manifest.json'])
+    assert manifest['exported_at'] == '2026-11-03T10:00:00.000Z'
+    assert manifest['collection_range'] == {
+        'from': '2026-10-27T10:00:00.000Z', 'to': '2026-11-03T10:00:00.000Z',
+        'days': 7, 'intentionally_limited': True}
+    assert manifest['integrity']['range_excluded_history'] == 3
+    assert manifest['integrity']['range_excluded_events'] > 0
+    records = json.loads(recent['summary.json'])['records']
+    assert {record['task_id'] for record in records} == {'at_boundary', 'recent_task'}
+    events = [json.loads(line) for line in recent['events.jsonl'].splitlines()]
+    assert {event['task_id'] for event in events if 'task_id' in event} == {'at_boundary', 'recent_task'}
+    assert manifest['retained_runtime_ids'] == ['current_runtime', 'old_runtime']
+
+    explicit = bundle(restarted, 'old_task')
+    assert {record['task_id'] for record in json.loads(explicit['summary.json'])['records']} == {'old_task'}
+    assert any(event['runtime_id'] == 'old_runtime' for event in
+               (json.loads(line) for line in explicit['events.jsonl'].splitlines()))
+    assert json.loads(explicit['manifest.json'])['collection_range'] is None

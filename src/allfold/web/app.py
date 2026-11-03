@@ -501,8 +501,9 @@ def create_app(config_path: Path, *, electron_bridge: ElectronBridge, diagnostic
                         reset_result = result
                         result_message = result.message
                         status = 200 if result.success else 409
-                        if result.success:
+                        if result.success or result.workspace_invalidated:
                             app.state.diagnostics.workspace_reset()
+                        if result.success:
                             app.state.batch_import.clear_terminal()
                             app.state.kept_workflow.clear_terminal()
                             app.state.import_token = secrets.token_urlsafe(32)

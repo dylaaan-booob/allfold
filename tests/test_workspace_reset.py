@@ -121,7 +121,9 @@ def test_stale_confirmation_does_not_delete_another_target(dedicated, change):
         if change == 'directory':
             workspace.mkdir(); (workspace / 'replacement').write_text('untouched')
         else: workspace.symlink_to(outside, target_is_directory=True)
-    assert not execute_reset(config, plan).success
+    result = execute_reset(config, plan)
+    assert not result.success
+    assert not result.workspace_invalidated
     assert (outside / 'private.txt').read_text() == 'untouched'
     if change == 'directory': assert (workspace / 'replacement').read_text() == 'untouched'
 
@@ -140,6 +142,7 @@ def test_partial_delete_error_is_failure_without_retry(dedicated, monkeypatch):
     fail.avoids_symlink_attacks = True
     result = execute_reset(config, plan)
     assert not result.success and calls == ['workspace']
+    assert result.workspace_invalidated
     captured = next(config.parent.glob('.allfold-reset-*/workspace'))
     assert not (captured / 'remove-me').exists() and (captured / 'Papers').exists()
     assert not workspace.exists() and str(captured.parent) in result.message

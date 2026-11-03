@@ -79,14 +79,22 @@ retain existing workflow-stop rules and do not migrate active Service mappings.
 History offers **导出本次诊断** for a retained task. Settings offers **导出最近诊断**
 for problems without a selected task. Exports use recorded identities and retained
 files, so the original page need not still exist. A task export collects its
-explicit workflow; recent export collects bounded retained evidence for the current
-configuration, which can span several startups.
+explicit workflow across all retained dates and startups. Recent export collects
+current-configuration evidence within the last seven UTC days, including several
+startups when applicable. One captured export time defines the inclusive start
+and end of that window for both history and events. History is selected by its
+latest recorded start, finish or interrupted-task recovery time; events by their
+recorded UTC time. Older and future-dated evidence is excluded from recent export.
 
 The ZIP contains `manifest.json` (version, environment, scope, limits and integrity),
 `summary.json` (recorded task relations, known results and uncertainty),
 `events.jsonl` (validated events ordered by UTC time), and `README.md` (field
 meanings, privacy and evidence limits). Summaries are deterministic and do not use
-AI. Missing or rotated evidence is disclosed; a confirmed parent remains separate
+AI. The manifest's `collection_range` states the intentional recent-export window;
+`time_range` states the actual included event range. `range_excluded_history` and
+`range_excluded_events` count intentional range exclusions separately from
+rotation, capacity omissions and writing failures that limit completeness. Task
+exports do not apply the seven-day window. Missing or rotated evidence is disclosed; a confirmed parent remains separate
 from PDF persistence. Export creates a local download only. Users decide whether
 to share it, and Reset never deletes previously downloaded packages.
 
@@ -100,14 +108,20 @@ new preview. A partial deletion is reported as partial and does not authorize a
 business retry.
 
 - **Workspace** retains its existing deletion boundary, including its latest Run
-  snapshots. Independent logs survive. History records from before a successful
-  Workspace Reset are marked as historical and do not represent current results.
+  snapshots. Independent logs survive. Earlier history is marked as historical
+  after a successful Reset or after the confirmed directory is verified as moved
+  into deletion custody, even if later deletion fails. Such a partial Reset still
+  reports failure and does not authorize a retry. Terminal task snapshots and
+  Import confirmation tokens are cleared only after full success. Refusals before
+  that verified move do not advance history.
 - **Logs** removes only the current configuration's verified managed history and
   diagnostic files. It coordinates the active native writer and rejects active
   tasks or unconfirmed writer ownership. Other configuration scopes, Workspace,
   settings, Journals/Services, Zotero, browser sessions/Cookie and downloaded
   diagnostic packages are outside its deletion targets. New events can be recorded
-  after a successful Reset.
+  after a successful Reset. Coordinator activity and Run/browser dispatch exclusion
+  are checked before taking the diagnostic writer lock; writer exclusion then
+  remains held through validated deletion.
 
 Offline tests cover isolated persistence, privacy, correlation, rotation and Reset.
 They do not establish real Electron dialog/download behavior or CARSI, WoS,

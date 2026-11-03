@@ -34,6 +34,7 @@ class ResetPlan:
 class ResetResult:
     success: bool
     message: str
+    workspace_invalidated: bool = False
 
 
 def _safe_location(config_path: Path, workspace: Path) -> None:
@@ -88,6 +89,7 @@ def preview_reset(config_path: Path) -> ResetPlan:
 def execute_reset(config_path: Path, expected: ResetPlan) -> ResetResult:
     """Delete the entire tree once; failures never imply restoration or safe retry."""
     custody = None
+    workspace_invalidated = False
     try:
         if not shutil.rmtree.avoids_symlink_attacks:
             raise ResetRefused('Safe directory-relative deletion is unavailable')
@@ -115,6 +117,7 @@ def execute_reset(config_path: Path, expected: ResetPlan) -> ResetResult:
                     if (not stat.S_ISDIR(captured.st_mode)
                             or (captured.st_dev, captured.st_ino) != expected.workspace_identity):
                         raise ResetRefused(f'Workspace root changed; captured object was not deleted at {custody / "workspace"}')
+                    workspace_invalidated = True
                     # CPython's descriptor-based traversal does not follow links
                     # within the confirmed root. Its public name is never deleted.
                     shutil.rmtree('workspace', dir_fd=private)
@@ -138,8 +141,10 @@ def execute_reset(config_path: Path, expected: ResetPlan) -> ResetResult:
                     raise ResetRefused('Configuration or Workspace changed during Reset')
             finally:
                 os.close(parent)
-        return ResetResult(True, 'Workspace permanently deleted. A later explicit Run can recreate it.')
+        return ResetResult(True, 'Workspace permanently deleted. A later explicit Run can recreate it.',
+                           workspace_invalidated=workspace_invalidated)
     except (ResetRefused, CompareReadError, ContentChangedError, OSError, ValueError) as error:
         remaining = f' Any remaining or unconfirmed contents may be at {custody}.' if custody is not None else ''
         return ResetResult(False, f'Reset failed: {error}.{remaining} Some contents may already be permanently deleted. '
-                           'There is no recovery or automatic retry; Reset does not undo Zotero saves or authorize import retry.')
+                           'There is no recovery or automatic retry; Reset does not undo Zotero saves or authorize import retry.',
+                           workspace_invalidated=workspace_invalidated)
