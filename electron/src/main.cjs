@@ -79,6 +79,21 @@ async function solveCloudflare(doc,{signal,deadline=Infinity}={}) {
   }
 }
 async function execute(message) {
+  if(message.action==='cas_credentials') {
+    if(activeRequest || exiting)throw Error('Native operation is active');
+    const operation=(async()=>{
+      let data;
+      try {
+        const value=message.data;
+        if(!value || !['save','clear'].includes(value.operation))throw Error('Invalid credential operation');
+        data=await (value.operation==='save'?saveCASCredentials(value):clearCASCredentials(value));
+      }catch(error){data={ok:false,error:casErrorCode(error)};}
+      send({type:'result',id:message.id,action:message.action,data});
+    })();
+    activeRequest=operation;
+    try {await operation;}finally{if(activeRequest===operation)activeRequest=null;}
+    return;
+  }
   if(message.action==='diagnostics_reset') {
     if(activeRequest || exiting)throw Error('Native operation is active');
     send({type:'result',id:message.id,action:message.action,data:diagnosticsReset(message.data)});
@@ -321,7 +336,8 @@ async function main() {
   const removeBrowserIPC=installBrowserIPC({ipcMain,hostWindow:window,origin:base,browser});
   window.once('closed',removeBrowserIPC);
   window.webContents.on('did-finish-load',()=>browser.publish());
-  for(const [channel,handler] of Object.entries({'cas:status':casStatus,'cas:save':saveCASCredentials,'cas:clear':clearCASCredentials})) {
+  // Credential mutations use the authenticated bridge after Python task admission.
+  for(const [channel,handler] of Object.entries({'cas:status':casStatus})) {
     ipcMain.handle(channel,async(event,value)=>{
       if(!trusted(event))throw Error('Untrusted CAS sender');
       try {return await handler(value);}
