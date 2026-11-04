@@ -298,7 +298,8 @@ async function main() {
   }
   if(!cdpURL)log('warn','cloudflare_solver_unavailable',{code:'cdp_unavailable'});
   await startPython(config,cdpURL);
-  window=new BrowserWindow({width:1440,height:920,title:'Allfold',
+  // The rendered layout fixture verifies ARRAY, Journals and Browser at this size.
+  window=new BrowserWindow({width:1440,height:920,minWidth:600,minHeight:480,title:'Allfold',
     webPreferences:{preload:path.join(PRELOAD_DIR,'preload.cjs'),sandbox:true,
       contextIsolation:true,nodeIntegration:false,webSecurity:true}});
   window.webContents.setWindowOpenHandler(({url})=>{

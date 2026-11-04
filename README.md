@@ -32,6 +32,8 @@ Enrich retrieves eligible missing metadata without saving a Zotero item. Covers 
 
 Settings' **禁用全屏运行界面** keeps Run progress in Run and Prepare / Import controls in ARRAY / KEPT. It defaults off. Both modes use the same task state, confirmation and cancellation rules; Continue is available only when the workflow permits it. The choice applies when a task starts or is restored, so changing it does not restart a task. These two interface preferences are saved locally, independently of configuration Save. The old Run animation preference and system reduced-motion setting remain separate from fullscreen presentation.
 
+ARRAY and Journals keep icon rails on both sides. Hover, focus or click Index/Directory to browse without shifting the content; choose a right-hand tool to open or collapse Info/Details. Journal selection opens Details; Directory filtering closes it. Resize the Sidebar from its left edge; narrow windows use an overlay and restore the preferred width when space returns. ARRAY's Keep/Reject and Kept Import controls remain in the main workspace. Developer Mode adds a horizontally scrolling Layout strip with independent SAVE/RESET/ORIGIN targets; Journals GRID columns always adapt to the available content width.
+
 **HISTORY** shows recent task results across restarts and offers **导出本次诊断**.
 Settings also offers **导出最近诊断** for startup or connection problems, limited to
 the last seven UTC days across application starts. Task exports keep all retained

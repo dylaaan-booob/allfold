@@ -61,6 +61,8 @@ CI prepares sources and runs offline checks on macOS. It does not publish or use
 
 ### Workbench manual acceptance
 
+ARRAY/Journals rails, Sidebar allocation, the isolated rendered DOM test and remaining pointer/touch/low-height checks are documented in [workspace layout](workspace-layout.md). The full Electron test command includes its hidden-window fixture after UI build; it uses synthetic HTTP responses and a temporary profile.
+
 Use a disposable configuration and Workspace. Native/browser automation, external accounts and Zotero operations require task-specific authorization. Offline tests do not establish the following results:
 
 1. From each business workspace, open Browser and return. Verify Paper/Journal selection, reading scroll and unsaved Settings drafts; resize the window, vary Header/Footer content and change the main UI zoom. Confirm no overlap between native webpages, trusted controls and scroll regions, and that Browser keyboard navigation leaves the hidden business selection unchanged.

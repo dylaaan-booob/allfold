@@ -20,7 +20,7 @@ let workspaceEpoch=0,presentationInline=null,taskQueue=[],openingWorkflow=null;
 const inline=document.createElement('section'),phaseLabel=document.createElement('strong');
 inline.id='kept-inline';inline.hidden=true;inline.setAttribute('aria-label','当前 Prepare / Import');
 phaseLabel.id='kept-phase';phaseLabel.setAttribute('role','status');
-$('array-import-profile').prepend(inline);inline.append(phaseLabel);
+$('kept-workflow-host').prepend(inline);inline.append(phaseLabel);
 const taskPageButton=document.createElement('button');
 taskPageButton.type='button';taskPageButton.className='s-button';taskPageButton.textContent='查看任务页面';taskPageButton.hidden=true;
 $('kept-flow-actions').prepend(taskPageButton);
@@ -46,6 +46,7 @@ function queueArchivePreference() {
   });
 }
 const arrayShown=()=>window.workspaceNavigation.current()==='workspace' && $('selected-view').dataset.workspaceLayout==='array';
+const layoutHost=window.allfoldLayout.create({root:$('kept-view'),workspace:'workspace',minContentWidth:window.allfoldLayoutModel.minOperationalSize.array});
 const workflowBusy=()=>submitting || acknowledging || Boolean(workflow?.active || workflow?.navigation);
 const navigationBusy=()=>submitting || acknowledging || (!presentationInline && Boolean(workflow?.active || workflow?.navigation));
 const switchBusy=()=>recovering || !data || !bridge.available() || bridge.busy() || navigationBusy() || $('run-view').open || dialog.open;
@@ -80,6 +81,7 @@ function refreshActions() {
   $('workspace-array').setAttribute('aria-pressed',String($('selected-view').dataset.workspaceLayout==='array'));
   $('array-candidates').setAttribute('aria-pressed',String(status==='candidates'));
   $('array-kept').setAttribute('aria-pressed',String(status==='kept'));
+  $('array-index-toggle').dataset.flyout=status;
   $('array-status').hidden=$('selected-view').dataset.workspaceLayout!=='array';
   if(!data)return;
   $('kept-start').disabled=$('kept-import-only').disabled=busy || workflow?.active || !allEntries().length;
@@ -141,6 +143,7 @@ function render() {
   }
   $('array-journal-profile').hidden=status!=='candidates';
   $('array-import-profile').hidden=status!=='kept';
+  $('kept-import-actions').hidden=status!=='kept';
   const journal=journals.find(group=>group.id===ui.filter)?.journal;
   $('array-journal-name').textContent=journal?.name || '尚无待审阅期刊';
   $('array-journal-issn').textContent=journal?.issn || '—';
@@ -159,13 +162,13 @@ function render() {
   $('kept-empty').hidden=Boolean(ui.selected);
   $('kept-empty').textContent=ui.missingLinkPaper?'该 Paper 不在当前 Kept 中，请从左栏选择其他论文。':status==='kept'
     ? '尚无保留文献。审阅时点击 Keep，论文会出现在这里。':'当前没有待审阅文献。可选择 Run 检索新文献。';
-  renderRecord();refreshActions();
+  renderRecord();refreshActions();layoutHost.sync();
 }
 function saveScroll() {
   ui.indexScroll=$('array-index').scrollTop;ui.indexLeft=$('array-index').scrollLeft;
   if(ui.reader)ui.bodyScroll=$('paper-detail').scrollTop;
 }
-function selectIndex(id) {
+function selectIndex(id,{closeFlyout=true}={}) {
   if(switchBusy())return false;
   const choices=status==='candidates'?groups().map(g=>g.id):orderedEntries().map(e=>e.paper.id);
   if(!choices.includes(id))return false;
@@ -173,7 +176,7 @@ function selectIndex(id) {
   if(status==='candidates'){
     if(ui.filter!==id){ui.filter=id;ui.selected=null;}
   }else ui.selected=id;
-  ui.missingLinkPaper=false;render();return true;
+  ui.missingLinkPaper=false;render();if(closeFlyout)layoutHost.closeFlyout();return true;
 }
 function moveIndex(delta) {
   if(switchBusy() || !arrayShown())return false;
@@ -181,9 +184,9 @@ function moveIndex(delta) {
   if(!rows.length)return false;
   const current=rows.findIndex(row=>row.getAttribute('aria-current')==='true'),next=current+delta;
   const position=(next+rows.length)%rows.length;
-  if(!selectIndex(rows[position].dataset.indexId))return false;
+  if(!selectIndex(rows[position].dataset.indexId,{closeFlyout:false}))return false;
   const row=$('array-index').children[position];
-  row.focus({preventScroll:true});row.scrollIntoView({block:'nearest',inline:'nearest',behavior:'instant'});
+  if(!$('array-flyout').hidden){row.focus({preventScroll:true});row.scrollIntoView({block:'nearest',inline:'nearest',behavior:'instant'});}
   saveScroll();return true;
 }
 for(const source of ['candidates','kept'])workspaceSearch.register(source,{
@@ -219,14 +222,16 @@ function closeReader() {
 function setLayout(layout) {
   if(window.workspaceNavigation.current()!=='workspace' || switchBusy() || !['archive','array'].includes(layout) || (layout==='archive' && archiveDisabled()))return false;
   if($('selected-view').dataset.workspaceLayout===layout)return true;
-  if(!closeReader() || !bridge.setLayout(layout))return false;
+  if(!closeReader())return false;
+  layoutHost.closeFlyout({restoreFocus:false});
+  if(!bridge.setLayout(layout))return false;
   render();refreshActions();return true;
 }
 function setStatus(next) {
   if(!arrayShown() || switchBusy() || !Object.hasOwn(states,next))return false;
   if(next===status)return true;
   if(!closeReader())return false;
-  status=next;ui=states[status];render();return true;
+  status=next;ui=states[status];layoutHost.closeFlyout({restoreFocus:false});render();return true;
 }
 function openPaper(id) {
   if(switchBusy())return false;
@@ -234,6 +239,7 @@ function openPaper(id) {
   const entry=candidate || allEntries().find(entry=>entry.paper.id===id);
   if(!entry || !window.workspaceNavigation.go('workspace') || !setLayout('array'))return false;
   if(!closeReader())return false;
+  layoutHost.closeFlyout({restoreFocus:false});
   status=candidate?'candidates':'kept';ui=states[status];
   ui.filter=candidate?key(entry):null;ui.selected=id;ui.missingLinkPaper=false;
   render();return true;
@@ -241,13 +247,15 @@ function openPaper(id) {
 // Recovery selects its existing business context before opening the modal.
 function openKept() {
   if(!window.workspaceNavigation.go('workspace',{workflowRecovery:true}))return false;
-  if(!closeReader() || !bridge.setLayout('array'))return false;
+  if(!closeReader())return false;
+  layoutHost.closeFlyout({restoreFocus:false});
+  if(!bridge.setLayout('array'))return false;
   status='kept';ui=states.kept;render();return true;
 }
 window.workspaceArray={
   workflowBusy,navigationBusy,openPaper,search:()=>status,readerEntries:orderedEntries,
-  leave(){closeReader();bridge.suspend();},
-  enter(){queueArchivePreference();render();$('array-index').focus({preventScroll:true});},
+  leave(){closeReader();bridge.suspend();layoutHost.closeFlyout({restoreFocus:false});},
+  enter(){queueArchivePreference();render();$('array-content').focus({preventScroll:true});},
 };
 function publishResults(state) {
   if(!state.import_started && !state.batch){lastRun=null;renderRecord();return;}
@@ -260,7 +268,7 @@ function publishResults(state) {
 function identity(state) {return {workflow_id:state.workflow_id,generation:state.generation};}
 function closeRun(run) {
   if(active!==run)return;
-  run.player.stop();active=null;dialog.close();render();$('array-index').focus({preventScroll:true});
+  run.player.stop();active=null;dialog.close();render();$('array-content').focus({preventScroll:true});
 }
 async function acknowledgeWorkflow() {
   if(acknowledging || !workflow?.navigation || workflow.active)return;
