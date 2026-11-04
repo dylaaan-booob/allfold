@@ -49,3 +49,14 @@ test('failed autosave prevents Kept task dispatch and preserves the selected sco
   assert.equal(f.calls.some(call=>call[0].endsWith('/start')),false);
   assert.match(f.get('kept-scope-status').textContent,/Service A/);
 });
+test('Browser task summary retains original batch counts when the display Service changes',async()=>{
+  const state={...active,planned_total:3,batch:{total:3,results:[
+    {paper_id:'first',outcome:'exported',parent_outcome:'confirmed',pdf_outcome:'unverified',reason:'Parent confirmed'},
+    {paper_id:'second',outcome:'uncertain',parent_outcome:'uncertain',reason:'Inspect before retry'}]}};
+  const f=await taskUI('kept.js',{page:'kept',request:async url=>url.includes('/queue')?queue:state});
+  await f.get('kept-service-list').children.find(row=>row.dataset.serviceId==='svc_b').emit('click');
+  const summary=f.get('kept-scope-status').textContent;
+  assert.match(summary,/当前批次：Service A/);
+  assert.match(summary,/计划 3.*已处理 2.*父条目确认 1.*待处理 1/);
+  assert.match(summary,/等待 Continue/);
+});
