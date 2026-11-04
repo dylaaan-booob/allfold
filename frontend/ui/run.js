@@ -25,7 +25,7 @@ function present(run) {
     host.prepend(inline);inline.hidden=false;inline.append($('run-stage-layer'));
   }else {
     inline.hidden=true;dialog.append($('run-stage-layer'),$('run-wash'));
-    window.uiRunPage?.open();dialog.show();
+    dialog.show();
   }
 }
 function stopRunAnimation() {
@@ -99,7 +99,11 @@ async function poll(run) {
 }
 function open(data,trigger=null) {
   if(active)return;
-  const run=active={inline:window.allfoldUIPreferences?.fullscreenDisabled()===true,selection:window.inboxRun.selection(),ended:false,reduced:reduceRunMotion(),provider:data.snapshot.provider,kind:data.snapshot.provider==='wos'?'run-wos':'run',taskID:data.snapshot.task_id,trigger};
+  const useInline=window.allfoldUIPreferences?.fullscreenDisabled()===true;
+  // Startup recovery can precede the Workspace controller's readiness. The
+  // existing availability poll will restore this same task once entry succeeds.
+  if(!useInline && window.uiRunPage?.open()!==true)return;
+  const run=active={inline:useInline,selection:window.inboxRun.selection(),ended:false,reduced:reduceRunMotion(),provider:data.snapshot.provider,kind:data.snapshot.provider==='wos'?'run-wos':'run',taskID:data.snapshot.task_id,trigger};
   $('run-wash').hidden=true;$('run-stage-layer').hidden=false;
   dialog.classList.remove('returning');dialog.querySelector('.run-background').hidden=false;
   if(!run.inline)run.visual=new RunVisual(dialog,run.reduced);

@@ -15,6 +15,17 @@ test('inline Run polls and refreshes results without constructing a player or re
   assert.equal(ui.page(),'journals');assert.equal(ui.stats().opens,0);
 });
 function keptState(phase='waiting_for_user',changes={}) {return {workflow_id:'workflow-1',generation:7,phase,active:['preparing','waiting_for_user','transition','importing','stopping'].includes(phase),can_continue:phase==='waiting_for_user',can_cancel:!['completed','stopping','idle'].includes(phase),waiting_for_login:false,settings:{display_name:'Synthetic researcher',auto_import_after_preparation:false},preparation:{services:[],manual_services:[],results:[]},message:'Review access before import',...changes};}
+test('fullscreen Run waits for its workspace owner and restores the same task without a new start',async()=>{
+  const running=runData('RUNNING','wos');running.providers.wos={snapshot:running.snapshot};
+  const ui=await taskUI('run.js',{inline:false,page:'workspace',request:async()=>running});
+  ui.window.uiRunPage.open=()=>false;
+  await ui.window.uiRun.start('wos');await ui.settle();
+  assert.equal(ui.window.uiRun.active(),false);assert.equal(ui.get('run-view').open,false);
+  ui.window.uiRunPage.open=()=>{ui.setPage('run');return true;};
+  ui.window.dispatchEvent({type:'inbox-ready'});await ui.settle();
+  assert.equal(ui.window.uiRun.active(),true);assert.equal(ui.page(),'run');assert.equal(ui.get('run-view').open,true);
+  assert.equal(ui.calls.filter(([url,body])=>url==='/api/ui-next/run-wos' && body!==undefined).length,1);
+});
 test('inline Kept recovers from Archive into visible controls and retains identity through continue, cancel and settlement',async()=>{
   let state=keptState('waiting_for_user',{preparation_task_id:'prepare-1'});
   const ui=await taskUI('kept.js',{inline:true,archiveDisabled:false,layout:'archive',page:'workspace',request:async(path,body)=>{

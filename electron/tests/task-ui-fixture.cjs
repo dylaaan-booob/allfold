@@ -41,7 +41,7 @@ async function taskUI(script,{inline=true,request,ready=false,reduced=false,arch
   const entries=[{paper:{id:'paper-1',title:'A synthetic paper'},journal:{key:'journal-1',name:'Test Journal'}}];
   const data={journals:[entries[0].journal],titles:{'paper-1':'A synthetic paper'}};
   window.allfoldUIPreferences={fullscreenDisabled:()=>inline,archiveDisabled:()=>archiveDisabled};window.uiWorkspace={ready:()=>ready,refresh:async()=>{refreshes++;}};
-  window.uiRunPage={providerName:id=>id,open:()=>{opens++;currentPage='run';},report:(...args)=>calls.push(['report',...args]),canRun:()=>true,updateButtons(){},refresh:async()=>{refreshes++;}};
+  window.uiRunPage={providerName:id=>id,open:()=>{opens++;currentPage='run';return true;},report:(...args)=>calls.push(['report',...args]),canRun:()=>true,updateButtons(){},refresh:async()=>{refreshes++;}};
   window.inboxRun={available:()=>true,selection:()=>({}),prepare:async()=>{prepares++;}};
   window.uiNextInitialLink=initialLink;window.inboxKept={available:()=>bridgeReady,busy:()=>false,papers:()=>entries,candidates:()=>entries,data:()=>data,openReader:()=>true,closeReader:()=>true,openArchivePaper:id=>window.workspaceArray?.openPaper(id)||false,setLayout:value=>{get('selected-view').dataset.workspaceLayout=value;get('kept-view').hidden=get('kept-view').inert=value!=='array';return true;},suspend(){},exported(){}};
   window.workspaceNavigation={current:()=>currentPage,go:page=>{currentPage=page;return true;},register(){},refresh(){}};
