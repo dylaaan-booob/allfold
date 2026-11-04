@@ -1,0 +1,44 @@
+/* Allfold layout owns rails, flyout and sidebar geometry. Content owns its internals. */
+.workbench-layout{position:relative;display:grid;grid-template-columns:var(--rail-width,48px) minmax(0,1fr) 0 var(--rail-width,48px);grid-template-rows:minmax(0,1fr);gap:0;min-width:0;min-height:0;height:100%;overflow:hidden;isolation:isolate}
+.workbench-layout[data-sidebar-mode=docked]{grid-template-columns:var(--rail-width) minmax(0,1fr) var(--sidebar-width) var(--rail-width)}
+.navigation-rail,.tool-rail{display:flex;flex-direction:column;align-items:center;gap:6px;min-height:0;overflow-y:auto;scrollbar-width:none;padding:14px 0;border-inline-end:1px solid var(--rule);grid-row:1}
+.navigation-rail{grid-column:1}.tool-rail{grid-column:4;border-inline-end:0;border-inline-start:1px solid var(--rule)}
+.rail-group{display:flex;flex-direction:column;align-items:center;gap:6px;width:100%}
+.rail-group+.rail-group{margin-top:10px;padding-top:16px;border-top:1px solid var(--rule)}
+.rail-button{position:relative;display:grid;place-items:center;flex:0 0 36px;width:calc(100% - 8px);height:36px;padding:7px;color:var(--muted)}
+.rail-button svg{display:block;width:20px;height:20px;fill:none;stroke:currentColor;stroke-width:1.5;stroke-linecap:round;stroke-linejoin:round;pointer-events:none}
+.rail-button[aria-pressed=true],.rail-button[aria-expanded=true]{background:var(--ink);color:var(--paper)}
+.rail-button[aria-pressed=true]::after{content:'';position:absolute;left:0;top:15px;width:4px;height:6px;background:var(--orange)}
+.rail-badge{position:absolute;right:0;bottom:0;max-width:100%;padding:0 2px;font:9px/12px var(--font);background:var(--paper);color:var(--ink)}
+.workspace-content{grid-column:2;grid-row:1;min-width:0;min-height:0;container:workspace-content / inline-size}
+.navigation-flyout{position:absolute;z-index:7;inset:0 auto 0 var(--rail-width,48px);width:var(--flyout-width,280px);min-width:0;min-height:0;display:flex;flex-direction:column;background:var(--paper);border-inline-end:1px solid var(--rule);box-shadow:8px 0 18px #25282118;padding:16px 0;overflow:hidden}
+.flyout-heading,.sidebar-heading{display:flex;align-items:center;justify-content:space-between;gap:8px;flex:0 0 auto;min-width:0;padding:0 16px 12px;font:12px var(--font)}
+.flyout-heading button,.sidebar-heading button{width:28px;height:28px;padding:0;font-size:20px;flex-shrink:0}
+.navigation-flyout :is(#array-index,.s-directory-list){flex:1;min-height:0;overflow:auto;overscroll-behavior:contain}
+.functional-sidebar{position:relative;grid-column:3;grid-row:1;min-width:0;min-height:0;border-inline-start:1px solid var(--rule);background:var(--paper);display:flex;flex-direction:column;padding:14px 0 0;overflow:hidden;container:functional-sidebar / inline-size}
+.sidebar-scroll{flex:1;min-height:0;min-width:0;overflow:auto;overscroll-behavior:contain;padding:0 20px 20px;scrollbar-width:thin}
+.workbench-layout[data-sidebar-mode=overlay]>.functional-sidebar{position:absolute;z-index:6;inset:0 var(--rail-width) 0 auto;width:var(--sidebar-width);box-shadow:-8px 0 18px #25282118}
+.sidebar-resize{position:absolute;z-index:2;inset:0 auto 0 0;width:7px;cursor:col-resize;touch-action:none}
+.sidebar-resize:hover{background:var(--orange)}
+.workbench-layout :is(button,[tabindex],input,summary,select,textarea):focus-visible{outline:2px solid var(--orange);outline-offset:-2px}
+.workbench-layout .s-directory-order{flex:0 0 auto;padding:12px 16px 0;flex-wrap:wrap}
+#configuration-workspace:has(#journals-view:not([hidden])){padding:0}
+#s-journals-page.workbench-layout{padding:0}
+#s-journals-page>.workspace-content{padding:20px 24px 0;overflow:hidden}
+#s-journals-page .sidebar-scroll>div{display:grid;gap:16px}
+#s-journals-page .sidebar-scroll h2{margin:0;font:500 22px/1.5 var(--font-reading);overflow-wrap:anywhere}
+#s-journals-page .sidebar-scroll dl{display:grid;gap:13px;margin:0}
+#s-journals-page .sidebar-scroll dl div{display:grid;gap:4px;min-width:0}
+#s-journals-page .sidebar-scroll dt{font-size:12px;color:var(--muted)}
+#s-journals-page .sidebar-scroll dd{margin:0;font-size:14px;overflow-wrap:anywhere}
+@container workspace-content (max-width:440px){#s-journals-page .s-browser-head{gap:8px}#s-journals-page .s-browser-head>h2{font-size:18px}.kept-actions{flex-wrap:wrap}}
+@container functional-sidebar (max-width:280px){#s-journal-detail>dl,.array-profile{grid-template-columns:minmax(0,1fr)}}
+@media(max-height:600px){.navigation-rail,.tool-rail{padding-block:6px;gap:2px}.rail-group+.rail-group{margin-top:4px;padding-top:8px}.navigation-flyout,.functional-sidebar{padding-top:6px}.flyout-heading,.sidebar-heading{padding-bottom:4px}#s-journals-page>.workspace-content{padding-top:10px}}
+/* One bounded status/debug row; extra controls scroll horizontally. */
+body>footer{flex-wrap:nowrap;max-height:86px;overflow-x:auto;gap:8px 16px;scrollbar-width:thin}
+body>footer>:is(#settings-shell,#paper-dev-tools,#archive-debug,#layout-debug){flex:0 0 auto}
+#layout-debug{display:flex;align-items:center;gap:8px;font:10px/23px var(--font);white-space:nowrap}
+#layout-debug label{display:flex;align-items:center;gap:5px}
+#layout-debug input{width:56px;height:23px;border:1px solid var(--rule);background:transparent;color:var(--ink);font:11px var(--font);padding:2px 4px}
+#layout-debug button{height:23px;padding:0 6px;border:1px solid var(--rule);font-size:10px}
+#layout-debug output{color:var(--muted)}

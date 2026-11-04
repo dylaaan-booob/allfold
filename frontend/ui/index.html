@@ -18,6 +18,7 @@
   <link rel="stylesheet" href="readable.css">
   <link rel="stylesheet" href="inbox-rhine.css">
   <link rel="stylesheet" href="workbench.css">
+  <link rel="stylesheet" href="workspace-layout.css">
   <script defer src="ui-preferences.js"></script>
   <script defer src="document-decryption.js"></script>
   <script defer src="ui-transitions.js"></script>
@@ -25,6 +26,8 @@
   <script defer src="workspace-search.js"></script>
   <script defer src="workspace-navigation.js"></script>
   <script defer src="archive-debug.js"></script>
+  <script defer src="workspace-layout-model.js"></script>
+  <script defer src="workspace-layout.js"></script>
   <script defer src="justice.js"></script>
   <script defer src="paragraph-layout.js"></script>
   <script defer src="assets/vendor/cropperjs-1.7.0/cropper.min.js"></script>
@@ -111,23 +114,32 @@
     <section id="empty-inbox" hidden><span>Inbox / Complete</span><h1>本轮审阅完成</h1><p>当前没有待审阅文献。可选择 Run OpenAlex、Run Crossref、Run PubMed 或 Run WoS 检索新文献。</p></section>
     <div id="debug-split" class="archive-debug-handle" role="separator" aria-label="拖动左右分界线" aria-orientation="vertical" tabindex="0"></div>
     <div id="debug-bottom" class="archive-debug-handle" role="separator" aria-label="拖动下侧分界线" aria-orientation="horizontal" tabindex="0"></div>
-  <section id="kept-view" hidden inert aria-label="Workspace Array">
-    <aside class="kept-manager" aria-label="Index"><div id="array-layout-controls" class="kept-manager-heading"></div><div id="array-index" tabindex="-1" aria-label="Candidate Journals"></div></aside>
-    <div class="kept-center">
+  <section id="kept-view" class="workbench-layout" hidden inert aria-label="Workspace Array">
+    <nav class="navigation-rail" aria-label="ARRAY navigation">
+      <div class="rail-group"><button id="array-index-toggle" class="rail-button" data-flyout="index" title="INDEX" aria-label="Index"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 6h13M8 12h13M8 18h13M3 6h1M3 12h1M3 18h1"/></svg></button></div>
+      <div id="array-status" class="rail-group" role="group" aria-label="Array status" hidden>
+        <button id="array-candidates" class="rail-button" title="CANDIDATES" aria-label="Candidates" aria-pressed="true" disabled><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 4h16v16H4zM8 8h8M8 12h8M8 16h4"/></svg></button>
+        <button id="array-kept" class="rail-button" title="KEPT" aria-label="Kept" aria-pressed="false" disabled><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 3h12v18l-6-4-6 4z"/></svg><span id="kept-count" class="rail-badge">00</span></button>
+      </div>
+    </nav>
+    <aside id="array-flyout" class="navigation-flyout" aria-label="Index" tabindex="-1" hidden><div class="flyout-heading"><span>INDEX</span><button data-flyout-close aria-label="Close Index">×</button></div><div id="array-layout-controls"></div><div id="array-index" tabindex="-1" aria-label="Candidate Journals"></div></aside>
+    <div id="array-content" class="kept-center workspace-content" tabindex="-1">
+      <div id="array-primary-actions"><div id="kept-import-actions" class="kept-actions" hidden><button id="kept-start">PREPARE &amp; IMPORT ↗</button><button id="kept-import-only">IMPORT ONLY ↗</button></div><div id="kept-workflow-host"></div><div id="kept-reading-tools" hidden><span id="array-decision-tools" class="left-review-actions" hidden></span></div></div>
       <header id="array-paper-heading"></header>
       <p id="kept-empty" hidden>尚无保留文献。审阅时点击 Keep，论文会出现在这里。</p>
       <div id="kept-reader" hidden><div id="kept-reader-body"></div></div>
     </div>
-    <aside class="kept-card" aria-label="Workspace context">
-      <div id="array-status" class="s-layout" role="group" aria-label="Array status" hidden><span class="s-layout-caption">STATUS</span><span class="s-layout-options"><button id="array-candidates" aria-pressed="true" disabled>CANDIDATES</button><button id="array-kept" aria-pressed="false" disabled>KEPT <span id="kept-count">00</span></button></span></div>
-      <div class="array-context-scroll">
+    <aside id="array-sidebar" class="functional-sidebar" aria-label="Info" hidden>
+      <div class="sidebar-resize" role="separator" tabindex="0" aria-label="Resize Info" aria-orientation="vertical"></div>
+      <div class="sidebar-heading"><span>INFO</span><button data-sidebar-close aria-label="Close Info">×</button></div>
+      <div class="array-context-scroll sidebar-scroll" data-functional-view="info">
       <section id="array-journal-profile"><h2 id="array-journal-name"></h2><dl class="array-profile"><div><dt>ISSN</dt><dd id="array-journal-issn"></dd></div><div><dt>eISSN</dt><dd id="array-journal-eissn"></dd></div><div><dt>SUBJECT</dt><dd id="array-journal-subject"></dd></div><div><dt>LABEL</dt><dd id="array-journal-labels"></dd></div></dl></section>
       <div id="array-candidate-infos" class="array-paper-infos"></div>
-      <section id="array-import-profile" hidden><div class="kept-actions"><button id="kept-start">PREPARE &amp; IMPORT ↗</button><button id="kept-import-only"><span>IMPORT ONLY</span><svg viewBox="0 0 14 14" aria-hidden="true"><path d="M2 12 11 3M4.5 3H11v6.5"/></svg></button></div><div class="kept-record-heading"><span>IMPORT / LATEST</span><span id="kept-record-count">—</span></div><p id="kept-record-summary" role="status">本次尚未导入。</p><ol id="kept-record-items"></ol></section>
+      <section id="array-import-profile" hidden><div class="kept-record-heading"><span>IMPORT / LATEST</span><span id="kept-record-count">—</span></div><p id="kept-record-summary" role="status">本次尚未导入。</p><ol id="kept-record-items"></ol></section>
       <div id="array-kept-infos" class="array-paper-infos"></div>
       </div>
-      <div id="kept-reading-tools" hidden><span id="array-decision-tools" class="left-review-actions" hidden></span></div>
     </aside>
+    <nav class="tool-rail" aria-label="ARRAY tools"><button class="rail-button" data-sidebar-view="info" aria-controls="array-sidebar" title="INFO" aria-label="Info"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 11v6M12 7v1"/></svg></button></nav>
   </section>
   </main>
   <section id="configuration-workspace" hidden class="configuration-ui" aria-label="Workspace configuration">
@@ -195,7 +207,16 @@
       </div>
     </div>
     <div id="settings-shell" hidden></div>
-    <div id="journals-dev-tools" hidden aria-label="Journals developer tools"></div>
+    <div id="layout-debug" hidden aria-label="Layout developer tools">
+      <span>LAYOUT</span>
+      <label>railWidth <input id="layout-railWidth" type="number" step="1" aria-label="railWidth"></label>
+      <label>flyoutPreferredWidth <input id="layout-flyoutPreferredWidth" type="number" step="1" aria-label="flyoutPreferredWidth"></label>
+      <label>sidebarPreferredWidth <input id="layout-sidebarPreferredWidth" type="number" step="1" aria-label="sidebarPreferredWidth"></label>
+      <span>sidebarEffectiveWidth <output id="layout-sidebarEffectiveWidth"></output></span>
+      <span>contentWidth <output id="layout-contentWidth"></output></span>
+      <span>sidebarMode <output id="layout-sidebarMode"></output></span>
+      <button id="layout-save" type="button">SAVE</button><button id="layout-reset" type="button">RESET</button><button id="layout-origin" type="button">ORIGIN</button><span id="layout-status" role="status"></span>
+    </div>
     <div id="paper-dev-tools" hidden role="group" aria-label="Paper developer tools">
       <span>PAPER</span>
       <label><input type="checkbox" data-paper-reset="abstract"> Abstract</label>

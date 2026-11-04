@@ -1,6 +1,5 @@
 // RhinE / RhineLabUI MIT adaptation; see SOURCES.md and licenses/.
 import {renderRunResult} from './run-results.js';
-import {createJournalLayout} from './journal-layout.js';
 import {readImportChoices,renderImportRows} from './research-scope-import.js';
 import {providerNames as providerDefaults} from './business-results.js';
 import {resetImpact} from './history-view.js';
@@ -104,7 +103,7 @@ markup.innerHTML=`<header class="s-header">
 <input id="s-developer-mode" type="checkbox">
 <span class="s-setting-label">Developer Mode</span>
 </label>
-<p class="s-help">Developer Mode 默认关闭，控制 Workspace 调试控件与 Journals 底栏的 RESIZE、GRID / ROW；关闭后，已保存的调试参数仍然生效。此开关独立保存在本浏览器，不参与 Settings Save。</p>
+<p class="s-help">Developer Mode 默认关闭，控制 Layout、Archive 和 Paper 调试工具；关闭后，已保存的布局目标仍然生效。此开关独立保存在本浏览器，不参与 Settings Save。</p>
 <label class="s-setting-row s-check s-field-wide">
 <input id="s-disable-archive" type="checkbox">
 <span class="s-setting-label">禁用 Archive 视图</span>
@@ -242,21 +241,21 @@ markup.innerHTML=`<header class="s-header">
 <button id="s-run-refresh" class="s-button">Refresh</button>
 </aside>
 </section>
-<section id="s-journals-page" class="s-panel s-editor-grid" aria-labelledby="journals-open" hidden>
-<aside class="s-directory" aria-label="Journal directory">
-<div id="s-journal-scope" class="s-layout s-directory-heading" role="group" aria-label="Journal scope"><span class="s-layout-caption">GROUP</span><span class="s-layout-options"><button data-scope="subject">SUBJECT</button><button data-scope="access">ACCESS</button><button data-scope="custom">LABEL</button></span></div>
+<section id="s-journals-page" class="s-panel workbench-layout" aria-labelledby="journals-open" hidden>
+<nav class="navigation-rail" aria-label="Journals navigation"><div id="s-journal-scope" class="rail-group" role="group" aria-label="Journal scope"><button class="rail-button" data-scope="subject" data-flyout="subject" title="SUBJECT" aria-label="SUBJECT"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 5h7l2 3h9v12H3z"/></svg></button><button class="rail-button" data-scope="access" data-flyout="access" title="ACCESS" aria-label="ACCESS"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 10h16v11H4zM8 10V7a4 4 0 0 1 8 0v3M12 14v3"/></svg></button><button class="rail-button" data-scope="custom" data-flyout="custom" title="LABEL" aria-label="LABEL"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m3 3 9 1 9 9-8 8-9-9z"/><circle cx="8" cy="8" r="1"/></svg></button></div><div id="s-journal-layout" class="rail-group" role="group" aria-label="Journal layout"><button class="rail-button" data-layout="array" title="ARRAY" aria-label="ARRAY"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5h16v4H4zM4 15h16v4H4z"/></svg></button><button class="rail-button" data-layout="grid" title="GRID" aria-label="GRID"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 4h6v6H4zM14 4h6v6h-6zM4 14h6v6H4zM14 14h6v6h-6z"/></svg></button></div></nav><aside id="journal-flyout" class="navigation-flyout" aria-label="Journal directory" tabindex="-1" hidden><div class="flyout-heading"><span id="journal-directory-title">SUBJECT</span><button data-flyout-close aria-label="Close Directory">×</button></div>
 <div id="s-entities" class="s-directory-list"></div>
-<div class="s-directory-order"><button id="s-new-entity" class="s-button">+</button><button id="s-delete-entity" class="s-button" disabled>−</button><button id="s-entity-up" class="s-button">↑</button><button id="s-entity-down" class="s-button">↓</button></div>
+<div class="s-directory-order"><button id="s-edit-entity" class="s-button" title="Edit Group" aria-label="Edit Group">Edit</button><button id="s-new-entity" class="s-button">+</button><button id="s-delete-entity" class="s-button" disabled>−</button><button id="s-entity-up" class="s-button">↑</button><button id="s-entity-down" class="s-button">↓</button></div>
 </aside>
-<div class="s-browser"><div class="s-browser-head s-journals-head"><h2 id="s-journals-title" data-journal-title>All Journals</h2>
+<div class="s-browser workspace-content" tabindex="-1"><div class="s-browser-head s-journals-head"><h2 id="s-journals-title" data-journal-title>All Journals</h2>
 <div class="s-journal-add"><button id="s-add-journal" class="s-button">+ JOURNAL</button></div></div>
 <div id="s-journals" class="s-journal-list"></div></div>
-<aside class="s-context" aria-label="Journal and directory details">
-<div id="s-journal-layout" class="s-layout" role="group" aria-label="Journal layout"><span class="s-layout-caption">LAYOUT</span><span class="s-layout-options"><button data-layout="array">ARRAY</button><button data-layout="grid">GRID</button></span></div>
+<aside id="journal-sidebar" class="functional-sidebar" aria-label="Journal and directory details" hidden>
+<div class="sidebar-resize" role="separator" tabindex="0" aria-label="Resize Details" aria-orientation="vertical"></div>
+<div class="sidebar-heading"><span>DETAILS</span><button data-sidebar-close aria-label="Close Details">×</button></div><div class="sidebar-scroll" data-functional-view="details">
 <div id="s-entity-detail"><div id="s-entity-description"></div>
 </div>
 <div id="s-journal-detail" hidden></div><div id="s-journal-actions" hidden></div>
-</aside><div id="s-journal-resize-left" class="journal-resize-handle" role="separator" tabindex="0" aria-orientation="vertical" aria-label="调整 Journals 左栏宽度" aria-controls="s-entities" hidden></div></section>
+</div></aside><nav class="tool-rail" aria-label="Journals tools"><button class="rail-button" data-sidebar-view="details" aria-controls="journal-sidebar" title="DETAILS" aria-label="Details"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 3h16v18H4zM8 7h8M8 12h8M8 17h4"/></svg></button></nav></section>
     <section id="s-file-preview" class="s-file-preview" hidden aria-label="Full file preview">
 <div class="s-preview-head">
 <div>
@@ -277,12 +276,6 @@ markup.innerHTML=`<header class="s-header">
 </div>
 </section>
   </div>
-<div id="s-journal-debug">
-<label><input id="s-journal-resize" type="checkbox"> RESIZE</label>
-<label title="0 = AUTO；1–12 = 每行期刊数量">GRID / ROW <input id="s-journal-columns" type="number" min="0" max="12" step="1" value="0" inputmode="numeric" aria-label="GRID 每行期刊数量，0 为自动，1 至 12 为指定数量"></label>
-<button id="s-journal-layout-save" type="button">SAVE</button><button id="s-journal-layout-reset" type="button">RESET</button><button id="s-journal-layout-origin" type="button">ORIGIN</button><span id="s-journal-layout-status" role="status"></span>
-</div>
-</div>
   <dialog id="s-dialog" class="s-dialog" aria-labelledby="s-dialog-title">
 <h2 id="s-dialog-title">
 </h2>
@@ -297,7 +290,6 @@ for(const [panel,page]of [['s-journals-page','journals-view'],['s-run','run-page
 }
 root.querySelector('.s-content').append(markup.content.querySelector('#s-file-preview'));
 root.append(markup.content.querySelector('#s-dialog'));
-$('journals-dev-tools').prepend(markup.content.querySelector('#s-journal-debug'));
 const shell=$('settings-shell'),header=markup.content.querySelector('.s-header');
 document.querySelector('.header-browse').append(header.querySelector('#s-save'));
 shell.append(markup.content.querySelector('#s-message'),header.querySelector('.s-header-actions'));header.remove();
@@ -334,11 +326,12 @@ const identifiers=j=>[j.issn,j.eissn].filter(Boolean);
 let coverJob={phase:'Idle',journal_key:null,busy:false,supported:false};
 let coverTimer=null;
 const dialog=$('s-dialog');let dialogFocus=null,dialogVersion=0;
-const journalDebug=createJournalLayout(()=>({
-  visible:window.workspaceNavigation.current()==='journals' && document.documentElement.classList.contains('developer-mode'),
-  editable:!loading && !operationPending && !preview && !reconcileRequired && !dialog.open && !$('run-view').open && !$('kept-flow').open,
-  grid:journalLayout==='grid',
-}));
+let directoryScope='subject';
+const directoryScroll=new Map();
+const journalLayoutHost=window.allfoldLayout.create({root:$('s-journals-page'),workspace:'journals',
+  minContentWidth:window.allfoldLayoutModel.minOperationalSize.journals,
+  preview(scope){directoryScroll.set(directoryScope,$('s-entities').scrollTop);directoryScope=scope;if(draft)renderDirectory();},
+});
 let cropEditor=null;
 const configurationDirty=()=>Boolean(saved && draft && !same(saved,draft));
 const casPasswordAction=()=>casDraft.password===keyMask?'keep':casDraft.password?'replace':casSaved.configured?'clear':'keep';
@@ -432,7 +425,7 @@ window.addEventListener('resize',closeMenu);
 const scrollPositions=new Map();
 function pageScrollers() {
   const panel=$('s-'+view);
-  return [panel,...panel.querySelectorAll('.s-directory-list,.s-journal-list,.s-journal-grid,.s-context,.s-settings-main,.s-system-sidebar,.s-run-body')];
+  return [panel,...panel.querySelectorAll('.s-directory-list,.s-journal-list,.s-journal-grid,.s-context,.sidebar-scroll,.s-settings-main,.s-system-sidebar,.s-run-body')];
 }
 function rememberScroll() {
   // A hidden previous root reports zero scroll after top-level presentation changes.
@@ -468,7 +461,7 @@ for(const page of ['journals','run','settings'])window.workspaceNavigation.regis
   },
 });
 function syncLayouts(){
-  journalDebug.sync();
+  journalLayoutHost.sync();
   for(const button of root.querySelectorAll('[data-layout]'))button.setAttribute('aria-pressed',String(button.dataset.layout===journalLayout));
   for(const button of root.querySelectorAll('[data-scope]'))button.setAttribute('aria-pressed',String(button.dataset.scope===ui.scope));
 }
@@ -503,11 +496,10 @@ function closeLabelPicker() {const picker=$('s-journal-labels');if(picker)picker
 function setJournalLayout(layout) {
   if(!['array','grid'].includes(layout) || layout===journalLayout)return;
   journalLayout=layout;renderJournals();syncLayouts();
-  $('s-journals').querySelector(`[data-journal="${CSS.escape(ui.journal || '')}"]`)?.scrollIntoView({block:'nearest'});
 }
 function setJournalScope(scope) {
   if(!['subject','access','custom'].includes(scope) || scope===ui.scope)return;
-  ui.scope=scope;reconcileSelections(true);renderJournalsPage();
+  ui.scope=scope;directoryScope=scope;reconcileSelections(true);renderJournalsPage();
 }
 for(const button of root.querySelectorAll('[data-layout]'))button.addEventListener('click',()=>setJournalLayout(button.dataset.layout));
 for(const button of root.querySelectorAll('[data-scope]'))button.addEventListener('click',()=>setJournalScope(button.dataset.scope));
@@ -534,7 +526,7 @@ document.addEventListener('keydown',event=>{
       document.querySelector('dialog[open], [popover]:popover-open') || event.target.isContentEditable ||
       event.target.closest('input,textarea,select,[contenteditable],[role=separator],[inert]'))return;
   const page=window.workspaceNavigation.current();
-  const directory=page==='run'?$('s-providers'):page==='journals'?$('s-entities'):null;
+  const directory=page==='run'?$('s-providers'):page==='journals' && !$('journal-flyout').hidden && $('journal-flyout').contains(document.activeElement)?$('s-entities'):null;
   if(directory && moveDirectoryIndex(directory,event.key==='ArrowUp'?-1:1))event.preventDefault();
 });
 $('s-files').addEventListener('click',()=>{
@@ -759,38 +751,37 @@ function entityName(value,labels=false) {
 }
 function labelName(value) {return entityName(value,true);}
 const labelKey=name=>'label:'+name;
-function scopeInfo() {
-  return ui.scope==='subject'?{items:list().groups,entity:'Group',empty:'Ungrouped',kind:'group'}:
-    ui.scope==='access'?{items:list().services,entity:'Service',empty:'Unassigned',kind:'service'}:
+function scopeInfo(scope=ui.scope) {
+  return scope==='subject'?{items:list().groups,entity:'Group',empty:'Ungrouped',kind:'group'}:
+    scope==='access'?{items:list().services,entity:'Service',empty:'Unassigned',kind:'service'}:
       {items:list().labels,entity:'Label',empty:'Unlabeled',kind:'label'};
 }
-function entityMembers(id=ui.directory[ui.scope]) {
+function entityMembers(id=ui.directory[ui.scope],scope=ui.scope) {
   return list().journals.filter(j=>{
     if(id==='all')return true;
-    if(ui.scope==='subject')return id==='none'?!j.groupId:j.groupId===id;
-    if(ui.scope==='access')return id==='none'?!j.serviceId:j.serviceId===id;
+    if(scope==='subject')return id==='none'?!j.groupId:j.groupId===id;
+    if(scope==='access')return id==='none'?!j.serviceId:j.serviceId===id;
     return id==='none'?!j.labels.length:j.labels.some(name=>labelKey(name)===id);
   });
 }
-function selectedEntity() {return scopeInfo().items.find(item=>item.id===ui.directory[ui.scope]);}
+function selectedEntity(scope=ui.scope) {return scopeInfo(scope).items.find(item=>item.id===ui.directory[scope]);}
 function directoryRow(id,name,count,index,current,kind) {
   const rail=Math.round(6+18*Math.log10(count+1)/Math.log10(Math.max(10,list().journals.length)+1));
   return `<button class="kept-manager-row s-directory-row" data-entity="${esc(id)}" data-kind="${kind}" title="${esc(name)}" style="--index-rail:${rail}px" aria-current="${current===id}" ${kind==='group' && !['all','none'].includes(id)?'draggable="true"':''}><span class="rhine-index-number">${String(index).padStart(2,'0')}</span><span class="rhine-index-name">${esc(name)}</span><span class="rhine-index-count">${count}</span></button>`;
 }
 function renderDirectory() {
-  const info=scopeInfo(),id=ui.directory[ui.scope],container=$('s-entities'),scroll=container.scrollTop,horizontal=container.scrollLeft,focused=document.activeElement?.dataset.entity;
+  const info=scopeInfo(directoryScope),id=ui.directory[directoryScope],container=$('s-entities'),scroll=directoryScroll.get(directoryScope) || 0,horizontal=container.scrollLeft,focused=document.activeElement?.dataset.entity;
   const entries=[{id:'all',name:'All Journals'},{id:'none',name:info.empty},...info.items];
-  container.innerHTML=entries.map((item,i)=>directoryRow(item.id,item.name,entityMembers(item.id).length,i,id,info.kind)).join('');
+  container.innerHTML=entries.map((item,i)=>directoryRow(item.id,item.name,entityMembers(item.id,directoryScope).length,i,id,info.kind)).join('');
   container.scrollTop=scroll;container.scrollLeft=horizontal;
   if(focused)container.querySelector(`[data-entity="${CSS.escape(focused)}"]`)?.focus({preventScroll:true});
-  const index=info.items.indexOf(selectedEntity());
-  $('s-delete-entity').disabled=index<0;
+  const index=info.items.indexOf(selectedEntity(directoryScope));
+  $('s-edit-entity').disabled=$('s-delete-entity').disabled=index<0;
   $('s-entity-up').disabled=index<=0;$('s-entity-down').disabled=index<0 || index===info.items.length-1;
-  for(const [button,action] of [['s-new-entity','New'],['s-delete-entity','Delete'],['s-entity-up','Move up'],['s-entity-down','Move down']]){
+  for(const [button,action] of [['s-edit-entity','Edit'],['s-new-entity','New'],['s-delete-entity','Delete'],['s-entity-up','Move up'],['s-entity-down','Move down']]){
     $(button).setAttribute('aria-label',`${action} ${info.entity}`);$(button).title=`${action} ${info.entity}`;
   }
-  stopJournalTitleScroll();
-  $('s-journals-title').textContent=$('s-journals-title').title=entries.find(item=>item.id===id)?.name || 'All Journals';
+  $('journal-directory-title').textContent={subject:'SUBJECT',access:'ACCESS',custom:'LABEL'}[directoryScope];
 }
 function visibleJournals() {
   const query=ui.search.trim().toLowerCase();
@@ -891,7 +882,13 @@ async function journalResources(j) {
     {label:'Keep Unresolved',run:()=>choice('unresolved')},
   ]);
 }
-function renderJournalsPage() {renderDirectory();renderJournals();renderEntityDetail();renderJournalDetail();syncJournalDeveloperTools();syncLayouts();}
+function renderJournalsPage() {
+  renderDirectory();
+  stopJournalTitleScroll();
+  const info=scopeInfo(),id=ui.directory[ui.scope];
+  $('s-journals-title').textContent=$('s-journals-title').title=id==='all'?'All Journals':id==='none'?info.empty:selectedEntity()?.name || 'All Journals';
+  renderJournals();renderEntityDetail();renderJournalDetail();syncLayouts();
+}
 function assignLabel(j,name,assigned) {
   if(!list().labels.some(label=>label.name===name))return;
   const labels=assigned?[...new Set([...j.labels,name])]:j.labels.filter(label=>label!==name);
@@ -942,14 +939,17 @@ function createEntity() {
     let name;try{name=entityName($('s-new-entity-name').value,scope==='custom');}catch(error){$('s-entity-error').textContent=error.message;return false;}
     if(info.items.some(item=>scope==='custom'?item.name===name:item.name.toLowerCase()===name.toLowerCase())){$('s-entity-error').textContent='名称重复。';return false;}
     const entity=scope==='access'?{id:'svc_'+crypto.randomUUID().replaceAll('-',''),name,url:$('s-new-service-url').value.trim(),method:$('s-new-service-method').value}:{id:scope==='subject'?groupKey(name):labelKey(name),name};
-    info.items.push(entity);ui.directory[scope]=entity.id;ui.detail='entity';changed();renderJournalsPage();
+    info.items.push(entity);ui.directory[scope]=entity.id;ui.detail='entity';changed();renderJournalsPage();journalLayoutHost.openSidebar('details');
   }}]);$('s-new-entity-name').focus();
 }
-$('s-new-entity').addEventListener('click',createEntity);
-$('s-entity-up').addEventListener('click',()=>moveEntity(-1));$('s-entity-down').addEventListener('click',()=>moveEntity(1));
-$('s-delete-entity').addEventListener('click',deleteEntity);
-$('s-entities').addEventListener('click',event=>{const row=event.target.closest('[data-entity]');if(!row)return;ui.directory[ui.scope]=row.dataset.entity;ui.detail='entity';ui.journal=null;renderJournalsPage();});
-function selectJournal(id) {ui.journal=id;ui.detail='journal';renderJournalsPage();}
+function activateDirectory() {if(ui.scope!==directoryScope)setJournalScope(directoryScope);}
+$('s-entities').addEventListener('scroll',()=>directoryScroll.set(directoryScope,$('s-entities').scrollTop));
+$('s-edit-entity').addEventListener('click',()=>{activateDirectory();ui.detail='entity';renderEntityDetail();renderJournalDetail();journalLayoutHost.openSidebar('details');journalLayoutHost.closeFlyout();});
+$('s-new-entity').addEventListener('click',()=>{activateDirectory();createEntity();});
+$('s-entity-up').addEventListener('click',()=>{activateDirectory();moveEntity(-1);});$('s-entity-down').addEventListener('click',()=>{activateDirectory();moveEntity(1);});
+$('s-delete-entity').addEventListener('click',()=>{activateDirectory();deleteEntity();});
+$('s-entities').addEventListener('click',event=>{const row=event.target.closest('[data-entity]');if(!row)return;ui.scope=directoryScope;ui.directory[ui.scope]=row.dataset.entity;ui.detail='entity';ui.journal=null;renderJournalsPage();journalLayoutHost.closeSidebar();journalLayoutHost.closeFlyout();});
+function selectJournal(id) {ui.journal=id;ui.detail='journal';renderJournalsPage();journalLayoutHost.openSidebar('details');}
 $('s-journals').addEventListener('click',event=>{const row=event.target.closest('[data-journal]');if(row)selectJournal(row.dataset.journal);});
 $('s-journals').addEventListener('keydown',event=>{if(event.target.matches('[data-journal]') && ['Enter',' '].includes(event.key)){event.preventDefault();selectJournal(event.target.dataset.journal);$('s-journals').querySelector(`[data-journal="${CSS.escape(ui.journal)}"]`)?.focus({preventScroll:true});}});
 root.addEventListener('click',event=>{const button=event.target.closest('[data-remove-journal]');if(button)removeJournal(journal(button.dataset.removeJournal));});
@@ -1007,8 +1007,8 @@ root.addEventListener('dragstart',event=>{
 });
 function dropTarget(event) {
   const node=event.target.closest('[data-entity]');if(!drag || !node || node.dataset.entity==='all')return null;
-  if(drag.kind==='journal' && ['subject','access'].includes(ui.scope))return node;
-  if(drag.kind==='group' && ui.scope==='subject' && group(node.dataset.entity))return node;
+  if(drag.kind==='journal' && ['subject','access'].includes(directoryScope))return node;
+  if(drag.kind==='group' && directoryScope==='subject' && group(node.dataset.entity))return node;
   return null;
 }
 root.addEventListener('dragover',event=>{const target=dropTarget(event);if(target){event.preventDefault();event.dataTransfer.dropEffect='move';target.dataset.drop='true';}});
@@ -1017,7 +1017,7 @@ root.addEventListener('drop',event=>{
   const target=dropTarget(event);if(!target)return;event.preventDefault();
   if(drag.kind==='journal'){
     const j=journal(drag.id),next=target.dataset.entity==='none'?null:target.dataset.entity;
-    if(j)changeJournalAssignment(j,ui.scope==='subject'?{groupId:next}:{serviceId:next});
+    if(j)changeJournalAssignment(j,directoryScope==='subject'?{groupId:next}:{serviceId:next});
   }else{
     const items=list().groups,from=items.findIndex(g=>g.id===drag.id),to=items.findIndex(g=>g.id===target.dataset.entity);
     if(from>=0 && to>=0 && from!==to){const [g]=items.splice(from,1);items.splice(to,0,g);changed();renderDirectory();}
@@ -1026,11 +1026,6 @@ root.addEventListener('drop',event=>{
 });
 root.addEventListener('dragend',()=>{drag=null;root.querySelectorAll('[data-drop]').forEach(node=>node.removeAttribute('data-drop'));});
 
-function syncJournalDeveloperTools() {
-  const visible=window.workspaceNavigation.current()==='journals' && document.documentElement.classList.contains('developer-mode');
-  $('journals-dev-tools').hidden=!visible;
-}
-for(const event of ['workspace-navigation-state','developer-mode-change'])window.addEventListener(event,syncJournalDeveloperTools);
 async function refreshCovers() {
   clearTimeout(coverTimer);
   try {
@@ -1396,7 +1391,7 @@ $('s-export-diagnostics').addEventListener('click',async()=>{
 });
 async function loadSettings() {
   loading=true;root.querySelector('.s-content').inert=true;updateDirty();
-  try {const data=await uiNext.request('/api/ui-next/settings');adoptState(data);await loadCASStatus();coverJob=data.cover_search;syncJournalDeveloperTools();
+  try {const data=await uiNext.request('/api/ui-next/settings');adoptState(data);await loadCASStatus();coverJob=data.cover_search;journalLayoutHost.sync();
     if(data.issues.length)message(data.issues.map(i=>`${i.message}${i.path?' · '+i.path:''}`).join('\n'),'error');
     else message('');
     if(coverJob.phase==='Running')coverTimer=setTimeout(refreshCovers,1000);

@@ -1163,7 +1163,7 @@ function renderPaper() {
   decryption.reset(null,true);
   const detail=$('paper-detail'), changed=detail.dataset.paperId!==paper.id;
   if(changed) {paperMetadata.open=false;paragraphLayout?.clear();}
-  if(readerContext?.status==='candidates')paperMetadata.open=true;
+  if(readerContext)paperMetadata.open=true;
   const papers=reviewPapers(), index=papers.indexOf(paper);
   $('view-paper-title').textContent=paper.title; $('view-paper-id').textContent=paper.id;
   $('paper-position').textContent=`${pad(index+1)} / ${pad(papers.length)}`;

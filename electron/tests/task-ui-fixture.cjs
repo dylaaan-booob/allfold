@@ -44,6 +44,8 @@ async function taskUI(script,{inline=true,request,ready=false,reduced=false,arch
   window.uiNextInitialLink=initialLink;window.inboxKept={available:()=>bridgeReady,busy:()=>false,papers:()=>entries,candidates:()=>entries,data:()=>data,openReader:()=>true,closeReader:()=>true,openArchivePaper:id=>window.workspaceArray?.openPaper(id)||false,setLayout:value=>{get('selected-view').dataset.workspaceLayout=value;get('kept-view').hidden=get('kept-view').inert=value!=='array';return true;},suspend(){},exported(){}};
   window.workspaceNavigation={current:()=>currentPage,go:page=>{currentPage=page;return true;},refresh(){}};
   window.allfoldWorkbench={showTaskPage:async identity=>{presentations.push(identity);return true;}};
+  window.allfoldLayoutModel={minOperationalSize:{array:360}};
+  window.allfoldLayout={create:()=>({sync(){},closeFlyout(){}})};
   const uiNext={data:{import_token:'token'},notice:message=>calls.push(['notice',message]),request:async(url,body)=>{calls.push([String(url),body]);return request(String(url),body);}};
   const context={window,document,uiNext,workspaceSearch:{register(){},refresh(){}},URL,Date,Map,Set,Math,Promise,console,
     CustomEvent:class{constructor(type,options){this.type=type;this.detail=options?.detail;}},Event:class{constructor(type){this.type=type;}},

@@ -6,7 +6,6 @@ footer{height:auto;min-height:35px;margin-top:0}
 #allfold-pane,#browser-pane{grid-area:1/1;min-width:0;min-height:0;overflow:hidden}
 #allfold-pane{display:flex;flex-direction:column}
 #workbench-content #selected-view{height:100%;max-height:100%;min-width:0;min-height:0;flex-shrink:1}
-#workbench-content #selected-view[data-workspace-layout=array]{height:100%!important}
 #workbench-content #configuration-workspace{height:100%;max-height:100%;min-height:0;flex:1 1 0}
 #workbench-content #selected-view>#kept-view{height:100%;max-height:100%;min-height:0}
 body[data-workbench=browser] #allfold-pane{visibility:hidden;pointer-events:none}

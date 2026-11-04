@@ -108,15 +108,13 @@
 .array-paper-infos .paper-metadata{margin:0;font-size:14px}
 .array-paper-infos .paper-metadata>div{display:block;margin:12px 0}
 .array-paper-infos .paper-metadata dd{margin:4px 0 0}
-#array-candidate-infos #paper-metadata-summary{display:none}
-#kept-view[data-status=candidates] .kept-card{display:flex;flex-direction:column;overflow:hidden}
+.array-paper-infos #paper-metadata-summary{display:none}
 #kept-view[data-status=candidates] .array-context-scroll{flex:1;min-height:0;overflow:auto;overscroll-behavior:contain;scrollbar-width:thin}
-#kept-reading-tools{display:flex;flex-direction:column;flex-shrink:0;align-items:stretch;min-height:28px;margin-top:24px}
+#kept-reading-tools{display:flex;flex-direction:column;flex-shrink:0;align-items:stretch;min-height:28px;margin-bottom:12px}
 #kept-reader-body .abstract-heading .paper-navigation{flex:0 1 180px;min-width:0;min-height:28px;margin:0 0 0 auto;padding:0;border:0}
 #kept-reader-body .abstract-heading .paper-stepper{width:100%;justify-content:space-between;gap:6px}
 #kept-reader-body .abstract-heading .paper-stepper button{height:28px;padding:0 6px;font-size:16px}
 #kept-reader-body .abstract-heading .paper-stepper strong{font-size:12px;min-width:58px}
-@media(max-width:600px){#kept-view[data-status=candidates] .kept-card{max-height:350px;flex-shrink:0}}
 #kept-view #kept-reader{padding-top:16px}
 #kept-view .kept-actions{margin-top:10px}
 #kept-view #kept-record-items strong{display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2;line-clamp:2;overflow:hidden}
@@ -164,7 +162,7 @@
 #selected-view .archive-context,
 #selected-view .profile-heading>span:first-child,
 #selected-view .selection-count>span,
-#kept-view :is(.kept-manager-heading,.kept-record-heading)>span:first-child,
+#kept-view .kept-record-heading>span:first-child,
 #configuration-workspace :is(.s-eyebrow,.s-context-title,.s-context dt,.s-layout-caption,.s-directory-heading),
 #configuration-workspace .s-run-metrics dt,
 #run-view .run-time{font-family:var(--font-label)}
@@ -217,18 +215,16 @@ html:not(.archive-debug-active) .archive-widget-handle{display:none!important}
 #selected-view{--workspace-control-inset:var(--index-rail-start);--workspace-control-top:24px}
 #archive-layout-controls{position:absolute;left:calc(var(--workspace-gutter) + var(--workspace-control-inset));top:var(--workspace-control-top);z-index:9;background:var(--paper)}
 #selected-view[data-workspace-layout=array]>#archive-layout-controls{display:none}
-#workspace-layout,#array-status{display:flex;align-items:center;flex-wrap:nowrap;gap:10px;margin:0;min-width:0;max-width:100%;font:500 11px/16px var(--font);letter-spacing:.08em;white-space:nowrap}
-#workspace-layout .s-layout-options,#array-status .s-layout-options{max-width:100%;height:28px}
-#workspace-layout .s-layout-options>button,#array-status .s-layout-options>button{height:28px;min-height:28px;white-space:nowrap;padding-inline:9px}
-#kept-view .kept-manager{padding-top:var(--workspace-control-top)}
+#workspace-layout{display:flex;align-items:center;flex-wrap:nowrap;gap:10px;margin:0;min-width:0;max-width:100%;font:500 11px/16px var(--font);letter-spacing:.08em;white-space:nowrap}
+#workspace-layout .s-layout-options{max-width:100%;height:28px}
+#workspace-layout .s-layout-options>button{height:28px;min-height:28px;white-space:nowrap;padding-inline:9px}
 #array-layout-controls{min-width:0;padding:0 0 14px var(--workspace-control-inset)}
-#array-status{padding-bottom:14px}
 @media(max-width:1200px){
-  #workspace-layout,#array-status{gap:8px}
-  #workspace-layout .s-layout-options>button,#array-status .s-layout-options>button{padding-inline:5px}
+  #workspace-layout{gap:8px}
+  #workspace-layout .s-layout-options>button{padding-inline:5px}
 }
 @media(max-width:600px){#selected-view{--workspace-control-top:12px}}
-#selected-view[data-workspace-layout=array]{grid-template-columns:minmax(0,1fr);height:calc(100dvh - var(--prototype-header) - var(--prototype-footer,35px))!important}
+#selected-view[data-workspace-layout=array]{grid-template-columns:minmax(0,1fr)}
 #selected-view[data-workspace-layout=array]>:is(.collection,.file-panel,#journal-view,#empty-inbox,.archive-debug-handle){display:none!important}
 #selected-view>#kept-view{grid-area:1/1/2/-1;height:auto;max-height:none}
 #array-decision-tools{position:static;inset:auto;display:grid;grid-template-columns:repeat(2,minmax(0,1fr));align-items:center;gap:12px;height:auto;pointer-events:auto}

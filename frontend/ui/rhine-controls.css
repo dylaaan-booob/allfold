@@ -11,7 +11,6 @@
 .view-nav>button,.nav-inverse>span{display:flex;align-items:center;justify-content:flex-start;gap:9px;flex-shrink:0;min-width:0;height:28px;padding:0 14px;font:400 11px/1 var(--font);letter-spacing:.08em;white-space:nowrap}
 .view-nav>button{position:relative;color:var(--ink)}
 .view-nav small{font-size:9px;font-weight:400;letter-spacing:.08em;margin:0;color:var(--muted)}
-#kept-count{position:static;font:inherit;font-variant-numeric:tabular-nums;letter-spacing:0}
 #view-nav-plate{position:absolute;left:0;top:0;height:28px;z-index:2;pointer-events:none;transition:transform .24s cubic-bezier(.16,1,.3,1)}
 .nav-clip{position:absolute;inset:0;overflow:hidden;background:var(--ink)}
 .nav-inverse{position:absolute;inset:0 auto auto 0;transition:transform .24s cubic-bezier(.16,1,.3,1)}
@@ -35,7 +34,7 @@
 .s-layout{display:flex;align-items:center;gap:12px;white-space:nowrap;margin:0 0 0 auto;font:500 9px/1 var(--font);letter-spacing:.14em}
 .s-editor-grid>.s-browser>.s-browser-head{min-height:28px;align-content:start}
 /* manager.js::drawManager, TOP 52 / ROW 26; rail length uses real counts. */
-.kept-manager-heading,.s-directory-heading{display:flex;align-items:center;justify-content:space-between;font:600 9px/14px var(--font);letter-spacing:.16em;color:var(--muted);padding:0 24px 14px}
+.s-directory-heading{display:flex;align-items:center;justify-content:space-between;font:600 9px/14px var(--font);letter-spacing:.16em;color:var(--muted);padding:0 24px 14px}
 .s-directory-list,#array-index{padding:0;scrollbar-width:thin}
 .kept-manager-row{--index-rail:6px;position:relative;display:grid;grid-template-columns:24px minmax(0,1fr) auto;gap:2px;width:100%;height:26px;min-height:26px;padding:0 18px 0 50px;align-items:center;text-align:left;line-height:26px;color:var(--ink)}
 .kept-manager-row::before{content:'';position:absolute;left:var(--index-rail-start);top:12px;width:var(--index-rail);height:2px;background:var(--muted)}
@@ -115,7 +114,7 @@ body:not([data-settings-open]) .header-browse>#s-save{display:none}
 
 @media(max-width:600px){.kept-actions{flex-direction:column}.kept-actions>button{width:100%}}
 
-@media(max-width:600px){.kept-manager{padding:12px 0;border-bottom:1px solid var(--rule)}.kept-manager-row{flex:0 0 228px}.kept-manager-heading{padding:0 14px 10px}}
+
 
 #s-journals-page .s-layout{font-size:11px;line-height:28px;letter-spacing:.12em;flex-wrap:nowrap;white-space:nowrap}
 #s-journals-page .s-layout-options,#s-journals-page .s-layout-options button{height:28px;min-height:28px}
