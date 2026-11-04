@@ -66,56 +66,75 @@ Manual acceptance still required:
 
 ## Task Browser synthetic acceptance
 
-`electron/tests/browser-presentation-dom.fixture.cjs` runs the production BrowserRuntime,
-BrowserPresentation, trusted IPC/preload, Workbench and Layout Host against a local HTTP
-challenge page in a disposable Electron profile. It briefly shows its own Window because
-macOS does not provide a compositor surface for real child-View input/capture in a never-shown
-Window. Both Sessions reject non-fixture HTTP(S) requests. It uses no Python process,
-real account, institution, CAPTCHA provider or Zotero.
+Two real Electron fixtures use temporary profiles and loopback HTTP pages. Both reject
+non-fixture HTTP(S) requests; neither starts Python, accesses an account/institution,
+uses a real CAPTCHA provider or saves to Zotero.
 
-Run the fixture through:
+- `browser-presentation-dom.fixture.cjs` exercises production Runtime, Presentation,
+  trusted IPC/preload and Layout Host inside a small synthetic shell. It checks the
+  320 × 140 viewport, multiple Compact heights, preferences, host reload, webpage
+  dialogs and trusted Popover occlusion.
+- `browser-workspaces-dom.fixture.cjs` loads the shipped **built index and controllers**
+  with synthetic API responses. It checks actual Kept Queue / Compact / Focus / Restore,
+  Flyout, Overlay Sidebar, History Dialog, restored inline/fullscreen Kept, cancellation
+  and acknowledgement, and restored fullscreen Run WoS with exact task-page handoff.
+
+Run after the normal UI build:
 
 ```sh
-node --test electron/tests/browser-presentation-dom.test.cjs
+node --test electron/tests/browser-presentation-dom.test.cjs electron/tests/browser-workspaces-dom.test.cjs
 ALLFOLD_BROWSER_SCREENSHOTS=/tmp/allfold-browser-acceptance node --test electron/tests/browser-presentation-dom.test.cjs
+ALLFOLD_BROWSER_WORKSPACES_SCREENSHOTS=/tmp/allfold-browser-workspaces node --test electron/tests/browser-workspaces-dom.test.cjs
 ```
 
-The optional directory contains paired trusted-host and native-page PNGs plus
-`measurements.json`. Electron's host `capturePage()` excludes child Views; the `-page.png`
-image records the actual webpage viewport separately. These local outputs are not source
-artifacts. The fixture uses a small synthetic business shell with production presentation
-modules; its geometry does not certify every real Kept status/error message or third-party
-page layout.
+The optional directories contain paired trusted-host and native-page PNGs and
+`measurements.json`. Electron host `capturePage()` excludes child Views; `-page.png`
+records the actual webpage viewport separately. The fixtures briefly show their own
+Window because macOS supplies no usable native child-View compositor surface for real
+input/capture in a never-shown Window. Outputs remain local, outside source artifacts.
 
-Executed on macOS / Electron 45 on 2026-11-04 (Window dimensions include native Chrome;
-this environment gave a 32 px title bar):
+Executed on macOS / Electron 45 on 2026-11-04. The shipped UI measurements below use
+Window dimensions including its 32 px native title bar; the 600 × 480 Window therefore
+has 600 × 448 content bounds. DIP rounding can clip one fractional CSS pixel.
 
-| Window / host Zoom | Presentation | Native webpage viewport (DIP) |
+| Shipped UI Window / host Zoom | Presentation | Native webpage viewport (DIP) |
 | --- | --- | --- |
-| 1200 × 800 / 1 | Default Compact, 960 × 300 pane target, Services expanded | 666 × 300 |
-| 1200 × 800 / 1 | Compact height targets 140 / 240 / 300 / 420 | 666 × each target height |
-| 1200 × 800 / 1 | Narrow, flat Compact | 320 × 140 |
-| 600 × 480 / 1 | Compact target 640 × 240; Focus; Restore | 504 × 225 (container limited) |
-| 600 × 480 / 1 | Run task Focus | 600 × 255 |
-| 600 × 480 / 1.25 | Compact and Focus | 480 × 147 (container and Zoom limited) |
+| 1200 × 800 / 1 | Compact, 960 × 300 target; Browser Services expanded | 666 × 299 |
+| 1200 × 800 / 1 | Focus | 1092 × 518 |
+| 1200 × 800 / 1 | Focus with TOOLS expanded | 1092 × 482 |
+| 600 × 480 / 1 | Compact | 492 × 174 |
+| 600 × 480 / 1 | Focus | 492 × 210 |
+| 600 × 480 / 1.25 | Compact | 464 × 106 |
+| 600 × 480 / 1.25 | Focus | 464 × 151 |
+| 600 × 480 / 1.25 | Focus with active inline task controls and two scope/count rows | 464 × 106 |
+| 1200 × 800 / 1 | Run fullscreen task handoff | 1200 × 568 |
 
-The 300 px default lets the complete synthetic challenge fit at wide bounds; 140 px
-remains usable through scrolling and keyboard focus but is deliberately a lower bound,
-not a claim that a real challenge fits without Focus. Focus uses additional main-area
-space when available; at the minimum Window the container can constrain both modes to
-the same height. Browser Services yields below a 320 px webpage plus 180 px panel and
-is omitted from Run task Focus. The address bar stays one row while maintenance is
-closed, preserving height at non-default Zoom.
+The 300 px default fits the complete synthetic challenge at wide bounds. The separate
+320 × 140 flat test and constrained shipped views remain operable through actual
+mouse input and keyboard scrolling; they do not imply that a real challenge fits without
+Focus. Focus uses the available main area, temporarily omits Browser Services, and
+starts with its address/maintenance tools collapsed behind TOOLS. Compact and Focus
+retain independent tool expansion choices; returning to Compact restores the Services
+preference. Empty status text and empty workflow hosts consume no extra viewport.
+Preferred dimensions never receive effective measurements after resize or Zoom.
 
-Actual Chromium `sendInputEvent` mouse/key/wheel interactions checked the checkbox,
-Tab, Shift+Tab, Space, code entry, Enter submission, a local webpage dialog/Escape,
-native scrolling, the final control, Page switching, Compact/Focus/Restore/Queue,
-Flyout, Overlay Sidebar, trusted Dialog, fullscreen task-surface suspension and Run
-return focus. Assertions also check selected Page ID, Session object and Cookie,
-page-load token, focused webpage element, preserved input, exact Run task association,
-unchanged task ownership, native removal during trusted overlays, resize/Zoom clipping,
-SAVE/RESET/ORIGIN, malformed storage fallback and host-reload preference restoration.
+Actual Chromium `sendInputEvent` mouse/key/wheel interactions check checkbox activation,
+Tab, Shift+Tab, Space, code entry, Enter submission, native scrolling and the final
+control. The shipped 600 × 480 / Zoom 1.25 Compact, Focus and active-inline cases all
+complete the synthetic challenge successfully. The populated active batch shows planned
+3, processed 2, confirmed parents 1 and pending 1; its narrow counter row can receive
+keyboard focus and scroll horizontally. Queue's real task-page entry and statistics
+retain nonzero scrollable height at constrained sizes.
+
+Assertions retain the physical Page ID, Session object, Cookie, page-load token,
+webpage form/focused element, workflow/task association and legal cancellation identity.
+Trusted Flyout / Sidebar / Dialog / Popover coverage removes the native View while the
+Page stays alive. Fullscreen task surfaces remain open while hidden for handoff and
+restore their controls/focus on return. A host reload resets Presentation's sequence
+through Electron 45's current `did-start-navigation` event fields; a same-document
+navigation retains the existing View. SAVE / RESET / ORIGIN, malformed storage fallback
+and saved-preference restoration are also checked.
 
 Real hCaptcha/MFA, institutional authentication, account popups and actual Zotero/PDF
-results remain separate, explicitly authorized acceptance. The local component is a
-synthetic challenge and does not establish real CAPTCHA compatibility.
+results remain separate, explicitly authorized acceptance. These local synthetic pages
+do not establish real CAPTCHA compatibility or every external site's usable minimum size.

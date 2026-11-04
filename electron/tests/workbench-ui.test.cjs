@@ -66,6 +66,18 @@ test('Kept Compact and Focus share the pane and existing Page; returning restore
   assert.equal(pane.hidden,true);assert.equal(f.document.activeElement,input);
   assert.equal(f.calls.some(call=>['new','navigate','reload'].includes(call.action)),false);
 });
+test('Focus makes room for its Page while each mode retains its tool expansion and Services preference',async()=>{
+  const f=fixture();f.window.workspace='kept';await f.window.allfoldWorkbench.showKeptBrowser();f.flush();
+  const click=id=>{f.document.getElementById(id).dispatchEvent(new Event('click'));f.flush();};
+  const address=f.document.getElementById('browser-address'),area=f.document.getElementById('browser-work-area');
+  assert.equal(address.hidden,false);assert.equal(area.style['--browser-services-width'],'288px');
+  click('browser-tools-toggle');assert.equal(address.hidden,true);
+  click('browser-focus');assert.equal(address.hidden,true);assert.equal(area.style['--browser-services-width'],'0px');
+  click('browser-tools-toggle');assert.equal(address.hidden,false);
+  click('browser-compact');assert.equal(address.hidden,true);assert.equal(area.style['--browser-services-width'],'288px');
+  click('browser-focus');assert.equal(address.hidden,false);
+  assert.equal(f.storage.has('allfold.browser-services-expanded'),false);
+});
 test('Run task page handoff uses temporary Focus and restores the original Run',async()=>{
   const f=fixture(),input=f.document.getElementById('run-show-task-page');f.window.workspace='run';input.focus();
   f.setState({selected:3,taskPageId:8,tabs:[{id:8,association:{workflow_id:'run-a',task_id:'prepare-a',active:true,role:'wos-query'}}]});

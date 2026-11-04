@@ -6,7 +6,7 @@ class BrowserPresentation {
     this.sequence=-1;this.selected=null;this.mounted=null;this.focusPending=false;
     this.resize=()=>{this.detach();this.bounds=null;this.requestLayout();};
     this.closed=()=>{this.detach();this.host=null;};
-    this.navigation=(_event,_url,_same,main)=>{if(main)this.reset();};
+    this.navigation=event=>{if(event.isMainFrame && !event.isSameDocument)this.reset();};
     this.rendererGone=()=>this.reset();
     hostWindow?.on('resize',this.resize);
     hostWindow?.on('closed',this.closed);

@@ -105,7 +105,9 @@ test('main-window Browser uses measured bounds, preserves pages when suspended a
   assert.equal(host.webContents.messages.at(-1).channel,'browser:layout');
   browser.setPresentation({sequence:5,visible:true,suspended:false,bounds:{x:0,y:160,width:1400,height:900}});
   assert.deepEqual(tab.view.bounds,{x:0,y:160,width:1200,height:690});
-  host.webContents.emit('did-start-navigation',{},'http://127.0.0.1:18767/',false,true);
+  host.webContents.emit('did-start-navigation',{url:'http://127.0.0.1:18767/',isSameDocument:true,isMainFrame:true});
+  assert.equal(host.children.has(tab.view),true,'same-document navigation must retain the mounted Page');
+  host.webContents.emit('did-start-navigation',{url:'http://127.0.0.1:18767/',isSameDocument:false,isMainFrame:true});
   assert.equal(host.children.size,0);assert.equal(browser.tabs.size,1);
   assert.equal(browser.setPresentation({sequence:0,visible:false,suspended:false,bounds:null}),true);
   browser.close();assert.equal(host.destroyed,undefined);
