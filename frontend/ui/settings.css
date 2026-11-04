@@ -288,3 +288,37 @@
 #s-institution-results:empty{display:none}
 
 @media(min-width:601px) and (max-width:1200px){#s-run{--run-index-width:212px;--run-context-width:300px;--run-gap:18px}#s-settings{--settings-system-width:300px}}
+
+/* Run and Settings use the same container-measured four-region host as Journals. */
+#configuration-workspace:has(:is(#run-page,#settings-view):not([hidden])){padding:0}
+#s-run.workbench-layout,#s-settings.workbench-layout{display:grid;grid-template-columns:var(--rail-width,48px) minmax(0,1fr) 0 var(--rail-width,48px);grid-template-rows:minmax(0,1fr);gap:0;padding:0;overflow:hidden;align-items:stretch}
+:is(#s-run,#s-settings).workbench-layout[data-sidebar-mode=docked]{grid-template-columns:var(--rail-width) minmax(0,1fr) var(--sidebar-width) var(--rail-width)}
+#s-run>.workspace-content{padding:20px 24px 0;overflow:hidden}
+#s-run .s-run-body{min-height:0;overflow:auto;overscroll-behavior:contain;padding-bottom:24px}
+#s-run .s-run-history{display:grid;gap:12px;padding-top:24px}
+#s-run .s-provider-alias{display:grid;margin-bottom:20px}
+#s-run .functional-sidebar fieldset{grid-template-columns:minmax(0,1fr)}
+#s-run .s-domain-save-status{padding-top:12px}
+#s-settings>.s-settings-main{margin:0;padding:24px;overflow:auto;overscroll-behavior:contain}
+#s-settings .s-settings-main>[data-settings-section]{max-width:680px;margin-inline:auto}
+#s-settings .s-settings-main>section{display:grid;gap:20px}
+#s-settings .s-settings-main>.s-domain-save-status{max-width:680px;margin:18px auto 0}
+#s-settings #s-system{padding:0}
+#s-settings .s-system-intro{display:none}
+#s-settings .functional-sidebar .s-system{display:block}
+#s-settings .functional-sidebar .s-system details{padding:16px 0}
+#s-settings .s-reset{max-width:100%;margin-top:0}
+#s-settings .s-reset-confirm{display:grid;gap:16px;padding-top:16px}
+#s-settings .s-reset-confirm>label{max-width:240px}
+#s-settings .s-setting-group{grid-template-columns:minmax(0,1fr)}
+#s-workspace-apply{justify-self:start}
+#s-kept-configuration-bridge{display:none}
+:is(#kept-access-settings,#kept-workflow-settings){min-width:0}
+:is(#kept-access-settings,#kept-workflow-settings) :is(input,select,textarea){width:100%;min-width:0;border:1px solid var(--rule);background:transparent;color:var(--ink);font:13px var(--font);padding:8px 10px;height:38px}
+:is(#kept-access-settings,#kept-workflow-settings) label{display:grid;gap:8px;color:var(--muted);font:12px var(--font)}
+:is(#kept-access-settings,#kept-workflow-settings) .s-setting-group{display:grid;grid-template-columns:minmax(0,1fr);gap:16px;padding:12px 0 20px}
+:is(#kept-access-settings,#kept-workflow-settings) .s-check{display:flex;gap:10px;align-items:center}
+:is(#kept-access-settings,#kept-workflow-settings) input[type=checkbox]{width:18px;height:18px;flex:0 0 auto}
+:is(#kept-access-settings,#kept-workflow-settings) .s-help{margin:0}
+.s-domain-save-status{font-size:11px;line-height:1.6}
+@container workspace-content (max-width:480px){#s-run .s-setting-group{grid-template-columns:minmax(0,1fr)}#s-run>.workspace-content,#s-settings>.s-settings-main{padding-inline:16px}}

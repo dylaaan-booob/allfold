@@ -254,7 +254,8 @@ def create_app(config_path: Path, *, electron_bridge: ElectronBridge, diagnostic
         diagnostic_level = 'info'
     app.state.diagnostics = DiagnosticStore(resolved_config_path, root=diagnostics_root, level=diagnostic_level)
     from allfold.application.browser_runtime import BrowserTaskLock
-    app.state.browser_task_lock = BrowserTaskLock()
+    app.state.settings_write_lock = threading.RLock()
+    app.state.browser_task_lock = BrowserTaskLock(admission_lock=app.state.settings_write_lock)
     app.state.electron_bridge = electron_bridge
     electron_bridge.diagnostics = app.state.diagnostics
 
@@ -283,9 +284,6 @@ def create_app(config_path: Path, *, electron_bridge: ElectronBridge, diagnostic
     app.state.import_token = secrets.token_urlsafe(32)
     app.state.reset_confirmation = None
     app.state.reset_lock = threading.Lock()
-    # Shared with configuration writers; installed here for standalone composition.
-    if not hasattr(app.state, 'settings_write_lock'):
-        app.state.settings_write_lock = threading.RLock()
     import_submission_lock = app.state.settings_write_lock
     app.state.import_submission_lock = import_submission_lock
 
@@ -447,8 +445,9 @@ def create_app(config_path: Path, *, electron_bridge: ElectronBridge, diagnostic
                 return JSONResponse({'accepted': accepted}, status_code=200 if accepted else 409)
             if action != 'start':
                 return JSONResponse({'error': 'Unknown action'}, status_code=404)
-            workspace = load_config(resolved_config_path).output_dir
-            state = service.start(workspace, paper_id, developer_retry=body.developer_retry)
+            with app.state.settings_write_lock:
+                workspace = load_config(resolved_config_path).output_dir
+                state = service.start(workspace, paper_id, developer_retry=body.developer_retry)
             return JSONResponse(state)
         except (ConfigurationError, ValueError, OSError, ContentChangedError, CompareReadError) as exc:
             return JSONResponse({'error': str(exc)}, status_code=409)
@@ -621,11 +620,13 @@ def create_app(config_path: Path, *, electron_bridge: ElectronBridge, diagnostic
         journal_key = str(form.get('journal_key', '')).strip()
         if not journal_key:
             return JSONResponse({'message': 'journal_key is required'}, status_code=400)
-        disk = load_settings(resolved_config_path)
+        def begin_cover():
+            with app.state.settings_write_lock:
+                disk = load_settings(resolved_config_path)
+                return app.state.journal_cover_search.start(disk.journal_path, disk.draft.journals,
+                                                            journal_key, config_path=resolved_config_path)
         try:
-            state = app.state.journal_cover_search.start(disk.journal_path, disk.draft.journals,
-                                                        journal_key, config_path=resolved_config_path)
-            return JSONResponse(state)
+            return JSONResponse(await run_in_threadpool(begin_cover))
         except (ValueError, OSError) as error:
             return JSONResponse({'message': str(error)}, status_code=409)
 
@@ -736,7 +737,13 @@ def create_app(config_path: Path, *, electron_bridge: ElectronBridge, diagnostic
                 current = _read_snapshot(resolved_config_path, source=SettingsIssueSource.MONITOR_CONFIG)
                 if current.issue or current.revision != draft.monitor_revision:
                     raise ContentChangedError("Monitor configuration changed; Preview again")
-            await run_in_threadpool(confirm_research_scope, plan, before_write=verify_monitor_before_write)
+            def commit_scope():
+                from allfold.web.settings_guard import settings_task_active
+                with app.state.settings_write_lock:
+                    if settings_task_active(app):
+                        raise ContentChangedError('Active task owns the saved configuration; Import is pending')
+                    confirm_research_scope(plan, before_write=verify_monitor_before_write)
+            await run_in_threadpool(commit_scope)
             scope_previews.pop(proof, None)
             saved = load_settings(resolved_config_path)
             return markdown_reply(request, settings_form_from_draft(saved.draft),
@@ -788,96 +795,103 @@ def create_app(config_path: Path, *, electron_bridge: ElectronBridge, diagnostic
         ):
             return settings_error("Invalid or missing CSRF token.")
 
-        values = settings_form_from_submission(form)
-        draft, form_issues = settings_draft_from_form(values)
-        if draft is None:
-            return settings_response(request,
-                _settings_result_context(
-                    csrf_token=csrf_token,
-                    form_values=values,
-                    issues=form_issues,
-                    message="Settings were not saved.",
-                ),
-            )
+        return await run_in_threadpool(save_submitted_settings, request, form)
 
-        disk = load_settings(config_path)
-        plan = plan_settings_deletions(disk.draft, draft)
-        proof = hmac.new(deletion_key, repr((draft, plan)).encode("utf-8"), hashlib.sha256).hexdigest()
-        approved = (
-            plan.required
-            and str(form.get("confirm_settings_deletions", "")) == "yes"
-            and hmac.compare_digest(str(form.get("settings_deletion_proof", "")), proof)
-        )
-        # 确认仅由本进程签发，精确绑定全部草稿字段、真实删除目标及原始版本。
-        # 不保存草稿副本；变更草稿、服务成员或文件版本都需重新预览。
-        if plan.required and not approved and not disk.issues and (
-            draft.monitor_revision == disk.draft.monitor_revision
-            and draft.journal_revision == disk.draft.journal_revision
-        ) and validate_settings(config_path, draft).outcome is SettingsValidationOutcome.VALID:
+    def save_submitted_settings(request, form):
+        from allfold.web.settings_guard import settings_task_active
+        with app.state.settings_write_lock:
+            if settings_task_active(app):
+                return JSONResponse({"saved": False, "outcome": "TASK_ACTIVE", "message": "Pending: active task owns the saved configuration; the draft is retained."})
+            values = settings_form_from_submission(form)
+            draft, form_issues = settings_draft_from_form(values)
+            if draft is None:
+                return settings_response(request,
+                    _settings_result_context(
+                        csrf_token=csrf_token,
+                        form_values=values,
+                        issues=form_issues,
+                        message="Settings were not saved.",
+                    ),
+                )
+
+            disk = load_settings(config_path)
+            plan = plan_settings_deletions(disk.draft, draft)
+            proof = hmac.new(deletion_key, repr((draft, plan)).encode("utf-8"), hashlib.sha256).hexdigest()
+            approved = (
+                plan.required
+                and str(form.get("confirm_settings_deletions", "")) == "yes"
+                and hmac.compare_digest(str(form.get("settings_deletion_proof", "")), proof)
+            )
+            # 确认仅由本进程签发，精确绑定全部草稿字段、真实删除目标及原始版本。
+            # 不保存草稿副本；变更草稿、服务成员或文件版本都需重新预览。
+            if plan.required and not approved and not disk.issues and (
+                draft.monitor_revision == disk.draft.monitor_revision
+                and draft.journal_revision == disk.draft.journal_revision
+            ) and validate_settings(config_path, draft).outcome is SettingsValidationOutcome.VALID:
+                return settings_response(request,
+                    _settings_result_context(
+                        csrf_token=csrf_token, form_values=values,
+                        deletion_plan=plan, deletion_proof=proof,
+                        message="Review the affected Services and Journals, then confirm this Save.",
+                    ),
+                )
+            approval = SettingsDeletionApproval(
+                draft.monitor_revision, draft.journal_revision,
+                tuple(service.id for service in plan.services),
+            ) if approved else None
+            result = (
+                save_settings(config_path, draft, deletion_approval=approval)
+                if approval is not None else save_settings(config_path, draft)
+            )
+            if result.outcome is SettingsSaveOutcome.SAVED:
+                response = settings_response(request,
+                    _settings_result_context(
+                        csrf_token=csrf_token,
+                        form_values=settings_form_from_draft(result.state.draft),
+                        issues=result.issues,
+                        validation_result=result.validation,
+                        save_result=result,
+                        disk_state=result.state,
+                        message="Settings saved.",
+                    ), saved=True,
+                )
+                return response
+
+            if result.outcome is SettingsSaveOutcome.PARTIAL_SAVE:
+                # 保留提交时的字段与原始 revision；只读磁盘状态单独报告实际写入。
+                form_values = values
+                message = (
+                    "Settings were partially saved: "
+                    f"journal data written: {'yes' if result.journal_written else 'no'}, "
+                    f"monitor configuration written: {'yes' if result.monitor_written else 'no'}, "
+                    f"PubMed API Key written: {'yes' if result.pubmed_key_written else 'no'}, "
+                    f"OpenAlex API Key written: {'yes' if result.openalex_key_written else 'no'}. "
+                    "Reload and reconcile before another Save."
+                )
+            elif result.outcome is SettingsSaveOutcome.REVISION_CONFLICT:
+                form_values = values
+                message = (
+                    "Settings were not saved because files changed since this "
+                    "editor was opened. Reload and reconcile before retrying."
+                )
+            elif result.outcome is SettingsSaveOutcome.WRITE_FAILED:
+                form_values = values
+                message = "Settings could not be written."
+            else:
+                form_values = values
+                message = "Settings draft is invalid and was not saved."
+
             return settings_response(request,
                 _settings_result_context(
-                    csrf_token=csrf_token, form_values=values,
-                    deletion_plan=plan, deletion_proof=proof,
-                    message="Review the affected Services and Journals, then confirm this Save.",
-                ),
-            )
-        approval = SettingsDeletionApproval(
-            draft.monitor_revision, draft.journal_revision,
-            tuple(service.id for service in plan.services),
-        ) if approved else None
-        result = (
-            save_settings(config_path, draft, deletion_approval=approval)
-            if approval is not None else save_settings(config_path, draft)
-        )
-        if result.outcome is SettingsSaveOutcome.SAVED:
-            response = settings_response(request,
-                _settings_result_context(
                     csrf_token=csrf_token,
-                    form_values=settings_form_from_draft(result.state.draft),
+                    form_values=form_values,
                     issues=result.issues,
                     validation_result=result.validation,
                     save_result=result,
                     disk_state=result.state,
-                    message="Settings saved.",
-                ), saved=True,
+                    message=message,
+                ),
             )
-            return response
-
-        if result.outcome is SettingsSaveOutcome.PARTIAL_SAVE:
-            # 保留提交时的字段与原始 revision；只读磁盘状态单独报告实际写入。
-            form_values = values
-            message = (
-                "Settings were partially saved: "
-                f"journal data written: {'yes' if result.journal_written else 'no'}, "
-                f"monitor configuration written: {'yes' if result.monitor_written else 'no'}, "
-                f"PubMed API Key written: {'yes' if result.pubmed_key_written else 'no'}, "
-                f"OpenAlex API Key written: {'yes' if result.openalex_key_written else 'no'}. "
-                "Reload and reconcile before another Save."
-            )
-        elif result.outcome is SettingsSaveOutcome.REVISION_CONFLICT:
-            form_values = values
-            message = (
-                "Settings were not saved because files changed since this "
-                "editor was opened. Reload and reconcile before retrying."
-            )
-        elif result.outcome is SettingsSaveOutcome.WRITE_FAILED:
-            form_values = values
-            message = "Settings could not be written."
-        else:
-            form_values = values
-            message = "Settings draft is invalid and was not saved."
-
-        return settings_response(request,
-            _settings_result_context(
-                csrf_token=csrf_token,
-                form_values=form_values,
-                issues=result.issues,
-                validation_result=result.validation,
-                save_result=result,
-                disk_state=result.state,
-                message=message,
-            ),
-        )
 
     install_settings_api(app, resolved_config_path, csrf_token,
                          workspace_health=_workspace_health_context,

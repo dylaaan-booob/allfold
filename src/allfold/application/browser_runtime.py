@@ -14,7 +14,8 @@ class BrowserOwner:
 
 
 class BrowserTaskLock:
-    def __init__(self):
+    def __init__(self, *, admission_lock=None):
+        self._admission = admission_lock or threading.RLock()
         self._mutex = threading.Lock()
         self._owner: BrowserOwner | None = None
 
@@ -24,7 +25,9 @@ class BrowserTaskLock:
             return self._owner
 
     def acquire(self, kind: str) -> BrowserOwner | None:
-        with self._mutex:
+        # Only admission waits behind a configuration write. Completion and
+        # require() must never wait on writers holding another coordinator lock.
+        with self._admission, self._mutex:
             if self._owner is not None:
                 return None
             self._owner = BrowserOwner(kind, uuid4().hex)
