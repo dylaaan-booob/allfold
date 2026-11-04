@@ -78,6 +78,8 @@ uses a real CAPTCHA provider or saves to Zotero.
   with synthetic API responses. It checks actual Kept Queue / Compact / Focus / Restore,
   Flyout, Overlay Sidebar, History Dialog, restored inline/fullscreen Kept, cancellation
   and acknowledgement, and restored fullscreen Run WoS with exact task-page handoff.
+  Its test runs with both macOS scrolling-only and always-visible scrollbars through
+  process-local Cocoa arguments; it does not change the system preference.
 
 Run after the normal UI build:
 
@@ -88,7 +90,8 @@ ALLFOLD_BROWSER_WORKSPACES_SCREENSHOTS=/tmp/allfold-browser-workspaces node --te
 ```
 
 The optional directories contain paired trusted-host and native-page PNGs and
-`measurements.json`. Electron host `capturePage()` excludes child Views; `-page.png`
+`measurements.json` (the shipped fixture separates `WhenScrolling` and `Always`).
+Electron host `capturePage()` excludes child Views; `-page.png`
 records the actual webpage viewport separately. The fixtures briefly show their own
 Window because macOS supplies no usable native child-View compositor surface for real
 input/capture in a never-shown Window. Outputs remain local, outside source artifacts.
@@ -104,9 +107,9 @@ has 600 × 448 content bounds. DIP rounding can clip one fractional CSS pixel.
 | 1200 × 800 / 1 | Focus with TOOLS expanded | 1092 × 482 |
 | 600 × 480 / 1 | Compact | 492 × 174 |
 | 600 × 480 / 1 | Focus | 492 × 210 |
-| 600 × 480 / 1.25 | Compact | 464 × 106 |
+| 600 × 480 / 1.25 | Compact | 464 × 109 |
 | 600 × 480 / 1.25 | Focus | 464 × 151 |
-| 600 × 480 / 1.25 | Focus with active inline task controls and two scope/count rows | 464 × 106 |
+| 600 × 480 / 1.25 | Focus with active inline task controls and two scope/count rows | 464 × 109 |
 | 1200 × 800 / 1 | Run fullscreen task handoff | 1200 × 568 |
 
 The 300 px default fits the complete synthetic challenge at wide bounds. The separate
@@ -117,6 +120,14 @@ starts with its address/maintenance tools collapsed behind TOOLS. Compact and Fo
 retain independent tool expansion choices; returning to Compact restores the Services
 preference. Empty status text and empty workflow hosts consume no extra viewport.
 Preferred dimensions never receive effective measurements after resize or Zoom.
+
+With always-visible scrollbars, the shipped 600 × 480 window measures 492 × 148
+in Compact and 492 × 184 in Focus at Zoom 1. At Zoom 1.25 it measures 464 × 109
+in Compact, 464 × 125 in idle Focus and 464 × 109 in active inline Focus. The
+tabbar uses one horizontal scrolling region. In a constrained Browser container,
+the trusted controls can scroll independently and the webpage retains up to an
+88 CSS-pixel minimum strip, limited by the container itself. TOOLS remains an
+explicit, operable control; the narrower viewport still needs webpage scrolling.
 
 Actual Chromium `sendInputEvent` mouse/key/wheel interactions check checkbox activation,
 Tab, Shift+Tab, Space, code entry, Enter submission, native scrolling and the final

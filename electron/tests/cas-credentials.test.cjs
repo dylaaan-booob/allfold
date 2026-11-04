@@ -44,3 +44,26 @@ test('concurrent replacements cannot both consume the same displayed revision',a
   assert.equal(results[0].status,'fulfilled');assert.equal(results[1].reason.code,'cas_revision_conflict');
   assert.equal((await api.casStatus()).username,'first');
 });
+test('unreadable ciphertext reports its revision for an explicit complete replacement',async t=>{
+  for(const cause of ['invalid-json','decryption-failed']){
+    const api=fixture(t),target=path.join(api.directory,'xmu-cas-credentials.bin');
+    fs.writeFileSync(target,'synthetic corrupt ciphertext');
+    const decrypt=api.safeStorage.decryptStringAsync;
+    if(cause==='decryption-failed')api.safeStorage.decryptStringAsync=async()=>{throw Error('synthetic decrypt failure');};
+    const state=await api.casStatus();
+    assert.equal(state.ok,false);assert.equal(state.error,'cas_store_unreadable');
+    assert.equal(state.configured,false);assert.equal(state.username,'');
+    assert.match(state.revision,/^[0-9a-f]{64}$/);
+    await assert.rejects(api.saveCASCredentials({username:'fixture',password:'replacement',expected_revision:'missing'}),error=>error.code==='cas_revision_conflict');
+    await assert.rejects(api.saveCASCredentials({username:'fixture',password:'',expected_revision:state.revision}),error=>error.code==='cas_store_unreadable');
+    api.safeStorage.decryptStringAsync=decrypt;
+    const saved=await api.saveCASCredentials({username:'fixture',password:'replacement',expected_revision:state.revision});
+    assert.equal((await api.casStatus()).revision,saved.revision);
+    assert.equal((await api.readCASCredentials()).password,'replacement');
+  }
+});
+test('a credential file that cannot be read supplies no overwrite revision',async t=>{
+  const api=fixture(t);fs.mkdirSync(path.join(api.directory,'xmu-cas-credentials.bin'));
+  await assert.rejects(api.casStatus(),error=>error.code==='cas_store_unreadable');
+  await assert.rejects(api.saveCASCredentials({username:'fixture',password:'replacement',expected_revision:'missing'}),error=>error.code==='cas_store_unreadable');
+});

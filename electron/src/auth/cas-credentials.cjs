@@ -41,8 +41,11 @@ async function decryptCredentials(encrypted) {
 }
 async function readCASCredentials() {return decryptCredentials(await encryptedStore());}
 async function casStatus() {
-  const encrypted=await encryptedStore(),credentials=await decryptCredentials(encrypted);
-  return {ok:true,configured:!!credentials,username:credentials?.username || '',revision:revision(encrypted)};
+  const encrypted=await encryptedStore(),storedRevision=revision(encrypted);
+  try {
+    const credentials=await decryptCredentials(encrypted);
+    return {ok:true,configured:!!credentials,username:credentials?.username || '',revision:storedRevision};
+  }catch(error){return {ok:false,error:casErrorCode(error),configured:false,username:'',revision:storedRevision};}
 }
 function saveCASCredentials(value) {return mutate(()=>saveCredentials(value));}
 async function saveCredentials(value) {

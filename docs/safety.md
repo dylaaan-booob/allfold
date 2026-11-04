@@ -19,3 +19,10 @@ These invariants apply across modules. Field-level definitions remain in code; t
 | Setup preserves existing configuration and keys. Fixed upstream sources and Runtime ownership are validated before assembly; unknown contents are not overwritten. | [setup](../electron/scripts/setup.cjs), [assembler](../electron/scripts/prepare-runtime.cjs) | [setup](../electron/tests/setup.test.cjs), [Runtime](../electron/tests/runtime-build.test.cjs), [UI build](../electron/tests/ui-build.test.cjs) |
 
 Use isolated configuration, Workspace and transport fixtures. Offline checks do not prove live authentication, challenge completion, native saving or PDF storage. Inspect actual Zotero state before retrying an uncertain save. Apply the existing manual boundary to CAPTCHA, MFA and ambiguous pages; retain the current explicitly scoped Solver behavior.
+
+If credential ciphertext can be read but not decrypted, status reports an error
+and its ciphertext revision without exposing a username or treating it as usable.
+An explicitly confirmed complete replacement still compares that revision. If the
+file itself cannot be read, no overwrite revision is available; the UI retains the
+draft and requires a successful status read before submitting. Status responses
+preserve newer credential input, which stays outside ordinary draft recovery.
