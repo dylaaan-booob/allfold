@@ -10,6 +10,7 @@
 .kept-queue-heading{display:flex;justify-content:space-between;align-items:center;gap:12px}
 .kept-queue-heading h1{font-size:24px;margin:0}
 #kept-scope-status{margin:0;white-space:pre-wrap;font-size:12px;line-height:1.7;overflow-wrap:anywhere}
+#kept-scope-status>span{display:block}
 #kept-queue-body{flex:1 0 auto;min-height:140px;overflow:auto}
 #kept-statistics{max-width:100%;overflow:auto;scrollbar-width:thin}
 #kept-statistics table{border-collapse:collapse;font-size:12px;width:max-content;min-width:100%}
