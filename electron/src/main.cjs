@@ -15,6 +15,7 @@ const {operationAssociation}=require('./browser/page-association.cjs');
 const {prepareService,searchJournalCover,newTaskPage}=require('./workflows/browser-operations.cjs');
 const {wosQuery,wosExport}=require('./workflows/wos-operations.cjs');
 const {readCASCredentials,casStatus,saveCASCredentials,clearCASCredentials,casErrorCode}=require('./auth/cas-credentials.cjs');
+const {confirmConfigurationExit,confirmBlockedUnload}=require('./shared/configuration-exit.cjs');
 const {ELECTRON_ROOT,PROJECT_ROOT:ROOT,PRELOAD_DIR}=require('./shared/paths.cjs');
 const cdpStartedAt=Date.now();
 // Finish the asynchronous port probe before Electron initializes its CDP server.
@@ -26,6 +27,7 @@ if(cdpPort.status===0)app.commandLine.appendSwitch('remote-debugging-port',cdpPo
 protocol.registerSchemesAsPrivileged([{scheme:'allfold-zotero',privileges:{standard:true,secure:true,supportFetchAPI:true}}]);
 let python,window,browser,translator,socket,base;
 let exiting=false,readyToExit=false,activeRequest=null,bridgeReady=false;
+let exitApproved=false,exitCheck=null;
 let activeOperation=null;
 const token=randomBytes(32).toString('hex');
 function trusted(event) {
@@ -326,6 +328,9 @@ async function main() {
   window.webContents.on('will-navigate',(event,url)=>{if(new URL(url).origin !== base)event.preventDefault();});
   // Keep the window alive while native saving and Python Paper writes settle.
   window.on('close',event=>{if(!readyToExit){event.preventDefault();app.quit();}});
+  window.webContents.on('will-prevent-unload',event=>{
+    if(exitApproved || confirmBlockedUnload(window,dialog))event.preventDefault();
+  });
   browser=new BrowserRuntime({hostWindow:window,cdpURL,solveCloudflare,isTaskRunning:()=>!!activeRequest,readCASCredentials:async()=>{
     if(exiting)return null;
     const credentials=await readCASCredentials();
@@ -355,6 +360,13 @@ app.whenReady().then(main).catch(error=>{
   app.quit();
 });
 app.on('before-quit',event=>{
+  if(!readyToExit && !exitApproved && window && !window.isDestroyed()) {
+    event.preventDefault();
+    if(!exitCheck)exitCheck=confirmConfigurationExit(window,dialog).then(approved=>{
+      exitCheck=null;if(approved){exitApproved=true;app.quit();}
+    }).catch(()=>{exitCheck=null;});
+    return;
+  }
   activeOperation?.controller.abort();
   if(readyToExit && activeRequest) {
     event.preventDefault();
