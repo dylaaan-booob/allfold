@@ -170,12 +170,14 @@ app.whenReady().then(async()=>{
       const $=id=>document.getElementById(id);$('settings-open').click();
       if($('s-settings').clientHeight<100)throw Error('Settings lost its parent height');
       window.workspaceNavigation.go('workspace',{instant:true});
-      window.allfoldUIPreferences.setArchiveDisabled(false);$('workspace-archive').click();
+      window.allfoldUIPreferences.setArchiveDisabled(false);$('array-index-toggle').click();$('array-index').scrollTop=200;$('workspace-archive').click();
       if($('selected-view').dataset.workspaceLayout!=='archive' || !$('kept-view').hidden)throw Error('Archive restoration failed');
       archiveDebug.values.height=200;window.dispatchEvent(new Event('archive-debug-change'));
       if(Math.abs($('selected-view').getBoundingClientRect().height-200)>1)throw Error('Archive tuned height is overridden by flexible fill');
       $('workspace-array').click();
       if($('selected-view').getBoundingClientRect().height!==$('allfold-pane').getBoundingClientRect().height)throw Error('Archive height leaked into ARRAY');
+      $('array-index-toggle').click();if($('array-index').scrollTop!==200)throw Error('Index scroll lost through Archive entry');
+      document.querySelector('#array-flyout [data-flyout-close]').click();
     });
     // Browser is a separate full view; this fixture has no native page Session.
     await js("window.allfoldWorkbench.show()");

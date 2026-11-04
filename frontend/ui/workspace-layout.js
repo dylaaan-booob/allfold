@@ -44,7 +44,7 @@ window.allfoldLayout=(()=>{
     const cancelTimers=()=>{clearTimeout(openTimer);clearTimeout(closeTimer);};
     function saveFlyoutScroll() {
       const list=flyout.querySelector('[data-flyout-list]');
-      if(!flyout.hidden && flyoutKey!==null && list)flyoutScroll.set(flyoutKey,{top:list.scrollTop,left:list.scrollLeft});
+      if(!flyout.hidden && !root.closest('[hidden]') && flyoutKey!==null && list)flyoutScroll.set(flyoutKey,{top:list.scrollTop,left:list.scrollLeft});
     }
     function closeFlyout({restoreFocus=true}={}) {
       cancelTimers();if(flyout.hidden)return;

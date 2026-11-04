@@ -222,7 +222,9 @@ function closeReader() {
 function setLayout(layout) {
   if(window.workspaceNavigation.current()!=='workspace' || switchBusy() || !['archive','array'].includes(layout) || (layout==='archive' && archiveDisabled()))return false;
   if($('selected-view').dataset.workspaceLayout===layout)return true;
-  if(!closeReader() || !bridge.setLayout(layout))return false;
+  if(!closeReader())return false;
+  layoutHost.closeFlyout({restoreFocus:false});
+  if(!bridge.setLayout(layout))return false;
   render();refreshActions();return true;
 }
 function setStatus(next) {
@@ -237,6 +239,7 @@ function openPaper(id) {
   const entry=candidate || allEntries().find(entry=>entry.paper.id===id);
   if(!entry || !window.workspaceNavigation.go('workspace') || !setLayout('array'))return false;
   if(!closeReader())return false;
+  layoutHost.closeFlyout({restoreFocus:false});
   status=candidate?'candidates':'kept';ui=states[status];
   ui.filter=candidate?key(entry):null;ui.selected=id;ui.missingLinkPaper=false;
   render();return true;
@@ -244,7 +247,9 @@ function openPaper(id) {
 // Recovery selects its existing business context before opening the modal.
 function openKept() {
   if(!window.workspaceNavigation.go('workspace',{workflowRecovery:true}))return false;
-  if(!closeReader() || !bridge.setLayout('array'))return false;
+  if(!closeReader())return false;
+  layoutHost.closeFlyout({restoreFocus:false});
+  if(!bridge.setLayout('array'))return false;
   status='kept';ui=states.kept;render();return true;
 }
 window.workspaceArray={
