@@ -75,6 +75,9 @@ export function createAutosave({write,onSaved=()=>{},onRestore=()=>{},onState=()
   function rebase(data) {
     if(inflight)return false;
     const retained=changes(baseline.values,values);
+    // A lost response may have committed the submitted value. A later reversion
+    // still belongs to the user even when it equals the old saved baseline.
+    for(const field of Object.keys(submittedValues?changes(baseline.values,submittedValues):{}))retained[field]=copy(values[field]);
     submittedValues=null;baseline=copy(data);values=copy(data.values);
     for(const field of Object.keys(values))if(Object.hasOwn(retained,field))values[field]=copy(retained[field]);
     status=dirty()?'Pending':'Saved';persist();onRestore(copy(values));emit();return true;
