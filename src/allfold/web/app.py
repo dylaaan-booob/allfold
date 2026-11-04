@@ -385,6 +385,8 @@ def create_app(config_path: Path, *, electron_bridge: ElectronBridge, diagnostic
                         service_id=workflow.service_id)
                 if app.state.batch_import.running:
                     plan = batch.plan
+                elif target.workspace_identity is None or target.papers_identity is None:
+                    plan = None
                 else:
                     with workspace_operation_lock(target.workspace) as lock:
                         target.verify(lock)

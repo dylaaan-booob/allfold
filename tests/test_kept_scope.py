@@ -172,3 +172,16 @@ def test_interrupted_history_retains_execution_scope_and_rejects_unbounded_ident
     assert restored['details']['service_id'] == service.id
     assert restored['details']['config_revision'] == 'a' * 64
     assert 'PRIVATE_SENTINEL' not in repr(restored)
+
+
+def test_queue_on_a_fresh_workspace_keeps_saved_services_visible_without_writes(tmp_path):
+    from fastapi.testclient import TestClient
+    from allfold.web.app import create_app
+    from electron_test_helpers import OfflineBridge
+    config, _, _, service = current_mapping_document(tmp_path)
+    app = create_app(config, electron_bridge=OfflineBridge(), diagnostics_root=tmp_path / 'logs')
+    with TestClient(app, base_url='http://localhost') as client:
+        response = client.get('/api/kept-workflow/queue')
+        assert response.status_code == 200
+        assert next(row for row in response.json()['services'] if row['id'] == service.id)['eligible'] == 0
+    assert not (tmp_path / 'workspace').exists()
