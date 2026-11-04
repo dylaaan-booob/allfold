@@ -54,3 +54,18 @@ test('an uncertain write followed by reverting the input still needs revision ve
   autosave.edit({name:'Initial'});assert.equal(autosave.dirty,true);assert.notEqual(autosave.status,'Saved');
   offline=false;assert.equal(await autosave.flush(),true);assert.deepEqual(writes[1].changes,{});assert.equal(autosave.dirty,false);autosave.dispose();
 });
+test('reviewing an uncertain saved write retains a later reversion to the original value',async t=>{
+  const {createAutosave}=await load(),writes=[];let offline=true,restored;
+  const autosave=createAutosave({write:async body=>{
+    writes.push(body);if(offline)throw Error('response lost after disk write');
+    return {saved:true,base:{revision:'c'},values:{name:'Initial'}};
+  },onRestore:values=>{restored=values;},delay:100000});
+  t.after(()=>autosave.dispose());
+  autosave.initialize({base:{revision:'a'},values:{name:'Initial'}});
+  autosave.edit({name:'Temporary'});assert.equal(await autosave.flush(),false);
+  autosave.edit({name:'Initial'});
+  autosave.rebase({base:{revision:'b'},values:{name:'Temporary'}});
+  assert.equal(restored.name,'Initial');assert.equal(autosave.status,'Pending');
+  offline=false;assert.equal(await autosave.flush(),true);
+  assert.deepEqual(writes[1],{base:{revision:'b'},changes:{name:'Initial'}});autosave.dispose();
+});
