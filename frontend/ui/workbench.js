@@ -1,9 +1,10 @@
 'use strict';
-// Presentation is independent of business navigation and never enters/leaves a Workspace.
+// One Browser pane moves between presentation hosts; pages and task authority stay native.
 window.allfoldWorkbench=(()=>{
   const $=id=>document.getElementById(id),desktop=window.allfoldDesktop;
   let visible=false,returning=false,returnFocus=null,sequence=0,frame=null,state={tabs:[],selected:null};
   let scrollSnapshot=[],workspaceAtShow=null;
+  let source=null,mode='focus',requested=null;
   let savedServices={scope:null,services:[]},lastSelected=null;
   const preferenceKeys={expanded:'allfold.browser-services-expanded',width:'allfold.browser-services-width'};
   const readPreference=(key,fallback)=>{try{const value=localStorage.getItem(key);return value===null?fallback:JSON.parse(value);}catch(_){return fallback;}};
@@ -13,8 +14,8 @@ window.allfoldWorkbench=(()=>{
   let drag=null;
   const savePreference=(key,value)=>{try{localStorage.setItem(key,JSON.stringify(value));}catch(_){/* UI remains usable if local storage is unavailable. */}};
   function sizeServices() {
-    const area=$('browser-work-area'),width=Math.max(0,area.getBoundingClientRect().width-240-6);
-    const effective=expanded?Math.min(preferredWidth,width):0;
+    const area=$('browser-work-area'),width=Math.max(0,area.getBoundingClientRect().width-320-6);
+    const effective=source!=='run' && expanded && width>=180?Math.min(preferredWidth,width):0;
     area.style.setProperty('--browser-services-width',effective+'px');
     $('browser-services').hidden=$('browser-services-resize').hidden=!expanded || effective<=0;
     $('browser-services-toggle').setAttribute('aria-expanded',String(expanded && effective>0));
@@ -23,28 +24,62 @@ window.allfoldWorkbench=(()=>{
   const roles={'carsi-portal':'CARSI 共享认证','service-resource':'Service','service-target':'Service 目标',
     'manual-service':'Manual Service','wos-query':'WoS Query','wos-export':'WoS Export',
     popup:'Popup',import:'ImportPage',attachment:'附件 · 需要人工操作',auxiliary:'辅助页'};
-  function suspended(){return [...document.querySelectorAll('dialog[open]')].some(dialog=>!['run-view','kept-flow'].includes(dialog.id));}
+  function active(){return visible && (source!=='kept' || window.workspaceNavigation?.current?.()==='kept');}
+  function suspended(){
+    if([...document.querySelectorAll('dialog[open]')].some(dialog=>!['run-view','kept-flow'].includes(dialog.id)))return true;
+    const rect=$('browser-body').getBoundingClientRect();
+    return [...document.querySelectorAll('.navigation-flyout:not([hidden]),[data-sidebar-mode="overlay"] .functional-sidebar:not([hidden])')].some(overlay=>{
+      if(overlay.closest('[hidden]'))return false;
+      const box=overlay.getBoundingClientRect();
+      return box.width>0 && box.height>0 && box.left<rect.left+rect.width && box.left+box.width>rect.left
+        && box.top<rect.top+rect.height && box.top+box.height>rect.top;
+    });
+  }
+  function sizeBrowser() {
+    const pane=$('browser-pane'),preferred=window.allfoldLayout?.targets?.() || {browserPreferredWidth:960,browserPreferredHeight:300};
+    pane.style.setProperty('--browser-preferred-width',preferred.browserPreferredWidth+'px');
+    pane.style.setProperty('--browser-preferred-height',preferred.browserPreferredHeight+'px');
+  }
   function publish() {
     if(!desktop)return;
     const rect=$('browser-body').getBoundingClientRect();
-    void desktop.setBrowserPresentation({sequence:++sequence,visible,suspended:suspended(),
-      bounds:visible?{x:rect.left,y:rect.top,width:rect.width,height:rect.height}:null}).catch(()=>{
+    const showing=active();
+    for(const [name,value] of [['Width',rect.width],['Height',rect.height]])if($('layout-browserEffective'+name))$('layout-browserEffective'+name).textContent=showing?Math.round(value):'—';
+    void desktop.setBrowserPresentation({sequence:++sequence,visible:showing,suspended:suspended(),
+      bounds:showing?{x:rect.left,y:rect.top,width:rect.width,height:rect.height}:null}).catch(()=>{
       $('browser-message').textContent='Browser 显示未能更新，请重新打开 Browser。';
     });
   }
   function schedule(){if(frame!==null)return;frame=requestAnimationFrame(()=>{frame=null;publish();});}
-  function present(value) {
-    if(value===visible){schedule();return;}
-    if(value){
+  function present(value,options={}) {
+    if(value && (!visible || !active() || (options.source && source!==options.source))){
+      source=null;mode='focus';
       returnFocus=document.activeElement;workspaceAtShow=window.workspaceNavigation?.current?.();
       scrollSnapshot=[...$('allfold-pane').querySelectorAll('*')].filter(node=>node.scrollTop || node.scrollLeft).map(node=>({
         node,top:node.scrollTop,left:node.scrollLeft,firstChild:node.firstChild,paper:node.dataset.paperId,
       }));
     }
-    visible=value;document.body.dataset.workbench=value?'browser':'allfold';
-    $('allfold-pane').inert=value;$('browser-pane').hidden=!value;
-    $('browser-open').setAttribute('aria-pressed',String(value));
-    $('browser-open').setAttribute('aria-label',value?'返回 Allfold':'打开 Browser 工作视图');
+    if(value){
+      source=options.source || source || (window.workspaceNavigation?.current?.()==='kept'?'kept':null);
+      mode=options.mode==='compact'?'compact':options.mode==='focus'?'focus':mode;
+      const host=source==='kept'?$('kept-browser-host'):$('workbench-content');
+      if(!host){window.uiNext.notice('Browser 呈现区域尚未就绪，请返回后重试。');return false;}
+      host.append($('browser-pane'));
+    }
+    visible=value;document.body.dataset.workbench=value?(source==='kept'?'kept-browser':'browser'):'allfold';
+    $('allfold-pane').inert=value && source!=='kept';$('browser-pane').hidden=!value;
+    $('browser-pane').dataset.mode=mode;$('browser-pane').dataset.source=source || 'legacy';
+    $('browser-return').textContent=source==='run'?'← RUN':source==='kept'?'← QUEUE':'← ALLFOLD';
+    $('browser-compact')?.setAttribute('aria-pressed',String(mode==='compact'));
+    $('browser-focus')?.setAttribute('aria-pressed',String(mode==='focus'));
+    if($('browser-compact'))$('browser-compact').hidden=source!=='kept';
+    if($('browser-compact'))$('browser-compact').textContent=mode==='focus'?'RESTORE':'COMPACT';
+    if($('browser-focus'))$('browser-focus').hidden=source==='run';
+    $('browser-services-toggle').hidden=source==='run';
+    $('browser-open')?.setAttribute('aria-pressed',String(value));
+    $('browser-open')?.setAttribute('aria-label',value?'返回 Allfold':'打开 Browser 工作视图');
+    // The business host reveals Queue before its saved control receives focus.
+    window.dispatchEvent(new CustomEvent('workbench:browser-state',{detail:{visible:value,source,mode}}));
     if(!value){returning=true;if(returnFocus?.isConnected && !returnFocus.disabled)returnFocus.focus({preventScroll:true});
       requestAnimationFrame(()=>{
         if(!visible && window.workspaceNavigation?.current?.()===workspaceAtShow)
@@ -53,15 +88,18 @@ window.allfoldWorkbench=(()=>{
           }
         scrollSnapshot=[];returning=false;
       });}
-    publish();schedule();
+    sizeBrowser();sizeServices();publish();schedule();
     window.dispatchEvent(new Event('workbench-presentation-changed'));
+    return true;
   }
-  async function show() {
+  async function show(options={}) {
     if(!desktop){window.uiNext.notice('请在 Electron 桌面应用中使用 Browser');return false;}
-    try {render(await desktop.showBrowser());present(true);await refreshServices();return true;}
+    requested=options;
+    try {render(await desktop.showBrowser());if(!present(true,options))return false;await refreshServices();return true;}
     catch(error){window.uiNext.notice(error.message);return false;}
+    finally{requested=null;}
   }
-  async function showTaskPage({workflowId,taskId}={}) {
+  async function showTaskPage({workflowId,taskId,source:origin}={}) {
     if(!desktop)return false;
     try {
       const snapshot=await desktop.browserState(),pages=snapshot.tabs.filter(page=>{
@@ -74,7 +112,9 @@ window.allfoldWorkbench=(()=>{
       pages.sort((a,b)=>score(b)-score(a) || b.id-a.id);
       if(!pages.length){window.uiNext.notice('当前任务尚无可查看的网页，或页面已关闭。');return false;}
       // A user handoff chooses a real Page ID; this does not bind or retarget the task.
-      render(await desktop.browserCommand({action:'select',id:pages[0].id}));present(true);await refreshServices();return true;
+      render(await desktop.browserCommand({action:'select',id:pages[0].id}));
+      if(!present(true,{source:origin || (window.workspaceNavigation?.current?.()==='kept'?'kept':null),mode:origin==='run'?'focus':mode}))return false;
+      await refreshServices();return true;
     }catch(error){window.uiNext.notice(error.message);return false;}
   }
   async function command(action,extra={}) {
@@ -156,8 +196,9 @@ window.allfoldWorkbench=(()=>{
       const index=tabs.findIndex(page=>page.id===state.selected);$('browser-tabs').children[index]?.scrollIntoView({block:'nearest',inline:'nearest'});}
     schedule();
   }
-  $('browser-open').addEventListener('click',()=>{if(visible)present(false);else void show();});
+  $('browser-open')?.addEventListener('click',()=>{if(visible)present(false);else void show();});
   $('browser-return').addEventListener('click',()=>present(false));
+  for(const next of ['compact','focus'])$('browser-'+next)?.addEventListener('click',()=>present(true,{source,mode:next}));
   for(const action of ['new','back','forward','reload','devtools','cache-size','clear-cache','clear-site-data'])
     $('browser-'+action).addEventListener('click',()=>void command(action,['back','forward','reload','devtools'].includes(action)?{id:state.selected}:{}));
   $('browser-address').addEventListener('submit',event=>{event.preventDefault();void command('navigate',{id:state.selected,url:$('browser-url').value.trim()});});
@@ -180,13 +221,16 @@ window.allfoldWorkbench=(()=>{
     savePreference(preferenceKeys.width,preferredWidth);sizeServices();
   });
   desktop?.onBrowserState(render);
-  desktop?.onBrowserPresentation(value=>{if(value?.visible)present(true);});
+  desktop?.onBrowserPresentation(value=>{if(value?.visible)present(true,requested || {});});
   desktop?.onBrowserLayout(schedule);
   if(desktop)void desktop.browserState().then(render).catch(()=>{});
-  new MutationObserver(()=>{if(visible)publish();}).observe(document.body,{subtree:true,attributes:true,attributeFilter:['open']});
+  new MutationObserver(()=>{if(visible)publish();}).observe(document.body,{subtree:true,attributes:true,attributeFilter:['open','hidden','data-sidebar-mode']});
   new ResizeObserver(schedule).observe($('browser-body'));
   new ResizeObserver(sizeServices).observe($('browser-work-area'));
   window.addEventListener('resize',schedule);
+  window.addEventListener('workspace-navigation-state',()=>{if(visible)publish();schedule();});
+  window.allfoldLayout?.subscribe(()=>{sizeBrowser();if(visible)publish();schedule();});
   sizeServices();
-  return {show,showTaskPage,openService,hide:()=>present(false),visible:()=>visible,presentationChanging:()=>visible || returning};
+  return {show,showTaskPage,openService,showKeptBrowser:({mode:next='compact'}={})=>show({source:'kept',mode:next}),
+    hideKeptBrowser:()=>{if(source==='kept')present(false);},hide:()=>present(false),visible:active,presentationChanging:()=>active() || returning};
 })();
