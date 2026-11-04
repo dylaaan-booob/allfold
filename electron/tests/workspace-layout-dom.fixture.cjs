@@ -18,12 +18,13 @@ const records=journals.map((j,i)=>({key:j.issn,issn:j.issn,name:j.name,group:j.g
 const workspace={csrf_token:'fixture',import_token:'fixture',issues:[],counts:{candidates:48,active_journals:24},subjects:[{name:'Group 0',journals:records}],
   kept:{papers:[{paper:paper(10,'kept'),journal:records[0]},{paper:paper(11,'kept'),journal:records[1]}],journals:records,services:[],settings:{},titles:{}}};
 const run={active:false,providers:Object.fromEntries(settings.values.provider_order.map(id=>[id,{enabled:false,message:'Offline fixture',result_summary:null}]))};
+const keptQueue={services:[{id:'all',name:'All Services',kept:2,eligible:2},{id:'unassigned',name:'Unassigned',kept:2,eligible:2}],papers:[],import_token:'fixture'};
 const mimes={'.html':'text/html','.js':'text/javascript','.css':'text/css','.json':'application/json','.woff2':'font/woff2','.ttf':'font/ttf','.otf':'font/otf','.png':'image/png','.mp4':'video/mp4'};
 const server=http.createServer((req,res)=>{
   const route=new URL(req.url,'http://fixture').pathname;
   if(route.startsWith('/api/') || route==='/settings/covers/search'){
     const data=route==='/api/ui-next/workspace'?workspace:route==='/api/ui-next/settings'?settings:
-      route==='/api/ui-next/run'?run:route==='/api/ui-next/run-expression'?{}:route==='/settings/covers/search'?cover_search:
+      route==='/api/ui-next/run'?run:route==='/api/kept-workflow/queue'?keptQueue:route==='/api/ui-next/run-expression'?{}:route==='/settings/covers/search'?cover_search:
       {active:false,phase:'idle',navigation:null,can_continue:false,can_cancel:false};
     res.writeHead(200,{'Content-Type':'application/json'});res.end(JSON.stringify(data));return;
   }
@@ -86,11 +87,10 @@ app.whenReady().then(async()=>{
       assert($('array-journal-name').textContent==='Synthetic Journal 1','metadata did not follow selection');
       document.querySelector('#kept-view [data-sidebar-view]').click();
       $('array-index-toggle').click();$('array-index').scrollTop=200;document.querySelector('#array-flyout [data-flyout-close]').click();
-      $('array-kept').click();assert($('array-sidebar').hidden,'Kept automatically opened Info');
-      assert($('paper-metadata-details').open,'Kept Info metadata is collapsed behind a hidden summary');
+      $('array-kept').click();assert(window.workspaceNavigation.current()==='kept','legacy Kept entry must open independent Kept');
+      assert($('kept-sidebar').hidden,'Kept automatically opened a Sidebar');
       assert(!$('kept-start').closest('[hidden]') && !$('kept-import-only').closest('[hidden]'),'primary actions hidden with sidebar');
-      $('array-index-toggle').click();assert($('array-index').scrollTop===0,'short Kept Index is not independent');document.querySelector('#array-flyout [data-flyout-close]').click();
-      $('array-candidates').click();$('array-index-toggle').click();assert($('array-index').scrollTop===200,'Candidates Index scroll lost after opening Kept Index');document.querySelector('#array-flyout [data-flyout-close]').click();
+      $('workspace-open').click();$('array-index-toggle').click();assert($('array-index').scrollTop===200,'Candidates Index scroll lost after visiting Kept');document.querySelector('#array-flyout [data-flyout-close]').click();
       window.layoutReader=$('paper-detail');window.layoutParent=layoutReader.parentElement;layoutReader.scrollTop=180;
       document.querySelector('#kept-view [data-sidebar-view]').click();
     });

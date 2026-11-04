@@ -1,4 +1,4 @@
-import {renderHistoryRecord,historyIntegrityMessage,requestDiagnosticBundle} from './history-view.js';
+import {renderHistoryRecord,filterHistoryRecords,historyIntegrityMessage,requestDiagnosticBundle} from './history-view.js';
 const $=id=>document.getElementById(id),dialog=$('history-dialog');
 let timer,focus,loading=false;
 async function csrfToken() {
@@ -19,7 +19,13 @@ async function refresh() {
     const data=await uiNext.request('/api/history');
     if(!dialog.open)return;
     const expanded=new Set([...$('history-records').querySelectorAll('details[open]')].map(node=>node.closest('[data-history-task]').dataset.historyTask));
-    $('history-records').innerHTML=data.records.map(renderHistoryRecord).join('') || '<p>尚无运行记录。</p>';
+    const select=$('history-service-filter'),selected=select.value;
+    const services=new Set(data.records.flatMap(record=>[record.details?.service_id,
+      ...(record.details?.service_statistics || []).map(item=>item.service_id),
+      ...(record.details?.results || []).map(item=>item.service_id)]).filter(Boolean));
+    select.replaceChildren(...['',...services].map(id=>{const option=document.createElement('option');option.value=id;option.textContent=id || 'All Services';return option;}));
+    select.value=services.has(selected)?selected:'';
+    $('history-records').innerHTML=filterHistoryRecords(data.records,select.value).map(renderHistoryRecord).join('') || '<p>尚无运行记录。</p>';
     for(const node of $('history-records').querySelectorAll('details'))node.open=expanded.has(node.closest('[data-history-task]').dataset.historyTask);
     $('history-status').textContent=historyIntegrityMessage(data.integrity);
     if(data.records.some(record=>record.outcome==='running'))timer=setTimeout(()=>void refresh(),3000);
@@ -32,6 +38,7 @@ function open() {
 }
 $('history-open').addEventListener('click',open);
 $('history-refresh').addEventListener('click',()=>void refresh());
+$('history-service-filter').addEventListener('change',()=>void refresh());
 $('history-close').addEventListener('click',()=>dialog.close());
 dialog.addEventListener('close',()=>{clearTimeout(timer);if(focus?.isConnected && !focus.disabled)focus.focus({preventScroll:true});});
 $('history-records').addEventListener('click',async event=>{

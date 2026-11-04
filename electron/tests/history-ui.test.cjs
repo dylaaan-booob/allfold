@@ -64,3 +64,17 @@ test('reset scope descriptions have separate deletion boundaries',async()=>{
   assert.match(resetImpact('logs',{history_records:3}),/Workspace/);
   assert.doesNotMatch(resetImpact('logs',{history_records:3}),/输入|Type RESET/);
 });
+
+test('history filters by execution Service and exposes stable Paper identities and bounded Service totals',async()=>{
+  const {filterHistoryRecords,renderHistoryRecord}=await import('../../frontend/ui/history-view.js');
+  const a={kind:'import',task_id:'a',outcome:'partial',details:{batch_scope:'all',service_statistics:[
+    {service_id:'svc_a',total:105,confirmed:100,pdf_unverified:100}],results:[
+    {paper_id:'paper-a',service_id:'svc_a',parent_outcome:'confirmed',pdf_outcome:'unverified',outcome:'confirmed'}]}};
+  const b={kind:'kept',task_id:'b',details:{batch_scope:'service',service_id:'svc_b'}};
+  assert.deepEqual(filterHistoryRecords([a,b],'svc_a'),[a]);
+  assert.deepEqual(filterHistoryRecords([a,b],'svc_b'),[b]);
+  assert.equal(filterHistoryRecords([a,b],'').length,2);
+  const html=renderHistoryRecord(a);
+  assert.match(html,/All Services/);assert.match(html,/svc_a/);assert.match(html,/paper-a/);
+  assert.match(html,/105/);assert.match(html,/PDF unverified/);
+});

@@ -53,9 +53,9 @@ test('legacy Paper navigation locates the current Candidate or Kept entry and re
   assert.equal(f.get('kept-view').dataset.status,'candidates');
   assert.equal(f.get('array-index').children[0].getAttribute('aria-current'),'true');
   assert.equal(f.window.workspaceArray.openPaper('kept-1'),true);
-  assert.equal(f.get('kept-view').dataset.status,'kept');
-  assert.equal(f.get('array-index').children[0].dataset.indexId,'kept-1');
-  assert.equal(f.get('array-index').children[0].getAttribute('aria-current'),'true');
+  assert.equal(f.page(),'kept');
+  assert.equal(f.get('kept-view').dataset.status,'candidates');
+  assert.equal(f.get('array-index').children[0].dataset.indexId,'journal-1');
   assert.equal(f.window.workspaceArray.openPaper('missing-1'),false);
   assert.equal(f.get('selected-view').dataset.workspaceLayout,'array');
   assert.equal(f.get('kept-view').hidden,false);

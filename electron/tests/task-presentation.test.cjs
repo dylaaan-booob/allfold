@@ -25,9 +25,9 @@ test('inline Kept recovers from Archive into visible controls and retains identi
     return state;
   }});
   assert.equal(ui.get('kept-flow').open,false);assert.equal(ui.stats().visuals,0);
-  assert.equal(ui.get('selected-view').dataset.workspaceLayout,'array');
-  assert.equal(ui.get('kept-view').hidden,false);assert.equal(ui.get('kept-view').inert,false);
-  assert.equal(ui.get('kept-view').dataset.status,'kept');
+  assert.equal(ui.page(),'kept');
+  assert.equal(ui.get('selected-view').dataset.workspaceLayout,'archive');
+  assert.equal(ui.get('kept-view').dataset.status,'candidates');
   assert.equal(ui.get('array-import-profile').hidden,false);assert.equal(ui.get('kept-inline').hidden,false);
   assert.equal(ui.get('kept-flow-actions').parentElement,ui.get('kept-inline'));
   assert.equal(ui.get('kept-continue').hidden,false);assert.equal(ui.get('kept-leave').disabled,false);
@@ -35,7 +35,7 @@ test('inline Kept recovers from Archive into visible controls and retains identi
   assert.equal(ui.calls.some(([url])=>url.endsWith('/start') || url.endsWith('/continue')),false);
   const taskPageButton=ui.get('kept-flow-actions').children.find(node=>node.textContent==='查看任务页面');
   assert.equal(taskPageButton.hidden,false);await taskPageButton.emit('click');
-  assert.deepEqual(JSON.parse(JSON.stringify(ui.presentations)),[{workflowId:'workflow-1',taskId:'prepare-1'}]);
+  assert.deepEqual(JSON.parse(JSON.stringify(ui.presentations)),[{workflowId:'workflow-1',source:'kept',taskId:'prepare-1'}]);
   await ui.get('kept-continue').emit('click');
   const continuation=ui.calls.find(([url])=>url.endsWith('/continue'));
   assert.deepEqual(JSON.parse(JSON.stringify(continuation[1])),{workflow_id:'workflow-1',generation:7});
@@ -44,7 +44,7 @@ test('inline Kept recovers from Archive into visible controls and retains identi
   assert.equal(ui.get('kept-leave').disabled,true);
   await ui.get('workspace-archive').emit('click');ui.setPage('settings');await ui.tick();await ui.get('run-view').emit('close');
   assert.equal(ui.page(),'settings');assert.equal(ui.get('selected-view').dataset.workspaceLayout,'archive');
-  state=keptState('completed',{import_started:true,navigation:'kept',batch:{total:1,results:[{paper_id:'paper-1',outcome:'exported',reason:'Imported'}]}});await ui.tick();
+  state=keptState('completed',{import_started:true,navigation:'kept',batch:{total:1,results:[{paper_id:'paper-1',outcome:'exported',parent_outcome:'confirmed',reason:'Imported'}]}});await ui.tick();
   assert.ok(ui.calls.some(([url])=>url.endsWith('/acknowledge')));assert.equal(ui.window.workspaceArray.workflowBusy(),false);
   assert.equal(ui.get('kept-record-count').textContent,'1 / 1');assert.equal(ui.page(),'settings');assert.equal(ui.stats().visuals,0);
 });
