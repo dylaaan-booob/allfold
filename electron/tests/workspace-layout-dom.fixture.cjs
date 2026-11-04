@@ -40,7 +40,12 @@ async function js(code){
   if(!result.ok)throw Error(result.error);return result.value;
 }
 async function capture(name){if(process.env.ALLFOLD_LAYOUT_SCREENSHOTS){await wait(50);fs.mkdirSync(process.env.ALLFOLD_LAYOUT_SCREENSHOTS,{recursive:true});fs.writeFileSync(path.join(process.env.ALLFOLD_LAYOUT_SCREENSHOTS,name+'.png'),(await win.webContents.capturePage()).toPNG());}}
-async function ready(condition){for(let i=0;i<150;i++){if(await js(condition))return;await wait(50);}throw Error('UI readiness timeout: '+condition);}
+async function ready(condition){
+  for(let i=0;i<150;i++){if(await js(condition))return;await wait(50);}
+  const actual=await js(`({width:innerWidth,height:innerHeight,workspace:window.workspaceNavigation?.current(),arrayMode:document.getElementById('kept-view')?.dataset.sidebarMode,arrayWidth:document.getElementById('kept-view')?.getBoundingClientRect().width,journalMode:document.getElementById('s-journals-page')?.dataset.sidebarMode})`);
+  throw Error('UI readiness timeout: '+condition+'; native='+JSON.stringify(win.getBounds())+'; DOM='+JSON.stringify(actual));
+}
+async function size(width,height,condition){win.setSize(width,height);await ready(`innerWidth===${width} && (${condition})`);}
 async function check(fn){await js(`(${fn.toString()})()`);}
 app.whenReady().then(async()=>{
   try {
@@ -90,7 +95,7 @@ app.whenReady().then(async()=>{
       document.querySelector('#kept-view [data-sidebar-view]').click();
     });
     await capture('array-wide');
-    win.setSize(700,500);await wait(150);
+    await size(700,500,"document.getElementById('kept-view').dataset.sidebarMode==='overlay'");
     await check(()=>{
       const root=document.getElementById('kept-view'),reader=document.getElementById('paper-detail');
       if(root.dataset.sidebarMode!=='overlay')throw Error('narrow Array must overlay');
@@ -139,7 +144,7 @@ app.whenReady().then(async()=>{
       window.layoutDraft=input;window.layoutDraftParent=input.parentElement;window.layoutJournalList=$('s-journals');layoutJournalList.scrollTop=100;
     });
     await capture('journals-overlay');
-    win.setSize(1200,800);await wait(150);
+    await size(1200,800,"document.getElementById('s-journals-page').dataset.sidebarMode==='docked'");
     await check(()=>{
       const $=id=>document.getElementById(id),input=$('s-entity-description').querySelector('[data-service-field=url]');
       if(input!==window.layoutDraft || input.parentElement!==window.layoutDraftParent || input.value!=='https://synthetic.test/draft' || document.activeElement!==input)throw Error('resize lost Service draft/focus');
@@ -153,7 +158,7 @@ app.whenReady().then(async()=>{
       $('workspace-open').click();
     });
     await capture('array-developer');
-    win.setSize(600,480);await wait(150);
+    await size(600,480,"document.getElementById('kept-view').dataset.sidebarMode==='overlay'");
     await check(()=>{
       const $=id=>document.getElementById(id),root=$('kept-view'),tools=root.querySelector('.tool-rail'),main=$('array-content');
       if(root.dataset.sidebarMode!=='overlay')throw Error('600px Array must overlay');
