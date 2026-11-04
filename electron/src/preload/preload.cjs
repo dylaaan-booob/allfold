@@ -13,6 +13,4 @@ contextBridge.exposeInMainWorld('allfoldDesktop', Object.freeze({
   onBrowserPresentation: callback => subscribe('browser:presentation',callback),
   onBrowserLayout: callback => subscribe('browser:layout',callback),
   casStatus: () => ipcRenderer.invoke('cas:status'),
-  saveCASCredentials: value => ipcRenderer.invoke('cas:save',value),
-  clearCASCredentials: () => ipcRenderer.invoke('cas:clear'),
 }));

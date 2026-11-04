@@ -130,6 +130,19 @@ test('native diagnostics reset bypasses browser task and document authority and 
   f.context.activeRequest=Promise.resolve();
   await assert.rejects(f.context.execute({id:'reset_busy',action:'diagnostics_reset',data:{operation:'preview'}}),/active/);
 });
+test('explicit credential writes settle through bridge ownership without browser dispatch or diagnostic payloads',{timeout:5000},async()=>{
+  const f=fixture(),started=deferred(),settled=deferred();
+  f.context.saveCASCredentials=async value=>{assert.equal(value.expected_revision,'missing');started.resolve();return settled.promise;};
+  f.context.casErrorCode=error=>error.code;
+  f.context.browser.beginOperation=()=>{throw Error('credentials must not enter Browser');};
+  const pending=f.context.execute({id:'credentials',action:'cas_credentials',data:{operation:'save',expected_revision:'missing'}});
+  await started.promise;
+  assert.ok(f.context.activeRequest);
+  await assert.rejects(f.run(),/Concurrent/);
+  settled.resolve({ok:true,revision:'new'});await pending;
+  assert.equal(f.context.activeRequest,null);assert.equal(f.calls.end,0);assert.equal(f.logs.length,0);
+  assert.equal(f.messages[0].data.revision,'new');
+});
 test('native final diagnostic keeps stable attachment code separate from its network error',async()=>{
   const f=fixture();f.context.saveOnce=async()=>({parent:{outcome:'confirmed'},pdf:{outcome:'unverified'},diagnostic:{stage:'attachment',code:'http_error',net_error:'ERR_CONNECTION_RESET',status:403}});
   await f.run();const final=f.logs.find(event=>event.event==='task_finished');
