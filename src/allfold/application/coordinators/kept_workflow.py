@@ -35,6 +35,9 @@ class WorkflowSnapshot:
     transition_deadline: float | None = None
     message: str = "Ready to prepare access and import Kept Papers."
     navigation: str | None = None
+    service_id: str | None = None
+    service_name: str | None = None
+    planned_total: int = 0
 
     @property
     def active(self) -> bool:
@@ -75,6 +78,10 @@ class KeptWorkflow:
         with self._lock:
             return self._snapshot
 
+    def paper_plan(self):
+        with self._lock:
+            return getattr(self._target, 'paper_plan', None)
+
     def _publish(self, **changes) -> None:
         self._snapshot = replace(self._snapshot, **changes)
 
@@ -103,16 +110,27 @@ class KeptWorkflow:
                 workflow_id=secrets.token_urlsafe(24), generation=self._snapshot.generation + 1,
                 mode=mode, phase="preparing", settings=config.kept_workflow,
                 institution_name=config.institution.name if config.institution else None,
+                service_id=getattr(target, 'service_id', None),
+                planned_total=len(target.paper_plan.papers) if getattr(target, 'paper_plan', None) else 0,
             )
             self._cancel_requested = False
-            observe(self.diagnostics, "begin", "kept", self._snapshot.workflow_id)
+            observe(self.diagnostics, "begin", "kept", self._snapshot.workflow_id,
+                details={'batch_scope':'service' if self._snapshot.service_id else 'all',
+                    'service_id':self._snapshot.service_id, 'config_revision':getattr(target, 'config_digest', None),
+                    'user_state_revision':getattr(target, 'user_state_revision', None)})
             try:
                 if not self._has_kept(target):
                     self._interrupt("No Kept Papers to import.", reason="no_kept_papers")
                 elif mode == "import_only":
                     self._start_import()
                 else:
-                    preparation = self.preparation.start(target.config_path, browser_owner=self.browser_owner,
+                    from allfold.application.browser_services import BrowserServiceSnapshot
+                    saved = BrowserServiceSnapshot.read(target.config_path)
+                    selected = next((service for service in saved.services if service.id == self._snapshot.service_id), None)
+                    if self._snapshot.service_id and selected is None:
+                        raise ContentChangedError('Selected Service is no longer saved')
+                    self._publish(service_name=selected.name if selected else None)
+                    preparation = self.preparation.start(target.config_path, service=selected, browser_owner=self.browser_owner,
                         workflow_id=self._snapshot.workflow_id, parent_task_id=self._snapshot.workflow_id)
                     self._publish(preparation_task_id=preparation.task_id,
                                   preparation_generation=preparation.generation)
@@ -145,7 +163,8 @@ class KeptWorkflow:
         self._release_browser()
         observe(self.diagnostics, "finish", self._snapshot.workflow_id,
             "cancelled" if self._cancel_requested else "interrupted",
-            details={"reason":"cancelled" if self._cancel_requested else reason, "mode":self._snapshot.mode})
+            details={"reason":"cancelled" if self._cancel_requested else reason, "mode":self._snapshot.mode,
+                "batch_scope":"service" if self._snapshot.service_id else "all", "service_id":self._snapshot.service_id})
         self._authorization = None
         self._publish(phase="interrupted", message=message, transition_deadline=None,
                       waiting_for_login=False, navigation="kept")
@@ -155,7 +174,7 @@ class KeptWorkflow:
         if self._snapshot.import_started or self._authorization is None:
             return
         self._publish(import_started=True, phase="importing", transition_deadline=None, waiting_for_login=False,
-                      message="Importing all eligible Workspace Kept Papers.")
+                      message="Importing the fixed eligible Kept scope.")
         authorization, self._authorization = self._authorization, None
         try:
             result = self._begin_import(self._target, authorization,

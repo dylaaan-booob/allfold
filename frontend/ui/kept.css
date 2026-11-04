@@ -5,6 +5,41 @@
 @font-face{font-family:Kept Film;src:url('assets/fonts/MiSans-Blog-700-Latin.woff2');font-weight:700;font-display:block}
 :root{--workspace-gutter:26px}
 #kept-view{--kept-gutter:0px;margin:0}
+#kept-workspace{flex:1;min-height:0}
+#kept-main{display:flex;flex-direction:column;gap:10px;padding:18px 22px;overflow:hidden}
+.kept-queue-heading{display:flex;justify-content:space-between;align-items:center;gap:12px}
+.kept-queue-heading h1{font-size:24px;margin:0}
+#kept-scope-status{margin:0;white-space:pre-wrap;font-size:12px;line-height:1.7;overflow-wrap:anywhere}
+#kept-queue-body{flex:1;min-height:0;overflow:auto}
+#kept-statistics{max-width:100%;overflow:auto;scrollbar-width:thin}
+#kept-statistics table{border-collapse:collapse;font-size:12px;width:max-content;min-width:100%}
+#kept-statistics th,#kept-statistics td{padding:11px 14px;border-bottom:1px solid var(--rule);text-align:right;white-space:nowrap}
+#kept-statistics th:first-child,#kept-statistics td:first-child{text-align:left;position:sticky;left:0;background:var(--paper)}
+#kept-statistics tr[aria-current=true] td{color:var(--orange)}
+#kept-service-list{overflow:auto;min-height:0}
+.kept-service-row{display:block;width:100%;text-align:left;padding:13px 18px;font-size:13px;overflow-wrap:anywhere}
+.kept-service-row[aria-current=true]{background:var(--ink);color:var(--paper)}
+#kept-paper-identities{margin-top:18px;font-size:12px;line-height:1.8}
+#kept-paper-identities details{padding:7px 0}
+#kept-paper-identities details details{margin-left:14px;border-top:1px solid var(--rule)}
+#kept-paper-identities p,#kept-service-detail{white-space:pre-wrap;overflow-wrap:anywhere}
+#kept-queue-results{font-size:12px;line-height:1.8;margin-top:18px}
+#kept-queue-results details{padding:5px 0}#kept-queue-results p{white-space:pre-wrap;overflow-wrap:anywhere}
+#kept-browser-host{flex:1;min-height:0;min-width:0}
+#kept-workspace .kept-actions{margin:0;flex-wrap:wrap}
+#kept-workspace .s-button{border:1px solid var(--ink);padding:5px 10px;font-size:11px}
+#kept-workflow-host{flex:0 1 auto;max-height:32%;overflow:auto}
+#kept-workspace #kept-inline{overflow:auto;margin:0;padding:8px}
+#kept-workspace[data-browser-visible=true] :is(.kept-queue-heading,#kept-import-actions,#kept-task-page){display:none}
+#kept-workspace[data-browser-visible=true] #kept-scope-status{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+#kept-workspace[data-browser-visible=true] #kept-workflow-host{max-height:82px}
+#kept-workspace[data-browser-visible=true] #kept-phase{margin-bottom:3px;font-size:11px}
+#kept-workspace[data-browser-visible=true] #kept-flow-actions{flex-direction:row;flex-wrap:wrap;gap:6px}
+#kept-workspace[data-browser-visible=true] #kept-flow-gate{width:auto;flex:1;flex-direction:row;gap:6px}
+#kept-workspace[data-browser-visible=true] #kept-gate-message{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:40%}
+#kept-workspace[data-browser-visible=true] #kept-manual-services{width:auto;max-height:32px}
+#kept-workspace[data-browser-visible=true] #kept-continue{padding:5px}
+@container workspace-content (max-width:500px){#kept-main{padding:10px}.kept-queue-heading h1{font-size:20px}}
 #array-index{flex:1;min-height:0;overflow:auto;padding:0;scrollbar-width:thin}
 .kept-center{display:flex;flex-direction:column;min-height:0;min-width:0;padding:20px 24px 12px}
 

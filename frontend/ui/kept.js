@@ -4,7 +4,7 @@ import {importOutcomeMessage,preparationReason} from './business-results.js';
 const $=id=>document.getElementById(id),bridge=window.inboxKept;
 const exportButton=document.createElement('button');
 exportButton.type='button';exportButton.className='s-button';exportButton.textContent='导出本次诊断';exportButton.hidden=true;
-$('array-import-profile').append(exportButton);
+$('kept-queue-results').append(exportButton);
 exportButton.addEventListener('click',async()=>{
   if(!lastRun?.workflow_id)return;
   exportButton.disabled=true;
@@ -17,18 +17,20 @@ const states=Object.fromEntries(['candidates','kept'].map(status=>[status,{filte
 let status='candidates',ui=states.candidates;
 let data,metadata,active=null,lastRun=null,workflow=null,pollTimer=null,submitting=false,acknowledging=false,recovering=true,readerRefreshPending=false;
 let workspaceEpoch=0,presentationInline=null,taskQueue=[],openingWorkflow=null;
+let queueData=null,serviceFilter='all',queueEpoch=0,expandedPaper=null;
 const inline=document.createElement('section'),phaseLabel=document.createElement('strong');
 inline.id='kept-inline';inline.hidden=true;inline.setAttribute('aria-label','当前 Prepare / Import');
 phaseLabel.id='kept-phase';phaseLabel.setAttribute('role','status');
 $('kept-workflow-host').prepend(inline);inline.append(phaseLabel);
 const taskPageButton=document.createElement('button');
 taskPageButton.type='button';taskPageButton.className='s-button';taskPageButton.textContent='查看任务页面';taskPageButton.hidden=true;
+taskPageButton.id='kept-task-page';
 $('kept-flow-actions').prepend(taskPageButton);
 taskPageButton.addEventListener('click',async()=>{
   if(!workflow?.workflow_id)return;
   try {
     if(!await window.allfoldWorkbench?.showTaskPage({workflowId:workflow.workflow_id,
-      taskId:workflow.phase==='importing'?workflow.batch?.task_id:workflow.preparation_task_id}))uiNext.notice('当前任务尚无可查看的页面。');
+      source:'kept',taskId:workflow.phase==='importing'?workflow.batch?.task_id:workflow.preparation_task_id}))uiNext.notice('当前任务尚无可查看的页面。');
   }catch(error){uiNext.notice(error.message);}
 });
 function presentInline() {
@@ -47,6 +49,7 @@ function queueArchivePreference() {
 }
 const arrayShown=()=>window.workspaceNavigation.current()==='workspace' && $('selected-view').dataset.workspaceLayout==='array';
 const layoutHost=window.allfoldLayout.create({root:$('kept-view'),workspace:'workspace',minContentWidth:window.allfoldLayoutModel.minOperationalSize.array});
+const queueLayout=window.allfoldLayout.create({root:$('kept-workspace'),workspace:'kept',minContentWidth:360});
 const workflowBusy=()=>submitting || acknowledging || Boolean(workflow?.active || workflow?.navigation);
 const navigationBusy=()=>submitting || acknowledging || (!presentationInline && Boolean(workflow?.active || workflow?.navigation));
 const switchBusy=()=>recovering || !data || !bridge.available() || bridge.busy() || navigationBusy() || $('run-view').open || dialog.open;
@@ -84,13 +87,15 @@ function refreshActions() {
   $('array-index-toggle').dataset.flyout=status;
   $('array-status').hidden=$('selected-view').dataset.workspaceLayout!=='array';
   if(!data)return;
-  $('kept-start').disabled=$('kept-import-only').disabled=busy || workflow?.active || !allEntries().length;
+  const selected=queueData?.services?.find(service=>service.id===serviceFilter);
+  $('kept-start').disabled=$('kept-import-only').disabled=submitting || recovering || workflow?.active || acknowledging ||
+    window.uiRun?.active() || !selected?.eligible || ['unassigned','ambiguous'].includes(serviceFilter);
   for(const row of $('array-index').children)row.disabled=busy;
   workspaceSearch.refresh();
 }
 function renderRecord() {
   exportButton.hidden=!lastRun?.workflow_id;
-  const results=lastRun?.results || [],exported=results.filter(r=>r.outcome==='exported').length;
+  const results=(lastRun?.results || []).filter(result=>serviceFilter==='all' || result.service_id===serviceFilter),exported=results.filter(r=>r.parent_outcome==='confirmed').length;
   $('kept-record-count').textContent=lastRun?`${exported} / ${lastRun.total}`:'—';
   $('kept-record-summary').textContent=lastRun?.message || '本次尚未导入。';
   $('kept-record-items').replaceChildren(...results.map(result=>{
@@ -102,9 +107,22 @@ function renderRecord() {
     const details=document.createElement('details'),summary=document.createElement('summary'),raw=document.createElement('p');
     details.className='import-result-details';summary.textContent='详情';
     const pdf=result.pdf_outcome;
-    raw.textContent=result.reason+(pdf && !result.reason.toLowerCase().includes(`pdf ${pdf}`)?`\nPDF: ${pdf}`:'');
+    raw.textContent=`Paper: ${result.paper_id}\nService: ${result.service_id || 'Unassigned'}\n${result.reason}`+(pdf && !result.reason.toLowerCase().includes(`pdf ${pdf}`)?`\nPDF: ${pdf}`:'');
     details.append(summary,raw);item.append(title,reason,details);return item;
   }));
+  renderQueueResults(results);
+}
+function renderQueueResults(results) {
+  const summary=document.createElement('p');summary.textContent=lastRun?.message || '本次尚未导入。';
+  const list=document.createElement('div');
+  for(const result of results){
+    const details=document.createElement('details'),heading=document.createElement('summary'),body=document.createElement('p');
+    heading.textContent=`${result.service_id || result.service_assignment || 'Unassigned'} · ${result.parent_outcome} · PDF unverified`;
+    body.textContent=`Paper: ${result.paper_id}\n${result.title}\n${result.reason}`+
+      (result.diagnostic?'\n'+[result.diagnostic.stage,result.diagnostic.step,result.diagnostic.code].filter(Boolean).join(' / '):'');
+    details.append(heading,body);list.append(details);
+  }
+  $('kept-queue-results').replaceChildren(summary,exportButton,list);
 }
 function render() {
   if(!data)return;
@@ -142,8 +160,6 @@ function render() {
     ui.indexScroll=index.scrollTop;ui.indexLeft=index.scrollLeft;
   }
   $('array-journal-profile').hidden=status!=='candidates';
-  $('array-import-profile').hidden=status!=='kept';
-  $('kept-import-actions').hidden=status!=='kept';
   const journal=journals.find(group=>group.id===ui.filter)?.journal;
   $('array-journal-name').textContent=journal?.name || '尚无待审阅期刊';
   $('array-journal-issn').textContent=journal?.issn || '—';
@@ -228,6 +244,7 @@ function setLayout(layout) {
   render();refreshActions();return true;
 }
 function setStatus(next) {
+  if(next==='kept')return openKept();
   if(!arrayShown() || switchBusy() || !Object.hasOwn(states,next))return false;
   if(next===status)return true;
   if(!closeReader())return false;
@@ -237,6 +254,7 @@ function openPaper(id) {
   if(switchBusy())return false;
   const candidate=bridge.candidates().find(entry=>entry.paper.id===id);
   const entry=candidate || allEntries().find(entry=>entry.paper.id===id);
+  if(entry && !candidate){expandedPaper=id;serviceFilter='all';return openKept();}
   if(!entry || !window.workspaceNavigation.go('workspace') || !setLayout('array'))return false;
   if(!closeReader())return false;
   layoutHost.closeFlyout({restoreFocus:false});
@@ -246,17 +264,80 @@ function openPaper(id) {
 }
 // Recovery selects its existing business context before opening the modal.
 function openKept() {
-  if(!window.workspaceNavigation.go('workspace',{workflowRecovery:true}))return false;
-  if(!closeReader())return false;
-  layoutHost.closeFlyout({restoreFocus:false});
-  if(!bridge.setLayout('array'))return false;
-  status='kept';ui=states.kept;render();return true;
+  if(!window.workspaceNavigation.go('kept',{workflowRecovery:true}))return false;
+  void refreshQueue();return true;
 }
 window.workspaceArray={
   workflowBusy,navigationBusy,openPaper,search:()=>status,readerEntries:orderedEntries,
   leave(){closeReader();bridge.suspend();layoutHost.closeFlyout({restoreFocus:false});},
   enter(){queueArchivePreference();render();$('array-content').focus({preventScroll:true});},
 };
+function renderQueue() {
+  const services=queueData?.services || [],selected=services.find(service=>service.id===serviceFilter);
+  const batchName=workflow?.service_name || (workflow?.service_id ?
+    services.find(service=>service.id===workflow.service_id)?.name || workflow.service_id : 'All Services');
+  $('kept-scope-status').textContent=`下一批：${selected?.name || 'All Services'}`+
+    (workflow?.workflow_id?` · 当前批次：${batchName} · ${workflow.phase}`:'')+
+    (['unassigned','ambiguous'].includes(serviceFilter)?' · 请在 Journals 修正 Service 映射；此分组不能单独执行。':'');
+  const focused=$('kept-service-list').contains(document.activeElement);
+  $('kept-service-list').replaceChildren(...services.map(service=>{
+    const button=document.createElement('button');button.type='button';button.className='kept-service-row';
+    button.dataset.serviceId=service.id;button.setAttribute('aria-current',String(service.id===serviceFilter));
+    button.textContent=`${service.name} · ${service.kept} / ${service.eligible}`;
+    button.addEventListener('click',()=>{serviceFilter=service.id;renderQueue();renderRecord();refreshActions();queueLayout.closeFlyout();});
+    return button;
+  }));
+  if(focused)[...$('kept-service-list').children].find(button=>button.dataset.serviceId===serviceFilter)?.focus({preventScroll:true});
+  const columns=[['Service','name'],['Kept','kept'],['Eligible','eligible'],['Planned','planned'],['Processed','processed'],
+    ['Confirmed parents','confirmed'],['Pending','pending'],['Skipped','skipped'],['No effect','no_effect'],
+    ['Exceptions','exceptions'],['Uncertain','uncertain'],['PDF unverified','pdf_unverified']];
+  const table=document.createElement('table'),head=document.createElement('thead'),heading=document.createElement('tr'),body=document.createElement('tbody');
+  for(const [label] of columns){const cell=document.createElement('th');cell.textContent=label;cell.setAttribute('scope','col');heading.append(cell);}
+  head.append(heading);
+  for(const service of services){
+    const row=document.createElement('tr');row.setAttribute('aria-current',String(service.id===serviceFilter));
+    for(const [,field] of columns){const cell=document.createElement('td');cell.textContent=String(service[field] ?? 0);row.append(cell);}
+    body.append(row);
+  }
+  table.append(head,body);$('kept-statistics').replaceChildren(table);
+  const papers=(queueData?.papers || []).filter(paper=>serviceFilter==='all' || (paper.service_id || paper.assignment)===serviceFilter);
+  const details=document.createElement('details'),summary=document.createElement('summary');
+  details.open=Boolean(expandedPaper);summary.textContent=`Paper identities · ${papers.length}`;details.append(summary);
+  for(const paper of papers){
+    const item=document.createElement('details'),title=document.createElement('summary'),description=document.createElement('p');
+    item.open=paper.paper_id===expandedPaper;title.textContent=paper.title;
+    description.textContent=`ID: ${paper.paper_id}\nDOI: ${paper.doi || '—'}\nService: ${paper.service_id || paper.assignment}\n${paper.reason}`;
+    item.append(title,description);details.append(item);
+  }
+  $('kept-paper-identities').replaceChildren(details);
+  const service=(data?.services || []).find(service=>service.id===serviceFilter);
+  $('kept-service-detail').textContent=service?`${service.name}\n${service.id}\n${service.access_method}\n${service.access_url || '未配置访问链接'}`:
+    selected?.name || 'All Services';
+  queueLayout.sync();
+}
+async function refreshQueue() {
+  const epoch=++queueEpoch;
+  try {
+    const saved=await uiNext.request('/api/kept-workflow/queue');
+    if(epoch!==queueEpoch)return;
+    queueData=saved;
+    if(saved.services && !saved.services.some(service=>service.id===serviceFilter))serviceFilter='all';
+    renderQueue();renderRecord();refreshActions();
+  }catch(error){if(epoch===queueEpoch)uiNext.notice(`Queue 读取失败：${error.message}`);}
+}
+window.uiKept={open:openKept,refresh:refreshQueue};
+window.workspaceNavigation.register('kept',{
+  canNavigate:()=>!navigationBusy(),canEnter:()=>Boolean(data) && !bridge.busy(),
+  enter(){void refreshQueue();queueLayout.sync();window.dispatchEvent(new Event('kept-settings-mount'));$('kept-main').focus({preventScroll:true});},
+  leave(){queueLayout.closeFlyout({restoreFocus:false});window.allfoldWorkbench?.hideKeptBrowser?.();},
+});
+window.addEventListener('kept-open-sidebar',event=>queueLayout.openSidebar(event.detail?.view || 'access'));
+$('kept-browser-open').addEventListener('click',()=>window.allfoldWorkbench?.showKeptBrowser?.({mode:'compact'}));
+window.addEventListener('workbench:browser-state',event=>{
+  const shown=event.detail?.visible && event.detail.source==='kept';
+  $('kept-queue-body').hidden=Boolean(shown);$('kept-browser-host').hidden=!shown;
+  $('kept-workspace').dataset.browserVisible=String(Boolean(shown));
+});
 function publishResults(state) {
   if(!state.import_started && !state.batch){lastRun=null;renderRecord();return;}
   const batch=state.batch;
@@ -268,7 +349,7 @@ function publishResults(state) {
 function identity(state) {return {workflow_id:state.workflow_id,generation:state.generation};}
 function closeRun(run) {
   if(active!==run)return;
-  run.player.stop();active=null;dialog.close();render();$('array-content').focus({preventScroll:true});
+  run.player.stop();active=null;dialog.close();render();$('kept-main').focus({preventScroll:true});
 }
 async function acknowledgeWorkflow() {
   if(acknowledging || !workflow?.navigation || workflow.active)return;
@@ -378,6 +459,7 @@ async function acceptState(state,{restored=false,open=false,epoch=workspaceEpoch
     presentationInline=window.allfoldUIPreferences?.fullscreenDisabled()===true;taskQueue=[...allEntries()];
   }
   workflow=state;publishResults(state);
+  renderQueue();
   if(presentationInline && state.workflow_id){presentInline();displayGate(state);}
   if(open && !presentationInline && state.active && state.phase!=='stopping')void openWorkflow(state,restored);
   if(active && active.state.workflow_id===state.workflow_id){active.state=state;reconcile(active);}
@@ -391,6 +473,7 @@ async function acceptState(state,{restored=false,open=false,epoch=workspaceEpoch
     await acknowledgeWorkflow();
   }
   refreshActions();
+  if(window.workspaceNavigation.current()==='kept')void refreshQueue();
 }
 async function pollWorkflow() {
   clearTimeout(pollTimer);
@@ -400,13 +483,18 @@ async function pollWorkflow() {
   if(epoch===workspaceEpoch && (workflow?.active || workflow?.navigation))pollTimer=setTimeout(()=>void pollWorkflow(),1000);
 }
 async function start(mode) {
-  if(status!=='kept' || !arrayShown() || recovering || active || window.uiRun?.active() || workflowBusy() || bridge.busy() || !allEntries().length)return;
+  if(window.workspaceNavigation.current()!=='kept' || recovering || active || window.uiRun?.active() || workflowBusy() || bridge.busy() || ['unassigned','ambiguous'].includes(serviceFilter))return;
+  const selectedService=serviceFilter==='all'?null:serviceFilter;
   if(!closeReader())return;
   submitting=true;refreshActions();uiNext.notice('');
   try {
+    if(window.allfoldAutosave && !await window.allfoldAutosave.flush()){
+      uiNext.notice('配置尚未保存；请处理 Pending / Failed / Conflict 后重试。');return;
+    }
     // Always obtain the current target-bound one-use token before an explicit start.
     await window.uiWorkspace.refresh();data=bridge.data();
-    const state=await uiNext.request('/api/kept-workflow/start',{mode,import_token:uiNext.data.import_token});
+    const queue=await uiNext.request('/api/kept-workflow/queue'+(selectedService?`?service_id=${encodeURIComponent(selectedService)}`:''));
+    const state=await uiNext.request('/api/kept-workflow/start',{mode,service_id:selectedService,import_token:queue.import_token});
     await acceptState(state,{open:true});
     if(!state.active)uiNext.notice(state.message);
     void pollWorkflow();
@@ -448,14 +536,13 @@ async function restoreWorkflow() {
   }catch(error){if(epoch===workspaceEpoch)uiNext.notice(error.message);}
 }
 async function initialize() {
-  data=bridge.data();render();const restored=await restoreWorkflow();recovering=false;render();
+  data=bridge.data();render();void refreshQueue();const restored=await restoreWorkflow();recovering=false;render();
   if(restored)return;
   const initial=window.uiNextInitialLink;
   if(initial?.view==='kept'){
     const found=!initial.paper || allEntries().some(entry=>entry.paper.id===initial.paper);
     openKept();
-    if(!found){ui.missingLinkPaper=true;ui.selected=null;render();}
-    if(initial.paper && found && !dialog.open && arrayShown()){ui.selected=initial.paper;render();}
+    if(initial.paper && found){expandedPaper=initial.paper;void refreshQueue();}
     if(!found)uiNext.notice('该 Paper 不在当前 Kept 中，可能已移出保留列表。');
   }else if(initial?.view==='inbox' && initial.paper){
     if(window.workspaceNavigation.go('workspace') && !bridge.openArchivePaper(initial.paper))uiNext.notice('该 Paper 不在当前 Inbox 中，可能已移出待审阅列表。');
@@ -466,7 +553,7 @@ $('kept-start').addEventListener('click',()=>void start('full'));$('kept-import-
 $('kept-continue').addEventListener('click',()=>void continueImport());$('kept-leave').addEventListener('click',()=>void leaveWorkflow());
 $('kept-skip').addEventListener('click',skipScan);
 window.addEventListener('enrich-state',()=>{if(arrayShown() && !bridge.busy() && readerRefreshPending)render();else refreshActions();});
-window.addEventListener('workspace-data-changed',()=>{data=bridge.data();if(data && arrayShown()){saveScroll();render();}});
+window.addEventListener('workspace-data-changed',()=>{data=bridge.data();if(data && arrayShown()){saveScroll();render();}if(window.workspaceNavigation.current()==='kept')void refreshQueue();});
 window.addEventListener('workspace-reset',()=>{
   workspaceEpoch++;clearTimeout(pollTimer);
   active?.player.stop();active=null;workflow=null;lastRun=null;readerRefreshPending=false;presentationInline=null;taskQueue=[];inline.hidden=true;

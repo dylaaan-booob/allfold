@@ -137,7 +137,7 @@ const paperToolsBusy=()=>paperTools.pending || $('paper-tools-dialog').open;
 const currentPaper = () => readerContext ? readerContext.entries.find(e=>e.paper.id===state.pendingPaper)?.paper : selectedJournal()?.papers.find(p => p.id === state.pendingPaper);
 const reviewPapers = () => readerContext ? readerContext.entries.map(e=>e.paper) : (selectedJournal()?.papers || []);
 const reviewJournal = () => readerContext ? readerContext.entries.find(e=>e.paper.id===state.pendingPaper)?.journal : selectedJournal();
-const configurationActive=()=>['journals','run','settings'].includes(window.workspaceNavigation.current());
+const configurationActive=()=>['journals','run','kept','settings'].includes(window.workspaceNavigation.current());
 const inboxActive=()=>window.workspaceNavigation.current()==='workspace' && $('selected-view').dataset.workspaceLayout==='archive';
 const arrayActive=()=>window.workspaceNavigation.current()==='workspace' && $('selected-view').dataset.workspaceLayout==='array';
 const navigationBusy=()=>decisionPending || Boolean(snapshotApplying) || paperToolsBusy() || enrichment?.phase==='Saving' ||
@@ -1894,7 +1894,7 @@ window.uiWorkspace={
 window.addEventListener('focus',()=>{if(!window.allfoldWorkbench?.presentationChanging?.() && !configurationActive() && state.ready && !decisionPending && !paperToolsBusy() && !['Retrieving','Saving'].includes(enrichment?.phase))void refreshWorkspace().catch(error=>uiNext.notice(error.message));});
 window.addEventListener('pagehide',event=>{cancelRetrieval();if(!event.persisted)paragraphLayout?.destroy();});
 window.workspaceNavigation.register('workspace',{
-  canNavigate:({to,workflowRecovery})=>!navigationBusy() && (!(window.workspaceArray?.navigationBusy?.() ?? window.workspaceArray?.workflowBusy()) || (workflowRecovery===true && to==='workspace')),
+  canNavigate:({to,workflowRecovery})=>!navigationBusy() && (!(window.workspaceArray?.navigationBusy?.() ?? window.workspaceArray?.workflowBusy()) || (workflowRecovery===true && to==='kept')),
   canEnter:()=>state.ready,
   search:()=>inboxActive()?'inbox':window.workspaceArray?.search() || 'candidates',
   leave:()=>{
