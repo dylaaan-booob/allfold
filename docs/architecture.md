@@ -23,7 +23,7 @@ Main starts one Python process. The HTTP origin remains loopback-only on port 18
 
 | Source | Responsibility |
 | --- | --- |
-| `frontend/ui/` | Workspace, Run, Journals and Settings UI, source assets and notices |
+| `frontend/ui/` | Workspace, Run, Journals, Kept and Settings UI, source assets and notices |
 | `src/allfold/application/` | Use cases, guarded operations and process-local workflow coordination |
 | `src/allfold/providers/` | Provider retrieval, queries and source-specific formats |
 | `src/allfold/persistence/` | Paper/Markdown projection, safe file operations, Registry and local state |
@@ -47,6 +47,14 @@ FastAPI composes these implementations. ImportTarget belongs to the application 
 
 Python snapshots the saved Journals and Access Services for each invocation. The browser bridge carries an opaque hash of the canonical configuration path, the configuration revision and User State revision alongside the saved Service ID. Import matches saved ISSN/eISSN identifiers with the existing Workspace rules: every matching Journal must select the same nonempty Service; otherwise the Paper remains unassigned. These are invocation snapshots of SQLite state, never a second authoritative mapping. Preparation and subsequent Import dispatches verify the original snapshot, while WoS retains its existing configuration and Workspace checks. Detected changes stop further work without migrating it to a new mapping. Already-dispatched native saves still settle through the existing result protocol.
 
+Kept binds All Services or one saved Service ID to the signed Import target and
+one-time workflow authorization. The complete Workspace identity scan runs before
+filtering the dispatch plan. Prepare, waiting, Continue and Import retain that
+same scope even if the displayed Service filter changes. Queue statistics read
+saved associations, while completed batch results retain execution-time Service
+and Paper identities independently of later Journal mapping edits. Confirmed
+parent saves and attachment-stage diagnostics remain separate from PDF unverified.
+
 BrowserRuntime keeps one current association per physical page, including the workflow/task/request, role, optional Paper/DOI and source page. `pageAssociation(pageId)` returns descriptive metadata with an explicit active flag; `servicePages(scopeId, serviceId)` filters existing pages without creating them. Task completion clears live ownership while retaining the page's last association for inspection. Destruction removes its association and live source/opener references; renderer exit invalidates the association. Reviewed diagnostic events capture the last association before invalidation. They do not restore live associations or change Session, page recycling or closure behavior.
 
 ## History and diagnostics
@@ -69,11 +77,36 @@ Prepare's CARSI Portal is shared and unassigned; resource and observed target pa
 
 `bindTaskPage` and explicit `navigate(..., {tab})` control task targets. `select` presents a page in the main-window Browser pane; task navigation and WoS handoff do not select tabs. Background creation does not select even the first page, open Browser or focus a webpage. New task pages remain available for explicit manual login or inspection through the existing tabs. Service associations confer no document, task or institution-credential authority. Page/frame identity, task signals, navigation recovery and native-save settlement remain separate checks.
 
+## Configuration editing
+
+One configuration controller owns the saved revisions and ordinary drafts across
+Run, Journals, Kept and Settings. A shared scheduler serializes safe field patches;
+responses acknowledge the submitted snapshot without replacing later edits.
+Server-side admission coordinates writes with task starts, retaining the existing
+Compare-and-Write and Workspace lock protections. Active tasks continue using
+their saved snapshots while edits remain Pending. A new task requires successful
+save and validation; a failed or conflicting draft cannot become task authority.
+Provider secrets, CARSI credentials and high-impact operations use explicit
+submission rather than ordinary autosave. CARSI mutations settle through the
+authenticated native bridge and compare encrypted-store revisions.
+
 ## Workbench and task presentation
 
-The main Window contains Chrome, a flexible Workbench Content region and Status. Content switches between the existing Allfold pane and a Browser pane without calling business workspace navigation or recreating business pages. Workspace, Run, Journals and Settings retain their own entry/exit and save guards. Container measurements own available height; the Browser toolbar, tabs and Services occupy trusted DOM space outside the native webpage rectangle.
+The main Window contains Chrome, a flexible Workbench Content region and Status.
+Its business workspaces are Workspace, Run, Journals, Kept and Settings, with
+History retained separately. Kept's Queue is the default; its Browser host can
+present the same native page in Compact or Focus. Run WoS uses temporary Focus
+and returns to its original Run state. Presentation changes do not restart tasks
+or recreate business pages. Container measurements own available height; the
+Browser toolbar, tabs and Services occupy trusted DOM space outside the native
+webpage rectangle.
 
-ARRAY and Journals share a presentation-only Navigation Rail, overlay Index/Directory flyout, Content and Functional Sidebar/Tool Rail. Their mounted hosts retain expansion and compute docked/overlay geometry from actual container bounds; targets and measured widths stay separate. Business Controllers own selection, drafts and shared Reader lifecycle. See [workspace layout](workspace-layout.md) for size constraints, preference behavior, the Run/Settings/Archive audit and remaining manual acceptance.
+ARRAY, Run, Journals, Kept and Settings share a presentation-only Navigation Rail,
+overlay Index/Directory flyout, Content and Functional Sidebar/Tool Rail. Their
+mounted hosts retain expansion and compute docked/overlay geometry from actual
+container bounds; targets and measured widths stay separate. Business Controllers
+own selection, drafts and shared Reader lifecycle. See [workspace layout](workspace-layout.md)
+for size constraints, preference behavior and acceptance boundaries.
 
 BrowserRuntime owns physical pages, task associations and their shared Session. Browser Presentation owns attaching, showing, hiding, sizing and explicitly focusing a selected WebContentsView on the main window. The trusted renderer reports its measured webpage body in CSS pixels through a restricted, sequenced IPC. Main converts with the host's actual Zoom Factor to Electron logical pixels, independently of display DPR, and validates sender, main frame, command, Page ID and rectangle against the host content bounds. Hiding Browser or suspending it for a trusted dialog does not destroy pages or cancel operations. Fullscreen task surfaces can be suspended for explicit Browser interaction and resumed without restarting their player or changing task state.
 
