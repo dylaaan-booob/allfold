@@ -1,8 +1,8 @@
 'use strict';
 // Target sizes are preferences; measured sizes never flow back into them.
 window.allfoldLayoutModel=(()=>{
-  const defaults=Object.freeze({railWidth:48,flyoutPreferredWidth:280,sidebarPreferredWidth:320});
-  const limits=Object.freeze({railWidth:[36,72],flyoutPreferredWidth:[220,480],sidebarPreferredWidth:[260,560]});
+  const defaults=Object.freeze({railWidth:48,flyoutPreferredWidth:280,sidebarPreferredWidth:320,browserPreferredWidth:960,browserPreferredHeight:300});
+  const limits=Object.freeze({railWidth:[36,72],flyoutPreferredWidth:[220,480],sidebarPreferredWidth:[260,560],browserPreferredWidth:[320,2400],browserPreferredHeight:[140,1200]});
   const minOperationalSize=Object.freeze({array:360,journals:320,sidebar:260});
   function targets(stored) {
     const value={...defaults};
@@ -18,5 +18,8 @@ window.allfoldLayoutModel=(()=>{
       contentWidth:available-(expanded && docked?sidebarEffectiveWidth:0),
       flyoutEffectiveWidth:Math.min(preferred.flyoutPreferredWidth,available)};
   }
-  return Object.freeze({defaults,limits,minOperationalSize,targets,measure});
+  function browserSize(width,height,preferred) {
+    return {width:Math.max(0,Math.min(width,preferred.browserPreferredWidth)),height:Math.max(0,Math.min(height,preferred.browserPreferredHeight))};
+  }
+  return Object.freeze({defaults,limits,minOperationalSize,targets,measure,browserSize});
 })();

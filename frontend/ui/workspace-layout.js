@@ -2,7 +2,7 @@
 // Presentation only. Workspace Controllers own selections, drafts and Reader lifecycle.
 window.allfoldLayout=(()=>{
   const model=window.allfoldLayoutModel,$=id=>document.getElementById(id),key='allfold.workbench-layout';
-  const hosts=new Set();let active=null,saved=model.targets(),values,storageError='';
+  const hosts=new Set(),subscribers=new Set();let active=null,saved=model.targets(),values,storageError='';
   try {
     const raw=localStorage.getItem(key);
     if(raw!==null)saved=model.targets(JSON.parse(raw));
@@ -23,7 +23,8 @@ window.allfoldLayout=(()=>{
       $('layout-'+name).textContent=active?.geometry?.[name]??'—';
     $('layout-status').textContent=storageError || (JSON.stringify(values)===JSON.stringify(saved)?'SAVED':'UNSAVED');
   }
-  function sync() {for(const host of hosts)host.sync();debug();}
+  function notify() {for(const callback of subscribers)callback();}
+  function sync() {for(const host of hosts)host.sync();debug();notify();}
   function persist(next) {
     try {localStorage.setItem(key,JSON.stringify(next));saved={...next};storageError='';}
     catch {storageError='保存失败';}
@@ -52,6 +53,7 @@ window.allfoldLayout=(()=>{
       flyout.hidden=true;flyoutKey=null;
       for(const button of triggers)button.setAttribute('aria-expanded','false');
       if(restoreFocus && trigger?.isConnected && !trigger.disabled){restoringFocus=true;trigger.focus({preventScroll:true});restoringFocus=false;}
+      notify();
     }
     function openFlyout(button) {
       cancelTimers();if(button.disabled || !visible())return;
@@ -67,6 +69,7 @@ window.allfoldLayout=(()=>{
         if(focused && !flyout.contains(document.activeElement))flyout.focus({preventScroll:true});
       }else flyout.hidden=false;
       for(const entry of triggers)entry.setAttribute('aria-expanded',String(entry===button));
+      notify();
     }
     function focusTool() {tools.find(button=>button.dataset.sidebarView===view)?.focus({preventScroll:true});}
     function closeSidebar() {
@@ -91,7 +94,7 @@ window.allfoldLayout=(()=>{
         button.setAttribute('aria-expanded',String(expanded && button.dataset.sidebarView===view));
         button.setAttribute('aria-pressed',String(expanded && button.dataset.sidebarView===view));
       }
-      resize.setAttribute('aria-valuenow',String(values.sidebarPreferredWidth));debug();
+      resize.setAttribute('aria-valuenow',String(values.sidebarPreferredWidth));debug();notify();
     },openSidebar,closeSidebar,closeFlyout};
     for(const button of triggers){
       button.setAttribute('aria-controls',flyout.id);button.setAttribute('aria-expanded','false');
@@ -172,5 +175,5 @@ window.allfoldLayout=(()=>{
   $('layout-reset').addEventListener('click',()=>{values={...saved};storageError='';sync();});
   $('layout-origin').addEventListener('click',()=>{values=model.targets();storageError='';sync();});
   for(const event of ['workspace-navigation-state','developer-mode-change'])window.addEventListener(event,sync);
-  debug();return Object.freeze({create});
+  debug();return Object.freeze({create,targets:()=>({...values}),subscribe(callback){subscribers.add(callback);return ()=>subscribers.delete(callback);}});
 })();

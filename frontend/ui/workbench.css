@@ -21,24 +21,33 @@ body[data-workbench=allfold] #browser-status{display:none}
 /* Existing non-modal task players keep their open state during manual handoff. */
 #run-view,#kept-flow{inset:var(--prototype-header,90px) 0 0;height:calc(100dvh - var(--prototype-header,90px));z-index:9}
 body:has(#run-view[open],#kept-flow[open]) .masthead{background:var(--paper)}
-body[data-workbench=browser] :is(#run-view,#kept-flow){visibility:hidden;pointer-events:none}
+body:is([data-workbench=browser],[data-workbench=kept-browser]) :is(#run-view,#kept-flow){visibility:hidden;pointer-events:none}
 #browser-pane{display:flex;flex-direction:column;background:var(--paper)}
+#kept-browser-host{display:flex;flex:1 1 0;min-width:0;min-height:0;overflow:hidden;align-items:flex-start}
+#kept-browser-host[hidden]{display:none}
+#kept-browser-host>#browser-pane{flex:1 1 0;width:100%;height:100%;max-height:100%}
+#kept-browser-host>#browser-pane[data-mode=compact]{flex:0 1 var(--browser-preferred-width,960px);max-width:var(--browser-preferred-width,960px)}
+#browser-pane[data-mode=compact] #browser-work-area{max-height:var(--browser-preferred-height,300px)}
+#browser-pane[data-source=run]{width:100%;height:100%}
+#browser-pane[data-mode=compact] #browser-focus{font-weight:600}
 .browser-controls{flex:0 0 auto;min-width:0;border-bottom:1px solid var(--rule)}
-.browser-tabbar{display:flex;align-items:stretch;gap:6px;min-width:0;padding:8px var(--workspace-gutter);border-bottom:1px solid var(--rule)}
+.browser-tabbar{display:flex;align-items:stretch;gap:4px;min-width:0;padding:6px 8px;border-bottom:1px solid var(--rule);overflow-x:auto;scrollbar-width:thin}
 #browser-pane button,#browser-maintenance>summary{min-height:30px;padding:4px 9px;font-size:11px;white-space:nowrap}
-#browser-return,#browser-services-toggle{flex:0 0 auto;letter-spacing:.06em}
+#browser-return,#browser-services-toggle,#browser-compact,#browser-focus{flex:0 0 auto;letter-spacing:.04em}
+#browser-compact[aria-pressed=true],#browser-focus[aria-pressed=true]{background:var(--ink);color:var(--paper)}
 #browser-tabs{display:flex;flex:1;min-width:0;gap:5px;overflow-x:auto;scrollbar-width:thin}
 .browser-tab{display:flex;flex:0 0 auto;min-width:110px;max-width:230px;border:1px solid var(--rule)}
 .browser-tab[data-selected=true]{border-color:var(--ink);background:var(--ink);color:var(--paper)}
 .browser-tab>button:first-child{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;text-align:left}
 .browser-tab>button:last-child{flex:0 0 28px;padding-inline:4px}
-#browser-address{display:flex;align-items:flex-start;flex-wrap:wrap;gap:6px;padding:8px var(--workspace-gutter) 0;min-width:0}
-#browser-url{flex:1 1 180px;min-width:80px;height:32px;border:1px solid var(--rule);background:transparent;color:var(--ink);font:12px var(--font);padding:5px 9px}
+#browser-address{display:flex;align-items:flex-start;flex-wrap:nowrap;gap:4px;padding:6px 8px 0;min-width:0}
+#browser-address:has(#browser-maintenance[open]){flex-wrap:wrap}
+#browser-url{flex:1 1 80px;min-width:80px;height:32px;border:1px solid var(--rule);background:transparent;color:var(--ink);font:12px var(--font);padding:5px 9px}
 #browser-maintenance{flex:0 1 auto;max-width:100%}
 #browser-maintenance>summary{cursor:pointer}
 #browser-maintenance>div{display:flex;flex-wrap:wrap;gap:5px;padding-bottom:6px}
 #browser-maintenance>div>button{border:1px solid var(--rule)}
-#browser-message{min-height:24px;padding:3px var(--workspace-gutter);margin:0;font-size:11px;color:#a84700;overflow-wrap:anywhere}
+#browser-message{min-height:18px;max-height:48px;overflow:auto;padding:2px 8px;margin:0;font-size:11px;color:#a84700;overflow-wrap:anywhere}
 #browser-work-area{display:flex;flex:1 1 0;min-height:0;min-width:0;overflow:hidden}
 #browser-body{position:relative;flex:1 1 0;min-width:0;min-height:0;overflow:hidden;background:#fff}
 #browser-empty{padding:24px;color:var(--muted);font-size:12px}

@@ -14,9 +14,17 @@ test('rails are allocated first; sidebar yields to the content minimum and overl
 });
 test('corrupt targets fall back independently and obsolete journal columns/left widths are ignored',()=>{
   const m=model();
-  assert.deepEqual({...m.targets({railWidth:0,sidebarPreferredWidth:'400',flyoutPreferredWidth:Infinity})},{railWidth:48,flyoutPreferredWidth:280,sidebarPreferredWidth:320});
-  assert.deepEqual({...m.targets({railWidth:60,sidebarPreferredWidth:420,columns:2,left:900})},{railWidth:60,flyoutPreferredWidth:280,sidebarPreferredWidth:420});
-  assert.deepEqual({...m.targets(null)},{railWidth:48,flyoutPreferredWidth:280,sidebarPreferredWidth:320});
+  assert.deepEqual({...m.targets({railWidth:0,sidebarPreferredWidth:'400',flyoutPreferredWidth:Infinity})},{railWidth:48,flyoutPreferredWidth:280,sidebarPreferredWidth:320,browserPreferredWidth:960,browserPreferredHeight:300});
+  assert.deepEqual({...m.targets({railWidth:60,sidebarPreferredWidth:420,columns:2,left:900})},{railWidth:60,flyoutPreferredWidth:280,sidebarPreferredWidth:420,browserPreferredWidth:960,browserPreferredHeight:300});
+  assert.deepEqual({...m.targets(null)},{railWidth:48,flyoutPreferredWidth:280,sidebarPreferredWidth:320,browserPreferredWidth:960,browserPreferredHeight:300});
+});
+test('Compact Browser targets survive constrained containers without storing effective dimensions',()=>{
+  const m=model(),targets=m.targets({browserPreferredWidth:1100,browserPreferredHeight:420});
+  assert.deepEqual({...m.browserSize(504,170,targets)},{width:504,height:170});
+  assert.deepEqual({...m.browserSize(1600,700,targets)},{width:1100,height:420});
+  assert.equal(targets.browserPreferredWidth,1100);assert.equal(targets.browserPreferredHeight,420);
+  assert.equal(m.targets({browserPreferredWidth:0,browserPreferredHeight:'240'}).browserPreferredWidth,960);
+  assert.equal(m.targets({browserPreferredWidth:0,browserPreferredHeight:'240'}).browserPreferredHeight,300);
 });
 function fixture(preferences={}) {
   const elements=new Map(),timers=new Map(),observers=[],storage=new Map(Object.entries(preferences)),previews=[];
