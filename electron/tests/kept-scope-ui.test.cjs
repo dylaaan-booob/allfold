@@ -1,0 +1,51 @@
+'use strict';
+const test=require('node:test'),assert=require('node:assert/strict');
+const {taskUI}=require('./task-ui-fixture.cjs');
+const idle={phase:'idle',active:false,can_continue:false,can_cancel:false};
+const queue={import_token:'all-token',services:[
+  {id:'all',name:'All Services',kept:2,eligible:2},
+  {id:'svc_a',name:'Service A',kept:1,eligible:1},
+  {id:'svc_b',name:'Service B',kept:1,eligible:1},
+  {id:'unassigned',name:'Unassigned',kept:0,eligible:0},
+  {id:'ambiguous',name:'Ambiguous',kept:0,eligible:0}],papers:[]};
+const active={workflow_id:'fixed-a',generation:7,service_id:'svc_a',service_name:'Service A',phase:'waiting_for_user',
+  active:true,can_continue:true,can_cancel:true,settings:{},message:'Review Service A',preparation:{manual_services:[],results:[]}};
+
+test('Kept captures its next saved Service before autosave and display changes cannot retarget it',async()=>{
+  const starts=[];let current=idle;
+  const f=await taskUI('kept.js',{page:'kept',request:async(url,body)=>{
+    if(url.includes('/queue'))return {...queue,import_token:url.includes('svc_a')?'a-token':'all-token'};
+    if(url.endsWith('/start')){starts.push(body);current=active;return active;}
+    return current;
+  }});
+  let release;
+  f.window.allfoldAutosave={flush:()=>new Promise(resolve=>{release=resolve;})};
+  await f.get('kept-service-list').children.find(row=>row.dataset.serviceId==='svc_a').emit('click');
+  await f.get('kept-start').emit('click');
+  assert.equal(starts.length,0);
+  await f.get('kept-service-list').children.find(row=>row.dataset.serviceId==='svc_b').emit('click');
+  release(true);await f.settle();
+  assert.equal(starts.length,1);
+  assert.equal(starts[0].service_id,'svc_a');assert.equal(starts[0].import_token,'a-token');
+  assert.match(f.get('kept-scope-status').textContent,/下一批：Service B.*当前批次：Service A/);
+  assert.equal(f.get('kept-start').disabled,true);
+});
+
+test('Unassigned and Ambiguous are display groups with no single Service execution',async()=>{
+  const f=await taskUI('kept.js',{page:'kept',request:async url=>url.includes('/queue')?queue:idle});
+  for(const id of ['unassigned','ambiguous']){
+    await f.get('kept-service-list').children.find(row=>row.dataset.serviceId===id).emit('click');
+    assert.equal(f.get('kept-start').disabled,true);
+    await f.get('kept-start').emit('click');
+  }
+  assert.equal(f.calls.some(call=>call[0].endsWith('/start')),false);
+});
+
+test('failed autosave prevents Kept task dispatch and preserves the selected scope',async()=>{
+  const f=await taskUI('kept.js',{page:'kept',request:async url=>url.includes('/queue')?queue:idle});
+  f.window.allfoldAutosave={flush:async()=>false};
+  await f.get('kept-service-list').children.find(row=>row.dataset.serviceId==='svc_a').emit('click');
+  await f.get('kept-start').emit('click');
+  assert.equal(f.calls.some(call=>call[0].endsWith('/start')),false);
+  assert.match(f.get('kept-scope-status').textContent,/Service A/);
+});

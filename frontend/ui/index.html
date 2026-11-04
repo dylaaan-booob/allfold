@@ -42,13 +42,13 @@
   <header class="masthead">
     <div class="identity"><svg class="identity-mark" viewBox="0 0 66 46" aria-hidden="true"><path d="M9 8h18v30H9zM39 8h18v30H39zM27 8l12 4v26l-12-4z" fill="none" stroke="currentColor"/><path d="M33 4v38" stroke="#ff7a01"/></svg><div><strong>ALLFOLD</strong><small>研究档案馆 / Local journal archive</small></div></div>
     <div class="header-browse"><div class="view-nav-scroll"><nav class="view-nav" aria-label="Workspace views">
-      <span id="view-nav-plate" aria-hidden="true"><span class="nav-clip"><span class="nav-inverse"><span><small>01</small><span class="nav-label">WORKSPACE</span></span><span><small>02</small><span class="nav-label">RUN</span></span><span><small>03</small><span class="nav-label">JOURNALS</span></span><span><small>04</small><span class="nav-label">SETTINGS</span></span></span></span></span>
+      <span id="view-nav-plate" aria-hidden="true"><span class="nav-clip"><span class="nav-inverse"><span><small>01</small><span class="nav-label">WORKSPACE</span></span><span><small>02</small><span class="nav-label">RUN</span></span><span><small>03</small><span class="nav-label">JOURNALS</span></span><span><small>04</small><span class="nav-label">KEPT</span></span><span><small>05</small><span class="nav-label">SETTINGS</span></span></span></span></span>
       <button id="workspace-open" aria-current="page" disabled><small>01</small><span class="nav-label">WORKSPACE</span></button>
       <button id="run-open" disabled><small>02</small><span class="nav-label">RUN</span></button>
       <button id="journals-open" disabled><small>03</small><span class="nav-label">JOURNALS</span></button>
-      <button id="settings-open" disabled><small>04</small><span class="nav-label">SETTINGS</span></button>
+      <button id="kept-open" disabled><small>04</small><span class="nav-label">KEPT</span></button>
+      <button id="settings-open" disabled><small>05</small><span class="nav-label">SETTINGS</span></button>
     </nav></div>
-    <button id="browser-open" class="s-button" aria-label="打开 Browser 工作视图" aria-pressed="false">BROWSER</button>
     <button id="history-open" class="s-button" aria-label="运行历史">HISTORY</button>
     </div>
     <div class="header-utilities">
@@ -124,7 +124,7 @@
     </nav>
     <aside id="array-flyout" class="navigation-flyout" aria-label="Index" tabindex="-1" hidden><div class="flyout-heading"><span>INDEX</span><button data-flyout-close aria-label="Close Index">×</button></div><div id="array-layout-controls"></div><div id="array-index" data-flyout-list tabindex="-1" aria-label="Candidate Journals"></div></aside>
     <div id="array-content" class="kept-center workspace-content" tabindex="-1">
-      <div id="array-primary-actions"><div id="kept-import-actions" class="kept-actions" hidden><button id="kept-start">PREPARE &amp; IMPORT ↗</button><button id="kept-import-only">IMPORT ONLY ↗</button></div><div id="kept-workflow-host"></div><div id="kept-reading-tools" hidden><span id="array-decision-tools" class="left-review-actions" hidden></span></div></div>
+      <div id="array-primary-actions"><div id="kept-reading-tools" hidden><span id="array-decision-tools" class="left-review-actions" hidden></span></div></div>
       <header id="array-paper-heading"></header>
       <p id="kept-empty" hidden>尚无保留文献。审阅时点击 Keep，论文会出现在这里。</p>
       <div id="kept-reader" hidden><div id="kept-reader-body"></div></div>
@@ -135,13 +135,34 @@
       <div class="array-context-scroll sidebar-scroll" data-functional-view="info">
       <section id="array-journal-profile"><h2 id="array-journal-name"></h2><dl class="array-profile"><div><dt>ISSN</dt><dd id="array-journal-issn"></dd></div><div><dt>eISSN</dt><dd id="array-journal-eissn"></dd></div><div><dt>SUBJECT</dt><dd id="array-journal-subject"></dd></div><div><dt>LABEL</dt><dd id="array-journal-labels"></dd></div></dl></section>
       <div id="array-candidate-infos" class="array-paper-infos"></div>
-      <section id="array-import-profile" hidden><div class="kept-record-heading"><span>IMPORT / LATEST</span><span id="kept-record-count">—</span></div><p id="kept-record-summary" role="status">本次尚未导入。</p><ol id="kept-record-items"></ol></section>
+
       <div id="array-kept-infos" class="array-paper-infos"></div>
       </div>
     </aside>
     <nav class="tool-rail" aria-label="ARRAY tools"><button class="rail-button" data-sidebar-view="info" aria-controls="array-sidebar" title="INFO" aria-label="Info"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 11v6M12 7v1"/></svg></button></nav>
   </section>
   </main>
+  <section id="kept-workspace" class="workbench-layout" hidden inert aria-label="Kept">
+    <nav class="navigation-rail" aria-label="Kept navigation"><button id="kept-directory-toggle" class="rail-button" data-flyout="services" aria-label="Service Directory" title="SERVICE DIRECTORY"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5h16M4 12h16M4 19h16"/></svg></button></nav>
+    <aside id="kept-directory" class="navigation-flyout" aria-label="Service Directory" tabindex="-1" hidden><div class="flyout-heading"><span>SERVICE DIRECTORY</span><button data-flyout-close aria-label="Close Service Directory">×</button></div><div id="kept-service-list" data-flyout-list></div></aside>
+    <div id="kept-main" class="workspace-content" tabindex="-1">
+      <header class="kept-queue-heading"><h1>Queue</h1><button id="kept-browser-open" class="s-button">BROWSER ↗</button></header>
+      <p id="kept-scope-status" role="status">All Services</p>
+      <div id="kept-import-actions" class="kept-actions"><button id="kept-start">PREPARE &amp; IMPORT ↗</button><button id="kept-import-only">IMPORT ONLY ↗</button></div>
+      <div id="kept-workflow-host"></div>
+      <div id="kept-queue-body"><div id="kept-statistics" tabindex="0" aria-label="Service statistics"></div><div id="kept-queue-results" aria-live="polite"></div><div id="kept-paper-identities"></div></div>
+      <div id="kept-browser-host" hidden></div>
+    </div>
+    <aside id="kept-sidebar" class="functional-sidebar" aria-label="Kept tools" hidden>
+      <div class="sidebar-resize" role="separator" tabindex="0" aria-label="Resize Kept tools" aria-orientation="vertical"></div>
+      <div class="sidebar-heading"><span>KEPT</span><button data-sidebar-close aria-label="Close Kept tools">×</button></div>
+      <div class="sidebar-scroll" data-functional-view="access"><div id="kept-access-settings"></div></div>
+      <div class="sidebar-scroll" data-functional-view="workflow"><div id="kept-workflow-settings"></div></div>
+      <div class="sidebar-scroll" data-functional-view="results"><section id="array-import-profile"><div class="kept-record-heading"><span>IMPORT / LATEST</span><span id="kept-record-count">—</span></div><p id="kept-record-summary" role="status">本次尚未导入。</p><ol id="kept-record-items"></ol></section></div>
+      <div class="sidebar-scroll" data-functional-view="service"><div id="kept-service-detail"></div></div>
+    </aside>
+    <nav class="tool-rail" aria-label="Kept tools"><button class="rail-button" data-sidebar-view="access" aria-label="Access" title="ACCESS">A</button><button class="rail-button" data-sidebar-view="workflow" aria-label="Workflow" title="WORKFLOW">W</button><button class="rail-button" data-sidebar-view="service" aria-label="Service details" title="SERVICE">S</button><button class="rail-button" data-sidebar-view="results" aria-label="Results and Diagnostics" title="RESULTS / DIAGNOSTICS">R</button></nav>
+  </section>
   <section id="configuration-workspace" hidden class="configuration-ui" aria-label="Workspace configuration">
     <div class="s-content">
       <section id="journals-view" hidden class="configuration-page" aria-label="Journals"></section>
@@ -153,7 +174,7 @@
   <section id="browser-pane" hidden aria-label="Browser 工作视图">
     <div class="browser-controls">
       <div class="browser-tabbar">
-        <button id="browser-return" type="button">← ALLFOLD</button>
+        <button id="browser-return" type="button">← QUEUE</button><button id="browser-compact" type="button">COMPACT</button><button id="browser-focus" type="button">FOCUS</button>
         <div id="browser-tabs" aria-label="页面"></div>
         <button id="browser-new" type="button" aria-label="新建页面">＋</button>
         <button id="browser-services-toggle" type="button" aria-controls="browser-services" aria-expanded="true">SERVICES</button>
@@ -235,6 +256,7 @@
     <span id="snapshot-label">WORKSPACE</span></footer>
   <dialog id="history-dialog" class="s-dialog" aria-labelledby="history-title">
     <h2 id="history-title">运行历史</h2>
+    <label>Service <select id="history-service-filter" aria-label="History Service"><option value="">All Services</option></select></label>
     <p class="s-help">最近任务与结果；历史仅供回顾。诊断包只含受限的结构化记录，在本地下载，不自动上传。</p>
     <p id="history-status" class="s-help" role="status" aria-live="polite"></p>
     <div id="history-records"></div>

@@ -14,7 +14,7 @@ for(const status of ['candidates','kept'])test(`Browser controls leave the hidde
   await f.window.emit('workspace-data-changed');
   if(status==='kept')await f.get('array-kept').emit('click');
   const selected=()=>f.get('array-index').children.find(row=>row.getAttribute('aria-current')==='true')?.dataset.indexId;
-  const first=status==='candidates'?'journal-1':'paper-1',second=status==='candidates'?'journal-2':'paper-2';
+  const first='journal-1',second='journal-2';
   assert.equal(selected(),first);
 
   // Workbench makes the Allfold ancestor inert while trusted Browser controls remain active.
@@ -27,6 +27,6 @@ for(const status of ['candidates','kept'])test(`Browser controls leave the hidde
 
   f.get('allfold-pane').inert=false;
   const event=keydown(f.document,f.get('array-index'),'ArrowDown');
-  assert.equal(selected(),second);
-  assert.equal(event.defaultPrevented,true);
+  assert.equal(selected(),status==='candidates'?second:first);
+  assert.equal(event.defaultPrevented,status==='candidates');
 });

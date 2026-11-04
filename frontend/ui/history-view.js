@@ -8,7 +8,7 @@ const metrics={total:'总数',processed:'已处理',retrieved:'检索记录',cre
   confirmed:'父条目已确认',exported:'父条目已导入',no_effect:'未保存',uncertain:'结果未确认',failed:'失败',
   skipped:'跳过',cancelled:'取消',completed:'完成',opened:'已打开',needs_attention:'需要处理',eligible:'符合条件',
   matched:'已匹配',downloaded:'已获取',enriched:'已补充',unchanged:'未变更',candidates:'候选',papers:'Paper',
-  services:'Service',warnings:'提示',errors:'问题',excluded:'排除',duplicates:'重复',materialized:'已写入'};
+  services:'Service',warnings:'提示',errors:'问题',excluded:'排除',duplicates:'重复',materialized:'已写入',pdf_unverified:'PDF unverified'};
 const fieldNames={abstract:'摘要',authors:'作者',publication_date:'出版日期'};
 const reasons={runtime_interrupted:'上次运行未留下可确认的最终结果。',connection_lost:'连接中断，最终结果可能未确认。',
   cancelled:'任务已取消。',partial:'部分工作未完成，请展开查看结果。',failed:'任务未完成，请查看问题并导出诊断。',
@@ -41,13 +41,15 @@ export function renderHistoryRecord(record) {
   const counts=Object.entries(stats).filter(([key,value])=>metrics[key] && Number.isInteger(value) && (value>0 || ['total','created','confirmed'].includes(key)))
     .map(([key,value])=>`${metrics[key]} ${value}`);
   const messages=[reasonText(details.reason)];
+  if(details.batch_scope)messages.push(`执行范围：${details.batch_scope==='service'?details.service_id:'All Services'}`);
   if(record.outcome==='opened')messages.push(preparationReason('target_opened'));
   if(details.pdf_outcome==='unverified')messages.push(reasons.pdf_unverified);
   if(['uncertain','interrupted'].includes(record.outcome) && ['import','kept'].includes(record.kind))messages.push(reasons.result_unconfirmed);
   if(details.sync_warning)messages.push('业务写入已完成，但文件系统同步未确认，请保留备份。');
   const saved=(details.saved_fields || []).filter(field=>fieldNames[field]).map(field=>fieldNames[field]);
   const requested=(details.requested_fields || []).filter(field=>fieldNames[field]).map(field=>fieldNames[field]);
-  const rows=(details.results || []).map((item,index)=>`<li><span>${esc(item.paper_id?`Paper ${index+1}`:item.service_id?`Service ${index+1}`:`结果 ${index+1}`)}</span> · ${esc(resultText(item))}${item.diagnostic_message?`<p>${esc(item.diagnostic_message)}</p>`:''}</li>`).join('');
+  const rows=(details.results || []).map((item,index)=>`<li><span>${esc(item.paper_id?`Paper ${index+1}`:item.service_id?`Service ${index+1}`:`结果 ${index+1}`)}</span> · ${esc(resultText(item))}<p class="s-help">${esc(item.paper_id || '')}${item.service_id || item.service_assignment?` · ${esc(item.service_id || item.service_assignment)}`:''}</p>${item.diagnostic_message?`<p>${esc(item.diagnostic_message)}</p>`:''}</li>`).join('');
+  const serviceCounts=(details.service_statistics || []).map(service=>`<p>${esc(service.service_id || service.service_assignment)} · ${Object.entries(service).filter(([key,value])=>metrics[key] && Number.isInteger(value)).map(([key,value])=>`${esc(metrics[key])} ${value}`).join(' · ')}</p>`).join('');
   return `<article class="history-record" data-history-task="${esc(record.task_id)}">
     <div class="history-record-title"><h3>${esc(title)}</h3><strong>${esc(status)}</strong></div>
     <p class="s-help">${esc(time(record.started_at))} → ${esc(time(record.ended_at))}${record.before_workspace_reset?' · Workspace 重置前的历史任务':''}</p>
@@ -57,10 +59,15 @@ export function renderHistoryRecord(record) {
       ${requested.length?`<p>请求补充：${requested.map(esc).join('、')}</p>`:''}
       ${saved.length?`<p>已补充：${saved.map(esc).join('、')}</p>`:''}
       ${record.diagnostic_message?`<p>${esc(record.diagnostic_message)}</p>`:''}
+      ${serviceCounts}${details.omitted_services?'<p>更多 Service 汇总已省略。</p>':''}
       ${rows?`<ol>${rows}</ol>`:''}${details.omitted_results?'<p>更多结果已省略；请结合诊断包中的保留证据。</p>':''}
       <p class="s-help">任务标识 ${esc(record.task_id)}</p>
     </details><button type="button" class="s-button" data-history-export="${esc(record.task_id)}">导出本次诊断</button>
   </article>`;
+}
+export function filterHistoryRecords(records,serviceId) {
+  return !serviceId?records:records.filter(record=>record.details?.service_id===serviceId ||
+    [...(record.details?.service_statistics || []),...(record.details?.results || [])].some(item=>item.service_id===serviceId));
 }
 export async function requestDiagnosticBundle(taskId,csrf,fetcher=fetch) {
   const response=await fetcher('/api/diagnostics/export',{method:'POST',cache:'no-store',

@@ -1,11 +1,13 @@
 """Revision-bound Workspace target shared by import workflows and HTTP forms."""
 from __future__ import annotations
-from dataclasses import dataclass, replace
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 import hashlib
 import hmac
 from allfold.config import LoadedConfig, load_config
 from allfold.persistence.safe_write import ContentChangedError, WorkspaceOperationLock
+from allfold.persistence.user_state import read_user_state
+from allfold.application.workspace import WorkspaceImportPlan
 
 @dataclass(frozen=True)
 class _ImportTarget:
@@ -17,9 +19,13 @@ class _ImportTarget:
     papers_identity: tuple[int, int, int] | None
     lock_identity: tuple[int, int, int] | None
     user_state_revision: str | None
+    service_id: str | None = None
+    # Server-only inventory attached after the explicit signed click. It neither
+    # crosses HTTP nor changes the saved target's signature/equality proof.
+    paper_plan: WorkspaceImportPlan | None = field(default=None, compare=False, repr=False)
 
     @classmethod
-    def read(cls, config_path: Path) -> tuple[_ImportTarget, LoadedConfig]:
+    def read(cls, config_path: Path, *, service_id: str | None = None) -> tuple[_ImportTarget, LoadedConfig]:
         def identity(path: Path) -> tuple[int, int, int] | None:
             try:
                 value = path.lstat()
@@ -32,10 +38,14 @@ class _ImportTarget:
         if config_identity is None:
             raise ContentChangedError("Configuration disappeared while reading the Workspace target")
         config = load_config(config_path)
+        if service_id is not None:
+            saved = read_user_state(config_path)
+            if saved.revision.digest != config.user_state_revision or service_id not in {service.id for service in saved.state.access_services}:
+                raise ContentChangedError("Selected Service is not saved in this configuration")
         target = cls(config_path, hashlib.sha256(contents).hexdigest(), config_identity[:2],
                      config.output_dir, identity(config.output_dir),
                      identity(config.output_dir / 'Papers'),
-                     identity(config.output_dir / '.allfold-operation.lock'), config.user_state_revision)
+                     identity(config.output_dir / '.allfold-operation.lock'), config.user_state_revision, service_id)
         if config_path.read_bytes() != contents or identity(config_path) != config_identity:
             raise ContentChangedError("Configuration changed while reading the Workspace target")
         return target, config
@@ -45,7 +55,7 @@ class _ImportTarget:
         return hmac.new(nonce.encode('ascii'), repr(self).encode('utf-8'), hashlib.sha256).hexdigest()
 
     def verify(self, lock: WorkspaceOperationLock) -> None:
-        current, _ = self.read(self.config_path)
+        current, _ = self.read(self.config_path, service_id=self.service_id)
         if self.lock_identity is None:
             # 首次导入可创建空操作锁；已有锁的替换仍必须拒绝。
             current = replace(current, lock_identity=None)

@@ -126,6 +126,15 @@ def journal_for_paper(paper: WorkspacePaper, journals: Sequence[JournalConfig]) 
     return matches[0] if len(matches) == 1 else None
 
 
+def paper_service_assignment(paper: WorkspacePaper, journals: Sequence[JournalConfig]) -> tuple[str | None, str]:
+    """Classify every saved identifier match; display and dispatch share this rule."""
+    matches = journals_for_paper(paper, journals)
+    choices = {journal.access_service_id for journal in matches}
+    if len(choices) == 1 and None not in choices:
+        return next(iter(choices)), "assigned"
+    return None, "ambiguous" if len(choices) > 1 else "unassigned"
+
+
 def _section_key(
     paper: WorkspacePaper, journals: Sequence[JournalConfig],
 ) -> tuple[WorkspaceSectionKind, str]:
@@ -254,6 +263,7 @@ class PlannedImportPaper:
     contents: str
     file_identity: tuple[int, int]
     service_id: str | None = None
+    service_assignment: str = 'unassigned'
 
 
 @dataclass(frozen=True)
@@ -270,9 +280,11 @@ class WorkspaceImportPlan:
     papers: tuple[PlannedImportPaper, ...]
     exclusions: tuple[ImportExclusion, ...]
     papers_identity: tuple[int, int]
+    service_id: str | None = None
+    inventory: tuple[PlannedImportPaper, ...] = ()
 
 
-def plan_workspace_import(lock, journals: Sequence[JournalConfig] = ()) -> WorkspaceImportPlan:
+def plan_workspace_import(lock, journals: Sequence[JournalConfig] = (), *, service_id: str | None = None) -> WorkspaceImportPlan:
     """Build one invocation-local candidate inventory with safe path/DOI uniqueness.
 
     Old export_attempt data is preserved as human-owned historical metadata; it
@@ -327,17 +339,16 @@ def plan_workspace_import(lock, journals: Sequence[JournalConfig] = ()) -> Works
                 kind = "normal" if non_target else "error"
                 exclusions.append(ImportExclusion(state.path, "; ".join(reasons) or "Paper is not safely eligible", kind))
             else:
-                matches = journals_for_paper(_project_paper(state), journals)
-                services = {journal.access_service_id for journal in matches}
-                # Multiple Journal matches are safe only when every saved choice agrees.
-                service_id = next(iter(services)) if len(services) == 1 and None not in services else None
+                assigned_service, assignment = paper_service_assignment(_project_paper(state), journals)
                 papers.append(PlannedImportPaper(state.paper_id, state.external_ids.doi, state.path,
-                                                read.contents, read.file_identity, service_id))
+                                                read.contents, read.file_identity, assigned_service, assignment))
         lock.verify()
         located = os.stat("Papers", dir_fd=lock.directory, follow_symlinks=False)
         if not stat.S_ISDIR(located.st_mode) or (located.st_dev, located.st_ino) != identity:
             raise ContentChangedError("Papers directory identity changed")
         # Filename order is stable across Runs and independent of UI filtering.
-        return WorkspaceImportPlan(tuple(papers), tuple(exclusions), identity)
+        # Scope filters only the completed, globally checked inventory.
+        return WorkspaceImportPlan(tuple(paper for paper in papers if service_id is None or paper.service_id == service_id),
+                                   tuple(exclusions), identity, service_id, tuple(papers))
     finally:
         os.close(directory)
