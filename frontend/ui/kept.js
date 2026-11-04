@@ -272,6 +272,10 @@ window.workspaceArray={
   leave(){closeReader();bridge.suspend();layoutHost.closeFlyout({restoreFocus:false});},
   enter(){queueArchivePreference();render();$('array-content').focus({preventScroll:true});},
 };
+const scopeIdentity=document.createElement('span'),scopeCounts=document.createElement('span');
+scopeIdentity.className='kept-scope-identity';scopeCounts.className='kept-scope-counts';
+scopeCounts.tabIndex=0;scopeCounts.setAttribute('role','group');scopeCounts.setAttribute('aria-label','Service 与批次统计');
+$('kept-scope-status').replaceChildren(scopeIdentity,scopeCounts);
 function renderQueue() {
   const services=queueData?.services || [],selected=services.find(service=>service.id===serviceFilter);
   const batchName=workflow?.service_name || (workflow?.service_id ?
@@ -281,13 +285,9 @@ function renderQueue() {
     ` · 父条目确认 ${batchResults.filter(result=>result.parent_outcome==='confirmed').length} · 待处理 ${Math.max(0,planned-batchResults.length)}`+
     (workflow.waiting_for_login?' · 需要人工登录':workflow.can_continue?' · 等待 Continue':''):
     `Kept ${selected?.kept ?? 0} · Eligible ${selected?.eligible ?? 0}`;
-  const scopeIdentity=document.createElement('span'),scopeCounts=document.createElement('span');
-  scopeIdentity.className='kept-scope-identity';scopeCounts.className='kept-scope-counts';
-  scopeCounts.tabIndex=0;scopeCounts.setAttribute('role','group');scopeCounts.setAttribute('aria-label','Service 与批次统计');
   scopeIdentity.textContent=(workflow?.workflow_id?`当前批次：${batchName} · ${workflow.phase} · `:'')+`下一批：${selected?.name || 'All Services'}`;
   scopeIdentity.title=scopeIdentity.textContent;
   scopeCounts.textContent=batchCounts+(['unassigned','ambiguous'].includes(serviceFilter)?' · 请在 Journals 修正 Service 映射；此分组不能单独执行。':'');
-  $('kept-scope-status').replaceChildren(scopeIdentity,scopeCounts);
   const focused=$('kept-service-list').contains(document.activeElement);
   $('kept-service-list').replaceChildren(...services.map(service=>{
     const button=document.createElement('button');button.type='button';button.className='kept-service-row';

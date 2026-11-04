@@ -60,3 +60,10 @@ test('Browser task summary retains original batch counts when the display Servic
   assert.match(summary,/计划 3.*已处理 2.*父条目确认 1.*待处理 1/);
   assert.match(summary,/等待 Continue/);
 });
+test('polling preserves the keyboard reachable batch counter and its reading position',async()=>{
+  const f=await taskUI('kept.js',{page:'kept',request:async url=>url.includes('/queue')?queue:{...active,planned_total:3}});
+  const counter=f.get('kept-scope-status').children[1];counter.scrollLeft=42;
+  await f.tick();
+  assert.equal(f.get('kept-scope-status').children[1],counter);
+  assert.equal(counter.scrollLeft,42);assert.equal(counter.tabIndex,0);
+});
