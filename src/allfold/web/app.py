@@ -445,8 +445,9 @@ def create_app(config_path: Path, *, electron_bridge: ElectronBridge, diagnostic
                 return JSONResponse({'accepted': accepted}, status_code=200 if accepted else 409)
             if action != 'start':
                 return JSONResponse({'error': 'Unknown action'}, status_code=404)
-            workspace = load_config(resolved_config_path).output_dir
-            state = service.start(workspace, paper_id, developer_retry=body.developer_retry)
+            with app.state.settings_write_lock:
+                workspace = load_config(resolved_config_path).output_dir
+                state = service.start(workspace, paper_id, developer_retry=body.developer_retry)
             return JSONResponse(state)
         except (ConfigurationError, ValueError, OSError, ContentChangedError, CompareReadError) as exc:
             return JSONResponse({'error': str(exc)}, status_code=409)
@@ -619,11 +620,13 @@ def create_app(config_path: Path, *, electron_bridge: ElectronBridge, diagnostic
         journal_key = str(form.get('journal_key', '')).strip()
         if not journal_key:
             return JSONResponse({'message': 'journal_key is required'}, status_code=400)
-        disk = load_settings(resolved_config_path)
+        def begin_cover():
+            with app.state.settings_write_lock:
+                disk = load_settings(resolved_config_path)
+                return app.state.journal_cover_search.start(disk.journal_path, disk.draft.journals,
+                                                            journal_key, config_path=resolved_config_path)
         try:
-            state = app.state.journal_cover_search.start(disk.journal_path, disk.draft.journals,
-                                                        journal_key, config_path=resolved_config_path)
-            return JSONResponse(state)
+            return JSONResponse(await run_in_threadpool(begin_cover))
         except (ValueError, OSError) as error:
             return JSONResponse({'message': str(error)}, status_code=409)
 

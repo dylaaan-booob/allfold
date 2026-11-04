@@ -214,6 +214,20 @@ app.whenReady().then(async()=>{
     await capture('run-provider-overlay');
     await js("window.workspaceNavigation.go('settings',{instant:true})");
     await capture('settings-small');
+    await js("window.workspaceNavigation.go('kept',{instant:true}),document.querySelector('#kept-workspace [data-sidebar-view=access]').click()");
+    await check(()=>{
+      const $=id=>document.getElementById(id);
+      if(!$('kept-access-settings').contains($('s-institution')) || !$('kept-workflow-settings').contains($('s-kept-workflow-fields')))throw Error('Kept did not mount the sole existing settings controls');
+      if($('kept-sidebar').hidden || $('kept-workspace').dataset.sidebarMode!=='overlay')throw Error('Kept Access sidebar did not overlay at 600x480');
+      const institution=document.querySelector('#kept-access-settings [data-monitor="institutionName"]');
+      if(!institution || institution.getBoundingClientRect().width<120)throw Error('Institution input not operable');
+      document.querySelector('#kept-workspace [data-sidebar-view=workflow]').click();
+      if(document.querySelectorAll('[data-monitor="displayName"]').length!==1 || !document.querySelector('#kept-workflow-settings [data-monitor="delay"]'))throw Error('Workflow controls duplicated or missing');
+      const name=document.querySelector('#kept-workflow-settings [data-monitor="displayName"]');name.focus();name.value='Synthetic display';name.dispatchEvent(new Event('input',{bubbles:true}));
+      if(document.activeElement!==name || name.value!=='Synthetic display')throw Error('Kept mount bridge lost input focus');
+    });
+    await capture('kept-workflow-small');
+
     await check(async()=>{
       const $=id=>document.getElementById(id),assert=(ok,message)=>{if(!ok)throw Error(message);};
       $('run-open').click();$('s-run-overview-open').click();

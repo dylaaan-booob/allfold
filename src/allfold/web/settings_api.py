@@ -79,8 +79,8 @@ def install_settings_api(app, config_path, csrf_token, *, workspace_health,
         with app.state.settings_write_lock:
             state = settings_state(config_path, csrf_token)
             state['logging'] = logging_state(app)
-            state["cover_search"] = app.state.journal_cover_search.state()
-            return json_response(state)
+        state["cover_search"] = app.state.journal_cover_search.state()
+        return json_response(state)
 
     @app.get('/api/ui-next/browser-services')
     def browser_services():

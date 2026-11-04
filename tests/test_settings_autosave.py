@@ -123,3 +123,17 @@ def test_credentials_are_explicit_native_settled_and_blocked_for_waiting_task(tm
         actual = client.get('/api/ui-next/settings').json()
         assert actual['values']['monitor_revision_digest'] == opened['values']['monitor_revision_digest']
         assert 'synthetic-only' not in str(actual)
+
+
+def test_active_browser_owner_can_settle_while_configuration_admission_is_held():
+    import threading
+    from concurrent.futures import ThreadPoolExecutor
+    from allfold.application.browser_runtime import BrowserTaskLock
+    admission = threading.RLock()
+    browser = BrowserTaskLock(admission_lock=admission)
+    owner = browser.acquire('covers')
+    with ThreadPoolExecutor(max_workers=1) as executor:
+        with admission:
+            finished = executor.submit(browser.release, owner)
+            assert finished.result(timeout=1) is None
+    assert browser.owner is None

@@ -354,8 +354,8 @@ settingsPage.querySelector('[data-settings-open="application"]').setAttribute('a
 for(const host of [runMain.querySelector('.s-run-body'),settingsMain,workflowFields,$('s-institution')]){const status=document.createElement('p');status.className='s-help s-domain-save-status';status.dataset.autosaveStatus='';host.append(status);}
 function mountKeptSettings() {
   const access=$('kept-access-settings'),workflow=$('kept-workflow-settings');
-  if(access)access.append($('s-institution'),$('s-institution-auth'));
-  if(workflow)workflow.append(workflowFields);
+  if(access)for(const node of [$('s-institution'),$('s-institution-auth')])if(node.parentElement!==access)access.append(node);
+  if(workflow && workflowFields.parentElement!==workflow)workflow.append(workflowFields);
 }
 window.addEventListener('kept-settings-mount',mountKeptSettings);window.addEventListener('workspace-navigation-state',mountKeptSettings);mountKeptSettings();
 const esc=value=>String(value??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
