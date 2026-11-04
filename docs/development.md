@@ -59,6 +59,12 @@ The retained suite covers data preservation, path/identity safety, authority, ca
 
 CI prepares sources and runs offline checks on macOS. It does not publish or use real credentials. A local pass does not prove that GitHub Actions ran, that the UI is visually correct or that real institutional access and Zotero/PDF saving work. Changes to those paths need relevant manual acceptance with explicit browser authorization.
 
+The Electron test command runs files serially. Its native input fixtures briefly
+show their own windows, and Electron's
+[`sendInputEvent()`](https://www.electronjs.org/docs/latest/api/web-contents#contentssendinputeventinputevent)
+requires the containing window to have focus. Concurrent fixture processes can
+otherwise steal that focus and invalidate mouse/keyboard acceptance.
+
 ### Workbench manual acceptance
 
 ARRAY/Journals rails, Sidebar allocation, the isolated rendered DOM test and remaining pointer/touch/low-height checks are documented in [workspace layout](workspace-layout.md). The full Electron test command includes its hidden-window fixture after UI build; it uses synthetic HTTP responses and a temporary profile.

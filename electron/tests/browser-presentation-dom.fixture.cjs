@@ -5,6 +5,7 @@ const {BrowserRuntime}=require('../src/browser/browser-runtime.cjs');
 const {installBrowserIPC}=require('../src/browser/browser-ipc.cjs');
 const temp=fs.mkdtempSync(path.join(os.tmpdir(),'allfold-browser-presentation-'));
 app.setPath('userData',temp);app.commandLine.appendSwitch('disable-background-networking');
+app.on('window-all-closed',()=>{}); // Cleanup owns the explicit success/failure exit code.
 const source=path.resolve(__dirname,'../../frontend/ui'),index=fs.readFileSync(path.join(source,'index.html'),'utf8');
 let pane=index.match(/  <section id="browser-pane"[\s\S]*?\n  <\/section>/)[0];
 if(!pane.includes('id="browser-compact"'))pane=pane.replace('<div id="browser-tabs"','<button id="browser-compact" type="button">COMPACT</button><button id="browser-focus" type="button">FOCUS</button><div id="browser-tabs"');
@@ -26,9 +27,10 @@ for(const page of ['kept','run'])$('fixture-'+page).onclick=()=>{allfoldWorkbenc
 $('fixture-dialog').onclick=()=>$('fixture-modal').showModal();$('fixture-dialog-close').onclick=()=>$('fixture-modal').close();$('fixture-popover-open').onclick=()=>$('fixture-popover').showPopover();$('fixture-popover-close').onclick=()=>$('fixture-popover').hidePopover();</script></body></html>`;
 const challenge=`<!doctype html><html><head><meta charset="utf-8"><style>*{box-sizing:border-box}body{margin:0;font:16px/1.45 sans-serif;background:#f3f6fb;color:#17253d;padding:12px}main{max-width:700px}h1{font-size:18px;margin:0 0 8px}.challenge{border:2px solid #335b9b;background:white;padding:10px}input,button{font:inherit;min-height:32px;max-width:100%}label{display:block;margin:6px 0}button{padding:4px 10px}dialog{max-width:90vw;max-height:85vh}#long{height:650px;background:linear-gradient(#e8edf8,#c5d3ec);padding:12px}#result{font-weight:bold}</style></head><body><main><h1>Local synthetic challenge</h1><div class="challenge"><label><input id="human" type="checkbox"> Check the square</label><label>Code <input id="code" size="8" autocomplete="off"></label><button id="verify">Verify local code</button><button id="popup">Open local dialog</button><p id="result">Waiting for input</p></div><div id="long">Scroll to the final control</div><button id="bottom">Final control</button><p id="bottom-result"></p><dialog id="local-dialog"><h2>Local challenge dialog</h2><button id="close-dialog">Close dialog</button></dialog></main><script>window.fixtureLoad=crypto.randomUUID();window.fixtureChecks=0;document.cookie='synthetic_session=preserved; SameSite=Lax';human.onchange=()=>window.fixtureChecks++;verify.onclick=()=>result.textContent=human.checked&&code.value==='42'?'Synthetic challenge complete':'Try code 42';popup.onclick=()=>document.getElementById('local-dialog').showModal();document.getElementById('close-dialog').onclick=()=>document.getElementById('local-dialog').close();bottom.onclick=()=>document.getElementById('bottom-result').textContent='Final control clicked';</script></body></html>`;
 const mimes={'.js':'text/javascript','.css':'text/css','.ttf':'font/ttf','.woff2':'font/woff2','.otf':'font/otf'};
+let reloadResponseDelay=0;
 const server=http.createServer((req,res)=>{
   const url=new URL(req.url,'http://fixture');
-  if(url.pathname==='/'){res.writeHead(200,{'Content-Type':'text/html'});res.end(shell);return;}
+  if(url.pathname==='/'){const send=()=>{res.writeHead(200,{'Content-Type':'text/html'});res.end(shell);};if(reloadResponseDelay)setTimeout(send,reloadResponseDelay);else send();return;}
   if(url.pathname==='/challenge' || url.pathname==='/other'){res.writeHead(200,{'Content-Type':'text/html'});res.end(challenge);return;}
   const file=path.resolve(source,'.'+url.pathname);
   if(!file.startsWith(source+path.sep) || !fs.existsSync(file)){res.writeHead(404);res.end();return;}
@@ -54,7 +56,7 @@ app.whenReady().then(async()=>{
     for(const partition of [win.webContents.session,browser.partition])partition.webRequest.onBeforeRequest({urls:['http://*/*','https://*/*']},(details,callback)=>callback({cancel:new URL(details.url).origin!==origin}));
     disposeIPC=installBrowserIPC({ipcMain,hostWindow:win,origin,browser});await win.loadURL(origin+'/');
     // Native child Views need a compositor surface for real input and capture on macOS.
-    win.show();win.focus();await wait(80);
+    win.show();win.focus();await ready(()=>Promise.resolve(win.isFocused()),'fixture Window focus');
     await ready(()=>host('!!window.allfoldWorkbench'),'shell');
     const tab=browser.createTab({present:false});await tab.view.webContents.loadURL(origin+'/challenge');
     browser.beginOperation(new AbortController().signal,{workflow_id:'run-a',task_id:'prepare-a',request_id:'request-a'});browser.associatePage(tab,{role:'wos-query'});browser.bindTaskPage(tab);
@@ -125,8 +127,18 @@ app.whenReady().then(async()=>{
     await win.reload();await ready(()=>host('!!window.allfoldWorkbench'),'reload');assert(await host('allfoldLayout.targets().browserPreferredWidth===640&&allfoldLayout.targets().browserPreferredHeight===240'),'restart preference restore');
     await host("localStorage.setItem('allfold.workbench-layout',JSON.stringify({browserPreferredWidth:-1,browserPreferredHeight:'bad'}))");await win.reload();await ready(()=>host('!!window.allfoldWorkbench'),'invalid storage reload');
     assert(await host('allfoldLayout.targets().browserPreferredWidth===960&&allfoldLayout.targets().browserPreferredHeight===300'),'invalid storage did not fall back');
+    // Keep the old document alive while a real resize requests its final layout.
+    reloadResponseDelay=200;
+    for(let index=0;index<3;index++){
+      await host('window.fixtureReloadPending=true');
+      win.webContents.once('did-start-navigation',()=>win.setSize(1180+index*10,800));
+      win.reload();await ready(()=>host('!window.fixtureReloadPending&&!!window.allfoldWorkbench'),'committed host reload');
+      await ready(()=>Promise.resolve(!browser.presentation.visible&&!browser.presentation.mounted),'new host hides old native presentation');
+      await host('allfoldWorkbench.showKeptBrowser()');await bounds('host reload with final old-document layout '+index);
+    }
+    assert(browser.selected.id===id&&browser.selected.view.webContents.session===session&&await page(tab,'fixtureLoad')===load,'host reload stress recreated the Page/Session');
     if(process.env.ALLFOLD_BROWSER_SCREENSHOTS)fs.writeFileSync(path.join(process.env.ALLFOLD_BROWSER_SCREENSHOTS,'measurements.json'),JSON.stringify(results,null,2)+'\n');
     console.log(JSON.stringify(results));console.log('BROWSER PRESENTATION DOM PASS');
-  }catch(error){console.error(error.stack);process.exitCode=1;}
+  }catch(error){console.error('PRESENTATION FAILURE',JSON.stringify({windowFocused:win?.isFocused(),sequence:browser?.presentation.sequence,visible:browser?.presentation.visible,mounted:browser?.presentation.mounted?.id}));console.error(error.stack);process.exitCode=1;}
   finally{disposeIPC?.();browser?.close();win?.destroy();await new Promise(resolve=>server.close(resolve));fs.rmSync(temp,{recursive:true,force:true});app.exit(process.exitCode||0);}
 });

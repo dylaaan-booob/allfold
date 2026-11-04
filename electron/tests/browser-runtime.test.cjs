@@ -126,6 +126,22 @@ test('Browser converts host-zoomed CSS bounds to DIP before clipping to native c
   browser.setPresentation({sequence:1,visible:false,suspended:false,bounds:null});
   assert.equal(host.children.has(tab.view),true);
 });
+test('a committed host document resets layout sequence after a final old-document resize',async t=>{
+  const {BrowserRuntime,host}=fixture(t),browser=new BrowserRuntime({hostWindow:host});
+  t.after(()=>browser.close());await browser.show();
+  const tab=browser.selected,bounds={x:10,y:160,width:900,height:600};
+  browser.setPresentation({sequence:30,visible:true,suspended:false,bounds});
+  host.webContents.emit('did-start-navigation',{isSameDocument:false,isMainFrame:true});
+  // The outgoing renderer can still publish while the new response is pending.
+  browser.setPresentation({sequence:31,visible:true,suspended:false,bounds});
+  host.webContents.emit('did-navigate',{},'http://127.0.0.1:18767/',200);
+  assert.equal(host.children.size,0);
+  assert.equal(browser.setPresentation({sequence:1,visible:false,suspended:false,bounds:null}),true);
+  assert.equal(browser.setPresentation({sequence:2,visible:true,suspended:false,bounds}),true);
+  assert.equal(browser.setPresentation({sequence:1,visible:false,suspended:false,bounds:null}),false);
+  assert.equal(host.children.has(tab.view),true);
+  assert.equal(browser.selected,tab);assert.equal(browser.tabs.size,1);
+});
 test('Browser rejects malformed commands and layout rectangles before changing native presentation',async t=>{
   const {BrowserRuntime,host}=fixture(t),browser=new BrowserRuntime({hostWindow:host});t.after(()=>browser.close());await browser.show();
   for(const command of [null,[],{action:'select',id:'1'},{action:'select'},{action:'new',unexpected:true},

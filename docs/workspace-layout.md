@@ -84,7 +84,7 @@ uses a real CAPTCHA provider or saves to Zotero.
 Run after the normal UI build:
 
 ```sh
-node --test electron/tests/browser-presentation-dom.test.cjs electron/tests/browser-workspaces-dom.test.cjs
+node --test --test-concurrency=1 electron/tests/browser-presentation-dom.test.cjs electron/tests/browser-workspaces-dom.test.cjs
 ALLFOLD_BROWSER_SCREENSHOTS=/tmp/allfold-browser-acceptance node --test electron/tests/browser-presentation-dom.test.cjs
 ALLFOLD_BROWSER_WORKSPACES_SCREENSHOTS=/tmp/allfold-browser-workspaces node --test electron/tests/browser-workspaces-dom.test.cjs
 ```
@@ -141,9 +141,12 @@ Assertions retain the physical Page ID, Session object, Cookie, page-load token,
 webpage form/focused element, workflow/task association and legal cancellation identity.
 Trusted Flyout / Sidebar / Dialog / Popover coverage removes the native View while the
 Page stays alive. Fullscreen task surfaces remain open while hidden for handoff and
-restore their controls/focus on return. A host reload resets Presentation's sequence
-through Electron 45's current `did-start-navigation` event fields; a same-document
-navigation retains the existing View. SAVE / RESET / ORIGIN, malformed storage fallback
+restore their controls/focus on return. A host reload clears Presentation at navigation
+start and again when the replacement main document commits. The latter discards any
+last layout sent by the outgoing renderer while the response was pending. A real
+reload/resize regression checks that the new host initially hides the old native View
+before presenting the same Page and Session; a same-document navigation retains the
+existing View. SAVE / RESET / ORIGIN, malformed storage fallback
 and saved-preference restoration are also checked.
 
 Real hCaptcha/MFA, institutional authentication, account popups and actual Zotero/PDF
