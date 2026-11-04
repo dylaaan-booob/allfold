@@ -10,6 +10,8 @@ class Target {
 }
 class Element extends Target {
   constructor(tag='div'){super();this.tagName=tag.toUpperCase();this.children=[];this.dataset={};this.hidden=false;this.inert=false;this.disabled=false;this.open=false;this.textContent='';this.attributes={};this.style={setProperty(){},removeProperty(){}};this.classList={add(){},remove(){},toggle(){}};this.isConnected=true;}
+  get textContent(){return this._text+this.children.map(node=>node.textContent).join('');}
+  set textContent(value){this._text=String(value);for(const child of this.children)child.parentElement=null;this.children=[];}
   append(...nodes){for(const node of nodes){if(node.parentElement)node.parentElement.children=node.parentElement.children.filter(child=>child!==node);node.parentElement=this;this.children.push(node);}}
   prepend(...nodes){this.append(...nodes);this.children=[...nodes,...this.children.filter(node=>!nodes.includes(node))];}
   replaceChildren(...nodes){for(const node of this.children)node.parentElement=null;this.children=[];this.append(...nodes);}

@@ -27,7 +27,7 @@ test('Kept captures its next saved Service before autosave and display changes c
   release(true);await f.settle();
   assert.equal(starts.length,1);
   assert.equal(starts[0].service_id,'svc_a');assert.equal(starts[0].import_token,'a-token');
-  assert.match(f.get('kept-scope-status').textContent,/下一批：Service B.*当前批次：Service A/);
+  assert.match(f.get('kept-scope-status').textContent,/当前批次：Service A.*下一批：Service B/);
   assert.equal(f.get('kept-start').disabled,true);
 });
 
