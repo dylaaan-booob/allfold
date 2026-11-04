@@ -34,7 +34,11 @@ const server=http.createServer((req,res)=>{
 });
 let win;
 const wait=ms=>new Promise(resolve=>setTimeout(resolve,ms));
-const js=code=>win.webContents.executeJavaScript(code);
+async function js(code){
+  // Electron may replace a renderer exception with a generic cross-process error.
+  const result=await win.webContents.executeJavaScript(`(async()=>{try{return {ok:true,value:await (${code})};}catch(error){return {ok:false,error:String(error.stack || error)};}})()`);
+  if(!result.ok)throw Error(result.error);return result.value;
+}
 async function capture(name){if(process.env.ALLFOLD_LAYOUT_SCREENSHOTS){await wait(50);fs.mkdirSync(process.env.ALLFOLD_LAYOUT_SCREENSHOTS,{recursive:true});fs.writeFileSync(path.join(process.env.ALLFOLD_LAYOUT_SCREENSHOTS,name+'.png'),(await win.webContents.capturePage()).toPNG());}}
 async function ready(condition){for(let i=0;i<150;i++){if(await js(condition))return;await wait(50);}throw Error('UI readiness timeout: '+condition);}
 async function check(fn){await js(`(${fn.toString()})()`);}
