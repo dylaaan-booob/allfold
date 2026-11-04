@@ -10,7 +10,7 @@
 .kept-queue-heading{display:flex;justify-content:space-between;align-items:center;gap:12px}
 .kept-queue-heading h1{font-size:24px;margin:0}
 #kept-scope-status{margin:0;white-space:pre-wrap;font-size:12px;line-height:1.7;overflow-wrap:anywhere}
-#kept-queue-body{flex:1;min-height:0;overflow:auto}
+#kept-queue-body{flex:1 0 auto;min-height:140px;overflow:auto}
 #kept-statistics{max-width:100%;overflow:auto;scrollbar-width:thin}
 #kept-statistics table{border-collapse:collapse;font-size:12px;width:max-content;min-width:100%}
 #kept-statistics th,#kept-statistics td{padding:11px 14px;border-bottom:1px solid var(--rule);text-align:right;white-space:nowrap}
@@ -28,7 +28,7 @@
 #kept-browser-host{flex:1;min-height:0;min-width:0}
 #kept-workspace .kept-actions{margin:0;flex-wrap:wrap}
 #kept-workspace .s-button{border:1px solid var(--ink);padding:5px 10px;font-size:11px}
-#kept-workflow-host{flex:0 1 auto;max-height:32%;overflow:auto}
+#kept-workflow-host{flex:0 0 auto;max-height:32%;overflow:auto}
 #kept-workspace #kept-inline{overflow:auto;margin:0;padding:8px}
 #kept-workspace[data-browser-visible=true] :is(.kept-queue-heading,#kept-import-actions,#kept-task-page){display:none}
 #kept-workspace[data-browser-visible=true] #kept-scope-status{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}

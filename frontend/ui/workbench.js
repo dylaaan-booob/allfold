@@ -5,6 +5,7 @@ window.allfoldWorkbench=(()=>{
   let visible=false,returning=false,returnFocus=null,sequence=0,frame=null,state={tabs:[],selected:null};
   let scrollSnapshot=[],workspaceAtShow=null;
   let source=null,mode='focus',requested=null;
+  const toolsExpanded={compact:true,focus:false};
   let savedServices={scope:null,services:[]},lastSelected=null;
   const preferenceKeys={expanded:'allfold.browser-services-expanded',width:'allfold.browser-services-width'};
   const readPreference=(key,fallback)=>{try{const value=localStorage.getItem(key);return value===null?fallback:JSON.parse(value);}catch(_){return fallback;}};
@@ -15,7 +16,7 @@ window.allfoldWorkbench=(()=>{
   const savePreference=(key,value)=>{try{localStorage.setItem(key,JSON.stringify(value));}catch(_){/* UI remains usable if local storage is unavailable. */}};
   function sizeServices() {
     const area=$('browser-work-area'),width=Math.max(0,area.getBoundingClientRect().width-320-6);
-    const effective=source!=='run' && expanded && width>=180?Math.min(preferredWidth,width):0;
+    const effective=source!=='run' && !(source==='kept' && mode==='focus') && expanded && width>=180?Math.min(preferredWidth,width):0;
     area.style.setProperty('--browser-services-width',effective+'px');
     $('browser-services').hidden=$('browser-services-resize').hidden=!expanded || effective<=0;
     $('browser-services-toggle').setAttribute('aria-expanded',String(expanded && effective>0));
@@ -28,7 +29,7 @@ window.allfoldWorkbench=(()=>{
   function suspended(){
     if([...document.querySelectorAll('dialog[open]')].some(dialog=>!['run-view','kept-flow'].includes(dialog.id)))return true;
     const rect=$('browser-body').getBoundingClientRect();
-    return [...document.querySelectorAll('.navigation-flyout:not([hidden]),[data-sidebar-mode="overlay"] .functional-sidebar:not([hidden])')].some(overlay=>{
+    return [...document.querySelectorAll('.navigation-flyout:not([hidden]),[data-sidebar-mode="overlay"] .functional-sidebar:not([hidden]),:popover-open')].some(overlay=>{
       if(overlay.closest('[hidden]'))return false;
       const box=overlay.getBoundingClientRect();
       return box.width>0 && box.height>0 && box.left<rect.left+rect.width && box.left+box.width>rect.left
@@ -39,6 +40,8 @@ window.allfoldWorkbench=(()=>{
     const pane=$('browser-pane'),preferred=window.allfoldLayout?.targets?.() || {browserPreferredWidth:960,browserPreferredHeight:300};
     pane.style.setProperty('--browser-preferred-width',preferred.browserPreferredWidth+'px');
     pane.style.setProperty('--browser-preferred-height',preferred.browserPreferredHeight+'px');
+    $('browser-address').hidden=!toolsExpanded[mode];
+    $('browser-tools-toggle')?.setAttribute('aria-expanded',String(toolsExpanded[mode]));
   }
   function publish() {
     if(!desktop)return;
@@ -75,7 +78,7 @@ window.allfoldWorkbench=(()=>{
     if($('browser-compact'))$('browser-compact').hidden=source!=='kept';
     if($('browser-compact'))$('browser-compact').textContent=mode==='focus'?'RESTORE':'COMPACT';
     if($('browser-focus'))$('browser-focus').hidden=source==='run';
-    $('browser-services-toggle').hidden=source==='run';
+    $('browser-services-toggle').hidden=source==='run' || (source==='kept' && mode==='focus');
     $('browser-open')?.setAttribute('aria-pressed',String(value));
     $('browser-open')?.setAttribute('aria-label',value?'返回 Allfold':'打开 Browser 工作视图');
     // The business host reveals Queue before its saved control receives focus.
@@ -198,6 +201,7 @@ window.allfoldWorkbench=(()=>{
   }
   $('browser-open')?.addEventListener('click',()=>{if(visible)present(false);else void show();});
   $('browser-return').addEventListener('click',()=>present(false));
+  $('browser-tools-toggle')?.addEventListener('click',()=>{toolsExpanded[mode]=!toolsExpanded[mode];sizeBrowser();schedule();});
   for(const next of ['compact','focus'])$('browser-'+next)?.addEventListener('click',()=>present(true,{source,mode:next}));
   for(const action of ['new','back','forward','reload','devtools','cache-size','clear-cache','clear-site-data'])
     $('browser-'+action).addEventListener('click',()=>void command(action,['back','forward','reload','devtools'].includes(action)?{id:state.selected}:{}));
@@ -228,6 +232,7 @@ window.allfoldWorkbench=(()=>{
   new ResizeObserver(schedule).observe($('browser-body'));
   new ResizeObserver(sizeServices).observe($('browser-work-area'));
   window.addEventListener('resize',schedule);
+  document.addEventListener?.('toggle',()=>{if(visible)publish();schedule();},true);
   window.addEventListener('workspace-navigation-state',()=>{if(visible)publish();schedule();});
   window.allfoldLayout?.subscribe(()=>{sizeBrowser();if(visible)publish();schedule();});
   sizeServices();
