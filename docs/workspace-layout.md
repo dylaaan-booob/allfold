@@ -7,7 +7,7 @@ Navigation Rail | Content | Functional Sidebar | Tool Rail
                  ↑ Directory / Index flyout overlays Content
 ```
 
-Window Chrome and Status reserve space outside Workbench Content. Ordinary pages fill that container; they do not subtract Header/Footer heights. Browser remains a separate full view with its existing native presentation and independent Services panel.
+Window Chrome and Status reserve space outside Workbench Content. Ordinary pages fill that container; they do not subtract Header/Footer heights. The same Browser pane mounts in Kept Content for Compact/Focus, or in Workbench Content for a temporary Run task Focus view. Queue and returning to Run hide its native View without closing the Page or Session.
 
 ## Ownership and sizes
 
@@ -23,6 +23,8 @@ Window Chrome and Status reserve space outside Workbench Content. Ordinary pages
 | Docked threshold | Two rail widths + workspace Content minimum + Sidebar minimum |
 | Effective Sidebar | Docked: lesser of target and remaining space after Content minimum; Overlay: lesser of target and space between rails |
 | Content width | Space between rails minus the Sidebar only when docked |
+| Compact Browser preferredWidth | 960 px, allowed 320–2400 px; pane width including optional Browser Services, constrained by Content |
+| Compact Browser preferredHeight | 300 px, allowed 140–1200 px; webpage area below trusted controls, constrained by remaining height |
 
 The host measures its actual root Bounds with ResizeObserver. Its measured sizes are outputs, never preferences. At 48 px rails ARRAY docks from 716 px and Journals from 676 px. Collapsing a Sidebar returns all space between rails to Content. Overlay leaves Content's width unchanged. Local form/card changes use container sizing; GRID always uses `auto-fill` with a 200 px card minimum constrained to its own container.
 
@@ -34,7 +36,7 @@ The Electron window minimum is 600 × 480 logical pixels. The real Chromium DOM 
 - Journals previews a `directoryScope` without changing the Controller's active scope/filter. Clicking a category activates it and restores its group. Choosing a group closes Details; **Edit** opens that group's existing editor. ARRAY/GRID changes only the list rendering, leaving the editor DOM intact.
 - Tool icons open on click, toggle the current view closed, or switch an open view. Journal selection opens Details. ARRAY selection updates Info without changing expansion. Each workspace retains its host and expansion while away. Browser hides Allfold without replacing its DOM.
 - ARRAY Keep/Reject and Kept's direct Import actions live in Content. Inline workflow status, Continue/Cancel and task-page handoff also live in Content, with a bounded scroll region for long messages. Import records and Paper metadata remain in Info.
-- Layout targets use the independent localStorage key `allfold.workbench-layout`. Developer inputs preview live; SAVE stores all targets, RESET restores that baseline, ORIGIN uses source defaults without replacing the baseline. Ordinary pointer/keyboard Sidebar resize persists only its new preferred width on completion. Shrinking never writes preferences.
+- Layout targets use the independent localStorage key `allfold.workbench-layout`. Developer inputs preview live; SAVE stores all targets (including Compact Browser preferredWidth/Height), RESET restores that baseline, ORIGIN uses source defaults without replacing the baseline. Ordinary pointer/keyboard Sidebar resize persists only its new preferred width on completion. Shrinking and host Zoom never write effective dimensions back into preferences. Developer outputs report the measured webpage dimensions separately.
 - Invalid values fall back independently to defaults. Only when the new key is absent may an in-range legacy `allfold.journal-layout.right` seed the Sidebar target. Legacy left/columns state is ignored; no old layout controller or manual GRID controls remain. Browser Services, Archive and other UI preferences keep their own keys.
 - The developer/status strip stays one row and scrolls horizontally. Messages have bounded internal scrolling. Window-level overlays and dialogs retain viewport bounds.
 
@@ -60,3 +62,59 @@ Manual acceptance still required:
 3. Edit Group/Service/Label, assign/reorder/delete, Save/error/Undo, and Cover upload/crop/search. Resize and open Browser while a form is focused; verify raw draft, dirty state and both list/editor scroll positions.
 4. Native Browser pages and Session across Allfold return, tasks and dialog suspension; Run WoS and Kept Prepare/Import in both presentation modes, task-page association, polling, Continue/Cancel and uncertain save handling. Parent items and PDFs require separate authorized Zotero inspection.
 5. Re-enable Archive and verify actual Canvas inspection/return, shared Reader, Archive layout/debug preferences, and recovery from both enabled and disabled states. The DOM test proves restoration mechanics, not the full animated Archive experience.
+
+## Task Browser synthetic acceptance
+
+`electron/tests/browser-presentation-dom.fixture.cjs` runs the production BrowserRuntime,
+BrowserPresentation, trusted IPC/preload, Workbench and Layout Host against a local HTTP
+challenge page in a disposable Electron profile. It briefly shows its own Window because
+macOS does not provide a compositor surface for real child-View input/capture in a never-shown
+Window. Both Sessions reject non-fixture HTTP(S) requests. It uses no Python process,
+real account, institution, CAPTCHA provider or Zotero.
+
+Run the fixture through:
+
+```sh
+node --test electron/tests/browser-presentation-dom.test.cjs
+ALLFOLD_BROWSER_SCREENSHOTS=/tmp/allfold-browser-acceptance node --test electron/tests/browser-presentation-dom.test.cjs
+```
+
+The optional directory contains paired trusted-host and native-page PNGs plus
+`measurements.json`. Electron's host `capturePage()` excludes child Views; the `-page.png`
+image records the actual webpage viewport separately. These local outputs are not source
+artifacts. The fixture uses a small synthetic business shell with production presentation
+modules; its geometry does not certify every real Kept status/error message or third-party
+page layout.
+
+Executed on macOS / Electron 45 on 2026-11-04 (Window dimensions include native Chrome;
+this environment gave a 32 px title bar):
+
+| Window / host Zoom | Presentation | Native webpage viewport (DIP) |
+| --- | --- | --- |
+| 1200 × 800 / 1 | Default Compact, 960 × 300 pane target, Services expanded | 666 × 300 |
+| 1200 × 800 / 1 | Compact height targets 140 / 240 / 300 / 420 | 666 × each target height |
+| 1200 × 800 / 1 | Narrow, flat Compact | 320 × 140 |
+| 600 × 480 / 1 | Compact target 640 × 240; Focus; Restore | 504 × 225 (container limited) |
+| 600 × 480 / 1 | Run task Focus | 600 × 255 |
+| 600 × 480 / 1.25 | Compact and Focus | 480 × 147 (container and Zoom limited) |
+
+The 300 px default lets the complete synthetic challenge fit at wide bounds; 140 px
+remains usable through scrolling and keyboard focus but is deliberately a lower bound,
+not a claim that a real challenge fits without Focus. Focus uses additional main-area
+space when available; at the minimum Window the container can constrain both modes to
+the same height. Browser Services yields below a 320 px webpage plus 180 px panel and
+is omitted from Run task Focus. The address bar stays one row while maintenance is
+closed, preserving height at non-default Zoom.
+
+Actual Chromium `sendInputEvent` mouse/key/wheel interactions checked the checkbox,
+Tab, Shift+Tab, Space, code entry, Enter submission, a local webpage dialog/Escape,
+native scrolling, the final control, Page switching, Compact/Focus/Restore/Queue,
+Flyout, Overlay Sidebar, trusted Dialog, fullscreen task-surface suspension and Run
+return focus. Assertions also check selected Page ID, Session object and Cookie,
+page-load token, focused webpage element, preserved input, exact Run task association,
+unchanged task ownership, native removal during trusted overlays, resize/Zoom clipping,
+SAVE/RESET/ORIGIN, malformed storage fallback and host-reload preference restoration.
+
+Real hCaptcha/MFA, institutional authentication, account popups and actual Zotero/PDF
+results remain separate, explicitly authorized acceptance. The local component is a
+synthetic challenge and does not establish real CAPTCHA compatibility.

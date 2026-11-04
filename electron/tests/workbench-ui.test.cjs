@@ -8,7 +8,9 @@ function fixture({preferences={},tabs=[],services={scope:{scope_id:'scope-a'},se
     setAttribute(name,value){this.attributes[name]=String(value);}
     getAttribute(name){return this.attributes[name];}
     replaceChildren(...children){this.children=children;}
-    append(...children){this.children.push(...children);}
+    append(...children){for(const child of children){if(child.parentElement)child.parentElement.children=child.parentElement.children.filter(node=>node!==child);child.parentElement=this;this.children.push(child);}}
+    contains(node){return node===this || this.children.some(child=>child.contains(node));}
+    closest(selector){return selector==='[hidden]'?(this.hidden?this:this.parentElement?.closest(selector)):null;}
     focus(){document.activeElement=this;}
     getBoundingClientRect(){return this.id==='browser-body'?{x:0,y:160,left:0,top:160,width:720,height:600}:{x:0,y:0,left:0,top:0,width:1000,height:600};}
     querySelectorAll(){return [];}
@@ -19,13 +21,14 @@ function fixture({preferences={},tabs=[],services={scope:{scope_id:'scope-a'},se
     createElement:()=>new Element(),
     querySelector:selector=>selector==='.masthead'?document.getElementById('masthead'):document.getElementById('footer'),
     querySelectorAll:selector=>selector==='dialog[open]'?[...elements.values()].filter(node=>node.open):[]};
-  const window=new EventTarget();window.window=window;window.uiNext={notice:message=>calls.push({notice:message}),request:async()=>services};
+  const window=new EventTarget();window.window=window;window.workspaceNavigation={current:()=>window.workspace || 'workspace'};
+  window.uiNext={notice:message=>calls.push({notice:message}),request:async()=>services};
   let state={selected:null,tabs,taskPageId:null};
   window.allfoldDesktop={browserState:async()=>state,showBrowser:async()=>state,
     browserCommand:async command=>{calls.push(command);if(command.action==='select')state={...state,selected:command.id};return state;},
     setBrowserPresentation:async value=>{calls.push(value);},
     onBrowserState:fn=>{window.receiveState=fn;},onBrowserPresentation:fn=>{window.receivePresentation=fn;},onBrowserLayout:fn=>{window.receiveLayout=fn;}};
-  const context=vm.createContext({window,document,Event,URL,Map,Set,console,
+  const context=vm.createContext({window,document,Event,CustomEvent,URL,Map,Set,console,
     localStorage:{getItem:key=>storage.get(key)??null,setItem:(key,value)=>storage.set(key,value)},
     requestAnimationFrame:fn=>{frames.push(fn);return frames.length;},cancelAnimationFrame(){},
     ResizeObserver:class {constructor(fn){resizers.push(fn);}observe(){}},MutationObserver:class {constructor(fn){observers.push(fn);}observe(){}},
@@ -49,6 +52,45 @@ test('Browser presentation preserves business DOM and suspends native content fo
   assert.equal(f.document.getElementById('allfold-pane').inert,false);
   assert.equal(reader.scrollTop,230);
   assert.equal(input.value,'unsaved');assert.equal(f.document.activeElement,input);
+});
+test('Kept Compact and Focus share the pane and existing Page; returning restores Queue focus',async()=>{
+  const f=fixture(),host=f.document.getElementById('kept-browser-host'),input=f.document.getElementById('kept-start');
+  f.window.workspace='kept';input.focus();
+  assert.equal(await f.window.allfoldWorkbench.showKeptBrowser({mode:'compact'}),true);f.flush();
+  const pane=f.document.getElementById('browser-pane');
+  assert.equal(pane.parentElement,host);assert.equal(pane.dataset.mode,'compact');
+  assert.equal(f.document.getElementById('allfold-pane').inert,false);
+  f.document.getElementById('browser-focus').dispatchEvent(new Event('click'));f.flush();
+  assert.equal(pane.parentElement,host);assert.equal(pane.dataset.mode,'focus');
+  f.window.allfoldWorkbench.hideKeptBrowser();f.flush();
+  assert.equal(pane.hidden,true);assert.equal(f.document.activeElement,input);
+  assert.equal(f.calls.some(call=>['new','navigate','reload'].includes(call.action)),false);
+});
+test('Run task page handoff uses temporary Focus and restores the original Run',async()=>{
+  const f=fixture(),input=f.document.getElementById('run-show-task-page');f.window.workspace='run';input.focus();
+  f.setState({selected:3,taskPageId:8,tabs:[{id:8,association:{workflow_id:'run-a',task_id:'prepare-a',active:true,role:'wos-query'}}]});
+  assert.equal(await f.window.allfoldWorkbench.showTaskPage({workflowId:'run-a',source:'run'}),true);f.flush();
+  assert.equal(f.document.getElementById('browser-pane').dataset.mode,'focus');
+  assert.equal(f.document.getElementById('browser-pane').parentElement,f.document.getElementById('workbench-content'));
+  assert.match(f.document.getElementById('browser-return').textContent,/RUN/);
+  f.window.allfoldWorkbench.hide();f.flush();assert.equal(f.document.activeElement,input);
+  assert.equal(f.window.workspace,'run');assert.equal(f.calls.filter(call=>call.action==='select').at(-1).id,8);
+});
+test('overlapping Flyout and Overlay Sidebar suspend the native Page; hidden and docked panes do not',async()=>{
+  const f=fixture();await f.window.allfoldWorkbench.show();f.flush();
+  const overlay=f.document.getElementById('flyout');overlay.getBoundingClientRect=()=>({left:30,top:170,width:280,height:300});
+  const queries=f.document.querySelectorAll;f.document.querySelectorAll=selector=>selector.startsWith('.navigation-flyout')?[overlay]:queries(selector);
+  f.mutate();f.flush();assert.equal(f.calls.at(-1).suspended,true);
+  overlay.hidden=true;f.mutate();f.flush();assert.equal(f.calls.at(-1).suspended,false);
+  overlay.hidden=false;overlay.getBoundingClientRect=()=>({left:800,top:170,width:200,height:300});
+  f.mutate();f.flush();assert.equal(f.calls.at(-1).suspended,false);
+});
+test('leaving the Kept workspace hides its native View without recreating the pane on return',async()=>{
+  const f=fixture();f.window.workspace='kept';await f.window.allfoldWorkbench.showKeptBrowser();f.flush();
+  const pane=f.document.getElementById('browser-pane');f.window.workspace='run';f.window.dispatchEvent(new Event('workspace-navigation-state'));f.flush();
+  assert.equal(f.calls.at(-1).visible,false);assert.equal(f.window.allfoldWorkbench.visible(),false);
+  f.window.workspace='kept';f.window.dispatchEvent(new Event('workspace-navigation-state'));f.flush();
+  assert.equal(f.calls.at(-1).visible,true);assert.equal(f.document.getElementById('browser-pane'),pane);
 });
 test('Browser body resize after host zoom publishes freshly measured CSS bounds',async()=>{
   const f=fixture();await f.window.allfoldWorkbench.show();f.flush();
