@@ -26,6 +26,12 @@ test('async request contexts stay distinct and strict event schemas drop unsuppo
   logger.log('error','SECRET',{code:'failed'});
   assert.deepEqual(logger.readEvents().map(e=>[e.request_id,e.workflow_id]),[['beta','workflow_beta'],['alpha','workflow_alpha']]);
 });
+test('manual Service page observations retain descriptive role without URLs',t=>{
+  const {logger}=fixture(t);
+  logger.log('info','page_associated',{page_id:3,role:'manual-service',service_id:'svc_'+'1'.repeat(32),url:'https://private.test/token'});
+  const [event]=logger.readEvents();assert.equal(event.role,'manual-service');assert.equal(event.page_id,3);
+  assert.equal(event.url,undefined);
+});
 test('bounded rotation persists incompleteness across restart and files are private',t=>{
   const {logger,root}=fixture(t,{maxBytes:512,maxFiles:2});
   for(let i=0;i<12;i++)logger.log('info','manual_wait',{request_id:'request_'+i,waiting:!!(i%2)});

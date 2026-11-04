@@ -106,10 +106,15 @@ markup.innerHTML=`<header class="s-header">
 </label>
 <p class="s-help">Developer Mode 默认关闭，控制 Workspace 调试控件与 Journals 底栏的 RESIZE、GRID / ROW；关闭后，已保存的调试参数仍然生效。此开关独立保存在本浏览器，不参与 Settings Save。</p>
 <label class="s-setting-row s-check s-field-wide">
-<input id="s-disable-run-animation" type="checkbox">
-<span class="s-setting-label">禁用 Run 动画</span>
+<input id="s-disable-archive" type="checkbox">
+<span class="s-setting-label">禁用 Archive 视图</span>
 </label>
-<p class="s-help">使用静态画面显示 Run 进度，不播放开场、循环和结束转场动画。勾选立即生效；取消勾选后从下一次 Run 恢复播放，仍遵循系统减少动态效果设置。此开关独立保存在本机，不需要 SAVE，不影响 Import 或其他界面动画。</p>
+<p class="s-help">Workspace 使用 ARRAY；活动操作结束后再切换布局。此本地偏好不需要 SAVE。</p>
+<label class="s-setting-row s-check s-field-wide">
+<input id="s-disable-fullscreen" type="checkbox">
+<span class="s-setting-label">禁用全屏运行界面</span>
+</label>
+<p class="s-help">Run 与 Prepare / Import 在各自工作区显示进度。下次新任务生效；重启恢复使用当前设置。此本地偏好不需要 SAVE。</p>
       <details>
 <summary>Zotero Integration</summary>
 <div class="s-diagnostic">
@@ -525,7 +530,7 @@ function moveDirectoryIndex(container,delta) {
 document.addEventListener('keydown',event=>{
   if(event.defaultPrevented || !['ArrowUp','ArrowDown'].includes(event.key) ||
       event.altKey || event.metaKey || event.ctrlKey || event.shiftKey ||
-      loading || reconcileRequired || root.hidden || root.inert || !configurationAvailable() ||
+      loading || reconcileRequired || root.hidden || root.closest('[inert]') || !configurationAvailable() ||
       document.querySelector('dialog[open], [popover]:popover-open') || event.target.isContentEditable ||
       event.target.closest('input,textarea,select,[contenteditable],[role=separator],[inert]'))return;
   const page=window.workspaceNavigation.current();
@@ -1414,12 +1419,19 @@ developerModeToggle.addEventListener('change',()=>{
   try{localStorage.setItem(developerModeKey,String(developerModeToggle.checked));}
   catch{message('Developer Mode 已切换，但浏览器不允许保存该设置。','error');}
 });
-const runAnimationToggle=$('s-disable-run-animation');
-runAnimationToggle.checked=window.uiRun.animationDisabled();
-runAnimationToggle.addEventListener('change',()=>{
-  try {window.uiRun.setAnimationDisabled(runAnimationToggle.checked);}
-  catch {message('Run 动画已切换，但浏览器不允许保存该设置。','error');}
+const presentationPreferences=[
+  {id:'s-disable-archive',read:'archiveDisabled',write:'setArchiveDisabled'},
+  {id:'s-disable-fullscreen',read:'fullscreenDisabled',write:'setFullscreenDisabled'},
+];
+function syncPresentationPreferences() {
+  for(const {id,read} of presentationPreferences)$(id).checked=window.allfoldUIPreferences[read]();
+}
+syncPresentationPreferences();
+for(const {id,write} of presentationPreferences)$(id).addEventListener('change',()=>{
+  try {window.allfoldUIPreferences[write]($(id).checked);}
+  catch {message('界面偏好已切换，但本机不允许保存该设置。','error');}
 });
+window.addEventListener('ui-preferences-changed',syncPresentationPreferences);
 void loadInstitutionCatalog();
 void loadSettings();
 void refreshRun();

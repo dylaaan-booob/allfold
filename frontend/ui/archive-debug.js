@@ -76,7 +76,7 @@ const archiveDebug=(()=>{
   });
   $('debug-reset').addEventListener('click',()=>{values=structuredClone(saved);sync();change();});
   $('debug-origin').addEventListener('click',()=>{values=archiveDebugState();sync();change();});
-  function maxHeight(){return Math.max(1,innerHeight-stage.getBoundingClientRect().top-document.querySelector('footer').offsetHeight);}
+  function maxHeight(){return Math.max(1,stage.parentElement.clientHeight);}
   const canEdit=()=>toggle.checked && enabled && editable;
   function resizeTo(axis,target){
     if(view==='array')return;

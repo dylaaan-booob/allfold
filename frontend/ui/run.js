@@ -8,8 +8,28 @@ try {animationDisabled=localStorage.getItem(animationPreferenceKey)==='true';} c
 const reduceRunMotion=()=>animationDisabled || reduced.matches;
 const transition=new SurfaceTransition($('run-wash'),undefined,600,600);
 let active=null,pending=null,starting=false;
+const inline=document.createElement('section');
+inline.id='run-inline';inline.hidden=true;inline.setAttribute('aria-label','当前 Run');
+const taskPageButton=document.createElement('button');
+taskPageButton.type='button';taskPageButton.className='s-button run-task-page';taskPageButton.textContent='查看任务页面';taskPageButton.hidden=true;
+dialog.querySelector('.run-status-area').append(taskPageButton);
+taskPageButton.addEventListener('click',async()=>{
+  if(!active)return;
+  try {
+    if(!await window.allfoldWorkbench?.showTaskPage({workflowId:active.taskID}))uiNext.notice('当前任务尚无可查看的页面。');
+  }catch(error){uiNext.notice(error.message);}
+});
+function present(run) {
+  if(run.inline){
+    const host=$('s-run')?.querySelector('.s-run-body') || $('run-page');
+    host.prepend(inline);inline.hidden=false;inline.append($('run-stage-layer'));
+  }else {
+    inline.hidden=true;dialog.append($('run-stage-layer'),$('run-wash'));
+    window.uiRunPage?.open();dialog.show();
+  }
+}
 function stopRunAnimation() {
-  if(active) {active.reduced=true;active.visual.stop();}
+  if(active) {active.reduced=true;active.visual?.stop();}
   transition.finish();
 }
 function setAnimationDisabled(disabled) {
@@ -42,10 +62,12 @@ function showState(data) {
   $('run-stage').textContent=progress.stage_label || snapshot.status;
   $('run-description').textContent=progress.announcement_message || (snapshot.inactivity_warning?'暂未收到新的活动。':'');
   dialog.dataset.waitingForUser=String(snapshot.provider==='wos' && !!snapshot.waiting_for_user);
+  taskPageButton.hidden=snapshot.provider!=='wos' || snapshot.status!=='RUNNING';
+  $('run-wos-cancel').hidden=snapshot.provider!=='wos' || snapshot.status!=='RUNNING';
 }
 async function finish(run,data) {
   if(active!==run || run.ended)return;
-  run.ended=true;clearTimeout(run.timer);run.visual.stop();showState(data);
+  run.ended=true;clearTimeout(run.timer);run.visual?.stop();showState(data);
   const snapshot=data.snapshot,label='Run '+window.uiRunPage.providerName(snapshot.provider);
   const summary=resultHeadline(data.result_summary);
   $('run-stage').textContent='RUN FINISHED';$('run-description').textContent=summary;
@@ -54,18 +76,18 @@ async function finish(run,data) {
   catch(error){pending=run.selection;details.push(`Inbox 刷新失败：${error.message}`);}
   report(`${label} · ${summary}`,details);
   try {
-    if(!run.reduced && !reduceRunMotion()) {
+    if(!run.inline && !run.reduced && !reduceRunMotion()) {
       await new Promise(resolve=>{transition.show(false);const animation=transition.animations[0];if(animation)void animation.finished.then(resolve,resolve);else resolve();});
       $('run-stage-layer').hidden=true;dialog.classList.add('returning');dialog.querySelector('.run-background').hidden=true;
       await new Promise(resolve=>transition.hide(run.reduced || reduceRunMotion(),resolve));
     }
   }
   finally {
-    dialog.close();run.visual.stop();active=null;$('run-wos-cancel').hidden=true;
-    window.uiRunPage.open();
+    dialog.close();run.visual?.stop();active=null;$('run-wos-cancel').hidden=true;taskPageButton.hidden=true;
+    if(!run.inline)window.uiRunPage.open();
     try {await window.uiRunPage.refresh();} finally {disableRunButtons(false);}
   }
-  const focus=run.trigger?.isConnected && !run.trigger.disabled?run.trigger:document.querySelector(`[data-run-provider="${run.provider}"]:not([hidden])`);focus?.focus({preventScroll:true});
+  const focus=run.trigger?.isConnected && !run.trigger.disabled?run.trigger:document.querySelector(`[data-run-provider="${run.provider}"]:not([hidden])`);if(!run.inline)focus?.focus({preventScroll:true});
 }
 async function poll(run) {
   if(active!==run || run.ended)return;
@@ -77,18 +99,17 @@ async function poll(run) {
 }
 function open(data,trigger=null) {
   if(active)return;
-  window.uiRunPage?.open();
-  const run=active={selection:window.inboxRun.selection(),ended:false,reduced:reduceRunMotion(),provider:data.snapshot.provider,kind:data.snapshot.provider==='wos'?'run-wos':'run',taskID:data.snapshot.task_id,trigger};
+  const run=active={inline:window.allfoldUIPreferences?.fullscreenDisabled()===true,selection:window.inboxRun.selection(),ended:false,reduced:reduceRunMotion(),provider:data.snapshot.provider,kind:data.snapshot.provider==='wos'?'run-wos':'run',taskID:data.snapshot.task_id,trigger};
   $('run-wash').hidden=true;$('run-stage-layer').hidden=false;
   dialog.classList.remove('returning');dialog.querySelector('.run-background').hidden=false;
-  run.visual=new RunVisual(dialog,run.reduced);
+  if(!run.inline)run.visual=new RunVisual(dialog,run.reduced);
   $('run-wos-cancel').hidden=run.provider!=='wos';$('run-wos-cancel').disabled=false;
   disableRunButtons(true);
-  dialog.show();showState(data);void run.visual.start();
+  present(run);showState(data);void run.visual?.start();
   if(data.snapshot.status==='FINISHED')void finish(run,data);else void poll(run);
 }
 async function start(provider,trigger=null) {
-  if(active || starting || !window.uiRunPage?.canRun(provider) || !window.inboxRun?.available())return;
+  if(active || starting || window.workspaceArray?.workflowBusy() || !window.uiRunPage?.canRun(provider) || !window.inboxRun?.available())return;
   starting=true;disableRunButtons(true);
   const endpoint=provider==='wos'?'run-wos':'run';
   try {open(await uiNext.request('/api/ui-next/'+endpoint,provider==='wos'?{}:{provider}),trigger);}
@@ -110,7 +131,7 @@ async function retry() {
   finally{$('s-run-retry').disabled=false;}
 }
 async function restore() {
-  if(active || starting)return;
+  if(active || starting || window.workspaceArray?.workflowBusy())return;
   try {
     const data=await uiNext.request('/api/ui-next/run');
     window.dispatchEvent(new CustomEvent('run-state',{detail:data}));
@@ -125,5 +146,5 @@ window.uiRun={start,retry,active:()=>!!active || starting,
 window.addEventListener('settings-draft-changed',()=>{if(!active && !starting)disableRunButtons(false);});
 const availabilityTimer=setInterval(()=>{if(!active && !starting)void restore();},5000);
 if(window.uiWorkspace.ready())void restore();else window.addEventListener('inbox-ready',()=>void restore(),{once:true});
-window.addEventListener('pagehide',()=>{clearInterval(availabilityTimer);if(active){clearTimeout(active.timer);active.visual.stop();}});
+window.addEventListener('pagehide',()=>{clearInterval(availabilityTimer);if(active){clearTimeout(active.timer);active.visual?.stop();}});
 $('kept-flow').addEventListener('close',()=>{if(!active)void restore();});

@@ -1,8 +1,6 @@
 'use strict';
-const {app, BrowserWindow, WebContentsView, session, ipcMain, webFrameMain, Menu, clipboard, dialog} = require('electron');
-const path = require('node:path');
-const {NATIVE_UI_DIR,PRELOAD_DIR}=require('../shared/paths.cjs');
-const {pathToFileURL} = require('node:url');
+const {app, WebContentsView, session, webFrameMain, Menu, clipboard, dialog} = require('electron');
+const {BrowserPresentation}=require('./browser-presentation.cjs');
 const {BrowserFailure}=require('./browser-errors.cjs');
 const {configureBrowserIdentity} = require('./browser-identity.cjs');
 const {DocumentRuntime}=require('./document-runtime.cjs');
@@ -34,7 +32,7 @@ function browserURL(value) {
 }
 const {PartitionedCookieAdapter}=require('./partitioned-cookies.cjs');
 class BrowserRuntime {
-  constructor({solveCloudflare,readCASCredentials,isTaskRunning=()=>false,cdpURL=''} = {}) {
+  constructor({hostWindow,solveCloudflare,readCASCredentials,isTaskRunning=()=>false,cdpURL=''} = {}) {
     this.solveCloudflare=solveCloudflare;
     this.readCASCredentials=readCASCredentials;
     this.isTaskRunning=isTaskRunning;
@@ -66,7 +64,7 @@ class BrowserRuntime {
     this.selected = null;
     this.taskTab = null;
     this.taskActive = false;
-    this.window = null;
+    this.presentation=new BrowserPresentation(hostWindow);
     this.destroying = false;
     this.cookieAdapter=new PartitionedCookieAdapter({session:this.partition,cdpURL,
       getPage:id=>this.tabs.get(id)?.view.webContents,documentCurrent:doc=>this.documentCurrent(doc)});
@@ -75,38 +73,14 @@ class BrowserRuntime {
       if (this.destroying) {identity.dispose();throw Error('Browser closed during identity initialization');}
       return identity;
     });
-    this.shellURL = pathToFileURL(path.join(NATIVE_UI_DIR, 'browser.html')).href;
-    ipcMain.handle('browser:command', (event, command) => {
-      if (!this.window || event.sender !== this.window.webContents
-        || event.senderFrame !== event.sender.mainFrame || event.senderFrame.url !== this.shellURL)
-        throw Error('Untrusted Browser command sender');
-      return this.command(command);
-    });
-  }
-  ensureWindow() {
-    if (this.window) return;
-    this.window = new BrowserWindow({width:1200, height:850, show:false, title:'Browser — Allfold',
-      webPreferences:{preload:path.join(PRELOAD_DIR, 'browser-preload.cjs'), sandbox:true,
-        contextIsolation:true, nodeIntegration:false, webSecurity:true, partition:'browser-chrome'}});
-    this.window.webContents.setWindowOpenHandler(() => ({action:'deny'}));
-    this.window.webContents.on('will-navigate', event => event.preventDefault());
-    this.window.webContents.on('did-finish-load', () => {
-      this.publish();
-      void this.refreshCacheSize().catch(()=>log('warn','browser_cache_failed',{code:'cache_size_failed'}));
-    });
-    this.window.on('resize', () => this.layout());
-    this.window.on('close', event => {
-      if (!this.destroying) {event.preventDefault();this.window.hide();}
-    });
-    void this.window.loadURL(this.shellURL);
   }
   createTab(options = {}, opener = null) {
     if (!this.identity || this.destroying) throw Error('Browser identity is not ready');
-    this.ensureWindow();
     const view = new WebContentsView({...(options.webContents ? {webContents:options.webContents} : {}),
       webPreferences:{...options.webPreferences, session:this.partition, sandbox:true,
       contextIsolation:true, nodeIntegration:false, nodeIntegrationInSubFrames:true, webSecurity:true}});
     const contents = view.webContents;
+    view.setVisible(false);
     // The Session already owns the synchronous identity preload and HTTPS headers.
     contents.setUserAgent(this.partition.getUserAgent());
     const tab = {id:contents.id, view, status:null, error:null, opener,taskSignal:opener?.taskSignal,authContext:opener?.authContext,
@@ -118,7 +92,7 @@ class BrowserRuntime {
       }
       return {action:'allow', overrideBrowserWindowOptions:{webPreferences:{session:this.partition,
         sandbox:true, contextIsolation:true, nodeIntegration:false, nodeIntegrationInSubFrames:true}},
-        createWindow:options => this.createTab(options,tab).view.webContents};
+        createWindow:options => this.createTab({...options,present:false},tab).view.webContents};
     });
     const guard = (event, url) => {
       if (url === 'about:blank') return;
@@ -159,7 +133,7 @@ class BrowserRuntime {
         contents.openDevTools({mode:'detach'});
         contents.inspectElement(params.x,params.y);
       }});
-      Menu.buildFromTemplate(template).popup({window:this.window});
+      Menu.buildFromTemplate(template).popup({window:this.presentation.host});
     });
     // Coalesce page events while a handler is running; no event consumes a login budget.
     let authPending=false,authRunning=false;
@@ -195,8 +169,7 @@ class BrowserRuntime {
       }
       if (this.destroying) return;
       if (this.selected === tab) {
-        this.window.contentView.removeChildView(tab.view);
-        this.selected=null;this.select([...this.tabs.values()].at(-1));
+        this.select([...this.tabs.values()].at(-1));
       }
       this.publish();
     });
@@ -206,7 +179,8 @@ class BrowserRuntime {
     }
     this.reportPage('info','page_created',tab);
     if(opener?.association)this.reportPage('info','page_associated',tab);
-    if(options.present!==false || !this.selected)this.select(tab);
+    if(options.present!==false)this.select(tab);
+    else this.publish();
     this.events.emit('tab-created',null,tab);
     return tab;
   }
@@ -346,41 +320,38 @@ class BrowserRuntime {
       for(const page of this.tabs.values())if(page!==tab && page.authContext===context)page.authContext=null;
     }
   }
-  select(tab) {
-    if (this.selected) this.window.contentView.removeChildView(this.selected.view);
+  select(tab,{focus=false}={}) {
     this.selected = tab || null;
-    if (tab) this.window.contentView.addChildView(tab.view);
-    this.layout();this.publish();
+    this.presentation.select(this.selected,{focus});this.publish();
   }
-  layout() {
-    if (!this.selected) return;
-    const [width,height] = this.window.getContentSize();
-    this.selected.view.setBounds({x:0,y:92,width,height:Math.max(1,height-92)});
-  }
+  setPresentation(value){return this.presentation.update(value);}
   state() {
-    return {selected:this.selected?.id || null,cacheSize:this.cacheSize,taskRunning:this.isTaskRunning(),
+    return {selected:this.selected?.id || null,taskPageId:this.taskActive?this.taskTab?.id || null:null,
+      cacheSize:this.cacheSize,taskRunning:this.isTaskRunning(),
       tabs:[...this.tabs.values()].map(tab => {
       const wc=tab.view.webContents;
       return {id:tab.id,title:wc.getTitle() || 'New tab',url:wc.getURL(),loading:wc.isLoading(),
-        busy:this.taskActive && this.taskTab === tab,error:tab.error,
+        busy:this.taskActive && this.taskTab===tab,
+        association:this.pageAssociation(tab.id),openerId:tab.opener?.id || null,
+        error:tab.error?{kind:tab.error.kind,code:tab.error.code,reason:tab.error.reason}:null,
         back:wc.navigationHistory.canGoBack(),forward:wc.navigationHistory.canGoForward()};
     })};
   }
   publish() {
-    if (this.window && !this.window.isDestroyed()) this.window.webContents.send('browser:state',this.state());
+    this.presentation.send('browser:state',this.state());
   }
   async show() {
     await this.ready;
-    this.ensureWindow();
     if (!this.tabs.size) this.createTab();
-    this.window.show();
+    if(!this.selected)this.select(this.tabs.values().next().value);
+    this.presentation.show();
     return this.state();
   }
   async openURL(value) {
     const url=browserURL(value);
     await this.ready;
-    const tab=this.createTab();
-    this.window.show();
+    const tab=this.createTab({present:false});this.select(tab,{focus:true});
+    this.presentation.show();
     await tab.navigation.dispatch(()=>tab.view.webContents.loadURL(url),{});
     return tab;
   }
@@ -390,13 +361,36 @@ class BrowserRuntime {
   }
   async command(command) {
     await this.ready;
-    if (!command || typeof command !== 'object') throw Error('Invalid Browser command');
+    const actions=['state','new','select','close','navigate','back','forward','reload','devtools','cache-size','clear-cache','clear-site-data','open-service'];
+    const fields=command?.action==='open-service'?['action','url','service_scope','service_id','workflow_id','task_id']:['action','id','url'];
+    if (!command || typeof command!=='object' || Array.isArray(command)
+      || Object.keys(command).some(key=>!fields.includes(key))
+      || !actions.includes(command.action)
+      || (command.id!==undefined && (!Number.isSafeInteger(command.id) || command.id<=0))
+      || (command.action==='select' && command.id===undefined)
+      || (['navigate','open-service'].includes(command.action) && (typeof command.url!=='string' || command.url.length>8192))
+      || (command.url!==undefined && !['navigate','open-service'].includes(command.action))) throw Error('Invalid Browser command');
     const tab = command.id == null ? this.selected : this.tabs.get(command.id);
     if (command.id != null && !tab && !['state','new'].includes(command.action)) throw Error('Unknown tab');
     switch (command.action) {
       case 'state': break;
-      case 'new': this.createTab();break;
-      case 'select': if (!this.tabs.has(command.id)) throw Error('Unknown tab');this.select(tab);break;
+      case 'open-service': {
+        const url=browserURL(command.url),association=operationAssociation(command);
+        if(!association.service_scope || !association.service_id)throw Error('Invalid browser Service identity');
+        let page=[...this.tabs.values()].find(page=>page.association?.role==='manual-service'
+          && page.association.service_scope?.scope_id===association.service_scope.scope_id
+          && page.association.service_id===association.service_id);
+        const fresh=!page;
+        if(fresh)page=this.createTab({present:false});
+        if(page.association)this.reportPage('info','page_association_replaced',page);
+        page.association=Object.freeze({...association,role:'manual-service',doi:null,source_page_id:null});
+        page.associationOwner=null;this.reportPage('info','page_associated',page);
+        this.select(page,{focus:true});this.presentation.show();
+        if(fresh)await page.navigation.dispatch(()=>page.view.webContents.loadURL(url),{});
+        break;
+      }
+      case 'new': this.select(this.createTab({present:false}),{focus:true});break;
+      case 'select': if (!this.tabs.has(command.id)) throw Error('Unknown tab');this.select(tab,{focus:true});break;
       case 'close':
         if (tab && this.taskActive && tab === this.taskTab) throw Error('The active task page cannot be closed');
         if(tab){tab.closeReason='user';this.reportPage('info','page_close_requested',tab,{reason:'user'});tab.view.webContents.close();}break;
@@ -416,7 +410,7 @@ class BrowserRuntime {
         if(this.isTaskRunning())throw Error('Browser task is running');
         const siteData=command.action==='clear-site-data';
         if(siteData) {
-          const answer=await dialog.showMessageBox(this.window,{type:'warning',
+          const answer=await dialog.showMessageBox(this.presentation.host,{type:'warning',
             title:'清除站点数据',message:'清除浏览器中所有站点的数据？',
             detail:'将清除 Cookie、Local Storage、IndexedDB、缓存和 HTTP 认证状态，可能导致网站退出登录。不会删除下载文件或下载历史。',
             buttons:['取消','清除站点数据'],defaultId:0,cancelId:0,noLink:true});
@@ -455,6 +449,7 @@ class BrowserRuntime {
       role,doi,source_page_id:source && source!==tab && this.tabs.get(source.id)===source?source.id:null});
     tab.associationOwner=this.operation || null;
     this.reportPage('info','page_associated',tab);
+    this.publish();
   }
   pageAssociation(id) {
     const tab=this.tabs.get(id);
@@ -636,7 +631,7 @@ class BrowserRuntime {
     if(!owner || owner.action!=='import_paper' || !this.taskActive || !this.documentCurrent(doc))
       throw new BrowserFailure('attachment','document_changed');
     const source=this.tabs.get(doc.pageId),deadline=Date.now()+(visible?60000:5000);
-    const tab=visible?this.createTab():source,contents=tab.view.webContents;
+    const tab=visible?this.createTab({present:false}):source,contents=tab.view.webContents;
     if(visible)this.associatePage(tab,{role:'attachment',source,doi:source.association?.doi});
     if(visible)tab.attachmentOwner=owner;
     const id='allfold-attachment-'+randomBytes(12).toString('hex');
@@ -668,7 +663,6 @@ class BrowserRuntime {
         tab.attachmentOwner=owner;tab.loadOwner=owner;tab.taskSignal=bounded;
         contents.on('did-navigate',helperNavigated);
         contents.on('did-stop-loading',observe);contents.on('did-navigate-in-page',observe);contents.on('page-title-updated',observe);
-        this.window.show();
         void contents.loadURL(url).then(observe,()=>{});
       } else {
         const frame=this.documentFrame(doc);
@@ -743,7 +737,7 @@ class BrowserRuntime {
       this.reportPage('info','page_close_requested',tab,{reason:'app_exit'});tab.view.webContents.close();
     }
     this.taskTab=null;this.importPage=null;this.carsiPortal=null;this.wosDocument=null;this.operation=null;
-    this.window?.destroy();
+    this.presentation.dispose();
     this.selected=null;this.taskActive=false;
     this.partition.webRequest.onErrorOccurred(null);
     this.partition.webRequest.onHeadersReceived(null);
@@ -753,7 +747,6 @@ class BrowserRuntime {
     this.cookieAdapter.dispose();
     this.identity?.dispose();
     this.identity = null;
-    ipcMain.removeHandler('browser:command');
   }
 }
 module.exports={BrowserRuntime,chromiumUserAgent,configureBrowserSession};

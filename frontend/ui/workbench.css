@@ -1,0 +1,55 @@
+/* The Window owns Chrome / Content / Status sizes. Business layouts fill Content. */
+body{min-width:0;min-height:0}
+.masthead,footer{flex:0 0 auto;min-width:0}
+footer{height:auto;min-height:35px;margin-top:0}
+#workbench-content{position:relative;display:grid;grid-template:minmax(0,1fr)/minmax(0,1fr);flex:1 1 0;min-width:0;min-height:0;overflow:hidden}
+#allfold-pane,#browser-pane{grid-area:1/1;min-width:0;min-height:0;overflow:hidden}
+#allfold-pane{display:flex;flex-direction:column}
+#workbench-content #selected-view{height:100%;max-height:100%;min-width:0;min-height:0;flex-shrink:1}
+#workbench-content #selected-view[data-workspace-layout=array]{height:100%!important}
+#workbench-content #configuration-workspace{height:100%;max-height:100%;min-height:0;flex:1 1 0}
+#workbench-content #selected-view>#kept-view{height:100%;max-height:100%;min-height:0}
+body[data-workbench=browser] #allfold-pane{visibility:hidden;pointer-events:none}
+body[data-workbench=browser] :is(.view-nav-scroll,.header-utilities){visibility:hidden;pointer-events:none}
+body[data-workbench=browser] footer>:not(.message-region,#browser-status){display:none!important}
+body[data-workbench=allfold] #browser-status{display:none}
+.header-browse{flex-wrap:nowrap;min-width:0}
+.header-browse .view-nav-scroll{flex:0 1 auto;overflow-x:auto}
+.header-browse .view-nav{flex-wrap:nowrap;max-width:none}
+#browser-open{flex-shrink:0;height:32px;min-height:32px;padding:0 12px;border-left:1px solid var(--rule);font:11px var(--font);letter-spacing:.04em;white-space:nowrap}
+#browser-open[aria-pressed=true]{background:var(--ink);color:var(--paper)}
+#browser-open:focus-visible,#browser-pane :is(button,input,summary,[role=separator]):focus-visible{outline:2px solid var(--orange);outline-offset:-2px}
+/* Existing non-modal task players keep their open state during manual handoff. */
+#run-view,#kept-flow{inset:var(--prototype-header,90px) 0 0;height:calc(100dvh - var(--prototype-header,90px));z-index:9}
+body:has(#run-view[open],#kept-flow[open]) .masthead{background:var(--paper)}
+body[data-workbench=browser] :is(#run-view,#kept-flow){visibility:hidden;pointer-events:none}
+#browser-pane{display:flex;flex-direction:column;background:var(--paper)}
+.browser-controls{flex:0 0 auto;min-width:0;border-bottom:1px solid var(--rule)}
+.browser-tabbar{display:flex;align-items:stretch;gap:6px;min-width:0;padding:8px var(--workspace-gutter);border-bottom:1px solid var(--rule)}
+#browser-pane button,#browser-maintenance>summary{min-height:30px;padding:4px 9px;font-size:11px;white-space:nowrap}
+#browser-return,#browser-services-toggle{flex:0 0 auto;letter-spacing:.06em}
+#browser-tabs{display:flex;flex:1;min-width:0;gap:5px;overflow-x:auto;scrollbar-width:thin}
+.browser-tab{display:flex;flex:0 0 auto;min-width:110px;max-width:230px;border:1px solid var(--rule)}
+.browser-tab[data-selected=true]{border-color:var(--ink);background:var(--ink);color:var(--paper)}
+.browser-tab>button:first-child{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;text-align:left}
+.browser-tab>button:last-child{flex:0 0 28px;padding-inline:4px}
+#browser-address{display:flex;align-items:flex-start;flex-wrap:wrap;gap:6px;padding:8px var(--workspace-gutter) 0;min-width:0}
+#browser-url{flex:1 1 180px;min-width:80px;height:32px;border:1px solid var(--rule);background:transparent;color:var(--ink);font:12px var(--font);padding:5px 9px}
+#browser-maintenance{flex:0 1 auto;max-width:100%}
+#browser-maintenance>summary{cursor:pointer}
+#browser-maintenance>div{display:flex;flex-wrap:wrap;gap:5px;padding-bottom:6px}
+#browser-maintenance>div>button{border:1px solid var(--rule)}
+#browser-message{min-height:24px;padding:3px var(--workspace-gutter);margin:0;font-size:11px;color:#a84700;overflow-wrap:anywhere}
+#browser-work-area{display:flex;flex:1 1 0;min-height:0;min-width:0;overflow:hidden}
+#browser-body{position:relative;flex:1 1 0;min-width:0;min-height:0;overflow:hidden;background:#fff}
+#browser-empty{padding:24px;color:var(--muted);font-size:12px}
+#browser-services{flex:0 0 var(--browser-services-width,288px);width:var(--browser-services-width,288px);min-width:0;min-height:0;overflow:auto;padding:16px 12px;scrollbar-width:thin}
+#browser-services>h2{margin:0 0 18px;font-size:11px;font-weight:500;letter-spacing:.1em}
+#browser-service-pages>section{margin-bottom:22px;min-width:0}
+#browser-service-pages h3{margin:0 0 8px;font-size:12px;font-weight:500;overflow-wrap:anywhere}
+#browser-service-pages button{display:block;width:100%;text-align:left;white-space:normal;padding:8px!important;border-top:1px solid var(--rule);overflow-wrap:anywhere}
+#browser-service-pages button[aria-pressed=true]{background:var(--ink);color:var(--paper)}
+#browser-service-pages small{display:block;font:10px/1.6 var(--font);opacity:.7;margin-top:4px}
+#browser-services-resize{flex:0 0 6px;background:var(--paper);border-inline:1px solid var(--rule);cursor:col-resize;touch-action:none}
+#browser-services-resize:hover{background:var(--orange)}
+@media(max-width:600px){#browser-open{padding:0 8px}.browser-tabbar,#browser-address{padding-inline:12px}#browser-return{font-size:10px}#browser-message{padding-inline:12px}}
