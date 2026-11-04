@@ -54,7 +54,7 @@ test('restored inline Run WoS opens its existing task page and cancels with the 
   assert.equal(ui.get('run-view').open,false);assert.equal(ui.stats().visuals,0);
   const button=ui.get('run-status-area').children.find(node=>node.textContent==='查看任务页面');
   assert.equal(button.hidden,false);await button.emit('click');
-  assert.deepEqual(JSON.parse(JSON.stringify(ui.presentations)),[{workflowId:'run-1'}]);
+  assert.deepEqual(JSON.parse(JSON.stringify(ui.presentations)),[{workflowId:'run-1',source:'run'}]);
   await ui.get('run-wos-cancel').emit('click');
   assert.deepEqual(JSON.parse(JSON.stringify(ui.calls.find(([path])=>path.endsWith('/cancel'))[1])),{task_id:'run-1'});
   assert.equal(ui.calls.filter(([path,body])=>path==='/api/ui-next/run-wos' && body).length,0);
@@ -96,4 +96,16 @@ test('inline recovery is independent of the animation manifest and font scene re
   assert.equal(ui.window.workspaceArray.workflowBusy(),true);
   assert.equal(ui.get('kept-phase').textContent,'Preparation');
   assert.equal(ui.get('kept-flow').open,false);assert.equal(ui.stats().visuals,0);
+});
+
+test('Run waits for autosave and refuses to start when the draft is still pending',async()=>{
+  const ui=await taskUI('run.js',{request:async()=>runData()});
+  let settleSave;ui.window.allfoldAutosave={flush:()=>new Promise(resolve=>{settleSave=resolve;})};
+  const first=ui.window.uiRun.start('crossref');await ui.settle();
+  assert.equal(ui.calls.filter(([path,body])=>path==='/api/ui-next/run' && body).length,0);
+  settleSave(false);await first;
+  assert.equal(ui.calls.filter(([path,body])=>path==='/api/ui-next/run' && body).length,0);
+  ui.window.allfoldAutosave.flush=async()=>true;
+  await ui.window.uiRun.start('crossref');
+  assert.equal(ui.calls.filter(([path,body])=>path==='/api/ui-next/run' && body).length,1);
 });

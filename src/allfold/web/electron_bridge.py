@@ -107,7 +107,7 @@ class ElectronBridge:
                     if pending[3]:
                         pending[3](data)
                 elif message.get("type") == "result" and not pending[2].done():
-                    if pending[1] != "diagnostics_reset":
+                    if pending[1] not in {"diagnostics_reset", "cas_credentials"}:
                         observe(self.diagnostics, "native_status", data.get("diagnostics_status"))
                         diagnostic = normalize_browser_diagnostic(data.get("diagnostic")) or {}
                         parent = data.get("parent")
@@ -125,7 +125,7 @@ class ElectronBridge:
                 self._challenge_stop[2].set()
             if self._socket is socket:
                 self._socket = None
-                if self._pending is not None and not self._pending[2].done() and self._pending[1] != "diagnostics_reset":
+                if self._pending is not None and not self._pending[2].done() and self._pending[1] not in {"diagnostics_reset", "cas_credentials"}:
                     observe(self.diagnostics, "event", "bridge_disconnected", {**self._pending_context, "code": "bridge_disconnected", "outcome": "uncertain"})
                     observe(self.diagnostics, "native_status", {"available": False, "incomplete": True})
                 if self._pending is not None and self._pending[3]:
@@ -184,7 +184,7 @@ class ElectronBridge:
         if isinstance(scope, dict):
             self._pending_context.update({key:scope[key] for key in ("config_revision", "user_state_revision") if key in scope})
         self._pending_context.update(request_id=request_id, action=action)
-        if action != "diagnostics_reset":
+        if action not in {"diagnostics_reset", "cas_credentials"}:
             data = {**data, "log_level": getattr(self.diagnostics, "level", "info")}
             observe(self.diagnostics, "event", "task_started", self._pending_context)
         try:

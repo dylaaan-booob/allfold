@@ -71,13 +71,16 @@ def logging_state(app):
 def install_settings_api(app, config_path, csrf_token, *, workspace_health,
                          zotero_integration, reset_preview):
     install_resource_api(app, config_path, csrf_token)
+    install_autosave_api(app, config_path, csrf_token)
+    install_credential_api(app, csrf_token)
 
     @app.get("/api/ui-next/settings")
     def get_settings():
-        state = settings_state(config_path, csrf_token)
-        state['logging'] = logging_state(app)
-        state["cover_search"] = app.state.journal_cover_search.state()
-        return json_response(state)
+        with app.state.settings_write_lock:
+            state = settings_state(config_path, csrf_token)
+            state['logging'] = logging_state(app)
+            state["cover_search"] = app.state.journal_cover_search.state()
+            return json_response(state)
 
     @app.get('/api/ui-next/browser-services')
     def browser_services():
@@ -167,12 +170,131 @@ def install_resource_api(app, config_path, csrf_token):
             submitted, issues = settings_draft_from_form(settings_form_from_submission(settings_form))
             if issues or disk.issues or submitted != disk.draft:
                 raise ContentChangedError('Save or Reload unsaved/stale Settings before choosing a Service')
-            await run_in_threadpool(choose_journal_service, config_path, key,
-                method=str(form.get('selection_method', '')), name=str(form.get('selection_name', '')),
-                url=str(form.get('selection_url', '')), expected_revision=disk.draft.journal_revision,
-                expected_monitor_revision=disk.draft.monitor_revision)
+            def commit_choice():
+                from allfold.web.settings_guard import settings_task_active
+                with app.state.settings_write_lock:
+                    if settings_task_active(app):
+                        raise ContentChangedError('Active task owns the saved Service mapping; the selection is pending')
+                    choose_journal_service(config_path, key,
+                        method=str(form.get('selection_method', '')), name=str(form.get('selection_name', '')),
+                        url=str(form.get('selection_url', '')), expected_revision=disk.draft.journal_revision,
+                        expected_monitor_revision=disk.draft.monitor_revision)
+            await run_in_threadpool(commit_choice)
             return json_response(dict(settings_state(config_path, csrf_token), saved=True, message='Journal Service saved'))
         except PermissionError as error:
             return settings_error(str(error))
         except (ConfigurationError, ContentChangedError, ValueError, OSError) as error:
             return settings_error(str(error), 409)
+
+
+# These are ordinary configuration values. Secrets and Workspace path changes
+# deliberately remain on the explicit Preview/Confirm operation boundary.
+AUTOSAVE_FIELDS = frozenset({
+    'name', 'keyword_expression', 'from_month', 'to_month', 'log_level',
+    'pubmed_query_mode', 'crossref_mailto', 'provider_aliases', 'provider_order',
+    'display_name', 'transition_delay_seconds', 'auto_import_after_preparation',
+    'institution_name', 'institution_idp_entity_id', 'institution_use_shibboleth',
+    'journals', 'access_services', 'groups', 'custom_labels',
+})
+REVISION_FIELDS = ('monitor_revision_exists', 'monitor_revision_digest',
+                   'journal_revision_exists', 'journal_revision_digest')
+
+
+def install_autosave_api(app, config_path, csrf_token):
+    import hmac
+    from starlette.concurrency import run_in_threadpool
+    from allfold.application.settings import save_settings, SettingsSaveOutcome
+    from allfold.web.settings_form import settings_draft_from_form, SettingsJournalRow, SettingsAccessServiceRow
+    from allfold.web.settings_guard import settings_task_active
+
+    def apply_patch(body):
+        with app.state.settings_write_lock:
+            disk = load_settings(config_path)
+            state = settings_state(config_path, csrf_token, disk=disk)
+            state['logging'] = logging_state(app)
+            def refusal(outcome, message, issues=()):
+                return json_response(dict(state, saved=False, outcome=outcome, message=message, issues=issues))
+            if settings_task_active(app):
+                return refusal('TASK_ACTIVE', 'Pending: configuration will be revalidated after the active task releases ownership.')
+            changes, base = body.get('changes'), body.get('base')
+            if (not isinstance(changes, dict) or not set(changes) <= AUTOSAVE_FIELDS
+                    or not isinstance(base, dict) or set(base) != set(REVISION_FIELDS)):
+                return refusal('INVALID_DRAFT', 'Only ordinary configuration fields can be autosaved.')
+            values = settings_form_from_draft(disk.draft)
+            if any(base[key] != getattr(values, key) for key in REVISION_FIELDS):
+                return refusal('REVISION_CONFLICT', 'Saved configuration changed. Review the saved state before reapplying the retained draft.')
+            try:
+                updates = dict(changes)
+                for key, row_type in (('journals', SettingsJournalRow), ('access_services', SettingsAccessServiceRow)):
+                    if key in updates:
+                        updates[key] = tuple(row_type(**row) for row in updates[key])
+                for key in ('provider_order', 'groups', 'custom_labels'):
+                    if key in updates:
+                        updates[key] = tuple(updates[key])
+                values = replace(values, **updates)
+                draft, issues = settings_draft_from_form(values)
+            except (TypeError, ValueError, AttributeError):
+                return refusal('INVALID_DRAFT', 'Configuration patch has invalid field values.')
+            if draft is None or issues:
+                return refusal('INVALID_DRAFT', 'Configuration validation failed; the draft is retained.', issues)
+            result = save_settings(config_path, draft)
+            state = settings_state(config_path, csrf_token, disk=result.state)
+            state['logging'] = logging_state(app)
+            return json_response(dict(state, saved=result.outcome is SettingsSaveOutcome.SAVED,
+                outcome=result.outcome.value, save=result, validation=result.validation,
+                message='Saved' if result.outcome is SettingsSaveOutcome.SAVED else 'Configuration was not fully saved; the draft is retained.',
+                issues=tuple((*state['issues'], *result.issues))))
+
+    @app.post('/api/ui-next/settings/autosave')
+    async def autosave(request: Request):
+        try:
+            body = await request.json()
+        except ValueError:
+            return settings_error('Invalid configuration patch', 400)
+        if not isinstance(body, dict) or not hmac.compare_digest(str(body.get('csrf_token', '')), csrf_token):
+            return settings_error('Invalid CSRF token')
+        return await run_in_threadpool(apply_patch, body)
+
+
+def install_credential_api(app, csrf_token):
+    """Explicit native credential mutation owns admission through settlement."""
+    import hmac
+    from starlette.concurrency import run_in_threadpool
+    from allfold.application.browser_runtime import ElectronDisconnected
+    from allfold.web.settings_guard import settings_task_active
+
+    def commit(body):
+        with app.state.settings_write_lock:
+            if settings_task_active(app):
+                return json_response({'ok': False, 'error': 'cas_task_active',
+                    'message': 'Active task owns the saved configuration; credential draft retained.'}, 409)
+            owner = app.state.browser_task_lock.acquire('credentials')
+            try:
+                if not app.state.electron_bridge.connected:
+                    raise ElectronDisconnected()
+                result = app.state.electron_bridge.execute('cas_credentials', {
+                    key: body[key] for key in ('operation', 'username', 'password', 'expected_revision')
+                }).result()
+                # Native returns a bounded status only, never password/plaintext.
+                return json_response({key: result[key] for key in
+                    ('ok', 'error', 'configured', 'username', 'revision') if key in result})
+            except (ElectronDisconnected, RuntimeError, OSError):
+                return json_response({'ok': False, 'error': 'cas_store_unavailable',
+                    'message': 'Credential result could not be confirmed. Re-read status before retrying.'}, 409)
+            finally:
+                app.state.browser_task_lock.release(owner)
+
+    @app.post('/api/ui-next/settings/credentials')
+    async def credentials(request: Request):
+        try:
+            body = await request.json()
+        except ValueError:
+            return settings_error('Invalid credential operation', 400)
+        if not isinstance(body, dict) or not hmac.compare_digest(str(body.get('csrf_token', '')), csrf_token):
+            return settings_error('Invalid CSRF token')
+        if (body.get('operation') not in ('save', 'clear') or any(
+                not isinstance(body.get(key), str) for key in ('username', 'password', 'expected_revision'))
+                or len(body['username']) > 1024 or len(body['password']) > 16384
+                or len(body['expected_revision']) > 128):
+            return settings_error('Invalid credential operation', 400)
+        return await run_in_threadpool(commit, body)

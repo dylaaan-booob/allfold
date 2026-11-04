@@ -14,8 +14,8 @@ class BrowserOwner:
 
 
 class BrowserTaskLock:
-    def __init__(self):
-        self._mutex = threading.Lock()
+    def __init__(self, *, admission_lock=None):
+        self._mutex = admission_lock or threading.RLock()
         self._owner: BrowserOwner | None = None
 
     @property
