@@ -370,7 +370,8 @@ let serverState=null,reconcileRequired=false,autosave=null;
 let autosaveStatus={status:'Saved',dirty:false,busy:false,storageError:''};
 let institutions=[],institutionInputInvalid=false,institutionCatalogMessage='正在加载本地机构名录。';
 const casAPI=typeof window.allfoldDesktop?.casStatus==='function'?window.allfoldDesktop:null;
-let casSaved={configured:false,username:'',revision:'missing'},casDraft={username:'',password:''},casError='';
+let casSaved={configured:false,username:'',revision:null},casDraft={username:'',password:''},casError='',casReadVersion=0;
+const casEditVersions={username:0,password:0};
 let selectedProvider='overview',expressions={},runState=null,expressionTimer,expressionVersion=0;
 let journalLayout='array';
 let journalTitleScroll=null;
@@ -438,16 +439,21 @@ function renderCAS() {
   $('s-cas-password').placeholder=casSaved.configured?'清空后可明确确认删除密码':'选填';
   $('s-cas-status').textContent=casError;$('s-cas-status').hidden=!casError;
 }
-async function loadCASStatus() {
+async function loadCASStatus({resetDraft=true}={}) {
   if(!casAPI)return;
+  const readVersion=++casReadVersion,editVersions={...casEditVersions};
   let result;
   try {result=await casAPI.casStatus();}catch {result={ok:false};}
-  casSaved=result?.ok?{configured:result.configured,username:result.username,revision:result.revision}:{configured:false,username:'',revision:'missing'};
-  casDraft={username:casSaved.username,password:casSaved.configured?keyMask:''};casError=result?.ok?'':casErrorText(result?.error);
-  renderCAS();updateDirty();
+  if(readVersion!==casReadVersion)return;
+  casSaved={configured:result?.ok && result.configured===true,username:result?.ok?result.username || '':'',revision:typeof result?.revision==='string'?result.revision:null};
+  if(resetDraft)for(const [field,value] of Object.entries({username:casSaved.username,password:casSaved.configured?keyMask:''}))
+    if(editVersions[field]===casEditVersions[field])casDraft[field]=value;
+  casError=result?.ok?(resetDraft?'':'安全存储状态已重新读取；未提交输入保留，请核对后明确确认。'):
+    casErrorText(result?.error)+(resetDraft?'':' 未提交输入保留。');
+  renderCAS();updateDirty();renderRun();
 }
 for(const field of ['username','password'])$('s-cas-'+field).addEventListener('input',()=>{
-  casDraft[field]=$('s-cas-'+field).value;changed();
+  casDraft[field]=$('s-cas-'+field).value;casEditVersions[field]++;changed();
 });
 renderCAS();
 function showDialog(title,body,choices) {
@@ -1300,7 +1306,8 @@ function ordinaryData(data) {
 function applyOrdinaryValues(values) {
   for(const [field,key] of Object.entries(ordinaryMonitorFields))draft.monitor[key]=copy(values[field]);
   const projected=project({...serverState,values:{...serverState.values,...values}});
-  const listChanged=!same(draft.list,projected.list);draft.list=projected.list;
+  const listChanged=!same(draft.list,projected.list);
+  if(listChanged)draft.list=projected.list;
   for(const input of document.querySelectorAll('[data-monitor]')){
     if(document.activeElement===input || !Object.values(ordinaryMonitorFields).includes(input.dataset.monitor))continue;
     const value=draft.monitor[input.dataset.monitor];if(input.type==='checkbox')input.checked=value;else if(input.value!==String(value??''))input.value=value??'';
@@ -1370,10 +1377,11 @@ $('s-workspace-apply').addEventListener('click',()=>{
 });
 const casSaveButton=document.createElement('button');casSaveButton.id='s-cas-save';casSaveButton.className='s-button';casSaveButton.textContent='Review credential change';$('s-institution-auth').append(casSaveButton);
 const casRefresh=document.createElement('button');casRefresh.className='s-button';casRefresh.textContent='Re-read credential status';$('s-institution-auth').append(casRefresh);
-casRefresh.addEventListener('click',async()=>{if(!casAPI || operationPending)return;try{const state=await casAPI.casStatus();if(!state.ok)throw Error();casSaved={configured:state.configured,username:state.username,revision:state.revision};casError='安全存储状态已重新读取；未提交输入保留，请核对后明确确认。';renderCAS();updateDirty();renderRun();}catch{casError='安全存储状态无法读取，草稿保留。';renderCAS();}});
+casRefresh.addEventListener('click',async()=>{if(casAPI && !operationPending)await loadCASStatus({resetDraft:false});});
 casSaveButton.addEventListener('click',()=>{
   const action=casPasswordAction();
   if(!casDirty()){message('机构凭据没有待提交的修改。');return;}
+  if(casSaved.revision===null){casError='安全存储版本无法读取，草稿保留；请先重新读取状态。';renderCAS();return;}
   confirm(action==='clear'?'Clear CARSI credentials':'Replace CARSI credentials',action==='clear'?'清除 Electron 安全存储中的机构用户名与密码。':'仅替换 Electron 安全存储中的机构凭据。当前页面不会显示已保存密码。',async()=>{
     if(!await autosave?.flush())return false;
     if(action!=='clear' && (!casDraft.username.trim() || (!casSaved.configured && action!=='replace'))){casError=casErrorText('cas_credentials_required');renderCAS();return false;}
@@ -1382,7 +1390,7 @@ casSaveButton.addEventListener('click',()=>{
       const response=await fetch('/api/ui-next/settings/credentials',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({csrf_token:uiNext.csrf_token,operation:action==='clear'?'clear':'save',username:casDraft.username.trim(),password:action==='replace'?casDraft.password:'',expected_revision:casSaved.revision})});
       const result=await response.json();
       if(!response.ok || !result.ok){casError=casErrorText(result.error);renderCAS();message(result.message || casError,'error');return false;}
-      casSaved={configured:result.configured,username:result.username,revision:result.revision};casDraft={username:result.username,password:result.configured?keyMask:''};casError='';renderCAS();updateDirty();return true;
+      casReadVersion++;casSaved={configured:result.configured,username:result.username,revision:result.revision};casDraft={username:result.username,password:result.configured?keyMask:''};casError='';renderCAS();updateDirty();return true;
     }catch{casError='凭据提交结果无法确认；草稿保留，请重新读取安全存储状态后核对。';renderCAS();return false;}
     finally{setOperationPending(false);}
   });

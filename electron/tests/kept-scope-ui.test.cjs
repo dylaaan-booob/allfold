@@ -41,6 +41,30 @@ test('Unassigned and Ambiguous are display groups with no single Service executi
   assert.equal(f.calls.some(call=>call[0].endsWith('/start')),false);
 });
 
+test('Service groups filter batch results and Sidebar diagnostics by their execution assignment',async()=>{
+  const results=['svc_a','unassigned','ambiguous'].flatMap(group=>[1,2].map(index=>({
+    paper_id:`${group}-${index}`,service_id:group==='svc_a'?group:null,
+    service_assignment:group==='svc_a'?'assigned':group,outcome:'no_effect',parent_outcome:'not_saved',
+    reason:`${group} reason ${index}`,diagnostic:{stage:'import',step:group,code:`diagnostic-${index}`},
+  })));
+  // Current Queue mappings cannot change the recorded batch attribution.
+  const f=await taskUI('kept.js',{page:'kept',request:async url=>url.includes('/queue')?
+    {...queue,papers:results.map(result=>({...result,service_id:'svc_b',assignment:'assigned'}))}:
+    {...idle,workflow_id:'all-results',import_started:true,batch:{total:6,results}}});
+  for(const [group,papers] of [['all',results.map(result=>result.paper_id)],
+    ['svc_a',['svc_a-1','svc_a-2']],['unassigned',['unassigned-1','unassigned-2']],['ambiguous',['ambiguous-1','ambiguous-2']]]){
+    await f.get('kept-service-list').children.find(row=>row.dataset.serviceId===group).emit('click');
+    assert.deepEqual(f.get('kept-record-items').children.map(item=>item.children[0].textContent),papers);
+    const main=f.get('kept-queue-results').children[2];
+    assert.equal(main.children.length,papers.length);
+    for(const [index,paper] of papers.entries()){
+      assert.match(main.children[index].textContent,new RegExp(`Paper: ${paper}\\b`));
+      assert.match(main.children[index].textContent,/import \/ (?:svc_a|unassigned|ambiguous) \/ diagnostic-[12]/);
+      assert.match(f.get('kept-record-items').children[index].textContent,new RegExp(paper));
+    }
+  }
+});
+
 test('failed autosave prevents Kept task dispatch and preserves the selected scope',async()=>{
   const f=await taskUI('kept.js',{page:'kept',request:async url=>url.includes('/queue')?queue:idle});
   f.window.allfoldAutosave={flush:async()=>false};

@@ -95,7 +95,7 @@ function refreshActions() {
 }
 function renderRecord() {
   exportButton.hidden=!lastRun?.workflow_id;
-  const results=(lastRun?.results || []).filter(result=>serviceFilter==='all' || result.service_id===serviceFilter),exported=results.filter(r=>r.parent_outcome==='confirmed').length;
+  const results=(lastRun?.results || []).filter(result=>serviceFilter==='all' || (result.service_id || result.service_assignment)===serviceFilter),exported=results.filter(r=>r.parent_outcome==='confirmed').length;
   $('kept-record-count').textContent=lastRun?`${exported} / ${lastRun.total}`:'—';
   $('kept-record-summary').textContent=lastRun?.message || '本次尚未导入。';
   $('kept-record-items').replaceChildren(...results.map(result=>{

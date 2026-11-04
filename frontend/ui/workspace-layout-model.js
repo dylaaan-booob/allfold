@@ -18,8 +18,5 @@ window.allfoldLayoutModel=(()=>{
       contentWidth:available-(expanded && docked?sidebarEffectiveWidth:0),
       flyoutEffectiveWidth:Math.min(preferred.flyoutPreferredWidth,available)};
   }
-  function browserSize(width,height,preferred) {
-    return {width:Math.max(0,Math.min(width,preferred.browserPreferredWidth)),height:Math.max(0,Math.min(height,preferred.browserPreferredHeight))};
-  }
-  return Object.freeze({defaults,limits,minOperationalSize,targets,measure,browserSize});
+  return Object.freeze({defaults,limits,minOperationalSize,targets,measure});
 })();
