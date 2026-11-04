@@ -283,6 +283,7 @@ function renderQueue() {
     `Kept ${selected?.kept ?? 0} · Eligible ${selected?.eligible ?? 0}`;
   const scopeIdentity=document.createElement('span'),scopeCounts=document.createElement('span');
   scopeIdentity.className='kept-scope-identity';scopeCounts.className='kept-scope-counts';
+  scopeCounts.tabIndex=0;scopeCounts.setAttribute('role','group');scopeCounts.setAttribute('aria-label','Service 与批次统计');
   scopeIdentity.textContent=(workflow?.workflow_id?`当前批次：${batchName} · ${workflow.phase} · `:'')+`下一批：${selected?.name || 'All Services'}`;
   scopeIdentity.title=scopeIdentity.textContent;
   scopeCounts.textContent=batchCounts+(['unassigned','ambiguous'].includes(serviceFilter)?' · 请在 Journals 修正 Service 映射；此分组不能单独执行。':'');
