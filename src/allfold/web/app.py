@@ -135,6 +135,7 @@ class _ImportStartForm(BaseModel):
 
 class _WorkflowStart(_ImportStartForm):
     mode: Literal["full", "import_only"] = "full"
+    service_id: str | None = None
 
 
 class _WorkflowAction(BaseModel):
@@ -253,7 +254,8 @@ def create_app(config_path: Path, *, electron_bridge: ElectronBridge, diagnostic
         diagnostic_level = 'info'
     app.state.diagnostics = DiagnosticStore(resolved_config_path, root=diagnostics_root, level=diagnostic_level)
     from allfold.application.browser_runtime import BrowserTaskLock
-    app.state.browser_task_lock = BrowserTaskLock()
+    app.state.settings_write_lock = threading.RLock()
+    app.state.browser_task_lock = BrowserTaskLock(admission_lock=app.state.settings_write_lock)
     app.state.electron_bridge = electron_bridge
     electron_bridge.diagnostics = app.state.diagnostics
 
@@ -282,21 +284,29 @@ def create_app(config_path: Path, *, electron_bridge: ElectronBridge, diagnostic
     app.state.import_token = secrets.token_urlsafe(32)
     app.state.reset_confirmation = None
     app.state.reset_lock = threading.Lock()
-    import_submission_lock = threading.RLock()
+    import_submission_lock = app.state.settings_write_lock
     app.state.import_submission_lock = import_submission_lock
 
     def has_kept(target: _ImportTarget) -> bool:
-        current, config = _ImportTarget.read(target.config_path)
+        current, config = _ImportTarget.read(target.config_path, service_id=target.service_id)
         if target.lock_identity is None:
             current = replace(current, lock_identity=None)
         if current != target:
             raise ContentChangedError("Workspace or configuration changed; start a new explicit workflow.")
-        workspace = load_workspace(target.workspace, journals=config.journals)
-        return bool(workspace.papers_for(WorkflowStatus.KEPT))
+        if target.paper_plan is not None:
+            return bool(target.paper_plan.papers)
+        from allfold.persistence.safe_write import workspace_operation_lock
+        from allfold.application.workspace import plan_workspace_import
+        with workspace_operation_lock(target.workspace) as lock:
+            target.verify(lock)
+            plan = plan_workspace_import(lock, config.journals, service_id=target.service_id)
+        return bool(plan.papers)
 
     def begin_import(target: _ImportTarget, authorization: str, *, workflow_id=None, parent_task_id=None):
         # The caller holds import_submission_lock, including automatic transitions.
-        current, _ = _ImportTarget.read(resolved_config_path)
+        current, _ = _ImportTarget.read(resolved_config_path, service_id=target.service_id)
+        if target.lock_identity is None:
+            current = replace(current, lock_identity=None)
         if authorization != app.state.import_token or current != target:
             raise ContentChangedError("Workspace changed or import request already submitted/expired. Review the current Workspace before importing.")
         if not has_kept(target):
@@ -304,7 +314,7 @@ def create_app(config_path: Path, *, electron_bridge: ElectronBridge, diagnostic
         app.state.import_token = secrets.token_urlsafe(32)
         return app.state.batch_import.start(target.workspace, validate_target=target.verify,
             browser_owner=app.state.kept_workflow.browser_owner, config_path=target.config_path,
-            workflow_id=workflow_id, parent_task_id=parent_task_id)
+            workflow_id=workflow_id, parent_task_id=parent_task_id, service_id=target.service_id, initial_plan=target.paper_plan)
 
     app.state.kept_workflow = KeptWorkflow(
         app.state.preparation_coordinator, app.state.batch_import, import_submission_lock,
@@ -312,9 +322,9 @@ def create_app(config_path: Path, *, electron_bridge: ElectronBridge, diagnostic
         browser_lock=app.state.browser_task_lock, diagnostics=app.state.diagnostics,
     )
 
-    def start_workflow(import_token: str | None, mode: str):
+    def start_workflow(import_token: str | None, mode: str, service_id=None):
         with import_submission_lock:
-            target, config = _ImportTarget.read(resolved_config_path)
+            target, config = _ImportTarget.read(resolved_config_path, service_id=service_id)
             if not _csrf_valid(import_token, target.form_token(app.state.import_token)):
                 raise ContentChangedError("Workspace changed or import request already submitted/expired. Review the current Workspace before importing.")
             workflow = app.state.kept_workflow
@@ -322,6 +332,12 @@ def create_app(config_path: Path, *, electron_bridge: ElectronBridge, diagnostic
                 workflow.advance()
             if workflow.snapshot().active or app.state.batch_import.running:
                 raise ContentChangedError("A Kept workflow or Import is already active.")
+            from allfold.application.workspace import plan_workspace_import
+            from allfold.persistence.safe_write import workspace_operation_lock
+            with workspace_operation_lock(target.workspace) as lock:
+                target.verify(lock)
+                plan = plan_workspace_import(lock, config.journals, service_id=service_id)
+                target = replace(target, paper_plan=plan)
             # Reserve the signed click for this workflow; rendering never rotates the nonce.
             app.state.import_token = secrets.token_urlsafe(32)
             return app.state.kept_workflow.start(target, config, app.state.import_token, mode=mode)
@@ -333,7 +349,7 @@ def create_app(config_path: Path, *, electron_bridge: ElectronBridge, diagnostic
             **jsonable_encoder(workflow), "active": workflow.active,
             "can_continue": workflow.can_continue, "can_cancel": workflow.can_cancel,
             "preparation": _preparation_json(app.state.preparation_coordinator.snapshot()),
-            "batch": ({"phase": batch.phase.value, "successful": batch.successful,
+            "batch": ({"phase": batch.phase.value, "successful": batch.successful, "task_id": batch.task_id,
                        "total": len(batch.plan.papers) if batch.plan else 0,
                        "current_paper_id": str(batch.current_paper_id) if batch.current_paper_id else None,
                        "statistics": jsonable_encoder(batch.statistics),
@@ -345,16 +361,54 @@ def create_app(config_path: Path, *, electron_bridge: ElectronBridge, diagnostic
     def workflow_state() -> JSONResponse:
         return JSONResponse(workflow_json())
 
+    @app.get("/api/kept-workflow/queue")
+    def workflow_queue(service_id: str | None = None):
+        from allfold.application.browser_services import BrowserServiceSnapshot
+        from allfold.application.kept_queue import kept_queue
+        from allfold.application.workspace import plan_workspace_import
+        from allfold.persistence.safe_write import workspace_operation_lock
+        try:
+            with app.state.settings_write_lock, import_submission_lock:
+                target, config = _ImportTarget.read(resolved_config_path, service_id=service_id)
+                saved = BrowserServiceSnapshot.read(resolved_config_path)
+                batch = app.state.batch_import.snapshot()
+                workflow = app.state.kept_workflow.snapshot()
+                fixed_plan = app.state.kept_workflow.paper_plan()
+                if workflow.workflow_id and not workflow.import_started and fixed_plan is not None:
+                    from allfold.application.batch_import import BatchSnapshot, BatchPaperResult
+                    skipped = (() if workflow.active else tuple(BatchPaperResult(paper.paper_id, 'skipped', workflow.message,
+                        reason_code='cancelled' if workflow.phase == 'interrupted' else 'blocked',
+                        service_id=paper.service_id, service_assignment=paper.service_assignment) for paper in fixed_plan.papers))
+                    batch = BatchSnapshot(BatchPhase.IDLE if workflow.active else BatchPhase.STOPPED, fixed_plan, None, skipped, workflow.message,
+                        service_id=workflow.service_id)
+                if app.state.batch_import.running:
+                    plan = batch.plan
+                elif target.workspace_identity is None or target.papers_identity is None:
+                    plan = None
+                else:
+                    with workspace_operation_lock(target.workspace) as lock:
+                        target.verify(lock)
+                        plan = plan_workspace_import(lock, saved.journals)
+                saved.verify()
+                target, _ = _ImportTarget.read(resolved_config_path, service_id=service_id)
+                data = kept_queue(target.workspace, saved.journals, saved.services, plan, batch)
+                return JSONResponse({**data, 'service_id': service_id,
+                    'import_token': target.form_token(app.state.import_token),
+                    'qualification_pending': plan is None})
+        except (ConfigurationError, ContentChangedError, OSError, RuntimeError) as error:
+            return JSONResponse({'message': str(error)}, status_code=409)
+
     @app.post("/api/kept-workflow/start")
     def workflow_start(body: _WorkflowStart) -> JSONResponse:
         if not _csrf_valid(body.csrf_token, csrf_token):
             return JSONResponse({"message": "Invalid or missing CSRF token."}, status_code=403)
-        with import_submission_lock:
-            if not app.state.kept_workflow.snapshot().active:
-                try:
-                    start_workflow(body.import_token, body.mode)
-                except (ConfigurationError, ContentChangedError, OSError) as error:
-                    return JSONResponse({"message": str(error)}, status_code=409)
+        with app.state.settings_write_lock, import_submission_lock:
+            if app.state.kept_workflow.snapshot().active:
+                return JSONResponse({**workflow_json(), 'message': 'A fixed Kept batch is already active; selection cannot retarget it.'}, status_code=409)
+            try:
+                start_workflow(body.import_token, body.mode, body.service_id)
+            except (ConfigurationError, ContentChangedError, OSError, RuntimeError) as error:
+                return JSONResponse({"message": str(error)}, status_code=409)
             state = workflow_json()
             return JSONResponse(state, status_code=409 if state["phase"] == "interrupted" else 200)
 
@@ -391,8 +445,9 @@ def create_app(config_path: Path, *, electron_bridge: ElectronBridge, diagnostic
                 return JSONResponse({'accepted': accepted}, status_code=200 if accepted else 409)
             if action != 'start':
                 return JSONResponse({'error': 'Unknown action'}, status_code=404)
-            workspace = load_config(resolved_config_path).output_dir
-            state = service.start(workspace, paper_id, developer_retry=body.developer_retry)
+            with app.state.settings_write_lock:
+                workspace = load_config(resolved_config_path).output_dir
+                state = service.start(workspace, paper_id, developer_retry=body.developer_retry)
             return JSONResponse(state)
         except (ConfigurationError, ValueError, OSError, ContentChangedError, CompareReadError) as exc:
             return JSONResponse({'error': str(exc)}, status_code=409)
@@ -565,11 +620,13 @@ def create_app(config_path: Path, *, electron_bridge: ElectronBridge, diagnostic
         journal_key = str(form.get('journal_key', '')).strip()
         if not journal_key:
             return JSONResponse({'message': 'journal_key is required'}, status_code=400)
-        disk = load_settings(resolved_config_path)
+        def begin_cover():
+            with app.state.settings_write_lock:
+                disk = load_settings(resolved_config_path)
+                return app.state.journal_cover_search.start(disk.journal_path, disk.draft.journals,
+                                                            journal_key, config_path=resolved_config_path)
         try:
-            state = app.state.journal_cover_search.start(disk.journal_path, disk.draft.journals,
-                                                        journal_key, config_path=resolved_config_path)
-            return JSONResponse(state)
+            return JSONResponse(await run_in_threadpool(begin_cover))
         except (ValueError, OSError) as error:
             return JSONResponse({'message': str(error)}, status_code=409)
 
@@ -680,7 +737,13 @@ def create_app(config_path: Path, *, electron_bridge: ElectronBridge, diagnostic
                 current = _read_snapshot(resolved_config_path, source=SettingsIssueSource.MONITOR_CONFIG)
                 if current.issue or current.revision != draft.monitor_revision:
                     raise ContentChangedError("Monitor configuration changed; Preview again")
-            await run_in_threadpool(confirm_research_scope, plan, before_write=verify_monitor_before_write)
+            def commit_scope():
+                from allfold.web.settings_guard import settings_task_active
+                with app.state.settings_write_lock:
+                    if settings_task_active(app):
+                        raise ContentChangedError('Active task owns the saved configuration; Import is pending')
+                    confirm_research_scope(plan, before_write=verify_monitor_before_write)
+            await run_in_threadpool(commit_scope)
             scope_previews.pop(proof, None)
             saved = load_settings(resolved_config_path)
             return markdown_reply(request, settings_form_from_draft(saved.draft),
@@ -732,96 +795,103 @@ def create_app(config_path: Path, *, electron_bridge: ElectronBridge, diagnostic
         ):
             return settings_error("Invalid or missing CSRF token.")
 
-        values = settings_form_from_submission(form)
-        draft, form_issues = settings_draft_from_form(values)
-        if draft is None:
-            return settings_response(request,
-                _settings_result_context(
-                    csrf_token=csrf_token,
-                    form_values=values,
-                    issues=form_issues,
-                    message="Settings were not saved.",
-                ),
-            )
+        return await run_in_threadpool(save_submitted_settings, request, form)
 
-        disk = load_settings(config_path)
-        plan = plan_settings_deletions(disk.draft, draft)
-        proof = hmac.new(deletion_key, repr((draft, plan)).encode("utf-8"), hashlib.sha256).hexdigest()
-        approved = (
-            plan.required
-            and str(form.get("confirm_settings_deletions", "")) == "yes"
-            and hmac.compare_digest(str(form.get("settings_deletion_proof", "")), proof)
-        )
-        # 确认仅由本进程签发，精确绑定全部草稿字段、真实删除目标及原始版本。
-        # 不保存草稿副本；变更草稿、服务成员或文件版本都需重新预览。
-        if plan.required and not approved and not disk.issues and (
-            draft.monitor_revision == disk.draft.monitor_revision
-            and draft.journal_revision == disk.draft.journal_revision
-        ) and validate_settings(config_path, draft).outcome is SettingsValidationOutcome.VALID:
+    def save_submitted_settings(request, form):
+        from allfold.web.settings_guard import settings_task_active
+        with app.state.settings_write_lock:
+            if settings_task_active(app):
+                return JSONResponse({"saved": False, "outcome": "TASK_ACTIVE", "message": "Pending: active task owns the saved configuration; the draft is retained."})
+            values = settings_form_from_submission(form)
+            draft, form_issues = settings_draft_from_form(values)
+            if draft is None:
+                return settings_response(request,
+                    _settings_result_context(
+                        csrf_token=csrf_token,
+                        form_values=values,
+                        issues=form_issues,
+                        message="Settings were not saved.",
+                    ),
+                )
+
+            disk = load_settings(config_path)
+            plan = plan_settings_deletions(disk.draft, draft)
+            proof = hmac.new(deletion_key, repr((draft, plan)).encode("utf-8"), hashlib.sha256).hexdigest()
+            approved = (
+                plan.required
+                and str(form.get("confirm_settings_deletions", "")) == "yes"
+                and hmac.compare_digest(str(form.get("settings_deletion_proof", "")), proof)
+            )
+            # 确认仅由本进程签发，精确绑定全部草稿字段、真实删除目标及原始版本。
+            # 不保存草稿副本；变更草稿、服务成员或文件版本都需重新预览。
+            if plan.required and not approved and not disk.issues and (
+                draft.monitor_revision == disk.draft.monitor_revision
+                and draft.journal_revision == disk.draft.journal_revision
+            ) and validate_settings(config_path, draft).outcome is SettingsValidationOutcome.VALID:
+                return settings_response(request,
+                    _settings_result_context(
+                        csrf_token=csrf_token, form_values=values,
+                        deletion_plan=plan, deletion_proof=proof,
+                        message="Review the affected Services and Journals, then confirm this Save.",
+                    ),
+                )
+            approval = SettingsDeletionApproval(
+                draft.monitor_revision, draft.journal_revision,
+                tuple(service.id for service in plan.services),
+            ) if approved else None
+            result = (
+                save_settings(config_path, draft, deletion_approval=approval)
+                if approval is not None else save_settings(config_path, draft)
+            )
+            if result.outcome is SettingsSaveOutcome.SAVED:
+                response = settings_response(request,
+                    _settings_result_context(
+                        csrf_token=csrf_token,
+                        form_values=settings_form_from_draft(result.state.draft),
+                        issues=result.issues,
+                        validation_result=result.validation,
+                        save_result=result,
+                        disk_state=result.state,
+                        message="Settings saved.",
+                    ), saved=True,
+                )
+                return response
+
+            if result.outcome is SettingsSaveOutcome.PARTIAL_SAVE:
+                # 保留提交时的字段与原始 revision；只读磁盘状态单独报告实际写入。
+                form_values = values
+                message = (
+                    "Settings were partially saved: "
+                    f"journal data written: {'yes' if result.journal_written else 'no'}, "
+                    f"monitor configuration written: {'yes' if result.monitor_written else 'no'}, "
+                    f"PubMed API Key written: {'yes' if result.pubmed_key_written else 'no'}, "
+                    f"OpenAlex API Key written: {'yes' if result.openalex_key_written else 'no'}. "
+                    "Reload and reconcile before another Save."
+                )
+            elif result.outcome is SettingsSaveOutcome.REVISION_CONFLICT:
+                form_values = values
+                message = (
+                    "Settings were not saved because files changed since this "
+                    "editor was opened. Reload and reconcile before retrying."
+                )
+            elif result.outcome is SettingsSaveOutcome.WRITE_FAILED:
+                form_values = values
+                message = "Settings could not be written."
+            else:
+                form_values = values
+                message = "Settings draft is invalid and was not saved."
+
             return settings_response(request,
                 _settings_result_context(
-                    csrf_token=csrf_token, form_values=values,
-                    deletion_plan=plan, deletion_proof=proof,
-                    message="Review the affected Services and Journals, then confirm this Save.",
-                ),
-            )
-        approval = SettingsDeletionApproval(
-            draft.monitor_revision, draft.journal_revision,
-            tuple(service.id for service in plan.services),
-        ) if approved else None
-        result = (
-            save_settings(config_path, draft, deletion_approval=approval)
-            if approval is not None else save_settings(config_path, draft)
-        )
-        if result.outcome is SettingsSaveOutcome.SAVED:
-            response = settings_response(request,
-                _settings_result_context(
                     csrf_token=csrf_token,
-                    form_values=settings_form_from_draft(result.state.draft),
+                    form_values=form_values,
                     issues=result.issues,
                     validation_result=result.validation,
                     save_result=result,
                     disk_state=result.state,
-                    message="Settings saved.",
-                ), saved=True,
+                    message=message,
+                ),
             )
-            return response
-
-        if result.outcome is SettingsSaveOutcome.PARTIAL_SAVE:
-            # 保留提交时的字段与原始 revision；只读磁盘状态单独报告实际写入。
-            form_values = values
-            message = (
-                "Settings were partially saved: "
-                f"journal data written: {'yes' if result.journal_written else 'no'}, "
-                f"monitor configuration written: {'yes' if result.monitor_written else 'no'}, "
-                f"PubMed API Key written: {'yes' if result.pubmed_key_written else 'no'}, "
-                f"OpenAlex API Key written: {'yes' if result.openalex_key_written else 'no'}. "
-                "Reload and reconcile before another Save."
-            )
-        elif result.outcome is SettingsSaveOutcome.REVISION_CONFLICT:
-            form_values = values
-            message = (
-                "Settings were not saved because files changed since this "
-                "editor was opened. Reload and reconcile before retrying."
-            )
-        elif result.outcome is SettingsSaveOutcome.WRITE_FAILED:
-            form_values = values
-            message = "Settings could not be written."
-        else:
-            form_values = values
-            message = "Settings draft is invalid and was not saved."
-
-        return settings_response(request,
-            _settings_result_context(
-                csrf_token=csrf_token,
-                form_values=form_values,
-                issues=result.issues,
-                validation_result=result.validation,
-                save_result=result,
-                disk_state=result.state,
-                message=message,
-            ),
-        )
 
     install_settings_api(app, resolved_config_path, csrf_token,
                          workspace_health=_workspace_health_context,

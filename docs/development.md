@@ -10,7 +10,7 @@ npm --prefix electron run setup
 
 Setup checks tools, creates `config.example.yaml` only if absent, installs locked Python/Electron/build dependencies, explicitly installs the Electron binary, fetches exact official Zotero revisions, builds the UI and assembles Runtime. Existing modified or incorrect vendor checkouts are rejected; setup does not reset or clean them. The production revisions are in [upstream.lock](../electron/upstream.lock).
 
-Configure keywords, months and optional credentials through Settings. The public template is separate from local configuration; setup does not create or copy credentials.
+Configure keywords, months and Provider settings in Run; Kept owns Workflow and Access settings. Application settings remain in Settings. Ordinary edits autosave, while credential replacement/clearing and high-impact operations require explicit submission. The public template is separate from local configuration; setup does not create or copy credentials.
 
 Journal state is stored in `.allfold/user-data.sqlite`, isolated by canonical configuration path. The YAML `venue_whitelist` remains the first-migration source, not the live data store. Shared GOKB/CARSI data lives in `.allfold/resources.sqlite`; neither database belongs in a source candidate. Use temporary project/configuration directories and injected HTTP transports for migration, exchange and Resolver tests. Do not launch tests against personal YAML, Workspace, covers or Zotero.
 
@@ -58,6 +58,12 @@ npm --prefix electron test
 The retained suite covers data preservation, path/identity safety, authority, cancellation, single-save settlement, fixed-source ownership and source preparation. Tests use isolated fixtures and transport doubles. UI build and module dependency checks cover the directory layout. Use [package scripts](../electron/package.json), the [UI build tool](../tools/build-ui-next.mjs) and [CI](../.github/workflows/ci.yml) as the executable command definitions.
 
 CI prepares sources and runs offline checks on macOS. It does not publish or use real credentials. A local pass does not prove that GitHub Actions ran, that the UI is visually correct or that real institutional access and Zotero/PDF saving work. Changes to those paths need relevant manual acceptance with explicit browser authorization.
+
+The Electron test command runs files serially. Its native input fixtures briefly
+show their own windows, and Electron's
+[`sendInputEvent()`](https://www.electronjs.org/docs/latest/api/web-contents#contentssendinputeventinputevent)
+requires the containing window to have focus. Concurrent fixture processes can
+otherwise steal that focus and invalidate mouse/keyboard acceptance.
 
 ### Workbench manual acceptance
 

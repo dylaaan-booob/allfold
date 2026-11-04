@@ -2,7 +2,7 @@
 // Owns top-level presentation only; page controllers retain their business state.
 window.workspaceNavigation = (() => {
   const $=id=>document.getElementById(id);
-  const roots={workspace:$('selected-view'),run:$('run-page'),journals:$('journals-view'),settings:$('settings-view')};
+  const roots={workspace:$('selected-view'),run:$('run-page'),journals:$('journals-view'),kept:$('kept-workspace'),settings:$('settings-view')};
   const pages=new Map(),nav=document.querySelector('.view-nav');
   let current='workspace';
   const configuration=page=>['journals','run','settings'].includes(page);
@@ -26,7 +26,7 @@ window.workspaceNavigation = (() => {
     $('settings-shell').inert=$('settings-shell').hidden=!config;
     const footer=document.querySelector('footer');
     footer.inert=footer.hidden=false;
-    if(config)$('mode-label').textContent=current.toUpperCase();
+    if(config || current==='kept')$('mode-label').textContent=current.toUpperCase();
     if(config)document.body.dataset.settingsOpen='true';else delete document.body.dataset.settingsOpen;
   }
   function refresh() {

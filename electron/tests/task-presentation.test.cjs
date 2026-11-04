@@ -15,6 +15,17 @@ test('inline Run polls and refreshes results without constructing a player or re
   assert.equal(ui.page(),'journals');assert.equal(ui.stats().opens,0);
 });
 function keptState(phase='waiting_for_user',changes={}) {return {workflow_id:'workflow-1',generation:7,phase,active:['preparing','waiting_for_user','transition','importing','stopping'].includes(phase),can_continue:phase==='waiting_for_user',can_cancel:!['completed','stopping','idle'].includes(phase),waiting_for_login:false,settings:{display_name:'Synthetic researcher',auto_import_after_preparation:false},preparation:{services:[],manual_services:[],results:[]},message:'Review access before import',...changes};}
+test('fullscreen Run waits for its workspace owner and restores the same task without a new start',async()=>{
+  const running=runData('RUNNING','wos');running.providers.wos={snapshot:running.snapshot};
+  const ui=await taskUI('run.js',{inline:false,page:'workspace',request:async()=>running});
+  ui.window.uiRunPage.open=()=>false;
+  await ui.window.uiRun.start('wos');await ui.settle();
+  assert.equal(ui.window.uiRun.active(),false);assert.equal(ui.get('run-view').open,false);
+  ui.window.uiRunPage.open=()=>{ui.setPage('run');return true;};
+  ui.window.dispatchEvent({type:'inbox-ready'});await ui.settle();
+  assert.equal(ui.window.uiRun.active(),true);assert.equal(ui.page(),'run');assert.equal(ui.get('run-view').open,true);
+  assert.equal(ui.calls.filter(([url,body])=>url==='/api/ui-next/run-wos' && body!==undefined).length,1);
+});
 test('inline Kept recovers from Archive into visible controls and retains identity through continue, cancel and settlement',async()=>{
   let state=keptState('waiting_for_user',{preparation_task_id:'prepare-1'});
   const ui=await taskUI('kept.js',{inline:true,archiveDisabled:false,layout:'archive',page:'workspace',request:async(path,body)=>{
@@ -25,9 +36,9 @@ test('inline Kept recovers from Archive into visible controls and retains identi
     return state;
   }});
   assert.equal(ui.get('kept-flow').open,false);assert.equal(ui.stats().visuals,0);
-  assert.equal(ui.get('selected-view').dataset.workspaceLayout,'array');
-  assert.equal(ui.get('kept-view').hidden,false);assert.equal(ui.get('kept-view').inert,false);
-  assert.equal(ui.get('kept-view').dataset.status,'kept');
+  assert.equal(ui.page(),'kept');
+  assert.equal(ui.get('selected-view').dataset.workspaceLayout,'archive');
+  assert.equal(ui.get('kept-view').dataset.status,'candidates');
   assert.equal(ui.get('array-import-profile').hidden,false);assert.equal(ui.get('kept-inline').hidden,false);
   assert.equal(ui.get('kept-flow-actions').parentElement,ui.get('kept-inline'));
   assert.equal(ui.get('kept-continue').hidden,false);assert.equal(ui.get('kept-leave').disabled,false);
@@ -35,7 +46,7 @@ test('inline Kept recovers from Archive into visible controls and retains identi
   assert.equal(ui.calls.some(([url])=>url.endsWith('/start') || url.endsWith('/continue')),false);
   const taskPageButton=ui.get('kept-flow-actions').children.find(node=>node.textContent==='查看任务页面');
   assert.equal(taskPageButton.hidden,false);await taskPageButton.emit('click');
-  assert.deepEqual(JSON.parse(JSON.stringify(ui.presentations)),[{workflowId:'workflow-1',taskId:'prepare-1'}]);
+  assert.deepEqual(JSON.parse(JSON.stringify(ui.presentations)),[{workflowId:'workflow-1',source:'kept',taskId:'prepare-1'}]);
   await ui.get('kept-continue').emit('click');
   const continuation=ui.calls.find(([url])=>url.endsWith('/continue'));
   assert.deepEqual(JSON.parse(JSON.stringify(continuation[1])),{workflow_id:'workflow-1',generation:7});
@@ -44,7 +55,7 @@ test('inline Kept recovers from Archive into visible controls and retains identi
   assert.equal(ui.get('kept-leave').disabled,true);
   await ui.get('workspace-archive').emit('click');ui.setPage('settings');await ui.tick();await ui.get('run-view').emit('close');
   assert.equal(ui.page(),'settings');assert.equal(ui.get('selected-view').dataset.workspaceLayout,'archive');
-  state=keptState('completed',{import_started:true,navigation:'kept',batch:{total:1,results:[{paper_id:'paper-1',outcome:'exported',reason:'Imported'}]}});await ui.tick();
+  state=keptState('completed',{import_started:true,navigation:'kept',batch:{total:1,results:[{paper_id:'paper-1',outcome:'exported',parent_outcome:'confirmed',reason:'Imported'}]}});await ui.tick();
   assert.ok(ui.calls.some(([url])=>url.endsWith('/acknowledge')));assert.equal(ui.window.workspaceArray.workflowBusy(),false);
   assert.equal(ui.get('kept-record-count').textContent,'1 / 1');assert.equal(ui.page(),'settings');assert.equal(ui.stats().visuals,0);
 });
@@ -54,7 +65,7 @@ test('restored inline Run WoS opens its existing task page and cancels with the 
   assert.equal(ui.get('run-view').open,false);assert.equal(ui.stats().visuals,0);
   const button=ui.get('run-status-area').children.find(node=>node.textContent==='查看任务页面');
   assert.equal(button.hidden,false);await button.emit('click');
-  assert.deepEqual(JSON.parse(JSON.stringify(ui.presentations)),[{workflowId:'run-1'}]);
+  assert.deepEqual(JSON.parse(JSON.stringify(ui.presentations)),[{workflowId:'run-1',source:'run'}]);
   await ui.get('run-wos-cancel').emit('click');
   assert.deepEqual(JSON.parse(JSON.stringify(ui.calls.find(([path])=>path.endsWith('/cancel'))[1])),{task_id:'run-1'});
   assert.equal(ui.calls.filter(([path,body])=>path==='/api/ui-next/run-wos' && body).length,0);
@@ -96,4 +107,16 @@ test('inline recovery is independent of the animation manifest and font scene re
   assert.equal(ui.window.workspaceArray.workflowBusy(),true);
   assert.equal(ui.get('kept-phase').textContent,'Preparation');
   assert.equal(ui.get('kept-flow').open,false);assert.equal(ui.stats().visuals,0);
+});
+
+test('Run waits for autosave and refuses to start when the draft is still pending',async()=>{
+  const ui=await taskUI('run.js',{request:async()=>runData()});
+  let settleSave;ui.window.allfoldAutosave={flush:()=>new Promise(resolve=>{settleSave=resolve;})};
+  const first=ui.window.uiRun.start('crossref');await ui.settle();
+  assert.equal(ui.calls.filter(([path,body])=>path==='/api/ui-next/run' && body).length,0);
+  settleSave(false);await first;
+  assert.equal(ui.calls.filter(([path,body])=>path==='/api/ui-next/run' && body).length,0);
+  ui.window.allfoldAutosave.flush=async()=>true;
+  await ui.window.uiRun.start('crossref');
+  assert.equal(ui.calls.filter(([path,body])=>path==='/api/ui-next/run' && body).length,1);
 });

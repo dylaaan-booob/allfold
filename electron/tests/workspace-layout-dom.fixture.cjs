@@ -1,12 +1,12 @@
 'use strict';
 // Real Chromium DOM, synthetic HTTP responses, no Python process, accounts or native authority.
-const {app,BrowserWindow}=require('electron'),http=require('node:http'),fs=require('node:fs'),path=require('node:path'),os=require('node:os');
+const {app,BrowserWindow,ipcMain}=require('electron'),http=require('node:http'),fs=require('node:fs'),path=require('node:path'),os=require('node:os');
 const temp=fs.mkdtempSync(path.join(os.tmpdir(),'allfold-layout-dom-'));
 app.setPath('userData',temp);app.commandLine.appendSwitch('force-prefers-reduced-motion','reduce');
 const ui=path.resolve(__dirname,'../../src/allfold/web/static/ui_next');
 const journals=Array.from({length:24},(_,i)=>({name:'Synthetic Journal '+i,issn:`000${i}-0000`,eissn:null,group:'Group '+i%4,labels:'Label '+i%3,access_service_id:i%2?'svc_fixture':null}));
 const cover_search={phase:'Idle',busy:false,supported:false};
-const settings={csrf_token:'fixture',issues:[],covers:{},cover_search,saved_workspace:'/fixture/workspace',values:{
+const settings={config_path:'/fixture/monitor.yaml',csrf_token:'fixture',issues:[],covers:{},cover_search,saved_workspace:'/fixture/workspace',values:{
   name:'Synthetic Monitor',keyword_expression:'causal',from_month:'2026-01',to_month:'2026-01',output_dir:'workspace',log_level:'INFO',
   monitor_revision_exists:'1',monitor_revision_digest:'fixture',journal_revision_exists:'1',journal_revision_digest:'fixture',
   institution_name:'',institution_idp_entity_id:'',auto_import_after_preparation:false,transition_delay_seconds:'3',display_name:'',
@@ -17,13 +17,27 @@ const paper=(i,status='candidate')=>({id:'paper-'+i,title:'Synthetic Paper '+i,p
 const records=journals.map((j,i)=>({key:j.issn,issn:j.issn,name:j.name,group:j.group,labels:[],cover:null,papers:[paper(i*2),paper(i*2+1)]}));
 const workspace={csrf_token:'fixture',import_token:'fixture',issues:[],counts:{candidates:48,active_journals:24},subjects:[{name:'Group 0',journals:records}],
   kept:{papers:[{paper:paper(10,'kept'),journal:records[0]},{paper:paper(11,'kept'),journal:records[1]}],journals:records,services:[],settings:{},titles:{}}};
-const run={active:false,providers:Object.fromEntries(settings.values.provider_order.map(id=>[id,{enabled:false,message:'Offline fixture',result_summary:null}]))};
+const run={active:false,snapshot:{status:'IDLE',provider:null},providers:Object.fromEntries(settings.values.provider_order.map(id=>[id,{enabled:false,message:'Offline fixture',result_summary:null}]))};
+const keptQueue={services:[{id:'all',name:'All Services',kept:2,eligible:2},{id:'unassigned',name:'Unassigned',kept:2,eligible:2}],papers:[],import_token:'fixture'};
 const mimes={'.html':'text/html','.js':'text/javascript','.css':'text/css','.json':'application/json','.woff2':'font/woff2','.ttf':'font/ttf','.otf':'font/otf','.png':'image/png','.mp4':'video/mp4'};
+let rejectAutosave=false,resolveInitialCAS,credentialState={ok:false,error:'cas_store_unreadable',configured:false,username:'',revision:'d'.repeat(64)};
+const credentialWrites=[];
 const server=http.createServer((req,res)=>{
   const route=new URL(req.url,'http://fixture').pathname;
+  if(route==='/api/ui-next/settings/credentials'){
+    let text='';req.on('data',chunk=>{text+=chunk;});req.on('end',()=>{
+      const value=JSON.parse(text);credentialWrites.push(value);
+      const matches=value.expected_revision===credentialState.revision;
+      if(matches)credentialState={ok:true,configured:true,username:value.username,revision:'f'.repeat(64)};
+      res.writeHead(200,{'Content-Type':'application/json'});res.end(JSON.stringify(matches?credentialState:{ok:false,error:'cas_revision_conflict'}));
+    });return;
+  }
+  if(route==='/api/ui-next/settings/autosave'){
+    let text='';req.on('data',chunk=>{text+=chunk;});req.on('end',()=>{const patch=JSON.parse(text);if(rejectAutosave){res.writeHead(200,{'Content-Type':'application/json'});res.end(JSON.stringify({...settings,saved:false,outcome:'WRITE_FAILED',message:'Synthetic offline write'}));return;}Object.assign(settings.values,patch.changes);settings.values.monitor_revision_digest+='x';setTimeout(()=>{res.writeHead(200,{'Content-Type':'application/json'});res.end(JSON.stringify({...settings,saved:true,outcome:'SAVED'}));},90);});return;
+  }
   if(route.startsWith('/api/') || route==='/settings/covers/search'){
     const data=route==='/api/ui-next/workspace'?workspace:route==='/api/ui-next/settings'?settings:
-      route==='/api/ui-next/run'?run:route==='/api/ui-next/run-expression'?{}:route==='/settings/covers/search'?cover_search:
+      route==='/api/ui-next/run'?run:route==='/api/kept-workflow/queue'?keptQueue:route==='/api/ui-next/run-expression'?{providers:Object.fromEntries(settings.values.provider_order.map(id=>[id,{expression:'causal',error:null}]))}:route==='/settings/covers/search'?cover_search:
       {active:false,phase:'idle',navigation:null,can_continue:false,can_cancel:false};
     res.writeHead(200,{'Content-Type':'application/json'});res.end(JSON.stringify(data));return;
   }
@@ -50,9 +64,42 @@ async function check(fn){await js(`(${fn.toString()})()`);}
 app.whenReady().then(async()=>{
   try {
     await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));
+    let firstCAS=true;ipcMain.handle('layout:cas-status',()=>{
+      if(!firstCAS)return credentialState;
+      firstCAS=false;return new Promise(resolve=>{resolveInitialCAS=()=>resolve(credentialState);});
+    });
     win=new BrowserWindow({width:1200,height:800,show:false,webPreferences:{sandbox:true,contextIsolation:true,backgroundThrottling:false,partition:'layout-test',preload:path.join(__dirname,'workspace-layout-preload.fixture.cjs')}});
+    win.webContents.on('console-message',event=>{if(event.level==='error')console.error('RENDERER',event.message,event.lineNumber,event.sourceId);});
     await win.loadURL(`http://127.0.0.1:${server.address().port}/`);
     await ready("window.uiWorkspace?.ready() && !document.getElementById('array-candidates').disabled && document.querySelectorAll('#s-journals [data-journal]').length===24");
+    await check(()=>{
+      window.workspaceNavigation.go('kept',{instant:true});
+      document.querySelector('#kept-workspace [data-sidebar-view=access]').click();
+      for(const [field,value] of [['username','new-fixture-user'],['password','synthetic-complete-replacement']]){
+        const input=document.getElementById('s-cas-'+field);input.value=value;input.dispatchEvent(new Event('input',{bubbles:true}));
+      }
+    });
+    resolveInitialCAS();await ready("!document.getElementById('s-cas-status').hidden");
+    await check(()=>{
+      if(document.getElementById('s-cas-username').value!=='new-fixture-user' || document.getElementById('s-cas-password').value!=='synthetic-complete-replacement')throw Error('late credential status discarded newer input');
+      if(!document.getElementById('s-cas-status').textContent.includes('无法读取或解密'))throw Error('unreadable credential status reported usable');
+    });
+    credentialState={...credentialState,revision:'e'.repeat(64)};
+    await js("[...document.querySelectorAll('#s-institution-auth button')].find(button=>button.textContent==='Re-read credential status').click()");
+    await ready("document.getElementById('s-cas-status').textContent.includes('未提交输入保留')");
+    await check(()=>{
+      if(document.getElementById('s-cas-username').value!=='new-fixture-user' || document.getElementById('s-cas-password').value!=='synthetic-complete-replacement')throw Error('credential re-read discarded typed replacement');
+      document.getElementById('s-cas-save').click();document.querySelector('#s-dialog-actions .s-primary').click();
+    });
+    await ready("!document.getElementById('s-dialog').open");
+    if(credentialWrites.length!==1 || credentialWrites[0].expected_revision!=='e'.repeat(64))throw Error('unreadable credential status did not retain the displayed revision');
+    await check(()=>{
+      if(document.getElementById('s-cas-password').value==='synthetic-complete-replacement')throw Error('confirmed credential replacement left plaintext input');
+      const raw=localStorage.getItem('allfold.configuration-draft:/fixture/monitor.yaml') || '';
+      if(raw.includes('synthetic-complete-replacement') || raw.includes('new-fixture-user'))throw Error('credential input entered ordinary recovery storage');
+      document.querySelector('#kept-sidebar [data-sidebar-close]').click();
+      window.workspaceNavigation.go('workspace',{instant:true});
+    });
     await check(async()=>{
       const $=id=>document.getElementById(id),assert=(ok,message)=>{if(!ok)throw Error(message);},sleep=ms=>new Promise(r=>setTimeout(r,ms));
       window.layoutReader=$('paper-detail');window.layoutParent=layoutReader.parentElement;
@@ -86,11 +133,10 @@ app.whenReady().then(async()=>{
       assert($('array-journal-name').textContent==='Synthetic Journal 1','metadata did not follow selection');
       document.querySelector('#kept-view [data-sidebar-view]').click();
       $('array-index-toggle').click();$('array-index').scrollTop=200;document.querySelector('#array-flyout [data-flyout-close]').click();
-      $('array-kept').click();assert($('array-sidebar').hidden,'Kept automatically opened Info');
-      assert($('paper-metadata-details').open,'Kept Info metadata is collapsed behind a hidden summary');
+      $('array-kept').click();assert(window.workspaceNavigation.current()==='kept','legacy Kept entry must open independent Kept');
+      assert($('kept-sidebar').hidden,'Kept automatically opened a Sidebar');
       assert(!$('kept-start').closest('[hidden]') && !$('kept-import-only').closest('[hidden]'),'primary actions hidden with sidebar');
-      $('array-index-toggle').click();assert($('array-index').scrollTop===0,'short Kept Index is not independent');document.querySelector('#array-flyout [data-flyout-close]').click();
-      $('array-candidates').click();$('array-index-toggle').click();assert($('array-index').scrollTop===200,'Candidates Index scroll lost after opening Kept Index');document.querySelector('#array-flyout [data-flyout-close]').click();
+      $('workspace-open').click();$('array-index-toggle').click();assert($('array-index').scrollTop===200,'Candidates Index scroll lost after visiting Kept');document.querySelector('#array-flyout [data-flyout-close]').click();
       window.layoutReader=$('paper-detail');window.layoutParent=layoutReader.parentElement;layoutReader.scrollTop=180;
       document.querySelector('#kept-view [data-sidebar-view]').click();
     });
@@ -178,6 +224,21 @@ app.whenReady().then(async()=>{
     await check(()=>{
       const $=id=>document.getElementById(id);$('settings-open').click();
       if($('s-settings').clientHeight<100)throw Error('Settings lost its parent height');
+      if($('s-save') || document.querySelector('.header-browse #s-save'))throw Error('ordinary global SAVE remains');
+      if($('s-settings').querySelector('[data-monitor="name"], [data-monitor="displayName"], #s-institution'))throw Error('Settings contains task-owned fields');
+      if($('s-settings').querySelector('.navigation-rail').getBoundingClientRect().width<36)throw Error('Settings navigation rail missing');
+      document.querySelector('#s-settings [data-sidebar-view]').click();
+      if($('s-settings').dataset.sidebarMode!=='overlay' || $('settings-system-sidebar').hidden)throw Error('Settings System must overlay at 600x480');
+      document.querySelector('#settings-system-sidebar [data-sidebar-close]').click();
+      $('run-open').click();
+      if($('s-run').getBoundingClientRect().width>600 || $('s-run').querySelector('.workspace-content').clientWidth<360)throw Error('Run content lost available width');
+      document.querySelector('#s-run [data-flyout]').click();
+      if($('run-provider-flyout').hidden || $('s-providers').children.length!==4)throw Error('Run Provider Directory did not open');
+      $('s-providers').querySelector('[data-provider="crossref"]').click();
+      if($('run-configuration-sidebar').hidden || $('s-run').dataset.sidebarMode!=='overlay')throw Error('Provider configuration must overlay at 600x480');
+      if(!document.querySelector('#run-configuration-sidebar [data-monitor="crossrefMailto"]'))throw Error('Provider settings not in Functional Sidebar');
+      document.querySelector('#run-configuration-sidebar [data-sidebar-close]').click();$('s-run-overview-open').click();
+
       window.workspaceNavigation.go('workspace',{instant:true});
       window.allfoldUIPreferences.setArchiveDisabled(false);$('array-index-toggle').click();$('array-index').scrollTop=200;$('workspace-archive').click();
       if($('selected-view').dataset.workspaceLayout!=='archive' || !$('kept-view').hidden)throw Error('Archive restoration failed');
@@ -188,15 +249,93 @@ app.whenReady().then(async()=>{
       $('array-index-toggle').click();if($('array-index').scrollTop!==200)throw Error('Index scroll lost through Archive entry');
       document.querySelector('#array-flyout [data-flyout-close]').click();
     });
+    await js("window.workspaceNavigation.go('run',{instant:true}),document.getElementById('s-run-overview-open').click()");
+    await capture('run-small');
+    await js("document.querySelector('#s-run [data-flyout]').click(),document.querySelector('#s-providers [data-provider=crossref]').click()");
+    await capture('run-provider-overlay');
+    await js("window.workspaceNavigation.go('settings',{instant:true})");
+    await capture('settings-small');
+    await js("window.workspaceNavigation.go('kept',{instant:true}),document.querySelector('#kept-workspace [data-sidebar-view=access]').click()");
+    await check(()=>{
+      const $=id=>document.getElementById(id);
+      if(!$('kept-access-settings').contains($('s-institution')) || !$('kept-workflow-settings').contains($('s-kept-workflow-fields')))throw Error('Kept did not mount the sole existing settings controls');
+      if($('kept-sidebar').hidden || $('kept-workspace').dataset.sidebarMode!=='overlay')throw Error('Kept Access sidebar did not overlay at 600x480');
+      const institution=document.querySelector('#kept-access-settings [data-monitor="institutionName"]');
+      if(!institution || institution.getBoundingClientRect().width<120)throw Error('Institution input not operable');
+      document.querySelector('#kept-workspace [data-sidebar-view=workflow]').click();
+      if(document.querySelectorAll('[data-monitor="displayName"]').length!==1 || !document.querySelector('#kept-workflow-settings [data-monitor="delay"]'))throw Error('Workflow controls duplicated or missing');
+      const name=document.querySelector('#kept-workflow-settings [data-monitor="displayName"]');name.focus();name.value='Synthetic display';name.dispatchEvent(new Event('input',{bubbles:true}));
+      if(document.activeElement!==name || name.value!=='Synthetic display')throw Error('Kept mount bridge lost input focus');
+    });
+    await capture('kept-workflow-small');
+
+    await check(async()=>{
+      const $=id=>document.getElementById(id),assert=(ok,message)=>{if(!ok)throw Error(message);};
+      $('run-open').click();$('s-run-overview-open').click();
+      const input=document.querySelector('#s-run [data-monitor="name"]');input.focus();input.value='First autosave';input.dispatchEvent(new Event('input',{bubbles:true}));
+      const pending=window.allfoldAutosave.flush();await new Promise(resolve=>setTimeout(resolve,20));
+      input.value='Newer autosave';input.dispatchEvent(new Event('input',{bubbles:true}));
+      $('settings-open').click();$('run-open').click();
+      assert(input.value==='Newer autosave','workspace navigation overwrote newer input');
+      assert(await pending,'autosave flush failed');assert(input.value==='Newer autosave','late response overwrote newer input');
+      assert(await window.allfoldAutosave.flush(),'final autosave did not settle');assert(window.allfoldAutosave.status==='Saved','settled autosave not Saved');
+      window.workspaceNavigation.go('workspace',{instant:true});
+    });
+    await check(async()=>{
+      const $=id=>document.getElementById(id),assert=(ok,message)=>{if(!ok)throw Error(message);};
+      $('journals-open').click();
+      document.querySelector('#s-journals [data-journal]').click();
+      const journalId=document.querySelector('#s-journals [data-current=true]').dataset.journal;
+      const settle=async()=>assert(await window.allfoldAutosave.flush(),'Journal autosave failed');
+      const verify=async field=>{
+        const state=await window.uiNext.request('/api/ui-next/settings');
+        return state.values.journals.find(journal=>(journal.issn || journal.eissn)===journalId)[field];
+      };
+      const service=$('s-journal-service');service.value='svc_fixture';service.dispatchEvent(new Event('change',{bubbles:true}));await settle();
+      $('s-journal-group').value='group:Group 3';$('s-journal-group').dispatchEvent(new Event('change',{bubbles:true}));await settle();
+      assert(await verify('group')==='Group 3','Journal association after autosave was lost');
+      $('s-journal-service').value='';$('s-journal-service').dispatchEvent(new Event('change',{bubbles:true}));await settle();
+      assert(!await verify('access_service_id'),'repeated Journal Service edit did not persist');
+      document.querySelector('[data-flyout=access]').click();
+      document.querySelector('#s-entities [data-entity=svc_fixture]').click();$('s-edit-entity').click();
+      const url=document.querySelector('[data-service-field=url]');
+      for(const value of ['https://example.test/first','https://example.test/second']){
+        url.value=value;url.dispatchEvent(new Event('input',{bubbles:true}));await settle();
+        assert(document.querySelector('[data-service-field=url]')===url,'ordinary save remounted the Service editor');
+        assert((await window.uiNext.request('/api/ui-next/settings')).values.access_services[0].access_url===value,'repeated Service URL edit did not persist');
+      }
+      window.workspaceNavigation.go('workspace',{instant:true});
+    });
+    rejectAutosave=true;
+    await check(async()=>{
+      const input=document.querySelector('[data-monitor="name"]');input.value='Recover ordinary draft';input.dispatchEvent(new Event('input',{bubbles:true}));
+      const secret=document.querySelector('[data-monitor="openalexKey"]');secret.value='synthetic-secret-not-for-recovery';secret.dispatchEvent(new Event('input',{bubbles:true}));
+      const workspace=document.querySelector('[data-monitor="workspace"]');workspace.value='unsaved-high-impact-path';workspace.dispatchEvent(new Event('input',{bubbles:true}));
+      const raw=localStorage.getItem('allfold.configuration-draft:/fixture/monitor.yaml');
+      if(!raw || raw.includes('synthetic-secret') || raw.includes('unsaved-high-impact-path'))throw Error('recovery contains explicit secret or Workspace change');
+    });
+    await win.webContents.executeJavaScript('void 0',true);
+    win.webContents.once('will-prevent-unload',event=>event.preventDefault());
+    await win.webContents.reload();
+    await ready("window.allfoldAutosave && document.querySelector('[data-monitor=name]').value==='Recover ordinary draft'");
+    await check(()=>{
+      if(document.querySelector('[data-monitor="openalexKey"]').value==='synthetic-secret-not-for-recovery')throw Error('secret restored from ordinary draft');
+      if(document.querySelector('[data-monitor="workspace"]').value!=='workspace')throw Error('unconfirmed Workspace restored');
+      if(!window.allfoldAutosave.dirty || window.allfoldAutosave.status==='Saved')throw Error('restored unsaved draft reported Saved');
+    });
+    rejectAutosave=false;
+    await check(async()=>{if(!await window.allfoldAutosave.flush())throw Error('recovered draft did not save');});
+    await ready("window.uiWorkspace?.ready() && !document.getElementById('array-candidates').disabled");
+    await js("window.workspaceNavigation.go('workspace',{instant:true}),document.getElementById('workspace-array').click(),document.querySelector('#kept-view [data-sidebar-view]').click()");
     // Browser is a separate full view; this fixture has no native page Session.
     await js("window.allfoldWorkbench.show()");
     await check(()=>{
       const $=id=>document.getElementById(id),bounds=$('browser-body').getBoundingClientRect();
       if(document.body.dataset.workbench!=='browser' || !$('allfold-pane').inert || bounds.width<240 || bounds.height<120)throw Error('600x480 Browser body is not operable');
       window.allfoldWorkbench.hide();
-      if($('allfold-pane').inert || $('kept-view').dataset.sidebarMode!=='overlay')throw Error('Browser return lost Array presentation');
+      if($('allfold-pane').inert || $('kept-view').dataset.sidebarMode!=='overlay')throw Error('Browser return lost Array presentation '+JSON.stringify({inert:$('allfold-pane').inert,mode:$('kept-view').dataset.sidebarMode,layout:$('selected-view').dataset.workspaceLayout,sidebar:$('array-sidebar').hidden}));
     });
     console.log('LAYOUT DOM PASS');
   }catch(error){console.error(error.stack);process.exitCode=1;}
-  finally {win?.destroy();server.close();fs.rmSync(temp,{recursive:true,force:true});app.exit(process.exitCode || 0);}
+  finally {ipcMain.removeHandler('layout:cas-status');win?.destroy();server.close();fs.rmSync(temp,{recursive:true,force:true});app.exit(process.exitCode || 0);}
 });

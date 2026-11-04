@@ -1,4 +1,5 @@
 // RhinE / RhineLabUI MIT adaptation; see SOURCES.md and licenses/.
+import {createAutosave} from './settings-autosave.js';
 import {renderRunResult} from './run-results.js';
 import {readImportChoices,renderImportRows} from './research-scope-import.js';
 import {providerNames as providerDefaults} from './business-results.js';
@@ -10,7 +11,7 @@ markup.innerHTML=`<header class="s-header">
 <div class="s-header-actions">
 <span id="s-dirty" class="s-dirty">Saved baseline</span>
 <button id="s-undo" class="s-button" disabled>UNDO</button>
-<button id="s-save" class="s-button s-primary">SAVE ↗</button>
+<button id="s-autosave-retry" class="s-button" hidden>Retry</button><button id="s-autosave-reconcile" class="s-button" hidden>Review saved state</button>
 </div>
 </header>
 <p id="s-message" class="s-message" role="status" aria-live="polite" hidden>
@@ -103,17 +104,17 @@ markup.innerHTML=`<header class="s-header">
 <input id="s-developer-mode" type="checkbox">
 <span class="s-setting-label">Developer Mode</span>
 </label>
-<p class="s-help">Developer Mode 默认关闭，控制 Layout、Archive 和 Paper 调试工具；关闭后，已保存的布局目标仍然生效。此开关独立保存在本浏览器，不参与 Settings Save。</p>
+<p class="s-help">Developer Mode 默认关闭，控制 Layout、Archive 和 Paper 调试工具；关闭后，已保存的布局目标仍然生效。此开关独立保存在本浏览器，独立于 YAML 配置。</p>
 <label class="s-setting-row s-check s-field-wide">
 <input id="s-disable-archive" type="checkbox">
 <span class="s-setting-label">禁用 Archive 视图</span>
 </label>
-<p class="s-help">Workspace 使用 ARRAY；活动操作结束后再切换布局。此本地偏好不需要 SAVE。</p>
+<p class="s-help">Workspace 使用 ARRAY；活动操作结束后再切换布局。此本地偏好立即生效。</p>
 <label class="s-setting-row s-check s-field-wide">
 <input id="s-disable-fullscreen" type="checkbox">
 <span class="s-setting-label">禁用全屏运行界面</span>
 </label>
-<p class="s-help">Run 与 Prepare / Import 在各自工作区显示进度。下次新任务生效；重启恢复使用当前设置。此本地偏好不需要 SAVE。</p>
+<p class="s-help">Run 与 Prepare / Import 在各自工作区显示进度。下次新任务生效；重启恢复使用当前设置。此本地偏好立即生效。</p>
       <details>
 <summary>Zotero Integration</summary>
 <div class="s-diagnostic">
@@ -289,9 +290,9 @@ for(const [panel,page]of [['s-journals-page','journals-view'],['s-run','run-page
   $(page).append(markup.content.querySelector('#'+panel));
 }
 root.querySelector('.s-content').append(markup.content.querySelector('#s-file-preview'));
-root.append(markup.content.querySelector('#s-dialog'));
+document.body.append(markup.content.querySelector('#s-dialog'));
 const shell=$('settings-shell'),header=markup.content.querySelector('.s-header');
-document.querySelector('.header-browse').append(header.querySelector('#s-save'));
+
 shell.append(markup.content.querySelector('#s-message'),header.querySelector('.s-header-actions'));header.remove();
 const settingsPage=$('s-settings');
 
@@ -299,11 +300,64 @@ for(const button of root.querySelectorAll('[data-diagnostic]')){
  const summary=button.closest('details').querySelector('summary'),name=document.createElement('span'),status=document.createElement('span');
  name.className='s-diagnostic-name';name.textContent=summary.textContent;status.id=`s-${button.dataset.diagnostic}-summary`;status.className='s-diagnostic-summary';status.textContent='Not checked';summary.replaceChildren(name,status);
 }
-const reset=root.querySelector('.s-reset'),resetDisclosure=document.createElement('details'),resetSummary=document.createElement('summary');
+const reset=document.querySelector('.s-reset'),resetDisclosure=document.createElement('details'),resetSummary=document.createElement('summary');
 resetDisclosure.id='s-reset-section';resetDisclosure.className='s-reset';
 resetSummary.append(Object.assign(document.createElement('span'),{className:'s-diagnostic-name',textContent:'Reset'}),$('s-reset-path'));
 resetDisclosure.append(resetSummary,reset.querySelector('.s-reset-confirm'));reset.replaceWith(resetDisclosure);
 
+
+// Reparent the existing controls; one controller and one saved source own them.
+const icon=(path)=>`<svg viewBox="0 0 24 24" aria-hidden="true"><path d="${path}"/></svg>`;
+function sideShell(id,label,view='configuration') {
+  const side=document.createElement('aside');side.id=id;side.className='functional-sidebar';side.hidden=true;side.setAttribute('aria-label',label);
+  side.innerHTML=`<div class="sidebar-resize" role="separator" tabindex="0" aria-label="Resize ${label}" aria-orientation="vertical"></div><div class="sidebar-heading"><span>${label}</span><button data-sidebar-close aria-label="Close ${label}">×</button></div><div class="sidebar-scroll" data-functional-view="${view}"></div>`;
+  return side;
+}
+function rail(label,buttons,tool=false) {
+  const node=document.createElement('nav');node.className=tool?'tool-rail':'navigation-rail';node.setAttribute('aria-label',label);node.innerHTML=buttons;return node;
+}
+const runPanel=$('s-run'),runMain=runPanel.querySelector('.s-browser'),runDirectory=runPanel.querySelector('.s-directory'),runContext=runPanel.querySelector('.s-context');
+runPanel.className='s-panel workbench-layout';runMain.classList.add('workspace-content');runMain.tabIndex=-1;
+runDirectory.className='navigation-flyout';runDirectory.id='run-provider-flyout';runDirectory.hidden=true;runDirectory.tabIndex=-1;
+const runDirectoryTitle=document.createElement('div');runDirectoryTitle.className='flyout-heading';runDirectoryTitle.innerHTML='<span>PROVIDER DIRECTORY</span><button data-flyout-close aria-label="Close Provider Directory">×</button>';runDirectory.prepend(runDirectoryTitle);
+$('s-providers').setAttribute('data-flyout-list','');
+const runSidebar=sideShell('run-configuration-sidebar','PROVIDER');
+runSidebar.querySelector('.sidebar-scroll').append(runContext.querySelector('.s-provider-alias'));
+for(const fieldset of runPanel.querySelectorAll('[data-provider-settings]'))runSidebar.querySelector('.sidebar-scroll').append(fieldset);
+const wosAccess=document.createElement('section');wosAccess.dataset.providerSettings='wos';wosAccess.innerHTML='<h3>Institution Access</h3><p id="s-wos-access-status" class="s-help"></p><button id="s-wos-access" class="s-button">Open Kept Access</button>';runSidebar.querySelector('.sidebar-scroll').append(wosAccess);
+const runHistory=document.createElement('section');runHistory.className='s-run-history';runHistory.append(...runContext.childNodes);runContext.remove();runMain.querySelector('.s-run-body').append(runHistory);
+runPanel.prepend(rail('Run navigation',`<button class="rail-button" id="s-run-overview-open" title="Overview" aria-label="Overview">${icon('M4 4h16v16H4zM4 10h16M10 10v10')}</button><button class="rail-button" data-flyout="providers" title="Provider Directory" aria-label="Provider Directory">${icon('M4 5h16M4 12h16M4 19h16')}</button>`));
+runPanel.append(runSidebar,rail('Run tools',`<button class="rail-button" data-sidebar-view="configuration" aria-label="Provider configuration" title="Provider configuration">${icon('M4 6h16M4 12h16M4 18h16M8 3v6M16 9v6M10 15v6')}</button>`,true));
+const monitorName=settingsPage.querySelector('[data-field="name"]');$('s-run-overview').querySelector('fieldset').prepend(monitorName);
+const keptSettings=document.createElement('div');keptSettings.id='s-kept-configuration-bridge';keptSettings.hidden=true;document.body.append(keptSettings);
+const workflowFields=document.createElement('fieldset');workflowFields.className='s-setting-group';workflowFields.id='s-kept-workflow-fields';workflowFields.innerHTML='<legend>Workflow</legend>';
+for(const field of ['displayName','delay','autoImport'])workflowFields.append(settingsPage.querySelector(`[data-field="${field}"]`));
+keptSettings.append(workflowFields,$('s-institution'),$('s-institution-auth'));
+settingsPage.querySelector('.s-settings-main').querySelector('fieldset').remove();
+const applicationGroup=settingsPage.querySelector('.s-settings-main fieldset');applicationGroup.querySelector('legend').textContent='Application';applicationGroup.dataset.settingsSection='application';
+const workspaceApply=document.createElement('button');workspaceApply.id='s-workspace-apply';workspaceApply.className='s-button';workspaceApply.textContent='Review Workspace change';applicationGroup.append(workspaceApply);
+const appearanceGroup=document.createElement('fieldset');appearanceGroup.className='s-setting-group';appearanceGroup.dataset.settingsSection='appearance';appearanceGroup.innerHTML='<legend>Appearance</legend>';
+const developerGroup=document.createElement('fieldset');developerGroup.className='s-setting-group';developerGroup.dataset.settingsSection='developer';developerGroup.innerHTML='<legend>Developer</legend>';
+for(const [id,group] of [['s-disable-archive',appearanceGroup],['s-disable-fullscreen',appearanceGroup],['s-developer-mode',developerGroup]]){const label=$(id).closest('label'),help=label.nextElementSibling;group.append(label);if(help?.matches('.s-help'))group.append(help);}
+const dataGroup=document.createElement('section');dataGroup.dataset.settingsSection='data';dataGroup.innerHTML='<h2>Data</h2>';
+const files=$('s-files').closest('.s-files');dataGroup.append(files,$('s-reset-section') || settingsPage.querySelector('.s-reset'));
+settingsPage.querySelector('.s-settings-main').append(appearanceGroup,dataGroup,developerGroup);
+for(const node of settingsPage.querySelectorAll('[data-settings-section]'))node.hidden=node.dataset.settingsSection!=='application';
+const settingsMain=settingsPage.querySelector('.s-settings-main');settingsMain.classList.add('workspace-content');settingsMain.tabIndex=-1;
+const oldSystem=settingsPage.querySelector('.s-system-sidebar'),settingsSidebar=sideShell('settings-system-sidebar','SYSTEM','system');settingsSidebar.querySelector('.sidebar-scroll').append($('s-system'));oldSystem.remove();
+settingsPage.className='s-panel workbench-layout';
+const settingsButtons=['application','appearance','data','developer'].map((name,index)=>`<button class="rail-button" data-settings-open="${name}" title="${name[0].toUpperCase()+name.slice(1)}" aria-label="${name[0].toUpperCase()+name.slice(1)}">${icon(['M4 4h16v16H4zM8 8h8M8 12h8M8 16h4','M12 3a9 9 0 1 0 9 9h-9z','M4 5h16v14H4zM8 9h8M8 13h8','M8 5 2 12l6 7M16 5l6 7-6 7M14 3l-4 18'][index])}</button>`).join('');
+settingsPage.prepend(rail('Settings navigation',settingsButtons));
+const settingsFlyout=document.createElement('aside');settingsFlyout.className='navigation-flyout';settingsFlyout.hidden=true;settingsFlyout.innerHTML='<button data-flyout-close aria-label="Close Settings directory">×</button>';settingsPage.append(settingsFlyout,settingsSidebar,rail('Settings tools',`<button class="rail-button" data-sidebar-view="system" title="System / Diagnostics" aria-label="System / Diagnostics">${icon('M4 4h16v16H4zM12 10v7M12 7v1')}</button>`,true));
+for(const button of settingsPage.querySelectorAll('[data-settings-open]'))button.addEventListener('click',()=>{for(const node of settingsPage.querySelectorAll('[data-settings-section]'))node.hidden=node.dataset.settingsSection!==button.dataset.settingsOpen;for(const entry of settingsPage.querySelectorAll('[data-settings-open]'))entry.setAttribute('aria-pressed',String(entry===button));});
+settingsPage.querySelector('[data-settings-open="application"]').setAttribute('aria-pressed','true');
+for(const host of [runMain.querySelector('.s-run-body'),settingsMain,workflowFields,$('s-institution')]){const status=document.createElement('p');status.className='s-help s-domain-save-status';status.dataset.autosaveStatus='';host.append(status);}
+function mountKeptSettings() {
+  const access=$('kept-access-settings'),workflow=$('kept-workflow-settings');
+  if(access)for(const node of [$('s-institution'),$('s-institution-auth')])if(node.parentElement!==access)access.append(node);
+  if(workflow && workflowFields.parentElement!==workflow)workflow.append(workflowFields);
+}
+window.addEventListener('kept-settings-mount',mountKeptSettings);window.addEventListener('workspace-navigation-state',mountKeptSettings);mountKeptSettings();
 const esc=value=>String(value??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const copy=value=>structuredClone(value);
 const same=(a,b)=>JSON.stringify(a)===JSON.stringify(b);
@@ -312,10 +366,12 @@ const views=['journals-page','run','settings'];
 const navigation={'journals-page':'journals',run:'run',settings:'settings'};
 const transitions=new Map(views.map(view=>[view,new SurfaceTransition($('s-'+view),$('s-'+view),180,180)]));
 let saved=null,draft=null,view='settings',preview=null,revision=0,loading=true,operationPending=false;
-let serverState=null,reconcileRequired=false;
+let serverState=null,reconcileRequired=false,autosave=null;
+let autosaveStatus={status:'Saved',dirty:false,busy:false,storageError:''};
 let institutions=[],institutionInputInvalid=false,institutionCatalogMessage='正在加载本地机构名录。';
 const casAPI=typeof window.allfoldDesktop?.casStatus==='function'?window.allfoldDesktop:null;
-let casSaved={configured:false,username:''},casDraft={username:'',password:''},casError='';
+let casSaved={configured:false,username:'',revision:null},casDraft={username:'',password:''},casError='',casReadVersion=0;
+const casEditVersions={username:0,password:0};
 let selectedProvider='overview',expressions={},runState=null,expressionTimer,expressionVersion=0;
 let journalLayout='array';
 let journalTitleScroll=null;
@@ -331,11 +387,14 @@ const journalLayoutHost=window.allfoldLayout.create({root:$('s-journals-page'),w
   minContentWidth:window.allfoldLayoutModel.minOperationalSize.journals,
   preview(scope){directoryScope=scope;if(draft)renderDirectory();},
 });
+const runLayoutHost=window.allfoldLayout.create({root:runPanel,workspace:'run',minContentWidth:360});
+const settingsLayoutHost=window.allfoldLayout.create({root:settingsPage,workspace:'settings',minContentWidth:360});
 let cropEditor=null;
 const configurationDirty=()=>Boolean(saved && draft && !same(saved,draft));
+const explicitDirty=()=>Boolean(saved && draft && (draft.monitor.workspace!==saved.monitor.workspace || ['pubmed','openalex'].some(provider=>draft.monitor[provider+'KeyAction']!=='keep') || casDirty() || institutionInputInvalid));
 const casPasswordAction=()=>casDraft.password===keyMask?'keep':casDraft.password?'replace':casSaved.configured?'clear':'keep';
 const casDirty=()=>Boolean(casAPI && (casDraft.username.trim()!==casSaved.username || casPasswordAction()!=='keep'));
-const dirty=()=>configurationDirty() || casDirty() || institutionInputInvalid;
+const dirty=()=>configurationDirty() || casDirty() || institutionInputInvalid || autosaveStatus.dirty;
 
 const list=()=>draft.list;
 const journal=id=>list().journals.find(j=>j.id===id);
@@ -345,44 +404,56 @@ function message(text,tone='normal') {$('s-message').textContent=text;$('s-messa
 function updateDirty() {
   $('s-files').disabled=operationPending;
   for(const button of $('s-file-menu').querySelectorAll('[data-file-action]'))button.disabled=loading && button.dataset.fileAction!=='reload';
-  $('s-dirty').textContent=dirty()?'Unsaved Changes':'Saved baseline';$('s-dirty').dataset.dirty=String(dirty());
+  const explicit=explicitDirty();
+  const status=loading?'Loading':autosaveStatus.status;
+  for(const node of document.querySelectorAll('[data-autosave-status]'))node.textContent=autosaveStatus.storageError || (explicit && !autosaveStatus.dirty?'Pending explicit confirmation':status);
+  $('s-dirty').textContent=autosaveStatus.storageError || (explicit && !autosaveStatus.dirty?'Pending confirmation':status);$('s-dirty').dataset.dirty=String(dirty());
+  $('s-autosave-retry').hidden=!['Failed','Pending'].includes(status) || !autosaveStatus.dirty;
+  $('s-autosave-reconcile').hidden=!['Conflict','Partial'].includes(status);
   const unsaved=dirty();
-  $('settings-open').setAttribute('aria-label',unsaved?'04 Settings · Unsaved changes':'04 Settings');
-  $('s-save').disabled=loading || operationPending || !unsaved || Boolean(preview);
+  $('settings-open').setAttribute('aria-label',unsaved?'Settings · Pending changes':'Settings');
+  $('s-workspace-apply').disabled=loading || operationPending || draft?.monitor.workspace===saved?.monitor.workspace;
+  $('s-undo').hidden=window.workspaceNavigation.current()!=='journals';
   $('s-undo').disabled=loading || operationPending || reconcileRequired || Boolean(preview) || !assignmentUndo;
   $('s-reset-path').textContent=$('s-reset-scope').value==='logs'?'当前配置的 Logs':serverState?.saved_workspace || 'Unavailable';
   const logging=serverState?.logging;
   $('s-log-help').textContent=`${logging?`当前采集级别：${logging.effective_level.toUpperCase()}${logging.environment_override?'（ALLFOLD_LOG_LEVEL 控制）':''}。`:''}级别修改后重启应用生效；运行记录与关键结果始终保留。`;
   window.workspaceNavigation.refresh();window.dispatchEvent(new Event('settings-draft-changed'));
 }
-function changed() {revision++;updateDirty();renderRun();}
+document.addEventListener('focusout',event=>{if(event.target.matches('#s-provider-alias,#s-entity-name,[data-service-field]'))void autosave?.flush();});
+function changed({immediate=false}={}) {revision++;if(autosave && !loading)autosave.edit(ordinaryValues(),{immediate});updateDirty();renderRun();}
 function setOperationPending(value) {
   operationPending=value;root.dataset.busy=String(value);
-  root.querySelector('.s-content').inert=value || loading;updateDirty();
+  root.querySelector('.s-content').inert=value || loading;for(const id of ['kept-access-settings','kept-workflow-settings'])if($(id))$(id).inert=value || loading;updateDirty();
 }
 function casErrorText(code) {
   return ({cas_encryption_unavailable:'系统安全存储不可用，未保存或自动填写凭据。',
     cas_store_unreadable:'机构登录凭据无法读取或解密；请重新填写用户名和密码以替换。',
     cas_store_write_failed:'机构登录凭据保存失败，原有密文保留。',cas_store_clear_failed:'机构登录凭据未能清除。',
-    cas_credentials_required:'首次配置必须同时填写用户名和密码。',cas_invalid_credentials:'请填写有效的用户名和密码。'})[code]
+    cas_revision_conflict:'机构凭据已改变，请重新读取状态后核对。',cas_store_busy:'机构凭据正在提交，请稍候。',cas_task_active:'活动任务正在使用机构凭据，草稿保留。',cas_credentials_required:'首次配置必须同时填写用户名和密码。',cas_invalid_credentials:'请填写有效的用户名和密码。'})[code]
     || '机构登录凭据操作未完成，草稿保留，请确认 Electron 仍在运行后重试。';
 }
 function renderCAS() {
   $('s-institution-auth').hidden=!casAPI;
   $('s-cas-username').value=casDraft.username;$('s-cas-password').value=casDraft.password;
-  $('s-cas-password').placeholder=casSaved.configured?'清空后 Save 将删除密码':'选填';
+  $('s-cas-password').placeholder=casSaved.configured?'清空后可明确确认删除密码':'选填';
   $('s-cas-status').textContent=casError;$('s-cas-status').hidden=!casError;
 }
-async function loadCASStatus() {
+async function loadCASStatus({resetDraft=true}={}) {
   if(!casAPI)return;
+  const readVersion=++casReadVersion,editVersions={...casEditVersions};
   let result;
   try {result=await casAPI.casStatus();}catch {result={ok:false};}
-  casSaved=result?.ok?{configured:result.configured,username:result.username}:{configured:false,username:''};
-  casDraft={username:casSaved.username,password:casSaved.configured?keyMask:''};casError=result?.ok?'':casErrorText(result?.error);
-  renderCAS();updateDirty();
+  if(readVersion!==casReadVersion)return;
+  casSaved={configured:result?.ok && result.configured===true,username:result?.ok?result.username || '':'',revision:typeof result?.revision==='string'?result.revision:null};
+  if(resetDraft)for(const [field,value] of Object.entries({username:casSaved.username,password:casSaved.configured?keyMask:''}))
+    if(editVersions[field]===casEditVersions[field])casDraft[field]=value;
+  casError=result?.ok?(resetDraft?'':'安全存储状态已重新读取；未提交输入保留，请核对后明确确认。'):
+    casErrorText(result?.error)+(resetDraft?'':' 未提交输入保留。');
+  renderCAS();updateDirty();renderRun();
 }
 for(const field of ['username','password'])$('s-cas-'+field).addEventListener('input',()=>{
-  casDraft[field]=$('s-cas-'+field).value;changed();
+  casDraft[field]=$('s-cas-'+field).value;casEditVersions[field]++;changed();
 });
 renderCAS();
 function showDialog(title,body,choices) {
@@ -419,7 +490,7 @@ function closeMenu() {
 }
 $('s-file-menu').addEventListener('toggle',event=>$('s-files').setAttribute('aria-expanded',String(event.newState==='open')));
 settingsPage.addEventListener('scroll',closeMenu);
-settingsPage.querySelector('.s-system-sidebar').addEventListener('scroll',closeMenu);
+$('settings-system-sidebar').addEventListener('scroll',closeMenu);
 window.addEventListener('resize',closeMenu);
 const scrollPositions=new Map();
 function pageScrollers() {
@@ -452,7 +523,7 @@ function openSettings(next='settings',instant=false) {
 for(const page of ['journals','run','settings'])window.workspaceNavigation.register(page,{
   canEnter:configurationAvailable,canLeave:configurationAvailable,
   search:()=>page==='journals' && !preview?'journals':null,
-  leave:()=>{rememberScroll();journalLayoutHost.closeFlyout({restoreFocus:false});stopJournalTitleScroll();closeLabelPicker();transitions.get(view).dispose();closeMenu();},
+  leave:()=>{rememberScroll();journalLayoutHost.closeFlyout({restoreFocus:false});runLayoutHost.closeFlyout({restoreFocus:false});stopJournalTitleScroll();closeLabelPicker();transitions.get(view).dispose();closeMenu();},
   enter:({instant})=>{
     const next=page==='journals'?'journals-page':page;
     if(next===view)transitions.get(view).show(instant || reduced());else switchView(next,instant);
@@ -460,7 +531,7 @@ for(const page of ['journals','run','settings'])window.workspaceNavigation.regis
   },
 });
 function syncLayouts(){
-  journalLayoutHost.sync();
+  journalLayoutHost.sync();runLayoutHost.sync();settingsLayoutHost.sync();
   for(const button of root.querySelectorAll('[data-layout]'))button.setAttribute('aria-pressed',String(button.dataset.layout===journalLayout));
   for(const button of root.querySelectorAll('[data-scope]'))button.setAttribute('aria-pressed',String(button.dataset.scope===ui.scope));
 }
@@ -545,15 +616,15 @@ workspaceSearch.register('journals',{
   input:query=>{ui.search=query;reconcileSelections(true);renderJournalsPage();},
 });
 function syncMonitor() {
-  root.querySelectorAll('[data-monitor]').forEach(input=>{const value=draft.monitor[input.dataset.monitor];if(input.type==='checkbox')input.checked=value;else input.value=value ?? '';});
+  document.querySelectorAll('[data-monitor]').forEach(input=>{const value=draft.monitor[input.dataset.monitor];if(input.type==='checkbox')input.checked=value;else input.value=value ?? '';});
   syncInstitution();
   syncKey('pubmed');syncKey('openalex');scheduleExpressions();renderRun();
 }
-root.querySelectorAll('[data-monitor]').forEach(input=>input.addEventListener(input.tagName==='SELECT' || input.type==='checkbox'?'change':'input',()=>{
+document.querySelectorAll('[data-monitor]').forEach(input=>input.addEventListener(input.tagName==='SELECT' || input.type==='checkbox'?'change':'input',()=>{
   if(input.dataset.monitor==='institutionName')return;
   draft.monitor[input.dataset.monitor]=input.type==='checkbox'?input.checked:input.value;
   for(const provider of ['pubmed','openalex'])if(input.dataset.monitor===provider+'Key')syncKey(provider);
-  changed();
+  changed({immediate:input.tagName==='SELECT' || input.type==='checkbox'});
   if(['expression','pubmedMode'].includes(input.dataset.monitor))scheduleExpressions();
 }));
 const institutionLabel=row=>`${row.name}（${row.name_en}）`;
@@ -641,24 +712,24 @@ $('s-institution-query').addEventListener('input',()=>{
   const unchanged=text===(current?institutionLabel(current):draft.monitor.institutionName || draft.monitor.idp || '');
   institutionInputInvalid=!!text && !row && !unchanged;
   if(!text || row){draft.monitor.institutionName=row?.name || '';draft.monitor.idp=row?.idp_entity_id || '';}
-  root.querySelector('[data-monitor="idp"]').value=draft.monitor.idp;
+  document.querySelector('[data-monitor="idp"]').value=draft.monitor.idp;
   input.setCustomValidity(institutionInputInvalid?'请从候选列表选择机构，或清空选择。':'');
   $('s-institution-help').textContent=institutionInputInvalid?input.validationMessage:institutionCatalogMessage;
   changed();
   if(!institutionComposing && document.activeElement===input)showInstitutionMatches();
 });
 function syncKey(provider) {
-  const input=root.querySelector(`[data-monitor="${provider}Key"]`),value=draft.monitor[provider+'Key'];
+  const input=document.querySelector(`[data-monitor="${provider}Key"]`),value=draft.monitor[provider+'Key'];
   const configured=!!serverState?.values[provider+'_key_configured'];
   draft.monitor[provider+'KeyAction']=value===keyMask?'keep':value?'replace':configured?'clear':'keep';
-  input.placeholder=configured?'清空后 Save 将删除 Key':'选填';
+  input.placeholder=configured?'清空后可明确确认删除 Key':'选填';
   $('s-'+provider+'-key-status').textContent=serverState?.values[provider+'_key_error'] ||
-    (draft.monitor[provider+'KeyAction']==='clear'?'待清除 API Key。':configured?'已配置本地 Key；输入新值替换，清空以删除。':'未配置本地 API Key。')+' 更改在 Save 后生效。';
+    (draft.monitor[provider+'KeyAction']==='clear'?'待清除 API Key。':configured?'已配置本地 Key；输入新值替换，清空以删除。':'未配置本地 API Key。')+' 使用下方按钮明确确认替换或清除。';
 }
 const providerOrder=()=>draft?.monitor.providerOrder || Object.keys(providerDefaults);
 const providerName=id=>draft?.monitor.aliases[id] || providerDefaults[id];
 function runBlockReason() {
-  return loading?'正在加载配置。':operationPending?'正在保存配置。':preview?'请先结束文件 Preview。':reconcileRequired?'保存未完成，请 Reload 核对磁盘状态。':dirty()?'请先 SAVE 所有未保存改动。':'';
+  return loading?'正在加载配置。':operationPending?'正在提交明确确认的修改。':preview?'请先结束文件 Preview。':reconcileRequired || ['Conflict','Partial'].includes(autosaveStatus.status)?'保存存在冲突，请核对磁盘状态。':explicitDirty()?'凭据或 Workspace 修改需要独立确认。':'';
 }
 function scheduleExpressions() {
   clearTimeout(expressionTimer);const version=++expressionVersion;
@@ -673,11 +744,13 @@ function scheduleExpressions() {
 function renderRun() {
   if(!draft)return;
   const focusedProvider=document.activeElement?.dataset.provider;
-  $('s-providers').innerHTML=['overview',...providerOrder()].map((id,index)=>`<button class="kept-manager-row s-directory-row" data-provider="${id}" title="${esc(id==='overview'?'Overview':providerName(id))}" aria-current="${selectedProvider===id}"><span class="rhine-index-number">${String(index).padStart(2,'0')}</span><span class="rhine-index-name">${esc(id==='overview'?'Overview':providerName(id))}</span></button>`).join('');
+  $('s-providers').innerHTML=providerOrder().map((id,index)=>`<button class="kept-manager-row s-directory-row" data-provider="${id}" title="${esc(id==='overview'?'Overview':providerName(id))}" aria-current="${selectedProvider===id}"><span class="rhine-index-number">${String(index).padStart(2,'0')}</span><span class="rhine-index-name">${esc(id==='overview'?'Overview':providerName(id))}</span></button>`).join('');
   if(focusedProvider)$('s-providers').querySelector(`[data-provider="${focusedProvider}"]`)?.focus({preventScroll:true});
   const position=providerOrder().indexOf(selectedProvider);
   $('s-provider-up').disabled=position<=0;$('s-provider-down').disabled=position<0 || position===providerOrder().length-1;
-  $('s-provider-alias').value=providerName(selectedProvider) || '';
+  if(document.activeElement!==$('s-provider-alias'))$('s-provider-alias').value=providerName(selectedProvider) || '';
+  $('s-run-overview-open').setAttribute('aria-pressed',String(selectedProvider==='overview'));
+  $('s-wos-access-status').textContent=`${saved?.monitor.institutionName || 'Institution 未配置'} · CARSI ${casSaved.configured?'凭据已配置':'凭据未配置'}`;
   const overview=selectedProvider==='overview';
   $('s-provider-alias').closest('label').hidden=overview;
   $('s-run-title').textContent=overview?'Overview':providerName(selectedProvider);
@@ -715,18 +788,20 @@ async function refreshRun() {
   try {runState=await uiNext.request('/api/ui-next/run');renderRun();}
   catch(error){$('s-run-feedback').textContent=error.message;}
 }
-$('s-providers').addEventListener('click',event=>{const button=event.target.closest('[data-provider]');if(button){selectedProvider=button.dataset.provider;renderRun();}});
+$('s-providers').addEventListener('click',event=>{const button=event.target.closest('[data-provider]');if(button){selectedProvider=button.dataset.provider;renderRun();runLayoutHost.closeFlyout();runLayoutHost.openSidebar('configuration');}});
+$('s-run-overview-open').addEventListener('click',()=>{selectedProvider='overview';renderRun();runLayoutHost.closeFlyout();runLayoutHost.closeSidebar();});
+$('s-wos-access').addEventListener('click',()=>{if(window.workspaceNavigation.go('kept',{instant:true}))window.dispatchEvent(new CustomEvent('kept-open-sidebar',{detail:{view:'access'}}));});
 $('s-provider-alias').addEventListener('change',()=>{
   const id=selectedProvider;if(id==='overview')return;
   const input=$('s-provider-alias'),value=input.value.trim();
   if(!value || value.length>120 || /[\x00-\x1f]/.test(value)){message('Display alias 必须为 1–120 个可打印字符。','error');input.value=providerName(id);return;}
   if(value===providerDefaults[id])delete draft.monitor.aliases[id];else draft.monitor.aliases[id]=value;
-  changed();
+  changed({immediate:true});
 });
 function moveProvider(direction) {
   const order=providerOrder(),index=order.indexOf(selectedProvider),to=index+direction;
   if(index<0 || to<0 || to>=order.length)return;
-  [order[index],order[to]]=[order[to],order[index]];changed();
+  [order[index],order[to]]=[order[to],order[index]];changed({immediate:true});
 }
 $('s-provider-up').addEventListener('click',()=>moveProvider(-1));
 $('s-provider-down').addEventListener('click',()=>moveProvider(1));
@@ -811,13 +886,13 @@ function changeJournalAssignment(j,patch) {
   const before=assignmentOf(j),after={...before,...patch};
   if(same(before,after))return;
   Object.assign(j,copy(after));assignmentUndo={id:j.id,before,after};
-  changed();renderJournalsPage();
+  changed({immediate:true});renderJournalsPage();
 }
 function undoJournalAssignment() {
   if(loading || operationPending || preview || reconcileRequired || !assignmentUndo)return;
   const {id,before,after}=assignmentUndo,j=journal(id);
   if(!j || !same(assignmentOf(j),after)){clearAssignmentUndo();updateDirty();return;}
-  Object.assign(j,copy(before));clearAssignmentUndo();changed();renderJournalsPage();
+  Object.assign(j,copy(before));clearAssignmentUndo();changed({immediate:true});renderJournalsPage();
 }
 $('s-undo').addEventListener('click',undoJournalAssignment);
 function journalIdentity(j) {
@@ -833,7 +908,7 @@ function renderEntityDetail() {
     description.querySelector('select').value=entity.method;
     description.querySelectorAll('[data-service-field]').forEach(input=>input.addEventListener(input.tagName==='SELECT'?'change':'input',()=>{
       if(entity[input.dataset.serviceField]===input.value)return;
-      entity[input.dataset.serviceField]=input.value;changed();
+      entity[input.dataset.serviceField]=input.value;changed({immediate:input.tagName==='SELECT'});
     }));
   }
 }
@@ -862,7 +937,7 @@ function renderJournalDetail() {
   detail.querySelector('[data-cover=cancel]')?.addEventListener('click',()=>void coverAction('/settings/covers/search/cancel',{request_id:coverJob.request_id}));
 }
 async function journalResources(j) {
-  if(dirty()){message('请先 Save 或 Reload Settings，再同步或选择 Service。','error');return;}
+  if(!await window.allfoldAutosave?.flush()){message('配置尚未保存，草稿保留；请重试或处理冲突。','error');return;}
   const base='/api/ui-next/settings/journals/'+encodeURIComponent(j.id);
   let catalog=await formRequest('/api/ui-next/settings/catalog');
   const catalogOptions=()=>catalog.resources.map(r=>`<option value="${esc(r.production)}">${esc(r.production)}</option>`).join('');
@@ -911,25 +986,31 @@ function renameEntity(entity,value) {
     if(target)list().labels=list().labels.filter(row=>row.id!==previous);else entity.id=labelKey(name);
   }
   entity.name=name;ui.directory[ui.scope]=target?.id || entity.id;
-  changed();renderJournalsPage();
+  changed({immediate:true});renderJournalsPage();
 }
 function moveEntity(direction) {
   const items=scopeInfo().items,from=items.indexOf(selectedEntity()),to=from+direction;
   if(from<0 || to<0 || to>=items.length)return;
-  const [entity]=items.splice(from,1);items.splice(to,0,entity);changed();renderDirectory();
+  const [entity]=items.splice(from,1);items.splice(to,0,entity);changed({immediate:true});renderDirectory();
 }
 function deleteEntity() {
   const entity=selectedEntity();if(!entity)return;
   const info=scopeInfo(),scope=ui.scope,members=entityMembers();
   const effect=scope==='subject'?'将移至 Ungrouped，保留 Custom Labels。':scope==='access'?'将成为 Unassigned。':'将移除此标签的全部分配。';
-  showDialog(`Delete ${info.entity}`,`<p>${esc(entity.name)}${scope==='access'?' / '+esc(entity.id):''}</p><p>${members.length} Journals ${effect}</p>${memberList(members.map(j=>j.name))}`,[cancel,{label:`Delete ${info.entity}`,primary:true,run:()=>{
+  showDialog(`Delete ${info.entity}`,`<p>${esc(entity.name)}${scope==='access'?' / '+esc(entity.id):''}</p><p>${members.length} Journals ${effect}</p>${memberList(members.map(j=>j.name))}`,[cancel,{label:`Delete ${info.entity}`,primary:true,run:async()=>{
+    if(scope==='access'){
+      if(!await autosave?.flush())return false;
+      const source=copy(saved);source.list.services=source.list.services.filter(row=>row.id!==entity.id);
+      for(const journal of source.list.journals)if(journal.serviceId===entity.id)journal.serviceId=null;
+      return applyExplicit(source,{}, {skipFlush:true});
+    }
     const refers=snapshot=>scope==='subject'?snapshot.groupId===entity.id:scope==='access'?snapshot.serviceId===entity.id:snapshot.labels.includes(entity.name);
     if(assignmentUndo && [assignmentUndo.before,assignmentUndo.after].some(refers))clearAssignmentUndo();
     for(const j of members){if(scope==='subject')j.groupId=null;else if(scope==='access')j.serviceId=null;else j.labels=j.labels.filter(label=>label!==entity.name);}
     if(scope==='subject')list().groups=list().groups.filter(row=>row.id!==entity.id);
     else if(scope==='access')list().services=list().services.filter(row=>row.id!==entity.id);
     else list().labels=list().labels.filter(row=>row.id!==entity.id);
-    ui.directory[scope]='none';ui.detail='entity';changed();renderJournalsPage();
+    ui.directory[scope]='none';ui.detail='entity';changed({immediate:true});renderJournalsPage();
   }}]);
 }
 function createEntity() {
@@ -938,7 +1019,7 @@ function createEntity() {
     let name;try{name=entityName($('s-new-entity-name').value,scope==='custom');}catch(error){$('s-entity-error').textContent=error.message;return false;}
     if(info.items.some(item=>scope==='custom'?item.name===name:item.name.toLowerCase()===name.toLowerCase())){$('s-entity-error').textContent='名称重复。';return false;}
     const entity=scope==='access'?{id:'svc_'+crypto.randomUUID().replaceAll('-',''),name,url:$('s-new-service-url').value.trim(),method:$('s-new-service-method').value}:{id:scope==='subject'?groupKey(name):labelKey(name),name};
-    info.items.push(entity);ui.directory[scope]=entity.id;ui.detail='entity';changed();renderJournalsPage();journalLayoutHost.openSidebar('details');
+    info.items.push(entity);ui.directory[scope]=entity.id;ui.detail='entity';changed({immediate:true});renderJournalsPage();journalLayoutHost.openSidebar('details');
   }}]);$('s-new-entity-name').focus();
 }
 function activateDirectory() {if(ui.scope!==directoryScope)setJournalScope(directoryScope);}
@@ -957,7 +1038,7 @@ function removeJournal(j) {
     if(assignmentUndo?.id===j.id)clearAssignmentUndo();
     list().journals=list().journals.filter(row=>row.id!==j.id);
     if(ui.journal===j.id){ui.journal=null;ui.detail='entity';}
-    changed();renderJournalsPage();
+    changed({immediate:true});renderJournalsPage();
   },'Remove from list');
 }
 $('s-add-journal').addEventListener('click',()=>{
@@ -989,7 +1070,7 @@ $('s-add-journal').addEventListener('click',()=>{
       const id=c.issn || c.eissn;
       const added={id,name:c.name,issn:c.issn,eissn:c.eissn,serviceId:ui.scope==='access'?(selectedEntity()?.id || null):null,groupId:ui.scope==='subject'?(selectedEntity()?.id || null):null,labels:ui.scope==='custom' && selectedEntity()?[selectedEntity().name]:[]};
       list().journals.push(added);
-      ui.journal=id;ui.detail='journal';changed();renderJournalsPage();message('Journal 已加入 Draft。');
+      ui.journal=id;ui.detail='journal';changed({immediate:true});renderJournalsPage();message('Journal 已加入 Draft。');
     }}
   ]);
   $('s-add-query').addEventListener('input',()=>{candidates=[];$('s-add-results').replaceChildren();});
@@ -1018,7 +1099,7 @@ root.addEventListener('drop',event=>{
     if(j)changeJournalAssignment(j,directoryScope==='subject'?{groupId:next}:{serviceId:next});
   }else{
     const items=list().groups,from=items.findIndex(g=>g.id===drag.id),to=items.findIndex(g=>g.id===target.dataset.entity);
-    if(from>=0 && to>=0 && from!==to){const [g]=items.splice(from,1);items.splice(to,0,g);changed();renderDirectory();}
+    if(from>=0 && to>=0 && from!==to){const [g]=items.splice(from,1);items.splice(to,0,g);changed({immediate:true});renderDirectory();}
   }
   drag=null;root.querySelectorAll('[data-drop]').forEach(node=>node.removeAttribute('data-drop'));
 });
@@ -1117,6 +1198,7 @@ function importChoices() {
   return readImportChoices($('s-preview-columns'));
 }
 async function openImport(file,choices={},query=false) {
+  if(!await window.allfoldAutosave?.flush()){message('普通配置尚未落盘，请先处理保存状态。','error');return;}
   const data=await formRequest('/settings/import/preview',{markdown_file:file,import_choices:JSON.stringify(choices),query_gokb:query?'yes':'no'});
   showIssues(data);
   if(!data.import_plan)return false;
@@ -1146,6 +1228,7 @@ function confirmImport() {
   ]);
 }
 async function exportFile(kind='list',discard=false) {
+  if(!discard && !await window.allfoldAutosave?.flush()){message('普通配置尚未落盘，请先处理保存状态。','error');return;}
   if(dirty() && !discard){
     showDialog('Resolve unsaved Settings','<p>导出只使用已保存配置。请选择 Save、丢弃全部 Settings 草稿或 Cancel。</p>',[cancel,
       {label:'Save & export',run:async()=>{dialog.close();await saveDraft(()=>exportFile(kind));}},
@@ -1163,7 +1246,9 @@ function reloadSettings() {
 void refreshRun();return;}
   showDialog('Reload Settings from Disk','<p>丢弃全部未保存配置并重新读取文件。独立 Cover 资源保留。</p><label>Type RELOAD<input id="s-reload-word" autocomplete="off" spellcheck="false"></label><p id="s-reload-error" role="alert"></p>',[cancel,{label:'Reload / discard draft',primary:true,run:async()=>{
     if($('s-reload-word').value!=='RELOAD'){$('s-reload-error').textContent='请输入完整的 RELOAD。';return false;}
-    if(await acceptOperation(await formRequest('/settings/reload',{reload_step:'confirm',reload_word:'RELOAD'})))await loadCASStatus();
+    await autosave?.pause();
+    try{if(await acceptOperation(await formRequest('/settings/reload',{reload_step:'confirm',reload_word:'RELOAD'})))await loadCASStatus();}
+    finally{autosave?.resume();}
   }}]);$('s-reload-word').focus();
 }
 root.querySelectorAll('[data-file-action]').forEach(button=>button.addEventListener('click',()=>{
@@ -1207,17 +1292,135 @@ function applyCoverDetails(data) {
   for(const [id,detail] of Object.entries(data.covers || {}))setCoverDetail(id,detail);
   for(const id of covers.keys())if(!Object.hasOwn(data.covers || {},id))covers.delete(id);
 }
+const ordinaryMonitorFields={name:'name',keyword_expression:'expression',from_month:'from',to_month:'to',log_level:'log',pubmed_query_mode:'pubmedMode',crossref_mailto:'crossrefMailto',provider_aliases:'aliases',provider_order:'providerOrder',display_name:'displayName',transition_delay_seconds:'delay',auto_import_after_preparation:'autoImport',institution_name:'institutionName',institution_idp_entity_id:'idp',institution_use_shibboleth:'useShibboleth'};
+function ordinaryValues(source=draft) {
+  const values=Object.fromEntries(Object.entries(ordinaryMonitorFields).map(([field,key])=>[field,copy(source.monitor[key])]));
+  values.groups=source.list.groups.map(group=>group.name);values.custom_labels=source.list.labels.map(label=>label.name);
+  values.access_services=source.list.services.map(service=>({id:service.id,name:service.name,access_url:service.url,access_method:service.method}));
+  values.journals=source.list.journals.map(journal=>({name:journal.name,issn:journal.issn || '',eissn:journal.eissn || '',group:source.list.groups.find(group=>group.id===journal.groupId)?.name || '',labels:journal.labels.join('; '),access_service_id:journal.serviceId || ''}));
+  return values;
+}
+function ordinaryData(data) {
+  return {base:Object.fromEntries(['monitor_revision_exists','monitor_revision_digest','journal_revision_exists','journal_revision_digest'].map(key=>[key,data.values[key]])),values:ordinaryValues(project(data))};
+}
+function applyOrdinaryValues(values) {
+  for(const [field,key] of Object.entries(ordinaryMonitorFields))draft.monitor[key]=copy(values[field]);
+  const projected=project({...serverState,values:{...serverState.values,...values}});
+  const listChanged=!same(draft.list,projected.list);
+  if(listChanged)draft.list=projected.list;
+  for(const input of document.querySelectorAll('[data-monitor]')){
+    if(document.activeElement===input || !Object.values(ordinaryMonitorFields).includes(input.dataset.monitor))continue;
+    const value=draft.monitor[input.dataset.monitor];if(input.type==='checkbox')input.checked=value;else if(input.value!==String(value??''))input.value=value??'';
+  }
+  if(listChanged){reconcileSelections();renderJournalsPage();}
+}
+function initializeAutosave(data,{restore=false}={}) {
+  if(!autosave) {
+    let storage;try{storage=localStorage;}catch{}
+    autosave=createAutosave({storage,key:'allfold.configuration-draft:'+data.config_path,
+      write:async patch=>{
+        const response=await fetch('/api/ui-next/settings/autosave',{method:'POST',cache:'no-store',headers:{Accept:'application/json','Content-Type':'application/json'},body:JSON.stringify({...patch,csrf_token:uiNext.csrf_token})});
+        const result=await response.json();if(!response.ok)throw Error(result.message || 'Autosave failed');
+        if(!result.saved){message(result.message || result.outcome,'error');if(result.outcome==='INVALID_DRAFT')showIssues(result);return result;}
+        return {...result,...ordinaryData(result),response:result};
+      },
+      onSaved:(result,values)=>{
+        const data=result.response;serverState=data;saved=project(data);draft.revisions=copy(saved.revisions);
+        applyOrdinaryValues(values);reconcileRequired=false;applyCoverDetails(data);updateDirty();renderRun();
+        window.dispatchEvent(new Event('settings-saved'));
+      },
+      onRestore:values=>{applyOrdinaryValues(values);},
+      onState:state=>{autosaveStatus=state;updateDirty();updateRunButtons();},
+    });
+    window.allfoldAutosave={flush:async()=>{
+      if(loading || operationPending || explicitDirty())return false;
+      return await autosave.flush();
+    },get status(){return autosave.status;},get dirty(){return autosave.dirty || explicitDirty();},get busy(){return autosave.busy || operationPending;}};
+  }
+  autosave.initialize(ordinaryData(data),{restore});
+}
+async function applyExplicit(source,approval={}, {skipFlush=false}={}) {
+  if(operationPending || (!skipFlush && !await autosave?.flush()))return false;
+  const retained=copy(draft.monitor),previous=copy(saved.monitor);
+  source.revisions=copy(draft.revisions);
+  const data=await formRequest('/settings/save',approval, {source});
+  if(data.deletion_plan){
+    const lines=data.deletion_plan.services.map(service=>'Service: '+service.name);
+    for(const [id,members] of data.deletion_plan.service_members)for(const journal of members)lines.push(`${journal.name} → Unassigned (${id})`);
+    showDialog('Confirm saved Service removal',`<p>影响由当前磁盘版本计算；Workspace 和 Zotero 数据保留。</p>${memberList(lines)}`,[cancel,{label:'Confirm removal',primary:true,run:()=>applyExplicit(source,{confirm_settings_deletions:'yes',settings_deletion_proof:data.deletion_proof},{skipFlush:true})}]);return false;
+  }
+  if(!data.saved){showIssues(data);if(['PARTIAL_SAVE','REVISION_CONFLICT'].includes(data.save?.outcome))reconcileRequired=true;return false;}
+  serverState=data;saved=project(data);draft=copy(saved);
+  for(const key of ['workspace','openalexKey','openalexKeyAction','pubmedKey','pubmedKeyAction'])
+    if(!same(retained[key],source.monitor[key]) || same(source.monitor[key],previous[key]))draft.monitor[key]=retained[key];
+  initializeAutosave(data);syncMonitor();renderJournalsPage();updateDirty();showIssues(data);await refreshRun();await refreshSavedWorkspace();return true;
+}
+async function saveProviderKey(provider) {
+  if(!await autosave?.flush())return false;
+  const source=copy(saved);source.monitor[provider+'KeyAction']=draft.monitor[provider+'KeyAction'];source.monitor[provider+'Key']=draft.monitor[provider+'Key'];
+  return applyExplicit(source);
+}
+for(const provider of ['openalex','pubmed']) {
+  const button=document.createElement('button');button.type='button';button.className='s-button';button.textContent='Review API Key change';button.dataset.secretProvider=provider;
+  $(`s-${provider}-key-status`).parentElement.append(button);
+  button.addEventListener('click',()=>{
+    const action=draft.monitor[provider+'KeyAction'];if(action==='keep'){message('API Key 没有待提交的修改。');return;}
+    confirm(action==='clear'?'Clear API Key':'Replace API Key',`${providerName(provider)}：${action==='clear'?'删除本地 API Key。':'替换本地 API Key。'}凭据单独提交，不进入普通配置恢复存储。`,()=>saveProviderKey(provider));
+  });
+}
+$('s-workspace-apply').addEventListener('click',()=>{
+  const next=draft.monitor.workspace;
+  confirm('Change Output Workspace',`当前：${saved.monitor.workspace}。更改为：${next}。后续任务将读取新目录；原 Workspace 文件保留。`,async()=>{
+    if(!await autosave?.flush())return false;
+    const source=copy(saved);source.monitor.workspace=next;return applyExplicit(source);
+  });
+});
+const casSaveButton=document.createElement('button');casSaveButton.id='s-cas-save';casSaveButton.className='s-button';casSaveButton.textContent='Review credential change';$('s-institution-auth').append(casSaveButton);
+const casRefresh=document.createElement('button');casRefresh.className='s-button';casRefresh.textContent='Re-read credential status';$('s-institution-auth').append(casRefresh);
+casRefresh.addEventListener('click',async()=>{if(casAPI && !operationPending)await loadCASStatus({resetDraft:false});});
+casSaveButton.addEventListener('click',()=>{
+  const action=casPasswordAction();
+  if(!casDirty()){message('机构凭据没有待提交的修改。');return;}
+  if(casSaved.revision===null){casError='安全存储版本无法读取，草稿保留；请先重新读取状态。';renderCAS();return;}
+  confirm(action==='clear'?'Clear CARSI credentials':'Replace CARSI credentials',action==='clear'?'清除 Electron 安全存储中的机构用户名与密码。':'仅替换 Electron 安全存储中的机构凭据。当前页面不会显示已保存密码。',async()=>{
+    if(!await autosave?.flush())return false;
+    if(action!=='clear' && (!casDraft.username.trim() || (!casSaved.configured && action!=='replace'))){casError=casErrorText('cas_credentials_required');renderCAS();return false;}
+    setOperationPending(true);
+    try {
+      const response=await fetch('/api/ui-next/settings/credentials',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({csrf_token:uiNext.csrf_token,operation:action==='clear'?'clear':'save',username:casDraft.username.trim(),password:action==='replace'?casDraft.password:'',expected_revision:casSaved.revision})});
+      const result=await response.json();
+      if(!response.ok || !result.ok){casError=casErrorText(result.error);renderCAS();message(result.message || casError,'error');return false;}
+      casReadVersion++;casSaved={configured:result.configured,username:result.username,revision:result.revision};casDraft={username:result.username,password:result.configured?keyMask:''};casError='';renderCAS();updateDirty();return true;
+    }catch{casError='凭据提交结果无法确认；草稿保留，请重新读取安全存储状态后核对。';renderCAS();return false;}
+    finally{setOperationPending(false);}
+  });
+});
+$('s-autosave-retry').addEventListener('click',()=>void autosave?.retry());
+$('s-autosave-reconcile').addEventListener('click',async()=>{
+  if(autosave?.busy)return;
+  try {
+    const actual=await uiNext.request('/api/ui-next/settings');
+    const lines=Object.entries(ordinaryValues()).filter(([field,value])=>!same(value,ordinaryData(actual).values[field])).map(([field])=>field);
+    showDialog('Review saved configuration',`<p>磁盘已重新读取。保留草稿与磁盘不同的字段：</p>${memberList(lines)}<p>重新应用会以当前磁盘版本再次验证；Reload 将丢弃草稿。</p>`,[cancel,{label:'Reload / discard draft',run:reloadSettings},{label:'Reapply retained draft',primary:true,run:async()=>{
+      serverState=actual;saved=project(actual);draft.revisions=copy(saved.revisions);reconcileRequired=false;autosave.rebase(ordinaryData(actual));return await autosave.flush();
+    }}]);
+  }catch(error){message(error.message,'error');}
+});
+for(const input of document.querySelectorAll('[data-monitor]'))if(!['workspace','openalexKey','pubmedKey'].includes(input.dataset.monitor))input.addEventListener('blur',()=>{if(!institutionInputInvalid)void autosave?.flush();});
+window.addEventListener('online',()=>{if(autosave?.status==='Failed')void autosave.retry();});
+window.addEventListener('beforeunload',event=>{if(dirty() || autosave?.busy){event.preventDefault();event.returnValue='仍有待提交的配置；普通草稿可在恢复后核对，凭据不会进入恢复存储。';}});
+
 function adoptState(data) {
   closeLabelPicker();
   const resetChanged=serverState && serverState.values.monitor_revision_digest!==data.values.monitor_revision_digest;
-  clearAssignmentUndo();serverState=data;uiNext.csrf_token=data.csrf_token;saved=project(data);draft=copy(saved);revision++;
-  loading=false;reconcileRequired=false;applyCoverDetails(data);reconcileSelections();syncMonitor();renderJournalsPage();updateDirty();
+  const firstLoad=!serverState;clearAssignmentUndo();serverState=data;uiNext.csrf_token=data.csrf_token;saved=project(data);draft=copy(saved);revision++;
+  loading=false;reconcileRequired=false;initializeAutosave(data,{restore:firstLoad});applyCoverDetails(data);reconcileSelections();syncMonitor();renderJournalsPage();updateDirty();
   if(resetChanged){clearReset();if($('s-reset-section').open)void refreshResetPreview();}
 }
-function submission() {
+function submission(source=draft) {
   if(institutionInputInvalid)throw new Error('请从候选列表选择机构，或清空选择。');
   syncKey('pubmed');syncKey('openalex');
-  const form=new FormData(),m=draft.monitor;
+  const form=new FormData(),m=source.monitor;
   for(const [field,key] of Object.entries({name:'name',keyword_expression:'expression',crossref_mailto:'crossrefMailto',openalex_key_action:'openalexKeyAction',pubmed_query_mode:'pubmedMode',pubmed_key_action:'pubmedKeyAction',from_month:'from',to_month:'to',
     output_dir:'workspace',log_level:'log',transition_delay_seconds:'delay',display_name:'displayName',
     institution_name:'institutionName',institution_idp_entity_id:'idp'}))form.set(field,String(m[key]??''));
@@ -1225,20 +1428,20 @@ function submission() {
   for(const [id,alias] of Object.entries(m.aliases))form.set('provider_alias_'+id,alias);
   form.set('auto_import_after_preparation',m.autoImport?'1':'');
   form.set('institution_use_shibboleth',m.useShibboleth?'1':'');
-  for(const [key,value] of Object.entries(draft.revisions))form.set(key,value);
-  for(const g of list().groups)form.append('settings_group',g.name);
-  for(const label of list().labels)form.append('settings_custom_label',label.name);
-  const journals=list().journals;
+  for(const [key,value] of Object.entries(source.revisions))form.set(key,value);
+  for(const g of source.list.groups)form.append('settings_group',g.name);
+  for(const label of source.list.labels)form.append('settings_custom_label',label.name);
+  const journals=source.list.journals;
   journals.forEach((j,i)=>{for(const [key,value] of Object.entries({journal_name:j.name,journal_issn:j.issn || '',journal_eissn:j.eissn || '',
-    journal_group:group(j.groupId)?.name || '',journal_access_service_id:j.serviceId || '',journal_labels:j.labels.join('; '),journal_order:String(i)}))form.append(key,value);});
-  for(const s of list().services)for(const [key,value] of Object.entries({service_id:s.id,service_name:s.name,service_access_url:s.url,service_access_method:s.method}))form.append(key,value);
+    journal_group:source.list.groups.find(group=>group.id===j.groupId)?.name || '',journal_access_service_id:j.serviceId || '',journal_labels:j.labels.join('; '),journal_order:String(i)}))form.append(key,value);});
+  for(const s of source.list.services)for(const [key,value] of Object.entries({service_id:s.id,service_name:s.name,service_access_url:s.url,service_access_method:s.method}))form.append(key,value);
   return form;
 }
 async function formRequest(path,extra={},options={}) {
   if(operationPending)throw new Error('当前操作尚未结束。');
   closeLabelPicker();
-  const form=options.draft===false?new FormData():submission();
-  if(path==='/settings/save')for(const provider of ['pubmed','openalex'])if(draft.monitor[provider+'KeyAction']==='replace')form.set(provider+'_api_key',draft.monitor[provider+'Key']);
+  const form=options.draft===false?new FormData():submission(options.source || draft);
+  if(path==='/settings/save')for(const provider of ['pubmed','openalex'])if((options.source || draft).monitor[provider+'KeyAction']==='replace')form.set(provider+'_api_key',(options.source || draft).monitor[provider+'Key']);
   form.set('csrf_token',uiNext.csrf_token || '');for(const [key,value] of Object.entries(extra))form.set(key,value);
   setOperationPending(true);
   try {
@@ -1264,16 +1467,17 @@ function showIssues(data) {
     log_level:'log',transition_delay_seconds:'delay',display_name:'displayName',
     'institution.name':'institutionName','institution.idp_entity_id':'institutionName',
     'institution.use_shibboleth':'useShibboleth','institution':'institutionName',kept_workflow:'delay'};
-  root.querySelectorAll('.s-validation-error').forEach(node=>node.remove());
-  root.querySelectorAll('[data-monitor]').forEach(input=>input.setAttribute('aria-invalid','false'));
+  document.querySelectorAll('.s-validation-error').forEach(node=>node.remove());
+  document.querySelectorAll('[data-monitor]').forEach(input=>input.setAttribute('aria-invalid','false'));
   let first;
-  for(const issue of all){const key=fields[issue.field];if(!key)continue;const input=root.querySelector(`[data-monitor="${key}"]`);input.setAttribute('aria-invalid','true');
+  for(const issue of all){const key=fields[issue.field];if(!key)continue;const input=document.querySelector(`[data-monitor="${key}"]`);input.setAttribute('aria-invalid','true');
     const hint=document.createElement('span');hint.className='s-field-error s-validation-error';hint.textContent=issue.message;input.parentElement.append(hint);first ||= input;}
   if(all.length){if(preview)closePreview();if(dialog.open)dialog.close();}
   if(!first && all.some(issue=>issue.field?.startsWith('provider_aliases'))){selectedProvider='openalex';openSettings('run',true);renderRun();$('s-provider-alias').focus();}
   if(!first && all.some(issue=>/journal|access_service|groups|custom_labels/.test(issue.field || '')))openSettings('journals-page',true);
   if(first){const key=first.dataset.monitor;
-    if(['expression','from','to','openalexKey','pubmedKey','crossrefMailto','pubmedMode'].includes(key)){selectedProvider=key==='openalexKey'?'openalex':key==='crossrefMailto'?'crossref':['pubmedKey','pubmedMode'].includes(key)?'pubmed':'overview';openSettings('run',true);renderRun();}
+    if(['name','expression','from','to','openalexKey','pubmedKey','crossrefMailto','pubmedMode'].includes(key)){selectedProvider=key==='openalexKey'?'openalex':key==='crossrefMailto'?'crossref':['pubmedKey','pubmedMode'].includes(key)?'pubmed':'overview';openSettings('run',true);renderRun();}
+    else if(['displayName','delay','autoImport','institutionName','idp','useShibboleth'].includes(key)){window.workspaceNavigation.go('kept',{instant:true});window.dispatchEvent(new CustomEvent('kept-open-sidebar',{detail:{view:['displayName','delay','autoImport'].includes(key)?'workflow':'access'}}));}
     else openSettings('settings',true);first.focus();}
 }
 async function refreshSavedWorkspace() {
@@ -1285,55 +1489,11 @@ async function acceptOperation(data) {
   if(data.save?.outcome==='PARTIAL_SAVE')reconcileRequired=true;
   showIssues(data);updateDirty();return false;
 }
-async function saveDraft(after=()=>{},approval={}) {
-  if(operationPending || loading)return false;
-  if(institutionInputInvalid){openSettings('settings',true);$('s-institution-query').reportValidity();$('s-institution-query').focus();return false;}
-  if(casDirty() && casPasswordAction()!=='clear'
-    && (!casDraft.username.trim() || (!casSaved.configured && casPasswordAction()!=='replace'))) {
-    casError=casErrorText('cas_credentials_required');renderCAS();openSettings('settings',true);
-    $('s-cas-username').focus();return false;
-  }
-  const data=configurationDirty()?await formRequest('/settings/save',approval):null;
-  if(data?.deletion_plan){
-    showIssues(data);
-    const plan=data.deletion_plan,lines=plan.services.map(s=>'Service: '+s.name);
-    for(const [id,members] of plan.service_members)for(const p of members)lines.push(`${p.name} → Unassigned (${id})`);
-    showDialog('Confirm Settings deletions',`<p>以下影响由当前已保存配置计算。确认绑定本次草稿和文件版本。</p>${memberList(lines)}`,[cancel,{label:'Confirm Save',primary:true,run:()=>saveDraft(after,{confirm_settings_deletions:'yes',settings_deletion_proof:data.deletion_proof})}]);return false;
-  }
-  if(data && !data.saved)return acceptOperation(data);
-  if(data){if(preview)closePreview();adoptState(data);}
-  setOperationPending(true);
-  let casFailed=false,casUpdated=false;
-  try {
-    if(casDirty()) {
-      let result;
-      try {
-        const action=casPasswordAction();
-        result=action==='clear'?await casAPI.clearCASCredentials():await casAPI.saveCASCredentials({
-          username:casDraft.username.trim(),password:action==='replace'?casDraft.password:'',
-        });
-      }
-      catch {result={ok:false};}
-      if(result?.ok) {
-        casUpdated=true;
-        casSaved={configured:result.configured,username:result.username};
-        casDraft={username:result.username,password:result.configured?keyMask:''};casError='';
-      } else {casFailed=true;casError=casErrorText(result?.error);}
-      renderCAS();
-    }
-    if(data) {
-      showIssues(casFailed?{...data,message:'普通配置已保存，机构登录凭据未保存。'}:data);
-      await refreshRun();await refreshSavedWorkspace();
-    }
-    if(casFailed) {
-      message((data?'普通配置已保存，机构登录凭据未保存。':'机构登录凭据未保存。')+' 草稿保留，可再次 SAVE 重试。 '+casError,'error');
-      return false;
-    }
-    if(!data)message(casUpdated?'设置已保存。':'没有未保存的设置。');
-  } finally {setOperationPending(false);}
+async function saveDraft(after=()=>{}) {
+  if(operationPending || loading || explicitDirty()) {message('凭据和 Workspace 修改须先独立确认；普通配置草稿保留。','error');return false;}
+  if(!await autosave?.flush())return false;
   await after();return true;
 }
-$('s-save').addEventListener('click',()=>void saveDraft().catch(error=>message(error.message,'error')));
 
 async function refreshDiagnostic(kind) {
   const button=root.querySelector(`[data-diagnostic="${kind}"]`);button.disabled=true;

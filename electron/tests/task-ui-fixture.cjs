@@ -10,6 +10,8 @@ class Target {
 }
 class Element extends Target {
   constructor(tag='div'){super();this.tagName=tag.toUpperCase();this.children=[];this.dataset={};this.hidden=false;this.inert=false;this.disabled=false;this.open=false;this.textContent='';this.attributes={};this.style={setProperty(){},removeProperty(){}};this.classList={add(){},remove(){},toggle(){}};this.isConnected=true;}
+  get textContent(){return this._text+this.children.map(node=>node.textContent).join('');}
+  set textContent(value){this._text=String(value);for(const child of this.children)child.parentElement=null;this.children=[];}
   append(...nodes){for(const node of nodes){if(node.parentElement)node.parentElement.children=node.parentElement.children.filter(child=>child!==node);node.parentElement=this;this.children.push(node);}}
   prepend(...nodes){this.append(...nodes);this.children=[...nodes,...this.children.filter(node=>!nodes.includes(node))];}
   replaceChildren(...nodes){for(const node of this.children)node.parentElement=null;this.children=[];this.append(...nodes);}
@@ -31,7 +33,7 @@ async function taskUI(script,{inline=true,request,ready=false,reduced=false,arch
   get('allfold-pane').append(get('selected-view'));get('selected-view').append(get('kept-view'));
   get('kept-view').hidden=get('kept-view').inert=layout!=='array';get('kept-view').append(get('array-import-profile'));
   get('selected-view').dataset.workspaceLayout=layout;get('workspace-layout').parentElement=get('array-layout-controls');
-  get('s-run').append(Object.assign(new Element(),{className:'s-run-body'}));get('run-view').querySelector=selector=>selector==='.run-status-area'?get('run-status-area'):new Element();get('run-stage-layer').append(get('run-title'));get('run-stage-layer').append(get('run-status-area'));get('run-view').append(get('run-stage-layer'));get('run-status-area').append(get('run-wos-cancel'));
+  get('s-run').append(Object.assign(new Element(),{className:'s-run-body'}));get('run-view').querySelector=selector=>selector==='.run-status-area'?get('run-status-area'):new Element();get('run-stage-layer').append(get('run-title'));get('run-stage-layer').append(get('run-status-area'));get('run-view').append(get('run-stage-layer'));get('run-status-area').append(get('run-elapsed'),get('run-stage'),get('run-description'),get('run-wos-cancel'));
   get('kept-flow').append(get('kept-flow-actions'));get('kept-flow-actions').append(get('kept-flow-gate'),get('kept-leave'),get('kept-skip-slot'));get('kept-flow-gate').append(get('kept-gate-message'),get('kept-manual-services'),get('kept-continue'));
   const window=new Target(),document=new Target(),timers=new Map(),calls=[],presentations=[];
   document.getElementById=get;document.createElement=tag=>new Element(tag);document.querySelector=()=>null;document.querySelectorAll=()=>[];document.baseURI='http://allfold.test/static/ui_next/';document.activeElement=null;document.hidden=false;
@@ -39,10 +41,10 @@ async function taskUI(script,{inline=true,request,ready=false,reduced=false,arch
   const entries=[{paper:{id:'paper-1',title:'A synthetic paper'},journal:{key:'journal-1',name:'Test Journal'}}];
   const data={journals:[entries[0].journal],titles:{'paper-1':'A synthetic paper'}};
   window.allfoldUIPreferences={fullscreenDisabled:()=>inline,archiveDisabled:()=>archiveDisabled};window.uiWorkspace={ready:()=>ready,refresh:async()=>{refreshes++;}};
-  window.uiRunPage={providerName:id=>id,open:()=>{opens++;currentPage='run';},report:(...args)=>calls.push(['report',...args]),canRun:()=>true,updateButtons(){},refresh:async()=>{refreshes++;}};
+  window.uiRunPage={providerName:id=>id,open:()=>{opens++;currentPage='run';return true;},report:(...args)=>calls.push(['report',...args]),canRun:()=>true,updateButtons(){},refresh:async()=>{refreshes++;}};
   window.inboxRun={available:()=>true,selection:()=>({}),prepare:async()=>{prepares++;}};
   window.uiNextInitialLink=initialLink;window.inboxKept={available:()=>bridgeReady,busy:()=>false,papers:()=>entries,candidates:()=>entries,data:()=>data,openReader:()=>true,closeReader:()=>true,openArchivePaper:id=>window.workspaceArray?.openPaper(id)||false,setLayout:value=>{get('selected-view').dataset.workspaceLayout=value;get('kept-view').hidden=get('kept-view').inert=value!=='array';return true;},suspend(){},exported(){}};
-  window.workspaceNavigation={current:()=>currentPage,go:page=>{currentPage=page;return true;},refresh(){}};
+  window.workspaceNavigation={current:()=>currentPage,go:page=>{currentPage=page;return true;},register(){},refresh(){}};
   window.allfoldWorkbench={showTaskPage:async identity=>{presentations.push(identity);return true;}};
   window.allfoldLayoutModel={minOperationalSize:{array:360}};
   window.allfoldLayout={create:()=>({sync(){},closeFlyout(){}})};

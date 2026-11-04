@@ -46,6 +46,7 @@ test('cancel or quit during an escaped native save still waits for its actual re
   const pending = f.run();await saving.promise;
   let quitHandler, quitCalls = 0;
   Object.assign(f.context, {readyToExit: false, bridgeReady: false, python: null,
+    exitApproved:false,exitCheck:null,window:null,
     app: {on(_name, handler) {quitHandler = handler;}, quit() {quitCalls++;}}});
   const quitSource = source.slice(source.indexOf("app.on('before-quit',event=>{"), source.indexOf("app.on('window-all-closed'"));
   vm.runInContext(quitSource, f.context);
@@ -129,6 +130,31 @@ test('native diagnostics reset bypasses browser task and document authority and 
   assert.equal(f.messages[0].data.token,'preview');
   f.context.activeRequest=Promise.resolve();
   await assert.rejects(f.context.execute({id:'reset_busy',action:'diagnostics_reset',data:{operation:'preview'}}),/active/);
+});
+test('explicit credential writes settle through bridge ownership without browser dispatch or diagnostic payloads',{timeout:5000},async()=>{
+  const f=fixture(),started=deferred(),settled=deferred();
+  f.context.saveCASCredentials=async value=>{assert.equal(value.expected_revision,'missing');started.resolve();return settled.promise;};
+  f.context.casErrorCode=error=>error.code;
+  f.context.browser.beginOperation=()=>{throw Error('credentials must not enter Browser');};
+  const pending=f.context.execute({id:'credentials',action:'cas_credentials',data:{operation:'save',expected_revision:'missing'}});
+  await started.promise;
+  assert.ok(f.context.activeRequest);
+  await assert.rejects(f.run(),/Concurrent/);
+  settled.resolve({ok:true,revision:'new'});await pending;
+  assert.equal(f.context.activeRequest,null);assert.equal(f.calls.end,0);assert.equal(f.logs.length,0);
+  assert.equal(f.messages[0].data.revision,'new');
+});
+test('quit confirmation occurs before aborting an active task and cancelling leaves the task running',async()=>{
+  const f=fixture(),confirmation=deferred();let quitHandler,quitCalls=0;
+  const controller=new AbortController();
+  Object.assign(f.context,{activeOperation:{controller},readyToExit:false,exitApproved:false,exitCheck:null,
+    window:{isDestroyed:()=>false},dialog:{},confirmConfigurationExit:()=>confirmation.promise,
+    app:{on(_event,handler){quitHandler=handler;},quit(){quitCalls++;}}});
+  vm.runInContext(source.slice(source.indexOf("app.on('before-quit',event=>{"),source.indexOf("app.on('window-all-closed'")),f.context);
+  let prevented=false;quitHandler({preventDefault(){prevented=true;}});
+  assert.equal(prevented,true);assert.equal(controller.signal.aborted,false);
+  confirmation.resolve(false);await Promise.resolve();
+  assert.equal(controller.signal.aborted,false);assert.equal(quitCalls,0);
 });
 test('native final diagnostic keeps stable attachment code separate from its network error',async()=>{
   const f=fixture();f.context.saveOnce=async()=>({parent:{outcome:'confirmed'},pdf:{outcome:'unverified'},diagnostic:{stage:'attachment',code:'http_error',net_error:'ERR_CONNECTION_RESET',status:403}});

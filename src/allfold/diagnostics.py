@@ -62,7 +62,7 @@ OUTCOMES = frozenset({'completed', 'partial', 'failed', 'cancelled', 'interrupte
 STATISTICS = frozenset({'retrieved', 'created', 'updated', 'total', 'processed', 'failed', 'skipped',
     'confirmed', 'exported', 'no_effect', 'uncertain', 'cancelled', 'completed', 'opened',
     'needs_attention', 'eligible', 'matched', 'downloaded', 'enriched', 'unchanged', 'candidates',
-    'papers', 'services', 'warnings', 'errors', 'excluded', 'duplicates', 'materialized'})
+    'papers', 'services', 'warnings', 'errors', 'excluded', 'duplicates', 'materialized', 'pdf_unverified'})
 REASONS = frozenset({'runtime_interrupted', 'connection_lost', 'cancelled', 'partial', 'failed',
     'needs_attention', 'result_unconfirmed', 'pdf_unverified', 'no_effect', 'configuration_changed',
     'workspace_changed', 'service_unassigned', 'no_candidates', 'no_kept_papers', 'blocked',
@@ -98,6 +98,14 @@ def _details(value):
     if not isinstance(value, dict):
         return {}
     result = {}
+    if _enum(value.get('batch_scope'), {'all', 'service'}):
+        result['batch_scope'] = value['batch_scope']
+    service = value.get('service_id')
+    if isinstance(service, str) and re.fullmatch(r'svc_[a-f0-9]{32}', service):
+        result['service_id'] = service
+    for key in ('config_revision', 'user_state_revision'):
+        if isinstance(value.get(key), str) and re.fullmatch(r'[a-f0-9]{64}', value[key]):
+            result[key] = value[key]
     for key in ('submitted', 'result_known', 'pdf_verified', 'requires_attention', 'blocked', 'sync_warning'):
         if type(value.get(key)) is bool:
             result[key] = value[key]
@@ -117,6 +125,24 @@ def _details(value):
         fields = value.get(key)
         if isinstance(fields, list):
             result[key] = sorted({field for field in fields if _enum(field, {'abstract', 'authors', 'publication_date'})})
+    service_statistics = value.get('service_statistics')
+    if isinstance(service_statistics, list):
+        summaries = []
+        for item in service_statistics[:100]:
+            if not isinstance(item, dict):
+                continue
+            service = item.get('service_id')
+            if isinstance(service, str) and re.fullmatch(r'svc_[a-f0-9]{32}', service):
+                safe = {'service_id': service}
+            elif _enum(item.get('service_assignment'), {'unassigned', 'ambiguous'}):
+                safe = {'service_assignment': item['service_assignment']}
+            else:
+                continue
+            summaries.append({**safe, **_counts(item)})
+        result['service_statistics'] = summaries
+        omitted = value.get('omitted_services', 0)
+        omitted = omitted if type(omitted) is int and 0 <= omitted <= 1_000_000_000 else 0
+        result['omitted_services'] = min(1_000_000_000, omitted + max(0, len(service_statistics) - 100))
     items = value.get('results')
     if isinstance(items, list):
         results = []
@@ -127,6 +153,8 @@ def _details(value):
             service = item.get('service_id')
             if isinstance(service, str) and re.fullmatch(r'svc_[a-f0-9]{32}', service):
                 safe['service_id'] = service
+            if _enum(item.get('service_assignment'), {'assigned', 'unassigned', 'ambiguous'}):
+                safe['service_assignment'] = item['service_assignment']
             paper = item.get('paper_id')
             if isinstance(paper, str) and re.fullmatch(r'[a-fA-F0-9]{8}(?:-[a-fA-F0-9]{4}){3}-[a-fA-F0-9]{12}', paper):
                 safe['paper_id'] = paper.lower()
@@ -410,7 +438,7 @@ class DiagnosticStore:
                 if record['outcome'] == 'running' and record['runtime_id'] != self.runtime_id:
                     record['outcome'] = 'uncertain' if record['kind'] in {'import', 'kept'} else 'interrupted'
                     record['recovered_at'] = _now()
-                    record['details'] = {'reason': 'runtime_interrupted', 'result_known': False}
+                    record['details'] = {**record['details'], 'reason': 'runtime_interrupted', 'result_known': False}
                     self._integrity['history_recovered'] = True
                 self._records.append(record)
             self._save()
@@ -434,7 +462,7 @@ class DiagnosticStore:
             self._failure()
             return False
 
-    def begin(self, kind, task_id, *, workflow_id=None, parent_task_id=None, provider=None):
+    def begin(self, kind, task_id, *, workflow_id=None, parent_task_id=None, provider=None, details=None):
         with self._lock:
             if not _enum(kind, KINDS) or not _identifier(task_id) or not _identifier(workflow_id or task_id):
                 return False
@@ -442,7 +470,7 @@ class DiagnosticStore:
                 return False
             record = dict(kind=kind, task_id=task_id, workflow_id=workflow_id or task_id,
                 runtime_id=self.runtime_id, started_at=_now(), outcome='running',
-                workspace_generation=self._generation, statistics={}, details={})
+                workspace_generation=self._generation, statistics={}, details=_details(details))
             if _identifier(parent_task_id):
                 record['parent_task_id'] = parent_task_id
             if _enum(provider, PROVIDERS):
@@ -458,7 +486,7 @@ class DiagnosticStore:
             record = next((r for r in self._records if r['task_id'] == task_id), None)
             if record is None or record['outcome'] != 'running' or not _enum(outcome, OUTCOMES):
                 return False
-            record.update(outcome=outcome, ended_at=_now(), statistics=_counts(statistics), details=_details(details))
+            record.update(outcome=outcome, ended_at=_now(), statistics=_counts(statistics), details={**record['details'], **_details(details)})
             normalized = normalize_browser_diagnostic(diagnostic)
             if normalized:
                 record['diagnostic'] = normalized

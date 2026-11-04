@@ -221,13 +221,16 @@ def install_ui_next(app: FastAPI, config_path: Path, csrf_token: str, *, read_ta
     def run_start(body: _RunStart):
         if not valid(body):
             return response({"message": "Invalid or missing CSRF token; refresh the page."}, 403)
-        availability = run_data()["providers"][body.provider.value]
-        if not availability["enabled"]:
-            return response({"message": availability["message"]}, 409)
-        start = app.state.run_coordinator.start(body.provider)
-        if start.outcome is StartOutcome.ALREADY_RUNNING and app.state.wos_coordinator.running:
-            return response({"message": "Run WoS is already active"}, 409)
-        return response(run_data(start), 200 if start.outcome is StartOutcome.STARTED else 409)
+        with app.state.settings_write_lock:
+            if app.state.browser_task_lock.owner and app.state.browser_task_lock.owner.kind == "credentials":
+                return response({"message": "Credential update is in progress"}, 409)
+            availability = run_data()["providers"][body.provider.value]
+            if not availability["enabled"]:
+                return response({"message": availability["message"]}, 409)
+            start = app.state.run_coordinator.start(body.provider)
+            if start.outcome is StartOutcome.ALREADY_RUNNING and app.state.wos_coordinator.running:
+                return response({"message": "Run WoS is already active"}, 409)
+            return response(run_data(start), 200 if start.outcome is StartOutcome.STARTED else 409)
 
     @app.post("/api/ui-next/run-expression")
     def run_expression(body: _RunExpression):
@@ -249,7 +252,8 @@ def install_ui_next(app: FastAPI, config_path: Path, csrf_token: str, *, read_ta
         if not valid(body):
             return response({"message": "Invalid CSRF token"}, 403)
         try:
-            return response(wos_data(app.state.wos_coordinator.start()))
+            with app.state.settings_write_lock:
+                return response(wos_data(app.state.wos_coordinator.start()))
         except (ValueError, OSError, ContentChangedError) as error:
             return response({"message": str(error)}, 409)
 

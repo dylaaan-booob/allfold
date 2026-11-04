@@ -6,12 +6,14 @@ class BrowserPresentation {
     this.sequence=-1;this.selected=null;this.mounted=null;this.focusPending=false;
     this.resize=()=>{this.detach();this.bounds=null;this.requestLayout();};
     this.closed=()=>{this.detach();this.host=null;};
-    this.navigation=(_event,_url,_same,main)=>{if(main)this.reset();};
-    this.rendererGone=()=>this.reset();
+    this.navigation=event=>{if(event.isMainFrame && !event.isSameDocument)this.reset();};
+    this.documentReset=()=>this.reset();
     hostWindow?.on('resize',this.resize);
     hostWindow?.on('closed',this.closed);
     hostWindow?.webContents.on('did-start-navigation',this.navigation);
-    hostWindow?.webContents.on('render-process-gone',this.rendererGone);
+    // The outgoing document can still publish layout while its replacement loads.
+    hostWindow?.webContents.on('did-navigate',this.documentReset);
+    hostWindow?.webContents.on('render-process-gone',this.documentReset);
   }
   send(channel,value) {
     if(this.host && !this.host.isDestroyed())this.host.webContents.send(channel,value);
@@ -60,7 +62,8 @@ class BrowserPresentation {
   dispose(){
     this.detach();this.host?.removeListener('resize',this.resize);this.host?.removeListener('closed',this.closed);
     this.host?.webContents.removeListener('did-start-navigation',this.navigation);
-    this.host?.webContents.removeListener('render-process-gone',this.rendererGone);
+    this.host?.webContents.removeListener('did-navigate',this.documentReset);
+    this.host?.webContents.removeListener('render-process-gone',this.documentReset);
     this.host=null;this.selected=null;
   }
 }

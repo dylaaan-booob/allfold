@@ -16,7 +16,7 @@ dialog.querySelector('.run-status-area').append(taskPageButton);
 taskPageButton.addEventListener('click',async()=>{
   if(!active)return;
   try {
-    if(!await window.allfoldWorkbench?.showTaskPage({workflowId:active.taskID}))uiNext.notice('当前任务尚无可查看的页面。');
+    if(!await window.allfoldWorkbench?.showTaskPage({workflowId:active.taskID,source:'run'}))uiNext.notice('当前任务尚无可查看的页面。');
   }catch(error){uiNext.notice(error.message);}
 });
 function present(run) {
@@ -25,7 +25,7 @@ function present(run) {
     host.prepend(inline);inline.hidden=false;inline.append($('run-stage-layer'));
   }else {
     inline.hidden=true;dialog.append($('run-stage-layer'),$('run-wash'));
-    window.uiRunPage?.open();dialog.show();
+    dialog.show();
   }
 }
 function stopRunAnimation() {
@@ -99,7 +99,11 @@ async function poll(run) {
 }
 function open(data,trigger=null) {
   if(active)return;
-  const run=active={inline:window.allfoldUIPreferences?.fullscreenDisabled()===true,selection:window.inboxRun.selection(),ended:false,reduced:reduceRunMotion(),provider:data.snapshot.provider,kind:data.snapshot.provider==='wos'?'run-wos':'run',taskID:data.snapshot.task_id,trigger};
+  const useInline=window.allfoldUIPreferences?.fullscreenDisabled()===true;
+  // Startup recovery can precede the Workspace controller's readiness. The
+  // existing availability poll will restore this same task once entry succeeds.
+  if(!useInline && window.uiRunPage?.open()!==true)return;
+  const run=active={inline:useInline,selection:window.inboxRun.selection(),ended:false,reduced:reduceRunMotion(),provider:data.snapshot.provider,kind:data.snapshot.provider==='wos'?'run-wos':'run',taskID:data.snapshot.task_id,trigger};
   $('run-wash').hidden=true;$('run-stage-layer').hidden=false;
   dialog.classList.remove('returning');dialog.querySelector('.run-background').hidden=false;
   if(!run.inline)run.visual=new RunVisual(dialog,run.reduced);
@@ -112,7 +116,11 @@ async function start(provider,trigger=null) {
   if(active || starting || window.workspaceArray?.workflowBusy() || !window.uiRunPage?.canRun(provider) || !window.inboxRun?.available())return;
   starting=true;disableRunButtons(true);
   const endpoint=provider==='wos'?'run-wos':'run';
-  try {open(await uiNext.request('/api/ui-next/'+endpoint,provider==='wos'?{}:{provider}),trigger);}
+  try {
+    if(window.allfoldAutosave && !await window.allfoldAutosave.flush()){report('配置尚未落盘，请检查 Pending / Failed / Conflict 状态。');return;}
+    if(!window.uiRunPage?.canRun(provider))return;
+    open(await uiNext.request('/api/ui-next/'+endpoint,provider==='wos'?{}:{provider}),trigger);
+  }
   catch(error){report(providerLabels[provider]+' 启动失败',resultDetails(error.state?.snapshot || {}).concat(error.message));}
   finally {starting=false;if(!active){try{await window.uiRunPage.refresh();}finally{disableRunButtons(false);}}}
 }

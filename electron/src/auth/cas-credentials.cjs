@@ -2,11 +2,24 @@
 const {app,safeStorage}=require('electron');
 const fs=require('node:fs/promises');
 const path=require('node:path');
-const {randomBytes}=require('node:crypto');
+const {randomBytes,createHash}=require('node:crypto');
 
 const filename=()=>path.join(app.getPath('userData'),'xmu-cas-credentials.bin');
 const codes=new Set(['cas_encryption_unavailable','cas_store_unreadable','cas_store_write_failed',
-  'cas_store_clear_failed','cas_credentials_required','cas_invalid_credentials']);
+  'cas_store_clear_failed','cas_credentials_required','cas_invalid_credentials',
+  'cas_revision_conflict','cas_store_busy','cas_task_active']);
+let mutation=Promise.resolve();
+const revision=encrypted=>encrypted?createHash('sha256').update(encrypted).digest('hex'):'missing';
+function mutate(action) {
+  const result=mutation.then(action);mutation=result.catch(()=>{});return result;
+}
+async function encryptedStore() {
+  try {return await fs.readFile(filename());}
+  catch(error) {if(error.code==='ENOENT')return null;throw failure('cas_store_unreadable');}
+}
+function verifyRevision(expected,encrypted) {
+  if(typeof expected!=='string' || expected!==revision(encrypted))throw failure('cas_revision_conflict');
+}
 function failure(code) {return Object.assign(new Error(code),{code});}
 function casErrorCode(error) {return codes.has(error?.code)?error.code:'cas_store_unavailable';}
 async function encryptionAvailable() {
@@ -15,10 +28,8 @@ async function encryptionAvailable() {
   } catch (_) {}
   throw failure('cas_encryption_unavailable');
 }
-async function readCASCredentials() {
-  let encrypted;
-  try {encrypted=await fs.readFile(filename());}
-  catch(error) {if(error.code==='ENOENT')return null;throw failure('cas_store_unreadable');}
+async function decryptCredentials(encrypted) {
+  if(!encrypted)return null;
   await encryptionAvailable();
   try {
     const {result}=await safeStorage.decryptStringAsync(encrypted);
@@ -28,15 +39,21 @@ async function readCASCredentials() {
     return {username:credentials.username,password:credentials.password};
   } catch (_) {throw failure('cas_store_unreadable');}
 }
+async function readCASCredentials() {return decryptCredentials(await encryptedStore());}
 async function casStatus() {
-  const credentials=await readCASCredentials();
-  return {ok:true,configured:!!credentials,username:credentials?.username || ''};
+  const encrypted=await encryptedStore(),storedRevision=revision(encrypted);
+  try {
+    const credentials=await decryptCredentials(encrypted);
+    return {ok:true,configured:!!credentials,username:credentials?.username || '',revision:storedRevision};
+  }catch(error){return {ok:false,error:casErrorCode(error),configured:false,username:'',revision:storedRevision};}
 }
-async function saveCASCredentials(value) {
+function saveCASCredentials(value) {return mutate(()=>saveCredentials(value));}
+async function saveCredentials(value) {
   if(!value || typeof value.username!=='string' || !value.username.trim() || typeof value.password!=='string')
     throw failure('cas_invalid_credentials');
   const username=value.username.trim();
-  const password=value.password || (await readCASCredentials())?.password;
+  const previous=await encryptedStore();verifyRevision(value.expected_revision,previous);
+  const password=value.password || (await decryptCredentials(previous))?.password;
   if(!password)throw failure('cas_credentials_required');
   await encryptionAvailable();
   let encrypted;
@@ -48,14 +65,17 @@ async function saveCASCredentials(value) {
     const file=await fs.open(temporary,'wx',0o600);
     created=true;
     try {await file.writeFile(encrypted);} finally {await file.close();}
+    verifyRevision(value.expected_revision,await encryptedStore());
     await fs.rename(temporary,target);
-  } catch (_) {throw failure('cas_store_write_failed');}
+  } catch (error) {if(error.code==='cas_revision_conflict')throw error;throw failure('cas_store_write_failed');}
   finally {if(created)await fs.unlink(temporary).catch(()=>{});}
-  return {ok:true,configured:true,username};
+  return {ok:true,configured:true,username,revision:revision(encrypted)};
 }
-async function clearCASCredentials() {
+function clearCASCredentials(value) {return mutate(()=>clearCredentials(value));}
+async function clearCredentials(value) {
+  verifyRevision(value?.expected_revision,await encryptedStore());
   try {await fs.unlink(filename());}
   catch(error) {if(error.code!=='ENOENT')throw failure('cas_store_clear_failed');}
-  return {ok:true,configured:false,username:''};
+  return {ok:true,configured:false,username:'',revision:'missing'};
 }
 module.exports={readCASCredentials,casStatus,saveCASCredentials,clearCASCredentials,casErrorCode};
