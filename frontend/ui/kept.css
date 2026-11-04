@@ -6,7 +6,7 @@
 :root{--workspace-gutter:26px}
 #kept-view{--kept-gutter:0px;margin:0}
 #kept-workspace{flex:1;min-height:0}
-#kept-main{display:flex;flex-direction:column;gap:10px;padding:18px 22px;overflow:hidden}
+#kept-main{display:flex;flex-direction:column;gap:10px;padding:18px 22px;overflow:auto}
 .kept-queue-heading{display:flex;justify-content:space-between;align-items:center;gap:12px}
 .kept-queue-heading h1{font-size:24px;margin:0}
 #kept-scope-status{margin:0;white-space:pre-wrap;font-size:12px;line-height:1.7;overflow-wrap:anywhere}
