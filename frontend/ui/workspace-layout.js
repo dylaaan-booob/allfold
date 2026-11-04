@@ -38,11 +38,17 @@ window.allfoldLayout=(()=>{
     const flyout=root.querySelector('.navigation-flyout'),sidebar=root.querySelector('.functional-sidebar');
     const resize=root.querySelector('.sidebar-resize');
     const triggers=[...root.querySelectorAll('[data-flyout]')],tools=[...root.querySelectorAll('[data-sidebar-view]')];
-    let expanded=false,view=tools[0].dataset.sidebarView,flyoutKey=null,trigger=null,openTimer=null,closeTimer=null,drag=null,restoringFocus=false;
+    const flyoutScroll=new Map();
+    let expanded=false,view=tools[0].dataset.sidebarView,flyoutKey=null,trigger=null,openTimer=null,closeTimer=null,drag=null,restoringFocus=false,changingPreview=false;
     const visible=()=>!root.closest('[hidden]') && window.workspaceNavigation.current()===workspace;
     const cancelTimers=()=>{clearTimeout(openTimer);clearTimeout(closeTimer);};
+    function saveFlyoutScroll() {
+      const list=flyout.querySelector('[data-flyout-list]');
+      if(!flyout.hidden && flyoutKey!==null && list)flyoutScroll.set(flyoutKey,{top:list.scrollTop,left:list.scrollLeft});
+    }
     function closeFlyout({restoreFocus=true}={}) {
       cancelTimers();if(flyout.hidden)return;
+      saveFlyoutScroll();
       flyout.hidden=true;flyoutKey=null;
       for(const button of triggers)button.setAttribute('aria-expanded','false');
       if(restoreFocus && trigger?.isConnected && !trigger.disabled){restoringFocus=true;trigger.focus({preventScroll:true});restoringFocus=false;}
@@ -51,8 +57,15 @@ window.allfoldLayout=(()=>{
       cancelTimers();if(button.disabled || !visible())return;
       trigger=button;
       const next=button.dataset.flyout;
-      if(next!==flyoutKey){preview(next);flyoutKey=next;}
-      flyout.hidden=false;
+      if(next!==flyoutKey){
+        const focused=flyout.contains(document.activeElement);
+        saveFlyoutScroll();flyout.hidden=false;changingPreview=true;
+        try{preview(next);}finally{changingPreview=false;}
+        flyoutKey=next;
+        const list=flyout.querySelector('[data-flyout-list]'),position=flyoutScroll.get(next);
+        if(list){list.scrollTop=position?.top || 0;list.scrollLeft=position?.left || 0;}
+        if(focused && !flyout.contains(document.activeElement))flyout.focus({preventScroll:true});
+      }else flyout.hidden=false;
       for(const entry of triggers)entry.setAttribute('aria-expanded',String(entry===button));
     }
     function focusTool() {tools.find(button=>button.dataset.sidebarView===view)?.focus({preventScroll:true});}
@@ -89,16 +102,30 @@ window.allfoldLayout=(()=>{
       button.addEventListener('pointerleave',()=>{cancelTimers();closeTimer=setTimeout(()=>closeFlyout({restoreFocus:flyout.contains(document.activeElement)}),280);});
       button.addEventListener('focusin',()=>{if(!restoringFocus)openFlyout(button);});
       button.addEventListener('click',()=>openFlyout(button));
+      button.addEventListener('dragenter',()=>{cancelTimers();openTimer=setTimeout(()=>openFlyout(button),160);});
+      button.addEventListener('dragover',event=>{event.preventDefault();clearTimeout(closeTimer);});
+      button.addEventListener('dragleave',()=>{cancelTimers();closeTimer=setTimeout(()=>closeFlyout({restoreFocus:false}),280);});
       button.addEventListener('keydown',event=>{
         if(!['ArrowRight','ArrowDown'].includes(event.key))return;
         event.preventDefault();event.stopPropagation();openFlyout(button);
-        (flyout.querySelector('button:not(:disabled),[tabindex="0"]') || flyout).focus({preventScroll:true});
+        (flyout.querySelector('[data-flyout-list] button:not(:disabled),[data-flyout-list] [tabindex="0"]') || flyout).focus({preventScroll:true});
       });
     }
     flyout.addEventListener('pointerenter',cancelTimers);
     flyout.addEventListener('pointerleave',()=>{cancelTimers();closeTimer=setTimeout(()=>closeFlyout({restoreFocus:flyout.contains(document.activeElement)}),280);});
+    flyout.addEventListener('dragenter',cancelTimers);flyout.addEventListener('dragover',cancelTimers);
+    flyout.addEventListener('dragleave',event=>{if(!flyout.contains(event.relatedTarget)){cancelTimers();closeTimer=setTimeout(()=>closeFlyout({restoreFocus:false}),280);}});
+    for(const event of ['drop','dragend'])document.addEventListener(event,()=>closeFlyout({restoreFocus:false}));
+    flyout.addEventListener('keydown',event=>{
+      if(!['ArrowUp','ArrowDown'].includes(event.key))return;
+      const list=flyout.querySelector('[data-flyout-list]');if(!list?.contains(event.target))return;
+      const rows=[...list.querySelectorAll('button:not(:disabled),[tabindex="0"]')];if(!rows.length)return;
+      event.preventDefault();event.stopPropagation();
+      const index=rows.indexOf(document.activeElement),delta=event.key==='ArrowDown'?1:-1;
+      const next=rows[(index+delta+rows.length)%rows.length];next.focus({preventScroll:true});next.scrollIntoView({block:'nearest'});
+    });
     root.addEventListener('focusout',event=>{
-      if(!flyout.hidden && !flyout.contains(event.relatedTarget) && !triggers.includes(event.relatedTarget))closeFlyout({restoreFocus:false});
+      if(!changingPreview && !flyout.hidden && !flyout.contains(event.relatedTarget) && !triggers.includes(event.relatedTarget))closeFlyout({restoreFocus:false});
     });
     document.addEventListener('pointerdown',event=>{
       if(!flyout.hidden && !flyout.contains(event.target) && !triggers.includes(event.target.closest('[data-flyout]')))closeFlyout({restoreFocus:false});

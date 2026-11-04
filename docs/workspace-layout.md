@@ -30,7 +30,7 @@ The Electron window minimum is 600 × 480 logical pixels. The real Chromium DOM 
 
 ## Interaction and preferences
 
-- Hover opens a flyout after 160 ms; leaving its trigger and content closes after 280 ms. Crossing into the content cancels dismissal. Focus and click open it; arrow keys enter the list. Escape closes and restores the trigger without reopening. Each list scrolls independently.
+- Hover opens a flyout after 160 ms; leaving its trigger and content closes after 280 ms. Crossing into the content cancels dismissal. Focus and click open it; arrow keys enter and move list focus, Enter applies selection. HTML drag hover also opens a Directory so existing Journal assignment/reordering remains available. Escape closes and restores the trigger without reopening. The host saves each Directory scope and Candidates/Kept Index scroll before hiding or changing preview, then restores it after showing the list.
 - Journals previews a `directoryScope` without changing the Controller's active scope/filter. Clicking a category activates it and restores its group. Choosing a group closes Details; **Edit** opens that group's existing editor. ARRAY/GRID changes only the list rendering, leaving the editor DOM intact.
 - Tool icons open on click, toggle the current view closed, or switch an open view. Journal selection opens Details. ARRAY selection updates Info without changing expansion. Each workspace retains its host and expansion while away. Browser hides Allfold without replacing its DOM.
 - ARRAY Keep/Reject and Kept's direct Import actions live in Content. Inline workflow status, Continue/Cancel and task-page handoff also live in Content, with a bounded scroll region for long messages. Import records and Paper metadata remain in Info.

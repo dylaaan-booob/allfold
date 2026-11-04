@@ -243,7 +243,7 @@ markup.innerHTML=`<header class="s-header">
 </section>
 <section id="s-journals-page" class="s-panel workbench-layout" aria-labelledby="journals-open" hidden>
 <nav class="navigation-rail" aria-label="Journals navigation"><div id="s-journal-scope" class="rail-group" role="group" aria-label="Journal scope"><button class="rail-button" data-scope="subject" data-flyout="subject" title="SUBJECT" aria-label="SUBJECT"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 5h7l2 3h9v12H3z"/></svg></button><button class="rail-button" data-scope="access" data-flyout="access" title="ACCESS" aria-label="ACCESS"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 10h16v11H4zM8 10V7a4 4 0 0 1 8 0v3M12 14v3"/></svg></button><button class="rail-button" data-scope="custom" data-flyout="custom" title="LABEL" aria-label="LABEL"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m3 3 9 1 9 9-8 8-9-9z"/><circle cx="8" cy="8" r="1"/></svg></button></div><div id="s-journal-layout" class="rail-group" role="group" aria-label="Journal layout"><button class="rail-button" data-layout="array" title="ARRAY" aria-label="ARRAY"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5h16v4H4zM4 15h16v4H4z"/></svg></button><button class="rail-button" data-layout="grid" title="GRID" aria-label="GRID"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 4h6v6H4zM14 4h6v6h-6zM4 14h6v6H4zM14 14h6v6h-6z"/></svg></button></div></nav><aside id="journal-flyout" class="navigation-flyout" aria-label="Journal directory" tabindex="-1" hidden><div class="flyout-heading"><span id="journal-directory-title">SUBJECT</span><button data-flyout-close aria-label="Close Directory">×</button></div>
-<div id="s-entities" class="s-directory-list"></div>
+<div id="s-entities" class="s-directory-list" data-flyout-list></div>
 <div class="s-directory-order"><button id="s-edit-entity" class="s-button" title="Edit Group" aria-label="Edit Group">Edit</button><button id="s-new-entity" class="s-button">+</button><button id="s-delete-entity" class="s-button" disabled>−</button><button id="s-entity-up" class="s-button">↑</button><button id="s-entity-down" class="s-button">↓</button></div>
 </aside>
 <div class="s-browser workspace-content" tabindex="-1"><div class="s-browser-head s-journals-head"><h2 id="s-journals-title" data-journal-title>All Journals</h2>
@@ -327,10 +327,9 @@ let coverJob={phase:'Idle',journal_key:null,busy:false,supported:false};
 let coverTimer=null;
 const dialog=$('s-dialog');let dialogFocus=null,dialogVersion=0;
 let directoryScope='subject';
-const directoryScroll=new Map();
 const journalLayoutHost=window.allfoldLayout.create({root:$('s-journals-page'),workspace:'journals',
   minContentWidth:window.allfoldLayoutModel.minOperationalSize.journals,
-  preview(scope){directoryScroll.set(directoryScope,$('s-entities').scrollTop);directoryScope=scope;if(draft)renderDirectory();},
+  preview(scope){directoryScope=scope;if(draft)renderDirectory();},
 });
 let cropEditor=null;
 const configurationDirty=()=>Boolean(saved && draft && !same(saved,draft));
@@ -453,7 +452,7 @@ function openSettings(next='settings',instant=false) {
 for(const page of ['journals','run','settings'])window.workspaceNavigation.register(page,{
   canEnter:configurationAvailable,canLeave:configurationAvailable,
   search:()=>page==='journals' && !preview?'journals':null,
-  leave:()=>{rememberScroll();stopJournalTitleScroll();closeLabelPicker();transitions.get(view).dispose();closeMenu();},
+  leave:()=>{rememberScroll();journalLayoutHost.closeFlyout({restoreFocus:false});stopJournalTitleScroll();closeLabelPicker();transitions.get(view).dispose();closeMenu();},
   enter:({instant})=>{
     const next=page==='journals'?'journals-page':page;
     if(next===view)transitions.get(view).show(instant || reduced());else switchView(next,instant);
@@ -526,7 +525,7 @@ document.addEventListener('keydown',event=>{
       document.querySelector('dialog[open], [popover]:popover-open') || event.target.isContentEditable ||
       event.target.closest('input,textarea,select,[contenteditable],[role=separator],[inert]'))return;
   const page=window.workspaceNavigation.current();
-  const directory=page==='run'?$('s-providers'):page==='journals' && !$('journal-flyout').hidden && $('journal-flyout').contains(document.activeElement)?$('s-entities'):null;
+  const directory=page==='run'?$('s-providers'):null;
   if(directory && moveDirectoryIndex(directory,event.key==='ArrowUp'?-1:1))event.preventDefault();
 });
 $('s-files').addEventListener('click',()=>{
@@ -770,7 +769,7 @@ function directoryRow(id,name,count,index,current,kind) {
   return `<button class="kept-manager-row s-directory-row" data-entity="${esc(id)}" data-kind="${kind}" title="${esc(name)}" style="--index-rail:${rail}px" aria-current="${current===id}" ${kind==='group' && !['all','none'].includes(id)?'draggable="true"':''}><span class="rhine-index-number">${String(index).padStart(2,'0')}</span><span class="rhine-index-name">${esc(name)}</span><span class="rhine-index-count">${count}</span></button>`;
 }
 function renderDirectory() {
-  const info=scopeInfo(directoryScope),id=ui.directory[directoryScope],container=$('s-entities'),scroll=directoryScroll.get(directoryScope) || 0,horizontal=container.scrollLeft,focused=document.activeElement?.dataset.entity;
+  const info=scopeInfo(directoryScope),id=ui.directory[directoryScope],container=$('s-entities'),scroll=container.scrollTop,horizontal=container.scrollLeft,focused=document.activeElement?.dataset.entity;
   const entries=[{id:'all',name:'All Journals'},{id:'none',name:info.empty},...info.items];
   container.innerHTML=entries.map((item,i)=>directoryRow(item.id,item.name,entityMembers(item.id,directoryScope).length,i,id,info.kind)).join('');
   container.scrollTop=scroll;container.scrollLeft=horizontal;
@@ -943,7 +942,6 @@ function createEntity() {
   }}]);$('s-new-entity-name').focus();
 }
 function activateDirectory() {if(ui.scope!==directoryScope)setJournalScope(directoryScope);}
-$('s-entities').addEventListener('scroll',()=>directoryScroll.set(directoryScope,$('s-entities').scrollTop));
 $('s-edit-entity').addEventListener('click',()=>{activateDirectory();ui.detail='entity';renderEntityDetail();renderJournalDetail();journalLayoutHost.openSidebar('details');journalLayoutHost.closeFlyout();});
 $('s-new-entity').addEventListener('click',()=>{activateDirectory();createEntity();});
 $('s-entity-up').addEventListener('click',()=>{activateDirectory();moveEntity(-1);});$('s-entity-down').addEventListener('click',()=>{activateDirectory();moveEntity(1);});

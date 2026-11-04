@@ -4,7 +4,7 @@ const {app,BrowserWindow}=require('electron'),http=require('node:http'),fs=requi
 const temp=fs.mkdtempSync(path.join(os.tmpdir(),'allfold-layout-dom-'));
 app.setPath('userData',temp);app.commandLine.appendSwitch('force-prefers-reduced-motion','reduce');
 const ui=path.resolve(__dirname,'../../src/allfold/web/static/ui_next');
-const journals=Array.from({length:24},(_,i)=>({name:'Synthetic Journal '+i,issn:`000${i}-0000`,eissn:null,group:'Group '+i%4,labels:'Label '+i%3,access_service_id:'svc_fixture'}));
+const journals=Array.from({length:24},(_,i)=>({name:'Synthetic Journal '+i,issn:`000${i}-0000`,eissn:null,group:'Group '+i%4,labels:'Label '+i%3,access_service_id:i%2?'svc_fixture':null}));
 const cover_search={phase:'Idle',busy:false,supported:false};
 const settings={csrf_token:'fixture',issues:[],covers:{},cover_search,saved_workspace:'/fixture/workspace',values:{
   name:'Synthetic Monitor',keyword_expression:'causal',from_month:'2026-01',to_month:'2026-01',output_dir:'workspace',log_level:'INFO',
@@ -14,8 +14,8 @@ const settings={csrf_token:'fixture',issues:[],covers:{},cover_search,saved_work
   custom_labels:['Label 0','Label 1','Label 2'],journals,access_services:[{id:'svc_fixture',name:'Synthetic Service',access_method:'manual',access_url:''}],
 }};
 const paper=(i,status='candidate')=>({id:'paper-'+i,title:'Synthetic Paper '+i,publication_date:'2026-10-01',abstract:('An isolated synthetic paragraph for reader scroll verification. '.repeat(12)+'\n\n').repeat(24),authors:['Synthetic Author'],doi:'10.5555/layout-'+i,discovered_at:'2026-10-01T00:00:00Z',status,enrichPhase:'Idle'});
-const records=journals.slice(0,3).map((j,i)=>({key:j.issn,issn:j.issn,name:j.name,group:j.group,labels:[],cover:null,papers:[paper(i*2),paper(i*2+1)]}));
-const workspace={csrf_token:'fixture',import_token:'fixture',issues:[],counts:{candidates:6,active_journals:3},subjects:[{name:'Group 0',journals:records}],
+const records=journals.map((j,i)=>({key:j.issn,issn:j.issn,name:j.name,group:j.group,labels:[],cover:null,papers:[paper(i*2),paper(i*2+1)]}));
+const workspace={csrf_token:'fixture',import_token:'fixture',issues:[],counts:{candidates:48,active_journals:24},subjects:[{name:'Group 0',journals:records}],
   kept:{papers:[{paper:paper(10,'kept'),journal:records[0]},{paper:paper(11,'kept'),journal:records[1]}],journals:records,services:[],settings:{},titles:{}}};
 const run={active:false,providers:Object.fromEntries(settings.values.provider_order.map(id=>[id,{enabled:false,message:'Offline fixture',result_summary:null}]))};
 const mimes={'.html':'text/html','.js':'text/javascript','.css':'text/css','.json':'application/json','.woff2':'font/woff2','.ttf':'font/ttf','.otf':'font/otf','.png':'image/png','.mp4':'video/mp4'};
@@ -61,6 +61,12 @@ app.whenReady().then(async()=>{
       $('array-index').querySelector('button').focus();
       document.activeElement.dispatchEvent(new KeyboardEvent('keydown',{key:'Escape',bubbles:true,cancelable:true}));
       assert($('array-flyout').hidden && document.activeElement===$('array-index-toggle'),'Escape focus restoration');
+      $('array-index-toggle').dispatchEvent(new KeyboardEvent('keydown',{key:'ArrowDown',bubbles:true,cancelable:true}));
+      assert(document.activeElement===$('array-index').children[0],'arrow entry did not focus the first Index item');
+      for(let i=0;i<2;i++)document.activeElement.dispatchEvent(new KeyboardEvent('keydown',{key:'ArrowDown',bubbles:true,cancelable:true}));
+      assert(!$('array-flyout').hidden && document.activeElement===$('array-index').children[2],'Index arrows did not keep list focus');
+      assert(layoutReader.dataset.paperId==='paper-0','focus navigation changed Paper selection');
+      document.activeElement.dispatchEvent(new KeyboardEvent('keydown',{key:'Escape',bubbles:true,cancelable:true}));
       document.querySelector('#kept-view [data-sidebar-view]').click();
       assert(!$('array-sidebar').hidden,'Info did not open');
       assert(layoutReader=== $('paper-detail') && layoutReader.parentElement===layoutParent,'layout remounted Reader');
@@ -70,10 +76,13 @@ app.whenReady().then(async()=>{
       assert(!$('array-sidebar').hidden && $('array-flyout').hidden,'selection changed Info state / left flyout open');
       assert($('array-journal-name').textContent==='Synthetic Journal 1','metadata did not follow selection');
       document.querySelector('#kept-view [data-sidebar-view]').click();
+      $('array-index-toggle').click();$('array-index').scrollTop=200;document.querySelector('#array-flyout [data-flyout-close]').click();
       $('array-kept').click();assert($('array-sidebar').hidden,'Kept automatically opened Info');
       assert($('paper-metadata-details').open,'Kept Info metadata is collapsed behind a hidden summary');
       assert(!$('kept-start').closest('[hidden]') && !$('kept-import-only').closest('[hidden]'),'primary actions hidden with sidebar');
-      $('array-candidates').click();window.layoutReader=$('paper-detail');window.layoutParent=layoutReader.parentElement;layoutReader.scrollTop=180;
+      $('array-index-toggle').click();assert($('array-index').scrollTop===0,'short Kept Index is not independent');document.querySelector('#array-flyout [data-flyout-close]').click();
+      $('array-candidates').click();$('array-index-toggle').click();assert($('array-index').scrollTop===200,'Candidates Index scroll lost after opening Kept Index');document.querySelector('#array-flyout [data-flyout-close]').click();
+      window.layoutReader=$('paper-detail');window.layoutParent=layoutReader.parentElement;layoutReader.scrollTop=180;
       document.querySelector('#kept-view [data-sidebar-view]').click();
     });
     await capture('array-wide');
@@ -92,10 +101,34 @@ app.whenReady().then(async()=>{
       document.querySelector('#s-journal-layout [data-layout=grid]').click();
       assert(detail.querySelector('select')===original && !$('journal-sidebar').hidden,'GRID rebuilt/closed Details');
       const title=$('s-journals-title').textContent,count=$('s-journals').children.length;
+      document.querySelector('[data-flyout=subject]').dispatchEvent(new KeyboardEvent('keydown',{key:'ArrowDown',bubbles:true,cancelable:true}));
+      assert(document.activeElement===$('s-entities').children[0],'arrow entry did not focus Directory list');
+      for(let i=0;i<2;i++)document.activeElement.dispatchEvent(new KeyboardEvent('keydown',{key:'ArrowDown',bubbles:true,cancelable:true}));
+      assert(!$('journal-flyout').hidden && document.activeElement===$('s-entities').children[2] && $('s-journals-title').textContent===title,'Directory arrows applied/closed filter');
+      $('s-entities').scrollTop=160;
+      document.querySelector('[data-flyout=access]').dispatchEvent(new PointerEvent('pointerenter',{pointerType:'mouse'}));await new Promise(r=>setTimeout(r,200));
+      assert(!$('journal-flyout').hidden,'hover preview closed while replacing focused list');
+      document.querySelector('[data-flyout=subject]').dispatchEvent(new PointerEvent('pointerenter',{pointerType:'mouse'}));await new Promise(r=>setTimeout(r,200));
+      assert($('s-entities').scrollTop===160,'switching open preview lost Directory scroll');
+      document.activeElement.dispatchEvent(new KeyboardEvent('keydown',{key:'Escape',bubbles:true,cancelable:true}));
       document.querySelector('[data-flyout=access]').dispatchEvent(new PointerEvent('pointerenter',{pointerType:'mouse'}));
       await new Promise(r=>setTimeout(r,200));
       assert($('s-journals-title').textContent===title && $('s-journals').children.length===count,'hover applied a filter');
       assert(document.querySelector('[data-scope=subject]').getAttribute('aria-pressed')==='true','hover changed scope');
+      document.activeElement.dispatchEvent(new KeyboardEvent('keydown',{key:'Escape',bubbles:true,cancelable:true}));
+      document.querySelector('[data-flyout=subject]').click();
+      assert($('s-entities').scrollTop===160,'Directory scroll lost across close / another scope / reopen');
+      document.activeElement.dispatchEvent(new KeyboardEvent('keydown',{key:'Escape',bubbles:true,cancelable:true}));
+      const transfer=new DataTransfer(),row=$('s-journals').children[0],access=document.querySelector('[data-flyout=access]');
+      row.dispatchEvent(new DragEvent('dragstart',{bubbles:true,dataTransfer:transfer}));
+      access.dispatchEvent(new DragEvent('dragenter',{bubbles:true,dataTransfer:transfer}));
+      await new Promise(r=>setTimeout(r,200));
+      assert(!$('journal-flyout').hidden && $('journal-directory-title').textContent==='ACCESS','drag hover failed to open target Directory');
+      const service=$('s-entities').children[2];service.dispatchEvent(new DragEvent('dragover',{bubbles:true,cancelable:true,dataTransfer:transfer}));
+      service.dispatchEvent(new DragEvent('drop',{bubbles:true,cancelable:true,dataTransfer:transfer}));
+      assert($('s-journal-service').value==='svc_fixture','drop did not assign Service');
+      assert(document.querySelector('[data-scope=subject]').getAttribute('aria-pressed')==='true','drag preview changed active scope');
+      access.click();
       $('s-entities').children[2].click();assert($('journal-sidebar').hidden,'directory selection did not close Details');
       document.querySelector('[data-flyout=access]').click();$('s-edit-entity').click();
       const input=$('s-entity-description').querySelector('[data-service-field=url]');input.value='https://synthetic.test/draft';input.dispatchEvent(new Event('input',{bubbles:true}));input.focus();
@@ -139,7 +172,10 @@ app.whenReady().then(async()=>{
       window.workspaceNavigation.go('workspace',{instant:true});
       window.allfoldUIPreferences.setArchiveDisabled(false);$('workspace-archive').click();
       if($('selected-view').dataset.workspaceLayout!=='archive' || !$('kept-view').hidden)throw Error('Archive restoration failed');
+      archiveDebug.values.height=200;window.dispatchEvent(new Event('archive-debug-change'));
+      if(Math.abs($('selected-view').getBoundingClientRect().height-200)>1)throw Error('Archive tuned height is overridden by flexible fill');
       $('workspace-array').click();
+      if($('selected-view').getBoundingClientRect().height!==$('allfold-pane').getBoundingClientRect().height)throw Error('Archive height leaked into ARRAY');
     });
     // Browser is a separate full view; this fixture has no native page Session.
     await js("window.allfoldWorkbench.show()");

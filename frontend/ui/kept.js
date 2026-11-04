@@ -81,6 +81,7 @@ function refreshActions() {
   $('workspace-array').setAttribute('aria-pressed',String($('selected-view').dataset.workspaceLayout==='array'));
   $('array-candidates').setAttribute('aria-pressed',String(status==='candidates'));
   $('array-kept').setAttribute('aria-pressed',String(status==='kept'));
+  $('array-index-toggle').dataset.flyout=status;
   $('array-status').hidden=$('selected-view').dataset.workspaceLayout!=='array';
   if(!data)return;
   $('kept-start').disabled=$('kept-import-only').disabled=busy || workflow?.active || !allEntries().length;
