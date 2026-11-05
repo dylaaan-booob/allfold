@@ -47,7 +47,7 @@ def normalize_browser_diagnostic(value: object) -> dict[str, object] | None:
 
 
 def first_attachment_diagnostic(value: object) -> dict[str, object] | None:
-    """Retain one reviewed ItemSaver failure; native events retain the bounded sequence.
+    """Retain one reviewed native attachment failure; native events retain the bounded sequence.
 
     A failed transfer is evidence of an attachment problem, not proof of PDF
     persistence or rejection of an already accepted parent.

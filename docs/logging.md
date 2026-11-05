@@ -12,6 +12,12 @@ logging does not grant browser or institution-credential authority. Native
 completion can precede Python validation and guarded writes, so only the owning
 coordinator finishes a business history record.
 
+Kept's **Last Import** indicators are a separate process-local projection of the
+latest execution. Exact-key object queries and confirmed attachment registration
+provide its Item/PDF/Fallback results. Item and attachment keys, Local API
+authorization, PDF candidate URLs and raw bytes are not new History or diagnostic
+fields. The snapshot does not persist across restarts or inspect saved PDF files.
+
 ## Storage and limits
 
 Electron initializes a diagnostics directory inside its standard application logs

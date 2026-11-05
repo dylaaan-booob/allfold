@@ -407,7 +407,7 @@ app.on('before-quit',event=>{
     // Sent immediately: Python stops the next dispatch while this request settles.
     send({type:'shutdown'});
   } else {
-    // Startup failure or transport loss: wait for any local ItemSaver first.
+    // Startup failure or transport loss: wait for any native Local API save first.
     Promise.resolve(activeRequest).catch(()=>{}).then(()=>{
       if(python && python.exitCode === null && python.signalCode === null) python.kill('SIGTERM');
       else {readyToExit=true;app.quit();}
