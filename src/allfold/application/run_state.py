@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import os
 import stat
 from dataclasses import dataclass
 from datetime import date, datetime
@@ -27,6 +28,10 @@ from allfold.coverage import (
 )
 from allfold.date_range import DateRangeError, ResolvedDateRange
 from allfold.persistence.safe_write import (
+    CompareReadError,
+    ContentChangedError,
+    WorkspaceOperationLock,
+    workspace_text_directory,
     atomic_create_text,
     atomic_replace_text,
     read_text_exact,
@@ -337,10 +342,27 @@ def _parse_snapshot(contents: str, provider: RunProvider) -> LastRunSnapshot:
     )
 
 
-def write_last_run_snapshot(output_dir: Path, snapshot: LastRunSnapshot) -> None:
+def write_last_run_snapshot(output_dir: Path, snapshot: LastRunSnapshot, *,
+                            operation_lock: WorkspaceOperationLock | None = None) -> None:
     path = last_run_snapshot_path(output_dir, snapshot.provider)
     try:
         contents = _serialize_snapshot(snapshot)
+        if operation_lock is not None:
+            if operation_lock.path != output_dir.absolute():
+                raise ContentChangedError("Run snapshot targets a different Workspace")
+            with workspace_text_directory(operation_lock, METADATA_DIRECTORY_NAME) as directory:
+                try:
+                    descriptor = os.open(path.name, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK,
+                                         dir_fd=directory.directory)
+                except FileNotFoundError:
+                    directory.create(path.name, contents)
+                else:
+                    with os.fdopen(descriptor, "rb") as handle:
+                        if not stat.S_ISREG(os.fstat(handle.fileno()).st_mode):
+                            raise OSError("snapshot path is not a regular file")
+                        previous = handle.read().decode("utf-8")
+                    directory.replace(path.name, contents, expected_contents=previous)
+            return
         metadata_dir = metadata_directory(output_dir, create=True)
         assert metadata_dir is not None
 
@@ -354,7 +376,7 @@ def write_last_run_snapshot(output_dir: Path, snapshot: LastRunSnapshot) -> None
             if not stat.S_ISREG(mode):
                 raise OSError("snapshot path is not a regular file")
             atomic_replace_text(path, contents)
-    except (OSError, UnicodeError, ValueError) as error:
+    except (OSError, UnicodeError, ValueError, CompareReadError, ContentChangedError) as error:
         raise LastRunSnapshotWriteError(path, str(error)) from error
 
 

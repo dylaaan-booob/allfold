@@ -34,6 +34,20 @@ def test_doi_free_conference_round_trip_and_saved_bytes_are_immutable(tmp_path):
     assert path.read_bytes() == before
 
 
+def test_doi_url_spellings_share_one_identity(tmp_path):
+    spellings = ("10.5555/Example", "HTTPS://DOI.ORG/10.5555/EXAMPLE",
+                 "http://dx.doi.org/10.5555/example", "doi:10.5555/Example")
+    records = [evidence('crossref', str(i), title='Title', journal='Journal',
+                        external_ids=ExternalIds(doi=value)) for i, value in enumerate(spellings)]
+    papers = canonicalize_records(records).papers
+    assert len(papers) == 1 and papers[0].doi == '10.5555/example'
+    first = materialize_papers(papers, tmp_path)
+    assert len(first.created_papers) == 1
+    for record in records:
+        repeated = materialize_papers(canonicalize_records([record]).papers, tmp_path)
+        assert repeated.existing_papers == first.created_papers and not repeated.created_papers
+
+
 def test_primary_formal_record_and_dates_are_independent_of_arrival_order():
     from allfold.models import EvidenceDate, EvidenceDateKind as Kind, Author, ProviderTopic
     preprint = evidence('arxiv', '2201.00001', title='Preprint title', publication_type='preprint',

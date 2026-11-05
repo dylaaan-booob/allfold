@@ -77,3 +77,11 @@ The [CPython system proxy adapter](https://github.com/python/cpython/blob/v3.12.
 defines the macOS SOCKS configuration format.
 The implementation uses original HTTPX and the standard library; upstream source
 is not vendored or modified.
+
+## Integrated Providers
+
+Discovery and identifier-only completion reuse one selected Provider client and
+shared per-host pacing. The client handles bounded 429 retry, Retry-After,
+cancellation and HTML access restrictions. arXiv ID lookups use a conservative
+three-second interval; bioRxiv and medRxiv share their API host pacing.
+See [Provider contracts and limits](providers.md).

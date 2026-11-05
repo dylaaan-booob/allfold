@@ -193,8 +193,8 @@ print(reset.execute_reset(config,plan).success, flush=True)
     try:
         assert child.stdout.readline().strip() == 'TREE_DELETED_LOCK_HELD'
         assert not workspace.exists()
-        with pytest.raises(ContentChangedError): run_monitor(config, provider="openalex")
-        assert RunCoordinator(config).start(RunProvider.OPENALEX).outcome is StartOutcome.START_FAILED
+        with pytest.raises(ContentChangedError): run_monitor(config, provider="integrated")
+        assert RunCoordinator(config).start(RunProvider.INTEGRATED).outcome is StartOutcome.START_FAILED
         assert save_settings(config, load_settings(config).draft).outcome is SettingsSaveOutcome.WRITE_FAILED
         from electron_test_helpers import PendingBridge
         from allfold.application.batch_import import BatchImportService, BatchPhase
@@ -210,20 +210,19 @@ print(reset.execute_reset(config,plan).success, flush=True)
     assert child.returncode==0 and out.strip()=='True'
 
 
-@pytest.mark.parametrize('owner', ['run', 'batch'])
-def test_other_process_run_or_batch_blocks_reset(dedicated, owner):
+@pytest.mark.parametrize('owner', ['commit', 'batch'])
+def test_other_process_commit_or_batch_blocks_reset(dedicated, owner):
     config, workspace = dedicated
     program = """from pathlib import Path
 import sys
 from allfold.persistence.safe_write import workspace_operation_lock
 from allfold.application.monitor import run_monitor
 config=Path(sys.argv[1]); workspace=Path(sys.argv[2])
-if sys.argv[3]=='run':
- import allfold.application.monitor as monitor
- def hold(*args, **kwargs):
-  print('OWNED',flush=True); sys.stdin.readline()
- monitor._run_monitor_owned=hold
- run_monitor(config, provider="openalex")
+if sys.argv[3]=='commit':
+ from allfold.application.run_commit import capture_run_workspace, commit_run_workspace
+ with capture_run_workspace(config) as snapshot:
+  with commit_run_workspace(snapshot):
+   print('OWNED',flush=True);sys.stdin.readline()
 else:
  from allfold.application.batch_import import BatchImportService
  from allfold.application.browser_runtime import BrowserTaskLock

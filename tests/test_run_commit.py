@@ -106,3 +106,44 @@ def test_two_processes_rescan_shared_identity_inside_commit_lock(configuration):
         assert all(isinstance(item, tuple) for item in outcomes), outcomes
         assert sorted(outcomes) == [(0, 1, False), (1, 0, False)]
         assert len(tuple((first.config.output_dir / "Papers").glob("*.md"))) == 1
+
+
+def test_reset_while_real_http_adapter_waits_cannot_restore_old_run(configuration):
+    import httpx
+    from allfold.application.integrated_run import run_integrated
+    from allfold.providers.integrated import DiscoveryClient
+
+    def response(request):
+        if "/sources/" in request.url.path:
+            return httpx.Response(200, json={"id": "https://openalex.org/S123", "issn": ["0006-341X"]})
+        assert execute_reset(configuration, preview_reset(configuration)).success
+        return httpx.Response(200, json={"results": [{"id": "https://openalex.org/W123",
+            "doi": "https://doi.org/10.5555/late", "title": "Causal inference", "publication_date": "2026-01-01"}],
+            "meta": {"count": 1, "next_cursor": None}})
+
+    def client(provider, **kwargs):
+        return DiscoveryClient(provider, transport=httpx.MockTransport(response), interval=0, **kwargs)
+
+    with pytest.raises(ContentChangedError):
+        run_integrated(configuration, client_factory=client)
+    assert not (configuration.parent / "workspace").exists()
+
+
+def test_last_run_write_uses_same_bound_workspace_as_paper_commit(configuration):
+    from allfold.application.run_state import (
+        LAST_RUN_SCHEMA_VERSION, LastRunSnapshot, LastRunSnapshotWriteError,
+        RecordedRunOutcome, RunFacts, RunProvider, write_last_run_snapshot,
+    )
+    from allfold.config import resolve_runtime_date
+    from datetime import date
+    with capture_run_workspace(configuration) as snapshot:
+        workspace = snapshot.config.output_dir
+        with commit_run_workspace(snapshot) as lock:
+            workspace.rename(configuration.parent / "original")
+            workspace.mkdir()
+            facts = LastRunSnapshot(LAST_RUN_SCHEMA_VERSION, RunProvider.INTEGRATED,
+                resolve_runtime_date(snapshot.config, today=date(2026, 11, 5)),
+                RecordedRunOutcome.COMPLETED, (), RunFacts())
+            with pytest.raises(LastRunSnapshotWriteError):
+                write_last_run_snapshot(workspace, facts, operation_lock=lock)
+            assert not tuple(workspace.iterdir())

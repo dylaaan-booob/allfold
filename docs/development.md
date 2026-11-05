@@ -81,7 +81,7 @@ Use a disposable configuration and Workspace. Native/browser automation, externa
 4. With an authorized task, check background page creation/navigation does not switch or focus the user's current page, while explicit **查看任务页面** reaches the existing task page. Active task pages cannot be closed. Check popup, context menu, DevTools and guarded cache/site-data commands against the main host.
 5. Open History, Settings and Paper Tools dialogs while Browser is visible; verify the native view is hidden while needed and restores the same page. During fullscreen Run/Kept manual handoff, Browser must remain fully usable and returning must retain the current workflow and legal Continue/Cancel controls.
 6. Test Archive disabled on fresh preferences, legacy Paper links, missing Papers, Workspace refresh and busy guards. Re-enable Archive and verify its existing layout/resources and ARRAY's shared reader remain usable.
-7. Run OpenAlex, Crossref, PubMed and authorized WoS in both presentation modes, including cancellation and interrupted polling recovery. Verify inline mode allows safe navigation, records completion/history and refreshes results without forcing a workspace change.
+7. Run selected-provider Integrated Run and separately authorized WoS in both presentation modes, including cancellation and interrupted polling recovery. Verify inline mode allows safe navigation, records completion/history and refreshes results without forcing a workspace change.
 8. Prepare/Import in both modes with authorized CARSI/Manual Service/CAPTCHA and Zotero. Check login waiting, explicit Continue, Cancel, transition, success/error, terminal acknowledgement and restart restoration. Inspect actual parent-item and PDF results separately; never retry an uncertain save solely because presentation changed.
 
 Python HTTPX callers share the [HTTP client and proxy layer](http.md). Its focused
@@ -104,3 +104,11 @@ Chromium authentication remains a separate manual acceptance boundary.
   for the schema, paths, limits, privacy and Reset rules.
 
 See [architecture](architecture.md) before changing ownership and [safety](safety.md) before changing data, authorization or settlement paths.
+
+### Integrated discovery acceptance
+
+The [Provider guide](providers.md) records native fields, pagination and date limits,
+selected-only completion, old configuration guidance and the manual acceptance
+checklist. HTTP fixtures and isolated Electron rendering do not establish live
+provider or Zotero compatibility. All new provider requests use the shared HTTP
+client; no provider credentials or real Workspace are test fixtures.
