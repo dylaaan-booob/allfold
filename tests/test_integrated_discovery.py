@@ -78,7 +78,7 @@ def test_zbmath_verifies_issn_serial_mapping_and_excludes_review_query_and_abstr
         return httpx.Response(200,json={'result':[{'id':123,'title':{'title':'Native hit'},'year':'2026','editorial_contributions':[{'text':'Review text'}]}], 'status':{'nr_total_results':1,'execution_bool':True}})
     with DiscoveryClient('zbmath',transport=httpx.MockTransport(handler),interval=0) as client:
         result=client.discover(SourceScope('journal','Test',issns=('1234-567X',)),parse_keyword_expression('learning AND statist*'),date(2026,1,1),date(2026,2,28))
-    assert result.status=='complete'
+    assert result.status=='partial'
     assert result.records[0].abstract is None
     assert result.records[0].external_ids.model_dump()['zbmath']=='123'
     q=requests[-1].url.params['search_string']
@@ -141,3 +141,18 @@ def test_unmapped_dblp_journal_reports_not_run_without_network():
     with DiscoveryClient('dblp',transport=httpx.MockTransport(lambda _:pytest.fail('Unmapped source queried')),interval=0) as client:
         result=client.discover(SourceScope('journal','Test',issns=('0006-341X',)),parse_keyword_expression('learning'),date(2026,1,1),date(2026,12,31))
     assert result.status=='skipped'
+
+
+def test_conference_year_stays_year_and_month_query_reports_partial_precision():
+    from allfold.providers.integrated import DiscoveryClient,SourceScope
+    from allfold.canonicalize import canonicalize_records
+    def handler(request):
+        return httpx.Response(200,json={'result':{'hits':{'@total':'1','@computed':'1','@first':'0','hit':[{'info':{'key':'conf/icml/Example26','title':'Learning','year':'2026'}}]}}})
+    with DiscoveryClient('dblp',transport=httpx.MockTransport(handler),interval=0) as client:
+        result=client.discover(SourceScope('conference','ICML','conf_1',stream='streams/conf/icml'),parse_keyword_expression('learning'),date(2026,2,1),date(2026,2,28))
+    assert result.status=='partial'
+    paper=canonicalize_records(result.records).papers[0]
+    assert paper.metadata.publication_date=='2026'
+    assert paper.metadata.conference=='ICML' and paper.metadata.journal is None
+    assert paper.metadata.accepted_at is None
+    assert paper.external_ids.model_dump()['dblp']=='conf/icml/Example26'

@@ -13,6 +13,7 @@ import httpx
 
 from allfold.http_client import create_http_client
 from allfold.identifiers import normalize_doi
+from allfold.progress import ProgressEvent, ActivityUpdate, ActivityKind
 from allfold.keywords import And, Or, Prefix, Phrase, Proximity, matches_fields
 from allfold.models import Author, ExternalIds, MetadataSource, ProviderWorkEvidence, ProviderTopic, EvidenceDate, EvidenceDateKind
 
@@ -103,9 +104,10 @@ def _positive(value, name):
 class DiscoveryClient:
     """One provider/host owns rate limits, bounded retry and cancellation checks."""
     def __init__(self, provider, *, api_key=None, transport=None, cancel_event=None,
-                 interval=0.35, sleep=time.sleep, max_pages=50, max_records=5000, page_size=100, pacing_state=None):
+                 interval=0.35, sleep=time.sleep, max_pages=50, max_records=5000, page_size=100, pacing_state=None, progress_callback=None):
         if provider not in PROVIDERS:
             raise ValueError('Unknown Discovery Provider')
+        self.progress = progress_callback
         self.provider = provider
         self.api_key = api_key
         self.cancel = cancel_event or Event()
@@ -189,6 +191,10 @@ class DiscoveryClient:
                 total = page_total
                 limits.extend(item for item in page_limits if item not in limits)
                 if raw is None:
+                    if self.progress:
+                        self.progress(ProgressEvent(activity=ActivityUpdate(kind=ActivityKind.WORKING,
+                            operation='discovery:'+source.key,label=self.provider+' records',source=self.provider,
+                            detail=source.name,current=candidates,total=total,unit='work')))
                     continue
                 candidates += 1
                 if self.provider == "dblp" and not matches_fields(ast, (raw.get("title", ""),)):
@@ -198,6 +204,8 @@ class DiscoveryClient:
                     evidence = evidence.model_copy(update={'provenance':evidence.provenance.model_copy(update={'role':'discovery'})})
                 if evidence is not None:
                     records.append(evidence)
+            if records and self.provider in {'dblp','zbmath'} and ((from_date.month,from_date.day)!=(1,1) or (to_date.month,to_date.day)!=(12,31)):
+                limits.append('Incomplete: year-only source dates cannot establish exact monthly coverage')
             status = 'partial' if any(x.startswith(('Truncated:', 'Incomplete:')) for x in limits) else 'complete' if records else 'empty'
         except UnsupportedSource as error:
             limits.append(str(error)); status = 'skipped'
@@ -237,6 +245,7 @@ class DiscoveryClient:
             if not isinstance(rows, list):
                 raise DiscoveryError('OpenAlex response is missing results')
             total = _positive(data.get('meta',{}).get('count'), 'count')
+            yield None, total, ()
             for raw in rows:
                 count += 1
                 yield raw, total, ()
@@ -264,7 +273,7 @@ class DiscoveryClient:
             return ProviderWorkEvidence(provenance=MetadataSource(provider='europe_pmc', record_id=f'{source_id}:{record_id}', retrieved_at=datetime.now(timezone.utc)),
                 title=raw['title'], journal=source.name or None, publication_type='preprint' if source_id == 'PPR' else 'journal', publication_date=raw.get('firstPublicationDate'), abstract=raw.get('abstractText'),
                 external_ids=ExternalIds(**ids), monitor_journal_issns=source.issns,
-                indexed_terms=tuple(ProviderTopic(value=k,source='europe_pmc',kind='keyword') for k in keywords if isinstance(k,str) and k),
+                indexed_terms=tuple(ProviderTopic(value=k,source='europe_pmc',kind='keyword') for k in keywords if isinstance(k,str) and k) + tuple(ProviderTopic(value=k['descriptorName'],source='europe_pmc',kind='mesh') for k in raw.get('meshHeadingList',{}).get('meshHeading',[]) if k.get('descriptorName')),
                 authors=tuple(Author(name=x['fullName']) for x in raw.get('authorList',{}).get('author',[]) if x.get('fullName')))
         if self.provider == 'zbmath':
             title = raw.get('title',{}).get('title')
@@ -280,7 +289,7 @@ class DiscoveryClient:
                 title=title, journal=source.name or None, publication_type='preprint' if raw.get('database') == 'arXiv' else 'journal', external_ids=ExternalIds(**ids),
                 publication_date=str(raw['year']) if raw.get('year') else None,
                 dates=(EvidenceDate(kind=EvidenceDateKind.ISSUED,year=int(raw['year'])),) if raw.get('year') else (),
-                indexed_terms=tuple(ProviderTopic(value=str(k.get('code') or k.get('text')),source='zbmath',kind='msc') for k in raw.get('msc',[]) if k.get('code') or k.get('text')),
+                indexed_terms=tuple(ProviderTopic(value=str(k.get('code') or k.get('text')),source='zbmath',kind='msc') for k in raw.get('msc',[]) if k.get('code') or k.get('text')) + tuple(ProviderTopic(value=k,source='zbmath',kind='keyword') for k in raw.get('keywords',[]) if isinstance(k,str) and k),
                 authors=tuple(Author(name=x['name']) for x in raw.get('contributors',{}).get('authors',[]) if x.get('name')),
                 monitor_journal_issns=source.issns)
         if self.provider == 'dblp':
@@ -459,7 +468,7 @@ class DiscoveryClient:
             else:
                 if namespace == 'doi':
                     identifier = normalize_doi(identifier)
-                    if not identifier: raise DiscoveryError('Invalid DOI')
+                    if not identifier or any(c in identifier for c in ('"', "\\")): raise DiscoveryError('Invalid DOI for native identifier lookup')
                 elif not re.fullmatch(r'[A-Za-z0-9]+',identifier): raise DiscoveryError('Invalid identifier')
                 query = f'{ {"doi":"DOI","pmid":"EXT_ID","pmcid":"PMCID"}[namespace]}:"{identifier}"'
                 if namespace == 'pmid': query += ' AND SRC:MED'
@@ -476,7 +485,7 @@ class DiscoveryClient:
                 rows = _rows(response.get('result'))
             else:
                 identifier=normalize_doi(identifier)
-                if not identifier: raise DiscoveryError('Invalid DOI')
+                if not identifier or any(c in identifier for c in ('"', '\\')): raise DiscoveryError('Invalid DOI for native identifier lookup')
                 rows = [raw for raw, _, _ in self._zbmath_document_pages(f'doi:"{identifier}"') if raw]
             return tuple(self.normalize(raw,SourceScope('journal',raw.get('source',{}).get('source') or '')) for raw in rows)
         return ()

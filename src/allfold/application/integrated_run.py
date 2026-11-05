@@ -10,6 +10,7 @@ from threading import Event
 from allfold.config import ConfigurationError, resolve_runtime_date, validate_runtime_keyword
 from allfold.providers.integrated import DiscoveryClient, DiscoveryResult, SourceScope, DISCOVERY_PROVIDERS
 from allfold.integrations.openalex_credentials import read_credential
+from allfold.providers.dblp_sources import journal_dblp_stream
 from allfold.progress import ProgressEvent, ProgressStage, ActivityUpdate, ActivityKind
 
 
@@ -21,7 +22,7 @@ class IntegratedDiscovery:
 
 
 def source_scopes(config):
-    journals = tuple(SourceScope('journal',j.name,j.key,tuple(x for x in (j.issn,j.eissn) if x),getattr(j,'dblp_stream',None)) for j in config.journals)
+    journals = tuple(SourceScope('journal',j.name,j.key,tuple(x for x in (j.issn,j.eissn) if x),journal_dblp_stream(tuple(x for x in (j.issn,j.eissn) if x))) for j in config.journals)
     conferences = tuple(SourceScope('conference',c.name,c.id,stream=c.dblp_stream) for c in getattr(config,'conferences',()))
     return journals + conferences
 
@@ -72,7 +73,7 @@ def discover_selected(config, config_path, *, client_factory=DiscoveryClient, cl
                     client=clients[provider]
                 else:
                     key=read_credential(config_path)[0] if provider=='openalex' else None
-                    client=stack.enter_context(client_factory(provider,api_key=key,cancel_event=cancel))
+                    client=stack.enter_context(client_factory(provider,api_key=key,cancel_event=cancel,progress_callback=progress_callback))
                 for source in applicable:
                     if cancel.is_set():
                         results.append(DiscoveryResult(provider,source,'cancelled',limitations=('Run cancelled',)))
@@ -132,7 +133,7 @@ def run_integrated(config_path, *, loaded_config=None, workspace_snapshot=None, 
             try:
                 key=read_credential(config_path)[0] if provider=='openalex' else None
                 if provider in DISCOVERY_PROVIDERS:
-                    client=client_factory(provider,api_key=key,cancel_event=cancel,pacing_state=pacing)
+                    client=client_factory(provider,api_key=key,cancel_event=cancel,pacing_state=pacing,progress_callback=progress_callback)
                 else:
                     from allfold.providers.supplemental import SupplementalClient
                     client=SupplementalClient(provider,mailto=config.crossref_mailto,cancel_event=cancel,pacing_state=pacing)

@@ -97,3 +97,57 @@ def test_provider_response_after_cancel_never_materializes(tmp_path):
     result=run_integrated(path,client_factory=factory,cancel_event=cancel)
     assert result.outcome.value=='CANCELLED'
     assert not list((tmp_path/'workspace'/'Papers').glob('*.md'))
+
+
+def test_saved_provider_selection_reaches_request_coordinator_and_retired_entries_reject(tmp_path,monkeypatch):
+    from fastapi.testclient import TestClient
+    from allfold.web.app import create_app
+    from electron_test_helpers import OfflineBridge
+    from allfold.application.monitor import RunResult,RunOutcome,MonitorStatistics
+    from allfold.application.run_state import RunProvider,RunFacts
+    path,_=config(tmp_path)
+    path.write_text(path.read_text()+'enabled_providers: [europe_pmc, crossref]\n')
+    observed=[]
+    def monitor(config_path,**kwargs):
+        observed.append((config_path,kwargs))
+        return RunResult(RunProvider.INTEGRATED,None,0,0,0,(),(),RunOutcome.COMPLETED,MonitorStatistics(),facts=RunFacts(created_papers=0,existing_papers=0,details={'discovery_status':'empty'}))
+    monkeypatch.setattr('allfold.application.coordinators.run_coordinator.run_monitor',monitor)
+    app=create_app(path,electron_bridge=OfflineBridge())
+    with TestClient(app,base_url='http://localhost') as client:
+        csrf=client.get('/api/ui-next/settings').json()['csrf_token']
+        state=client.get('/api/ui-next/run').json()
+        assert set(state['providers'])=={'integrated','wos'}
+        for old in ('openalex','crossref','pubmed'):
+            assert client.post('/api/ui-next/run',json={'csrf_token':csrf,'provider':old}).status_code==422
+        mismatch=client.post('/api/ui-next/run',json={'csrf_token':csrf,'enabled_providers':['openalex']})
+        assert mismatch.status_code==409
+        started=client.post('/api/ui-next/run',json={'csrf_token':csrf,'enabled_providers':['europe_pmc','crossref']})
+        assert started.status_code==200
+        app.state.run_coordinator._worker.join(2)
+        assert observed[0][1]['loaded_config'].enabled_providers==('europe_pmc','crossref')
+        assert observed[0][1]['workspace_snapshot'] is not None
+        assert observed[0][1]['cancel_event'] is not None
+
+
+def test_conferences_and_vetted_journal_use_only_their_executable_roles(tmp_path):
+    from allfold.application.integrated_run import discover_selected,validate_selection
+    from allfold.config import ConferenceConfig
+    path,settings=config(tmp_path)
+    settings=replace(settings, enabled_providers=('openalex','dblp'),journals=(JournalConfig(name='JMLR',issn='1532-4435'),),conferences=(ConferenceConfig(id='conf_'+'1'*32,name='ICML',abbreviation='ICML',dblp_stream='streams/conf/icml'),))
+    scopes=validate_selection(settings)
+    assert scopes[0].stream=='streams/journals/jmlr'
+    calls=[]
+    class Client:
+        def __init__(self,provider,**kwargs):self.provider=provider
+        def __enter__(self):return self
+        def __exit__(self,*args):pass
+        def discover(self,source,*args):
+            calls.append((self.provider,source.kind))
+            return DiscoveryResult(self.provider,source,'empty')
+    result=discover_selected(settings,path,client_factory=Client)
+    assert result.status=='empty'
+    assert sorted(calls)==[('dblp','conference'),('dblp','journal'),('openalex','journal')]
+    missing=replace(settings,enabled_providers=('openalex',))
+    partial=discover_selected(missing,path,client_factory=Client)
+    assert partial.status=='partial'
+    assert any(r.source.kind=='conference' and r.status=='skipped' for r in partial.providers)
