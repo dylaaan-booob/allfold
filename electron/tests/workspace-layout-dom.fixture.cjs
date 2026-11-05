@@ -83,6 +83,19 @@ app.whenReady().then(async()=>{
     await ready("window.uiWorkspace?.ready() && !document.getElementById('array-candidates').disabled && document.querySelectorAll('#s-journals [data-journal]').length===24");
     await check(()=>{
       window.workspaceNavigation.go('journals',{instant:true});
+      const category=document.getElementById('s-source-kind'),label=document.getElementById('s-add-journal');
+      const updates=new MutationObserver(()=>{});updates.observe(label,{childList:true});
+      try{
+        for(let i=0;i<8;i++){
+          const conferences=i%2===0;
+          category.value=conferences?'conferences':'journals';category.dispatchEvent(new Event('change'));
+          if(label.textContent!==(conferences?'+ CONFERENCE':'+ JOURNAL') || document.querySelectorAll('#s-journals [data-journal]').length!==(conferences?0:24))throw Error('Repeated category switch displayed the wrong source list');
+          if(updates.takeRecords().length!==1)throw Error('One category switch repeatedly rebuilt its displayed label');
+        }
+      }finally{updates.disconnect();}
+    });
+    await check(()=>{
+      window.workspaceNavigation.go('journals',{instant:true});
       const category=document.getElementById('s-source-kind');category.value='conferences';category.dispatchEvent(new Event('change'));
       if(document.querySelectorAll('#s-journals [data-journal]').length!==0)throw Error('Registry automatically followed series');
       document.getElementById('s-add-journal').click();

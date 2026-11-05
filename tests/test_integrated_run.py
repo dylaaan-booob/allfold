@@ -82,6 +82,48 @@ def test_constructor_failure_isolated_and_all_failed_is_never_complete(tmp_path)
     assert build_run_result_summary(failed)['status']=='failed'
 
 
+def test_repeated_run_matches_separate_doi_aliases_to_one_saved_paper(tmp_path):
+    from allfold.application.integrated_run import run_integrated
+    path, _ = config(tmp_path, ('europe_pmc',))
+    path.write_text(path.read_text() + 'enabled_providers: [europe_pmc]\n')
+    formal = ProviderWorkEvidence(
+        title='Formal paper', journal='Test',
+        external_ids=ExternalIds(doi='10.5555/formal', europe_pmc='MED:42'),
+        related_dois=('10.5555/preprint',),
+        provenance=MetadataSource(provider='europe_pmc', record_id='MED:42',
+                                  retrieved_at=datetime.now(timezone.utc)),
+    )
+    records = (formal,)
+    calls = []
+
+    class Client:
+        def __init__(self, provider, **kwargs):
+            assert provider == 'europe_pmc'
+        def __enter__(self): return self
+        def __exit__(self, *args): pass
+        def discover(self, source, *args):
+            calls.append('discover')
+            return DiscoveryResult('europe_pmc', source, 'complete', records,
+                                   candidates=len(records), total=len(records))
+        def lookup(self, *args):
+            raise AssertionError('Already discovered or saved identities need no supplement')
+
+    first = run_integrated(path, client_factory=Client)
+    assert first.created_papers == 1 and not first.errors
+    saved, = (tmp_path / 'workspace' / 'Papers').glob('*.md')
+    before = saved.read_bytes()
+    records = tuple(formal.model_copy(update={
+        'title': 'Later metadata', 'external_ids': ExternalIds(doi=doi),
+        'related_dois': (),
+        'provenance': formal.provenance.model_copy(update={'record_id': str(index)}),
+    }) for index, doi in enumerate(('10.5555/formal', '10.5555/preprint')))
+    second = run_integrated(path, client_factory=Client)
+    assert not second.errors
+    assert second.created_papers == 0 and second.matched_existing_papers == 1
+    assert saved.read_bytes() == before
+    assert calls == ['discover', 'discover']
+
+
 def test_provider_response_after_cancel_never_materializes(tmp_path):
     import httpx
     from threading import Event

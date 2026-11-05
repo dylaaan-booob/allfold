@@ -48,6 +48,25 @@ def test_doi_url_spellings_share_one_identity(tmp_path):
         assert repeated.existing_papers == first.created_papers and not repeated.created_papers
 
 
+def test_separate_doi_alias_candidates_count_one_saved_paper(tmp_path):
+    saved = evidence('crossref', 'formal', title='Formal paper', journal='Journal',
+                     external_ids=ExternalIds(doi='10.5555/formal'),
+                     related_dois=('10.5555/preprint',))
+    first = materialize_papers(canonicalize_records([saved]).papers, tmp_path)
+    path, = first.created_papers
+    before = path.read_bytes()
+    incoming = [evidence('crossref', doi, title='Changed metadata', journal='Journal',
+                         external_ids=ExternalIds(doi=doi))
+                for doi in ('10.5555/formal', '10.5555/preprint')]
+    candidates = canonicalize_records(incoming).papers
+    assert len(candidates) == 2
+    repeated = materialize_papers(candidates, tmp_path)
+    assert not repeated.issues
+    assert repeated.existing_papers == (path,)
+    assert not repeated.created_papers
+    assert path.read_bytes() == before
+
+
 def test_primary_formal_record_and_dates_are_independent_of_arrival_order():
     from allfold.models import EvidenceDate, EvidenceDateKind as Kind, Author, ProviderTopic
     preprint = evidence('arxiv', '2201.00001', title='Preprint title', publication_type='preprint',

@@ -327,21 +327,8 @@ def _match_papers(
         else:
             matches.append(_PaperMatch(None))
 
-    paths_to_indexes: dict[Path, list[int]] = defaultdict(list)
-    for index, match in enumerate(matches):
-        if match.state is not None:
-            paths_to_indexes[match.state.path].append(index)
-    for path, indexes in paths_to_indexes.items():
-        if len(indexes) < 2:
-            continue
-        issues.append(
-            MaterializationIssue(
-                path,
-                "multiple incoming Papers match the same durable Paper",
-            )
-        )
-        for index in indexes:
-            matches[index] = _PaperMatch(matches[index].state, blocked=True)
+    # Different incoming aliases may each resolve to the same saved Paper.
+    # Materialization counts that path once; only multiple saved targets conflict.
     return matches
 
 

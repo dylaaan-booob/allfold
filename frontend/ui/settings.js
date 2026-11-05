@@ -522,8 +522,7 @@ for(const page of ['journals','run','settings'])window.workspaceNavigation.regis
 });
 function syncLayouts(){
   journalLayoutHost.sync();runLayoutHost.sync();settingsLayoutHost.sync();
-  $('s-source-kind').addEventListener('change',event=>{ui.category=event.target.value;ui.scope=directoryScope='subject';ui.journal=null;ui.detail='entity';clearAssignmentUndo();journalLayoutHost.closeFlyout();journalLayoutHost.closeSidebar();renderJournalsPage();});
-for(const button of root.querySelectorAll('[data-layout]'))button.setAttribute('aria-pressed',String(button.dataset.layout===journalLayout));
+  for(const button of root.querySelectorAll('[data-layout]'))button.setAttribute('aria-pressed',String(button.dataset.layout===journalLayout));
   for(const button of root.querySelectorAll('[data-scope]'))button.setAttribute('aria-pressed',String(button.dataset.scope===ui.scope));
 }
 // Match Kept's delayed, one-way title reveal without changing its controller or bundle.
@@ -564,6 +563,7 @@ function setJournalScope(scope) {
 }
 for(const button of root.querySelectorAll('[data-layout]'))button.addEventListener('click',()=>setJournalLayout(button.dataset.layout));
 for(const button of root.querySelectorAll('[data-scope]'))button.addEventListener('click',()=>setJournalScope(button.dataset.scope));
+$('s-source-kind').addEventListener('change',event=>{ui.category=event.target.value;ui.scope=directoryScope='subject';ui.journal=null;ui.detail='entity';clearAssignmentUndo();journalLayoutHost.closeFlyout();journalLayoutHost.closeSidebar();renderJournalsPage();});
 syncLayouts();
 for(const surface of [root,shell])surface.addEventListener('keydown',event=>{
   if(event.key==='Escape' && !dialog.open){if($('s-journal-labels')?.open){event.preventDefault();closeLabelPicker();$('s-journal-labels').querySelector('summary').focus({preventScroll:true});}else if(preview)closePreview();else if($('s-file-menu').matches(':popover-open')){closeMenu();$('s-files').focus({preventScroll:true});}}
