@@ -12,7 +12,7 @@ from urllib.parse import quote
 import httpx
 
 from allfold.http_client import create_http_client
-from allfold.identifiers import normalize_doi, valid_doi
+from allfold.identifiers import normalize_doi, normalize_external_id, valid_doi
 from allfold.progress import ProgressEvent, ActivityUpdate, ActivityKind
 from allfold.keywords import And, Or, Prefix, Phrase, Proximity, matches_fields
 from allfold.models import Author, ExternalIds, MetadataSource, ProviderWorkEvidence, ProviderTopic, EvidenceDate, EvidenceDateKind
@@ -57,6 +57,12 @@ class DiscoveryResult:
 
 class DiscoveryError(ValueError):
     pass
+
+
+class ProviderHTTPError(DiscoveryError):
+    def __init__(self, provider, status):
+        super().__init__(f'{provider}: HTTP {status}')
+        self.status = status
 
 
 class UnsupportedSource(DiscoveryError):
@@ -173,7 +179,7 @@ class DiscoveryClient:
                 self._wait(max(0, delay))
                 continue
             if response.status_code != 200:
-                raise DiscoveryError(f'{self.provider}: HTTP {response.status_code}')
+                raise ProviderHTTPError(self.provider, response.status_code)
             if response_format == "xml":
                 return response.text
             try:
@@ -240,10 +246,19 @@ class DiscoveryClient:
             raise DiscoveryError('OpenAlex requires a journal ISSN mapping')
         ids = []
         for issn in source.issns:
-            item = self.request('/sources/issn:' + quote(issn, safe=''), {})
+            try:
+                item = self.request('/sources/issn:' + quote(issn, safe=''), {})
+            except ProviderHTTPError as error:
+                if error.status != 404:
+                    raise
+                yield None, None, (f'Incomplete: OpenAlex has no Source mapping for ISSN {issn} (HTTP 404)',)
+                continue
             if issn not in item.get('issn', []) or not re.fullmatch(r'https://openalex.org/S\d+', str(item.get('id',''))):
                 raise DiscoveryError('OpenAlex returned an unverified journal mapping')
             ids.append(item['id'].rsplit('/',1)[-1])
+        if not ids:
+            raise DiscoveryError('OpenAlex has no verified Source mapping for this Journal')
+        ids = sorted(set(ids))
         params = {'filter':f'primary_location.source.id:{"|".join(ids)},from_publication_date:{start},to_publication_date:{end}',
                   'search.title_abstract_keywords' + ('.exact' if _prefix(ast) else ''):compile_query(ast, 'openalex'),
                   'per_page':self.page_size, 'cursor':'*'}
@@ -326,16 +341,23 @@ class DiscoveryClient:
                 monitor_journal_issns=source.issns)
         if self.provider != 'openalex':
             raise DiscoveryError('Provider normalization unavailable')
+        if (raw.get('primary_location') or {}).get('raw_type') == 'journal-issue':
+            return None
         record_id = str(raw.get('id') or '')
         if not record_id or not raw.get('title'):
             raise DiscoveryError('OpenAlex record lacks identity or title')
         abstract = raw.get('abstract_inverted_index') or {}
         tokens = {i: word for word, positions in abstract.items() for i in positions}
+        identifiers = {'openalex':record_id,'doi':normalize_doi(raw.get('doi'))}
+        for namespace in ('pmid','pmcid'):
+            identifier = normalize_external_id(namespace,(raw.get('ids') or {}).get(namespace))
+            if identifier:
+                identifiers[namespace] = identifier
         return ProviderWorkEvidence(provenance=MetadataSource(provider='openalex', record_id=record_id, retrieved_at=datetime.now(timezone.utc),url=record_id),
             title=raw['title'], journal=source.name or None, publication_type='preprint' if raw.get('type') in {'preprint','posted-content'} else 'journal', publication_date=raw.get('publication_date'),
             related_dois=tuple(sorted({doi for location in raw.get('locations',[]) if (doi:=normalize_doi(location.get('doi'))) and doi != normalize_doi(raw.get('doi'))})),
             abstract=' '.join(tokens[i] for i in sorted(tokens)) or None,
-            external_ids=ExternalIds(openalex=record_id, doi=normalize_doi(raw.get('doi'))),
+            external_ids=ExternalIds(**identifiers),
             monitor_journal_issns=source.issns,
             authors=tuple(Author(name=x['author']['display_name']) for x in raw.get('authorships',[]) if x.get('author',{}).get('display_name')))
 
@@ -476,8 +498,9 @@ class DiscoveryClient:
         if self.provider == 'openalex' and namespace in {'doi','openalex'}:
             target = 'https://doi.org/' + identifier if namespace == 'doi' else identifier.rsplit('/',1)[-1]
             raw = self.request('/works/' + quote(target,safe='/:'),{})
-            venue = raw.get('primary_location',{}).get('source') or {}
-            return (self.normalize(raw,SourceScope('journal',venue.get('display_name') or '')),)
+            venue = (raw.get('primary_location') or {}).get('source') or {}
+            evidence = self.normalize(raw,SourceScope('journal',venue.get('display_name') or ''))
+            return (evidence,) if evidence is not None else ()
         if self.provider == 'europe_pmc' and namespace in {'doi','europe_pmc','pmid','pmcid'}:
             if namespace == 'europe_pmc':
                 src, key = identifier.split(':',1)

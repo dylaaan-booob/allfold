@@ -53,3 +53,23 @@ def test_one_valid_source_hit_keeps_work_when_another_version_is_outside_range()
     inside = record("europe_pmc", "10.5555/in", "2026-02-01", "discovery")
     result = filter_source_dates((outside, exact, inside), date(2026, 1, 1), date(2026, 3, 31))
     assert result.excluded == 1 and inside in result.records and outside not in result.records
+
+
+def test_excluded_discovery_identity_bridge_never_creates_supplement_only_paper():
+    from datetime import date, datetime, timezone
+    from allfold.application.source_dates import filter_source_dates
+    from allfold.canonicalize import canonicalize_records
+    from allfold.models import ExternalIds, MetadataSource, ProviderWorkEvidence
+    from allfold.providers.integrated import SourceScope
+    with DiscoveryClient('dblp',transport=httpx.MockTransport(lambda _:httpx.Response(200,json={}))) as client:
+        bridge=client.normalize({'key':'journals/jmlr/Example26','title':'Learning','year':'2026','doi':'10.5555/out',
+            'ee':['https://doi.org/10.5555/out','https://doi.org/10.5555/in']},SourceScope('journal','Journal',issns=('1532-4435',)))
+    def record(provider,doi,day,role):
+        return ProviderWorkEvidence(provenance=MetadataSource(provider=provider,record_id=doi,
+            retrieved_at=datetime.now(timezone.utc),role=role), title='Learning',journal='Journal',
+            publication_type='journal',publication_date=day,external_ids=ExternalIds(doi=doi))
+    result=filter_source_dates((bridge,record('crossref','10.5555/out','2026-10-01','supplement'),
+        record('europe_pmc','10.5555/in','2026-02-01','discovery')),date(2026,1,1),date(2026,3,31))
+    papers=canonicalize_records(result.records).papers
+    assert len(papers)==1 and papers[0].doi=='10.5555/in'
+    assert papers[0].related_dois==('10.5555/out',)

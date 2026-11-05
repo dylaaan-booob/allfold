@@ -50,7 +50,13 @@ def normalize_external_id(namespace: str, value: Any) -> str | None:
         return f"{source.upper()}:{identifier}" if separator and source and identifier else None
     if namespace == "wos":
         return value.upper() if re.fullmatch(r"WOS:[0-9]+", value, re.I) else None
-    return value.upper() if namespace == "pmcid" else value
+    if namespace == "pmid":
+        value = re.sub(r"^https?://(?:pubmed\.ncbi\.nlm\.nih\.gov/|(?:www\.)?ncbi\.nlm\.nih\.gov/pubmed/)", "", value, flags=re.I).rstrip("/")
+        return value if re.fullmatch(r"[0-9]+", value) else None
+    if namespace == "pmcid":
+        value = re.sub(r"^https?://(?:(?:www\.)?ncbi\.nlm\.nih\.gov/pmc/articles/|pmc\.ncbi\.nlm\.nih\.gov/articles/)", "", value, flags=re.I).rstrip("/").upper()
+        return value if re.fullmatch(r"PMC[0-9]+", value) else None
+    return value
 
 
 def strong_identifiers(external_ids: Any, related_dois=()) -> frozenset[tuple[str, str]]:

@@ -71,9 +71,22 @@ def test_biorxiv_follows_known_formal_doi_to_original_versions_without_year_limi
         retrieved_at=datetime(2026, 1, 1, tzinfo=timezone.utc), role="discovery"),
         title="Formal", journal="Journal", publication_date="2026-01-02", publication_type="journal",
         monitor_journal_issns=("0006-341X",), external_ids=ExternalIds(doi="10.5555/formal"))
-    paper = canonicalize_records((formal, *records)).papers[0]
+    result = canonicalize_records((formal, *records))
+    assert not result.issues
+    paper = result.papers[0]
     assert paper.doi == "10.5555/formal"
     assert paper.related_dois == ("10.1101/123456",)
     assert paper.metadata.publication_date == "2026-01-02"
     assert paper.metadata.first_public_at == "2022-01-02"
     assert paper.metadata.accepted_at == "2026-01-02" and paper.metadata.accepted_approximate
+
+
+def test_preprint_version_changes_are_evidence_not_conflicting_snapshots():
+    rows=[{"doi":"10.1101/123456","title":title,"date":day,"version":version,"server":"medRxiv"}
+          for title,day,version in (("First title","2022-01-02","1"),("Revised title","2024-01-02","2"))]
+    with SupplementalClient("medrxiv",transport=httpx.MockTransport(lambda _:httpx.Response(200,
+        json={"messages":[{"status":"ok"}],"collection":rows})),interval=0) as client:
+        result=canonicalize_records(client.lookup("doi","10.1101/123456"))
+    assert not result.issues and len(result.papers)==1
+    assert result.papers[0].metadata.first_public_at=="2022-01-02"
+    assert result.papers[0].metadata.accepted_at is None

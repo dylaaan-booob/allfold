@@ -109,7 +109,7 @@ def complete_metadata(
                         source = record.provenance.model_copy(update={"provider": provider, "role": "supplement"})
                         output.append(record.model_copy(update={"provenance": source}))
                         seen.add(key)
-                except (ValueError, OSError, RuntimeError) as error:
+                except (ValueError, OSError, RuntimeError, TypeError, AttributeError) as error:
                     # Provider clients emit credential-free diagnostics. A failed
                     # supplement never invalidates an independently legal hit.
                     issues.append(CompletionIssue(provider, identifier, str(error)))

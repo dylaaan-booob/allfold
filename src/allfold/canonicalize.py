@@ -471,13 +471,16 @@ def _doi_evidence_issues(
     doi: str,
     records: Sequence[ProviderWorkEvidence],
 ) -> list[CanonicalizationIssue]:
+    # A connected research work may contain several DOI/version records. Only
+    # compare observations of the selected DOI within the same declared version.
+    records = tuple(record for record in records if _record_doi(record) == doi)
     issues: list[CanonicalizationIssue] = []
     record_ids = tuple(
         sorted({record.provenance.record_id for record in records})
     )
-    by_provider: dict[str, list[ProviderWorkEvidence]] = defaultdict(list)
+    by_provider: dict[tuple[str, str], list[ProviderWorkEvidence]] = defaultdict(list)
     for record in records:
-        by_provider[record.provenance.provider.strip().casefold()].append(record)
+        by_provider[(record.provenance.provider.strip().casefold(), record.provenance.version or "")].append(record)
 
     for provider_key, provider_records in sorted(by_provider.items()):
         provider = _provider_label(provider_records[0].provenance.provider)

@@ -4,6 +4,73 @@ from allfold.keywords import parse_keyword_expression
 from allfold.config import JournalConfig
 
 
+def test_openalex_null_source_completion_keeps_other_providers_hit():
+    from allfold.application.metadata_completion import complete_metadata
+    from allfold.models import ExternalIds, MetadataSource, ProviderWorkEvidence
+    from allfold.providers.integrated import DiscoveryClient
+    from datetime import datetime, timezone
+    original = ProviderWorkEvidence(title='Native hit', journal='Journal', external_ids=ExternalIds(doi='10.5555/null'),
+        provenance=MetadataSource(provider='europe_pmc', record_id='MED:42', retrieved_at=datetime.now(timezone.utc),role='discovery'))
+    raw={'id':'https://openalex.org/W123','doi':'https://doi.org/10.5555/null','title':'Native hit','primary_location':None}
+    with DiscoveryClient('openalex',transport=httpx.MockTransport(lambda _:httpx.Response(200,json=raw)),interval=0) as client:
+        completed=complete_metadata((original,),('openalex',),clients={'openalex':client})
+    assert not completed.issues and original in completed.records
+    assert completed.records[1].external_ids.openalex=='https://openalex.org/W123'
+
+
+def test_malformed_supplement_metadata_is_local_to_that_request():
+    from allfold.application.metadata_completion import complete_metadata
+    from allfold.models import ExternalIds, MetadataSource, ProviderWorkEvidence
+    from allfold.providers.integrated import DiscoveryClient
+    from datetime import datetime, timezone
+    original=ProviderWorkEvidence(title='Native hit',external_ids=ExternalIds(doi='10.5555/bad'),
+        provenance=MetadataSource(provider='dblp',record_id='journals/example/Paper',retrieved_at=datetime.now(timezone.utc)))
+    with DiscoveryClient('openalex',transport=httpx.MockTransport(lambda _:httpx.Response(200,json={
+        'id':'https://openalex.org/W123','title':'Native hit','primary_location':['malformed']})),interval=0) as client:
+        completed=complete_metadata((original,),('openalex',),clients={'openalex':client})
+    assert completed.records==(original,) and len(completed.issues)==1
+
+
+def test_openalex_biomedical_ids_join_doi_free_europe_pmc_records():
+    from allfold.canonicalize import canonicalize_records
+    from allfold.providers.integrated import DiscoveryClient, SourceScope
+    for ids, epmc in (({'pmid':'https://pubmed.ncbi.nlm.nih.gov/123/'},{'source':'MED','id':'123'}),
+                      ({'pmcid':'https://www.ncbi.nlm.nih.gov/pmc/articles/PMC456/'},{'source':'MED','id':'999','pmcid':'PMC456'})):
+        with DiscoveryClient('openalex',transport=httpx.MockTransport(lambda _:httpx.Response(200,json={}))) as oa, \
+             DiscoveryClient('europe_pmc',transport=httpx.MockTransport(lambda _:httpx.Response(200,json={}))) as europe:
+            left=oa.normalize({'id':'https://openalex.org/W123','title':'No DOI','ids':ids},SourceScope('journal','Journal'))
+            right=europe.normalize(dict(epmc,title='No DOI'),SourceScope('journal','Journal'))
+        assert len(canonicalize_records((left,right)).papers)==1
+
+
+def test_openalex_uses_verified_source_when_another_issn_is_not_found():
+    from allfold.keywords import parse_keyword_expression
+    from allfold.providers.integrated import DiscoveryClient, SourceScope
+    for identifiers in (('0006-341X','1541-0420'),('1541-0420','0006-341X')):
+        requests=[]
+        def response(request):
+            requests.append(request)
+            if request.url.path.endswith('1541-0420'):
+                return httpx.Response(404,json={})
+            if '/sources/' in request.url.path:
+                return httpx.Response(200,json={'id':'https://openalex.org/S123','issn':['0006-341X']})
+            return httpx.Response(200,json={'results':[{'id':'https://openalex.org/W123','title':'Learning'}],
+                                          'meta':{'count':1,'next_cursor':None}})
+        with DiscoveryClient('openalex',transport=httpx.MockTransport(response),interval=0) as client:
+            found=client.discover(SourceScope('journal','Journal',issns=identifiers),parse_keyword_expression('learning'),date(2026,1,1),date(2026,12,31))
+        assert len(found.records)==1 and found.status=='partial'
+        assert any('1541-0420' in value for value in found.limitations)
+        assert requests[-1].url.params['filter'].startswith('primary_location.source.id:S123,')
+
+
+def test_openalex_journal_issue_is_not_a_paper_candidate():
+    from allfold.providers.integrated import DiscoveryClient, SourceScope
+    with DiscoveryClient('openalex',transport=httpx.MockTransport(lambda _:httpx.Response(200,json={}))) as client:
+        found=client.normalize({'id':'https://openalex.org/W123','title':'Whole issue',
+            'primary_location':{'raw_type':'journal-issue'}},SourceScope('journal','Journal'))
+    assert found is None
+
+
 def test_openalex_request_scopes_native_keywords_source_and_dates():
     from allfold.providers.integrated import DiscoveryClient, SourceScope
     requests = []

@@ -57,6 +57,13 @@ def filter_source_dates(records: Sequence[ProviderWorkEvidence], start: date, en
                           for month in _publication_months(other)}
                 if months and not any(lower <= month <= upper for month in months):
                     excluded += 1
+                    # Keep only the reliable relationship, not the excluded
+                    # record's discovery/bibliographic authority. Otherwise its
+                    # removal can split off a supplement-only Paper component.
+                    kept.append(ProviderWorkEvidence(
+                        provenance=record.provenance.model_copy(update={"role":"supplement"}),
+                        external_ids=record.external_ids, related_dois=record.related_dois,
+                    ))
                     continue
             kept.append(record)
             has_discovery = has_discovery or discovery
