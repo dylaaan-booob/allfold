@@ -31,7 +31,7 @@
 #kept-workspace .s-button{border:1px solid var(--ink);padding:5px 10px;font-size:11px}
 #kept-workflow-host{flex:0 0 auto;max-height:32%;overflow:auto}
 #kept-workspace #kept-inline{overflow:auto;margin:0;padding:8px}
-#kept-workspace[data-browser-visible=true] :is(.kept-queue-heading,#kept-import-actions,#kept-task-page){display:none}
+#kept-workspace[data-browser-visible=true] :is(.kept-queue-heading,#kept-zotero-target,#kept-import-actions,#kept-task-page){display:none}
 #kept-workspace[data-browser-visible=true] #kept-scope-status{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 #kept-workspace[data-browser-visible=true] #kept-workflow-host{max-height:82px}
 #kept-workspace[data-browser-visible=true] #kept-phase{margin-bottom:3px;font-size:11px}

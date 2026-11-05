@@ -13,6 +13,7 @@ const settings={csrf_token:'fixture',issues:[],covers:{},cover_search,saved_work
   name:'Synthetic Monitor',keyword_expression:'causal',from_month:'2026-01',to_month:'2026-01',output_dir:'workspace',log_level:'INFO',
   monitor_revision_exists:'1',monitor_revision_digest:'b'.repeat(64),journal_revision_exists:'1',journal_revision_digest:'c'.repeat(64),
   institution_name:'',institution_idp_entity_id:'',auto_import_after_preparation:false,transition_delay_seconds:'3',display_name:'Synthetic researcher',
+  zotero_target:{server_id:'SyntheticServer',library_type:'user',library_id:'0',collection_key:null},
   provider_aliases:{},provider_order:['openalex','crossref','pubmed','wos'],groups:['Synthetic Group'],custom_labels:[],journals,access_services:services,
 }};
 const paper={id:'paper-1',title:'Synthetic kept paper',doi:'10.5555/presentation',publication_date:'2026-10-01',status:'kept',abstract:'Synthetic fixture only',authors:[],enrichPhase:'Idle'};
@@ -64,7 +65,8 @@ app.whenReady().then(async()=>{
     await ready(()=>host("window.uiWorkspace?.ready()&&!document.getElementById('kept-open').disabled&&document.querySelectorAll('#s-journals [data-journal]').length===1"),'shipped UI ready');
     tab=browser.createTab({present:false});await tab.view.webContents.loadURL(origin+'/challenge');const id=tab.id,session=tab.view.webContents.session,load=await page('fixtureLoad');
     await click(win.webContents,'#kept-open');await ready(()=>host("workspaceNavigation.current()==='kept'&&document.querySelectorAll('#kept-statistics tbody tr').length===4"),'Kept Queue');await capture('shipped-wide-queue');
-    await click(win.webContents,'#kept-browser-open');let rect=await measured('shipped wide Compact');assert(rect.width>=320&&rect.height>=299&&rect.height<=300,'wide Compact dimensions '+JSON.stringify(rect));await completeChallenge();await capture('shipped-wide-compact');
+    assert(await host("document.getElementById('kept-zotero-target').getClientRects().length>0"),'Queue Zotero target is not visible');
+    await click(win.webContents,'#kept-browser-open');let rect=await measured('shipped wide Compact');assert(await host("document.getElementById('kept-zotero-target').getClientRects().length===0"),'Zotero target consumes Browser viewport height');assert(rect.width>=320&&rect.height>=299&&rect.height<=300,'wide Compact dimensions '+JSON.stringify(rect));await completeChallenge();await capture('shipped-wide-compact');
     await click(win.webContents,'#browser-focus');const wideFocus=await measured('shipped wide Focus');assert(wideFocus.height>rect.height,'wide Focus did not expand');await capture('shipped-wide-focus');
     await click(win.webContents,'#browser-tools-toggle');const withTools=await measured('shipped wide Focus tools');assert(withTools.height<wideFocus.height&&await host("!document.getElementById('browser-address').hidden"),'Focus tools did not reveal address');await click(win.webContents,'#browser-tools-toggle');await click(win.webContents,'#browser-compact');
     await size(600,480);rect=await measured('shipped 600x480 Compact');assert(rect.width>=300&&rect.height>=120,'600x480 Compact unusable '+JSON.stringify(rect));await page("code.value='' ");await completeChallenge();await capture('shipped-600x480-compact');
