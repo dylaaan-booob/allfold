@@ -142,10 +142,27 @@ Electron package metadata and scripts remain at the package root. `src/shared/pa
 
 ## Data ownership
 
-Local YAML owns monitor settings. The private `.allfold/user-data.sqlite` owns Journals, Groups, Labels, direct Access Services and default Service assignments, isolated by the canonical configuration path. Existing valid `list.md` files seed each configuration once; subsequent Markdown edits do not change saved user state. Migration validates the complete managed data, records its source and digest, and leaves the original file intact. Paper Markdown owns identity, workflow status and human content.
+Local YAML owns monitor settings. The private `.allfold/user-data.sqlite` owns Journals, Groups, Labels, direct Access Services and default Service assignments, isolated by the canonical configuration path. Existing valid `list.md` files seed each configuration once; subsequent Markdown edits do not change saved user state. Migration validates the complete managed data, records its source and digest, and leaves the original file intact. Paper Markdown owns UUID and primary/related DOI or reliable namespaced identity, workflow status and human content. [Paper identity](paper-identity.md) defines the create-only canonicalization, source/version metadata and partial date evidence contract.
 
 The private `.allfold/resources.sqlite` shares complete GOKB snapshots and the CARSI official Catalog across configurations. It holds external evidence, not users' Service preferences. Refresh commits only validated, complete data and retains the previous cache on failure. The Journal Resolver follows Journal → GOKB Platform → CARSI Resource, retaining multiple identities and products. Only a unique, reliable candidate can fill an empty default; saved user choices take precedence. Ordinary Run never requires GOKB.
 
 Both databases live outside Workspace. Within the application project, configurations in subdirectories use the same application data directory; their canonical paths still identify separate user scopes. Registry remains read-only during normal use and retains source-specific evidence. Browser tasks and coordinators are transient, while Zotero owns its Library and attachments. Generated UI and Runtime are rebuildable resources, not user data.
 
 [Safety](safety.md) states the cross-module invariants. Types, parsers and validators in code define fields and interfaces; [development](development.md) defines preparation and verification. Historical plans and investigations are not current implementation authority.
+
+## Discovery creation boundary
+
+Provider adapters emit `ProviderWorkEvidence`; canonicalization groups explicit
+strong identities and fills missing metadata in a fixed order. Journal and
+Conference fields remain distinct, and all Paper types use the same Markdown
+materializer and Discovery/Kept projection. Date evidence is finalized only for
+new Papers; the discovery publication range does not filter against first-public
+dates. Local Paper edits and external DOI actions have separate validation.
+
+The integrated coordinator keeps requests and transient candidate evidence in
+memory outside the Workspace operation lock. The commit boundary rechecks the
+captured Workspace/configuration identity, scans saved identities and performs
+atomic creates under one short lock. No Run database, persistent checkpoint,
+identity side table or background refresh is introduced. Saved Paper matches
+are skipped byte-for-byte. WoS retains its browser lifecycle while sharing the
+Paper identity and source metadata contract.

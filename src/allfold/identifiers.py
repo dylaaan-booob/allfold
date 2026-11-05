@@ -28,7 +28,7 @@ def valid_doi(value: str | None) -> str | None:
 
 
 
-RELIABLE_NAMESPACES = frozenset({"doi", "openalex", "arxiv", "dblp", "europe_pmc", "zbmath", "pmid", "pmcid", "pubmed", "wos"})
+RELIABLE_NAMESPACES = frozenset({"doi", "openalex", "arxiv", "dblp", "europe_pmc", "zbmath", "pmid", "pmcid", "wos"})
 
 
 def normalize_external_id(namespace: str, value: Any) -> str | None:

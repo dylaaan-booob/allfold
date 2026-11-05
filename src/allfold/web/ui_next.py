@@ -109,6 +109,7 @@ def install_ui_next(app: FastAPI, config_path: Path, csrf_token: str, *, read_ta
                 metadata = {}
                 registry_issues.append(str(error))
             service_by_id = {s.id: s for s in services}
+            conferences = {item.id: item for item in getattr(settings_list, "conferences", ())}
             records = {}
             subjects = defaultdict(list)
             for name in settings_list.groups:
@@ -116,7 +117,7 @@ def install_ui_next(app: FastAPI, config_path: Path, csrf_token: str, *, read_ta
             for journal in journals:
                 info = metadata.get(journal.key, {})
                 service = service_by_id.get(journal.access_service_id)
-                record = dict(key=journal.key, issn=journal.issn, eissn=journal.eissn, name=journal.name,
+                record = dict(key=journal.key, source_type="journal", issn=journal.issn, eissn=journal.eissn, name=journal.name,
                               group=journal.group, labels=list(journal.labels),
                               publisher=info.get("publisher"), sources=info.get("sources", []),
                               service=service.name if service else None,
@@ -128,16 +129,30 @@ def install_ui_next(app: FastAPI, config_path: Path, csrf_token: str, *, read_ta
             kept = []
             for paper in (*workspace.inbox, *workspace.kept):
                 journal = journal_for_paper(paper, journals)
-                key = journal.key if journal else f"unmapped:{paper.journal}"
+                conference = conferences.get(paper.conference_id)
+                source_name = paper.conference or paper.journal or "Unknown source"
+                key = (paper.conference_id or f"conference:{paper.conference}") if paper.conference else (
+                    journal.key if journal else f"unmapped:{source_name}")
                 if key not in records:
-                    records[key] = dict(key=key, issn=None, eissn=None, name=paper.journal,
-                                        group=None, labels=[], publisher=None, service=None,
+                    records[key] = dict(key=key, issn=None, eissn=None, name=source_name,
+                                        source_type="conference" if paper.conference else "journal",
+                                        group=conference.group if conference else None,
+                                        labels=list(conference.labels) if conference else [], publisher=None, service=None,
                                         service_id=None, cover=None, papers=[])
-                    subjects[(None, True)].append(records[key])
+                    subjects[(conference.group, False) if conference else (None, True)].append(records[key])
                 record = records[key]
                 enrichment = app.state.paper_enrichment.state(paper.paper_id)
                 item = dict(id=str(paper.paper_id), title=paper.title,
                             publication_date=paper.publication_date, abstract=paper.abstract,
+                            conference=paper.conference, conference_id=paper.conference_id,
+                            journal=paper.journal, publication_type=paper.publication_type,
+                            first_public_at=paper.first_public_at, accepted_at=paper.accepted_at,
+                            accepted_approximate=paper.accepted_approximate, date_note=paper.date_note,
+                            date_evidence=[item.model_dump(mode="json", exclude_none=True) for item in paper.date_evidence],
+                            indexed_terms=[item.model_dump(mode="json", exclude_none=True) for item in paper.indexed_terms],
+                            external_ids=paper.external_ids.model_dump(exclude_none=True),
+                            related_dois=list(paper.related_dois),
+                            sources=[source.model_dump(mode="json", exclude_none=True) for source in paper.sources],
                             authors=list(paper.authors), doi=paper.external_ids.doi,
                             discovered_at=paper.discovered_at.isoformat(), status=paper.status.value,
                             enriched=enrichment["completed_in_session"],
@@ -147,21 +162,21 @@ def install_ui_next(app: FastAPI, config_path: Path, csrf_token: str, *, read_ta
                 if paper.status is WorkflowStatus.CANDIDATE:
                     record["papers"].append(item)
                 else:
-                    kept.append(dict(paper=item, journal={k: record[k] for k in ("key", "issn", "eissn", "name")}))
+                    kept.append(dict(paper=item, journal={k: record[k] for k in ("key", "issn", "eissn", "name", "source_type")}))
             groups = []
             for (group_name, unmapped), entries in subjects.items():
-                name = "Unmapped journals" if unmapped else group_name if group_name is not None else "Ungrouped / virtual"
+                name = "Unmapped sources" if unmapped else group_name if group_name is not None else "Ungrouped / virtual"
                 active = [entry for entry in entries if entry["papers"]]
                 for entry in active:
                     entry["papers"].sort(key=lambda p: p["id"])
                     entry["papers"].sort(key=lambda p: p["discovered_at"], reverse=True)
-                    entry["papers"].sort(key=lambda p: p["publication_date"] or "", reverse=True)
+                    entry["papers"].sort(key=lambda p: p["first_public_at"] or p["publication_date"] or "", reverse=True)
                 if active:
                     groups.append(dict(name=name, journals=active))
             return response(dict(
                 subjects=groups, csrf_token=csrf_token, import_token=import_token,
                 counts=dict(candidates=len(workspace.inbox), active_journals=sum(len(g["journals"]) for g in groups)),
-                kept=dict(papers=kept, journals=[{k: r[k] for k in ("key", "issn", "eissn", "name", "service_id")} for r in records.values()],
+                kept=dict(papers=kept, journals=[{k: r[k] for k in ("key", "issn", "eissn", "name", "source_type", "service_id")} for r in records.values()],
                           services=[s.model_dump() for s in services], settings=config.kept_workflow,
                           titles={str(p.paper_id): p.title for p in workspace.papers}),
                 issues=[*registry_issues, *(issue.message for issue in workspace.issues)],

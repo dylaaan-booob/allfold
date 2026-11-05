@@ -96,12 +96,20 @@
       <div class="paper-navigation"><div class="paper-stepper"><button id="previous-paper" aria-label="上一篇 Paper">←</button><strong id="paper-position"></strong><button id="next-paper" aria-label="下一篇 Paper">→</button></div></div>
       <article id="paper-detail" tabindex="-1">
         <h1 id="view-paper-title" tabindex="-1"></h1>
+        <dl class="paper-metadata paper-dates">
+          <div><dt>First public</dt><dd id="paper-first-public"></dd></div>
+          <div><dt>Accepted</dt><dd id="paper-accepted"></dd></div>
+        </dl>
         <details id="paper-metadata-details">
         <summary id="paper-metadata-summary">Infos</summary>
         <dl class="paper-metadata">
+          <div><dt>Source</dt><dd id="paper-source"></dd></div>
           <div><dt>Authors</dt><dd id="paper-authors"></dd></div>
           <div><dt>Publication date</dt><dd id="paper-date"></dd></div>
           <div><dt>DOI</dt><dd><a id="paper-doi" target="_blank" rel="noopener noreferrer"></a></dd></div>
+          <div><dt>Identifiers</dt><dd id="paper-identifiers"></dd></div>
+          <div><dt>Indexed terms</dt><dd id="paper-indexed-terms"></dd></div>
+          <div><dt>Providers</dt><dd id="paper-providers"></dd></div>
         </dl>
         </details>
         <div class="review-controls" hidden><p id="enrich-status" role="status" aria-live="polite"></p><button id="cancel-enrich" hidden>Cancel</button></div>

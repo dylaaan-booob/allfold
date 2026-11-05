@@ -22,6 +22,8 @@ from allfold.models import (
     ExportAttemptState,
     ExternalIds,
     MetadataSource,
+    ProviderTopic,
+    EvidenceDate,
     WorkflowStatus,
 )
 from allfold.persistence.safe_write import read_text_exact
@@ -50,6 +52,8 @@ class WorkspacePaper:
     accepted_at: str | None = None
     accepted_approximate: bool = False
     date_note: str | None = None
+    indexed_terms: tuple[ProviderTopic, ...] = ()
+    date_evidence: tuple[EvidenceDate, ...] = ()
     export_attempt: ExportAttempt | None = None
     export_attempt_present: bool = False
 
@@ -183,6 +187,8 @@ def _project_paper(state: PaperMarkdownState) -> WorkspacePaper:
         accepted_at=state.accepted_at,
         accepted_approximate=state.accepted_approximate,
         date_note=state.date_note,
+        indexed_terms=state.indexed_terms,
+        date_evidence=state.date_evidence,
         export_attempt=state.export_attempt,
         export_attempt_present=state.export_attempt_present,
     )

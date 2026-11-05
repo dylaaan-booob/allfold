@@ -5,7 +5,7 @@ These invariants apply across modules. Field-level definitions remain in code; t
 | Invariant | Implementation | Safety checks |
 | --- | --- | --- |
 | Each canonical configuration owns an independent Journal/Group/Label/Service scope. Validated migration preserves its legacy source, SQLite writes compare revisions, and corrupt state is not replaced by recovered defaults. External cache refresh never overwrites user Service choices. | [User state](../src/allfold/persistence/user_state.py), [Settings](../src/allfold/application/settings.py), [Resolver](../src/allfold/application/journal_resolver.py) | Isolated Settings, migration, Resolver and research-scope exchange tests |
-| Runs are create-only; existing Paper bytes and human fields are preserved. DOI/UUID identity and exact-content revision checks guard mutations. | [Paper persistence](../src/allfold/persistence/markdown_state.py), [safe writes](../src/allfold/persistence/safe_write.py) | [materialize](../tests/test_materialize.py), [decisions](../tests/test_application_decisions.py), [safe writes](../tests/test_safe_write.py) |
+| Runs are create-only; existing Paper bytes and human fields are preserved. UUID and normalized primary/related DOI or reliable namespaced identity checks guard creation; exact-content revisions guard manual mutations. | [Paper persistence](../src/allfold/persistence/markdown_state.py), [safe writes](../src/allfold/persistence/safe_write.py) | [identity](../tests/test_paper_identity.py), [materialize](../tests/test_materialize.py), [decisions](../tests/test_application_decisions.py), [safe writes](../tests/test_safe_write.py) |
 | Reset and file operations validate roots, ownership and directory identity; symlinks cannot redirect destructive operations. | [Workspace Reset](../src/allfold/application/workspace_reset.py), [safe writes](../src/allfold/persistence/safe_write.py) | [Reset](../tests/test_workspace_reset.py), [native exports](../electron/tests/wos-operations.test.cjs) |
 | Browser operations remain bound to their task and document. User tab selection does not retarget an active operation; stale results and cancellation cannot grant new authority. | [browser runtime](../electron/src/browser/browser-runtime.cjs), [bridge](../src/allfold/web/electron_bridge.py) | [browser](../electron/tests/browser-runtime.test.cjs), [Import control](../electron/tests/import-control.test.cjs) |
 | Institution credentials are limited to active saved-Institution CARSI Prepare/Run WoS flows and attributable popups. Ordinary Browser, Import, Enrich and Covers gain no credential authority. | [institution auth](../electron/src/auth/institution-auth.cjs), [browser runtime](../electron/src/browser/browser-runtime.cjs) | [browser authority](../electron/tests/browser-runtime.test.cjs) |
@@ -36,3 +36,12 @@ An explicitly confirmed complete replacement still compares that revision. If th
 file itself cannot be read, no overwrite revision is available; the UI retains the
 draft and requires a successful status read before submitting. Status responses
 preserve newer credential input, which stays outside ordinary draft recovery.
+
+Integrated discovery performs network requests without holding the Workspace
+operation lock. It captures configuration and Workspace ownership before the
+network phase, then rechecks that ownership, cancellation and the complete
+identity index under one short commit lock before atomic creates. Reset or
+replacement cannot cause a late result to recreate or write a different
+Workspace. Cancellation stops subsequent creates and retains the actual count
+of files already committed. [Paper identity](paper-identity.md) defines the
+persisted identity, source, date and DOI-action boundaries.

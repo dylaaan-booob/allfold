@@ -67,7 +67,7 @@ function groups(entries=visibleEntries(),journals=data.journals) {
 }
 function orderedEntries(entries=visibleEntries(),journals=data.journals) {
   return groups(entries,journals).filter(g=>status==='kept' || g.id===ui.filter).flatMap(g=>status==='candidates'?g.entries:[...g.entries].sort((a,b)=>{
-    return (b.paper.publication_date||'').localeCompare(a.paper.publication_date||'') ||
+    return (b.paper.first_public_at||b.paper.publication_date||'').localeCompare(a.paper.first_public_at||a.paper.publication_date||'') ||
       (b.paper.discovered_at||'').localeCompare(a.paper.discovered_at||'') || a.paper.id.localeCompare(b.paper.id);
   }));
 }
@@ -166,7 +166,7 @@ function render() {
   }
   $('array-journal-profile').hidden=status!=='candidates';
   const journal=journals.find(group=>group.id===ui.filter)?.journal;
-  $('array-journal-name').textContent=journal?.name || '尚无待审阅期刊';
+  $('array-journal-name').textContent=journal?.name || '尚无待审阅来源';
   $('array-journal-issn').textContent=journal?.issn || '—';
   $('array-journal-eissn').textContent=journal?.eissn || '—';
   $('array-journal-subject').textContent=journal?.group || journal?.logicalGroupName || '—';
