@@ -147,6 +147,8 @@ def _tokenize(text: str) -> tuple[_Token, ...]:
                 position += 1
             if position >= len(text):
                 raise KeywordSyntaxError("unterminated phrase", start)
+            if any(c in "*?~" for c in phrase):
+                raise KeywordSyntaxError("wildcard or proximity operators are not supported inside phrases", start)
             if not phrase:
                 raise KeywordSyntaxError("phrase must not be empty", start)
             position += 1
@@ -254,47 +256,26 @@ def parse_keyword_expression(text: str) -> KeywordExpression:
     return _Parser(text).parse()
 
 
-def compile_native_expression(expression: KeywordExpression, *, provider: str, mode: str = "title_abstract") -> str:
-    """Serialize the shared AST, never reinterpreting text as native query syntax."""
-    if provider not in {"pubmed", "wos"}:
+def compile_native_expression(expression: KeywordExpression, *, provider: str) -> str:
+    """Serialize the shared language for the independent WoS Topic path."""
+    if provider != "wos":
         raise ValueError("Unsupported native query Provider")
-    if provider == "pubmed" and mode not in {"title_abstract", "broad"}:
-        raise ValueError("Choose title_abstract or broad mode")
-
     def operand(node):
         if isinstance(node, (And, Or)):
             operator = "AND" if isinstance(node, And) else "OR"
             return f"({operand(node.left)} {operator} {operand(node.right)})"
-        value = (validate_prefix_base(node.value) if isinstance(node, Prefix)
-                 else unicodedata.normalize("NFKC", node.value))
-        if isinstance(node, Proximity) and "*" in value:
-            raise ValueError(f"{provider}: wildcard '*' cannot be combined with proximity search")
-        # Local FTS treats punctuation as lexical boundaries. Native engines have
-        # different punctuation/field rules, so do not guess at their meaning.
+        if isinstance(node, Proximity):
+            raise ValueError("proximity search is no longer supported")
+        value = validate_prefix_base(node.value) if isinstance(node, Prefix) else unicodedata.normalize("NFKC",node.value)
         words = value.split()
         if not words or any(not word.isalnum() for word in words):
-            raise ValueError(f"{provider}: this operand cannot be converted without changing its meaning")
-        if isinstance(node, Proximity):
-            if len(words) < 2:
-                raise ValueError(f"{provider}: proximity requires at least two lexical terms")
-            if not 0 <= node.distance <= 50:
-                raise ValueError(f"{provider}: proximity distance must be between 0 and 50")
-            if provider == "pubmed":
-                return '"' + " ".join(words) + f'"[tiab:~{node.distance}]'
-            result = f'"{words[0]}"'
-            for word in words[1:]:
-                result = f'({result} NEAR/{node.distance} "{word}")'
-            return result
+            raise ValueError("wos: this operand cannot be converted without changing its meaning")
         if isinstance(node, Prefix):
-            result = value + "*"
-        elif isinstance(node, Phrase) or len(words) > 1 or (provider == "wos" and value.upper() in {"NEAR", "SAME", "NOT"}):
-            result = '"' + " ".join(words) + '"'
-        else:
-            result = value
-        return result + ("[tiab]" if provider == "pubmed" and mode == "title_abstract" else "")
-
-    content = operand(expression)
-    return f"TS=({content})" if provider == "wos" else content
+            return value + "*"
+        if isinstance(node, Phrase) or len(words)>1 or value.upper() in {"NEAR","SAME","NOT"}:
+            return '"' + " ".join(words) + '"'
+        return value
+    return f"TS=({operand(expression)})"
 
 
 def lexical_tokens(text: str) -> tuple[str, ...]:

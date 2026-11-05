@@ -85,3 +85,59 @@ def test_zbmath_verifies_issn_serial_mapping_and_excludes_review_query_and_abstr
     assert 'se:77' in q and 'py:2026-2026' in q
     assert '(ti:learning | ut:learning | cc:learning)' in q
     assert 'ab:' not in q and 'any:' not in q
+
+
+import pytest
+
+@pytest.mark.parametrize('mode,expected,count', [('empty','empty',0),('repeated','partial',1),('budget','partial',1),('failure','partial',1)])
+def test_dblp_pagination_outcomes_preserve_valid_partial_records(mode,expected,count):
+    from allfold.providers.integrated import DiscoveryClient, SourceScope
+    calls=[]
+    def handler(request):
+        calls.append(request)
+        offset=int(request.url.params['f'])
+        if mode=='failure' and offset:
+            return httpx.Response(503)
+        if mode=='empty':
+            hits={'@total':'0','@computed':'0','@first':'0'}
+        else:
+            hits={'@total':'3','@computed':'3','@first':'0' if mode=='repeated' else str(offset),
+                  'hit':[{'info':{'key':f'journals/test/{offset}','title':'Learning','year':'2026'}}]}
+        return httpx.Response(200,json={'result':{'hits':hits}})
+    with DiscoveryClient('dblp',transport=httpx.MockTransport(handler),interval=0,page_size=1,max_records=1 if mode=='budget' else 100) as client:
+        result=client.discover(SourceScope('journal','Test',stream='streams/journals/test'),parse_keyword_expression('learning'),date(2026,1,1),date(2026,12,31))
+    assert result.status==expected
+    assert len(result.records)==count
+    assert len(calls)==(2 if mode in {'repeated','failure'} else 1)
+
+
+def test_dblp_respects_retry_after_and_stops_after_bounded_retries():
+    from allfold.providers.integrated import DiscoveryClient, SourceScope
+    calls,sleeps=[],[]
+    def handler(request):
+        calls.append(request)
+        return httpx.Response(429,headers={'Retry-After':'2'})
+    with DiscoveryClient('dblp',transport=httpx.MockTransport(handler),interval=0,sleep=sleeps.append) as client:
+        result=client.discover(SourceScope('conference','NeurIPS',stream='streams/conf/nips'),parse_keyword_expression('learning'),date(2026,1,1),date(2026,12,31))
+    assert result.status=='failed'
+    assert len(calls)==3 and sleeps==[2,2]
+
+
+def test_cancellation_during_response_stops_pagination_and_keeps_cancelled_state():
+    from threading import Event
+    from allfold.providers.integrated import DiscoveryClient, SourceScope
+    cancel=Event();calls=[]
+    def handler(request):
+        calls.append(request);cancel.set()
+        return httpx.Response(200,json={'result':{'hits':{'@total':'1','@computed':'1','@first':'0','hit':[]}}})
+    with DiscoveryClient('dblp',transport=httpx.MockTransport(handler),interval=0,cancel_event=cancel) as client:
+        result=client.discover(SourceScope('conference','NeurIPS',stream='streams/conf/nips'),parse_keyword_expression('learning'),date(2026,1,1),date(2026,12,31))
+    assert result.status=='cancelled'
+    assert not result.records and len(calls)==1
+
+
+def test_unmapped_dblp_journal_reports_not_run_without_network():
+    from allfold.providers.integrated import DiscoveryClient, SourceScope
+    with DiscoveryClient('dblp',transport=httpx.MockTransport(lambda _:pytest.fail('Unmapped source queried')),interval=0) as client:
+        result=client.discover(SourceScope('journal','Test',issns=('0006-341X',)),parse_keyword_expression('learning'),date(2026,1,1),date(2026,12,31))
+    assert result.status=='skipped'

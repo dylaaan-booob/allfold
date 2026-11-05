@@ -44,8 +44,6 @@ def _visible_result_facts(facts: dict, provider: str) -> tuple[list, list, dict]
                                          if key != "resolved" and value}
     if provider == "crossref" and not any(details.get("manifest", {}).get(key) for key in ("partial", "failed")):
         details.pop("manifest", None)
-    if provider == "pubmed" and "skipped" in details:
-        details["skipped"].pop("doi_conflict", None)
     if provider == "wos":
         dates = []
         for warning in details.get("date_warnings", []):
@@ -65,14 +63,6 @@ def _visible_result_facts(facts: dict, provider: str) -> tuple[list, list, dict]
         if issue.get("severity") != "error":
             if provider == "openalex" and message == "work has neither a valid DOI nor a usable title":
                 continue
-            if provider == "pubmed":
-                if (message == "Unknown PubModel; selected reliable publication date with PubDate priority" or
-                        (issue["category"] == "exclusion" and re.fullmatch(r"PubMed skipped \d+ records: doi_conflict", message))):
-                    continue
-                if message.startswith("PubMed ESearch PhraseNotFound: ") and issue.get("issn") in missing_identifiers:
-                    item = missing_identifiers[issue["issn"]]
-                    item["message"] = item.get("message") or message
-                    continue
             if (provider == "wos" and any(j["status"] == "hint" for j in journals) and
                     message.startswith("未列入当前本地 WoS 来源清单（")):
                 continue
@@ -104,7 +94,9 @@ def build_run_result_summary(record: object) -> dict[str, object] | None:
     provider = result.get("provider", raw.get("provider"))
     journals, issues, details = _visible_result_facts(facts, provider)
     statuses = {unit["status"] for unit in coverage}
-    if provider == "wos":
+    if provider == "integrated":
+        coverage_status = details.get("discovery_status", "unknown")
+    elif provider == "wos":
         coverage_status = ("complete" if details.get("query_finished") and all(b["complete"] for b in details.get("batches", []))
                            else "partial" if result.get("returned_records") else "failed")
     else:
@@ -115,7 +107,9 @@ def build_run_result_summary(record: object) -> dict[str, object] | None:
         status = "cancelled"
     elif outcome in ("INVALID_CONFIGURATION", "Failed", "FAILED"):
         status = "failed"
-    elif coverage_status in ("partial", "failed", "unavailable"):
+    elif coverage_status == "failed":
+        status = "failed"
+    elif coverage_status in ("partial", "unavailable"):
         status = "incomplete"
     elif outcome == "Partial" or any(i.get("severity") == "error" for i in issues):
         status = "capture_issues"
@@ -130,7 +124,7 @@ def build_run_result_summary(record: object) -> dict[str, object] | None:
     statistics = facts.get("statistics", {})
     statistics = {key: value for key, value in statistics.items()
                   if key not in ("evidence_clusters", "retained_clusters") and
-                  (provider == "wos" or key.startswith(provider + "_"))}
+                  (provider in {"wos", "integrated"} or key.startswith(provider + "_"))}
     if provider == "wos":
         # Batch details remain the single display location; status still uses all failures.
         batch_messages = {f"{batch['first']}-{batch['last']}: {message}"

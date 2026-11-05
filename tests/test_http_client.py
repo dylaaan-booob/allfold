@@ -457,14 +457,13 @@ def test_proxy_authentication_is_sent_without_logging_credentials(monkeypatch, c
     assert "Proxy-Authorization" not in caplog.text
 
 
-@pytest.mark.parametrize("provider", ["pubmed", "crossref", "openalex"])
+@pytest.mark.parametrize("provider", ["crossref", "openalex"])
 @pytest.mark.parametrize("injected", [False, True])
 def test_provider_requests_keep_proxy_query_and_retry_semantics(monkeypatch, provider, injected):
     from datetime import date
     from urllib.parse import parse_qs
     from allfold.providers.crossref import CrossrefClient
     from allfold.providers.openalex import OpenAlexClient
-    from allfold.providers.pubmed import PubMedClient
 
     monkeypatch.setenv("NO_PROXY", "fe80::/10,fc00::/7")
     monkeypatch.setenv("HTTPS_PROXY", "http://fixture-proxy.test:8000")
@@ -474,7 +473,7 @@ def test_provider_requests_keep_proxy_query_and_retry_semantics(monkeypatch, pro
         requests.append(request)
         if len(requests) == 1:
             return httpx.Response(503)
-        return httpx.Response(200, content=b"<fixture/>" if provider == "pubmed" else b'{"ok":true}')
+        return httpx.Response(200, content=b'{"ok":true}')
 
     if injected:
         options = {"transport": httpx.MockTransport(handle)}
@@ -488,15 +487,7 @@ def test_provider_requests_keep_proxy_query_and_retry_semantics(monkeypatch, pro
         monkeypatch.setattr(httpx, "HTTPTransport", transport)
         options = {}
 
-    if provider == "pubmed":
-        with PubMedClient(api_key="fixture-key", sleep=sleeps.append, **options) as client:
-            assert client.request("esearch", term="statistics", retstart=7) == b"<fixture/>"
-        params = parse_qs(requests[-1].content.decode())
-        assert requests[-1].method == "POST"
-        assert requests[-1].url.path.endswith("/esearch.fcgi")
-        assert params == {"term": ["statistics"], "retstart": ["7"], "db": ["pubmed"],
-                          "retmode": ["xml"], "tool": ["allfold"], "api_key": ["fixture-key"]}
-    elif provider == "crossref":
+    if provider == "crossref":
         with CrossrefClient(mailto="fixture@example.test", sleep=sleeps.append, **options) as client:
             assert client.get_manifest_page(["1234-5679"], date(2026, 1, 1), date(2026, 2, 1),
                                             cursor="cursor+next") == {"ok": True}

@@ -6,7 +6,6 @@ import logging
 import threading
 import secrets
 from allfold.application.history import observe, finish_run
-from contextlib import AbstractContextManager
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from enum import Enum
@@ -15,7 +14,8 @@ from pathlib import Path
 from allfold.application.monitor import RunResult, run_monitor
 from allfold.application.run_state import RunProvider, discovery_provider
 from allfold.config import ConfigurationError, load_config
-from allfold.persistence.safe_write import WorkspaceOperationLock, workspace_operation_lock, ContentChangedError, CompareReadError
+from allfold.application.run_commit import capture_run_workspace
+from allfold.persistence.safe_write import CompareReadError
 from allfold.progress import (
     PROGRESS_STAGES,
     ActivitySnapshot,
@@ -99,11 +99,11 @@ class RunCoordinator:
         self._result: RunResult | None = None
         self._unexpected_error: UnexpectedRunError | None = None
         self._worker: threading.Thread | None = None
-        self._ownership: AbstractContextManager[WorkspaceOperationLock] | None = None
-        self._operation_lock: WorkspaceOperationLock | None = None
         self._config_snapshot = None
+        self._workspace_snapshot = None
+        self._cancel_event = threading.Event()
 
-    def start(self, provider: RunProvider) -> StartResult:
+    def start(self, provider: RunProvider = RunProvider.INTEGRATED) -> StartResult:
         """Start a production run on a dedicated worker if none is active."""
 
         provider = discovery_provider(provider)
@@ -123,35 +123,17 @@ class RunCoordinator:
             self._finished_at = None
             self._result = None
             self._unexpected_error = None
-            # 在发布 RUNNING/启动 worker 之前完成跨进程独占；旧工作线程
-            # 即使尚未进入 materialize，也不得让 Reset 看到空闲 flock。
-            ownership = None
-            acquired = False
+            self._cancel_event = threading.Event()
             try:
-                try:
-                    config = load_config(self._config_path)
-                except ConfigurationError:
-                    config = None
+                config = load_config(self._config_path)
+                from allfold.application.integrated_run import validate_selection
+                validate_selection(config)
                 self._config_snapshot = config
-                if config is not None:
-                    ownership = workspace_operation_lock(config.output_dir, create=True)
-                    operation_lock = ownership.__enter__()
-                    acquired = True
-                    if load_config(self._config_path).output_dir != operation_lock.path:
-                        raise ContentChangedError("Run configuration changed before start")
-                    self._operation_lock = operation_lock
-                    self._ownership = ownership
-            except (ContentChangedError, CompareReadError, OSError, ConfigurationError) as error:
-                if acquired and ownership is not None:
-                    ownership.__exit__(None, None, None)
-                self._operation_lock = None
-                self._ownership = None
+                self._workspace_snapshot = capture_run_workspace(self._config_path,config)
+            except (ValueError, CompareReadError, OSError) as error:
                 self._status = CoordinatorStatus.FINISHED
                 self._finished_at = datetime.now(timezone.utc)
-                self._unexpected_error = UnexpectedRunError(
-                    category=type(error).__name__,
-                    message="Run could not acquire exclusive Workspace ownership.",
-                )
+                self._unexpected_error = UnexpectedRunError(category=type(error).__name__,message=str(error))
                 self._release_slot()
                 observe(self.diagnostics, "finish", self._task_id, "failed", details={"reason":"workspace_changed"})
                 return StartResult(StartOutcome.START_FAILED)
@@ -164,10 +146,8 @@ class RunCoordinator:
                 # 在线程启动成功前保持锁，避免暴露 RUNNING + 尚未启动 worker 的瞬时状态。
                 worker.start()
             except Exception as error:
-                if self._ownership is not None:
-                    self._ownership.__exit__(None, None, None)
-                self._ownership = None
-                self._operation_lock = None
+                if self._workspace_snapshot is not None:
+                    self._workspace_snapshot.close()
                 self._status = CoordinatorStatus.FINISHED
                 self._finished_at = datetime.now(timezone.utc)
                 self._result = None
@@ -193,6 +173,13 @@ class RunCoordinator:
             return StartResult(StartOutcome.START_FAILED)
 
         return StartResult(StartOutcome.STARTED)
+
+    def cancel(self) -> bool:
+        with self._lock:
+            if self._status is not CoordinatorStatus.RUNNING:
+                return False
+            self._cancel_event.set()
+            return True
 
     def _release_slot(self):
         if self._slot_owned:
@@ -242,16 +229,9 @@ class RunCoordinator:
         result: RunResult | None = None
         unexpected_error: UnexpectedRunError | None = None
         try:
-            if self._operation_lock is None:
-                result = run_monitor(self._config_path, provider=self._provider, progress_callback=self._update_progress)
-            else:
-                result = run_monitor(
-                    self._config_path,
-                    provider=self._provider,
-                    progress_callback=self._update_progress,
-                    operation_lock=self._operation_lock,
-                    loaded_config=self._config_snapshot,
-                )
+            result = run_monitor(self._config_path, provider=self._provider,
+                progress_callback=self._update_progress, loaded_config=self._config_snapshot,
+                workspace_snapshot=self._workspace_snapshot, cancel_event=self._cancel_event)
         except BaseException as error:
             LOGGER.exception("Unexpected exception during monitor run")
             unexpected_error = UnexpectedRunError(
@@ -259,18 +239,9 @@ class RunCoordinator:
                 message="The monitor run stopped because of an unexpected internal error.",
             )
         finally:
-            # 先结束所有工作及操作锁，再对外报告 FINISHED。
-            if self._ownership is not None:
-                try:
-                    self._ownership.__exit__(None, None, None)
-                except Exception:
-                    LOGGER.exception("Failed to release Run Workspace ownership")
-                    unexpected_error = UnexpectedRunError(
-                        category="WorkspaceOwnershipError",
-                        message="Run operation ownership failed during release.",
-                    )
-                self._ownership = None
-                self._operation_lock = None
+            if self._workspace_snapshot is not None:
+                self._workspace_snapshot.close()
+                self._workspace_snapshot = None
             with self._lock:
                 self._result = result if unexpected_error is None else None
                 self._unexpected_error = unexpected_error
