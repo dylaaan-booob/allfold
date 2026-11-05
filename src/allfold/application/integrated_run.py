@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from concurrent.futures import ThreadPoolExecutor
 from contextlib import ExitStack
-from dataclasses import dataclass, replace
+from dataclasses import dataclass
 from datetime import date, datetime, timezone
 from threading import Event
 
@@ -102,7 +102,7 @@ def run_integrated(config_path, *, loaded_config=None, workspace_snapshot=None, 
                    progress_callback=None, client_factory=DiscoveryClient, completion=None):
     from allfold.application.run_commit import capture_run_workspace, commit_run_workspace
     from allfold.application.monitor import RunResult, RunOutcome, MonitorStatistics, MonitorIssue, MonitorIssueSeverity, MonitorIssueComponent
-    from allfold.application.run_state import RunProvider, RunFacts, RunIssueFact, LastRunSnapshot, RecordedRunOutcome, LAST_RUN_SCHEMA_VERSION, write_last_run_snapshot
+    from allfold.application.run_state import RunProvider, RunFacts, RunIssueFact, LastRunSnapshot, RecordedRunOutcome, LAST_RUN_SCHEMA_VERSION, LastRunSnapshotWriteError, write_last_run_snapshot
     from allfold.canonicalize import canonicalize_records, consolidate_evidence
     from allfold.identifiers import strong_identifiers
     from allfold.persistence.materialize import materialize_papers, read_workspace_identities
@@ -191,8 +191,13 @@ def run_integrated(config_path, *, loaded_config=None, workspace_snapshot=None, 
                 issues.extend(MonitorIssue(MonitorIssueSeverity.ERROR,MonitorIssueComponent.MATERIALIZATION,'write',i.message) for i in saved.issues)
                 final=result()
                 if not cancel.is_set():
-                    write_last_run_snapshot(config.output_dir,LastRunSnapshot(schema_version=LAST_RUN_SCHEMA_VERSION,resolved_date_range=dates,
-                        outcome=RecordedRunOutcome(final.outcome.value),coverage=(),provider=RunProvider.INTEGRATED,facts=final.facts))
+                    try:
+                        write_last_run_snapshot(config.output_dir,LastRunSnapshot(schema_version=LAST_RUN_SCHEMA_VERSION,resolved_date_range=dates,
+                            outcome=RecordedRunOutcome(final.outcome.value),coverage=(),provider=RunProvider.INTEGRATED,facts=final.facts),operation_lock=lock)
+                    except LastRunSnapshotWriteError as error:
+                        issues.append(MonitorIssue(MonitorIssueSeverity.WARNING,MonitorIssueComponent.COVERAGE_SNAPSHOT,
+                            'snapshot_write',f'Latest Run result could not be saved: {error}'))
+                        final=result()
                 return final
         except ContentChangedError:
             if cancel.is_set():

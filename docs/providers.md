@@ -149,7 +149,7 @@ Use a disposable configuration for manual acceptance:
 2. Select discovery and metadata-only checkboxes, including one discovery provider,
    Conference-only without DBLP, and a mixed scope with an unexecuted Conference.
 3. Observe per-source progress, genuine empty results, provider failure/truncation,
-   cancellation, supplement failures and year-only date limitations.
+   cancellation, supplement failures and year-only date limitations (Partial for monthly ranges).
 4. Review/Keep/edit a DOI-free Paper and inspect its explicit unavailable external
    actions. Inspect both dates, approximation basis and typed Indexed Terms.
 5. With separate authorization, check primary-DOI Enrich and supported

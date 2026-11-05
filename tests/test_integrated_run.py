@@ -151,3 +151,19 @@ def test_conferences_and_vetted_journal_use_only_their_executable_roles(tmp_path
     partial=discover_selected(missing,path,client_factory=Client)
     assert partial.status=='partial'
     assert any(r.source.kind=='conference' and r.status=='skipped' for r in partial.providers)
+
+
+def test_snapshot_failure_reports_actual_created_papers(tmp_path):
+    import httpx
+    from allfold.application.integrated_run import run_integrated
+    from allfold.providers.integrated import DiscoveryClient
+    path,_=config(tmp_path)
+    path.write_text(path.read_text()+'enabled_providers: [europe_pmc]\n')
+    (tmp_path/'workspace'/'.allfold'/'last-integrated-run.json').mkdir(parents=True)
+    def handler(request):
+        return httpx.Response(200,json={'hitCount':1,'resultList':{'result':[{'source':'MED','id':'44','title':'Native hit'}]}})
+    def factory(provider,**kwargs):return DiscoveryClient(provider,transport=httpx.MockTransport(handler),interval=0,**kwargs)
+    result=run_integrated(path,client_factory=factory)
+    assert result.created_papers==1
+    assert any(issue.stage=='snapshot_write' for issue in result.warnings)
+    assert len(list((tmp_path/'workspace'/'Papers').glob('*.md')))==1
