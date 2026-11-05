@@ -14,9 +14,7 @@ def normalize_doi(value: Any) -> str | None:
     if not isinstance(value, str) or not value.strip():
         raise ValueError("invalid DOI")
     doi = value.strip()
-    prefix = "https://doi.org/"
-    if doi.casefold().startswith(prefix):
-        doi = doi[len(prefix) :].strip()
+    doi = re.sub(r"^(?:https?://(?:dx\.)?doi\.org/|doi:\s*)", "", doi, flags=re.IGNORECASE).strip()
     if not doi:
         return None
     return doi.casefold()

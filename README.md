@@ -1,6 +1,6 @@
 # Allfold
 
-A local-first desktop application for monitoring journals, reviewing DOI-bound papers and importing selected papers into Zotero.
+A local-first desktop application for monitoring journals and conference series, reviewing reliably identified papers and importing selected papers into Zotero.
 
 Version **0.1.0** is a pre-release source version. The current development and verification platform is **macOS**. Website access, institutional authentication and Zotero attachments depend on the actual environment; offline checks do not establish compatibility with every site.
 
@@ -22,11 +22,11 @@ Setup installs locked dependencies, obtains fixed Zotero sources, builds the UI 
 ## Basic workflow
 
 1. In **Journals**, manage your followed Journals and Conference Series, Groups, Labels and journal Access Services. Conferences use the local DBLP Stream Registry. Each running configuration has its own saved scope. Import a Markdown research scope through Preview / Confirm, or export **User Data** to share it.
-2. In **Run**, set the Monitor name, keywords and publication months. Open Provider Directory for OpenAlex, Crossref, PubMed or Web of Science; provider-specific settings are in its Sidebar. Ordinary changes save automatically, and a new Run waits for saved configuration. Runs are independent and create-only; existing Paper files are not rewritten.
+2. In **Run**, set the Monitor name, keywords and publication months. Select Providers for Integrated Run: OpenAlex, Europe PMC, DBLP and zbMATH discover records; selected metadata providers fill missing fields before creation. Run WoS remains separate. See [Provider roles and query limits](docs/providers.md). Ordinary changes save automatically, and a new Run waits for saved configuration. Runs are independent and create-only; existing Paper files are not rewritten.
 3. Review candidates in **Workspace / ARRAY**. Keep and Reject are explicit actions; notes and other human-managed content remain in Paper Markdown. Settings defaults **禁用 Archive 视图** on; turn it off to restore ARCHIVE.
 4. Open **Kept** for the Service queue, **PREPARE & IMPORT** or **IMPORT ONLY**. Run Zotero **10.0.6 or later** with its Local API enabled, authorize Allfold with **Always Allow**, and select a Library and optional Collection in Queue. This default saves with the current configuration. Select All Services or one saved Service before starting; the batch retains its original Zotero instance, target and Service scope through Prepare, waiting and Import.
 
-Enrich retrieves eligible missing metadata without saving a Zotero item. Covers Search targets one saved Journal; Upload and Crop use local assets.
+Papers can carry a primary DOI, related DOIs or reliable DOI-free provider IDs. First-public and acceptance dates retain source precision; approximate acceptance is marked ≈. Integrated Run never updates saved Papers. Enrich retrieves eligible missing metadata without saving a Zotero item. Covers Search targets one saved Journal; Upload and Crop use local assets.
 
 Kept opens the shared **Browser** inside the main window. Compact and Focus change its available viewport; returning to Queue retains the same pages, navigation history, authentication and tasks. Tabs and the **Services** panel select existing pages. Service groups use saved scoped identities and page associations, including shared authentication and auxiliary pages. Task controls offer **查看任务页面** when manual interaction is needed. Run WoS opens its own task page in temporary Focus and returns to Run. Opening a page does not continue or cancel its task.
 
@@ -50,14 +50,14 @@ Parent acceptance and PDF evidence are separate. Import tries Translator PDFs fi
 | `config.template.yaml` | Public starting configuration | Yes |
 | `config.example.yaml` or a custom root YAML file | Local settings | No |
 | `list.md` | Legacy migration seed and importable example | Yes |
-| `.allfold/user-data.sqlite` | Journals, Groups, Labels and Services, isolated by configuration | No |
+| `.allfold/user-data.sqlite` | Journals, Conferences, Groups, Labels and Services, isolated by configuration | No |
 | `.allfold/resources.sqlite` | Shared GOKB and official CARSI resource cache | No |
-| `journal-lists/journal-registry.sqlite` | Read-only journal metadata | Yes |
+| `journal-lists/journal-registry.sqlite` | Read-only Journal and Conference Registry | Yes |
 | `workspace/` | Paper Markdown, review status and local diagnostics | No |
 | `journal-assets/` | Journal covers | No |
 | Electron application logs directory | Bounded configuration-scoped run history and structured diagnostics | No |
 | Electron application user-data directory, `zotero-local-key.bin` | Protected, Server-ID-bound Zotero authorization | No |
-| `*.openalex-secrets.json`, `*.pubmed-secrets.json` | API keys beside the configuration | No |
+| `*.openalex-secrets.json` | API keys beside the configuration | No |
 
 Submit API key replacement or clearing explicitly from the corresponding Run Provider Sidebar. Optional institution credentials use Electron safeStorage separately from YAML, through Kept Access. Ordinary configuration changes save automatically; Pending, failure and conflict states retain the draft. Changes that would invalidate an active task wait until it releases configuration ownership, then recheck saved revisions. Sensitive credential changes and destructive operations keep separate explicit submission and confirmation. Discovery and page workflows contact the selected external providers and sites. The application is not a Zotero Library mirror.
 

@@ -5,7 +5,7 @@ import pytest
 from pydantic import SecretStr
 
 from allfold.application.settings import load_settings, save_settings, SettingsSaveOutcome
-from allfold.config import load_config
+from allfold.config import ConfigurationError, load_config, parse_monitor_definition
 from allfold.integrations.openalex_credentials import credential_path, read_credential
 from safety_config_helpers import current_mapping_document
 
@@ -45,3 +45,11 @@ def test_selected_providers_survive_settings_save_and_runtime_load(tmp_path):
     assert load_settings(config).draft.enabled_providers == selected
     assert load_config(config).enabled_providers == selected
     assert "pubmed" not in config.read_text()
+
+
+@pytest.mark.parametrize("legacy", [{"pubmed_query_mode": "broad"}, {"pubmed_query": "cancer"},
+                                     {"provider_order": ["pubmed", "openalex"]}])
+def test_retired_configuration_reports_explicit_new_config_guidance(tmp_path, legacy):
+    with pytest.raises(ConfigurationError, match="config.template.yaml"):
+        parse_monitor_definition(tmp_path / "monitor.yaml", {"keyword_expression": "causal",
+            "from_month": "2026-01", "to_month": "2026-12", **legacy})

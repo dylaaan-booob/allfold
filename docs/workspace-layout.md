@@ -152,3 +152,12 @@ and saved-preference restoration are also checked.
 Real hCaptcha/MFA, institutional authentication, account popups and actual Zotero/PDF
 results remain separate, explicitly authorized acceptance. These local synthetic pages
 do not establish real CAPTCHA compatibility or every external site's usable minimum size.
+
+## Source categories and Paper dates
+
+Journals includes Journals/Conferences categories in the existing workspace; no
+new top-level navigation is added. Paper Info/Reader shows actual Conference
+source names and separates first-public, accepted (≈ when approximate) and
+bibliographic publication dates. DOI-free Papers remain reviewable and locally
+editable; unavailable external actions explain their primary-DOI requirement.
+See [manual Provider acceptance](providers.md#old-data-and-manual-acceptance).

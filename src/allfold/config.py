@@ -305,7 +305,7 @@ class _Settings(BaseModel):
     @classmethod
     def ignore_retired_queries(cls, value):
         if isinstance(value, dict):
-            return {key: item for key, item in value.items() if key not in {"wos_query", "wos_query_mode", "wos_service_id", "pubmed_query"}}
+            return {key: item for key, item in value.items() if key not in {"wos_query", "wos_query_mode", "wos_service_id"}}
         return value
 
     @field_validator("enabled_providers", mode="before")
@@ -665,6 +665,16 @@ def parse_monitor_definition(path: Path, raw: Any) -> MonitorDefinition:
         raise ConfigurationError(
             f"{path}: configuration must be a YAML mapping",
             path=path,
+        )
+
+    if (any(isinstance(key, str) and key.startswith("pubmed") for key in raw)
+            or any("pubmed" in value for key in ("provider_order", "provider_aliases", "enabled_providers")
+                   if isinstance((value := raw.get(key)), (list, tuple, dict)))):
+        raise ConfigurationError(
+            "PubMed configuration is no longer supported. Create a new configuration from "
+            "config.template.yaml and choose enabled_providers. Old Workspace data is not migrated; "
+            "use Settings Workspace Reset only if you explicitly want to discard it. "
+            "Existing credential files are preserved.", field="enabled_providers", path=path,
         )
 
     try:
