@@ -1,6 +1,7 @@
 """Rebuild the standalone local journal registry from the five source lists."""
 
 import csv
+import json
 import os
 import re
 import sqlite3
@@ -76,6 +77,18 @@ def scopus_records(path: Path):
         workbook.close()
 
 
+def build_conferences(connection, source=DATA_DIR / "conferences.json"):
+    """Reproduce the Conference table from the reviewed offline source snapshot."""
+    from allfold.config import ConferenceConfig, validate_conference_configs
+    rows = json.loads(source.read_text(encoding="utf-8"))
+    fields = set(ConferenceConfig.model_fields)
+    validate_conference_configs([ConferenceConfig.model_validate({k:v for k,v in row.items() if k in fields}) for row in rows])
+    connection.execute("DROP TABLE IF EXISTS conferences")
+    connection.execute("CREATE TABLE conferences (position INTEGER PRIMARY KEY, payload TEXT NOT NULL)")
+    connection.executemany("INSERT INTO conferences VALUES (?, ?)",
+        [(index, json.dumps(row, ensure_ascii=False, sort_keys=True)) for index, row in enumerate(rows)])
+
+
 def build_registry() -> None:
     target = DATA_DIR / "journal-registry.sqlite"
     descriptor, name = tempfile.mkstemp(
@@ -101,6 +114,7 @@ def build_registry() -> None:
                 )
                 connection.execute("CREATE INDEX journals_issn ON journals (issn)")
                 connection.execute("CREATE INDEX journals_eissn ON journals (eissn)")
+                build_conferences(connection)
                 counts = connection.execute(
                     "SELECT source, COUNT(*) FROM journals GROUP BY source ORDER BY source"
                 ).fetchall()
@@ -116,7 +130,14 @@ def build_registry() -> None:
 
 if __name__ == "__main__":
     try:
-        build_registry()
+        if sys.argv[1:] == ["--conferences-only"]:
+            with closing(sqlite3.connect(DATA_DIR / "journal-registry.sqlite")) as connection:
+                with connection:
+                    build_conferences(connection)
+        elif sys.argv[1:]:
+            raise ValueError("Usage: build_journal_registry.py [--conferences-only]")
+        else:
+            build_registry()
     except Exception as error:
         print(f"Journal registry build failed: {error}", file=sys.stderr)
         sys.exit(1)

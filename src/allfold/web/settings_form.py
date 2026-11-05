@@ -16,7 +16,7 @@ from allfold.application.settings import (
     SettingsIssue,
     SettingsIssueSource,
 )
-from allfold.config import AccessService, InstitutionConfig, KeptWorkflowConfig, JournalConfig, LogLevel, DEFAULT_PROVIDER_ORDER, validate_provider_order, parse_journal_labels
+from allfold.config import ConferenceConfig, AccessService, InstitutionConfig, KeptWorkflowConfig, JournalConfig, LogLevel, DEFAULT_PROVIDER_ORDER, validate_provider_order, parse_journal_labels
 from allfold.date_range import DateRangeSpec, DateRangeError, validate_date_range_spec
 from allfold.url_safety import normalize_public_http_url
 
@@ -63,6 +63,7 @@ class SettingsFormValues:
     journal_revision_exists: str
     journal_revision_digest: str
     access_services: tuple[SettingsAccessServiceRow, ...] = ()
+    conferences: tuple[ConferenceConfig, ...] = ()
     groups: tuple[str, ...] = ()
     custom_labels: tuple[str, ...] = ()
     institution_name: str = ""
@@ -125,6 +126,7 @@ def settings_form_from_draft(draft: MonitorDraft) -> SettingsFormValues:
         pubmed_key_configured=draft.pubmed_key_configured, pubmed_key_revision=draft.pubmed_key_revision,
         pubmed_key_error=draft.pubmed_key_error,
         journals=rows,
+        conferences=draft.conferences,
         access_services=tuple(SettingsAccessServiceRow(s.id, s.name, s.access_url or "", s.access_method) for s in draft.access_services),
         groups=draft.groups,
         custom_labels=draft.custom_labels,
@@ -181,14 +183,14 @@ def settings_form_from_submission(form: FormData) -> SettingsFormValues:
         "pubmed_query_mode", "pubmed_key_action", "pubmed_api_key", "pubmed_key_revision",
         "monitor_revision_exists", "monitor_revision_digest", "journal_revision_exists", "journal_revision_digest",
         "journal_name", "journal_issn", "journal_eissn", "journal_access_service_id", "journal_group", "journal_labels", "journal_order", "provider_order", "settings_group", "settings_custom_label",
-        "service_id", "service_name", "service_access_url", "service_access_method",
+        "conferences", "service_id", "service_name", "service_access_url", "service_access_method",
         "settings_deletion_proof", "confirm_settings_deletions",
         "markdown_file", "markdown_import_payload", "markdown_import_filename",
         "markdown_import_proof", "confirm_full_import", "import_discard", "import_choices", "query_gokb",
         "export_discard", "reload_step", "reload_word",
     }
     forbidden = any(key not in supported_fields for key in form)
-    duplicate = any(len(form.getlist(key)) > 1 for key in institution_fields | workflow_fields)
+    duplicate = any(len(form.getlist(key)) > 1 for key in institution_fields | workflow_fields | {"conferences"})
     service_lengths = {len(form.getlist(key)) for key in ("service_id", "service_name", "service_access_url", "service_access_method")}
     journal_lengths = {len(names), len(issns), len(eissns), len(assignments), len(services), len(labels)}
     incomplete_rows = len(journal_lengths) != 1 or len(service_lengths) != 1
@@ -206,7 +208,16 @@ def settings_form_from_submission(form: FormData) -> SettingsFormValues:
         ),)
     if invalid_order:
         institution_issues += (_form_issue("journals", "Invalid Journal order. Reload Settings before saving."),)
+    conferences = ()
+    try:
+        raw_conferences = json.loads(str(form.get("conferences", "[]")))
+        if not isinstance(raw_conferences, list):
+            raise ValueError("Conferences must be a collection")
+        conferences = tuple(ConferenceConfig.model_validate(c) for c in raw_conferences)
+    except (ValueError, TypeError) as error:
+        institution_issues += (_form_issue("conferences", str(error)),)
     return SettingsFormValues(
+        conferences=conferences,
         name=str(form.get("name", "")),
         keyword_expression=str(form.get("keyword_expression", "")),
         provider_order=tuple(str(value) for value in form.getlist("provider_order")) if "provider_order" in form else DEFAULT_PROVIDER_ORDER,
@@ -348,6 +359,7 @@ def settings_draft_from_form(
             pubmed_key_action=values.pubmed_key_action, pubmed_key_revision=values.pubmed_key_revision,
             pubmed_api_key=values.pubmed_api_key,
             journals=tuple(journals),
+            conferences=values.conferences,
             access_services=tuple(access_services),
             groups=values.groups,
             custom_labels=values.custom_labels,

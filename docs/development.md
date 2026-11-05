@@ -12,7 +12,7 @@ Setup checks tools, creates `config.example.yaml` only if absent, installs locke
 
 Configure keywords, months and Provider settings in Run; Kept owns Workflow and Access settings. Application settings remain in Settings. Ordinary edits autosave, while credential replacement/clearing and high-impact operations require explicit submission. The public template is separate from local configuration; setup does not create or copy credentials.
 
-Journal state is stored in `.allfold/user-data.sqlite`, isolated by canonical configuration path. The YAML `venue_whitelist` remains the first-migration source, not the live data store. Shared GOKB/CARSI data lives in `.allfold/resources.sqlite`; neither database belongs in a source candidate. Use temporary project/configuration directories and injected HTTP transports for migration, exchange and Resolver tests. Do not launch tests against personal YAML, Workspace, covers or Zotero.
+Journal and Conference state is stored in `.allfold/user-data.sqlite`, isolated by canonical configuration path. The YAML `venue_whitelist` remains the first-migration source, not the live data store. The Conference Registry source and reproducible table build are documented in [CONFERENCES](../journal-lists/CONFERENCES.md). Shared GOKB/CARSI data lives in `.allfold/resources.sqlite`; neither database belongs in a source candidate. Use temporary project/configuration directories and injected HTTP transports for migration, exchange and Resolver tests. Do not launch tests against personal YAML, Workspace, covers or Zotero.
 
 ## Start and stop
 
