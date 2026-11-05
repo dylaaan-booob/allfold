@@ -128,3 +128,132 @@ def test_related_strong_ids_survive_canonicalization_and_repeated_run(tmp_path):
     result = materialize_papers([repeat], tmp_path)
     assert result.existing_papers == created.created_papers
     assert not result.created_papers
+
+
+def test_workspace_api_exposes_conference_and_date_provenance(tmp_path):
+    from fastapi.testclient import TestClient
+    from test_web_app import write_valid_config
+    from electron_test_helpers import OfflineBridge
+    from allfold.web.app import create_app
+    from allfold.models import EvidenceDate, EvidenceDateKind as Kind, ProviderTopic
+    config, workspace = write_valid_config(tmp_path)
+    paper, = canonicalize_records([evidence(title='Conference item', conference='NeurIPS',
+        conference_id='conf_example', publication_type='conference', publication_date='2026',
+        external_ids=ExternalIds(dblp='conf/nips/Test'),
+        indexed_terms=(ProviderTopic(value='machine learning', source='dblp', kind='topic'),),
+        dates=(EvidenceDate(kind=Kind.CONFERENCE_YEAR, year=2026),))]).papers
+    materialize_papers([paper], workspace)
+    with TestClient(create_app(config, electron_bridge=OfflineBridge()), base_url='http://localhost') as client:
+        data = client.get('/api/ui-next/workspace').json()
+    group, = data['subjects']
+    venue, = group['journals']
+    assert venue['name'] == 'NeurIPS'
+    assert venue['source_type'] == 'conference'
+    item, = venue['papers']
+    assert item['doi'] is None and item['conference'] == 'NeurIPS'
+    assert item['first_public_at'] is None and item['accepted_at'] is None
+    assert item['date_evidence'][0]['kind'] == 'conference-year'
+    assert item['indexed_terms'][0]['kind'] == 'topic'
+    assert item['external_ids']['dblp'] == 'conf/nips/Test'
+
+
+def test_date_inference_uses_public_versions_and_formal_acceptance_only():
+    from allfold.models import EvidenceDate, EvidenceDateKind as Kind
+    records = [evidence('openalex', 'W17', title='Title', journal='Journal', publication_date='2000-01-01',
+                        external_ids=ExternalIds(doi='10.5555/date', openalex='W17')),
+               evidence('crossref', 'formal', title='Title', journal='Journal',
+                        external_ids=ExternalIds(doi='10.5555/date'),
+                        dates=(EvidenceDate(kind=Kind.PUBLISHED_ONLINE, year=2021, month=5),)),
+               evidence('biorxiv', 'preprint', title='Title', publication_type='preprint',
+                        external_ids=ExternalIds(doi='10.5555/preprint'), related_dois=('10.5555/date',),
+                        dates=(EvidenceDate(kind=Kind.ACCEPTED, year=2020), EvidenceDate(kind=Kind.PREPRINT, year=2022)))]
+    paper, = canonicalize_records(records).papers
+    assert paper.metadata.first_public_at == '2021-05'
+    assert paper.metadata.accepted_at == '2021-05'
+    assert paper.metadata.accepted_approximate
+    assert not any(item.year == 2000 for item in paper.date_evidence)
+
+
+def test_wos_without_doi_uses_ut_and_create_only_shared_identity(tmp_path):
+    from allfold.application.wos import persist_wos
+    from allfold.persistence.safe_write import workspace_operation_lock
+    from allfold.providers.wos import record_paper, WoSRecords
+    from allfold.config import JournalConfig
+    journal = JournalConfig(name='Journal', issn='0006-341X')
+    raw = {'TI': ['No DOI WoS paper'], 'UT': ['WOS:12345'], 'PY': ['2026'], 'DE': ['author keyword'], 'ID': ['indexed term']}
+    paper = record_paper(raw, journal)
+    assert paper.doi is None
+    assert paper.external_ids.wos == 'WOS:12345'
+    assert paper.metadata.author_keywords == ('author keyword',)
+    assert paper.indexed_terms[0].kind == 'Keywords Plus'
+    union = WoSRecords()
+    union.add(paper)
+    other = record_paper({**raw, 'UT': ['WOS:67890']}, journal)
+    union.add(other)
+    assert len(union.papers) == 2
+    with workspace_operation_lock(tmp_path, create=True) as lock:
+        first = persist_wos(list(union.papers.values()), lock, check_current=lambda:None, cancelled=lambda:False)
+        second = persist_wos([paper], lock, check_current=lambda:None, cancelled=lambda:False)
+    assert first.created_papers == 2
+    assert second.skipped_existing_papers == 1 and second.created_papers == 0
+
+
+def test_identity_scan_rejects_unreadable_known_ids_and_reads_legacy_aliases(tmp_path):
+    from allfold.persistence.markdown_state import parse_paper_identity
+    from allfold.persistence.materialize import render_paper_markdown
+    paper, = canonicalize_records([evidence('crossref', 'formal', title='Title', journal='Journal',
+        external_ids=ExternalIds(doi='10.5555/one', openalex='W17'))]).papers
+    text = render_paper_markdown(paper)
+    broken = text.replace('  openalex: W17', '  openalex: [W17, W18]')
+    identity = parse_paper_identity(tmp_path/'paper.md', broken)
+    assert not identity.index_complete
+    # Older hand-managed notes may carry the top-level ID without external_ids.
+    legacy = '---\ntype: paper\nid: '+str(paper.id)+'\ndoi: 10.5555/one\nopenalex_id: https://openalex.org/W17\n---\n'
+    identity = parse_paper_identity(tmp_path/'old.md', legacy)
+    assert ('openalex', 'W17') in identity.identifiers
+
+
+def test_import_plan_uses_only_primary_doi_and_excludes_unsupported_targets(tmp_path):
+    from allfold.application.decisions import keep_paper
+    from allfold.application.workspace import plan_workspace_import
+    from allfold.persistence.safe_write import workspace_operation_lock
+    from allfold.models import WorkflowStatus
+    records = [evidence(record='free', title='DOI-free', external_ids=ExternalIds(dblp='conf/c/free')),
+               evidence('arxiv', '2601.00001', title='Preprint', publication_type='preprint',
+                        external_ids=ExternalIds(doi='10.5555/preprint-only')),
+               evidence('crossref', 'formal', title='Formal', journal='Journal', publication_type='journal',
+                        external_ids=ExternalIds(doi='10.5555/formal'), related_dois=('10.5555/related',))]
+    papers = canonicalize_records(records).papers
+    materialize_papers(papers, tmp_path)
+    for paper in papers:
+        keep_paper(tmp_path, paper.id, WorkflowStatus.CANDIDATE)
+    with workspace_operation_lock(tmp_path) as lock:
+        plan = plan_workspace_import(lock)
+    assert [paper.doi for paper in plan.papers] == ['10.5555/formal']
+    assert any('primary DOI' in reason.reason for reason in plan.exclusions)
+    assert any('Preprint' in reason.reason for reason in plan.exclusions)
+
+
+def test_duplicate_snapshot_metadata_is_independent_of_retrieval_time():
+    from datetime import timedelta
+    first = evidence('europe_pmc', 'MED:123', title='A fixed title',
+                     external_ids=ExternalIds(europe_pmc='MED:123'))
+    second = first.model_copy(update={'title': 'Z other title', 'abstract': 'More complete'})
+    for records in ([first, second.model_copy(update={'provenance': second.provenance.model_copy(update={'retrieved_at': second.provenance.retrieved_at+timedelta(days=1)})})],
+                    [first.model_copy(update={'provenance': first.provenance.model_copy(update={'retrieved_at': first.provenance.retrieved_at+timedelta(days=1)})}), second]):
+        paper, = canonicalize_records(records).papers
+        # Fixed snapshot payload ordering makes either retrieval timestamp immaterial.
+        assert paper.metadata.title == 'Z other title'
+
+
+def test_duplicate_provider_snapshots_fill_missing_fields_without_overwriting():
+    discovery = evidence('europe_pmc', 'MED:123', title='Discovery title',
+                         external_ids=ExternalIds(europe_pmc='MED:123'))
+    supplement = evidence('europe_pmc', 'MED:123', abstract='Retrieved abstract',
+                          external_ids=ExternalIds(europe_pmc='MED:123'))
+    supplement = supplement.model_copy(update={'provenance': supplement.provenance.model_copy(update={'role': 'supplement'})})
+    for records in ([discovery, supplement], [supplement, discovery]):
+        paper, = canonicalize_records(records).papers
+        assert paper.metadata.title == 'Discovery title'
+        assert paper.metadata.abstract == 'Retrieved abstract'
+        assert len(paper.sources) == 1

@@ -1170,6 +1170,14 @@ function renderPaper() {
   if (!readerContext) $('directory-position').textContent=`${pad(index+1)} / ${pad(papers.length)} PAPERS`;
   for (const id of ['previous-paper','next-paper']) $(id).disabled=papers.length===1 || enrichment?.phase==='Saving';
   renderPaperFields(paper, ['abstract','authors','publication_date']);
+  $('paper-first-public').textContent=paper.first_public_at || '—';
+  $('paper-accepted').textContent=(paper.accepted_approximate?'≈ ':'')+(paper.accepted_at || '—');
+  const evidence=(paper.date_evidence || []).map(item=>`${item.kind}: ${[item.year,item.month,item.day].filter(value=>value!==undefined && value!==null).map((value,i)=>i?String(value).padStart(2,'0'):value).join('-')} · ${item.provider || ''} ${item.record_id || ''}`).join('\n');
+  $('paper-first-public').title=$('paper-accepted').title=[paper.date_note,evidence].filter(Boolean).join('\n');
+  $('paper-source').textContent=paper.conference || paper.journal || reviewJournal()?.name || '—';
+  $('paper-identifiers').textContent=[...Object.entries(paper.external_ids || {}).filter(([key])=>key!=='doi').map(([key,value])=>`${key}: ${value}`),...(paper.related_dois || []).map(value=>`Related DOI: ${value}`)].join('; ') || '—';
+  $('paper-indexed-terms').textContent=(paper.indexed_terms || []).map(item=>`${item.value}${item.kind || item.source ? ` (${[item.kind,item.source].filter(Boolean).join(' · ')})` : ''}`).join('; ') || '—';
+  $('paper-providers').textContent=(paper.sources || []).map(source=>`${source.provider}${source.role?` (${source.role})`:''}: ${source.record_id}${source.version?` · ${source.version}`:''}`).join('; ') || '—';
   $('paper-doi').textContent=paper.doi || 'DOI unavailable';
   if (paper.doi) $('paper-doi').href=`https://doi.org/${encodeURI(paper.doi)}`; else $('paper-doi').removeAttribute('href');
   detail.dataset.paperId=paper.id;
@@ -1247,7 +1255,7 @@ function renderEnrich() {
   for(const id of ['previous-paper','next-paper']) $(id).disabled=decisionPending || Boolean(snapshotApplying) || paperToolsBusy() || phase==='Saving' || reviewPapers().length===1;
   document.querySelectorAll('#paper-detail [data-enrich], #paper-metadata-details [data-enrich]').forEach(node=>{
     node.disabled=!canEnrich(paper);
-    node.title=node.disabled ? (active?'正在补全缺失信息':paper.enriched?'本次补全已完成，信息仍未获得':'当前暂不可补全') : '点击补全缺失信息';
+    node.title=node.disabled ? (!paper.doi?'需要有效的主要 DOI；仍可编辑本地字段':active?'正在补全缺失信息':paper.enriched?'本次补全已完成，信息仍未获得':'当前暂不可补全') : '点击补全缺失信息';
   });
   $('cancel-enrich').hidden=phase!=='Retrieving';
   const candidateReader=readerContext?.status==='candidates' && arrayActive();
@@ -1263,7 +1271,7 @@ function renderEnrich() {
 }
 function canEnrich(paper=currentPaper(),developerRetry=false) {
   const reading=readerContext ? arrayActive() : state.view==='journal' && inspection.target && inspection.time===inspection.duration && !inspection.removeAfter;
-  return Boolean(reading && paper && (developerRetry || !paper.enriched) && missingFields(paper).length && !decisionPending && !snapshotApplying && !paperToolsBusy() && !window.workspaceArray?.workflowBusy() &&
+  return Boolean(reading && paper?.doi && (developerRetry || !paper.enriched) && missingFields(paper).length && !decisionPending && !snapshotApplying && !paperToolsBusy() && !window.workspaceArray?.workflowBusy() &&
     !['Retrieving','Saving'].includes(paper.enrichPhase) && !['Retrieving','Saving'].includes(enrichment?.phase));
 }
 
@@ -1760,7 +1768,7 @@ window.addEventListener('workspace-reset',()=>{
   uiNext.workspaceEpoch++;uiNext.data=null;snapshotApplying=false;
   closeArrayReader(true);clearInspectionPanel();
   paragraphLayout?.clear();cancelRetrieval();decryption.reset(null,true);paperMetadata.open=false;
-  for(const id of ['view-paper-title','view-paper-id','paper-position','paper-authors','paper-date','paper-doi','paper-abstract'])$(id).replaceChildren();
+  for(const id of ['view-paper-title','view-paper-id','paper-position','paper-authors','paper-date','paper-first-public','paper-accepted','paper-source','paper-identifiers','paper-indexed-terms','paper-providers','paper-doi','paper-abstract'])$(id).replaceChildren();
   $('paper-doi').removeAttribute('href');delete $('paper-detail').dataset.paperId;
   $('paper-metadata-summary').textContent='Infos';
   Object.assign(paperTools,{paperId:null,fields:null,loading:false,error:'',

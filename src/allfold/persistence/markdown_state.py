@@ -15,13 +15,15 @@ import yaml
 from pydantic import ValidationError
 
 from allfold.config import normalize_journal_issn
-from allfold.identifiers import normalize_doi, strong_identifiers, normalize_external_id
+from allfold.identifiers import normalize_doi, strong_identifiers, normalize_external_id, RELIABLE_NAMESPACES
 from allfold.models import (
     parse_publication_date,
     ExternalIds,
     ExportAttempt,
     ExportAttemptState,
     MetadataSource,
+    ProviderTopic,
+    EvidenceDate,
     WorkflowStatus,
 )
 
@@ -69,6 +71,8 @@ class PaperMarkdownState:
     accepted_at: str | None = None
     accepted_approximate: bool = False
     date_note: str | None = None
+    indexed_terms: tuple[ProviderTopic, ...] = ()
+    date_evidence: tuple[EvidenceDate, ...] = ()
     export_attempt_present: bool = False
     export_attempt: ExportAttempt | None = None
 
@@ -177,7 +181,7 @@ def parse_paper_identity(path: Path, contents: str) -> PaperIdentity | None:
     """Read only identity for capture-only matching; matching uses invocation-local identity.
 
     Full Paper validation remains independent and governs manual/export writes.
-    Complete means every possible DOI in this candidate could be enumerated,
+    Complete means every reliable identity in this candidate could be enumerated,
     not that its identity is unambiguous or its schema is supported.
     """
     try:
@@ -202,7 +206,7 @@ def parse_paper_identity(path: Path, contents: str) -> PaperIdentity | None:
     complete = True
     raw_ids = frontmatter.get("external_ids")
     if raw_ids is not None and not isinstance(raw_ids, dict):
-        problems.append("external_ids must be a mapping to establish DOI identity")
+        problems.append("external_ids must be a mapping to establish identity")
         complete = False
         raw_ids = {}
     values = [("doi", frontmatter.get("doi"))]
@@ -241,7 +245,36 @@ def parse_paper_identity(path: Path, contents: str) -> PaperIdentity | None:
             complete = False
         else:
             dois.add(doi)
-    identifiers = set(strong_identifiers(raw_ids or {}, tuple(dois)))
+    canonical_ids = {}
+    for namespace, identifier in (raw_ids or {}).items():
+        if not isinstance(namespace, str) or not namespace.strip():
+            problems.append("external_ids contains an invalid namespace")
+            complete = False
+            continue
+        namespace = namespace.strip().casefold()
+        if identifier is None:
+            continue
+        normalized = normalize_external_id(namespace, identifier)
+        if namespace in RELIABLE_NAMESPACES and (not isinstance(identifier, str) or not identifier.strip()):
+            problems.append(f"external_ids.{namespace} is invalid")
+            complete = False
+        if normalized:
+            canonical_ids[namespace] = normalized
+    for field, namespace in (("openalex_id", "openalex"), ("arxiv_id", "arxiv")):
+        raw = frontmatter.get(field)
+        if raw is None:
+            continue
+        normalized = normalize_external_id(namespace, raw)
+        if not isinstance(raw, str) or not raw.strip():
+            problems.append(f"{field} is invalid")
+            complete = False
+        elif normalized is None:
+            continue
+        elif canonical_ids.get(namespace, normalized) != normalized:
+            problems.append(f"{field} conflicts with external_ids.{namespace}")
+        else:
+            canonical_ids[namespace] = normalized
+    identifiers = set(strong_identifiers(canonical_ids, tuple(dois)))
     aliases = frontmatter.get("identity_aliases", [])
     if not isinstance(aliases, list):
         aliases = []
@@ -259,6 +292,13 @@ def parse_paper_identity(path: Path, contents: str) -> PaperIdentity | None:
             complete = False
         else:
             identifiers.add((namespace, value))
+    # Historical WoS Papers stored the accession number in source provenance.
+    sources = frontmatter.get("sources", [])
+    if isinstance(sources, list):
+        for source in sources:
+            if isinstance(source, dict) and source.get("provider") == "wos":
+                if value := normalize_external_id("wos", source.get("record_id")):
+                    identifiers.add(("wos", value))
     identifiers = frozenset(identifiers)
     if not identifiers:
         problems.append("cannot establish reliable Paper identity")
@@ -457,12 +497,14 @@ def _identity_external_ids(
             problems.append("external_ids contains an invalid namespace")
             continue
         normalized_namespace = namespace.strip().casefold()
+        # Historical renderer emitted this retired field even for non-PubMed Papers.
+        if normalized_namespace == "pubmed" and identifier is None:
+            continue
         if identifier is None and normalized_namespace in {
             "openalex",
             "doi",
             "arxiv",
             "crossref",
-            "pubmed",
         }:
             values[normalized_namespace] = None
             continue
@@ -509,9 +551,8 @@ def _identity_external_ids(
             identities.add((namespace, normalized_identifier))
         previous = values.get(namespace)
         if previous is not None and previous != identifier.strip():
-            previous_normalized = (
-                normalize_doi(previous) if namespace == "doi" else previous.strip()
-            )
+            previous_normalized = normalize_external_id(namespace, previous) or previous.strip()
+            normalized_identifier = normalize_external_id(namespace, normalized_identifier) or normalized_identifier
             if previous_normalized != normalized_identifier:
                 problems.append(f"{field} conflicts with external_ids.{namespace}")
         values[namespace] = identifier.strip()
@@ -592,6 +633,17 @@ def parse_paper_state(
             sources.append(MetadataSource.model_validate(raw))
         except ValidationError as error:
             problems.append(f"sources[{index}] is invalid: {error.errors()[0]['msg']}")
+
+    evidence_fields = {}
+    for name, model in (("date_evidence", EvidenceDate), ("indexed_terms", ProviderTopic)):
+        raw = frontmatter.get(name, [])
+        try:
+            if not isinstance(raw, list):
+                raise ValueError(f"{name} must be a list")
+            evidence_fields[name] = tuple(model.model_validate(item) for item in raw)
+        except (ValueError, ValidationError) as error:
+            problems.append(f"{name} is invalid: {error}")
+            evidence_fields[name] = ()
 
     title = frontmatter.get("title")
     if not isinstance(title, str) or not title.strip():
@@ -706,6 +758,8 @@ def parse_paper_state(
         accepted_at=date_fields.get("accepted_at"),
         accepted_approximate=frontmatter.get("accepted_approximate", False),
         date_note=frontmatter.get("date_note"),
+        indexed_terms=evidence_fields["indexed_terms"],
+        date_evidence=evidence_fields["date_evidence"],
         export_attempt_present=export_attempt_present,
         export_attempt=export_attempt,
     )

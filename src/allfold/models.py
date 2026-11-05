@@ -73,7 +73,6 @@ class ExternalIds(BaseModel):
     doi: NonEmptyStr | None = None
     arxiv: NonEmptyStr | None = None
     crossref: NonEmptyStr | None = None
-    pubmed: NonEmptyStr | None = None
 
     @model_validator(mode="before")
     @classmethod
@@ -84,7 +83,7 @@ class ExternalIds(BaseModel):
         for key, identifier in value.items():
             if not isinstance(key, str) or not key.strip():
                 raise ValueError("external identifier names must be non-empty strings")
-            if identifier is None and key in {"openalex", "doi", "arxiv", "crossref", "pubmed"}:
+            if identifier is None and key in {"openalex", "doi", "arxiv", "crossref"}:
                 cleaned[key] = None
                 continue
             if not isinstance(identifier, str) or not identifier.strip():
@@ -106,6 +105,7 @@ class MetadataSource(DomainModel):
     role: Literal["discovery", "supplement"] | None = None
     url: NonEmptyStr | None = None
     version: NonEmptyStr | None = None
+    licenses: tuple[NonEmptyStr, ...] = ()
 
     @field_validator("retrieved_at")
     @classmethod
