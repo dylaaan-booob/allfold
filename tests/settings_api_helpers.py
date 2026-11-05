@@ -22,7 +22,7 @@ def registry(root, rows=None):
 def form(state):
     v = state["values"]
     data = {key: v[key] for key in (
-        "name", "keyword_expression", "pubmed_query_mode", "pubmed_key_revision", "openalex_key_revision", "crossref_mailto", "from_month", "to_month", "output_dir", "log_level",
+        "name", "keyword_expression", "openalex_key_revision", "crossref_mailto", "from_month", "to_month", "output_dir", "log_level",
         "monitor_revision_exists", "monitor_revision_digest", "journal_revision_exists",
         "journal_revision_digest", "transition_delay_seconds", "display_name",
         "institution_name", "institution_idp_entity_id",
