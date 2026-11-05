@@ -237,7 +237,10 @@ as automatic tags; the Local API does not expose Zotero's `automaticTags`
 preference, so Allfold cannot mirror that Desktop setting.
 
 PDF downloads retain task-bound Session requests and hidden/visible Browser
-helpers. The host preserves the locked BotBypass domain policy for
+helpers and the previous Connector's 60-second total request timeout, including
+redirects and response-body reading. Expiry means the request did not complete
+within that window; it does not establish a subscription denial.
+The host preserves the locked BotBypass domain policy for
 `sciencedirect.com`, `pdf.sciencedirectassets.com` and `ncbi.nlm.nih.gov`, including
 attributed proxy-normalized URLs: failed content validation can enter the bounded
 helper flow, while HTTP 404 cannot. This does not enable general HTML crawling or

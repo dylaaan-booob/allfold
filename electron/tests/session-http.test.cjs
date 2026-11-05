@@ -8,6 +8,7 @@ const {EventEmitter}=require('node:events');
 
 function fixture() {
   const request=new EventEmitter(),timers=new Map(),cleared=[];
+  let onRequested;const requested=new Promise(resolve=>{onRequested=resolve;});
   request.writes=[];request.followed=0;request.aborted=0;
   request.write=body=>request.writes.push(body);
   request.end=()=>{request.ended=true;};
@@ -15,7 +16,7 @@ function fixture() {
   request.followRedirect=()=>{request.followed++;};
   let options;
   const context=vm.createContext({module:{exports:{}},Buffer,URL,ArrayBuffer,
-    require(name) {assert.equal(name,'electron');return {net:{request(spec){options=spec;return request;}}};},
+    require(name) {assert.equal(name,'electron');return {net:{request(spec){options=spec;onRequested();return request;}}};},
     setTimeout(callback,ms) {const timer={callback,ms};timers.set(timer,callback);return timer;},
     clearTimeout(timer) {if(timer){cleared.push(timer);timers.delete(timer);}}});
   vm.runInContext(fs.readFileSync(path.join(__dirname,'../src/zotero/session-http.cjs'),'utf8'),context);
@@ -26,7 +27,7 @@ function fixture() {
     const response=Object.assign(new EventEmitter(),{statusCode:status,statusMessage:'Fixture status',headers});
     request.emit('response',response);return response;
   };
-  return {request,timers,cleared,session,start,incoming,get options(){return options;},
+  return {request,requested,timers,cleared,session,start,incoming,get options(){return options;},
     requestSessionHTTP:context.module.exports.requestSessionHTTP};
 }
 
@@ -55,6 +56,33 @@ test('timeout covers redirects and body reading; late events cannot resume the r
   assert.equal(f.timers.size,0);assert.equal(f.request.aborted,1);
   response.emit('end');f.request.emit('redirect',302,'GET','https://publisher.example/late');
   assert.equal(f.request.followed,1);
+});
+
+test('PDF imports retain the legacy download window when a body completes after 45 seconds',async()=>{
+  const {saveOnce}=require('../src/zotero/local-importer.cjs');
+  for(const source of ['translator','openalex']) {
+    const f=fixture(),url='https://publisher.example/full.pdf';let lookups=0;
+    const pending=saveOnce({
+      item:{itemType:'journalArticle',title:'Slow PDF',DOI:'10.5555/slow',
+        attachments:source==='translator'?[{url,mimeType:'application/pdf'}]:[]},
+      doi:'10.5555/slow',target:{server_id:'SERVERFIXTUR',library_type:'user',library_id:'0',collection_key:null},
+      api:{validate:async()=>{},create:async()=>({status:200}),upload:async()=>({registered:true})},
+      doc:{pageId:7,url:'https://publisher.example/paper'},
+      browser:{partition:f.session,documentCurrent:()=>true},
+      requestHTTP:f.requestSessionHTTP,
+      fallbackPDF:async()=>{lookups++;return {candidates:source==='openalex'?[url]:[]};},
+    });
+    f.session.resolveHost=async()=>({endpoints:[{address:'93.184.216.34'}]});
+    await f.requested;
+    const response=f.incoming(200,{'content-type':'application/pdf'});
+    response.emit('data',Buffer.from('%PDF-1.7\n'));
+    // Advance the transport's real deadline callbacks with an isolated clock.
+    for(const timer of [...f.timers.keys()])if(timer.ms<=45000)timer.callback();
+    response.emit('data',Buffer.from('body completed at 45 seconds'));response.emit('end');
+    const result=await pending;
+    assert.equal(result.pdf.registered,true);assert.equal(result.pdf.source,source);
+    assert.equal(f.request.aborted,0);assert.equal(lookups,source==='openalex'?1:0);
+  }
 });
 
 
