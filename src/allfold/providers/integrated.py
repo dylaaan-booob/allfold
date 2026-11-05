@@ -19,7 +19,7 @@ from allfold.models import Author, ExternalIds, MetadataSource, ProviderWorkEvid
 DISCOVERY_PROVIDERS = ('openalex', 'europe_pmc', 'dblp', 'zbmath')
 SUPPLEMENT_PROVIDERS = ('crossref', 'arxiv', 'biorxiv', 'medrxiv')
 PROVIDERS = DISCOVERY_PROVIDERS + SUPPLEMENT_PROVIDERS
-BASE_URLS = {'openalex':'https://api.openalex.org', 'europe_pmc':'https://www.ebi.ac.uk/europepmc/webservices/rest', 'dblp':'https://dblp.org', 'zbmath':'https://api.zbmath.org/v1'}
+BASE_URLS = {'openalex':'https://api.openalex.org', 'europe_pmc':'https://www.ebi.ac.uk/europepmc/webservices/rest', 'dblp':'https://dblp.org', 'zbmath':'https://api.zbmath.org/v1', 'crossref':'https://api.crossref.org', 'arxiv':'https://export.arxiv.org', 'biorxiv':'https://api.biorxiv.org', 'medrxiv':'https://api.biorxiv.org'}
 
 
 @dataclass(frozen=True)
@@ -99,8 +99,8 @@ def _positive(value, name):
 class DiscoveryClient:
     """One provider/host owns rate limits, bounded retry and cancellation checks."""
     def __init__(self, provider, *, api_key=None, transport=None, cancel_event=None,
-                 interval=0.35, sleep=time.sleep, max_pages=50, max_records=5000, page_size=100):
-        if provider not in DISCOVERY_PROVIDERS:
+                 interval=0.35, sleep=time.sleep, max_pages=50, max_records=5000, page_size=100, pacing_state=None):
+        if provider not in PROVIDERS:
             raise ValueError('Unknown Discovery Provider')
         self.provider = provider
         self.api_key = api_key
@@ -108,7 +108,8 @@ class DiscoveryClient:
         self.interval, self.sleep = interval, sleep
         self.max_pages, self.max_records, self.page_size = max_pages, max_records, min(page_size, 1000)
         self.http = create_http_client(transport=transport, timeout=30, follow_redirects=True)
-        self.last_request = 0.0
+        self.pacing_state = pacing_state if pacing_state is not None else {}
+        self.host = httpx.URL(BASE_URLS[provider]).host
 
     def __enter__(self):
         return self
@@ -129,16 +130,16 @@ class DiscoveryClient:
             self.sleep(seconds)
         self.check_cancel()
 
-    def request(self, path, params):
+    def request(self, path, params, *, response_format="json"):
         params = dict(params)
         if self.provider == 'openalex' and self.api_key:
             params['api_key'] = self.api_key
         for attempt in range(3):
             self.check_cancel()
-            delay = self.interval - (time.monotonic() - self.last_request)
+            delay = self.interval - (time.monotonic() - self.pacing_state.get(self.host, 0.0))
             if delay > 0:
                 self._wait(delay)
-            self.last_request = time.monotonic()
+            self.pacing_state[self.host] = time.monotonic()
             try:
                 response = self.http.get(BASE_URLS[self.provider] + path, params=params)
             except httpx.HTTPError as error:
@@ -161,6 +162,8 @@ class DiscoveryClient:
                 continue
             if response.status_code != 200:
                 raise DiscoveryError(f'{self.provider}: HTTP {response.status_code}')
+            if response_format == "xml":
+                return response.text
             try:
                 data = response.json()
                 if not isinstance(data, dict):
@@ -171,6 +174,8 @@ class DiscoveryClient:
         raise DiscoveryError(f'{self.provider}: rate limited')
 
     def discover(self, source, ast, from_date, to_date):
+        if self.provider not in DISCOVERY_PROVIDERS:
+            return DiscoveryResult(self.provider, source, "skipped", limitations=("Metadata-only Provider",))
         records, limits, candidates, total = [], [], 0, None
         try:
             if source.kind == 'conference' and self.provider != 'dblp':
