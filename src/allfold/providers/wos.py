@@ -12,7 +12,8 @@ from allfold.persistence.safe_write import _open_directory_nofollow
 from allfold.config import JournalConfig, normalize_journal_issn
 
 from allfold.identifiers import normalize_doi
-from allfold.models import Author, CanonicalMetadata, CanonicalPaper, ExternalIds, MetadataSource, parse_publication_date
+from allfold.models import Author, CanonicalPaper, ExternalIds, MetadataSource, ProviderWorkEvidence, ProviderTopic, EvidenceDate, EvidenceDateKind, parse_publication_date
+from allfold.canonicalize import canonicalize_records
 
 
 class WoSQueryError(ValueError):
@@ -215,19 +216,32 @@ def record_paper(record: dict, journal: JournalConfig, warnings: list | None = N
     if warnings is not None and date_issues:
         warnings.append(dict(journal=journal.key, doi=doi, ut=ut, PD=pd, PY=py, EA=ea,
                              selected=selected, reasons=date_issues))
-    if not doi or not re.fullmatch(r'10\.\d{4,9}/[^\s]+', doi):
-        raise ValueError('missing_doi')
+    if doi and not re.fullmatch(r'10\.\d{4,9}/[^\s]+', doi):
+        raise ValueError('invalid_doi')
+    if not doi and not ut:
+        raise ValueError('missing_identity')
     title = text('TI')
     if not title:
         raise ValueError('Record has no title')
     authors = [Author(name=name) for name in ([name for name in record.get('AF', []) if name.strip()] or record.get('AU') or [])
                if name.strip() and not any(c in name for c in ']\n\r\0')]
-    return CanonicalPaper(
-        metadata=CanonicalMetadata(title=title, journal=journal.name,
-                                   abstract=text('AB') or None, publication_date=selected),
-        external_ids=ExternalIds(doi=doi), authors=tuple(authors), journal_issns=(journal.key,),
-        sources=(MetadataSource(provider='wos', record_id=ut, retrieved_at=datetime.now(timezone.utc)),) if ut else (),
+    dates = []
+    early = _bibliographic_date(ea)
+    if early:
+        parts = [int(part) for part in early.split('-')]
+        dates.append(EvidenceDate(kind=EvidenceDateKind.EARLY_ACCESS, year=parts[0],
+                                 month=parts[1] if len(parts) > 1 else None, day=parts[2] if len(parts) > 2 else None))
+    keywords = lambda tag: tuple(value.strip() for value in text(tag).split(';') if value.strip())
+    evidence = ProviderWorkEvidence(
+        provenance=MetadataSource(provider='wos', record_id=ut or doi, retrieved_at=datetime.now(timezone.utc), role='discovery'),
+        title=title, journal=journal.name, publication_type='journal', abstract=text('AB') or None,
+        publication_date=selected, dates=tuple(dates), authors=tuple(authors),
+        author_keywords=keywords('DE'),
+        indexed_terms=tuple(ProviderTopic(value=value, source='wos', kind='Keywords Plus') for value in keywords('ID')),
+        external_ids=ExternalIds(doi=doi, **({'wos': ut} if ut else {})), monitor_journal_issns=(journal.key,),
     )
+    return canonicalize_records([evidence]).papers[0]
+
 
 
 def read_export(filename: str, relative_name: str, root: Path | None = None) -> tuple[str, Path]:
@@ -274,7 +288,7 @@ class WoSRecords:
         self.papers, self.uts, self.conflicts = {}, {}, set()
 
     def add(self, paper: CanonicalPaper):
-        doi = paper.doi
+        doi = paper.doi or f'wos:{paper.external_ids.wos}'
         for source in paper.sources:
             previous = self.uts.get(source.record_id)
             if previous and previous != doi:

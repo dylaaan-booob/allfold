@@ -14,7 +14,7 @@ from uuid import UUID
 
 import yaml
 
-from allfold.identifiers import normalize_doi, strong_identifiers, paper_identifiers
+from allfold.identifiers import normalize_doi, valid_doi, paper_identifiers
 from allfold.persistence.inbox import render_default_inbox_base
 from allfold.persistence.markdown_state import (
     MISSING_ABSTRACT,
@@ -110,6 +110,10 @@ def render_paper_markdown(paper: CanonicalPaper) -> str:
     """Render a new Paper note without touching the filesystem."""
 
     doi = normalize_doi(paper.external_ids.doi)
+    if doi is not None and valid_doi(doi) is None:
+        raise ValueError("Paper has an invalid primary DOI")
+    if any(valid_doi(value) is None for value in paper.related_dois):
+        raise ValueError("Paper has an invalid related DOI")
     if not paper_identifiers(paper):
         raise ValueError("Paper requires a reliable identity")
     external_ids = paper.external_ids.model_copy(update={"doi": doi})

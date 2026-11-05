@@ -14,7 +14,7 @@ const settings={config_path:'/fixture/monitor.yaml',csrf_token:'fixture',issues:
   provider_aliases:{},provider_order:['openalex','europe_pmc','dblp','zbmath','crossref','arxiv','biorxiv','medrxiv','wos'],enabled_providers:['openalex'],groups:Array.from({length:20},(_,i)=>'Group '+i),
   conferences:[],custom_labels:['Label 0','Label 1','Label 2'],journals,access_services:[{id:'svc_fixture',name:'Synthetic Service',access_method:'manual',access_url:''}],
 }};
-const paper=(i,status='candidate')=>({id:'paper-'+i,title:'Synthetic Paper '+i,publication_date:'2026-10-01',abstract:('An isolated synthetic paragraph for reader scroll verification. '.repeat(12)+'\n\n').repeat(24),authors:['Synthetic Author'],doi:'10.5555/layout-'+i,discovered_at:'2026-10-01T00:00:00Z',status,enrichPhase:'Idle'});
+const paper=(i,status='candidate')=>({id:'paper-'+i,title:'Synthetic Paper '+i,publication_date:'2026-10',conference:'Synthetic Conference',publication_type:'conference',first_public_at:'2022-04',accepted_at:'2026-09',accepted_approximate:true,date_note:'Acceptance approximated by formal publication',external_ids:{dblp:'conf/example/Paper'},indexed_terms:[{value:'62G05',kind:'MSC',source:'zbmath'}],sources:[{provider:'dblp',record_id:'conf/example/Paper',role:'discovery'}],abstract:('An isolated synthetic paragraph for reader scroll verification. '.repeat(12)+'\n\n').repeat(24),authors:['Synthetic Author'],doi:i===0?null:'10.5555/layout-'+i,discovered_at:'2026-10-01T00:00:00Z',status,enrichPhase:'Idle'});
 const records=journals.map((j,i)=>({key:j.issn,issn:j.issn,name:j.name,group:j.group,labels:[],cover:null,papers:[paper(i*2),paper(i*2+1)]}));
 const workspace={csrf_token:'fixture',import_token:'fixture',issues:[],counts:{candidates:48,active_journals:24},subjects:[{name:'Group 0',journals:records}],
   kept:{papers:[{paper:paper(10,'kept'),journal:records[0]},{paper:paper(11,'kept'),journal:records[1]}],journals:records,services:[],settings:{},titles:{}}};
@@ -177,9 +177,18 @@ app.whenReady().then(async()=>{
       if(raw.includes('synthetic-complete-replacement') || raw.includes('new-fixture-user'))throw Error('credential input entered ordinary recovery storage');
       document.querySelector('#kept-sidebar [data-sidebar-close]').click();
       window.workspaceNavigation.go('workspace',{instant:true});
+      document.getElementById('paper-detail').scrollTop=0;
     });
+    await capture('paper-identity');
     await check(async()=>{
       const $=id=>document.getElementById(id),assert=(ok,message)=>{if(!ok)throw Error(message);},sleep=ms=>new Promise(r=>setTimeout(r,ms));
+      assert($('paper-first-public').textContent==='2022-04','first-public precision was not rendered');
+      assert($('paper-accepted').textContent==='≈ 2026-09','approximate acceptance was presented as exact');
+      assert($('paper-source').textContent==='Synthetic Conference','conference source was lost');
+      assert($('paper-identifiers').textContent.includes('dblp: conf/example/Paper'),'DOI-free identity was hidden');
+      assert($('paper-indexed-terms').textContent.includes('MSC · zbmath'),'indexed term type/source was lost');
+      assert($('paper-doi').textContent==='DOI unavailable' && !$('paper-doi').hasAttribute('href'),'DOI-free paper acquired a DOI link');
+      assert([...$('paper-metadata-details').querySelectorAll('[data-enrich]')].every(node=>node.disabled),'DOI-free external Enrich was enabled');
       window.layoutReader=$('paper-detail');window.layoutParent=layoutReader.parentElement;
       window.layoutOpenCount=0;window.layoutCloseCount=0;
       const open=window.inboxKept.openReader,close=window.inboxKept.closeReader;

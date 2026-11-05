@@ -3,8 +3,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
-from allfold.application.decisions import _read_paper_candidate
-from allfold.persistence.markdown_state import parse_paper_state
+from allfold.identifiers import paper_identifiers
 from allfold.persistence.materialize import (
     read_workspace_identities,
     render_paper_markdown,
@@ -33,36 +32,26 @@ def persist_wos(papers, lock, *, check_current, cancelled, result=None):
         if not index.complete:
             raise ContentChangedError('Workspace Paper identity index is incomplete')
         result.issues.extend(issue.message for issue in index.issues)
-        # Include saved source evidence when checking UT-to-DOI collisions.
-        saved_uts = {}
-        bad_uts = set()
-        for doi, identity in index.saved.items():
-            read = _read_paper_candidate(identity.path, directory.directory)
-            state = parse_paper_state(identity.path, read.contents)
-            if state:
-                for source in state.sources:
-                    if source.provider == 'wos':
-                        if source.record_id in saved_uts and saved_uts[source.record_id] != doi:
-                            bad_uts.add(source.record_id)
-                        saved_uts[source.record_id] = doi
-
         def before_write():
             if cancelled():
                 raise InterruptedError('Run WoS canceled')
             check_current()
             lock.verify()
 
-        saved_dois = set(index.saved)
-        used_ids = {identity.paper_id for identity in index.saved.values()}
+        saved_keys = {key: identity.path for key, identity in index.by_identifier.items()}
+        used_ids = {identity.paper_id for identity in index.by_identifier.values()}
 
         for paper in papers:
             before_write()
             try:
-                if paper.doi in index.blocked or any(s.record_id in bad_uts or saved_uts.get(s.record_id, paper.doi) != paper.doi for s in paper.sources):
+                keys = paper_identifiers(paper)
+                matches = {saved_keys[key] for key in keys if key in saved_keys}
+                if (not keys or keys.intersection(index.blocked_identifiers) or len(matches) > 1
+                        or paper.id in used_ids and not matches):
                     result.conflicts += 1
-                    result.issues.append(f'{paper.doi}: conflicting DOI/UUID or WoS source identity')
+                    result.issues.append(f'{paper.id}: conflicting Paper identity/UUID')
                     continue
-                if paper.doi in saved_dois:
+                if matches:
                     result.skipped_existing_papers += 1
                     continue
                 contents = render_paper_markdown(paper)
@@ -76,10 +65,8 @@ def persist_wos(papers, lock, *, check_current, cancelled, result=None):
                     result.issues.append(f'{paper.doi}: committed with filesystem warning: {error}')
                 result.created_papers += 1
                 result.written_paths.append(str(lock.path / 'Papers' / filename))
-                saved_dois.add(paper.doi)
+                saved_keys.update({key: lock.path / "Papers" / filename for key in keys})
                 used_ids.add(paper.id)
-                for source in paper.sources:
-                    saved_uts[source.record_id] = paper.doi
             except InterruptedError:
                 raise
             except ContentChangedError as error:
