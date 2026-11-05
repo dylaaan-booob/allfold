@@ -75,6 +75,7 @@ class SettingsFormValues:
     zotero_target: dict | None = None
     provider_aliases: dict[str, str] = field(default_factory=dict)
     provider_order: tuple[str, ...] = DEFAULT_PROVIDER_ORDER
+    enabled_providers: tuple[str, ...] = ("openalex",)
     crossref_mailto: str = ""
     openalex_key_configured: bool = False
     openalex_key_revision: str = "missing"
@@ -112,6 +113,7 @@ def settings_form_from_draft(draft: MonitorDraft) -> SettingsFormValues:
     return SettingsFormValues(
         name=draft.name,
         keyword_expression=draft.keyword_expression,
+        enabled_providers=draft.enabled_providers,
         provider_order=draft.provider_order, provider_aliases=draft.provider_aliases, crossref_mailto=draft.crossref_mailto,
         openalex_key_configured=draft.openalex_key_configured, openalex_key_revision=draft.openalex_key_revision,
         openalex_key_error=draft.openalex_key_error,
@@ -170,7 +172,7 @@ def settings_form_from_submission(form: FormData) -> SettingsFormValues:
         *(f"provider_alias_{provider}" for provider in DEFAULT_PROVIDER_ORDER),
         "openalex_key_action", "openalex_api_key", "openalex_key_revision",
         "monitor_revision_exists", "monitor_revision_digest", "journal_revision_exists", "journal_revision_digest",
-        "journal_name", "journal_issn", "journal_eissn", "journal_access_service_id", "journal_group", "journal_labels", "journal_order", "provider_order", "settings_group", "settings_custom_label",
+        "journal_name", "journal_issn", "journal_eissn", "journal_access_service_id", "journal_group", "journal_labels", "journal_order", "provider_order", "enabled_providers", "settings_group", "settings_custom_label",
         "service_id", "service_name", "service_access_url", "service_access_method",
         "settings_deletion_proof", "confirm_settings_deletions",
         "markdown_file", "markdown_import_payload", "markdown_import_filename",
@@ -199,6 +201,7 @@ def settings_form_from_submission(form: FormData) -> SettingsFormValues:
     return SettingsFormValues(
         name=str(form.get("name", "")),
         keyword_expression=str(form.get("keyword_expression", "")),
+        enabled_providers=tuple(str(value) for value in form.getlist("enabled_providers")),
         provider_order=tuple(str(value) for value in form.getlist("provider_order")) if "provider_order" in form else DEFAULT_PROVIDER_ORDER,
         provider_aliases={provider: str(form.get(f"provider_alias_{provider}", ""))
                           for provider in DEFAULT_PROVIDER_ORDER if f"provider_alias_{provider}" in form},
@@ -327,6 +330,7 @@ def settings_draft_from_form(
         MonitorDraft(
             name=values.name,
             keyword_expression=values.keyword_expression,
+            enabled_providers=values.enabled_providers,
             provider_order=provider_order, provider_aliases=values.provider_aliases, crossref_mailto=values.crossref_mailto,
             openalex_key_action=values.openalex_key_action, openalex_key_revision=values.openalex_key_revision,
             openalex_api_key=values.openalex_api_key,

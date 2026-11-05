@@ -98,6 +98,7 @@ class MonitorDraft:
     kept_workflow: KeptWorkflowConfig = KeptWorkflowConfig()
     provider_aliases: dict[str, str] = field(default_factory=dict)
     provider_order: tuple[str, ...] = DEFAULT_PROVIDER_ORDER
+    enabled_providers: tuple[str, ...] = ("openalex",)
     crossref_mailto: str = ""
     openalex_key_configured: bool = field(default=False, compare=False)
     openalex_key_revision: str = "missing"
@@ -211,6 +212,7 @@ class _DraftFields:
     kept_workflow: KeptWorkflowConfig = KeptWorkflowConfig()
     provider_aliases: dict[str, str] = field(default_factory=dict)
     provider_order: tuple[str, ...] = DEFAULT_PROVIDER_ORDER
+    enabled_providers: tuple[str, ...] = ("openalex",)
     crossref_mailto: str = ""
 
 
@@ -330,6 +332,7 @@ def _recovery_fields(config_path: Path, raw: Any) -> _DraftFields:
         institution=institution,
         kept_workflow=kept_workflow,
         provider_order=raw.get("provider_order", defaults.provider_order),
+        enabled_providers=raw.get("enabled_providers", defaults.enabled_providers),
         provider_aliases=raw.get("provider_aliases", {}) if isinstance(raw.get("provider_aliases", {}), dict) else {},
         crossref_mailto=raw.get("crossref_mailto", "") if isinstance(raw.get("crossref_mailto", ""), str) else "",
     )
@@ -384,6 +387,7 @@ def _monitor_fields(
             log_level=definition.log_level,
             institution=definition.institution,
             kept_workflow=definition.kept_workflow,
+            enabled_providers=definition.enabled_providers,
             provider_order=definition.provider_order, provider_aliases=definition.provider_aliases, crossref_mailto=definition.crossref_mailto,
         ),
         (),
@@ -512,6 +516,7 @@ def load_settings(config_path: Path) -> SettingsLoadResult:
         journal_revision=journal_snapshot.revision,
         institution=fields.institution,
         kept_workflow=fields.kept_workflow,
+        enabled_providers=fields.enabled_providers,
         provider_order=fields.provider_order, provider_aliases=fields.provider_aliases, crossref_mailto=fields.crossref_mailto,
     )
     return SettingsLoadResult(
@@ -551,6 +556,7 @@ def _draft_monitor_mapping(
         "name": draft.name,
         "venue_whitelist": venue_whitelist,
         "keyword_expression": draft.keyword_expression,
+        "enabled_providers": draft.enabled_providers,
         "provider_order": draft.provider_order,
         "provider_aliases": draft.provider_aliases,
         "crossref_mailto": draft.crossref_mailto,
@@ -670,6 +676,7 @@ def _render_monitor_yaml(
         "name": draft.name,
         "venue_whitelist": str(venue_whitelist),
         "keyword_expression": draft.keyword_expression,
+        "enabled_providers": list(draft.enabled_providers),
         "provider_order": list(draft.provider_order),
         "provider_aliases": draft.provider_aliases,
         "crossref_mailto": draft.crossref_mailto,
@@ -940,7 +947,7 @@ def _save_settings(
         )
         monitor_changed = (
             not monitor_snapshot.revision.exists
-            or bool({"pubmed_query", "wos_query", "wos_query_mode", "wos_service_id"} & set(yaml.safe_load(monitor_snapshot.contents) or {}))
+            or bool({"wos_query", "wos_query_mode", "wos_service_id"} & set(yaml.safe_load(monitor_snapshot.contents) or {}))
             or _draft_monitor_mapping(draft, venue_whitelist=storage_fields.venue_whitelist)
             != _draft_monitor_mapping(stored_state.draft, venue_whitelist=storage_fields.venue_whitelist)
         )
