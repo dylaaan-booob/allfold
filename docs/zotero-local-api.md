@@ -162,6 +162,12 @@ preserve parent confirmation separately from the PDF result. Generic Web API
 quota/rate errors are not evidence that the local receiver implements those
 same limits.
 
+Each Import create and upload POST rechecks its task/document immediately before
+transport dispatch, including after asynchronous key reads and between upload
+stages. Cancellation waits for an issued request to settle and prevents the next
+POST. Only a failure before parent dispatch is `no_effect`; a dispatched rejection
+retains the exact key and remains uncertain pending read-only reconciliation.
+
 ## Last Import: object queries, no file inspection
 
 Read only `GET <prefix>/items/<knownKey>` and
@@ -231,9 +237,13 @@ as automatic tags; the Local API does not expose Zotero's `automaticTags`
 preference, so Allfold cannot mirror that Desktop setting.
 
 PDF downloads retain task-bound Session requests and hidden/visible Browser
-helpers. The old ItemSaver-specific Amazon CAPTCHA adapter is removed with its
-writer VM. Amazon-specific attachment challenges are consequently an unverified
-compatibility difference, not a claimed equivalent replacement.
+helpers. The host preserves the locked BotBypass domain policy for
+`sciencedirect.com`, `pdf.sciencedirectassets.com` and `ncbi.nlm.nih.gov`, including
+attributed proxy-normalized URLs: failed content validation can enter the bounded
+helper flow, while HTTP 404 cannot. This does not enable general HTML crawling or
+require the old BotBypass runtime. The old ItemSaver-specific Amazon CAPTCHA
+adapter is removed with its writer VM. Amazon-specific attachment challenges are
+consequently an unverified compatibility difference, not a claimed equivalent replacement.
 
 Real 10.0.6+ authorization, group permission changes, parent/PDF creation,
 OpenAlex fallback and native UI acceptance remain separately authorized manual

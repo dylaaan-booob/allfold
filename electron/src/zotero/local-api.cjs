@@ -27,11 +27,15 @@ function requestLocal(url,options) {
 }
 class LocalAPI {
   constructor({transport=requestLocal,store}={}) {this.transport=transport;this.store=store || require('./local-auth.cjs').keyStore;}
-  async request(path,{method='GET',server_id,key,body,headers={},timeout}={}) {
+  async request(path,{method='GET',server_id,key,body,headers={},timeout,beforeDispatch}={}) {
     if(!path.startsWith('/api/') || path.includes('://') || path.includes('..'))throw failure('invalid_local_path');
+    const options={method,redirect:'error',timeout,headers:{Accept:'application/json','Zotero-API-Version':'3','Zotero-Allowed-Request':'1',
+      ...(server_id?{'Zotero-Server-ID':server_id}:{}),...(key?{'Zotero-API-Key':key}:{}),...headers},body};
+    // This synchronous guard runs after credential reads and immediately before dispatch.
+    // An issued request is always awaited; cancellation never aborts or replays it.
+    beforeDispatch?.();
     let response;
-    try {response=await this.transport(ORIGIN+path,{method,redirect:'error',timeout,headers:{Accept:'application/json','Zotero-API-Version':'3','Zotero-Allowed-Request':'1',
-      ...(server_id?{'Zotero-Server-ID':server_id}:{}),...(key?{'Zotero-API-Key':key}:{}),...headers},body});}
+    try {response=await this.transport(ORIGIN+path,options);}
     catch(error){throw failure(error.code==='timeout'?'timeout':'connection_lost');}
     const actual=response.headers.get('Zotero-Server-ID');
     if(server_id && actual!==server_id || response.status===412)throw failure('server_id_mismatch',response.status);
@@ -100,24 +104,27 @@ class LocalAPI {
     if(children && (!Array.isArray(value) || Number(response.headers.get('Total-Results') || value.length)>value.length))throw failure('invalid_response');
     return value;
   }
-  async create(value,item) {
-    const target=validateTarget(value),key=await this.credentials(target);
-    const response=await this.request(prefix(target)+'/items',{method:'POST',server_id:target.server_id,key,
-      headers:{'Content-Type':'application/json'},body:JSON.stringify([item])});
-    let data;try{data=await response.json();}catch{throw failure('unattributable_response');}
-    if(data?.failed?.['0'])throw Object.assign(failure('object_rejected',Number(data.failed['0'].code)),{no_effect:data.failed['0'].key===item.key && !Object.keys(data.successful || {}).length});
-    if(response.status!==200 || data?.successful?.['0']?.key!==item.key || Object.keys(data.failed || {}).length
-      || Object.keys(data.successful || {}).length!==1)throw failure('unattributable_response');
-    return {key:item.key,version:data.successful['0'].version,status:response.status};
+  async create(value,item,{beforeDispatch}={}) {
+    let dispatched=false;
+    try {
+      const target=validateTarget(value),key=await this.credentials(target);
+      const response=await this.request(prefix(target)+'/items',{method:'POST',server_id:target.server_id,key,
+        headers:{'Content-Type':'application/json'},body:JSON.stringify([item]),beforeDispatch:()=>{beforeDispatch?.();dispatched=true;}});
+      let data;try{data=await response.json();}catch{throw failure('unattributable_response');}
+      if(data?.failed?.['0'])throw failure('object_rejected',Number(data.failed['0'].code));
+      if(response.status!==200 || data?.successful?.['0']?.key!==item.key || Object.keys(data.failed || {}).length
+        || Object.keys(data.successful || {}).length!==1)throw failure('unattributable_response');
+      return {key:item.key,version:data.successful['0'].version,status:response.status};
+    }catch(error){if(!dispatched)error.no_effect=true;throw error;}
   }
-  async upload(value,attachmentKey,bytes,{filename,contentType,mtime=Date.now()}={}) {
+  async upload(value,attachmentKey,bytes,{filename,contentType,mtime=Date.now(),beforeDispatch}={}) {
     const target=validateTarget(value),key=await this.credentials(target);
     if(!KEY.test(attachmentKey) || !Buffer.isBuffer(bytes) || !bytes.length)throw failure('invalid_attachment');
     if(typeof filename!=='string' || !/^[^\/\\\r\n"\x00]{1,200}$/.test(filename) || typeof contentType!=='string' || !/^[a-zA-Z0-9!#$&^_.+-]+\/[a-zA-Z0-9!#$&^_.+-]+$/.test(contentType))throw failure('invalid_attachment');
     const filePath=prefix(target)+'/items/'+attachmentKey+'/file';
     const headers={'Content-Type':'application/x-www-form-urlencoded','If-None-Match':'*'};
     const md5=createHash('md5').update(bytes).digest('hex');
-    const response=await this.request(filePath,{method:'POST',server_id:target.server_id,key,headers,
+    const response=await this.request(filePath,{method:'POST',server_id:target.server_id,key,headers,beforeDispatch,
       body:new URLSearchParams({md5,filename,filesize:String(bytes.length),mtime:String(Math.trunc(mtime)),contentType,params:'1'}).toString()});
     const authorization=await response.json();
     if(authorization?.exists===1)return {registered:true,md5};
@@ -127,9 +134,9 @@ class LocalAPI {
     const boundary='allfold'+randomBytes(16).toString('hex');
     const body=Buffer.concat([Buffer.from('--'+boundary+'\r\nContent-Disposition: form-data; name="key"\r\n\r\n'+md5+'\r\n--'+boundary+'\r\nContent-Disposition: form-data; name="file"; filename="'+filename+'"\r\nContent-Type: '+contentType+'\r\n\r\n'),bytes,Buffer.from('\r\n--'+boundary+'--\r\n')]);
     // Upload key is a bearer capability. Never send the Local API key to its URL.
-    const uploaded=await this.request('/api/local/uploads/'+uploadKey,{method:'POST',server_id:target.server_id,timeout:60000,headers:{'Content-Type':'multipart/form-data; boundary='+boundary},body});
+    const uploaded=await this.request('/api/local/uploads/'+uploadKey,{method:'POST',server_id:target.server_id,timeout:60000,headers:{'Content-Type':'multipart/form-data; boundary='+boundary},body,beforeDispatch});
     if(uploaded.status!==201)throw failure('upload_failed',uploaded.status);
-    const registered=await this.request(filePath,{method:'POST',server_id:target.server_id,key,headers,body:new URLSearchParams({upload:uploadKey}).toString()});
+    const registered=await this.request(filePath,{method:'POST',server_id:target.server_id,key,headers,body:new URLSearchParams({upload:uploadKey}).toString(),beforeDispatch});
     if(registered.status!==204)throw failure('registration_failed',registered.status);
     return {registered:true,md5};
   }

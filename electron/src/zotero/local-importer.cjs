@@ -6,6 +6,8 @@ const {isIP,BlockList}=require('node:net');
 const {log}=require('../shared/logging.cjs');
 const {reconcileImport}=require('./last-import.cjs');
 const MAX_ATTACHMENT_BYTES=64*1024*1024;
+// Host compatibility for the locked Connector BotBypass policy, without its writer VM.
+const ATTACHMENT_RECOVERY_DOMAINS=['sciencedirect.com','pdf.sciencedirectassets.com','ncbi.nlm.nih.gov'];
 function normalizeDOI(value) {
  const doi=String(value || '').trim().replace(/^https?:\/\/(?:dx\.)?doi\.org\//i,'').toLowerCase();
  if(!/^10\.\d{4,9}\/\S+$/.test(doi))throw Error('Invalid DOI');return doi;
@@ -24,6 +26,12 @@ function safeAttachmentURL(value) {
    || family===4 && blockedIPv4.check(host,'ipv4') || family===6 && (!globalIPv6.check(host,'ipv6') || blockedIPv6.check(host,'ipv6')))
    throw Object.assign(Error('Unsafe attachment URL'),{code:'unsafe_url'});
  url.hash='';return url.href;
+}
+function attachmentRecoverySite(value) {
+ try {
+   const host=new URL(safeAttachmentURL(value)).hostname;
+   return ATTACHMENT_RECOVERY_DOMAINS.some(domain=>host===domain || host.endsWith('.'+domain));
+ }catch{return false;}
 }
 async function validateDownloadURL(session,value) {
  const normalized=safeAttachmentURL(value),host=new URL(normalized).hostname.replace(/^\[|\]$/g,'');
@@ -60,12 +68,12 @@ async function saveImportOnce({item,apiItem,doi,doc,browser,signal,target,api,re
  if(normalizeDOI(parent.DOI)!==normalizeDOI(doi))throw Error('Prepared metadata does not match target DOI');
  result.zotero.parent_key=parentKey;
  result.parent={outcome:'uncertain',requested_id:parentKey};
- try {const receipt=await api.create(target,parent);result.parent={outcome:'confirmed',requested_id:parentKey,accepted_id:parentKey,status:receipt.status,protocol:'local-api-v3'};}
+ try {const receipt=await api.create(target,parent,{beforeDispatch:current});result.parent={outcome:'confirmed',requested_id:parentKey,accepted_id:parentKey,status:receipt.status,protocol:'local-api-v3'};}
  catch(error){if(error.no_effect)result.parent={...result.parent,outcome:'no_effect'};result.stop_batch=true;result.diagnostic={stage:'parent_save',code:error.code || 'failed',...(error.status?{status:error.status}:{})};result.error='Save failed or is uncertain. Inspect Zotero before retrying.';return result;}
  const createChild=async(value,kind)=>{
    current();const key=objectKey();result.zotero[kind].push(key);
    // Once dispatched, never replay or replace this object after any error.
-   await api.create(target,{...value,key,version:0,parentItem:parentKey,tags:value.tags || [],relations:value.relations || {}});return key;
+   await api.create(target,{...value,key,version:0,parentItem:parentKey,tags:value.tags || [],relations:value.relations || {}},{beforeDispatch:current});return key;
  };
  let attachmentWriteFailed=false;
  for(const note of item.notes || []) {
@@ -90,8 +98,12 @@ async function saveImportOnce({item,apiItem,doi,doc,browser,signal,target,api,re
        || mime!=='application/pdf' && contentType()==='text/html')throw Object.assign(Error('Attachment content invalid'),{code:'mime_mismatch'});
      return {bytes,mime,url};
    };
+   let downloadError;
+   try {return downloaded();}catch(error){current();downloadError=error;}
    // Retain task-bound challenge helpers, with one hidden and one visible attempt.
-   if(response.status===403 || response.headers.some(([key,value])=>key.toLowerCase()==='cf-mitigated'&&value==='challenge')) {
+   if(response.status!==404 && (response.status===403
+     || response.headers.some(([key,value])=>key.toLowerCase()==='cf-mitigated'&&value==='challenge')
+     || [originalURL,attachment._allfoldProperURL].some(attachmentRecoverySite))) {
      for(const visible of [false,true]) {
        current();
        try {
@@ -103,7 +115,7 @@ async function saveImportOnce({item,apiItem,doi,doc,browser,signal,target,api,re
        }catch(error) {current();if(visible || ['canceled','document_changed'].includes(error.code))throw error;}
      }
    }
-   return downloaded();
+   throw downloadError;
  };
  const saveAttachment=async(attachment,source)=>{
    let downloaded;try{downloaded=await fetchAttachment(attachment,source);}catch(error){record(error,source==='translator'?'initial_fetch':'oa_resolver');return false;}
@@ -111,7 +123,7 @@ async function saveImportOnce({item,apiItem,doi,doc,browser,signal,target,api,re
    let key;
    try {
      key=await createChild({itemType:'attachment',linkMode:'imported_url',title:attachment.title || (isPDF?'Full Text PDF':'Attachment'),url:safeAttachmentURL(attachment._allfoldProperURL || url),contentType:mime,filename},'attachment_keys');
-     current();await api.upload(target,key,bytes,{filename,contentType:mime});
+     current();await api.upload(target,key,bytes,{filename,contentType:mime,beforeDispatch:current});
      if(isPDF){result.pdf.registered=true;result.pdf.source=source;result.pdf.receipts.push({key,endpoint_completed:true,registered:true,source});}return true;
    }catch(error){attachmentWriteFailed=true;result.stop_batch=true;record(error,key?'attachment_save':'attachment_create');if(isPDF)result.pdf.receipts.push({key:key || result.zotero.attachment_keys.at(-1),endpoint_completed:false,registered:false,source});return false;}
  };

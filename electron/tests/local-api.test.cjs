@@ -53,5 +53,14 @@ test('authorization denial, one-use approval, HTTP rejection and mismatched Serv
 });
 test('HTTP200 per-object failed response including required version is not confirmation',async()=>{
  const {client,calls}=fixture(()=>response({successful:{},failed:{'0':{key:'ABCDEFGH',code:428,message:'Version required'}}}));
- await assert.rejects(client.create({server_id:server,library_type:'user',library_id:'0'},{key:'ABCDEFGH'}),{code:'object_rejected',status:428});assert.equal(calls.length,1);
+ await assert.rejects(client.create({server_id:server,library_type:'user',library_id:'0'},{key:'ABCDEFGH'}),
+  error=>error.code==='object_rejected' && error.status===428 && error.no_effect!==true);assert.equal(calls.length,1);
+});
+test('dispatched authorization and access rejections cannot claim that no write was dispatched',async()=>{
+ for(const status of [401,403]) {
+  const {client,calls}=fixture(()=>response('',status));
+  await assert.rejects(client.create({server_id:server,library_type:'user',library_id:'0'},{key:'ABCDEFGH'}),
+   error=>error.status===status && error.no_effect!==true);
+  assert.equal(calls.length,1);assert.equal(calls[0].options.method,'POST');
+ }
 });

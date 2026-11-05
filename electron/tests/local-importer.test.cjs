@@ -1,12 +1,45 @@
 'use strict';
 const test=require('node:test'),assert=require('node:assert/strict');
 const {saveOnce}=require('../src/zotero/local-importer.cjs');
+const {LocalAPI}=require('../src/zotero/local-api.cjs');
 const target={server_id:'SERVERFIXTUR',library_type:'group',library_id:'12',collection_key:'ABCDEFGH'};
 const item={itemType:'journalArticle',title:'Fixture',DOI:'10.5555/fixture',attachments:[]};
 function fixture(options={}) {
  const created=[],uploaded=[];let calls=0;
  const api={validate:async()=>target,create:async(t,value)=>{created.push(value);if(options.failParent && created.length===1)throw Object.assign(Error(),{code:'connection_lost'});return {key:value.key,status:200};},upload:async(t,key,bytes,metadata)=>{uploaded.push({key,bytes,metadata});if(options.failUpload)throw Error('upload failed');return {registered:true};}};
  return {created,uploaded,run:overrides=>saveOnce({item,doi:item.DOI,target,api,doc:{pageId:7,url:'https://publisher.example/paper'},browser:{partition:{resolveHost:async()=>({endpoints:[{address:'93.184.216.34',family:'ipv4'}]})},documentCurrent:()=>true,cookieAdapter:{},bypassAttachment:async()=>{}},requestHTTP:async()=>{calls++;return {status:200,url:'https://publisher.example/full.pdf',headers:[['content-type','application/pdf']],body:Buffer.from('%PDF-1.7\nfixture')};},...overrides}),get downloads(){return calls;}};
+}
+const deferred=()=>{let resolve;const promise=new Promise(yes=>{resolve=yes;});return {promise,resolve};};
+function nativeWriter({holdRead,holdWrite,rejectParent=false,missingCreateKey=false}={}) {
+ const entered=deferred(),release=deferred(),writes=[],objects=[];let reads=0,md5;
+ const response=(data,status=200)=>new Response(status===204?null:typeof data==='string'?data:JSON.stringify(data),
+  {status,headers:{'Zotero-Server-ID':target.server_id,'X-Zotero-Version':'10.0.6'}});
+ const write=async stage=>{writes.push(stage);if(stage===holdWrite){entered.resolve();await release.promise;}};
+ const api=new LocalAPI({store:{read:async()=>{
+  reads++;if(reads===holdRead){entered.resolve();await release.promise;}
+  return missingCreateKey && reads===2?null:{server_id:target.server_id,key:'k'.repeat(32)};
+ }},transport:async(raw,options)=>{
+  const url=new URL(raw),path=url.pathname;
+  if(options.method==='POST' && path.endsWith('/items')) {
+   const object=JSON.parse(options.body)[0];await write(object.parentItem?'child':'parent');
+   if(rejectParent && !object.parentItem)return response({successful:{},failed:{'0':{key:object.key,code:403}}});
+   objects.push(object);return response({successful:{'0':{key:object.key,version:1}},failed:{}});
+  }
+  if(options.method==='POST' && path.includes('/uploads/')){await write('binary');return response('',201);}
+  if(options.method==='POST' && path.endsWith('/file')) {
+   const form=new URLSearchParams(options.body);
+   if(form.has('upload')){await write('register');return response(null,204);}
+   await write('authorize');md5=form.get('md5');
+   return response({uploadKey:'u'.repeat(32),url:'http://127.0.0.1:23119/api/local/uploads/'+'u'.repeat(32),params:{key:md5}});
+  }
+  if(path.includes('/items/')) {
+   const record=data=>({key:data.key,library:{type:'group',id:12},data});
+   if(path.endsWith('/children'))return response(objects.filter(value=>value.parentItem).map(record));
+   const object=objects.find(value=>value.key===path.split('/').at(-1));return object?response(record(object)):response('',404);
+  }
+  return response(path==='/api/'?'Local API':{});
+ }});
+ return {api,entered,release,writes};
 }
 test('native import preallocates parent identity and uses the explicit collection',async()=>{
  const f=fixture(),result=await f.run();assert.equal(result.parent.outcome,'confirmed');assert.equal(f.created.length,1);
@@ -15,6 +48,55 @@ test('native import preallocates parent identity and uses the explicit collectio
 test('uncertain parent keeps known key, settles, and never starts attachments or replays',async()=>{
  const f=fixture({failParent:true}),result=await f.run({item:{...item,attachments:[{mimeType:'application/pdf',url:'https://publisher.example/full.pdf'}]}});
  assert.equal(result.parent.outcome,'uncertain');assert.equal(f.created.length,1);assert.equal(f.downloads,0);assert.ok(result.zotero.parent_key);assert.equal(result.settled,true);
+});
+test('cancel and document changes during parent credential reading prevent actual POST dispatch',async()=>{
+ for(const cancel of [true,false]) {
+  const f=fixture(),native=nativeWriter({holdRead:2}),controller=new AbortController();let current=true;
+  const pending=f.run({api:native.api,signal:controller.signal,browser:{documentCurrent:()=>current}});
+  await native.entered.promise;if(cancel)controller.abort();else current=false;native.release.resolve();
+  const result=await pending;
+  assert.deepEqual(native.writes,[]);assert.equal(result.parent.outcome,'no_effect');assert.ok(result.zotero.parent_key);
+  assert.equal(result.diagnostic.code,cancel?'canceled':'document_changed');
+ }
+});
+test('a missing key before creation is no effect but a dispatched per-object rejection remains uncertain',async()=>{
+ for(const rejectParent of [false,true]) {
+  const f=fixture(),native=nativeWriter({rejectParent,missingCreateKey:!rejectParent}),result=await f.run({api:native.api});
+  assert.equal(result.parent.outcome,rejectParent?'uncertain':'no_effect');
+  assert.deepEqual(native.writes,rejectParent?['parent']:[]);assert.equal(result.stop_batch,true);assert.ok(result.zotero.parent_key);
+ }
+});
+test('cancel and document changes during child and upload credential reads stop further writes',async()=>{
+ for(const holdRead of [3,4])for(const cancel of [true,false]) {
+  const f=fixture(),native=nativeWriter({holdRead}),controller=new AbortController();let current=true;
+  const pending=f.run({api:native.api,signal:controller.signal,item:{...item,attachments:[{mimeType:'application/pdf',url:'https://publisher.example/full.pdf'}]},
+   browser:{partition:{resolveHost:async()=>({endpoints:[{address:'93.184.216.34'}]})},documentCurrent:()=>current}});
+  await native.entered.promise;if(cancel)controller.abort();else current=false;native.release.resolve();
+  const result=await pending;
+  assert.deepEqual(native.writes,holdRead===3?['parent']:['parent','child']);
+  assert.equal(result.parent.outcome,'confirmed');assert.equal(result.pdf.registered,false);assert.equal(result.stop_batch,true);
+  assert.equal(result.pdf.failures[0].code,cancel?'canceled':'document_changed');
+ }
+});
+test('cancellation after parent dispatch waits for its one result without replay',async()=>{
+ const f=fixture(),native=nativeWriter({holdWrite:'parent'}),controller=new AbortController();let settled=false;
+ const pending=f.run({api:native.api,signal:controller.signal}).then(value=>{settled=true;return value;});
+ await native.entered.promise;controller.abort();await Promise.resolve();
+ assert.equal(settled,false);assert.deepEqual(native.writes,['parent']);native.release.resolve();
+ const result=await pending;assert.equal(result.parent.outcome,'confirmed');assert.deepEqual(native.writes,['parent']);
+});
+test('cancel and document changes await each issued upload request and stop before the next POST',async()=>{
+ const stages=['parent','child','authorize','binary','register'];
+ for(const holdWrite of ['authorize','binary','register'])for(const cancel of [true,false]) {
+  const f=fixture(),native=nativeWriter({holdWrite}),controller=new AbortController();let current=true,settled=false;
+  const pending=f.run({api:native.api,signal:controller.signal,item:{...item,attachments:[{mimeType:'application/pdf',url:'https://publisher.example/full.pdf'}]},
+   browser:{partition:{resolveHost:async()=>({endpoints:[{address:'93.184.216.34'}]})},documentCurrent:()=>current}})
+   .then(value=>{settled=true;return value;});
+  await native.entered.promise;if(cancel)controller.abort();else current=false;await Promise.resolve();
+  assert.equal(settled,false);native.release.resolve();const result=await pending;
+  assert.deepEqual(native.writes,stages.slice(0,stages.indexOf(holdWrite)+1));
+  assert.equal(result.parent.outcome,'confirmed');assert.equal(result.pdf.registered,holdWrite==='register');
+ }
 });
 test('PDF is only registered after attachment create and complete upload; failure preserves parent and shell key',async()=>{
  for(const failUpload of [false,true]){const f=fixture({failUpload}),result=await f.run({item:{...item,attachments:[{mimeType:'application/pdf',url:'https://publisher.example/full.pdf'}]}});
@@ -68,6 +150,41 @@ test('attachment challenge recovery downloads and registers the helper captured 
  assert.equal(result.pdf.registered,true);assert.deepEqual(helpers,[false]);
  assert.deepEqual(downloads,['https://publisher.example/challenge',captured]);
  assert.equal(f.created.length,2);assert.equal(f.uploaded.length,1);assert.equal(f.uploaded[0].bytes.toString(),'%PDF-1.7\nfixture');
+});
+test('known attachment sites recover HTTP 200 HTML challenges, including attributed proper URLs',async()=>{
+ const sites=[
+  {url:'https://www.sciencedirect.com/science/article/pii/fixture/pdf'},
+  {url:'https://pdf.sciencedirectassets.com/fixture.pdf'},
+  {url:'https://pmc.ncbi.nlm.nih.gov/articles/fixture/pdf'},
+  {url:'https://institution.example/proxy/full.pdf',_allfoldProperURL:'https://www.sciencedirect.com/fixture.pdf'},
+ ];
+ for(const site of sites) {
+  const f=fixture(),helpers=[],downloads=[],captured='https://cdn.example/captured.pdf';let fallback=0;
+  const result=await f.run({item:{...item,attachments:[{mimeType:'application/pdf',...site}]},
+   browser:{partition:{resolveHost:async()=>({endpoints:[{address:'93.184.216.34'}]})},documentCurrent:()=>true,
+    bypassAttachment:async(url,doc,{visible})=>{helpers.push({url,visible});return captured;}},
+   fallbackPDF:async()=>{fallback++;return {candidates:[]};},
+   requestHTTP:async(_session,spec)=>{downloads.push(spec.url);return {status:200,headers:[['content-type',spec.url===captured?'application/pdf':'text/html']],
+    body:Buffer.from(spec.url===captured?'%PDF-1.7\nfixture':'<html>Verify access</html>')};}});
+  assert.equal(result.pdf.registered,true,site.url);assert.equal(result.pdf.source,'translator');assert.equal(fallback,0);
+  assert.deepEqual(helpers,[{url:site.url,visible:false}]);assert.deepEqual(downloads,[site.url,captured]);
+ }
+});
+test('ordinary HTML and known HTTP 404 responses do not open attachment helpers',async()=>{
+ for(const attachment of [
+  {url:'https://publisher.example/full.pdf'},
+  {url:'https://sciencedirect.com.attacker.example/full.pdf'},
+  {url:'https://publisher.example/full.pdf',_allfoldProperURL:'https://user:password@sciencedirect.com/full.pdf'},
+  {url:'https://www.sciencedirect.com/missing.pdf',status:404},
+ ]) {
+  const f=fixture();let helpers=0,downloads=0;
+  const result=await f.run({item:{...item,attachments:[{mimeType:'application/pdf',...attachment}]},
+   browser:{partition:{resolveHost:async()=>({endpoints:[{address:'93.184.216.34'}]})},documentCurrent:()=>true,
+    bypassAttachment:async()=>{helpers++;throw Error('Unexpected helper');}},
+   requestHTTP:async()=>{downloads++;return {status:attachment.status || 200,headers:[['content-type','text/html'],...(attachment.status?[['cf-mitigated','challenge']]:[])],body:Buffer.from('<html>Not a PDF</html>')};}});
+  assert.equal(result.pdf.registered,false);assert.equal(helpers,0,attachment.url);assert.equal(downloads,1);
+  assert.equal(f.created.length,1);assert.equal(f.uploaded.length,0);
+ }
 });
 test('hidden attachment helper failure advances to visible capture without replaying writes',async()=>{
  const f=fixture(),downloads=[],helpers=[],captured='https://cdn.example/visible.pdf';
