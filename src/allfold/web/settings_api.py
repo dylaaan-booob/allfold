@@ -49,7 +49,7 @@ def settings_response(request: Request, context, *, status_code=200, saved=False
     state = settings_state(request.app.state.config_path, context["csrf_token"],
                            disk=context.get("settings_disk_state"))
     state['logging'] = logging_state(request.app)
-    state.update(saved=saved, values=replace(context["settings_form"], pubmed_api_key=None, openalex_api_key=None), issues=tuple((*state["issues"], *context["settings_issues"])),
+    state.update(saved=saved, values=replace(context["settings_form"], openalex_api_key=None), issues=tuple((*state["issues"], *context["settings_issues"])),
                  message=context["settings_message"], save=context["settings_save"],
                  validation=context["settings_validation"],
                  deletion_plan=context["settings_deletion_plan"],
@@ -202,7 +202,7 @@ def install_resource_api(app, config_path, csrf_token):
 # deliberately remain on the explicit Preview/Confirm operation boundary.
 AUTOSAVE_FIELDS = frozenset({
     'name', 'keyword_expression', 'from_month', 'to_month', 'log_level',
-    'pubmed_query_mode', 'crossref_mailto', 'provider_aliases', 'provider_order',
+    'crossref_mailto', 'provider_aliases', 'provider_order', 'enabled_providers',
     'display_name', 'transition_delay_seconds', 'auto_import_after_preparation', 'zotero_target',
     'institution_name', 'institution_idp_entity_id', 'institution_use_shibboleth',
     'journals', 'conferences', 'access_services', 'groups', 'custom_labels',
@@ -241,7 +241,7 @@ def install_autosave_api(app, config_path, csrf_token):
                         updates[key] = tuple(row_type(**row) for row in updates[key])
                 if 'conferences' in updates:
                     updates['conferences'] = tuple(ConferenceConfig.model_validate(c) for c in updates['conferences'])
-                for key in ('provider_order', 'groups', 'custom_labels'):
+                for key in ('provider_order', 'enabled_providers', 'groups', 'custom_labels'):
                     if key in updates:
                         updates[key] = tuple(updates[key])
                 values = replace(values, **updates)

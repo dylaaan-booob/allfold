@@ -15,7 +15,7 @@ import yaml
 from pydantic import ValidationError
 
 from allfold.config import normalize_journal_issn
-from allfold.identifiers import normalize_doi
+from allfold.identifiers import normalize_doi, strong_identifiers, normalize_external_id
 from allfold.models import (
     parse_publication_date,
     ExternalIds,
@@ -61,6 +61,14 @@ class PaperMarkdownState:
     sources: tuple[MetadataSource, ...] = ()
     journal_attribution_state: PaperJournalAttributionState = PaperJournalAttributionState.MISSING_OR_EMPTY
     journal_issns: tuple[str, ...] = ()
+    conference: str | None = None
+    conference_id: str | None = None
+    publication_type: str | None = None
+    related_dois: tuple[str, ...] = ()
+    first_public_at: str | None = None
+    accepted_at: str | None = None
+    accepted_approximate: bool = False
+    date_note: str | None = None
     export_attempt_present: bool = False
     export_attempt: ExportAttempt | None = None
 
@@ -75,7 +83,9 @@ class PaperMarkdownState:
 
     @property
     def automatic_export_eligible(self) -> bool:
-        return self.updateable and self.status is WorkflowStatus.KEPT
+        return (self.updateable and self.status is WorkflowStatus.KEPT
+                and self.external_ids is not None and bool(self.external_ids.doi)
+                and self.publication_type != "preprint")
 
     @property
     def has_identity(self) -> bool:
@@ -159,6 +169,8 @@ class PaperIdentity:
     dois: frozenset[str]
     problems: tuple[str, ...]
     index_complete: bool
+    identifiers: frozenset[tuple[str, str]] = frozenset()
+    primary_doi: str | None = None
 
 
 def parse_paper_identity(path: Path, contents: str) -> PaperIdentity | None:
@@ -211,16 +223,51 @@ def parse_paper_identity(path: Path, contents: str) -> PaperIdentity | None:
             complete = False
         else:
             dois.add(doi)
-    if not dois:
-        problems.append("cannot establish Paper DOI identity")
-        complete = False
-    elif len(dois) > 1:
+    primary_doi = next(iter(dois), None)
+    if len(dois) > 1:
         problems.append("conflicting durable DOI identifiers")
+    related = frontmatter.get("related_dois", [])
+    if not isinstance(related, list):
+        problems.append("related_dois must be a list")
+        complete = False
+        related = []
+    for raw in related:
+        try:
+            doi = normalize_doi(raw) if isinstance(raw, str) else None
+        except ValueError:
+            doi = None
+        if doi is None or not re.fullmatch(r"10\.\d{4,9}/[^\s]+", doi):
+            problems.append("related_dois contains an invalid DOI")
+            complete = False
+        else:
+            dois.add(doi)
+    identifiers = set(strong_identifiers(raw_ids or {}, tuple(dois)))
+    aliases = frontmatter.get("identity_aliases", [])
+    if not isinstance(aliases, list):
+        aliases = []
+        problems.append("identity_aliases must be a list")
+        complete = False
+    for alias in aliases:
+        if not isinstance(alias, dict) or set(alias) != {"provider", "record_id"} or not isinstance(alias.get("provider"), str):
+            problems.append("invalid identity_aliases entry")
+            complete = False
+            continue
+        namespace = alias["provider"]
+        value = normalize_external_id(namespace, alias["record_id"])
+        if value is None or namespace == "doi":
+            problems.append("invalid identity_aliases identifier")
+            complete = False
+        else:
+            identifiers.add((namespace, value))
+    identifiers = frozenset(identifiers)
+    if not identifiers:
+        problems.append("cannot establish reliable Paper identity")
+        complete = False
     if "versions" in frontmatter or "preferred_version" in frontmatter:
         problems.append("unsupported pre-v0.5.2 Paper version schema")
     if "zotero_key" in frontmatter or frontmatter.get("status") == "in_zotero":
         problems.append("Incompatible legacy Paper schema (in_zotero/zotero_key); no automatic migration")
-    return PaperIdentity(path, paper_id, frozenset(dois), tuple(problems), complete)
+    return PaperIdentity(path, paper_id, frozenset(dois), tuple(problems), complete, identifiers, primary_doi)
 
 
 def serialize_document(frontmatter: dict[str, Any], body: str) -> str:
@@ -551,9 +598,22 @@ def parse_paper_state(
         problems.append("title must be a non-empty string")
         title = None
     journal = frontmatter.get("journal")
-    if not isinstance(journal, str) or not journal.strip():
-        problems.append("journal must be a non-empty string")
+    if journal is not None and (not isinstance(journal, str) or not journal.strip()):
+        problems.append("journal must be a non-empty string or null")
         journal = None
+    for name in ("conference", "conference_id"):
+        if frontmatter.get(name) is not None and (not isinstance(frontmatter[name], str) or not frontmatter[name].strip()):
+            problems.append(f"{name} must be a non-empty string or null")
+    date_fields = {}
+    for name in ("first_public_at", "accepted_at"):
+        try:
+            date_fields[name] = parse_publication_date(frontmatter.get(name))
+        except ValueError as error:
+            problems.append(f"{name}: {error}")
+    if type(frontmatter.get("accepted_approximate", False)) is not bool:
+        problems.append("accepted_approximate must be a boolean")
+    if frontmatter.get("publication_type") not in {None, "journal", "conference", "preprint"}:
+        problems.append("invalid publication_type")
     try:
         publication_date = parse_publication_date(frontmatter.get("publication_date"))
     except ValueError as error:
@@ -594,10 +654,14 @@ def parse_paper_state(
         external_ids = None
     if external_ids is not None:
         doi = normalize_doi(external_ids.doi)
-        if doi is None or not re.fullmatch(r"10\.\d{4,9}/[^\s]+", doi):
-            problems.append("current Paper requires a valid DOI")
+        if doi is not None and not re.fullmatch(r"10\.\d{4,9}/[^\s]+", doi):
+            problems.append("current Paper has an invalid DOI")
         else:
             external_ids = external_ids.model_copy(update={"doi": doi})
+    identity = parse_paper_identity(path, contents)
+    if identity is not None:
+        problems.extend(problem for problem in identity.problems if problem not in problems)
+        identity_external_ids = set(identity.identifiers)
     export_attempt_present = "export_attempt" in frontmatter
     export_attempt = None
     if export_attempt_present:
@@ -634,6 +698,14 @@ def parse_paper_state(
         sources=tuple(sources),
         journal_attribution_state=journal_attribution_state,
         journal_issns=journal_issns,
+        conference=frontmatter.get("conference"),
+        conference_id=frontmatter.get("conference_id"),
+        publication_type=frontmatter.get("publication_type"),
+        related_dois=tuple(sorted(identity.dois - {identity.primary_doi})) if identity else (),
+        first_public_at=date_fields.get("first_public_at"),
+        accepted_at=date_fields.get("accepted_at"),
+        accepted_approximate=frontmatter.get("accepted_approximate", False),
+        date_note=frontmatter.get("date_note"),
         export_attempt_present=export_attempt_present,
         export_attempt=export_attempt,
     )

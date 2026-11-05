@@ -18,6 +18,10 @@ class ContentChangedError(RuntimeError):
     """The target no longer matches the contents previously read by the caller."""
 
 
+class WorkspaceBusyError(ContentChangedError):
+    """Another cooperative operation currently owns the Workspace."""
+
+
 class CompareReadError(RuntimeError):
     """The target could not be reread before a compare-and-replace operation."""
 
@@ -79,7 +83,7 @@ def workspace_path_lock(path: Path):
         try:
             fcntl.flock(descriptor, fcntl.LOCK_EX | fcntl.LOCK_NB)
         except BlockingIOError as error:
-            raise ContentChangedError('Workspace operation is already active') from error
+            raise WorkspaceBusyError('Workspace operation is already active') from error
         if not os.path.samestat(target, os.stat(name, dir_fd=directory, follow_symlinks=False)):
             raise ContentChangedError('Workspace path lock changed')
         yield root / name, (target.st_dev, target.st_ino), descriptor
@@ -124,10 +128,13 @@ class WorkspaceOperationLock:
 
 
 @contextmanager
-def workspace_operation_lock(path: Path, *, create: bool = False):
+def workspace_operation_lock(path: Path, *, create: bool = False,
+                             expected_identity: tuple[int, int] | None = None,
+                             expected_lock_identity: tuple[int, int] | None = None):
     """Own the stable external lock, then bind the current Workspace for writes."""
     with workspace_path_lock(path) as ownership:
-        with _workspace_directory_lock(path, create=create) as lock:
+        with _workspace_directory_lock(path, create=create, expected_identity=expected_identity,
+                                       expected_lock_identity=expected_lock_identity) as lock:
             bound = WorkspaceOperationLock(lock.path, lock.directory, lock.identity,
                                            lock.lock_identity, ownership)
             bound.verify()
@@ -135,7 +142,9 @@ def workspace_operation_lock(path: Path, *, create: bool = False):
 
 
 @contextmanager
-def _workspace_directory_lock(path: Path, *, create: bool = False):
+def _workspace_directory_lock(path: Path, *, create: bool = False,
+                              expected_identity: tuple[int, int] | None = None,
+                              expected_lock_identity: tuple[int, int] | None = None):
     """Retain the existing internal identity fence for Paper/import operations.
 
     Explicit Reset may delete this marker under the external path lock. Ordinary
@@ -151,23 +160,31 @@ def _workspace_directory_lock(path: Path, *, create: bool = False):
         # Walk before lexical normalization: a symlink followed by '..' must
         # not disappear from the safety check or identify a different lock root.
         directory = _open_directory_nofollow(absolute, create=create)
+        parent = os.fstat(directory)
+        if expected_identity is not None and (parent.st_dev, parent.st_ino) != expected_identity:
+            raise ContentChangedError("Original Workspace directory changed")
         flags = os.O_RDWR | os.O_NOFOLLOW | os.O_NONBLOCK
         # Exclusive creation avoids macOS concurrent O_CREAT/O_NOFOLLOW opens
         # returning ENOENT for an inode that the other process just created.
-        try:
-            descriptor = os.open(
-                ".allfold-operation.lock", flags | os.O_CREAT | os.O_EXCL,
-                0o600, dir_fd=directory,
-            )
-        except FileExistsError:
+        if expected_lock_identity is not None:
             descriptor = os.open(".allfold-operation.lock", flags, dir_fd=directory)
+        else:
+            try:
+                descriptor = os.open(
+                    ".allfold-operation.lock", flags | os.O_CREAT | os.O_EXCL,
+                    0o600, dir_fd=directory,
+                )
+            except FileExistsError:
+                descriptor = os.open(".allfold-operation.lock", flags, dir_fd=directory)
         target = os.fstat(descriptor)
         if not stat.S_ISREG(target.st_mode) or target.st_nlink != 1 or target.st_size != 0:
             raise CompareReadError("Workspace operation lock is not a safe empty regular file")
+        if expected_lock_identity is not None and (target.st_dev, target.st_ino) != expected_lock_identity:
+            raise ContentChangedError("Original Workspace operation lock changed")
         try:
             fcntl.flock(descriptor, fcntl.LOCK_EX | fcntl.LOCK_NB)
         except BlockingIOError as error:
-            raise ContentChangedError("Workspace operation is already active") from error
+            raise WorkspaceBusyError("Workspace operation is already active") from error
         parent = os.fstat(directory)
         lock = WorkspaceOperationLock(path, directory, (parent.st_dev, parent.st_ino), (target.st_dev, target.st_ino))
         lock.verify()

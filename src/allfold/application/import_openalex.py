@@ -2,7 +2,7 @@
 from pathlib import Path
 from urllib.parse import urlsplit, urlunsplit
 from allfold.identifiers import normalize_doi
-from allfold.integrations.pubmed_credentials import read_credential
+from allfold.integrations.openalex_credentials import read_credential
 from allfold.providers.openalex import (
     OpenAlexClient, OpenAlexNotFoundError, OpenAlexRequestError, OpenAlexFailureKind,
 )
