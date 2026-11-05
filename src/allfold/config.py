@@ -24,7 +24,6 @@ from allfold.date_range import (
     validate_date_range_spec,
 )
 from allfold.keywords import KeywordExpression, KeywordSyntaxError, parse_keyword_expression
-from allfold.search import validate_search_expression
 from allfold.url_safety import normalize_public_http_url
 
 NonEmptyStr = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1)]
@@ -55,7 +54,8 @@ class LogLevel(str, Enum):
     ERROR = "ERROR"
 
 
-DEFAULT_PROVIDER_ORDER = ("openalex", "crossref", "pubmed", "wos")
+DEFAULT_PROVIDER_ORDER = ("openalex", "europe_pmc", "dblp", "zbmath", "crossref", "arxiv", "biorxiv", "medrxiv", "wos")
+ENABLED_PROVIDERS = DEFAULT_PROVIDER_ORDER[:-1]
 
 
 def normalize_journal_labels(values: object) -> tuple[str, ...]:
@@ -83,7 +83,7 @@ def validate_provider_order(value) -> tuple[str, ...]:
     if (not isinstance(value, (list, tuple)) or len(value) != len(DEFAULT_PROVIDER_ORDER)
             or any(not isinstance(item, str) for item in value)
             or set(value) != set(DEFAULT_PROVIDER_ORDER)):
-        raise ValueError("provider_order must contain openalex, crossref, pubmed and wos exactly once")
+        raise ValueError("provider_order must contain all supported Providers exactly once")
     return tuple(value)
 
 
@@ -246,7 +246,7 @@ class _Settings(BaseModel):
     log_level: LogLevel = LogLevel.INFO
     institution: InstitutionConfig | None = None
     kept_workflow: KeptWorkflowConfig = KeptWorkflowConfig()
-    pubmed_query_mode: Literal["title_abstract", "broad"] = "title_abstract"
+    enabled_providers: tuple[str, ...] = ("openalex",)
     provider_aliases: dict[str, str] = Field(default_factory=dict)
     provider_order: tuple[str, ...] = DEFAULT_PROVIDER_ORDER
     crossref_mailto: str = ""
@@ -258,6 +258,13 @@ class _Settings(BaseModel):
             return {key: item for key, item in value.items() if key not in {"wos_query", "wos_query_mode", "wos_service_id", "pubmed_query"}}
         return value
 
+    @field_validator("enabled_providers", mode="before")
+    @classmethod
+    def valid_enabled(cls, value):
+        if not isinstance(value, (list, tuple)) or any(item not in ENABLED_PROVIDERS for item in value) or len(set(value)) != len(value):
+            raise ValueError("enabled_providers must list unique supported Provider IDs")
+        return tuple(value)
+
     @field_validator("provider_order", mode="before")
     @classmethod
     def valid_provider_order(cls, value):
@@ -266,7 +273,7 @@ class _Settings(BaseModel):
     @field_validator("provider_aliases")
     @classmethod
     def valid_aliases(cls, value):
-        if set(value) - {"openalex", "crossref", "pubmed", "wos"}:
+        if set(value) - set(DEFAULT_PROVIDER_ORDER):
             raise ValueError("Unknown Provider ID")
         if any(not alias.strip() or len(alias) > 120 or any(ord(c) < 32 for c in alias) for alias in value.values()):
             raise ValueError("Provider aliases must contain 1 to 120 printable characters")
@@ -318,7 +325,7 @@ class LoadedConfig:
     journals: tuple[JournalConfig, ...]
     institution: InstitutionConfig | None = None
     kept_workflow: KeptWorkflowConfig = KeptWorkflowConfig()
-    pubmed_query_mode: Literal["title_abstract", "broad"] = "title_abstract"
+    enabled_providers: tuple[str, ...] = ("openalex",)
     provider_aliases: dict[str, str] = field(default_factory=dict)
     provider_order: tuple[str, ...] = DEFAULT_PROVIDER_ORDER
     crossref_mailto: str = ""
@@ -338,7 +345,7 @@ class MonitorDefinition:
     log_level: LogLevel
     institution: InstitutionConfig | None = None
     kept_workflow: KeptWorkflowConfig = KeptWorkflowConfig()
-    pubmed_query_mode: Literal["title_abstract", "broad"] = "title_abstract"
+    enabled_providers: tuple[str, ...] = ("openalex",)
     provider_aliases: dict[str, str] = field(default_factory=dict)
     provider_order: tuple[str, ...] = DEFAULT_PROVIDER_ORDER
     crossref_mailto: str = ""
@@ -653,7 +660,7 @@ def parse_monitor_definition(path: Path, raw: Any) -> MonitorDefinition:
         log_level=settings.log_level,
         institution=settings.institution,
         kept_workflow=settings.kept_workflow,
-        pubmed_query_mode=settings.pubmed_query_mode,
+        enabled_providers=settings.enabled_providers,
         provider_order=settings.provider_order, provider_aliases=settings.provider_aliases, crossref_mailto=settings.crossref_mailto,
     )
 
@@ -682,15 +689,15 @@ def build_loaded_config(
         journals=normalized_journals,
         institution=definition.institution,
         kept_workflow=definition.kept_workflow,
-        pubmed_query_mode=definition.pubmed_query_mode,
+        enabled_providers=definition.enabled_providers,
         provider_order=definition.provider_order, provider_aliases=definition.provider_aliases, crossref_mailto=definition.crossref_mailto,
     )
 
 
 def validate_runtime_keyword(config: LoadedConfig) -> None:
-    """Validate configured keyword semantics using the production FTS5 backend."""
+    """Validate shared input without requiring a SQLite search extension."""
 
-    validate_search_expression(config.keyword_ast)
+    parse_keyword_expression(config.keyword_expression)
 
 
 def resolve_runtime_date(
