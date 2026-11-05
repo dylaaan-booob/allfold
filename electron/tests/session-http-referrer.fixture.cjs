@@ -18,6 +18,9 @@ app.whenReady().then(async()=>{
   if(request.url==='/redirect') {
    received.push({url:request.url,headers:request.headers});
    response.writeHead(302,{Location:other+'/redirected'});response.end();
+  }else if(request.url==='/loop') {response.writeHead(302,{Location:'/loop'});response.end();}
+  else if(request.url.startsWith('/chain/') && Number(request.url.slice(7))<10) {
+   response.writeHead(302,{Location:'/chain/'+(Number(request.url.slice(7))+1)});response.end();
   }else record(request,response);
  });
  const referrer=source+'/paper?institution=fixture&signature=private';
@@ -33,6 +36,8 @@ app.whenReady().then(async()=>{
   ['/openalex',undefined],['/translator-default',referrer],
  ]);
  assert.ok(received.every(value=>value.headers['zotero-api-key']===undefined));
+ assert.equal((await get(source+'/chain/0')).status,200);
+ await assert.rejects(get(source+'/loop'),error=>error.net_error==='ERR_TOO_MANY_REDIRECTS');
  console.log('SESSION HTTP REFERRER PASS');
 }).then(async()=>{await Promise.all(servers.map(server=>new Promise(resolve=>server.close(resolve))));app.quit();})
  .catch(error=>{console.error(error);app.exit(1);});

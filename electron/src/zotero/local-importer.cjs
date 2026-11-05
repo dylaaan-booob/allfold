@@ -86,7 +86,7 @@ async function saveImportOnce({item,apiItem,doi,doc,browser,signal,target,api,re
    // Preserve the locked Connector attachment download's 60-second total timeout.
    const get=()=>{current();return requestHTTP(browser.partition,{method:'GET',url,headers:{},referrer:source==='translator'?doc.url:undefined,
      referrerPolicy:'origin-when-cross-origin',timeout:60000},
-     {doc,signal,kind:'item-saver',cookieAdapter:browser.cookieAdapter,maxBytes:MAX_ATTACHMENT_BYTES,maxRedirects:8,
+     {doc,signal,kind:'item-saver',cookieAdapter:browser.cookieAdapter,maxBytes:MAX_ATTACHMENT_BYTES,
        validateRedirect:value=>validateDownloadURL(browser.partition,value)});};
    let response=await get();
    const contentType=()=>response.headers.find(([key])=>key.toLowerCase()==='content-type')?.[1]?.split(';')[0]?.trim().toLowerCase() || '';

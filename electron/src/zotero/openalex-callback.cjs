@@ -8,19 +8,18 @@ async function requestOpenAlexPDF(current,data,{send,connected,doi,target}) {
  if(data.doi!==doi || JSON.stringify(validateTarget(data.target))!==JSON.stringify(validateTarget(target)) || !KEY.test(data.parent_key))throw Error('OpenAlex Import context mismatch');
  current.openalexRequested=true;
  const lookupId=randomBytes(16).toString('hex'),signal=current.controller.signal;
- let cancel,timer;
+ let cancel;
  try {
    return await new Promise(resolve=>{
      cancel=()=>resolve(empty('canceled'));
      current.openalex={id:lookupId,resolve,cancel};
      signal.addEventListener('abort',cancel,{once:true});
-     timer=setTimeout(()=>resolve(empty('timeout')),100000);
      if(signal.aborted){cancel();return;}
      try {send({type:'openalex_pdf',id:current.id,action:current.action,lookup_id:lookupId,data:{doi,target:validateTarget(target),parent_key:data.parent_key}});}
      catch{resolve(empty('connection_lost'));}
    });
  } finally {
-   clearTimeout(timer);signal.removeEventListener('abort',cancel);
+   signal.removeEventListener('abort',cancel);
    if(current.openalex?.id===lookupId)current.openalex=null;
  }
 }

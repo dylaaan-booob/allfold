@@ -169,3 +169,17 @@ test('Local API discovery and authorization settle outside browser authority wit
  assert.equal(prompts,1);assert.equal(f.calls.translation,0);assert.equal(f.calls.save,0);assert.equal(f.calls.end,0);assert.equal(f.logs.length,0);
  assert.equal(f.messages.length,3);assert.equal(f.messages[2].data.ok,true);assert.ok(!JSON.stringify(f.messages).includes('api_key'));
 });
+
+test('quit cancels a waiting authorization without waiting for a human approval timeout',async()=>{
+ const f=fixture(),ready=deferred();let quitHandler,signal;
+ f.context.zoteroLocal={authorize:options=>{signal=options?.signal;ready.resolve();return new Promise((resolve,reject)=>signal?.addEventListener('abort',()=>reject(Object.assign(Error(),{code:'canceled'})),{once:true}));}};
+ const pending=f.context.execute({id:'authorize',action:'zotero_local',data:{operation:'authorize'}});
+ await ready.promise;
+ Object.assign(f.context,{readyToExit:false,bridgeReady:false,python:null,exitApproved:false,exitCheck:null,window:null,
+  app:{on(_name,handler){quitHandler=handler;},quit(){}}});
+ vm.runInContext(source.slice(source.indexOf("app.on('before-quit',event=>{"),source.indexOf("app.on('window-all-closed'")),f.context);
+ quitHandler({preventDefault(){}});
+ assert.equal(signal?.aborted,true);await pending;
+ assert.equal(f.context.activeRequest,null);assert.equal(f.context.activeOperation,null);
+ assert.equal(f.messages[0].data.error,'canceled');assert.equal(f.calls.save,0);
+});

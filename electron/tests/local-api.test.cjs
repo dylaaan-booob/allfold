@@ -1,12 +1,78 @@
 'use strict';
 const test=require('node:test'),assert=require('node:assert/strict');
 const {LocalAPI}=require('../src/zotero/local-api.cjs');
+const {EventEmitter}=require('node:events'),fs=require('node:fs'),path=require('node:path'),vm=require('node:vm');
 const server='SERVERFIXTUR';
 function fixture(handler,stored={server_id:server,key:'k'.repeat(32)}) {
   const calls=[];return {calls,client:new LocalAPI({store:{read:async()=>stored,write:async value=>{stored=value;}},
     transport:async(url,options)=>{calls.push({url,options});return handler(new URL(url),options);}})};
 }
 const response=(data,status=200,headers={})=>new Response(typeof data==='string'?data:JSON.stringify(data),{status,headers:{'Zotero-Server-ID':server,'X-Zotero-Version':'10.0.6',...headers}});
+function nativeTransport(handler) {
+ const timers=new Map(),calls=[];let stored=null;
+ const context=vm.createContext({module:{exports:{}},Response,Buffer,URLSearchParams,
+  require(name){if(name!=='node:http')return require(name);return {request(url,options,respond){
+   const request=new EventEmitter();request.destroy=error=>request.emit('error',error);
+   request.end=body=>queueMicrotask(()=>{calls.push({url,options,body});handler({url,options,respond,request});});return request;
+  }};},
+  setTimeout(callback,ms){const timer={callback,ms};timers.set(timer,callback);return timer;},clearTimeout(timer){timers.delete(timer);}});
+ vm.runInContext(fs.readFileSync(path.join(__dirname,'../src/zotero/local-api.cjs'),'utf8'),context);
+ const reply=(respond,data)=>{
+  const incoming=Object.assign(new EventEmitter(),{statusCode:200,headers:{'zotero-server-id':server,'x-zotero-version':'10.0.6'}});
+  respond(incoming);incoming.emit('data',Buffer.from(JSON.stringify(data)));incoming.emit('end');
+ };
+ const client=new context.module.exports.LocalAPI({store:{read:async()=>stored,write:async value=>{stored=value;}}});
+ return {client,timers,calls,reply,get stored(){return stored;}};
+}
+
+test('Local API complete lists remain available beyond 1000 entries',async()=>{
+ const rows=Array.from({length:1001},(_,index)=>({data:{name:'Collection '+index,parentCollection:false}}));
+ // Use valid native keys, including distinct entries past the former cutoff.
+ const alphabet='23456789ABCDEFGHIJKLMNPQRSTUVWXYZ';
+ for(const [index,row] of rows.entries())row.key='AAAAA'+alphabet[index>>10]+alphabet[(index>>5)&31]+alphabet[index&31];
+ const {client}=fixture(url=>{
+  if(url.pathname==='/api/')return response('Local API');
+  const values=url.pathname.endsWith('/groups')?Array.from({length:1001},(_,id)=>({id:id+1,data:{name:'Group '+id}})):
+    url.pathname.startsWith('/api/groups/')?[]:rows;
+  const limit=Number(url.searchParams.get('limit')) || values.length;
+  return response(values.slice(0,limit),200,{'Total-Results':String(values.length)});
+ });
+ const result=await client.targets();assert.equal(result.libraries.length,1002);assert.equal(result.libraries[0].collections.length,1001);
+ assert.equal((await client.read({server_id:server,library_type:'user',library_id:'0'},'/items/ABCDEFGH/children')).length,1001);
+});
+
+test('ordinary Local API JSON responses can exceed 4 MiB',async()=>{
+ const data=[{key:'ABCDEFGH',data:{note:'x'.repeat(4*1024*1024)}}];
+ let f;f=nativeTransport(({respond})=>f.reply(respond,data));
+ const rows=await f.client.read({server_id:server,library_type:'user',library_id:'0'},'/items/ABCDEFGH/children');
+ assert.equal(rows[0].data.note.length,4*1024*1024);
+});
+
+test('a parent save completing after 45 seconds retains the prior local save window',async()=>{
+ let f,complete;f=nativeTransport(({respond})=>{complete=respond;});
+ f.client.store={read:async()=>({server_id:server,key:'k'.repeat(32)})};
+ const pending=f.client.create({server_id:server,library_type:'user',library_id:'0'},
+  {key:'ABCDEFGH',version:0,itemType:'journalArticle'});pending.catch(()=>{});
+ while(!complete)await new Promise(resolve=>setImmediate(resolve));
+ for(const timer of [...f.timers.keys()])if(timer.ms<=45000)timer.callback();
+ f.reply(complete,{successful:{'0':{key:'ABCDEFGH',version:1}},failed:{}});
+ assert.equal((await pending).key,'ABCDEFGH');assert.equal(f.calls.length,1);
+});
+
+test('human authorization can finish after two minutes and can be explicitly cancelled',async()=>{
+ for(const cancel of [false,true]) {
+  let f,approval;f=nativeTransport(({url,respond})=>{
+   if(url.endsWith('/api/'))f.reply(respond,'Local API');else approval=respond;
+  });
+  const controller=new AbortController(),pending=f.client.authorize({signal:controller.signal});pending.catch(()=>{});
+  while(!approval)await new Promise(resolve=>setImmediate(resolve));
+  for(const timer of [...f.timers.keys()])if(timer.ms<=120001)timer.callback();
+  if(cancel)controller.abort();else f.reply(approval,{key:'k'.repeat(32),remember:true});
+  if(cancel){await assert.rejects(pending,{code:'canceled'});assert.equal(f.stored,null);}
+  else {assert.equal((await pending).authorized,true);assert.equal(f.stored.key,'k'.repeat(32));}
+  assert.equal(f.timers.size,0);
+ }
+});
 test('discovers explicit personal and group library collections without claiming unknown group rights',async()=>{
   const {client,calls}=fixture((url)=>response(url.pathname==='/api/'?'Local API':url.pathname.endsWith('/groups')?[{id:12,data:{name:'Team'}}]:[{key:'ABCDEFGH',data:{key:'ABCDEFGH',name:'Parent',parentCollection:false}},{key:'JKLMNPQR',data:{key:'JKLMNPQR',name:'Child',parentCollection:'ABCDEFGH'}}]));
   const result=await client.targets();assert.equal(result.server_id,server);assert.equal(result.libraries[1].id,'12');

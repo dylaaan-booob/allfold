@@ -54,6 +54,12 @@ keys in protected storage associated with Server ID, never URL query parameters.
 ([10.0.6 authorization and key consumption](https://github.com/zotero/zotero/blob/536244c2771f590abab9c09a3c27e615e0b318ff/chrome/content/zotero/xpcom/server/server_localAPI.js#L164-L219),
 [authorization endpoint](https://github.com/zotero/zotero/blob/536244c2771f590abab9c09a3c27e615e0b318ff/chrome/content/zotero/xpcom/server/server_localAPI.js#L808-L868))
 
+Allfold waits for the authorization decision without adding an expiry; quitting
+or disconnecting cancels that pending authorization request. Ordinary local save
+requests retain the previous Connector transport's 60-second timeout and are
+awaited after dispatch. Local API lists use the server's complete-result default,
+without an added entry-count or JSON-size cutoff.
+
 | Read endpoint under `/api` | Meaning |
 | --- | --- |
 | `/users/0/groups` | All locally available groups; each has numeric `id` and `data.name` |

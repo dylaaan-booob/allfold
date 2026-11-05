@@ -86,19 +86,21 @@ async function solveCloudflare(doc,{signal,deadline=Infinity}={}) {
 async function execute(message) {
   if(message.action==='zotero_local') {
     if(activeRequest || exiting)throw Error('Native operation is active');
+    const current={id:message.id,action:message.action,controller:new AbortController()};
+    activeOperation=current;
     const operation=(async()=>{
       let data;
       try {
         const value=message.data;
         if(value?.operation==='targets')data=await zoteroLocal.targets();
-        else if(value?.operation==='authorize')data=await zoteroLocal.authorize();
+        else if(value?.operation==='authorize')data=await zoteroLocal.authorize({signal:current.controller.signal});
         else if(value?.operation==='validate'){await zoteroLocal.validate(value.target);data={ok:true};}
         else throw Error('Invalid Local API operation');
       }catch(error){data={ok:false,error:error.code || 'api_failure',...(error.status?{status:error.status}:{})};}
       send({type:'result',id:message.id,action:message.action,data});
     })();
     activeRequest=operation;
-    try {await operation;}finally{if(activeRequest===operation)activeRequest=null;}
+    try {await operation;}finally{if(activeRequest===operation)activeRequest=null;if(activeOperation===current)activeOperation=null;}
     return;
   }
   if(message.action==='cas_credentials') {

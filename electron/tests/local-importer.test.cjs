@@ -117,7 +117,7 @@ test('an escaped child failure stops all further note, link, PDF and fallback wr
 test('actual PDF pages replace Translator PDF candidates and retain bounded Session context without credentials',async()=>{
  const f=fixture(),requests=[];await f.run({doc:{url:'https://publisher.example/current.pdf',type:'application/pdf'},item:{...item,attachments:[{mimeType:'application/pdf',url:'https://publisher.example/stale.pdf'}]},
  requestHTTP:async(session,spec,context)=>{requests.push({spec,context});return {status:200,headers:[['content-type','application/pdf']],body:Buffer.from('%PDF-1.7\nfixture')};}});
- assert.equal(requests.length,1);assert.equal(requests[0].spec.url,'https://publisher.example/current.pdf');assert.deepEqual(requests[0].spec.headers,{});assert.equal(requests[0].context.maxRedirects,8);assert.ok(requests[0].context.maxBytes);
+ assert.equal(requests.length,1);assert.equal(requests[0].spec.url,'https://publisher.example/current.pdf');assert.deepEqual(requests[0].spec.headers,{});assert.equal(typeof requests[0].context.validateRedirect,'function');assert.ok(requests[0].context.maxBytes);
  assert.equal(requests[0].spec.referrerPolicy,'origin-when-cross-origin');
 });
 test('Translator success never looks up OA; failed downloads try bounded unique OA candidates until registration',async()=>{

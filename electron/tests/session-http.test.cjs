@@ -58,7 +58,7 @@ test('timeout covers redirects and body reading; late events cannot resume the r
   assert.equal(f.request.followed,1);
 });
 
-test('PDF imports retain the legacy download window when a body completes after 45 seconds',async()=>{
+test('PDF imports retain the legacy download window and safe redirect chains beyond eight hops',async()=>{
   const {saveOnce}=require('../src/zotero/local-importer.cjs');
   for(const source of ['translator','openalex']) {
     const f=fixture(),url='https://publisher.example/full.pdf';let lookups=0;
@@ -74,6 +74,10 @@ test('PDF imports retain the legacy download window when a body completes after 
     });
     f.session.resolveHost=async()=>({endpoints:[{address:'93.184.216.34'}]});
     await f.requested;
+    for(let hop=0;hop<9;hop++) {
+      f.request.emit('redirect',302,'GET','https://publisher.example/redirect-'+hop);
+      await new Promise(resolve=>setImmediate(resolve));
+    }
     const response=f.incoming(200,{'content-type':'application/pdf'});
     response.emit('data',Buffer.from('%PDF-1.7\n'));
     // Advance the transport's real deadline callbacks with an isolated clock.
@@ -81,7 +85,7 @@ test('PDF imports retain the legacy download window when a body completes after 
     response.emit('data',Buffer.from('body completed at 45 seconds'));response.emit('end');
     const result=await pending;
     assert.equal(result.pdf.registered,true);assert.equal(result.pdf.source,source);
-    assert.equal(f.request.aborted,0);assert.equal(lookups,source==='openalex'?1:0);
+    assert.equal(f.request.aborted,0);assert.equal(f.request.followed,9);assert.equal(lookups,source==='openalex'?1:0);
   }
 });
 
@@ -123,12 +127,10 @@ test('Translator URL policy permits HTTP, private hosts and arbitrary ports but 
   for(const target of ['https://user:pass@publisher.example/next','file:///tmp/private'])
     assert.throws(()=>validateTranslatorURL(target));
 });
-test('bounded attachment responses abort before buffering beyond the cap and cap redirect chains',async()=>{
- const f=fixture(),pending=f.start({}, {maxBytes:5,maxRedirects:1});
+test('bounded attachment responses abort before buffering beyond the cap',async()=>{
+ const f=fixture(),pending=f.start({}, {maxBytes:5});
  const response=f.incoming();response.emit('data',Buffer.from('1234'));response.emit('data',Buffer.from('56'));
  await assert.rejects(pending,error=>error.code==='response_too_large');assert.equal(f.request.aborted,1);
- const g=fixture(),redirects=g.start({}, {maxRedirects:1});g.request.emit('redirect',302,'GET','https://publisher.example/one');g.request.emit('redirect',302,'GET','https://publisher.example/two');
- await assert.rejects(redirects,error=>error.code==='redirect_rejected');assert.equal(g.request.followed,1);
 });
 test('native attachment requests preserve same-origin referrers and strip paths across origins and redirects',{timeout:20000},async()=>{
  const {execFile}=require('node:child_process');

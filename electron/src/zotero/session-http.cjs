@@ -43,7 +43,7 @@ async function requestSessionHTTP(session,{method,url,headers={},body,referrer,r
   const deadline=timeout?Date.now()+timeout:Infinity;
   const registration=context.cookieAdapter?.register({session,doc:context.doc,kind:context.kind,candidateCookieHeader,authorization,url:initialURL.href,deadline});
   Object.assign(requestHeaders,registration?.headers);
-  let request,timer,abort,finished=false,responseURL=initialURL.href,redirects=0;
+  let request,timer,abort,finished=false,responseURL=initialURL.href;
   try {
     // Chromium applies the caller's attachment policy at every redirect hop.
     // Other Translator requests retain their existing explicit referrer behavior.
@@ -59,7 +59,6 @@ async function requestSessionHTTP(session,{method,url,headers={},body,referrer,r
       request.on('redirect',(_status,_method,target)=>{
         if(finished)return;
         try {
-          if(++redirects>(context.maxRedirects ?? 20))throw Error('Too many redirects');
           const follow=()=>{if(finished)return;registration?.redirect(target);request.followRedirect();responseURL=target;};
           const checked=context.validateRedirect?.(target);
           if(checked?.then)Promise.resolve(checked).then(follow).catch(error=>fail(new RequestTransportError('redirect_rejected',error)));

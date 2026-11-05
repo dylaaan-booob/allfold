@@ -14,29 +14,34 @@ function validateTarget(value) {
 const prefix=target=>'/api/'+(target.library_type==='user'?'users':'groups')+'/'+target.library_id;
 function requestLocal(url,options) {
   return new Promise((resolve,reject)=>{
+    let timer;
+    const cleanup=()=>{clearTimeout(timer);options.signal?.removeEventListener('abort',abort);};
     const request=http.request(url,{method:options.method,headers:options.headers},incoming=>{
-      const chunks=[];let size=0;
-      incoming.on('data',chunk=>{size+=chunk.length;if(size>4*1024*1024)request.destroy(failure('response_too_large'));else chunks.push(chunk);});
-      incoming.on('error',()=>{clearTimeout(timer);reject(failure('connection_lost'));});
-      incoming.on('end',()=>{clearTimeout(timer);resolve(new Response([204,205,304].includes(incoming.statusCode)?null:Buffer.concat(chunks),{status:incoming.statusCode,headers:incoming.headers}));});
+      const chunks=[];
+      incoming.on('data',chunk=>chunks.push(chunk));
+      incoming.on('error',()=>{cleanup();reject(failure('connection_lost'));});
+      incoming.on('end',()=>{cleanup();resolve(new Response([204,205,304].includes(incoming.statusCode)?null:Buffer.concat(chunks),{status:incoming.statusCode,headers:incoming.headers}));});
     });
-    request.on('error',error=>{clearTimeout(timer);reject(failure(error.code==='timeout'?'timeout':'connection_lost'));});
-    const timer=setTimeout(()=>request.destroy(failure('timeout')),options.timeout || 30000);
+    const abort=()=>request.destroy(failure('canceled'));
+    request.on('error',error=>{cleanup();reject(failure(['timeout','canceled'].includes(error.code)?error.code:'connection_lost'));});
+    options.signal?.addEventListener('abort',abort,{once:true});
+    if(options.signal?.aborted){abort();return;}
+    if(options.timeout!==0)timer=setTimeout(()=>request.destroy(failure('timeout')),options.timeout ?? 60000);
     request.end(options.body);
   });
 }
 class LocalAPI {
   constructor({transport=requestLocal,store}={}) {this.transport=transport;this.store=store || require('./local-auth.cjs').keyStore;}
-  async request(path,{method='GET',server_id,key,body,headers={},timeout,beforeDispatch}={}) {
+  async request(path,{method='GET',server_id,key,body,headers={},timeout,signal,beforeDispatch}={}) {
     if(!path.startsWith('/api/') || path.includes('://') || path.includes('..'))throw failure('invalid_local_path');
-    const options={method,redirect:'error',timeout,headers:{Accept:'application/json','Zotero-API-Version':'3','Zotero-Allowed-Request':'1',
+    const options={method,redirect:'error',timeout,signal,headers:{Accept:'application/json','Zotero-API-Version':'3','Zotero-Allowed-Request':'1',
       ...(server_id?{'Zotero-Server-ID':server_id}:{}),...(key?{'Zotero-API-Key':key}:{}),...headers},body};
     // This synchronous guard runs after credential reads and immediately before dispatch.
-    // An issued request is always awaited; cancellation never aborts or replays it.
+    // Bibliographic writes carry no abort signal and always await the issued request.
     beforeDispatch?.();
     let response;
     try {response=await this.transport(ORIGIN+path,options);}
-    catch(error){throw failure(error.code==='timeout'?'timeout':'connection_lost');}
+    catch(error){throw failure(['timeout','canceled'].includes(error.code)?error.code:'connection_lost');}
     const actual=response.headers.get('Zotero-Server-ID');
     if(server_id && actual!==server_id || response.status===412)throw failure('server_id_mismatch',response.status);
     let denied=false;if(response.status===403 && path==='/api/local/authorize'){try{denied=(await response.clone().json())?.denied===true;}catch{}}
@@ -52,9 +57,9 @@ class LocalAPI {
     const server_id=response.headers.get('Zotero-Server-ID');if(!server_id)throw failure('missing_server_id');
     return {server_id,version};
   }
-  async authorize() {
+  async authorize({signal}={}) {
     const instance=await this.instance();
-    const response=await this.request('/api/local/authorize',{method:'POST',server_id:instance.server_id,body:JSON.stringify({appName:'Allfold'}),headers:{'Content-Type':'application/json'},timeout:120000});
+    const response=await this.request('/api/local/authorize',{method:'POST',server_id:instance.server_id,body:JSON.stringify({appName:'Allfold'}),headers:{'Content-Type':'application/json'},timeout:0,signal});
     const value=await response.json();
     if(!value?.remember)throw failure('always_allow_required');
     if(typeof value.key!=='string' || !/^[A-Za-z0-9]{32}$/.test(value.key))throw failure('invalid_response');
@@ -68,13 +73,13 @@ class LocalAPI {
   }
   async targets() {
     const instance=await this.instance(),server_id=instance.server_id;
-    const groupsResponse=await this.request('/api/users/0/groups?limit=1000',{server_id});
+    const groupsResponse=await this.request('/api/users/0/groups',{server_id});
     const groups=await groupsResponse.json();
     if(!Array.isArray(groups) || Number(groupsResponse.headers.get('Total-Results') || groups.length)>groups.length)throw failure('invalid_response');
     const libraries=[{type:'user',id:'0',name:'My Library',editable:true,files_editable:true},...groups.map(group=>({type:'group',id:String(group.id),name:String(group.data?.name || 'Group'),editable:null,files_editable:null}))];
     for(const library of libraries) {
       if(!/^\d{1,20}$/.test(library.id))throw failure('invalid_response');
-      const response=await this.request(prefix({library_type:library.type,library_id:library.id})+'/collections?limit=1000',{server_id});
+      const response=await this.request(prefix({library_type:library.type,library_id:library.id})+'/collections',{server_id});
       const rows=await response.json();
       if(!Array.isArray(rows) || Number(response.headers.get('Total-Results') || rows.length)>rows.length)throw failure('target_list_incomplete');
       const byKey=new Map(rows.map(row=>[row.key || row.data?.key,row.data]));
@@ -99,7 +104,7 @@ class LocalAPI {
   async read(target,path) {
     target=validateTarget(target);
     if(!/^\/items\/[23456789ABCDEFGHIJKLMNPQRSTUVWXYZ]{8}(?:\/children)?$/.test(path))throw failure('invalid_local_path');
-    const children=path.endsWith('/children'),response=await this.request(prefix(target)+path+(children?'?limit=1000':''),{server_id:target.server_id});
+    const children=path.endsWith('/children'),response=await this.request(prefix(target)+path,{server_id:target.server_id});
     const value=await response.json();
     if(children && (!Array.isArray(value) || Number(response.headers.get('Total-Results') || value.length)>value.length))throw failure('invalid_response');
     return value;
