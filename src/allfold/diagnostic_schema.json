@@ -194,6 +194,8 @@
       "enum": [
         "account",
         "arm",
+        "attachment_create",
+        "attachment_save",
         "configure",
         "consent",
         "contentReady",
@@ -210,6 +212,7 @@
         "links",
         "login",
         "none",
+        "note_save",
         "oa_resolver",
         "page_load",
         "plainText",

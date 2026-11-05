@@ -10,7 +10,8 @@ _STEPS = frozenset({'request', 'page_load', 'resource_ready', 'resource_filter',
                     'visit_target', 'verification', 'ready', 'search', 'result', 'exportMenu',
                     'controlReady', 'plainText', 'dialog', 'configure', 'contentReady',
                     'selectContent', 'export', 'arm', 'links', 'download', 'sandbox_load', 'sandbox_init',
-                    'translator', 'document_operation', 'dom_observer', 'hidden_iframe', 'oa_resolver'})
+                    'translator', 'document_operation', 'dom_observer', 'hidden_iframe', 'oa_resolver',
+                    'note_save', 'attachment_create', 'attachment_save'})
 _CODES = frozenset({'failed', 'canceled', 'timeout', 'site_restricted', 'verification_page',
     'content_access_blocked', 'http_error', 'load_failed', 'renderer_gone', 'page_closed',
     'document_changed', 'navigation_active', 'document_operation_failed', 'doi_mismatch',
@@ -47,18 +48,21 @@ def normalize_browser_diagnostic(value: object) -> dict[str, object] | None:
 
 
 def first_attachment_diagnostic(value: object) -> dict[str, object] | None:
-    """Retain one reviewed native attachment failure; native events retain the bounded sequence.
+    """Prefer a terminal native-write failure; native events retain the bounded sequence.
 
     A failed transfer is evidence of an attachment problem, not proof of PDF
     persistence or rejection of an already accepted parent.
     """
     if not isinstance(value, list):
         return None
-    for failure in value[:20]:
-        if not isinstance(failure, dict):
-            continue
+    writes = ('note_save', 'attachment_create', 'attachment_save')
+    failures = [failure for failure in value[:20] if isinstance(failure, dict)]
+    ordered = [failure for failure in failures if failure.get('phase') in writes]
+    ordered.extend(failure for failure in failures if failure.get('phase') not in writes)
+    for failure in ordered:
+        phase = failure.get('phase')
         diagnostic = normalize_browser_diagnostic({
-            'stage':'attachment', 'step':'oa_resolver' if failure.get('phase') == 'oa_resolver' else None,
+            'stage':'attachment', 'step':phase if phase in (*writes, 'oa_resolver') else None,
             'code':failure.get('code'), 'status':failure.get('status')})
         if diagnostic and 'code' in diagnostic:
             return diagnostic

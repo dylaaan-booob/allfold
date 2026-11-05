@@ -120,6 +120,32 @@ def test_latest_batch_observations_are_memory_only_and_recovered_pdf_has_no_fina
     assert "pdf_source" not in str(batch_history(batch.snapshot()))
 
 
+def test_terminal_zotero_upload_failure_takes_priority_over_recovered_download_failure(tmp_path):
+    from allfold.diagnostics import DiagnosticStore
+    paper(tmp_path, 'fixture')
+    lock, bridge = BrowserTaskLock(), Bridge()
+    store = DiagnosticStore(tmp_path / 'config.yaml', root=tmp_path / 'logs')
+    batch = BatchImportService(bridge, lock, diagnostics=store)
+    owner = lock.acquire('kept')
+    batch.start(tmp_path, browser_owner=owner)
+    assert bridge.dispatched.wait(2)
+    bridge.future.set_result({**confirmed(), 'stop_batch': True,
+        'pdf': {'registered': False, 'failures': [
+            {'phase': 'initial_fetch', 'code': 'http_error', 'status': 404},
+            {'phase': 'attachment_save', 'code': 'authorization_required', 'status': 401}]},
+        'last_import': {'item_exists': True, 'pdf_attached': False, 'pdf_source': 'none', 'fallback_used': False}})
+    batch.join()
+    observed = batch.snapshot().results[0]
+    assert batch.snapshot().phase is BatchPhase.PAUSED
+    assert observed.item_exists is True and observed.pdf_attached is False
+    assert observed.diagnostic == {'stage': 'attachment', 'step': 'attachment_save',
+        'code': 'authorization_required', 'status': 401}
+    assert 'Zotero' in observed.reason and '401' in observed.reason and '404' not in observed.reason
+    recorded = store.history()['records'][0]['details']['results'][0]
+    assert recorded['diagnostic'] == observed.diagnostic
+    lock.release(owner)
+
+
 def test_disconnect_stops_batch_without_replaying_or_changing_papers(tmp_path):
     _, a = paper(tmp_path, "a")
     _, b = paper(tmp_path, "b")

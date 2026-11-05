@@ -36,6 +36,7 @@ test('actual PDF pages replace Translator PDF candidates and retain bounded Sess
  const f=fixture(),requests=[];await f.run({doc:{url:'https://publisher.example/current.pdf',type:'application/pdf'},item:{...item,attachments:[{mimeType:'application/pdf',url:'https://publisher.example/stale.pdf'}]},
  requestHTTP:async(session,spec,context)=>{requests.push({spec,context});return {status:200,headers:[['content-type','application/pdf']],body:Buffer.from('%PDF-1.7\nfixture')};}});
  assert.equal(requests.length,1);assert.equal(requests[0].spec.url,'https://publisher.example/current.pdf');assert.deepEqual(requests[0].spec.headers,{});assert.equal(requests[0].context.maxRedirects,8);assert.ok(requests[0].context.maxBytes);
+ assert.equal(requests[0].spec.referrerPolicy,'origin-when-cross-origin');
 });
 test('Translator success never looks up OA; failed downloads try bounded unique OA candidates until registration',async()=>{
  for(const translatorOK of [true,false]) {
@@ -54,4 +55,51 @@ test('download DNS and redirect resolution reject private hosts before transport
  const f=fixture(),browser={partition:{resolveHost:async()=>({endpoints:[{address:'127.0.0.1',family:'ipv4'}]})},documentCurrent:()=>true};
  const result=await f.run({browser,item:{...item,attachments:[{mimeType:'application/pdf',url:'https://private.example/full.pdf'}]}});
  assert.equal(f.downloads,0);assert.equal(result.pdf.registered,false);assert.equal(result.pdf.failures[0].code,'unsafe_url');
+});
+test('attachment challenge recovery downloads and registers the helper captured PDF URL',async()=>{
+ const f=fixture(),downloads=[],helpers=[];
+ const captured='https://cdn.example/tokenized.pdf?signature=fixture';
+ const result=await f.run({item:{...item,attachments:[{mimeType:'application/pdf',url:'https://publisher.example/challenge'}]},
+  browser:{partition:{resolveHost:async()=>({endpoints:[{address:'93.184.216.34'}]})},documentCurrent:()=>true,
+   bypassAttachment:async(url,doc,{visible})=>{helpers.push(visible);return captured;}},
+  requestHTTP:async(_session,spec)=>{downloads.push(spec.url);return spec.url===captured
+   ?{status:200,headers:[['content-type','application/pdf']],body:Buffer.from('%PDF-1.7\nfixture')}
+   :{status:403,headers:[['content-type','text/html']],body:Buffer.from('challenge')};}});
+ assert.equal(result.pdf.registered,true);assert.deepEqual(helpers,[false]);
+ assert.deepEqual(downloads,['https://publisher.example/challenge',captured]);
+ assert.equal(f.created.length,2);assert.equal(f.uploaded.length,1);assert.equal(f.uploaded[0].bytes.toString(),'%PDF-1.7\nfixture');
+});
+test('hidden attachment helper failure advances to visible capture without replaying writes',async()=>{
+ const f=fixture(),downloads=[],helpers=[],captured='https://cdn.example/visible.pdf';
+ const result=await f.run({item:{...item,attachments:[{mimeType:'application/pdf',url:'https://publisher.example/challenge'}]},
+  browser:{partition:{resolveHost:async()=>({endpoints:[{address:'93.184.216.34'}]})},documentCurrent:()=>true,
+   bypassAttachment:async(url,doc,{visible})=>{helpers.push(visible);if(!visible)throw Object.assign(Error('Hidden timeout'),{code:'timeout'});return captured;}},
+  requestHTTP:async(_session,spec)=>{downloads.push(spec.url);return spec.url===captured
+   ?{status:200,headers:[['content-type','application/pdf']],body:Buffer.from('%PDF-1.7\nfixture')}
+   :{status:403,headers:[['content-type','text/html']],body:Buffer.from('challenge')};}});
+ assert.equal(result.pdf.registered,true);assert.deepEqual(helpers,[false,true]);
+ assert.deepEqual(downloads,['https://publisher.example/challenge',captured]);
+ assert.equal(f.created.length,2);assert.equal(f.uploaded.length,1);
+});
+test('cancellation and source changes during hidden recovery block visible helpers and new writes',async()=>{
+ for(const canceled of [true,false]) {
+  const f=fixture(),controller=new AbortController(),helpers=[];let current=true,downloads=0,fallback=0;
+  const result=await f.run({signal:controller.signal,item:{...item,attachments:[{mimeType:'application/pdf',url:'https://publisher.example/challenge'}]},
+   browser:{partition:{resolveHost:async()=>({endpoints:[{address:'93.184.216.34'}]})},documentCurrent:()=>current,
+    bypassAttachment:async(url,doc,{visible})=>{helpers.push(visible);if(canceled)controller.abort();else current=false;throw Error('Hidden helper ended');}},
+   fallbackPDF:async()=>{fallback++;return {candidates:[]};},
+   requestHTTP:async()=>{downloads++;return {status:403,headers:[['content-type','text/html']],body:Buffer.from('challenge')};}});
+  assert.equal(result.pdf.registered,false);assert.deepEqual(helpers,[false]);
+  assert.equal(downloads,1);assert.equal(fallback,0);assert.equal(f.created.length,1);assert.equal(f.uploaded.length,0);
+  assert.equal(result.pdf.failures[0].code,canceled?'canceled':'document_changed');
+ }
+});
+test('a helper captured private URL never reaches transport or creates a PDF shell',async()=>{
+ const f=fixture();let downloads=0;
+ const result=await f.run({item:{...item,attachments:[{mimeType:'application/pdf',url:'https://publisher.example/challenge'}]},
+  browser:{partition:{resolveHost:async()=>({endpoints:[{address:'93.184.216.34'}]})},documentCurrent:()=>true,
+   bypassAttachment:async()=> 'http://127.0.0.1/private.pdf'},
+  requestHTTP:async()=>{downloads++;return {status:403,headers:[['content-type','text/html']],body:Buffer.from('challenge')};}});
+ assert.equal(result.pdf.registered,false);assert.equal(downloads,1);assert.equal(f.created.length,1);assert.equal(f.uploaded.length,0);
+ assert.equal(result.pdf.failures[0].code,'unsafe_url');
 });

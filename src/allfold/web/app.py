@@ -230,15 +230,15 @@ def create_app(config_path: Path, *, electron_bridge: ElectronBridge, diagnostic
         try:
             yield
         finally:
-            application.state.kept_workflow.shutdown()
             import asyncio
             electron_bridge.finish_disconnected()
+            await asyncio.to_thread(application.state.kept_workflow.shutdown)
             for worker in (application.state.paper_enrichment, application.state.journal_cover_search, application.state.wos_coordinator):
-                worker.shutdown()
+                await asyncio.to_thread(worker.shutdown)
             for worker in (application.state.batch_import, application.state.preparation_coordinator,
                            application.state.paper_enrichment, application.state.journal_cover_search, application.state.wos_coordinator):
                 await asyncio.to_thread(worker.join)
-            application.state.kept_workflow.advance()
+            await asyncio.to_thread(application.state.kept_workflow.advance)
 
     app = FastAPI(
         lifespan=lifespan,

@@ -16,7 +16,7 @@ function normalizeReferrer(value) {
   }catch{return undefined;}
 }
 // Raw Chromium transport; callers retain Zotero status handling and decoding.
-async function requestSessionHTTP(session,{method,url,headers={},body,referrer,timeout},context={}) {
+async function requestSessionHTTP(session,{method,url,headers={},body,referrer,referrerPolicy,timeout},context={}) {
   if(!session)throw Error('HTTP request requires a Session');
   const {net}=require('electron');
   let initialURL;
@@ -34,6 +34,9 @@ async function requestSessionHTTP(session,{method,url,headers={},body,referrer,t
     }
   }
   referrer ||= headerReferrer;
+  // Electron requires the initial Referer to already satisfy its native policy.
+  if(referrer && referrerPolicy==='origin-when-cross-origin' && new URL(referrer).origin!==initialURL.origin)
+    referrer=new URL(referrer).origin+'/';
   if(referrer)requestHeaders.Referer=referrer;
   if(typeof body==='string' && !Object.keys(requestHeaders).some(key=>key.toLowerCase()==='content-type'))
     requestHeaders['Content-Type']='text/plain;charset=UTF-8';
@@ -42,9 +45,10 @@ async function requestSessionHTTP(session,{method,url,headers={},body,referrer,t
   Object.assign(requestHeaders,registration?.headers);
   let request,timer,abort,finished=false,responseURL=initialURL.href,redirects=0;
   try {
-    // net.request treats Referer as native referrer state; its policy must accept the explicit value.
+    // Chromium applies the caller's attachment policy at every redirect hop.
+    // Other Translator requests retain their existing explicit referrer behavior.
     try {request=net.request({url:initialURL.href,method,session,headers:requestHeaders,credentials:'include',redirect:'manual',
-      ...(referrer?{referrerPolicy:'unsafe-url'}:{})});}
+      ...(referrer?{referrerPolicy:referrerPolicy || 'unsafe-url'}:{})});}
     catch(error){throw new RequestTransportError('network_error',error);}
     return await new Promise((resolve,reject)=>{
       const fail=error=>{

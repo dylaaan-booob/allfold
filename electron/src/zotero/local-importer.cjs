@@ -73,15 +73,25 @@ async function saveImportOnce({item,apiItem,doi,doc,browser,signal,target,api,re
    catch(error){record(error,'note_save');result.stop_batch=true;attachmentWriteFailed=true;break;}
  }
  const fetchAttachment=async(attachment,source)=>{
-   const url=await validateDownloadURL(browser.partition,attachment.url);
-   const get=()=>{current();return requestHTTP(browser.partition,{method:'GET',url,headers:{},referrer:source==='translator'?doc.url:undefined,timeout:30000},
+   let url=await validateDownloadURL(browser.partition,attachment.url);
+   const get=()=>{current();return requestHTTP(browser.partition,{method:'GET',url,headers:{},referrer:source==='translator'?doc.url:undefined,
+     referrerPolicy:'origin-when-cross-origin',timeout:30000},
      {doc,signal,kind:'item-saver',cookieAdapter:browser.cookieAdapter,maxBytes:MAX_ATTACHMENT_BYTES,maxRedirects:8,
        validateRedirect:value=>validateDownloadURL(browser.partition,value)});};
    let response=await get();
    const contentType=()=>response.headers.find(([key])=>key.toLowerCase()==='content-type')?.[1]?.split(';')[0]?.trim().toLowerCase() || '';
    // Retain task-bound challenge helpers, with one hidden and one visible attempt.
    if(response.status===403 || response.headers.some(([key,value])=>key.toLowerCase()==='cf-mitigated'&&value==='challenge')) {
-     for(const visible of [false,true]){current();await browser.bypassAttachment?.(url,doc,{signal,visible});response=await get();if(response.status>=200&&response.status<300&&contentType()!=='text/html')break;}
+     for(const visible of [false,true]) {
+       current();
+       let captured;
+       try {captured=await browser.bypassAttachment?.(url,doc,{signal,visible});}
+       catch(error) {current();if(visible)throw error;continue;}
+       current();
+       if(captured)url=await validateDownloadURL(browser.partition,captured);
+       response=await get();
+       if(response.status>=200&&response.status<300&&contentType()!=='text/html')break;
+     }
    }
    if(response.status<200 || response.status>=300)throw Object.assign(Error('Download failed'),{code:'http_error',status:response.status});
    const bytes=Buffer.from(response.body),mime=attachment.mimeType || attachment.contentType || contentType();

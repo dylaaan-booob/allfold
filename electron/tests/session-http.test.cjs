@@ -102,3 +102,11 @@ test('bounded attachment responses abort before buffering beyond the cap and cap
  const g=fixture(),redirects=g.start({}, {maxRedirects:1});g.request.emit('redirect',302,'GET','https://publisher.example/one');g.request.emit('redirect',302,'GET','https://publisher.example/two');
  await assert.rejects(redirects,error=>error.code==='redirect_rejected');assert.equal(g.request.followed,1);
 });
+test('native attachment requests preserve same-origin referrers and strip paths across origins and redirects',{timeout:20000},async()=>{
+ const {execFile}=require('node:child_process');
+ const output=await new Promise((resolve,reject)=>execFile(require('electron'),[path.join(__dirname,'session-http-referrer.fixture.cjs')],
+  {timeout:15000,maxBuffer:1024*1024,env:{...process.env,ELECTRON_RUN_AS_NODE:''}},(error,stdout,stderr)=>{
+   if(error)reject(Error(`${error.message}\n${stdout}\n${stderr}`));else resolve(stdout+stderr);
+  }));
+ assert.match(output,/SESSION HTTP REFERRER PASS/);
+});
