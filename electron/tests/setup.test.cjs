@@ -27,3 +27,32 @@ test('an existing invalid source is rejected without replacing its contents',t=>
   fs.writeFileSync(path.join(root,'electron/upstream.lock'),'upstream https://github.com/zotero/zotero-connectors.git '+'0'.repeat(40)+'\n');
   assert.throws(()=>prepareSources(root));assert.equal(fs.readFileSync(marker,'utf8'),'keep');
 });
+const {sourceFixture}=require('./runtime-sources.fixture.cjs');
+const {execFileSync}=require('node:child_process');
+function nativeLocalSources(t,root) {
+  const rows=[
+    ['protocol.file.allow','always'],
+    ...['translate','utilities','zotero-schema'].map(name=>['url.'+path.join(root,'electron/vendor/zotero-connectors/src',name)+'.insteadOf','https://github.com/zotero/'+name+(name==='zotero-schema'?'':'.git')]),
+  ];
+  const saved={...process.env};
+  process.env.GIT_CONFIG_COUNT=String(rows.length);
+  rows.forEach(([key,value],index)=>{process.env['GIT_CONFIG_KEY_'+index]=key;process.env['GIT_CONFIG_VALUE_'+index]=value;});
+  t.after(()=>{for(const key of Object.keys(process.env))if(!(key in saved))delete process.env[key];Object.assign(process.env,saved);});
+}
+test('native source preparation initializes only missing named children and repeats without touching existing sources',t=>{
+  const provider=sourceFixture(t),root=sourceFixture(t),source=path.join(root,'electron/vendor/zotero-connectors');
+  nativeLocalSources(t,provider);
+  for(const name of ['translate','zotero-schema'])fs.rmSync(path.join(source,'src',name),{recursive:true});
+  const existing=fs.readFileSync(path.join(source,'src/utilities/.git/HEAD'));
+  prepareSources(root);prepareSources(root);
+  assert.deepEqual(fs.readFileSync(path.join(source,'src/utilities/.git/HEAD')),existing);
+  for(const name of ['translate','utilities','zotero-schema'])assert.ok(fs.existsSync(path.join(source,'src',name,'.git')));
+  for(const name of ['zotero','zotero-google-docs-integration','translate/modules/utilities','utilities/resource/schema/global'])
+    assert.equal(fs.existsSync(path.join(source,'src',name,'.git')),false);
+});
+test('invalid existing required child is rejected before Git can overwrite it',t=>{
+  const root=sourceFixture(t),child=path.join(root,'electron/vendor/zotero-connectors/src/utilities');
+  const target=path.join(child,'date.js');execFileSync('git',['-C',child,'update-index','--assume-unchanged','date.js']);
+  fs.writeFileSync(target,'keep hidden user edit');
+  assert.throws(()=>prepareSources(root));assert.equal(fs.readFileSync(target,'utf8'),'keep hidden user edit');
+});

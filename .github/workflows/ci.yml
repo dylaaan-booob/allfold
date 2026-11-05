@@ -19,6 +19,7 @@ jobs:
           python-version: '3.12'
       - run: python -m pip install uv==0.12.19
       - run: npm --prefix electron run setup
+      - run: node electron/scripts/check-runtime.cjs
       - run: npm --prefix electron run check
       - run: uv run --locked pytest
       - run: npm --prefix electron test

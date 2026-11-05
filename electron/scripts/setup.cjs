@@ -1,7 +1,7 @@
 'use strict';
 const fs=require('node:fs'),path=require('node:path');
 const {execFileSync}=require('node:child_process');
-const {validateRepo,validateUpstream}=require('./prepare-runtime.cjs');
+const {validateRepo,validateUpstream,readLock,validateGitlink,safePath}=require('./prepare-runtime.cjs');
 
 const ROOT=path.resolve(__dirname,'../..');
 function run(command,args,cwd=ROOT) {
@@ -13,21 +13,35 @@ function initializeConfig(root=ROOT) {
   catch(error) {if(error.code!=='EEXIST')throw error;}
 }
 function prepareSources(root=ROOT) {
-  const entries=fs.readFileSync(path.join(root,'electron/upstream.lock'),'utf8').split(/\r?\n/)
-    .filter(line=>line.trim() && !line.startsWith('#')).map(line=>line.trim().split(/\s+/));
+  const entries=readLock(root); // Validate the complete lock before touching any checkout.
   for(const kind of ['upstream','translators']) {
-    const rows=entries.filter(row=>row[0]===kind);
-    if(rows.length!==1 || rows[0].length!==3 || !/^[a-f0-9]{40}$/.test(rows[0][2]))throw Error('Invalid upstream lock');
-    const [,url,revision]=rows[0],name=kind==='upstream'?'zotero-connectors':'translators';
-    if(url!=='https://github.com/zotero/'+name+'.git')throw Error('Unexpected upstream repository');
+    const [,url,revision]=entries.find(row=>row[0]===kind),name=kind==='upstream'?'zotero-connectors':'translators';
     const destination=path.join(root,'electron/vendor',name);
-    if(fs.existsSync(destination)) {validateRepo(destination,revision);continue;}
-    fs.mkdirSync(path.dirname(destination),{recursive:true});
-    run('git',['init','--quiet',destination],root);
-    run('git',['-C',destination,'remote','add','origin',url],root);
-    run('git',['-C',destination,'fetch','--depth=1','origin',revision],root);
-    run('git',['-C',destination,'checkout','--quiet','--detach','FETCH_HEAD'],root);
-    if(kind==='upstream')run('git',['-C',destination,'submodule','update','--init','--depth=1'],root);
+    let existing=true;
+    try {safePath(root,'electron/vendor/'+name);}catch(error){if(error.code!=='ENOENT')throw error;existing=false;}
+    if(existing)validateRepo(destination,revision,{connector:kind==='upstream',allowMissingSubmodules:kind==='upstream'});
+    else {
+      fs.mkdirSync(path.dirname(destination),{recursive:true});
+      run('git',['init','--quiet',destination],root);
+      run('git',['-C',destination,'remote','add','origin',url],root);
+      run('git',['-C',destination,'fetch','--depth=1','origin',revision],root);
+      run('git',['-C',destination,'checkout','--quiet','--detach','FETCH_HEAD'],root);
+    }
+    if(kind==='upstream') {
+      const missing=[];
+      for(const [,child,sha] of entries.filter(row=>row[0]==='submodule')) {
+        validateGitlink(destination,child,sha);
+        let absent=false;
+        try {
+          const directory=safePath(destination,child);
+          if(!fs.lstatSync(directory).isDirectory())throw Error('Unsafe submodule path: '+child);
+          if(fs.readdirSync(directory).length===0)absent=true;
+          else validateRepo(directory,sha);
+        }catch(error){if(error.code!=='ENOENT')throw error;absent=true;}
+        if(absent)missing.push(child);
+      }
+      if(missing.length)run('git',['-C',destination,'submodule','update','--init','--checkout','--depth=1','--',...missing],root);
+    }
   }
   validateUpstream(root);
 }

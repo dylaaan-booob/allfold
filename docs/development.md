@@ -8,7 +8,7 @@ The supported source-development platform is macOS, with Git, Node.js 24, Python
 npm --prefix electron run setup
 ```
 
-Setup checks tools, creates `config.example.yaml` only if absent, installs locked Python/Electron/build dependencies, explicitly installs the Electron binary, fetches exact official Zotero revisions, builds the UI and assembles Runtime. Existing modified or incorrect vendor checkouts are rejected; setup does not reset or clean them. The production revisions are in [upstream.lock](../electron/upstream.lock).
+Setup checks tools, creates `config.example.yaml` only if absent, installs locked Python/Electron/build dependencies, explicitly installs the Electron binary, fetches exact official Zotero revisions, builds the UI and assembles Runtime. Existing modified or incorrect required vendor checkouts are rejected; setup does not reset or clean them. Only the named `src/translate`, `src/utilities` and `src/zotero-schema` submodules are initialized, without recursion. Unused Desktop and Google Docs checkouts may remain absent or retain local changes without being touched. The production revisions are in [upstream.lock](../electron/upstream.lock).
 
 Configure keywords, months and Provider settings in Run; Kept owns Workflow and Access settings. Application settings remain in Settings. Ordinary edits autosave, while credential replacement/clearing and high-impact operations require explicit submission. The public template is separate from local configuration; setup does not create or copy credentials.
 
@@ -43,7 +43,9 @@ With existing pristine vendor sources, rebuild the translation Runtime using:
 npm --prefix electron run prepare-runtime
 ```
 
-The assembler validates fixed revisions, gitlinks and generated-file ownership. Unknown or modified Runtime files are rejected. Building resources does not package an application; [release preparation](release.md) describes the distribution boundary.
+The assembler validates fixed revisions, HEAD/index gitlinks and consumed bytes against tracked pinned Git blobs, including hidden `assume-unchanged` edits. Runtime ownership requires the exact current generated inventory and hashes, or the bounded PR #26 manifest profile during migration. That profile permits removal of the exact old ItemSaver/BotBypass files and old entry HTML. Unknown, incomplete or modified Runtime trees are rejected; unverifiable pre-manifest trees are preserved and require manual inspection. Building resources does not package an application; [release preparation](release.md) describes the distribution boundary.
+
+The main repositories retain fixed-commit shallow acquisition. Sparse/partial checkout is not added: sparse index membership can describe absent worktree inputs, submodules still need separate initialization, and converting old full checkouts would remove files. Partial clones add promisor/lazy-fetch states without reducing checked-out input requirements. Native named submodule selection provides the needed download reduction while preserving existing full checkouts.
 
 ## Checks
 
@@ -55,9 +57,11 @@ npm --prefix electron test
 
 `check` discovers project-owned JS/CJS/MJS in Electron sources and scripts, the UI and tools. It excludes dependencies, third-party assets and generated output; tests parse their own files, and esbuild handles Kept TypeScript.
 
+The real-source Runtime checks assemble all 752 Translators at the locked revision and verify deterministic manifests, selective native submodule initialization, preserved legacy extra checkouts, trusted PR #26 migration and refusal of unsafe inputs. A hidden Electron fixture runs actual official Web translation, DOI Content Negotiation with dynamically loaded CSL JSON and read-only Enrich against synthetic HTTP; it verifies that only the virtual JSON saver remains.
+
 The retained suite covers data preservation, path/identity safety, authority, cancellation, single-save settlement, fixed-source ownership and source preparation. Tests use isolated fixtures and transport doubles. UI build and module dependency checks cover the directory layout. Use [package scripts](../electron/package.json), the [UI build tool](../tools/build-ui-next.mjs) and [CI](../.github/workflows/ci.yml) as the executable command definitions.
 
-CI prepares sources and runs offline checks on macOS. It does not publish or use real credentials. A local pass does not prove that GitHub Actions ran, that the UI is visually correct or that real institutional access and Zotero/PDF saving work. Changes to those paths need relevant manual acceptance with explicit browser authorization.
+CI starts from a fresh checkout without Vendor caches, runs full Setup and asserts the selective source/runtime inventory before offline checks on macOS. It does not publish or use real credentials. A local pass does not prove that GitHub Actions ran, that the UI is visually correct or that real institutional access and Zotero/PDF saving work. Changes to those paths need relevant manual acceptance with explicit browser authorization.
 
 The Electron test command runs files serially. Its native input fixtures briefly
 show their own windows, and Electron's

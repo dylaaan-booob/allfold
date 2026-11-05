@@ -7,7 +7,7 @@ other third-party dependencies retain their upstream licenses and notices.
 
 Official source pins:
 
-- Zotero Connectors, all five pinned submodules and Translators: [upstream.lock](upstream.lock).
+- Zotero Connectors, the three required pinned Translate/Utilities/Schema submodules and complete Translators: [upstream.lock](upstream.lock).
   This lock is the production source authority.
 - Browser identity: UserAgent-Switcher v3 commit
   `ebef999b5996778c0d5a25ced1c45501ceae9437`, retained unmodified under
@@ -20,14 +20,17 @@ Official source pins:
 The runtime assembler reads those exact checkouts and preserves individual
 copyright and license headers, including each Translator's source header.
 It replaces only the Connector schema placeholder with the pinned schema JSON.
-The ItemSaver files are copied unchanged into Layer 2 and loaded from that generated runtime;
-none of the old Literature Monitor extension patches or overlays are used.
-The project-owned `src/zotero/session-http.cjs` is the shared external Chromium Session
-transport for the Translate Host Adapter and ItemSaver attachment adapter; it
-is part of this directory's AGPL component. The Host Adapter explicitly sets
-`Zotero.isManifestV3=false` and replaces only the XHR transport. The official
-HTTP wrapper, Translate, Translators and ItemSaver source files are unchanged;
-local Zotero Desktop API calls continue through Session.fetch. Browser identity
+The former common ItemSaver writer and its BotBypass dependency are not assembled.
+The retained `translate/translation/translate_item.js` provides a distinct virtual
+`Zotero.Translate.ItemSaver`, overridden by the host solely to collect JSON.
+The project-owned `src/zotero/session-http.cjs` remains the shared external Chromium
+Session transport for translation and Local API attachment downloading; it is part
+of this directory's AGPL component. Its historical internal `item-saver` Cookie
+context name remains a downloader identity, not a Connector writer or session.
+The Host Adapter sets `Zotero.isManifestV3=false` and replaces only the XHR transport;
+the official HTTP wrapper, Translate and Translators sources stay unchanged.
+Local Zotero writes use the project-owned Local API client, separately from publisher
+Session requests. Browser identity
 continues to use the existing UserAgent-Switcher adapter. Its sole request-header
 listener also strips Main-only request markers and merges fresh partitioned Cookie
 supplements queried through the existing CDP endpoint; only a translation-time JavaScript-readable document.cookie snapshot may enter the translation renderer; explicit Translator Cookie headers return through the existing request IPC. CDP stores remain Main-only. The project-owned src/browser/partitioned-cookies.cjs and host
@@ -61,4 +64,13 @@ No additional Chromium binary is downloaded or distributed by this integration.
 
 ## Import compatibility host adapters
 
-Official common/translateWeb.js and common/botBypass.js are copied unchanged from the existing Electron lock. Both VMs use official common/proxy.js, translate/tlds.js and Utilities quotemeta. The Layer 2 document/observer adapter follows browserExt/translateHost/translateHost.js; attachment response detection follows browserExt/browserAttachmentMonitor/browserAttachmentMonitor.js without loading its extension APIs. Host iframe/helper-tab and cancellation adapters do not patch upstream sources. All retain this directory’s AGPL-3.0-or-later and corresponding-source obligations. No upstream revision or dependency is upgraded.
+Official common/translateWeb.js performs translation without saving. Shared common
+HTTP, inject HTTP and ordered Translate HTTP bootstrap preserve official request,
+document and utilities behavior; common Utilities supplies DOM selectors. Official
+Proxy/TLD modules normalize source URLs, while Utilities, Schema, date formats and
+the RDF stack support dynamically loaded Web/Search/Import translators. The document
+and observer adapter follows browserExt/translateHost/translateHost.js. Host helper
+pages, HTTP and cancellation adapters do not patch upstream sources. These materials
+retain their original notices and corresponding-source obligations. XRegExp embeds
+MIT notices; RDF files retain original notices including W3C's in rdfparser.js.
+No upstream revision or dependency is upgraded.
