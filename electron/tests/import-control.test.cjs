@@ -162,3 +162,10 @@ test('native final diagnostic keeps stable attachment code separate from its net
   assert.equal(final.stage,'attachment');assert.equal(final.code,'http_error');assert.equal(final.net_error,'ERR_CONNECTION_RESET');
   assert.equal(f.messages.find(m=>m.type==='result').data.parent.outcome,'confirmed');
 });
+test('Local API discovery and authorization settle outside browser authority without secret diagnostic payloads',async()=>{
+ const f=fixture();let prompts=0;
+ f.context.zoteroLocal={targets:async()=>({ok:true,server_id:'SERVERFIXTUR',authorized:false,libraries:[]}),authorize:async()=>{prompts++;return {ok:true,server_id:'SERVERFIXTUR',authorized:true};},validate:async()=>{}};
+ for(const operation of ['targets','authorize','validate'])await f.context.execute({id:operation,action:'zotero_local',data:{operation,target:{}}});
+ assert.equal(prompts,1);assert.equal(f.calls.translation,0);assert.equal(f.calls.save,0);assert.equal(f.calls.end,0);assert.equal(f.logs.length,0);
+ assert.equal(f.messages.length,3);assert.equal(f.messages[2].data.ok,true);assert.ok(!JSON.stringify(f.messages).includes('api_key'));
+});

@@ -16,6 +16,7 @@ from safety_config_helpers import current_mapping_document
 
 def scoped_workspace(tmp_path):
     config, _, journal, service = current_mapping_document(tmp_path)
+    config.write_text(config.read_text() + 'kept_workflow:\n  zotero_target:\n    server_id: SERVERFIXTUR\n    library_type: group\n    library_id: \"12\"\n    collection_key: ABCDEFGH\n')
     other = AccessService.create('Other', 'https://other.example.org/', access_method='manual')
     saved = load_user_state(config)
     compare_write_user_state(config, replace(saved.state, journals=(journal,
@@ -50,6 +51,8 @@ def test_single_service_dispatch_and_history_use_execution_mapping(tmp_path):
         connected = True
         calls = []
         def execute(self, action, data, progress=None):
+            if action == 'zotero_local':
+                future = Future(); future.set_result({'ok': True}); return future
             self.calls.append(data)
             future = Future()
             future.set_result({'settled': True, 'parent': {'outcome': 'no_effect'}})
@@ -126,6 +129,8 @@ def test_prepare_wait_continue_keep_one_scope_and_conflicting_start_cannot_retar
         connected = True
         calls = []
         def execute(self, action, data, progress=None):
+            if action == 'zotero_local':
+                future = Future(); future.set_result({'ok': True}); return future
             self.calls.append(data)
             future = Future()
             future.set_result({'settled': True, 'parent': {'outcome': 'no_effect'}})

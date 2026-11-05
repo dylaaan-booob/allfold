@@ -88,3 +88,10 @@ test('Translator URL policy permits HTTP, private hosts and arbitrary ports but 
   for(const target of ['https://user:pass@publisher.example/next','file:///tmp/private'])
     assert.throws(()=>validateTranslatorURL(target));
 });
+test('bounded attachment responses abort before buffering beyond the cap and cap redirect chains',async()=>{
+ const f=fixture(),pending=f.start({}, {maxBytes:5,maxRedirects:1});
+ const response=f.incoming();response.emit('data',Buffer.from('1234'));response.emit('data',Buffer.from('56'));
+ await assert.rejects(pending,error=>error.code==='response_too_large');assert.equal(f.request.aborted,1);
+ const g=fixture(),redirects=g.start({}, {maxRedirects:1});g.request.emit('redirect',302,'GET','https://publisher.example/one');g.request.emit('redirect',302,'GET','https://publisher.example/two');
+ await assert.rejects(redirects,error=>error.code==='redirect_rejected');assert.equal(g.request.followed,1);
+});

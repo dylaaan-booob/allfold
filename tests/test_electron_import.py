@@ -16,8 +16,8 @@ from electron_test_helpers import paper, state, edit
 
 
 def confirmed():
-    return {"settled": True, "parent": {"outcome": "confirmed", "status": 201,
-        "requested_id": "native-parent", "accepted_id": "native-parent", "empty_response": False},
+    return {"settled": True, "parent": {"outcome": "confirmed", "status": 200, "protocol": "local-api-v3",
+        "requested_id": "ABCDEFGH", "accepted_id": "ABCDEFGH", "empty_response": False},
         "pdf": {"outcome": "unverified"}}
 
 

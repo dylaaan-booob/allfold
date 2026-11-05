@@ -89,7 +89,7 @@ function refreshActions() {
   if(!data)return;
   const selected=queueData?.services?.find(service=>service.id===serviceFilter);
   $('kept-start').disabled=$('kept-import-only').disabled=submitting || recovering || workflow?.active || acknowledging ||
-    window.uiRun?.active() || !selected?.eligible || ['unassigned','ambiguous'].includes(serviceFilter);
+    window.uiRun?.active() || (window.allfoldZoteroPreference && !window.allfoldZoteroPreference.value) || !selected?.eligible || ['unassigned','ambiguous'].includes(serviceFilter);
   for(const row of $('array-index').children)row.disabled=busy;
   workspaceSearch.refresh();
 }
@@ -562,6 +562,7 @@ $('kept-start').addEventListener('click',()=>void start('full'));$('kept-import-
 $('kept-continue').addEventListener('click',()=>void continueImport());$('kept-leave').addEventListener('click',()=>void leaveWorkflow());
 $('kept-skip').addEventListener('click',skipScan);
 window.addEventListener('enrich-state',()=>{if(arrayShown() && !bridge.busy() && readerRefreshPending)render();else refreshActions();});
+window.addEventListener('zotero-target-changed',refreshActions);
 window.addEventListener('workspace-data-changed',()=>{data=bridge.data();if(data && arrayShown()){saveScroll();render();}if(window.workspaceNavigation.current()==='kept')void refreshQueue();});
 window.addEventListener('workspace-reset',()=>{
   workspaceEpoch++;clearTimeout(pollTimer);

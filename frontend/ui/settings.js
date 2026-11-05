@@ -1271,7 +1271,7 @@ function project(data) {
   if(!Array.isArray(order) || order.length!==4 || new Set(order).size!==4 || order.some(id=>!Object.hasOwn(providerDefaults,id)))throw new Error('provider_order 必须完整且不重复地列出 openalex、crossref、pubmed、wos；请修正 YAML 后 Reload。');
   return {monitor:{name:v.name,expression:v.keyword_expression,pubmedMode:v.pubmed_query_mode || "title_abstract",aliases:{...(v.provider_aliases || {})},providerOrder:[...order],crossrefMailto:v.crossref_mailto || "",pubmedKeyAction:"keep",pubmedKey:v.pubmed_key_configured?keyMask:"",openalexKeyAction:"keep",openalexKey:v.openalex_key_configured?keyMask:"",from:v.from_month,to:v.to_month,
     workspace:v.output_dir,log:v.log_level,autoImport:v.auto_import_after_preparation,
-    delay:v.transition_delay_seconds,displayName:v.display_name,institutionName:v.institution_name,
+    delay:v.transition_delay_seconds,displayName:v.display_name,zoteroTarget:v.zotero_target || null,institutionName:v.institution_name,
     idp:v.institution_idp_entity_id,useShibboleth:v.institution_use_shibboleth ?? false},
     revisions:{openalex_key_revision:v.openalex_key_revision || "missing",pubmed_key_revision:v.pubmed_key_revision || "missing",monitor_revision_exists:v.monitor_revision_exists,monitor_revision_digest:v.monitor_revision_digest,
       journal_revision_exists:v.journal_revision_exists,journal_revision_digest:v.journal_revision_digest},
@@ -1292,7 +1292,7 @@ function applyCoverDetails(data) {
   for(const [id,detail] of Object.entries(data.covers || {}))setCoverDetail(id,detail);
   for(const id of covers.keys())if(!Object.hasOwn(data.covers || {},id))covers.delete(id);
 }
-const ordinaryMonitorFields={name:'name',keyword_expression:'expression',from_month:'from',to_month:'to',log_level:'log',pubmed_query_mode:'pubmedMode',crossref_mailto:'crossrefMailto',provider_aliases:'aliases',provider_order:'providerOrder',display_name:'displayName',transition_delay_seconds:'delay',auto_import_after_preparation:'autoImport',institution_name:'institutionName',institution_idp_entity_id:'idp',institution_use_shibboleth:'useShibboleth'};
+const ordinaryMonitorFields={zotero_target:'zoteroTarget',name:'name',keyword_expression:'expression',from_month:'from',to_month:'to',log_level:'log',pubmed_query_mode:'pubmedMode',crossref_mailto:'crossrefMailto',provider_aliases:'aliases',provider_order:'providerOrder',display_name:'displayName',transition_delay_seconds:'delay',auto_import_after_preparation:'autoImport',institution_name:'institutionName',institution_idp_entity_id:'idp',institution_use_shibboleth:'useShibboleth'};
 function ordinaryValues(source=draft) {
   const values=Object.fromEntries(Object.entries(ordinaryMonitorFields).map(([field,key])=>[field,copy(source.monitor[key])]));
   values.groups=source.list.groups.map(group=>group.name);values.custom_labels=source.list.labels.map(label=>label.name);
@@ -1332,6 +1332,8 @@ function initializeAutosave(data,{restore=false}={}) {
       onRestore:values=>{applyOrdinaryValues(values);},
       onState:state=>{autosaveStatus=state;updateDirty();updateRunButtons();},
     });
+    window.allfoldZoteroPreference={get value(){return draft?.monitor.zoteroTarget || null;},
+      async set(value){if(loading || operationPending)return false;draft.monitor.zoteroTarget=copy(value);changed({immediate:true});return await autosave.flush();}};
     window.allfoldAutosave={flush:async()=>{
       if(loading || operationPending || explicitDirty())return false;
       return await autosave.flush();
@@ -1426,6 +1428,7 @@ function submission(source=draft) {
     institution_name:'institutionName',institution_idp_entity_id:'idp'}))form.set(field,String(m[key]??''));
   for(const id of m.providerOrder)form.append('provider_order',id);
   for(const [id,alias] of Object.entries(m.aliases))form.set('provider_alias_'+id,alias);
+  form.set('zotero_target',JSON.stringify(m.zoteroTarget || null));
   form.set('auto_import_after_preparation',m.autoImport?'1':'');
   form.set('institution_use_shibboleth',m.useShibboleth?'1':'');
   for(const [key,value] of Object.entries(source.revisions))form.set(key,value);

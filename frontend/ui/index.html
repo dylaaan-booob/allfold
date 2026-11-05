@@ -147,6 +147,12 @@
     <aside id="kept-directory" class="navigation-flyout" aria-label="Service Directory" tabindex="-1" hidden><div class="flyout-heading"><span>SERVICE DIRECTORY</span><button data-flyout-close aria-label="Close Service Directory">×</button></div><div id="kept-service-list" data-flyout-list></div></aside>
     <div id="kept-main" class="workspace-content" tabindex="-1">
       <header class="kept-queue-heading"><h1>Queue</h1><button id="kept-browser-open" class="s-button">BROWSER ↗</button></header>
+      <div id="kept-zotero-target" class="kept-zotero-target" aria-label="Zotero target">
+        <label>Library <select data-zotero-library aria-label="Zotero Library"></select></label>
+        <label>Collection <select data-zotero-collection aria-label="Zotero Collection"></select></label>
+        <button type="button" data-zotero-refresh class="s-button">Refresh</button><button type="button" data-zotero-authorize class="s-button">Authorize</button>
+        <span data-zotero-status role="status"></span>
+      </div>
       <p id="kept-scope-status" role="status">All Services</p>
       <div id="kept-import-actions" class="kept-actions"><button id="kept-start">PREPARE &amp; IMPORT ↗</button><button id="kept-import-only">IMPORT ONLY ↗</button></div>
       <div id="kept-workflow-host"></div>
@@ -303,5 +309,6 @@
     </div>
     <div id="run-wash" hidden aria-hidden="true"></div>
   </dialog>
+<script type="module" src="/static/ui_next/zotero-target.js"></script>
 </body>
 </html>

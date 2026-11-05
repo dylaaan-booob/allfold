@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+import json
 from itertools import zip_longest
 from pathlib import Path
 
@@ -71,6 +72,7 @@ class SettingsFormValues:
     auto_import_after_preparation: bool = False
     transition_delay_seconds: str = "3"
     display_name: str = ""
+    zotero_target: dict | None = None
     pubmed_query_mode: str = "title_abstract"
     provider_aliases: dict[str, str] = field(default_factory=dict)
     provider_order: tuple[str, ...] = DEFAULT_PROVIDER_ORDER
@@ -137,6 +139,7 @@ def settings_form_from_draft(draft: MonitorDraft) -> SettingsFormValues:
         auto_import_after_preparation=draft.kept_workflow.auto_import_after_preparation,
         transition_delay_seconds=str(draft.kept_workflow.transition_delay_seconds),
         display_name=draft.kept_workflow.display_name or "",
+        zotero_target=draft.kept_workflow.zotero_target.model_dump() if draft.kept_workflow.zotero_target else None,
         institution_name=draft.institution.name or "" if draft.institution else "",
         institution_idp_entity_id=draft.institution.idp_entity_id or "" if draft.institution else "",
         institution_use_shibboleth=draft.institution.use_shibboleth if draft.institution else False,
@@ -169,7 +172,7 @@ def settings_form_from_submission(form: FormData) -> SettingsFormValues:
     group_names = tuple(str(value) for value in form.getlist("settings_group"))
     institution_fields = {"institution_name", "institution_idp_entity_id", "institution_use_shibboleth"}
     # Enumerate the existing editor/import contract so credential aliases cannot be ignored.
-    workflow_fields = {"auto_import_after_preparation", "transition_delay_seconds", "display_name"}
+    workflow_fields = {"auto_import_after_preparation", "transition_delay_seconds", "display_name", "zotero_target"}
     supported_fields = institution_fields | workflow_fields | {
         "csrf_token", "name", "keyword_expression", "output_dir", "log_level",
         "from_month", "to_month", "crossref_mailto",
@@ -240,6 +243,7 @@ def settings_form_from_submission(form: FormData) -> SettingsFormValues:
         auto_import_after_preparation=form.get("auto_import_after_preparation") == "1",
         transition_delay_seconds=str(form.get("transition_delay_seconds", "3")),
         display_name=str(form.get("display_name", "")),
+        zotero_target=_target_from_submission(form),
     )
 
 
@@ -285,6 +289,7 @@ def settings_draft_from_form(
             auto_import_after_preparation=values.auto_import_after_preparation,
             transition_delay_seconds=float(values.transition_delay_seconds),
             display_name=values.display_name,
+            zotero_target=values.zotero_target,
         )
     except (ValueError, TypeError) as error:
         issues.append(_form_issue("kept_workflow", str(error)))
@@ -356,3 +361,10 @@ def settings_draft_from_form(
         ),
         (),
     )
+
+
+def _target_from_submission(form):
+    try:
+        return json.loads(str(form.get("zotero_target", "null")))
+    except (ValueError, TypeError):
+        return {"invalid": True}

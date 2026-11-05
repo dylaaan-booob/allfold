@@ -7,7 +7,9 @@ const fs = require('node:fs');
 const {BrowserRuntime} = require('./browser/browser-runtime.cjs');
 const {installBrowserIPC}=require('./browser/browser-ipc.cjs');
 const {TranslatorSandbox} = require('./zotero/translator.cjs');
-const {saveOnce,normalizeDOI} = require('./zotero/item-saver.cjs');
+const {saveOnce,normalizeDOI} = require('./zotero/local-importer.cjs');
+const {LocalAPI}=require('./zotero/local-api.cjs');
+const zoteroLocal=new LocalAPI();
 const {failedImport}=require('./workflows/import-errors.cjs');
 const {BrowserFailure,diagnosticFor}=require('./browser/browser-errors.cjs');
 const {log,errorCode,initializeLogging,withLogContext,associationLogContext,diagnosticsReset,diagnosticsStatus,setLogLevel} = require('./shared/logging.cjs');
@@ -81,6 +83,23 @@ async function solveCloudflare(doc,{signal,deadline=Infinity}={}) {
   }
 }
 async function execute(message) {
+  if(message.action==='zotero_local') {
+    if(activeRequest || exiting)throw Error('Native operation is active');
+    const operation=(async()=>{
+      let data;
+      try {
+        const value=message.data;
+        if(value?.operation==='targets')data=await zoteroLocal.targets();
+        else if(value?.operation==='authorize')data=await zoteroLocal.authorize();
+        else if(value?.operation==='validate'){await zoteroLocal.validate(value.target);data={ok:true};}
+        else throw Error('Invalid Local API operation');
+      }catch(error){data={ok:false,error:error.code || 'api_failure',...(error.status?{status:error.status}:{})};}
+      send({type:'result',id:message.id,action:message.action,data});
+    })();
+    activeRequest=operation;
+    try {await operation;}finally{if(activeRequest===operation)activeRequest=null;}
+    return;
+  }
   if(message.action==='cas_credentials') {
     if(activeRequest || exiting)throw Error('Native operation is active');
     const operation=(async()=>{
@@ -165,7 +184,7 @@ async function executeOperation(message) {
         browser.enterBusiness();
         stage='translation';
         progress({message:'Running official Translator'});
-        const {item,proxy,sourceDocument,metadataSource}=await translator.translate(doc,doi,{signal:controller.signal,forEnrichment:message.action==='enrich_paper',workspaceMetadata:message.action==='import_paper'?message.data.metadata:undefined,logContext:{...context,page_id:doc.pageId}});
+        const {item,apiItem,proxy,sourceDocument,metadataSource}=await translator.translate(doc,doi,{signal:controller.signal,forEnrichment:message.action==='enrich_paper',workspaceMetadata:message.action==='import_paper'?message.data.metadata:undefined,logContext:{...context,page_id:doc.pageId}});
         if(controller.signal.aborted)throw new BrowserFailure('translation','canceled');
         // A navigation while translating invalidates the source document.
         if (!browser.documentCurrent(doc) || !browser.documentCurrent(sourceDocument)) throw new BrowserFailure('translation','document_changed');
@@ -176,7 +195,7 @@ async function executeOperation(message) {
           progress({message:'Native Zotero save in progress'},'parent_save');
           saving=true;
           stage='parent_save';
-          data=await saveOnce({item,proxy,doi,doc:sourceDocument,browser,signal:controller.signal,logContext:{...context,page_id:doc.pageId,metadata_source:metadataSource}});
+          data=await saveOnce({item,apiItem,proxy,doi,target:message.data.zotero_target,doc:sourceDocument,browser,signal:controller.signal,logContext:{...context,page_id:doc.pageId,metadata_source:metadataSource}});
         }
       }
     } catch (error) {

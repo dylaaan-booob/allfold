@@ -106,7 +106,7 @@ class BatchImportService:
         with self._mutex:
             self._snapshot = replace(self._snapshot, **changes)
 
-    def start(self, workspace: Path, *, browser_owner: BrowserOwner, validate_target=None, config_path=None, workflow_id=None, parent_task_id=None, service_id=None, initial_plan=None):
+    def start(self, workspace: Path, *, browser_owner: BrowserOwner, validate_target=None, config_path=None, workflow_id=None, parent_task_id=None, service_id=None, initial_plan=None, zotero_target=None):
         self.browser_lock.require(browser_owner)
         with self._mutex:
             if self.running:
@@ -130,7 +130,7 @@ class BatchImportService:
             self._stop.clear()
             self._snapshot = BatchSnapshot(BatchPhase.RUNNING, None, None, (), "Scanning Kept Papers", task_id=task_id, service_id=service_id)
             self._worker = threading.Thread(target=self._execute,
-                args=(workspace, browser_owner, validate_target, services, service_id, initial_plan), daemon=False, name="electron-import")
+                args=(workspace, browser_owner, validate_target, services, service_id, initial_plan, zotero_target), daemon=False, name="electron-import")
             try:
                 self._worker.start()
             except BaseException:
@@ -161,7 +161,7 @@ class BatchImportService:
         if self._worker is not None:
             self._worker.join()
 
-    def _execute(self, workspace, owner, validate_target, services, service_id, initial_plan):
+    def _execute(self, workspace, owner, validate_target, services, service_id, initial_plan, zotero_target):
         results = []
         plan = None
         phase, message = BatchPhase.COMPLETED, "No eligible Papers to import"
@@ -218,7 +218,7 @@ class BatchImportService:
                                     "authors": list(state.authors), "journal_issns": list(state.journal_issns),
                                 }.items() if value is not None})
                             pending = self.bridge.execute("import_paper", {
-                                "doi": paper.doi, "metadata": metadata, "task_id": reservation.attempt.attempt_id,
+                                "doi": paper.doi, "metadata": metadata, "zotero_target": zotero_target, "task_id": reservation.attempt.attempt_id,
                                 "workflow_id": self._history_context["workflow_id"],
                                 "parent_task_id": self._history_context["task_id"],
                                 "paper_id": str(paper.paper_id), "service_id": paper.service_id,
@@ -236,7 +236,7 @@ class BatchImportService:
                             parent_outcome="confirmed" if outcome in {"exported", "blocked"} else outcome,
                             reason_code="write_failed" if outcome == "blocked" else "result_unconfirmed" if outcome == "uncertain" else "no_effect" if outcome == "no_effect" else "pdf_unverified",
                             diagnostic=normalize_browser_diagnostic(result.get("diagnostic")) or attachment_diagnostic))
-                        if outcome in {"uncertain", "blocked"}:
+                        if outcome in {"uncertain", "blocked"} or result.get("stop_batch") is True:
                             phase, message = BatchPhase.PAUSED, completion.message
                             break
                     except ElectronDisconnected:

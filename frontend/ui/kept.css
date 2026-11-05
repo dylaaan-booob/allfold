@@ -98,3 +98,8 @@
 #kept-import-actions>button{flex:1;min-width:0}
 #kept-reading-tools{margin:0 0 12px}
 @media(max-height:600px){.kept-center{padding-block:10px}.kept-actions{margin-bottom:8px}#kept-inline{margin-block:8px;padding-block:8px}}
+
+.kept-zotero-target{display:flex;flex-wrap:wrap;gap:8px;align-items:end;margin:12px 0;max-width:100%;}
+.kept-zotero-target label{display:flex;flex:1 1 140px;flex-direction:column;gap:4px;min-width:0;}
+.kept-zotero-target select{width:100%;min-width:0;max-width:100%;font:inherit;}
+.kept-zotero-target [role=status]{flex:1 0 100%;font-size:12px;overflow-wrap:anywhere;}

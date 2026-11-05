@@ -4,6 +4,7 @@ Existing export_attempt frontmatter is legacy user data. Never generate, clear
 or repurpose it for new imports.
 """
 from __future__ import annotations
+import re
 
 from contextlib import contextmanager
 from dataclasses import dataclass
@@ -178,21 +179,21 @@ def complete_electron_import(reservation: ExportReservation, result: dict, *,
         parent = {}
     identity = parent.get("requested_id")
     confirmed = (result.get("settled") is True and parent.get("outcome") == "confirmed"
-                 and type(parent.get("status")) is int and parent["status"] == 201
-                 and isinstance(identity, str) and bool(identity.strip())
-                 and ((parent.get("empty_response") is True and parent.get("accepted_id") is None)
-                      or (parent.get("empty_response") is False and parent.get("accepted_id") == identity)))
+                 and type(parent.get("status")) is int and parent["status"] == 200
+                 and parent.get("protocol") == "local-api-v3"
+                 and isinstance(identity, str) and re.fullmatch(r"[23456789ABCDEFGHIJKLMNPQRSTUVWXYZ]{8}", identity) is not None
+                 and parent.get("accepted_id") == identity)
     if confirmed:
         try:
             _commit_exported_locked(reservation, operation_lock)
             return ExportCompletionResult(ExportCompletionOutcome.EXPORTED,
-                "Native parent HTTP 201 accepted; PDF remains unverified.")
+                "Native parent exact key accepted by Local API; PDF remains unverified.")
         except (ExportAttemptError, ContentChangedError, CompareReadError, OSError) as error:
             return ExportCompletionResult(ExportCompletionOutcome.FAILED,
                 f"Parent accepted but Paper write conflicted: {error}; inspect Zotero before retry.")
     if result.get("settled") is True and parent.get("outcome") == "no_effect":
         return ExportCompletionResult(ExportCompletionOutcome.NO_EFFECT,
-            _electron_failure_message(result) + " No native save dispatched; Paper remains kept.")
+            _electron_failure_message(result) + " Native parent was not created; Paper remains kept.")
     return ExportCompletionResult(ExportCompletionOutcome.UNCERTAIN,
         _electron_failure_message(result) + " Parent acceptance uncertain; Paper remains kept. Inspect Zotero before retrying.")
 

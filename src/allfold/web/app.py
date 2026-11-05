@@ -314,7 +314,8 @@ def create_app(config_path: Path, *, electron_bridge: ElectronBridge, diagnostic
         app.state.import_token = secrets.token_urlsafe(32)
         return app.state.batch_import.start(target.workspace, validate_target=target.verify,
             browser_owner=app.state.kept_workflow.browser_owner, config_path=target.config_path,
-            workflow_id=workflow_id, parent_task_id=parent_task_id, service_id=target.service_id, initial_plan=target.paper_plan)
+            workflow_id=workflow_id, parent_task_id=parent_task_id, service_id=target.service_id, initial_plan=target.paper_plan,
+            zotero_target=target.zotero_target.model_dump() if target.zotero_target else None)
 
     app.state.kept_workflow = KeptWorkflow(
         app.state.preparation_coordinator, app.state.batch_import, import_submission_lock,
@@ -338,6 +339,18 @@ def create_app(config_path: Path, *, electron_bridge: ElectronBridge, diagnostic
                 target.verify(lock)
                 plan = plan_workspace_import(lock, config.journals, service_id=service_id)
                 target = replace(target, paper_plan=plan)
+            if target.zotero_target is None:
+                raise ContentChangedError('Choose and authorize a Zotero Library/Collection in Queue before starting.')
+            owner = app.state.browser_task_lock.acquire('zotero')
+            if owner is None:
+                raise ContentChangedError('Browser runtime is busy; no batch started.')
+            try:
+                checked = app.state.electron_bridge.execute('zotero_local', {
+                    'operation': 'validate', 'target': target.zotero_target.model_dump()}).result()
+                if not checked.get('ok'):
+                    raise ContentChangedError('Zotero target is unavailable: ' + str(checked.get('error', 'api_failure')))
+            finally:
+                app.state.browser_task_lock.release(owner)
             # Reserve the signed click for this workflow; rendering never rotates the nonce.
             app.state.import_token = secrets.token_urlsafe(32)
             return app.state.kept_workflow.start(target, config, app.state.import_token, mode=mode)

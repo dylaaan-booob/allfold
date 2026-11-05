@@ -40,7 +40,7 @@ async function requestSessionHTTP(session,{method,url,headers={},body,referrer,t
   const deadline=timeout?Date.now()+timeout:Infinity;
   const registration=context.cookieAdapter?.register({session,doc:context.doc,kind:context.kind,candidateCookieHeader,authorization,url:initialURL.href,deadline});
   Object.assign(requestHeaders,registration?.headers);
-  let request,timer,abort,finished=false,responseURL=initialURL.href;
+  let request,timer,abort,finished=false,responseURL=initialURL.href,redirects=0;
   try {
     // net.request treats Referer as native referrer state; its policy must accept the explicit value.
     try {request=net.request({url:initialURL.href,method,session,headers:requestHeaders,credentials:'include',redirect:'manual',
@@ -55,14 +55,16 @@ async function requestSessionHTTP(session,{method,url,headers={},body,referrer,t
       request.on('redirect',(_status,_method,target)=>{
         if(finished)return;
         try {
+          if(++redirects>(context.maxRedirects ?? 20))throw Error('Too many redirects');
           context.validateRedirect?.(target);
           registration?.redirect(target);
           request.followRedirect();responseURL=target;
         } catch(error){fail(new RequestTransportError('redirect_rejected',error));}
       });
       request.on('response',incoming=>{
-        const chunks=[];
-        incoming.on('data',chunk=>{if(!finished)chunks.push(chunk);});
+        const chunks=[];let size=0;
+        incoming.on('data',chunk=>{if(finished)return;size+=chunk.length;
+          if(context.maxBytes && size>context.maxBytes){fail(new RequestTransportError('response_too_large'));return;}chunks.push(chunk);});
         incoming.once('error',networkFailure);incoming.once('aborted',networkFailure);
         incoming.once('end',()=>{
           if(finished)return;finished=true;

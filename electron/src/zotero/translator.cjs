@@ -4,7 +4,7 @@ const {RUNTIME_DIR,PRELOAD_DIR}=require('../shared/paths.cjs');
 const fs=require('node:fs'),path=require('node:path');
 const {pathToFileURL}=require('node:url');
 const {randomBytes}=require('node:crypto');
-const {normalizeDOI}=require('./item-saver.cjs');
+const {normalizeDOI}=require('./local-importer.cjs');
 const {ImportFailure}=require('../workflows/import-errors.cjs');
 const {withTaskDeadline,waitFor,checkCanceled}=require('../browser/browser-task.cjs');
 const {log,attachmentCounts}=require('../shared/logging.cjs');
@@ -211,7 +211,7 @@ class TranslatorSandbox {
         throw new ImportFailure('translation',code,result.error?.status);
       }
       log('info','translation_completed',details);this.lastTranslator=result.translator;
-      return {item:result.items[0],proxy:result.proxy || null,sourceDocument:result.sourceDocument,metadataSource:result.metadataSource};
+      return {item:result.items[0],apiItem:result.apiItem,proxy:result.proxy || null,sourceDocument:result.sourceDocument,metadataSource:result.metadataSource};
     }finally {
       lifecycle.abort();contents?.removeListener('did-frame-navigate',changed);contents?.removeListener('did-frame-finish-load',frameLoaded);
       contents?.removeListener('destroyed',closed);contents?.removeListener('render-process-gone',closed);
