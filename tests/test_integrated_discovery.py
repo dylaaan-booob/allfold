@@ -75,11 +75,12 @@ def test_zbmath_verifies_issn_serial_mapping_and_excludes_review_query_and_abstr
         requests.append(request)
         if '/serial/' in request.url.path:
             return httpx.Response(200,json={'result':[{'id':77,'issn':['1234-567X']}], 'status':{'nr_total_results':1,'execution_bool':True}})
-        return httpx.Response(200,json={'result':[{'id':123,'title':{'title':'Native hit'},'year':'2026','editorial_contributions':[{'text':'Review text'}]}], 'status':{'nr_total_results':1,'execution_bool':True}})
+        return httpx.Response(200,json={'result':[{'id':123,'title':{'title':'Native hit'},'year':'2026','editorial_contributions':[{'text':'Review text'}],'license':['https://creativecommons.org/licenses/by/4.0/']}], 'status':{'nr_total_results':1,'execution_bool':True}})
     with DiscoveryClient('zbmath',transport=httpx.MockTransport(handler),interval=0) as client:
         result=client.discover(SourceScope('journal','Test',issns=('1234-567X',)),parse_keyword_expression('learning AND statist*'),date(2026,1,1),date(2026,2,28))
     assert result.status=='partial'
     assert result.records[0].abstract is None
+    assert result.records[0].provenance.licenses==('https://creativecommons.org/licenses/by/4.0/',)
     assert result.records[0].external_ids.model_dump()['zbmath']=='123'
     q=requests[-1].url.params['search_string']
     assert 'se:77' in q and 'py:2026-2026' in q
@@ -156,3 +157,25 @@ def test_conference_year_stays_year_and_month_query_reports_partial_precision():
     assert paper.metadata.conference=='ICML' and paper.metadata.journal is None
     assert paper.metadata.accepted_at is None
     assert paper.external_ids.model_dump()['dblp']=='conf/icml/Example26'
+
+
+def test_zbmath_license_placeholders_are_missing_metadata_not_paper_content():
+    from allfold.providers.integrated import DiscoveryClient,SourceScope
+    placeholder='zbMATH Open Web Interface contents unavailable due to conflicting licenses.'
+    raw={'id':8053521,'year':'2025','title':{'title':placeholder},'keywords':[placeholder],
+         'contributors':{'authors':[{'name':placeholder}]},'msc':[{'code':'62-XX','text':'Statistics'}],
+         'links':[{'type':'doi','identifier':'10.1080/01621459.2024.2393463'},{'type':'arxiv','identifier':'2209.04977'}]}
+    with DiscoveryClient('zbmath',transport=httpx.MockTransport(lambda _:httpx.Response(200,json={})),interval=0) as client:
+        record=client.normalize(raw,SourceScope('journal','JASA'))
+    assert record.title is None and not record.authors
+    assert [x.value for x in record.indexed_terms]==['62-XX']
+    assert record.external_ids.doi=='10.1080/01621459.2024.2393463'
+    assert record.external_ids.arxiv=='2209.04977'
+
+
+def test_dblp_explicit_electronic_edition_dois_remain_known_identifiers():
+    from allfold.providers.integrated import DiscoveryClient,SourceScope
+    with DiscoveryClient('dblp',transport=httpx.MockTransport(lambda _:httpx.Response(200,json={}))) as client:
+        record=client.normalize({'key':'conf/icml/test26','title':'Learning','year':'2026','ee':['https://doi.org/10.5555/main','https://doi.org/10.5555/other']},SourceScope('conference','ICML','conf_1',stream='streams/conf/icml'))
+    assert record.external_ids.doi=='10.5555/main'
+    assert record.related_dois==('10.5555/other',)

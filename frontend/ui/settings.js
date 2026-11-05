@@ -179,6 +179,7 @@ markup.innerHTML=`<header class="s-header">
 <label class="s-setting-row s-field-wide" data-field="expression">
 <textarea data-monitor="expression" rows="5" spellcheck="false" aria-label="Keyword expression">
 </textarea>
+<span class="s-help">AND / OR、括号、精确短语 &quot;…&quot;、词尾 *（至少 4 字符）；不支持 NOT 或邻近查询。</span>
 </label>
 <label class="s-setting-row" data-field="from">
 <span class="s-setting-label">Start Month</span>

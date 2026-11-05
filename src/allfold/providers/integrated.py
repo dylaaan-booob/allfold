@@ -1,7 +1,7 @@
 """Scoped HTTP discovery. Adapters retain native hits and report bounded coverage."""
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from datetime import date, datetime, timezone
 from email.utils import parsedate_to_datetime
 import re
@@ -12,10 +12,17 @@ from urllib.parse import quote
 import httpx
 
 from allfold.http_client import create_http_client
-from allfold.identifiers import normalize_doi
+from allfold.identifiers import normalize_doi, valid_doi
 from allfold.progress import ProgressEvent, ActivityUpdate, ActivityKind
 from allfold.keywords import And, Or, Prefix, Phrase, Proximity, matches_fields
 from allfold.models import Author, ExternalIds, MetadataSource, ProviderWorkEvidence, ProviderTopic, EvidenceDate, EvidenceDateKind
+
+LICENSE_REDACTION = "zbMATH Open Web Interface contents unavailable due to conflicting licenses."
+
+
+def available_zbmath_text(value):
+    return value.strip() if isinstance(value,str) and value.strip() and value.strip()!=LICENSE_REDACTION else None
+
 
 DISCOVERY_PROVIDERS = ('openalex', 'europe_pmc', 'dblp', 'zbmath')
 SUPPLEMENT_PROVIDERS = ('crossref', 'arxiv', 'biorxiv', 'medrxiv')
@@ -197,6 +204,8 @@ class DiscoveryClient:
                             detail=source.name,current=candidates,total=total,unit='work')))
                     continue
                 candidates += 1
+                if self.provider=='zbmath' and LICENSE_REDACTION in str(raw) and 'zbMATH metadata restricted by licensing' not in limits:
+                    limits.append('zbMATH metadata restricted by licensing')
                 if self.provider == "dblp" and not matches_fields(ast, (raw.get("title", ""),)):
                     continue
                 evidence = self.normalize(raw, source)
@@ -211,7 +220,7 @@ class DiscoveryClient:
             limits.append(str(error)); status = 'skipped'
         except Cancelled as error:
             limits.append(str(error)); status = 'cancelled'
-        except (DiscoveryError, ValueError, KeyError, TypeError) as error:
+        except (DiscoveryError, ValueError, KeyError, TypeError, AttributeError) as error:
             limits.append(str(error)); status = 'partial' if candidates else 'failed'
         return DiscoveryResult(self.provider, source, status, tuple(records), tuple(dict.fromkeys(limits)), candidates, total)
 
@@ -270,39 +279,48 @@ class DiscoveryClient:
             if source_id == 'MED': ids['pmid'] = str(record_id)
             if raw.get('pmcid'): ids['pmcid'] = raw['pmcid']
             keywords = raw.get('keywordList',{}).get('keyword',[])
-            return ProviderWorkEvidence(provenance=MetadataSource(provider='europe_pmc', record_id=f'{source_id}:{record_id}', retrieved_at=datetime.now(timezone.utc)),
+            return ProviderWorkEvidence(provenance=MetadataSource(provider='europe_pmc', record_id=f'{source_id}:{record_id}', retrieved_at=datetime.now(timezone.utc),url='https://europepmc.org/article/'+quote(str(source_id),safe='')+'/'+quote(str(record_id),safe='')),
                 title=raw['title'], journal=source.name or None, publication_type='preprint' if source_id == 'PPR' else 'journal', publication_date=raw.get('firstPublicationDate'), abstract=raw.get('abstractText'),
                 external_ids=ExternalIds(**ids), monitor_journal_issns=source.issns,
                 indexed_terms=tuple(ProviderTopic(value=k,source='europe_pmc',kind='keyword') for k in keywords if isinstance(k,str) and k) + tuple(ProviderTopic(value=k['descriptorName'],source='europe_pmc',kind='mesh') for k in raw.get('meshHeadingList',{}).get('meshHeading',[]) if k.get('descriptorName')),
                 authors=tuple(Author(name=x['fullName']) for x in raw.get('authorList',{}).get('author',[]) if x.get('fullName')))
         if self.provider == 'zbmath':
-            title = raw.get('title',{}).get('title')
-            if not raw.get('id') or not title:
-                raise DiscoveryError('zbMATH record lacks identity or title')
+            title = available_zbmath_text(raw.get('title',{}).get('title'))
+            if not raw.get('id'):
+                raise DiscoveryError('zbMATH record lacks identity')
             ids = {'zbmath':str(raw['id'])}
             for link in raw.get('links',[]):
                 if link.get('type') == 'doi' and normalize_doi(link.get('identifier')):
                     ids['doi'] = normalize_doi(link['identifier'])
                 if link.get('type') == 'arxiv' and link.get('identifier'):
                     ids['arxiv'] = link['identifier']
-            return ProviderWorkEvidence(provenance=MetadataSource(provider='zbmath', record_id=str(raw['id']), retrieved_at=datetime.now(timezone.utc)),
-                title=title, journal=source.name or None, publication_type='preprint' if raw.get('database') == 'arXiv' else 'journal', external_ids=ExternalIds(**ids),
+            return ProviderWorkEvidence(provenance=MetadataSource(provider='zbmath', record_id=str(raw['id']), retrieved_at=datetime.now(timezone.utc),url='https://zbmath.org/'+quote(str(raw['id']),safe=''),licenses=tuple(item for item in raw.get('license',[]) if isinstance(item,str) and item)),
+                title=title, journal=available_zbmath_text(source.name), publication_type='preprint' if raw.get('database') == 'arXiv' else 'journal', external_ids=ExternalIds(**ids),
                 publication_date=str(raw['year']) if raw.get('year') else None,
                 dates=(EvidenceDate(kind=EvidenceDateKind.ISSUED,year=int(raw['year'])),) if raw.get('year') else (),
-                indexed_terms=tuple(ProviderTopic(value=str(k.get('code') or k.get('text')),source='zbmath',kind='msc') for k in raw.get('msc',[]) if k.get('code') or k.get('text')) + tuple(ProviderTopic(value=k,source='zbmath',kind='keyword') for k in raw.get('keywords',[]) if isinstance(k,str) and k),
-                authors=tuple(Author(name=x['name']) for x in raw.get('contributors',{}).get('authors',[]) if x.get('name')),
+                indexed_terms=tuple(ProviderTopic(value=str(k.get('code') or k.get('text')),source='zbmath',kind='msc') for k in raw.get('msc',[]) if k.get('code') or k.get('text')) + tuple(ProviderTopic(value=k,source='zbmath',kind='keyword') for k in raw.get('keywords',[]) if available_zbmath_text(k)),
+                authors=tuple(Author(name=x['name']) for x in raw.get('contributors',{}).get('authors',[]) if available_zbmath_text(x.get('name'))),
                 monitor_journal_issns=source.issns)
         if self.provider == 'dblp':
             key, title = raw.get('key'), raw.get('title')
             if not key or not title:
                 raise DiscoveryError('DBLP record lacks publication key or title')
+            editions = raw.get('ee',[])
+            editions = editions if isinstance(editions,list) else [editions]
+            edition_dois = set()
+            for item in editions:
+                value = item.get('text') or item.get('#text') if isinstance(item,dict) else item
+                if isinstance(value,str) and value.startswith(('https://doi.org/','http://doi.org/','https://dx.doi.org/','http://dx.doi.org/')):
+                    doi = valid_doi(value)
+                    if doi: edition_dois.add(doi)
+            primary = valid_doi(raw.get('doi')) or next(iter(sorted(edition_dois)),None)
             names = raw.get('authors', {}).get('author', [])
             names = names if isinstance(names, list) else [names]
-            return ProviderWorkEvidence(provenance=MetadataSource(provider='dblp', record_id=key, retrieved_at=datetime.now(timezone.utc)),
+            return ProviderWorkEvidence(provenance=MetadataSource(provider='dblp', record_id=key, retrieved_at=datetime.now(timezone.utc),url='https://dblp.org/rec/'+quote(key,safe='/')),
                 title=title, journal=source.name if source.kind == 'journal' else None,
                 conference=source.name if source.kind == 'conference' else None, conference_id=source.key or source.stream if source.kind == 'conference' else None,
                 publication_type=source.kind, publication_date=str(raw['year']) if raw.get('year') else None,
-                external_ids=ExternalIds(dblp=key, doi=normalize_doi(raw.get('doi'))),
+                external_ids=ExternalIds(dblp=key, doi=primary),related_dois=tuple(sorted(edition_dois-{primary})),
                 dates=(EvidenceDate(kind=EvidenceDateKind.CONFERENCE_YEAR if source.kind == 'conference' else EvidenceDateKind.ISSUED,year=int(raw['year'])),) if raw.get('year') else (),
                 authors=tuple(Author(name=x.get('text') if isinstance(x,dict) else x) for x in names if x),
                 monitor_journal_issns=source.issns)
@@ -313,7 +331,7 @@ class DiscoveryClient:
             raise DiscoveryError('OpenAlex record lacks identity or title')
         abstract = raw.get('abstract_inverted_index') or {}
         tokens = {i: word for word, positions in abstract.items() for i in positions}
-        return ProviderWorkEvidence(provenance=MetadataSource(provider='openalex', record_id=record_id, retrieved_at=datetime.now(timezone.utc)),
+        return ProviderWorkEvidence(provenance=MetadataSource(provider='openalex', record_id=record_id, retrieved_at=datetime.now(timezone.utc),url=record_id),
             title=raw['title'], journal=source.name or None, publication_type='preprint' if raw.get('type') in {'preprint','posted-content'} else 'journal', publication_date=raw.get('publication_date'),
             related_dois=tuple(sorted({doi for location in raw.get('locations',[]) if (doi:=normalize_doi(location.get('doi'))) and doi != normalize_doi(raw.get('doi'))})),
             abstract=' '.join(tokens[i] for i in sorted(tokens)) or None,
