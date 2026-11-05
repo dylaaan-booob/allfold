@@ -6,14 +6,15 @@ import re
 from collections import defaultdict
 from collections.abc import Sequence
 from contextlib import ExitStack, nullcontext
-from dataclasses import dataclass, replace
+from dataclasses import dataclass, field, replace
 from enum import Enum
 from pathlib import Path
+from threading import Event
 from uuid import UUID
 
 import yaml
 
-from allfold.identifiers import normalize_doi
+from allfold.identifiers import normalize_doi, strong_identifiers, paper_identifiers
 from allfold.persistence.inbox import render_default_inbox_base
 from allfold.persistence.markdown_state import (
     MISSING_ABSTRACT,
@@ -109,8 +110,8 @@ def render_paper_markdown(paper: CanonicalPaper) -> str:
     """Render a new Paper note without touching the filesystem."""
 
     doi = normalize_doi(paper.external_ids.doi)
-    if doi is None or not re.fullmatch(r"10\.\d{4,9}/[^\s]+", doi):
-        raise ValueError("Paper requires a valid DOI")
+    if not paper_identifiers(paper):
+        raise ValueError("Paper requires a reliable identity")
     external_ids = paper.external_ids.model_copy(update={"doi": doi})
     workflow = paper.workflow.model_dump(mode="json")
     frontmatter: dict[str, object] = {
@@ -121,6 +122,17 @@ def render_paper_markdown(paper: CanonicalPaper) -> str:
         "journal": paper.metadata.journal,
         "publication_date": paper.metadata.publication_date,
         "doi": doi,
+        "related_dois": list(paper.related_dois),
+        "identity_aliases": [item.model_dump(mode="json") for item in paper.identity_aliases],
+        "conference": paper.metadata.conference,
+        "conference_id": paper.metadata.conference_id,
+        "publication_type": paper.metadata.publication_type,
+        "first_public_at": paper.metadata.first_public_at,
+        "accepted_at": paper.metadata.accepted_at,
+        "accepted_approximate": paper.metadata.accepted_approximate,
+        "date_note": paper.metadata.date_note,
+        "date_evidence": [item.model_dump(mode="json", exclude_none=True) for item in paper.date_evidence],
+        "indexed_terms": [item.model_dump(mode="json", exclude_none=True) for item in paper.indexed_terms],
         "openalex_id": paper.external_ids.openalex,
         "arxiv_id": paper.external_ids.arxiv,
         **({"author_keywords": list(paper.metadata.author_keywords)} if paper.metadata.author_keywords else {}),
@@ -197,15 +209,15 @@ def _scan_papers(
 
 def _identity_indexes(states, papers_dir, issues):
     uuid_index: dict[UUID, set[Path]] = defaultdict(set)
-    doi_index: dict[str, set[Path]] = defaultdict(set)
+    doi_index: dict[tuple[str, str], set[Path]] = defaultdict(set)
     for state in states:
         if state.paper_id is not None:
             uuid_index[state.paper_id].add(state.path)
-        for doi in state.dois:
-            doi_index[doi].add(state.path)
+        for identifier in state.identifiers:
+            doi_index[identifier].add(state.path)
 
     conflicted_paths: set[Path] = set()
-    for label, index in (("DOI", doi_index), ("UUID", uuid_index)):
+    for label, index in (("external identity", doi_index), ("UUID", uuid_index)):
         for identifier, paths in index.items():
             if len(paths) > 1:
                 conflicted_paths.update(paths)
@@ -223,6 +235,14 @@ class WorkspaceIdentityIndex:
     blocked: frozenset[str]
     complete: bool
     issues: tuple[MaterializationIssue, ...]
+
+    by_identifier: dict[tuple[str, str], PaperIdentity] = field(default_factory=dict)
+    blocked_identifiers: frozenset[tuple[str, str]] = frozenset()
+
+    def can_create_paper(self, paper: CanonicalPaper) -> bool:
+        keys = paper_identifiers(paper)
+        return self.complete and bool(keys) and not any(
+            key in self.by_identifier or key in self.blocked_identifiers for key in keys)
 
     def can_create(self, doi: str) -> bool:
         return self.complete and doi not in self.blocked and doi not in self.saved
@@ -244,14 +264,16 @@ def read_workspace_identities(lock: WorkspaceOperationLock) -> WorkspaceIdentity
         return WorkspaceIdentityIndex({}, frozenset(), False,
             (MaterializationIssue(papers_dir, str(error)),))
     _, _, conflicts = _identity_indexes(states, papers_dir, issues)
-    saved, blocked = {}, set()
+    saved, blocked, by_identifier, blocked_identifiers = {}, set(), {}, set()
     for state in states:
         if state.problems or state.path in conflicts:
             blocked.update(state.dois)
+            blocked_identifiers.update(state.identifiers)
         elif complete:
+            by_identifier.update({key: state for key in state.identifiers})
             for doi in state.dois:
                 saved[doi] = state
-    return WorkspaceIdentityIndex(saved, frozenset(blocked), complete, tuple(issues))
+    return WorkspaceIdentityIndex(saved, frozenset(blocked), complete, tuple(issues), by_identifier, frozenset(blocked_identifiers))
 
 
 def _match_papers(
@@ -263,50 +285,36 @@ def _match_papers(
     uuid_index, doi_index, conflicted_paths = _identity_indexes(states, papers_dir, issues)
     states_by_path = {state.path: state for state in states}
 
-    incoming_dois: dict[str, int] = defaultdict(int)
+    incoming_ids: dict[tuple[str, str], int] = defaultdict(int)
     incoming_uuids: dict[UUID, int] = defaultdict(int)
     for paper in papers:
-        doi = normalize_doi(paper.external_ids.doi)
-        if doi is not None:
-            incoming_dois[doi] += 1
-            incoming_uuids[paper.id] += 1
+        for identifier in paper_identifiers(paper):
+            incoming_ids[identifier] += 1
+        incoming_uuids[paper.id] += 1
 
     matches: list[_PaperMatch] = []
     for paper in papers:
-        doi = normalize_doi(paper.external_ids.doi)
-        if doi is None or not re.fullmatch(r"10\.\d{4,9}/[^\s]+", doi):
-            _warning(
-                issues, papers_dir,
-                f"skipped incoming Paper {paper.id} without valid DOI",
-            )
+        keys = paper_identifiers(paper)
+        if not keys:
+            _warning(issues, papers_dir, f"skipped incoming Paper {paper.id} without reliable identity")
             matches.append(_PaperMatch(None, blocked=True))
             continue
-        if incoming_dois[doi] > 1 or incoming_uuids[paper.id] > 1:
-            issues.append(
-                MaterializationIssue(
-                    papers_dir, f"ambiguous incoming DOI/UUID for Paper {paper.id}",
-                )
-            )
+        if any(incoming_ids[key] > 1 for key in keys) or incoming_uuids[paper.id] > 1:
+            issues.append(MaterializationIssue(papers_dir, f"ambiguous incoming identity/UUID for Paper {paper.id}"))
             matches.append(_PaperMatch(None, blocked=True))
             continue
-        candidate_paths = uuid_index.get(paper.id, set()) | doi_index.get(doi, set())
+        candidate_paths = set(uuid_index.get(paper.id, set()))
+        for key in keys:
+            candidate_paths.update(doi_index.get(key, set()))
         if len(candidate_paths) > 1:
-            issues.append(
-                MaterializationIssue(
-                    papers_dir, f"ambiguous identity for incoming Paper {paper.id}: "
-                    + ", ".join(str(path) for path in sorted(candidate_paths)),
-                )
-            )
+            issues.append(MaterializationIssue(papers_dir, f"ambiguous identity for incoming Paper {paper.id}: "
+                          + ", ".join(str(path) for path in sorted(candidate_paths))))
             matches.append(_PaperMatch(None, blocked=True))
             continue
         if candidate_paths:
             state = states_by_path[next(iter(candidate_paths))]
-            if state.dois != {doi}:
-                issues.append(
-                    MaterializationIssue(
-                        state.path, "incoming DOI conflicts with durable Paper UUID",
-                    )
-                )
+            if not keys.intersection(state.identifiers):
+                issues.append(MaterializationIssue(state.path, "incoming identity conflicts with durable Paper UUID"))
                 matches.append(_PaperMatch(state, blocked=True))
             elif state.problems or state.path in conflicted_paths:
                 matches.append(_PaperMatch(state, blocked=True))
@@ -353,6 +361,7 @@ def materialize_papers(
     *,
     progress_callback: ProgressCallback | None = None,
     operation_lock: WorkspaceOperationLock | None = None,
+    cancel_event: Event | None = None,
 ) -> MaterializationResult:
     """Serialize capture-only materialization with other Workspace operations."""
     try:
@@ -369,7 +378,7 @@ def materialize_papers(
                     directories[name] = stack.enter_context(workspace_text_directory(lock, name))
                 except (OSError, ContentChangedError, CompareReadError) as error:
                     issues.append(MaterializationIssue(lock.path / name, str(error)))
-            return _materialize_papers(papers, lock, directories, issues, progress_callback=progress_callback)
+            return _materialize_papers(papers, lock, directories, issues, progress_callback=progress_callback, cancel_event=cancel_event)
     except (ContentChangedError, CompareReadError, OSError) as error:
         return MaterializationResult((), (), (MaterializationIssue(output_dir, str(error)),))
 
@@ -381,6 +390,7 @@ def _materialize_papers(
     issues: list[MaterializationIssue],
     *,
     progress_callback: ProgressCallback | None = None,
+    cancel_event: Event | None = None,
 ) -> MaterializationResult:
     """Create new Paper notes; never rewrite saved notes."""
 
@@ -521,6 +531,9 @@ def _materialize_papers(
     _report_activity(progress_callback, write_activity)
 
     for write_index, pending in enumerate(pending_paper_writes):
+        if cancel_event is not None and cancel_event.is_set():
+            issues.append(MaterializationIssue(output_dir, "Run cancelled"))
+            break
         completed = True
         try:
             outcome, error = _create_file(pending.path, pending.contents, directories["Papers"])
@@ -555,7 +568,7 @@ def _materialize_papers(
                     ),
                 )
 
-    if not papers_directory_issue:
+    if not papers_directory_issue and not (cancel_event is not None and cancel_event.is_set()):
         inbox_path = output_dir / "Inbox.base"
         _outcome, error = _create_file(
             inbox_path,

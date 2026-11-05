@@ -11,7 +11,7 @@ from datetime import date
 from html.parser import HTMLParser
 
 from allfold.diagnostics import RunDiagnostic
-from allfold.identifiers import normalize_doi
+from allfold.identifiers import normalize_doi, strong_identifiers
 from allfold.models import (
     Author,
     CanonicalMetadata,
@@ -21,6 +21,7 @@ from allfold.models import (
     ExternalIds,
     MetadataSource,
     ProviderWorkEvidence,
+    ProviderRecordRef,
 )
 
 
@@ -495,15 +496,18 @@ def _record_doi(record: ProviderWorkEvidence) -> str | None:
 def _group_records(
     records: Sequence[ProviderWorkEvidence],
 ) -> list[tuple[int, ...]]:
-    dois: dict[str, list[int]] = defaultdict(list)
-    singletons: list[tuple[int, ...]] = []
+    components: list[set[int]] = []
+    identifiers: list[set[tuple[str, str]]] = []
     for index, record in enumerate(records):
-        doi = _record_doi(record)
-        if doi is None:
-            singletons.append((index,))
-        else:
-            dois[doi].append(index)
-    return [tuple(dois[doi]) for doi in sorted(dois)] + singletons
+        keys = set(strong_identifiers(record.external_ids, record.related_dois))
+        matches = [position for position, existing in enumerate(identifiers) if keys & existing]
+        group = {index}
+        for position in reversed(matches):
+            group.update(components.pop(position))
+            keys.update(identifiers.pop(position))
+        components.append(group)
+        identifiers.append(keys)
+    return [tuple(sorted(group)) for group in components]
 
 
 def _doi_evidence_issues(
@@ -626,7 +630,7 @@ def _publication_date(
     fallback = next((record.publication_date for record in records
                      if record.publication_date is not None), None)
     if fallback is not None:
-        return fallback.isoformat()
+        return fallback
     for kind in _DATE_PRECEDENCE:
         partials = [item for record in records if record.provenance.provider in {"crossref", "pubmed"}
                     for item in record.dates if item.kind is kind]
@@ -663,7 +667,7 @@ def _merged_external_ids(
     records: Sequence[ProviderWorkEvidence],
 ) -> ExternalIds:
     values = representative.external_ids.model_dump(exclude_none=False)
-    for record in sorted(records, key=_record_key):
+    for record in records:
         for namespace, identifier in record.external_ids.model_dump(
             exclude_none=True
         ).items():
@@ -691,6 +695,61 @@ def _merged_authors(
     return tuple(authors)
 
 
+def _date_value(item: EvidenceDate) -> str:
+    value = f"{item.year:04d}"
+    if item.month is not None:
+        value += f"-{item.month:02d}"
+    if item.day is not None:
+        value += f"-{item.day:02d}"
+    return value
+
+
+def _finalize_dates(records: Sequence[ProviderWorkEvidence]):
+    """Resolve creation-time dates once, keeping source precision and evidence."""
+    evidence = []
+    formal_dates = []
+    preprint_dates = []
+    explicit_accepted = []
+    online_dates = []
+    for record in records:
+        dates = list(record.dates)
+        is_preprint = record.publication_type == "preprint" or record.provenance.provider in {"arxiv", "biorxiv", "medrxiv"}
+        if record.publication_date:
+            parts = [int(part) for part in record.publication_date.split("-")]
+            kind = (EvidenceDateKind.PREPRINT if is_preprint else
+                    EvidenceDateKind.CONFERENCE_YEAR if record.provenance.provider == "dblp" and len(parts) == 1 else
+                    EvidenceDateKind.PUBLISHED)
+            dates.append(EvidenceDate(kind=kind, year=parts[0], month=parts[1] if len(parts) > 1 else None,
+                                      day=parts[2] if len(parts) > 2 else None))
+        for item in dates:
+            sourced = item.model_copy(update={"provider": item.provider or record.provenance.provider,
+                                             "record_id": item.record_id or record.provenance.record_id})
+            evidence.append(sourced)
+            value = _date_value(item)
+            if item.kind == EvidenceDateKind.PREPRINT:
+                preprint_dates.append(value)
+            elif item.kind == EvidenceDateKind.ACCEPTED:
+                explicit_accepted.append(value)
+            elif item.kind in {EvidenceDateKind.PUBLISHED_ONLINE, EvidenceDateKind.EARLY_ACCESS}:
+                online_dates.append(value)
+            if not is_preprint and item.kind in {
+                EvidenceDateKind.PUBLISHED_ONLINE, EvidenceDateKind.PUBLISHED_PRINT,
+                EvidenceDateKind.PUBLISHED, EvidenceDateKind.EARLY_ACCESS,
+            } and (record.journal or record.conference or record.publication_type in {"journal", "conference"}):
+                formal_dates.append(value)
+    first = min(preprint_dates or online_dates or formal_dates, default=None)
+    accepted = min(explicit_accepted or formal_dates, default=None)
+    approximate = bool(accepted and not explicit_accepted)
+    notes = []
+    if not preprint_dates:
+        notes.append("No linked preprint date evidence")
+    if approximate:
+        notes.append("Acceptance approximated by earliest confirmed post-acceptance publication")
+    return ({"first_public_at": first, "accepted_at": accepted, "accepted_approximate": approximate,
+             "date_note": "; ".join(notes) or None},
+            tuple(sorted(set(evidence), key=lambda item: item.model_dump_json())))
+
+
 def _build_paper(
     component: Sequence[int],
     records: Sequence[ProviderWorkEvidence],
@@ -698,42 +757,54 @@ def _build_paper(
 ) -> CanonicalPaper | None:
     evidence = tuple(records[index] for index in component)
     record_ids = tuple(sorted({record.provenance.record_id for record in evidence}))
-    doi = _record_doi(evidence[0])
-    if doi is None:
-        issues.append(CanonicalizationIssue(
-            stage="missing_doi",
-            record_ids=record_ids,
-            message="provider evidence has no valid DOI; no canonical Paper created",
-        ))
+    if not any(strong_identifiers(record.external_ids, record.related_dois) for record in evidence):
+        issues.append(CanonicalizationIssue("missing_identity", "provider evidence has no reliable identity", record_ids))
         return None
+    order = {provider: rank for rank, provider in enumerate((
+        "crossref", "europe_pmc", "dblp", "zbmath", "openalex", "arxiv", "biorxiv", "medrxiv"))}
     ordered = sorted(evidence, key=lambda record: (
-        tuple(-value for value in _completeness(record)), _record_key(record),
+        record.publication_type == "preprint",
+        not bool(record.monitor_journal_issns or record.conference_id),
+        order.get(record.provenance.provider.casefold(), 99), _record_key(record),
     ))
     def field(name):
         return next((getattr(record, name) for record in ordered if getattr(record, name)), None)
 
-    title, journal = field("title"), field("journal")
-    if title is None or journal is None:
-        issues.append(CanonicalizationIssue(
-            "insufficient_metadata", "provider evidence lacks title or journal", record_ids,
-        ))
+    title, journal, conference = field("title"), field("journal"), field("conference")
+    if title is None:
+        issues.append(CanonicalizationIssue("insufficient_metadata", "provider evidence lacks title", record_ids))
         return None
+    doi = next((_record_doi(record) for record in ordered if _record_doi(record)), None)
     abstract = next((record.abstract for record in ordered
                      if record.abstract and _normalize_abstract(record.abstract)), None)
     representative = next((record for record in ordered if record.authors), ordered[0])
-    issues.extend(_doi_evidence_issues(doi, evidence))
+    if doi:
+        issues.extend(_doi_evidence_issues(doi, evidence))
+    dates, date_evidence = _finalize_dates(ordered)
     return CanonicalPaper(
+        date_evidence=date_evidence,
+        identity_aliases=tuple(ProviderRecordRef(provider=namespace, record_id=value)
+                              for namespace, value in sorted({key for record in evidence
+                                  for key in strong_identifiers(record.external_ids, record.related_dois) if key[0] != "doi"})),
         metadata=CanonicalMetadata(
+            **dates,
             title=title,
-            journal=journal,
-            publication_date=_publication_date(evidence, representative, issues),
+            journal=None if conference and not ordered[0].journal else journal,
+            conference=conference,
+            conference_id=field("conference_id"),
+            publication_type=ordered[0].publication_type or ("conference" if ordered[0].conference else "journal" if ordered[0].journal else None),
+            publication_date=field("publication_date") or _publication_date(evidence, representative, issues),
             abstract=abstract,
             author_keywords=field("author_keywords") or (),
         ),
-        external_ids=_merged_external_ids(representative, evidence).model_copy(
+        external_ids=_merged_external_ids(ordered[0], ordered).model_copy(
             update={"doi": doi},
         ),
-        authors=_merged_authors(representative, evidence),
+        authors=field("authors") or (),
+        related_dois=tuple(sorted({value for record in evidence
+            for namespace, value in strong_identifiers(record.external_ids, record.related_dois)
+            if namespace == "doi" and value != doi})),
+        indexed_terms=tuple(dict.fromkeys(term for record in ordered for term in (*record.indexed_terms, *record.provider_topics))),
         sources=_deduplicate_sources(evidence),
         journal_issns=tuple(sorted({
             issn for record in evidence for issn in record.monitor_journal_issns
