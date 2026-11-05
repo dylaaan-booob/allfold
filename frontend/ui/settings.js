@@ -1,4 +1,5 @@
 // RhinE / RhineLabUI MIT adaptation; see SOURCES.md and licenses/.
+import {conferenceDetail,conferenceValues} from './conference-editor.js';
 import {createAutosave} from './settings-autosave.js';
 import {renderRunResult} from './run-results.js';
 import {readImportChoices,renderImportRows} from './research-scope-import.js';
@@ -213,21 +214,7 @@ markup.innerHTML=`<header class="s-header">
 <input type="email" data-monitor="crossrefMailto" >
 </label>
 </fieldset>
-<fieldset data-provider-settings="pubmed" class="s-setting-group" aria-label="PubMed settings" hidden>
-<label class="s-setting-row" data-field="pubmedKey">
-<span class="s-setting-label">API Key</span>
-<input type="password" data-monitor="pubmedKey" autocomplete="new-password" spellcheck="false">
-</label>
-<label class="s-setting-row" data-field="pubmedMode">
-<span class="s-setting-label">Search Mode</span>
-<select data-monitor="pubmedMode">
-<option value="title_abstract">Title / Abstract · [tiab]</option>
-<option value="broad">Broad · Automatic Term Mapping</option>
-</select>
-</label>
-<p id="s-pubmed-key-status" class="s-help">
-</p>
-</fieldset>
+
 </div>
 </div>
 </div>
@@ -248,7 +235,7 @@ markup.innerHTML=`<header class="s-header">
 <div class="s-directory-order"><button id="s-edit-entity" class="s-button" title="Edit Group" aria-label="Edit Group">Edit</button><button id="s-new-entity" class="s-button">+</button><button id="s-delete-entity" class="s-button" disabled>−</button><button id="s-entity-up" class="s-button">↑</button><button id="s-entity-down" class="s-button">↓</button></div>
 </aside>
 <div class="s-browser workspace-content" tabindex="-1"><div class="s-browser-head s-journals-head"><h2 id="s-journals-title" data-journal-title>All Journals</h2>
-<div class="s-journal-add"><button id="s-add-journal" class="s-button">+ JOURNAL</button></div></div>
+<div class="s-journal-add"><select id="s-source-kind" aria-label="Source category"><option value="journals">Journals</option><option value="conferences">Conferences</option></select><button id="s-add-journal" class="s-button">+ JOURNAL</button></div></div>
 <div id="s-journals" class="s-journal-list"></div></div>
 <aside id="journal-sidebar" class="functional-sidebar" aria-label="Journal and directory details" hidden>
 <div class="sidebar-resize" role="separator" tabindex="0" aria-label="Resize Details" aria-orientation="vertical"></div>
@@ -375,10 +362,10 @@ const casEditVersions={username:0,password:0};
 let selectedProvider='overview',expressions={},runState=null,expressionTimer,expressionVersion=0;
 let journalLayout='array';
 let journalTitleScroll=null;
-const ui={scope:'subject',directory:{subject:'all',access:'all',custom:'all'},journal:null,detail:'entity',search:''};
+const ui={category:'journals',scope:'subject',directory:{subject:'all',access:'all',custom:'all'},journal:null,detail:'entity',search:''};
 let assignmentUndo=null;
 const covers=new Map();
-const identifiers=j=>[j.issn,j.eissn].filter(Boolean);
+const identifiers=j=>j.dblp_stream?[j.abbreviation,j.dblp_stream]:[j.issn,j.eissn].filter(Boolean);
 let coverJob={phase:'Idle',journal_key:null,busy:false,supported:false};
 let coverTimer=null;
 const dialog=$('s-dialog');let dialogFocus=null,dialogVersion=0;
@@ -391,13 +378,15 @@ const runLayoutHost=window.allfoldLayout.create({root:runPanel,workspace:'run',m
 const settingsLayoutHost=window.allfoldLayout.create({root:settingsPage,workspace:'settings',minContentWidth:360});
 let cropEditor=null;
 const configurationDirty=()=>Boolean(saved && draft && !same(saved,draft));
-const explicitDirty=()=>Boolean(saved && draft && (draft.monitor.workspace!==saved.monitor.workspace || ['pubmed','openalex'].some(provider=>draft.monitor[provider+'KeyAction']!=='keep') || casDirty() || institutionInputInvalid));
+const explicitDirty=()=>Boolean(saved && draft && (draft.monitor.workspace!==saved.monitor.workspace || ['openalex'].some(provider=>draft.monitor[provider+'KeyAction']!=='keep') || casDirty() || institutionInputInvalid));
 const casPasswordAction=()=>casDraft.password===keyMask?'keep':casDraft.password?'replace':casSaved.configured?'clear':'keep';
 const casDirty=()=>Boolean(casAPI && (casDraft.username.trim()!==casSaved.username || casPasswordAction()!=='keep'));
 const dirty=()=>configurationDirty() || casDirty() || institutionInputInvalid || autosaveStatus.dirty;
 
 const list=()=>draft.list;
-const journal=id=>list().journals.find(j=>j.id===id);
+const sources=()=>ui.category==='conferences'?list().conferences:list().journals;
+const sourceName=()=>ui.category==='conferences'?'Conferences':'Journals';
+const journal=id=>[...list().journals,...list().conferences].find(j=>j.id===id);
 const group=id=>list().groups.find(g=>g.id===id);
 const groupName=id=>group(id)?.name || 'Ungrouped';
 function message(text,tone='normal') {$('s-message').textContent=text;$('s-message').dataset.tone=tone;$('s-message').hidden=!text;}
@@ -532,7 +521,8 @@ for(const page of ['journals','run','settings'])window.workspaceNavigation.regis
 });
 function syncLayouts(){
   journalLayoutHost.sync();runLayoutHost.sync();settingsLayoutHost.sync();
-  for(const button of root.querySelectorAll('[data-layout]'))button.setAttribute('aria-pressed',String(button.dataset.layout===journalLayout));
+  $('s-source-kind').addEventListener('change',event=>{ui.category=event.target.value;ui.scope=directoryScope='subject';ui.journal=null;ui.detail='entity';clearAssignmentUndo();journalLayoutHost.closeFlyout();journalLayoutHost.closeSidebar();renderJournalsPage();});
+for(const button of root.querySelectorAll('[data-layout]'))button.setAttribute('aria-pressed',String(button.dataset.layout===journalLayout));
   for(const button of root.querySelectorAll('[data-scope]'))button.setAttribute('aria-pressed',String(button.dataset.scope===ui.scope));
 }
 // Match Kept's delayed, one-way title reveal without changing its controller or bundle.
@@ -568,7 +558,7 @@ function setJournalLayout(layout) {
   journalLayout=layout;renderJournals();syncLayouts();
 }
 function setJournalScope(scope) {
-  if(!['subject','access','custom'].includes(scope) || scope===ui.scope)return;
+  if(!['subject','access','custom'].includes(scope) || scope===ui.scope || (ui.category==='conferences' && scope==='access'))return;
   ui.scope=scope;directoryScope=scope;reconcileSelections(true);renderJournalsPage();
 }
 for(const button of root.querySelectorAll('[data-layout]'))button.addEventListener('click',()=>setJournalLayout(button.dataset.layout));
@@ -618,14 +608,14 @@ workspaceSearch.register('journals',{
 function syncMonitor() {
   document.querySelectorAll('[data-monitor]').forEach(input=>{const value=draft.monitor[input.dataset.monitor];if(input.type==='checkbox')input.checked=value;else input.value=value ?? '';});
   syncInstitution();
-  syncKey('pubmed');syncKey('openalex');scheduleExpressions();renderRun();
+  syncKey('openalex');scheduleExpressions();renderRun();
 }
 document.querySelectorAll('[data-monitor]').forEach(input=>input.addEventListener(input.tagName==='SELECT' || input.type==='checkbox'?'change':'input',()=>{
   if(input.dataset.monitor==='institutionName')return;
   draft.monitor[input.dataset.monitor]=input.type==='checkbox'?input.checked:input.value;
-  for(const provider of ['pubmed','openalex'])if(input.dataset.monitor===provider+'Key')syncKey(provider);
+  for(const provider of ['openalex'])if(input.dataset.monitor===provider+'Key')syncKey(provider);
   changed({immediate:input.tagName==='SELECT' || input.type==='checkbox'});
-  if(['expression','pubmedMode'].includes(input.dataset.monitor))scheduleExpressions();
+  if(['expression'].includes(input.dataset.monitor))scheduleExpressions();
 }));
 const institutionLabel=row=>`${row.name}（${row.name_en}）`;
 function syncInstitution() {
@@ -727,7 +717,7 @@ function syncKey(provider) {
     (draft.monitor[provider+'KeyAction']==='clear'?'待清除 API Key。':configured?'已配置本地 Key；输入新值替换，清空以删除。':'未配置本地 API Key。')+' 使用下方按钮明确确认替换或清除。';
 }
 const providerOrder=()=>draft?.monitor.providerOrder || Object.keys(providerDefaults);
-const providerName=id=>draft?.monitor.aliases[id] || providerDefaults[id];
+const providerName=id=>id==='integrated'?'Integrated Run':draft?.monitor.aliases[id] || providerDefaults[id];
 function runBlockReason() {
   return loading?'正在加载配置。':operationPending?'正在提交明确确认的修改。':preview?'请先结束文件 Preview。':reconcileRequired || ['Conflict','Partial'].includes(autosaveStatus.status)?'保存存在冲突，请核对磁盘状态。':explicitDirty()?'凭据或 Workspace 修改需要独立确认。':'';
 }
@@ -736,7 +726,7 @@ function scheduleExpressions() {
   expressions={};renderRun();
   expressionTimer=setTimeout(async()=>{
     try {
-      const data=await uiNext.request('/api/ui-next/run-expression',{keyword_expression:draft.monitor.expression,pubmed_query_mode:draft.monitor.pubmedMode});
+      const data=await uiNext.request('/api/ui-next/run-expression',{keyword_expression:draft.monitor.expression});
       if(version===expressionVersion){expressions=data.providers;renderRun();window.dispatchEvent(new Event('settings-draft-changed'));}
     }catch(error){if(version===expressionVersion){expressions=Object.fromEntries(providerOrder().map(id=>[id,{error:error.message}]));renderRun();}}
   },300);
@@ -755,14 +745,16 @@ function renderRun() {
   $('s-provider-alias').closest('label').hidden=overview;
   $('s-run-title').textContent=overview?'Overview':providerName(selectedProvider);
   $('s-run-overview').hidden=!overview;$('s-run-provider').hidden=overview;
-  $('s-provider-run').hidden=overview;
+  $('s-provider-run').hidden=selectedProvider!=='wos';
   if(!overview){
     $('s-provider-run').dataset.runProvider=selectedProvider;
     $('s-run-expression').textContent=expressions[selectedProvider]?.expression || (!expressions[selectedProvider]?'正在生成表达式…':'');
     $('s-run-expression-error').textContent=expressions[selectedProvider]?.error || '';
   }
   for(const group of root.querySelectorAll('[data-provider-settings]'))group.hidden=group.dataset.providerSettings!==selectedProvider;
-  $('s-run-operations').innerHTML=providerOrder().map(id=>`<div class="s-run-operation"><strong>${esc(providerName(id))}</strong><button class="s-button" data-run-provider="${id}" disabled>RUN ↗</button><p class="s-help" data-run-reason="${id}"></p></div>`).join('');
+  const selected=new Set(draft.monitor.enabledProviders);
+  const discovery=new Set(['openalex','europe_pmc','dblp','zbmath']);
+  $('s-run-operations').innerHTML=`<fieldset class="s-setting-group" aria-label="Providers">${providerOrder().filter(id=>id!=='wos').map(id=>`<label class="s-setting-row"><span class="s-setting-label">${esc(providerName(id))}</span><input type="checkbox" data-discovery-provider="${id}" ${selected.has(id)?'checked':''}><span>${discovery.has(id)?id==='dblp'?'Journals / Conferences':'Journals':'Metadata only'}</span></label>`).join('')}</fieldset><div class="s-run-operation"><button class="s-button" data-run-provider="integrated" disabled>Integrated Run ↗</button><p class="s-help" data-run-reason="integrated"></p></div><div class="s-run-operation"><button class="s-button" data-run-provider="wos" disabled>Run WoS ↗</button><p class="s-help" data-run-reason="wos"></p></div>`;
   updateRunButtons();renderRunRecords();
 }
 function updateRunButtons() {
@@ -777,7 +769,7 @@ function updateRunButtons() {
 function renderRunRecords() {
   if(!runState){$('s-run-records').innerHTML='<p class="s-help">正在读取最近运行结果…</p>';return;}
   const expanded=new Set([...$('s-run-records').querySelectorAll('details[open]')].map(node=>node.dataset.resultDetail));
-  const ids=selectedProvider==='overview'?providerOrder():[selectedProvider];
+  const ids=selectedProvider==='overview'?['integrated','wos']:[selectedProvider==='wos'?'wos':'integrated'];
   $('s-run-records').innerHTML=ids.map(id=>{
     const entry=runState?.providers[id];
     return `<section class="s-run-record"><h3>${esc(providerName(id))}</h3>${renderRunResult(entry?.result_summary,{compact:selectedProvider==='overview',id})}</section>`;
@@ -788,6 +780,13 @@ async function refreshRun() {
   try {runState=await uiNext.request('/api/ui-next/run');renderRun();}
   catch(error){$('s-run-feedback').textContent=error.message;}
 }
+$('s-run-operations').addEventListener('change',event=>{
+  const id=event.target.dataset.discoveryProvider;if(!id)return;
+  const selected=new Set(draft.monitor.enabledProviders);
+  if(event.target.checked)selected.add(id);else selected.delete(id);
+  draft.monitor.enabledProviders=providerOrder().filter(provider=>selected.has(provider));
+  changed({immediate:true});
+});
 $('s-providers').addEventListener('click',event=>{const button=event.target.closest('[data-provider]');if(button){selectedProvider=button.dataset.provider;renderRun();runLayoutHost.closeFlyout();runLayoutHost.openSidebar('configuration');}});
 $('s-run-overview-open').addEventListener('click',()=>{selectedProvider='overview';renderRun();runLayoutHost.closeFlyout();runLayoutHost.closeSidebar();});
 $('s-wos-access').addEventListener('click',()=>{if(window.workspaceNavigation.go('kept',{instant:true}))window.dispatchEvent(new CustomEvent('kept-open-sidebar',{detail:{view:'access'}}));});
@@ -810,7 +809,7 @@ $('s-run-retry').addEventListener('click',()=>void window.uiRun?.retry());
 root.addEventListener('click',event=>{const button=event.target.closest('[data-run-provider]');if(button && !button.disabled)void window.uiRun?.start(button.dataset.runProvider,button);});
 window.uiRunPage={
   canRun:id=>!runBlockReason() && !!expressions[id]?.expression && !expressions[id]?.error,
-  providerName,refresh:refreshRun,updateButtons:updateRunButtons,
+  providerName,selectedProviders:()=>[...draft.monitor.enabledProviders],refresh:refreshRun,updateButtons:updateRunButtons,
   open:()=>openSettings('run',true),
   report:(text,details=[],retry=false)=>{$('s-run-feedback').textContent=[text,...details].join('\n');$('s-run-retry').hidden=!retry;},
 };
@@ -831,7 +830,7 @@ function scopeInfo(scope=ui.scope) {
       {items:list().labels,entity:'Label',empty:'Unlabeled',kind:'label'};
 }
 function entityMembers(id=ui.directory[ui.scope],scope=ui.scope) {
-  return list().journals.filter(j=>{
+  return sources().filter(j=>{
     if(id==='all')return true;
     if(scope==='subject')return id==='none'?!j.groupId:j.groupId===id;
     if(scope==='access')return id==='none'?!j.serviceId:j.serviceId===id;
@@ -840,12 +839,12 @@ function entityMembers(id=ui.directory[ui.scope],scope=ui.scope) {
 }
 function selectedEntity(scope=ui.scope) {return scopeInfo(scope).items.find(item=>item.id===ui.directory[scope]);}
 function directoryRow(id,name,count,index,current,kind) {
-  const rail=Math.round(6+18*Math.log10(count+1)/Math.log10(Math.max(10,list().journals.length)+1));
+  const rail=Math.round(6+18*Math.log10(count+1)/Math.log10(Math.max(10,sources().length)+1));
   return `<button class="kept-manager-row s-directory-row" data-entity="${esc(id)}" data-kind="${kind}" title="${esc(name)}" style="--index-rail:${rail}px" aria-current="${current===id}" ${kind==='group' && !['all','none'].includes(id)?'draggable="true"':''}><span class="rhine-index-number">${String(index).padStart(2,'0')}</span><span class="rhine-index-name">${esc(name)}</span><span class="rhine-index-count">${count}</span></button>`;
 }
 function renderDirectory() {
   const info=scopeInfo(directoryScope),id=ui.directory[directoryScope],container=$('s-entities'),scroll=container.scrollTop,horizontal=container.scrollLeft,focused=document.activeElement?.dataset.entity;
-  const entries=[{id:'all',name:'All Journals'},{id:'none',name:info.empty},...info.items];
+  const entries=[{id:'all',name:'All '+sourceName()},{id:'none',name:info.empty},...info.items];
   container.innerHTML=entries.map((item,i)=>directoryRow(item.id,item.name,entityMembers(item.id,directoryScope).length,i,id,info.kind)).join('');
   container.scrollTop=scroll;container.scrollLeft=horizontal;
   if(focused)container.querySelector(`[data-entity="${CSS.escape(focused)}"]`)?.focus({preventScroll:true});
@@ -859,7 +858,7 @@ function renderDirectory() {
 }
 function visibleJournals() {
   const query=ui.search.trim().toLowerCase();
-  return entityMembers().filter(j=>`${j.name} ${j.issn || ''} ${j.eissn || ''}`.toLowerCase().includes(query));
+  return entityMembers().filter(j=>`${j.name} ${identifiers(j).join(' ')} ${(j.aliases || []).join(' ')}`.toLowerCase().includes(query));
 }
 function coverOf(j) {return covers.get(j.id) || {image:null,phase:'Generated'};}
 function coverStyle(cover) {
@@ -872,10 +871,10 @@ function renderJournals() {
   container.className=journalLayout==='grid'?'s-journal-grid':'s-journal-list';
   container.innerHTML=items.length?items.map(j=>{
     const attrs=`data-journal="${esc(j.id)}" data-current="${ui.journal===j.id && ui.detail==='journal'}" draggable="true" tabindex="0" role="group" aria-label="${esc(j.name)} · Enter for details"`;
-    if(journalLayout==='array')return `<article class="s-journal-row" ${attrs}><div><strong data-journal-title title="${esc(j.name)}">${esc(j.name)}</strong><small>${esc(identifiers(j).join(' / '))} · ${esc(groupName(j.groupId))}</small></div></article>`;
+    if(journalLayout==='array' || ui.category==='conferences')return `<article class="s-journal-row" ${attrs}><div><strong data-journal-title title="${esc(j.name)}">${esc(j.name)}</strong><small>${esc(identifiers(j).join(' / '))} · ${esc(groupName(j.groupId))}</small></div></article>`;
     const cover=coverOf(j);
     return `<article class="s-journal-card" ${attrs}><div class="s-card-art">${cover.image?`<img src="${esc(cover.image)}" alt="${esc(j.name)} cover" loading="lazy" style="${coverStyle(cover)}">`:'<span class="s-eyebrow">GENERATED COVER</span>'}</div><h3 data-journal-title title="${esc(j.name)}">${esc(j.name)}</h3><p class="s-card-meta">${esc(identifiers(j).join(' / '))}<br>${esc(groupName(j.groupId))}</p>${j.labels.length?`<p class="s-card-labels">${j.labels.map(esc).join(' · ')}</p>`:''}</article>`;
-  }).join(''):`<p class="s-empty">${list().journals.length?'没有符合筛选的 Journals。':'没有 Journals。使用 + JOURNAL 添加期刊。'}</p>`;
+  }).join(''):`<p class="s-empty">${sources().length?'没有符合筛选的来源。':'关注列表为空，请添加来源。'}</p>`;
   container.scrollTop=scroll;
   container.querySelectorAll('[data-journal-title]').forEach(bindJournalTitleScroll);
   if(focused)container.querySelector(`[data-journal="${CSS.escape(focused)}"]`)?.focus({preventScroll:true});
@@ -901,8 +900,8 @@ function journalIdentity(j) {
 function renderEntityDetail() {
   const info=scopeInfo(),entity=selectedEntity(),description=$('s-entity-description'),rows=entityMembers();
   $('s-entity-detail').hidden=ui.detail!=='entity';
-  if(!entity){description.innerHTML=`<h2>${esc(ui.directory[ui.scope]==='all'?'All Journals':info.empty)}</h2><p class="s-help">${rows.length} Journals</p>`;return;}
-  description.innerHTML=`<label>${info.entity} name<input id="s-entity-name" value="${esc(entity.name)}" autocomplete="off"></label>${ui.scope==='access'?`<label>Access Method<select data-service-field="method"><option value="carsi">CARSI</option><option value="manual">Manual Login</option></select></label><label>Service URL<input data-service-field="url" value="${esc(entity.url)}" type="url" placeholder="Optional public HTTP(S) URL"></label>`:''}<p class="s-help">${rows.length} Journals</p>`;
+  if(!entity){description.innerHTML=`<h2>${esc(ui.directory[ui.scope]==='all'?'All '+sourceName():info.empty)}</h2><p class="s-help">${rows.length} ${sourceName()}</p>`;return;}
+  description.innerHTML=`<label>${info.entity} name<input id="s-entity-name" value="${esc(entity.name)}" autocomplete="off"></label>${ui.scope==='access'?`<label>Access Method<select data-service-field="method"><option value="carsi">CARSI</option><option value="manual">Manual Login</option></select></label><label>Service URL<input data-service-field="url" value="${esc(entity.url)}" type="url" placeholder="Optional public HTTP(S) URL"></label>`:''}<p class="s-help">${rows.length} ${sourceName()}</p>`;
   $('s-entity-name').addEventListener('change',event=>renameEntity(entity,event.target.value));
   if(ui.scope==='access'){
     description.querySelector('select').value=entity.method;
@@ -916,6 +915,7 @@ function renderJournalDetail() {
   const j=journal(ui.journal),detail=$('s-journal-detail'),actions=$('s-journal-actions');
   detail.hidden=actions.hidden=ui.detail!=='journal' || !j;
   if(!j){detail.innerHTML='';actions.innerHTML='';return;}
+  if(j.dblp_stream){renderConferenceDetail(j,detail,actions);return;}
   const cover=coverOf(j),isSaved=saved.list.journals.some(row=>row.id===j.id),busy=coverJob.busy;
   const previous=$('s-journal-labels'),open=previous?.dataset.journalId===j.id && previous.open;
   const labelScroll=previous?.querySelector('.s-label-options')?.scrollTop || 0;
@@ -935,6 +935,39 @@ function renderJournalDetail() {
   detail.querySelector('[data-cover=crop]').addEventListener('click',()=>cropCover(j));
   const resourceButton=document.createElement('button');resourceButton.className='s-button';resourceButton.textContent='Discover / choose Service';resourceButton.disabled=!isSaved;resourceButton.addEventListener('click',()=>void journalResources(j).catch(error=>message(error.message,'error')));detail.append(resourceButton);
   detail.querySelector('[data-cover=cancel]')?.addEventListener('click',()=>void coverAction('/settings/covers/search/cancel',{request_id:coverJob.request_id}));
+}
+function renderConferenceDetail(c,detail,actions) {
+  detail.innerHTML=conferenceDetail(c,list());
+  $('s-conference-group').addEventListener('change',event=>changeJournalAssignment(c,{groupId:event.target.value || null}));
+  detail.querySelectorAll('[data-conference-label]').forEach(input=>input.addEventListener('change',()=>assignLabel(c,input.dataset.conferenceLabel,input.checked)));
+  const index=list().conferences.indexOf(c);
+  actions.innerHTML=`<div class="s-actions"><button class="s-button" data-conference-move="-1" ${index===0?'disabled':''} aria-label="Move Conference up">↑</button><button class="s-button" data-conference-move="1" ${index===list().conferences.length-1?'disabled':''} aria-label="Move Conference down">↓</button><button class="s-button" data-remove-journal="${esc(c.id)}">Remove Conference</button></div>`;
+  actions.querySelectorAll('[data-conference-move]').forEach(button=>button.addEventListener('click',()=>{const next=index+Number(button.dataset.conferenceMove);const [entry]=list().conferences.splice(index,1);list().conferences.splice(next,0,entry);changed({immediate:true});renderJournalsPage();}));
+}
+function addConference() {
+  let candidates=[];
+  showDialog('Add Conference','<label>Name / abbreviation / DBLP Stream<input id="s-add-query" autocomplete="off"></label><div id="s-add-results"></div><p id="s-add-error" role="alert"></p>',[
+    cancel,
+    {label:'Search Registry',run:async()=>{
+      const query=$('s-add-query').value.trim();candidates=[];$('s-add-results').replaceChildren();
+      try {
+        const response=await fetch('/api/ui-next/settings/conferences/search?q='+encodeURIComponent(query),{cache:'no-store'}),data=await response.json();
+        if(!response.ok)throw new Error(data.message || 'Conference Registry unavailable');
+        if(!dialog.open || $('s-add-query')?.value.trim()!==query)return false;
+        candidates=data.candidates;
+        $('s-add-results').innerHTML=candidates.map((c,i)=>`<label class="s-lookup-candidate"><input type="radio" name="conference-candidate" value="${i}"><span><strong>${esc(c.abbreviation)} · ${esc(c.name)}</strong><small>${esc(c.dblp_stream)}</small></span></label>`).join('');
+        $('s-add-error').textContent=candidates.length?'':'本地 Registry 未找到匹配系列。';
+      }catch(error){if($('s-add-error'))$('s-add-error').textContent=error.message;}
+      return false;
+    }},
+    {label:'Follow',primary:true,run:()=>{
+      const chosen=$('s-add-results').querySelector('input:checked');if(!chosen){$('s-add-error').textContent='请选择会议系列。';return false;}
+      const c=candidates[Number(chosen.value)];
+      if(list().conferences.some(old=>old.id===c.id || old.dblp_stream===c.dblp_stream)){$('s-add-error').textContent='已关注此系列。';return false;}
+      list().conferences.push({id:c.id,name:c.name,abbreviation:c.abbreviation,aliases:c.aliases,dblp_stream:c.dblp_stream,groupId:ui.scope==='subject'?selectedEntity()?.id || null:null,labels:ui.scope==='custom' && selectedEntity()?[selectedEntity().name]:[]});
+      ui.journal=c.id;ui.detail='journal';changed({immediate:true});renderJournalsPage();journalLayoutHost.openSidebar('details');
+    }}]);
+  $('s-add-query').addEventListener('input',()=>{candidates=[];$('s-add-results').replaceChildren();});$('s-add-query').focus();
 }
 async function journalResources(j) {
   if(!await window.allfoldAutosave?.flush()){message('配置尚未保存，草稿保留；请重试或处理冲突。','error');return;}
@@ -957,10 +990,13 @@ async function journalResources(j) {
   ]);
 }
 function renderJournalsPage() {
+  $('s-add-journal').textContent=ui.category==='conferences'?'+ CONFERENCE':'+ JOURNAL';
+  root.querySelector('[data-scope=access]').hidden=ui.category==='conferences';
+  $('s-journal-layout').hidden=ui.category==='conferences';
   renderDirectory();
   stopJournalTitleScroll();
   const info=scopeInfo(),id=ui.directory[ui.scope];
-  $('s-journals-title').textContent=$('s-journals-title').title=id==='all'?'All Journals':id==='none'?info.empty:selectedEntity()?.name || 'All Journals';
+  $('s-journals-title').textContent=$('s-journals-title').title=id==='all'?'All '+sourceName():id==='none'?info.empty:selectedEntity()?.name || 'All '+sourceName();
   renderJournals();renderEntityDetail();renderJournalDetail();syncLayouts();
 }
 function assignLabel(j,name,assigned) {
@@ -977,11 +1013,11 @@ function renameEntity(entity,value) {
   const previous=entity.id,oldName=entity.name;
   if(ui.scope==='subject'){
     entity.id=groupKey(name);
-    for(const j of list().journals)if(j.groupId===previous)j.groupId=entity.id;
+    for(const j of [...list().journals,...list().conferences])if(j.groupId===previous)j.groupId=entity.id;
     if(assignmentUndo)for(const snapshot of [assignmentUndo.before,assignmentUndo.after])if(snapshot.groupId===previous)snapshot.groupId=entity.id;
   }else if(ui.scope==='custom'){
     const replace=labels=>[...new Set(labels.map(label=>label===oldName?name:label))];
-    for(const j of list().journals)j.labels=replace(j.labels);
+    for(const j of [...list().journals,...list().conferences])j.labels=replace(j.labels);
     if(assignmentUndo)for(const snapshot of [assignmentUndo.before,assignmentUndo.after])snapshot.labels=replace(snapshot.labels);
     if(target)list().labels=list().labels.filter(row=>row.id!==previous);else entity.id=labelKey(name);
   }
@@ -995,7 +1031,7 @@ function moveEntity(direction) {
 }
 function deleteEntity() {
   const entity=selectedEntity();if(!entity)return;
-  const info=scopeInfo(),scope=ui.scope,members=entityMembers();
+  const info=scopeInfo(),scope=ui.scope,members=[...list().journals,...list().conferences].filter(j=>ui.scope==='subject'?j.groupId===entity.id:ui.scope==='custom'?j.labels.includes(entity.name):j.serviceId===entity.id);
   const effect=scope==='subject'?'将移至 Ungrouped，保留 Custom Labels。':scope==='access'?'将成为 Unassigned。':'将移除此标签的全部分配。';
   showDialog(`Delete ${info.entity}`,`<p>${esc(entity.name)}${scope==='access'?' / '+esc(entity.id):''}</p><p>${members.length} Journals ${effect}</p>${memberList(members.map(j=>j.name))}`,[cancel,{label:`Delete ${info.entity}`,primary:true,run:async()=>{
     if(scope==='access'){
@@ -1034,14 +1070,16 @@ $('s-journals').addEventListener('keydown',event=>{if(event.target.matches('[dat
 root.addEventListener('click',event=>{const button=event.target.closest('[data-remove-journal]');if(button)removeJournal(journal(button.dataset.removeJournal));});
 function removeJournal(j) {
   if(!j)return;
-  confirm('Remove Journal',`${j.name} / ${identifiers(j).join(' / ')}。仅从监测名单移除；保留 Workspace Papers、封面资产、Group 和 Label 注册项。`,()=>{
+  confirm(j.dblp_stream?'Remove Conference':'Remove Journal',`${j.name} / ${identifiers(j).join(' / ')}。仅从监测名单移除；保留 Workspace Papers、封面资产、Group 和 Label 注册项。`,()=>{
     if(assignmentUndo?.id===j.id)clearAssignmentUndo();
-    list().journals=list().journals.filter(row=>row.id!==j.id);
+    if(j.dblp_stream)list().conferences=list().conferences.filter(row=>row.id!==j.id);
+    else list().journals=list().journals.filter(row=>row.id!==j.id);
     if(ui.journal===j.id){ui.journal=null;ui.detail='entity';}
     changed({immediate:true});renderJournalsPage();
   },'Remove from list');
 }
 $('s-add-journal').addEventListener('click',()=>{
+  if(ui.category==='conferences'){addConference();return;}
   let candidates=[];
   showDialog('Add Journal','<label>Name / ISSN / eISSN<input id="s-add-query" autocomplete="off"></label><div id="s-add-results"></div><p id="s-add-error" role="alert"></p>',[
     cancel,
@@ -1189,7 +1227,7 @@ function beginPreview(kind,title,filename,summary,columns,choices) {
   updateDirty();$('s-preview-title').tabIndex=-1;$('s-preview-title').focus({preventScroll:true});
 }
 function selectImport() {
-  showDialog('Import Research Scope','<label>Markdown file<input id="s-import-file" type="file" accept=".md,text/markdown"></label><label><input id="s-import-query" type="checkbox"> 对缺少有效 Service 的 Journal 查询 GOKB（可选）</label><p class="s-help">支持期刊名称列表或表格。Preview 后选择身份、补充名称/ISSN 或 Service，再确认增量添加。</p><p id="s-import-error" role="alert"></p>',[cancel,{label:'Preview',primary:true,run:async()=>{
+  showDialog('Import Research Scope','<label>Markdown file<input id="s-import-file" type="file" accept=".md,text/markdown"></label><label><input id="s-import-query" type="checkbox"> 对缺少有效 Service 的 Journal 查询 GOKB（可选）</label><p class="s-help">支持 Journals / Conferences 名称列表或表格。Preview 后选择身份、补充名称/ISSN 或 Service，再确认增量添加。</p><p id="s-import-error" role="alert"></p>',[cancel,{label:'Preview',primary:true,run:async()=>{
     const file=$('s-import-file').files[0];if(!file){$('s-import-error').textContent='请选择 .md 文件。';return false;}
     await openImport(file,{},$('s-import-query').checked);
   }}]);
@@ -1268,14 +1306,14 @@ function reconcileSelections(filter=false) {
 function groupKey(name) {return 'group:'+name;}
 function project(data) {
   const v=data.values,order=v.provider_order;
-  if(!Array.isArray(order) || order.length!==4 || new Set(order).size!==4 || order.some(id=>!Object.hasOwn(providerDefaults,id)))throw new Error('provider_order 必须完整且不重复地列出 openalex、crossref、pubmed、wos；请修正 YAML 后 Reload。');
-  return {monitor:{name:v.name,expression:v.keyword_expression,pubmedMode:v.pubmed_query_mode || "title_abstract",aliases:{...(v.provider_aliases || {})},providerOrder:[...order],crossrefMailto:v.crossref_mailto || "",pubmedKeyAction:"keep",pubmedKey:v.pubmed_key_configured?keyMask:"",openalexKeyAction:"keep",openalexKey:v.openalex_key_configured?keyMask:"",from:v.from_month,to:v.to_month,
+  if(!Array.isArray(order) || order.length!==Object.keys(providerDefaults).length || new Set(order).size!==order.length || order.some(id=>!Object.hasOwn(providerDefaults,id)))throw new Error('provider_order 必须完整且不重复地列出所有支持的 Provider；请修正 YAML 后 Reload。');
+  return {monitor:{name:v.name,expression:v.keyword_expression,enabledProviders:[...(v.enabled_providers || [])],aliases:{...(v.provider_aliases || {})},providerOrder:[...order],crossrefMailto:v.crossref_mailto || "",openalexKeyAction:"keep",openalexKey:v.openalex_key_configured?keyMask:"",from:v.from_month,to:v.to_month,
     workspace:v.output_dir,log:v.log_level,autoImport:v.auto_import_after_preparation,
     delay:v.transition_delay_seconds,displayName:v.display_name,zoteroTarget:v.zotero_target || null,institutionName:v.institution_name,
     idp:v.institution_idp_entity_id,useShibboleth:v.institution_use_shibboleth ?? false},
-    revisions:{openalex_key_revision:v.openalex_key_revision || "missing",pubmed_key_revision:v.pubmed_key_revision || "missing",monitor_revision_exists:v.monitor_revision_exists,monitor_revision_digest:v.monitor_revision_digest,
+    revisions:{openalex_key_revision:v.openalex_key_revision || "missing",monitor_revision_exists:v.monitor_revision_exists,monitor_revision_digest:v.monitor_revision_digest,
       journal_revision_exists:v.journal_revision_exists,journal_revision_digest:v.journal_revision_digest},
-    list:{journals:v.journals.map(j=>({id:j.issn || j.eissn,name:j.name,issn:j.issn || null,eissn:j.eissn || null,
+    list:{conferences:(v.conferences || []).map(c=>({...c,groupId:c.group?groupKey(c.group):null})),journals:v.journals.map(j=>({id:j.issn || j.eissn,name:j.name,issn:j.issn || null,eissn:j.eissn || null,
         serviceId:j.access_service_id || null,groupId:j.group?groupKey(j.group):null,labels:j.labels?j.labels.split(';').map(labelName):[]})),
       services:v.access_services.map(s=>({id:s.id,name:s.name,url:s.access_url,method:s.access_method})),
       groups:v.groups.map(name=>({id:groupKey(name),name})),
@@ -1292,11 +1330,12 @@ function applyCoverDetails(data) {
   for(const [id,detail] of Object.entries(data.covers || {}))setCoverDetail(id,detail);
   for(const id of covers.keys())if(!Object.hasOwn(data.covers || {},id))covers.delete(id);
 }
-const ordinaryMonitorFields={zotero_target:'zoteroTarget',name:'name',keyword_expression:'expression',from_month:'from',to_month:'to',log_level:'log',pubmed_query_mode:'pubmedMode',crossref_mailto:'crossrefMailto',provider_aliases:'aliases',provider_order:'providerOrder',display_name:'displayName',transition_delay_seconds:'delay',auto_import_after_preparation:'autoImport',institution_name:'institutionName',institution_idp_entity_id:'idp',institution_use_shibboleth:'useShibboleth'};
+const ordinaryMonitorFields={zotero_target:'zoteroTarget',name:'name',keyword_expression:'expression',from_month:'from',to_month:'to',log_level:'log',enabled_providers:'enabledProviders',crossref_mailto:'crossrefMailto',provider_aliases:'aliases',provider_order:'providerOrder',display_name:'displayName',transition_delay_seconds:'delay',auto_import_after_preparation:'autoImport',institution_name:'institutionName',institution_idp_entity_id:'idp',institution_use_shibboleth:'useShibboleth'};
 function ordinaryValues(source=draft) {
   const values=Object.fromEntries(Object.entries(ordinaryMonitorFields).map(([field,key])=>[field,copy(source.monitor[key])]));
   values.groups=source.list.groups.map(group=>group.name);values.custom_labels=source.list.labels.map(label=>label.name);
   values.access_services=source.list.services.map(service=>({id:service.id,name:service.name,access_url:service.url,access_method:service.method}));
+  values.conferences=conferenceValues(source.list);
   values.journals=source.list.journals.map(journal=>({name:journal.name,issn:journal.issn || '',eissn:journal.eissn || '',group:source.list.groups.find(group=>group.id===journal.groupId)?.name || '',labels:journal.labels.join('; '),access_service_id:journal.serviceId || ''}));
   return values;
 }
@@ -1353,7 +1392,7 @@ async function applyExplicit(source,approval={}, {skipFlush=false}={}) {
   }
   if(!data.saved){showIssues(data);if(['PARTIAL_SAVE','REVISION_CONFLICT'].includes(data.save?.outcome))reconcileRequired=true;return false;}
   serverState=data;saved=project(data);draft=copy(saved);
-  for(const key of ['workspace','openalexKey','openalexKeyAction','pubmedKey','pubmedKeyAction'])
+  for(const key of ['workspace','openalexKey','openalexKeyAction'])
     if(!same(retained[key],source.monitor[key]) || same(source.monitor[key],previous[key]))draft.monitor[key]=retained[key];
   initializeAutosave(data);syncMonitor();renderJournalsPage();updateDirty();showIssues(data);await refreshRun();await refreshSavedWorkspace();return true;
 }
@@ -1362,7 +1401,7 @@ async function saveProviderKey(provider) {
   const source=copy(saved);source.monitor[provider+'KeyAction']=draft.monitor[provider+'KeyAction'];source.monitor[provider+'Key']=draft.monitor[provider+'Key'];
   return applyExplicit(source);
 }
-for(const provider of ['openalex','pubmed']) {
+for(const provider of ['openalex']) {
   const button=document.createElement('button');button.type='button';button.className='s-button';button.textContent='Review API Key change';button.dataset.secretProvider=provider;
   $(`s-${provider}-key-status`).parentElement.append(button);
   button.addEventListener('click',()=>{
@@ -1408,7 +1447,7 @@ $('s-autosave-reconcile').addEventListener('click',async()=>{
     }}]);
   }catch(error){message(error.message,'error');}
 });
-for(const input of document.querySelectorAll('[data-monitor]'))if(!['workspace','openalexKey','pubmedKey'].includes(input.dataset.monitor))input.addEventListener('blur',()=>{if(!institutionInputInvalid)void autosave?.flush();});
+for(const input of document.querySelectorAll('[data-monitor]'))if(!['workspace','openalexKey'].includes(input.dataset.monitor))input.addEventListener('blur',()=>{if(!institutionInputInvalid)void autosave?.flush();});
 window.addEventListener('online',()=>{if(autosave?.status==='Failed')void autosave.retry();});
 window.addEventListener('beforeunload',event=>{if(dirty() || autosave?.busy){event.preventDefault();event.returnValue='仍有待提交的配置；普通草稿可在恢复后核对，凭据不会进入恢复存储。';}});
 
@@ -1421,12 +1460,13 @@ function adoptState(data) {
 }
 function submission(source=draft) {
   if(institutionInputInvalid)throw new Error('请从候选列表选择机构，或清空选择。');
-  syncKey('pubmed');syncKey('openalex');
+  syncKey('openalex');
   const form=new FormData(),m=source.monitor;
-  for(const [field,key] of Object.entries({name:'name',keyword_expression:'expression',crossref_mailto:'crossrefMailto',openalex_key_action:'openalexKeyAction',pubmed_query_mode:'pubmedMode',pubmed_key_action:'pubmedKeyAction',from_month:'from',to_month:'to',
+  for(const [field,key] of Object.entries({name:'name',keyword_expression:'expression',crossref_mailto:'crossrefMailto',openalex_key_action:'openalexKeyAction',from_month:'from',to_month:'to',
     output_dir:'workspace',log_level:'log',transition_delay_seconds:'delay',display_name:'displayName',
     institution_name:'institutionName',institution_idp_entity_id:'idp'}))form.set(field,String(m[key]??''));
   for(const id of m.providerOrder)form.append('provider_order',id);
+  for(const id of m.enabledProviders)form.append('enabled_providers',id);
   for(const [id,alias] of Object.entries(m.aliases))form.set('provider_alias_'+id,alias);
   form.set('zotero_target',JSON.stringify(m.zoteroTarget || null));
   form.set('auto_import_after_preparation',m.autoImport?'1':'');
@@ -1434,6 +1474,7 @@ function submission(source=draft) {
   for(const [key,value] of Object.entries(source.revisions))form.set(key,value);
   for(const g of source.list.groups)form.append('settings_group',g.name);
   for(const label of source.list.labels)form.append('settings_custom_label',label.name);
+  form.set('conferences',JSON.stringify(conferenceValues(source.list)));
   const journals=source.list.journals;
   journals.forEach((j,i)=>{for(const [key,value] of Object.entries({journal_name:j.name,journal_issn:j.issn || '',journal_eissn:j.eissn || '',
     journal_group:source.list.groups.find(group=>group.id===j.groupId)?.name || '',journal_access_service_id:j.serviceId || '',journal_labels:j.labels.join('; '),journal_order:String(i)}))form.append(key,value);});
@@ -1444,7 +1485,7 @@ async function formRequest(path,extra={},options={}) {
   if(operationPending)throw new Error('当前操作尚未结束。');
   closeLabelPicker();
   const form=options.draft===false?new FormData():submission(options.source || draft);
-  if(path==='/settings/save')for(const provider of ['pubmed','openalex'])if((options.source || draft).monitor[provider+'KeyAction']==='replace')form.set(provider+'_api_key',(options.source || draft).monitor[provider+'Key']);
+  if(path==='/settings/save')for(const provider of ['openalex'])if((options.source || draft).monitor[provider+'KeyAction']==='replace')form.set(provider+'_api_key',(options.source || draft).monitor[provider+'Key']);
   form.set('csrf_token',uiNext.csrf_token || '');for(const [key,value] of Object.entries(extra))form.set(key,value);
   setOperationPending(true);
   try {
@@ -1466,7 +1507,7 @@ function showIssues(data) {
   const all=[...new Map([...issues,...validation].map(i=>[JSON.stringify([i.field,i.message]),i])).values()];
   const texts=[...new Set(all.map(i=>i.message))];
   message([data.message,...texts].filter(Boolean).join(' '),data.saved?'normal':'error');
-  const fields={openalex_api_key:'openalexKey',pubmed_api_key:'pubmedKey',name:'name',keyword_expression:'expression',crossref_mailto:'crossrefMailto',openalex_key_action:'openalexKeyAction',pubmed_query_mode:'pubmedMode',pubmed_key_action:'pubmedKeyAction',from_month:'from',to_month:'to',output_dir:'workspace',
+  const fields={openalex_api_key:'openalexKey',name:'name',keyword_expression:'expression',crossref_mailto:'crossrefMailto',openalex_key_action:'openalexKeyAction',from_month:'from',to_month:'to',output_dir:'workspace',
     log_level:'log',transition_delay_seconds:'delay',display_name:'displayName',
     'institution.name':'institutionName','institution.idp_entity_id':'institutionName',
     'institution.use_shibboleth':'useShibboleth','institution':'institutionName',kept_workflow:'delay'};
@@ -1479,7 +1520,7 @@ function showIssues(data) {
   if(!first && all.some(issue=>issue.field?.startsWith('provider_aliases'))){selectedProvider='openalex';openSettings('run',true);renderRun();$('s-provider-alias').focus();}
   if(!first && all.some(issue=>/journal|access_service|groups|custom_labels/.test(issue.field || '')))openSettings('journals-page',true);
   if(first){const key=first.dataset.monitor;
-    if(['name','expression','from','to','openalexKey','pubmedKey','crossrefMailto','pubmedMode'].includes(key)){selectedProvider=key==='openalexKey'?'openalex':key==='crossrefMailto'?'crossref':['pubmedKey','pubmedMode'].includes(key)?'pubmed':'overview';openSettings('run',true);renderRun();}
+    if(['name','expression','from','to','openalexKey','crossrefMailto'].includes(key)){selectedProvider=key==='openalexKey'?'openalex':key==='crossrefMailto'?'crossref':'overview';openSettings('run',true);renderRun();}
     else if(['displayName','delay','autoImport','institutionName','idp','useShibboleth'].includes(key)){window.workspaceNavigation.go('kept',{instant:true});window.dispatchEvent(new CustomEvent('kept-open-sidebar',{detail:{view:['displayName','delay','autoImport'].includes(key)?'workflow':'access'}}));}
     else openSettings('settings',true);first.focus();}
 }

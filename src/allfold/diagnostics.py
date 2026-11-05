@@ -56,7 +56,7 @@ def summarize_run_diagnostics(diagnostics: Sequence[RunDiagnostic]) -> tuple[Run
 # Only coordinators may declare a terminal business outcome.
 
 KINDS = frozenset({'run', 'prepare', 'import', 'kept', 'enrich', 'covers'})
-PROVIDERS = frozenset({'openalex', 'crossref', 'pubmed', 'wos'})
+PROVIDERS = frozenset({'integrated', 'openalex', 'crossref', 'europe_pmc', 'dblp', 'zbmath', 'wos'})
 OUTCOMES = frozenset({'completed', 'partial', 'failed', 'cancelled', 'interrupted', 'uncertain',
                       'needs_attention', 'opened', 'no_effect', 'confirmed'})
 STATISTICS = frozenset({'retrieved', 'created', 'updated', 'total', 'processed', 'failed', 'skipped',

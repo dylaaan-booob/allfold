@@ -147,6 +147,8 @@ def _tokenize(text: str) -> tuple[_Token, ...]:
                 position += 1
             if position >= len(text):
                 raise KeywordSyntaxError("unterminated phrase", start)
+            if any(c in "*?~" for c in phrase):
+                raise KeywordSyntaxError("wildcard or proximity operators are not supported inside phrases", start)
             if not phrase:
                 raise KeywordSyntaxError("phrase must not be empty", start)
             position += 1
@@ -155,48 +157,7 @@ def _tokenize(text: str) -> tuple[_Token, ...]:
             while suffix_position < len(text) and text[suffix_position].isspace():
                 suffix_position += 1
             if suffix_position < len(text) and text[suffix_position] == "~":
-                wildcard_position = text.find("*", start + 1, position - 1)
-                if wildcard_position >= 0:
-                    raise KeywordSyntaxError(
-                        "wildcard '*' cannot be combined with proximity search",
-                        wildcard_position,
-                    )
-                distance_position = suffix_position + 1
-                distance_end = distance_position
-                while (
-                    distance_end < len(text)
-                    and not text[distance_end].isspace()
-                    and text[distance_end] not in {'(', ')', '"'}
-                ):
-                    distance_end += 1
-                distance_text = text[distance_position:distance_end]
-                if not distance_text:
-                    raise KeywordSyntaxError(
-                        "proximity distance is required", suffix_position
-                    )
-                if _DECIMAL_INTEGER.fullmatch(distance_text) is None:
-                    raise KeywordSyntaxError(
-                        "proximity distance must be a decimal integer",
-                        distance_position,
-                    )
-                distance = int(distance_text)
-                if distance > 50:
-                    raise KeywordSyntaxError(
-                        "proximity distance must be between 0 and 50",
-                        distance_position,
-                    )
-
-                # S1 只校验语法和距离范围；真实 unicode61 token 数量必须由
-                # S2 复用 FTS5 tokenizer 校验，避免在 parser 里维护第二套分词规则。
-                tokens.append(
-                    _Token(
-                        _TokenKind.PROXIMITY,
-                        "".join(phrase),
-                        start,
-                        distance=distance,
-                    )
-                )
-                position = distance_end
+                raise KeywordSyntaxError("proximity search is no longer supported", suffix_position)
             else:
                 tokens.append(_Token(_TokenKind.PHRASE, "".join(phrase), start))
             continue
@@ -209,6 +170,8 @@ def _tokenize(text: str) -> tuple[_Token, ...]:
         ):
             position += 1
         value = text[start:position]
+        if "?" in value or "~" in value:
+            raise KeywordSyntaxError("unsupported wildcard or proximity operator", start)
         if "*" in value:
             tokens.append(_prefix_token(value, start))
             continue
@@ -293,44 +256,48 @@ def parse_keyword_expression(text: str) -> KeywordExpression:
     return _Parser(text).parse()
 
 
-def compile_native_expression(expression: KeywordExpression, *, provider: str, mode: str = "title_abstract") -> str:
-    """Serialize the shared AST, never reinterpreting text as native query syntax."""
-    if provider not in {"pubmed", "wos"}:
+def compile_native_expression(expression: KeywordExpression, *, provider: str) -> str:
+    """Serialize the shared language for the independent WoS Topic path."""
+    if provider != "wos":
         raise ValueError("Unsupported native query Provider")
-    if provider == "pubmed" and mode not in {"title_abstract", "broad"}:
-        raise ValueError("Choose title_abstract or broad mode")
-
     def operand(node):
         if isinstance(node, (And, Or)):
             operator = "AND" if isinstance(node, And) else "OR"
             return f"({operand(node.left)} {operator} {operand(node.right)})"
-        value = (validate_prefix_base(node.value) if isinstance(node, Prefix)
-                 else unicodedata.normalize("NFKC", node.value))
-        if isinstance(node, Proximity) and "*" in value:
-            raise ValueError(f"{provider}: wildcard '*' cannot be combined with proximity search")
-        # Local FTS treats punctuation as lexical boundaries. Native engines have
-        # different punctuation/field rules, so do not guess at their meaning.
+        if isinstance(node, Proximity):
+            raise ValueError("proximity search is no longer supported")
+        value = validate_prefix_base(node.value) if isinstance(node, Prefix) else unicodedata.normalize("NFKC",node.value)
         words = value.split()
         if not words or any(not word.isalnum() for word in words):
-            raise ValueError(f"{provider}: this operand cannot be converted without changing its meaning")
-        if isinstance(node, Proximity):
-            if len(words) < 2:
-                raise ValueError(f"{provider}: proximity requires at least two lexical terms")
-            if not 0 <= node.distance <= 50:
-                raise ValueError(f"{provider}: proximity distance must be between 0 and 50")
-            if provider == "pubmed":
-                return '"' + " ".join(words) + f'"[tiab:~{node.distance}]'
-            result = f'"{words[0]}"'
-            for word in words[1:]:
-                result = f'({result} NEAR/{node.distance} "{word}")'
-            return result
+            raise ValueError("wos: this operand cannot be converted without changing its meaning")
         if isinstance(node, Prefix):
-            result = value + "*"
-        elif isinstance(node, Phrase) or len(words) > 1 or (provider == "wos" and value.upper() in {"NEAR", "SAME", "NOT"}):
-            result = '"' + " ".join(words) + '"'
-        else:
-            result = value
-        return result + ("[tiab]" if provider == "pubmed" and mode == "title_abstract" else "")
+            return value + "*"
+        if isinstance(node, Phrase) or len(words)>1 or value.upper() in {"NEAR","SAME","NOT"}:
+            return '"' + " ".join(words) + '"'
+        return value
+    return f"TS=({operand(expression)})"
 
-    content = operand(expression)
-    return f"TS=({content})" if provider == "wos" else content
+
+def lexical_tokens(text: str) -> tuple[str, ...]:
+    normalized = unicodedata.normalize("NFKD", text).casefold()
+    normalized = "".join(c for c in normalized if not unicodedata.combining(c))
+    return tuple(re.findall(r"[^\W_]+", normalized, re.UNICODE))
+
+
+def matches_fields(expression: KeywordExpression, fields) -> bool:
+    """Evaluate candidates in memory; phrases never span field boundaries."""
+    token_fields = tuple(lexical_tokens(str(value)) for value in fields if value)
+    def visit(node):
+        if isinstance(node, And):
+            return visit(node.left) and visit(node.right)
+        if isinstance(node, Or):
+            return visit(node.left) or visit(node.right)
+        if isinstance(node, Proximity):
+            raise ValueError("proximity search is no longer supported")
+        words = lexical_tokens(node.value)
+        if not words:
+            return False
+        if isinstance(node, Prefix):
+            return any(word.startswith(words[0]) for field in token_fields for word in field)
+        return any(field[i:i + len(words)] == words for field in token_fields for i in range(len(field)))
+    return visit(expression)

@@ -25,8 +25,9 @@ from allfold.keywords import parse_keyword_expression
 from allfold.persistence.safe_write import ContentChangedError
 from allfold.application.coordinators.run_coordinator import StartOutcome
 from allfold.providers.wos import compile_wos_query
-from allfold.providers.pubmed import compile_pubmed_query
-from allfold.integrations.pubmed_credentials import read_credential, PubMedCredentialError
+from allfold.providers.integrated import PROVIDERS, compile_query
+from allfold.application.integrated_run import validate_selection
+from allfold.integrations.openalex_credentials import read_credential, OpenAlexCredentialError
 from allfold.web.run_presentation import build_run_presentation, build_run_result_summary
 
 
@@ -48,27 +49,26 @@ class _Decision(_Action):
 
 
 class _RunStart(_Action):
-    provider: Literal[RunProvider.OPENALEX, RunProvider.CROSSREF, RunProvider.PUBMED]
+    provider: Literal[RunProvider.INTEGRATED] = RunProvider.INTEGRATED
+    enabled_providers: tuple[str, ...] | None = None
 
 
 class _RunExpression(_Action):
     keyword_expression: str = Field(default="", max_length=20000)
-    pubmed_query_mode: str = "title_abstract"
 
 
-def provider_expressions(text: str, pubmed_mode: str):
+def provider_expressions(text: str):
     values = {}
     try:
         ast = parse_keyword_expression(text)
     except ValueError as error:
-        return {provider.value: {"expression": None, "error": str(error)} for provider in RunProvider}
-    for provider in RunProvider:
+        return {provider: {"expression": None, "error": str(error)} for provider in (*PROVIDERS,"integrated","wos")}
+    for provider in (*PROVIDERS,"integrated","wos"):
         try:
-            compiled = compile_pubmed_query(pubmed_mode, ast) if provider is RunProvider.PUBMED else (
-                compile_wos_query(ast) if provider is RunProvider.WOS else text)
-            values[provider.value] = {"expression": compiled, "error": ""}
+            compiled = compile_wos_query(ast) if provider == "wos" else compile_query(ast,provider) if provider in {"openalex","europe_pmc","zbmath"} else text
+            values[provider] = {"expression": compiled, "error": ""}
         except ValueError as error:
-            values[provider.value] = {"expression": None, "error": str(error)}
+            values[provider] = {"expression": None, "error": str(error)}
     return values
 
 
@@ -201,20 +201,18 @@ def install_ui_next(app: FastAPI, config_path: Path, csrf_token: str, *, read_ta
         providers = {}
         try:
             config = load_config(config_path)
-            expressions = provider_expressions(config.keyword_expression, config.pubmed_query_mode)
-            for provider in (RunProvider.OPENALEX, RunProvider.CROSSREF, RunProvider.PUBMED):
-                value = expressions[provider.value]
-                message = value["error"]
-                if not message and provider is not RunProvider.CROSSREF:
-                    try:
-                        read_credential(config_path, provider=provider.value)
-                    except PubMedCredentialError as error:
-                        message = str(error)
-                providers[provider.value] = dict(**value, enabled=not message, message=message,
-                    latest=read_last_run_snapshot(config.output_dir, provider))
+            expressions = provider_expressions(config.keyword_expression)
+            message = expressions['integrated']['error']
+            try:
+                validate_selection(config)
+                if 'openalex' in config.enabled_providers:
+                    read_credential(config_path)
+            except (ValueError, OSError) as error:
+                message = str(error)
+            providers['integrated'] = dict(**expressions['integrated'],enabled=not message,message=message,
+                enabled_providers=config.enabled_providers,latest=read_last_run_snapshot(config.output_dir,RunProvider.INTEGRATED))
         except (ConfigurationError, OSError) as error:
-            providers = {provider: dict(enabled=False, message=str(error), expression=None, latest=None)
-                         for provider in ("openalex", "crossref", "pubmed")}
+            providers = {'integrated':dict(enabled=False,message=str(error),expression=None,latest=None)}
         wos = app.state.wos_coordinator.state()
         providers["wos"] = dict(enabled=wos["enabled"], message=wos["message"], latest=wos["latest"],
                                 snapshot=wos["snapshot"])
@@ -242,16 +240,26 @@ def install_ui_next(app: FastAPI, config_path: Path, csrf_token: str, *, read_ta
             availability = run_data()["providers"][body.provider.value]
             if not availability["enabled"]:
                 return response({"message": availability["message"]}, 409)
+            config = load_config(config_path)
+            if body.enabled_providers is not None and body.enabled_providers != config.enabled_providers:
+                return response({"message":"Provider selection changed; save and refresh before running"},409)
             start = app.state.run_coordinator.start(body.provider)
             if start.outcome is StartOutcome.ALREADY_RUNNING and app.state.wos_coordinator.running:
                 return response({"message": "Run WoS is already active"}, 409)
             return response(run_data(start), 200 if start.outcome is StartOutcome.STARTED else 409)
 
+    @app.post("/api/ui-next/run/cancel")
+    def run_cancel(body: _Action):
+        if not valid(body):
+            return response({"message":"Invalid CSRF token"},403)
+        app.state.run_coordinator.cancel()
+        return response(run_data())
+
     @app.post("/api/ui-next/run-expression")
     def run_expression(body: _RunExpression):
         if not valid(body):
             return response({"message": "Invalid CSRF token"}, 403)
-        return response({"providers": provider_expressions(body.keyword_expression, body.pubmed_query_mode)})
+        return response({"providers": provider_expressions(body.keyword_expression)})
 
     @app.get("/api/ui-next/run-wos")
     def wos_state():

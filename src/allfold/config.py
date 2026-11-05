@@ -24,7 +24,6 @@ from allfold.date_range import (
     validate_date_range_spec,
 )
 from allfold.keywords import KeywordExpression, KeywordSyntaxError, parse_keyword_expression
-from allfold.search import validate_search_expression
 from allfold.url_safety import normalize_public_http_url
 
 NonEmptyStr = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1)]
@@ -55,7 +54,8 @@ class LogLevel(str, Enum):
     ERROR = "ERROR"
 
 
-DEFAULT_PROVIDER_ORDER = ("openalex", "crossref", "pubmed", "wos")
+DEFAULT_PROVIDER_ORDER = ("openalex", "europe_pmc", "dblp", "zbmath", "crossref", "arxiv", "biorxiv", "medrxiv", "wos")
+ENABLED_PROVIDERS = DEFAULT_PROVIDER_ORDER[:-1]
 
 
 def normalize_journal_labels(values: object) -> tuple[str, ...]:
@@ -83,7 +83,7 @@ def validate_provider_order(value) -> tuple[str, ...]:
     if (not isinstance(value, (list, tuple)) or len(value) != len(DEFAULT_PROVIDER_ORDER)
             or any(not isinstance(item, str) for item in value)
             or set(value) != set(DEFAULT_PROVIDER_ORDER)):
-        raise ValueError("provider_order must contain openalex, crossref, pubmed and wos exactly once")
+        raise ValueError("provider_order must contain all supported Providers exactly once")
     return tuple(value)
 
 
@@ -125,6 +125,56 @@ class JournalConfig(BaseModel):
     @property
     def identifiers(self) -> tuple[str, ...]:
         return tuple(dict.fromkeys(i for i in (self.issn, self.eissn) if i))
+
+
+class ConferenceConfig(BaseModel):
+    """A followed cross-year series; never a journal or an access Service."""
+    model_config = ConfigDict(extra="forbid", frozen=True, str_strip_whitespace=True)
+
+    id: str
+    name: NonEmptyStr
+    abbreviation: NonEmptyStr
+    aliases: tuple[str, ...] = ()
+    dblp_stream: str
+    group: NonEmptyStr | None = None
+    labels: tuple[str, ...] = ()
+
+    @field_validator("id")
+    @classmethod
+    def validate_id(cls, value):
+        if not re.fullmatch(r"conf_[0-9a-f]{32}", value):
+            raise ValueError("Conference ID must be conf_ followed by 32 lowercase hexadecimal digits")
+        return value
+
+    @field_validator("dblp_stream")
+    @classmethod
+    def validate_stream(cls, value):
+        if not re.fullmatch(r"streams/conf/[a-z0-9_-]+", value):
+            raise ValueError("Conference requires a DBLP conference Stream Key")
+        return value
+
+    @field_validator("aliases", "labels", mode="before")
+    @classmethod
+    def normalize_names(cls, value):
+        return normalize_journal_labels(value)
+
+    @field_validator("name", "abbreviation", "group")
+    @classmethod
+    def portable_text(cls, value):
+        if value is not None and any(c in value for c in "|\r\n\x00"):
+            raise ValueError("Conference fields cannot contain pipes, newlines or NUL")
+        return value
+
+    @property
+    def key(self) -> str:
+        return self.id
+
+
+def validate_conference_configs(conferences):
+    entries = tuple(ConferenceConfig.model_validate(c) for c in conferences)
+    if len({c.id for c in entries}) != len(entries) or len({c.dblp_stream for c in entries}) != len(entries):
+        raise ConfigurationError("Duplicate Conference identity or DBLP Stream", field="conferences")
+    return entries
 
 
 def validate_access_service_id(value: str) -> str:
@@ -246,7 +296,7 @@ class _Settings(BaseModel):
     log_level: LogLevel = LogLevel.INFO
     institution: InstitutionConfig | None = None
     kept_workflow: KeptWorkflowConfig = KeptWorkflowConfig()
-    pubmed_query_mode: Literal["title_abstract", "broad"] = "title_abstract"
+    enabled_providers: tuple[str, ...] = ("openalex",)
     provider_aliases: dict[str, str] = Field(default_factory=dict)
     provider_order: tuple[str, ...] = DEFAULT_PROVIDER_ORDER
     crossref_mailto: str = ""
@@ -258,6 +308,13 @@ class _Settings(BaseModel):
             return {key: item for key, item in value.items() if key not in {"wos_query", "wos_query_mode", "wos_service_id", "pubmed_query"}}
         return value
 
+    @field_validator("enabled_providers", mode="before")
+    @classmethod
+    def valid_enabled(cls, value):
+        if not isinstance(value, (list, tuple)) or any(item not in ENABLED_PROVIDERS for item in value) or len(set(value)) != len(value):
+            raise ValueError("enabled_providers must list unique supported Provider IDs")
+        return tuple(value)
+
     @field_validator("provider_order", mode="before")
     @classmethod
     def valid_provider_order(cls, value):
@@ -266,7 +323,7 @@ class _Settings(BaseModel):
     @field_validator("provider_aliases")
     @classmethod
     def valid_aliases(cls, value):
-        if set(value) - {"openalex", "crossref", "pubmed", "wos"}:
+        if set(value) - set(DEFAULT_PROVIDER_ORDER):
             raise ValueError("Unknown Provider ID")
         if any(not alias.strip() or len(alias) > 120 or any(ord(c) < 32 for c in alias) for alias in value.values()):
             raise ValueError("Provider aliases must contain 1 to 120 printable characters")
@@ -318,11 +375,12 @@ class LoadedConfig:
     journals: tuple[JournalConfig, ...]
     institution: InstitutionConfig | None = None
     kept_workflow: KeptWorkflowConfig = KeptWorkflowConfig()
-    pubmed_query_mode: Literal["title_abstract", "broad"] = "title_abstract"
+    enabled_providers: tuple[str, ...] = ("openalex",)
     provider_aliases: dict[str, str] = field(default_factory=dict)
     provider_order: tuple[str, ...] = DEFAULT_PROVIDER_ORDER
     crossref_mailto: str = ""
     user_state_revision: str | None = None
+    conferences: tuple[ConferenceConfig, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -338,7 +396,7 @@ class MonitorDefinition:
     log_level: LogLevel
     institution: InstitutionConfig | None = None
     kept_workflow: KeptWorkflowConfig = KeptWorkflowConfig()
-    pubmed_query_mode: Literal["title_abstract", "broad"] = "title_abstract"
+    enabled_providers: tuple[str, ...] = ("openalex",)
     provider_aliases: dict[str, str] = field(default_factory=dict)
     provider_order: tuple[str, ...] = DEFAULT_PROVIDER_ORDER
     crossref_mailto: str = ""
@@ -412,8 +470,6 @@ def validate_journal_configs(
 ) -> tuple[JournalConfig, ...]:
     """Validate and normalize the shared journal-domain constraints."""
 
-    if not journals:
-        raise _journal_error("Journals section contains no entries", path=path)
     if line_numbers is not None and len(line_numbers) != len(journals):
         raise ValueError("line_numbers must correspond to journals")
 
@@ -461,8 +517,8 @@ def journal_whitelist_table(
         if line.strip():
             section.append((index + 1, line))
 
-    if len(section) < 3:
-        raise ConfigurationError(f"{path}:{start + 1}: Journals table is missing or empty")
+    if len(section) < 2:
+        raise ConfigurationError(f"{path}:{start + 1}: Journals table is missing")
 
     header_line, header = section[0]
     header_cells = parse_journal_table_cells(header, path, header_line)
@@ -653,7 +709,7 @@ def parse_monitor_definition(path: Path, raw: Any) -> MonitorDefinition:
         log_level=settings.log_level,
         institution=settings.institution,
         kept_workflow=settings.kept_workflow,
-        pubmed_query_mode=settings.pubmed_query_mode,
+        enabled_providers=settings.enabled_providers,
         provider_order=settings.provider_order, provider_aliases=settings.provider_aliases, crossref_mailto=settings.crossref_mailto,
     )
 
@@ -662,6 +718,7 @@ def build_loaded_config(
     path: Path,
     definition: MonitorDefinition,
     journals: Sequence[JournalConfig],
+    conferences: Sequence[ConferenceConfig] = (),
 ) -> LoadedConfig:
     """Resolve paths and journal-domain rules into the runtime config model."""
 
@@ -680,17 +737,18 @@ def build_loaded_config(
         date_spec=definition.date_spec,
         log_level=definition.log_level,
         journals=normalized_journals,
+        conferences=validate_conference_configs(conferences),
         institution=definition.institution,
         kept_workflow=definition.kept_workflow,
-        pubmed_query_mode=definition.pubmed_query_mode,
+        enabled_providers=definition.enabled_providers,
         provider_order=definition.provider_order, provider_aliases=definition.provider_aliases, crossref_mailto=definition.crossref_mailto,
     )
 
 
 def validate_runtime_keyword(config: LoadedConfig) -> None:
-    """Validate configured keyword semantics using the production FTS5 backend."""
+    """Validate shared input without requiring a SQLite search extension."""
 
-    validate_search_expression(config.keyword_ast)
+    parse_keyword_expression(config.keyword_expression)
 
 
 def resolve_runtime_date(
@@ -747,7 +805,7 @@ def load_config(path: Path) -> LoadedConfig:
             field="venue_whitelist",
             path=path,
         ) from error
-    return replace(build_loaded_config(path, definition, journals), user_state_revision=snapshot.revision.digest)
+    return replace(build_loaded_config(path, definition, journals, snapshot.state.conferences), user_state_revision=snapshot.revision.digest)
 
 
 def validate_access_services(services: Sequence[AccessService]) -> tuple[AccessService, ...]:
@@ -834,6 +892,7 @@ class SettingsList:
     groups: tuple[str, ...]
     custom_labels: tuple[str, ...]
     access_services: tuple[AccessService, ...]
+    conferences: tuple[ConferenceConfig, ...] = ()
 
 
 def validate_entity_names(names: Sequence[str], *, labels: bool = False) -> tuple[str, ...]:
@@ -887,7 +946,7 @@ def parse_settings_list_text(contents: str, *, path: Path) -> SettingsList:
 
 def render_settings_list_text(existing_contents: str | None, journals: Sequence[JournalConfig],
                               *, path: Path, groups: Sequence[str], custom_labels: Sequence[str],
-                              access_services: Sequence[AccessService]) -> str:
+                              access_services: Sequence[AccessService], conferences: Sequence[ConferenceConfig] | None = None) -> str:
     """Render changed managed tables; preserve unchanged tables and all other text."""
     journals = validate_journal_configs(journals)
     validate_journal_storage(journals)
@@ -906,6 +965,9 @@ def render_settings_list_text(existing_contents: str | None, journals: Sequence[
          "## Access Services\n\n| Service ID | Service | Access URL | Access Method |\n| --- | --- | --- | --- |\n"
          + "".join(f"| {s.id} | {s.name} | {s.access_url or ''} | {s.access_method} |\n" for s in services) + "\n"),
     )
+    if conferences is not None:
+        validate_entity_mapping(conferences, groups, custom_labels)
+        sections += (("Conferences", tuple(conferences), parse_conferences_text, render_conferences_text(conferences)),)
     for name, values, parser, replacement in sections:
         lines = target.splitlines(keepends=True)
         indexes = [i for i, line in enumerate(lines) if line.strip() == f"## {name}"]
@@ -925,3 +987,25 @@ def render_settings_list_text(existing_contents: str | None, journals: Sequence[
             prefix += "\n" if prefix.endswith("\n") else "\n\n"
         target = prefix + replacement + "".join(lines[finish:])
     return target
+
+
+def render_conferences_text(conferences) -> str:
+    rows = validate_conference_configs(conferences)
+    return ("## Conferences\n\n| Conference ID | Conference | Abbreviation | Aliases | DBLP Stream | Group | Labels |\n"
+            "| --- | --- | --- | --- | --- | --- | --- |\n" + "".join(
+        f"| {c.id} | {c.name} | {c.abbreviation} | {'; '.join(c.aliases)} | {c.dblp_stream} | {c.group or ''} | {'; '.join(c.labels)} |\n"
+        for c in rows) + "\n")
+
+
+def parse_conferences_text(contents, *, path):
+    expected = ("Conference ID", "Conference", "Abbreviation", "Aliases", "DBLP Stream", "Group", "Labels")
+    section = _managed_rows(contents, path, "Conferences", expected)
+    if section is None:
+        return ()
+    _, rows = section
+    try:
+        return validate_conference_configs([ConferenceConfig(id=c[0], name=c[1], abbreviation=c[2],
+            aliases=parse_journal_labels(c[3]), dblp_stream=c[4], group=c[5] or None,
+            labels=parse_journal_labels(c[6])) for _, c in rows])
+    except ValueError as error:
+        raise ConfigurationError(str(error), field="conferences", path=path) from error

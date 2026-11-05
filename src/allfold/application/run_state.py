@@ -85,24 +85,24 @@ def validate_saved_facts(value: object) -> RunFacts:
 
 
 class RunProvider(str, Enum):
-    OPENALEX = "openalex"
-    CROSSREF = "crossref"
+    INTEGRATED = "integrated"
     WOS = "wos"
-    PUBMED = "pubmed"
 
     @property
     def label(self) -> str:
-        return {self.OPENALEX: "Run OpenAlex", self.CROSSREF: "Run Crossref", self.WOS: "Run WoS", self.PUBMED: "Run PubMed"}[self]
+        return "Integrated Run" if self is self.INTEGRATED else "Run WoS"
 
 
 def discovery_provider(provider: RunProvider) -> RunProvider:
     provider = RunProvider(provider)
-    if provider is RunProvider.WOS:
+    if provider is not RunProvider.INTEGRATED:
         raise ValueError("Run WoS requires its dedicated coordinator")
     return provider
 
 
 class RecordedRunOutcome(str, Enum):
+    FAILED = "FAILED"
+    CANCELLED = "CANCELLED"
     COMPLETED = "COMPLETED"
     COMPLETED_WITH_WARNINGS = "COMPLETED_WITH_WARNINGS"
     COMPLETED_WITH_ERRORS = "COMPLETED_WITH_ERRORS"

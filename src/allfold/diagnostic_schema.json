@@ -157,7 +157,10 @@
       "enum": [
         "crossref",
         "openalex",
-        "pubmed",
+        "integrated",
+        "europe_pmc",
+        "dblp",
+        "zbmath",
         "wos"
       ]
     },

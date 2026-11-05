@@ -1,4 +1,4 @@
-"""Local, revision-checked PubMed and OpenAlex credentials beside a monitor config."""
+"""Local, revision-checked OpenAlex credentials beside a monitor config."""
 from __future__ import annotations
 
 import hashlib
@@ -11,34 +11,34 @@ from allfold.persistence.safe_write import (
 )
 
 
-class PubMedCredentialError(ValueError):
+class OpenAlexCredentialError(ValueError):
     pass
 
 
-def credential_path(config_path: Path, *, provider: str = "pubmed") -> Path:
-    if provider not in {"pubmed", "openalex"}:
+def credential_path(config_path: Path, *, provider: str = "openalex") -> Path:
+    if provider != "openalex":
         raise ValueError("Unknown credential Provider")
     return config_path.absolute().with_suffix(f".{provider}-secrets.json")
 
 
-def validate_key(key: str | None, *, provider: str = "pubmed") -> bool:
-    return bool(key and key.isascii() and (key.isalnum() if provider == "pubmed" else
-                all(33 <= ord(c) <= 126 for c in key)))
+def validate_key(key: str | None, *, provider: str = "openalex") -> bool:
+    return bool(provider == "openalex" and key and key.isascii()
+                and all(33 <= ord(c) <= 126 for c in key))
 
 
-def read_credential(config_path: Path, *, provider: str = "pubmed") -> tuple[str | None, str]:
+def read_credential(config_path: Path, *, provider: str = "openalex") -> tuple[str | None, str]:
     """Return the secret and an opaque revision; missing is anonymous access."""
     path = credential_path(config_path, provider=provider)
-    label = "PubMed" if provider == "pubmed" else "OpenAlex"
+    label = "OpenAlex"
     try:
         if any(part.is_symlink() for part in (path, *path.parents)):
-            raise PubMedCredentialError(f"{label} credential path must not contain symlinks")
+            raise OpenAlexCredentialError(f"{label} credential path must not contain symlinks")
         try:
             info = path.lstat()
         except FileNotFoundError:
             return None, "missing"
         if not stat.S_ISREG(info.st_mode) or stat.S_IMODE(info.st_mode) != 0o600:
-            raise PubMedCredentialError(f"{label} credential file must be a regular file with permissions 0600")
+            raise OpenAlexCredentialError(f"{label} credential file must be a regular file with permissions 0600")
         contents = read_text_exact(path)
         data = json.loads(contents)
         if not isinstance(data, dict) or set(data) != {"api_key"}:
@@ -47,18 +47,18 @@ def read_credential(config_path: Path, *, provider: str = "pubmed") -> tuple[str
         if key is not None and (not isinstance(key, str) or not validate_key(key, provider=provider)):
             raise ValueError
         return key, hashlib.sha256(contents.encode()).hexdigest()
-    except PubMedCredentialError:
+    except OpenAlexCredentialError:
         raise
     except (OSError, ValueError, UnicodeError):
-        raise PubMedCredentialError(f"Unable to read valid {label} credentials; repair the local file explicitly") from None
+        raise OpenAlexCredentialError(f"Unable to read valid {label} credentials; repair the local file explicitly") from None
 
 
-def write_credential(config_path: Path, *, action: str, key: str | None, revision: str, provider: str = "pubmed") -> None:
-    label = "PubMed" if provider == "pubmed" else "OpenAlex"
+def write_credential(config_path: Path, *, action: str, key: str | None, revision: str, provider: str = "openalex") -> None:
+    label = "OpenAlex"
     if action not in {"replace", "clear"}:
-        raise PubMedCredentialError(f"Choose replace or clear for the {label} API Key")
+        raise OpenAlexCredentialError(f"Choose replace or clear for the {label} API Key")
     if action == "replace" and (not validate_key(key, provider=provider)):
-        raise PubMedCredentialError(f"{label} API Key has an invalid format")
+        raise OpenAlexCredentialError(f"{label} API Key has an invalid format")
     path = credential_path(config_path, provider=provider)
     _, actual = read_credential(config_path, provider=provider)
     if actual != revision:

@@ -10,7 +10,7 @@ const labels={
   ambiguous_source:'Source 有歧义',invalid_source:'Source 数据无效',invalid_identifier:'标识无效',
   local_not_listed:'未列入本地 WoS 来源清单，仍参与检索',
   openalex_records:'OpenAlex records',crossref_discovery_records:'Crossref Manifest records',
-  pubmed_search_total:'ESearch results',pubmed_records:'EFetch records',pubmed_failed_batches:'EFetch failed batches',
+  integrated_candidates:'Candidates',integrated_deduplicated:'Distinct Papers',skipped:'未执行',
   returned_records:'Returned records',matched_journal_records:'Matched Journal records',issn_queries:'ISSN queries',
   unmatched_journal_records:'Unmatched Journal records',eligible_records:'Eligible records',
   no_doi:'Without DOI',conflicts:'Identity conflicts',write_failures:'Write failures',search_total:'Search results',
@@ -86,7 +86,7 @@ export function renderRunResult(result,{compact=false,id='' }={}) {
     <p class="s-help s-run-timing"><span>${esc(finished)}</span>${dates?`<span class="s-run-date-range"><span>${esc(dates.from_date)}</span><span>至 ${esc(dates.to_date)}</span></span>`:''}</p>`;
   const messages=resultMessages(result);
   const impact=messages.length?`<ul class="s-run-impact">${messages.map(message=>`<li>${esc(message)}</li>`).join('')}</ul>`:'';
-  if(compact)return header+impact;
+  if(compact && result.provider!=='integrated')return header+impact;
   const problems=result.journals.filter(journalProblem),normal=result.journals.filter(j=>!journalProblem(j));
   const coverage=result.journals.length?`<div class="s-run-coverage"><h4>Journal Coverage</h4><p class="s-help">${esc(label(result.coverage_status))}</p>
     <ul class="s-run-journals">${problems.map(j=>journalRow(j,`${id}:journal:${j.key}`)).join('')}</ul>
@@ -97,8 +97,11 @@ export function renderRunResult(result,{compact=false,id='' }={}) {
   const warnings=(details.date_warnings || []).map(item=>({...item,reasons:(item.reasons || []).filter(reason=>!['EA_fallback','year_only'].includes(reason))}))
     .filter(item=>item.reasons.length).map(item=>`<li>Record ${count(item.record_number)} · ${esc(item.doi || item.ut || '')} · ${item.reasons.map(reason=>esc(label(reason))).join(' · ')}</li>`).join('');
   const issues=result.issues.filter(i=>i.category!=='exclusion').map(issue=>`<li><strong>${esc(label(issue.category))}</strong> · ${esc(result.provider==='wos'?wosDiagnostic(issue.message):issue.message)}${issue.issn?` · ${esc(issue.issn)}`:''}</li>`).join('');
+  const providerRuns=(details.provider_runs || []).map(run=>`<li><strong>${esc(run.provider)} · ${esc(run.source)}</strong> · ${esc(label(run.status))} · ${count(run.candidates)} candidates / ${count(run.retained)} retained${run.stream?`<p>${esc(run.stream)}</p>`:''}${run.limitations?.length?`<p>${run.limitations.map(esc).join(' · ')}</p>`:''}</li>`).join('');
+  const supplements=(details.supplement_failures || []).map(item=>`<li>${esc(item.provider)} · ${esc(item.identifier)} · ${esc(item.message)}</li>`).join('');
   const sourceResolution=Object.fromEntries(Object.entries(details.source_resolution || {}).filter(([key])=>key!=='resolved'));
-  return header+impact+coverage+`<details class="s-run-provider-details" data-result-detail="${esc(id)}:provider"><summary>Provider Details</summary>${metrics(stats,['openalex_records','crossref_discovery_records','pubmed_search_total','pubmed_records','returned_records','eligible_records','search_total'])}
+  return header+impact+coverage+`<details class="s-run-provider-details" data-result-detail="${esc(id)}:provider"><summary>Provider Details</summary>${metrics(stats,['openalex_records','crossref_discovery_records','integrated_candidates','integrated_deduplicated','returned_records','eligible_records','search_total'])}
+    ${providerRuns?`<ul>${providerRuns}</ul>`:''}${supplements?`<h4>Metadata completion</h4><ul>${supplements}</ul>`:''}
     ${metricSection('Source Resolution',sourceResolution)}
     ${details.manifest?.partial || details.manifest?.failed?metricSection('ISSN Manifest',details.manifest):''}
     ${metricSection('正常排除',details.skipped)}
