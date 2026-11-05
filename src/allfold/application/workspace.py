@@ -31,7 +31,7 @@ from allfold.persistence.safe_write import read_text_exact
 class WorkspacePaper:
     paper_id: UUID
     title: str
-    journal: str
+    journal: str | None
     publication_date: str | None
     discovered_at: datetime
     status: WorkflowStatus
@@ -42,6 +42,14 @@ class WorkspacePaper:
     sources: tuple[MetadataSource, ...]
     journal_attribution_state: PaperJournalAttributionState = PaperJournalAttributionState.MISSING_OR_EMPTY
     journal_issns: tuple[str, ...] = ()
+    conference: str | None = None
+    conference_id: str | None = None
+    publication_type: str | None = None
+    related_dois: tuple[str, ...] = ()
+    first_public_at: str | None = None
+    accepted_at: str | None = None
+    accepted_approximate: bool = False
+    date_note: str | None = None
     export_attempt: ExportAttempt | None = None
     export_attempt_present: bool = False
 
@@ -150,7 +158,6 @@ def _project_paper(state: PaperMarkdownState) -> WorkspacePaper:
     # A state with no parser problems satisfies these durable Paper invariants.
     assert state.paper_id is not None
     assert state.title is not None
-    assert state.journal is not None
     assert state.discovered_at is not None
     assert state.status is not None
     assert state.external_ids is not None
@@ -168,6 +175,14 @@ def _project_paper(state: PaperMarkdownState) -> WorkspacePaper:
         sources=state.sources,
         journal_attribution_state=state.journal_attribution_state,
         journal_issns=state.journal_issns,
+        conference=state.conference,
+        conference_id=state.conference_id,
+        publication_type=state.publication_type,
+        related_dois=state.related_dois,
+        first_public_at=state.first_public_at,
+        accepted_at=state.accepted_at,
+        accepted_approximate=state.accepted_approximate,
+        date_note=state.date_note,
         export_attempt=state.export_attempt,
         export_attempt_present=state.export_attempt_present,
     )
@@ -333,6 +348,10 @@ def plan_workspace_import(lock, journals: Sequence[JournalConfig] = (), *, servi
                 reasons.append("Duplicate normalized DOI")
             if state.status is not WorkflowStatus.KEPT:
                 reasons.append(f"status is {state.status.value if state.status else 'invalid'}, requires kept")
+            if not state.external_ids or not state.external_ids.doi:
+                reasons.append("A valid primary DOI is required for Prepare/Import")
+            if state.publication_type == "preprint":
+                reasons.append("Preprint Prepare/Import is not supported")
             eligible = state.automatic_export_eligible
             if reasons or not eligible:
                 non_target = state.status in {WorkflowStatus.CANDIDATE, WorkflowStatus.REJECTED, WorkflowStatus.EXPORTED}

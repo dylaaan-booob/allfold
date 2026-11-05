@@ -46,12 +46,19 @@ def parse_publication_date(value: Any) -> str | None:
 
 class CanonicalMetadata(DomainModel):
     title: NonEmptyStr
-    journal: NonEmptyStr
+    journal: NonEmptyStr | None = None
+    conference: NonEmptyStr | None = None
+    conference_id: NonEmptyStr | None = None
+    publication_type: Literal["journal", "conference", "preprint"] | None = None
+    first_public_at: str | None = None
+    accepted_at: str | None = None
+    accepted_approximate: bool = False
+    date_note: str | None = None
     publication_date: str | None = None
     abstract: str | None = None
     author_keywords: tuple[NonEmptyStr, ...] = ()
 
-    @field_validator("publication_date", mode="before")
+    @field_validator("publication_date", "first_public_at", "accepted_at", mode="before")
     @classmethod
     def validate_publication_date(cls, value: Any) -> str | None:
         return parse_publication_date(value)
@@ -96,6 +103,9 @@ class MetadataSource(DomainModel):
     provider: NonEmptyStr
     record_id: NonEmptyStr
     retrieved_at: datetime
+    role: Literal["discovery", "supplement"] | None = None
+    url: NonEmptyStr | None = None
+    version: NonEmptyStr | None = None
 
     @field_validator("retrieved_at")
     @classmethod
@@ -115,10 +125,16 @@ class EvidenceDateKind(str, Enum):
     PUBLISHED_ONLINE = "published-online"
     PUBLISHED_PRINT = "published-print"
     ISSUED = "issued"
+    ACCEPTED = "accepted"
+    PREPRINT = "preprint"
+    EARLY_ACCESS = "early-access"
+    CONFERENCE_YEAR = "conference-year"
 
 
 class EvidenceDate(DomainModel):
     kind: EvidenceDateKind
+    provider: NonEmptyStr | None = None
+    record_id: NonEmptyStr | None = None
     year: Annotated[int, Field(strict=True, ge=1, le=9999)]
     month: Annotated[int, Field(strict=True, ge=1, le=12)] | None = None
     day: Annotated[int, Field(strict=True, ge=1, le=31)] | None = None
@@ -137,6 +153,7 @@ class ProviderTopic(DomainModel):
 
     value: NonEmptyStr
     source: NonEmptyStr | None = None
+    kind: NonEmptyStr | None = None
 
 
 class ProviderWorkEvidence(DomainModel):
@@ -145,7 +162,12 @@ class ProviderWorkEvidence(DomainModel):
     provenance: MetadataSource
     title: NonEmptyStr | None = None
     journal: NonEmptyStr | None = None
-    publication_date: Date | None = None
+    conference: NonEmptyStr | None = None
+    conference_id: NonEmptyStr | None = None
+    publication_type: Literal["journal", "conference", "preprint"] | None = None
+    publication_date: str | None = None
+    related_dois: tuple[NonEmptyStr, ...] = ()
+    indexed_terms: tuple[ProviderTopic, ...] = ()
     abstract: str | None = None
     author_keywords: tuple[NonEmptyStr, ...] = ()
     provider_topics: tuple[ProviderTopic, ...] = ()
@@ -155,6 +177,11 @@ class ProviderWorkEvidence(DomainModel):
     dates: tuple[EvidenceDate, ...] = ()
     supplements: tuple[ProviderRecordRef, ...] = ()
     monitor_journal_issns: tuple[str, ...] = ()
+
+    @field_validator("publication_date", mode="before")
+    @classmethod
+    def validate_publication_date(cls, value: Any) -> str | None:
+        return parse_publication_date(value)
 
 
 class WorkflowStatus(str, Enum):
@@ -230,6 +257,10 @@ class CanonicalPaper(DomainModel):
     sources: tuple[MetadataSource, ...] = ()
     workflow: Workflow = Field(default_factory=Workflow)
     journal_issns: tuple[str, ...] = ()
+    related_dois: tuple[NonEmptyStr, ...] = ()
+    indexed_terms: tuple[ProviderTopic, ...] = ()
+    date_evidence: tuple[EvidenceDate, ...] = ()
+    identity_aliases: tuple[ProviderRecordRef, ...] = ()
 
     @property
     def doi(self) -> str | None:
