@@ -11,6 +11,17 @@ const queue={import_token:'all-token',services:[
 const active={workflow_id:'fixed-a',generation:7,service_id:'svc_a',service_name:'Service A',phase:'waiting_for_user',
   active:true,can_continue:true,can_cancel:true,settings:{},message:'Review Service A',preparation:{manual_services:[],results:[]}};
 
+test('Last Import shows only Item PDF Fallback indicators, deduplicates Papers and keeps query failures unknown',async()=>{
+ const results=[{paper_id:'saved',service_id:'svc_a',outcome:'exported',parent_outcome:'confirmed',item_exists:true,pdf_attached:true,pdf_source:'openalex',fallback_used:true,reason:'Registered fallback PDF'},
+ {paper_id:'unknown',service_id:'svc_b',outcome:'exported',parent_outcome:'confirmed',item_exists:true,pdf_attached:null,fallback_used:null,query_diagnostic:{code:'connection_lost'},reason:'Parent saved'}];
+ const f=await taskUI('kept.js',{page:'kept',request:async url=>url.includes('/queue')?queue:{...idle,workflow_id:'last',import_started:true,batch:{total:2,results:[...results,results[0]]}}});
+ assert.equal(f.get('kept-record-items').children.length,2);
+ const text=f.get('kept-record-items').textContent;
+ assert.match(text,/Item Yes.*PDF Yes.*Fallback Yes/s);assert.match(text,/PDF 无法核验.*Fallback 无法核验/s);
+ assert.match(f.get('kept-queue-results').textContent,/查询：connection_lost/);
+ assert.ok(!text.includes('PDF unverified'));
+});
+
 test('Kept captures its next saved Service before autosave and display changes cannot retarget it',async()=>{
   const starts=[];let current=idle;
   const f=await taskUI('kept.js',{page:'kept',request:async(url,body)=>{

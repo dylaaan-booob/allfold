@@ -68,6 +68,13 @@ test('redirect policy rejects each unsafe hop before following; typed errors are
   await assert.rejects(pending,error=>error.kind==='transport' && error.code==='redirect_rejected');
   assert.equal(f.request.followed,1);assert.equal(checked.length,3);
 });
+test('an asynchronous attachment DNS policy settles before a redirect is followed',async()=>{
+ const f=fixture();let reject;
+ const pending=f.start({}, {validateRedirect:url=>url.endsWith('/start')?undefined:new Promise((_resolve,fail)=>{reject=fail;})});
+ f.request.emit('redirect',302,'GET','https://private.example/secret');
+ assert.equal(f.request.followed,0);reject(Error('Private DNS address'));
+ await assert.rejects(pending,error=>error.code==='redirect_rejected');assert.equal(f.request.followed,0);
+});
 test('Cookie Header is extracted into request context, never sent directly, and context is released',async()=>{
   const f=fixture();let registered,released=0,redirected=0;
   const pending=f.start({headers:{Cookie:'partitioned=old'}},{doc:{pageId:7},kind:'item-saver',

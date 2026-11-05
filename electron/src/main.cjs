@@ -9,6 +9,7 @@ const {installBrowserIPC}=require('./browser/browser-ipc.cjs');
 const {TranslatorSandbox} = require('./zotero/translator.cjs');
 const {saveOnce,normalizeDOI} = require('./zotero/local-importer.cjs');
 const {LocalAPI}=require('./zotero/local-api.cjs');
+const {requestOpenAlexPDF,settleOpenAlexPDF}=require('./zotero/openalex-callback.cjs');
 const zoteroLocal=new LocalAPI();
 const {failedImport}=require('./workflows/import-errors.cjs');
 const {BrowserFailure,diagnosticFor}=require('./browser/browser-errors.cjs');
@@ -195,7 +196,9 @@ async function executeOperation(message) {
           progress({message:'Native Zotero save in progress'},'parent_save');
           saving=true;
           stage='parent_save';
-          data=await saveOnce({item,apiItem,proxy,doi,target:message.data.zotero_target,doc:sourceDocument,browser,signal:controller.signal,logContext:{...context,page_id:doc.pageId,metadata_source:metadataSource}});
+          data=await saveOnce({item,apiItem,proxy,doi,target:message.data.zotero_target,doc:sourceDocument,browser,signal:controller.signal,
+            fallbackPDF:request=>requestOpenAlexPDF(current,request,{send,connected:bridgeReady,doi,target:message.data.zotero_target}),
+            logContext:{...context,page_id:doc.pageId,metadata_source:metadataSource}});
         }
       }
     } catch (error) {
@@ -203,6 +206,7 @@ async function executeOperation(message) {
         :{diagnostic:diagnosticFor(error,stage)};
     } finally {
       current.challenge?.cancel();
+      current.openalex?.cancel();
       resultPageId=browser.taskTab?.id;
       browser.endTask();
     }
@@ -286,6 +290,7 @@ async function connect() {
           if(!message.data || typeof message.data!=='object')throw Error('Invalid challenge result');
           current.challenge.resolve(message.data);
         }
+        else if(message.type === 'openalex_pdf_result')settleOpenAlexPDF(activeOperation,message);
         else if(message.type === 'shutdown_ready') {
           // Python has processed the final result and can now exit gracefully.
           socket.close();

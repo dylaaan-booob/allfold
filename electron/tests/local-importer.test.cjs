@@ -6,7 +6,7 @@ const item={itemType:'journalArticle',title:'Fixture',DOI:'10.5555/fixture',atta
 function fixture(options={}) {
  const created=[],uploaded=[];let calls=0;
  const api={validate:async()=>target,create:async(t,value)=>{created.push(value);if(options.failParent && created.length===1)throw Object.assign(Error(),{code:'connection_lost'});return {key:value.key,status:200};},upload:async(t,key,bytes,metadata)=>{uploaded.push({key,bytes,metadata});if(options.failUpload)throw Error('upload failed');return {registered:true};}};
- return {created,uploaded,run:overrides=>saveOnce({item,doi:item.DOI,target,api,doc:{pageId:7,url:'https://publisher.example/paper'},browser:{partition:{},documentCurrent:()=>true,cookieAdapter:{},bypassAttachment:async()=>{}},requestHTTP:async()=>{calls++;return {status:200,url:'https://publisher.example/full.pdf',headers:[['content-type','application/pdf']],body:Buffer.from('%PDF-1.7\nfixture')};},...overrides}),get downloads(){return calls;}};
+ return {created,uploaded,run:overrides=>saveOnce({item,doi:item.DOI,target,api,doc:{pageId:7,url:'https://publisher.example/paper'},browser:{partition:{resolveHost:async()=>({endpoints:[{address:'93.184.216.34',family:'ipv4'}]})},documentCurrent:()=>true,cookieAdapter:{},bypassAttachment:async()=>{}},requestHTTP:async()=>{calls++;return {status:200,url:'https://publisher.example/full.pdf',headers:[['content-type','application/pdf']],body:Buffer.from('%PDF-1.7\nfixture')};},...overrides}),get downloads(){return calls;}};
 }
 test('native import preallocates parent identity and uses the explicit collection',async()=>{
  const f=fixture(),result=await f.run();assert.equal(result.parent.outcome,'confirmed');assert.equal(f.created.length,1);
@@ -36,4 +36,22 @@ test('actual PDF pages replace Translator PDF candidates and retain bounded Sess
  const f=fixture(),requests=[];await f.run({doc:{url:'https://publisher.example/current.pdf',type:'application/pdf'},item:{...item,attachments:[{mimeType:'application/pdf',url:'https://publisher.example/stale.pdf'}]},
  requestHTTP:async(session,spec,context)=>{requests.push({spec,context});return {status:200,headers:[['content-type','application/pdf']],body:Buffer.from('%PDF-1.7\nfixture')};}});
  assert.equal(requests.length,1);assert.equal(requests[0].spec.url,'https://publisher.example/current.pdf');assert.deepEqual(requests[0].spec.headers,{});assert.equal(requests[0].context.maxRedirects,8);assert.ok(requests[0].context.maxBytes);
+});
+test('Translator success never looks up OA; failed downloads try bounded unique OA candidates until registration',async()=>{
+ for(const translatorOK of [true,false]) {
+  const f=fixture(),downloads=[],lookup=[];
+  const result=await f.run({item:{...item,attachments:[{mimeType:'application/pdf',url:'https://publisher.example/full.pdf'}]},
+   fallbackPDF:async data=>{lookup.push(data);return {candidates:['https://oa.example/bad.pdf','https://oa.example/bad.pdf','https://oa.example/good.pdf','https://oa.example/unused.pdf']};},
+   requestHTTP:async(_session,spec)=>{downloads.push(spec);return {status:translatorOK || spec.url.includes('good')?200:404,headers:[['content-type','application/pdf']],body:Buffer.from('%PDF-1.7\nfixture')};}});
+  assert.equal(result.pdf.source,translatorOK?'translator':'openalex');assert.equal(result.pdf.registered,true);
+  assert.equal(lookup.length,translatorOK?0:1);
+  assert.deepEqual(downloads.map(value=>value.url),translatorOK?['https://publisher.example/full.pdf']:['https://publisher.example/full.pdf','https://oa.example/bad.pdf','https://oa.example/good.pdf']);
+  assert.ok(downloads.every(value=>!Object.keys(value.headers).length));
+  if(!translatorOK)assert.equal(downloads.at(-1).referrer,undefined);
+ }
+});
+test('download DNS and redirect resolution reject private hosts before transport can follow them',async()=>{
+ const f=fixture(),browser={partition:{resolveHost:async()=>({endpoints:[{address:'127.0.0.1',family:'ipv4'}]})},documentCurrent:()=>true};
+ const result=await f.run({browser,item:{...item,attachments:[{mimeType:'application/pdf',url:'https://private.example/full.pdf'}]}});
+ assert.equal(f.downloads,0);assert.equal(result.pdf.registered,false);assert.equal(result.pdf.failures[0].code,'unsafe_url');
 });

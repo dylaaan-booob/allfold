@@ -4,6 +4,7 @@ const {LocalAPI,objectKey,validateTarget}=require('./local-api.cjs');
 const {requestSessionHTTP}=require('./session-http.cjs');
 const {isIP,BlockList}=require('node:net');
 const {log}=require('../shared/logging.cjs');
+const {reconcileImport}=require('./last-import.cjs');
 const MAX_ATTACHMENT_BYTES=64*1024*1024;
 function normalizeDOI(value) {
  const doi=String(value || '').trim().replace(/^https?:\/\/(?:dx\.)?doi\.org\//i,'').toLowerCase();
@@ -24,6 +25,19 @@ function safeAttachmentURL(value) {
    throw Object.assign(Error('Unsafe attachment URL'),{code:'unsafe_url'});
  url.hash='';return url.href;
 }
+async function validateDownloadURL(session,value) {
+ const normalized=safeAttachmentURL(value),host=new URL(normalized).hostname.replace(/^\[|\]$/g,'');
+ if(!isIP(host)) {
+   if(typeof session?.resolveHost!=='function')throw Object.assign(Error('DNS unavailable'),{code:'unsafe_url'});
+   const resolved=await session.resolveHost(host);
+   if(!resolved?.endpoints?.length)throw Object.assign(Error('DNS unavailable'),{code:'unsafe_url'});
+   for(const {address} of resolved.endpoints) {
+     const family=isIP(address);if(!family)throw Object.assign(Error('Unsafe resolved address'),{code:'unsafe_url'});
+     safeAttachmentURL('http://'+(family===6?'['+address+']':address)+'/');
+   }
+ }
+ return normalized;
+}
 
 function tags(values=[]) {return values.map(value=>typeof value==='object'?value.tag || value.name:value).filter(value=>typeof value==='string'&&value.trim()).map(tag=>({tag,type:1}));}
 function apiParent(item,prepared) {
@@ -33,7 +47,7 @@ function apiParent(item,prepared) {
  if(parent.accessDate==='CURRENT_TIMESTAMP')parent.accessDate=new Date().toISOString();
  delete parent.dateAdded;delete parent.dateModified;return parent;
 }
-async function saveOnce({item,apiItem,doi,doc,browser,signal,target,api=new LocalAPI(),requestHTTP=requestSessionHTTP,fallbackPDF,logContext}) {
+async function saveImportOnce({item,apiItem,doi,doc,browser,signal,target,api,requestHTTP=requestSessionHTTP,fallbackPDF,logContext}) {
  if(normalizeDOI(item.DOI)!==normalizeDOI(doi) || typeof item.title!=='string' || !item.title.trim() || typeof item.itemType!=='string' || ['multiple','webpage','attachment','note'].includes(item.itemType))throw Error('Parent does not match target DOI');
  target=validateTarget(target);
  const current=()=>{if(signal?.aborted || !browser.documentCurrent(doc))throw Object.assign(Error('Import canceled or document changed'),{code:signal?.aborted?'canceled':'document_changed'});};
@@ -58,10 +72,11 @@ async function saveOnce({item,apiItem,doi,doc,browser,signal,target,api=new Loca
    try {const text=typeof note==='string'?note:note.note;if(text)await createChild({itemType:'note',note:String(text),tags:tags(note.tags)},'note_keys');}
    catch(error){record(error,'note_save');result.stop_batch=true;attachmentWriteFailed=true;break;}
  }
- const fetchAttachment=async attachment=>{
-   const url=safeAttachmentURL(attachment.url);
-   const get=()=>{current();return requestHTTP(browser.partition,{method:'GET',url,headers:{},referrer:doc.url,timeout:30000},
-     {doc,signal,kind:'item-saver',cookieAdapter:browser.cookieAdapter,maxBytes:MAX_ATTACHMENT_BYTES,maxRedirects:8,validateRedirect:safeAttachmentURL});};
+ const fetchAttachment=async(attachment,source)=>{
+   const url=await validateDownloadURL(browser.partition,attachment.url);
+   const get=()=>{current();return requestHTTP(browser.partition,{method:'GET',url,headers:{},referrer:source==='translator'?doc.url:undefined,timeout:30000},
+     {doc,signal,kind:'item-saver',cookieAdapter:browser.cookieAdapter,maxBytes:MAX_ATTACHMENT_BYTES,maxRedirects:8,
+       validateRedirect:value=>validateDownloadURL(browser.partition,value)});};
    let response=await get();
    const contentType=()=>response.headers.find(([key])=>key.toLowerCase()==='content-type')?.[1]?.split(';')[0]?.trim().toLowerCase() || '';
    // Retain task-bound challenge helpers, with one hidden and one visible attempt.
@@ -76,7 +91,7 @@ async function saveOnce({item,apiItem,doi,doc,browser,signal,target,api=new Loca
    return {bytes,mime,url};
  };
  const saveAttachment=async(attachment,source)=>{
-   let downloaded;try{downloaded=await fetchAttachment(attachment);}catch(error){record(error,source==='translator'?'initial_fetch':'oa_resolver');return false;}
+   let downloaded;try{downloaded=await fetchAttachment(attachment,source);}catch(error){record(error,source==='translator'?'initial_fetch':'oa_resolver');return false;}
    const {bytes,mime,url}=downloaded,isPDF=mime==='application/pdf',filename=isPDF?'paper.pdf':mime==='application/epub+zip'?'paper.epub':'attachment.bin';
    let key;
    try {
@@ -99,11 +114,17 @@ async function saveOnce({item,apiItem,doi,doc,browser,signal,target,api=new Loca
    }
  }
  if(!result.pdf.registered && !attachmentWriteFailed && !signal?.aborted && fallbackPDF) {
-   try {const fallback=await fallbackPDF({doi,target,parent_key:parentKey});
-     for(const url of (fallback?.candidates || []).slice(0,4)) {if(await saveAttachment({url,mimeType:'application/pdf'},'openalex') || attachmentWriteFailed || signal?.aborted)break;}
+   try {current();const fallback=await fallbackPDF({doi,target,parent_key:parentKey});
+     for(const url of [...new Set(fallback?.candidates || [])].slice(0,4)) {if(await saveAttachment({url,mimeType:'application/pdf'},'openalex') || attachmentWriteFailed || signal?.aborted)break;}
      if(fallback?.diagnostic)record(fallback.diagnostic,'oa_resolver');
    }catch(error){record(error,'oa_resolver');}
  }
+ return result;
+}
+async function saveOnce(options) {
+ const api=options.api || new LocalAPI();
+ const result=await saveImportOnce({...options,api});
+ result.last_import=await reconcileImport(result,{api,doi:options.doi});
  return result;
 }
 module.exports={saveOnce,normalizeDOI,safeAttachmentURL,apiParent,MAX_ATTACHMENT_BYTES};

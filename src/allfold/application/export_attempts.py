@@ -187,7 +187,7 @@ def complete_electron_import(reservation: ExportReservation, result: dict, *,
         try:
             _commit_exported_locked(reservation, operation_lock)
             return ExportCompletionResult(ExportCompletionOutcome.EXPORTED,
-                "Native parent exact key accepted by Local API; PDF remains unverified.")
+                "Native parent exact key accepted by Local API.")
         except (ExportAttemptError, ContentChangedError, CompareReadError, OSError) as error:
             return ExportCompletionResult(ExportCompletionOutcome.FAILED,
                 f"Parent accepted but Paper write conflicted: {error}; inspect Zotero before retry.")

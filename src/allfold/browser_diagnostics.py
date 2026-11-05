@@ -10,7 +10,7 @@ _STEPS = frozenset({'request', 'page_load', 'resource_ready', 'resource_filter',
                     'visit_target', 'verification', 'ready', 'search', 'result', 'exportMenu',
                     'controlReady', 'plainText', 'dialog', 'configure', 'contentReady',
                     'selectContent', 'export', 'arm', 'links', 'download', 'sandbox_load', 'sandbox_init',
-                    'translator', 'document_operation', 'dom_observer', 'hidden_iframe'})
+                    'translator', 'document_operation', 'dom_observer', 'hidden_iframe', 'oa_resolver'})
 _CODES = frozenset({'failed', 'canceled', 'timeout', 'site_restricted', 'verification_page',
     'content_access_blocked', 'http_error', 'load_failed', 'renderer_gone', 'page_closed',
     'document_changed', 'navigation_active', 'document_operation_failed', 'doi_mismatch',
@@ -24,6 +24,8 @@ _CODES = frozenset({'failed', 'canceled', 'timeout', 'site_restricted', 'verific
     'dom_step_failed', 'download_interrupted', 'download_cancelled', 'download_incomplete',
     'download_failed', 'download_ambiguous', 'download_not_attributable',
     'authorization_required', 'authorization_denied', 'always_allow_required', 'access_denied', 'server_id_mismatch', 'missing_server_id', 'unsupported_version', 'target_missing', 'target_list_incomplete', 'precondition_required', 'rate_limited', 'connection_lost', 'invalid_target', 'invalid_response', 'invalid_upload_destination', 'upload_failed', 'registration_failed', 'response_too_large', 'unsafe_url', 'object_rejected', 'unattributable_response', 'api_failure', 'key_store_unreadable', 'key_store_write_failed', 'encryption_unavailable', 'conflict', 'invalid_attachment', 'invalid_local_path',
+    'openalex_no_pdf', 'openalex_not_found', 'openalex_lookup_failed', 'openalex_authorization_required',
+    'openalex_quota', 'openalex_credential_unavailable',
     'no_resolver', 'mime_mismatch', 'empty_response', 'network_error', 'redirect_rejected', 'attachment_rejected'})
 
 
@@ -56,18 +58,25 @@ def first_attachment_diagnostic(value: object) -> dict[str, object] | None:
         if not isinstance(failure, dict):
             continue
         diagnostic = normalize_browser_diagnostic({
-            'stage':'attachment', 'code':failure.get('code'), 'status':failure.get('status')})
+            'stage':'attachment', 'step':'oa_resolver' if failure.get('phase') == 'oa_resolver' else None,
+            'code':failure.get('code'), 'status':failure.get('status')})
         if diagnostic and 'code' in diagnostic:
             return diagnostic
     return None
 
 
-def format_browser_diagnostic(value: object) -> str:
+def format_browser_diagnostic(value: object, *, include_pdf_uncertainty: bool = True) -> str:
     diagnostic = normalize_browser_diagnostic(value)
     if diagnostic is None:
         return 'Browser operation failed.'
     if diagnostic.get('stage') == 'attachment':
         reasons = {
+            'openalex_no_pdf':'OpenAlex 没有可用的直接公开 PDF',
+            'openalex_not_found':'OpenAlex 未收录此 DOI',
+            'openalex_lookup_failed':'OpenAlex 查询失败',
+            'openalex_authorization_required':'OpenAlex 凭据未被接受',
+            'openalex_quota':'OpenAlex 查询额度已用尽',
+            'openalex_credential_unavailable':'OpenAlex 本地凭据无法读取',
             'no_resolver':'未找到可用的附件来源', 'mime_mismatch':'返回内容不是预期附件类型',
             'empty_response':'附件响应为空', 'network_error':'附件网络请求失败',
             'redirect_rejected':'附件重定向未被接受', 'attachment_rejected':'附件保存请求未被接受',
@@ -85,7 +94,7 @@ def format_browser_diagnostic(value: object) -> str:
             message += f"（HTTP {diagnostic['status']}）"
         if 'net_error' in diagnostic:
             message += f"（{diagnostic['net_error']}）"
-        return message + '；PDF 是否保存仍未验证。'
+        return message + ('；PDF 是否保存仍未验证。' if include_pdf_uncertainty else '。')
     translation_reasons = {
         'translator_no_items': '官方 Translator 未返回条目。',
         'translator_multiple_items': '官方 Translator 返回多个条目，无法确认唯一父条目。',

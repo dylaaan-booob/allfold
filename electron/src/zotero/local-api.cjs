@@ -92,7 +92,14 @@ class LocalAPI {
     const path=prefix(target)+(target.collection_key?'/collections/'+target.collection_key:'/items?limit=1');
     await this.request(path,{server_id:target.server_id});return target;
   }
-  async read(target,path) {target=validateTarget(target);if(!/^\/items\/[23456789ABCDEFGHIJKLMNPQRSTUVWXYZ]{8}(?:\/children)?$/.test(path))throw failure('invalid_local_path');return (await this.request(prefix(target)+path,{server_id:target.server_id})).json();}
+  async read(target,path) {
+    target=validateTarget(target);
+    if(!/^\/items\/[23456789ABCDEFGHIJKLMNPQRSTUVWXYZ]{8}(?:\/children)?$/.test(path))throw failure('invalid_local_path');
+    const children=path.endsWith('/children'),response=await this.request(prefix(target)+path+(children?'?limit=1000':''),{server_id:target.server_id});
+    const value=await response.json();
+    if(children && (!Array.isArray(value) || Number(response.headers.get('Total-Results') || value.length)>value.length))throw failure('invalid_response');
+    return value;
+  }
   async create(value,item) {
     const target=validateTarget(value),key=await this.credentials(target);
     const response=await this.request(prefix(target)+'/items',{method:'POST',server_id:target.server_id,key,

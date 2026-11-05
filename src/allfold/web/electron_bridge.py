@@ -6,6 +6,7 @@ lost result is uncertain, even if the remote operation happened to finish.
 from __future__ import annotations
 import asyncio
 import hmac
+import re
 import threading
 from collections.abc import Callable
 from uuid import uuid4
@@ -15,11 +16,16 @@ from allfold.integrations.cloudflare_solver import solve_cloudflare
 from allfold.application.browser_runtime import ElectronDisconnected
 from allfold.application.history import observe
 from allfold.browser_diagnostics import normalize_browser_diagnostic
+from allfold.identifiers import valid_doi
 
 
 class ElectronBridge:
-    def __init__(self, token: str, authority: str, *, cdp_url: str = "", diagnostics=None):
+    def __init__(self, token: str, authority: str, *, cdp_url: str = "", diagnostics=None, openalex_pdf=None):
         self.diagnostics = diagnostics
+        self.openalex_pdf = openalex_pdf
+        self._pending_import = None
+        self._lookup_stop = None
+        self._lookup_requested = False
         self._pending_context = {}
         self._token = token
         self._authority = authority
@@ -44,6 +50,7 @@ class ElectronBridge:
         await socket.accept()
         task = None
         challenge_task = None
+        lookup_task = None
         try:
             hello = await asyncio.wait_for(socket.receive_json(), timeout=5)
             token = hello.get("token") if isinstance(hello, dict) else None
@@ -62,6 +69,8 @@ class ElectronBridge:
                 if not isinstance(message, dict):
                     raise ValueError("Invalid Electron message")
                 if message.get("type") == "shutdown":
+                    if self._lookup_stop is not None:
+                        self._lookup_stop.set()
                     if self._challenge_stop is not None:
                         self._challenge_stop[2].set()
                     if not self.closing:
@@ -82,7 +91,20 @@ class ElectronBridge:
                 data = message.get("data")
                 if not isinstance(data, dict):
                     raise ValueError("Invalid Electron data")
-                if message.get("type") == "solve_cloudflare":
+                if message.get("type") == "openalex_pdf":
+                    expected = self._pending_import
+                    lookup_id = message.get("lookup_id")
+                    if (pending[1] != "import_paper" or self.openalex_pdf is None or expected is None
+                            or self._lookup_requested or self.closing or self._lookup_stop.is_set()
+                            or not isinstance(lookup_id, str) or not re.fullmatch(r"[A-Za-z0-9]{1,64}", lookup_id)
+                            or valid_doi(data.get("doi")) != expected["doi"]
+                            or data.get("target") != expected["target"]
+                            or not isinstance(data.get("parent_key"), str)
+                            or not re.fullmatch(r"[23456789ABCDEFGHIJKLMNPQRSTUVWXYZ]{8}", data["parent_key"])):
+                        raise ValueError("Invalid OpenAlex Import request")
+                    self._lookup_requested = True
+                    lookup_task = asyncio.create_task(self._lookup_pdf(socket, pending, lookup_id, expected["doi"], self._lookup_stop))
+                elif message.get("type") == "solve_cloudflare":
                     challenge_id = message.get("challenge_id")
                     url = data.get("url")
                     if (not isinstance(challenge_id, str) or not challenge_id
@@ -121,6 +143,8 @@ class ElectronBridge:
         except (WebSocketDisconnect, ValueError, TimeoutError, RuntimeError):
             pass
         finally:
+            if self._lookup_stop is not None:
+                self._lookup_stop.set()
             if self._challenge_stop is not None:
                 self._challenge_stop[2].set()
             if self._socket is socket:
@@ -136,8 +160,23 @@ class ElectronBridge:
                 pass
             if challenge_task is not None:
                 await challenge_task
+            if lookup_task is not None:
+                await lookup_task
             if task is not None:
                 await task
+
+    async def _lookup_pdf(self, socket, pending, lookup_id, doi, stop):
+        try:
+            data = await asyncio.to_thread(self.openalex_pdf, doi)
+        except Exception:
+            data = {"candidates": [], "diagnostic": {"code": "openalex_lookup_failed"}}
+        if (not stop.is_set() and not self.closing and self._socket is socket
+                and self._pending is pending and not pending[2].done()):
+            try:
+                await socket.send_json({"type": "openalex_pdf_result", "id": pending[0],
+                    "action": pending[1], "lookup_id": lookup_id, "data": data})
+            except (WebSocketDisconnect, OSError, RuntimeError):
+                pass
 
     async def _solve_cloudflare(self, socket: WebSocket, pending: tuple,
                                 challenge_id: str, url: str, stop: threading.Event) -> None:
@@ -179,6 +218,12 @@ class ElectronBridge:
         request_id = uuid4().hex
         result = asyncio.get_running_loop().create_future()
         self._pending = request_id, action, result, progress
+        self._lookup_requested = False
+        self._lookup_stop = threading.Event()
+        target = data.get("zotero_target")
+        self._pending_import = ({"doi": valid_doi(data.get("doi")), "target": {
+            key: target.get(key) for key in ("server_id", "library_type", "library_id", "collection_key")}}
+            if action == "import_paper" and isinstance(target, dict) else None)
         self._pending_context = {key: data[key] for key in ("workflow_id", "task_id", "parent_task_id", "service_id", "paper_id") if key in data}
         scope = data.get("service_scope")
         if isinstance(scope, dict):
@@ -194,6 +239,9 @@ class ElectronBridge:
         except (WebSocketDisconnect, OSError, RuntimeError) as error:
             raise ElectronDisconnected("Electron result unavailable; no automatic replay") from error
         finally:
+            if self._lookup_stop is not None:
+                self._lookup_stop.set()
+            self._pending_import = None
             if self._challenge_stop is not None and self._challenge_stop[0] is self._pending:
                 self._challenge_stop[2].set()
             self._pending = None
@@ -218,6 +266,8 @@ class ElectronBridge:
     def cancel_current(self):
         """Stop pre-save work; Main never aborts an escaped native ItemSaver."""
         challenge = self._challenge_stop
+        if self._lookup_stop is not None:
+            self._lookup_stop.set()
         if challenge is not None and challenge[0] is self._pending:
             challenge[2].set()
         if self._loop is not None:

@@ -99,6 +99,27 @@ def test_cancel_retains_workspace_and_browser_owner_until_current_save_settles(t
     lock.release(owner)
 
 
+def test_latest_batch_observations_are_memory_only_and_recovered_pdf_has_no_final_failure(tmp_path):
+    value, path = paper(tmp_path, "fixture")
+    lock = BrowserTaskLock()
+    bridge = Bridge()
+    batch = BatchImportService(bridge, lock)
+    batch.start(tmp_path, browser_owner=lock.acquire("kept"))
+    assert bridge.dispatched.wait(2)
+    result = {**confirmed(), "last_import": {"item_exists":True, "pdf_attached":True, "pdf_source":"openalex", "fallback_used":True, "query_diagnostic":None},
+              "pdf":{"outcome":"unverified", "registered":True, "source":"openalex", "failures":[{"phase":"initial_fetch", "code":"http_error", "status":403}]},
+              "zotero":{"parent_key":"ABCDEFGH"}}
+    bridge.future.set_result(result)
+    batch.join()
+    observed = batch.snapshot().results[0]
+    assert observed.item_exists is True and observed.pdf_attached is True
+    assert observed.pdf_source == "openalex" and observed.fallback_used is True
+    assert observed.diagnostic is None
+    assert "ABCDEFGH" not in path.read_text() and "pdf_source" not in path.read_text()
+    from allfold.application.history import batch_history
+    assert "pdf_source" not in str(batch_history(batch.snapshot()))
+
+
 def test_disconnect_stops_batch_without_replaying_or_changing_papers(tmp_path):
     _, a = paper(tmp_path, "a")
     _, b = paper(tmp_path, "b")
@@ -128,6 +149,84 @@ def test_one_authenticated_socket_matches_a_single_request():
             socket.send_json({"type": "progress", "id": request["id"], "action": request["action"], "data": {"message": "saving"}})
             socket.send_json({"type": "result", "id": request["id"], "action": request["action"], "data": confirmed()})
             assert pending.result(timeout=2) == confirmed()
+
+
+def test_openalex_subrequest_is_on_demand_and_bound_to_exact_import():
+    calls = []
+    target = {"server_id":"SERVERFIXTUR", "library_type":"user", "library_id":"0", "collection_key":None}
+    bridge = ElectronBridge("secret", "testserver", openalex_pdf=lambda doi: calls.append(doi) or {"candidates":["https://oa.example/paper.pdf"]})
+    app = FastAPI()
+    app.websocket("/ws")(bridge.connect)
+    with TestClient(app) as client:
+        with client.websocket_connect("/ws") as socket:
+            socket.send_json({"token":"secret"})
+            socket.receive_json()
+            pending = bridge.execute("import_paper", {"doi":"10.5555/test", "zotero_target":target})
+            request = socket.receive_json()
+            assert calls == []
+            socket.send_json({"type":"openalex_pdf", "id":request["id"], "action":"import_paper", "lookup_id":"lookup1",
+                              "data":{"doi":"10.5555/test", "target":target, "parent_key":"ABCDEFGH"}})
+            assert socket.receive_json() == {"type":"openalex_pdf_result", "id":request["id"], "action":"import_paper",
+                "lookup_id":"lookup1", "data":{"candidates":["https://oa.example/paper.pdf"]}}
+            socket.send_json({"type":"result", "id":request["id"], "action":"import_paper", "data":confirmed()})
+            pending.result(timeout=2)
+    assert calls == ["10.5555/test"]
+
+
+@pytest.mark.parametrize("changed", [{"doi":"10.5555/other"}, {"parent_key":"../../file"}, {"target":{}}])
+def test_openalex_rejects_wrong_doi_target_or_parent_without_query(changed):
+    from starlette.websockets import WebSocketDisconnect
+    calls = []
+    target = {"server_id":"SERVERFIXTUR", "library_type":"user", "library_id":"0"}
+    bridge = ElectronBridge("secret", "testserver", openalex_pdf=lambda doi: calls.append(doi) or {})
+    app = FastAPI()
+    app.websocket("/ws")(bridge.connect)
+    with TestClient(app) as client:
+        with client.websocket_connect("/ws") as socket:
+            socket.send_json({"token":"secret"}); socket.receive_json()
+            bridge.execute("import_paper", {"doi":"10.5555/test", "zotero_target":target})
+            request = socket.receive_json()
+            socket.send_json({"type":"openalex_pdf", "id":request["id"], "action":"import_paper", "lookup_id":"one",
+                "data":{"doi":"10.5555/test", "target":target, "parent_key":"ABCDEFGH", **changed}})
+            with pytest.raises(WebSocketDisconnect):
+                socket.receive_json()
+        client.portal.call(bridge.finish_disconnected)
+    assert calls == []
+
+
+@pytest.mark.parametrize("disconnect", [False, True])
+def test_openalex_lookup_cannot_deliver_candidates_after_cancel_or_disconnect(disconnect):
+    started, release = threading.Event(), threading.Event()
+    def lookup(doi):
+        started.set()
+        assert release.wait(2)
+        return {"candidates":["https://oa.example/private.pdf"]}
+    target = {"server_id":"SERVERFIXTUR", "library_type":"user", "library_id":"0", "collection_key":None}
+    bridge = ElectronBridge("secret", "testserver", openalex_pdf=lookup)
+    app = FastAPI()
+    app.websocket("/ws")(bridge.connect)
+    with TestClient(app) as client:
+        with client.websocket_connect("/ws") as socket:
+            socket.send_json({"token":"secret"}); socket.receive_json()
+            pending = bridge.execute("import_paper", {"doi":"10.5555/test", "zotero_target":target})
+            request = socket.receive_json()
+            socket.send_json({"type":"openalex_pdf", "id":request["id"], "action":"import_paper", "lookup_id":"one",
+                "data":{"doi":"10.5555/test", "target":target, "parent_key":"ABCDEFGH"}})
+            assert started.wait(2)
+            if disconnect:
+                release.set()
+                socket.close()
+            else:
+                bridge.cancel_current().result(timeout=2)
+                assert socket.receive_json()["type"] == "cancel"
+                release.set()
+                socket.send_json({"type":"progress", "id":request["id"], "action":"import_paper", "data":{}})
+                socket.send_json({"type":"result", "id":request["id"], "action":"import_paper", "data":confirmed()})
+                assert pending.result(timeout=2) == confirmed()
+        if disconnect:
+            client.portal.call(bridge.finish_disconnected)
+            with pytest.raises(ElectronDisconnected):
+                pending.result(timeout=2)
 
 
 def test_cancel_message_is_bound_to_pending_request_and_keeps_ownership_until_result():

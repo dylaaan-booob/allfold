@@ -20,7 +20,7 @@ async function requestSessionHTTP(session,{method,url,headers={},body,referrer,t
   if(!session)throw Error('HTTP request requires a Session');
   const {net}=require('electron');
   let initialURL;
-  try {initialURL=new URL(url);context.validateRedirect?.(initialURL.href);}
+  try {initialURL=new URL(url);const checked=context.validateRedirect?.(initialURL.href);if(checked?.then)await checked;}
   catch(error){throw new RequestTransportError('redirect_rejected',error);}
   const requestHeaders={...headers};let candidateCookieHeader,authorization;
   // Helpers run in an offscreen document; its origin is never a site Referer.
@@ -56,9 +56,10 @@ async function requestSessionHTTP(session,{method,url,headers={},body,referrer,t
         if(finished)return;
         try {
           if(++redirects>(context.maxRedirects ?? 20))throw Error('Too many redirects');
-          context.validateRedirect?.(target);
-          registration?.redirect(target);
-          request.followRedirect();responseURL=target;
+          const follow=()=>{if(finished)return;registration?.redirect(target);request.followRedirect();responseURL=target;};
+          const checked=context.validateRedirect?.(target);
+          if(checked?.then)Promise.resolve(checked).then(follow).catch(error=>fail(new RequestTransportError('redirect_rejected',error)));
+          else follow();
         } catch(error){fail(new RequestTransportError('redirect_rejected',error));}
       });
       request.on('response',incoming=>{

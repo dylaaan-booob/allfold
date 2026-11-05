@@ -190,3 +190,50 @@ def test_queue_on_a_fresh_workspace_keeps_saved_services_visible_without_writes(
         assert response.status_code == 200
         assert next(row for row in response.json()['services'] if row['id'] == service.id)['eligible'] == 0
     assert not (tmp_path / 'workspace').exists()
+
+
+def test_last_import_counts_keep_execution_service_deduplicate_and_hide_native_keys(tmp_path):
+    from fastapi.testclient import TestClient
+    from allfold.web.app import create_app
+    from electron_test_helpers import OfflineBridge
+    config, service, other, values = scoped_workspace(tmp_path)
+    class Bridge(OfflineBridge):
+        connected = True
+        def execute(self, action, data, progress=None):
+            future = Future()
+            if action == 'zotero_local':
+                future.set_result({'ok':True})
+            else:
+                future.set_result({'settled':True, 'parent':{'outcome':'confirmed', 'status':200,
+                    'protocol':'local-api-v3', 'requested_id':'ABCDEFGH', 'accepted_id':'ABCDEFGH'},
+                    'pdf':{'registered':True, 'failures':[{'phase':'initial_fetch', 'code':'http_error', 'status':403}]},
+                    'zotero':{'parent_key':'ABCDEFGH', 'attachment_keys':['BCDEFGHI']},
+                    'last_import':{'item_exists':True, 'pdf_attached':True, 'pdf_source':'openalex',
+                                   'fallback_used':True, 'query_diagnostic':None}})
+            return future
+    app = create_app(config, electron_bridge=Bridge(), diagnostics_root=tmp_path / 'logs')
+    with TestClient(app, base_url='http://localhost') as client:
+        queue = client.get('/api/kept-workflow/queue', params={'service_id':service.id}).json()
+        response = client.post('/api/kept-workflow/start', json={'csrf_token':app.state.csrf_token,
+            'import_token':queue['import_token'], 'service_id':service.id, 'mode':'import_only'})
+        assert response.status_code == 200
+        app.state.batch_import.join()
+        app.state.kept_workflow.advance()
+        observed = client.get('/api/kept-workflow/state').json()['batch']['results'][0]
+        assert observed['item_exists'] and observed['pdf_attached'] and observed['fallback_used']
+        assert observed['pdf_source'] == 'openalex'
+        assert 'ABCDEFGH' not in str(observed) and 'BCDEFGHI' not in str(observed)
+        saved = load_user_state(config)
+        compare_write_user_state(config, replace(saved.state, journals=tuple(
+            journal.model_copy(update={'access_service_id':other.id}) for journal in saved.state.journals)), saved.revision)
+        batch = app.state.batch_import.snapshot()
+        from allfold.application.kept_queue import kept_queue
+        # Even duplicate transient delivery must count the same Paper once.
+        duplicate = replace(batch, results=(*batch.results, batch.results[0]),
+                            plan=replace(batch.plan, papers=(*batch.plan.papers, batch.plan.papers[0])))
+        current = load_user_state(config).state
+        rows = {row['id']:row for row in kept_queue(tmp_path/'workspace', current.journals,
+            current.access_services, None, duplicate)['services']}
+        assert [rows[service.id][field] for field in ['confirmed','pdf_attached','fallback','issues']] == [1,1,1,0]
+        assert [rows['all'][field] for field in ['confirmed','pdf_attached','fallback','issues']] == [1,1,1,0]
+        assert rows[other.id]['confirmed'] == 0

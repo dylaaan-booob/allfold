@@ -220,6 +220,8 @@ def create_app(config_path: Path, *, electron_bridge: ElectronBridge, diagnostic
     if electron_bridge is None:
         raise ValueError('ElectronBridge is required')
     resolved_config_path = config_path.resolve()
+    from allfold.application.import_openalex import lookup_pdf_candidates
+    electron_bridge.openalex_pdf = lambda doi: lookup_pdf_candidates(doi, config_path=resolved_config_path)
     csrf_token = secrets.token_urlsafe(32)
     deletion_key = secrets.token_bytes(32)
 
@@ -366,7 +368,7 @@ def create_app(config_path: Path, *, electron_bridge: ElectronBridge, diagnostic
                        "total": len(batch.plan.papers) if batch.plan else 0,
                        "current_paper_id": str(batch.current_paper_id) if batch.current_paper_id else None,
                        "statistics": jsonable_encoder(batch.statistics),
-                       "results": jsonable_encoder(batch.results), "message": batch.message}
+                       "results": [jsonable_encoder(result, exclude={"native_identity"}) for result in batch.results], "message": batch.message}
                       if workflow.import_started else None),
         }
 

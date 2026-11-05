@@ -1,13 +1,13 @@
 """Serial native Import with transient projections and guarded Paper writes."""
 from __future__ import annotations
-from dataclasses import dataclass, replace
+from dataclasses import dataclass, replace, field
 from enum import Enum
 from pathlib import Path
 from uuid import UUID
 import threading
 import secrets
 from allfold.application.history import observe, batch_history
-from allfold.browser_diagnostics import normalize_browser_diagnostic, first_attachment_diagnostic
+from allfold.browser_diagnostics import normalize_browser_diagnostic, first_attachment_diagnostic, format_browser_diagnostic
 from allfold.application.access import AccessObservation
 from allfold.application.export_attempts import (
     PdfOutcome, _reserve_export_attempt_locked, complete_electron_import, ExportCompletionOutcome,
@@ -41,6 +41,12 @@ class BatchPaperResult:
     diagnostic: dict | None = None
     service_id: str | None = None
     service_assignment: str = 'unassigned'
+    item_exists: bool | None = None
+    pdf_attached: bool | None = None
+    pdf_source: str | None = None
+    fallback_used: bool | None = None
+    query_diagnostic: dict | None = None
+    native_identity: dict | None = field(default=None, repr=False)
 
 @dataclass(frozen=True)
 class BatchStatistics:
@@ -231,11 +237,28 @@ class BatchImportService:
                         outcome = {ExportCompletionOutcome.EXPORTED:"exported", ExportCompletionOutcome.NO_EFFECT:"no_effect",
                             ExportCompletionOutcome.UNCERTAIN:"uncertain"}.get(completion.outcome,"blocked")
                         pdf = result.get("pdf")
-                        attachment_diagnostic = first_attachment_diagnostic(pdf.get("failures")) if isinstance(pdf, dict) else None
-                        results.append(BatchPaperResult(paper.paper_id,outcome,completion.message,PdfOutcome.UNVERIFIED,
+                        failures = pdf.get("failures") if isinstance(pdf, dict) else None
+                        if isinstance(pdf, dict) and pdf.get("registered") is True and isinstance(failures, list):
+                            failures = [failure for failure in failures if isinstance(failure, dict)
+                                        and failure.get("phase") not in {"initial_fetch", "oa_resolver"}]
+                        attachment_diagnostic = first_attachment_diagnostic(failures)
+                        last = result.get("last_import") if isinstance(result.get("last_import"), dict) else {}
+                        observations = {key: last.get(key) if type(last.get(key)) is bool else None
+                                        for key in ("item_exists", "pdf_attached", "fallback_used")}
+                        if not last and result.get("parent", {}).get("outcome") == "no_effect":
+                            observations = dict.fromkeys(observations, False)
+                        source = last.get("pdf_source")
+                        query = last.get("query_diagnostic")
+                        if isinstance(query, dict):
+                            query = normalize_browser_diagnostic(query)
+                        reason = completion.message + (' ' + format_browser_diagnostic(attachment_diagnostic, include_pdf_uncertainty=False)
+                                                       if attachment_diagnostic else '')
+                        results.append(BatchPaperResult(paper.paper_id,outcome,reason,PdfOutcome.UNVERIFIED,
                             parent_outcome="confirmed" if outcome in {"exported", "blocked"} else outcome,
                             reason_code="write_failed" if outcome == "blocked" else "result_unconfirmed" if outcome == "uncertain" else "no_effect" if outcome == "no_effect" else "pdf_unverified",
-                            diagnostic=normalize_browser_diagnostic(result.get("diagnostic")) or attachment_diagnostic))
+                            diagnostic=normalize_browser_diagnostic(result.get("diagnostic")) or attachment_diagnostic,
+                            **observations, pdf_source=source if source in {"translator", "openalex", "none"} else None,
+                            query_diagnostic=query, native_identity=result.get("zotero")))
                         if outcome in {"uncertain", "blocked"} or result.get("stop_batch") is True:
                             phase, message = BatchPhase.PAUSED, completion.message
                             break
@@ -265,7 +288,7 @@ class BatchImportService:
                     service_assignment=assignment[result.paper_id].service_assignment) for result in results]
             if phase is BatchPhase.COMPLETED:
                 exported = sum(result.outcome == "exported" for result in results)
-                message = f"Import finished: {exported} imported, {len(results) - exported} not imported; PDF unverified"
+                message = f"Import finished: {exported} imported, {len(results) - exported} not imported"
             if plan is not None and phase is not BatchPhase.COMPLETED:
                 finished = {result.paper_id for result in results}
                 results.extend(BatchPaperResult(paper.paper_id, "skipped", message,
