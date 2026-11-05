@@ -155,48 +155,7 @@ def _tokenize(text: str) -> tuple[_Token, ...]:
             while suffix_position < len(text) and text[suffix_position].isspace():
                 suffix_position += 1
             if suffix_position < len(text) and text[suffix_position] == "~":
-                wildcard_position = text.find("*", start + 1, position - 1)
-                if wildcard_position >= 0:
-                    raise KeywordSyntaxError(
-                        "wildcard '*' cannot be combined with proximity search",
-                        wildcard_position,
-                    )
-                distance_position = suffix_position + 1
-                distance_end = distance_position
-                while (
-                    distance_end < len(text)
-                    and not text[distance_end].isspace()
-                    and text[distance_end] not in {'(', ')', '"'}
-                ):
-                    distance_end += 1
-                distance_text = text[distance_position:distance_end]
-                if not distance_text:
-                    raise KeywordSyntaxError(
-                        "proximity distance is required", suffix_position
-                    )
-                if _DECIMAL_INTEGER.fullmatch(distance_text) is None:
-                    raise KeywordSyntaxError(
-                        "proximity distance must be a decimal integer",
-                        distance_position,
-                    )
-                distance = int(distance_text)
-                if distance > 50:
-                    raise KeywordSyntaxError(
-                        "proximity distance must be between 0 and 50",
-                        distance_position,
-                    )
-
-                # S1 只校验语法和距离范围；真实 unicode61 token 数量必须由
-                # S2 复用 FTS5 tokenizer 校验，避免在 parser 里维护第二套分词规则。
-                tokens.append(
-                    _Token(
-                        _TokenKind.PROXIMITY,
-                        "".join(phrase),
-                        start,
-                        distance=distance,
-                    )
-                )
-                position = distance_end
+                raise KeywordSyntaxError("proximity search is no longer supported", suffix_position)
             else:
                 tokens.append(_Token(_TokenKind.PHRASE, "".join(phrase), start))
             continue
@@ -209,6 +168,8 @@ def _tokenize(text: str) -> tuple[_Token, ...]:
         ):
             position += 1
         value = text[start:position]
+        if "?" in value or "~" in value:
+            raise KeywordSyntaxError("unsupported wildcard or proximity operator", start)
         if "*" in value:
             tokens.append(_prefix_token(value, start))
             continue
@@ -334,3 +295,28 @@ def compile_native_expression(expression: KeywordExpression, *, provider: str, m
 
     content = operand(expression)
     return f"TS=({content})" if provider == "wos" else content
+
+
+def lexical_tokens(text: str) -> tuple[str, ...]:
+    normalized = unicodedata.normalize("NFKD", text).casefold()
+    normalized = "".join(c for c in normalized if not unicodedata.combining(c))
+    return tuple(re.findall(r"[^\W_]+", normalized, re.UNICODE))
+
+
+def matches_fields(expression: KeywordExpression, fields) -> bool:
+    """Evaluate candidates in memory; phrases never span field boundaries."""
+    token_fields = tuple(lexical_tokens(str(value)) for value in fields if value)
+    def visit(node):
+        if isinstance(node, And):
+            return visit(node.left) and visit(node.right)
+        if isinstance(node, Or):
+            return visit(node.left) or visit(node.right)
+        if isinstance(node, Proximity):
+            raise ValueError("proximity search is no longer supported")
+        words = lexical_tokens(node.value)
+        if not words:
+            return False
+        if isinstance(node, Prefix):
+            return any(word.startswith(words[0]) for field in token_fields for word in field)
+        return any(field[i:i + len(words)] == words for field in token_fields for i in range(len(field)))
+    return visit(expression)
