@@ -81,16 +81,37 @@ test('hidden attachment helper failure advances to visible capture without repla
  assert.deepEqual(downloads,['https://publisher.example/challenge',captured]);
  assert.equal(f.created.length,2);assert.equal(f.uploaded.length,1);
 });
+test('failed hidden captured downloads recover visibly from the original challenge URL',async()=>{
+ for(const failure of ['network_error','timeout','mime_mismatch']) {
+  const f=fixture(),downloads=[],helpers=[],original='https://publisher.example/challenge';
+  const hidden='https://cdn.example/hidden.pdf',visible='https://cdn.example/visible.pdf';
+  const result=await f.run({item:{...item,attachments:[{mimeType:'application/pdf',url:original}]},
+   browser:{partition:{resolveHost:async()=>({endpoints:[{address:'93.184.216.34'}]})},documentCurrent:()=>true,
+    bypassAttachment:async(url,doc,options)=>{helpers.push({url,visible:options.visible});return options.visible?visible:hidden;}},
+   requestHTTP:async(_session,spec)=>{
+    downloads.push(spec.url);
+    if(spec.url===original)return {status:403,headers:[['content-type','text/html']],body:Buffer.from('challenge')};
+    if(spec.url===hidden && failure!=='mime_mismatch')throw Object.assign(Error('Hidden download failed'),{code:failure});
+    return {status:200,headers:[['content-type','application/pdf']],body:Buffer.from(spec.url===hidden?'invalid PDF':'%PDF-1.7\nfixture')};
+   }});
+  assert.equal(result.pdf.registered,true,failure);
+  assert.deepEqual(helpers,[{url:original,visible:false},{url:original,visible:true}],failure);
+  assert.deepEqual(downloads,[original,hidden,visible],failure);
+  assert.equal(f.created.length,2);assert.equal(f.uploaded.length,1);assert.equal(f.uploaded[0].bytes.toString(),'%PDF-1.7\nfixture');
+ }
+});
 test('cancellation and source changes during hidden recovery block visible helpers and new writes',async()=>{
- for(const canceled of [true,false]) {
+ for(const duringDownload of [false,true])for(const canceled of [true,false]) {
   const f=fixture(),controller=new AbortController(),helpers=[];let current=true,downloads=0,fallback=0;
+  const invalidate=()=>{if(canceled)controller.abort();else current=false;};
   const result=await f.run({signal:controller.signal,item:{...item,attachments:[{mimeType:'application/pdf',url:'https://publisher.example/challenge'}]},
    browser:{partition:{resolveHost:async()=>({endpoints:[{address:'93.184.216.34'}]})},documentCurrent:()=>current,
-    bypassAttachment:async(url,doc,{visible})=>{helpers.push(visible);if(canceled)controller.abort();else current=false;throw Error('Hidden helper ended');}},
+    bypassAttachment:async(url,doc,{visible})=>{helpers.push(visible);if(duringDownload)return 'https://cdn.example/captured.pdf';invalidate();throw Error('Hidden helper ended');}},
    fallbackPDF:async()=>{fallback++;return {candidates:[]};},
-   requestHTTP:async()=>{downloads++;return {status:403,headers:[['content-type','text/html']],body:Buffer.from('challenge')};}});
+   requestHTTP:async(_session,spec)=>{downloads++;if(spec.url==='https://cdn.example/captured.pdf'){invalidate();throw Object.assign(Error('Download ended'),{code:'network_error'});}
+    return {status:403,headers:[['content-type','text/html']],body:Buffer.from('challenge')};}});
   assert.equal(result.pdf.registered,false);assert.deepEqual(helpers,[false]);
-  assert.equal(downloads,1);assert.equal(fallback,0);assert.equal(f.created.length,1);assert.equal(f.uploaded.length,0);
+  assert.equal(downloads,duringDownload?2:1);assert.equal(fallback,0);assert.equal(f.created.length,1);assert.equal(f.uploaded.length,0);
   assert.equal(result.pdf.failures[0].code,canceled?'canceled':'document_changed');
  }
 });

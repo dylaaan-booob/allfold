@@ -73,32 +73,37 @@ async function saveImportOnce({item,apiItem,doi,doc,browser,signal,target,api,re
    catch(error){record(error,'note_save');result.stop_batch=true;attachmentWriteFailed=true;break;}
  }
  const fetchAttachment=async(attachment,source)=>{
-   let url=await validateDownloadURL(browser.partition,attachment.url);
+   const originalURL=await validateDownloadURL(browser.partition,attachment.url);
+   let url=originalURL;
    const get=()=>{current();return requestHTTP(browser.partition,{method:'GET',url,headers:{},referrer:source==='translator'?doc.url:undefined,
      referrerPolicy:'origin-when-cross-origin',timeout:30000},
      {doc,signal,kind:'item-saver',cookieAdapter:browser.cookieAdapter,maxBytes:MAX_ATTACHMENT_BYTES,maxRedirects:8,
        validateRedirect:value=>validateDownloadURL(browser.partition,value)});};
    let response=await get();
    const contentType=()=>response.headers.find(([key])=>key.toLowerCase()==='content-type')?.[1]?.split(';')[0]?.trim().toLowerCase() || '';
+   const downloaded=()=>{
+     current();
+     if(response.status<200 || response.status>=300)throw Object.assign(Error('Download failed'),{code:'http_error',status:response.status});
+     const bytes=Buffer.from(response.body),mime=attachment.mimeType || attachment.contentType || contentType();
+     if(!bytes.length || bytes.length>MAX_ATTACHMENT_BYTES)throw Object.assign(Error('Attachment size invalid'),{code:bytes.length?'response_too_large':'empty_response'});
+     if(mime==='application/pdf' && (!bytes.subarray(0,1024).includes(Buffer.from('%PDF-')) || !['application/pdf','application/octet-stream',''].includes(contentType()))
+       || mime!=='application/pdf' && contentType()==='text/html')throw Object.assign(Error('Attachment content invalid'),{code:'mime_mismatch'});
+     return {bytes,mime,url};
+   };
    // Retain task-bound challenge helpers, with one hidden and one visible attempt.
    if(response.status===403 || response.headers.some(([key,value])=>key.toLowerCase()==='cf-mitigated'&&value==='challenge')) {
      for(const visible of [false,true]) {
        current();
-       let captured;
-       try {captured=await browser.bypassAttachment?.(url,doc,{signal,visible});}
-       catch(error) {current();if(visible)throw error;continue;}
-       current();
-       if(captured)url=await validateDownloadURL(browser.partition,captured);
-       response=await get();
-       if(response.status>=200&&response.status<300&&contentType()!=='text/html')break;
+       try {
+         const captured=await browser.bypassAttachment?.(originalURL,doc,{signal,visible});
+         current();
+         url=await validateDownloadURL(browser.partition,captured || originalURL);
+         response=await get();
+         return downloaded();
+       }catch(error) {current();if(visible || ['canceled','document_changed'].includes(error.code))throw error;}
      }
    }
-   if(response.status<200 || response.status>=300)throw Object.assign(Error('Download failed'),{code:'http_error',status:response.status});
-   const bytes=Buffer.from(response.body),mime=attachment.mimeType || attachment.contentType || contentType();
-   if(!bytes.length || bytes.length>MAX_ATTACHMENT_BYTES)throw Object.assign(Error('Attachment size invalid'),{code:bytes.length?'response_too_large':'empty_response'});
-   if(mime==='application/pdf' && (!bytes.subarray(0,1024).includes(Buffer.from('%PDF-')) || !['application/pdf','application/octet-stream',''].includes(contentType()))
-     || mime!=='application/pdf' && contentType()==='text/html')throw Object.assign(Error('Attachment content invalid'),{code:'mime_mismatch'});
-   return {bytes,mime,url};
+   return downloaded();
  };
  const saveAttachment=async(attachment,source)=>{
    let downloaded;try{downloaded=await fetchAttachment(attachment,source);}catch(error){record(error,source==='translator'?'initial_fetch':'oa_resolver');return false;}
