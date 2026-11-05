@@ -152,7 +152,7 @@ class BatchImportService:
         observe(self.diagnostics, "finish", self._history_context["task_id"], outcome, statistics=counts, details=details)
 
     def stop(self):
-        # End navigation/verification waiting, but let an escaped ItemSaver settle.
+        # End navigation/verification waiting, but let an escaped native save settle.
         with self._mutex:
             self._stop.set()
             self.bridge.cancel_current()
@@ -172,7 +172,7 @@ class BatchImportService:
         plan = None
         phase, message = BatchPhase.COMPLETED, "No eligible Papers to import"
         try:
-            # Held across translation, the complete ItemSaver call and Paper commit.
+            # Held across translation, the complete native Import call and Paper commit.
             with workspace_operation_lock(workspace) as lock:
                 if validate_target:
                     validate_target(lock)

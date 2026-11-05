@@ -194,7 +194,7 @@ class ElectronBridge:
                 pass
 
     def finish_disconnected(self):
-        """Called only by process teardown after Main has waited for local ItemSaver.
+        """Called only by process teardown after Main has waited for the native Local API save.
 
         A dropped transport cannot prove a native operation settled. Keep the
         pending worker (and its Workspace lock) until controlled shutdown.
@@ -234,7 +234,7 @@ class ElectronBridge:
             observe(self.diagnostics, "event", "task_started", self._pending_context)
         try:
             await self._socket.send_json({"type": "execute", "id": request_id, "action": action, "data": data})
-            # An active ItemSaver must settle. Timeout must not release Workspace ownership.
+            # An active native save must settle. Timeout must not release Workspace ownership.
             return await result
         except (WebSocketDisconnect, OSError, RuntimeError) as error:
             raise ElectronDisconnected("Electron result unavailable; no automatic replay") from error
@@ -264,7 +264,7 @@ class ElectronBridge:
         return True
 
     def cancel_current(self):
-        """Stop pre-save work; Main never aborts an escaped native ItemSaver."""
+        """Stop pre-save work; Main never aborts an escaped native save."""
         challenge = self._challenge_stop
         if self._lookup_stop is not None:
             self._lookup_stop.set()

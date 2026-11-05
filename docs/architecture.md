@@ -12,7 +12,8 @@ flowchart LR
     BRIDGE <-->|authenticated WebSocket| MAIN[Electron Main]
     UI -->|restricted Preload| MAIN
     MAIN --> BROWSER[Native browser and Session]
-    MAIN --> ZOTERO[Translator and ItemSaver]
+    MAIN --> TRANSLATE[Official Translator and Translate]
+    MAIN --> ZOTERO[Zotero Local API]
     APP --> DATA[Paper and configuration files]
     APP --> PROVIDERS[Provider adapters]
 ```
@@ -34,7 +35,7 @@ Main starts one Python process. The HTTP origin remains loopback-only on port 18
 | `electron/src/browser/` | Native pages, main-window presentation, document identity, navigation and shared Session |
 | `electron/src/auth/` | Task-scoped institution authentication and credentials |
 | `electron/src/workflows/` | Prepare, Covers and WoS native page operations |
-| `electron/src/zotero/` | Translation/saving VMs and host document/HTTP adapters |
+| `electron/src/zotero/` | Official translation sandbox, Local API persistence and host document/HTTP adapters |
 | `electron/src/preload/`, `native-ui/` | Restricted capabilities and local native-window UI |
 
 Models, configuration definitions, identifiers and query primitives remain shared Python modules. Application code does not depend on Web adapters; its BrowserGateway describes the existing connected/execute/cancel interface. ElectronBridge adapts it to transport. A pending Future preserves the distinction between cancellation and an already-started save reaching a terminal result.
@@ -53,7 +54,26 @@ filtering the dispatch plan. Prepare, waiting, Continue and Import retain that
 same scope even if the displayed Service filter changes. Queue statistics read
 saved associations, while completed batch results retain execution-time Service
 and Paper identities independently of later Journal mapping edits. Confirmed
-parent saves and attachment-stage diagnostics remain separate from PDF unverified.
+parent saves and attachment-stage diagnostics remain separate from PDF evidence.
+
+The signed Kept target also captures one Zotero Server ID, Library and optional
+Collection before Prepare. The configuration's default is a preference for the
+next execution, never Desktop's currently selected Collection. Electron stores
+Local API authorization separately with protected storage and checks the pinned
+instance. Native Local API writes have no automatic replay. Each parent and
+attachment has a preallocated native key; per-object create responses and the
+complete file upload protocol determine the known result. Browser Session GETs
+download Translator PDFs first; an on-demand Python OpenAlex lookup supplies
+up to four direct-PDF fallback candidates using existing provider credentials.
+OpenAlex queries use the Python HTTP client; fallback PDF GETs use Browser
+Session without the publisher referrer or any Zotero authorization.
+
+Last Import belongs to the process-local batch result. Exact-key parent and
+children reads provide Item/PDF/Fallback indicators; PDF success additionally
+requires confirmed upload registration from that execution. Read errors remain
+unknown. Keys and PDF source do not enter Paper frontmatter or a new persistent
+verification store. Service attribution comes from the fixed plan. These checks
+do not request file paths, read saved PDFs or monitor later user deletions.
 
 BrowserRuntime keeps one current association per physical page, including the workflow/task/request, role, optional Paper/DOI and source page. `pageAssociation(pageId)` returns descriptive metadata with an explicit active flag; `servicePages(scopeId, serviceId)` filters existing pages without creating them. Task completion clears live ownership while retaining the page's last association for inspection. Destruction removes its association and live source/opener references; renderer exit invalidates the association. Reviewed diagnostic events capture the last association before invalidation. They do not restore live associations or change Session, page recycling or closure behavior.
 

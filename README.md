@@ -24,7 +24,7 @@ Setup installs locked dependencies, obtains fixed Zotero sources, builds the UI 
 1. In **Journals**, manage your followed Journals, Groups, Labels and default Access Services. Each running configuration has its own saved scope. Import a Markdown research scope through Preview / Confirm, or export **User Data** to share it.
 2. In **Run**, set the Monitor name, keywords and publication months. Open Provider Directory for OpenAlex, Crossref, PubMed or Web of Science; provider-specific settings are in its Sidebar. Ordinary changes save automatically, and a new Run waits for saved configuration. Runs are independent and create-only; existing Paper files are not rewritten.
 3. Review candidates in **Workspace / ARRAY**. Keep and Reject are explicit actions; notes and other human-managed content remain in Paper Markdown. Settings defaults **禁用 Archive 视图** on; turn it off to restore ARCHIVE.
-4. Open **Kept** for the Service queue, **PREPARE & IMPORT** or **IMPORT ONLY**. Select All Services or one saved Service before starting. The selected batch scope remains fixed through Prepare, waiting and Import. Zotero Desktop must be running for Import.
+4. Open **Kept** for the Service queue, **PREPARE & IMPORT** or **IMPORT ONLY**. Run Zotero **10.0.6 or later** with its Local API enabled, authorize Allfold with **Always Allow**, and select a Library and optional Collection in Queue. This default saves with the current configuration. Select All Services or one saved Service before starting; the batch retains its original Zotero instance, target and Service scope through Prepare, waiting and Import.
 
 Enrich retrieves eligible missing metadata without saving a Zotero item. Covers Search targets one saved Journal; Upload and Crop use local assets.
 
@@ -41,7 +41,7 @@ evidence for that workflow. Diagnostic packages are local downloads; sharing the
 is your choice. See [local history and
 diagnostics](docs/logging.md) for retention, privacy and evidence limits.
 
-Parent acceptance and PDF evidence are separate. If a save result is uncertain, inspect Zotero before retrying. CAPTCHA, MFA and ambiguous authentication pages can require manual intervention.
+Parent acceptance and PDF evidence are separate. Import tries Translator PDFs first, then OpenAlex's direct public PDF locations when needed. **Last Import** shows Item, PDF and Fallback results for the latest execution, using read-only queries for the exact newly created items. A query failure shows unable to verify; a PDF attachment shell does not count as an uploaded file. Results can be filtered by their execution-time Service and are not restored after restart. Allfold does not inspect saved PDF paths or files. If a save result is uncertain, inspect Zotero before retrying. CAPTCHA, MFA and ambiguous authentication pages can require manual intervention.
 
 ## Local data and privacy
 
@@ -56,9 +56,12 @@ Parent acceptance and PDF evidence are separate. If a save result is uncertain, 
 | `workspace/` | Paper Markdown, review status and local diagnostics | No |
 | `journal-assets/` | Journal covers | No |
 | Electron application logs directory | Bounded configuration-scoped run history and structured diagnostics | No |
+| Electron application user-data directory, `zotero-local-key.bin` | Protected, Server-ID-bound Zotero authorization | No |
 | `*.openalex-secrets.json`, `*.pubmed-secrets.json` | API keys beside the configuration | No |
 
 Submit API key replacement or clearing explicitly from the corresponding Run Provider Sidebar. Optional institution credentials use Electron safeStorage separately from YAML, through Kept Access. Ordinary configuration changes save automatically; Pending, failure and conflict states retain the draft. Changes that would invalidate an active task wait until it releases configuration ownership, then recheck saved revisions. Sensitive credential changes and destructive operations keep separate explicit submission and confirmation. Discovery and page workflows contact the selected external providers and sites. The application is not a Zotero Library mirror.
+
+Zotero authorization keys also use Electron protected storage, associated with the Local API's Server ID. A one-use **Allow** key can expire during a multi-request import; **Always Allow** supports the complete operation. Reauthorization never replays an uncertain write. Group metadata does not establish item or file write permission: Zotero checks these separately when saving. Deleted targets, permission failures and a changed Zotero instance do not redirect imports to another Library or Collection. See the [Local API protocol and compatibility notes](docs/zotero-local-api.md) for metadata and attachment boundaries.
 
 Configuration, legacy journal seed and Workspace paths must stay inside the project directory. On first use, each configuration validates and copies its legacy managed Markdown data into SQLite without changing the source file; later changes use SQLite. Include `.allfold/` in local backups. Use **Export User Data** to transfer a research scope to another configuration or application location, since canonical configuration paths identify saved scopes. Export contains no provider credentials, resource caches, Workspace papers or Zotero data. Conferences are outside the new scope model and remain only in the untouched legacy source.
 
