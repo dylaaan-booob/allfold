@@ -12,7 +12,7 @@ from pathlib import Path
 from allfold.application.carsi_catalog import get_carsi_catalog, validate_carsi_service, CatalogError
 from allfold.application.journal_lookup import search_journals, normalized_title
 from allfold.application.journal_resolver import resolve_journal
-from allfold.config import ConfigurationError, JournalConfig, AccessService, SettingsList, normalize_journal_issn
+from allfold.config import ConfigurationError, ConferenceConfig, JournalConfig, AccessService, SettingsList, normalize_journal_issn
 from allfold.persistence.user_state import ContentRevision
 from allfold.persistence.user_state import (
     read_user_state, compare_write_user_state, application_data_dir, validate_user_state,
@@ -32,6 +32,8 @@ class ScopeRow:
     service_status: str
     messages: tuple[str, ...] = ()
     resolution: object | None = None
+    conference: ConferenceConfig | None = None
+    kind: str = "journal"
 
 
 @dataclass(frozen=True)
@@ -49,7 +51,7 @@ def _cells(line):
 
 
 def _parse(contents):
-    sections = {'journals': [], 'groups': [], 'custom labels': [], 'access services': []}
+    sections = {'journals': [], 'conferences': [], 'groups': [], 'custom labels': [], 'access services': []}
     section, header = 'journals', None
     for line in contents.lstrip('\ufeff').splitlines():
         text = line.strip()
@@ -68,7 +70,7 @@ def _parse(contents):
                 continue
             if header is None:
                 header = [cell.casefold() for cell in cells]
-                aliases = {'name': 'journal', 'title': 'journal', 'e-issn': 'eissn', 'labels': 'label',
+                aliases = {'name': 'conference' if section == 'conferences' else 'journal', 'title': 'conference' if section == 'conferences' else 'journal', 'e-issn': 'eissn', 'labels': 'label',
                            'custom labels': 'label', 'access service': 'service', 'access service id': 'service id', 'url': 'access url',
                            'method': 'access method'}
                 header = [aliases.get(key, key) for key in header]
@@ -79,7 +81,7 @@ def _parse(contents):
                 raise ConfigurationError('Markdown table row has a different number of columns')
             sections[section].append(dict(zip(header, cells)))
         elif text.startswith(('- ', '* ', '+ ')):
-            key = {'journals': 'journal', 'groups': 'group', 'custom labels': 'label', 'access services': 'service'}[section]
+            key = {'journals': 'journal', 'conferences': 'conference', 'groups': 'group', 'custom labels': 'label', 'access services': 'service'}[section]
             sections[section].append({key: text[2:].strip()})
     return sections
 
@@ -255,9 +257,67 @@ def preview_research_scope(config_path: Path, list_path: Path, contents: str, *,
         except (ValueError, ConfigurationError, OpenAlexError) as error:
             messages.append(str(error))
         reports.append(ScopeRow(index, row, tuple(candidates), journal, status, service_status, tuple(messages), resolution))
-    proposed = SettingsList(tuple(journals), tuple(groups), tuple(labels), tuple(services))
-    if journals:
-        proposed = validate_user_state(proposed)
+    conferences = list(snapshot.state.conferences)
+    from allfold.persistence.journal_registry import conference_candidates
+    for index, supplied in enumerate(parsed['conferences'], start=len(parsed['journals'])):
+        row, messages, candidates, conference = dict(supplied), [], [], None
+        choice = choices.get(str(index), {})
+        if not isinstance(choice, dict):
+            raise ConfigurationError('Invalid Import choices')
+        status = 'unresolved'
+        for key in ('conference', 'dblp stream'):
+            if key in choice:
+                row[key] = str(choice[key])
+        try:
+            if choice.get('skip'):
+                status = 'skip'
+            else:
+                stream = row.get('dblp stream', '').strip()
+                name = row.get('conference', '').strip()
+                query = stream or name
+                if not query:
+                    raise ValueError('Provide a Conference name or DBLP Stream')
+                candidates = conference_candidates(list_path, query)
+                exact = [c for c in candidates if c['dblp_stream'] == stream] if stream else [
+                    c for c in candidates if normalized_title(name) in {
+                        normalized_title(c['name']), normalized_title(c['abbreviation']),
+                        *(normalized_title(a) for a in c['aliases'])}]
+                if choice.get('candidate') is not None:
+                    selected = choice['candidate']
+                    if not isinstance(selected, dict) or set(selected) != {'id', 'dblp_stream'}:
+                        raise ValueError('Selected Conference requires ID and DBLP Stream')
+                    exact = [c for c in candidates if (c['id'], c['dblp_stream']) == (selected['id'], selected['dblp_stream'])]
+                if len(exact) != 1:
+                    raise ValueError('Choose an exact local Registry series; no online or related-event expansion')
+                selected = exact[0]
+                if row.get('conference id') and row['conference id'] != selected['id']:
+                    raise ValueError('Conference ID conflicts with the Registry Stream identity')
+                existing = [c for c in conferences if c.id == selected['id'] or c.dblp_stream == selected['dblp_stream']]
+                if existing:
+                    if len(existing) != 1 or (existing[0].id, existing[0].dblp_stream) != (selected['id'], selected['dblp_stream']):
+                        status = 'conflict'
+                        messages.append('Conference ID and DBLP Stream identify conflicting saved series')
+                    else:
+                        conference, status = existing[0], 'skip'
+                        messages.append('Existing series; saved Group, Labels and order preserved')
+                else:
+                    group = row.get('group', '').strip() or None
+                    assigned = tuple(v.strip() for v in row.get('label', '').split(';') if v.strip())
+                    if group and group.casefold() not in {g.casefold() for g in groups}:
+                        groups.append(group)
+                    group = next((g for g in groups if group and g.casefold() == group.casefold()), None)
+                    for label in assigned:
+                        if label not in labels:
+                            labels.append(label)
+                    conference = ConferenceConfig(**{k:v for k,v in selected.items() if k in ConferenceConfig.model_fields}, group=group, labels=assigned)
+                    conferences.append(conference)
+                    status = 'add'
+                    changes.append(f'Add Conference: {conference.abbreviation} ({conference.dblp_stream})')
+                messages.append(selected.get('scope_note', ''))
+        except (ValueError, ConfigurationError) as error:
+            messages.append(str(error))
+        reports.append(ScopeRow(index, row, tuple(candidates), None, status, 'not applicable', tuple(messages), conference=conference, kind='conference'))
+    proposed = validate_user_state(SettingsList(tuple(journals), tuple(groups), tuple(labels), tuple(services), tuple(conferences)))
     changes.extend(f'Add Group: {name}' for name in groups if name not in snapshot.state.groups)
     changes.extend(f'Add Label: {name}' for name in labels if name not in snapshot.state.custom_labels)
     previous_ids = {service.id for service in snapshot.state.access_services}
@@ -277,6 +337,8 @@ def export_user_data(config_path: Path) -> str:
     services = {service.id: service.name for service in state.access_services}
     output = '# Allfold User Data\n\n## Journals\n\n| Journal | ISSN | eISSN | Group | Label | Service |\n| --- | --- | --- | --- | --- | --- |\n'
     output += ''.join(f'| {j.name} | {j.issn or ""} | {j.eissn or ""} | {j.group or ""} | {"; ".join(j.labels)} | {services.get(j.access_service_id, "")} |\n' for j in state.journals)
+    from allfold.config import render_conferences_text
+    output += '\n' + render_conferences_text(state.conferences)
     for title, key, values in (('Groups', 'Group', state.groups), ('Custom Labels', 'Label', state.custom_labels)):
         output += f'\n## {title}\n\n| {key} |\n| --- |\n' + ''.join(f'| {value} |\n' for value in values)
     output += '\n## Access Services\n\n| Service | Access URL | Access Method |\n| --- | --- | --- |\n'

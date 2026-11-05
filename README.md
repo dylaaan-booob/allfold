@@ -21,7 +21,7 @@ Setup installs locked dependencies, obtains fixed Zotero sources, builds the UI 
 
 ## Basic workflow
 
-1. In **Journals**, manage your followed Journals, Groups, Labels and default Access Services. Each running configuration has its own saved scope. Import a Markdown research scope through Preview / Confirm, or export **User Data** to share it.
+1. In **Journals**, manage your followed Journals and Conference Series, Groups, Labels and journal Access Services. Conferences use the local DBLP Stream Registry. Each running configuration has its own saved scope. Import a Markdown research scope through Preview / Confirm, or export **User Data** to share it.
 2. In **Run**, set the Monitor name, keywords and publication months. Open Provider Directory for OpenAlex, Crossref, PubMed or Web of Science; provider-specific settings are in its Sidebar. Ordinary changes save automatically, and a new Run waits for saved configuration. Runs are independent and create-only; existing Paper files are not rewritten.
 3. Review candidates in **Workspace / ARRAY**. Keep and Reject are explicit actions; notes and other human-managed content remain in Paper Markdown. Settings defaults **禁用 Archive 视图** on; turn it off to restore ARCHIVE.
 4. Open **Kept** for the Service queue, **PREPARE & IMPORT** or **IMPORT ONLY**. Run Zotero **10.0.6 or later** with its Local API enabled, authorize Allfold with **Always Allow**, and select a Library and optional Collection in Queue. This default saves with the current configuration. Select All Services or one saved Service before starting; the batch retains its original Zotero instance, target and Service scope through Prepare, waiting and Import.
