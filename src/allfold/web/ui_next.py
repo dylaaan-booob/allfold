@@ -190,8 +190,6 @@ def install_ui_next(app: FastAPI, config_path: Path, csrf_token: str, *, read_ta
             message = expressions['integrated']['error']
             try:
                 validate_selection(config)
-                if 'openalex' in config.enabled_providers:
-                    read_credential(config_path)
             except (ValueError, OSError) as error:
                 message = str(error)
             providers['integrated'] = dict(**expressions['integrated'],enabled=not message,message=message,

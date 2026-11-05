@@ -11,14 +11,14 @@ const settings={config_path:'/fixture/monitor.yaml',csrf_token:'fixture',issues:
   name:'Synthetic Monitor',keyword_expression:'causal',from_month:'2026-01',to_month:'2026-01',output_dir:'workspace',log_level:'INFO',
   monitor_revision_exists:'1',monitor_revision_digest:'fixture',journal_revision_exists:'1',journal_revision_digest:'fixture',
   institution_name:'',institution_idp_entity_id:'',auto_import_after_preparation:false,transition_delay_seconds:'3',display_name:'',
-  provider_aliases:{},provider_order:['openalex','crossref','pubmed','wos'],groups:Array.from({length:20},(_,i)=>'Group '+i),
+  provider_aliases:{},provider_order:['openalex','europe_pmc','dblp','zbmath','crossref','arxiv','biorxiv','medrxiv','wos'],enabled_providers:['openalex'],groups:Array.from({length:20},(_,i)=>'Group '+i),
   conferences:[],custom_labels:['Label 0','Label 1','Label 2'],journals,access_services:[{id:'svc_fixture',name:'Synthetic Service',access_method:'manual',access_url:''}],
 }};
 const paper=(i,status='candidate')=>({id:'paper-'+i,title:'Synthetic Paper '+i,publication_date:'2026-10-01',abstract:('An isolated synthetic paragraph for reader scroll verification. '.repeat(12)+'\n\n').repeat(24),authors:['Synthetic Author'],doi:'10.5555/layout-'+i,discovered_at:'2026-10-01T00:00:00Z',status,enrichPhase:'Idle'});
 const records=journals.map((j,i)=>({key:j.issn,issn:j.issn,name:j.name,group:j.group,labels:[],cover:null,papers:[paper(i*2),paper(i*2+1)]}));
 const workspace={csrf_token:'fixture',import_token:'fixture',issues:[],counts:{candidates:48,active_journals:24},subjects:[{name:'Group 0',journals:records}],
   kept:{papers:[{paper:paper(10,'kept'),journal:records[0]},{paper:paper(11,'kept'),journal:records[1]}],journals:records,services:[],settings:{},titles:{}}};
-const run={active:false,snapshot:{status:'IDLE',provider:null},providers:Object.fromEntries(settings.values.provider_order.map(id=>[id,{enabled:false,message:'Offline fixture',result_summary:null}]))};
+const run={active:false,snapshot:{status:'IDLE',provider:null},providers:Object.fromEntries(['integrated','wos'].map(id=>[id,{enabled:false,message:'Offline fixture',result_summary:null}]))};
 const keptQueue={services:[{id:'all',name:'All Services',kept:2,eligible:2},{id:'unassigned',name:'Unassigned',kept:2,eligible:2}],papers:[],import_token:'fixture'};
 let keptState={active:false,phase:'idle',navigation:null,can_continue:false,can_cancel:false};
 const mimes={'.html':'text/html','.js':'text/javascript','.css':'text/css','.json':'application/json','.woff2':'font/woff2','.ttf':'font/ttf','.otf':'font/otf','.png':'image/png','.mp4':'video/mp4'};
@@ -46,7 +46,7 @@ const server=http.createServer((req,res)=>{
   }
   if(route.startsWith('/api/') || route==='/settings/covers/search'){
     const data=route==='/api/ui-next/settings/conferences/search'?{candidates:[conference]}:route==='/api/ui-next/workspace'?workspace:route==='/api/ui-next/settings'?settings:
-      route==='/api/ui-next/run'?run:route==='/api/kept-workflow/queue'?keptQueue:route==='/api/ui-next/run-expression'?{providers:Object.fromEntries(settings.values.provider_order.map(id=>[id,{expression:'causal',error:null}]))}:route==='/settings/covers/search'?cover_search:
+      route==='/api/ui-next/run'?run:route==='/api/kept-workflow/queue'?keptQueue:route==='/api/ui-next/run-expression'?{providers:Object.fromEntries([...settings.values.provider_order,'integrated'].map(id=>[id,{expression:'causal',error:null}]))}:route==='/settings/covers/search'?cover_search:
       route==='/api/kept-workflow/state'?keptState:{active:false,phase:'idle',navigation:null,can_continue:false,can_cancel:false};
     res.writeHead(200,{'Content-Type':'application/json'});res.end(JSON.stringify(data));return;
   }
@@ -309,9 +309,15 @@ app.whenReady().then(async()=>{
       if($('s-settings').dataset.sidebarMode!=='overlay' || $('settings-system-sidebar').hidden)throw Error('Settings System must overlay at 600x480');
       document.querySelector('#settings-system-sidebar [data-sidebar-close]').click();
       $('run-open').click();
+      $('s-run-overview-open').click();
+      if(document.querySelectorAll('[data-discovery-provider]').length!==8)throw Error('Integrated Provider choices missing');
+      if(document.querySelector('[data-provider="pubmed"], [data-monitor="pubmedKey"]'))throw Error('Retired PubMed still displayed');
+      const starts=[...document.querySelectorAll('#s-run [data-run-provider]')].filter(node=>!node.hidden && node.getClientRects().length);
+      if(starts.length!==2 || !starts.some(node=>node.dataset.runProvider==='integrated') || !starts.some(node=>node.dataset.runProvider==='wos'))throw Error('Run must expose Integrated and independent WoS only');
+
       if($('s-run').getBoundingClientRect().width>600 || $('s-run').querySelector('.workspace-content').clientWidth<360)throw Error('Run content lost available width');
       document.querySelector('#s-run [data-flyout]').click();
-      if($('run-provider-flyout').hidden || $('s-providers').children.length!==4)throw Error('Run Provider Directory did not open');
+      if($('run-provider-flyout').hidden || $('s-providers').children.length!==9)throw Error('Run Provider Directory did not open');
       $('s-providers').querySelector('[data-provider="crossref"]').click();
       if($('run-configuration-sidebar').hidden || $('s-run').dataset.sidebarMode!=='overlay')throw Error('Provider configuration must overlay at 600x480');
       if(!document.querySelector('#run-configuration-sidebar [data-monitor="crossrefMailto"]'))throw Error('Provider settings not in Functional Sidebar');
@@ -349,7 +355,13 @@ app.whenReady().then(async()=>{
 
     await check(async()=>{
       const $=id=>document.getElementById(id),assert=(ok,message)=>{if(!ok)throw Error(message);};
-      $('run-open').click();$('s-run-overview-open').click();
+      $('run-open').click();
+      $('s-run-overview-open').click();
+      if(document.querySelectorAll('[data-discovery-provider]').length!==8)throw Error('Integrated Provider choices missing');
+      if(document.querySelector('[data-provider="pubmed"], [data-monitor="pubmedKey"]'))throw Error('Retired PubMed still displayed');
+      const starts=[...document.querySelectorAll('#s-run [data-run-provider]')].filter(node=>!node.hidden && node.getClientRects().length);
+      if(starts.length!==2 || !starts.some(node=>node.dataset.runProvider==='integrated') || !starts.some(node=>node.dataset.runProvider==='wos'))throw Error('Run must expose Integrated and independent WoS only');
+$('s-run-overview-open').click();
       const input=document.querySelector('#s-run [data-monitor="name"]');input.focus();input.value='First autosave';input.dispatchEvent(new Event('input',{bubbles:true}));
       const pending=window.allfoldAutosave.flush();await new Promise(resolve=>setTimeout(resolve,20));
       input.value='Newer autosave';input.dispatchEvent(new Event('input',{bubbles:true}));

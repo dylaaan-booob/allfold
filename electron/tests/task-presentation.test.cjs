@@ -2,11 +2,11 @@
 const {test}=require('node:test');
 const assert=require('node:assert/strict');
 const {taskUI}=require('./task-ui-fixture.cjs');
-function runData(status='RUNNING',provider='openalex') {return {snapshot:{status,provider,task_id:'run-1',waiting_for_user:provider==='wos'},progress:{stage_label:'Retrieving papers',elapsed_text:'2s',announcement_message:'Waiting for source'},result_summary:{status:'completed'},providers:{wos:{snapshot:{status:'IDLE'}}}};}
+function runData(status='RUNNING',provider='integrated') {return {snapshot:{status,provider,task_id:'run-1',waiting_for_user:provider==='wos'},progress:{stage_label:'Retrieving papers',elapsed_text:'2s',announcement_message:'Waiting for source'},result_summary:{status:'completed'},providers:{wos:{snapshot:{status:'IDLE'}}}};}
 test('inline Run polls and refreshes results without constructing a player or returning from another workspace',async()=>{
   let state=runData();
   const ui=await taskUI('run.js',{request:async()=>state});
-  await ui.window.uiRun.start('openalex');await ui.settle();
+  await ui.window.uiRun.start('integrated');await ui.settle();
   assert.equal(ui.get('run-view').open,false);
   assert.equal(ui.stats().visuals,0);
   assert.match(ui.get('run-inline').textContent || ui.get('run-stage').textContent,/Retrieving/);
@@ -93,10 +93,10 @@ test('fullscreen Kept keeps its player while controls and terminal acknowledgeme
 test('display preference changes apply on the next Run and do not cancel the current task',async()=>{
   let state=runData();
   const ui=await taskUI('run.js',{request:async()=>state,reduced:true});
-  await ui.window.uiRun.start('crossref');ui.setInline(false);
+  await ui.window.uiRun.start('integrated');ui.setInline(false);
   ui.window.dispatchEvent({type:'ui-preferences-changed',detail:{name:'fullscreenDisabled',value:false}});
   await ui.tick();assert.equal(ui.get('run-view').open,false);assert.equal(ui.window.uiRun.active(),true);
-  state=runData('FINISHED');await ui.tick();state=runData();await ui.window.uiRun.start('openalex');await ui.settle();
+  state=runData('FINISHED');await ui.tick();state=runData();await ui.window.uiRun.start('integrated');await ui.settle();
   assert.equal(ui.get('run-view').open,true);assert.equal(ui.stats().visuals,1);
 });
 test('inline recovery is independent of the animation manifest and font scene readiness',async()=>{
@@ -112,11 +112,11 @@ test('inline recovery is independent of the animation manifest and font scene re
 test('Run waits for autosave and refuses to start when the draft is still pending',async()=>{
   const ui=await taskUI('run.js',{request:async()=>runData()});
   let settleSave;ui.window.allfoldAutosave={flush:()=>new Promise(resolve=>{settleSave=resolve;})};
-  const first=ui.window.uiRun.start('crossref');await ui.settle();
+  const first=ui.window.uiRun.start('integrated');await ui.settle();
   assert.equal(ui.calls.filter(([path,body])=>path==='/api/ui-next/run' && body).length,0);
   settleSave(false);await first;
   assert.equal(ui.calls.filter(([path,body])=>path==='/api/ui-next/run' && body).length,0);
   ui.window.allfoldAutosave.flush=async()=>true;
-  await ui.window.uiRun.start('crossref');
+  await ui.window.uiRun.start('integrated');
   assert.equal(ui.calls.filter(([path,body])=>path==='/api/ui-next/run' && body).length,1);
 });

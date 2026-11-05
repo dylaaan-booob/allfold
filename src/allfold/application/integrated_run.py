@@ -63,8 +63,9 @@ def discover_selected(config, config_path, *, client_factory=DiscoveryClient, cl
                 detail=source.name,current=count,unit='work')))
     def execute(provider):
         results=[]
+        applicable=tuple(source for source in scopes if source.kind!='conference' or provider=='dblp')
         if cancel.is_set():
-            return tuple(DiscoveryResult(provider,s,'cancelled',limitations=('Run cancelled',)) for s in scopes)
+            return tuple(DiscoveryResult(provider,s,'cancelled',limitations=('Run cancelled',)) for s in applicable)
         with ExitStack() as stack:
             try:
                 if clients is not None:
@@ -72,7 +73,7 @@ def discover_selected(config, config_path, *, client_factory=DiscoveryClient, cl
                 else:
                     key=read_credential(config_path)[0] if provider=='openalex' else None
                     client=stack.enter_context(client_factory(provider,api_key=key,cancel_event=cancel))
-                for source in scopes:
+                for source in applicable:
                     if cancel.is_set():
                         results.append(DiscoveryResult(provider,source,'cancelled',limitations=('Run cancelled',)))
                         continue
@@ -82,7 +83,7 @@ def discover_selected(config, config_path, *, client_factory=DiscoveryClient, cl
                     progress(provider,source,result.status,result.candidates)
             except Exception as error:
                 # Host transport or credential failure is local to this provider.
-                for source in scopes[len(results):]:
+                for source in applicable[len(results):]:
                     results.append(DiscoveryResult(provider,source,'failed',limitations=(f'{provider}: {type(error).__name__}',)))
         return tuple(results)
     selected=tuple(p for p in DISCOVERY_PROVIDERS if p in config.enabled_providers)
@@ -119,14 +120,25 @@ def run_integrated(config_path, *, loaded_config=None, workspace_snapshot=None, 
             initial=read_workspace_identities(lock)
         pacing={}
         clients={}
+        class UnavailableClient:
+            def __init__(self,provider,message):
+                self.provider,self.message=provider,message
+            def discover(self,source,*args):
+                return DiscoveryResult(self.provider,source,'failed',limitations=(self.message,))
+            def lookup(self,*args):
+                from allfold.providers.integrated import DiscoveryError
+                raise DiscoveryError(self.message)
         for provider in config.enabled_providers:
-            key=read_credential(config_path)[0] if provider=='openalex' else None
-            if provider in DISCOVERY_PROVIDERS:
-                client=client_factory(provider,api_key=key,cancel_event=cancel,pacing_state=pacing)
-            else:
-                from allfold.providers.supplemental import SupplementalClient
-                client=SupplementalClient(provider,cancel_event=cancel,pacing_state=pacing)
-            clients[provider]=stack.enter_context(client)
+            try:
+                key=read_credential(config_path)[0] if provider=='openalex' else None
+                if provider in DISCOVERY_PROVIDERS:
+                    client=client_factory(provider,api_key=key,cancel_event=cancel,pacing_state=pacing)
+                else:
+                    from allfold.providers.supplemental import SupplementalClient
+                    client=SupplementalClient(provider,mailto=config.crossref_mailto,cancel_event=cancel,pacing_state=pacing)
+                clients[provider]=stack.enter_context(client)
+            except (ValueError,OSError) as error:
+                clients[provider]=UnavailableClient(provider,str(error))
         if progress_callback:
             progress_callback(ProgressEvent(stage=ProgressStage.DISCOVERING_PAPERS))
         discovery=discover_selected(config,config_path,clients=clients,cancel_event=cancel,progress_callback=progress_callback)

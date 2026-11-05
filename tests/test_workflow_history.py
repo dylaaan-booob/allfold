@@ -155,14 +155,14 @@ def test_run_history_uses_retrieval_coverage_instead_of_last_stage(tmp_path, mon
     from allfold.application.monitor import RunResult, RunOutcome, MonitorStatistics
     from allfold.application.run_state import RunFacts
     config, _ = write_valid_config(tmp_path)
-    result = RunResult(provider=RunProvider.OPENALEX, resolved_date_range=None, canonical_paper_count=3,
+    result = RunResult(provider=RunProvider.INTEGRATED, resolved_date_range=None, canonical_paper_count=3,
         created_papers=2, matched_existing_papers=1, warnings=(), errors=(), outcome=RunOutcome.COMPLETED,
-        statistics=MonitorStatistics(openalex_records=3), facts=RunFacts(created_papers=2,existing_papers=1),
+        statistics=MonitorStatistics(openalex_records=3), facts=RunFacts(created_papers=2,existing_papers=1,details={"discovery_status":"partial"}),
         coverage=({'status':'PARTIAL'},))
     monkeypatch.setattr('allfold.application.coordinators.run_coordinator.run_monitor', lambda *a, **k: result)
     store = DiagnosticStore(config, root=tmp_path / 'logs')
     coordinator = RunCoordinator(config, diagnostics=store)
-    coordinator.start(RunProvider.OPENALEX)
+    coordinator.start(RunProvider.INTEGRATED)
     coordinator._worker.join(2)
     record = store.history()['records'][0]
     assert record['outcome'] == 'partial'
