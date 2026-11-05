@@ -101,11 +101,47 @@ results; all-failed discovery is never Empty or success.
 
 ## Completion and persistence
 
-All lookups reuse the shared HTTP client, timeout/proxy policy, bounded retries and
-host pacing. HTTP 429 honors `Retry-After` within the Run's waiting budget; long
-waits are reported rather than ignored. HTML verification pages, including HTTP
-200/202 Anubis responses, are access restrictions, never zero-result responses.
-They are not solved or bypassed automatically.
+All eight Integrated Run discovery/completion providers reuse the shared HTTP
+client, timeout/proxy policy, bounded retries and host pacing. HTTP 500/502/503/504
+gets at most three attempts for the same request, with 5- then 10-second backoff
+when no valid `Retry-After` is supplied. HTTP 429 also honors `Retry-After`, using
+the existing one-second fallback. Both delta-seconds and HTTP-date hints are
+accepted; a hint over 60 seconds stops the request with an explicit limitation
+rather than retrying earlier than requested. Waiting is cancellable and reports
+retry progress. Exhausted pagination retains valid earlier pages as Partial.
+
+Ordinary HTML gateway/service errors are not mislabeled as bot verification.
+Recognized verification pages (including Anubis at HTTP 200/202/503) stop further
+HTTP requests for that Provider client in the current Run. Other selected
+providers can finish. Unexpected HTTP 200 HTML, malformed JSON/XML and incomplete
+provider envelopes are failures, not normal zero results. No challenge is solved,
+and no proxy route, provider or identity is switched automatically.
+
+### DBLP access restrictions
+
+DBLP requests default to a two-second interval, following its official
+[automated-access guidance](https://dblp.org/faq/1474706.html). The documented
+[search API](https://dblp.org/faq/13501473.html) remains the configured endpoint.
+This pacing reduces avoidable request pressure; it cannot remove a bot challenge.
+
+On 2026-11-06, two small, sequential publication-search probes returned HTTP 202,
+HTML titled “Making sure you're not a bot!”, and Anubis v1.27.0. The response's
+Refresh target was an Anubis verification endpoint, not an ordinary search-page
+redirect. No verification endpoint was followed. There was no 429/Retry-After
+evidence in these responses, and they do not reveal whether IP reputation,
+client characteristics or another server-side rule caused the restriction.
+
+For unresolved restrictions, check normal website access manually and ask the
+[DBLP team](https://dblp.org/db/about/team.html) to confirm the supported
+programmatic access path or any required exception. Browser success alone does
+not establish HTTP API access. Do not repeatedly retry the challenge, rotate
+identities/proxies, automatically switch mirrors, or add a full-dataset mirror
+to this application. The API remains unavailable until access is actually restored.
+
+Europe PMC's [developer discussion](https://groups.google.com/a/ebi.ac.uk/g/epmc-webservices/c/WUWH9sunsEY)
+distinguishes its service-overload 503 responses from explicit rate-limit status.
+The service can recover independently; successful probes establish current
+reachability, not that client retries repaired the upstream server.
 
 Responses already retrieved in a Run are reused. Identifier lookups run in the
 fixed order OpenAlex, Crossref, Europe PMC, DBLP, zbMATH, arXiv, bioRxiv, medRxiv,

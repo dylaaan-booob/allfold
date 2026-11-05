@@ -65,6 +65,8 @@ class SupplementalClient(DiscoveryClient):
             root = ElementTree.fromstring(content)
         except ElementTree.ParseError:
             raise DiscoveryError("arXiv returned invalid Atom metadata") from None
+        if root.tag != "{http://www.w3.org/2005/Atom}feed":
+            raise DiscoveryError("arXiv response is not an Atom feed")
         ns = {"a": "http://www.w3.org/2005/Atom", "arxiv": "http://arxiv.org/schemas/atom"}
         records = []
         for entry in root.findall("a:entry", ns):

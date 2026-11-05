@@ -4,6 +4,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import date, datetime, timezone
 from email.utils import parsedate_to_datetime
+import math
 import re
 import time
 from threading import Event
@@ -28,6 +29,7 @@ DISCOVERY_PROVIDERS = ('openalex', 'europe_pmc', 'dblp', 'zbmath')
 SUPPLEMENT_PROVIDERS = ('crossref', 'arxiv', 'biorxiv', 'medrxiv')
 PROVIDERS = DISCOVERY_PROVIDERS + SUPPLEMENT_PROVIDERS
 BASE_URLS = {'openalex':'https://api.openalex.org', 'europe_pmc':'https://www.ebi.ac.uk/europepmc/webservices/rest', 'dblp':'https://dblp.org', 'zbmath':'https://api.zbmath.org/v1', 'crossref':'https://api.crossref.org', 'arxiv':'https://export.arxiv.org', 'biorxiv':'https://api.biorxiv.org', 'medrxiv':'https://api.biorxiv.org'}
+TRANSIENT_HTTP = {500:'Internal Server Error', 502:'Bad Gateway', 503:'Service Unavailable', 504:'Gateway Timeout'}
 
 
 @dataclass(frozen=True)
@@ -60,8 +62,8 @@ class DiscoveryError(ValueError):
 
 
 class ProviderHTTPError(DiscoveryError):
-    def __init__(self, provider, status):
-        super().__init__(f'{provider}: HTTP {status}')
+    def __init__(self, provider, status, *, detail=None):
+        super().__init__(f'{provider}: HTTP {status}' + (f' ({detail})' if detail else ''))
         self.status = status
 
 
@@ -117,14 +119,16 @@ def _positive(value, name):
 class DiscoveryClient:
     """One provider/host owns rate limits, bounded retry and cancellation checks."""
     def __init__(self, provider, *, api_key=None, transport=None, cancel_event=None,
-                 interval=0.35, sleep=time.sleep, max_pages=50, max_records=5000, page_size=100, pacing_state=None, progress_callback=None):
+                 interval=None, sleep=time.sleep, max_pages=50, max_records=5000, page_size=100, pacing_state=None, progress_callback=None):
         if provider not in PROVIDERS:
             raise ValueError('Unknown Discovery Provider')
         self.progress = progress_callback
         self.provider = provider
         self.api_key = api_key
         self.cancel = cancel_event or Event()
-        self.interval, self.sleep = interval, sleep
+        self.interval = (2.0 if provider == 'dblp' else 0.35) if interval is None else interval
+        self.sleep = sleep
+        self._access_restriction = None
         self.max_pages, self.max_records, self.page_size = max_pages, max_records, min(page_size, 1000)
         self.http = create_http_client(transport=transport, timeout=30, follow_redirects=True)
         self.pacing_state = pacing_state if pacing_state is not None else {}
@@ -150,6 +154,9 @@ class DiscoveryClient:
         self.check_cancel()
 
     def request(self, path, params, *, response_format="json"):
+        self.check_cancel()
+        if self._access_restriction:
+            raise DiscoveryError(self._access_restriction)
         params = dict(params)
         headers = {"Authorization":"Bearer " + self.api_key} if self.provider == "openalex" and self.api_key else {}
         for attempt in range(3):
@@ -163,23 +170,49 @@ class DiscoveryClient:
             except httpx.HTTPError as error:
                 raise DiscoveryError(f'{self.provider}: network request failed ({type(error).__name__})') from None
             self.check_cancel()
-            if 'text/html' in response.headers.get('content-type','').lower() or response.text.lstrip().lower().startswith(('<!doctype html','<html')):
-                raise DiscoveryError(f'{self.provider}: access limited by an HTML verification page')
-            if response.status_code == 429 and attempt < 2:
-                retry = response.headers.get('retry-after', '1')
+            temporary_error = TRANSIENT_HTTP.get(response.status_code)
+            html = ('text/html' in response.headers.get('content-type','').lower()
+                    or response.text.lstrip().lower().startswith(('<!doctype html','<html')))
+            # HTML is also used for ordinary gateway/service errors. A known
+            # challenge is an access restriction, regardless of its HTTP status.
+            challenge = html and any(marker in response.text.lower() for marker in (
+                'anubis', 'captcha', 'cf-chl-', 'challenge-platform',
+                'verify you are human', 'checking your browser',
+            ))
+            if challenge or (html and response.status_code == 202):
+                kind = 'Anubis verification' if 'anubis' in response.text.lower() else 'an HTML verification page'
+                self._access_restriction = (f'{self.provider}: access limited by {kind} (HTTP {response.status_code}); '
+                                            'further automatic requests to this provider are stopped for this Run')
+                raise DiscoveryError(self._access_restriction)
+            if (response.status_code == 429 or temporary_error) and attempt < 2:
+                default_delay = 5 * (2 ** attempt) if temporary_error else 1
+                retry = response.headers.get('retry-after', str(default_delay))
                 try:
                     delay = float(retry)
                 except ValueError:
                     try:
                         delay = (parsedate_to_datetime(retry) - datetime.now(timezone.utc)).total_seconds()
                     except (ValueError, TypeError):
-                        delay = 1
+                        delay = default_delay
+                if not math.isfinite(delay):
+                    delay = default_delay
                 if delay > 60:
-                    raise DiscoveryError(f'{self.provider}: rate limited; Retry-After exceeds this Run budget')
+                    raise ProviderHTTPError(self.provider, response.status_code,
+                        detail=f'{temporary_error or "Too Many Requests"}; Retry-After exceeds this Run budget')
+                if self.progress:
+                    self.progress(ProgressEvent(activity=ActivityUpdate(
+                        kind=ActivityKind.RETRYING, source=self.provider, operation='http_retry',
+                        label=f'{self.provider}: HTTP {response.status_code} {temporary_error or "Too Many Requests"}',
+                        detail=f'Retry {attempt + 2}/3 in {max(0, delay):g} seconds',
+                    )))
                 self._wait(max(0, delay))
                 continue
+            if temporary_error:
+                raise ProviderHTTPError(self.provider, response.status_code, detail=f'{temporary_error} after 3 attempts')
             if response.status_code != 200:
                 raise ProviderHTTPError(self.provider, response.status_code)
+            if html:
+                raise DiscoveryError(f'{self.provider}: unexpected HTML response instead of API metadata')
             if response_format == "xml":
                 return response.text
             try:
@@ -449,9 +482,9 @@ class DiscoveryClient:
         serial_ids = set()
         for issn in source.issns:
             data = self.request('/serial/_search',{'search_string':'sn:' + issn,'results_per_page':100})
-            rows = data.get('result',[])
-            if not isinstance(rows,list):
-                raise DiscoveryError('zbMATH serial mapping unavailable')
+            rows, status = data.get('result'), data.get('status')
+            if not isinstance(rows,list) or not isinstance(status,dict) or status.get('execution_bool') is not True:
+                raise DiscoveryError('zbMATH serial mapping response is invalid or unsuccessful')
             for raw in rows:
                 issns = [item.get('number') if isinstance(item,dict) else item for item in raw.get('issn',[])]
                 if issn in issns and raw.get('id'):

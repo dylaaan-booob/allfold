@@ -172,11 +172,11 @@ def test_dblp_pagination_outcomes_preserve_valid_partial_records(mode,expected,c
             hits={'@total':'3','@computed':'3','@first':'0' if mode=='repeated' else str(offset),
                   'hit':[{'info':{'key':f'journals/test/{offset}','title':'Learning','year':'2026'}}]}
         return httpx.Response(200,json={'result':{'hits':hits}})
-    with DiscoveryClient('dblp',transport=httpx.MockTransport(handler),interval=0,page_size=1,max_records=1 if mode=='budget' else 100) as client:
+    with DiscoveryClient('dblp',transport=httpx.MockTransport(handler),interval=0,sleep=lambda _:None,page_size=1,max_records=1 if mode=='budget' else 100) as client:
         result=client.discover(SourceScope('journal','Test',stream='streams/journals/test'),parse_keyword_expression('learning'),date(2026,1,1),date(2026,12,31))
     assert result.status==expected
     assert len(result.records)==count
-    assert len(calls)==(2 if mode in {'repeated','failure'} else 1)
+    assert len(calls)==(4 if mode=='failure' else 2 if mode=='repeated' else 1)
 
 
 def test_dblp_respects_retry_after_and_stops_after_bounded_retries():

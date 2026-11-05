@@ -81,7 +81,10 @@ is not vendored or modified.
 ## Integrated Providers
 
 Discovery and identifier-only completion reuse one selected Provider client and
-shared per-host pacing. The client handles bounded 429 retry, Retry-After,
-cancellation and HTML access restrictions. arXiv ID lookups use a conservative
-three-second interval; bioRxiv and medRxiv share their API host pacing.
+shared per-host pacing. The client handles bounded 429 and temporary
+500/502/503/504 retries, Retry-After, cancellation and HTML access restrictions.
+Ordinary HTML service errors can be retried; recognized verification pages stop
+that Provider client for the rest of the Run without changing route or identity.
+arXiv ID lookups use a conservative three-second interval; DBLP uses two seconds;
+bioRxiv and medRxiv share their API host pacing.
 See [Provider contracts and limits](providers.md).

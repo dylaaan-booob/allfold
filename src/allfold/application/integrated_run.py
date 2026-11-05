@@ -136,7 +136,8 @@ def run_integrated(config_path, *, loaded_config=None, workspace_snapshot=None, 
                     client=client_factory(provider,api_key=key,cancel_event=cancel,pacing_state=pacing,progress_callback=progress_callback)
                 else:
                     from allfold.providers.supplemental import SupplementalClient
-                    client=SupplementalClient(provider,mailto=config.crossref_mailto,cancel_event=cancel,pacing_state=pacing)
+                    client=SupplementalClient(provider,mailto=config.crossref_mailto,cancel_event=cancel,pacing_state=pacing,
+                                              progress_callback=progress_callback)
                 clients[provider]=stack.enter_context(client)
             except (ValueError,OSError) as error:
                 clients[provider]=UnavailableClient(provider,str(error))
