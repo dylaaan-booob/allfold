@@ -159,13 +159,18 @@ def run_integrated(config_path, *, loaded_config=None, workspace_snapshot=None, 
             completed=completion(tuple(fresh),config.enabled_providers,clients=clients,cancel_event=cancel)
             records=tuple(known)+tuple(completed.records)
             supplementation=completed.issues
-        canonical=canonicalize_records(records)
+        from allfold.application.source_dates import filter_source_dates
+        dated=filter_source_dates(records,dates.from_date,dates.to_date)
+        canonical=canonicalize_records(dated.records)
         issues=[MonitorIssue(MonitorIssueSeverity.ERROR if r.status=='failed' else MonitorIssueSeverity.WARNING,
                     MonitorIssueComponent.OPENALEX,'discovery',f'{r.provider} / {r.source.name}: {message}')
                 for r in discovery.providers for message in r.limitations]
         issues.extend(MonitorIssue(MonitorIssueSeverity.WARNING,MonitorIssueComponent.CANONICALIZATION,'supplement',
                                   f'{item.provider}: {item.message}') for item in supplementation)
         issues.extend(MonitorIssue(MonitorIssueSeverity.ERROR,MonitorIssueComponent.CANONICALIZATION,item.stage,item.message) for item in canonical.issues)
+        if dated.excluded:
+            issues.append(MonitorIssue(MonitorIssueSeverity.WARNING,MonitorIssueComponent.CANONICALIZATION,
+                'source_date',f'{dated.excluded} year-only candidates excluded by confirmed same-version publication dates outside the requested months'))
         created=existing=0
         def result():
             warnings=tuple(i for i in issues if i.severity is MonitorIssueSeverity.WARNING)
@@ -173,7 +178,8 @@ def run_integrated(config_path, *, loaded_config=None, workspace_snapshot=None, 
             outcome=(RunOutcome.CANCELLED if cancel.is_set() else RunOutcome.FAILED if discovery.status=='failed' else
                      RunOutcome.COMPLETED_WITH_ERRORS if errors else RunOutcome.COMPLETED_WITH_WARNINGS if warnings or discovery.status=='partial' else RunOutcome.COMPLETED)
             facts=RunFacts(finished_at=datetime.now(timezone.utc),created_papers=created,existing_papers=existing,
-                statistics={'integrated_candidates':sum(r.candidates for r in discovery.providers),'integrated_deduplicated':len(canonical.papers)},
+                statistics={'integrated_candidates':sum(r.candidates for r in discovery.providers),'integrated_deduplicated':len(canonical.papers),
+                            'source_date_excluded':dated.excluded},
                 issues=tuple(RunIssueFact(category=i.stage,message=i.message,severity=i.severity.value) for i in issues),
                 details={'discovery_status':'cancelled' if cancel.is_set() else discovery.status,
                          'provider_runs':[r.fact() for r in discovery.providers],

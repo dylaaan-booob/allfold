@@ -73,7 +73,11 @@ See [Paper identity](paper-identity.md) for the persisted evidence and precision
 DBLP years are Conference/publication years, not invented January dates or verified
 acceptance dates. Monthly queries retrieve the intersecting years and display the
 precision limitation. zbMATH also reports its year-level range limitation. These
-limitations remain visible even after all accessible pages are retrieved.
+limitations remain visible even after all accessible pages are retrieved. After
+completion, confirmed publication dates for the same original formal version
+refine year-only candidates against the requested months. A related preprint or
+a Work-level date cannot exclude the formal source hit; unresolved precision
+remains Partial, and another valid source hit still retains the work.
 
 DBLP pages use `h` (at most 1000) and `f`. The adapter checks `@total`, `@computed`
 and `@first`, advances by actual returned records and stops on no progress.
