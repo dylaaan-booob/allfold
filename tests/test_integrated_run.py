@@ -32,3 +32,68 @@ def test_only_selected_discovery_providers_run_and_one_failure_preserves_hits(tm
     assert result.status=='partial'
     assert len(result.records)==1
     assert {r.status for r in result.providers}=={'complete','failed'}
+
+
+def test_production_integrated_run_creates_doi_free_native_hit_and_preserves_saved_bytes(tmp_path):
+    import httpx
+    from allfold.application.integrated_run import run_integrated
+    from allfold.providers.integrated import DiscoveryClient
+    from allfold.application.run_summary import build_run_result_summary
+    from allfold.application.run_state import read_last_run_snapshot,RunProvider
+    path,settings=config(tmp_path,('europe_pmc',))
+    path.write_text(path.read_text()+'enabled_providers: [europe_pmc]\n')
+    calls=[]
+    def handler(request):
+        calls.append(request)
+        return httpx.Response(200,json={'hitCount':1,'resultList':{'result':[{'source':'MED','id':'42','title':'Native indexed term match','abstractText':'No configured literal keyword','firstPublicationDate':'2026-02-01','journalInfo':{'journal':{'title':'Test'}}}]}})
+    def factory(provider,**kwargs):
+        assert provider=='europe_pmc'
+        return DiscoveryClient(provider,transport=httpx.MockTransport(handler),interval=0,**kwargs)
+    first=run_integrated(path,client_factory=factory)
+    assert first.created_papers==1 and first.matched_existing_papers==0
+    assert build_run_result_summary(first)['coverage_status']=='complete'
+    files=list((tmp_path/'workspace'/'Papers').glob('*.md'))
+    assert len(files)==1
+    original=files[0].read_bytes()
+    calls.clear()
+    second=run_integrated(path,client_factory=factory)
+    assert second.created_papers==0 and second.matched_existing_papers==1
+    assert files[0].read_bytes()==original
+    assert len(calls)==1 # Existing Paper is not supplemented or rewritten.
+    latest=read_last_run_snapshot(tmp_path/'workspace',RunProvider.INTEGRATED)
+    assert latest.snapshot.facts.existing_papers==1
+
+
+def test_constructor_failure_isolated_and_all_failed_is_never_complete(tmp_path):
+    import httpx
+    from allfold.application.integrated_run import run_integrated
+    from allfold.providers.integrated import DiscoveryClient
+    from allfold.application.run_summary import build_run_result_summary
+    path,_=config(tmp_path)
+    path.write_text(path.read_text()+'enabled_providers: [openalex, europe_pmc]\n')
+    def factory(provider,**kwargs):
+        if provider=='openalex':raise ValueError('Credential configuration unavailable')
+        return DiscoveryClient(provider,transport=httpx.MockTransport(lambda _:httpx.Response(200,json={'hitCount':0,'resultList':{'result':[]}})),interval=0,**kwargs)
+    result=run_integrated(path,client_factory=factory)
+    assert result.facts.details['discovery_status']=='partial'
+    assert {x['status'] for x in result.facts.details['provider_runs']}=={'failed','empty'}
+    path.write_text(path.read_text().replace('[openalex, europe_pmc]','[openalex]'))
+    failed=run_integrated(path,client_factory=factory)
+    assert build_run_result_summary(failed)['status']=='failed'
+
+
+def test_provider_response_after_cancel_never_materializes(tmp_path):
+    import httpx
+    from threading import Event
+    from allfold.application.integrated_run import run_integrated
+    from allfold.providers.integrated import DiscoveryClient
+    path,_=config(tmp_path)
+    path.write_text(path.read_text()+'enabled_providers: [europe_pmc]\n')
+    cancel=Event()
+    def handler(request):
+        cancel.set()
+        return httpx.Response(200,json={'hitCount':1,'resultList':{'result':[{'source':'MED','id':'42','title':'Late response'}]}})
+    def factory(provider,**kwargs):return DiscoveryClient(provider,transport=httpx.MockTransport(handler),interval=0,**kwargs)
+    result=run_integrated(path,client_factory=factory,cancel_event=cancel)
+    assert result.outcome.value=='CANCELLED'
+    assert not list((tmp_path/'workspace'/'Papers').glob('*.md'))

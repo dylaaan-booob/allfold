@@ -335,6 +335,8 @@ app.whenReady().then(async()=>{
     });
     await js("window.workspaceNavigation.go('run',{instant:true}),document.getElementById('s-run-overview-open').click()");
     await capture('run-small');
+    await js("document.querySelector('#s-run .s-run-body').scrollTop=document.getElementById('s-run-operations').offsetTop");
+    await capture('run-providers-small');
     await js("document.querySelector('#s-run [data-flyout]').click(),document.querySelector('#s-providers [data-provider=crossref]').click()");
     await capture('run-provider-overlay');
     await js("window.workspaceNavigation.go('settings',{instant:true})");
