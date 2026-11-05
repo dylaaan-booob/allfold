@@ -16,11 +16,11 @@ function normalizeReferrer(value) {
   }catch{return undefined;}
 }
 // Raw Chromium transport; callers retain Zotero status handling and decoding.
-async function requestSessionHTTP(session,{method,url,headers={},body,referrer,timeout},context={}) {
+async function requestSessionHTTP(session,{method,url,headers={},body,referrer,referrerPolicy,timeout},context={}) {
   if(!session)throw Error('HTTP request requires a Session');
   const {net}=require('electron');
   let initialURL;
-  try {initialURL=new URL(url);context.validateRedirect?.(initialURL.href);}
+  try {initialURL=new URL(url);const checked=context.validateRedirect?.(initialURL.href);if(checked?.then)await checked;}
   catch(error){throw new RequestTransportError('redirect_rejected',error);}
   const requestHeaders={...headers};let candidateCookieHeader,authorization;
   // Helpers run in an offscreen document; its origin is never a site Referer.
@@ -34,6 +34,9 @@ async function requestSessionHTTP(session,{method,url,headers={},body,referrer,t
     }
   }
   referrer ||= headerReferrer;
+  // Electron requires the initial Referer to already satisfy its native policy.
+  if(referrer && referrerPolicy==='origin-when-cross-origin' && new URL(referrer).origin!==initialURL.origin)
+    referrer=new URL(referrer).origin+'/';
   if(referrer)requestHeaders.Referer=referrer;
   if(typeof body==='string' && !Object.keys(requestHeaders).some(key=>key.toLowerCase()==='content-type'))
     requestHeaders['Content-Type']='text/plain;charset=UTF-8';
@@ -42,9 +45,10 @@ async function requestSessionHTTP(session,{method,url,headers={},body,referrer,t
   Object.assign(requestHeaders,registration?.headers);
   let request,timer,abort,finished=false,responseURL=initialURL.href;
   try {
-    // net.request treats Referer as native referrer state; its policy must accept the explicit value.
+    // Chromium applies the caller's attachment policy at every redirect hop.
+    // Other Translator requests retain their existing explicit referrer behavior.
     try {request=net.request({url:initialURL.href,method,session,headers:requestHeaders,credentials:'include',redirect:'manual',
-      ...(referrer?{referrerPolicy:'unsafe-url'}:{})});}
+      ...(referrer?{referrerPolicy:referrerPolicy || 'unsafe-url'}:{})});}
     catch(error){throw new RequestTransportError('network_error',error);}
     return await new Promise((resolve,reject)=>{
       const fail=error=>{
@@ -55,14 +59,16 @@ async function requestSessionHTTP(session,{method,url,headers={},body,referrer,t
       request.on('redirect',(_status,_method,target)=>{
         if(finished)return;
         try {
-          context.validateRedirect?.(target);
-          registration?.redirect(target);
-          request.followRedirect();responseURL=target;
+          const follow=()=>{if(finished)return;registration?.redirect(target);request.followRedirect();responseURL=target;};
+          const checked=context.validateRedirect?.(target);
+          if(checked?.then)Promise.resolve(checked).then(follow).catch(error=>fail(new RequestTransportError('redirect_rejected',error)));
+          else follow();
         } catch(error){fail(new RequestTransportError('redirect_rejected',error));}
       });
       request.on('response',incoming=>{
-        const chunks=[];
-        incoming.on('data',chunk=>{if(!finished)chunks.push(chunk);});
+        const chunks=[];let size=0;
+        incoming.on('data',chunk=>{if(finished)return;size+=chunk.length;
+          if(context.maxBytes && size>context.maxBytes){fail(new RequestTransportError('response_too_large'));return;}chunks.push(chunk);});
         incoming.once('error',networkFailure);incoming.once('aborted',networkFailure);
         incoming.once('end',()=>{
           if(finished)return;finished=true;

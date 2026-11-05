@@ -203,6 +203,22 @@ class InstitutionConfig(BaseModel):
         return value
 
 
+class ZoteroTarget(BaseModel):
+    """Public native instance/Library/Collection identity, never an API key."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+    server_id: str = Field(pattern=r"^[A-Za-z0-9]{1,128}$", strict=True)
+    library_type: Literal["user", "group"]
+    library_id: str = Field(pattern=r"^[0-9]{1,20}$", strict=True)
+    collection_key: str | None = Field(default=None, pattern=r"^[23456789ABCDEFGHIJKLMNPQRSTUVWXYZ]{8}$")
+
+    @model_validator(mode="after")
+    def personal_library_id(self):
+        if self.library_type == "user" and self.library_id != "0":
+            raise ValueError("Personal Library must use user 0")
+        return self
+
+
 class KeptWorkflowConfig(BaseModel):
     """Public display and explicit Kept workflow preferences."""
 
@@ -210,6 +226,7 @@ class KeptWorkflowConfig(BaseModel):
     auto_import_after_preparation: bool = Field(default=False, strict=True)
     transition_delay_seconds: float = Field(default=3, strict=True, gt=0, allow_inf_nan=False)
     display_name: str | None = None
+    zotero_target: ZoteroTarget | None = None
 
     @field_validator("display_name", mode="before")
     @classmethod

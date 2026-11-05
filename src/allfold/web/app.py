@@ -220,6 +220,8 @@ def create_app(config_path: Path, *, electron_bridge: ElectronBridge, diagnostic
     if electron_bridge is None:
         raise ValueError('ElectronBridge is required')
     resolved_config_path = config_path.resolve()
+    from allfold.application.import_openalex import lookup_pdf_candidates
+    electron_bridge.openalex_pdf = lambda doi: lookup_pdf_candidates(doi, config_path=resolved_config_path)
     csrf_token = secrets.token_urlsafe(32)
     deletion_key = secrets.token_bytes(32)
 
@@ -228,15 +230,15 @@ def create_app(config_path: Path, *, electron_bridge: ElectronBridge, diagnostic
         try:
             yield
         finally:
-            application.state.kept_workflow.shutdown()
             import asyncio
             electron_bridge.finish_disconnected()
+            await asyncio.to_thread(application.state.kept_workflow.shutdown)
             for worker in (application.state.paper_enrichment, application.state.journal_cover_search, application.state.wos_coordinator):
-                worker.shutdown()
+                await asyncio.to_thread(worker.shutdown)
             for worker in (application.state.batch_import, application.state.preparation_coordinator,
                            application.state.paper_enrichment, application.state.journal_cover_search, application.state.wos_coordinator):
                 await asyncio.to_thread(worker.join)
-            application.state.kept_workflow.advance()
+            await asyncio.to_thread(application.state.kept_workflow.advance)
 
     app = FastAPI(
         lifespan=lifespan,
@@ -314,7 +316,8 @@ def create_app(config_path: Path, *, electron_bridge: ElectronBridge, diagnostic
         app.state.import_token = secrets.token_urlsafe(32)
         return app.state.batch_import.start(target.workspace, validate_target=target.verify,
             browser_owner=app.state.kept_workflow.browser_owner, config_path=target.config_path,
-            workflow_id=workflow_id, parent_task_id=parent_task_id, service_id=target.service_id, initial_plan=target.paper_plan)
+            workflow_id=workflow_id, parent_task_id=parent_task_id, service_id=target.service_id, initial_plan=target.paper_plan,
+            zotero_target=target.zotero_target.model_dump() if target.zotero_target else None)
 
     app.state.kept_workflow = KeptWorkflow(
         app.state.preparation_coordinator, app.state.batch_import, import_submission_lock,
@@ -338,6 +341,18 @@ def create_app(config_path: Path, *, electron_bridge: ElectronBridge, diagnostic
                 target.verify(lock)
                 plan = plan_workspace_import(lock, config.journals, service_id=service_id)
                 target = replace(target, paper_plan=plan)
+            if target.zotero_target is None:
+                raise ContentChangedError('Choose and authorize a Zotero Library/Collection in Queue before starting.')
+            owner = app.state.browser_task_lock.acquire('zotero')
+            if owner is None:
+                raise ContentChangedError('Browser runtime is busy; no batch started.')
+            try:
+                checked = app.state.electron_bridge.execute('zotero_local', {
+                    'operation': 'validate', 'target': target.zotero_target.model_dump()}).result()
+                if not checked.get('ok'):
+                    raise ContentChangedError('Zotero target is unavailable: ' + str(checked.get('error', 'api_failure')))
+            finally:
+                app.state.browser_task_lock.release(owner)
             # Reserve the signed click for this workflow; rendering never rotates the nonce.
             app.state.import_token = secrets.token_urlsafe(32)
             return app.state.kept_workflow.start(target, config, app.state.import_token, mode=mode)
@@ -353,7 +368,7 @@ def create_app(config_path: Path, *, electron_bridge: ElectronBridge, diagnostic
                        "total": len(batch.plan.papers) if batch.plan else 0,
                        "current_paper_id": str(batch.current_paper_id) if batch.current_paper_id else None,
                        "statistics": jsonable_encoder(batch.statistics),
-                       "results": jsonable_encoder(batch.results), "message": batch.message}
+                       "results": [jsonable_encoder(result, exclude={"native_identity"}) for result in batch.results], "message": batch.message}
                       if workflow.import_started else None),
         }
 

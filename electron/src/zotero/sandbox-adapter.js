@@ -128,6 +128,12 @@ window.allfoldTranslatorReady=(async () => {
       message:String(error?.message ?? error),...errorSummary(error),...(status!==undefined?{status}:{})},
       terminal:['timeout','canceled','document_changed'].includes(error?.code)};
   }
+  function apiParent(item,proxy) {
+    const clean=JSON.parse(JSON.stringify(item));
+    for(const field of ['dateAdded','dateModified','id','itemID','path','version'])delete clean[field];
+    if(clean.url && proxy?.toProper)clean.url=proxy.toProper(clean.url);
+    return Zotero.Utilities.Item.itemToAPIJSON(clean)[0];
+  }
   function matchingDOI(item,doi) {
     const value=String(item?.DOI || '').trim().replace(/^https?:\/\/(?:dx\.)?doi\.org\//i,'').toLowerCase();
     if(!/^10\.\d{4,9}\/\S+$/.test(value))return 'translator_doi_missing';
@@ -175,8 +181,9 @@ window.allfoldTranslatorReady=(async () => {
             for(const key of ['year','month','day'])if(parsed[key]!=null && /^\d+$/.test(String(parsed[key])))
               item.date_parts[key]=Number(parsed[key])+(key==='month'?1:0);
           }
+          if(proxy?.toProper)for(const item of items)for(const attachment of item.attachments || [])if(attachment.url)attachment._allfoldProperURL=proxy.toProper(attachment.url);
           return {ok:true,...info,proxy:proxy?.toJSON?proxy.toJSON():proxy || null,
-            items:JSON.parse(JSON.stringify(items)),itemCount:1};
+            items:JSON.parse(JSON.stringify(items)),apiItem:forEnrichment?undefined:apiParent(items[0],proxy),itemCount:1};
         }catch(error){last=failure(error,info);if(last.terminal)break;}
       }
       return {...last,observers:state.observers};
@@ -197,7 +204,7 @@ window.allfoldTranslatorReady=(async () => {
           for(const key of ['year','month','day'])if(parsed[key]!=null && /^\d+$/.test(String(parsed[key])))
             item.date_parts[key]=Number(parsed[key])+(key==='month'?1:0);
         }
-        return {ok:true,...info,items:JSON.parse(JSON.stringify(items)),itemCount:1};
+        return {ok:true,...info,items:JSON.parse(JSON.stringify(items)),apiItem:forEnrichment?undefined:apiParent(items[0],info.proxy?new Zotero.Proxy(info.proxy):null),itemCount:1};
       }catch(error){return failure(error,info);}
     },
   };

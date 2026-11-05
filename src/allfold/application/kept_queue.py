@@ -16,7 +16,8 @@ def kept_queue(workspace, journals, services, plan, batch):
             known.add(paper.service_id)
     for row in rows:
         row.update(kept=0, eligible=0, planned=0, processed=0, confirmed=0,
-                   pending=0, skipped=0, exceptions=0, uncertain=0, no_effect=0, pdf_unverified=0)
+                   pending=0, skipped=0, exceptions=0, uncertain=0, no_effect=0, pdf_unverified=0,
+                   pdf_attached=0, fallback=0, issues=0)
     by_id = {row['id']: row for row in rows}
     papers = []
     for paper in saved.kept:
@@ -33,7 +34,8 @@ def kept_queue(workspace, journals, services, plan, batch):
                     'No saved Service assignment') + ('' if qualified else '; excluded by Workspace safety plan')))
     if batch.plan:
         outcomes = {result.paper_id: result for result in batch.results}
-        for paper in batch.plan.papers:
+        unique_papers = {paper.paper_id: paper for paper in batch.plan.papers}
+        for paper in unique_papers.values():
             # Historical identity belongs to the plan, never the current mapping.
             result = outcomes.get(paper.paper_id)
             for row in (by_id['all'], by_id.get(paper.service_id or paper.service_assignment)):
@@ -49,4 +51,9 @@ def kept_queue(workspace, journals, services, plan, batch):
                     row['uncertain'] += result.parent_outcome == 'uncertain'
                     row['no_effect'] += result.outcome == 'no_effect'
                     row['pdf_unverified'] += result.pdf_outcome is not None and result.pdf_outcome.value == 'unverified'
+                    row['pdf_attached'] += result.pdf_attached is True
+                    row['fallback'] += result.fallback_used is True
+                    row['issues'] += bool(result.diagnostic or result.query_diagnostic
+                        or result.outcome in {'blocked', 'uncertain', 'no_effect'}
+                        or result.outcome != 'skipped' and result.pdf_attached is not True)
     return dict(services=rows, papers=papers, issues=[issue.message for issue in saved.issues])

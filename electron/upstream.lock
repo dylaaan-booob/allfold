@@ -2,7 +2,5 @@
 upstream https://github.com/zotero/zotero-connectors.git e942336f9a3671944c34abf5d35864d73265d5c1
 submodule src/translate bea5b9afc1cc424f066c38e77a42ddbef152070f
 submodule src/utilities 5b93ec8b4e7ce6124cde1b8ff89ca65b2919d114
-submodule src/zotero 11223451d27298fdf9f5dc26b20ab2221fe1fce9
-submodule src/zotero-google-docs-integration 69b4b901630239ca6de3197d9175d98ee21f491a
 submodule src/zotero-schema b5b3f51217a99b3c41585d468ee1dc0837233d13
 translators https://github.com/zotero/translators.git 3fb4e794446763ac2053250112890631c428159f

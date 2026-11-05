@@ -31,7 +31,7 @@
 #kept-workspace .s-button{border:1px solid var(--ink);padding:5px 10px;font-size:11px}
 #kept-workflow-host{flex:0 0 auto;max-height:32%;overflow:auto}
 #kept-workspace #kept-inline{overflow:auto;margin:0;padding:8px}
-#kept-workspace[data-browser-visible=true] :is(.kept-queue-heading,#kept-import-actions,#kept-task-page){display:none}
+#kept-workspace[data-browser-visible=true] :is(.kept-queue-heading,#kept-zotero-target,#kept-import-actions,#kept-task-page){display:none}
 #kept-workspace[data-browser-visible=true] #kept-scope-status{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 #kept-workspace[data-browser-visible=true] #kept-workflow-host{max-height:82px}
 #kept-workspace[data-browser-visible=true] #kept-phase{margin-bottom:3px;font-size:11px}
@@ -98,3 +98,8 @@
 #kept-import-actions>button{flex:1;min-width:0}
 #kept-reading-tools{margin:0 0 12px}
 @media(max-height:600px){.kept-center{padding-block:10px}.kept-actions{margin-bottom:8px}#kept-inline{margin-block:8px;padding-block:8px}}
+
+.kept-zotero-target{display:flex;flex-wrap:wrap;gap:8px;align-items:end;margin:12px 0;max-width:100%;}
+.kept-zotero-target label{display:flex;flex:1 1 140px;flex-direction:column;gap:4px;min-width:0;}
+.kept-zotero-target select{width:100%;min-width:0;max-width:100%;font:inherit;}
+.kept-zotero-target [role=status]{flex:1 0 100%;font-size:12px;overflow-wrap:anywhere;}

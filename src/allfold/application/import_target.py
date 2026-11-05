@@ -4,7 +4,7 @@ from dataclasses import dataclass, field, replace
 from pathlib import Path
 import hashlib
 import hmac
-from allfold.config import LoadedConfig, load_config
+from allfold.config import LoadedConfig, ZoteroTarget, load_config
 from allfold.persistence.safe_write import ContentChangedError, WorkspaceOperationLock
 from allfold.persistence.user_state import read_user_state
 from allfold.application.workspace import WorkspaceImportPlan
@@ -20,6 +20,7 @@ class _ImportTarget:
     lock_identity: tuple[int, int, int] | None
     user_state_revision: str | None
     service_id: str | None = None
+    zotero_target: ZoteroTarget | None = field(default=None, compare=False, repr=False)
     # Server-only inventory attached after the explicit signed click. It neither
     # crosses HTTP nor changes the saved target's signature/equality proof.
     paper_plan: WorkspaceImportPlan | None = field(default=None, compare=False, repr=False)
@@ -45,7 +46,7 @@ class _ImportTarget:
         target = cls(config_path, hashlib.sha256(contents).hexdigest(), config_identity[:2],
                      config.output_dir, identity(config.output_dir),
                      identity(config.output_dir / 'Papers'),
-                     identity(config.output_dir / '.allfold-operation.lock'), config.user_state_revision, service_id)
+                     identity(config.output_dir / '.allfold-operation.lock'), config.user_state_revision, service_id, config.kept_workflow.zotero_target)
         if config_path.read_bytes() != contents or identity(config_path) != config_identity:
             raise ContentChangedError("Configuration changed while reading the Workspace target")
         return target, config

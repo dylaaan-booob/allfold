@@ -12,6 +12,20 @@ from allfold.web.app import create_app
 from allfold.web.electron_bridge import ElectronBridge
 
 
+async def drain_application(application):
+    """Stop dispatch and settle workers while the authenticated bridge stays open."""
+    # Admission may be held by a worker waiting for a native bridge result.
+    # Keep this loop receiving that result while shutdown waits for its lock.
+    await asyncio.to_thread(application.state.kept_workflow.shutdown)
+    await asyncio.to_thread(application.state.batch_import.stop)
+    for worker in (application.state.paper_enrichment, application.state.journal_cover_search, application.state.wos_coordinator):
+        await asyncio.to_thread(worker.shutdown)
+    for worker in (application.state.batch_import, application.state.preparation_coordinator,
+                   application.state.paper_enrichment, application.state.journal_cover_search, application.state.wos_coordinator):
+        await asyncio.to_thread(worker.join)
+    await asyncio.to_thread(application.state.kept_workflow.advance)
+
+
 def main():
     root = Path(__file__).resolve().parents[3]
     config_path = Path(sys.argv[1]).resolve()
@@ -44,14 +58,7 @@ def main():
         access_log=False, log_level=log_level, ws_max_size=8 * 1024 * 1024))
 
     async def drain():
-        application.state.kept_workflow.shutdown()
-        application.state.batch_import.stop()
-        for worker in (application.state.paper_enrichment, application.state.journal_cover_search, application.state.wos_coordinator):
-            worker.shutdown()
-        for worker in (application.state.batch_import, application.state.preparation_coordinator,
-                       application.state.paper_enrichment, application.state.journal_cover_search, application.state.wos_coordinator):
-            await asyncio.to_thread(worker.join)
-        application.state.kept_workflow.advance()
+        await drain_application(application)
         server.should_exit = True
 
     bridge.shutdown = drain

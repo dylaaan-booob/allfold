@@ -2,6 +2,7 @@
 from pathlib import Path
 from dataclasses import replace
 import os
+import hmac
 
 from fastapi import Request
 from fastapi.encoders import jsonable_encoder
@@ -72,6 +73,7 @@ def install_settings_api(app, config_path, csrf_token, *, workspace_health,
                          zotero_integration, reset_preview):
     install_resource_api(app, config_path, csrf_token)
     install_autosave_api(app, config_path, csrf_token)
+    install_zotero_api(app, csrf_token)
     install_credential_api(app, csrf_token)
 
     @app.get("/api/ui-next/settings")
@@ -192,7 +194,7 @@ def install_resource_api(app, config_path, csrf_token):
 AUTOSAVE_FIELDS = frozenset({
     'name', 'keyword_expression', 'from_month', 'to_month', 'log_level',
     'pubmed_query_mode', 'crossref_mailto', 'provider_aliases', 'provider_order',
-    'display_name', 'transition_delay_seconds', 'auto_import_after_preparation',
+    'display_name', 'transition_delay_seconds', 'auto_import_after_preparation', 'zotero_target',
     'institution_name', 'institution_idp_entity_id', 'institution_use_shibboleth',
     'journals', 'access_services', 'groups', 'custom_labels',
 })
@@ -298,3 +300,36 @@ def install_credential_api(app, csrf_token):
                 or len(body['expected_revision']) > 128):
             return settings_error('Invalid credential operation', 400)
         return await run_in_threadpool(commit, body)
+
+
+def install_zotero_api(app, csrf_token):
+    """Explicit native discovery/authorization; keys never cross the bridge."""
+    from starlette.concurrency import run_in_threadpool
+    from allfold.web.settings_guard import settings_task_active
+
+    def execute(operation):
+        with app.state.settings_write_lock:
+            if settings_task_active(app):
+                return json_response({'ok': False, 'error': 'task_active'}, 409)
+            owner = app.state.browser_task_lock.acquire('zotero')
+            if owner is None:
+                return json_response({'ok': False, 'error': 'task_active'}, 409)
+            try:
+                result = app.state.electron_bridge.execute('zotero_local', {'operation': operation}).result()
+                return json_response(result)
+            except (RuntimeError, OSError):
+                return json_response({'ok': False, 'error': 'runtime_unavailable'}, 409)
+            finally:
+                app.state.browser_task_lock.release(owner)
+
+    @app.post('/api/ui-next/zotero')
+    async def zotero(request: Request):
+        try:
+            body = await request.json()
+        except ValueError:
+            return settings_error('Invalid Zotero operation', 400)
+        if not isinstance(body, dict) or not hmac.compare_digest(str(body.get('csrf_token', '')), csrf_token):
+            return settings_error('Invalid CSRF token')
+        if body.get('operation') not in {'targets', 'authorize'}:
+            return settings_error('Invalid Zotero operation', 400)
+        return await run_in_threadpool(execute, body['operation'])

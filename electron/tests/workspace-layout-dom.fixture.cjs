@@ -19,11 +19,19 @@ const workspace={csrf_token:'fixture',import_token:'fixture',issues:[],counts:{c
   kept:{papers:[{paper:paper(10,'kept'),journal:records[0]},{paper:paper(11,'kept'),journal:records[1]}],journals:records,services:[],settings:{},titles:{}}};
 const run={active:false,snapshot:{status:'IDLE',provider:null},providers:Object.fromEntries(settings.values.provider_order.map(id=>[id,{enabled:false,message:'Offline fixture',result_summary:null}]))};
 const keptQueue={services:[{id:'all',name:'All Services',kept:2,eligible:2},{id:'unassigned',name:'Unassigned',kept:2,eligible:2}],papers:[],import_token:'fixture'};
+let keptState={active:false,phase:'idle',navigation:null,can_continue:false,can_cancel:false};
 const mimes={'.html':'text/html','.js':'text/javascript','.css':'text/css','.json':'application/json','.woff2':'font/woff2','.ttf':'font/ttf','.otf':'font/otf','.png':'image/png','.mp4':'video/mp4'};
 let rejectAutosave=false,resolveInitialCAS,credentialState={ok:false,error:'cas_store_unreadable',configured:false,username:'',revision:'d'.repeat(64)};
 const credentialWrites=[];
 const server=http.createServer((req,res)=>{
   const route=new URL(req.url,'http://fixture').pathname;
+  if(route==='/api/ui-next/zotero'){
+    const data={ok:true,server_id:'SERVERFIXTUR',version:'10.0.6',authorized:true,libraries:[
+      {type:'user',id:'0',name:'My Library',editable:true,files_editable:true,collections:[]},
+      {type:'group',id:'12',name:'Synthetic Group',editable:null,files_editable:null,collections:[
+        {key:'ABCDEFGH',path:'Parent',name:'Parent'}, {key:'JKLMNPQR',path:'Parent / Child',name:'Child',parent_key:'ABCDEFGH'}]}]};
+    res.writeHead(200,{'Content-Type':'application/json'});res.end(JSON.stringify(data));return;
+  }
   if(route==='/api/ui-next/settings/credentials'){
     let text='';req.on('data',chunk=>{text+=chunk;});req.on('end',()=>{
       const value=JSON.parse(text);credentialWrites.push(value);
@@ -38,7 +46,7 @@ const server=http.createServer((req,res)=>{
   if(route.startsWith('/api/') || route==='/settings/covers/search'){
     const data=route==='/api/ui-next/workspace'?workspace:route==='/api/ui-next/settings'?settings:
       route==='/api/ui-next/run'?run:route==='/api/kept-workflow/queue'?keptQueue:route==='/api/ui-next/run-expression'?{providers:Object.fromEntries(settings.values.provider_order.map(id=>[id,{expression:'causal',error:null}]))}:route==='/settings/covers/search'?cover_search:
-      {active:false,phase:'idle',navigation:null,can_continue:false,can_cancel:false};
+      route==='/api/kept-workflow/state'?keptState:{active:false,phase:'idle',navigation:null,can_continue:false,can_cancel:false};
     res.writeHead(200,{'Content-Type':'application/json'});res.end(JSON.stringify(data));return;
   }
   const relative=route==='/'?'index.html':decodeURIComponent(route.replace(/^\/static\/ui_next\//,''));
@@ -72,6 +80,47 @@ app.whenReady().then(async()=>{
     win.webContents.on('console-message',event=>{if(event.level==='error')console.error('RENDERER',event.message,event.lineNumber,event.sourceId);});
     await win.loadURL(`http://127.0.0.1:${server.address().port}/`);
     await ready("window.uiWorkspace?.ready() && !document.getElementById('array-candidates').disabled && document.querySelectorAll('#s-journals [data-journal]').length===24");
+    await check(()=>{
+      window.workspaceNavigation.go('kept',{instant:true});
+      document.querySelector('[data-zotero-refresh]').click();
+    });
+    await ready("!document.querySelector('[data-zotero-library]').disabled");
+    await check(()=>{
+      const library=document.querySelector('[data-zotero-library]');library.value='group:12';library.dispatchEvent(new Event('change'));
+    });
+    await ready("window.allfoldZoteroPreference.value?.library_id==='12' && !document.querySelector('[data-zotero-collection]').disabled && window.allfoldAutosave.status==='Saved'");
+    await check(()=>{
+      const collection=document.querySelector('[data-zotero-collection]');
+      if(![...collection.options].some(row=>row.textContent==='Parent / Child'))throw Error('Nested Collection path missing');
+      collection.value='JKLMNPQR';collection.dispatchEvent(new Event('change'));
+    });
+    await ready("window.allfoldZoteroPreference.value?.collection_key==='JKLMNPQR' && window.allfoldAutosave.status==='Saved'");
+    await size(600,480,"window.workspaceNavigation.current()==='kept'");
+    win.webContents.setZoomFactor(1.25);await wait(100);
+    await check(()=>{
+      const host=document.getElementById('kept-zotero-target'),rect=host.getBoundingClientRect();
+      for(const node of host.querySelectorAll('select,button')){const box=node.getBoundingClientRect();if(box.left<rect.left-1 || box.right>rect.right+1)throw Error('Zotero target control overflows narrow Queue');}
+      if(document.querySelector('[data-zotero-library]').value!=='group:12' || document.querySelector('[data-zotero-collection]').value!=='JKLMNPQR')throw Error('Saved target changed in narrow Queue');
+    });
+    await capture('zotero-target-600-zoom125');
+    keptState={...keptState,workflow_id:'last-import-fixture',generation:1,phase:'completed',import_started:true,
+      message:'Import finished: 3 imported',batch:{total:3,results:[
+        {paper_id:'paper-10',service_id:null,service_assignment:'unassigned',outcome:'exported',parent_outcome:'confirmed',reason:'Registered OpenAlex PDF',item_exists:true,pdf_attached:true,pdf_source:'openalex',fallback_used:true},
+        {paper_id:'paper-11',service_id:null,service_assignment:'unassigned',outcome:'exported',parent_outcome:'confirmed',reason:'OpenAlex has no direct PDF',item_exists:true,pdf_attached:false,pdf_source:'none',fallback_used:false,diagnostic:{stage:'attachment',step:'oa_resolver',code:'openalex_no_pdf'}},
+        {paper_id:'paper-query',service_id:null,service_assignment:'unassigned',outcome:'exported',parent_outcome:'confirmed',reason:'Parent saved',item_exists:true,pdf_attached:null,pdf_source:null,fallback_used:null,query_diagnostic:{code:'connection_lost'}}]}};
+    await js("document.getElementById('run-view').dispatchEvent(new Event('close'))");
+    await ready("document.querySelectorAll('#kept-record-items li').length===3");
+    await check(()=>{
+      document.querySelector('#kept-workspace [data-sidebar-view=results]').click();
+      const results=document.getElementById('kept-record-items');
+      if(!results.textContent.includes('Item Yes · PDF Yes · Fallback Yes') || !results.textContent.includes('PDF 无法核验 · Fallback 无法核验'))throw Error('Last Import indicators lost their evidence');
+      if(results.scrollWidth>results.clientWidth+1)throw Error('Last Import overflows narrow Results Sidebar');
+      const details=results.querySelector('li:last-child details');details.open=true;
+      details.scrollIntoView({block:'nearest'});
+    });
+    await capture('last-import-600-zoom125');
+    await check(()=>document.querySelector('#kept-sidebar [data-sidebar-close]').click());
+    win.webContents.setZoomFactor(1);await size(1200,800,"window.workspaceNavigation.current()==='kept'");
     await check(()=>{
       window.workspaceNavigation.go('kept',{instant:true});
       document.querySelector('#kept-workspace [data-sidebar-view=access]').click();

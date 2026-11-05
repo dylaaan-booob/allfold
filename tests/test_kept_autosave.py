@@ -20,7 +20,8 @@ from test_settings_autosave import patch_body
 def test_pending_kept_settings_do_not_retarget_continue_and_revalidate_after_release(tmp_path, external_change):
     config, service, other, original = scoped_workspace(tmp_path)
     config.write_text(config.read_text() + 'kept_workflow:\n  display_name: Original Researcher\n'
-        '  transition_delay_seconds: 3\n  auto_import_after_preparation: false\n')
+        '  transition_delay_seconds: 3\n  auto_import_after_preparation: false\n'
+        '  zotero_target:\n    server_id: SERVERFIXTUR\n    library_type: group\n    library_id: \"12\"\n    collection_key: ABCDEFGH\n')
     saved = load_user_state(config)
     compare_write_user_state(config, replace(saved.state, access_services=(
         service.model_copy(update={'access_method': 'manual'}), other)), saved.revision)
@@ -32,6 +33,8 @@ def test_pending_kept_settings_do_not_retarget_continue_and_revalidate_after_rel
         def __init__(self):
             self.calls, self.dispatched, self.future = [], threading.Event(), Future()
         def execute(self, action, data, progress=None):
+            if action == 'zotero_local':
+                result = Future(); result.set_result({'ok': True}); return result
             self.calls.append((action, data))
             self.dispatched.set()
             return self.future
@@ -73,6 +76,7 @@ def test_pending_kept_settings_do_not_retarget_continue_and_revalidate_after_rel
         assert importing['settings']['transition_delay_seconds'] == 3
         assert [(action, data['paper_id'], data['service_id']) for action, data in bridge.calls] == [
             ('import_paper', str(original[0].id), service.id)]
+        assert bridge.calls[0][1]['zotero_target'] == opened['values']['zotero_target']
         assert bridge.calls[0][1]['service_scope']['config_revision'] == opened['values']['monitor_revision_digest']
         assert client.post('/api/ui-next/settings/autosave', json=retained).json()['outcome'] == 'TASK_ACTIVE'
         assert config.read_bytes() == disk_before

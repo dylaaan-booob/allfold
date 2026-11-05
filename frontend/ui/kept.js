@@ -1,6 +1,6 @@
 import {KeptPlayer} from './kept-player.js';
 import {sceneReady,shots} from './kept/scene';
-import {importOutcomeMessage,preparationReason} from './business-results.js';
+import {preparationReason} from './business-results.js';
 const $=id=>document.getElementById(id),bridge=window.inboxKept;
 const exportButton=document.createElement('button');
 exportButton.type='button';exportButton.className='s-button';exportButton.textContent='导出本次诊断';exportButton.hidden=true;
@@ -89,9 +89,18 @@ function refreshActions() {
   if(!data)return;
   const selected=queueData?.services?.find(service=>service.id===serviceFilter);
   $('kept-start').disabled=$('kept-import-only').disabled=submitting || recovering || workflow?.active || acknowledging ||
-    window.uiRun?.active() || !selected?.eligible || ['unassigned','ambiguous'].includes(serviceFilter);
+    window.uiRun?.active() || (window.allfoldZoteroPreference && !window.allfoldZoteroPreference.value) || !selected?.eligible || ['unassigned','ambiguous'].includes(serviceFilter);
   for(const row of $('array-index').children)row.disabled=busy;
   workspaceSearch.refresh();
+}
+const observation=value=>value===true?'Yes':value===false?'No':'无法核验';
+function importIndicators(result) {
+  return `Item ${observation(result.item_exists)} · PDF ${observation(result.pdf_attached)} · Fallback ${observation(result.fallback_used)}`;
+}
+function importDetails(result) {
+  return `Paper: ${result.paper_id}\nService: ${result.service_id || result.service_assignment || 'Unassigned'}\n${result.reason}`+
+    (result.diagnostic?'\n'+[result.diagnostic.stage,result.diagnostic.step,result.diagnostic.code].filter(Boolean).join(' / '):'')+
+    (result.query_diagnostic?'\n查询：'+result.query_diagnostic.code+(result.query_diagnostic.status?` (HTTP ${result.query_diagnostic.status})`:''):'');
 }
 function renderRecord() {
   exportButton.hidden=!lastRun?.workflow_id;
@@ -101,13 +110,10 @@ function renderRecord() {
   $('kept-record-items').replaceChildren(...results.map(result=>{
     const item=document.createElement('li'),title=document.createElement('strong'),reason=document.createElement('small');
     item.dataset.outcome=result.outcome;title.textContent=result.title;title.title=result.title;
-    reason.textContent=result.outcome==='exported'
-      ? importOutcomeMessage(result.outcome,result.pdf_outcome)
-      : result.reason;
+    reason.textContent=importIndicators(result);
     const details=document.createElement('details'),summary=document.createElement('summary'),raw=document.createElement('p');
     details.className='import-result-details';summary.textContent='详情';
-    const pdf=result.pdf_outcome;
-    raw.textContent=`Paper: ${result.paper_id}\nService: ${result.service_id || 'Unassigned'}\n${result.reason}`+(pdf && !result.reason.toLowerCase().includes(`pdf ${pdf}`)?`\nPDF: ${pdf}`:'');
+    raw.textContent=importDetails(result);
     details.append(summary,raw);item.append(title,reason,details);return item;
   }));
   renderQueueResults(results);
@@ -117,9 +123,8 @@ function renderQueueResults(results) {
   const list=document.createElement('div');
   for(const result of results){
     const details=document.createElement('details'),heading=document.createElement('summary'),body=document.createElement('p');
-    heading.textContent=`${result.service_id || result.service_assignment || 'Unassigned'} · ${result.parent_outcome} · PDF unverified`;
-    body.textContent=`Paper: ${result.paper_id}\n${result.title}\n${result.reason}`+
-      (result.diagnostic?'\n'+[result.diagnostic.stage,result.diagnostic.step,result.diagnostic.code].filter(Boolean).join(' / '):'');
+    heading.textContent=`${result.title} · ${importIndicators(result)}`;
+    body.textContent=importDetails(result);
     details.append(heading,body);list.append(details);
   }
   $('kept-queue-results').replaceChildren(summary,exportButton,list);
@@ -280,7 +285,7 @@ function renderQueue() {
   const services=queueData?.services || [],selected=services.find(service=>service.id===serviceFilter);
   const batchName=workflow?.service_name || (workflow?.service_id ?
     services.find(service=>service.id===workflow.service_id)?.name || workflow.service_id : 'All Services');
-  const batchResults=workflow?.batch?.results || [],planned=workflow?.batch?.total ?? workflow?.planned_total ?? 0;
+  const batchResults=[...new Map((workflow?.batch?.results || []).map(result=>[result.paper_id,result])).values()],planned=workflow?.batch?.total ?? workflow?.planned_total ?? 0;
   const batchCounts=workflow?.workflow_id?`计划 ${planned} · 已处理 ${batchResults.filter(result=>result.outcome!=='skipped').length}`+
     ` · 父条目确认 ${batchResults.filter(result=>result.parent_outcome==='confirmed').length} · 待处理 ${Math.max(0,planned-batchResults.length)}`+
     (workflow.waiting_for_login?' · 需要人工登录':workflow.can_continue?' · 等待 Continue':''):
@@ -297,9 +302,8 @@ function renderQueue() {
     return button;
   }));
   if(focused)[...$('kept-service-list').children].find(button=>button.dataset.serviceId===serviceFilter)?.focus({preventScroll:true});
-  const columns=[['Service','name'],['Kept','kept'],['Eligible','eligible'],['Planned','planned'],['Processed','processed'],
-    ['Confirmed parents','confirmed'],['Pending','pending'],['Skipped','skipped'],['No effect','no_effect'],
-    ['Exceptions','exceptions'],['Uncertain','uncertain'],['PDF unverified','pdf_unverified']];
+  const columns=[['Service','name'],['Kept','kept'],['Eligible','eligible'],['Planned','planned'],
+    ['Confirmed parents','confirmed'],['PDF','pdf_attached'],['Fallback','fallback'],['Issues','issues']];
   const table=document.createElement('table'),head=document.createElement('thead'),heading=document.createElement('tr'),body=document.createElement('tbody');
   for(const [label] of columns){const cell=document.createElement('th');cell.textContent=label;cell.setAttribute('scope','col');heading.append(cell);}
   head.append(heading);
@@ -351,7 +355,8 @@ function publishResults(state) {
   if(!state.import_started && !state.batch){lastRun=null;renderRecord();return;}
   const batch=state.batch;
   const titles=new Map([...taskQueue,...allEntries()].map(e=>[e.paper.id,e.paper.title]));
-  const results=(batch?.results || []).map(result=>({...result,title:titles.get(result.paper_id) || data.titles[result.paper_id] || result.paper_id}));
+  const results=[...new Map((batch?.results || []).map(result=>[result.paper_id,result])).values()]
+    .map(result=>({...result,title:titles.get(result.paper_id) || data.titles[result.paper_id] || result.paper_id}));
   lastRun={total:batch?.total || taskQueue.length || results.length,results,message:state.message,workflow_id:state.workflow_id};
   renderRecord();
 }
@@ -562,6 +567,7 @@ $('kept-start').addEventListener('click',()=>void start('full'));$('kept-import-
 $('kept-continue').addEventListener('click',()=>void continueImport());$('kept-leave').addEventListener('click',()=>void leaveWorkflow());
 $('kept-skip').addEventListener('click',skipScan);
 window.addEventListener('enrich-state',()=>{if(arrayShown() && !bridge.busy() && readerRefreshPending)render();else refreshActions();});
+window.addEventListener('zotero-target-changed',refreshActions);
 window.addEventListener('workspace-data-changed',()=>{data=bridge.data();if(data && arrayShown()){saveScroll();render();}if(window.workspaceNavigation.current()==='kept')void refreshQueue();});
 window.addEventListener('workspace-reset',()=>{
   workspaceEpoch++;clearTimeout(pollTimer);

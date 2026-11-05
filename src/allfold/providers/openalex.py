@@ -12,7 +12,7 @@ from datetime import date, datetime, timezone
 from enum import Enum
 from threading import Lock
 from typing import Any
-from urllib.parse import urlencode, urlsplit
+from urllib.parse import urlencode, urlsplit, quote
 
 import httpx
 from pydantic import ValidationError, field_validator
@@ -231,6 +231,17 @@ class OpenAlexClient:
 
     def __exit__(self, *args: object) -> None:
         self.close()
+
+    def get_work_by_doi(self, doi: str) -> dict[str, Any]:
+        """Retrieve one exact DOI work for the on-demand Import PDF fallback."""
+        normalized = normalize_doi(doi)
+        if normalized is None:
+            raise ValueError("Invalid DOI")
+        return self._request_json(
+            f"/works/https://doi.org/{quote(normalized, safe='/')}",
+            {"select": "id,doi,best_oa_location,locations"},
+            not_found_message="DOI is not present in OpenAlex",
+        )
 
     def get_source_by_issn(
         self,
