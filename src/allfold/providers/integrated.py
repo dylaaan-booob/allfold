@@ -452,20 +452,19 @@ class DiscoveryClient:
     def _dblp_pages(self, source, ast, start, end):
         if not source.stream or not re.fullmatch(r'streams/(?:conf|journals)/[a-zA-Z0-9_/-]+',source.stream):
             raise UnsupportedSource('DBLP requires a verified source Stream mapping; this source was not queried')
-        # DBLP has no reliable phrase/group syntax. Distribute into CNF:
-        # native whitespace AND / pipe OR generate a conservative superset,
-        # then evaluate only this adapter's candidates against their titles.
-        def cnf(node):
+        # DBLP has no reliable phrase/group syntax. Keep native AND clauses;
+        # flatten grouped OR operands into a conservative clause instead of
+        # exponentially distributing them. The full AST still filters titles.
+        def candidate_clauses(node):
+            self.check_cancel()
             if isinstance(node, And):
-                clauses = cnf(node.left) + cnf(node.right)
-            elif isinstance(node, Or):
-                left, right = cnf(node.left), cnf(node.right)
-                clauses = [a + b for a in left for b in right]
-            else:
-                _word(node)
-                return [[word + ('' if isinstance(node,Prefix) else '$')] for word in node.value.split()]
-            return clauses
-        keywords = ' '.join('|'.join(dict.fromkeys(clause)) for clause in cnf(ast))
+                return candidate_clauses(node.left) + candidate_clauses(node.right)
+            if isinstance(node, Or):
+                children = candidate_clauses(node.left) + candidate_clauses(node.right)
+                return [[word for clause in children for word in clause]]
+            _word(node)
+            return [[word + ('' if isinstance(node,Prefix) else '$')] for word in node.value.split()]
+        keywords = ' '.join('|'.join(dict.fromkeys(clause)) for clause in candidate_clauses(ast))
         years = '|'.join(f'year:{year}:' for year in range(start.year,end.year+1))
         query = f'streamid:{source.stream.removeprefix("streams/")}: {years} {keywords}'
         offset, seen = 0, set()

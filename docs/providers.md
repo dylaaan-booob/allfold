@@ -52,7 +52,9 @@ Author Keywords. WoS retains Topic coverage, including Keywords Plus.
 
 DBLP uses `streamid:conf/nips:` for NeurIPS, with the requested years. Its native
 query is a conservative candidate query for Boolean groups and phrases;
-the complete AST is then evaluated against each title in memory. Phrase matching
+native AND clauses are retained, while grouped OR operands form a compact
+conservative clause without exponential distribution. The complete AST is then
+evaluated against each title in memory. Phrase matching
 requires adjacent words in order within one field. Normal native hits from other
 providers do not undergo a second local title/abstract filter: a missing returned
 abstract or indexed-term field does not invalidate the remote keyword hit.

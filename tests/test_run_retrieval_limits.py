@@ -54,16 +54,22 @@ def test_discovery_retains_all_5100_results_across_51_pages(provider):
     assert pages == list(range(0, total, 100))
 
 
-def test_dblp_boolean_expansion_exceeds_32_clauses_without_rejecting_scope():
+def test_dblp_grouped_expression_uses_compact_candidates_and_full_title_matching():
     calls = []
-    expression = ' OR '.join(f'(term{n} AND word{n})' for n in range(6))
+    expression = ' OR '.join(f'(term{n} AND word{n})' for n in range(10))
     with DiscoveryClient('dblp', transport=httpx.MockTransport(lambda request:
         calls.append(request) or httpx.Response(200, json={'result': {'hits': {
-            '@total': '0', '@computed': '0', '@first': '0'}}})), interval=0) as client:
+            '@total': '2', '@computed': '2', '@first': '0', 'hit': [
+                {'info': {'key': 'conf/test/match', 'title': 'term9 word9', 'year': '2026'}},
+                {'info': {'key': 'conf/test/nonmatch', 'title': 'term9 alone', 'year': '2026'}},
+            ]}}})), interval=0) as client:
         result = client.discover(SourceScope('conference', 'Conference', stream='streams/conf/test'),
                                  parse_keyword_expression(expression), date(2026, 1, 1), date(2026, 12, 31))
-    assert result.status == 'empty' and len(calls) == 1
-    assert len(calls[0].url.params['q'].split()) == 66  # Stream + year + 2**6 CNF clauses.
+    assert result.status == 'complete' and len(calls) == 1
+    assert result.candidates == 2 and [r.title for r in result.records] == ['term9 word9']
+    query = calls[0].url.params['q']
+    assert query.startswith('streamid:conf/test: year:2026: ')
+    assert all(f'{word}{n}$' in query for n in range(10) for word in ('term', 'word'))
 
 
 @pytest.mark.parametrize('ambiguous', [False, True])
