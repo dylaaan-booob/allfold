@@ -3,6 +3,7 @@ const test=require('node:test');
 const assert=require('node:assert/strict');
 const fs=require('node:fs');
 const path=require('node:path');
+const os=require('node:os');
 const vm=require('node:vm');
 const {EventEmitter}=require('node:events');
 
@@ -132,11 +133,18 @@ test('bounded attachment responses abort before buffering beyond the cap',async(
  const response=f.incoming();response.emit('data',Buffer.from('1234'));response.emit('data',Buffer.from('56'));
  await assert.rejects(pending,error=>error.code==='response_too_large');assert.equal(f.request.aborted,1);
 });
-test('native attachment requests preserve same-origin referrers and strip paths across origins and redirects',{timeout:20000},async()=>{
+test('native attachment requests preserve same-origin referrers and strip paths across origins and redirects',{timeout:20000},async t=>{
  const {execFile}=require('node:child_process');
- const output=await new Promise((resolve,reject)=>execFile(require('electron'),[path.join(__dirname,'session-http-referrer.fixture.cjs')],
-  {timeout:15000,maxBuffer:1024*1024,env:{...process.env,ELECTRON_RUN_AS_NODE:''}},(error,stdout,stderr)=>{
-   if(error)reject(Error(`${error.message}\n${stdout}\n${stderr}`));else resolve(stdout+stderr);
-  }));
- assert.match(output,/SESSION HTTP REFERRER PASS/);
+ const profile=fs.mkdtempSync(path.join(os.tmpdir(),'allfold-referrer-profile-'));
+ try {
+  const output=await new Promise((resolve,reject)=>execFile(require('electron'),[path.join(__dirname,'session-http-referrer.fixture.cjs'),profile],
+   {timeout:15000,killSignal:'SIGKILL',signal:t.signal,maxBuffer:1024*1024,env:{...process.env,ELECTRON_RUN_AS_NODE:''}},(error,stdout,stderr)=>{
+    if(error)reject(Error(`${error.message}\n${stdout}\n${stderr}`));else resolve(stdout+stderr);
+   }));
+  assert.match(output,/SESSION HTTP REFERRER PASS/);
+ } finally {
+  // Chromium can still write its profile during will-quit. The parent owns
+  // deletion only after execFile has observed the child's close event.
+  fs.rmSync(profile,{recursive:true,force:true});
+ }
 });
