@@ -93,8 +93,19 @@ async function ready(condition){
   throw Error('UI readiness timeout: '+condition+'; native='+JSON.stringify(win.getBounds())+'; DOM='+JSON.stringify(actual));
 }
 async function size(width,height,condition){win.setSize(width,height);await ready(`innerWidth===${width} && (${condition})`);}
-async function navigate(view){await ready(`window.workspaceNavigation.go(${JSON.stringify(view)},{instant:true})`);}
-async function check(fn){await js(`(${fn.toString()})()`);}
+async function navigateInRenderer(view,buttonId=view+'-open') {
+  for(let attempt=0;attempt<150;attempt++){
+    const button=document.getElementById(buttonId);
+    if(button && !button.disabled){
+      button.click();
+      if(window.workspaceNavigation.current()===view)return;
+    }
+    await new Promise(resolve=>setTimeout(resolve,50));
+  }
+  throw Error('Navigation did not reach '+view+' from '+window.workspaceNavigation.current());
+}
+async function navigate(view){await js(`(${navigateInRenderer.toString()})(${JSON.stringify(view)})`);}
+async function check(fn){await js(`(${fn.toString()})(${navigateInRenderer.toString()})`);}
 app.whenReady().then(async()=>{
   try {
     await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));
@@ -110,8 +121,8 @@ app.whenReady().then(async()=>{
       if(!document.getElementById('array-journal-issn').parentElement.hidden || !document.getElementById('array-journal-eissn').parentElement.hidden)throw Error('Conference profile displays Journal ISSN fields');
       if(document.getElementById('array-source-stream')?.textContent!=='streams/conf/icml')throw Error('Conference profile lost its native DBLP Stream');
     });
-    await check(()=>{
-      window.workspaceNavigation.go('journals',{instant:true});
+    await check(async navigate=>{
+      await navigate('journals');
       const category=document.getElementById('s-source-kind'),label=document.getElementById('s-add-journal');
       const updates=new MutationObserver(()=>{});updates.observe(label,{childList:true});
       try{
@@ -123,8 +134,8 @@ app.whenReady().then(async()=>{
         }
       }finally{updates.disconnect();}
     });
-    await check(()=>{
-      window.workspaceNavigation.go('journals',{instant:true});
+    await check(async navigate=>{
+      await navigate('journals');
       const category=document.getElementById('s-source-kind');category.value='conferences';category.dispatchEvent(new Event('change'));
       if(document.querySelectorAll('#s-journals [data-journal]').length!==0)throw Error('Registry automatically followed series');
       document.getElementById('s-add-journal').click();
@@ -152,9 +163,9 @@ app.whenReady().then(async()=>{
     await check(()=>window.dispatchEvent(new Event('settings-saved')));
     releaseWorkspace();
     await ready("window.inboxRun.available() && window.inboxKept.candidates().find(entry=>entry.journal.source_type==='conference')?.journal.group==='Group 0'");
-    await check(()=>window.workspaceNavigation.go('workspace',{instant:true}));
+    await navigate('workspace');
     await ready("document.getElementById('array-journal-subject').textContent==='Group 0'");
-    await check(()=>window.workspaceNavigation.go('journals',{instant:true}));
+    await navigate('journals');
     await size(600,480,"window.workspaceNavigation.current()==='journals'");
     await capture('conferences-600');
     await check(()=>{
@@ -163,8 +174,8 @@ app.whenReady().then(async()=>{
       if(document.querySelectorAll('#s-journals [data-journal]').length!==24)throw Error('Conference edits modified Journals');
     });
     await size(1200,800,"window.workspaceNavigation.current()==='journals'");
-    await check(()=>{
-      window.workspaceNavigation.go('run',{instant:true});
+    await check(async navigate=>{
+      await navigate('run');
       const field=document.querySelector('[data-monitor="expression"]');field.value='lea*';field.dispatchEvent(new Event('input',{bubbles:true}));
     });
     await ready("document.querySelector('[data-monitor=expression]').getAttribute('aria-invalid')==='true'");
@@ -216,8 +227,8 @@ app.whenReady().then(async()=>{
     await capture('last-import-600-zoom125');
     await check(()=>document.querySelector('#kept-sidebar [data-sidebar-close]').click());
     win.webContents.setZoomFactor(1);await size(1200,800,"window.workspaceNavigation.current()==='kept'");
-    await check(()=>{
-      window.workspaceNavigation.go('kept',{instant:true});
+    await check(async navigate=>{
+      await navigate('kept');
       document.querySelector('#kept-workspace [data-sidebar-view=access]').click();
       for(const [field,value] of [['username','new-fixture-user'],['password','synthetic-complete-replacement']]){
         const input=document.getElementById('s-cas-'+field);input.value=value;input.dispatchEvent(new Event('input',{bubbles:true}));
@@ -262,7 +273,7 @@ app.whenReady().then(async()=>{
     if(completionStarts.length!==1 || completionStarts[0].paper_ids.length!==2)throw Error('API completion did not retain the explicit batch selection');
     await js("document.getElementById('api-completion-close').click()");
     await ready("window.inboxRun.available()");
-    await check(async()=>{
+    await check(async navigate=>{
       const $=id=>document.getElementById(id),assert=(ok,message)=>{if(!ok)throw Error(message);},sleep=ms=>new Promise(r=>setTimeout(r,ms));
       assert($('paper-first-public').textContent==='2022-04','first-public precision was not rendered');
       assert($('paper-journal-dates').textContent==='Accepted · 2026-09 · crossrefPublished online · 2026-10 · crossref','named journal events were not rendered in date order');
@@ -304,20 +315,20 @@ app.whenReady().then(async()=>{
       assert($('array-journal-name').textContent==='Synthetic Journal 1','metadata did not follow selection');
       document.querySelector('#kept-view [data-sidebar-view]').click();
       $('array-index-toggle').click();$('array-index').scrollTop=200;document.querySelector('#array-flyout [data-flyout-close]').click();
-      $('array-kept').click();assert(window.workspaceNavigation.current()==='kept','legacy Kept entry must open independent Kept');
+      await navigate('kept','array-kept');assert(window.workspaceNavigation.current()==='kept','legacy Kept entry must open independent Kept');
       assert($('kept-sidebar').hidden,'Kept automatically opened a Sidebar');
       assert(!$('kept-start').closest('[hidden]') && !$('kept-import-only').closest('[hidden]'),'primary actions hidden with sidebar');
-      $('workspace-open').click();$('array-index-toggle').click();assert($('array-index').scrollTop===200,'Candidates Index scroll lost after visiting Kept');document.querySelector('#array-flyout [data-flyout-close]').click();
+      await navigate('workspace');$('array-index-toggle').click();assert($('array-index').scrollTop===200,'Candidates Index scroll lost after visiting Kept');document.querySelector('#array-flyout [data-flyout-close]').click();
       window.layoutReader=$('paper-detail');window.layoutParent=layoutReader.parentElement;layoutReader.scrollTop=180;
       document.querySelector('#kept-view [data-sidebar-view]').click();
     });
     await capture('array-wide');
     await size(700,500,"document.getElementById('kept-view').dataset.sidebarMode==='overlay'");
-    await check(()=>{
+    await check(async navigate=>{
       const root=document.getElementById('kept-view'),reader=document.getElementById('paper-detail');
       if(root.dataset.sidebarMode!=='overlay')throw Error('narrow Array must overlay');
       if(reader!==window.layoutReader || reader.parentElement!==window.layoutParent || reader.scrollTop!==180)throw Error('resize changed Reader identity/scroll');
-      document.getElementById('journals-open').click();
+      await navigate('journals');
     });
     await ready("!document.getElementById('s-journals-page').hidden");
     await check(async()=>{
@@ -362,7 +373,7 @@ app.whenReady().then(async()=>{
     });
     await capture('journals-overlay');
     await size(1200,800,"document.getElementById('s-journals-page').dataset.sidebarMode==='docked'");
-    await check(()=>{
+    await check(async navigate=>{
       const $=id=>document.getElementById(id),input=$('s-entity-description').querySelector('[data-service-field=url]');
       if(input!==window.layoutDraft || input.parentElement!==window.layoutDraftParent || input.value!=='https://synthetic.test/draft' || document.activeElement!==input)throw Error('resize lost Service draft/focus');
       if($('s-journals-page').dataset.sidebarMode!=='docked')throw Error('wide Journals must dock');
@@ -372,17 +383,17 @@ app.whenReady().then(async()=>{
       const target=$('layout-sidebarPreferredWidth');target.value='420';target.dispatchEvent(new Event('input'));$('layout-save').click();$('layout-origin').click();
       if(target.value!=='320')throw Error('ORIGIN did not restore defaults');$('layout-reset').click();if(target.value!=='420')throw Error('RESET lost saved target');
       if(document.querySelector('footer').getBoundingClientRect().height>86)throw Error('developer footer unbounded');
-      $('workspace-open').click();
+      await navigate('workspace');
     });
     await capture('array-developer');
     await size(600,480,"document.getElementById('kept-view').dataset.sidebarMode==='overlay'");
-    await check(()=>{
+    await check(async navigate=>{
       const $=id=>document.getElementById(id),root=$('kept-view'),tools=root.querySelector('.tool-rail'),main=$('array-content');
       if(root.dataset.sidebarMode!=='overlay')throw Error('600px Array must overlay');
       if(tools.getBoundingClientRect().right>root.getBoundingClientRect().right+1 || main.clientWidth<360)throw Error('rails/content overflow');
       if($('keep-paper').getBoundingClientRect().bottom>main.getBoundingClientRect().bottom)throw Error('low-height primary decision unreachable');
       if(document.querySelector('.masthead').getBoundingClientRect().bottom>root.getBoundingClientRect().top+1 || document.querySelector('footer').getBoundingClientRect().top<root.getBoundingClientRect().bottom-1)throw Error('Chrome or Status overlaps content');
-      $('journals-open').click();
+      await navigate('journals');
     });
     await wait(100);
     await check(()=>{
@@ -392,8 +403,8 @@ app.whenReady().then(async()=>{
       if(document.getElementById('s-entities').clientHeight<100)throw Error('low-height Directory cannot scroll');
     });
     await capture('journals-small');
-    await check(()=>{
-      const $=id=>document.getElementById(id);$('settings-open').click();
+    await check(async navigate=>{
+      const $=id=>document.getElementById(id);await navigate('settings');
       if($('s-settings').clientHeight<100)throw Error('Settings lost its parent height');
       if($('s-save') || document.querySelector('.header-browse #s-save'))throw Error('ordinary global SAVE remains');
       if($('s-settings').querySelector('[data-monitor="name"], [data-monitor="displayName"], #s-institution'))throw Error('Settings contains task-owned fields');
@@ -401,7 +412,7 @@ app.whenReady().then(async()=>{
       document.querySelector('#s-settings [data-sidebar-view]').click();
       if($('s-settings').dataset.sidebarMode!=='overlay' || $('settings-system-sidebar').hidden)throw Error('Settings System must overlay at 600x480');
       document.querySelector('#settings-system-sidebar [data-sidebar-close]').click();
-      $('run-open').click();
+      await navigate('run');
       $('s-run-overview-open').click();
       if(document.querySelectorAll('[data-discovery-provider]').length!==2)throw Error('Integrated Provider choices missing');
       if(document.querySelector('[data-provider="pubmed"], [data-monitor="pubmedKey"]'))throw Error('Retired PubMed still displayed');
@@ -416,7 +427,7 @@ app.whenReady().then(async()=>{
       if(!document.querySelector('#run-configuration-sidebar [data-monitor="crossrefMailto"]'))throw Error('Provider settings not in Functional Sidebar');
       document.querySelector('#run-configuration-sidebar [data-sidebar-close]').click();$('s-run-overview-open').click();
 
-      window.workspaceNavigation.go('workspace',{instant:true});
+      await navigate('workspace');
       window.allfoldUIPreferences.setArchiveDisabled(false);$('array-index-toggle').click();$('array-index').scrollTop=200;$('workspace-archive').click();
       if($('selected-view').dataset.workspaceLayout!=='archive' || !$('kept-view').hidden)throw Error('Archive restoration failed');
       archiveDebug.values.height=200;window.dispatchEvent(new Event('archive-debug-change'));
@@ -458,9 +469,9 @@ app.whenReady().then(async()=>{
     });
     await capture('kept-workflow-small');
 
-    await check(async()=>{
+    await check(async navigate=>{
       const $=id=>document.getElementById(id),assert=(ok,message)=>{if(!ok)throw Error(message);};
-      $('run-open').click();
+      await navigate('run');
       $('s-run-overview-open').click();
       if(document.querySelectorAll('[data-discovery-provider]').length!==2)throw Error('Integrated Provider choices missing');
       if(document.querySelector('[data-provider="pubmed"], [data-monitor="pubmedKey"]'))throw Error('Retired PubMed still displayed');
@@ -470,15 +481,15 @@ $('s-run-overview-open').click();
       const input=document.querySelector('#s-run [data-monitor="name"]');input.focus();input.value='First autosave';input.dispatchEvent(new Event('input',{bubbles:true}));
       const pending=window.allfoldAutosave.flush();await new Promise(resolve=>setTimeout(resolve,20));
       input.value='Newer autosave';input.dispatchEvent(new Event('input',{bubbles:true}));
-      $('settings-open').click();$('run-open').click();
+      await navigate('settings');await navigate('run');
       assert(input.value==='Newer autosave','workspace navigation overwrote newer input');
       assert(await pending,'autosave flush failed');assert(input.value==='Newer autosave','late response overwrote newer input');
       assert(await window.allfoldAutosave.flush(),'final autosave did not settle');assert(window.allfoldAutosave.status==='Saved','settled autosave not Saved');
-      window.workspaceNavigation.go('workspace',{instant:true});
+      await navigate('workspace');
     });
-    await check(async()=>{
+    await check(async navigate=>{
       const $=id=>document.getElementById(id),assert=(ok,message)=>{if(!ok)throw Error(message);};
-      $('journals-open').click();
+      await navigate('journals');
       document.querySelector('#s-journals [data-journal]').click();
       const journalId=document.querySelector('#s-journals [data-current=true]').dataset.journal;
       const settle=async()=>assert(await window.allfoldAutosave.flush(),'Journal autosave failed');
@@ -499,7 +510,7 @@ $('s-run-overview-open').click();
         assert(document.querySelector('[data-service-field=url]')===url,'ordinary save remounted the Service editor');
         assert((await window.uiNext.request('/api/ui-next/settings')).values.access_services[0].access_url===value,'repeated Service URL edit did not persist');
       }
-      window.workspaceNavigation.go('workspace',{instant:true});
+      await navigate('workspace');
     });
     rejectAutosave=true;
     await check(async()=>{
