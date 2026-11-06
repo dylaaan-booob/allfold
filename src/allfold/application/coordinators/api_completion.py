@@ -149,6 +149,9 @@ class ApiCompletion:
                         else:
                             result.update(status='failed', message=str(error) if isinstance(error, (ValueError, OSError, RuntimeError)) else 'API completion failed for this Paper')
                     finally:
+                        if result['status'] in {'updated', 'unchanged'}:
+                            result['first_public_status'] = ('recorded' if state.first_public_at or
+                                'first_public_at' in result['saved_fields'] else 'unresolved')
                         with self._lock:
                             self._state['results'].append(result)
                             self._state['processed'] += 1

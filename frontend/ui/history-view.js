@@ -35,8 +35,10 @@ export function historyIntegrityMessage(integrity={}) {
 }
 export function renderHistoryRecord(record) {
   const details=record.details || {},stats=record.statistics || {};
-  const status=record.kind==='run' && details.result_status && !['interrupted','uncertain','cancelled'].includes(record.outcome)
-    ? resultLabel(details.result_status):outcomes[record.outcome] || '需要检查';
+  const status=record.kind==='api_completion' && record.outcome==='partial'
+    ? stats.failed?'部分 Paper 处理失败':stats.lookup_failed || stats.identity_mismatch?'Paper 已处理，部分来源查询异常':'Paper 已处理，部分写入需检查'
+    : record.kind==='run' && details.result_status && !['interrupted','uncertain','cancelled'].includes(record.outcome)
+      ? resultLabel(details.result_status):outcomes[record.outcome] || '需要检查';
   const title=record.kind==='run'?`Run ${providerNames[record.provider] || ''}`:kinds[record.kind] || '任务';
   const counts=Object.entries(stats).filter(([key,value])=>metrics[key] && Number.isInteger(value) && (value>0 || ['total','created','confirmed'].includes(key)))
     .map(([key,value])=>`${metrics[key]} ${value}`);

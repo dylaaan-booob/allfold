@@ -19,6 +19,12 @@ class BrowserPresentation {
     if(this.host && !this.host.isDestroyed())this.host.webContents.send(channel,value);
   }
   requestLayout(){this.send('browser:layout');}
+  initializeView(view) {
+    if(!this.host || this.host.isDestroyed())return;
+    const [width,height]=this.host.getContentSize();
+    // Background pages need a real layout viewport before a task reveals them.
+    view.setBounds({x:0,y:0,width,height});
+  }
   show(){this.send('browser:presentation',{visible:true});}
   reset(){this.detach();this.visible=false;this.bounds=null;this.sequence=-1;this.focusPending=false;}
   select(tab,{focus=false}={}) {

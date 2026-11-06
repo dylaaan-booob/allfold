@@ -1254,19 +1254,20 @@ function renderEnrich() {
   const operation=enrichment?.paperId===paper.id ? enrichment : null;
   const phase=operation?.phase || paper.enrichPhase || 'Idle';
   const active=phase==='Retrieving' || phase==='Saving';
+  const waiting=phase==='Retrieving' && operation?.waitingForUser===true;
   for(const id of ['previous-paper','next-paper']) $(id).disabled=decisionPending || Boolean(snapshotApplying) || paperToolsBusy() || phase==='Saving' || reviewPapers().length===1;
   document.querySelectorAll('#paper-detail [data-enrich], #paper-metadata-details [data-enrich]').forEach(node=>{
     node.disabled=!canEnrich(paper);
     node.title=node.disabled ? (!paper.doi?'需要有效的主要 DOI；仍可编辑本地字段':active?'正在补全缺失信息':paper.enriched?'本次补全已完成，信息仍未获得':'当前暂不可补全') : '点击补全缺失信息';
   });
   $('cancel-enrich').hidden=phase!=='Retrieving';
+  $('enrich-task-page').hidden=!waiting;
   const candidateReader=readerContext?.status==='candidates' && arrayActive();
   $('keep-paper').disabled=$('reject-paper').disabled=decisionPending || Boolean(snapshotApplying) || paperToolsBusy() || phase==='Saving' || window.workspaceArray?.workflowBusy() ||
     (readerContext ? !candidateReader : inspection.time!==inspection.duration || !inspection.target);
   $('back').disabled=decisionPending || Boolean(snapshotApplying) || paperToolsBusy() || phase==='Saving' || !inspection.target;
   const status=$('enrich-status'); status.dataset.phase=phase; status.dataset.warning=String(paper.syncWarning || false);
-  status.textContent=paper.enrichMessage==='Complete authentication or the challenge in Chrome'
-    ? '请在顶栏 BROWSER 工作区中手动完成登录或验证。' : paper.enrichMessage || '';
+  status.textContent=waiting?'等待网页验证':paper.enrichMessage || '';
   status.parentElement.hidden=!status.textContent && phase!=='Retrieving';
   document.querySelectorAll('#paper-detail .missing-field, #paper-metadata-details .missing-field, #paper-metadata-details .date-precision').forEach(n=>n.classList.toggle('scanning',phase==='Retrieving'));
   fillAbstractPlaceholder();
@@ -1422,6 +1423,7 @@ async function pollEnrich(operation) {
   try {
     const result=await uiNext.request(`${enrichmentURL(operation)}/state?request_id=${encodeURIComponent(operation.requestID)}`);
     operation.phase=result.phase;operation.paper.enrichPhase=result.phase;operation.paper.enrichMessage=result.message;
+    operation.waitingForUser=result.waiting_for_user===true;
     if($('paper-tools-dialog').open && paperTools.kind==='diagnostics' && paperTools.paperId===operation.paperId){
       paperTools.diagnosticGeneration++;renderPaperDiagnostics(result.diagnostic);
     }
@@ -1452,10 +1454,19 @@ async function startEnrich(developerRetry=false) {
     operation.requestID=result.request_id;
     if(operation.cancelled)return;
     operation.phase=result.phase;paper.enrichPhase=result.phase;paper.enrichMessage=result.message;
+    operation.waitingForUser=result.waiting_for_user===true;
     void pollEnrich(operation);
   } catch(error) {operation.phase='Failed';paper.enrichPhase='Failed';paper.enrichMessage=error.message;}
   if(currentPaper()?.id===paper.id)renderEnrich();
 }
+$('enrich-task-page').addEventListener('click',async()=>{
+  const operation=enrichment;
+  if(operation?.phase!=='Retrieving' || !operation.waitingForUser || !operation.requestID)return;
+  try {
+    if(!await window.allfoldWorkbench?.showTaskPage({workflowId:operation.requestID,taskId:operation.requestID,source:'enrich'}))
+      uiNext.notice('当前验证页面尚未就绪，请稍后重试。');
+  }catch(error){uiNext.notice(error.message);}
+});
 async function reviewPaper(status) {
   const arrayCandidate=readerContext?.status==='candidates' && arrayActive();
   if (decisionPending || snapshotApplying || paperToolsBusy() || enrichment?.phase==='Saving' || window.workspaceArray?.workflowBusy() ||

@@ -77,6 +77,10 @@ def _targets(provider, records):
         targets = {key for key in targets if not key[1].startswith('10.48550/arxiv.') and key[1] not in known_other}
     if provider in {'arxiv', 'biorxiv', 'medrxiv'} and metadata_answered:
         targets = {key for key in targets if preprint_identity(*key) not in answered}
+    if provider in {'biorxiv', 'medrxiv'}:
+        # Resolve known preprints before a formal-DOI reverse lookup. A returned
+        # v1 can satisfy the existing coverage check and avoid that extra call.
+        return sorted(targets, key=lambda key: (not key[1].startswith('10.1101/'), key))
     return sorted(targets)
 
 

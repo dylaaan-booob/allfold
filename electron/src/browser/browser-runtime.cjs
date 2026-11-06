@@ -81,6 +81,7 @@ class BrowserRuntime {
       contextIsolation:true, nodeIntegration:false, nodeIntegrationInSubFrames:true, webSecurity:true}});
     const contents = view.webContents;
     view.setVisible(false);
+    this.presentation.initializeView(view);
     // The Session already owns the synchronous identity preload and HTTPS headers.
     contents.setUserAgent(this.partition.getUserAgent());
     const tab = {id:contents.id, view, status:null, error:null, opener,taskSignal:opener?.taskSignal,authContext:opener?.authContext,

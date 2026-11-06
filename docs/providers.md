@@ -38,6 +38,8 @@ OpenAlex `locations` retains recognizable DOI, arXiv and native preprint URLs, P
 
 API results distinguish updated Paper, unchanged Paper, excluded Paper, failure and cancellation; lookup results distinguish evidence, normal no-match, identity mismatch, failure and cancellation. One failed provider/Paper does not revoke other valid evidence or committed updates. Cancellation stops new dispatch and reports already completed safe writes. API completion has independent progress/results and History, rather than Run supplement counters.
 
+Known bioRxiv/medRxiv preprint DOIs are queried before formal-DOI reverse lookups. Once ordinary metadata and every known preprint family's first-version evidence are sufficient, the existing gap check skips remaining native lookups. Partial results distinguish source-query problems from failed Paper processing, and successful Paper results state whether First public is recorded or still undetermined; failures remain visible.
+
 Ordinary metadata fills empty fields only. Authors remain a whole list. Existing First public, UUID, file identity, primary identifiers, human content and workflow status remain unchanged; new relationships do not merge saved Papers or fill a formal DOI-free Paper with a preprint DOI. Date/source facts append with stable deduplication. Exact content, file/directory/Workspace identity, configuration and cancellation are rechecked before writes. API admission shares the existing Run and workflow exclusion; configuration writes, Reset and local field edits cannot bypass the active task. See [Safety](safety.md).
 
 ## HTTP and independent webpage Enrich
@@ -45,6 +47,8 @@ Ordinary metadata fills empty fields only. Authors remain a whole list. Existing
 Both API operations use the shared HTTP client and operation-local host pacing. Temporary HTTP 500/502/503/504 requests have at most three attempts with 5/10-second default backoff. HTTP 429 uses the existing one-second fallback. Valid delta-seconds and HTTP-date Retry-After are honored without a wait ceiling; waits are cancellable. Recognized verification pages stop that provider client. Unexpected HTML/invalid envelopes are failures; a known-ID HTTP 404 or a valid empty response is normal no-match. No browser fallback or provider/route switching is added. arXiv uses three-second pacing; bioRxiv and medRxiv share their API host pacing.
 
 Webpage Enrich still runs serially through the existing read-only Translator path, triggered by missing Abstract, Authors, publication date or an existing `YYYY-MM` date eligible for valid day upgrade. Missing First public or journal events alone never triggers it. A legitimate response can additionally contribute its already-returned explicit `accepted` and generic `date` as sourced, typed date facts, including an event-only save. Generic date never becomes First public. No new website extraction, history parser, browser batch pool or Zotero item save is added. DOI/document binding, cancellation/disconnection and exact-revision guards cover both ordinary fields and date events.
+
+Background native pages receive a nonzero layout viewport without selecting, revealing or focusing them. Enrich exposes **打开 Browser 验证** while waiting for verification; it shows the existing task-bound page without leaving Workspace or cancelling the task. Solver targeting, interactability checks and retry limits remain unchanged.
 
 ## Old data and manual acceptance
 

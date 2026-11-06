@@ -14,6 +14,63 @@ from test_web_app import write_valid_config
 
 
 @pytest.mark.parametrize('provider', ('biorxiv', 'medrxiv'))
+def test_known_preprint_is_queried_before_redundant_formal_reverse_lookup(tmp_path, provider):
+    from uuid import uuid4
+    from allfold.application.coordinators.api_completion import ApiCompletion
+    from allfold.application.browser_runtime import BrowserTaskLock
+    from test_application_decisions import write_paper, replace_frontmatter
+    config, workspace = write_valid_config(tmp_path)
+    config.write_text(config.read_text() + f'\ncompletion_providers: [crossref, {provider}]\n')
+    paper_id = uuid4()
+    path = write_paper(workspace, paper_id)
+    formal, preprint = '10.1093/bioinformatics/btaf638', '10.1101/2022.02.01.123456'
+    replace_frontmatter(path, doi=formal, external_ids={'doi': formal}, first_public_at=None)
+    calls = []
+    def response(request):
+        calls.append(request.url.path)
+        if request.url.host == 'api.crossref.org':
+            is_formal = request.url.path.endswith(formal)
+            item = {'DOI': formal if is_formal else preprint, 'title': ['Formal' if is_formal else 'Preprint'],
+                    'type': 'journal-article' if is_formal else 'posted-content'}
+            if is_formal:
+                item['relation'] = {'has-preprint': [{'id-type': 'doi', 'id': preprint}]}
+            return httpx.Response(200, json={'message': item})
+        if request.url.path.startswith('/pubs/'):
+            return httpx.Response(200, json={'messages': [{'status': 'service unavailable'}], 'collection': []})
+        return httpx.Response(200, json={'messages': [{'status': 'ok'}], 'collection': [{
+            'doi': preprint, 'published': formal, 'server': provider, 'version': '1', 'date': '2022-02-03'}]})
+    service = ApiCompletion(config, BrowserTaskLock(), client_factory=lambda selected, **kwargs:
+        SupplementalClient(selected, interval=0, transport=httpx.MockTransport(response), **kwargs))
+    service.start((paper_id,))
+    service.join()
+    assert load_workspace(workspace).inbox[0].first_public_at == '2022-02-03'
+    assert service.state()['phase'] == 'Completed'
+    assert f'/details/{provider}/{preprint}/na/json' in calls
+    assert not any(path.startswith('/pubs/') for path in calls)
+
+
+@pytest.mark.parametrize('recorded', (False, True))
+def test_partial_completion_reports_whether_first_public_is_recorded(tmp_path, recorded):
+    from allfold.application.coordinators.api_completion import ApiCompletion
+    from allfold.application.browser_runtime import BrowserTaskLock
+    from test_application_decisions import replace_frontmatter
+    config, workspace = write_valid_config(tmp_path)
+    config.write_text(config.read_text() + '\ncompletion_providers: [crossref]\n')
+    paper_id, path = missing(workspace)
+    if recorded:
+        replace_frontmatter(path, first_public_at='2022-02-03')
+    service = ApiCompletion(config, BrowserTaskLock(), client_factory=lambda provider, **kwargs:
+        SupplementalClient(provider, interval=0, transport=httpx.MockTransport(lambda request:
+            httpx.Response(200, json={'message': {}})), **kwargs))
+    service.start((paper_id,))
+    service.join()
+    result = service.state()
+    assert result['phase'] == 'Partial'
+    assert result['results'][0]['first_public_status'] == ('recorded' if recorded else 'unresolved')
+    assert result['results'][0]['lookups'][0]['status'] == 'identity_mismatch'
+
+
+@pytest.mark.parametrize('provider', ('biorxiv', 'medrxiv'))
 def test_native_publication_not_found_is_completed_no_match(tmp_path, provider):
     from allfold.application.coordinators.api_completion import ApiCompletion
     from allfold.application.browser_runtime import BrowserTaskLock

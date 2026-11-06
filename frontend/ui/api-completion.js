@@ -6,11 +6,14 @@
   function render(){
     const papers=new Map((window.allfoldCompletionPapers?.().papers || []).map(p=>[p.id,p]));
     const counts={};for(const result of task?.results || [])counts[result.status]=(counts[result.status] || 0)+1;
+    const sourceProblems=task?.results?.some(result=>(result.lookups || []).some(lookup=>['failed','identity_mismatch'].includes(lookup.status)));
+    const phase=task?.phase==='Partial'?(counts.failed?'部分 Paper 处理失败':sourceProblems?'Paper 已处理，部分来源查询异常':'Paper 已处理，部分写入需检查'):task?.phase;
     $('api-completion-status').textContent=task?.message || (task && task.phase!=='Idle'
-      ? `${task.phase} · ${task.processed} / ${task.total} · ${Object.entries(counts).map(([key,count])=>`${labels[key]} ${count}`).join(' · ')}${task.activity?.label?' · '+task.activity.label:''}`:'');
+      ? `${phase} · ${task.processed} / ${task.total} · ${Object.entries(counts).map(([key,count])=>`${labels[key]} ${count}`).join(' · ')}${task.activity?.label?' · '+task.activity.label:''}`:'');
     $('api-completion-results').replaceChildren(...(task?.results || []).map(result=>{
       const row=document.createElement('li'),summary=document.createElement('details'),heading=document.createElement('summary');
-      heading.textContent=`${papers.get(result.paper_id)?.title || result.paper_id} · ${labels[result.status] || result.status}`;
+      const firstPublic={recorded:'首版日期已记录',unresolved:'首版日期尚未确定'}[result.first_public_status];
+      heading.textContent=[papers.get(result.paper_id)?.title || result.paper_id,labels[result.status] || result.status,firstPublic].filter(Boolean).join(' · ');
       const detail=document.createElement('p'),lookups={};
       for(const lookup of result.lookups || [])lookups[lookup.status]=(lookups[lookup.status] || 0)+1;
       const lookupLabels={no_match:'无匹配',failed:'请求失败',identity_mismatch:'身份不匹配',cancelled:'取消',evidence:'取得证据'};

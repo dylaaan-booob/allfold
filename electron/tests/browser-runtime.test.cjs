@@ -80,6 +80,7 @@ test('a first background page never selects, presents or focuses the Browser',as
   const {BrowserRuntime,host}=fixture(t),browser=new BrowserRuntime({hostWindow:host});
   t.after(()=>browser.close());await browser.ready;
   const tab=browser.createTab({present:false});
+  assert.deepEqual(tab.view.bounds,{x:0,y:0,width:1200,height:850});
   assert.equal(browser.state().selected,null);
   assert.equal(host.children.size,0);
   assert.equal(tab.view.webContents.focused,undefined);

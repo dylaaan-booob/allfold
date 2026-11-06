@@ -44,6 +44,16 @@ test('interruption takes priority over a Run snapshot and accepted parents do no
   assert.match(batch,/Zotero 已接受父条目/);assert.match(batch,/Paper 状态写入失败/);assert.match(batch,/勿直接重试/);
 });
 
+test('API history distinguishes source problems from Paper processing failures',async()=>{
+  const {renderHistoryRecord}=await import('../../frontend/ui/history-view.js');
+  const source=renderHistoryRecord({kind:'api_completion',task_id:'api-source',outcome:'partial',
+    statistics:{updated:1,failed:0,lookup_failed:1}});
+  assert.match(source,/Paper 已处理，部分来源查询异常/);
+  const paper=renderHistoryRecord({kind:'api_completion',task_id:'api-paper',outcome:'partial',
+    statistics:{updated:1,failed:1,lookup_failed:1}});
+  assert.match(paper,/部分 Paper 处理失败/);
+});
+
 test('diagnostic download carries CSRF and does not turn JSON errors into ZIP downloads',async()=>{
   const {requestDiagnosticBundle}=await import('../../frontend/ui/history-view.js');
   let request;
