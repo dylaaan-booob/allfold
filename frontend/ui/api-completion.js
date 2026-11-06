@@ -1,6 +1,6 @@
 (() => {
   const $=id=>document.getElementById(id),dialog=$('api-completion-dialog');
-  let task=null,timer=null,submitting=false,restored=false;
+  let task=null,timer=null,submitting=false,restored=false,needsRefresh=false;
   const active=()=>submitting || ['Running','Cancelling'].includes(task?.phase);
   const labels={updated:'已更新',unchanged:'无新增内容',excluded:'已排除',failed:'失败',cancelled:'已取消'};
   function render(){
@@ -33,8 +33,10 @@
     clearTimeout(timer);
     try{
       task=await uiNext.request('/api/papers/api-completion/state');render();
-      if(active())timer=setTimeout(()=>void poll(),700);
-      else if(task.phase!=='Idle')await window.allfoldRefreshWorkspace?.();
+      if(active()){needsRefresh=true;timer=setTimeout(()=>void poll(),700);}
+      else if(needsRefresh && ['Completed','Partial','Failed','Cancelled'].includes(task.phase)){
+        needsRefresh=false;await window.allfoldRefreshWorkspace?.();
+      }
     }catch(error){$('api-completion-status').textContent=error.message;timer=setTimeout(()=>void poll(),1500);}
   }
   for(const id of ['api-completion-open','array-api-completion-open'])$(id).addEventListener('click',()=>{select();render();dialog.showModal();});
@@ -47,6 +49,7 @@
     try{
       if(window.allfoldAutosave && !await window.allfoldAutosave.flush())throw new Error('请先保存配置再补全');
       task=await uiNext.request('/api/papers/api-completion/start',{paper_ids});
+      needsRefresh=true;
       submitting=false;render();void poll();
     }catch(error){submitting=false;render();$('api-completion-status').textContent=error.message;}
   });
@@ -55,7 +58,7 @@
     catch(error){$('api-completion-status').textContent=error.message;}
   });
   window.addEventListener('workspace-data-changed',()=>{if(!active()){select();render();}if(!restored){restored=true;void poll();}});
-  window.addEventListener('workspace-reset',()=>{clearTimeout(timer);task=null;select();render();});
+  window.addEventListener('workspace-reset',()=>{clearTimeout(timer);task=null;needsRefresh=false;select();render();});
   window.addEventListener('pagehide',()=>clearTimeout(timer));
   window.allfoldApiCompletion={active};
 })();
