@@ -12,12 +12,12 @@ VERIFY = '/.within.website/x/cmd/anubis/api/pass-challenge'
 
 
 def challenge(request, *, meta=False, algorithm='metarefresh', version='v1.27.0',
-              delay=2, destination=None):
-    target = destination or VERIFY + '?' + urlencode(dict(id='fixture-id', challenge='fixture-data', redir=str(request.url)))
+              delay=2, destination=None, difficulty=1, data='fixture-data', padding=''):
+    target = destination or VERIFY + '?' + urlencode(dict(id='fixture-id', challenge=data, redir=str(request.url)))
     refresh = f'{delay}; url={target}'
-    payload = {'rules': {'algorithm': algorithm, 'difficulty': 1},
-               'challenge': {'id': 'fixture-id', 'randomData': 'fixture-data'}}
-    body = '<html>Anubis' + ''.join(f'<script id="{key}" type="application/json">{json.dumps(value)}</script>'
+    payload = {'rules': {'algorithm': algorithm, 'difficulty': difficulty},
+               'challenge': {'id': 'fixture-id', 'randomData': data}}
+    body = '<html>Anubis' + padding + ''.join(f'<script id="{key}" type="application/json">{json.dumps(value)}</script>'
         for key, value in [('anubis_version', version), ('anubis_challenge', payload)])
     if meta:
         body += f'<meta http-equiv="refresh" content="{html.escape(refresh, quote=True)}">'
@@ -48,7 +48,7 @@ def test_dblp_metarefresh_waits_reuses_cookies_and_returns_to_exact_query(meta):
 
 
 @pytest.mark.parametrize('change', [
-    {'algorithm': 'fast'}, {'version': 'v9.0.0'}, {'delay': 0}, {'delay': 61},
+    {'algorithm': 'fast'}, {'version': 'v9.0.0'}, {'delay': 0}, {'difficulty': -1},
     {'destination': 'https://other.example/'}, {'destination': 'http://dblp.org/'},
     {'destination': VERIFY + '?id=wrong&challenge=fixture-data&redir=https://dblp.org/'},
 ])
@@ -88,30 +88,39 @@ def test_verification_redirect_is_not_proof_of_recovery(result):
 
 def test_cancellation_during_metarefresh_wait_never_dispatches_verification():
     cancel, calls = Event(), []
-    with DiscoveryClient('dblp', transport=httpx.MockTransport(lambda r: calls.append(r) or challenge(r)),
+    with DiscoveryClient('dblp', transport=httpx.MockTransport(lambda r: calls.append(r) or challenge(r, delay=120)),
                          interval=0, sleep=lambda _: cancel.set(), cancel_event=cancel) as client:
         with pytest.raises(DiscoveryError, match='cancelled'):
             client.request('/search/publ/api', {'format': 'json'})
     assert len(calls) == 1
 
 
-def test_only_dblp_may_recover_and_a_client_never_repeats_verification():
-    calls = []
-    def handler(request):
-        calls.append(request)
-        if request.url.path == VERIFY:
-            return httpx.Response(302, headers={'location': str(calls[0].url)})
-        if len(calls) == 3:
-            return httpx.Response(200, json={'result': {'hits': {'@total': '0', '@computed': '0', '@first': '0'}}})
-        return challenge(request)
-    with DiscoveryClient('europe_pmc', transport=httpx.MockTransport(handler), interval=0) as client:
+def test_only_dblp_may_recover():
+    with DiscoveryClient('europe_pmc', transport=httpx.MockTransport(challenge), interval=0) as client:
         with pytest.raises(DiscoveryError, match='access limited'):
             client.request('/search', {})
-    assert len(calls) == 1
-    calls.clear()
-    with DiscoveryClient('dblp', transport=httpx.MockTransport(handler), interval=0, sleep=lambda _: None) as client:
-        client.request('/search/publ/api', {'f': 0})
-        for offset in (2, 4):
-            with pytest.raises(DiscoveryError, match='access limited'):
-                client.request('/search/publ/api', {'f': offset})
-    assert len(calls) == 4
+
+
+@pytest.mark.parametrize('change', [
+    {}, {'delay': 121, 'difficulty': 120}, {'padding': ' ' * (1024 * 1024)}, {'data': 'x' * 17000},
+])
+def test_later_pages_can_complete_new_metarefresh_exchanges(change):
+    calls = []
+    original = None
+    def handler(request):
+        nonlocal original
+        calls.append(request)
+        if request.url.path == VERIFY:
+            return httpx.Response(302, headers={'location': str(original)})
+        if len(calls) % 3 == 0:
+            offset = request.url.params['f']
+            return httpx.Response(200, json={'result': {'hits': {
+                '@total': offset, '@computed': offset, '@first': offset}}})
+        original = request.url
+        return challenge(request, **change)
+    waits = []
+    with DiscoveryClient('dblp', transport=httpx.MockTransport(handler), interval=0, sleep=waits.append) as client:
+        for offset in (0, 2, 4):
+            data = client.request('/search/publ/api', {'f': offset})
+            assert data['result']['hits']['@first'] == str(offset)
+    assert len(calls) == 9 and waits == [change.get('delay', 2)] * 3

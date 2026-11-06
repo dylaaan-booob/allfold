@@ -83,9 +83,27 @@ def test_completion_order_is_stable_and_cancellation_stops_requests():
     assert len(client.calls) == 1
 
 
-def test_supplement_budget_reports_limit_and_keeps_all_legal_hits():
-    records = (evidence("dblp", "10.5555/a"), evidence("dblp", "10.5555/b"))
+def test_completion_queries_every_known_identity_beyond_200():
+    records = tuple(evidence("dblp", f"10.5555/work-{n}") for n in range(201))
     client = Lookup()
-    result = complete_metadata(records, ("crossref",), clients={"crossref": client}, max_lookups=1)
-    assert len(client.calls) == 1 and len(result.records) == 2
-    assert result.issues[0].message == "Supplement request budget reached"
+    result = complete_metadata(records, ("crossref",), clients={"crossref": client})
+    assert len(client.calls) == 201 and len(result.records) == 201
+    assert not result.issues
+
+
+def test_completion_follows_new_links_until_exhausted_and_deduplicates_cycles():
+    class LinkedLookup:
+        def __init__(self):
+            self.calls = []
+
+        def lookup(self, namespace, identifier):
+            self.calls.append((namespace, identifier))
+            number = int(identifier.rsplit("-", 1)[-1])
+            related = f"10.5555/work-{(number + 1) % 5}"
+            return (evidence("crossref", identifier, related_dois=(related,)),)
+
+    client = LinkedLookup()
+    result = complete_metadata((evidence("dblp", "10.5555/work-0"),),
+                               ("crossref",), clients={"crossref": client})
+    assert client.calls == [("doi", f"10.5555/work-{n}") for n in range(5)]
+    assert len(result.records) == 6 and not result.issues

@@ -31,13 +31,25 @@ def test_html_429_honors_retry_after_without_becoming_a_bot_challenge():
     assert caught.value.status == 429 and waits == [3, 3] and len(calls) == 3
 
 
-def test_long_retry_after_is_reported_without_shortening_or_early_retry():
+def test_long_retry_after_is_honored_before_retrying():
     calls, waits = [], []
     with DiscoveryClient('zbmath', transport=httpx.MockTransport(lambda request:
-        calls.append(request) or httpx.Response(503, headers={'retry-after': '120'})), interval=0, sleep=waits.append) as client:
-        with pytest.raises(ProviderHTTPError, match='Retry-After exceeds'):
+        calls.append(request) or (httpx.Response(503, headers={'retry-after': '120'})
+                                 if len(calls) == 1 else httpx.Response(200, json={'result': 'recovered'}))),
+                         interval=0, sleep=waits.append) as client:
+        assert client.request('/document/123', {}) == {'result': 'recovered'}
+    assert len(calls) == 2 and waits == [120]
+
+
+def test_long_retry_after_wait_can_be_cancelled_before_retry():
+    from threading import Event
+    cancel, calls = Event(), []
+    with DiscoveryClient('zbmath', transport=httpx.MockTransport(lambda request:
+        calls.append(request) or httpx.Response(503, headers={'retry-after': '120'})),
+                         interval=0, sleep=lambda _: cancel.set(), cancel_event=cancel) as client:
+        with pytest.raises(DiscoveryError, match='cancelled'):
             client.request('/document/123', {})
-    assert len(calls) == 1 and waits == []
+    assert len(calls) == 1
 
 
 def test_dblp_challenge_stops_later_requests_in_the_same_run_client():
