@@ -93,6 +93,7 @@ async function ready(condition){
   throw Error('UI readiness timeout: '+condition+'; native='+JSON.stringify(win.getBounds())+'; DOM='+JSON.stringify(actual));
 }
 async function size(width,height,condition){win.setSize(width,height);await ready(`innerWidth===${width} && (${condition})`);}
+async function navigate(view){await ready(`window.workspaceNavigation.go(${JSON.stringify(view)},{instant:true})`);}
 async function check(fn){await js(`(${fn.toString()})()`);}
 app.whenReady().then(async()=>{
   try {
@@ -174,8 +175,8 @@ app.whenReady().then(async()=>{
     await check(()=>{
       if(document.querySelector('.s-validation-error') || document.querySelector('[data-monitor="expression"]').getAttribute('aria-invalid')==='true' || document.getElementById('s-message').textContent.includes('Prefix needs'))throw Error('Saved expression retains obsolete validation errors');
     });
+    await navigate('kept');
     await check(()=>{
-      window.workspaceNavigation.go('kept',{instant:true});
       document.querySelector('[data-zotero-refresh]').click();
     });
     await ready("!document.querySelector('[data-zotero-library]').disabled");
@@ -241,9 +242,9 @@ app.whenReady().then(async()=>{
       const raw=localStorage.getItem('allfold.configuration-draft:/fixture/monitor.yaml') || '';
       if(raw.includes('synthetic-complete-replacement') || raw.includes('new-fixture-user'))throw Error('credential input entered ordinary recovery storage');
       document.querySelector('#kept-sidebar [data-sidebar-close]').click();
-      window.workspaceNavigation.go('workspace',{instant:true});
       document.getElementById('paper-detail').scrollTop=0;
     });
+    await navigate('workspace');
     await capture('paper-identity');
     if(completionStarts.length)throw Error('Viewing results automatically started API completion');
     await js("document.getElementById('array-api-completion-open').click()");
@@ -260,6 +261,7 @@ app.whenReady().then(async()=>{
     await ready("document.getElementById('api-completion-status').textContent.startsWith('Cancelled') && document.querySelectorAll('#api-completion-results li').length===2");
     if(completionStarts.length!==1 || completionStarts[0].paper_ids.length!==2)throw Error('API completion did not retain the explicit batch selection');
     await js("document.getElementById('api-completion-close').click()");
+    await ready("window.inboxRun.available()");
     await check(async()=>{
       const $=id=>document.getElementById(id),assert=(ok,message)=>{if(!ok)throw Error(message);},sleep=ms=>new Promise(r=>setTimeout(r,ms));
       assert($('paper-first-public').textContent==='2022-04','first-public precision was not rendered');
@@ -424,13 +426,14 @@ app.whenReady().then(async()=>{
       $('array-index-toggle').click();if($('array-index').scrollTop!==200)throw Error('Index scroll lost through Archive entry');
       document.querySelector('#array-flyout [data-flyout-close]').click();
     });
-    await js("window.workspaceNavigation.go('run',{instant:true}),document.getElementById('s-run-overview-open').click()");
+    await navigate('run');
+    await js("document.getElementById('s-run-overview-open').click()");
     await capture('run-small');
     await js("document.querySelector('#s-run .s-run-body').scrollTop=document.getElementById('s-run-operations').offsetTop");
     await capture('run-providers-small');
     await js("document.querySelector('#s-run [data-flyout]').click(),document.querySelector('#s-providers [data-provider=crossref]').click()");
     await capture('run-provider-overlay');
-    await js("window.workspaceNavigation.go('settings',{instant:true})");
+    await navigate('settings');
     await capture('settings-small');
     await ready("window.inboxRun.available()");
     const pendingKeptSnapshot=new Promise(resolve=>{holdWorkspaceResponse=resolve;});
@@ -440,7 +443,7 @@ app.whenReady().then(async()=>{
       if(window.workspaceNavigation.go('kept',{instant:true}))throw Error('Pending Workspace snapshot did not guard navigation');
     });
     setTimeout(releaseKeptSnapshot,90);
-    await ready("window.workspaceNavigation.go('kept',{instant:true})");
+    await navigate('kept');
     await js("document.querySelector('#kept-workspace [data-sidebar-view=access]').click()");
     await check(()=>{
       const $=id=>document.getElementById(id);
@@ -518,7 +521,8 @@ $('s-run-overview-open').click();
     rejectAutosave=false;
     await check(async()=>{if(!await window.allfoldAutosave.flush())throw Error('recovered draft did not save');});
     await ready("window.uiWorkspace?.ready() && !document.getElementById('array-candidates').disabled");
-    await js("window.workspaceNavigation.go('workspace',{instant:true}),document.getElementById('workspace-array').click(),document.querySelector('#kept-view [data-sidebar-view]').click()");
+    await navigate('workspace');
+    await js("document.getElementById('workspace-array').click(),document.querySelector('#kept-view [data-sidebar-view]').click()");
     // Browser is a separate full view; this fixture has no native page Session.
     await js("window.allfoldWorkbench.show()");
     await check(()=>{
@@ -527,7 +531,8 @@ $('s-run-overview-open').click();
       window.allfoldWorkbench.hide();
       if($('allfold-pane').inert || $('kept-view').dataset.sidebarMode!=='overlay')throw Error('Browser return lost Array presentation '+JSON.stringify({inert:$('allfold-pane').inert,mode:$('kept-view').dataset.sidebarMode,layout:$('selected-view').dataset.workspaceLayout,sidebar:$('array-sidebar').hidden}));
     });
-    await js("window.workspaceNavigation.go('workspace',{instant:true}),window.workspaceArray.openPaper('paper-0')");
+    await navigate('workspace');
+    await js("window.workspaceArray.openPaper('paper-0')");
     await ready("!document.getElementById('reject-paper').disabled");
     await js("document.getElementById('reject-paper').click()");
     await ready("!window.inboxKept.candidates().some(entry=>entry.paper.id==='paper-0')");
