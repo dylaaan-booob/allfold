@@ -51,8 +51,10 @@ stored as Abstract. Indexed Terms retain their provider and type, separate from
 Author Keywords. WoS retains Topic coverage, including Keywords Plus.
 
 DBLP uses `streamid:conf/nips:` for NeurIPS, with the requested years. Its native
-query is a bounded conservative candidate query for Boolean groups and phrases;
-the complete AST is then evaluated against each title in memory. Phrase matching
+query is a conservative candidate query for Boolean groups and phrases;
+native AND clauses are retained, while grouped OR operands form a compact
+conservative clause without exponential distribution. The complete AST is then
+evaluated against each title in memory. Phrase matching
 requires adjacent words in order within one field. Normal native hits from other
 providers do not undergo a second local title/abstract filter: a missing returned
 abstract or indexed-term field does not invalidate the remote keyword hit.
@@ -82,8 +84,11 @@ remains Partial, and another valid source hit still retains the work.
 DBLP pages use `h` (at most 1000) and `f`. The adapter checks `@total`, `@computed`
 and `@first`, advances by actual returned records and stops on no progress.
 `computed < total` remains Partial after the accessible results are exhausted.
-The application does not shard queries around upstream windows. Default adapter
-budgets are 50 pages and 5000 records per source; truncation remains explicit.
+The application does not shard queries around upstream windows. All four
+discovery adapters continue to the end of the accessible results without an
+application page or record quota. zbMATH serial mapping also checks every page
+before accepting a unique verified ISSN mapping. No-progress and incomplete
+upstream pagination remain explicit limitations.
 
 | Result | Meaning |
 | --- | --- |
@@ -106,9 +111,9 @@ client, timeout/proxy policy, bounded retries and host pacing. HTTP 500/502/503/
 gets at most three attempts for the same request, with 5- then 10-second backoff
 when no valid `Retry-After` is supplied. HTTP 429 also honors `Retry-After`, using
 the existing one-second fallback. Both delta-seconds and HTTP-date hints are
-accepted; a hint over 60 seconds stops the request with an explicit limitation
-rather than retrying earlier than requested. Waiting is cancellable and reports
-retry progress. Exhausted pagination retains valid earlier pages as Partial.
+accepted without an application wait ceiling. Waiting is cancellable and reports
+retry progress. Failed or incomplete pagination retains valid earlier pages as
+Partial.
 
 Ordinary HTML gateway/service errors are not mislabeled as bot verification.
 Recognized verification pages stop further HTTP requests for that Provider client
@@ -127,16 +132,19 @@ This pacing reduces avoidable request pressure; it cannot remove a bot challenge
 The client recognizes Anubis **v1.27.0 / metarefresh** at HTTP 200/202, including
 both HTTP `Refresh` and HTML `<meta http-equiv="refresh">`. It follows the
 [upstream protocol](https://github.com/TecharoHQ/anubis/blob/d39e26cedcc96bea5e4915297c756e7eec74aaf7/lib/challenge/metarefresh/metarefresh.go):
-wait the advertised delay (at least difficulty + 1 seconds, at most 60), then
+wait the advertised delay (at least difficulty + 1 seconds), then
 perform one verification exchange in the same HTTP session. The verification
 target must be the fixed HTTPS DBLP Anubis endpoint, its ID/data must match the
 issued challenge, and both its return parameter and redirect must identify the
 original search query and page. Redirects from verification are checked before
 any further request. Cookies remain in the invocation-local HTTP session.
 
-At most one exchange is attempted per DBLP client/Run. Waiting and every request
-honor cancellation and the existing two-second pacing. Unknown versions,
-algorithms, malformed targets, failed verification and repeated HTML remain
+Each response may initiate one exchange, including a later page that presents a
+new challenge after successful recovery. There is no application ceiling on
+challenge body size, verification URL length or advertised wait. Waiting and
+every request honor cancellation and the existing two-second pacing. Unknown
+versions, algorithms, malformed targets, failed verification and a resumed
+request still returning HTML remain
 access restrictions. No JavaScript, PoW solver, browser fallback, SPARQL switch or
 new dependency is introduced. A redirect alone is never retrieval success: the
 original request must return JSON and pass the normal DBLP pagination validation.
@@ -157,9 +165,12 @@ reachability, not that client retries repaired the upstream server.
 
 Responses already retrieved in a Run are reused. Identifier lookups run in the
 fixed order OpenAlex, Crossref, Europe PMC, DBLP, zbMATH, arXiv, bioRxiv, medRxiv,
-restricted to enabled providers. At most two passes and 200 identifier lookups
-bound newly discovered relationships; reaching a bound reports a supplement
-limitation. There is no date-age cutoff on known preprint provenance.
+restricted to enabled providers. Newly discovered reliable identities continue
+to be queried until no unqueried targets remain. Every Provider/namespace/ID is
+attempted at most once, including failures, so cyclic links do not repeat
+requests. There is no application lookup quota, fixed pass count, linked-preprint
+record quota, DBLP Boolean clause quota or date-age cutoff on known preprint
+provenance. Scope, identity validation and cancellation still apply.
 
 Only reliable shared IDs or explicit same-work relations link records. Ordinary
 references, comments/corrections and similar titles/authors do not. Ordinary

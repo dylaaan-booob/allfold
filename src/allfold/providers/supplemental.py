@@ -135,8 +135,6 @@ class SupplementalClient(DiscoveryClient):
             return tuple(self._bio_record(row, doi) for row in self._collection(f"/details/{self.provider}/{encoded}/na/json"))
         rows = self._collection(f"/pubs/{self.provider}/{encoded}/na/json")
         records, seen = [], set()
-        if len(rows) > 16:
-            raise DiscoveryError(f"{self.provider}: linked preprint response exceeds identifier budget")
         for row in rows:
             preprint = valid_doi(row.get("preprint_doi") or row.get("biorxiv_doi"))
             formal = valid_doi(row.get("published_doi"))

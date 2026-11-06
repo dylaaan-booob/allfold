@@ -1,4 +1,4 @@
-"""Bounded identifier-only metadata completion before first Paper creation."""
+"""Identifier-only metadata completion before first Paper creation."""
 from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
@@ -67,19 +67,18 @@ def _targets(provider, records):
 def complete_metadata(
     records: Sequence[ProviderWorkEvidence], enabled_providers: Sequence[str], *,
     clients: Mapping[str, MetadataLookup], cancel_event: Event | None = None,
-    max_lookups: int = 200,
 ) -> CompletionResult:
     """Reuse responses, then look up selected providers by known identity only.
 
-    Two passes allow a newly linked preprint to reach an earlier provider without
-    traversing an unbounded relation graph. At most 200 identifier lookups occur
-    per Run; reaching this budget is a supplement limitation, never lost discovery.
+    Follow reliable linked identities until no unqueried targets remain. Each
+    provider/namespace/identifier is attempted once, including failed lookups.
     """
     output = sorted(records, key=lambda r: (r.provenance.provider, r.provenance.record_id))
     issues = []
     attempted = set()
     seen = {(r.provenance.provider, r.provenance.record_id) for r in output}
-    for _ in range(2):
+    while True:
+        previous_attempts = len(attempted)
         for provider in COMPLETION_ORDER:
             if provider not in enabled_providers:
                 continue
@@ -89,9 +88,6 @@ def complete_metadata(
                 request = provider, namespace, identifier
                 if request in attempted:
                     continue
-                if len(attempted) >= max_lookups:
-                    issues.append(CompletionIssue(provider, identifier, "Supplement request budget reached"))
-                    return CompletionResult(tuple(output), tuple(issues))
                 attempted.add(request)
                 client = clients.get(provider)
                 if client is None:
@@ -113,8 +109,6 @@ def complete_metadata(
                     # Provider clients emit credential-free diagnostics. A failed
                     # supplement never invalidates an independently legal hit.
                     issues.append(CompletionIssue(provider, identifier, str(error)))
-    pending = [(p, ns, value) for p in COMPLETION_ORDER if p in enabled_providers
-               for ns, value in _targets(p, output) if (p, ns, value) not in attempted]
-    if pending:
-        issues.append(CompletionIssue(pending[0][0], pending[0][2], "Linked identity lookup depth reached"))
+        if len(attempted) == previous_attempts:
+            break
     return CompletionResult(tuple(output), tuple(issues))

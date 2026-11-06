@@ -140,7 +140,7 @@ def _dblp_page(data, offset):
 class DiscoveryClient:
     """One provider/host owns rate limits, bounded retry and cancellation checks."""
     def __init__(self, provider, *, api_key=None, transport=None, cancel_event=None,
-                 interval=None, sleep=time.sleep, max_pages=50, max_records=5000, page_size=100, pacing_state=None, progress_callback=None):
+                 interval=None, sleep=time.sleep, page_size=100, pacing_state=None, progress_callback=None):
         if provider not in PROVIDERS:
             raise ValueError('Unknown Discovery Provider')
         self.progress = progress_callback
@@ -150,8 +150,7 @@ class DiscoveryClient:
         self.interval = (2.0 if provider == 'dblp' else 0.35) if interval is None else interval
         self.sleep = sleep
         self._access_restriction = None
-        self._metarefresh_attempted = False
-        self.max_pages, self.max_records, self.page_size = max_pages, max_records, min(page_size, 1000)
+        self.page_size = min(page_size, 1000)
         self.http = create_http_client(transport=transport, timeout=30, follow_redirects=True)
         self.pacing_state = pacing_state if pacing_state is not None else {}
         self.host = httpx.URL(BASE_URLS[provider]).host
@@ -189,13 +188,12 @@ class DiscoveryClient:
         return response
 
     def _dblp_metarefresh(self, response):
-        if self.provider != 'dblp' or self._metarefresh_attempted:
+        if self.provider != 'dblp':
             return response
         from allfold.providers.dblp_metarefresh import recovery_plan, same_query
         plan = recovery_plan(response)
         if plan is None:
             return response
-        self._metarefresh_attempted = True
         delay, target = plan
         if self.progress:
             self.progress(ProgressEvent(activity=ActivityUpdate(kind=ActivityKind.WORKING,
@@ -259,9 +257,6 @@ class DiscoveryClient:
                         delay = default_delay
                 if not math.isfinite(delay):
                     delay = default_delay
-                if delay > 60:
-                    raise ProviderHTTPError(self.provider, response.status_code,
-                        detail=f'{temporary_error or "Too Many Requests"}; Retry-After exceeds this Run budget')
                 if self.progress:
                     self.progress(ProgressEvent(activity=ActivityUpdate(
                         kind=ActivityKind.RETRYING, source=self.provider, operation='http_retry',
@@ -359,7 +354,7 @@ class DiscoveryClient:
                   'search.title_abstract_keywords' + ('.exact' if _prefix(ast) else ''):compile_query(ast, 'openalex'),
                   'per_page':self.page_size, 'cursor':'*'}
         seen, count = set(), 0
-        for page in range(self.max_pages):
+        while True:
             data = self.request('/works', params)
             rows = data.get('results')
             if not isinstance(rows, list):
@@ -369,8 +364,6 @@ class DiscoveryClient:
             for raw in rows:
                 count += 1
                 yield raw, total, ()
-                if count >= self.max_records and count < total:
-                    raise DiscoveryError('Truncated: application record budget reached')
             cursor = data.get('meta',{}).get('next_cursor')
             if not cursor:
                 if count < total:
@@ -379,7 +372,6 @@ class DiscoveryClient:
             if not rows or cursor in seen:
                 raise DiscoveryError('Incomplete: repeated or empty page')
             seen.add(cursor); params['cursor'] = cursor
-        raise DiscoveryError('Truncated: application page budget reached')
 
     def normalize(self, raw, source):
         if self.provider == 'europe_pmc':
@@ -460,28 +452,23 @@ class DiscoveryClient:
     def _dblp_pages(self, source, ast, start, end):
         if not source.stream or not re.fullmatch(r'streams/(?:conf|journals)/[a-zA-Z0-9_/-]+',source.stream):
             raise UnsupportedSource('DBLP requires a verified source Stream mapping; this source was not queried')
-        # DBLP has no reliable phrase/group syntax. Distribute into bounded CNF:
-        # native whitespace AND / pipe OR generate a conservative superset,
-        # then evaluate only this adapter's candidates against their titles.
-        def cnf(node):
+        # DBLP has no reliable phrase/group syntax. Keep native AND clauses;
+        # flatten grouped OR operands into a conservative clause instead of
+        # exponentially distributing them. The full AST still filters titles.
+        def candidate_clauses(node):
+            self.check_cancel()
             if isinstance(node, And):
-                clauses = cnf(node.left) + cnf(node.right)
-            elif isinstance(node, Or):
-                left, right = cnf(node.left), cnf(node.right)
-                if len(left) * len(right) > 32:
-                    raise DiscoveryError('DBLP expression exceeds the bounded Boolean expansion')
-                clauses = [a + b for a in left for b in right]
-            else:
-                _word(node)
-                return [[word + ('' if isinstance(node,Prefix) else '$')] for word in node.value.split()]
-            if len(clauses) > 32:
-                raise DiscoveryError('DBLP expression exceeds the bounded Boolean expansion')
-            return clauses
-        keywords = ' '.join('|'.join(dict.fromkeys(clause)) for clause in cnf(ast))
+                return candidate_clauses(node.left) + candidate_clauses(node.right)
+            if isinstance(node, Or):
+                children = candidate_clauses(node.left) + candidate_clauses(node.right)
+                return [[word for clause in children for word in clause]]
+            _word(node)
+            return [[word + ('' if isinstance(node,Prefix) else '$')] for word in node.value.split()]
+        keywords = ' '.join('|'.join(dict.fromkeys(clause)) for clause in candidate_clauses(ast))
         years = '|'.join(f'year:{year}:' for year in range(start.year,end.year+1))
         query = f'streamid:{source.stream.removeprefix("streams/")}: {years} {keywords}'
-        offset, seen, count = 0, set(), 0
-        for page in range(self.max_pages):
+        offset, seen = 0, set()
+        while True:
             data = self.request('/search/publ/api',{'q':query,'format':'json','h':self.page_size,'f':offset})
             rows, total, computed = _dblp_page(data, offset)
             limits = ['DBLP title-only matching; year precision cannot establish exact monthly coverage']
@@ -494,14 +481,11 @@ class DiscoveryClient:
                 raw = dict(raw,key=key)
                 if not key or key in seen:
                     raise DiscoveryError('Incomplete: DBLP repeated a publication or made no progress')
-                seen.add(key); count += 1
+                seen.add(key)
                 yield raw, total, limits
-                if count >= self.max_records and count < min(total,computed):
-                    raise DiscoveryError('Truncated: application record budget reached')
             offset += len(rows)
             if offset >= min(total,computed):
                 return
-        raise DiscoveryError('Truncated: application page budget reached')
 
     def _europe_pmc_pages(self, source, ast, start, end):
         if not source.issns:
@@ -511,7 +495,7 @@ class DiscoveryClient:
 
     def _europe_pages(self, query):
         cursor, seen, count = '*', set(), 0
-        for page in range(self.max_pages):
+        while True:
             data = self.request('/search',{'query':query,'format':'json','resultType':'core','pageSize':self.page_size,'cursorMark':cursor})
             total = _positive(data.get('hitCount'), 'hitCount')
             rows = data.get('resultList',{}).get('result')
@@ -521,26 +505,21 @@ class DiscoveryClient:
             for raw in rows:
                 count += 1
                 yield raw, total, ()
-                if count >= self.max_records and count < total:
-                    raise DiscoveryError('Truncated: application record budget reached')
             if count >= total:
                 return
             cursor = data.get('nextCursorMark')
             if not rows or not cursor or cursor in seen:
                 raise DiscoveryError('Incomplete: Europe PMC pagination made no progress')
             seen.add(cursor)
-        raise DiscoveryError('Truncated: application page budget reached')
 
     def _zbmath_pages(self, source, ast, start, end):
         if not source.issns:
             raise DiscoveryError('zbMATH requires a verified journal ISSN mapping')
         serial_ids = set()
         for issn in source.issns:
-            data = self.request('/serial/_search',{'search_string':'sn:' + issn,'results_per_page':100})
-            rows, status = data.get('result'), data.get('status')
-            if not isinstance(rows,list) or not isinstance(status,dict) or status.get('execution_bool') is not True:
-                raise DiscoveryError('zbMATH serial mapping response is invalid or unsuccessful')
-            for raw in rows:
+            for raw, _ in self._zbmath_search_pages('serial', 'sn:' + issn):
+                if raw is None:
+                    continue
                 issns = [item.get('number') if isinstance(item,dict) else item for item in raw.get('issn',[])]
                 if issn in issns and raw.get('id'):
                     serial_ids.add(str(raw['id']))
@@ -554,34 +533,36 @@ class DiscoveryClient:
         yield from self._zbmath_document_pages(query)
 
     def _zbmath_document_pages(self, query):
-        count, seen = 0, set()
-        for page in range(self.max_pages):
-            data = self.request('/document/_search',{'search_string':query,'page':page,'results_per_page':self.page_size})
+        limits = ('zbMATH year precision cannot establish exact monthly coverage; review text is excluded',)
+        for raw, total in self._zbmath_search_pages('document', query):
+            yield raw, total, limits
+
+    def _zbmath_search_pages(self, kind, query):
+        count, page, seen = 0, 0, set()
+        while True:
+            data = self.request('/' + kind + '/_search',{'search_string':query,'page':page,'results_per_page':self.page_size})
             status = data.get('status',{})
-            if not status.get('execution_bool'):
-                raise DiscoveryError('zbMATH query failed: ' + str(status.get('execution','unknown error')))
+            if not isinstance(status, dict) or status.get('execution_bool') is not True:
+                raise DiscoveryError(f'zbMATH {kind} response is invalid or unsuccessful')
             total = _positive(status.get('nr_total_results'),'total')
             rows = data.get('result')
             if not isinstance(rows,list):
                 raise DiscoveryError('zbMATH response is missing result')
-            limits = ('zbMATH year precision cannot establish exact monthly coverage; review text is excluded',)
-            yield None, total, limits
+            yield None, total
             for raw in rows:
                 key = raw.get('id')
                 if not key or key in seen:
                     raise DiscoveryError('Incomplete: zbMATH pagination made no progress')
                 seen.add(key); count += 1
-                yield raw, total, limits
-                if count >= self.max_records and count < total:
-                    raise DiscoveryError('Truncated: application record budget reached')
+                yield raw, total
             if count >= total:
                 return
             if not rows:
                 raise DiscoveryError('Incomplete: zbMATH returned an empty page before total')
-        raise DiscoveryError('Truncated: application page budget reached')
+            page += 1
 
     def lookup(self, namespace, identifier):
-        """Bounded exact-identifier metadata lookup; no keyword discovery fallback."""
+        """Exact-identifier metadata lookup; no keyword discovery fallback."""
         source = SourceScope('journal','')
         if self.provider == 'openalex' and namespace in {'doi','openalex'}:
             target = 'https://doi.org/' + identifier if namespace == 'doi' else identifier.rsplit('/',1)[-1]

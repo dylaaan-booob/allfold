@@ -157,7 +157,7 @@ def test_zbmath_verifies_issn_serial_mapping_and_excludes_review_query_and_abstr
 
 import pytest
 
-@pytest.mark.parametrize('mode,expected,count', [('empty','empty',0),('repeated','partial',1),('budget','partial',1),('failure','partial',1)])
+@pytest.mark.parametrize('mode,expected,count', [('empty','empty',0),('repeated','partial',1),('failure','partial',1)])
 def test_dblp_pagination_outcomes_preserve_valid_partial_records(mode,expected,count):
     from allfold.providers.integrated import DiscoveryClient, SourceScope
     calls=[]
@@ -172,7 +172,7 @@ def test_dblp_pagination_outcomes_preserve_valid_partial_records(mode,expected,c
             hits={'@total':'3','@computed':'3','@first':'0' if mode=='repeated' else str(offset),
                   'hit':[{'info':{'key':f'journals/test/{offset}','title':'Learning','year':'2026'}}]}
         return httpx.Response(200,json={'result':{'hits':hits}})
-    with DiscoveryClient('dblp',transport=httpx.MockTransport(handler),interval=0,sleep=lambda _:None,page_size=1,max_records=1 if mode=='budget' else 100) as client:
+    with DiscoveryClient('dblp',transport=httpx.MockTransport(handler),interval=0,sleep=lambda _:None,page_size=1) as client:
         result=client.discover(SourceScope('journal','Test',stream='streams/journals/test'),parse_keyword_expression('learning'),date(2026,1,1),date(2026,12,31))
     assert result.status==expected
     assert len(result.records)==count

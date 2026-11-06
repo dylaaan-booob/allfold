@@ -84,10 +84,12 @@ Discovery and identifier-only completion reuse one selected Provider client and
 shared per-host pacing. The client handles bounded 429 and temporary
 500/502/503/504 retries, Retry-After, cancellation and HTML access restrictions.
 Ordinary HTML service errors can be retried. DBLP's known Anubis v1.27.0
-metarefresh permits one bounded, cancellable exchange in the same HTTP session;
+metarefresh permits one cancellable exchange per response in the same HTTP session;
 only valid metadata for the original query establishes recovery. Other recognized
 verification pages, or failed recovery, stop that client for the rest of the Run
 without changing route or identity.
+Later pages may complete their own supported exchange. Server-advertised retry
+and metarefresh waits have no application ceiling and remain cancellable.
 arXiv ID lookups use a conservative three-second interval; DBLP uses two seconds;
 bioRxiv and medRxiv share their API host pacing.
 See [Provider contracts and limits](providers.md).

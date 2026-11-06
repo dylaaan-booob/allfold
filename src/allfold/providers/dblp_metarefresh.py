@@ -1,10 +1,11 @@
-"""Recognize DBLP's bounded Anubis v1.27.0 metarefresh exchange.
+"""Recognize DBLP's Anubis v1.27.0 metarefresh exchange.
 
 Protocol reference: TecharoHQ/anubis d39e26c, lib/challenge/metarefresh.
 No JavaScript execution or proof-of-work algorithms are supported.
 """
 from html.parser import HTMLParser
 import json
+import math
 import re
 from urllib.parse import parse_qs, parse_qsl, urljoin, urlsplit
 
@@ -57,7 +58,7 @@ class _Page(HTMLParser):
 
 def recovery_plan(response):
     """Return (wait_seconds, verification_url) only for an exact known exchange."""
-    if response.status_code not in (200, 202) or len(response.content) > 1024 * 1024:
+    if response.status_code not in (200, 202):
         return None
     original = str(response.request.url)
     if not same_query(original, original):
@@ -70,7 +71,7 @@ def recovery_plan(response):
         data = json.loads(page.scripts['anubis_challenge'])
         rules, challenge = data['rules'], data['challenge']
         difficulty = rules['difficulty']
-        if rules['algorithm'] != 'metarefresh' or type(difficulty) is not int or not 0 <= difficulty < 60:
+        if rules['algorithm'] != 'metarefresh' or type(difficulty) is not int or difficulty < 0:
             return None
         refreshes = page.refreshes + response.headers.get_list('refresh')
         plans = []
@@ -82,7 +83,7 @@ def recovery_plan(response):
             target = urljoin(original, match[2].strip('"\''))
             parsed = urlsplit(target)
             query = parse_qs(parsed.query, keep_blank_values=True)
-            if (not difficulty + 1 <= delay <= 60 or len(target) > 16384
+            if (not math.isfinite(delay) or delay < difficulty + 1
                     or not _dblp_url(target) or parsed.path != VERIFY_PATH
                     or set(query) != {'id', 'challenge', 'redir'}
                     or any(len(values) != 1 for values in query.values())
