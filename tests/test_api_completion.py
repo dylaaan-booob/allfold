@@ -13,6 +13,28 @@ from test_paper_enrichment import missing
 from test_web_app import write_valid_config
 
 
+@pytest.mark.parametrize('provider', ('biorxiv', 'medrxiv'))
+def test_native_publication_not_found_is_completed_no_match(tmp_path, provider):
+    from allfold.application.coordinators.api_completion import ApiCompletion
+    from allfold.application.browser_runtime import BrowserTaskLock
+    config, workspace = write_valid_config(tmp_path)
+    config.write_text(config.read_text() + f'\ncompletion_providers: [{provider}]\n')
+    paper_id, path = missing(workspace)
+    path.write_text(path.read_text().replace('10.5555/decision', '10.1186/s13059-025-03880-4'))
+    before = path.read_bytes()
+    service = ApiCompletion(config, BrowserTaskLock(), client_factory=lambda selected, **kwargs:
+        SupplementalClient(selected, interval=0, transport=httpx.MockTransport(lambda request:
+            httpx.Response(200, json={'messages': [{'status':
+                'Preprint for DOI 10.1186/s13059-025-03880-4 not found'}], 'collection': []})), **kwargs))
+    service.start((paper_id,))
+    service.join()
+    result = service.state()
+    assert result['phase'] == 'Completed'
+    assert result['results'][0]['status'] == 'unchanged'
+    assert result['results'][0]['lookups'][0]['status'] == 'no_match'
+    assert path.read_bytes() == before
+
+
 def test_saved_unkept_paper_completes_after_restart_and_rejected_paper_is_excluded(tmp_path):
     from allfold.application.coordinators.api_completion import ApiCompletion
     from allfold.application.browser_runtime import BrowserTaskLock

@@ -9,6 +9,16 @@ from allfold.providers.supplemental import SupplementalClient
 
 
 @pytest.mark.parametrize('provider', ('biorxiv', 'medrxiv'))
+@pytest.mark.parametrize('status', ('service unavailable', 'Preprint for DOI 10.1093/bioinformatics not found'))
+def test_native_no_match_does_not_hide_errors_or_truncated_doi(provider, status):
+    from allfold.providers.integrated import DiscoveryError
+    with SupplementalClient(provider, interval=0, transport=httpx.MockTransport(lambda request:
+            httpx.Response(200, json={'messages': [{'status': status}], 'collection': []}))) as client:
+        with pytest.raises(DiscoveryError):
+            client.lookup('doi', '10.1093/bioinformatics/btaf638')
+
+
+@pytest.mark.parametrize('provider', ('biorxiv', 'medrxiv'))
 def test_publication_lookup_accepts_current_native_preprint_doi_field(provider):
     def response(request):
         if request.url.path.startswith('/pubs/'):

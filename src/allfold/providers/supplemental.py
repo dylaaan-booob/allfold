@@ -88,14 +88,15 @@ class SupplementalClient(DiscoveryClient):
             ))
         return tuple(records)
 
-    def _collection(self, path):
+    def _collection(self, path, *, doi):
         data = self.request(path, {})
         messages = data.get("messages", [])
-        if any(str(item.get("status", "")).casefold() not in {"ok", "no posts found", "no results found"}
+        no_match = {"no posts found", "no results found", f"preprint for doi {doi} not found"}
+        if any(str(item.get("status", "")).casefold() not in {"ok", *no_match}
                for item in messages if isinstance(item, dict)):
             raise DiscoveryError(f"{self.provider}: identifier lookup failed")
         rows = data.get("collection")
-        if rows is None and any("no " in str(item.get("status", "")).casefold()
+        if rows is None and any(str(item.get("status", "")).casefold() in no_match
                                 for item in messages if isinstance(item, dict)):
             return []
         if not isinstance(rows, list) or any(not isinstance(row, dict) for row in rows):
@@ -130,7 +131,7 @@ class SupplementalClient(DiscoveryClient):
         if doi not in self._details_cache:
             try:
                 self._details_cache[doi] = tuple(self._bio_record(row, doi) for row in
-                    self._collection(f"/details/{self.provider}/{quote(doi, safe='/')}/na/json"))
+                    self._collection(f"/details/{self.provider}/{quote(doi, safe='/')}/na/json", doi=doi))
             except (ValueError, OSError, RuntimeError, TypeError, AttributeError) as error:
                 self._details_cache[doi] = error
         result = self._details_cache[doi]
@@ -145,7 +146,7 @@ class SupplementalClient(DiscoveryClient):
         encoded = quote(doi, safe="/")
         if doi.startswith("10.1101/"):
             return self._bio_details(doi)
-        rows = self._collection(f"/pubs/{self.provider}/{encoded}/na/json")
+        rows = self._collection(f"/pubs/{self.provider}/{encoded}/na/json", doi=doi)
         records, seen = [], set()
         for row in rows:
             preprint = valid_doi(row.get("preprint_doi") or row.get("biorxiv_doi"))
