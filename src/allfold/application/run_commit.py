@@ -10,7 +10,7 @@ from threading import Event
 
 from allfold.config import LoadedConfig, load_config
 from allfold.persistence.safe_write import (
-    ContentChangedError, WorkspaceBusyError, WorkspaceOperationLock,
+    ContentChangedError, TextWriteCommittedError, WorkspaceBusyError, WorkspaceOperationLock,
     workspace_operation_lock, workspace_text_directory,
 )
 
@@ -114,5 +114,8 @@ def commit_run_workspace(snapshot: RunWorkspaceSnapshot, *, cancel_event: Event 
             if cancel_event is not None and cancel_event.is_set():
                 raise ContentChangedError("Run cancelled before commit")
             yield lock
+    except TextWriteCommittedError:
+        # A body write has already committed; retain its positive-write result.
+        raise
     except OSError as error:
         raise ContentChangedError("Run Workspace or configuration location changed") from error

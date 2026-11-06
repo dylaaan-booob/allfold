@@ -292,3 +292,30 @@ def test_api_completion_uses_saved_identity_alias_without_a_handoff(tmp_path):
     paper, = load_workspace(workspace).inbox
     assert len(calls) == 1 and paper.abstract == 'Alias abstract'
     assert paper.external_ids.doi is None and paper.first_public_at == '2022-01-02'
+
+
+def test_paper_commit_sync_failure_preserves_saved_fields_through_commit_guard(tmp_path, monkeypatch):
+    import os
+    import stat
+    from allfold.application.coordinators.api_completion import ApiCompletion
+    from allfold.application.browser_runtime import BrowserTaskLock
+    config, workspace = write_valid_config(tmp_path)
+    config.write_text(config.read_text() + '\ncompletion_providers: [crossref]\n')
+    paper_id, path = missing(workspace)
+    original_sync, failures = os.fsync, []
+    def fail_committed_directory_sync(descriptor):
+        if (not failures and stat.S_ISDIR(os.fstat(descriptor).st_mode)
+                and 'Committed before sync failure' in path.read_text()):
+            failures.append(True)
+            raise OSError('Synthetic directory sync failure')
+        return original_sync(descriptor)
+    monkeypatch.setattr(os, 'fsync', fail_committed_directory_sync)
+    service = ApiCompletion(config, BrowserTaskLock(), client_factory=lambda provider, **kwargs:
+        SupplementalClient(provider, interval=0, transport=httpx.MockTransport(lambda _: httpx.Response(200, json={
+            'message': {'DOI': '10.5555/decision', 'type': 'journal-article', 'abstract': 'Committed before sync failure'}})), **kwargs))
+    service.start((paper_id,))
+    service.join()
+    result = service.state()
+    assert failures and load_workspace(workspace).inbox[0].abstract == 'Committed before sync failure'
+    assert result['phase'] == 'Partial' and result['results'][0]['status'] == 'updated'
+    assert 'abstract' in result['results'][0]['saved_fields'] and result['results'][0]['warning']
