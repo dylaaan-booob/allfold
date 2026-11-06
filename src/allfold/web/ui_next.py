@@ -136,6 +136,7 @@ def install_ui_next(app: FastAPI, config_path: Path, csrf_token: str, *, read_ta
                 if key not in records:
                     records[key] = dict(key=key, issn=None, eissn=None, name=source_name,
                                         source_type="conference" if paper.conference else "journal",
+                                        dblp_stream=conference.dblp_stream if conference else None,
                                         group=conference.group if conference else None,
                                         labels=list(conference.labels) if conference else [], publisher=None, service=None,
                                         service_id=None, cover=None, papers=[])

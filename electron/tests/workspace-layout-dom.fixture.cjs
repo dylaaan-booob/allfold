@@ -16,6 +16,7 @@ const settings={config_path:'/fixture/monitor.yaml',csrf_token:'fixture',issues:
 }};
 const paper=(i,status='candidate')=>({id:'paper-'+i,title:'Synthetic Paper '+i,publication_date:'2026-10',conference:'Synthetic Conference',publication_type:'conference',first_public_at:'2022-04',accepted_at:'2026-09',accepted_approximate:true,date_note:'Acceptance approximated by formal publication',external_ids:{dblp:'conf/example/Paper'},indexed_terms:[{value:'62G05',kind:'MSC',source:'zbmath'}],sources:[{provider:'dblp',record_id:'conf/example/Paper',role:'discovery'}],abstract:('An isolated synthetic paragraph for reader scroll verification. '.repeat(12)+'\n\n').repeat(24),authors:['Synthetic Author'],doi:i===0?null:'10.5555/layout-'+i,discovered_at:'2026-10-01T00:00:00Z',status,enrichPhase:'Idle'});
 const records=journals.map((j,i)=>({key:j.issn,issn:j.issn,name:j.name,group:j.group,labels:[],cover:null,papers:[paper(i*2),paper(i*2+1)]}));
+Object.assign(records[0],{name:'Synthetic Conference',source_type:'conference',issn:null,dblp_stream:'streams/conf/icml',group:'Old scope'});
 const workspace={csrf_token:'fixture',import_token:'fixture',issues:[],counts:{candidates:48,active_journals:24},subjects:[{name:'Group 0',journals:records}],
   kept:{papers:[{paper:paper(10,'kept'),journal:records[0]},{paper:paper(11,'kept'),journal:records[1]}],journals:records,services:[],settings:{},titles:{}}};
 const run={active:false,snapshot:{status:'IDLE',provider:null},providers:Object.fromEntries(['integrated','wos'].map(id=>[id,{enabled:false,message:'Offline fixture',result_summary:null}]))};
@@ -42,7 +43,7 @@ const server=http.createServer((req,res)=>{
     });return;
   }
   if(route==='/api/ui-next/settings/autosave'){
-    let text='';req.on('data',chunk=>{text+=chunk;});req.on('end',()=>{const patch=JSON.parse(text);if(rejectAutosave){res.writeHead(200,{'Content-Type':'application/json'});res.end(JSON.stringify({...settings,saved:false,outcome:'WRITE_FAILED',message:'Synthetic offline write'}));return;}Object.assign(settings.values,patch.changes);settings.values.monitor_revision_digest+='x';setTimeout(()=>{res.writeHead(200,{'Content-Type':'application/json'});res.end(JSON.stringify({...settings,saved:true,outcome:'SAVED'}));},90);});return;
+    let text='';req.on('data',chunk=>{text+=chunk;});req.on('end',()=>{const patch=JSON.parse(text);if(rejectAutosave){res.writeHead(200,{'Content-Type':'application/json'});res.end(JSON.stringify({...settings,saved:false,outcome:'WRITE_FAILED',message:'Synthetic offline write'}));return;}if(patch.changes.keyword_expression==='lea*'){res.writeHead(200,{'Content-Type':'application/json'});res.end(JSON.stringify({...settings,saved:false,outcome:'INVALID_DRAFT',validation:{issues:[{field:'keyword_expression',message:'Prefix needs at least four characters'}]}}));return;}Object.assign(settings.values,patch.changes);settings.values.monitor_revision_digest+='x';setTimeout(()=>{res.writeHead(200,{'Content-Type':'application/json'});res.end(JSON.stringify({...settings,saved:true,outcome:'SAVED'}));},90);});return;
   }
   if(route.startsWith('/api/') || route==='/settings/covers/search'){
     const data=route==='/api/ui-next/settings/conferences/search'?{candidates:[conference]}:route==='/api/ui-next/workspace'?workspace:route==='/api/ui-next/settings'?settings:
@@ -82,6 +83,10 @@ app.whenReady().then(async()=>{
     await win.loadURL(`http://127.0.0.1:${server.address().port}/`);
     await ready("window.uiWorkspace?.ready() && !document.getElementById('array-candidates').disabled && document.querySelectorAll('#s-journals [data-journal]').length===24");
     await check(()=>{
+      if(!document.getElementById('array-journal-issn').parentElement.hidden || !document.getElementById('array-journal-eissn').parentElement.hidden)throw Error('Conference profile displays Journal ISSN fields');
+      if(document.getElementById('array-source-stream')?.textContent!=='streams/conf/icml')throw Error('Conference profile lost its native DBLP Stream');
+    });
+    await check(()=>{
       window.workspaceNavigation.go('journals',{instant:true});
       const category=document.getElementById('s-source-kind'),label=document.getElementById('s-add-journal');
       const updates=new MutationObserver(()=>{});updates.observe(label,{childList:true});
@@ -114,6 +119,12 @@ app.whenReady().then(async()=>{
       const label=document.querySelector('[data-conference-label="Label 1"]');label.checked=true;label.dispatchEvent(new Event('change'));
     });
     await ready("window.allfoldAutosave.status==='Saved'");
+    records[0].group='Group 0';records[0].labels=['Label 1'];
+    await check(()=>window.dispatchEvent(new Event('settings-saved')));
+    await ready("window.inboxRun.available()");
+    await check(()=>window.workspaceNavigation.go('workspace',{instant:true}));
+    await ready("document.getElementById('array-journal-subject').textContent==='Group 0'");
+    await check(()=>window.workspaceNavigation.go('journals',{instant:true}));
     await size(600,480,"window.workspaceNavigation.current()==='journals'");
     await capture('conferences-600');
     await check(()=>{
@@ -122,6 +133,18 @@ app.whenReady().then(async()=>{
       if(document.querySelectorAll('#s-journals [data-journal]').length!==24)throw Error('Conference edits modified Journals');
     });
     await size(1200,800,"window.workspaceNavigation.current()==='journals'");
+    await check(()=>{
+      window.workspaceNavigation.go('run',{instant:true});
+      const field=document.querySelector('[data-monitor="expression"]');field.value='lea*';field.dispatchEvent(new Event('input',{bubbles:true}));
+    });
+    await ready("document.querySelector('[data-monitor=expression]').getAttribute('aria-invalid')==='true'");
+    await check(()=>{
+      const field=document.querySelector('[data-monitor="expression"]');field.value='causal';field.dispatchEvent(new Event('input',{bubbles:true}));
+    });
+    await ready("window.allfoldAutosave.status==='Saved'");
+    await check(()=>{
+      if(document.querySelector('.s-validation-error') || document.querySelector('[data-monitor="expression"]').getAttribute('aria-invalid')==='true' || document.getElementById('s-message').textContent.includes('Prefix needs'))throw Error('Saved expression retains obsolete validation errors');
+    });
     await check(()=>{
       window.workspaceNavigation.go('kept',{instant:true});
       document.querySelector('[data-zotero-refresh]').click();

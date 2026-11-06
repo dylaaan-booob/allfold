@@ -1,4 +1,5 @@
 from datetime import datetime, timezone
+import pytest
 
 from allfold.canonicalize import canonicalize_records
 from allfold.models import ExternalIds, MetadataSource, ProviderWorkEvidence
@@ -163,15 +164,25 @@ def test_related_strong_ids_survive_canonicalization_and_repeated_run(tmp_path):
     assert not result.created_papers
 
 
-def test_workspace_api_exposes_conference_and_date_provenance(tmp_path):
+@pytest.mark.parametrize('followed', (False, True))
+def test_workspace_api_exposes_conference_and_date_provenance(tmp_path, followed):
     from fastapi.testclient import TestClient
     from test_web_app import write_valid_config
     from electron_test_helpers import OfflineBridge
     from allfold.web.app import create_app
     from allfold.models import EvidenceDate, EvidenceDateKind as Kind, ProviderTopic
+    from allfold.config import ConferenceConfig
+    from allfold.persistence.user_state import load_user_state, compare_write_user_state
+    from dataclasses import replace
     config, workspace = write_valid_config(tmp_path)
+    conference_id = 'conf_00000000000000000000000000000001'
+    if followed:
+        state = load_user_state(config, tmp_path / 'list.md')
+        conference = ConferenceConfig(id=conference_id, name='NeurIPS', abbreviation='NeurIPS',
+                                      dblp_stream='streams/conf/nips', group='ML')
+        compare_write_user_state(config, replace(state.state, conferences=(conference,), groups=('ML',)), state.revision)
     paper, = canonicalize_records([evidence(title='Conference item', conference='NeurIPS',
-        conference_id='conf_example', publication_type='conference', publication_date='2026',
+        conference_id=conference_id, publication_type='conference', publication_date='2026',
         external_ids=ExternalIds(dblp='conf/nips/Test'),
         indexed_terms=(ProviderTopic(value='machine learning', source='dblp', kind='topic'),),
         dates=(EvidenceDate(kind=Kind.CONFERENCE_YEAR, year=2026),))]).papers
@@ -182,6 +193,8 @@ def test_workspace_api_exposes_conference_and_date_provenance(tmp_path):
     venue, = group['journals']
     assert venue['name'] == 'NeurIPS'
     assert venue['source_type'] == 'conference'
+    assert venue['dblp_stream'] == ('streams/conf/nips' if followed else None)
+    assert group['name'] == ('ML' if followed else 'Unmapped sources')
     item, = venue['papers']
     assert item['doi'] is None and item['conference'] == 'NeurIPS'
     assert item['first_public_at'] is None and item['accepted_at'] is None

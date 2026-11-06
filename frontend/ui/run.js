@@ -61,6 +61,7 @@ function showState(data) {
   dialog.dataset.waitingForUser=String(snapshot.provider==='wos' && !!snapshot.waiting_for_user);
   taskPageButton.hidden=snapshot.provider!=='wos' || snapshot.status!=='RUNNING';
   $('run-wos-cancel').hidden=snapshot.status!=='RUNNING';
+  $('run-wos-cancel').textContent='取消 '+(providerLabels[snapshot.provider] || 'Run');
 }
 async function finish(run,data) {
   if(active!==run || run.ended)return;

@@ -169,6 +169,10 @@ function render() {
   $('array-journal-name').textContent=journal?.name || '尚无待审阅来源';
   $('array-journal-issn').textContent=journal?.issn || '—';
   $('array-journal-eissn').textContent=journal?.eissn || '—';
+  const conference=journal?.source_type==='conference';
+  for(const id of ['array-journal-issn','array-journal-eissn'])$(id).parentElement.hidden=conference;
+  $('array-source-stream').parentElement.hidden=!conference;
+  $('array-source-stream').textContent=journal?.dblp_stream || '—';
   $('array-journal-subject').textContent=journal?.group || journal?.logicalGroupName || '—';
   $('array-journal-labels').textContent=journal?.labels?.join('; ') || '—';
   $('kept-view').dataset.status=status;

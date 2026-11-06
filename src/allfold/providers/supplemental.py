@@ -138,7 +138,8 @@ class SupplementalClient(DiscoveryClient):
         if len(rows) > 16:
             raise DiscoveryError(f"{self.provider}: linked preprint response exceeds identifier budget")
         for row in rows:
-            preprint, formal = valid_doi(row.get("biorxiv_doi")), valid_doi(row.get("published_doi"))
+            preprint = valid_doi(row.get("preprint_doi") or row.get("biorxiv_doi"))
+            formal = valid_doi(row.get("published_doi"))
             if not preprint or formal != doi:
                 raise DiscoveryError(f"{self.provider}: publication relation does not match requested DOI")
             platform = str(row.get("preprint_platform", "")).casefold()

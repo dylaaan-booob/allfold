@@ -1,10 +1,34 @@
 from datetime import datetime, timezone
 
 import httpx
+import pytest
 
 from allfold.canonicalize import canonicalize_records
 from allfold.models import ExternalIds, MetadataSource, ProviderWorkEvidence
 from allfold.providers.supplemental import SupplementalClient
+
+
+@pytest.mark.parametrize('provider', ('biorxiv', 'medrxiv'))
+def test_publication_lookup_accepts_current_native_preprint_doi_field(provider):
+    def response(request):
+        if request.url.path.startswith('/pubs/'):
+            return httpx.Response(200, json={'messages': [{'status': 'ok'}], 'collection': [{
+                'preprint_doi': '10.1101/123456', 'published_doi': '10.5555/formal',
+                'preprint_platform': provider, 'preprint_date': '2022-01-02',
+                'published_date': '2026-01-02', 'published_journal': 'Journal',
+            }]})
+        return httpx.Response(200, json={'messages': [{'status': 'ok'}], 'collection': [{
+            'doi': '10.1101/123456', 'published': '10.5555/formal', 'server': provider,
+            'date': '2022-01-02', 'version': '1', 'title': 'Original preprint',
+        }]})
+    with SupplementalClient(provider, transport=httpx.MockTransport(response), interval=0) as client:
+        records = client.lookup('doi', '10.5555/formal')
+    assert records[0].external_ids.doi == '10.5555/formal'
+    assert records[0].related_dois == ('10.1101/123456',)
+    assert records[1].external_ids.doi == '10.1101/123456'
+    paper, = canonicalize_records(records).papers
+    assert paper.doi == '10.5555/formal'
+    assert paper.metadata.first_public_at == '2022-01-02'
 
 
 def test_crossref_uses_exact_doi_and_only_explicit_same_work_relations_and_dates():

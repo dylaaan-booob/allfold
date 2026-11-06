@@ -192,9 +192,17 @@ Use a disposable configuration for manual acceptance:
    cancellation, supplement failures and year-only date limitations (Partial for monthly ranges).
 4. Review/Keep/edit a DOI-free Paper and inspect its explicit unavailable external
    actions. Inspect both dates, approximation basis and typed Indexed Terms.
-5. With separate authorization, check primary-DOI Enrich and supported
-   Prepare/Zotero Import on a Paper containing related DOIs; confirm that mismatched
-   Translator DOI is refused. Test authorized WoS independently.
+5. Check one primary-DOI Enrich on a Paper containing related DOIs, then inspect
+   Prepare/Import eligibility and the selected primary DOI without starting a save.
+   Inspect WoS query preview and, when available, one small genuine export through
+   the shared parser/save/display model. Existing browser login, Zotero and PDF
+   implementations do not require an exhaustive rerun for this discovery change.
+
+Keep manual scenarios representative: one selected discovery provider, a mixed
+scope with an unexecuted Conference, three Paper types and a repeated create-only
+Run. Reset/concurrent writes, malformed pages and mismatched Translator DOI remain
+covered by focused isolated regressions. Use small scoped HTTP probes for live
+API contracts; do not repeat a known upstream verification challenge.
 
 Isolated fixtures, source/build checks and CI are not evidence of real API
 reachability, browser authentication, Zotero saving or PDF acceptance. Record each

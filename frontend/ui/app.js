@@ -237,6 +237,11 @@ function quadImage(image, q, ox, oy, k, alpha = 1) {
     (q[3][0] - q[0][0]) * k / image.height, (q[3][1] - q[0][1]) * k / image.height, ox + q[0][0] * k, oy + q[0][1] * k);
   ctx.drawImage(image, 0, 0); ctx.restore();
 }
+function sourceIdentity(source) {
+  return source.source_type==='conference'
+    ? {value:source.dblp_stream || '—',label:'DBLP STREAM'}
+    : {value:source.issn || source.eissn || 'UNMAPPED',label:source.issn?'ISSN':source.eissn?'eISSN':'ISSN / eISSN'};
+}
 function spine(q, ox, oy, k, identifier, label = 'ISSN / eISSN') {
   ctx.save(); ctx.transform((q[1][0] - q[0][0]) * k / 100, (q[1][1] - q[0][1]) * k / 100,
     (q[3][0] - q[0][0]) * k / 60, (q[3][1] - q[0][1]) * k / 60, ox + q[0][0] * k, oy + q[0][1] * k);
@@ -288,8 +293,7 @@ function arrayCase(group, index, track) {
   }
   ctx.restore();
   ctx.save();
-  if (journal && active) spine(m.label, ox, oy, g.k, journal.issn || journal.eissn || 'UNMAPPED',
-    journal.issn ? 'ISSN' : journal.eissn ? 'eISSN' : 'ISSN / eISSN');
+  if (journal && active) {const identity=sourceIdentity(journal);spine(m.label, ox, oy, g.k, identity.value,identity.label);}
   if (journal && tint < .5) topTitle(group, index, ox, oy, g.k);
   ctx.restore();
   const quad = transformedQuad(m.cover, ox, oy, g.k);
@@ -300,7 +304,7 @@ function arrayCase(group, index, track) {
     ctx.fillStyle = ORANGE; quad.forEach(([x, y]) => ctx.fillRect(x - 2.5, y - 2.5, 5, 5));
     const [x, y] = quad[1], lx = x + 22, ly = y - 27;
     ctx.strokeStyle = INK; ctx.lineWidth = .8; ctx.beginPath(); ctx.moveTo(x + 4, y - 4); ctx.lineTo(lx, ly); ctx.lineTo(lx + 24, ly); ctx.stroke();
-    const label = journal.key ? `ISSN ${[journal.issn,journal.eissn].filter(Boolean).join(' / ')}` : 'UNMAPPED';
+    const identity=sourceIdentity(journal),label=`${identity.label} ${identity.value}`;
     ctx.font = '9px "Geist Mono"';
     ctx.fillStyle = INK; ctx.fillRect(lx + 24, ly - 9, ctx.measureText(label).width + 14, 18);
     ctx.fillStyle = BG; ctx.fillText(label, lx + 31, ly + 3);
@@ -654,7 +658,7 @@ function renderJournalFile(groupIndex, slot) {
   layoutJournalTitle(j);
   $('ghost-subject').textContent = j.logicalGroupName.toUpperCase();
   $('archive-subject').textContent=j.logicalGroupName;
-  $('profile-identity').textContent = [j.issn,j.eissn].filter(Boolean).join(' / ') || 'UNMAPPED';
+  $('profile-identity').textContent = j.source_type==='conference'?sourceIdentity(j).value:[j.issn,j.eissn].filter(Boolean).join(' / ') || 'UNMAPPED';
   $('profile-publisher').textContent = j.publisher || '未配置';
   $('profile-service').textContent = j.service || '未配置';
   for (const [issn, list] of lists) list.hidden = issn !== j.key;
@@ -930,8 +934,7 @@ function drawInspection() {
   };
   sprite(inspectionFrames[i], a, 1);
   if (f > .001) sprite(inspectionFrames[i + 1], b, f);
-  spine(q('label'), ox, oy, k, journal.issn || journal.eissn || 'UNMAPPED',
-    journal.issn ? 'ISSN' : journal.eissn ? 'eISSN' : 'ISSN / eISSN');
+  const identity=sourceIdentity(journal);spine(q('label'), ox, oy, k, identity.value,identity.label);
   selectedCoverQuad = transformedQuad(q('cover'), ox, oy, k);
   ctx.fillStyle = ORANGE;
   selectedCoverQuad.forEach(([x,y]) => ctx.fillRect(x - 2, y - 2, 4, 4));
@@ -1900,6 +1903,7 @@ window.uiWorkspace={
   ready:()=>state.ready,
 };
 window.addEventListener('focus',()=>{if(!window.allfoldWorkbench?.presentationChanging?.() && !configurationActive() && state.ready && !decisionPending && !paperToolsBusy() && !['Retrieving','Saving'].includes(enrichment?.phase))void refreshWorkspace().catch(error=>uiNext.notice(error.message));});
+window.addEventListener('settings-saved',()=>{if(window.inboxRun.available())void refreshWorkspace().catch(error=>uiNext.notice(error.message));});
 window.addEventListener('pagehide',event=>{cancelRetrieval();if(!event.persisted)paragraphLayout?.destroy();});
 window.workspaceNavigation.register('workspace',{
   canNavigate:({to,workflowRecovery})=>!navigationBusy() && (!(window.workspaceArray?.navigationBusy?.() ?? window.workspaceArray?.workflowBusy()) || (workflowRecovery===true && to==='kept')),

@@ -3,6 +3,13 @@ const {test}=require('node:test');
 const assert=require('node:assert/strict');
 const {taskUI}=require('./task-ui-fixture.cjs');
 function runData(status='RUNNING',provider='integrated') {return {snapshot:{status,provider,task_id:'run-1',waiting_for_user:provider==='wos'},progress:{stage_label:'Retrieving papers',elapsed_text:'2s',announcement_message:'Waiting for source'},result_summary:{status:'completed'},providers:{wos:{snapshot:{status:'IDLE'}}}};}
+for(const [provider,label] of [['integrated','取消 Integrated Run'],['wos','取消 Run WoS']])test(`${provider} Run names and dispatches its own cancellation`,async()=>{
+  const ui=await taskUI('run.js',{request:async()=>runData('RUNNING',provider)});
+  await ui.window.uiRun.start(provider);await ui.settle();
+  assert.equal(ui.get('run-wos-cancel').textContent,label);
+  await ui.get('run-wos-cancel').emit('click');
+  assert.equal(ui.calls.filter(([url])=>url===`/api/ui-next/${provider==='wos'?'run-wos':'run'}/cancel`).length,1);
+});
 test('inline Run polls and refreshes results without constructing a player or returning from another workspace',async()=>{
   let state=runData();
   const ui=await taskUI('run.js',{request:async()=>state});

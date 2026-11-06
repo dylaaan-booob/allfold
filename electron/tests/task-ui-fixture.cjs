@@ -31,6 +31,7 @@ async function settle(){for(let i=0;i<35;i++)await Promise.resolve();}
 async function taskUI(script,{inline=true,request,ready=false,reduced=false,archiveDisabled=false,layout='array',page='run',initialLink=null,bridgeReady=true}={}){
   const elements=new Map(),get=id=>{const find=node=>node.id===id?node:node.children.map(find).find(Boolean);for(const node of elements.values()){const found=find(node);if(found)return found;}if(!elements.has(id)){const node=new Element();node.id=id;elements.set(id,node);}return elements.get(id);};
   get('allfold-pane').append(get('selected-view'));get('selected-view').append(get('kept-view'));
+  for(const id of ['array-journal-issn','array-journal-eissn','array-source-stream']){const row=new Element();row.append(get(id));get('array-journal-profile').append(row);}
   get('kept-view').hidden=get('kept-view').inert=layout!=='array';get('kept-view').append(get('array-import-profile'));
   get('selected-view').dataset.workspaceLayout=layout;get('workspace-layout').parentElement=get('array-layout-controls');
   get('s-run').append(Object.assign(new Element(),{className:'s-run-body'}));get('run-view').querySelector=selector=>selector==='.run-status-area'?get('run-status-area'):new Element();get('run-stage-layer').append(get('run-title'));get('run-stage-layer').append(get('run-status-area'));get('run-view').append(get('run-stage-layer'));get('run-status-area').append(get('run-elapsed'),get('run-stage'),get('run-description'),get('run-wos-cancel'));

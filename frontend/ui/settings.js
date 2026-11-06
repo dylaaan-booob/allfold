@@ -1368,6 +1368,7 @@ function initializeAutosave(data,{restore=false}={}) {
       onSaved:(result,values)=>{
         const data=result.response;serverState=data;saved=project(data);draft.revisions=copy(saved.revisions);
         applyOrdinaryValues(values);reconcileRequired=false;applyCoverDetails(data);updateDirty();renderRun();
+        clearValidationIssues();message('');
         window.dispatchEvent(new Event('settings-saved'));
       },
       onRestore:values=>{applyOrdinaryValues(values);},
@@ -1504,6 +1505,10 @@ async function formRequest(path,extra={},options={}) {
     return data;
   } finally {setOperationPending(false);}
 }
+function clearValidationIssues() {
+  document.querySelectorAll('.s-validation-error').forEach(node=>node.remove());
+  document.querySelectorAll('[data-monitor]').forEach(input=>input.setAttribute('aria-invalid','false'));
+}
 function showIssues(data) {
   const issues=data.issues || [],validation=data.validation?.issues || [];
   const all=[...new Map([...issues,...validation].map(i=>[JSON.stringify([i.field,i.message]),i])).values()];
@@ -1513,8 +1518,7 @@ function showIssues(data) {
     log_level:'log',transition_delay_seconds:'delay',display_name:'displayName',
     'institution.name':'institutionName','institution.idp_entity_id':'institutionName',
     'institution.use_shibboleth':'useShibboleth','institution':'institutionName',kept_workflow:'delay'};
-  document.querySelectorAll('.s-validation-error').forEach(node=>node.remove());
-  document.querySelectorAll('[data-monitor]').forEach(input=>input.setAttribute('aria-invalid','false'));
+  clearValidationIssues();
   let first;
   for(const issue of all){const key=fields[issue.field];if(!key)continue;const input=document.querySelector(`[data-monitor="${key}"]`);input.setAttribute('aria-invalid','true');
     const hint=document.createElement('span');hint.className='s-field-error s-validation-error';hint.textContent=issue.message;input.parentElement.append(hint);first ||= input;}
