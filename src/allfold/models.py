@@ -116,6 +116,7 @@ class ProviderRecordRef(DomainModel):
     provider: NonEmptyStr
     record_id: NonEmptyStr
     relation: Literal["preprint", "version"] | None = None
+    version_family: NonEmptyStr | None = None
 
 
 class EvidenceDateKind(str, Enum):

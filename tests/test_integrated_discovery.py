@@ -173,3 +173,22 @@ def test_disabled_or_removed_provider_cannot_construct_a_network_client(provider
     from allfold.providers.integrated import DiscoveryClient
     with pytest.raises(ValueError, match='Provider'):
         DiscoveryClient(provider, transport=httpx.MockTransport(lambda _: pytest.fail('Disabled provider made a request')))
+
+
+@pytest.mark.parametrize('second_first,expected', [(True, '2020-06'), (False, None)])
+def test_europe_pmc_relation_aliases_identify_each_target_without_joining_distinct_preprints(second_first, expected):
+    from datetime import datetime, timezone
+    from allfold.models import EvidenceDate, EvidenceDateKind, ExternalIds, MetadataSource, ProviderWorkEvidence
+    from allfold.providers.integrated import DiscoveryClient, SourceScope
+    from allfold.canonicalize import canonicalize_records
+    raw = {'source': 'MED', 'id': '42', 'doi': '10.5555/formal', 'title': 'Formal',
+        'commentCorrectionList': {'commentCorrection': [
+            {'type': 'Preprint in', 'source': 'PPR', 'id': f'PPR{number}', 'doi': f'10.1101/{number}'} for number in (1, 2)]}}
+    with DiscoveryClient('europe_pmc', transport=httpx.MockTransport(lambda _: pytest.fail('Unexpected request'))) as client:
+        formal = client.normalize(raw, SourceScope('journal', 'Journal'))
+    preprints = tuple(ProviderWorkEvidence(provenance=MetadataSource(provider='biorxiv', record_id=f'10.1101/{number}:1',
+        retrieved_at=datetime.now(timezone.utc)), title='Preprint', publication_type='preprint', external_ids=ExternalIds(doi=f'10.1101/{number}'),
+        dates=(EvidenceDate(kind=EvidenceDateKind.PREPRINT, year=2020 if number == 1 else 2021, month=6,
+            first_version=number == 1 or second_first),)) for number in (1, 2))
+    paper, = canonicalize_records((formal, *preprints)).papers
+    assert paper.metadata.first_public_at == expected

@@ -78,13 +78,16 @@ def normalize_europe_pmc(raw, source):
         if str(relation.get('type', '')).strip().casefold() not in {'preprint in', 'preprint of'}:
             continue
         target_preprint = str(relation.get('type', '')).strip().casefold() == 'preprint in'
-        if relation.get('source') and relation.get('id'):
-            refs.add(ProviderRecordRef(provider='europe_pmc', record_id=f"{relation['source']}:{relation['id']}",
-                relation='preprint' if target_preprint else None))
-        if doi := valid_doi(relation.get('doi')):
+        doi = valid_doi(relation.get('doi'))
+        reference = f"{relation['source']}:{relation['id']}" if relation.get('source') and relation.get('id') else None
+        target_family = ('doi:' + doi if doi else 'europe_pmc:' + reference if reference else None) if target_preprint else None
+        if reference:
+            refs.add(ProviderRecordRef(provider='europe_pmc', record_id=reference,
+                relation='preprint' if target_preprint else None, version_family=target_family))
+        if doi:
             related.add(doi)
             if target_preprint:
-                refs.add(ProviderRecordRef(provider='doi', record_id=doi, relation='preprint'))
+                refs.add(ProviderRecordRef(provider='doi', record_id=doi, relation='preprint', version_family=target_family))
     version = str(raw.get('versionNumber') or '') or None
     versions = (raw.get('versionList') or {}).get('version', [])
     family = ('doi:' + ids['doi'] if ids['doi'] else 'europe_pmc:' + identity) if preprint else None
@@ -102,11 +105,11 @@ def normalize_europe_pmc(raw, source):
             continue
         reference = f'{src}:{key}'
         relation = 'version' if preprint and src == 'PPR' else 'preprint' if src == 'PPR' else None
-        refs.add(ProviderRecordRef(provider='europe_pmc', record_id=reference, relation=relation))
+        refs.add(ProviderRecordRef(provider='europe_pmc', record_id=reference, relation=relation, version_family=family if relation else None))
         if doi := valid_doi(item.get('doi')):
             related.add(doi)
             if relation:
-                refs.add(ProviderRecordRef(provider='doi', record_id=doi, relation=relation))
+                refs.add(ProviderRecordRef(provider='doi', record_id=doi, relation=relation, version_family=family))
         number = str(item.get('versionNumber') or '') or None
         event = source_date(item.get('firstPublishDate'), kind=EvidenceDateKind.PREPRINT if src == 'PPR' else EvidenceDateKind.SOURCE,
             record_id=reference, version=number, version_family=family if src == 'PPR' else None,

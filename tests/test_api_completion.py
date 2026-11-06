@@ -366,6 +366,44 @@ def test_new_preprint_alias_does_not_duplicate_already_saved_version_dates(tmp_p
             assert len(paper.date_evidence) == 2
 
 
+@pytest.mark.parametrize('handoff', [False, True])
+def test_saved_aggregate_preprint_ids_do_not_join_independent_version_families(tmp_path, handoff):
+    from allfold.application.coordinators.api_completion import ApiCompletion
+    from allfold.application.browser_runtime import BrowserTaskLock
+    from allfold.canonicalize import canonicalize_records
+    from allfold.models import Author, EvidenceDate, EvidenceDateKind
+    from allfold.persistence.materialize import materialize_papers
+    config, workspace = write_valid_config(tmp_path)
+    config.write_text(config.read_text() + '\ncompletion_providers: [biorxiv]\n')
+    first = ProviderWorkEvidence(provenance=MetadataSource(provider='arxiv', record_id='2201.12345',
+        retrieved_at=datetime.now(timezone.utc)), external_ids=ExternalIds(arxiv='2201.12345'),
+        related_dois=('10.1101/123456',), publication_type='preprint', publication_date='2022-01-02',
+        title='Preprint', abstract='Saved abstract', authors=(Author(name='Saved author'),),
+        dates=(EvidenceDate(kind=EvidenceDateKind.PREPRINT, year=2022, month=1, day=2, first_version=True),))
+    later = first.model_copy(update={'provenance': first.provenance.model_copy(update={'provider': 'biorxiv', 'record_id': '10.1101/123456:2'}),
+        'external_ids': ExternalIds(doi='10.1101/123456'), 'related_dois': (), 'publication_date': '2024-01',
+        'dates': (EvidenceDate(kind=EvidenceDateKind.PREPRINT, year=2024, month=1, version='2'),)})
+    paper, = canonicalize_records((first, later)).papers
+    assert paper.metadata.first_public_at is None
+    assert materialize_papers((paper,), workspace).created_papers
+    if handoff:
+        with workspace_operation_lock(workspace) as lock:
+            append_discovery_evidence(lock, paper.id, (first, later))
+    calls = []
+    def response(request):
+        calls.append(request.url.path)
+        return httpx.Response(200, json={'messages': [{'status': 'ok'}], 'collection': [
+            {'doi': '10.1101/123456', 'date': '2019-01', 'version': '1'}]})
+    service = ApiCompletion(config, BrowserTaskLock(), client_factory=lambda provider, **kwargs:
+        SupplementalClient(provider, interval=0, transport=httpx.MockTransport(response), **kwargs))
+    service.start((paper.id,))
+    service.join()
+    assert calls == ['/details/biorxiv/10.1101/123456/na/json']
+    saved, = load_workspace(workspace).inbox
+    assert saved.first_public_at == '2019-01' and saved.paper_id == paper.id
+    assert saved.external_ids == paper.external_ids
+
+
 def test_paper_commit_sync_failure_preserves_saved_fields_through_commit_guard(tmp_path, monkeypatch):
     import os
     import stat

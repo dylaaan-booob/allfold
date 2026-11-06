@@ -68,6 +68,8 @@ date cannot settle another family's later-only or undated record. Conflicting
 first-version facts or an evidently earlier version leave the value unresolved;
 partial dates are compared as intervals without changing their saved precision.
 Related identifiers retain explicit preprint and same-family version roles.
+Aliases returned within one relation identify one target family; saved aggregate
+Paper identifiers alone do not join independent preprint families.
 An added alias does not duplicate an already saved event.
 
 The UI's **期刊日期** is a chronological collection of journal-version events:

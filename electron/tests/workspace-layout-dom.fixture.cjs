@@ -432,7 +432,15 @@ app.whenReady().then(async()=>{
     await capture('run-provider-overlay');
     await js("window.workspaceNavigation.go('settings',{instant:true})");
     await capture('settings-small');
-    await js("window.workspaceNavigation.go('kept',{instant:true}),document.querySelector('#kept-workspace [data-sidebar-view=access]').click()");
+    const pendingKeptSnapshot=new Promise(resolve=>{holdWorkspaceResponse=resolve;});
+    await js("void window.allfoldRefreshWorkspace()");
+    const releaseKeptSnapshot=await pendingKeptSnapshot;
+    await check(()=>{
+      if(window.workspaceNavigation.go('kept',{instant:true}))throw Error('Pending Workspace snapshot did not guard navigation');
+    });
+    setTimeout(releaseKeptSnapshot,90);
+    await ready("window.workspaceNavigation.go('kept',{instant:true})");
+    await js("document.querySelector('#kept-workspace [data-sidebar-view=access]').click()");
     await check(()=>{
       const $=id=>document.getElementById(id);
       if(!$('kept-access-settings').contains($('s-institution')) || !$('kept-workflow-settings').contains($('s-kept-workflow-fields')))throw Error('Kept did not mount the sole existing settings controls');

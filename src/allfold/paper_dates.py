@@ -66,14 +66,19 @@ def _preprint_families(records):
         groups.append(keys)
     for record in records:
         preprint = _record_type(record) == 'preprint'
-        if preprint:
+        if preprint and record.provenance.provider != 'workspace':
             keys = {preprint_identity(ns, value) for ns, value in strong_identifiers(record.external_ids)}
             keys.update(preprint_identity(ref.provider, ref.record_id) for ref in record.related_ids if ref.relation == 'version')
             add(keys or {f'{record.provenance.provider}:{record.provenance.record_id}'})
+        elif preprint and record.external_ids.doi:
+            # A saved Paper aggregates work identities from distinct systems.
+            # Its primary DOI is known, but is not a same-chain assertion.
+            add({preprint_identity('doi', record.external_ids.doi)})
         for ref in record.related_ids:
             if (ref.relation == 'preprint' or ref.provider in {'arxiv', 'biorxiv', 'medrxiv'}
+                    or preprint and ref.relation == 'version'
                     or ref.provider == 'europe_pmc' and ref.record_id.startswith('PPR:')):
-                add({preprint_identity(ref.provider, ref.record_id)})
+                add({preprint_identity(ref.provider, ref.record_id), ref.version_family})
         for namespace, value in strong_identifiers(record.external_ids, record.related_dois):
             if (namespace in {'arxiv', 'biorxiv', 'medrxiv'}
                     or namespace == 'doi' and value.startswith(('10.48550/arxiv.', '10.1101/'))

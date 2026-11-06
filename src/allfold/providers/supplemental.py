@@ -203,8 +203,11 @@ class SupplementalClient(DiscoveryClient):
                     related.add(value)
                     if kind == 'has-preprint':
                         refs.add(ProviderRecordRef(provider='doi', record_id=value, relation='preprint'))
+                    elif preprint and kind in {'is-version-of', 'has-version'}:
+                        refs.add(ProviderRecordRef(provider='doi', record_id=value, relation='version'))
         source = MetadataSource(provider="crossref", record_id=doi, retrieved_at=datetime.now(timezone.utc),
-                                role="supplement", url="https://api.crossref.org/works/" + quote(doi, safe="/"))
+                                role="supplement", version=str(raw.get('version') or '').strip() or None,
+                                url="https://api.crossref.org/works/" + quote(doi, safe="/"))
         publication = next((value for kind in (EvidenceDateKind.PUBLISHED_ONLINE, EvidenceDateKind.PUBLISHED_PRINT,
                                                EvidenceDateKind.PUBLISHED, EvidenceDateKind.ISSUED)
                             for value in dates if value.kind == kind), None)

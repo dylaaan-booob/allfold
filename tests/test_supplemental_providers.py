@@ -158,3 +158,17 @@ def test_native_details_no_match_or_failure_is_also_reused_within_operation(malf
             else:
                 client.lookup('doi', doi)
     assert calls == ['/pubs/biorxiv/10.5555/formal/na/json', '/details/biorxiv/10.1101/123456/na/json']
+
+
+def test_crossref_explicit_preprint_versions_share_first_version_proof():
+    def response(request):
+        first = request.url.path.endswith('/10.5555/v1')
+        doi, related = ('10.5555/v1', '10.5555/v2') if first else ('10.5555/v2', '10.5555/v1')
+        return httpx.Response(200, json={'message': {'DOI': doi, 'type': 'posted-content', 'title': ['Preprint'],
+            'version': '1' if first else '2', 'posted': {'date-parts': [[2021 if first else 2022, 6]]},
+            'relation': {'has-version' if first else 'is-version-of': [{'id-type': 'doi', 'id': related}]}}})
+    with SupplementalClient('crossref', interval=0, transport=httpx.MockTransport(response)) as client:
+        records = client.lookup('doi', '10.5555/v2') + client.lookup('doi', '10.5555/v1')
+    paper, = canonicalize_records(records).papers
+    assert paper.metadata.first_public_at == '2021-06'
+    assert {(item.version, item.year) for item in paper.date_evidence} == {('1', 2021), ('2', 2022)}
