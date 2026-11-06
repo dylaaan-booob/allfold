@@ -7,7 +7,7 @@ from urllib.parse import quote
 from xml.etree import ElementTree
 
 from allfold.identifiers import normalize_external_id, valid_doi
-from allfold.models import Author, EvidenceDate, EvidenceDateKind, ExternalIds, MetadataSource, ProviderTopic, ProviderWorkEvidence
+from allfold.models import Author, EvidenceDate, EvidenceDateKind, ExternalIds, MetadataSource, ProviderRecordRef, ProviderTopic, ProviderWorkEvidence
 from allfold.providers.crossref import normalize_crossref_discovered_work
 from allfold.paper_dates import date_value as _date_string, source_date as _iso_date
 from allfold.providers.integrated import DiscoveryClient, DiscoveryError, IdentityMismatch
@@ -39,6 +39,7 @@ class SupplementalClient(DiscoveryClient):
             kwargs.setdefault("interval", 3.0)
         super().__init__(provider, **kwargs)
         self.mailto = mailto
+        self._details_cache = {}
 
     def lookup(self, namespace, identifier):
         if self.provider == "crossref" and namespace == "doi":
@@ -123,13 +124,27 @@ class SupplementalClient(DiscoveryClient):
             indexed_terms=(ProviderTopic(value=row["category"], source=self.provider, kind="category"),) if row.get("category") else (),
         )
 
+    def _bio_details(self, doi):
+        # This client lives for one operation, including all selected Papers.
+        # Embedded publication lookups and direct preprint lookups share results.
+        if doi not in self._details_cache:
+            try:
+                self._details_cache[doi] = tuple(self._bio_record(row, doi) for row in
+                    self._collection(f"/details/{self.provider}/{quote(doi, safe='/')}/na/json"))
+            except (ValueError, OSError, RuntimeError, TypeError, AttributeError) as error:
+                self._details_cache[doi] = error
+        result = self._details_cache[doi]
+        if isinstance(result, Exception):
+            raise result
+        return result
+
     def _biorxiv(self, identifier):
         doi = valid_doi(identifier)
         if not doi:
             raise DiscoveryError(f"{self.provider}: lookup requires a valid DOI")
         encoded = quote(doi, safe="/")
         if doi.startswith("10.1101/"):
-            return tuple(self._bio_record(row, doi) for row in self._collection(f"/details/{self.provider}/{encoded}/na/json"))
+            return self._bio_details(doi)
         rows = self._collection(f"/pubs/{self.provider}/{encoded}/na/json")
         records, seen = [], set()
         for row in rows:
@@ -149,12 +164,12 @@ class SupplementalClient(DiscoveryClient):
                     retrieved_at=datetime.now(timezone.utc), role="supplement",
                     url=f"https://api.biorxiv.org/pubs/{self.provider}/{encoded}/na/json"),
                 external_ids=ExternalIds(doi=doi), related_dois=(preprint,),
+                related_ids=(ProviderRecordRef(provider=self.provider, record_id=preprint, relation='preprint'),),
                 journal=row.get("published_journal") or None, publication_type="journal",
                 publication_date=_date_string(online) if online else None,
                 dates=(online,) if online else (),
             ))
-            records.extend(self._bio_record(item, preprint) for item in
-                           self._collection(f"/details/{self.provider}/{quote(preprint, safe='/')}/na/json"))
+            records.extend(self._bio_details(preprint))
         return tuple(records)
 
     def _crossref(self, identifier):
@@ -180,12 +195,14 @@ class SupplementalClient(DiscoveryClient):
             if parts and (value := _date(parts[0], kind)):
                 dates.append(value.model_copy(update={"publication_type": publication_type,
                     "first_version": preprint and kind == EvidenceDateKind.PREPRINT and str(raw.get("version")) in {"1", "v1"}}))
-        related = set()
+        related, refs = set(), set()
         relations = raw.get("relation") or {}
         for kind in SAME_WORK_RELATIONS:
             for relation in relations.get(kind, []) if isinstance(relations, dict) else ():
                 if relation.get("id-type") == "doi" and (value := valid_doi(relation.get("id"))):
                     related.add(value)
+                    if kind == 'has-preprint':
+                        refs.add(ProviderRecordRef(provider='doi', record_id=value, relation='preprint'))
         source = MetadataSource(provider="crossref", record_id=doi, retrieved_at=datetime.now(timezone.utc),
                                 role="supplement", url="https://api.crossref.org/works/" + quote(doi, safe="/"))
         publication = next((value for kind in (EvidenceDateKind.PUBLISHED_ONLINE, EvidenceDateKind.PUBLISHED_PRINT,
@@ -193,6 +210,7 @@ class SupplementalClient(DiscoveryClient):
                             for value in dates if value.kind == kind), None)
         return (record.model_copy(update={
             "provenance": source, "related_dois": tuple(sorted(related - {doi})), "dates": tuple(dates),
+            "related_ids": tuple(sorted(refs, key=lambda ref: (ref.provider, ref.record_id))),
             "publication_type": publication_type,
             "journal": None if preprint or conference else _first(raw.get("container-title")),
             "conference": (raw.get("event") or {}).get("name") if conference else None,

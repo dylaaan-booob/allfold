@@ -1834,7 +1834,8 @@ function closeArrayReader(snapshot=false) {
   }
   return true;
 }
-window.allfoldCompletionPapers=()=>({current:currentPaper()?.id,papers:[...new Map([...completionPapers,...paperObjects().values()].map(p=>[p.id,p])).values()]});
+window.allfoldCompletionPapers=()=>({current:currentPaper()?.id,papers:[...new Map([...completionPapers,...paperObjects().values()].map(p=>[p.id,p])).values()]
+  .filter(paper=>paper.status!=='rejected' && reviewedPapers.get(paper.id)!=='rejected')});
 window.allfoldRefreshWorkspace=refreshWorkspace;
 window.inboxKept={
   available:()=>state.ready && !decisionPending && !snapshotApplying && !paperToolsBusy() && enrichment?.phase!=='Saving' && !$('run-view').open &&

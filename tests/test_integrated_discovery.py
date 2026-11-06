@@ -146,7 +146,8 @@ def test_europe_pmc_preserves_explicit_relations_and_per_version_dates(versions,
     from allfold.canonicalize import canonicalize_records
     with DiscoveryClient('europe_pmc', transport=httpx.MockTransport(lambda _: pytest.fail('Normalization made a request'))) as client:
         formal = client.normalize({'source': 'MED', 'id': '42', 'doi': '10.5555/formal', 'title': 'Formal',
-            'firstPublicationDate': '2026-01-01', 'commentCorrectionList': {'commentCorrection': [
+            'firstPublicationDate': '2026-01-01', 'abstractText': 'Formal abstract',
+            'authorList': {'author': [{'fullName': 'Formal author'}]}, 'commentCorrectionList': {'commentCorrection': [
                 {'type': 'Preprint in', 'source': 'PPR', 'id': 'PPR3'},
                 {'type': 'Erratum in', 'source': 'MED', 'id': '99'},
             ]}}, SourceScope('journal', 'Journal'))
@@ -158,6 +159,13 @@ def test_europe_pmc_preserves_explicit_relations_and_per_version_dates(versions,
     assert any(d.record_id == 'PPR:PPR3' and d.version == '3' and d.year == 2025 for d in paper.date_evidence)
     if expected:
         assert any(d.record_id == 'PPR:PPR1' and d.first_version and d.day is None for d in paper.date_evidence)
+        from allfold.application.metadata_completion import complete_metadata
+        class Forbidden:
+            def lookup(self, *_):
+                pytest.fail('Sufficient aggregate version history triggered a native lookup')
+        result = complete_metadata((formal, preprint), ('arxiv', 'biorxiv', 'medrxiv'),
+            clients=dict.fromkeys(('arxiv', 'biorxiv', 'medrxiv'), Forbidden()))
+        assert not result.lookups
 
 
 @pytest.mark.parametrize('provider', ['dblp', 'zbmath'])

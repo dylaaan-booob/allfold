@@ -127,7 +127,7 @@ def render_paper_markdown(paper: CanonicalPaper) -> str:
         "publication_date": paper.metadata.publication_date,
         "doi": doi,
         "related_dois": list(paper.related_dois),
-        "identity_aliases": [item.model_dump(mode="json") for item in paper.identity_aliases],
+        "identity_aliases": [item.model_dump(mode="json", include={"provider", "record_id"}) for item in paper.identity_aliases],
         "conference": paper.metadata.conference,
         "conference_id": paper.metadata.conference_id,
         "publication_type": paper.metadata.publication_type,

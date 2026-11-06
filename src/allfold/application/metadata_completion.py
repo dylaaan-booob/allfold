@@ -6,7 +6,7 @@ from dataclasses import dataclass
 from threading import Event
 from typing import Protocol
 
-from allfold.identifiers import normalize_external_id, strong_identifiers, evidence_identifiers
+from allfold.identifiers import strong_identifiers, evidence_identifiers
 from allfold.models import ProviderWorkEvidence
 
 
@@ -49,22 +49,14 @@ class CompletionResult:
 
 
 def _identities(record):
-    identities = set(evidence_identifiers(record))
-    # An arXiv DOI explicitly encodes a known arXiv identifier, not a title match.
-    for namespace, value in tuple(identities):
-        if namespace == "doi" and value.startswith("10.48550/arxiv."):
-            arxiv = normalize_external_id("arxiv", value.removeprefix("10.48550/arxiv."))
-            if arxiv:
-                identities.add(("arxiv", arxiv))
-    return identities
+    return set(evidence_identifiers(record))
 
 
 def _targets(provider, records):
-    from allfold.paper_dates import collect_dates, first_public_date, date_value
-    dates = collect_dates(records)
-    earliest = {date_value(item) for item in dates if item.first_version and item.kind.value == 'preprint'}
+    from allfold.paper_dates import preprint_date_coverage, preprint_identity
+    complete, answered = preprint_date_coverage(records)
     metadata_answered = all(any(getattr(record, field) for record in records) for field in ('abstract', 'authors', 'publication_date'))
-    if provider in {'arxiv', 'biorxiv', 'medrxiv'} and first_public_date(dates) and len(earliest) == 1 and metadata_answered:
+    if provider in {'arxiv', 'biorxiv', 'medrxiv'} and complete and metadata_answered:
         return []  # Aggregated first-version evidence already answers the gap.
     targets = set()
     for record in records:
@@ -83,6 +75,8 @@ def _targets(provider, records):
         other = 'medrxiv' if provider == 'biorxiv' else 'biorxiv'
         known_other = {ref.record_id for record in records for ref in record.related_ids if ref.provider == other}
         targets = {key for key in targets if not key[1].startswith('10.48550/arxiv.') and key[1] not in known_other}
+    if provider in {'arxiv', 'biorxiv', 'medrxiv'} and metadata_answered:
+        targets = {key for key in targets if preprint_identity(*key) not in answered}
     return sorted(targets)
 
 
@@ -113,6 +107,8 @@ def complete_metadata(
                     return CompletionResult(tuple(output), tuple(issues), tuple(lookups), True)
                 request = provider, namespace, identifier
                 if request in attempted or request in fetched:
+                    continue
+                if provider in {'arxiv', 'biorxiv', 'medrxiv'} and (namespace, identifier) not in _targets(provider, output):
                     continue
                 attempted.add(request)
                 client = clients.get(provider)

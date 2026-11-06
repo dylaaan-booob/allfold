@@ -617,7 +617,7 @@ def _is_preprint(record: ProviderWorkEvidence) -> bool:
 def _finalize_dates(records: Sequence[ProviderWorkEvidence]):
     from allfold.paper_dates import collect_dates, first_public_date
     evidence = collect_dates(records)
-    return {"first_public_at": first_public_date(evidence)}, evidence
+    return {"first_public_at": first_public_date(evidence, records=records)}, evidence
 
 
 def _build_paper(

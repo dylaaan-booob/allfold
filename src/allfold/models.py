@@ -115,6 +115,7 @@ class MetadataSource(DomainModel):
 class ProviderRecordRef(DomainModel):
     provider: NonEmptyStr
     record_id: NonEmptyStr
+    relation: Literal["preprint", "version"] | None = None
 
 
 class EvidenceDateKind(str, Enum):
@@ -134,6 +135,7 @@ class EvidenceDate(DomainModel):
     provider: NonEmptyStr | None = None
     record_id: NonEmptyStr | None = None
     version: NonEmptyStr | None = None
+    version_family: NonEmptyStr | None = None
     publication_type: Literal["journal", "conference", "preprint"] | None = None
     # True only when the source establishes the first/earliest public version.
     first_version: bool = False

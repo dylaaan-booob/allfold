@@ -124,3 +124,37 @@ def test_crossref_conference_acceptance_does_not_enter_journal_dates():
     assert paper.metadata.publication_type == 'conference'
     assert any(item.kind.value == 'accepted' and item.publication_type == 'conference' for item in paper.date_evidence)
     assert not journal_dates(paper.date_evidence)
+
+
+def test_explicit_crossref_preprint_relation_without_date_keeps_first_public_unsettled():
+    from allfold.models import EvidenceDate, EvidenceDateKind
+    with SupplementalClient('crossref', interval=0, transport=httpx.MockTransport(lambda _: httpx.Response(200, json={
+        'message': {'DOI': '10.5555/formal', 'type': 'journal-article', 'title': ['Formal'],
+            'relation': {'has-preprint': [{'id-type': 'doi', 'id': key} for key in ('10.5555/first', '10.5555/unknown')]}}}))) as client:
+        formal, = client.lookup('doi', '10.5555/formal')
+    first = ProviderWorkEvidence(provenance=MetadataSource(provider='crossref', record_id='10.5555/first',
+        retrieved_at=datetime.now(timezone.utc)), title='First preprint', publication_type='preprint',
+        external_ids=ExternalIds(doi='10.5555/first'),
+        dates=(EvidenceDate(kind=EvidenceDateKind.PREPRINT, year=2022, first_version=True),))
+    paper, = canonicalize_records((formal, first)).papers
+    assert paper.metadata.first_public_at is None
+    assert any(ref.record_id == '10.5555/unknown' and ref.relation == 'preprint' for ref in formal.related_ids)
+
+
+@pytest.mark.parametrize('malformed', [False, True])
+def test_native_details_no_match_or_failure_is_also_reused_within_operation(malformed):
+    from allfold.providers.integrated import DiscoveryError
+    calls = []
+    def response(request):
+        calls.append(request.url.path)
+        rows = [{'preprint_doi': '10.1101/123456', 'published_doi': '10.5555/formal'}] if '/pubs/' in request.url.path else (
+            'invalid collection' if malformed else [])
+        return httpx.Response(200, json={'messages': [{'status': 'ok'}], 'collection': rows})
+    with SupplementalClient('biorxiv', interval=0, transport=httpx.MockTransport(response)) as client:
+        for doi in ('10.5555/formal', '10.1101/123456'):
+            if malformed:
+                with pytest.raises(DiscoveryError):
+                    client.lookup('doi', doi)
+            else:
+                client.lookup('doi', doi)
+    assert calls == ['/pubs/biorxiv/10.5555/formal/na/json', '/details/biorxiv/10.1101/123456/na/json']

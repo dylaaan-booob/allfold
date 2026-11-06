@@ -18,6 +18,7 @@ const paper=(i,status='candidate')=>({id:'paper-'+i,title:'Synthetic Paper '+i,p
 const records=journals.map((j,i)=>({key:j.issn,issn:j.issn,name:j.name,group:j.group,labels:[],cover:null,papers:[paper(i*2),paper(i*2+1)]}));
 Object.assign(records[0],{name:'Synthetic Conference',source_type:'conference',issn:null,dblp_stream:'streams/conf/icml',group:'Old scope'});
 const workspace={csrf_token:'fixture',import_token:'fixture',issues:[],counts:{candidates:48,active_journals:24},subjects:[{name:'Group 0',journals:records}],
+  completion_papers:records.flatMap(journal=>journal.papers.map(({id,title,status})=>({id,title,status}))),
   kept:{papers:[{paper:paper(10,'kept'),journal:records[0]},{paper:paper(11,'kept'),journal:records[1]}],journals:records,services:[],settings:{},titles:{}}};
 const run={active:false,snapshot:{status:'IDLE',provider:null},providers:Object.fromEntries(['integrated','wos'].map(id=>[id,{enabled:false,message:'Offline fixture',result_summary:null}]))};
 const keptQueue={services:[{id:'all',name:'All Services',kept:2,eligible:2},{id:'unassigned',name:'Unassigned',kept:2,eligible:2}],papers:[],import_token:'fixture'};
@@ -29,6 +30,10 @@ const completionStarts=[];
 let completionState={phase:'Idle',results:[],total:0,processed:0};
 const server=http.createServer((req,res)=>{
   const route=new URL(req.url,'http://fixture').pathname;
+  if(route==='/api/ui-next/papers/paper-0/reject'){
+    records[0].papers=records[0].papers.filter(paper=>paper.id!=='paper-0');
+    res.writeHead(200,{'Content-Type':'application/json'});res.end(JSON.stringify({outcome:'UPDATED',resulting_status:'rejected'}));return;
+  }
   if(route==='/api/papers/api-completion/start'){
     let text='';req.on('data',chunk=>{text+=chunk;});req.on('end',()=>{
       const value=JSON.parse(text);completionStarts.push(value);
@@ -512,6 +517,16 @@ $('s-run-overview-open').click();
       if(document.body.dataset.workbench!=='browser' || !$('allfold-pane').inert || bounds.width<240 || bounds.height<120)throw Error('600x480 Browser body is not operable');
       window.allfoldWorkbench.hide();
       if($('allfold-pane').inert || $('kept-view').dataset.sidebarMode!=='overlay')throw Error('Browser return lost Array presentation '+JSON.stringify({inert:$('allfold-pane').inert,mode:$('kept-view').dataset.sidebarMode,layout:$('selected-view').dataset.workspaceLayout,sidebar:$('array-sidebar').hidden}));
+    });
+    await js("window.workspaceNavigation.go('workspace',{instant:true}),window.workspaceArray.openPaper('paper-0')");
+    await ready("!document.getElementById('reject-paper').disabled");
+    await js("document.getElementById('reject-paper').click()");
+    await ready("!window.inboxKept.candidates().some(entry=>entry.paper.id==='paper-0')");
+    await js("document.getElementById('array-api-completion-open').click()");
+    await check(()=>{
+      if(document.querySelector('#api-completion-papers input[value="paper-0"]'))throw Error('Rejected Paper re-entered API completion from the lightweight snapshot');
+      if(!document.querySelector('#api-completion-papers input[value="paper-1"]'))throw Error('Reject removed a remaining candidate from API completion');
+      document.getElementById('api-completion-close').click();
     });
     console.log('LAYOUT DOM PASS');
   }catch(error){console.error(error.stack);process.exitCode=1;}

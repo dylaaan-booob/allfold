@@ -51,7 +51,7 @@ All date strings preserve `YYYY`, `YYYY-MM` or `YYYY-MM-DD` precision.
 `publication_date` describes the source's bibliographic publication record and
 remains independent of the discovery range and first-public sorting.
 `date_evidence` retains event kind, partial components, provider, record ID,
-version, version type, source URL and whether the source establishes a first
+version, preprint version family, version type, source URL and whether the source establishes a first
 public preprint version. Equal facts deduplicate independently of fetch time;
 new events and conflicting source facts append. Same-day events with different
 types remain distinct. Sorting placeholders never enter saved/display dates.
@@ -63,6 +63,12 @@ retrieval/update times or Translator generic date cannot supply a fallback.
 Sufficient first-stage evidence can fill it at creation. Explicit API completion
 fills an empty value but never recalculates a nonempty one; later evidence still
 appends. Missing version history is not evidence of a single version.
+Each known preprint version family needs its own first-version proof. One family's
+date cannot settle another family's later-only or undated record. Conflicting
+first-version facts or an evidently earlier version leave the value unresolved;
+partial dates are compared as intervals without changing their saved precision.
+Related identifiers retain explicit preprint and same-family version roles.
+An added alias does not duplicate an already saved event.
 
 The UI's **期刊日期** is a chronological collection of journal-version events:
 Accepted, Published online, Published print, Published/Issued and unspecified

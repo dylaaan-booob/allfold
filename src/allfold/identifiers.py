@@ -64,20 +64,22 @@ def strong_identifiers(external_ids: Any, related_dois=()) -> frozenset[tuple[st
     identities = {(namespace, normalized) for namespace, value in (values or {}).items()
                   if (normalized := normalize_external_id(namespace, value)) is not None}
     identities.update(("doi", doi) for value in related_dois if (doi := valid_doi(value)))
+    for namespace, value in tuple(identities):
+        if namespace == "doi" and value.startswith("10.48550/arxiv."):
+            if arxiv := normalize_external_id("arxiv", value.removeprefix("10.48550/arxiv.")):
+                identities.add(("arxiv", arxiv))
     return frozenset(identities)
 
 
 def paper_identifiers(paper: Any) -> frozenset[tuple[str, str]]:
     identities = set(strong_identifiers(paper.external_ids, paper.related_dois))
     for alias in getattr(paper, "identity_aliases", ()):
-        if value := normalize_external_id(alias.provider, alias.record_id):
-            identities.add((alias.provider, value))
+        identities.update(strong_identifiers({alias.provider: alias.record_id}))
     return frozenset(identities)
 
 
 def evidence_identifiers(record: Any) -> frozenset[tuple[str, str]]:
     identities = set(strong_identifiers(record.external_ids, record.related_dois))
     for reference in record.related_ids:
-        if value := normalize_external_id(reference.provider, reference.record_id):
-            identities.add((reference.provider, value))
+        identities.update(strong_identifiers({reference.provider: reference.record_id}))
     return frozenset(identities)

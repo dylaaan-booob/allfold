@@ -294,6 +294,78 @@ def test_api_completion_uses_saved_identity_alias_without_a_handoff(tmp_path):
     assert paper.external_ids.doi is None and paper.first_public_at == '2022-01-02'
 
 
+@pytest.mark.parametrize('related', [False, True])
+def test_arxiv_doi_identity_survives_completion_writeback_without_atom_doi(tmp_path, related):
+    from allfold.application.coordinators.api_completion import ApiCompletion
+    from allfold.application.browser_runtime import BrowserTaskLock
+    from test_application_decisions import replace_frontmatter
+    config, workspace = write_valid_config(tmp_path)
+    config.write_text(config.read_text() + '\ncompletion_providers: [arxiv]\n')
+    paper_id, path = missing(workspace)
+    arxiv_doi = '10.48550/arxiv.2201.12345'
+    primary = '10.5555/formal' if related else arxiv_doi
+    replace_frontmatter(path, doi=primary, external_ids={'doi': primary}, related_dois=[arxiv_doi] if related else [])
+    service = ApiCompletion(config, BrowserTaskLock(), client_factory=lambda provider, **kwargs:
+        SupplementalClient(provider, interval=0, transport=httpx.MockTransport(lambda _: httpx.Response(200, text='''
+          <feed xmlns="http://www.w3.org/2005/Atom"><entry>
+          <id>https://arxiv.org/abs/2201.12345v3</id><title>Preprint</title><summary>Native abstract</summary>
+          <published>2022-01-02T00:00:00Z</published></entry></feed>''')), **kwargs))
+    service.start((paper_id,))
+    service.join()
+    assert service.state()['results'][0]['status'] == 'updated'
+    paper, = load_workspace(workspace).inbox
+    assert paper.abstract == 'Native abstract' and paper.first_public_at == '2022-01-02'
+    assert paper.external_ids.doi == primary and paper.paper_id == paper_id
+
+
+@pytest.mark.parametrize('provider', ['biorxiv', 'medrxiv'])
+def test_batch_native_reverse_lookup_reuses_details_for_separately_saved_preprint(tmp_path, provider):
+    from uuid import uuid4
+    from allfold.application.coordinators.api_completion import ApiCompletion
+    from allfold.application.browser_runtime import BrowserTaskLock
+    from test_application_decisions import write_paper, replace_frontmatter
+    config, workspace = write_valid_config(tmp_path)
+    config.write_text(config.read_text() + f'\ncompletion_providers: [{provider}]\n')
+    formal_id, _ = missing(workspace)
+    preprint_id = uuid4()
+    preprint = write_paper(workspace, preprint_id, filename='preprint.md')
+    replace_frontmatter(preprint, doi='10.1101/123456', external_ids={'doi': '10.1101/123456'},
+                        publication_date=None, publication_type='preprint', authors=[])
+    calls = []
+    def response(request):
+        calls.append(request.url.path)
+        rows = [{'preprint_doi': '10.1101/123456', 'published_doi': '10.5555/decision'}] if '/pubs/' in request.url.path else [
+            {'doi': '10.1101/123456', 'published': '10.5555/decision', 'version': '1', 'date': '2022-01-02'}]
+        return httpx.Response(200, json={'messages': [{'status': 'ok'}], 'collection': rows})
+    service = ApiCompletion(config, BrowserTaskLock(), client_factory=lambda selected, **kwargs:
+        SupplementalClient(selected, interval=0, transport=httpx.MockTransport(response), **kwargs))
+    service.start((formal_id, preprint_id))
+    service.join()
+    assert calls == [f'/pubs/{provider}/10.5555/decision/na/json', f'/details/{provider}/10.1101/123456/na/json']
+    assert len(load_workspace(workspace).papers) == 2
+    assert all(result['status'] == 'updated' for result in service.state()['results'])
+
+
+def test_new_preprint_alias_does_not_duplicate_already_saved_version_dates(tmp_path):
+    from allfold.application.api_completion import saved_paper_evidence, save_api_completion
+    from allfold.application.paper_enrichment import read_paper_target
+    from allfold.providers.integrated import DiscoveryClient, SourceScope
+    config, workspace = write_valid_config(tmp_path)
+    paper_id, _ = missing(workspace)
+    raw = {'source': 'PPR', 'id': 'PPR3', 'title': 'Preprint', 'versionNumber': '3', 'firstPublicationDate': '2025-09-01',
+        'commentCorrectionList': {'commentCorrection': [{'type': 'Preprint of', 'source': 'MED', 'id': '42', 'doi': '10.5555/decision'}]},
+        'versionList': {'version': [{'id': 'PPR1', 'source': 'PPR', 'versionNumber': '1', 'firstPublishDate': '2020-06'}]}}
+    with DiscoveryClient('europe_pmc', transport=httpx.MockTransport(lambda _: pytest.fail('Unexpected request'))) as client:
+        for addition in ({}, {'doi': '10.1101/123456'}):
+            evidence = client.normalize({**raw, **addition}, SourceScope('journal', ''))
+            with workspace_operation_lock(workspace) as lock:
+                target = read_paper_target(workspace, paper_id, operation_lock=lock)
+                save_api_completion(target, (saved_paper_evidence(target), evidence), operation_lock=lock)
+            paper, = load_workspace(workspace).inbox
+            assert paper.first_public_at == '2020-06'
+            assert len(paper.date_evidence) == 2
+
+
 def test_paper_commit_sync_failure_preserves_saved_fields_through_commit_guard(tmp_path, monkeypatch):
     import os
     import stat
