@@ -11,13 +11,14 @@ const settings={config_path:'/fixture/monitor.yaml',csrf_token:'fixture',issues:
   name:'Synthetic Monitor',keyword_expression:'causal',from_month:'2026-01',to_month:'2026-01',output_dir:'workspace',log_level:'INFO',
   monitor_revision_exists:'1',monitor_revision_digest:'fixture',journal_revision_exists:'1',journal_revision_digest:'fixture',
   institution_name:'',institution_idp_entity_id:'',auto_import_after_preparation:false,transition_delay_seconds:'3',display_name:'',
-  provider_aliases:{},provider_order:['openalex','europe_pmc','dblp','zbmath','crossref','arxiv','biorxiv','medrxiv','wos'],enabled_providers:['openalex'],groups:Array.from({length:20},(_,i)=>'Group '+i),
+  provider_aliases:{},provider_order:['openalex','europe_pmc','crossref','arxiv','biorxiv','medrxiv','wos'],enabled_providers:['openalex','europe_pmc'],completion_providers:['openalex','europe_pmc','crossref','arxiv','biorxiv','medrxiv'],groups:Array.from({length:20},(_,i)=>'Group '+i),
   conferences:[],custom_labels:['Label 0','Label 1','Label 2'],journals,access_services:[{id:'svc_fixture',name:'Synthetic Service',access_method:'manual',access_url:''}],
 }};
-const paper=(i,status='candidate')=>({id:'paper-'+i,title:'Synthetic Paper '+i,publication_date:'2026-10',conference:'Synthetic Conference',publication_type:'conference',first_public_at:'2022-04',accepted_at:'2026-09',accepted_approximate:true,date_note:'Acceptance approximated by formal publication',external_ids:{dblp:'conf/example/Paper'},indexed_terms:[{value:'62G05',kind:'MSC',source:'zbmath'}],sources:[{provider:'dblp',record_id:'conf/example/Paper',role:'discovery'}],abstract:('An isolated synthetic paragraph for reader scroll verification. '.repeat(12)+'\n\n').repeat(24),authors:['Synthetic Author'],doi:i===0?null:'10.5555/layout-'+i,discovered_at:'2026-10-01T00:00:00Z',status,enrichPhase:'Idle'});
+const paper=(i,status='candidate')=>({id:'paper-'+i,title:'Synthetic Paper '+i,publication_date:'2026-10',conference:'Synthetic Conference',publication_type:'conference',first_public_at:'2022-04',date_evidence:[{kind:'preprint',year:2022,month:4,provider:'arxiv',record_id:'2204.12345',version:'v1',publication_type:'preprint',first_version:true},{kind:'accepted',year:2026,month:9,provider:'crossref',record_id:'10.5555/formal',publication_type:'journal'},{kind:'published-online',year:2026,month:10,provider:'crossref',record_id:'10.5555/formal',publication_type:'journal'}],external_ids:{dblp:'conf/example/Paper'},indexed_terms:[{value:'statistics',kind:'topic',source:'openalex'}],sources:[{provider:'dblp',record_id:'conf/example/Paper',role:'discovery'}],abstract:('An isolated synthetic paragraph for reader scroll verification. '.repeat(12)+'\n\n').repeat(24),authors:['Synthetic Author'],doi:i===0?null:'10.5555/layout-'+i,discovered_at:'2026-10-01T00:00:00Z',status,enrichPhase:'Idle'});
 const records=journals.map((j,i)=>({key:j.issn,issn:j.issn,name:j.name,group:j.group,labels:[],cover:null,papers:[paper(i*2),paper(i*2+1)]}));
 Object.assign(records[0],{name:'Synthetic Conference',source_type:'conference',issn:null,dblp_stream:'streams/conf/icml',group:'Old scope'});
 const workspace={csrf_token:'fixture',import_token:'fixture',issues:[],counts:{candidates:48,active_journals:24},subjects:[{name:'Group 0',journals:records}],
+  completion_papers:records.flatMap(journal=>journal.papers.map(({id,title,status})=>({id,title,status}))),
   kept:{papers:[{paper:paper(10,'kept'),journal:records[0]},{paper:paper(11,'kept'),journal:records[1]}],journals:records,services:[],settings:{},titles:{}}};
 const run={active:false,snapshot:{status:'IDLE',provider:null},providers:Object.fromEntries(['integrated','wos'].map(id=>[id,{enabled:false,message:'Offline fixture',result_summary:null}]))};
 const keptQueue={services:[{id:'all',name:'All Services',kept:2,eligible:2},{id:'unassigned',name:'Unassigned',kept:2,eligible:2}],papers:[],import_token:'fixture'};
@@ -25,8 +26,26 @@ let keptState={active:false,phase:'idle',navigation:null,can_continue:false,can_
 const mimes={'.html':'text/html','.js':'text/javascript','.css':'text/css','.json':'application/json','.woff2':'font/woff2','.ttf':'font/ttf','.otf':'font/otf','.png':'image/png','.mp4':'video/mp4'};
 let rejectAutosave=false,holdWorkspaceResponse,resolveInitialCAS,credentialState={ok:false,error:'cas_store_unreadable',configured:false,username:'',revision:'d'.repeat(64)};
 const credentialWrites=[];
+const completionStarts=[];
+let completionState={phase:'Idle',results:[],total:0,processed:0};
 const server=http.createServer((req,res)=>{
   const route=new URL(req.url,'http://fixture').pathname;
+  if(route==='/api/ui-next/papers/paper-0/reject'){
+    records[0].papers=records[0].papers.filter(paper=>paper.id!=='paper-0');
+    res.writeHead(200,{'Content-Type':'application/json'});res.end(JSON.stringify({outcome:'UPDATED',resulting_status:'rejected'}));return;
+  }
+  if(route==='/api/papers/api-completion/start'){
+    let text='';req.on('data',chunk=>{text+=chunk;});req.on('end',()=>{
+      const value=JSON.parse(text);completionStarts.push(value);
+      completionState={phase:'Running',request_id:'fixture-completion',total:value.paper_ids.length,processed:0,results:[]};
+      res.writeHead(200,{'Content-Type':'application/json'});res.end(JSON.stringify(completionState));
+    });return;
+  }
+  if(route==='/api/papers/api-completion/state' || route==='/api/papers/api-completion/cancel'){
+    if(route.endsWith('/cancel'))completionState={...completionState,phase:'Cancelled',processed:completionState.total,
+      results:completionStarts.at(-1).paper_ids.map(paper_id=>({paper_id,status:'cancelled',lookups:[],issues:[]}))};
+    res.writeHead(200,{'Content-Type':'application/json'});res.end(JSON.stringify(route.endsWith('/cancel')?{accepted:true}:completionState));return;
+  }
   if(route==='/api/ui-next/zotero'){
     const data={ok:true,server_id:'SERVERFIXTUR',version:'10.0.6',authorized:true,libraries:[
       {type:'user',id:'0',name:'My Library',editable:true,files_editable:true,collections:[]},
@@ -74,7 +93,19 @@ async function ready(condition){
   throw Error('UI readiness timeout: '+condition+'; native='+JSON.stringify(win.getBounds())+'; DOM='+JSON.stringify(actual));
 }
 async function size(width,height,condition){win.setSize(width,height);await ready(`innerWidth===${width} && (${condition})`);}
-async function check(fn){await js(`(${fn.toString()})()`);}
+async function navigateInRenderer(view,buttonId=view+'-open') {
+  for(let attempt=0;attempt<150;attempt++){
+    const button=document.getElementById(buttonId);
+    if(button && !button.disabled){
+      button.click();
+      if(window.workspaceNavigation.current()===view)return;
+    }
+    await new Promise(resolve=>setTimeout(resolve,50));
+  }
+  throw Error('Navigation did not reach '+view+' from '+window.workspaceNavigation.current());
+}
+async function navigate(view){await js(`(${navigateInRenderer.toString()})(${JSON.stringify(view)})`);}
+async function check(fn){await js(`(${fn.toString()})(${navigateInRenderer.toString()})`);}
 app.whenReady().then(async()=>{
   try {
     await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));
@@ -90,8 +121,8 @@ app.whenReady().then(async()=>{
       if(!document.getElementById('array-journal-issn').parentElement.hidden || !document.getElementById('array-journal-eissn').parentElement.hidden)throw Error('Conference profile displays Journal ISSN fields');
       if(document.getElementById('array-source-stream')?.textContent!=='streams/conf/icml')throw Error('Conference profile lost its native DBLP Stream');
     });
-    await check(()=>{
-      window.workspaceNavigation.go('journals',{instant:true});
+    await check(async navigate=>{
+      await navigate('journals');
       const category=document.getElementById('s-source-kind'),label=document.getElementById('s-add-journal');
       const updates=new MutationObserver(()=>{});updates.observe(label,{childList:true});
       try{
@@ -103,8 +134,8 @@ app.whenReady().then(async()=>{
         }
       }finally{updates.disconnect();}
     });
-    await check(()=>{
-      window.workspaceNavigation.go('journals',{instant:true});
+    await check(async navigate=>{
+      await navigate('journals');
       const category=document.getElementById('s-source-kind');category.value='conferences';category.dispatchEvent(new Event('change'));
       if(document.querySelectorAll('#s-journals [data-journal]').length!==0)throw Error('Registry automatically followed series');
       document.getElementById('s-add-journal').click();
@@ -132,9 +163,9 @@ app.whenReady().then(async()=>{
     await check(()=>window.dispatchEvent(new Event('settings-saved')));
     releaseWorkspace();
     await ready("window.inboxRun.available() && window.inboxKept.candidates().find(entry=>entry.journal.source_type==='conference')?.journal.group==='Group 0'");
-    await check(()=>window.workspaceNavigation.go('workspace',{instant:true}));
+    await navigate('workspace');
     await ready("document.getElementById('array-journal-subject').textContent==='Group 0'");
-    await check(()=>window.workspaceNavigation.go('journals',{instant:true}));
+    await navigate('journals');
     await size(600,480,"window.workspaceNavigation.current()==='journals'");
     await capture('conferences-600');
     await check(()=>{
@@ -143,8 +174,8 @@ app.whenReady().then(async()=>{
       if(document.querySelectorAll('#s-journals [data-journal]').length!==24)throw Error('Conference edits modified Journals');
     });
     await size(1200,800,"window.workspaceNavigation.current()==='journals'");
-    await check(()=>{
-      window.workspaceNavigation.go('run',{instant:true});
+    await check(async navigate=>{
+      await navigate('run');
       const field=document.querySelector('[data-monitor="expression"]');field.value='lea*';field.dispatchEvent(new Event('input',{bubbles:true}));
     });
     await ready("document.querySelector('[data-monitor=expression]').getAttribute('aria-invalid')==='true'");
@@ -155,8 +186,8 @@ app.whenReady().then(async()=>{
     await check(()=>{
       if(document.querySelector('.s-validation-error') || document.querySelector('[data-monitor="expression"]').getAttribute('aria-invalid')==='true' || document.getElementById('s-message').textContent.includes('Prefix needs'))throw Error('Saved expression retains obsolete validation errors');
     });
+    await navigate('kept');
     await check(()=>{
-      window.workspaceNavigation.go('kept',{instant:true});
       document.querySelector('[data-zotero-refresh]').click();
     });
     await ready("!document.querySelector('[data-zotero-library]').disabled");
@@ -196,8 +227,8 @@ app.whenReady().then(async()=>{
     await capture('last-import-600-zoom125');
     await check(()=>document.querySelector('#kept-sidebar [data-sidebar-close]').click());
     win.webContents.setZoomFactor(1);await size(1200,800,"window.workspaceNavigation.current()==='kept'");
-    await check(()=>{
-      window.workspaceNavigation.go('kept',{instant:true});
+    await check(async navigate=>{
+      await navigate('kept');
       document.querySelector('#kept-workspace [data-sidebar-view=access]').click();
       for(const [field,value] of [['username','new-fixture-user'],['password','synthetic-complete-replacement']]){
         const input=document.getElementById('s-cas-'+field);input.value=value;input.dispatchEvent(new Event('input',{bubbles:true}));
@@ -222,17 +253,35 @@ app.whenReady().then(async()=>{
       const raw=localStorage.getItem('allfold.configuration-draft:/fixture/monitor.yaml') || '';
       if(raw.includes('synthetic-complete-replacement') || raw.includes('new-fixture-user'))throw Error('credential input entered ordinary recovery storage');
       document.querySelector('#kept-sidebar [data-sidebar-close]').click();
-      window.workspaceNavigation.go('workspace',{instant:true});
       document.getElementById('paper-detail').scrollTop=0;
     });
+    await navigate('workspace');
     await capture('paper-identity');
-    await check(async()=>{
+    if(completionStarts.length)throw Error('Viewing results automatically started API completion');
+    await js("document.getElementById('array-api-completion-open').click()");
+    await ready("document.getElementById('api-completion-dialog').open");
+    await check(()=>{
+      const choices=[...document.querySelectorAll('#api-completion-papers input')];
+      if(choices.filter(input=>input.checked).length!==1 || choices.find(input=>input.checked).value!=='paper-0')throw Error('API completion did not select the current unkept DOI-free Paper');
+      choices.find(input=>!input.checked).click();
+      document.getElementById('api-completion-start').click();
+    });
+    await ready("document.getElementById('api-completion-status').textContent.startsWith('Running') && !document.getElementById('api-completion-cancel').hidden");
+    await capture('api-completion');
+    await js("document.getElementById('api-completion-cancel').click()");
+    await ready("document.getElementById('api-completion-status').textContent.startsWith('Cancelled') && document.querySelectorAll('#api-completion-results li').length===2");
+    if(completionStarts.length!==1 || completionStarts[0].paper_ids.length!==2)throw Error('API completion did not retain the explicit batch selection');
+    await js("document.getElementById('api-completion-close').click()");
+    await ready("window.inboxRun.available()");
+    await check(async navigate=>{
       const $=id=>document.getElementById(id),assert=(ok,message)=>{if(!ok)throw Error(message);},sleep=ms=>new Promise(r=>setTimeout(r,ms));
       assert($('paper-first-public').textContent==='2022-04','first-public precision was not rendered');
-      assert($('paper-accepted').textContent==='≈ 2026-09','approximate acceptance was presented as exact');
+      assert($('paper-journal-dates').textContent==='Accepted · 2026-09 · crossrefPublished online · 2026-10 · crossref','named journal events were not rendered in date order');
+      assert(!$('paper-journal-dates').textContent.includes('2022'),'preprint dates entered the journal date collection');
+      assert($('paper-first-public').title.includes('arxiv') && !$('paper-first-public').title.includes('crossref'),'First public basis contains journal evidence');
       assert($('paper-source').textContent==='Synthetic Conference','conference source was lost');
       assert($('paper-identifiers').textContent.includes('dblp: conf/example/Paper'),'DOI-free identity was hidden');
-      assert($('paper-indexed-terms').textContent.includes('MSC · zbmath'),'indexed term type/source was lost');
+      assert($('paper-indexed-terms').textContent.includes('topic · openalex'),'indexed term type/source was lost');
       assert($('paper-doi').textContent==='DOI unavailable' && !$('paper-doi').hasAttribute('href'),'DOI-free paper acquired a DOI link');
       assert([...$('paper-metadata-details').querySelectorAll('[data-enrich]')].every(node=>node.disabled),'DOI-free external Enrich was enabled');
       window.layoutReader=$('paper-detail');window.layoutParent=layoutReader.parentElement;
@@ -266,20 +315,20 @@ app.whenReady().then(async()=>{
       assert($('array-journal-name').textContent==='Synthetic Journal 1','metadata did not follow selection');
       document.querySelector('#kept-view [data-sidebar-view]').click();
       $('array-index-toggle').click();$('array-index').scrollTop=200;document.querySelector('#array-flyout [data-flyout-close]').click();
-      $('array-kept').click();assert(window.workspaceNavigation.current()==='kept','legacy Kept entry must open independent Kept');
+      await navigate('kept','array-kept');assert(window.workspaceNavigation.current()==='kept','legacy Kept entry must open independent Kept');
       assert($('kept-sidebar').hidden,'Kept automatically opened a Sidebar');
       assert(!$('kept-start').closest('[hidden]') && !$('kept-import-only').closest('[hidden]'),'primary actions hidden with sidebar');
-      $('workspace-open').click();$('array-index-toggle').click();assert($('array-index').scrollTop===200,'Candidates Index scroll lost after visiting Kept');document.querySelector('#array-flyout [data-flyout-close]').click();
+      await navigate('workspace');$('array-index-toggle').click();assert($('array-index').scrollTop===200,'Candidates Index scroll lost after visiting Kept');document.querySelector('#array-flyout [data-flyout-close]').click();
       window.layoutReader=$('paper-detail');window.layoutParent=layoutReader.parentElement;layoutReader.scrollTop=180;
       document.querySelector('#kept-view [data-sidebar-view]').click();
     });
     await capture('array-wide');
     await size(700,500,"document.getElementById('kept-view').dataset.sidebarMode==='overlay'");
-    await check(()=>{
+    await check(async navigate=>{
       const root=document.getElementById('kept-view'),reader=document.getElementById('paper-detail');
       if(root.dataset.sidebarMode!=='overlay')throw Error('narrow Array must overlay');
       if(reader!==window.layoutReader || reader.parentElement!==window.layoutParent || reader.scrollTop!==180)throw Error('resize changed Reader identity/scroll');
-      document.getElementById('journals-open').click();
+      await navigate('journals');
     });
     await ready("!document.getElementById('s-journals-page').hidden");
     await check(async()=>{
@@ -324,7 +373,7 @@ app.whenReady().then(async()=>{
     });
     await capture('journals-overlay');
     await size(1200,800,"document.getElementById('s-journals-page').dataset.sidebarMode==='docked'");
-    await check(()=>{
+    await check(async navigate=>{
       const $=id=>document.getElementById(id),input=$('s-entity-description').querySelector('[data-service-field=url]');
       if(input!==window.layoutDraft || input.parentElement!==window.layoutDraftParent || input.value!=='https://synthetic.test/draft' || document.activeElement!==input)throw Error('resize lost Service draft/focus');
       if($('s-journals-page').dataset.sidebarMode!=='docked')throw Error('wide Journals must dock');
@@ -334,17 +383,17 @@ app.whenReady().then(async()=>{
       const target=$('layout-sidebarPreferredWidth');target.value='420';target.dispatchEvent(new Event('input'));$('layout-save').click();$('layout-origin').click();
       if(target.value!=='320')throw Error('ORIGIN did not restore defaults');$('layout-reset').click();if(target.value!=='420')throw Error('RESET lost saved target');
       if(document.querySelector('footer').getBoundingClientRect().height>86)throw Error('developer footer unbounded');
-      $('workspace-open').click();
+      await navigate('workspace');
     });
     await capture('array-developer');
     await size(600,480,"document.getElementById('kept-view').dataset.sidebarMode==='overlay'");
-    await check(()=>{
+    await check(async navigate=>{
       const $=id=>document.getElementById(id),root=$('kept-view'),tools=root.querySelector('.tool-rail'),main=$('array-content');
       if(root.dataset.sidebarMode!=='overlay')throw Error('600px Array must overlay');
       if(tools.getBoundingClientRect().right>root.getBoundingClientRect().right+1 || main.clientWidth<360)throw Error('rails/content overflow');
       if($('keep-paper').getBoundingClientRect().bottom>main.getBoundingClientRect().bottom)throw Error('low-height primary decision unreachable');
       if(document.querySelector('.masthead').getBoundingClientRect().bottom>root.getBoundingClientRect().top+1 || document.querySelector('footer').getBoundingClientRect().top<root.getBoundingClientRect().bottom-1)throw Error('Chrome or Status overlaps content');
-      $('journals-open').click();
+      await navigate('journals');
     });
     await wait(100);
     await check(()=>{
@@ -354,8 +403,8 @@ app.whenReady().then(async()=>{
       if(document.getElementById('s-entities').clientHeight<100)throw Error('low-height Directory cannot scroll');
     });
     await capture('journals-small');
-    await check(()=>{
-      const $=id=>document.getElementById(id);$('settings-open').click();
+    await check(async navigate=>{
+      const $=id=>document.getElementById(id);await navigate('settings');
       if($('s-settings').clientHeight<100)throw Error('Settings lost its parent height');
       if($('s-save') || document.querySelector('.header-browse #s-save'))throw Error('ordinary global SAVE remains');
       if($('s-settings').querySelector('[data-monitor="name"], [data-monitor="displayName"], #s-institution'))throw Error('Settings contains task-owned fields');
@@ -363,22 +412,22 @@ app.whenReady().then(async()=>{
       document.querySelector('#s-settings [data-sidebar-view]').click();
       if($('s-settings').dataset.sidebarMode!=='overlay' || $('settings-system-sidebar').hidden)throw Error('Settings System must overlay at 600x480');
       document.querySelector('#settings-system-sidebar [data-sidebar-close]').click();
-      $('run-open').click();
+      await navigate('run');
       $('s-run-overview-open').click();
-      if(document.querySelectorAll('[data-discovery-provider]').length!==8)throw Error('Integrated Provider choices missing');
+      if(document.querySelectorAll('[data-discovery-provider]').length!==2)throw Error('Integrated Provider choices missing');
       if(document.querySelector('[data-provider="pubmed"], [data-monitor="pubmedKey"]'))throw Error('Retired PubMed still displayed');
       const starts=[...document.querySelectorAll('#s-run [data-run-provider]')].filter(node=>!node.hidden && node.getClientRects().length);
       if(starts.length!==2 || !starts.some(node=>node.dataset.runProvider==='integrated') || !starts.some(node=>node.dataset.runProvider==='wos'))throw Error('Run must expose Integrated and independent WoS only');
 
       if($('s-run').getBoundingClientRect().width>600 || $('s-run').querySelector('.workspace-content').clientWidth<360)throw Error('Run content lost available width');
       document.querySelector('#s-run [data-flyout]').click();
-      if($('run-provider-flyout').hidden || $('s-providers').children.length!==9)throw Error('Run Provider Directory did not open');
+      if($('run-provider-flyout').hidden || $('s-providers').children.length!==7)throw Error('Run Provider Directory did not open');
       $('s-providers').querySelector('[data-provider="crossref"]').click();
       if($('run-configuration-sidebar').hidden || $('s-run').dataset.sidebarMode!=='overlay')throw Error('Provider configuration must overlay at 600x480');
       if(!document.querySelector('#run-configuration-sidebar [data-monitor="crossrefMailto"]'))throw Error('Provider settings not in Functional Sidebar');
       document.querySelector('#run-configuration-sidebar [data-sidebar-close]').click();$('s-run-overview-open').click();
 
-      window.workspaceNavigation.go('workspace',{instant:true});
+      await navigate('workspace');
       window.allfoldUIPreferences.setArchiveDisabled(false);$('array-index-toggle').click();$('array-index').scrollTop=200;$('workspace-archive').click();
       if($('selected-view').dataset.workspaceLayout!=='archive' || !$('kept-view').hidden)throw Error('Archive restoration failed');
       archiveDebug.values.height=200;window.dispatchEvent(new Event('archive-debug-change'));
@@ -388,15 +437,25 @@ app.whenReady().then(async()=>{
       $('array-index-toggle').click();if($('array-index').scrollTop!==200)throw Error('Index scroll lost through Archive entry');
       document.querySelector('#array-flyout [data-flyout-close]').click();
     });
-    await js("window.workspaceNavigation.go('run',{instant:true}),document.getElementById('s-run-overview-open').click()");
+    await navigate('run');
+    await js("document.getElementById('s-run-overview-open').click()");
     await capture('run-small');
     await js("document.querySelector('#s-run .s-run-body').scrollTop=document.getElementById('s-run-operations').offsetTop");
     await capture('run-providers-small');
     await js("document.querySelector('#s-run [data-flyout]').click(),document.querySelector('#s-providers [data-provider=crossref]').click()");
     await capture('run-provider-overlay');
-    await js("window.workspaceNavigation.go('settings',{instant:true})");
+    await navigate('settings');
     await capture('settings-small');
-    await js("window.workspaceNavigation.go('kept',{instant:true}),document.querySelector('#kept-workspace [data-sidebar-view=access]').click()");
+    await ready("window.inboxRun.available()");
+    const pendingKeptSnapshot=new Promise(resolve=>{holdWorkspaceResponse=resolve;});
+    await js("void window.allfoldRefreshWorkspace()");
+    const releaseKeptSnapshot=await pendingKeptSnapshot;
+    await check(()=>{
+      if(window.workspaceNavigation.go('kept',{instant:true}))throw Error('Pending Workspace snapshot did not guard navigation');
+    });
+    setTimeout(releaseKeptSnapshot,90);
+    await navigate('kept');
+    await js("document.querySelector('#kept-workspace [data-sidebar-view=access]').click()");
     await check(()=>{
       const $=id=>document.getElementById(id);
       if(!$('kept-access-settings').contains($('s-institution')) || !$('kept-workflow-settings').contains($('s-kept-workflow-fields')))throw Error('Kept did not mount the sole existing settings controls');
@@ -410,11 +469,11 @@ app.whenReady().then(async()=>{
     });
     await capture('kept-workflow-small');
 
-    await check(async()=>{
+    await check(async navigate=>{
       const $=id=>document.getElementById(id),assert=(ok,message)=>{if(!ok)throw Error(message);};
-      $('run-open').click();
+      await navigate('run');
       $('s-run-overview-open').click();
-      if(document.querySelectorAll('[data-discovery-provider]').length!==8)throw Error('Integrated Provider choices missing');
+      if(document.querySelectorAll('[data-discovery-provider]').length!==2)throw Error('Integrated Provider choices missing');
       if(document.querySelector('[data-provider="pubmed"], [data-monitor="pubmedKey"]'))throw Error('Retired PubMed still displayed');
       const starts=[...document.querySelectorAll('#s-run [data-run-provider]')].filter(node=>!node.hidden && node.getClientRects().length);
       if(starts.length!==2 || !starts.some(node=>node.dataset.runProvider==='integrated') || !starts.some(node=>node.dataset.runProvider==='wos'))throw Error('Run must expose Integrated and independent WoS only');
@@ -422,15 +481,15 @@ $('s-run-overview-open').click();
       const input=document.querySelector('#s-run [data-monitor="name"]');input.focus();input.value='First autosave';input.dispatchEvent(new Event('input',{bubbles:true}));
       const pending=window.allfoldAutosave.flush();await new Promise(resolve=>setTimeout(resolve,20));
       input.value='Newer autosave';input.dispatchEvent(new Event('input',{bubbles:true}));
-      $('settings-open').click();$('run-open').click();
+      await navigate('settings');await navigate('run');
       assert(input.value==='Newer autosave','workspace navigation overwrote newer input');
       assert(await pending,'autosave flush failed');assert(input.value==='Newer autosave','late response overwrote newer input');
       assert(await window.allfoldAutosave.flush(),'final autosave did not settle');assert(window.allfoldAutosave.status==='Saved','settled autosave not Saved');
-      window.workspaceNavigation.go('workspace',{instant:true});
+      await navigate('workspace');
     });
-    await check(async()=>{
+    await check(async navigate=>{
       const $=id=>document.getElementById(id),assert=(ok,message)=>{if(!ok)throw Error(message);};
-      $('journals-open').click();
+      await navigate('journals');
       document.querySelector('#s-journals [data-journal]').click();
       const journalId=document.querySelector('#s-journals [data-current=true]').dataset.journal;
       const settle=async()=>assert(await window.allfoldAutosave.flush(),'Journal autosave failed');
@@ -451,7 +510,7 @@ $('s-run-overview-open').click();
         assert(document.querySelector('[data-service-field=url]')===url,'ordinary save remounted the Service editor');
         assert((await window.uiNext.request('/api/ui-next/settings')).values.access_services[0].access_url===value,'repeated Service URL edit did not persist');
       }
-      window.workspaceNavigation.go('workspace',{instant:true});
+      await navigate('workspace');
     });
     rejectAutosave=true;
     await check(async()=>{
@@ -473,7 +532,8 @@ $('s-run-overview-open').click();
     rejectAutosave=false;
     await check(async()=>{if(!await window.allfoldAutosave.flush())throw Error('recovered draft did not save');});
     await ready("window.uiWorkspace?.ready() && !document.getElementById('array-candidates').disabled");
-    await js("window.workspaceNavigation.go('workspace',{instant:true}),document.getElementById('workspace-array').click(),document.querySelector('#kept-view [data-sidebar-view]').click()");
+    await navigate('workspace');
+    await js("document.getElementById('workspace-array').click(),document.querySelector('#kept-view [data-sidebar-view]').click()");
     // Browser is a separate full view; this fixture has no native page Session.
     await js("window.allfoldWorkbench.show()");
     await check(()=>{
@@ -481,6 +541,17 @@ $('s-run-overview-open').click();
       if(document.body.dataset.workbench!=='browser' || !$('allfold-pane').inert || bounds.width<240 || bounds.height<120)throw Error('600x480 Browser body is not operable');
       window.allfoldWorkbench.hide();
       if($('allfold-pane').inert || $('kept-view').dataset.sidebarMode!=='overlay')throw Error('Browser return lost Array presentation '+JSON.stringify({inert:$('allfold-pane').inert,mode:$('kept-view').dataset.sidebarMode,layout:$('selected-view').dataset.workspaceLayout,sidebar:$('array-sidebar').hidden}));
+    });
+    await navigate('workspace');
+    await js("window.workspaceArray.openPaper('paper-0')");
+    await ready("!document.getElementById('reject-paper').disabled");
+    await js("document.getElementById('reject-paper').click()");
+    await ready("!window.inboxKept.candidates().some(entry=>entry.paper.id==='paper-0')");
+    await js("document.getElementById('array-api-completion-open').click()");
+    await check(()=>{
+      if(document.querySelector('#api-completion-papers input[value="paper-0"]'))throw Error('Rejected Paper re-entered API completion from the lightweight snapshot');
+      if(!document.querySelector('#api-completion-papers input[value="paper-1"]'))throw Error('Reject removed a remaining candidate from API completion');
+      document.getElementById('api-completion-close').click();
     });
     console.log('LAYOUT DOM PASS');
   }catch(error){console.error(error.stack);process.exitCode=1;}

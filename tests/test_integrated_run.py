@@ -7,12 +7,50 @@ from allfold.models import ExternalIds, MetadataSource, ProviderWorkEvidence
 from allfold.providers.integrated import DiscoveryResult
 
 
-def config(tmp_path, enabled=('europe_pmc','dblp')):
+def config(tmp_path, enabled=('europe_pmc','openalex')):
     path=tmp_path/'monitor.yaml'
     path.write_text('keyword_expression: learning\noutput_dir: workspace\nfrom_month: 2026-01\nto_month: 2026-03\n')
     scope=tmp_path/'list.md'
     scope.write_text(render_settings_list_text(None,(JournalConfig(name='Test',issn='0006-341X'),),path=scope,groups=(),custom_labels=(),access_services=()))
     return path,replace(load_config(path), enabled_providers=enabled)
+
+
+def test_run_retains_native_hit_without_lookups_and_reuses_durable_rediscovery(tmp_path):
+    import httpx
+    from allfold.application.integrated_run import run_integrated
+    from allfold.application.workspace import load_workspace
+    from allfold.providers.integrated import DiscoveryClient
+    from allfold.persistence.discovery_evidence import read_discovery_evidence
+    path, _ = config(tmp_path)
+    path.write_text(path.read_text() + 'enabled_providers: [europe_pmc]\ncompletion_providers: [crossref, arxiv]\n')
+    calls = []
+    abstract = None
+    def response(request):
+        calls.append(request)
+        assert request.url.path.endswith('/search')
+        assert 'FIRST_PDATE:[2026-01-01 TO 2026-03-31]' in request.url.params['query']
+        return httpx.Response(200, json={'hitCount': 1, 'resultList': {'result': [{
+            'source': 'MED', 'id': '42', 'doi': '10.5555/formal', 'title': 'Native hit',
+            'firstPublicationDate': '2025', 'abstractText': abstract,
+            'commentCorrectionList': {'commentCorrection': [{'type': 'Preprint in', 'source': 'PPR', 'id': 'PPR7'}]},
+        }]}})
+    def factory(provider, **kwargs):
+        assert provider == 'europe_pmc'
+        return DiscoveryClient(provider, transport=httpx.MockTransport(response), interval=0, **kwargs)
+    first = run_integrated(path, client_factory=factory)
+    assert first.created_papers == 1
+    paper, = load_workspace(tmp_path / 'workspace').inbox
+    assert paper.publication_date == '2025' and paper.first_public_at is None
+    saved, = (tmp_path / 'workspace' / 'Papers').glob('*.md')
+    original = saved.read_bytes()
+    abstract = 'New rediscovery evidence'
+    second = run_integrated(path, client_factory=factory)
+    assert second.matched_existing_papers == 1 and saved.read_bytes() == original
+    handoff = read_discovery_evidence(tmp_path / 'workspace', paper.paper_id)
+    assert any(record.abstract == abstract for record in handoff.records)
+    assert any(reference.record_id == 'PPR:PPR7' for record in handoff.records for reference in record.related_ids)
+    assert handoff.scopes[0].from_date == '2026-01-01'
+    assert len(calls) == 2
 
 
 def test_only_selected_discovery_providers_run_and_one_failure_preserves_hits(tmp_path):
@@ -24,11 +62,11 @@ def test_only_selected_discovery_providers_run_and_one_failure_preserves_hits(tm
         def __enter__(self):return self
         def __exit__(self,*a):pass
         def discover(self,source,*a):
-            if self.provider=='dblp':return DiscoveryResult('dblp',source,'failed',limitations=('Access limited',))
+            if self.provider=='openalex':return DiscoveryResult('openalex',source,'failed',limitations=('Access limited',))
             record=ProviderWorkEvidence(title='Native result',journal='Test',external_ids=ExternalIds(europe_pmc='MED:42'),provenance=MetadataSource(provider='europe_pmc',record_id='MED:42',retrieved_at=datetime.now(timezone.utc)))
             return DiscoveryResult(self.provider,source,'complete',(record,),candidates=1,total=1)
     result=discover_selected(settings,path,client_factory=Client)
-    assert sorted(calls)==['dblp','europe_pmc']
+    assert sorted(calls)==['europe_pmc','openalex']
     assert result.status=='partial'
     assert len(result.records)==1
     assert {r.status for r in result.providers}=={'complete','failed'}
@@ -148,7 +186,7 @@ def test_saved_provider_selection_reaches_request_coordinator_and_retired_entrie
     from allfold.application.monitor import RunResult,RunOutcome,MonitorStatistics
     from allfold.application.run_state import RunProvider,RunFacts
     path,_=config(tmp_path)
-    path.write_text(path.read_text()+'enabled_providers: [europe_pmc, crossref]\n')
+    path.write_text(path.read_text()+'enabled_providers: [europe_pmc]\n')
     observed=[]
     def monitor(config_path,**kwargs):
         observed.append((config_path,kwargs))
@@ -163,10 +201,10 @@ def test_saved_provider_selection_reaches_request_coordinator_and_retired_entrie
             assert client.post('/api/ui-next/run',json={'csrf_token':csrf,'provider':old}).status_code==422
         mismatch=client.post('/api/ui-next/run',json={'csrf_token':csrf,'enabled_providers':['openalex']})
         assert mismatch.status_code==409
-        started=client.post('/api/ui-next/run',json={'csrf_token':csrf,'enabled_providers':['europe_pmc','crossref']})
+        started=client.post('/api/ui-next/run',json={'csrf_token':csrf,'enabled_providers':['europe_pmc']})
         assert started.status_code==200
         app.state.run_coordinator._worker.join(2)
-        assert observed[0][1]['loaded_config'].enabled_providers==('europe_pmc','crossref')
+        assert observed[0][1]['loaded_config'].enabled_providers==('europe_pmc',)
         assert observed[0][1]['workspace_snapshot'] is not None
         assert observed[0][1]['cancel_event'] is not None
 
@@ -175,9 +213,9 @@ def test_conferences_and_vetted_journal_use_only_their_executable_roles(tmp_path
     from allfold.application.integrated_run import discover_selected,validate_selection
     from allfold.config import ConferenceConfig
     path,settings=config(tmp_path)
-    settings=replace(settings, enabled_providers=('openalex','dblp'),journals=(JournalConfig(name='JMLR',issn='1532-4435'),),conferences=(ConferenceConfig(id='conf_'+'1'*32,name='ICML',abbreviation='ICML',dblp_stream='streams/conf/icml'),))
+    settings=replace(settings, enabled_providers=('openalex',),journals=(JournalConfig(name='JMLR',issn='1532-4435'),),conferences=(ConferenceConfig(id='conf_'+'1'*32,name='ICML',abbreviation='ICML',dblp_stream='streams/conf/icml'),))
     scopes=validate_selection(settings)
-    assert scopes[0].stream=='streams/journals/jmlr'
+    assert len(scopes)==1 and scopes[0].kind=='journal'
     calls=[]
     class Client:
         def __init__(self,provider,**kwargs):self.provider=provider
@@ -188,11 +226,11 @@ def test_conferences_and_vetted_journal_use_only_their_executable_roles(tmp_path
             return DiscoveryResult(self.provider,source,'empty')
     result=discover_selected(settings,path,client_factory=Client)
     assert result.status=='empty'
-    assert sorted(calls)==[('dblp','conference'),('dblp','journal'),('openalex','journal')]
+    assert calls==[('openalex','journal')]
     missing=replace(settings,enabled_providers=('openalex',))
     partial=discover_selected(missing,path,client_factory=Client)
-    assert partial.status=='partial'
-    assert any(r.source.kind=='conference' and r.status=='skipped' for r in partial.providers)
+    assert partial.status=='empty'
+    assert all(r.source.kind=='journal' for r in partial.providers)
 
 
 def test_snapshot_failure_reports_actual_created_papers(tmp_path):

@@ -134,3 +134,43 @@ def finish_enrichment(enrich, items):
     future.set_result({'item':item})
     enrich.join()
     return enrich.state(enrich._task['target'].paper_id)
+
+
+@pytest.mark.parametrize('ordinary', ['month_upgrade', 'events_only'])
+def test_web_enrich_saves_returned_events_with_or_without_ordinary_updates(tmp_path, ordinary):
+    paper_id, path, bridge, enrich = service(tmp_path)
+    path.write_text(path.read_text().replace("publication_date: '2026-09-20'", "publication_date: '2026-09'"))
+    enrich.start(tmp_path, paper_id)
+    enrichment_command(enrich)
+    item = dict(itemType='journalArticle', DOI='10.5555/decision',
+        accepted='2026-08', accepted_parts={'year': 2026, 'month': 8},
+        date='2026-09-21' if ordinary == 'month_upgrade' else '2026-09',
+        date_parts={'year': 2026, 'month': 9, **({'day': 21} if ordinary == 'month_upgrade' else {})})
+    result = finish_enrichment(enrich, [item])
+    assert result['phase'] == 'Completed'
+    assert 'date_evidence' in result['saved']
+    state = parse_paper_state(path, path.read_text())
+    assert state.publication_date == ('2026-09-21' if ordinary == 'month_upgrade' else '2026-09')
+    assert state.first_public_at is None
+    assert {event.kind.value for event in state.date_evidence} == {'accepted', 'source-date'}
+
+
+@pytest.mark.parametrize('change', ['doi', 'cancel', 'disconnect', 'revision'])
+def test_web_date_events_share_all_response_and_revision_guards(tmp_path, change):
+    from allfold.application.browser_runtime import ElectronDisconnected
+    paper_id, path, bridge, enrich = service(tmp_path)
+    state = enrich.start(tmp_path, paper_id)
+    enrichment_command(enrich)
+    if change == 'cancel':
+        enrich.cancel(paper_id, state['request_id'])
+    if change == 'revision':
+        path.write_text(path.read_text() + 'Human edit\n')
+    before = path.read_bytes()
+    item = dict(itemType='journalArticle', DOI='10.5555/other' if change == 'doi' else '10.5555/decision',
+                accepted='2026-08-01', accepted_parts={'year': 2026, 'month': 8, 'day': 1})
+    if change == 'disconnect':
+        bridge.future.set_exception(ElectronDisconnected('Disconnected'))
+        enrich.join()
+    else:
+        finish_enrichment(enrich, [item])
+    assert path.read_bytes() == before

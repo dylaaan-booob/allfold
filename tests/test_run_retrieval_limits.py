@@ -9,7 +9,7 @@ from allfold.providers.integrated import DiscoveryClient, SourceScope
 from allfold.providers.supplemental import SupplementalClient
 
 
-@pytest.mark.parametrize('provider', ['openalex', 'europe_pmc', 'dblp', 'zbmath'])
+@pytest.mark.parametrize('provider', ['openalex', 'europe_pmc'])
 def test_discovery_retains_all_5100_results_across_51_pages(provider):
     pages = []
     total = 5100
@@ -18,17 +18,10 @@ def test_discovery_retains_all_5100_results_across_51_pages(provider):
         params = request.url.params
         if '/sources/' in request.url.path:
             return httpx.Response(200, json={'id': 'https://openalex.org/S1', 'issn': ['1234-567X']})
-        if '/serial/' in request.url.path:
-            return httpx.Response(200, json={'result': [{'id': 1, 'issn': ['1234-567X']}],
-                                           'status': {'execution_bool': True, 'nr_total_results': 1}})
         if provider == 'openalex':
             offset = 0 if params['cursor'] == '*' else int(params['cursor'])
-        elif provider == 'europe_pmc':
-            offset = 0 if params['cursorMark'] == '*' else int(params['cursorMark'])
-        elif provider == 'dblp':
-            offset = int(params['f'])
         else:
-            offset = int(params['page']) * 100
+            offset = 0 if params['cursorMark'] == '*' else int(params['cursorMark'])
         pages.append(offset)
         numbers = range(offset, offset + 100)
         next_cursor = str(offset + 100) if offset + 100 < total else None
@@ -38,66 +31,14 @@ def test_discovery_retains_all_5100_results_across_51_pages(provider):
         elif provider == 'europe_pmc':
             body = {'hitCount': total, 'nextCursorMark': next_cursor,
                     'resultList': {'result': [{'id': str(n + 1), 'source': 'MED', 'title': 'Learning'} for n in numbers]}}
-        elif provider == 'dblp':
-            body = {'result': {'hits': {'@total': str(total), '@computed': str(total), '@first': str(offset),
-                    'hit': [{'info': {'key': f'journals/test/{n}', 'title': 'Learning', 'year': '2026'}} for n in numbers]}}}
-        else:
-            body = {'result': [{'id': n + 1, 'title': {'title': 'Learning'}, 'year': '2026'} for n in numbers],
-                    'status': {'execution_bool': True, 'nr_total_results': total}}
         return httpx.Response(200, json=body)
 
-    source = SourceScope('journal', 'Journal', issns=('1234-567X',), stream='streams/journals/test')
+    source = SourceScope('journal', 'Journal', issns=('1234-567X',))
     with DiscoveryClient(provider, transport=httpx.MockTransport(handler), interval=0) as client:
         result = client.discover(source, parse_keyword_expression('learning'), date(2026, 1, 1), date(2026, 12, 31))
     assert result.status == 'complete'
     assert result.candidates == len(result.records) == total
     assert pages == list(range(0, total, 100))
-
-
-def test_dblp_grouped_expression_uses_compact_candidates_and_full_title_matching():
-    calls = []
-    expression = ' OR '.join(f'(term{n} AND word{n})' for n in range(10))
-    with DiscoveryClient('dblp', transport=httpx.MockTransport(lambda request:
-        calls.append(request) or httpx.Response(200, json={'result': {'hits': {
-            '@total': '2', '@computed': '2', '@first': '0', 'hit': [
-                {'info': {'key': 'conf/test/match', 'title': 'term9 word9', 'year': '2026'}},
-                {'info': {'key': 'conf/test/nonmatch', 'title': 'term9 alone', 'year': '2026'}},
-            ]}}})), interval=0) as client:
-        result = client.discover(SourceScope('conference', 'Conference', stream='streams/conf/test'),
-                                 parse_keyword_expression(expression), date(2026, 1, 1), date(2026, 12, 31))
-    assert result.status == 'complete' and len(calls) == 1
-    assert result.candidates == 2 and [r.title for r in result.records] == ['term9 word9']
-    query = calls[0].url.params['q']
-    assert query.startswith('streamid:conf/test: year:2026: ')
-    assert all(f'{word}{n}$' in query for n in range(10) for word in ('term', 'word'))
-
-
-@pytest.mark.parametrize('ambiguous', [False, True])
-def test_zbmath_checks_later_serial_pages_before_authorizing_source(ambiguous):
-    calls = []
-
-    def handler(request):
-        calls.append(request)
-        if '/serial/' in request.url.path:
-            page = int(request.url.params.get('page', 0))
-            if page == 0:
-                rows = [{'id': n + 1, 'issn': ['1234-567X'] if ambiguous and n == 0 else ['0000-0000']}
-                        for n in range(100)]
-            else:
-                rows = [{'id': 101, 'issn': ['1234-567X']}]
-            return httpx.Response(200, json={'result': rows,
-                'status': {'execution_bool': True, 'nr_total_results': 101}})
-        assert 'se:101' in request.url.params['search_string']
-        return httpx.Response(200, json={'result': [], 'status': {'execution_bool': True, 'nr_total_results': 0}})
-
-    with DiscoveryClient('zbmath', transport=httpx.MockTransport(handler), interval=0) as client:
-        result = client.discover(SourceScope('journal', 'Journal', issns=('1234-567X',)),
-                                 parse_keyword_expression('learning'), date(2026, 1, 1), date(2026, 12, 31))
-    assert [r.url.params['page'] for r in calls if '/serial/' in r.url.path] == ['0', '1']
-    assert result.status == ('skipped' if ambiguous else 'empty')
-    assert len(calls) == (2 if ambiguous else 3)
-    if ambiguous:
-        assert 'ambiguous' in result.limitations[0]
 
 
 @pytest.mark.parametrize('provider', ['biorxiv', 'medrxiv'])

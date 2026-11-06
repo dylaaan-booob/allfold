@@ -11,7 +11,8 @@ from dataclasses import dataclass
 from html.parser import HTMLParser
 
 from allfold.diagnostics import RunDiagnostic
-from allfold.identifiers import normalize_doi, strong_identifiers
+from allfold.paper_dates import date_value as _date_value
+from allfold.identifiers import normalize_doi, strong_identifiers, evidence_identifiers
 from allfold.models import (
     Author,
     CanonicalMetadata,
@@ -456,7 +457,7 @@ def _group_records(
     components: list[set[int]] = []
     identifiers: list[set[tuple[str, str]]] = []
     for index, record in enumerate(records):
-        keys = set(strong_identifiers(record.external_ids, record.related_dois))
+        keys = set(evidence_identifiers(record))
         matches = [position for position, existing in enumerate(identifiers) if keys & existing]
         group = {index}
         for position in reversed(matches):
@@ -606,13 +607,6 @@ def _merged_external_ids(
 
 
 
-def _date_value(item: EvidenceDate) -> str:
-    value = f"{item.year:04d}"
-    if item.month is not None:
-        value += f"-{item.month:02d}"
-    if item.day is not None:
-        value += f"-{item.day:02d}"
-    return value
 
 
 def _is_preprint(record: ProviderWorkEvidence) -> bool:
@@ -621,49 +615,9 @@ def _is_preprint(record: ProviderWorkEvidence) -> bool:
 
 
 def _finalize_dates(records: Sequence[ProviderWorkEvidence]):
-    """Resolve creation-time dates once, keeping source precision and evidence."""
-    evidence = []
-    formal_dates = []
-    preprint_dates = []
-    explicit_accepted = []
-    online_dates = []
-    for record in records:
-        dates = list(record.dates)
-        is_preprint = _is_preprint(record)
-        if record.publication_date and record.provenance.provider != "openalex":
-            parts = [int(part) for part in record.publication_date.split("-")]
-            kind = (EvidenceDateKind.PREPRINT if is_preprint else
-                    EvidenceDateKind.CONFERENCE_YEAR if record.provenance.provider == "dblp" and len(parts) == 1 else
-                    EvidenceDateKind.PUBLISHED)
-            dates.append(EvidenceDate(kind=kind, year=parts[0], month=parts[1] if len(parts) > 1 else None,
-                                      day=parts[2] if len(parts) > 2 else None))
-        for item in dates:
-            sourced = item.model_copy(update={"provider": item.provider or record.provenance.provider,
-                                             "record_id": item.record_id or record.provenance.record_id})
-            evidence.append(sourced)
-            value = _date_value(item)
-            if item.kind == EvidenceDateKind.PREPRINT:
-                preprint_dates.append(value)
-            elif item.kind == EvidenceDateKind.ACCEPTED and not is_preprint:
-                explicit_accepted.append(value)
-            elif item.kind in {EvidenceDateKind.PUBLISHED_ONLINE, EvidenceDateKind.EARLY_ACCESS}:
-                online_dates.append(value)
-            if not is_preprint and item.kind in {
-                EvidenceDateKind.PUBLISHED_ONLINE, EvidenceDateKind.PUBLISHED_PRINT,
-                EvidenceDateKind.PUBLISHED, EvidenceDateKind.EARLY_ACCESS,
-            } and (record.journal or record.conference or record.publication_type in {"journal", "conference"}):
-                formal_dates.append(value)
-    first = min(preprint_dates + online_dates + formal_dates, default=None)
-    accepted = min(explicit_accepted or formal_dates, default=None)
-    approximate = bool(accepted and not explicit_accepted)
-    notes = []
-    if not preprint_dates:
-        notes.append("No linked preprint date evidence")
-    if approximate:
-        notes.append("Acceptance approximated by earliest confirmed post-acceptance publication")
-    return ({"first_public_at": first, "accepted_at": accepted, "accepted_approximate": approximate,
-             "date_note": "; ".join(notes) or None},
-            tuple(sorted(set(evidence), key=lambda item: item.model_dump_json())))
+    from allfold.paper_dates import collect_dates, first_public_date
+    evidence = collect_dates(records)
+    return {"first_public_at": first_public_date(evidence, records=records)}, evidence
 
 
 def _build_paper(
@@ -673,11 +627,11 @@ def _build_paper(
 ) -> CanonicalPaper | None:
     evidence = tuple(records[index] for index in component)
     record_ids = tuple(sorted({record.provenance.record_id for record in evidence}))
-    if not any(strong_identifiers(record.external_ids, record.related_dois) for record in evidence):
+    if not any(evidence_identifiers(record) for record in evidence):
         issues.append(CanonicalizationIssue("missing_identity", "provider evidence has no reliable identity", record_ids))
         return None
     order = {provider: rank for rank, provider in enumerate((
-        "crossref", "europe_pmc", "dblp", "zbmath", "openalex", "arxiv", "biorxiv", "medrxiv"))}
+        "crossref", "europe_pmc", "openalex", "arxiv", "biorxiv", "medrxiv"))}
     ordered = sorted(evidence, key=lambda record: (
         _is_preprint(record),
         not bool(record.monitor_journal_issns or record.conference_id),
@@ -703,7 +657,7 @@ def _build_paper(
         date_evidence=date_evidence,
         identity_aliases=tuple(ProviderRecordRef(provider=namespace, record_id=value)
                               for namespace, value in sorted({key for record in evidence
-                                  for key in strong_identifiers(record.external_ids, record.related_dois) if key[0] != "doi"})),
+                                  for key in evidence_identifiers(record) if key[0] != "doi"})),
         metadata=CanonicalMetadata(
             **dates,
             title=title,
@@ -720,7 +674,7 @@ def _build_paper(
         ),
         authors=field("authors") or (),
         related_dois=tuple(sorted({value for record in evidence
-            for namespace, value in strong_identifiers(record.external_ids, record.related_dois)
+            for namespace, value in evidence_identifiers(record)
             if namespace == "doi" and value != doi})),
         indexed_terms=tuple(dict.fromkeys(term for record in ordered for term in (*record.indexed_terms, *record.provider_topics))),
         sources=_deduplicate_sources(evidence),

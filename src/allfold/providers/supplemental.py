@@ -7,9 +7,10 @@ from urllib.parse import quote
 from xml.etree import ElementTree
 
 from allfold.identifiers import normalize_external_id, valid_doi
-from allfold.models import Author, EvidenceDate, EvidenceDateKind, ExternalIds, MetadataSource, ProviderTopic, ProviderWorkEvidence
+from allfold.models import Author, EvidenceDate, EvidenceDateKind, ExternalIds, MetadataSource, ProviderRecordRef, ProviderTopic, ProviderWorkEvidence
 from allfold.providers.crossref import normalize_crossref_discovered_work
-from allfold.providers.integrated import DiscoveryClient, DiscoveryError
+from allfold.paper_dates import date_value as _date_string, source_date as _iso_date
+from allfold.providers.integrated import DiscoveryClient, DiscoveryError, IdentityMismatch
 
 
 SAME_WORK_RELATIONS = frozenset({"is-preprint-of", "has-preprint", "is-version-of", "has-version", "is-identical-to"})
@@ -29,14 +30,6 @@ def _date(parts, kind):
         return None
 
 
-def _date_string(item):
-    return f"{item.year:04d}" + (f"-{item.month:02d}" if item.month else "") + (f"-{item.day:02d}" if item.day else "")
-
-
-def _iso_date(value, kind):
-    if not isinstance(value, str) or not re.fullmatch(r"\d{4}(?:-\d{2}){0,2}", value):
-        return None
-    return _date([int(part) for part in value.split("-")], kind)
 
 
 class SupplementalClient(DiscoveryClient):
@@ -46,6 +39,7 @@ class SupplementalClient(DiscoveryClient):
             kwargs.setdefault("interval", 3.0)
         super().__init__(provider, **kwargs)
         self.mailto = mailto
+        self._details_cache = {}
 
     def lookup(self, namespace, identifier):
         if self.provider == "crossref" and namespace == "doi":
@@ -72,8 +66,10 @@ class SupplementalClient(DiscoveryClient):
         for entry in root.findall("a:entry", ns):
             url = entry.findtext("a:id", "", ns)
             if normalize_external_id("arxiv", url) != identifier:
-                raise DiscoveryError("arXiv response does not match requested identity")
+                raise IdentityMismatch("arXiv response does not match requested identity")
             published = _iso_date(entry.findtext("a:published", "", ns)[:10], EvidenceDateKind.PREPRINT)
+            if published:
+                published = published.model_copy(update={"first_version": True, "version": "v1", "publication_type": "preprint"})
             doi = valid_doi(entry.findtext("arxiv:doi", None, ns))
             version = re.search(r"v\d+$", url)
             records.append(ProviderWorkEvidence(
@@ -92,14 +88,15 @@ class SupplementalClient(DiscoveryClient):
             ))
         return tuple(records)
 
-    def _collection(self, path):
+    def _collection(self, path, *, doi):
         data = self.request(path, {})
         messages = data.get("messages", [])
-        if any(str(item.get("status", "")).casefold() not in {"ok", "no posts found", "no results found"}
+        no_match = {"no posts found", "no results found", f"preprint for doi {doi} not found"}
+        if any(str(item.get("status", "")).casefold() not in {"ok", *no_match}
                for item in messages if isinstance(item, dict)):
             raise DiscoveryError(f"{self.provider}: identifier lookup failed")
         rows = data.get("collection")
-        if rows is None and any("no " in str(item.get("status", "")).casefold()
+        if rows is None and any(str(item.get("status", "")).casefold() in no_match
                                 for item in messages if isinstance(item, dict)):
             return []
         if not isinstance(rows, list) or any(not isinstance(row, dict) for row in rows):
@@ -108,11 +105,13 @@ class SupplementalClient(DiscoveryClient):
 
     def _bio_record(self, row, doi):
         if valid_doi(row.get("doi")) != doi:
-            raise DiscoveryError(f"{self.provider}: response DOI does not match requested identity")
+            raise IdentityMismatch(f"{self.provider}: response DOI does not match requested identity")
         if row.get("server") and str(row["server"]).casefold() != self.provider:
             raise DiscoveryError(f"{self.provider}: response came from a different preprint server")
         published = valid_doi(row.get("published"))
         posted = _iso_date(row.get("date"), EvidenceDateKind.PREPRINT)
+        if posted:
+            posted = posted.model_copy(update={"first_version": str(row.get("version")) == "1", "publication_type": "preprint"})
         version = str(row.get("version", "")).strip() or None
         return ProviderWorkEvidence(
             provenance=MetadataSource(provider=self.provider, record_id=doi + (":" + version if version else ""),
@@ -126,39 +125,52 @@ class SupplementalClient(DiscoveryClient):
             indexed_terms=(ProviderTopic(value=row["category"], source=self.provider, kind="category"),) if row.get("category") else (),
         )
 
+    def _bio_details(self, doi):
+        # This client lives for one operation, including all selected Papers.
+        # Embedded publication lookups and direct preprint lookups share results.
+        if doi not in self._details_cache:
+            try:
+                self._details_cache[doi] = tuple(self._bio_record(row, doi) for row in
+                    self._collection(f"/details/{self.provider}/{quote(doi, safe='/')}/na/json", doi=doi))
+            except (ValueError, OSError, RuntimeError, TypeError, AttributeError) as error:
+                self._details_cache[doi] = error
+        result = self._details_cache[doi]
+        if isinstance(result, Exception):
+            raise result
+        return result
+
     def _biorxiv(self, identifier):
         doi = valid_doi(identifier)
         if not doi:
             raise DiscoveryError(f"{self.provider}: lookup requires a valid DOI")
         encoded = quote(doi, safe="/")
         if doi.startswith("10.1101/"):
-            return tuple(self._bio_record(row, doi) for row in self._collection(f"/details/{self.provider}/{encoded}/na/json"))
-        rows = self._collection(f"/pubs/{self.provider}/{encoded}/na/json")
+            return self._bio_details(doi)
+        rows = self._collection(f"/pubs/{self.provider}/{encoded}/na/json", doi=doi)
         records, seen = [], set()
         for row in rows:
             preprint = valid_doi(row.get("preprint_doi") or row.get("biorxiv_doi"))
             formal = valid_doi(row.get("published_doi"))
             if not preprint or formal != doi:
-                raise DiscoveryError(f"{self.provider}: publication relation does not match requested DOI")
+                raise IdentityMismatch(f"{self.provider}: publication relation does not match requested DOI")
             platform = str(row.get("preprint_platform", "")).casefold()
             if platform and platform != self.provider:
                 raise DiscoveryError(f"{self.provider}: relation names another preprint server")
             if preprint in seen:
                 continue
             seen.add(preprint)
-            posted = _iso_date(row.get("preprint_date"), EvidenceDateKind.PREPRINT)
             online = _iso_date(row.get("published_date"), EvidenceDateKind.PUBLISHED_ONLINE)
             records.append(ProviderWorkEvidence(
                 provenance=MetadataSource(provider=self.provider, record_id=preprint + ":publication",
                     retrieved_at=datetime.now(timezone.utc), role="supplement",
                     url=f"https://api.biorxiv.org/pubs/{self.provider}/{encoded}/na/json"),
                 external_ids=ExternalIds(doi=doi), related_dois=(preprint,),
+                related_ids=(ProviderRecordRef(provider=self.provider, record_id=preprint, relation='preprint'),),
                 journal=row.get("published_journal") or None, publication_type="journal",
                 publication_date=_date_string(online) if online else None,
-                dates=tuple(value for value in (posted, online) if value),
+                dates=(online,) if online else (),
             ))
-            records.extend(self._bio_record(item, preprint) for item in
-                           self._collection(f"/details/{self.provider}/{quote(preprint, safe='/')}/na/json"))
+            records.extend(self._bio_details(preprint))
         return tuple(records)
 
     def _crossref(self, identifier):
@@ -168,11 +180,13 @@ class SupplementalClient(DiscoveryClient):
         data = self.request("/works/" + quote(doi, safe="/"), {"mailto": self.mailto} if self.mailto else {})
         raw = data.get("message")
         if not isinstance(raw, dict) or valid_doi(raw.get("DOI")) != doi:
-            raise DiscoveryError("Crossref response DOI does not match requested identity")
+            raise IdentityMismatch("Crossref response DOI does not match requested identity")
         item, _ = normalize_crossref_discovered_work(raw, datetime.now(timezone.utc))
         record = item.to_evidence()
         preprint = raw.get("type") == "posted-content"
         conference = raw.get("type") == "proceedings-article"
+        publication_type = ('preprint' if preprint else 'conference' if conference else
+                            'journal' if raw.get('type') == 'journal-article' else None)
         dates = list(record.dates)
         for name, kind in (("accepted", EvidenceDateKind.ACCEPTED), ("posted", EvidenceDateKind.PREPRINT)):
             if name == "accepted" and preprint:
@@ -180,21 +194,28 @@ class SupplementalClient(DiscoveryClient):
             container = raw.get(name) or {}
             parts = container.get("date-parts", []) if isinstance(container, dict) else []
             if parts and (value := _date(parts[0], kind)):
-                dates.append(value)
-        related = set()
+                dates.append(value.model_copy(update={"publication_type": publication_type,
+                    "first_version": preprint and kind == EvidenceDateKind.PREPRINT and str(raw.get("version")) in {"1", "v1"}}))
+        related, refs = set(), set()
         relations = raw.get("relation") or {}
         for kind in SAME_WORK_RELATIONS:
             for relation in relations.get(kind, []) if isinstance(relations, dict) else ():
                 if relation.get("id-type") == "doi" and (value := valid_doi(relation.get("id"))):
                     related.add(value)
+                    if kind == 'has-preprint':
+                        refs.add(ProviderRecordRef(provider='doi', record_id=value, relation='preprint'))
+                    elif preprint and kind in {'is-version-of', 'has-version'}:
+                        refs.add(ProviderRecordRef(provider='doi', record_id=value, relation='version'))
         source = MetadataSource(provider="crossref", record_id=doi, retrieved_at=datetime.now(timezone.utc),
-                                role="supplement", url="https://api.crossref.org/works/" + quote(doi, safe="/"))
+                                role="supplement", version=str(raw.get('version') or '').strip() or None,
+                                url="https://api.crossref.org/works/" + quote(doi, safe="/"))
         publication = next((value for kind in (EvidenceDateKind.PUBLISHED_ONLINE, EvidenceDateKind.PUBLISHED_PRINT,
                                                EvidenceDateKind.PUBLISHED, EvidenceDateKind.ISSUED)
                             for value in dates if value.kind == kind), None)
         return (record.model_copy(update={
             "provenance": source, "related_dois": tuple(sorted(related - {doi})), "dates": tuple(dates),
-            "publication_type": "preprint" if preprint else "conference" if conference else "journal" if raw.get("type") == "journal-article" else None,
+            "related_ids": tuple(sorted(refs, key=lambda ref: (ref.provider, ref.record_id))),
+            "publication_type": publication_type,
             "journal": None if preprint or conference else _first(raw.get("container-title")),
             "conference": (raw.get("event") or {}).get("name") if conference else None,
             "publication_date": _date_string(publication) if publication else None,

@@ -1,240 +1,73 @@
-# Integrated discovery and metadata
+# Journal discovery and explicit metadata completion
 
-Run has one ordinary **Integrated Run** entry. Its saved Provider checkboxes apply
-to both discovery and creation-time metadata requests. Selecting one discovery
-provider uses the same path. **Run WoS** remains a separate authorized browser
-workflow; it uses the same input language and Paper identity/persistence model.
+Allfold exposes three independent operations. **Integrated Run** discovers and saves reviewable journal Papers. **API 补全** operates on selected saved non-Rejected Papers after review, without requiring Keep or a recent Run. **网页 Enrich** retains its independent Translator workflow. Finishing a Run, opening results, changing selection or API completion never starts either of the other operations.
 
-| Provider | Journal discovery | Conference discovery | Identifier-only completion |
-| --- | --- | --- | --- |
-| OpenAlex | Saved ISSNs → verified Source; scoped title/abstract/keywords | None | Known DOI or Work ID, including existing Work relationships |
-| Europe PMC | ISSN, `TITLE_ABS` / `KW`, publication date | None | DOI, source + record ID, PMID/PMCID |
-| DBLP | Vetted ISSN → Stream mapping | Followed series' exact DBLP Stream | Reuse retrieved bibliographic metadata |
-| zbMATH Open | Verified ISSN → serial, title/keywords/MSC, publication year | None | DOI or zbMATH record ID |
-| Crossref | None | None | DOI, bibliographic dates and explicit same-work relationships |
-| arXiv | None | None | Known linked arXiv ID through `id_list` |
-| bioRxiv / medRxiv | None | None | Known DOI through original `details` / `pubs` APIs |
+## Provider roles
 
-Europe PMC, DBLP and zbMATH need no API key. OpenAlex retains its explicit key
-settings. The application never enables another provider to replace a failed or
-unselected provider. A metadata-only selection cannot start a Run. Conference-only
-Runs require DBLP; a mixed Run can retain valid Journal results while reporting an
-unexecuted Conference scope.
+| Provider | Integrated Run | Explicit API completion |
+| --- | --- | --- |
+| OpenAlex | Saved ISSNs → verified Source, scoped title/abstract/keywords and publication dates | Known DOI/Work ID and explicit location identifiers |
+| Europe PMC | Saved ISSNs, `TITLE_ABS` / `KW`, `FIRST_PDATE`, core results | Known DOI, source/record ID, PMID/PMCID, explicit preprint/version relations |
+| Crossref | None | Known DOI metadata, named dates and explicit same-work relations |
+| arXiv | None | Known arXiv ID through `id_list`; Atom `published` establishes the first-version date |
+| bioRxiv / medRxiv | None | Platform-appropriate `details`/`pubs` lookups for known preprint or formal DOIs |
+| DBLP | Disabled | Disabled |
+| WoS | Separate existing browser workflow | Outside this operation |
 
-Journal DBLP mappings are deliberately small: JMLR (`1532-4435`, `1533-7928`) and
-Machine Learning (`0885-6125`, `1573-0565`). The [adapter mapping](../src/allfold/providers/dblp_sources.py)
-records the official [JMLR](https://dblp.org/db/journals/jmlr/index.html) and
-[Machine Learning](https://dblp.org/db/journals/ml/index.html) Stream/ISSN evidence.
-Other journals report missing mapping; titles and abbreviations never authorize
-whole-database queries. Conference Registry data and reproducible building are
-described in [Research Scope](research-scope.md).
+Run's `enabled_providers` defaults to OpenAlex and Europe PMC; either can be selected alone. The separate `completion_providers` defaults to OpenAlex, Europe PMC, Crossref, arXiv, bioRxiv and medRxiv. Saved YAML, autosave, Settings checkboxes, runtime validation and dispatch use these separate lists. No failed/unselected provider silently enables another. OpenAlex credentials retain their explicit submission mechanism; Crossref's optional contact is separate from discovery.
 
-## Query language and fields
+DBLP's offline Conference Registry, Series management, identities and Research Scope exchange remain available. Conference configuration does not become an executable Run scope or produce a missing-DBLP Partial result. A Run needs at least one followed Journal. See [Research Scope](research-scope.md) for offline management.
 
-The shared parser accepts `AND`, `OR`, parentheses, quoted adjacent phrases and a
-word-final `*` with at least four characters before it. For example:
+## Queries and dates
 
-```text
-("transfer learning" OR "domain adaptation") AND estimat*
-```
+The shared parser accepts `AND`, `OR`, parentheses, adjacent quoted phrases and a word-final `*` with at least four preceding characters. `NOT`, proximity, internal/leading wildcards, `?` and malformed groups fail validation. Compilers preserve Boolean grouping and approved fields; no natural-language generation or full-collection scan is added.
 
-`NOT`, proximity operators, leading/internal wildcards, `?` and malformed groups
-are rejected before retrieval. Provider compilers preserve grouping or report an
-explicit capability limit. There is no natural-language generation step and no
-SQLite FTS5 requirement for parsing, validation or ordinary discovery.
+OpenAlex uses `search.title_abstract_keywords` (the scoped `.exact` variant for prefixes), verified `primary_location.source.id`, `from_publication_date` and `to_publication_date`. Europe PMC combines verified ISSNs, `TITLE_ABS`/`KW` and native `FIRST_PDATE:[start TO end]`, requesting core metadata. Both adapters exhaust accessible pages, validate envelopes/cursors and report failures or incomplete pagination without arbitrary application page/record quotas. Legal native hits are not subjected to local keyword or date rechecking.
 
-OpenAlex requests use `search.title_abstract_keywords`; prefix queries use the
-scoped `.exact` variant. Unscoped `search` and `search.exact` are not used.
-Europe PMC expands each term over approved `TITLE_ABS` and `KW` fields. zbMATH
-queries use title, keyword and MSC indexes; review text is neither searched nor
-stored as Abstract. Indexed Terms retain their provider and type, separate from
-Author Keywords. WoS retains Topic coverage, including Keywords Plus.
+The requested publication range belongs to discovery. Later preprint, Accepted, online or print dates never remove a Paper from its original Run. A source's year/month precision remains year/month precision; no same-version date lookup rejudges monthly eligibility. [Paper identity](paper-identity.md) defines First public and named journal dates.
 
-DBLP uses `streamid:conf/nips:` for NeurIPS, with the requested years. Its native
-query is a conservative candidate query for Boolean groups and phrases;
-native AND clauses are retained, while grouped OR operands form a compact
-conservative clause without exponential distribution. The complete AST is then
-evaluated against each title in memory. Phrase matching
-requires adjacent words in order within one field. Normal native hits from other
-providers do not undergo a second local title/abstract filter: a missing returned
-abstract or indexed-term field does not invalidate the remote keyword hit.
+## Evidence handoff and API completion
 
-Different providers index different metadata and may stem words differently.
-Missing abstracts reduce DBLP's title-only recall; there is no compensating full
-collection scan, full-text search or unbounded metadata search.
+Run retains compact structured records under Workspace `Evidence/<Paper UUID>.json`, with provider provenance, target Journal/ISSNs, query range, reliable identifiers, explicit related identities, locations, versions and date facts. Rediscovery appends new facts there even when the existing Paper itself is skipped byte-for-byte. No HTTP response archive, persistent task queue, checkpoint engine or background refresh is added.
 
-## Dates and partial coverage
+In Workspace, open **API 补全**, select one or more saved non-Rejected Papers and explicitly start. The current Paper is selected initially when available; the selection also includes older saved and exported Papers. Rejected Papers are excluded. After restart, the operation rebuilds its task from saved Paper identity and evidence. There is no permanent Paper-complete flag: another explicit invocation remains possible.
 
-The Run date range restricts the publication record in a followed source. A 2026
-Journal record can still have `first_public_at: '2022'`; that earlier first-public
-date does not remove it from the 2026 discovery scope. Paper browsing uses first
-public time separately from bibliographic publication time. Acceptance dates are
-marked `≈` when approximated by appropriate post-acceptance publication evidence.
-See [Paper identity](paper-identity.md) for the persisted evidence and precision.
+Completion follows reliable identities and explicit version relations until targets are exhausted. Every provider/namespace/identifier is requested at most once per operation, including shared targets across Papers and failures. Native details returned during a formal-DOI reverse lookup are also reused for a separately selected preprint. Sufficient saved first-version evidence avoids unnecessary native lookups for that version family; another family's later-only, undated or conflicting evidence remains unresolved and can trigger its targeted lookup. New reliable identifiers can generate further queries. arXiv DOI/IDs route to arXiv and share the same writeback identity, while a known bioRxiv/medRxiv platform constrains its details lookup; formal DOI reverse lookup uses platforms that support it. No title/author fuzzy matching is used.
 
-DBLP years are Conference/publication years, not invented January dates or verified
-acceptance dates. Monthly queries retrieve the intersecting years and display the
-precision limitation. zbMATH also reports its year-level range limitation. These
-limitations remain visible even after all accessible pages are retrieved. After
-completion, confirmed publication dates for the same original formal version
-refine year-only candidates against the requested months. A related preprint or
-a Work-level date cannot exclude the formal source hit; unresolved precision
-remains Partial, and another valid source hit still retains the work.
+OpenAlex `locations` retains recognizable DOI, arXiv and native preprint URLs, PDF/landing locations, source and version. `related_works`, `acceptedVersion` and `is_accepted` do not establish a version relationship, a preprint or acceptance date. Europe PMC retains only explicit `Preprint in`/`Preprint of` relationships from `commentCorrectionList`; ordinary comments/corrections remain unrelated. Current `firstPublicationDate` and each `versionList.version[].firstPublishDate` keep their own record/version identity. An absent version list does not imply a single version.
 
-DBLP pages use `h` (at most 1000) and `f`. The adapter checks `@total`, `@computed`
-and `@first`, advances by actual returned records and stops on no progress.
-`computed < total` remains Partial after the accessible results are exhausted.
-The application does not shard queries around upstream windows. All four
-discovery adapters continue to the end of the accessible results without an
-application page or record quota. zbMATH serial mapping also checks every page
-before accepting a unique verified ISSN mapping. No-progress and incomplete
-upstream pagination remain explicit limitations.
+API results distinguish updated Paper, unchanged Paper, excluded Paper, failure and cancellation; lookup results distinguish evidence, normal no-match, identity mismatch, failure and cancellation. One failed provider/Paper does not revoke other valid evidence or committed updates. Cancellation stops new dispatch and reports already completed safe writes. API completion has independent progress/results and History, rather than Run supplement counters.
 
-| Result | Meaning |
-| --- | --- |
-| Complete | Executable declared scope finished without known retrieval truncation |
-| Empty | A legal completed query returned no retained candidates |
-| Partial | Usable results exist but retrieval or a declared scope was incomplete |
-| Failed | The subtask could not produce valid results |
-| Skipped / Not run | Selection, mapping or capability prevented execution; reason shown |
-| Cancelled | User cancellation stopped further dispatch and writes |
+Known bioRxiv/medRxiv preprint DOIs are queried before formal-DOI reverse lookups. Once ordinary metadata and every known preprint family's first-version evidence are sufficient, the existing gap check skips remaining native lookups. Partial results distinguish source-query problems from failed Paper processing, and successful Paper results state whether First public is recorded or still undetermined; failures remain visible.
 
-Results report Provider/source/Stream, candidates, retained/deduplicated records,
-new Papers, existing Papers and limitations. Supplement failures are separate from
-discovery completeness. A failed provider does not discard successful providers'
-results; all-failed discovery is never Empty or success.
+Ordinary metadata fills empty fields only. Authors remain a whole list. Existing First public, UUID, file identity, primary identifiers, human content and workflow status remain unchanged; new relationships do not merge saved Papers or fill a formal DOI-free Paper with a preprint DOI. Date/source facts append with stable deduplication. Exact content, file/directory/Workspace identity, configuration and cancellation are rechecked before writes. API admission shares the existing Run and workflow exclusion; configuration writes, Reset and local field edits cannot bypass the active task. See [Safety](safety.md).
 
-## Completion and persistence
+## HTTP and independent webpage Enrich
 
-All eight Integrated Run discovery/completion providers reuse the shared HTTP
-client, timeout/proxy policy, bounded retries and host pacing. HTTP 500/502/503/504
-gets at most three attempts for the same request, with 5- then 10-second backoff
-when no valid `Retry-After` is supplied. HTTP 429 also honors `Retry-After`, using
-the existing one-second fallback. Both delta-seconds and HTTP-date hints are
-accepted without an application wait ceiling. Waiting is cancellable and reports
-retry progress. Failed or incomplete pagination retains valid earlier pages as
-Partial.
+Both API operations use the shared HTTP client and operation-local host pacing. Temporary HTTP 500/502/503/504 requests have at most three attempts with 5/10-second default backoff. HTTP 429 uses the existing one-second fallback. Valid delta-seconds and HTTP-date Retry-After are honored without a wait ceiling; waits are cancellable. Recognized verification pages stop that provider client. Unexpected HTML/invalid envelopes are failures; a known-ID HTTP 404 or a valid empty response is normal no-match. No browser fallback or provider/route switching is added. arXiv uses three-second pacing; bioRxiv and medRxiv share their API host pacing.
 
-Ordinary HTML gateway/service errors are not mislabeled as bot verification.
-Recognized verification pages stop further HTTP requests for that Provider client
-in the current Run, except for the explicitly supported DBLP metarefresh exchange
-below. Other selected providers can finish. Unexpected HTTP 200 HTML, malformed
-JSON/XML and incomplete provider envelopes are failures, not normal zero results.
-No proxy route, provider or identity is switched automatically.
+Webpage Enrich still runs serially through the existing read-only Translator path, triggered by missing Abstract, Authors, publication date or an existing `YYYY-MM` date eligible for valid day upgrade. Missing First public or journal events alone never triggers it. A legitimate response can additionally contribute its already-returned explicit `accepted` and generic `date` as sourced, typed date facts, including an event-only save. Generic date never becomes First public. No new website extraction, history parser, browser batch pool or Zotero item save is added. DOI/document binding, cancellation/disconnection and exact-revision guards cover both ordinary fields and date events.
 
-### DBLP access restrictions
-
-DBLP requests default to a two-second interval, following its official
-[automated-access guidance](https://dblp.org/faq/1474706.html). The documented
-[search API](https://dblp.org/faq/13501473.html) remains the configured endpoint.
-This pacing reduces avoidable request pressure; it cannot remove a bot challenge.
-
-The client recognizes Anubis **v1.27.0 / metarefresh** at HTTP 200/202, including
-both HTTP `Refresh` and HTML `<meta http-equiv="refresh">`. It follows the
-[upstream protocol](https://github.com/TecharoHQ/anubis/blob/d39e26cedcc96bea5e4915297c756e7eec74aaf7/lib/challenge/metarefresh/metarefresh.go):
-wait the advertised delay (at least difficulty + 1 seconds), then
-perform one verification exchange in the same HTTP session. The verification
-target must be the fixed HTTPS DBLP Anubis endpoint, its ID/data must match the
-issued challenge, and both its return parameter and redirect must identify the
-original search query and page. Redirects from verification are checked before
-any further request. Cookies remain in the invocation-local HTTP session.
-
-Each response may initiate one exchange, including a later page that presents a
-new challenge after successful recovery. There is no application ceiling on
-challenge body size, verification URL length or advertised wait. Waiting and
-every request honor cancellation and the existing two-second pacing. Unknown
-versions, algorithms, malformed targets, failed verification and a resumed
-request still returning HTML remain
-access restrictions. No JavaScript, PoW solver, browser fallback, SPARQL switch or
-new dependency is introduced. A redirect alone is never retrieval success: the
-original request must return JSON and pass the normal DBLP pagination validation.
-
-On 2026-11-06, a scoped NeurIPS 2025 query recovered from HTTP 202 through the
-verification endpoint's 302 to valid JSON 200. Its next page reused the session
-and returned 200. Four bounded results created four DOI-free Papers; a fresh Run
-found the same four and preserved their bytes. Partial remained explicit because
-DBLP reported `computed < total` and the probe budget was four records.
-Publication dates retained year precision. This verifies that exchange in this environment; unsupported
-future challenges still stop rather than triggering automatic database or
-identity switching.
-
-Europe PMC's [developer discussion](https://groups.google.com/a/ebi.ac.uk/g/epmc-webservices/c/WUWH9sunsEY)
-distinguishes its service-overload 503 responses from explicit rate-limit status.
-The service can recover independently; successful probes establish current
-reachability, not that client retries repaired the upstream server.
-
-Responses already retrieved in a Run are reused. Identifier lookups run in the
-fixed order OpenAlex, Crossref, Europe PMC, DBLP, zbMATH, arXiv, bioRxiv, medRxiv,
-restricted to enabled providers. Newly discovered reliable identities continue
-to be queried until no unqueried targets remain. Every Provider/namespace/ID is
-attempted at most once, including failures, so cyclic links do not repeat
-requests. There is no application lookup quota, fixed pass count, linked-preprint
-record quota, DBLP Boolean clause quota or date-age cutoff on known preprint
-provenance. Scope, identity validation and cancellation still apply.
-
-Only reliable shared IDs or explicit same-work relations link records. Ordinary
-references, comments/corrections and similar titles/authors do not. Ordinary
-metadata fills missing fields only; author lists remain whole. The selected
-formal source record remains primary when a linked preprint also exists. Dates
-are selected from the combined evidence before first creation, rather than fixed
-by whichever network response finishes first.
-
-Every already-saved Paper is create-only for Integrated Run, including unkept
-Discovery Papers. Existing Markdown, UUID, identifiers, metadata and human state
-remain unchanged. Conflicting matches to multiple stored files are reported and
-left untouched. There is no alias sidecar, Run database, durable queue, pagination
-checkpoint or restart recovery. User editing and explicit browser Enrich retain
-their own authorization and revision checks.
-
-Network retrieval holds no Workspace exclusion. Commit rechecks the captured
-configuration, source revision, original directories and saved identities under
-one short cross-process lock, then atomically creates new files. Reset or directory
-replacement invalidates old results. Cancellation preserves any already-finished
-atomic creates and reports their actual count.
+Background native pages receive a nonzero layout viewport without selecting, revealing or focusing them. Enrich exposes **打开 Browser 验证** while waiting for verification; it shows the existing task-bound page without leaving Workspace or cancelling the task. Solver targeting, interactability checks and retry limits remain unchanged.
 
 ## Old data and manual acceptance
 
-PubMed and its dedicated settings/query mode are removed. Create new settings
-from `config.template.yaml` if an old configuration is rejected; choose the
-providers explicitly. Old Papers/Run histories are not migrated automatically.
-The existing Settings Workspace Reset is available only through its explicit
-confirmation and deletes the configured Workspace, not YAML, user state, caches or
-credentials. No development or test operation resets real user data.
+Old dates, Provider lists and Run formats are not migrated. Workspace Reset removes only the confirmed Workspace, including Papers, Evidence and Run snapshots. It does **not** remove YAML, `.allfold/user-data.sqlite`, resource caches, covers or credentials. Normal startup, read, autosave or a configuration error never deletes these objects.
 
-An old key file is beside its YAML as `<config-stem>.pubmed-secrets.json`. It is no
-longer read, written or deleted by Allfold; the user may remove it independently.
-OpenAlex credentials and unrelated user scope are preserved.
+To adopt the new configuration explicitly:
 
-Use a disposable configuration for manual acceptance:
+1. Back up important Papers/configuration; optionally export User Data to preserve a transferable Research Scope. In the current application, preview and confirm **Settings → Reset → Workspace** only if you intend to discard that Workspace.
+2. Close Allfold. Back up the selected YAML, then replace its contents with `config.template.yaml` and explicitly set the desired paths, keywords/months and source selections. Setup creates a missing default YAML but never overwrites an existing YAML; merely rerunning Setup does not rebuild an old configuration.
+3. Reuse the same canonical YAML path to retain its existing Journals/Services scope in user-state SQLite. A different YAML path owns a new scope; use the existing Research Scope import/first initialization for that scope. There is no need to delete SQLite or use a factory reset. OpenAlex secret files remain beside their configuration.
+4. Restart with the rebuilt configuration and run a small journal range. No old Accepted approximation or First public fallback is converted into a new event.
 
-1. Manage Journals and Conferences in the existing Journals workspace: offline
-   search, follow/unfollow, order, Group/Labels, restart and scope import/export.
-2. Select discovery and metadata-only checkboxes, including one discovery provider,
-   Conference-only without DBLP, and a mixed scope with an unexecuted Conference.
-3. Observe per-source progress, genuine empty results, provider failure/truncation,
-   cancellation, supplement failures and year-only date limitations (Partial for monthly ranges).
-4. Review/Keep/edit a DOI-free Paper and inspect its explicit unavailable external
-   actions. Inspect both dates, approximation basis and typed Indexed Terms.
-5. Check one primary-DOI Enrich on a Paper containing related DOIs, then inspect
-   Prepare/Import eligibility and the selected primary DOI without starting a save.
-   Inspect WoS query preview and, when available, one small genuine export through
-   the shared parser/save/display model. Existing browser login, Zotero and PDF
-   implementations do not require an exhaustive rerun for this discovery change.
+Use disposable configuration/data for manual acceptance:
 
-Keep manual scenarios representative: one selected discovery provider, a mixed
-scope with an unexecuted Conference, three Paper types and a repeated create-only
-Run. Reset/concurrent writes, malformed pages and mismatched Translator DOI remain
-covered by focused isolated regressions. Use small scoped HTTP probes for live
-API contracts; do not repeatedly retry an unsupported verification challenge.
+- Run with both sources and with either alone; inspect native date filtering, paging/partial results, source failure and cancellation. Repeat a Run and verify existing Paper bytes plus new evidence handoff.
+- Reject after discovery; explicitly complete the remaining selected unkept Papers. Restart and complete older/kept/exported Papers; inspect progress, cancel/error/no-match outcomes and unchanged user content.
+- Check a known linked preprint, later-only versus earliest-version dates, precise source/version tooltips and chronological journal events. A formal-only Paper must have empty First public.
+- Run independent webpage Enrich for month upgrade and event-only save/refresh; confirm no Zotero item is saved. Independently verify existing DOI-free action restrictions and offline Conference/Research Scope management.
 
-Isolated fixtures, source/build checks and CI are not evidence of real API
-reachability, browser authentication, Zotero saving or PDF acceptance. Record each
-of those outcomes separately when actually exercised.
+Synthetic HTTP, rendered Electron fixtures, builds and CI establish only their tested layers. Real OpenAlex/Europe PMC responses, native preprint APIs, authenticated sites and Zotero outcomes require separately scoped acceptance.
 
-Interface references: [OpenAlex scoped search](https://help.openalex.org/api/searching/),
-[Europe PMC REST](https://dev.europepmc.org/RestfulWebService),
-[DBLP API](https://dblp.org/faq/13501473.html),
-[zbMATH API](https://api.zbmath.org/v1/),
-[Crossref metadata](https://github.com/CrossRef/rest-api-doc/blob/master/api_format.md),
-[arXiv ID/version API](https://info.arxiv.org/help/api/user-manual.html),
-[bioRxiv/medRxiv original APIs](https://api.biorxiv.org/).
+Interface references: [OpenAlex scoped search](https://help.openalex.org/api/searching/), [OpenAlex locations](https://help.openalex.org/data/locations/), [Europe PMC REST](https://dev.europepmc.org/RestfulWebService), [Europe PMC version fields](https://europepmc.org/docs/EBI_Europe_PMC_Web_Service_Reference.pdf), [Crossref metadata](https://github.com/CrossRef/rest-api-doc/blob/master/api_format.md), [arXiv API](https://info.arxiv.org/help/api/user-manual.html), [bioRxiv/medRxiv APIs](https://api.biorxiv.org/).

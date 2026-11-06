@@ -16,9 +16,9 @@ from allfold.application.browser_runtime import ElectronDisconnected
 from allfold.models import parse_publication_date
 
 
-def publication_date_candidate(item):
+def publication_date_candidate(item, field="date"):
     """Preserve the precision of parsed parts from Zotero's sandbox."""
-    raw, parts = item.get('date'), item.get('date_parts')
+    raw, parts = item.get(field), item.get(field + '_parts')
     if not isinstance(raw, str) or not raw.strip() or not isinstance(parts, dict):
         return None
     if 'year' not in parts or set(parts) - {'year', 'month', 'day'}:
@@ -56,6 +56,21 @@ def authors_candidate(item):
             return None
         names.append(name)
     return names or None
+
+
+def translator_date_events(item, target, metadata_source):
+    from allfold.paper_dates import source_date
+    from allfold.models import EvidenceDateKind
+    events = []
+    for field, kind in (('date', EvidenceDateKind.SOURCE), ('accepted', EvidenceDateKind.ACCEPTED)):
+        if value := publication_date_candidate(item, field):
+            event = source_date(value, kind=kind, provider='translator-' + ('doi' if metadata_source == 'doi' else 'web'),
+                record_id=target.doi, publication_type='preprint' if item.get('itemType') == 'preprint' else
+                    'conference' if item.get('itemType') == 'conferencePaper' else 'journal',
+                url='https://doi.org/' + target.doi)
+            if event:
+                events.append(event.model_dump(mode='json', exclude_none=True))
+    return events
 
 
 class PaperEnrichment:
@@ -128,6 +143,8 @@ class PaperEnrichment:
             with self._lock:
                 if task['stop'].is_set():
                     raise InterruptedError()
+                if not self.bridge.connected:
+                    raise ElectronDisconnected('Electron disconnected before enrichment save')
                 item = result.get('item')
                 if not isinstance(item, dict):
                     raise ValueError(format_browser_diagnostic(result.get('diagnostic')))
@@ -143,12 +160,15 @@ class PaperEnrichment:
                 if target.missing_date and (date := publication_date_candidate(item)):
                     if target.publication_date is None or len(date) == 10:
                         candidate['publication_date'] = date
+                events = translator_date_events(item, target, result.get('metadata_source'))
+                if events:
+                    candidate['date_evidence'] = events
                 if not candidate:
-                    raise ValueError('Translator returned no usable missing fields')
+                    raise ValueError('Translator returned no usable missing fields or date events')
                 task['phase'] = 'Saving'
                 try:
-                    save_enrichment(target, candidate.get('abstract'), candidate.get('publication_date'),
-                                    authors=candidate.get('authors'))
+                    candidate = save_enrichment(target, candidate.get('abstract'), candidate.get('publication_date'),
+                                    authors=candidate.get('authors'), date_evidence=candidate.get('date_evidence', ()))
                     task['message'] = 'Enrichment saved'
                 except TextWriteCommittedError:
                     task["sync_warning"] = True

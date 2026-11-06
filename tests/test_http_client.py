@@ -462,7 +462,7 @@ def test_proxy_authentication_is_sent_without_logging_credentials(monkeypatch, c
 def test_provider_requests_keep_proxy_query_and_retry_semantics(monkeypatch, provider, injected):
     from datetime import date
     from urllib.parse import parse_qs
-    from allfold.providers.crossref import CrossrefClient
+    from allfold.providers.supplemental import SupplementalClient
     from allfold.providers.openalex import OpenAlexClient
 
     monkeypatch.setenv("NO_PROXY", "fe80::/10,fc00::/7")
@@ -488,12 +488,10 @@ def test_provider_requests_keep_proxy_query_and_retry_semantics(monkeypatch, pro
         options = {}
 
     if provider == "crossref":
-        with CrossrefClient(mailto="fixture@example.test", sleep=sleeps.append, **options) as client:
-            assert client.get_manifest_page(["1234-5679"], date(2026, 1, 1), date(2026, 2, 1),
-                                            cursor="cursor+next") == {"ok": True}
+        with SupplementalClient("crossref", interval=0, sleep=sleeps.append, **options) as client:
+            assert client.request("/works/10.5555/known", {"mailto":"fixture@example.test"}) == {"ok": True}
         params = requests[-1].url.params
-        assert params["filter"] == "issn:1234-5679,from-pub-date:2026-01-01,until-pub-date:2026-02-01"
-        assert params["cursor"] == "cursor+next"
+        assert requests[-1].url.path == "/works/10.5555/known"
         assert params["mailto"] == "fixture@example.test"
     else:
         with OpenAlexClient(api_key="fixture-key", sleep=sleeps.append, **options) as client:
@@ -508,7 +506,7 @@ def test_provider_requests_keep_proxy_query_and_retry_semantics(monkeypatch, pro
 
 def test_provider_redirect_policies_are_preserved():
     from datetime import date
-    from allfold.providers.crossref import CrossrefClient, CrossrefRequestError
+    from allfold.providers.supplemental import SupplementalClient
     from allfold.providers.openalex import OpenAlexClient
 
     requests = []
@@ -519,13 +517,12 @@ def test_provider_redirect_policies_are_preserved():
             return httpx.Response(302, headers={"Location": "/destination"})
         return httpx.Response(200, json={"ok": True})
 
-    with CrossrefClient(transport=httpx.MockTransport(handle)) as client:
-        with pytest.raises(CrossrefRequestError, match="HTTP 302"):
-            client.get_manifest_page(["1234-5679"], date(2026, 1, 1), date(2026, 2, 1))
-    assert len(requests) == 1
+    with SupplementalClient("crossref", interval=0, transport=httpx.MockTransport(handle)) as client:
+        assert client.request("/works/10.5555/known", {}) == {"ok": True}
+    assert len(requests) == 2
     with OpenAlexClient(transport=httpx.MockTransport(handle)) as client:
         assert client.search_sources("statistics") == {"ok": True}
-    assert len(requests) == 3
+    assert len(requests) == 4
     assert requests[-1].url.path == "/destination"
 
 

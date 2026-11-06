@@ -176,10 +176,10 @@ window.allfoldTranslatorReady=(async () => {
           if(!state.active)return {...failure(Error('Translation canceled')),terminal:true};
           const code=!items?.length?'translator_no_items':items.length!==1?'translator_multiple_items':matchingDOI(items[0],doi) || (typeof items[0].title!=='string' || !items[0].title.trim() || typeof items[0].itemType!=='string' || ['multiple','webpage','attachment','note'].includes(items[0].itemType)?'translator_invalid_item':null);
           if(code){last={ok:false,...info,itemCount:items?.length || 0,error:{kind:'translation',code,message:code}};continue;}
-          if(forEnrichment)for(const item of items) {
-            const parsed=Zotero.Date.strToDate(item.date || '');item.date_parts={};
+          if(forEnrichment)for(const item of items)for(const field of ['date','accepted']) {
+            const parsed=Zotero.Date.strToDate(item[field] || '');item[field+'_parts']={};
             for(const key of ['year','month','day'])if(parsed[key]!=null && /^\d+$/.test(String(parsed[key])))
-              item.date_parts[key]=Number(parsed[key])+(key==='month'?1:0);
+              item[field+'_parts'][key]=Number(parsed[key])+(key==='month'?1:0);
           }
           if(proxy?.toProper)for(const item of items)for(const attachment of item.attachments || [])if(attachment.url)attachment._allfoldProperURL=proxy.toProper(attachment.url);
           return {ok:true,...info,proxy:proxy?.toJSON?proxy.toJSON():proxy || null,
@@ -199,10 +199,10 @@ window.allfoldTranslatorReady=(async () => {
         const code=!items?.length?'translator_no_items':items.length!==1?'translator_multiple_items':
           matchingDOI(items[0],doi) || (typeof items[0].title!=='string' || !items[0].title.trim() || typeof items[0].itemType!=='string' || ['multiple','webpage','attachment','note'].includes(items[0].itemType)?'translator_invalid_item':null);
         if(code)return {ok:false,...info,itemCount:items?.length || 0,error:{kind:'translation',code}};
-        if(forEnrichment)for(const item of items) {
-          const parsed=Zotero.Date.strToDate(item.date || '');item.date_parts={};
+        if(forEnrichment)for(const item of items)for(const field of ['date','accepted']) {
+          const parsed=Zotero.Date.strToDate(item[field] || '');item[field+'_parts']={};
           for(const key of ['year','month','day'])if(parsed[key]!=null && /^\d+$/.test(String(parsed[key])))
-            item.date_parts[key]=Number(parsed[key])+(key==='month'?1:0);
+            item[field+'_parts'][key]=Number(parsed[key])+(key==='month'?1:0);
         }
         return {ok:true,...info,items:JSON.parse(JSON.stringify(items)),apiItem:forEnrichment?undefined:apiParent(items[0],info.proxy?new Zotero.Proxy(info.proxy):null),itemCount:1};
       }catch(error){return failure(error,info);}

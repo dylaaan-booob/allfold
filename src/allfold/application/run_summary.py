@@ -2,8 +2,6 @@
 from dataclasses import asdict, is_dataclass
 from datetime import date, datetime
 from enum import Enum
-import re
-from allfold.application.crossref_retrieval import is_optional_metadata_warning
 
 
 def _encode(value):
@@ -23,14 +21,11 @@ def _encode(value):
 
 
 def _visible_result_facts(facts: dict, provider: str) -> tuple[list, list, dict]:
-    """Filter known noise from encoded facts, including already saved schema-v4 runs."""
+    """Filter known noise from encoded facts, for current Run facts."""
     journals = []
     for journal in facts.get("journals", []):
         identifiers = []
         for item in journal["identifiers"]:
-            if provider == "crossref" and item.get("message"):
-                item["message"] = "; ".join(message for message in item["message"].split("; ")
-                                             if not is_optional_metadata_warning(message)) or None
             if (item["status"] != "unknown" or item.get("records", 0) or
                     item.get("source_id") or item.get("message")):
                 identifiers.append(item)
@@ -42,8 +37,6 @@ def _visible_result_facts(facts: dict, provider: str) -> tuple[list, list, dict]
     if provider == "openalex" and "source_resolution" in details:
         details["source_resolution"] = {key: value for key, value in details["source_resolution"].items()
                                          if key != "resolved" and value}
-    if provider == "crossref" and not any(details.get("manifest", {}).get(key) for key in ("partial", "failed")):
-        details.pop("manifest", None)
     if provider == "wos":
         dates = []
         for warning in details.get("date_warnings", []):
@@ -58,8 +51,6 @@ def _visible_result_facts(facts: dict, provider: str) -> tuple[list, list, dict]
                            for item in journal["identifiers"] if item["status"] == "not_found"}
     for issue in facts.get("issues", []):
         message = issue["message"]
-        if provider == "crossref" and issue["category"] in ("notice", "retrieval") and is_optional_metadata_warning(message):
-            continue
         if issue.get("severity") != "error":
             if provider == "openalex" and message == "work has neither a valid DOI nor a usable title":
                 continue
@@ -123,8 +114,7 @@ def build_run_result_summary(record: object) -> dict[str, object] | None:
         status = "completed"
     statistics = facts.get("statistics", {})
     statistics = {key: value for key, value in statistics.items()
-                  if key not in ("evidence_clusters", "retained_clusters") and
-                  (provider in {"wos", "integrated"} or key.startswith(provider + "_"))}
+                  if provider in {"wos", "integrated"}}
     if provider == "wos":
         # Batch details remain the single display location; status still uses all failures.
         batch_messages = {f"{batch['first']}-{batch['last']}: {message}"

@@ -49,9 +49,6 @@ class WorkspacePaper:
     publication_type: str | None = None
     related_dois: tuple[str, ...] = ()
     first_public_at: str | None = None
-    accepted_at: str | None = None
-    accepted_approximate: bool = False
-    date_note: str | None = None
     indexed_terms: tuple[ProviderTopic, ...] = ()
     date_evidence: tuple[EvidenceDate, ...] = ()
     export_attempt: ExportAttempt | None = None
@@ -184,9 +181,6 @@ def _project_paper(state: PaperMarkdownState) -> WorkspacePaper:
         publication_type=state.publication_type,
         related_dois=state.related_dois,
         first_public_at=state.first_public_at,
-        accepted_at=state.accepted_at,
-        accepted_approximate=state.accepted_approximate,
-        date_note=state.date_note,
         indexed_terms=state.indexed_terms,
         date_evidence=state.date_evidence,
         export_attempt=state.export_attempt,

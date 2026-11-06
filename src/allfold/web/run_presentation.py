@@ -17,7 +17,6 @@ _STAGE_LABELS = {
     ProgressStage.CHECKING_MONITOR: "Checking monitor",
     ProgressStage.DISCOVERING_PAPERS: "Discovering papers",
     ProgressStage.PREPARING_PAPERS: "Preparing papers",
-    ProgressStage.MATCHING_LITERATURE: "Matching literature",
     ProgressStage.UPDATING_WORKSPACE: "Capturing papers",
 }
 
@@ -27,8 +26,6 @@ _SOURCE_LABELS = {
     "openalex": "OpenAlex",
     "integrated": "Integrated Run",
     "europe_pmc": "Europe PMC",
-    "dblp": "DBLP",
-    "zbmath": "zbMATH Open",
     "workspace": "Workspace",
 }
 

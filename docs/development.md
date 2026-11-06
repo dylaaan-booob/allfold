@@ -108,7 +108,16 @@ See [architecture](architecture.md) before changing ownership and [safety](safet
 ### Integrated discovery acceptance
 
 The [Provider guide](providers.md) records native fields, pagination and date limits,
-selected-only completion, old configuration guidance and the manual acceptance
+separate explicit selected-only API completion, configuration reconstruction and the manual acceptance
 checklist. HTTP fixtures and isolated Electron rendering do not establish live
-provider or Zotero compatibility. All new provider requests use the shared HTTP
+provider or Zotero compatibility. Provider requests use the shared HTTP
 client; no provider credentials or real Workspace are test fixtures.
+
+Focused operation regressions use `tests/test_integrated_run.py`,
+`tests/test_api_completion.py`, `tests/test_metadata_completion.py` and
+`tests/test_paper_enrichment.py`. They cover durable rediscovery, restart/unkept/Reject
+eligibility, no-match, exact-revision/directory/configuration refusal, cancellation,
+evidence append/dedup, webpage month upgrade and event-only saves. The isolated
+Electron workspace fixture renders separate discovery/completion selections,
+named date events and explicit multi-Paper start/cancel without external APIs.
+These checks do not establish real-site, real-Workspace or Zotero acceptance.

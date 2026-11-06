@@ -157,7 +157,12 @@ do not establish real CAPTCHA compatibility or every external site's usable mini
 
 Journals includes Journals/Conferences categories in the existing workspace; no
 new top-level navigation is added. Paper Info/Reader shows actual Conference
-source names and separates first-public, accepted (≈ when approximate) and
-bibliographic publication dates. DOI-free Papers remain reviewable and locally
+source names and separates preprint First public, chronological named journal
+date events and bibliographic publication dates. First public and journal events
+have separate source/version evidence tooltips. ARRAY's API tool (and Archive's
+Reader button) opens explicit multi-Paper selection, progress/results and Cancel;
+opening it never dispatches a request. Rejected Papers are excluded, while older,
+unkept, kept and exported saved Papers can be selected. Webpage Enrich remains
+independent. DOI-free Papers remain reviewable and locally
 editable; unavailable external actions explain their primary-DOI requirement.
 See [manual Provider acceptance](providers.md#old-data-and-manual-acceptance).

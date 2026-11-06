@@ -265,12 +265,13 @@ class WorkspaceTextDirectory:
 
 
 @contextmanager
-def workspace_text_directory(lock: WorkspaceOperationLock, name: str):
+def workspace_text_directory(lock: WorkspaceOperationLock, name: str, *, create: bool = True):
     lock.verify()
-    try:
-        os.mkdir(name, dir_fd=lock.directory)
-    except FileExistsError:
-        pass
+    if create:
+        try:
+            os.mkdir(name, dir_fd=lock.directory)
+        except FileExistsError:
+            pass
     directory = os.open(name, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW, dir_fd=lock.directory)
     try:
         target = os.fstat(directory)

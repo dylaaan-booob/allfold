@@ -149,7 +149,8 @@
         "import",
         "kept",
         "prepare",
-        "run"
+        "run",
+        "api_completion"
       ]
     },
     "provider": {
@@ -159,9 +160,10 @@
         "openalex",
         "integrated",
         "europe_pmc",
-        "dblp",
-        "zbmath",
-        "wos"
+        "wos",
+        "arxiv",
+        "biorxiv",
+        "medrxiv"
       ]
     },
     "role": {

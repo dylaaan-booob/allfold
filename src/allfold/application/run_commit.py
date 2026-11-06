@@ -10,7 +10,7 @@ from threading import Event
 
 from allfold.config import LoadedConfig, load_config
 from allfold.persistence.safe_write import (
-    ContentChangedError, WorkspaceBusyError, WorkspaceOperationLock,
+    ContentChangedError, TextWriteCommittedError, WorkspaceBusyError, WorkspaceOperationLock,
     workspace_operation_lock, workspace_text_directory,
 )
 
@@ -41,7 +41,7 @@ class RunWorkspaceSnapshot:
 
 
 def capture_run_workspace(
-    config_path: Path, loaded_config: LoadedConfig | None = None,
+    config_path: Path, loaded_config: LoadedConfig | None = None, *, create: bool = True,
 ) -> RunWorkspaceSnapshot:
     """Only a new explicit Run may initialize its Workspace.
 
@@ -51,10 +51,10 @@ def capture_run_workspace(
     path = config_path.resolve()
     configuration = path.read_bytes()
     config = loaded_config or load_config(path)
-    with workspace_operation_lock(config.output_dir, create=True) as lock:
+    with workspace_operation_lock(config.output_dir, create=create) as lock:
         if path.read_bytes() != configuration or load_config(path) != config:
             raise ContentChangedError("Run configuration changed before start")
-        with workspace_text_directory(lock, "Papers") as papers:
+        with workspace_text_directory(lock, "Papers", create=create) as papers:
             workspace_fd = os.dup(lock.directory)
             try:
                 papers_fd = os.dup(papers.directory)
@@ -114,5 +114,8 @@ def commit_run_workspace(snapshot: RunWorkspaceSnapshot, *, cancel_event: Event 
             if cancel_event is not None and cancel_event.is_set():
                 raise ContentChangedError("Run cancelled before commit")
             yield lock
+    except TextWriteCommittedError:
+        # A body write has already committed; retain its positive-write result.
+        raise
     except OSError as error:
         raise ContentChangedError("Run Workspace or configuration location changed") from error

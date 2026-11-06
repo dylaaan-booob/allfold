@@ -14,11 +14,13 @@ const settings={csrf_token:'fixture',issues:[],covers:{},cover_search,saved_work
   monitor_revision_exists:'1',monitor_revision_digest:'b'.repeat(64),journal_revision_exists:'1',journal_revision_digest:'c'.repeat(64),
   institution_name:'',institution_idp_entity_id:'',auto_import_after_preparation:false,transition_delay_seconds:'3',display_name:'Synthetic researcher',
   zotero_target:{server_id:'SyntheticServer',library_type:'user',library_id:'0',collection_key:null},
-  provider_aliases:{},provider_order:['openalex','europe_pmc','dblp','zbmath','crossref','arxiv','biorxiv','medrxiv','wos'],enabled_providers:['openalex'],groups:['Synthetic Group'],custom_labels:[],journals,conferences:[],access_services:services,
+  provider_aliases:{},provider_order:['openalex','europe_pmc','crossref','arxiv','biorxiv','medrxiv','wos'],enabled_providers:['openalex','europe_pmc'],completion_providers:['openalex','europe_pmc','crossref','arxiv','biorxiv','medrxiv'],groups:['Synthetic Group'],custom_labels:[],journals,conferences:[],access_services:services,
 }};
 const paper={id:'paper-1',title:'Synthetic kept paper',doi:'10.5555/presentation',publication_date:'2026-10-01',status:'kept',abstract:'Synthetic fixture only',authors:[],enrichPhase:'Idle'};
-const record={key:'0000-0001',...journals[0],papers:[]};
+const enrichPaper={...paper,id:'paper-enrich',title:'Synthetic Enrich paper',doi:'10.5555/enrich',status:'candidate',abstract:''};
+const record={key:'0000-0001',...journals[0],labels:[],papers:[]};
 const workspace={csrf_token:'fixture',import_token:'fixture',issues:[],counts:{candidates:0,active_journals:1},subjects:[{name:'Synthetic Group',journals:[record]}],kept:{papers:[{paper,journal:record}],journals:[record],services,settings:{},titles:{'paper-1':paper.title}}};
+let enrichState={phase:'Idle',supported:true,waiting_for_user:false};
 const queue={services:[{id:'all',name:'All Services',kept:1,eligible:1},{id:serviceId,name:services[0].name,kept:1,eligible:1},{id:'unassigned',name:'Unassigned',kept:0,eligible:0},{id:'ambiguous',name:'Ambiguous',kept:0,eligible:0}],papers:[{paper_id:'paper-1',title:paper.title,doi:paper.doi,service_id:serviceId,assignment:'assigned',reason:''}],import_token:'fixture'};
 let keptState={active:false,phase:'idle',navigation:null,can_continue:false,can_cancel:false},runActive=false;
 const runData=()=>({active:runActive,snapshot:{status:runActive?'RUNNING':'IDLE',provider:'wos',task_id:'run-a',waiting_for_user:runActive},progress:{stage_label:'Waiting for synthetic challenge',elapsed_text:'2s',announcement_message:'Local fixture only'},providers:Object.fromEntries(['integrated','wos'].map(id=>[id,{enabled:true,message:'',snapshot:{status:id==='wos'&&runActive?'RUNNING':'IDLE'},result_summary:null}]))});
@@ -28,12 +30,19 @@ const mimes={'.html':'text/html','.js':'text/javascript','.css':'text/css','.jso
 const server=http.createServer(async(req,res)=>{
   const url=new URL(req.url,'http://fixture'),route=url.pathname;
   if(route==='/challenge'){res.writeHead(200,{'Content-Type':'text/html'});res.end(challenge);return;}
+  if(route==='/background-layout'){res.writeHead(200,{'Content-Type':'text/html'});res.end('<iframe style="width:100%;border:0" src="/checkbox-frame"></iframe>');return;}
+  if(route==='/checkbox-frame'){res.writeHead(200,{'Content-Type':'text/html'});res.end('<input type="checkbox">');return;}
   if(route.startsWith('/api/')||route==='/settings/covers/search'){
     let body='';for await(const chunk of req)body+=chunk;requests.push({route,body:body?JSON.parse(body):null});
     if(route==='/api/kept-workflow/start')keptState={workflow_id:'kept-a',generation:7,planned_total:3,batch:{total:3,task_id:'import-a',results:[{paper_id:'previous-1',service_id:serviceId,parent_outcome:'confirmed',outcome:'exported'},{paper_id:'previous-2',service_id:serviceId,parent_outcome:'uncertain',outcome:'stopped'}]},service_id:serviceId,service_name:services[0].name,preparation_task_id:'prepare-a',phase:'waiting_for_user',active:true,can_continue:false,can_cancel:true,waiting_for_login:true,mode:'prepare_import',settings:{display_name:'Synthetic researcher',auto_import_after_preparation:false},preparation:{services,manual_services:[],results:[]},message:'Local synthetic challenge needs manual input'};
     if(route==='/api/kept-workflow/cancel')keptState={...keptState,phase:'interrupted',active:false,can_cancel:false,waiting_for_login:false,navigation:'kept'};
     if(route==='/api/kept-workflow/acknowledge')keptState={active:false,phase:'idle',navigation:null,can_continue:false,can_cancel:false};
-    const data=route==='/api/ui-next/workspace'?workspace:route==='/api/ui-next/settings'?settings:route==='/api/kept-workflow/queue'?queue:
+    if(route==='/api/papers/paper-enrich/enrichment/start')enrichState={phase:'Retrieving',request_id:'enrich-a',waiting_for_user:true,message:'Complete verification in BROWSER',saved:{}};
+    if(route==='/api/papers/paper-enrich/enrichment/cancel')enrichState={...enrichState,phase:'Cancelled',waiting_for_user:false};
+    // A previous API task must not refresh over a restoring Kept workflow.
+    const data=route.startsWith('/api/papers/paper-enrich/enrichment/')?enrichState:
+      route==='/api/papers/api-completion/state'?{phase:'Completed',request_id:'previous-api',total:0,processed:0,results:[],activity:null}:
+      route==='/api/ui-next/workspace'?workspace:route==='/api/ui-next/settings'?settings:route==='/api/kept-workflow/queue'?queue:
       route==='/api/ui-next/browser-services'?{scope,services}:route.startsWith('/api/ui-next/run')&&!route.endsWith('expression')?runData():
       route==='/api/ui-next/run-expression'?{providers:Object.fromEntries([...settings.values.provider_order,'integrated'].map(id=>[id,{expression:'causal',error:null}]))}:
       route==='/api/kept-workflow/state'||route==='/api/kept-workflow/start'||route==='/api/kept-workflow/cancel'||route==='/api/kept-workflow/acknowledge'?keptState:route==='/settings/covers/search'?cover_search:
@@ -63,6 +72,9 @@ app.whenReady().then(async()=>{
     for(const partition of [win.webContents.session,browser.partition])partition.webRequest.onBeforeRequest({urls:['http://*/*','https://*/*']},(details,callback)=>callback({cancel:new URL(details.url).origin!==origin}));
     ipcMain.handle('cas:status',()=>({available:false,configured:false,revision:'fixture'}));disposeIPC=installBrowserIPC({ipcMain,hostWindow:win,origin,browser});await win.loadURL(origin+'/');win.show();win.focus();await ready(()=>Promise.resolve(win.isFocused()),'fixture Window focus');
     await ready(()=>host("window.uiWorkspace?.ready()&&!document.getElementById('kept-open').disabled&&document.querySelectorAll('#s-journals [data-journal]').length===1"),'shipped UI ready');
+    const background=browser.createTab({present:false});await background.view.webContents.loadURL(origin+'/background-layout');
+    assert(await background.view.webContents.executeJavaScript('(()=>{const frame=document.querySelector("iframe"),box=frame.contentDocument.querySelector("input"),rect=box.getBoundingClientRect();return innerWidth>0&&innerHeight>0&&frame.contentDocument.elementFromPoint(rect.x+rect.width/2,rect.y+rect.height/2)===box;})()'),'background responsive checkbox has no usable viewport');
+    assert(browser.selected===null&&!browser.presentation.mounted,'background layout selected or presented a Page');await browser.command({action:'close',id:background.id});
     tab=browser.createTab({present:false});await tab.view.webContents.loadURL(origin+'/challenge');const id=tab.id,session=tab.view.webContents.session,load=await page('fixtureLoad');
     await click(win.webContents,'#kept-open');await ready(()=>host("workspaceNavigation.current()==='kept'&&document.querySelectorAll('#kept-statistics tbody tr').length===4"),'Kept Queue');await capture('shipped-wide-queue');
     assert(await host("document.getElementById('kept-zotero-target').getClientRects().length>0"),'Queue Zotero target is not visible');
@@ -97,6 +109,25 @@ app.whenReady().then(async()=>{
     assert(await host("document.getElementById('browser-pane').dataset.source==='run'&&document.getElementById('browser-pane').dataset.mode==='focus'"),'actual Run handoff did not request Run Focus host');assert(browser.selected===tab,'Run retargeted unrelated task page');await capture('shipped-run-fullscreen-handoff');
     await click(win.webContents,'#browser-return');assert(await host("document.getElementById('run-view').open&&getComputedStyle(document.getElementById('run-view')).visibility==='visible'&&document.activeElement.classList.contains('run-task-page')&&!document.getElementById('run-wos-cancel').disabled"),'Run fullscreen return rights/focus');
     assert(tab.id===id&&tab.view.webContents.session===session&&await page('fixtureLoad')===load,'actual workspace presentation recreated native Page/Session');assert((await session.cookies.get({url:origin})).some(cookie=>cookie.name==='synthetic_session'),'actual workspace presentation lost Cookie');
+    runActive=false;await ready(()=>host('!uiRun.active()'),'Run terminal state');browser.endTask();win.webContents.focus();
+    await ready(()=>host('document.hasFocus()'),'Reader input focus');
+    record.papers=[enrichPaper];workspace.counts.candidates=1;await host('allfoldRefreshWorkspace()');
+    await ready(()=>host('window.uiWorkspace?.ready()&&!!window.workspaceArray?.openPaper&&!workspaceArray.navigationBusy()'),'Enrich Workspace ready');
+    await host("workspaceNavigation.go('workspace')");
+    await ready(()=>host("workspaceArray.openPaper('paper-enrich')"),'Enrich reader open');
+    browser.beginOperation(new AbortController().signal,{workflow_id:'enrich-a',task_id:'enrich-a',request_id:'native-enrich'});
+    tab=browser.createTab({present:false});browser.associatePage(tab,{role:'auxiliary',service:false});browser.bindTaskPage(tab);await tab.view.webContents.loadURL(origin+'/challenge');
+    await ready(()=>host("!!document.querySelector('#paper-detail [data-enrich]:not(:disabled)')"),'Enrich start ready');
+    await click(win.webContents,'#paper-detail [data-enrich]:not(:disabled)');
+    await ready(()=>host("!!document.getElementById('enrich-task-page')&&!document.getElementById('enrich-task-page').hidden"),'Enrich verification entry');
+    await click(win.webContents,'#enrich-task-page');await measured('shipped Enrich task handoff');
+    assert(browser.selected===tab&&await host("workspaceNavigation.current()==='workspace'"),'Enrich Browser handoff left Workspace or retargeted task');
+    assert(!requests.some(request=>request.route==='/api/papers/paper-enrich/enrichment/cancel'),'Enrich Browser handoff cancelled task');
+    await completeChallenge();await click(win.webContents,'#browser-return');
+    assert(await host("document.activeElement.id==='enrich-task-page'&&document.getElementById('cancel-enrich').hidden===false"),'Enrich return lost focus or task controls');
+    enrichPaper.abstract='Enriched synthetic abstract';enrichState={...enrichState,phase:'Completed',waiting_for_user:false,message:'Enrichment saved',saved:{abstract:enrichPaper.abstract}};
+    await ready(()=>host("document.getElementById('paper-abstract').textContent.includes('Enriched synthetic abstract')&&document.getElementById('enrich-task-page').hidden"),'Enrich completion refresh');
+    assert(requests.filter(request=>request.route==='/api/papers/paper-enrich/enrichment/start').length===1,'Enrich handoff restarted task');
     if(process.env.ALLFOLD_BROWSER_WORKSPACES_SCREENSHOTS)fs.writeFileSync(path.join(process.env.ALLFOLD_BROWSER_WORKSPACES_SCREENSHOTS,'measurements.json'),JSON.stringify(measurements,null,2)+'\n');console.log(JSON.stringify(measurements));console.log('BROWSER WORKSPACES DOM PASS');
   }catch(error){failed=true;console.error('RECENT NATIVE UPDATES',JSON.stringify(nativeUpdates.slice(-12)));console.error('RENDERER PRESENTATION',JSON.stringify(await host("({visible:allfoldWorkbench.visible(),body:document.body.dataset.workbench,source:document.getElementById('browser-pane').dataset.source,hidden:document.getElementById('browser-pane').hidden,active:document.activeElement.id,documentFocused:document.hasFocus(),flowOpen:document.getElementById('kept-flow').open,flowVisibility:getComputedStyle(document.getElementById('kept-flow')).visibility,cancelDisabled:document.getElementById('kept-leave').disabled})")));await capture('shipped-failure');console.error(error.stack);}
   finally{ipcMain.removeHandler('cas:status');disposeIPC?.();browser?.close();win?.destroy();await new Promise(resolve=>server.close(resolve));fs.rmSync(temp,{recursive:true,force:true});app.exit(failed?1:0);}

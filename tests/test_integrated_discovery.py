@@ -24,7 +24,7 @@ def test_malformed_supplement_metadata_is_local_to_that_request():
     from allfold.providers.integrated import DiscoveryClient
     from datetime import datetime, timezone
     original=ProviderWorkEvidence(title='Native hit',external_ids=ExternalIds(doi='10.5555/bad'),
-        provenance=MetadataSource(provider='dblp',record_id='journals/example/Paper',retrieved_at=datetime.now(timezone.utc)))
+        provenance=MetadataSource(provider='europe_pmc',record_id='MED:42',retrieved_at=datetime.now(timezone.utc)))
     with DiscoveryClient('openalex',transport=httpx.MockTransport(lambda _:httpx.Response(200,json={
         'id':'https://openalex.org/W123','title':'Native hit','primary_location':['malformed']})),interval=0) as client:
         completed=complete_metadata((original,),('openalex',),clients={'openalex':client})
@@ -91,33 +91,6 @@ def test_openalex_request_scopes_native_keywords_source_and_dates():
     assert 'to_publication_date:2026-02-28' in params['filter']
 
 
-def test_dblp_pages_accessible_window_and_marks_upstream_truncation():
-    from allfold.providers.integrated import DiscoveryClient, SourceScope
-    requests=[]
-    def handler(request):
-        requests.append(request)
-        offset=int(request.url.params['f'])
-        return httpx.Response(200,json={'result':{'hits':{'@total':'4','@computed':'2','@first':str(offset),'hit':[{'info':{'key':f'journals/test/{offset}','title':'Graph learning','year':'2026','doi':f'10.1234/{offset}'}}]}}})
-    with DiscoveryClient('dblp',transport=httpx.MockTransport(handler),interval=0,page_size=1) as client:
-        result=client.discover(SourceScope('journal','Test',stream='streams/journals/test'),parse_keyword_expression('"graph learning" OR statist*'),date(2026,1,1),date(2026,3,31))
-    assert result.status == 'partial'
-    assert len(result.records)==2
-    assert [r.url.params['f'] for r in requests]==['0','1']
-    assert all('streamid:journals/test:' in r.url.params['q'] and 'year:2026:' in r.url.params['q'] for r in requests)
-    assert any('computed' in s for s in result.limitations)
-    assert any('year' in s for s in result.limitations)
-
-
-def test_dblp_html_verification_is_failed_not_empty_and_no_retry():
-    from allfold.providers.integrated import DiscoveryClient, SourceScope
-    calls=[]
-    with DiscoveryClient('dblp',transport=httpx.MockTransport(lambda r:(calls.append(r) or httpx.Response(202,text='<html>Anubis challenge</html>'))),interval=0) as client:
-        result=client.discover(SourceScope('conference','NeurIPS',stream='streams/conf/nips'),parse_keyword_expression('learning'),date(2026,1,1),date(2026,12,31))
-    assert result.status=='failed'
-    assert 'access limited' in result.limitations[0]
-    assert len(calls)==1
-
-
 def test_europe_pmc_scoped_request_keeps_source_identity_and_indexed_terms():
     from allfold.providers.integrated import DiscoveryClient, SourceScope
     requests=[]
@@ -135,60 +108,7 @@ def test_europe_pmc_scoped_request_keeps_source_identity_and_indexed_terms():
     assert requests[0].url.host=='www.ebi.ac.uk'
 
 
-def test_zbmath_verifies_issn_serial_mapping_and_excludes_review_query_and_abstract():
-    from allfold.providers.integrated import DiscoveryClient, SourceScope
-    requests=[]
-    def handler(request):
-        requests.append(request)
-        if '/serial/' in request.url.path:
-            return httpx.Response(200,json={'result':[{'id':77,'issn':['1234-567X']}], 'status':{'nr_total_results':1,'execution_bool':True}})
-        return httpx.Response(200,json={'result':[{'id':123,'title':{'title':'Native hit'},'year':'2026','editorial_contributions':[{'text':'Review text'}],'license':['https://creativecommons.org/licenses/by/4.0/']}], 'status':{'nr_total_results':1,'execution_bool':True}})
-    with DiscoveryClient('zbmath',transport=httpx.MockTransport(handler),interval=0) as client:
-        result=client.discover(SourceScope('journal','Test',issns=('1234-567X',)),parse_keyword_expression('learning AND statist*'),date(2026,1,1),date(2026,2,28))
-    assert result.status=='partial'
-    assert result.records[0].abstract is None
-    assert result.records[0].provenance.licenses==('https://creativecommons.org/licenses/by/4.0/',)
-    assert result.records[0].external_ids.model_dump()['zbmath']=='123'
-    q=requests[-1].url.params['search_string']
-    assert 'se:77' in q and 'py:2026-2026' in q
-    assert '(ti:learning | ut:learning | cc:learning)' in q
-    assert 'ab:' not in q and 'any:' not in q
-
-
 import pytest
-
-@pytest.mark.parametrize('mode,expected,count', [('empty','empty',0),('repeated','partial',1),('failure','partial',1)])
-def test_dblp_pagination_outcomes_preserve_valid_partial_records(mode,expected,count):
-    from allfold.providers.integrated import DiscoveryClient, SourceScope
-    calls=[]
-    def handler(request):
-        calls.append(request)
-        offset=int(request.url.params['f'])
-        if mode=='failure' and offset:
-            return httpx.Response(503)
-        if mode=='empty':
-            hits={'@total':'0','@computed':'0','@first':'0'}
-        else:
-            hits={'@total':'3','@computed':'3','@first':'0' if mode=='repeated' else str(offset),
-                  'hit':[{'info':{'key':f'journals/test/{offset}','title':'Learning','year':'2026'}}]}
-        return httpx.Response(200,json={'result':{'hits':hits}})
-    with DiscoveryClient('dblp',transport=httpx.MockTransport(handler),interval=0,sleep=lambda _:None,page_size=1) as client:
-        result=client.discover(SourceScope('journal','Test',stream='streams/journals/test'),parse_keyword_expression('learning'),date(2026,1,1),date(2026,12,31))
-    assert result.status==expected
-    assert len(result.records)==count
-    assert len(calls)==(4 if mode=='failure' else 2 if mode=='repeated' else 1)
-
-
-def test_dblp_respects_retry_after_and_stops_after_bounded_retries():
-    from allfold.providers.integrated import DiscoveryClient, SourceScope
-    calls,sleeps=[],[]
-    def handler(request):
-        calls.append(request)
-        return httpx.Response(429,headers={'Retry-After':'2'})
-    with DiscoveryClient('dblp',transport=httpx.MockTransport(handler),interval=0,sleep=sleeps.append) as client:
-        result=client.discover(SourceScope('conference','NeurIPS',stream='streams/conf/nips'),parse_keyword_expression('learning'),date(2026,1,1),date(2026,12,31))
-    assert result.status=='failed'
-    assert len(calls)==3 and sleeps==[2,2]
 
 
 def test_cancellation_during_response_stops_pagination_and_keeps_cancelled_state():
@@ -197,52 +117,78 @@ def test_cancellation_during_response_stops_pagination_and_keeps_cancelled_state
     cancel=Event();calls=[]
     def handler(request):
         calls.append(request);cancel.set()
-        return httpx.Response(200,json={'result':{'hits':{'@total':'1','@computed':'1','@first':'0','hit':[]}}})
-    with DiscoveryClient('dblp',transport=httpx.MockTransport(handler),interval=0,cancel_event=cancel) as client:
-        result=client.discover(SourceScope('conference','NeurIPS',stream='streams/conf/nips'),parse_keyword_expression('learning'),date(2026,1,1),date(2026,12,31))
+        return httpx.Response(200,json={'hitCount':0,'resultList':{'result':[]}})
+    with DiscoveryClient('europe_pmc',transport=httpx.MockTransport(handler),interval=0,cancel_event=cancel) as client:
+        result=client.discover(SourceScope('journal','Journal',issns=('1234-567X',)),parse_keyword_expression('learning'),date(2026,1,1),date(2026,12,31))
     assert result.status=='cancelled'
     assert not result.records and len(calls)==1
 
 
-def test_unmapped_dblp_journal_reports_not_run_without_network():
+def test_openalex_locations_supply_preprint_ids_without_guessing_from_accepted_version():
     from allfold.providers.integrated import DiscoveryClient, SourceScope
-    with DiscoveryClient('dblp',transport=httpx.MockTransport(lambda _:pytest.fail('Unmapped source queried')),interval=0) as client:
-        result=client.discover(SourceScope('journal','Test',issns=('0006-341X',)),parse_keyword_expression('learning'),date(2026,1,1),date(2026,12,31))
-    assert result.status=='skipped'
-
-
-def test_conference_year_stays_year_and_month_query_reports_partial_precision():
-    from allfold.providers.integrated import DiscoveryClient,SourceScope
     from allfold.canonicalize import canonicalize_records
-    def handler(request):
-        return httpx.Response(200,json={'result':{'hits':{'@total':'1','@computed':'1','@first':'0','hit':[{'info':{'key':'conf/icml/Example26','title':'Learning','year':'2026'}}]}}})
-    with DiscoveryClient('dblp',transport=httpx.MockTransport(handler),interval=0) as client:
-        result=client.discover(SourceScope('conference','ICML','conf_1',stream='streams/conf/icml'),parse_keyword_expression('learning'),date(2026,2,1),date(2026,2,28))
-    assert result.status=='partial'
-    paper=canonicalize_records(result.records).papers[0]
-    assert paper.metadata.publication_date=='2026'
-    assert paper.metadata.conference=='ICML' and paper.metadata.journal is None
-    assert paper.metadata.accepted_at is None
-    assert paper.external_ids.model_dump()['dblp']=='conf/icml/Example26'
+    with DiscoveryClient('openalex', transport=httpx.MockTransport(lambda _: pytest.fail('Normalization made a request'))) as client:
+        record = client.normalize({'id': 'https://openalex.org/W42', 'title': 'Formal', 'publication_date': '2026-02',
+            'related_works': ['https://openalex.org/W99'], 'locations': [
+                {'landing_page_url': 'https://arxiv.org/abs/2201.12345v3', 'pdf_url': 'https://arxiv.org/pdf/2201.12345v3.pdf',
+                 'source': {'id': 'https://openalex.org/S4306400194', 'display_name': 'arXiv'}, 'version': 'submittedVersion'},
+                {'landing_page_url': 'https://repository.example.test/record', 'version': 'acceptedVersion', 'is_accepted': True},
+            ]}, SourceScope('journal', 'Journal'))
+    assert [(ref.provider, ref.record_id) for ref in record.related_ids] == [('arxiv', '2201.12345')]
+    assert len(record.locations) == 3 and not record.related_dois
+    paper, = canonicalize_records((record,)).papers
+    assert paper.metadata.first_public_at is None and not any(d.kind.value == 'accepted' for d in paper.date_evidence)
 
 
-def test_zbmath_license_placeholders_are_missing_metadata_not_paper_content():
-    from allfold.providers.integrated import DiscoveryClient,SourceScope
-    placeholder='zbMATH Open Web Interface contents unavailable due to conflicting licenses.'
-    raw={'id':8053521,'year':'2025','title':{'title':placeholder},'keywords':[placeholder],
-         'contributors':{'authors':[{'name':placeholder}]},'msc':[{'code':'62-XX','text':'Statistics'}],
-         'links':[{'type':'doi','identifier':'10.1080/01621459.2024.2393463'},{'type':'arxiv','identifier':'2209.04977'}]}
-    with DiscoveryClient('zbmath',transport=httpx.MockTransport(lambda _:httpx.Response(200,json={})),interval=0) as client:
-        record=client.normalize(raw,SourceScope('journal','JASA'))
-    assert record.title is None and not record.authors
-    assert [x.value for x in record.indexed_terms]==['62-XX']
-    assert record.external_ids.doi=='10.1080/01621459.2024.2393463'
-    assert record.external_ids.arxiv=='2209.04977'
+@pytest.mark.parametrize('versions,expected', [([], None), ([{'id': 'PPR1', 'source': 'PPR', 'versionNumber': '1', 'firstPublishDate': '2020-06'}], '2020-06')])
+def test_europe_pmc_preserves_explicit_relations_and_per_version_dates(versions, expected):
+    from allfold.providers.integrated import DiscoveryClient, SourceScope
+    from allfold.canonicalize import canonicalize_records
+    with DiscoveryClient('europe_pmc', transport=httpx.MockTransport(lambda _: pytest.fail('Normalization made a request'))) as client:
+        formal = client.normalize({'source': 'MED', 'id': '42', 'doi': '10.5555/formal', 'title': 'Formal',
+            'firstPublicationDate': '2026-01-01', 'abstractText': 'Formal abstract',
+            'authorList': {'author': [{'fullName': 'Formal author'}]}, 'commentCorrectionList': {'commentCorrection': [
+                {'type': 'Preprint in', 'source': 'PPR', 'id': 'PPR3'},
+                {'type': 'Erratum in', 'source': 'MED', 'id': '99'},
+            ]}}, SourceScope('journal', 'Journal'))
+        preprint = client.normalize({'source': 'PPR', 'id': 'PPR3', 'title': 'Preprint', 'versionNumber': '3',
+            'firstPublicationDate': '2025-09-01', 'versionList': {'version': versions}}, SourceScope('journal', ''))
+    assert [(ref.provider, ref.record_id) for ref in formal.related_ids] == [('europe_pmc', 'PPR:PPR3')]
+    paper, = canonicalize_records((formal, preprint)).papers
+    assert paper.doi == '10.5555/formal' and paper.metadata.first_public_at == expected
+    assert any(d.record_id == 'PPR:PPR3' and d.version == '3' and d.year == 2025 for d in paper.date_evidence)
+    if expected:
+        assert any(d.record_id == 'PPR:PPR1' and d.first_version and d.day is None for d in paper.date_evidence)
+        from allfold.application.metadata_completion import complete_metadata
+        class Forbidden:
+            def lookup(self, *_):
+                pytest.fail('Sufficient aggregate version history triggered a native lookup')
+        result = complete_metadata((formal, preprint), ('arxiv', 'biorxiv', 'medrxiv'),
+            clients=dict.fromkeys(('arxiv', 'biorxiv', 'medrxiv'), Forbidden()))
+        assert not result.lookups
 
 
-def test_dblp_explicit_electronic_edition_dois_remain_known_identifiers():
-    from allfold.providers.integrated import DiscoveryClient,SourceScope
-    with DiscoveryClient('dblp',transport=httpx.MockTransport(lambda _:httpx.Response(200,json={}))) as client:
-        record=client.normalize({'key':'conf/icml/test26','title':'Learning','year':'2026','ee':['https://doi.org/10.5555/main','https://doi.org/10.5555/other']},SourceScope('conference','ICML','conf_1',stream='streams/conf/icml'))
-    assert record.external_ids.doi=='10.5555/main'
-    assert record.related_dois==('10.5555/other',)
+@pytest.mark.parametrize('provider', ['dblp', 'zbmath'])
+def test_disabled_or_removed_provider_cannot_construct_a_network_client(provider):
+    from allfold.providers.integrated import DiscoveryClient
+    with pytest.raises(ValueError, match='Provider'):
+        DiscoveryClient(provider, transport=httpx.MockTransport(lambda _: pytest.fail('Disabled provider made a request')))
+
+
+@pytest.mark.parametrize('second_first,expected', [(True, '2020-06'), (False, None)])
+def test_europe_pmc_relation_aliases_identify_each_target_without_joining_distinct_preprints(second_first, expected):
+    from datetime import datetime, timezone
+    from allfold.models import EvidenceDate, EvidenceDateKind, ExternalIds, MetadataSource, ProviderWorkEvidence
+    from allfold.providers.integrated import DiscoveryClient, SourceScope
+    from allfold.canonicalize import canonicalize_records
+    raw = {'source': 'MED', 'id': '42', 'doi': '10.5555/formal', 'title': 'Formal',
+        'commentCorrectionList': {'commentCorrection': [
+            {'type': 'Preprint in', 'source': 'PPR', 'id': f'PPR{number}', 'doi': f'10.1101/{number}'} for number in (1, 2)]}}
+    with DiscoveryClient('europe_pmc', transport=httpx.MockTransport(lambda _: pytest.fail('Unexpected request'))) as client:
+        formal = client.normalize(raw, SourceScope('journal', 'Journal'))
+    preprints = tuple(ProviderWorkEvidence(provenance=MetadataSource(provider='biorxiv', record_id=f'10.1101/{number}:1',
+        retrieved_at=datetime.now(timezone.utc)), title='Preprint', publication_type='preprint', external_ids=ExternalIds(doi=f'10.1101/{number}'),
+        dates=(EvidenceDate(kind=EvidenceDateKind.PREPRINT, year=2020 if number == 1 else 2021, month=6,
+            first_version=number == 1 or second_first),)) for number in (1, 2))
+    paper, = canonicalize_records((formal, *preprints)).papers
+    assert paper.metadata.first_public_at == expected

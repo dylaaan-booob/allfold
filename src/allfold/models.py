@@ -51,14 +51,11 @@ class CanonicalMetadata(DomainModel):
     conference_id: NonEmptyStr | None = None
     publication_type: Literal["journal", "conference", "preprint"] | None = None
     first_public_at: str | None = None
-    accepted_at: str | None = None
-    accepted_approximate: bool = False
-    date_note: str | None = None
     publication_date: str | None = None
     abstract: str | None = None
     author_keywords: tuple[NonEmptyStr, ...] = ()
 
-    @field_validator("publication_date", "first_public_at", "accepted_at", mode="before")
+    @field_validator("publication_date", "first_public_at", mode="before")
     @classmethod
     def validate_publication_date(cls, value: Any) -> str | None:
         return parse_publication_date(value)
@@ -118,9 +115,12 @@ class MetadataSource(DomainModel):
 class ProviderRecordRef(DomainModel):
     provider: NonEmptyStr
     record_id: NonEmptyStr
+    relation: Literal["preprint", "version"] | None = None
+    version_family: NonEmptyStr | None = None
 
 
 class EvidenceDateKind(str, Enum):
+    SOURCE = "source-date"
     PUBLISHED = "published"
     PUBLISHED_ONLINE = "published-online"
     PUBLISHED_PRINT = "published-print"
@@ -135,6 +135,12 @@ class EvidenceDate(DomainModel):
     kind: EvidenceDateKind
     provider: NonEmptyStr | None = None
     record_id: NonEmptyStr | None = None
+    version: NonEmptyStr | None = None
+    version_family: NonEmptyStr | None = None
+    publication_type: Literal["journal", "conference", "preprint"] | None = None
+    # True only when the source establishes the first/earliest public version.
+    first_version: bool = False
+    url: NonEmptyStr | None = None
     year: Annotated[int, Field(strict=True, ge=1, le=9999)]
     month: Annotated[int, Field(strict=True, ge=1, le=12)] | None = None
     day: Annotated[int, Field(strict=True, ge=1, le=31)] | None = None
@@ -157,7 +163,7 @@ class ProviderTopic(DomainModel):
 
 
 class ProviderWorkEvidence(DomainModel):
-    """Transient provider-neutral evidence consumed by canonicalization."""
+    """Structured provider evidence, reusable across explicit operations."""
 
     provenance: MetadataSource
     title: NonEmptyStr | None = None
@@ -167,6 +173,8 @@ class ProviderWorkEvidence(DomainModel):
     publication_type: Literal["journal", "conference", "preprint"] | None = None
     publication_date: str | None = None
     related_dois: tuple[NonEmptyStr, ...] = ()
+    related_ids: tuple[ProviderRecordRef, ...] = ()
+    locations: tuple[MetadataSource, ...] = ()
     indexed_terms: tuple[ProviderTopic, ...] = ()
     abstract: str | None = None
     author_keywords: tuple[NonEmptyStr, ...] = ()

@@ -125,6 +125,7 @@ let enrichment = null;
 const reviewedPapers = new Map();
 const keptPapers = new Map();
 let keptSnapshot;
+let completionPapers=[];
 let readerContext=null;
 const reviewPanel=document.querySelector('.review-right');
 const paperNavigation=reviewPanel.querySelector('.paper-navigation');
@@ -1173,10 +1174,7 @@ function renderPaper() {
   if (!readerContext) $('directory-position').textContent=`${pad(index+1)} / ${pad(papers.length)} PAPERS`;
   for (const id of ['previous-paper','next-paper']) $(id).disabled=papers.length===1 || enrichment?.phase==='Saving';
   renderPaperFields(paper, ['abstract','authors','publication_date']);
-  $('paper-first-public').textContent=paper.first_public_at || '—';
-  $('paper-accepted').textContent=(paper.accepted_approximate?'≈ ':'')+(paper.accepted_at || '—');
-  const evidence=(paper.date_evidence || []).map(item=>`${item.kind}: ${[item.year,item.month,item.day].filter(value=>value!==undefined && value!==null).map((value,i)=>i?String(value).padStart(2,'0'):value).join('-')} · ${item.provider || ''} ${item.record_id || ''}`).join('\n');
-  $('paper-first-public').title=$('paper-accepted').title=[paper.date_note,evidence].filter(Boolean).join('\n');
+  window.allfoldPaperDates.render(paper,$('paper-first-public'),$('paper-journal-dates'));
   $('paper-source').textContent=paper.conference || paper.journal || reviewJournal()?.name || '—';
   $('paper-identifiers').textContent=[...Object.entries(paper.external_ids || {}).filter(([key])=>key!=='doi').map(([key,value])=>`${key}: ${value}`),...(paper.related_dois || []).map(value=>`Related DOI: ${value}`)].join('; ') || '—';
   $('paper-indexed-terms').textContent=(paper.indexed_terms || []).map(item=>`${item.value}${item.kind || item.source ? ` (${[item.kind,item.source].filter(Boolean).join(' · ')})` : ''}`).join('; ') || '—';
@@ -1244,6 +1242,7 @@ function updateEnrichedFields(fields) {
   detail.classList.toggle('abstract-locked',!paper.abstract?.trim());
   fillAbstractPlaceholder();
   const targets={abstract:'paper-abstract',authors:'paper-authors',publication_date:'paper-date'};
+  fields=fields.filter(field=>Object.hasOwn(targets,field));
   fields.forEach(field => $(targets[field]).classList.add('enrich-new','reveal-pending'));
   if (!REDUCE_MOTION) decryption.reset(readerContext ? $('kept-view') : detail,false);
   fields.forEach(field => $(targets[field]).classList.remove('reveal-pending'));
@@ -1255,19 +1254,20 @@ function renderEnrich() {
   const operation=enrichment?.paperId===paper.id ? enrichment : null;
   const phase=operation?.phase || paper.enrichPhase || 'Idle';
   const active=phase==='Retrieving' || phase==='Saving';
+  const waiting=phase==='Retrieving' && operation?.waitingForUser===true;
   for(const id of ['previous-paper','next-paper']) $(id).disabled=decisionPending || Boolean(snapshotApplying) || paperToolsBusy() || phase==='Saving' || reviewPapers().length===1;
   document.querySelectorAll('#paper-detail [data-enrich], #paper-metadata-details [data-enrich]').forEach(node=>{
     node.disabled=!canEnrich(paper);
     node.title=node.disabled ? (!paper.doi?'需要有效的主要 DOI；仍可编辑本地字段':active?'正在补全缺失信息':paper.enriched?'本次补全已完成，信息仍未获得':'当前暂不可补全') : '点击补全缺失信息';
   });
   $('cancel-enrich').hidden=phase!=='Retrieving';
+  $('enrich-task-page').hidden=!waiting;
   const candidateReader=readerContext?.status==='candidates' && arrayActive();
   $('keep-paper').disabled=$('reject-paper').disabled=decisionPending || Boolean(snapshotApplying) || paperToolsBusy() || phase==='Saving' || window.workspaceArray?.workflowBusy() ||
     (readerContext ? !candidateReader : inspection.time!==inspection.duration || !inspection.target);
   $('back').disabled=decisionPending || Boolean(snapshotApplying) || paperToolsBusy() || phase==='Saving' || !inspection.target;
   const status=$('enrich-status'); status.dataset.phase=phase; status.dataset.warning=String(paper.syncWarning || false);
-  status.textContent=paper.enrichMessage==='Complete authentication or the challenge in Chrome'
-    ? '请在顶栏 BROWSER 工作区中手动完成登录或验证。' : paper.enrichMessage || '';
+  status.textContent=waiting?'等待网页验证':paper.enrichMessage || '';
   status.parentElement.hidden=!status.textContent && phase!=='Retrieving';
   document.querySelectorAll('#paper-detail .missing-field, #paper-metadata-details .missing-field, #paper-metadata-details .date-precision').forEach(n=>n.classList.toggle('scanning',phase==='Retrieving'));
   fillAbstractPlaceholder();
@@ -1423,6 +1423,7 @@ async function pollEnrich(operation) {
   try {
     const result=await uiNext.request(`${enrichmentURL(operation)}/state?request_id=${encodeURIComponent(operation.requestID)}`);
     operation.phase=result.phase;operation.paper.enrichPhase=result.phase;operation.paper.enrichMessage=result.message;
+    operation.waitingForUser=result.waiting_for_user===true;
     if($('paper-tools-dialog').open && paperTools.kind==='diagnostics' && paperTools.paperId===operation.paperId){
       paperTools.diagnosticGeneration++;renderPaperDiagnostics(result.diagnostic);
     }
@@ -1453,10 +1454,19 @@ async function startEnrich(developerRetry=false) {
     operation.requestID=result.request_id;
     if(operation.cancelled)return;
     operation.phase=result.phase;paper.enrichPhase=result.phase;paper.enrichMessage=result.message;
+    operation.waitingForUser=result.waiting_for_user===true;
     void pollEnrich(operation);
   } catch(error) {operation.phase='Failed';paper.enrichPhase='Failed';paper.enrichMessage=error.message;}
   if(currentPaper()?.id===paper.id)renderEnrich();
 }
+$('enrich-task-page').addEventListener('click',async()=>{
+  const operation=enrichment;
+  if(operation?.phase!=='Retrieving' || !operation.waitingForUser || !operation.requestID)return;
+  try {
+    if(!await window.allfoldWorkbench?.showTaskPage({workflowId:operation.requestID,taskId:operation.requestID,source:'enrich'}))
+      uiNext.notice('当前验证页面尚未就绪，请稍后重试。');
+  }catch(error){uiNext.notice(error.message);}
+});
 async function reviewPaper(status) {
   const arrayCandidate=readerContext?.status==='candidates' && arrayActive();
   if (decisionPending || snapshotApplying || paperToolsBusy() || enrichment?.phase==='Saving' || window.workspaceArray?.workflowBusy() ||
@@ -1720,7 +1730,7 @@ async function applySnapshot(data,selection=window.inboxRun?.selection(),coverVe
     return {...group,id};
   });
   shelfCapacity=archiveDebug.values.shelfCapacity;
-  rebuildShelves(selection);keptSnapshot=data.kept;
+  rebuildShelves(selection);keptSnapshot=data.kept;completionPapers=data.completion_papers || [];
   if(wasArray)state.view=shelves.length?'selected':'empty';
   keptPapers.clear();for(const entry of data.kept.papers){entry.paper=merge(entry.paper);keptPapers.set(entry.paper.id,entry);}
   for(const [key,list] of lists)if(!shelves.some(g=>g.journals.some(j=>j.key===key))){list.remove();lists.delete(key);}
@@ -1775,12 +1785,13 @@ window.addEventListener('workspace-reset',()=>{
   uiNext.workspaceEpoch++;uiNext.data=null;snapshotApplying=false;
   closeArrayReader(true);clearInspectionPanel();
   paragraphLayout?.clear();cancelRetrieval();decryption.reset(null,true);paperMetadata.open=false;
-  for(const id of ['view-paper-title','view-paper-id','paper-position','paper-authors','paper-date','paper-first-public','paper-accepted','paper-source','paper-identifiers','paper-indexed-terms','paper-providers','paper-doi','paper-abstract'])$(id).replaceChildren();
+  for(const id of ['view-paper-title','view-paper-id','paper-position','paper-authors','paper-date','paper-first-public','paper-journal-dates','paper-source','paper-identifiers','paper-indexed-terms','paper-providers','paper-doi','paper-abstract'])$(id).replaceChildren();
   $('paper-doi').removeAttribute('href');delete $('paper-detail').dataset.paperId;
   $('paper-metadata-summary').textContent='Infos';
   Object.assign(paperTools,{paperId:null,fields:null,loading:false,error:'',
     generation:paperTools.generation+1,diagnosticGeneration:paperTools.diagnosticGeneration+1});
   keptPapers.clear();reviewedPapers.clear();
+  completionPapers=[];
   keptSnapshot={...keptSnapshot,papers:[],titles:{}};
   logicalGroups=[];shelves=[];rows=[];
   inspection.time=inspection.target=0;inspection.completionPending=false;state.pendingPaper=null;state.view='empty';
@@ -1834,6 +1845,9 @@ function closeArrayReader(snapshot=false) {
   }
   return true;
 }
+window.allfoldCompletionPapers=()=>({current:currentPaper()?.id,papers:[...new Map([...completionPapers,...paperObjects().values()].map(p=>[p.id,p])).values()]
+  .filter(paper=>paper.status!=='rejected' && reviewedPapers.get(paper.id)!=='rejected')});
+window.allfoldRefreshWorkspace=refreshWorkspace;
 window.inboxKept={
   available:()=>state.ready && !decisionPending && !snapshotApplying && !paperToolsBusy() && enrichment?.phase!=='Saving' && !$('run-view').open &&
     (['selected','empty'].includes(state.view) || (state.view==='journal' && inspection.time===inspection.duration && inspection.target)),

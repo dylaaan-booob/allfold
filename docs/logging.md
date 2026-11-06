@@ -5,7 +5,7 @@ business tasks and results. Structured **diagnostics** explain the native and Py
 operations behind those tasks. Neither store restores Workspace data, confirms a
 Zotero save, nor authorizes an Import retry.
 
-Run, CARSI Prepare, Kept/Batch Import, Enrich and Cover Search share explicit
+Run, explicit API completion, CARSI Prepare, Kept/Batch Import, webpage Enrich and Cover Search share explicit
 workflow/task identities. Native requests have their own request IDs. Service and
 page metadata come from the existing invocation snapshots and page associations;
 logging does not grant browser or institution-credential authority. Native
@@ -17,6 +17,23 @@ latest execution. Exact-key object queries and confirmed attachment registration
 provide its Item/PDF/Fallback results. Item and attachment keys, Local API
 authorization, PDF candidate URLs and raw bytes are not new History or diagnostic
 fields. The snapshot does not persist across restarts or inspect saved PDF files.
+
+## Completion results
+
+`api_completion` is an independent task kind, separate from Run and webpage
+`enrich`. It records processed/updated/unchanged/excluded/failed/cancelled Paper
+counts and distinct evidence/no-match/lookup-failure/identity-mismatch counts.
+Its live result identifies each selected Paper and saved fields; normal no-match
+does not become a lookup failure. Previously committed writes survive a later
+failure or cancellation. If Paper commit succeeds but handoff storage fails,
+the Paper remains counted as updated and the task separately reports that
+evidence failure as Partial. There are no Run supplement-failure counters.
+
+Webpage Enrich's requested fields remain its ordinary Abstract/Authors/publication
+date gaps. Its saved-field allowlist also includes `date_evidence`, so event-only
+saves appear as actual updates. API metadata/evidence fields have explicit
+allowlists as well. Diagnostic observations include counts and field names,
+never Paper text, raw provider responses, credentials or sensitive URLs.
 
 ## Storage and limits
 
