@@ -25,8 +25,9 @@ from allfold.keywords import parse_keyword_expression
 from allfold.persistence.safe_write import ContentChangedError
 from allfold.application.coordinators.run_coordinator import StartOutcome
 from allfold.providers.wos import compile_wos_query
-from allfold.providers.pubmed import compile_pubmed_query
-from allfold.integrations.pubmed_credentials import read_credential, PubMedCredentialError
+from allfold.providers.integrated import PROVIDERS, compile_query
+from allfold.application.integrated_run import validate_selection
+from allfold.integrations.openalex_credentials import read_credential, OpenAlexCredentialError
 from allfold.web.run_presentation import build_run_presentation, build_run_result_summary
 
 
@@ -48,27 +49,26 @@ class _Decision(_Action):
 
 
 class _RunStart(_Action):
-    provider: Literal[RunProvider.OPENALEX, RunProvider.CROSSREF, RunProvider.PUBMED]
+    provider: Literal[RunProvider.INTEGRATED] = RunProvider.INTEGRATED
+    enabled_providers: tuple[str, ...] | None = None
 
 
 class _RunExpression(_Action):
     keyword_expression: str = Field(default="", max_length=20000)
-    pubmed_query_mode: str = "title_abstract"
 
 
-def provider_expressions(text: str, pubmed_mode: str):
+def provider_expressions(text: str):
     values = {}
     try:
         ast = parse_keyword_expression(text)
     except ValueError as error:
-        return {provider.value: {"expression": None, "error": str(error)} for provider in RunProvider}
-    for provider in RunProvider:
+        return {provider: {"expression": None, "error": str(error)} for provider in (*PROVIDERS,"integrated","wos")}
+    for provider in (*PROVIDERS,"integrated","wos"):
         try:
-            compiled = compile_pubmed_query(pubmed_mode, ast) if provider is RunProvider.PUBMED else (
-                compile_wos_query(ast) if provider is RunProvider.WOS else text)
-            values[provider.value] = {"expression": compiled, "error": ""}
+            compiled = compile_wos_query(ast) if provider == "wos" else compile_query(ast,provider) if provider in {"openalex","europe_pmc","zbmath"} else text
+            values[provider] = {"expression": compiled, "error": ""}
         except ValueError as error:
-            values[provider.value] = {"expression": None, "error": str(error)}
+            values[provider] = {"expression": None, "error": str(error)}
     return values
 
 
@@ -109,6 +109,7 @@ def install_ui_next(app: FastAPI, config_path: Path, csrf_token: str, *, read_ta
                 metadata = {}
                 registry_issues.append(str(error))
             service_by_id = {s.id: s for s in services}
+            conferences = {item.id: item for item in getattr(settings_list, "conferences", ())}
             records = {}
             subjects = defaultdict(list)
             for name in settings_list.groups:
@@ -116,7 +117,7 @@ def install_ui_next(app: FastAPI, config_path: Path, csrf_token: str, *, read_ta
             for journal in journals:
                 info = metadata.get(journal.key, {})
                 service = service_by_id.get(journal.access_service_id)
-                record = dict(key=journal.key, issn=journal.issn, eissn=journal.eissn, name=journal.name,
+                record = dict(key=journal.key, source_type="journal", issn=journal.issn, eissn=journal.eissn, name=journal.name,
                               group=journal.group, labels=list(journal.labels),
                               publisher=info.get("publisher"), sources=info.get("sources", []),
                               service=service.name if service else None,
@@ -128,16 +129,31 @@ def install_ui_next(app: FastAPI, config_path: Path, csrf_token: str, *, read_ta
             kept = []
             for paper in (*workspace.inbox, *workspace.kept):
                 journal = journal_for_paper(paper, journals)
-                key = journal.key if journal else f"unmapped:{paper.journal}"
+                conference = conferences.get(paper.conference_id)
+                source_name = paper.conference or paper.journal or "Unknown source"
+                key = (paper.conference_id or f"conference:{paper.conference}") if paper.conference else (
+                    journal.key if journal else f"unmapped:{source_name}")
                 if key not in records:
-                    records[key] = dict(key=key, issn=None, eissn=None, name=paper.journal,
-                                        group=None, labels=[], publisher=None, service=None,
+                    records[key] = dict(key=key, issn=None, eissn=None, name=source_name,
+                                        source_type="conference" if paper.conference else "journal",
+                                        dblp_stream=conference.dblp_stream if conference else None,
+                                        group=conference.group if conference else None,
+                                        labels=list(conference.labels) if conference else [], publisher=None, service=None,
                                         service_id=None, cover=None, papers=[])
-                    subjects[(None, True)].append(records[key])
+                    subjects[(conference.group, False) if conference else (None, True)].append(records[key])
                 record = records[key]
                 enrichment = app.state.paper_enrichment.state(paper.paper_id)
                 item = dict(id=str(paper.paper_id), title=paper.title,
                             publication_date=paper.publication_date, abstract=paper.abstract,
+                            conference=paper.conference, conference_id=paper.conference_id,
+                            journal=paper.journal, publication_type=paper.publication_type,
+                            first_public_at=paper.first_public_at, accepted_at=paper.accepted_at,
+                            accepted_approximate=paper.accepted_approximate, date_note=paper.date_note,
+                            date_evidence=[item.model_dump(mode="json", exclude_none=True) for item in paper.date_evidence],
+                            indexed_terms=[item.model_dump(mode="json", exclude_none=True) for item in paper.indexed_terms],
+                            external_ids=paper.external_ids.model_dump(exclude_none=True),
+                            related_dois=list(paper.related_dois),
+                            sources=[source.model_dump(mode="json", exclude_none=True) for source in paper.sources],
                             authors=list(paper.authors), doi=paper.external_ids.doi,
                             discovered_at=paper.discovered_at.isoformat(), status=paper.status.value,
                             enriched=enrichment["completed_in_session"],
@@ -147,21 +163,21 @@ def install_ui_next(app: FastAPI, config_path: Path, csrf_token: str, *, read_ta
                 if paper.status is WorkflowStatus.CANDIDATE:
                     record["papers"].append(item)
                 else:
-                    kept.append(dict(paper=item, journal={k: record[k] for k in ("key", "issn", "eissn", "name")}))
+                    kept.append(dict(paper=item, journal={k: record[k] for k in ("key", "issn", "eissn", "name", "source_type")}))
             groups = []
             for (group_name, unmapped), entries in subjects.items():
-                name = "Unmapped journals" if unmapped else group_name if group_name is not None else "Ungrouped / virtual"
+                name = "Unmapped sources" if unmapped else group_name if group_name is not None else "Ungrouped / virtual"
                 active = [entry for entry in entries if entry["papers"]]
                 for entry in active:
                     entry["papers"].sort(key=lambda p: p["id"])
                     entry["papers"].sort(key=lambda p: p["discovered_at"], reverse=True)
-                    entry["papers"].sort(key=lambda p: p["publication_date"] or "", reverse=True)
+                    entry["papers"].sort(key=lambda p: p["first_public_at"] or p["publication_date"] or "", reverse=True)
                 if active:
                     groups.append(dict(name=name, journals=active))
             return response(dict(
                 subjects=groups, csrf_token=csrf_token, import_token=import_token,
                 counts=dict(candidates=len(workspace.inbox), active_journals=sum(len(g["journals"]) for g in groups)),
-                kept=dict(papers=kept, journals=[{k: r[k] for k in ("key", "issn", "eissn", "name", "service_id")} for r in records.values()],
+                kept=dict(papers=kept, journals=[{k: r[k] for k in ("key", "issn", "eissn", "name", "source_type", "service_id")} for r in records.values()],
                           services=[s.model_dump() for s in services], settings=config.kept_workflow,
                           titles={str(p.paper_id): p.title for p in workspace.papers}),
                 issues=[*registry_issues, *(issue.message for issue in workspace.issues)],
@@ -186,20 +202,16 @@ def install_ui_next(app: FastAPI, config_path: Path, csrf_token: str, *, read_ta
         providers = {}
         try:
             config = load_config(config_path)
-            expressions = provider_expressions(config.keyword_expression, config.pubmed_query_mode)
-            for provider in (RunProvider.OPENALEX, RunProvider.CROSSREF, RunProvider.PUBMED):
-                value = expressions[provider.value]
-                message = value["error"]
-                if not message and provider is not RunProvider.CROSSREF:
-                    try:
-                        read_credential(config_path, provider=provider.value)
-                    except PubMedCredentialError as error:
-                        message = str(error)
-                providers[provider.value] = dict(**value, enabled=not message, message=message,
-                    latest=read_last_run_snapshot(config.output_dir, provider))
+            expressions = provider_expressions(config.keyword_expression)
+            message = expressions['integrated']['error']
+            try:
+                validate_selection(config)
+            except (ValueError, OSError) as error:
+                message = str(error)
+            providers['integrated'] = dict(**expressions['integrated'],enabled=not message,message=message,
+                enabled_providers=config.enabled_providers,latest=read_last_run_snapshot(config.output_dir,RunProvider.INTEGRATED))
         except (ConfigurationError, OSError) as error:
-            providers = {provider: dict(enabled=False, message=str(error), expression=None, latest=None)
-                         for provider in ("openalex", "crossref", "pubmed")}
+            providers = {'integrated':dict(enabled=False,message=str(error),expression=None,latest=None)}
         wos = app.state.wos_coordinator.state()
         providers["wos"] = dict(enabled=wos["enabled"], message=wos["message"], latest=wos["latest"],
                                 snapshot=wos["snapshot"])
@@ -227,16 +239,26 @@ def install_ui_next(app: FastAPI, config_path: Path, csrf_token: str, *, read_ta
             availability = run_data()["providers"][body.provider.value]
             if not availability["enabled"]:
                 return response({"message": availability["message"]}, 409)
+            config = load_config(config_path)
+            if body.enabled_providers is not None and body.enabled_providers != config.enabled_providers:
+                return response({"message":"Provider selection changed; save and refresh before running"},409)
             start = app.state.run_coordinator.start(body.provider)
             if start.outcome is StartOutcome.ALREADY_RUNNING and app.state.wos_coordinator.running:
                 return response({"message": "Run WoS is already active"}, 409)
             return response(run_data(start), 200 if start.outcome is StartOutcome.STARTED else 409)
 
+    @app.post("/api/ui-next/run/cancel")
+    def run_cancel(body: _Action):
+        if not valid(body):
+            return response({"message":"Invalid CSRF token"},403)
+        app.state.run_coordinator.cancel()
+        return response(run_data())
+
     @app.post("/api/ui-next/run-expression")
     def run_expression(body: _RunExpression):
         if not valid(body):
             return response({"message": "Invalid CSRF token"}, 403)
-        return response({"providers": provider_expressions(body.keyword_expression, body.pubmed_query_mode)})
+        return response({"providers": provider_expressions(body.keyword_expression)})
 
     @app.get("/api/ui-next/run-wos")
     def wos_state():

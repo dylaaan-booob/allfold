@@ -93,3 +93,19 @@ def local_candidates(list_path: Path, query: str) -> list[dict]:
                                    publisher=publisher, sources=sources, origin="registry",
                                    identity_conflict=len(component["identifiers"]) > 2))
     return candidates
+
+
+def conference_candidates(list_path: Path, query: str) -> list[dict]:
+    """Search only the shipped, read-only series registry, without network fallback."""
+    import json
+    path = list_path.parent / "journal-lists" / "journal-registry.sqlite"
+    try:
+        with closing(sqlite3.connect(path.absolute().as_uri() + "?mode=ro", uri=True)) as connection:
+            rows = connection.execute("SELECT payload FROM conferences ORDER BY position").fetchall()
+        entries = [json.loads(row[0]) for row in rows]
+    except (sqlite3.Error, ValueError) as error:
+        raise ConfigurationError(f"Conference Registry unavailable: {path}: {error}",
+                                 field="conference_registry", path=path) from error
+    needle = query.strip().casefold()
+    return [entry for entry in entries if any(needle in value.casefold() for value in
+        (entry['id'], entry['name'], entry['abbreviation'], entry['dblp_stream'], *entry['aliases']))]

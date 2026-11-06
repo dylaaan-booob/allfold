@@ -131,7 +131,7 @@ const paperNavigation=reviewPanel.querySelector('.paper-navigation');
 const paperTitle=$('view-paper-title'),paperMetadata=$('paper-metadata-details');
 const decisionButtons=[$('keep-paper'),$('reject-paper')];
 const decisionHost=decisionButtons[0].parentElement;
-let decisionPending=false, snapshotApplying=false;
+let decisionPending=false, snapshotApplying=false, settingsRefreshPending=false;
 const paperTools={paperId:null,fields:null,loading:false,error:'',generation:0,pending:false,focus:null,kind:null,diagnosticGeneration:0};
 const paperToolsBusy=()=>paperTools.pending || $('paper-tools-dialog').open;
 const currentPaper = () => readerContext ? readerContext.entries.find(e=>e.paper.id===state.pendingPaper)?.paper : selectedJournal()?.papers.find(p => p.id === state.pendingPaper);
@@ -237,6 +237,11 @@ function quadImage(image, q, ox, oy, k, alpha = 1) {
     (q[3][0] - q[0][0]) * k / image.height, (q[3][1] - q[0][1]) * k / image.height, ox + q[0][0] * k, oy + q[0][1] * k);
   ctx.drawImage(image, 0, 0); ctx.restore();
 }
+function sourceIdentity(source) {
+  return source.source_type==='conference'
+    ? {value:source.dblp_stream || '—',label:'DBLP STREAM'}
+    : {value:source.issn || source.eissn || 'UNMAPPED',label:source.issn?'ISSN':source.eissn?'eISSN':'ISSN / eISSN'};
+}
 function spine(q, ox, oy, k, identifier, label = 'ISSN / eISSN') {
   ctx.save(); ctx.transform((q[1][0] - q[0][0]) * k / 100, (q[1][1] - q[0][1]) * k / 100,
     (q[3][0] - q[0][0]) * k / 60, (q[3][1] - q[0][1]) * k / 60, ox + q[0][0] * k, oy + q[0][1] * k);
@@ -288,8 +293,7 @@ function arrayCase(group, index, track) {
   }
   ctx.restore();
   ctx.save();
-  if (journal && active) spine(m.label, ox, oy, g.k, journal.issn || journal.eissn || 'UNMAPPED',
-    journal.issn ? 'ISSN' : journal.eissn ? 'eISSN' : 'ISSN / eISSN');
+  if (journal && active) {const identity=sourceIdentity(journal);spine(m.label, ox, oy, g.k, identity.value,identity.label);}
   if (journal && tint < .5) topTitle(group, index, ox, oy, g.k);
   ctx.restore();
   const quad = transformedQuad(m.cover, ox, oy, g.k);
@@ -300,7 +304,7 @@ function arrayCase(group, index, track) {
     ctx.fillStyle = ORANGE; quad.forEach(([x, y]) => ctx.fillRect(x - 2.5, y - 2.5, 5, 5));
     const [x, y] = quad[1], lx = x + 22, ly = y - 27;
     ctx.strokeStyle = INK; ctx.lineWidth = .8; ctx.beginPath(); ctx.moveTo(x + 4, y - 4); ctx.lineTo(lx, ly); ctx.lineTo(lx + 24, ly); ctx.stroke();
-    const label = journal.key ? `ISSN ${[journal.issn,journal.eissn].filter(Boolean).join(' / ')}` : 'UNMAPPED';
+    const identity=sourceIdentity(journal),label=`${identity.label} ${identity.value}`;
     ctx.font = '9px "Geist Mono"';
     ctx.fillStyle = INK; ctx.fillRect(lx + 24, ly - 9, ctx.measureText(label).width + 14, 18);
     ctx.fillStyle = BG; ctx.fillText(label, lx + 31, ly + 3);
@@ -654,7 +658,7 @@ function renderJournalFile(groupIndex, slot) {
   layoutJournalTitle(j);
   $('ghost-subject').textContent = j.logicalGroupName.toUpperCase();
   $('archive-subject').textContent=j.logicalGroupName;
-  $('profile-identity').textContent = [j.issn,j.eissn].filter(Boolean).join(' / ') || 'UNMAPPED';
+  $('profile-identity').textContent = j.source_type==='conference'?sourceIdentity(j).value:[j.issn,j.eissn].filter(Boolean).join(' / ') || 'UNMAPPED';
   $('profile-publisher').textContent = j.publisher || '未配置';
   $('profile-service').textContent = j.service || '未配置';
   for (const [issn, list] of lists) list.hidden = issn !== j.key;
@@ -930,8 +934,7 @@ function drawInspection() {
   };
   sprite(inspectionFrames[i], a, 1);
   if (f > .001) sprite(inspectionFrames[i + 1], b, f);
-  spine(q('label'), ox, oy, k, journal.issn || journal.eissn || 'UNMAPPED',
-    journal.issn ? 'ISSN' : journal.eissn ? 'eISSN' : 'ISSN / eISSN');
+  const identity=sourceIdentity(journal);spine(q('label'), ox, oy, k, identity.value,identity.label);
   selectedCoverQuad = transformedQuad(q('cover'), ox, oy, k);
   ctx.fillStyle = ORANGE;
   selectedCoverQuad.forEach(([x,y]) => ctx.fillRect(x - 2, y - 2, 4, 4));
@@ -1170,6 +1173,14 @@ function renderPaper() {
   if (!readerContext) $('directory-position').textContent=`${pad(index+1)} / ${pad(papers.length)} PAPERS`;
   for (const id of ['previous-paper','next-paper']) $(id).disabled=papers.length===1 || enrichment?.phase==='Saving';
   renderPaperFields(paper, ['abstract','authors','publication_date']);
+  $('paper-first-public').textContent=paper.first_public_at || '—';
+  $('paper-accepted').textContent=(paper.accepted_approximate?'≈ ':'')+(paper.accepted_at || '—');
+  const evidence=(paper.date_evidence || []).map(item=>`${item.kind}: ${[item.year,item.month,item.day].filter(value=>value!==undefined && value!==null).map((value,i)=>i?String(value).padStart(2,'0'):value).join('-')} · ${item.provider || ''} ${item.record_id || ''}`).join('\n');
+  $('paper-first-public').title=$('paper-accepted').title=[paper.date_note,evidence].filter(Boolean).join('\n');
+  $('paper-source').textContent=paper.conference || paper.journal || reviewJournal()?.name || '—';
+  $('paper-identifiers').textContent=[...Object.entries(paper.external_ids || {}).filter(([key])=>key!=='doi').map(([key,value])=>`${key}: ${value}`),...(paper.related_dois || []).map(value=>`Related DOI: ${value}`)].join('; ') || '—';
+  $('paper-indexed-terms').textContent=(paper.indexed_terms || []).map(item=>`${item.value}${item.kind || item.source ? ` (${[item.kind,item.source].filter(Boolean).join(' · ')})` : ''}`).join('; ') || '—';
+  $('paper-providers').textContent=(paper.sources || []).map(source=>`${source.provider}${source.role?` (${source.role})`:''}: ${source.record_id}${source.version?` · ${source.version}`:''}`).join('; ') || '—';
   $('paper-doi').textContent=paper.doi || 'DOI unavailable';
   if (paper.doi) $('paper-doi').href=`https://doi.org/${encodeURI(paper.doi)}`; else $('paper-doi').removeAttribute('href');
   detail.dataset.paperId=paper.id;
@@ -1247,7 +1258,7 @@ function renderEnrich() {
   for(const id of ['previous-paper','next-paper']) $(id).disabled=decisionPending || Boolean(snapshotApplying) || paperToolsBusy() || phase==='Saving' || reviewPapers().length===1;
   document.querySelectorAll('#paper-detail [data-enrich], #paper-metadata-details [data-enrich]').forEach(node=>{
     node.disabled=!canEnrich(paper);
-    node.title=node.disabled ? (active?'正在补全缺失信息':paper.enriched?'本次补全已完成，信息仍未获得':'当前暂不可补全') : '点击补全缺失信息';
+    node.title=node.disabled ? (!paper.doi?'需要有效的主要 DOI；仍可编辑本地字段':active?'正在补全缺失信息':paper.enriched?'本次补全已完成，信息仍未获得':'当前暂不可补全') : '点击补全缺失信息';
   });
   $('cancel-enrich').hidden=phase!=='Retrieving';
   const candidateReader=readerContext?.status==='candidates' && arrayActive();
@@ -1263,7 +1274,7 @@ function renderEnrich() {
 }
 function canEnrich(paper=currentPaper(),developerRetry=false) {
   const reading=readerContext ? arrayActive() : state.view==='journal' && inspection.target && inspection.time===inspection.duration && !inspection.removeAfter;
-  return Boolean(reading && paper && (developerRetry || !paper.enriched) && missingFields(paper).length && !decisionPending && !snapshotApplying && !paperToolsBusy() && !window.workspaceArray?.workflowBusy() &&
+  return Boolean(reading && paper?.doi && (developerRetry || !paper.enriched) && missingFields(paper).length && !decisionPending && !snapshotApplying && !paperToolsBusy() && !window.workspaceArray?.workflowBusy() &&
     !['Retrieving','Saving'].includes(paper.enrichPhase) && !['Retrieving','Saving'].includes(enrichment?.phase));
 }
 
@@ -1742,8 +1753,12 @@ async function applySnapshot(data,selection=window.inboxRun?.selection(),coverVe
   window.dispatchEvent(new Event('workspace-data-changed'));
   if(data.issues.length)uiNext.notice(data.issues.join(' · '));
 }
+function refreshSavedSettings() {
+  if(settingsRefreshPending && window.inboxRun.available())void refreshWorkspace().catch(error=>uiNext.notice(error.message));
+}
 async function refreshWorkspace(selection) {
   if(snapshotApplying)return snapshotApplying;
+  settingsRefreshPending=false;
   const epoch=uiNext.workspaceEpoch;
   const work=(async()=>{
     try {
@@ -1754,13 +1769,13 @@ async function refreshWorkspace(selection) {
   })();
   snapshotApplying=work;
   renderEnrich();
-  try{return await work;}finally{if(snapshotApplying===work){snapshotApplying=false;renderEnrich();}}
+  try{return await work;}finally{if(snapshotApplying===work){snapshotApplying=false;renderEnrich();refreshSavedSettings();}}
 }
 window.addEventListener('workspace-reset',()=>{
   uiNext.workspaceEpoch++;uiNext.data=null;snapshotApplying=false;
   closeArrayReader(true);clearInspectionPanel();
   paragraphLayout?.clear();cancelRetrieval();decryption.reset(null,true);paperMetadata.open=false;
-  for(const id of ['view-paper-title','view-paper-id','paper-position','paper-authors','paper-date','paper-doi','paper-abstract'])$(id).replaceChildren();
+  for(const id of ['view-paper-title','view-paper-id','paper-position','paper-authors','paper-date','paper-first-public','paper-accepted','paper-source','paper-identifiers','paper-indexed-terms','paper-providers','paper-doi','paper-abstract'])$(id).replaceChildren();
   $('paper-doi').removeAttribute('href');delete $('paper-detail').dataset.paperId;
   $('paper-metadata-summary').textContent='Infos';
   Object.assign(paperTools,{paperId:null,fields:null,loading:false,error:'',
@@ -1892,6 +1907,7 @@ window.uiWorkspace={
   ready:()=>state.ready,
 };
 window.addEventListener('focus',()=>{if(!window.allfoldWorkbench?.presentationChanging?.() && !configurationActive() && state.ready && !decisionPending && !paperToolsBusy() && !['Retrieving','Saving'].includes(enrichment?.phase))void refreshWorkspace().catch(error=>uiNext.notice(error.message));});
+window.addEventListener('settings-saved',()=>{settingsRefreshPending=true;refreshSavedSettings();});
 window.addEventListener('pagehide',event=>{cancelRetrieval();if(!event.persisted)paragraphLayout?.destroy();});
 window.workspaceNavigation.register('workspace',{
   canNavigate:({to,workflowRecovery})=>!navigationBusy() && (!(window.workspaceArray?.navigationBusy?.() ?? window.workspaceArray?.workflowBusy()) || (workflowRecovery===true && to==='kept')),
@@ -1903,6 +1919,7 @@ window.workspaceNavigation.register('workspace',{
     inboxScrollPosition=lists.get(selectedJournal()?.key)?.scrollTop || 0;
   },
   enter:()=>{
+    refreshSavedSettings();
     if(arrayActive()){window.workspaceArray?.enter();return;}
     $('mode-label').textContent='ARCHIVE / '+(state.view==='journal'?'JOURNAL':shelves.length?'BROWSE':'COMPLETE');
     resize();const list=lists.get(selectedJournal()?.key);

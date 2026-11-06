@@ -42,6 +42,8 @@ node_modules/
 # Publish only the read-only Registry, not its local source lists
 /journal-lists/*
 !/journal-lists/journal-registry.sqlite
+!/journal-lists/conferences.json
+!/journal-lists/CONFERENCES.md
 
 # Test output belongs outside the source tree
 .coverage

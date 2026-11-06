@@ -29,7 +29,9 @@ def kept_queue(workspace, journals, services, plan, batch):
             row['eligible'] += qualified
         papers.append(dict(paper_id=str(paper.paper_id), doi=paper.external_ids.doi,
             title=paper.title, service_id=service_id, assignment=assignment, eligible=qualified,
-            reason=('Saved Journal mapping agrees' if service_id else
+            reason=('A valid primary DOI is required for Prepare/Import' if not paper.external_ids.doi else
+                    'Preprint Prepare/Import is not supported' if paper.publication_type == 'preprint' else
+                    'Saved Journal mapping agrees' if service_id else
                     'Journal matches disagree; correct the saved mapping' if assignment == 'ambiguous' else
                     'No saved Service assignment') + ('' if qualified else '; excluded by Workspace safety plan')))
     if batch.plan:

@@ -96,12 +96,20 @@
       <div class="paper-navigation"><div class="paper-stepper"><button id="previous-paper" aria-label="上一篇 Paper">←</button><strong id="paper-position"></strong><button id="next-paper" aria-label="下一篇 Paper">→</button></div></div>
       <article id="paper-detail" tabindex="-1">
         <h1 id="view-paper-title" tabindex="-1"></h1>
+        <dl class="paper-metadata paper-dates">
+          <div><dt>First public</dt><dd id="paper-first-public"></dd></div>
+          <div><dt>Accepted</dt><dd id="paper-accepted"></dd></div>
+        </dl>
         <details id="paper-metadata-details">
         <summary id="paper-metadata-summary">Infos</summary>
         <dl class="paper-metadata">
+          <div><dt>Source</dt><dd id="paper-source"></dd></div>
           <div><dt>Authors</dt><dd id="paper-authors"></dd></div>
           <div><dt>Publication date</dt><dd id="paper-date"></dd></div>
           <div><dt>DOI</dt><dd><a id="paper-doi" target="_blank" rel="noopener noreferrer"></a></dd></div>
+          <div><dt>Identifiers</dt><dd id="paper-identifiers"></dd></div>
+          <div><dt>Indexed terms</dt><dd id="paper-indexed-terms"></dd></div>
+          <div><dt>Providers</dt><dd id="paper-providers"></dd></div>
         </dl>
         </details>
         <div class="review-controls" hidden><p id="enrich-status" role="status" aria-live="polite"></p><button id="cancel-enrich" hidden>Cancel</button></div>
@@ -111,7 +119,7 @@
       </article>
       </div>
     </section>
-    <section id="empty-inbox" hidden><span>Inbox / Complete</span><h1>本轮审阅完成</h1><p>当前没有待审阅文献。可选择 Run OpenAlex、Run Crossref、Run PubMed 或 Run WoS 检索新文献。</p></section>
+    <section id="empty-inbox" hidden><span>Inbox / Complete</span><h1>本轮审阅完成</h1><p>当前没有待审阅文献。可通过 Integrated Run 或 Run WoS 检索新文献。</p></section>
     <div id="debug-split" class="archive-debug-handle" role="separator" aria-label="拖动左右分界线" aria-orientation="vertical" tabindex="0"></div>
     <div id="debug-bottom" class="archive-debug-handle" role="separator" aria-label="拖动下侧分界线" aria-orientation="horizontal" tabindex="0"></div>
   <section id="kept-view" class="workbench-layout" hidden inert aria-label="Workspace Array">
@@ -133,7 +141,7 @@
       <div class="sidebar-resize" role="separator" tabindex="0" aria-label="Resize Info" aria-orientation="vertical"></div>
       <div class="sidebar-heading"><span>INFO</span><button data-sidebar-close aria-label="Close Info">×</button></div>
       <div class="array-context-scroll sidebar-scroll" data-functional-view="info">
-      <section id="array-journal-profile"><h2 id="array-journal-name"></h2><dl class="array-profile"><div><dt>ISSN</dt><dd id="array-journal-issn"></dd></div><div><dt>eISSN</dt><dd id="array-journal-eissn"></dd></div><div><dt>SUBJECT</dt><dd id="array-journal-subject"></dd></div><div><dt>LABEL</dt><dd id="array-journal-labels"></dd></div></dl></section>
+      <section id="array-journal-profile"><h2 id="array-journal-name"></h2><dl class="array-profile"><div><dt>ISSN</dt><dd id="array-journal-issn"></dd></div><div><dt>eISSN</dt><dd id="array-journal-eissn"></dd></div><div hidden><dt>DBLP STREAM</dt><dd id="array-source-stream"></dd></div><div><dt>SUBJECT</dt><dd id="array-journal-subject"></dd></div><div><dt>LABEL</dt><dd id="array-journal-labels"></dd></div></dl></section>
       <div id="array-candidate-infos" class="array-paper-infos"></div>
 
       <div id="array-kept-infos" class="array-paper-infos"></div>
@@ -304,7 +312,7 @@
         <p class="run-time">ELAPSED <span id="run-elapsed">0:00</span></p>
         <p id="run-stage" role="status">CHECKING MONITOR</p>
         <p id="run-description">Validating monitor settings</p>
-        <button id="run-wos-cancel" class="s-button" hidden>取消 Run WoS</button>
+        <button id="run-wos-cancel" class="s-button" hidden>取消 Run</button>
       </div>
     </div>
     <div id="run-wash" hidden aria-hidden="true"></div>

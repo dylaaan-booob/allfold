@@ -1,5 +1,5 @@
 // Shared business wording for live results and retained history.
-export const providerNames={openalex:'OpenAlex',crossref:'Crossref',pubmed:'PubMed',wos:'Web of Science'};
+export const providerNames={openalex:'OpenAlex',europe_pmc:'Europe PMC',dblp:'DBLP',zbmath:'zbMATH Open',crossref:'Crossref',arxiv:'arXiv',biorxiv:'bioRxiv',medrxiv:'medRxiv',wos:'Web of Science'};
 export function importOutcomeMessage(outcome,pdf='unverified') {
   if(['exported','confirmed'].includes(outcome))return pdf==='verified failure'
     ? '父条目已导入，PDF 未保存，请在 Zotero 中检查。'

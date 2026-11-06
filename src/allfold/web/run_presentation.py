@@ -25,7 +25,10 @@ _SOURCE_LABELS = {
     "application": "Application",
     "crossref": "Crossref",
     "openalex": "OpenAlex",
-    "pubmed": "PubMed",
+    "integrated": "Integrated Run",
+    "europe_pmc": "Europe PMC",
+    "dblp": "DBLP",
+    "zbmath": "zbMATH Open",
     "workspace": "Workspace",
 }
 

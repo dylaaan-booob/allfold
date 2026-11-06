@@ -37,7 +37,7 @@ function setAnimationDisabled(disabled) {
   if(reduceRunMotion())stopRunAnimation();
   localStorage.setItem(animationPreferenceKey,String(disabled));
 }
-const providerLabels={openalex:'Run OpenAlex',crossref:'Run Crossref',pubmed:'Run PubMed',wos:'Run WoS'};
+const providerLabels={integrated:'Integrated Run',wos:'Run WoS'};
 function disableRunButtons(disabled) {
   if(disabled)document.querySelectorAll('[data-run-provider]').forEach(button=>{button.disabled=true;});
   else window.uiRunPage?.updateButtons();
@@ -49,26 +49,24 @@ function report(text,details=[]) {
 function resultDetails(snapshot) {
   const result=snapshot.result;
   if(!result)return snapshot.unexpected_error?[snapshot.unexpected_error.message]:[];
-  const pubmed=result.provider==='pubmed' && result.statistics
-    ? [`PubMed: ${result.statistics.pubmed_search_total} search results · ${result.statistics.pubmed_records} fetched · ${result.statistics.pubmed_failed_batches} failed batches`,
-       ...(result.coverage||[]).map(unit=>`PubMed Discovery Coverage: ${unit.status}`)] : [];
-  return [...pubmed,...(result.warnings||[]),...(result.errors||[]),...(result.diagnostics||[]),...(result.issues||[])].map(item=>typeof item==='string'?item:item.message);
+  return [...(result.warnings||[]),...(result.errors||[]),...(result.diagnostics||[]),...(result.issues||[])].map(item=>typeof item==='string'?item:item.message);
 }
 function showState(data) {
   const {snapshot,progress}=data;
-  $('run-title').textContent='Run '+(window.uiRunPage?.providerName(snapshot.provider) || providerLabels[snapshot.provider]);
+  $('run-title').textContent=providerLabels[snapshot.provider] || snapshot.provider;
   if(data.providers)window.dispatchEvent(new CustomEvent('run-state',{detail:data}));
   $('run-elapsed').textContent=progress.elapsed_text || '0s';
   $('run-stage').textContent=progress.stage_label || snapshot.status;
   $('run-description').textContent=progress.announcement_message || (snapshot.inactivity_warning?'暂未收到新的活动。':'');
   dialog.dataset.waitingForUser=String(snapshot.provider==='wos' && !!snapshot.waiting_for_user);
   taskPageButton.hidden=snapshot.provider!=='wos' || snapshot.status!=='RUNNING';
-  $('run-wos-cancel').hidden=snapshot.provider!=='wos' || snapshot.status!=='RUNNING';
+  $('run-wos-cancel').hidden=snapshot.status!=='RUNNING';
+  $('run-wos-cancel').textContent='取消 '+(providerLabels[snapshot.provider] || 'Run');
 }
 async function finish(run,data) {
   if(active!==run || run.ended)return;
   run.ended=true;clearTimeout(run.timer);run.visual?.stop();showState(data);
-  const snapshot=data.snapshot,label='Run '+window.uiRunPage.providerName(snapshot.provider);
+  const snapshot=data.snapshot,label=providerLabels[snapshot.provider];
   const summary=resultHeadline(data.result_summary);
   $('run-stage').textContent='RUN FINISHED';$('run-description').textContent=summary;
   const details=resultMessages(data.result_summary);
@@ -107,7 +105,7 @@ function open(data,trigger=null) {
   $('run-wash').hidden=true;$('run-stage-layer').hidden=false;
   dialog.classList.remove('returning');dialog.querySelector('.run-background').hidden=false;
   if(!run.inline)run.visual=new RunVisual(dialog,run.reduced);
-  $('run-wos-cancel').hidden=run.provider!=='wos';$('run-wos-cancel').disabled=false;
+  $('run-wos-cancel').hidden=false;$('run-wos-cancel').disabled=false;
   disableRunButtons(true);
   present(run);showState(data);void run.visual?.start();
   if(data.snapshot.status==='FINISHED')void finish(run,data);else void poll(run);
@@ -119,15 +117,15 @@ async function start(provider,trigger=null) {
   try {
     if(window.allfoldAutosave && !await window.allfoldAutosave.flush()){report('配置尚未落盘，请检查 Pending / Failed / Conflict 状态。');return;}
     if(!window.uiRunPage?.canRun(provider))return;
-    open(await uiNext.request('/api/ui-next/'+endpoint,provider==='wos'?{}:{provider}),trigger);
+    open(await uiNext.request('/api/ui-next/'+endpoint,provider==='wos'?{}:{provider,enabled_providers:window.uiRunPage.selectedProviders()}),trigger);
   }
   catch(error){report(providerLabels[provider]+' 启动失败',resultDetails(error.state?.snapshot || {}).concat(error.message));}
   finally {starting=false;if(!active){try{await window.uiRunPage.refresh();}finally{disableRunButtons(false);}}}
 }
 $('run-wos-cancel').addEventListener('click',async()=>{
-  if(active?.kind!=='run-wos')return;
+  if(!active)return;
   $('run-wos-cancel').disabled=true;
-  try {await uiNext.request('/api/ui-next/run-wos/cancel',{task_id:active.taskID});}
+  try {await uiNext.request('/api/ui-next/'+active.kind+'/cancel',active.kind==='run-wos'?{task_id:active.taskID}:{});}
   catch(error){$('run-description').textContent=error.message;$('run-wos-cancel').disabled=false;}
 });
 dialog.addEventListener('cancel',event=>event.preventDefault());

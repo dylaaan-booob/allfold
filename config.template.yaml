@@ -4,9 +4,16 @@ venue_whitelist: list.md
 keyword_expression: 'machine AND learn*'
 provider_order:
   - openalex
+  - europe_pmc
+  - dblp
+  - zbmath
   - crossref
-  - pubmed
+  - arxiv
+  - biorxiv
+  - medrxiv
   - wos
+enabled_providers:
+  - openalex
 provider_aliases: {}
 crossref_mailto: ''
 output_dir: workspace

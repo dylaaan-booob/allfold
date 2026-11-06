@@ -15,11 +15,11 @@ from typing import Any
 import yaml
 from pydantic import SecretStr
 
-from allfold.integrations.pubmed_credentials import read_credential, write_credential, validate_key, PubMedCredentialError
+from allfold.integrations.openalex_credentials import read_credential, write_credential, validate_key, OpenAlexCredentialError
 
 from allfold.config import (
     AccessService,
-    SettingsList,
+    SettingsList, ConferenceConfig, validate_conference_configs, parse_conferences_text,
     DEFAULT_PROVIDER_ORDER,
     parse_access_services_text,
     parse_settings_list_text,
@@ -92,19 +92,15 @@ class MonitorDraft:
     monitor_revision: ContentRevision
     journal_revision: ContentRevision
     access_services: tuple[AccessService, ...] = ()
+    conferences: tuple[ConferenceConfig, ...] = ()
     groups: tuple[str, ...] = ()
     custom_labels: tuple[str, ...] = ()
     institution: InstitutionConfig | None = None
     kept_workflow: KeptWorkflowConfig = KeptWorkflowConfig()
-    pubmed_query_mode: str = "title_abstract"
     provider_aliases: dict[str, str] = field(default_factory=dict)
     provider_order: tuple[str, ...] = DEFAULT_PROVIDER_ORDER
+    enabled_providers: tuple[str, ...] = ("openalex",)
     crossref_mailto: str = ""
-    pubmed_key_configured: bool = field(default=False, compare=False)
-    pubmed_key_revision: str = "missing"
-    pubmed_key_error: str = field(default="", compare=False)
-    pubmed_key_action: str = "keep"
-    pubmed_api_key: SecretStr | None = field(default=None, repr=False)
     openalex_key_configured: bool = field(default=False, compare=False)
     openalex_key_revision: str = "missing"
     openalex_key_error: str = field(default="", compare=False)
@@ -195,7 +191,6 @@ class SettingsSaveResult:
     monitor_written: bool
     monitor_revision: ContentRevision
     journal_revision: ContentRevision
-    pubmed_key_written: bool = False
     openalex_key_written: bool = False
 
 
@@ -216,9 +211,9 @@ class _DraftFields:
     log_level: LogLevel | str
     institution: InstitutionConfig | None = None
     kept_workflow: KeptWorkflowConfig = KeptWorkflowConfig()
-    pubmed_query_mode: str = "title_abstract"
     provider_aliases: dict[str, str] = field(default_factory=dict)
     provider_order: tuple[str, ...] = DEFAULT_PROVIDER_ORDER
+    enabled_providers: tuple[str, ...] = ("openalex",)
     crossref_mailto: str = ""
 
 
@@ -337,8 +332,8 @@ def _recovery_fields(config_path: Path, raw: Any) -> _DraftFields:
         log_level=recovered_log,
         institution=institution,
         kept_workflow=kept_workflow,
-        pubmed_query_mode=raw.get("pubmed_query_mode", "title_abstract"),
         provider_order=raw.get("provider_order", defaults.provider_order),
+        enabled_providers=raw.get("enabled_providers", defaults.enabled_providers),
         provider_aliases=raw.get("provider_aliases", {}) if isinstance(raw.get("provider_aliases", {}), dict) else {},
         crossref_mailto=raw.get("crossref_mailto", "") if isinstance(raw.get("crossref_mailto", ""), str) else "",
     )
@@ -393,7 +388,7 @@ def _monitor_fields(
             log_level=definition.log_level,
             institution=definition.institution,
             kept_workflow=definition.kept_workflow,
-            pubmed_query_mode=definition.pubmed_query_mode,
+            enabled_providers=definition.enabled_providers,
             provider_order=definition.provider_order, provider_aliases=definition.provider_aliases, crossref_mailto=definition.crossref_mailto,
         ),
         (),
@@ -445,6 +440,7 @@ def load_settings(config_path: Path) -> SettingsLoadResult:
     journal_issues: list[SettingsIssue] = [journal_snapshot.issue] if journal_snapshot.issue else []
     journals: tuple[JournalConfig, ...] = ()
     access_services: tuple[AccessService, ...] = ()
+    conferences: tuple[ConferenceConfig, ...] = ()
     groups: tuple[str, ...] = ()
     custom_labels: tuple[str, ...] = ()
     if not journal_snapshot.revision.exists:
@@ -474,6 +470,13 @@ def load_settings(config_path: Path) -> SettingsLoadResult:
                     path=journal_path,
                 )
             )
+        # Only the successful SQLite projection owns Conferences. Legacy Markdown
+        # is left untouched and is never used for automatic Conference migration.
+        if journal_snapshot.issue is None:
+            try:
+                conferences = parse_conferences_text(contents, path=journal_path)
+            except ConfigurationError as error:
+                journal_issues.append(SettingsIssue(SettingsIssueSource.JOURNAL_DATA, str(error), field="conferences", path=journal_path))
         headings = {line.strip() for line in contents.splitlines()}
         if "## Access Services" in headings:
             try:
@@ -498,12 +501,12 @@ def load_settings(config_path: Path) -> SettingsLoadResult:
                                                     field=error.field, path=journal_path))
 
     credentials = {}
-    for provider in ("pubmed", "openalex"):
+    for provider in ("openalex",):
         try:
             key, key_revision = read_credential(config_path, provider=provider)
             configured, error_text = key is not None, ""
             del key
-        except PubMedCredentialError as error:
+        except OpenAlexCredentialError as error:
             configured, key_revision, error_text = False, "unreadable", str(error)
         credentials.update({f"{provider}_key_configured": configured,
                             f"{provider}_key_revision": key_revision, f"{provider}_key_error": error_text})
@@ -512,6 +515,7 @@ def load_settings(config_path: Path) -> SettingsLoadResult:
         name=fields.name,
         keyword_expression=fields.keyword_expression,
         journals=journals,
+        conferences=conferences,
         access_services=access_services,
         groups=groups,
         custom_labels=custom_labels,
@@ -522,7 +526,7 @@ def load_settings(config_path: Path) -> SettingsLoadResult:
         journal_revision=journal_snapshot.revision,
         institution=fields.institution,
         kept_workflow=fields.kept_workflow,
-        pubmed_query_mode=fields.pubmed_query_mode,
+        enabled_providers=fields.enabled_providers,
         provider_order=fields.provider_order, provider_aliases=fields.provider_aliases, crossref_mailto=fields.crossref_mailto,
     )
     return SettingsLoadResult(
@@ -541,7 +545,7 @@ def _read_journal_snapshot(config_path: Path, legacy_path: Path) -> _FileSnapsho
         state = snapshot.state
         contents = render_settings_list_text(None, state.journals, path=legacy_path,
                                             groups=state.groups, custom_labels=state.custom_labels,
-                                            access_services=state.access_services)
+                                            access_services=state.access_services, conferences=state.conferences)
         return _FileSnapshot(snapshot.revision, contents, None)
     except ConfigurationError as error:
         # Invalid initial Markdown can still be inspected, but its issue blocks Save.
@@ -562,7 +566,7 @@ def _draft_monitor_mapping(
         "name": draft.name,
         "venue_whitelist": venue_whitelist,
         "keyword_expression": draft.keyword_expression,
-        "pubmed_query_mode": draft.pubmed_query_mode,
+        "enabled_providers": draft.enabled_providers,
         "provider_order": draft.provider_order,
         "provider_aliases": draft.provider_aliases,
         "crossref_mailto": draft.crossref_mailto,
@@ -596,7 +600,7 @@ def validate_settings(
                 venue_whitelist=storage_fields.venue_whitelist,
             ),
         )
-        for provider in ("pubmed", "openalex"):
+        for provider in ("openalex",):
             action = getattr(draft, f"{provider}_key_action")
             secret = getattr(draft, f"{provider}_api_key")
             if action not in {"keep", "replace", "clear"}:
@@ -604,9 +608,10 @@ def validate_settings(
             if action == "replace" and not validate_key(secret.get_secret_value() if secret else None, provider=provider):
                 raise ConfigurationError("API Key has an invalid format", field=f"{provider}_api_key")
         validate_access_mapping(draft.journals, draft.access_services)
-        config = build_loaded_config(config_path, definition, draft.journals)
+        config = build_loaded_config(config_path, definition, draft.journals, draft.conferences)
         validate_journal_storage(config.journals)
         validate_entity_mapping(draft.journals, draft.groups, draft.custom_labels)
+        validate_entity_mapping(validate_conference_configs(draft.conferences), draft.groups, draft.custom_labels)
         resolved = validate_runtime_config(config, today=date.today())
     except ConfigurationError as error:
         return SettingsValidationResult(
@@ -682,7 +687,7 @@ def _render_monitor_yaml(
         "name": draft.name,
         "venue_whitelist": str(venue_whitelist),
         "keyword_expression": draft.keyword_expression,
-        "pubmed_query_mode": draft.pubmed_query_mode,
+        "enabled_providers": list(draft.enabled_providers),
         "provider_order": list(draft.provider_order),
         "provider_aliases": draft.provider_aliases,
         "crossref_mailto": draft.crossref_mailto,
@@ -757,14 +762,14 @@ def save_settings(
                 else:
                     # Reset owns absent targets too; existence cannot bypass exclusion.
                     stack.enter_context(workspace_path_lock(path))
-            changed_keys = [provider for provider in ("pubmed", "openalex")
+            changed_keys = [provider for provider in ("openalex",)
                             if getattr(draft, f"{provider}_key_action") != "keep"]
             for provider in changed_keys:
                 try:
                     _, actual = read_credential(config_path, provider=provider)
                     if actual != getattr(draft, f"{provider}_key_revision"):
                         raise ContentChangedError("Credentials changed; reload Settings")
-                except (PubMedCredentialError, ContentChangedError) as error:
+                except (OpenAlexCredentialError, ContentChangedError) as error:
                     return _result_from_state(outcome=SettingsSaveOutcome.REVISION_CONFLICT,
                         validation=validate_settings(config_path, draft), state=load_settings(config_path),
                         issues=(SettingsIssue(SettingsIssueSource.STORAGE, str(error), field=f"{provider}_api_key"),),
@@ -783,12 +788,12 @@ def save_settings(
                     for lock in locks:
                         lock.verify()
                     write_credential(config_path, provider=provider, action=action, key=target_key, revision=revision)
-                except (PubMedCredentialError, ContentChangedError, CompareReadError, OSError) as error:
+                except (OpenAlexCredentialError, ContentChangedError, CompareReadError, OSError) as error:
                     committed = False
                     try:
                         actual_key, actual_revision = read_credential(config_path, provider=provider)
                         committed = actual_revision != revision and actual_key == target_key
-                    except PubMedCredentialError:
+                    except OpenAlexCredentialError:
                         pass
                     written[f"{provider}_key_written"] = committed
                     partial = result.journal_written or result.monitor_written or any(written.values())
@@ -877,9 +882,9 @@ def _save_settings(
 
     storage_fields, _ = _monitor_fields(config_path, monitor_snapshot)
     list_unchanged = (
-        (draft.journals, draft.access_services, draft.groups, draft.custom_labels)
+        (draft.journals, draft.access_services, draft.groups, draft.custom_labels, draft.conferences)
         == (stored_state.draft.journals, stored_state.draft.access_services,
-            stored_state.draft.groups, stored_state.draft.custom_labels)
+            stored_state.draft.groups, stored_state.draft.custom_labels, stored_state.draft.conferences)
     )
     # 缺失的 Monitor 可以由用户明确提交的有效 Draft 首次创建；
     # 已存在但损坏的 Monitor，以及任何 Journal/Mapping 问题都不能借此覆盖。
@@ -947,20 +952,20 @@ def _save_settings(
     try:
         # 数据归属决定写入目标。纯用户状态编辑不触及 YAML。
         journal_changed = (
-            (draft.journals, draft.access_services, draft.groups, draft.custom_labels)
+            (draft.journals, draft.access_services, draft.groups, draft.custom_labels, draft.conferences)
             != (stored_state.draft.journals, stored_state.draft.access_services,
-                stored_state.draft.groups, stored_state.draft.custom_labels)
+                stored_state.draft.groups, stored_state.draft.custom_labels, stored_state.draft.conferences)
         )
         monitor_changed = (
             not monitor_snapshot.revision.exists
-            or bool({"pubmed_query", "wos_query", "wos_query_mode", "wos_service_id"} & set(yaml.safe_load(monitor_snapshot.contents) or {}))
+            or bool({"wos_query", "wos_query_mode", "wos_service_id"} & set(yaml.safe_load(monitor_snapshot.contents) or {}))
             or _draft_monitor_mapping(draft, venue_whitelist=storage_fields.venue_whitelist)
             != _draft_monitor_mapping(stored_state.draft, venue_whitelist=storage_fields.venue_whitelist)
         )
         journal_target = (
             render_settings_list_text(journal_snapshot.contents, draft.journals,
                                       groups=draft.groups, custom_labels=draft.custom_labels,
-                                      access_services=draft.access_services, path=journal_path)
+                                      access_services=draft.access_services, conferences=draft.conferences, path=journal_path)
             if journal_changed else journal_snapshot.contents
         )
         monitor_target = (
@@ -986,7 +991,7 @@ def _save_settings(
             raise ContentChangedError("monitor config changed before journal data write")
         if journal_changed:
             compare_write_user_state(config_path,
-                SettingsList(draft.journals, draft.groups, draft.custom_labels, draft.access_services),
+                SettingsList(draft.journals, draft.groups, draft.custom_labels, draft.access_services, draft.conferences),
                 journal_snapshot.revision)
     except (ContentChangedError, FileExistsError) as error:
         state = load_settings(config_path)
@@ -1007,8 +1012,8 @@ def _save_settings(
         state = load_settings(config_path)
         # A storage error can follow commit; reload the scope to report the actual result.
         committed = journal_changed and not state.issues and (
-            state.draft.journals, state.draft.groups, state.draft.custom_labels, state.draft.access_services
-        ) == (draft.journals, draft.groups, draft.custom_labels, draft.access_services)
+            state.draft.journals, state.draft.groups, state.draft.custom_labels, state.draft.access_services, state.draft.conferences
+        ) == (draft.journals, draft.groups, draft.custom_labels, draft.access_services, draft.conferences)
         return _result_from_state(
             outcome=SettingsSaveOutcome.PARTIAL_SAVE if committed else SettingsSaveOutcome.WRITE_FAILED,
             validation=validation,

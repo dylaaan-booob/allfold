@@ -4,6 +4,11 @@ export function readImportChoices(container) {
   const choices={};
   container.querySelectorAll('[data-scope-row]').forEach(element=>{
     const choice={skip:element.querySelector('[data-import-skip]').checked};
+    if(element.dataset.scopeKind==='conference'){
+      for(const field of ['conference','dblp stream'])choice[field]=element.querySelector(`[data-import-field="${field}"]`).value;
+      const candidate=element.querySelector('[data-import-candidate]').value;if(candidate)choice.candidate=JSON.parse(candidate);
+      choices[element.dataset.scopeRow]=choice;return;
+    }
     for(const field of ['journal','issn','eissn'])choice[field]=element.querySelector(`[data-import-field="${field}"]`).value;
     const candidate=element.querySelector('[data-import-candidate]').value;
     if(candidate)choice.candidate=JSON.parse(candidate);
@@ -22,6 +27,10 @@ export function readImportChoices(container) {
 export function renderImportRows(p,choices={}) {
   return p.rows.map(row=>{
     const input=(field,label)=>`<label>${label}<input data-import-field="${field}" value="${esc(row.supplied[field] || '')}"></label>`;
+    if(row.kind==='conference') {
+      const choice=choices[row.index] || {};
+      return `<fieldset data-scope-row="${row.index}" data-scope-kind="conference"><legend>${esc(row.supplied.conference || 'Conference')} · ${esc(row.status)}</legend><p>${row.messages.map(esc).join(' · ')}</p><p>Group: ${esc(row.supplied.group || 'Ungrouped')} · Labels: ${esc(row.supplied.label || '(none)')}</p><label><input type="checkbox" data-import-skip ${choice.skip?'checked':''}> Skip this row</label>${input('conference','Conference')}${input('dblp stream','DBLP Stream')}<label>Series<select data-import-candidate><option value="">Automatic exact match</option>${row.candidates.map(c=>`<option value="${esc(JSON.stringify({id:c.id,dblp_stream:c.dblp_stream}))}" ${choice.candidate?.id===c.id?'selected':''}>${esc(c.abbreviation)} · ${esc(c.dblp_stream)}</option>`).join('')}</select></label></fieldset>`;
+    }
     const current=p.proposed.access_services.find(s=>s.id===row.journal?.access_service_id);
     const choice=choices[row.index] || {};
     const method=choice.unresolved?'unresolved':choice['access method'] || 'keep';

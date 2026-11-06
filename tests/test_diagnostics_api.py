@@ -16,7 +16,7 @@ def configuration(tmp_path):
 def test_history_export_and_logs_reset_require_csrf_one_use_and_leave_workspace(tmp_path):
     config = configuration(tmp_path)
     app = create_app(config, electron_bridge=OfflineBridge(), diagnostics_root=tmp_path / 'logs')
-    app.state.diagnostics.begin('run', 'run_one', provider='pubmed')
+    app.state.diagnostics.begin('run', 'run_one', provider='integrated')
     app.state.diagnostics.finish('run_one', 'partial', statistics={'retrieved': 7})
     workspace = tmp_path / 'workspace'
     workspace.mkdir()
@@ -185,8 +185,8 @@ def test_logs_reset_and_run_start_finish_without_a_diagnostic_lock_deadlock(tmp_
         from electron_test_helpers import OfflineBridge
 
         root = Path(sys.argv[1])
-        config = root / 'monitor.yaml'
-        config.write_text('keyword_expression: synthetic\\noutput_dir: workspace\\n')
+        from test_web_app import write_valid_config
+        config, _ = write_valid_config(root)
         app = create_app(config, electron_bridge=OfflineBridge(), diagnostics_root=root / 'logs')
         coordinator = app.state.run_coordinator
         beginning = threading.Event()
@@ -217,7 +217,7 @@ def test_logs_reset_and_run_start_finish_without_a_diagnostic_lock_deadlock(tmp_
             preview = client.get('/api/ui-next/settings/reset-preview?scope=logs').json()
             results = {}
             def start():
-                results['start'] = coordinator.start(RunProvider.PUBMED).outcome.value
+                results['start'] = coordinator.start(RunProvider.INTEGRATED).outcome.value
             def reset():
                 response = client.post('/settings/logs-reset', data={
                     'csrf_token': app.state.csrf_token, 'reset_token': preview['reset_token']})

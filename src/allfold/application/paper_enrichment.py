@@ -27,7 +27,7 @@ class EnrichmentTarget:
     workspace: Path
     path: Path
     paper_id: UUID
-    doi: str
+    doi: str | None
     original: str
     workspace_identity: tuple[int, int]
     directory_identity: tuple[int, int]
@@ -54,19 +54,21 @@ def read_paper_target(workspace: Path, paper_id: UUID) -> EnrichmentTarget:
         identity = parse_paper_identity(path, read.contents)
         if state is None or not state.updateable or state.paper_id != paper_id:
             raise ValueError('Paper is invalid or its identity changed')
-        if identity is None or identity.problems or len(identity.dois) != 1:
-            raise ValueError('Paper DOI is missing or conflicting')
+        if identity is None or identity.problems:
+            raise ValueError('Paper identity is missing or conflicting')
         missing_abstract = not state.abstract or not state.abstract.strip()
         missing_date = state.publication_date is None or len(state.publication_date) == 7
         missing_authors = not state.authors
         lock.verify()
-        return EnrichmentTarget(lock.path, path, paper_id, next(iter(identity.dois)), read.contents,
+        return EnrichmentTarget(lock.path, path, paper_id, identity.primary_doi, read.contents,
                               lock.identity, read.directory_identity, read.file_identity, state.publication_date,
                               missing_abstract, missing_date, missing_authors)
 
 
 def read_enrichment_target(workspace: Path, paper_id: UUID) -> EnrichmentTarget:
     target = read_paper_target(workspace, paper_id)
+    if not target.doi:
+        raise ValueError("A valid primary DOI is required for external Enrich")
     if not (target.missing_abstract or target.missing_date or target.missing_authors):
         raise ValueError('Paper already has an Abstract, publication date and Authors')
     return target

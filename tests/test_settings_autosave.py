@@ -79,7 +79,7 @@ def test_ordinary_run_defers_autosave_until_worker_settles(tmp_path, monkeypatch
     with TestClient(app, base_url='http://localhost') as client:
         opened = client.get('/api/ui-next/settings').json()
         try:
-            started = client.post('/api/ui-next/run', json={'csrf_token': opened['csrf_token'], 'provider': 'crossref'})
+            started = client.post('/api/ui-next/run', json={'csrf_token': opened['csrf_token'], 'provider': 'integrated'})
             assert started.status_code == 200 and entered.wait(2)
             assert app.state.browser_task_lock.owner is None
             pending = client.post('/api/ui-next/settings/autosave', json=patch_body(opened, name='Later')).json()

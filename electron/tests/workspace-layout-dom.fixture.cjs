@@ -5,23 +5,25 @@ const temp=fs.mkdtempSync(path.join(os.tmpdir(),'allfold-layout-dom-'));
 app.setPath('userData',temp);app.commandLine.appendSwitch('force-prefers-reduced-motion','reduce');
 const ui=path.resolve(__dirname,'../../src/allfold/web/static/ui_next');
 const journals=Array.from({length:24},(_,i)=>({name:'Synthetic Journal '+i,issn:`000${i}-0000`,eissn:null,group:'Group '+i%4,labels:'Label '+i%3,access_service_id:i%2?'svc_fixture':null}));
+const conference={id:'conf_00000000000000000000000000000001',name:'International Conference on Machine Learning',abbreviation:'ICML',aliases:[],dblp_stream:'streams/conf/icml',group:null,labels:[]};
 const cover_search={phase:'Idle',busy:false,supported:false};
 const settings={config_path:'/fixture/monitor.yaml',csrf_token:'fixture',issues:[],covers:{},cover_search,saved_workspace:'/fixture/workspace',values:{
   name:'Synthetic Monitor',keyword_expression:'causal',from_month:'2026-01',to_month:'2026-01',output_dir:'workspace',log_level:'INFO',
   monitor_revision_exists:'1',monitor_revision_digest:'fixture',journal_revision_exists:'1',journal_revision_digest:'fixture',
   institution_name:'',institution_idp_entity_id:'',auto_import_after_preparation:false,transition_delay_seconds:'3',display_name:'',
-  provider_aliases:{},provider_order:['openalex','crossref','pubmed','wos'],groups:Array.from({length:20},(_,i)=>'Group '+i),
-  custom_labels:['Label 0','Label 1','Label 2'],journals,access_services:[{id:'svc_fixture',name:'Synthetic Service',access_method:'manual',access_url:''}],
+  provider_aliases:{},provider_order:['openalex','europe_pmc','dblp','zbmath','crossref','arxiv','biorxiv','medrxiv','wos'],enabled_providers:['openalex'],groups:Array.from({length:20},(_,i)=>'Group '+i),
+  conferences:[],custom_labels:['Label 0','Label 1','Label 2'],journals,access_services:[{id:'svc_fixture',name:'Synthetic Service',access_method:'manual',access_url:''}],
 }};
-const paper=(i,status='candidate')=>({id:'paper-'+i,title:'Synthetic Paper '+i,publication_date:'2026-10-01',abstract:('An isolated synthetic paragraph for reader scroll verification. '.repeat(12)+'\n\n').repeat(24),authors:['Synthetic Author'],doi:'10.5555/layout-'+i,discovered_at:'2026-10-01T00:00:00Z',status,enrichPhase:'Idle'});
+const paper=(i,status='candidate')=>({id:'paper-'+i,title:'Synthetic Paper '+i,publication_date:'2026-10',conference:'Synthetic Conference',publication_type:'conference',first_public_at:'2022-04',accepted_at:'2026-09',accepted_approximate:true,date_note:'Acceptance approximated by formal publication',external_ids:{dblp:'conf/example/Paper'},indexed_terms:[{value:'62G05',kind:'MSC',source:'zbmath'}],sources:[{provider:'dblp',record_id:'conf/example/Paper',role:'discovery'}],abstract:('An isolated synthetic paragraph for reader scroll verification. '.repeat(12)+'\n\n').repeat(24),authors:['Synthetic Author'],doi:i===0?null:'10.5555/layout-'+i,discovered_at:'2026-10-01T00:00:00Z',status,enrichPhase:'Idle'});
 const records=journals.map((j,i)=>({key:j.issn,issn:j.issn,name:j.name,group:j.group,labels:[],cover:null,papers:[paper(i*2),paper(i*2+1)]}));
+Object.assign(records[0],{name:'Synthetic Conference',source_type:'conference',issn:null,dblp_stream:'streams/conf/icml',group:'Old scope'});
 const workspace={csrf_token:'fixture',import_token:'fixture',issues:[],counts:{candidates:48,active_journals:24},subjects:[{name:'Group 0',journals:records}],
   kept:{papers:[{paper:paper(10,'kept'),journal:records[0]},{paper:paper(11,'kept'),journal:records[1]}],journals:records,services:[],settings:{},titles:{}}};
-const run={active:false,snapshot:{status:'IDLE',provider:null},providers:Object.fromEntries(settings.values.provider_order.map(id=>[id,{enabled:false,message:'Offline fixture',result_summary:null}]))};
+const run={active:false,snapshot:{status:'IDLE',provider:null},providers:Object.fromEntries(['integrated','wos'].map(id=>[id,{enabled:false,message:'Offline fixture',result_summary:null}]))};
 const keptQueue={services:[{id:'all',name:'All Services',kept:2,eligible:2},{id:'unassigned',name:'Unassigned',kept:2,eligible:2}],papers:[],import_token:'fixture'};
 let keptState={active:false,phase:'idle',navigation:null,can_continue:false,can_cancel:false};
 const mimes={'.html':'text/html','.js':'text/javascript','.css':'text/css','.json':'application/json','.woff2':'font/woff2','.ttf':'font/ttf','.otf':'font/otf','.png':'image/png','.mp4':'video/mp4'};
-let rejectAutosave=false,resolveInitialCAS,credentialState={ok:false,error:'cas_store_unreadable',configured:false,username:'',revision:'d'.repeat(64)};
+let rejectAutosave=false,holdWorkspaceResponse,resolveInitialCAS,credentialState={ok:false,error:'cas_store_unreadable',configured:false,username:'',revision:'d'.repeat(64)};
 const credentialWrites=[];
 const server=http.createServer((req,res)=>{
   const route=new URL(req.url,'http://fixture').pathname;
@@ -41,11 +43,15 @@ const server=http.createServer((req,res)=>{
     });return;
   }
   if(route==='/api/ui-next/settings/autosave'){
-    let text='';req.on('data',chunk=>{text+=chunk;});req.on('end',()=>{const patch=JSON.parse(text);if(rejectAutosave){res.writeHead(200,{'Content-Type':'application/json'});res.end(JSON.stringify({...settings,saved:false,outcome:'WRITE_FAILED',message:'Synthetic offline write'}));return;}Object.assign(settings.values,patch.changes);settings.values.monitor_revision_digest+='x';setTimeout(()=>{res.writeHead(200,{'Content-Type':'application/json'});res.end(JSON.stringify({...settings,saved:true,outcome:'SAVED'}));},90);});return;
+    let text='';req.on('data',chunk=>{text+=chunk;});req.on('end',()=>{const patch=JSON.parse(text);if(rejectAutosave){res.writeHead(200,{'Content-Type':'application/json'});res.end(JSON.stringify({...settings,saved:false,outcome:'WRITE_FAILED',message:'Synthetic offline write'}));return;}if(patch.changes.keyword_expression==='lea*'){res.writeHead(200,{'Content-Type':'application/json'});res.end(JSON.stringify({...settings,saved:false,outcome:'INVALID_DRAFT',validation:{issues:[{field:'keyword_expression',message:'Prefix needs at least four characters'}]}}));return;}Object.assign(settings.values,patch.changes);settings.values.monitor_revision_digest+='x';setTimeout(()=>{res.writeHead(200,{'Content-Type':'application/json'});res.end(JSON.stringify({...settings,saved:true,outcome:'SAVED'}));},90);});return;
+  }
+  if(route==='/api/ui-next/workspace' && holdWorkspaceResponse){
+    const body=JSON.stringify(workspace),release=holdWorkspaceResponse;holdWorkspaceResponse=null;
+    release(()=>{res.writeHead(200,{'Content-Type':'application/json'});res.end(body);});return;
   }
   if(route.startsWith('/api/') || route==='/settings/covers/search'){
-    const data=route==='/api/ui-next/workspace'?workspace:route==='/api/ui-next/settings'?settings:
-      route==='/api/ui-next/run'?run:route==='/api/kept-workflow/queue'?keptQueue:route==='/api/ui-next/run-expression'?{providers:Object.fromEntries(settings.values.provider_order.map(id=>[id,{expression:'causal',error:null}]))}:route==='/settings/covers/search'?cover_search:
+    const data=route==='/api/ui-next/settings/conferences/search'?{candidates:[conference]}:route==='/api/ui-next/workspace'?workspace:route==='/api/ui-next/settings'?settings:
+      route==='/api/ui-next/run'?run:route==='/api/kept-workflow/queue'?keptQueue:route==='/api/ui-next/run-expression'?{providers:Object.fromEntries([...settings.values.provider_order,'integrated'].map(id=>[id,{expression:'causal',error:null}]))}:route==='/settings/covers/search'?cover_search:
       route==='/api/kept-workflow/state'?keptState:{active:false,phase:'idle',navigation:null,can_continue:false,can_cancel:false};
     res.writeHead(200,{'Content-Type':'application/json'});res.end(JSON.stringify(data));return;
   }
@@ -80,6 +86,75 @@ app.whenReady().then(async()=>{
     win.webContents.on('console-message',event=>{if(event.level==='error')console.error('RENDERER',event.message,event.lineNumber,event.sourceId);});
     await win.loadURL(`http://127.0.0.1:${server.address().port}/`);
     await ready("window.uiWorkspace?.ready() && !document.getElementById('array-candidates').disabled && document.querySelectorAll('#s-journals [data-journal]').length===24");
+    await check(()=>{
+      if(!document.getElementById('array-journal-issn').parentElement.hidden || !document.getElementById('array-journal-eissn').parentElement.hidden)throw Error('Conference profile displays Journal ISSN fields');
+      if(document.getElementById('array-source-stream')?.textContent!=='streams/conf/icml')throw Error('Conference profile lost its native DBLP Stream');
+    });
+    await check(()=>{
+      window.workspaceNavigation.go('journals',{instant:true});
+      const category=document.getElementById('s-source-kind'),label=document.getElementById('s-add-journal');
+      const updates=new MutationObserver(()=>{});updates.observe(label,{childList:true});
+      try{
+        for(let i=0;i<8;i++){
+          const conferences=i%2===0;
+          category.value=conferences?'conferences':'journals';category.dispatchEvent(new Event('change'));
+          if(label.textContent!==(conferences?'+ CONFERENCE':'+ JOURNAL') || document.querySelectorAll('#s-journals [data-journal]').length!==(conferences?0:24))throw Error('Repeated category switch displayed the wrong source list');
+          if(updates.takeRecords().length!==1)throw Error('One category switch repeatedly rebuilt its displayed label');
+        }
+      }finally{updates.disconnect();}
+    });
+    await check(()=>{
+      window.workspaceNavigation.go('journals',{instant:true});
+      const category=document.getElementById('s-source-kind');category.value='conferences';category.dispatchEvent(new Event('change'));
+      if(document.querySelectorAll('#s-journals [data-journal]').length!==0)throw Error('Registry automatically followed series');
+      document.getElementById('s-add-journal').click();
+      document.getElementById('s-add-query').value='ICML';
+      [...document.querySelectorAll('#s-dialog button')].find(b=>b.textContent==='Search Registry').click();
+    });
+    await ready("document.querySelector('[name=conference-candidate]')");
+    await check(()=>{
+      document.querySelector('[name=conference-candidate]').checked=true;
+      [...document.querySelectorAll('#s-dialog button')].find(b=>b.textContent==='Follow').click();
+    });
+    await ready("window.allfoldAutosave.status==='Saved' && document.querySelectorAll('#s-journals [data-journal]').length===1");
+    await check(()=>{
+      if(document.getElementById('s-journal-detail').textContent.includes('ISSN') || document.getElementById('s-journal-service'))throw Error('Conference received Journal identity or Service controls');
+      const group=document.getElementById('s-conference-group');group.value='group:Group 0';group.dispatchEvent(new Event('change'));
+      const label=document.querySelector('[data-conference-label="Label 1"]');label.checked=true;label.dispatchEvent(new Event('change'));
+    });
+    await ready("window.allfoldAutosave.status==='Saved'");
+    await ready("window.inboxRun.available()");
+    const firstWorkspaceResponse=new Promise(resolve=>{holdWorkspaceResponse=resolve;});
+    records[0].group='Earlier saved group';
+    await check(()=>window.dispatchEvent(new Event('settings-saved')));
+    const releaseWorkspace=await firstWorkspaceResponse;
+    records[0].group='Group 0';records[0].labels=['Label 1'];
+    await check(()=>window.dispatchEvent(new Event('settings-saved')));
+    releaseWorkspace();
+    await ready("window.inboxRun.available() && window.inboxKept.candidates().find(entry=>entry.journal.source_type==='conference')?.journal.group==='Group 0'");
+    await check(()=>window.workspaceNavigation.go('workspace',{instant:true}));
+    await ready("document.getElementById('array-journal-subject').textContent==='Group 0'");
+    await check(()=>window.workspaceNavigation.go('journals',{instant:true}));
+    await size(600,480,"window.workspaceNavigation.current()==='journals'");
+    await capture('conferences-600');
+    await check(()=>{
+      if(document.getElementById('s-conference-group').value!=='group:Group 0' || !document.querySelector('[data-conference-label="Label 1"]').checked)throw Error('Conference assignments lost');
+      const category=document.getElementById('s-source-kind');category.value='journals';category.dispatchEvent(new Event('change'));
+      if(document.querySelectorAll('#s-journals [data-journal]').length!==24)throw Error('Conference edits modified Journals');
+    });
+    await size(1200,800,"window.workspaceNavigation.current()==='journals'");
+    await check(()=>{
+      window.workspaceNavigation.go('run',{instant:true});
+      const field=document.querySelector('[data-monitor="expression"]');field.value='lea*';field.dispatchEvent(new Event('input',{bubbles:true}));
+    });
+    await ready("document.querySelector('[data-monitor=expression]').getAttribute('aria-invalid')==='true'");
+    await check(()=>{
+      const field=document.querySelector('[data-monitor="expression"]');field.value='causal';field.dispatchEvent(new Event('input',{bubbles:true}));
+    });
+    await ready("window.allfoldAutosave.status==='Saved'");
+    await check(()=>{
+      if(document.querySelector('.s-validation-error') || document.querySelector('[data-monitor="expression"]').getAttribute('aria-invalid')==='true' || document.getElementById('s-message').textContent.includes('Prefix needs'))throw Error('Saved expression retains obsolete validation errors');
+    });
     await check(()=>{
       window.workspaceNavigation.go('kept',{instant:true});
       document.querySelector('[data-zotero-refresh]').click();
@@ -148,9 +223,18 @@ app.whenReady().then(async()=>{
       if(raw.includes('synthetic-complete-replacement') || raw.includes('new-fixture-user'))throw Error('credential input entered ordinary recovery storage');
       document.querySelector('#kept-sidebar [data-sidebar-close]').click();
       window.workspaceNavigation.go('workspace',{instant:true});
+      document.getElementById('paper-detail').scrollTop=0;
     });
+    await capture('paper-identity');
     await check(async()=>{
       const $=id=>document.getElementById(id),assert=(ok,message)=>{if(!ok)throw Error(message);},sleep=ms=>new Promise(r=>setTimeout(r,ms));
+      assert($('paper-first-public').textContent==='2022-04','first-public precision was not rendered');
+      assert($('paper-accepted').textContent==='≈ 2026-09','approximate acceptance was presented as exact');
+      assert($('paper-source').textContent==='Synthetic Conference','conference source was lost');
+      assert($('paper-identifiers').textContent.includes('dblp: conf/example/Paper'),'DOI-free identity was hidden');
+      assert($('paper-indexed-terms').textContent.includes('MSC · zbmath'),'indexed term type/source was lost');
+      assert($('paper-doi').textContent==='DOI unavailable' && !$('paper-doi').hasAttribute('href'),'DOI-free paper acquired a DOI link');
+      assert([...$('paper-metadata-details').querySelectorAll('[data-enrich]')].every(node=>node.disabled),'DOI-free external Enrich was enabled');
       window.layoutReader=$('paper-detail');window.layoutParent=layoutReader.parentElement;
       window.layoutOpenCount=0;window.layoutCloseCount=0;
       const open=window.inboxKept.openReader,close=window.inboxKept.closeReader;
@@ -280,9 +364,15 @@ app.whenReady().then(async()=>{
       if($('s-settings').dataset.sidebarMode!=='overlay' || $('settings-system-sidebar').hidden)throw Error('Settings System must overlay at 600x480');
       document.querySelector('#settings-system-sidebar [data-sidebar-close]').click();
       $('run-open').click();
+      $('s-run-overview-open').click();
+      if(document.querySelectorAll('[data-discovery-provider]').length!==8)throw Error('Integrated Provider choices missing');
+      if(document.querySelector('[data-provider="pubmed"], [data-monitor="pubmedKey"]'))throw Error('Retired PubMed still displayed');
+      const starts=[...document.querySelectorAll('#s-run [data-run-provider]')].filter(node=>!node.hidden && node.getClientRects().length);
+      if(starts.length!==2 || !starts.some(node=>node.dataset.runProvider==='integrated') || !starts.some(node=>node.dataset.runProvider==='wos'))throw Error('Run must expose Integrated and independent WoS only');
+
       if($('s-run').getBoundingClientRect().width>600 || $('s-run').querySelector('.workspace-content').clientWidth<360)throw Error('Run content lost available width');
       document.querySelector('#s-run [data-flyout]').click();
-      if($('run-provider-flyout').hidden || $('s-providers').children.length!==4)throw Error('Run Provider Directory did not open');
+      if($('run-provider-flyout').hidden || $('s-providers').children.length!==9)throw Error('Run Provider Directory did not open');
       $('s-providers').querySelector('[data-provider="crossref"]').click();
       if($('run-configuration-sidebar').hidden || $('s-run').dataset.sidebarMode!=='overlay')throw Error('Provider configuration must overlay at 600x480');
       if(!document.querySelector('#run-configuration-sidebar [data-monitor="crossrefMailto"]'))throw Error('Provider settings not in Functional Sidebar');
@@ -300,6 +390,8 @@ app.whenReady().then(async()=>{
     });
     await js("window.workspaceNavigation.go('run',{instant:true}),document.getElementById('s-run-overview-open').click()");
     await capture('run-small');
+    await js("document.querySelector('#s-run .s-run-body').scrollTop=document.getElementById('s-run-operations').offsetTop");
+    await capture('run-providers-small');
     await js("document.querySelector('#s-run [data-flyout]').click(),document.querySelector('#s-providers [data-provider=crossref]').click()");
     await capture('run-provider-overlay');
     await js("window.workspaceNavigation.go('settings',{instant:true})");
@@ -320,7 +412,13 @@ app.whenReady().then(async()=>{
 
     await check(async()=>{
       const $=id=>document.getElementById(id),assert=(ok,message)=>{if(!ok)throw Error(message);};
-      $('run-open').click();$('s-run-overview-open').click();
+      $('run-open').click();
+      $('s-run-overview-open').click();
+      if(document.querySelectorAll('[data-discovery-provider]').length!==8)throw Error('Integrated Provider choices missing');
+      if(document.querySelector('[data-provider="pubmed"], [data-monitor="pubmedKey"]'))throw Error('Retired PubMed still displayed');
+      const starts=[...document.querySelectorAll('#s-run [data-run-provider]')].filter(node=>!node.hidden && node.getClientRects().length);
+      if(starts.length!==2 || !starts.some(node=>node.dataset.runProvider==='integrated') || !starts.some(node=>node.dataset.runProvider==='wos'))throw Error('Run must expose Integrated and independent WoS only');
+$('s-run-overview-open').click();
       const input=document.querySelector('#s-run [data-monitor="name"]');input.focus();input.value='First autosave';input.dispatchEvent(new Event('input',{bubbles:true}));
       const pending=window.allfoldAutosave.flush();await new Promise(resolve=>setTimeout(resolve,20));
       input.value='Newer autosave';input.dispatchEvent(new Event('input',{bubbles:true}));

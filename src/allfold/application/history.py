@@ -70,7 +70,7 @@ def finish_run(store, task_id, result, *, provider=None, diagnostic=None, interr
         status if status in {'failed', 'cancelled'} else 'completed')
     stats = summary['statistics']
     retrieved = stats.get('returned_records', 0) if provider == 'wos' else sum(
-        value for key,value in stats.items() if key in {'openalex_records','crossref_discovery_records','pubmed_records'})
+        value for key,value in stats.items() if key in {'openalex_records','crossref_discovery_records','integrated_candidates'})
     observe(store, 'finish', task_id, outcome,
         statistics={'created':summary['created_papers'], 'unchanged':summary['existing_papers'],
             'retrieved':retrieved, 'warnings':sum(i.get('severity') != 'error' for i in summary['issues']),
