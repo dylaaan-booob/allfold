@@ -432,6 +432,7 @@ app.whenReady().then(async()=>{
     await capture('run-provider-overlay');
     await js("window.workspaceNavigation.go('settings',{instant:true})");
     await capture('settings-small');
+    await ready("window.inboxRun.available()");
     const pendingKeptSnapshot=new Promise(resolve=>{holdWorkspaceResponse=resolve;});
     await js("void window.allfoldRefreshWorkspace()");
     const releaseKeptSnapshot=await pendingKeptSnapshot;
