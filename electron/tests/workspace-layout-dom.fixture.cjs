@@ -23,7 +23,7 @@ const run={active:false,snapshot:{status:'IDLE',provider:null},providers:Object.
 const keptQueue={services:[{id:'all',name:'All Services',kept:2,eligible:2},{id:'unassigned',name:'Unassigned',kept:2,eligible:2}],papers:[],import_token:'fixture'};
 let keptState={active:false,phase:'idle',navigation:null,can_continue:false,can_cancel:false};
 const mimes={'.html':'text/html','.js':'text/javascript','.css':'text/css','.json':'application/json','.woff2':'font/woff2','.ttf':'font/ttf','.otf':'font/otf','.png':'image/png','.mp4':'video/mp4'};
-let rejectAutosave=false,resolveInitialCAS,credentialState={ok:false,error:'cas_store_unreadable',configured:false,username:'',revision:'d'.repeat(64)};
+let rejectAutosave=false,holdWorkspaceResponse,resolveInitialCAS,credentialState={ok:false,error:'cas_store_unreadable',configured:false,username:'',revision:'d'.repeat(64)};
 const credentialWrites=[];
 const server=http.createServer((req,res)=>{
   const route=new URL(req.url,'http://fixture').pathname;
@@ -44,6 +44,10 @@ const server=http.createServer((req,res)=>{
   }
   if(route==='/api/ui-next/settings/autosave'){
     let text='';req.on('data',chunk=>{text+=chunk;});req.on('end',()=>{const patch=JSON.parse(text);if(rejectAutosave){res.writeHead(200,{'Content-Type':'application/json'});res.end(JSON.stringify({...settings,saved:false,outcome:'WRITE_FAILED',message:'Synthetic offline write'}));return;}if(patch.changes.keyword_expression==='lea*'){res.writeHead(200,{'Content-Type':'application/json'});res.end(JSON.stringify({...settings,saved:false,outcome:'INVALID_DRAFT',validation:{issues:[{field:'keyword_expression',message:'Prefix needs at least four characters'}]}}));return;}Object.assign(settings.values,patch.changes);settings.values.monitor_revision_digest+='x';setTimeout(()=>{res.writeHead(200,{'Content-Type':'application/json'});res.end(JSON.stringify({...settings,saved:true,outcome:'SAVED'}));},90);});return;
+  }
+  if(route==='/api/ui-next/workspace' && holdWorkspaceResponse){
+    const body=JSON.stringify(workspace),release=holdWorkspaceResponse;holdWorkspaceResponse=null;
+    release(()=>{res.writeHead(200,{'Content-Type':'application/json'});res.end(body);});return;
   }
   if(route.startsWith('/api/') || route==='/settings/covers/search'){
     const data=route==='/api/ui-next/settings/conferences/search'?{candidates:[conference]}:route==='/api/ui-next/workspace'?workspace:route==='/api/ui-next/settings'?settings:
@@ -119,9 +123,15 @@ app.whenReady().then(async()=>{
       const label=document.querySelector('[data-conference-label="Label 1"]');label.checked=true;label.dispatchEvent(new Event('change'));
     });
     await ready("window.allfoldAutosave.status==='Saved'");
+    await ready("window.inboxRun.available()");
+    const firstWorkspaceResponse=new Promise(resolve=>{holdWorkspaceResponse=resolve;});
+    records[0].group='Earlier saved group';
+    await check(()=>window.dispatchEvent(new Event('settings-saved')));
+    const releaseWorkspace=await firstWorkspaceResponse;
     records[0].group='Group 0';records[0].labels=['Label 1'];
     await check(()=>window.dispatchEvent(new Event('settings-saved')));
-    await ready("window.inboxRun.available()");
+    releaseWorkspace();
+    await ready("window.inboxRun.available() && window.inboxKept.candidates().find(entry=>entry.journal.source_type==='conference')?.journal.group==='Group 0'");
     await check(()=>window.workspaceNavigation.go('workspace',{instant:true}));
     await ready("document.getElementById('array-journal-subject').textContent==='Group 0'");
     await check(()=>window.workspaceNavigation.go('journals',{instant:true}));
