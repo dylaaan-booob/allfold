@@ -109,7 +109,9 @@ app.whenReady().then(async()=>{
     assert(await host("document.getElementById('browser-pane').dataset.source==='run'&&document.getElementById('browser-pane').dataset.mode==='focus'"),'actual Run handoff did not request Run Focus host');assert(browser.selected===tab,'Run retargeted unrelated task page');await capture('shipped-run-fullscreen-handoff');
     await click(win.webContents,'#browser-return');assert(await host("document.getElementById('run-view').open&&getComputedStyle(document.getElementById('run-view')).visibility==='visible'&&document.activeElement.classList.contains('run-task-page')&&!document.getElementById('run-wos-cancel').disabled"),'Run fullscreen return rights/focus');
     assert(tab.id===id&&tab.view.webContents.session===session&&await page('fixtureLoad')===load,'actual workspace presentation recreated native Page/Session');assert((await session.cookies.get({url:origin})).some(cookie=>cookie.name==='synthetic_session'),'actual workspace presentation lost Cookie');
-    runActive=false;await ready(()=>host('!uiRun.active()'),'Run terminal state');browser.endTask();record.papers=[enrichPaper];workspace.counts.candidates=1;await host('allfoldRefreshWorkspace()');
+    runActive=false;await ready(()=>host('!uiRun.active()'),'Run terminal state');browser.endTask();win.webContents.focus();
+    await ready(()=>host('document.hasFocus()'),'Reader input focus');
+    record.papers=[enrichPaper];workspace.counts.candidates=1;await host('allfoldRefreshWorkspace()');
     await ready(()=>host('window.uiWorkspace?.ready()&&!!window.workspaceArray?.openPaper&&!workspaceArray.navigationBusy()'),'Enrich Workspace ready');
     await host("workspaceNavigation.go('workspace')");
     await ready(()=>host("workspaceArray.openPaper('paper-enrich')"),'Enrich reader open');
