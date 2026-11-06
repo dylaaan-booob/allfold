@@ -11,6 +11,7 @@ from dataclasses import dataclass
 from html.parser import HTMLParser
 
 from allfold.diagnostics import RunDiagnostic
+from allfold.paper_dates import date_value as _date_value
 from allfold.identifiers import normalize_doi, strong_identifiers, evidence_identifiers
 from allfold.models import (
     Author,
@@ -606,13 +607,6 @@ def _merged_external_ids(
 
 
 
-def _date_value(item: EvidenceDate) -> str:
-    value = f"{item.year:04d}"
-    if item.month is not None:
-        value += f"-{item.month:02d}"
-    if item.day is not None:
-        value += f"-{item.day:02d}"
-    return value
 
 
 def _is_preprint(record: ProviderWorkEvidence) -> bool:

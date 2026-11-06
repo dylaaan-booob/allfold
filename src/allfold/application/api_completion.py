@@ -1,7 +1,9 @@
 """Build evidence from saved Papers and apply a narrow, exact-revision update."""
 from allfold.application.paper_enrichment import fill_abstract, fill_authors, fill_publication_date, _commit_fields, set_managed_value
 from allfold.canonicalize import canonicalize_records
-from allfold.models import Author, MetadataSource, ProviderWorkEvidence, WorkflowStatus
+from allfold.models import Author, MetadataSource, ProviderRecordRef, ProviderWorkEvidence, WorkflowStatus
+from allfold.identifiers import strong_identifiers
+from allfold.persistence.safe_write import TextWriteCommittedError
 from allfold.paper_dates import merge_dates
 from allfold.persistence.markdown_state import parse_paper_state
 
@@ -14,6 +16,8 @@ def saved_paper_evidence(target):
         publication_type=state.publication_type or ('journal' if state.journal else None),
         publication_date=state.publication_date, abstract=state.abstract, authors=tuple(Author(name=name) for name in state.authors),
         external_ids=state.external_ids, related_dois=state.related_dois,
+        related_ids=tuple(ProviderRecordRef(provider=namespace, record_id=value) for namespace, value in
+            sorted(state.identity_external_ids - strong_identifiers(state.external_ids, state.related_dois))),
         dates=state.date_evidence, monitor_journal_issns=state.journal_issns)
 
 
@@ -58,5 +62,9 @@ def save_api_completion(target, records, *, operation_lock):
         contents = set_managed_value(contents, 'sources', [source.model_dump(mode='json', exclude_none=True) for source in sources])
         fields.append('sources')
     if contents != target.original:
-        _commit_fields(target, contents, operation_lock=operation_lock)
+        try:
+            _commit_fields(target, contents, operation_lock=operation_lock)
+        except TextWriteCommittedError as error:
+            error.saved_fields = fields
+            raise
     return fields

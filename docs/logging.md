@@ -25,7 +25,9 @@ fields. The snapshot does not persist across restarts or inspect saved PDF files
 counts and distinct evidence/no-match/lookup-failure/identity-mismatch counts.
 Its live result identifies each selected Paper and saved fields; normal no-match
 does not become a lookup failure. Previously committed writes survive a later
-failure or cancellation. There are no Run supplement-failure counters.
+failure or cancellation. If Paper commit succeeds but handoff storage fails,
+the Paper remains counted as updated and the task separately reports that
+evidence failure as Partial. There are no Run supplement-failure counters.
 
 Webpage Enrich's requested fields remain its ordinary Abstract/Authors/publication
 date gaps. Its saved-field allowlist also includes `date_evidence`, so event-only

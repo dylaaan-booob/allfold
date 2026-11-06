@@ -59,7 +59,7 @@ def authors_candidate(item):
 
 
 def translator_date_events(item, target, metadata_source):
-    from allfold.providers.discovery_evidence import source_date
+    from allfold.paper_dates import source_date
     from allfold.models import EvidenceDateKind
     events = []
     for field, kind in (('date', EvidenceDateKind.SOURCE), ('accepted', EvidenceDateKind.ACCEPTED)):

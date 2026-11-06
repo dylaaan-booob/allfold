@@ -66,11 +66,9 @@ def _targets(provider, records):
     metadata_answered = all(any(getattr(record, field) for record in records) for field in ('abstract', 'authors', 'publication_date'))
     if provider in {'arxiv', 'biorxiv', 'medrxiv'} and first_public_date(dates) and len(earliest) == 1 and metadata_answered:
         return []  # Aggregated first-version evidence already answers the gap.
-    targets, already_returned = set(), set()
+    targets = set()
     for record in records:
         ids = _identities(record)
-        if record.provenance.provider == provider and all((record.title, record.abstract, record.authors, record.publication_date)):
-            already_returned.update(strong_identifiers(record.external_ids))
         for namespace in LOOKUP_NAMESPACES[provider]:
             primary = strong_identifiers(record.external_ids)
             keys = {key for key in primary if key[0] == namespace}
@@ -85,7 +83,7 @@ def _targets(provider, records):
         other = 'medrxiv' if provider == 'biorxiv' else 'biorxiv'
         known_other = {ref.record_id for record in records for ref in record.related_ids if ref.provider == other}
         targets = {key for key in targets if not key[1].startswith('10.48550/arxiv.') and key[1] not in known_other}
-    return sorted(targets - already_returned)
+    return sorted(targets)
 
 
 def complete_metadata(
@@ -102,6 +100,7 @@ def complete_metadata(
     output = sorted(records, key=lambda r: (r.provenance.provider, r.provenance.record_id))
     issues, lookups = [], []
     attempted = set()
+    fetched = set()
     cache = request_cache if request_cache is not None else {}
     seen = {evidence_key(record) for record in output}
     while True:
@@ -113,7 +112,7 @@ def complete_metadata(
                 if cancel_event is not None and cancel_event.is_set():
                     return CompletionResult(tuple(output), tuple(issues), tuple(lookups), True)
                 request = provider, namespace, identifier
-                if request in attempted:
+                if request in attempted or request in fetched:
                     continue
                 attempted.add(request)
                 client = clients.get(provider)
@@ -136,6 +135,9 @@ def complete_metadata(
                                 status = 'identity_mismatch'
                             continue
                         status = 'evidence'
+                        # Reuse identities actually returned in this operation.
+                        # Ordinary completeness in old evidence is not a refresh ban.
+                        fetched.update((provider, ns, value) for ns, value in strong_identifiers(record.external_ids))
                         source = record.provenance.model_copy(update={'provider': provider, 'role': 'supplement'})
                         record = record.model_copy(update={'provenance': source})
                         key = evidence_key(record)

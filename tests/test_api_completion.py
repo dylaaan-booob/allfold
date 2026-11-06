@@ -247,3 +247,48 @@ def test_cancellation_retains_previous_commit_and_stops_later_papers(tmp_path):
     assert paths[0].read_bytes() != before[0]
     assert [path.read_bytes() for path in paths[1:]] == before[1:]
     assert calls == ['10.5555/0', '10.5555/1']
+
+
+def test_evidence_write_failure_reports_the_paper_update_that_was_committed(tmp_path):
+    from allfold.application.coordinators.api_completion import ApiCompletion
+    from allfold.application.browser_runtime import BrowserTaskLock
+    from allfold.diagnostics import DiagnosticStore
+    config, workspace = write_valid_config(tmp_path)
+    config.write_text(config.read_text() + '\ncompletion_providers: [crossref]\n')
+    paper_id, path = missing(workspace)
+    store = DiagnosticStore(config, root=tmp_path / 'logs')
+    def response(request):
+        (workspace / 'Evidence' / f'{paper_id}.json').mkdir(parents=True)
+        return httpx.Response(200, json={'message': {'DOI': '10.5555/decision', 'type': 'journal-article', 'abstract': 'Committed abstract'}})
+    service = ApiCompletion(config, BrowserTaskLock(), diagnostics=store, client_factory=lambda provider, **kwargs:
+        SupplementalClient(provider, interval=0, transport=httpx.MockTransport(response), **kwargs))
+    service.start((paper_id,))
+    service.join()
+    result = service.state()
+    assert load_workspace(workspace).inbox[0].abstract == 'Committed abstract'
+    assert result['phase'] == 'Partial' and result['results'][0]['status'] == 'updated'
+    assert result['results'][0]['warning'] and 'abstract' in result['results'][0]['saved_fields']
+    assert store.history()['records'][0]['statistics']['updated'] == 1
+
+
+def test_api_completion_uses_saved_identity_alias_without_a_handoff(tmp_path):
+    from allfold.application.coordinators.api_completion import ApiCompletion
+    from allfold.application.browser_runtime import BrowserTaskLock
+    from test_application_decisions import replace_frontmatter
+    config, workspace = write_valid_config(tmp_path)
+    config.write_text(config.read_text() + '\ncompletion_providers: [arxiv]\n')
+    paper_id, path = missing(workspace)
+    replace_frontmatter(path, doi=None, external_ids={}, identity_aliases=[{'provider': 'arxiv', 'record_id': '2201.12345'}])
+    calls = []
+    def response(request):
+        calls.append(request)
+        return httpx.Response(200, text='''<feed xmlns="http://www.w3.org/2005/Atom"><entry>
+            <id>https://arxiv.org/abs/2201.12345v2</id><title>Title</title><summary>Alias abstract</summary>
+            <published>2022-01-02T00:00:00Z</published></entry></feed>''')
+    service = ApiCompletion(config, BrowserTaskLock(), client_factory=lambda provider, **kwargs:
+        SupplementalClient(provider, interval=0, transport=httpx.MockTransport(response), **kwargs))
+    service.start((paper_id,))
+    service.join()
+    paper, = load_workspace(workspace).inbox
+    assert len(calls) == 1 and paper.abstract == 'Alias abstract'
+    assert paper.external_ids.doi is None and paper.first_public_at == '2022-01-02'

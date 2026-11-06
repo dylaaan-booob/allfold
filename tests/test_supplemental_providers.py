@@ -113,3 +113,14 @@ def test_preprint_version_changes_are_evidence_not_conflicting_snapshots():
     assert not result.issues and len(result.papers)==1
     assert result.papers[0].metadata.first_public_at=="2022-01-02"
     assert not any(d.publication_type=="journal" and d.kind.value=="accepted" for d in result.papers[0].date_evidence)
+
+
+def test_crossref_conference_acceptance_does_not_enter_journal_dates():
+    from allfold.paper_dates import journal_dates
+    with SupplementalClient('crossref', interval=0, transport=httpx.MockTransport(lambda _: httpx.Response(200, json={
+        'message': {'DOI': '10.5555/conference', 'type': 'proceedings-article', 'title': ['Conference Paper'],
+            'event': {'name': 'Conference'}, 'accepted': {'date-parts': [[2026, 5, 1]]}}}))) as client:
+        paper, = canonicalize_records(client.lookup('doi', '10.5555/conference')).papers
+    assert paper.metadata.publication_type == 'conference'
+    assert any(item.kind.value == 'accepted' and item.publication_type == 'conference' for item in paper.date_evidence)
+    assert not journal_dates(paper.date_evidence)

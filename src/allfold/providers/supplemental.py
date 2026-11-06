@@ -9,6 +9,7 @@ from xml.etree import ElementTree
 from allfold.identifiers import normalize_external_id, valid_doi
 from allfold.models import Author, EvidenceDate, EvidenceDateKind, ExternalIds, MetadataSource, ProviderTopic, ProviderWorkEvidence
 from allfold.providers.crossref import normalize_crossref_discovered_work
+from allfold.paper_dates import date_value as _date_string, source_date as _iso_date
 from allfold.providers.integrated import DiscoveryClient, DiscoveryError, IdentityMismatch
 
 
@@ -29,14 +30,6 @@ def _date(parts, kind):
         return None
 
 
-def _date_string(item):
-    return f"{item.year:04d}" + (f"-{item.month:02d}" if item.month else "") + (f"-{item.day:02d}" if item.day else "")
-
-
-def _iso_date(value, kind):
-    if not isinstance(value, str) or not re.fullmatch(r"\d{4}(?:-\d{2}){0,2}", value):
-        return None
-    return _date([int(part) for part in value.split("-")], kind)
 
 
 class SupplementalClient(DiscoveryClient):
@@ -176,6 +169,8 @@ class SupplementalClient(DiscoveryClient):
         record = item.to_evidence()
         preprint = raw.get("type") == "posted-content"
         conference = raw.get("type") == "proceedings-article"
+        publication_type = ('preprint' if preprint else 'conference' if conference else
+                            'journal' if raw.get('type') == 'journal-article' else None)
         dates = list(record.dates)
         for name, kind in (("accepted", EvidenceDateKind.ACCEPTED), ("posted", EvidenceDateKind.PREPRINT)):
             if name == "accepted" and preprint:
@@ -183,7 +178,7 @@ class SupplementalClient(DiscoveryClient):
             container = raw.get(name) or {}
             parts = container.get("date-parts", []) if isinstance(container, dict) else []
             if parts and (value := _date(parts[0], kind)):
-                dates.append(value.model_copy(update={"publication_type": "preprint" if preprint else "journal",
+                dates.append(value.model_copy(update={"publication_type": publication_type,
                     "first_version": preprint and kind == EvidenceDateKind.PREPRINT and str(raw.get("version")) in {"1", "v1"}}))
         related = set()
         relations = raw.get("relation") or {}
@@ -198,7 +193,7 @@ class SupplementalClient(DiscoveryClient):
                             for value in dates if value.kind == kind), None)
         return (record.model_copy(update={
             "provenance": source, "related_dois": tuple(sorted(related - {doi})), "dates": tuple(dates),
-            "publication_type": "preprint" if preprint else "conference" if conference else "journal" if raw.get("type") == "journal-article" else None,
+            "publication_type": publication_type,
             "journal": None if preprint or conference else _first(raw.get("container-title")),
             "conference": (raw.get("event") or {}).get("name") if conference else None,
             "publication_date": _date_string(publication) if publication else None,

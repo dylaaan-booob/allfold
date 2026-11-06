@@ -102,6 +102,7 @@ class ApiCompletion:
                         pass  # Traversal reports the unavailable adapter per requested lookup.
                 for target in targets:
                     result = dict(paper_id=str(target.paper_id), status='unchanged', saved_fields=[], lookups=[], issues=[])
+                    write_stage = None
                     try:
                         if self._stop.is_set():
                             result['status'] = 'cancelled'
@@ -126,14 +127,24 @@ class ApiCompletion:
                         with self._lock, commit_run_workspace(snapshot, cancel_event=self._stop) as lock:
                             if read_paper_target(target.workspace, target.paper_id, operation_lock=lock) != target:
                                 raise ContentChangedError('Paper changed; API completion was not saved')
+                            write_stage = 'paper'
                             fields = save_api_completion(target, completed.records, operation_lock=lock)
                             result.update(status='updated' if fields else 'unchanged', saved_fields=fields)
+                            write_stage = 'evidence'
                             append_discovery_evidence(lock, target.paper_id,
                                 (record for record in completed.records if record.provenance.provider != 'workspace'))
-                    except TextWriteCommittedError:
-                        result.update(status='updated', warning='Paper saved; filesystem sync failed')
+                    except TextWriteCommittedError as error:
+                        if write_stage == 'paper':
+                            result.update(status='updated', saved_fields=error.saved_fields,
+                                warning='Paper saved; filesystem sync failed and handoff was not updated')
+                        else:
+                            result['warning'] = 'Evidence saved; filesystem sync failed'
+                        result['issues'].append(dict(provider='workspace', identifier='', status='failed', message=result['warning']))
                     except Exception as error:
-                        if self._stop.is_set():
+                        if write_stage == 'evidence' and result['status'] == 'updated':
+                            result['warning'] = 'Paper updated; discovery evidence could not be saved'
+                            result['issues'].append(dict(provider='workspace', identifier='', status='failed', message=result['warning']))
+                        elif self._stop.is_set():
                             result['status'] = 'cancelled'
                         else:
                             result.update(status='failed', message=str(error) if isinstance(error, (ValueError, OSError, RuntimeError)) else 'API completion failed for this Paper')

@@ -128,3 +128,14 @@ def test_saved_first_version_date_does_not_seal_later_metadata_gaps():
     result = complete_metadata((known,), ('arxiv',), clients={'arxiv': client})
     assert client.calls == [('arxiv', '2201.12345')]
     assert any(record.abstract == 'Later abstract' for record in result.records)
+
+
+def test_complete_provider_metadata_can_refresh_new_date_evidence_on_explicit_invocation():
+    from allfold.models import EvidenceDate, EvidenceDateKind
+    old = evidence('crossref', '10.5555/complete', abstract='Saved abstract', publication_date='2026-01',
+        authors=(Author(name='Saved author'),))
+    new = old.model_copy(update={'dates': (EvidenceDate(kind=EvidenceDateKind.ACCEPTED, year=2025, month=12),)})
+    client = Lookup((new,))
+    result = complete_metadata((old,), ('crossref',), clients={'crossref': client})
+    assert client.calls == [('doi', '10.5555/complete')]
+    assert any(record.dates for record in result.records)

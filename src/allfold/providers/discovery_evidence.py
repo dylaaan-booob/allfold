@@ -7,17 +7,9 @@ from allfold.identifiers import normalize_doi, normalize_external_id, valid_doi
 from allfold.models import (Author, EvidenceDate, EvidenceDateKind, ExternalIds,
     MetadataSource, ProviderRecordRef, ProviderTopic, ProviderWorkEvidence)
 from allfold.providers.integrated import DiscoveryError
+from allfold.paper_dates import source_date
 
 
-def source_date(value, *, kind=EvidenceDateKind.SOURCE, **fields):
-    if not isinstance(value, str) or not re.fullmatch(r"\d{4}(?:-\d{2}){0,2}", value):
-        return None
-    parts = [int(part) for part in value.split("-")]
-    try:
-        return EvidenceDate(kind=kind, year=parts[0], month=parts[1] if len(parts) > 1 else None,
-                            day=parts[2] if len(parts) > 2 else None, **fields)
-    except ValueError:
-        return None
 
 
 def normalize_openalex(raw, source):

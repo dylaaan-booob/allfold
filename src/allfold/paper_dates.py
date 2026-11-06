@@ -1,7 +1,19 @@
 """Version-bound date facts shared by creation and explicit enrichment."""
 from datetime import date
+import re
 
 from allfold.models import EvidenceDate, EvidenceDateKind
+
+
+def source_date(value, kind=EvidenceDateKind.SOURCE, **fields):
+    if not isinstance(value, str) or not re.fullmatch(r"\d{4}(?:-\d{2}){0,2}", value):
+        return None
+    parts = [int(part) for part in value.split("-")]
+    try:
+        return EvidenceDate(kind=kind, year=parts[0], month=parts[1] if len(parts) > 1 else None,
+                            day=parts[2] if len(parts) > 2 else None, **fields)
+    except ValueError:
+        return None
 
 
 def date_value(item: EvidenceDate) -> str:
