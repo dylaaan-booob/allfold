@@ -129,6 +129,7 @@ class DiscoveryClient:
         self.interval = (2.0 if provider == 'dblp' else 0.35) if interval is None else interval
         self.sleep = sleep
         self._access_restriction = None
+        self._metarefresh_attempted = False
         self.max_pages, self.max_records, self.page_size = max_pages, max_records, min(page_size, 1000)
         self.http = create_http_client(transport=transport, timeout=30, follow_redirects=True)
         self.pacing_state = pacing_state if pacing_state is not None else {}
@@ -153,6 +154,50 @@ class DiscoveryClient:
             self.sleep(seconds)
         self.check_cancel()
 
+    def _get(self, url, params, headers, *, follow_redirects=True):
+        self.check_cancel()
+        delay = self.interval - (time.monotonic() - self.pacing_state.get(self.host, 0.0))
+        if delay > 0:
+            self._wait(delay)
+        self.pacing_state[self.host] = time.monotonic()
+        try:
+            response = self.http.get(url, params=params, headers=headers, follow_redirects=follow_redirects)
+        except httpx.HTTPError as error:
+            raise DiscoveryError(f'{self.provider}: network request failed ({type(error).__name__})') from None
+        self.check_cancel()
+        return response
+
+    def _dblp_metarefresh(self, response):
+        if self.provider != 'dblp' or self._metarefresh_attempted:
+            return response
+        from allfold.providers.dblp_metarefresh import recovery_plan, same_query
+        plan = recovery_plan(response)
+        if plan is None:
+            return response
+        self._metarefresh_attempted = True
+        delay, target = plan
+        if self.progress:
+            self.progress(ProgressEvent(activity=ActivityUpdate(kind=ActivityKind.WORKING,
+                source='dblp', operation='dblp_metarefresh', label='DBLP: metarefresh verification',
+                detail=f'Waiting {delay:g} seconds before resuming the original query')))
+        try:
+            self._wait(delay)
+            verified = self._get(target, None, {}, follow_redirects=False)
+            original = str(response.request.url)
+            location = verified.headers.get('location')
+            if verified.status_code not in (302, 303) or not location or not same_query(location, original):
+                raise DiscoveryError('Verification did not return to the original query')
+            resumed = self._get(original, None, {}, follow_redirects=False)
+            if ('text/html' in resumed.headers.get('content-type', '').lower()
+                    or resumed.text.lstrip().lower().startswith(('<!doctype html', '<html'))):
+                raise DiscoveryError('Verification still returned HTML')
+            return resumed
+        except Cancelled:
+            raise
+        except DiscoveryError:
+            self._access_restriction = 'dblp: access limited; metarefresh recovery failed; further requests stopped for this Run'
+            raise DiscoveryError(self._access_restriction) from None
+
     def request(self, path, params, *, response_format="json"):
         self.check_cancel()
         if self._access_restriction:
@@ -160,16 +205,8 @@ class DiscoveryClient:
         params = dict(params)
         headers = {"Authorization":"Bearer " + self.api_key} if self.provider == "openalex" and self.api_key else {}
         for attempt in range(3):
-            self.check_cancel()
-            delay = self.interval - (time.monotonic() - self.pacing_state.get(self.host, 0.0))
-            if delay > 0:
-                self._wait(delay)
-            self.pacing_state[self.host] = time.monotonic()
-            try:
-                response = self.http.get(BASE_URLS[self.provider] + path, params=params,headers=headers)
-            except httpx.HTTPError as error:
-                raise DiscoveryError(f'{self.provider}: network request failed ({type(error).__name__})') from None
-            self.check_cancel()
+            response = self._get(BASE_URLS[self.provider] + path, params, headers)
+            response = self._dblp_metarefresh(response)
             temporary_error = TRANSIENT_HTTP.get(response.status_code)
             html = ('text/html' in response.headers.get('content-type','').lower()
                     or response.text.lstrip().lower().startswith(('<!doctype html','<html')))

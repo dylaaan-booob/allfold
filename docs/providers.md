@@ -111,11 +111,11 @@ rather than retrying earlier than requested. Waiting is cancellable and reports
 retry progress. Exhausted pagination retains valid earlier pages as Partial.
 
 Ordinary HTML gateway/service errors are not mislabeled as bot verification.
-Recognized verification pages (including Anubis at HTTP 200/202/503) stop further
-HTTP requests for that Provider client in the current Run. Other selected
-providers can finish. Unexpected HTTP 200 HTML, malformed JSON/XML and incomplete
-provider envelopes are failures, not normal zero results. No challenge is solved,
-and no proxy route, provider or identity is switched automatically.
+Recognized verification pages stop further HTTP requests for that Provider client
+in the current Run, except for the explicitly supported DBLP metarefresh exchange
+below. Other selected providers can finish. Unexpected HTTP 200 HTML, malformed
+JSON/XML and incomplete provider envelopes are failures, not normal zero results.
+No proxy route, provider or identity is switched automatically.
 
 ### DBLP access restrictions
 
@@ -124,19 +124,31 @@ DBLP requests default to a two-second interval, following its official
 [search API](https://dblp.org/faq/13501473.html) remains the configured endpoint.
 This pacing reduces avoidable request pressure; it cannot remove a bot challenge.
 
-On 2026-11-06, two small, sequential publication-search probes returned HTTP 202,
-HTML titled “Making sure you're not a bot!”, and Anubis v1.27.0. The response's
-Refresh target was an Anubis verification endpoint, not an ordinary search-page
-redirect. No verification endpoint was followed. There was no 429/Retry-After
-evidence in these responses, and they do not reveal whether IP reputation,
-client characteristics or another server-side rule caused the restriction.
+The client recognizes Anubis **v1.27.0 / metarefresh** at HTTP 200/202, including
+both HTTP `Refresh` and HTML `<meta http-equiv="refresh">`. It follows the
+[upstream protocol](https://github.com/TecharoHQ/anubis/blob/d39e26cedcc96bea5e4915297c756e7eec74aaf7/lib/challenge/metarefresh/metarefresh.go):
+wait the advertised delay (at least difficulty + 1 seconds, at most 60), then
+perform one verification exchange in the same HTTP session. The verification
+target must be the fixed HTTPS DBLP Anubis endpoint, its ID/data must match the
+issued challenge, and both its return parameter and redirect must identify the
+original search query and page. Redirects from verification are checked before
+any further request. Cookies remain in the invocation-local HTTP session.
 
-For unresolved restrictions, check normal website access manually and ask the
-[DBLP team](https://dblp.org/db/about/team.html) to confirm the supported
-programmatic access path or any required exception. Browser success alone does
-not establish HTTP API access. Do not repeatedly retry the challenge, rotate
-identities/proxies, automatically switch mirrors, or add a full-dataset mirror
-to this application. The API remains unavailable until access is actually restored.
+At most one exchange is attempted per DBLP client/Run. Waiting and every request
+honor cancellation and the existing two-second pacing. Unknown versions,
+algorithms, malformed targets, failed verification and repeated HTML remain
+access restrictions. No JavaScript, PoW solver, browser fallback, SPARQL switch or
+new dependency is introduced. A redirect alone is never retrieval success: the
+original request must return JSON and pass the normal DBLP pagination validation.
+
+On 2026-11-06, a scoped NeurIPS 2025 query recovered from HTTP 202 through the
+verification endpoint's 302 to valid JSON 200. Its next page reused the session
+and returned 200. Four bounded results created four DOI-free Papers; a fresh Run
+found the same four and preserved their bytes. Partial remained explicit because
+DBLP reported `computed < total` and the probe budget was four records.
+Publication dates retained year precision. This verifies that exchange in this environment; unsupported
+future challenges still stop rather than triggering automatic database or
+identity switching.
 
 Europe PMC's [developer discussion](https://groups.google.com/a/ebi.ac.uk/g/epmc-webservices/c/WUWH9sunsEY)
 distinguishes its service-overload 503 responses from explicit rate-limit status.
@@ -202,7 +214,7 @@ Keep manual scenarios representative: one selected discovery provider, a mixed
 scope with an unexecuted Conference, three Paper types and a repeated create-only
 Run. Reset/concurrent writes, malformed pages and mismatched Translator DOI remain
 covered by focused isolated regressions. Use small scoped HTTP probes for live
-API contracts; do not repeat a known upstream verification challenge.
+API contracts; do not repeatedly retry an unsupported verification challenge.
 
 Isolated fixtures, source/build checks and CI are not evidence of real API
 reachability, browser authentication, Zotero saving or PDF acceptance. Record each
