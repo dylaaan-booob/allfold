@@ -9,7 +9,7 @@ const labels={
   hint:'本地来源清单提示',resolved:'已解析',not_found:'未找到',request_failed:'请求失败',
   ambiguous_source:'Source 有歧义',invalid_source:'Source 数据无效',invalid_identifier:'标识无效',
   local_not_listed:'未列入本地 WoS 来源清单，仍参与检索',
-  openalex_records:'OpenAlex records',crossref_discovery_records:'Crossref Manifest records',
+  openalex_records:'OpenAlex records',
   integrated_candidates:'Candidates',integrated_deduplicated:'Distinct Papers',skipped:'未执行',
   returned_records:'Returned records',matched_journal_records:'Matched Journal records',issn_queries:'ISSN queries',
   unmatched_journal_records:'Unmatched Journal records',eligible_records:'Eligible records',
@@ -49,7 +49,7 @@ export function resultMessages(result) {
 
 function metrics(values,keepZero=[]) {
   const entries=Object.entries(values || {}).filter(([key,value])=>
-    !['evidence_clusters','retained_clusters'].includes(key) && Number.isInteger(value) && (value!==0 || keepZero.includes(key)));
+    Number.isInteger(value) && (value!==0 || keepZero.includes(key)));
   return entries.length?`<dl class="s-run-metrics">${entries.map(([key,value])=>`<div><dt>${esc(label(key))}</dt><dd>${esc(count(value))}</dd></div>`).join('')}</dl>`:'';
 }
 function metricSection(title,values) {
@@ -97,13 +97,11 @@ export function renderRunResult(result,{compact=false,id='' }={}) {
   const warnings=(details.date_warnings || []).map(item=>({...item,reasons:(item.reasons || []).filter(reason=>!['EA_fallback','year_only'].includes(reason))}))
     .filter(item=>item.reasons.length).map(item=>`<li>Record ${count(item.record_number)} · ${esc(item.doi || item.ut || '')} · ${item.reasons.map(reason=>esc(label(reason))).join(' · ')}</li>`).join('');
   const issues=result.issues.filter(i=>i.category!=='exclusion').map(issue=>`<li><strong>${esc(label(issue.category))}</strong> · ${esc(result.provider==='wos'?wosDiagnostic(issue.message):issue.message)}${issue.issn?` · ${esc(issue.issn)}`:''}</li>`).join('');
-  const providerRuns=(details.provider_runs || []).map(run=>`<li><strong>${esc(run.provider)} · ${esc(run.source)}</strong> · ${esc(label(run.status))} · ${count(run.candidates)} candidates / ${count(run.retained)} retained${run.stream?`<p>${esc(run.stream)}</p>`:''}${run.limitations?.length?`<p>${run.limitations.map(esc).join(' · ')}</p>`:''}</li>`).join('');
-  const supplements=(details.supplement_failures || []).map(item=>`<li>${esc(item.provider)} · ${esc(item.identifier)} · ${esc(item.message)}</li>`).join('');
+  const providerRuns=(details.provider_runs || []).map(run=>`<li><strong>${esc(run.provider)} · ${esc(run.source)}</strong> · ${esc(label(run.status))} · ${count(run.candidates)} candidates / ${count(run.retained)} retained${run.limitations?.length?`<p>${run.limitations.map(esc).join(' · ')}</p>`:''}</li>`).join('');
   const sourceResolution=Object.fromEntries(Object.entries(details.source_resolution || {}).filter(([key])=>key!=='resolved'));
-  return header+impact+coverage+`<details class="s-run-provider-details" data-result-detail="${esc(id)}:provider"><summary>Provider Details</summary>${metrics(stats,['openalex_records','crossref_discovery_records','integrated_candidates','integrated_deduplicated','returned_records','eligible_records','search_total'])}
-    ${providerRuns?`<ul>${providerRuns}</ul>`:''}${supplements?`<h4>Metadata completion</h4><ul>${supplements}</ul>`:''}
+  return header+impact+coverage+`<details class="s-run-provider-details" data-result-detail="${esc(id)}:provider"><summary>Provider Details</summary>${metrics(stats,['integrated_candidates','integrated_deduplicated','returned_records','eligible_records','search_total'])}
+    ${providerRuns?`<ul>${providerRuns}</ul>`:''}
     ${metricSection('Source Resolution',sourceResolution)}
-    ${details.manifest?.partial || details.manifest?.failed?metricSection('ISSN Manifest',details.manifest):''}
     ${metricSection('正常排除',details.skipped)}
     ${metricSection('记录诊断',details.exclusions)}
     ${batches?`<h4>Export batches</h4><ul>${batches}</ul>`:''}${warnings?`<h4>Publication date hints</h4><ul>${warnings}</ul>`:''}

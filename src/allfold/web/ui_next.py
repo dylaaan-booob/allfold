@@ -65,7 +65,10 @@ def provider_expressions(text: str):
         return {provider: {"expression": None, "error": str(error)} for provider in (*PROVIDERS,"integrated","wos")}
     for provider in (*PROVIDERS,"integrated","wos"):
         try:
-            compiled = compile_wos_query(ast) if provider == "wos" else compile_query(ast,provider) if provider in {"openalex","europe_pmc","zbmath"} else text
+            if provider not in {"openalex", "europe_pmc", "integrated", "wos"}:
+                values[provider] = {"expression": None, "error": ""}
+                continue
+            compiled = compile_wos_query(ast) if provider == "wos" else compile_query(ast,provider) if provider in {"openalex","europe_pmc"} else text
             values[provider] = {"expression": compiled, "error": ""}
         except ValueError as error:
             values[provider] = {"expression": None, "error": str(error)}
@@ -147,8 +150,7 @@ def install_ui_next(app: FastAPI, config_path: Path, csrf_token: str, *, read_ta
                             publication_date=paper.publication_date, abstract=paper.abstract,
                             conference=paper.conference, conference_id=paper.conference_id,
                             journal=paper.journal, publication_type=paper.publication_type,
-                            first_public_at=paper.first_public_at, accepted_at=paper.accepted_at,
-                            accepted_approximate=paper.accepted_approximate, date_note=paper.date_note,
+                            first_public_at=paper.first_public_at,
                             date_evidence=[item.model_dump(mode="json", exclude_none=True) for item in paper.date_evidence],
                             indexed_terms=[item.model_dump(mode="json", exclude_none=True) for item in paper.indexed_terms],
                             external_ids=paper.external_ids.model_dump(exclude_none=True),
@@ -176,6 +178,8 @@ def install_ui_next(app: FastAPI, config_path: Path, csrf_token: str, *, read_ta
                     groups.append(dict(name=name, journals=active))
             return response(dict(
                 subjects=groups, csrf_token=csrf_token, import_token=import_token,
+                completion_papers=[dict(id=str(p.paper_id), title=p.title, status=p.status.value)
+                    for p in workspace.papers if p.status is not WorkflowStatus.REJECTED],
                 counts=dict(candidates=len(workspace.inbox), active_journals=sum(len(g["journals"]) for g in groups)),
                 kept=dict(papers=kept, journals=[{k: r[k] for k in ("key", "issn", "eissn", "name", "source_type", "service_id")} for r in records.values()],
                           services=[s.model_dump() for s in services], settings=config.kept_workflow,

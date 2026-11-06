@@ -54,8 +54,9 @@ class LogLevel(str, Enum):
     ERROR = "ERROR"
 
 
-DEFAULT_PROVIDER_ORDER = ("openalex", "europe_pmc", "dblp", "zbmath", "crossref", "arxiv", "biorxiv", "medrxiv", "wos")
-ENABLED_PROVIDERS = DEFAULT_PROVIDER_ORDER[:-1]
+DEFAULT_PROVIDER_ORDER = ("openalex", "europe_pmc", "crossref", "arxiv", "biorxiv", "medrxiv", "wos")
+ENABLED_PROVIDERS = ("openalex", "europe_pmc")
+COMPLETION_PROVIDERS = DEFAULT_PROVIDER_ORDER[:-1]
 
 
 def normalize_journal_labels(values: object) -> tuple[str, ...]:
@@ -296,23 +297,24 @@ class _Settings(BaseModel):
     log_level: LogLevel = LogLevel.INFO
     institution: InstitutionConfig | None = None
     kept_workflow: KeptWorkflowConfig = KeptWorkflowConfig()
-    enabled_providers: tuple[str, ...] = ("openalex",)
+    enabled_providers: tuple[str, ...] = ENABLED_PROVIDERS
+    completion_providers: tuple[str, ...] = COMPLETION_PROVIDERS
     provider_aliases: dict[str, str] = Field(default_factory=dict)
     provider_order: tuple[str, ...] = DEFAULT_PROVIDER_ORDER
     crossref_mailto: str = ""
-
-    @model_validator(mode="before")
-    @classmethod
-    def ignore_retired_queries(cls, value):
-        if isinstance(value, dict):
-            return {key: item for key, item in value.items() if key not in {"wos_query", "wos_query_mode", "wos_service_id"}}
-        return value
 
     @field_validator("enabled_providers", mode="before")
     @classmethod
     def valid_enabled(cls, value):
         if not isinstance(value, (list, tuple)) or any(item not in ENABLED_PROVIDERS for item in value) or len(set(value)) != len(value):
             raise ValueError("enabled_providers must list unique supported Provider IDs")
+        return tuple(value)
+
+    @field_validator("completion_providers", mode="before")
+    @classmethod
+    def valid_completion(cls, value):
+        if not isinstance(value, (list, tuple)) or any(item not in COMPLETION_PROVIDERS for item in value) or len(set(value)) != len(value):
+            raise ValueError("completion_providers must list unique supported API Provider IDs")
         return tuple(value)
 
     @field_validator("provider_order", mode="before")
@@ -375,7 +377,8 @@ class LoadedConfig:
     journals: tuple[JournalConfig, ...]
     institution: InstitutionConfig | None = None
     kept_workflow: KeptWorkflowConfig = KeptWorkflowConfig()
-    enabled_providers: tuple[str, ...] = ("openalex",)
+    enabled_providers: tuple[str, ...] = ENABLED_PROVIDERS
+    completion_providers: tuple[str, ...] = COMPLETION_PROVIDERS
     provider_aliases: dict[str, str] = field(default_factory=dict)
     provider_order: tuple[str, ...] = DEFAULT_PROVIDER_ORDER
     crossref_mailto: str = ""
@@ -396,7 +399,8 @@ class MonitorDefinition:
     log_level: LogLevel
     institution: InstitutionConfig | None = None
     kept_workflow: KeptWorkflowConfig = KeptWorkflowConfig()
-    enabled_providers: tuple[str, ...] = ("openalex",)
+    enabled_providers: tuple[str, ...] = ENABLED_PROVIDERS
+    completion_providers: tuple[str, ...] = COMPLETION_PROVIDERS
     provider_aliases: dict[str, str] = field(default_factory=dict)
     provider_order: tuple[str, ...] = DEFAULT_PROVIDER_ORDER
     crossref_mailto: str = ""
@@ -720,6 +724,7 @@ def parse_monitor_definition(path: Path, raw: Any) -> MonitorDefinition:
         institution=settings.institution,
         kept_workflow=settings.kept_workflow,
         enabled_providers=settings.enabled_providers,
+        completion_providers=settings.completion_providers,
         provider_order=settings.provider_order, provider_aliases=settings.provider_aliases, crossref_mailto=settings.crossref_mailto,
     )
 
@@ -751,6 +756,7 @@ def build_loaded_config(
         institution=definition.institution,
         kept_workflow=definition.kept_workflow,
         enabled_providers=definition.enabled_providers,
+        completion_providers=definition.completion_providers,
         provider_order=definition.provider_order, provider_aliases=definition.provider_aliases, crossref_mailto=definition.crossref_mailto,
     )
 

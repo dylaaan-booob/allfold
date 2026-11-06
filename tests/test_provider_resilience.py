@@ -33,42 +33,42 @@ def test_html_429_honors_retry_after_without_becoming_a_bot_challenge():
 
 def test_long_retry_after_is_honored_before_retrying():
     calls, waits = [], []
-    with DiscoveryClient('zbmath', transport=httpx.MockTransport(lambda request:
+    with DiscoveryClient('crossref', transport=httpx.MockTransport(lambda request:
         calls.append(request) or (httpx.Response(503, headers={'retry-after': '120'})
                                  if len(calls) == 1 else httpx.Response(200, json={'result': 'recovered'}))),
                          interval=0, sleep=waits.append) as client:
-        assert client.request('/document/123', {}) == {'result': 'recovered'}
+        assert client.request('/works/10.5555/known', {}) == {'result': 'recovered'}
     assert len(calls) == 2 and waits == [120]
 
 
 def test_long_retry_after_wait_can_be_cancelled_before_retry():
     from threading import Event
     cancel, calls = Event(), []
-    with DiscoveryClient('zbmath', transport=httpx.MockTransport(lambda request:
+    with DiscoveryClient('crossref', transport=httpx.MockTransport(lambda request:
         calls.append(request) or httpx.Response(503, headers={'retry-after': '120'})),
                          interval=0, sleep=lambda _: cancel.set(), cancel_event=cancel) as client:
         with pytest.raises(DiscoveryError, match='cancelled'):
-            client.request('/document/123', {})
+            client.request('/works/10.5555/known', {})
     assert len(calls) == 1
 
 
-def test_dblp_challenge_stops_later_requests_in_the_same_run_client():
+def test_api_challenge_stops_later_requests_in_the_same_run_client():
     calls = []
-    with DiscoveryClient('dblp', transport=httpx.MockTransport(lambda request:
+    with DiscoveryClient('openalex', transport=httpx.MockTransport(lambda request:
         calls.append(request) or httpx.Response(202, headers={'content-type': 'text/html'},
             text='<html>Making sure you are not a bot! Protected by Anubis</html>')), interval=0) as client:
-        for stream in ('conf/nips', 'conf/icml'):
+        for identifier in ('W1', 'W2'):
             with pytest.raises(DiscoveryError, match='Anubis'):
-                client.request('/search/publ/api', {'q': f'streamid:{stream}:'})
+                client.request('/works/' + identifier, {})
     assert len(calls) == 1
 
 
-def test_dblp_default_spacing_follows_official_crawling_guidance():
+def test_api_default_spacing_is_applied():
     waits = []
-    with DiscoveryClient('dblp', transport=httpx.MockTransport(lambda _:httpx.Response(200, json={})), sleep=waits.append) as client:
+    with DiscoveryClient('openalex', transport=httpx.MockTransport(lambda _:httpx.Response(200, json={})), sleep=waits.append) as client:
         client.request('/fixture', {})
         client.request('/fixture', {})
-    assert len(waits) == 1 and 1.5 < waits[0] <= 2
+    assert len(waits) == 1 and 0.1 < waits[0] <= 0.35
 
 
 @pytest.mark.parametrize('status', [400, 401, 403, 404])
@@ -99,7 +99,7 @@ def test_retry_after_http_date_and_invalid_values_are_bounded():
 
 def test_success_status_with_generic_html_is_invalid_metadata_not_an_empty_result():
     calls = []
-    with DiscoveryClient('zbmath', transport=httpx.MockTransport(lambda request:
+    with DiscoveryClient('crossref', transport=httpx.MockTransport(lambda request:
         calls.append(request) or httpx.Response(200, headers={'content-type': 'text/html'},
                                                text='<html>Maintenance screen</html>')), interval=0) as client:
         with pytest.raises(DiscoveryError, match='unexpected HTML'):
@@ -113,14 +113,3 @@ def test_arxiv_wrong_xml_document_is_a_supplement_failure():
         text='<response><version>1</version></response>')), interval=0) as client:
         with pytest.raises(DiscoveryError, match='Atom feed'):
             client.lookup('arxiv', '2201.12345')
-
-
-def test_zbmath_incomplete_mapping_response_is_not_a_confirmed_missing_source():
-    from datetime import date
-    from allfold.keywords import parse_keyword_expression
-    from allfold.providers.integrated import SourceScope
-    with DiscoveryClient('zbmath', transport=httpx.MockTransport(lambda _:httpx.Response(200,
-        json={'version':'1'})), interval=0) as client:
-        result = client.discover(SourceScope('journal','Journal',issns=('0162-1459',)),
-                                 parse_keyword_expression('learning'),date(2026,1,1),date(2026,12,31))
-    assert result.status == 'failed' and 'response' in result.limitations[0]

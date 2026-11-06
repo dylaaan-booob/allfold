@@ -68,9 +68,6 @@ class PaperMarkdownState:
     publication_type: str | None = None
     related_dois: tuple[str, ...] = ()
     first_public_at: str | None = None
-    accepted_at: str | None = None
-    accepted_approximate: bool = False
-    date_note: str | None = None
     indexed_terms: tuple[ProviderTopic, ...] = ()
     date_evidence: tuple[EvidenceDate, ...] = ()
     export_attempt_present: bool = False
@@ -260,20 +257,6 @@ def parse_paper_identity(path: Path, contents: str) -> PaperIdentity | None:
             complete = False
         if normalized:
             canonical_ids[namespace] = normalized
-    for field, namespace in (("openalex_id", "openalex"), ("arxiv_id", "arxiv")):
-        raw = frontmatter.get(field)
-        if raw is None:
-            continue
-        normalized = normalize_external_id(namespace, raw)
-        if not isinstance(raw, str) or not raw.strip():
-            problems.append(f"{field} is invalid")
-            complete = False
-        elif normalized is None:
-            continue
-        elif canonical_ids.get(namespace, normalized) != normalized:
-            problems.append(f"{field} conflicts with external_ids.{namespace}")
-        else:
-            canonical_ids[namespace] = normalized
     identifiers = set(strong_identifiers(canonical_ids, tuple(dois)))
     aliases = frontmatter.get("identity_aliases", [])
     if not isinstance(aliases, list):
@@ -292,13 +275,6 @@ def parse_paper_identity(path: Path, contents: str) -> PaperIdentity | None:
             complete = False
         else:
             identifiers.add((namespace, value))
-    # Historical WoS Papers stored the accession number in source provenance.
-    sources = frontmatter.get("sources", [])
-    if isinstance(sources, list):
-        for source in sources:
-            if isinstance(source, dict) and source.get("provider") == "wos":
-                if value := normalize_external_id("wos", source.get("record_id")):
-                    identifiers.add(("wos", value))
     identifiers = frozenset(identifiers)
     if not identifiers:
         problems.append("cannot establish reliable Paper identity")
@@ -497,9 +473,6 @@ def _identity_external_ids(
             problems.append("external_ids contains an invalid namespace")
             continue
         normalized_namespace = namespace.strip().casefold()
-        # Historical renderer emitted this retired field even for non-PubMed Papers.
-        if normalized_namespace == "pubmed" and identifier is None:
-            continue
         if identifier is None and normalized_namespace in {
             "openalex",
             "doi",
@@ -529,8 +502,6 @@ def _identity_external_ids(
 
     for field, namespace in (
         ("doi", "doi"),
-        ("openalex_id", "openalex"),
-        ("arxiv_id", "arxiv"),
     ):
         identifier = frontmatter.get(field)
         if identifier is None:
@@ -657,13 +628,11 @@ def parse_paper_state(
         if frontmatter.get(name) is not None and (not isinstance(frontmatter[name], str) or not frontmatter[name].strip()):
             problems.append(f"{name} must be a non-empty string or null")
     date_fields = {}
-    for name in ("first_public_at", "accepted_at"):
+    for name in ("first_public_at",):
         try:
             date_fields[name] = parse_publication_date(frontmatter.get(name))
         except ValueError as error:
             problems.append(f"{name}: {error}")
-    if type(frontmatter.get("accepted_approximate", False)) is not bool:
-        problems.append("accepted_approximate must be a boolean")
     if frontmatter.get("publication_type") not in {None, "journal", "conference", "preprint"}:
         problems.append("invalid publication_type")
     try:
@@ -755,9 +724,6 @@ def parse_paper_state(
         publication_type=frontmatter.get("publication_type"),
         related_dois=tuple(sorted(identity.dois - {identity.primary_doi})) if identity else (),
         first_public_at=date_fields.get("first_public_at"),
-        accepted_at=date_fields.get("accepted_at"),
-        accepted_approximate=frontmatter.get("accepted_approximate", False),
-        date_note=frontmatter.get("date_note"),
         indexed_terms=evidence_fields["indexed_terms"],
         date_evidence=evidence_fields["date_evidence"],
         export_attempt_present=export_attempt_present,

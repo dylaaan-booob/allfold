@@ -192,7 +192,7 @@ async function executeOperation(message) {
         // A navigation while translating invalidates the source document.
         if (!browser.documentCurrent(doc) || !browser.documentCurrent(sourceDocument)) throw new BrowserFailure('translation','document_changed');
         if(message.action==='enrich_paper') {
-          data={item};
+          data={item,metadata_source:metadataSource};
         } else {
           log('info','metadata_selected',{...context,stage:'translation',page_id:sourceDocument.pageId,metadata_source:metadataSource});
           progress({message:'Native Zotero save in progress'},'parent_save');

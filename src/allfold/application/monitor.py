@@ -21,7 +21,6 @@ class MonitorIssueComponent(str, Enum):
     SEARCH = "search"
     DATE_RANGE = "date_range"
     OPENALEX = "openalex"
-    CROSSREF_DISCOVERY = "crossref_discovery"
     CONSOLIDATION = "consolidation"
     CANONICALIZATION = "canonicalization"
     MATERIALIZATION = "materialization"
@@ -56,9 +55,6 @@ class RunOutcome(str, Enum):
 @dataclass(frozen=True)
 class MonitorStatistics:
     openalex_records: int = 0
-    crossref_discovery_records: int = 0
-    evidence_clusters: int = 0
-    retained_clusters: int = 0
     consolidation_issues: int = 0
     canonicalization_issues: int = 0
     provider_issues: int = 0

@@ -78,18 +78,20 @@ defines the macOS SOCKS configuration format.
 The implementation uses original HTTPX and the standard library; upstream source
 is not vendored or modified.
 
-## Integrated Providers
+## Discovery and API-completion Providers
 
-Discovery and identifier-only completion reuse one selected Provider client and
-shared per-host pacing. The client handles bounded 429 and temporary
-500/502/503/504 retries, Retry-After, cancellation and HTML access restrictions.
-Ordinary HTML service errors can be retried. DBLP's known Anubis v1.27.0
-metarefresh permits one cancellable exchange per response in the same HTTP session;
-only valid metadata for the original query establishes recovery. Other recognized
-verification pages, or failed recovery, stop that client for the rest of the Run
-without changing route or identity.
-Later pages may complete their own supported exchange. Server-advertised retry
-and metarefresh waits have no application ceiling and remain cancellable.
-arXiv ID lookups use a conservative three-second interval; DBLP uses two seconds;
-bioRxiv and medRxiv share their API host pacing.
+Journal Run and explicit API completion independently construct selected Provider
+clients over the shared HTTP policy, finite retries and operation-local host
+pacing. Run never constructs metadata-only clients or performs identifier
+lookups. API completion deduplicates each provider/namespace/identifier across
+its selection and reuses sufficient saved evidence. Temporary HTTP errors and
+429 honor Retry-After, with cancellable waits and progress. Recognized HTML
+verification stops the provider client without browser fallback, route/identity
+switching or enabling an unselected source. Valid empty responses/known-ID 404
+are normal no-match, distinct from failure or identity mismatch.
+
+arXiv uses a three-second interval; bioRxiv and medRxiv share their API host
+pacing. DBLP network retrieval is disabled in both operations. The offline
+Conference Registry does not use this transport. Webpage Enrich continues to
+use the separate existing Chromium Session/Translator mechanism.
 See [Provider contracts and limits](providers.md).

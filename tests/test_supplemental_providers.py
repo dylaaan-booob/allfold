@@ -49,9 +49,8 @@ def test_crossref_uses_exact_doi_and_only_explicit_same_work_relations_and_dates
     assert len(requests) == 1 and requests[0].url.path == "/works/10.5555/main"
     assert records[0].related_dois == ("10.5555/preprint",)
     paper = canonicalize_records(records).papers[0]
-    assert paper.metadata.accepted_at == "2025-12-01"
-    assert not paper.metadata.accepted_approximate
-    assert paper.metadata.first_public_at == "2026-01-02"
+    assert any(d.kind.value=="accepted" and (d.year,d.month,d.day)==(2025,12,1) for d in paper.date_evidence)
+    assert paper.metadata.first_public_at is None
     assert records[0].provenance.role == "supplement"
 
 
@@ -72,7 +71,7 @@ def test_arxiv_looks_up_known_id_and_keeps_first_version_date():
     assert records[0].related_dois == ("10.5555/formal",)
     paper = canonicalize_records(records).papers[0]
     assert paper.metadata.first_public_at == "2022-01-02"
-    assert paper.metadata.accepted_at is None
+    assert not any(d.kind.value=="accepted" for d in paper.date_evidence)
 
 
 def test_biorxiv_follows_known_formal_doi_to_original_versions_without_year_limit():
@@ -102,7 +101,7 @@ def test_biorxiv_follows_known_formal_doi_to_original_versions_without_year_limi
     assert paper.related_dois == ("10.1101/123456",)
     assert paper.metadata.publication_date == "2026-01-02"
     assert paper.metadata.first_public_at == "2022-01-02"
-    assert paper.metadata.accepted_at == "2026-01-02" and paper.metadata.accepted_approximate
+    assert any(d.kind.value=="published-online" and (d.year,d.month,d.day)==(2026,1,2) for d in paper.date_evidence)
 
 
 def test_preprint_version_changes_are_evidence_not_conflicting_snapshots():
@@ -113,4 +112,4 @@ def test_preprint_version_changes_are_evidence_not_conflicting_snapshots():
         result=canonicalize_records(client.lookup("doi","10.1101/123456"))
     assert not result.issues and len(result.papers)==1
     assert result.papers[0].metadata.first_public_at=="2022-01-02"
-    assert result.papers[0].metadata.accepted_at is None
+    assert not any(d.publication_type=="journal" and d.kind.value=="accepted" for d in result.papers[0].date_evidence)

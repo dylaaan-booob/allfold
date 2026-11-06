@@ -150,19 +150,32 @@ Both databases live outside Workspace. Within the application project, configura
 
 [Safety](safety.md) states the cross-module invariants. Types, parsers and validators in code define fields and interfaces; [development](development.md) defines preparation and verification. Historical plans and investigations are not current implementation authority.
 
-## Discovery creation boundary
+## Discovery and completion boundaries
 
-Provider adapters emit `ProviderWorkEvidence`; canonicalization groups explicit
-strong identities and fills missing metadata in a fixed order. Journal and
-Conference fields remain distinct, and all Paper types use the same Markdown
-materializer and Discovery/Kept projection. Date evidence is finalized only for
-new Papers; the discovery publication range does not filter against first-public
-dates. Local Paper edits and external DOI actions have separate validation.
+Provider adapters emit reusable `ProviderWorkEvidence`; canonicalization groups
+explicit strong identities and selects missing metadata in a fixed order.
+Integrated Run schedules only selected OpenAlex/Europe PMC journal discovery.
+Native publication-date filters determine its range; subsequent evidence never
+rejudges inclusion. Commit rechecks captured configuration, source revision,
+Workspace/Papers identity and the complete identity index before atomic creates.
+Existing Paper matches remain byte-identical. Compact `Evidence/<UUID>.json`
+records persist structured hits, query scopes, locations, relations and versions,
+including rediscovery of existing Papers. There is no raw-response archive or
+persistent task queue.
 
-The integrated coordinator keeps requests and transient candidate evidence in
-memory outside the Workspace operation lock. The commit boundary rechecks the
-captured Workspace/configuration identity, scans saved identities and performs
-atomic creates under one short lock. No Run database, persistent checkpoint,
-identity side table or background refresh is introduced. Saved Paper matches
-are skipped byte-for-byte. WoS retains its browser lifecycle while sharing the
-Paper identity and source metadata contract.
+The independent API-completion coordinator reads selected saved non-Rejected
+Papers plus handoff evidence, reuses the identifier traversal and HTTP adapters,
+and shares Run/workflow admission without dispatching browser operations. It
+owns progress, cancellation, per-Paper outcomes, History and shutdown settlement.
+Network work holds no Workspace lock; short commits recheck exact Paper bytes,
+file/directory identity, status, configuration and cancellation. Only empty
+ordinary metadata/First public and appended evidence may change. It never merges
+saved Papers or changes their primary identifiers, human content or workflow.
+
+First public requires established earliest linked preprint evidence. Typed
+journal events remain a separate date collection. Webpage Enrich retains its
+independent serial read-only Translator path, three ordinary-field triggers and
+month-to-day date exception; already-returned date events can accompany that
+response, including event-only writes. Its DOI/document/revision/cancellation
+checks apply to all returned fields. Neither operation starts the other.
+WoS retains its independent browser lifecycle while sharing the Paper model.

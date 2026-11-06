@@ -11,10 +11,10 @@ const settings={config_path:'/fixture/monitor.yaml',csrf_token:'fixture',issues:
   name:'Synthetic Monitor',keyword_expression:'causal',from_month:'2026-01',to_month:'2026-01',output_dir:'workspace',log_level:'INFO',
   monitor_revision_exists:'1',monitor_revision_digest:'fixture',journal_revision_exists:'1',journal_revision_digest:'fixture',
   institution_name:'',institution_idp_entity_id:'',auto_import_after_preparation:false,transition_delay_seconds:'3',display_name:'',
-  provider_aliases:{},provider_order:['openalex','europe_pmc','dblp','zbmath','crossref','arxiv','biorxiv','medrxiv','wos'],enabled_providers:['openalex'],groups:Array.from({length:20},(_,i)=>'Group '+i),
+  provider_aliases:{},provider_order:['openalex','europe_pmc','crossref','arxiv','biorxiv','medrxiv','wos'],enabled_providers:['openalex','europe_pmc'],completion_providers:['openalex','europe_pmc','crossref','arxiv','biorxiv','medrxiv'],groups:Array.from({length:20},(_,i)=>'Group '+i),
   conferences:[],custom_labels:['Label 0','Label 1','Label 2'],journals,access_services:[{id:'svc_fixture',name:'Synthetic Service',access_method:'manual',access_url:''}],
 }};
-const paper=(i,status='candidate')=>({id:'paper-'+i,title:'Synthetic Paper '+i,publication_date:'2026-10',conference:'Synthetic Conference',publication_type:'conference',first_public_at:'2022-04',accepted_at:'2026-09',accepted_approximate:true,date_note:'Acceptance approximated by formal publication',external_ids:{dblp:'conf/example/Paper'},indexed_terms:[{value:'62G05',kind:'MSC',source:'zbmath'}],sources:[{provider:'dblp',record_id:'conf/example/Paper',role:'discovery'}],abstract:('An isolated synthetic paragraph for reader scroll verification. '.repeat(12)+'\n\n').repeat(24),authors:['Synthetic Author'],doi:i===0?null:'10.5555/layout-'+i,discovered_at:'2026-10-01T00:00:00Z',status,enrichPhase:'Idle'});
+const paper=(i,status='candidate')=>({id:'paper-'+i,title:'Synthetic Paper '+i,publication_date:'2026-10',conference:'Synthetic Conference',publication_type:'conference',first_public_at:'2022-04',date_evidence:[{kind:'preprint',year:2022,month:4,provider:'arxiv',record_id:'2204.12345',version:'v1',publication_type:'preprint',first_version:true},{kind:'accepted',year:2026,month:9,provider:'crossref',record_id:'10.5555/formal',publication_type:'journal'},{kind:'published-online',year:2026,month:10,provider:'crossref',record_id:'10.5555/formal',publication_type:'journal'}],external_ids:{dblp:'conf/example/Paper'},indexed_terms:[{value:'statistics',kind:'topic',source:'openalex'}],sources:[{provider:'dblp',record_id:'conf/example/Paper',role:'discovery'}],abstract:('An isolated synthetic paragraph for reader scroll verification. '.repeat(12)+'\n\n').repeat(24),authors:['Synthetic Author'],doi:i===0?null:'10.5555/layout-'+i,discovered_at:'2026-10-01T00:00:00Z',status,enrichPhase:'Idle'});
 const records=journals.map((j,i)=>({key:j.issn,issn:j.issn,name:j.name,group:j.group,labels:[],cover:null,papers:[paper(i*2),paper(i*2+1)]}));
 Object.assign(records[0],{name:'Synthetic Conference',source_type:'conference',issn:null,dblp_stream:'streams/conf/icml',group:'Old scope'});
 const workspace={csrf_token:'fixture',import_token:'fixture',issues:[],counts:{candidates:48,active_journals:24},subjects:[{name:'Group 0',journals:records}],
@@ -25,8 +25,22 @@ let keptState={active:false,phase:'idle',navigation:null,can_continue:false,can_
 const mimes={'.html':'text/html','.js':'text/javascript','.css':'text/css','.json':'application/json','.woff2':'font/woff2','.ttf':'font/ttf','.otf':'font/otf','.png':'image/png','.mp4':'video/mp4'};
 let rejectAutosave=false,holdWorkspaceResponse,resolveInitialCAS,credentialState={ok:false,error:'cas_store_unreadable',configured:false,username:'',revision:'d'.repeat(64)};
 const credentialWrites=[];
+const completionStarts=[];
+let completionState={phase:'Idle',results:[],total:0,processed:0};
 const server=http.createServer((req,res)=>{
   const route=new URL(req.url,'http://fixture').pathname;
+  if(route==='/api/papers/api-completion/start'){
+    let text='';req.on('data',chunk=>{text+=chunk;});req.on('end',()=>{
+      const value=JSON.parse(text);completionStarts.push(value);
+      completionState={phase:'Running',request_id:'fixture-completion',total:value.paper_ids.length,processed:0,results:[]};
+      res.writeHead(200,{'Content-Type':'application/json'});res.end(JSON.stringify(completionState));
+    });return;
+  }
+  if(route==='/api/papers/api-completion/state' || route==='/api/papers/api-completion/cancel'){
+    if(route.endsWith('/cancel'))completionState={...completionState,phase:'Cancelled',processed:completionState.total,
+      results:completionStarts.at(-1).paper_ids.map(paper_id=>({paper_id,status:'cancelled',lookups:[],issues:[]}))};
+    res.writeHead(200,{'Content-Type':'application/json'});res.end(JSON.stringify(route.endsWith('/cancel')?{accepted:true}:completionState));return;
+  }
   if(route==='/api/ui-next/zotero'){
     const data={ok:true,server_id:'SERVERFIXTUR',version:'10.0.6',authorized:true,libraries:[
       {type:'user',id:'0',name:'My Library',editable:true,files_editable:true,collections:[]},
@@ -226,13 +240,30 @@ app.whenReady().then(async()=>{
       document.getElementById('paper-detail').scrollTop=0;
     });
     await capture('paper-identity');
+    if(completionStarts.length)throw Error('Viewing results automatically started API completion');
+    await js("document.getElementById('array-api-completion-open').click()");
+    await ready("document.getElementById('api-completion-dialog').open");
+    await check(()=>{
+      const choices=[...document.querySelectorAll('#api-completion-papers input')];
+      if(choices.filter(input=>input.checked).length!==1 || choices.find(input=>input.checked).value!=='paper-0')throw Error('API completion did not select the current unkept DOI-free Paper');
+      choices.find(input=>!input.checked).click();
+      document.getElementById('api-completion-start').click();
+    });
+    await ready("document.getElementById('api-completion-status').textContent.startsWith('Running') && !document.getElementById('api-completion-cancel').hidden");
+    await capture('api-completion');
+    await js("document.getElementById('api-completion-cancel').click()");
+    await ready("document.getElementById('api-completion-status').textContent.startsWith('Cancelled') && document.querySelectorAll('#api-completion-results li').length===2");
+    if(completionStarts.length!==1 || completionStarts[0].paper_ids.length!==2)throw Error('API completion did not retain the explicit batch selection');
+    await js("document.getElementById('api-completion-close').click()");
     await check(async()=>{
       const $=id=>document.getElementById(id),assert=(ok,message)=>{if(!ok)throw Error(message);},sleep=ms=>new Promise(r=>setTimeout(r,ms));
       assert($('paper-first-public').textContent==='2022-04','first-public precision was not rendered');
-      assert($('paper-accepted').textContent==='≈ 2026-09','approximate acceptance was presented as exact');
+      assert($('paper-journal-dates').textContent==='Accepted · 2026-09 · crossrefPublished online · 2026-10 · crossref','named journal events were not rendered in date order');
+      assert(!$('paper-journal-dates').textContent.includes('2022'),'preprint dates entered the journal date collection');
+      assert($('paper-first-public').title.includes('arxiv') && !$('paper-first-public').title.includes('crossref'),'First public basis contains journal evidence');
       assert($('paper-source').textContent==='Synthetic Conference','conference source was lost');
       assert($('paper-identifiers').textContent.includes('dblp: conf/example/Paper'),'DOI-free identity was hidden');
-      assert($('paper-indexed-terms').textContent.includes('MSC · zbmath'),'indexed term type/source was lost');
+      assert($('paper-indexed-terms').textContent.includes('topic · openalex'),'indexed term type/source was lost');
       assert($('paper-doi').textContent==='DOI unavailable' && !$('paper-doi').hasAttribute('href'),'DOI-free paper acquired a DOI link');
       assert([...$('paper-metadata-details').querySelectorAll('[data-enrich]')].every(node=>node.disabled),'DOI-free external Enrich was enabled');
       window.layoutReader=$('paper-detail');window.layoutParent=layoutReader.parentElement;
@@ -365,14 +396,14 @@ app.whenReady().then(async()=>{
       document.querySelector('#settings-system-sidebar [data-sidebar-close]').click();
       $('run-open').click();
       $('s-run-overview-open').click();
-      if(document.querySelectorAll('[data-discovery-provider]').length!==8)throw Error('Integrated Provider choices missing');
+      if(document.querySelectorAll('[data-discovery-provider]').length!==2)throw Error('Integrated Provider choices missing');
       if(document.querySelector('[data-provider="pubmed"], [data-monitor="pubmedKey"]'))throw Error('Retired PubMed still displayed');
       const starts=[...document.querySelectorAll('#s-run [data-run-provider]')].filter(node=>!node.hidden && node.getClientRects().length);
       if(starts.length!==2 || !starts.some(node=>node.dataset.runProvider==='integrated') || !starts.some(node=>node.dataset.runProvider==='wos'))throw Error('Run must expose Integrated and independent WoS only');
 
       if($('s-run').getBoundingClientRect().width>600 || $('s-run').querySelector('.workspace-content').clientWidth<360)throw Error('Run content lost available width');
       document.querySelector('#s-run [data-flyout]').click();
-      if($('run-provider-flyout').hidden || $('s-providers').children.length!==9)throw Error('Run Provider Directory did not open');
+      if($('run-provider-flyout').hidden || $('s-providers').children.length!==7)throw Error('Run Provider Directory did not open');
       $('s-providers').querySelector('[data-provider="crossref"]').click();
       if($('run-configuration-sidebar').hidden || $('s-run').dataset.sidebarMode!=='overlay')throw Error('Provider configuration must overlay at 600x480');
       if(!document.querySelector('#run-configuration-sidebar [data-monitor="crossrefMailto"]'))throw Error('Provider settings not in Functional Sidebar');
@@ -414,7 +445,7 @@ app.whenReady().then(async()=>{
       const $=id=>document.getElementById(id),assert=(ok,message)=>{if(!ok)throw Error(message);};
       $('run-open').click();
       $('s-run-overview-open').click();
-      if(document.querySelectorAll('[data-discovery-provider]').length!==8)throw Error('Integrated Provider choices missing');
+      if(document.querySelectorAll('[data-discovery-provider]').length!==2)throw Error('Integrated Provider choices missing');
       if(document.querySelector('[data-provider="pubmed"], [data-monitor="pubmedKey"]'))throw Error('Retired PubMed still displayed');
       const starts=[...document.querySelectorAll('#s-run [data-run-provider]')].filter(node=>!node.hidden && node.getClientRects().length);
       if(starts.length!==2 || !starts.some(node=>node.dataset.runProvider==='integrated') || !starts.some(node=>node.dataset.runProvider==='wos'))throw Error('Run must expose Integrated and independent WoS only');

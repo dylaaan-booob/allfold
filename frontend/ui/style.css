@@ -107,3 +107,10 @@ html.developer-mode.paper-tools-active body>footer{flex-wrap:nowrap}
 #paper-tools-dialog .s-button{min-height:28px;padding:0 10px;border:1px solid var(--ink);background:var(--paper);font:500 11px/26px var(--font)}
 #paper-tools-dialog .s-primary{background:var(--ink);color:var(--paper)}
 #paper-tools-dialog #paper-tools-paper{margin:0}
+
+#api-completion-papers{display:grid;gap:8px;max-height:40vh;overflow:auto}
+#api-completion-papers label{display:flex;gap:10px;align-items:baseline}
+#api-completion-dialog .s-actions{display:flex;gap:10px}
+#api-completion-results{overflow-wrap:anywhere;padding-left:20px}
+#paper-journal-dates{overflow-wrap:anywhere}
+#selected-view[data-workspace-layout="array"] #api-completion-open{display:none}

@@ -10,7 +10,6 @@ from threading import Event
 from allfold.config import ConfigurationError, resolve_runtime_date, validate_runtime_keyword
 from allfold.providers.integrated import DiscoveryClient, DiscoveryResult, SourceScope, DISCOVERY_PROVIDERS
 from allfold.integrations.openalex_credentials import read_credential
-from allfold.providers.dblp_sources import journal_dblp_stream
 from allfold.progress import ProgressEvent, ProgressStage, ActivityUpdate, ActivityKind
 
 
@@ -22,23 +21,16 @@ class IntegratedDiscovery:
 
 
 def source_scopes(config):
-    journals = tuple(SourceScope('journal',j.name,j.key,tuple(x for x in (j.issn,j.eissn) if x),journal_dblp_stream(tuple(x for x in (j.issn,j.eissn) if x))) for j in config.journals)
-    conferences = tuple(SourceScope('conference',c.name,c.id,stream=c.dblp_stream) for c in getattr(config,'conferences',()))
-    return journals + conferences
+    return tuple(SourceScope('journal', j.name, j.key, tuple(x for x in (j.issn, j.eissn) if x)) for j in config.journals)
 
 
 def validate_selection(config):
     validate_runtime_keyword(config)
     scopes = source_scopes(config)
     if not scopes:
-        raise ConfigurationError('Follow at least one Journal or Conference before running',field='sources')
-    selected = set(config.enabled_providers) & set(DISCOVERY_PROVIDERS)
-    if not selected:
-        raise ConfigurationError('Select at least one Discovery Provider; metadata-only providers cannot discover Papers',field='enabled_providers')
-    if not config.journals and 'dblp' not in selected:
-        raise ConfigurationError('Conference-only Run requires DBLP',field='enabled_providers')
-    if config.journals and selected == {'dblp'} and not any(s.stream for s in scopes):
-        raise ConfigurationError('DBLP has no verified Stream mapping for the selected Journals',field='enabled_providers')
+        raise ConfigurationError('Follow at least one Journal before running', field='sources')
+    if not config.enabled_providers or set(config.enabled_providers) - set(DISCOVERY_PROVIDERS):
+        raise ConfigurationError('Select OpenAlex and/or Europe PMC for journal discovery', field='enabled_providers')
     return scopes
 
 
@@ -64,7 +56,7 @@ def discover_selected(config, config_path, *, client_factory=DiscoveryClient, cl
                 detail=source.name,current=count,unit='work')))
     def execute(provider):
         results=[]
-        applicable=tuple(source for source in scopes if source.kind!='conference' or provider=='dblp')
+        applicable=scopes
         if cancel.is_set():
             return tuple(DiscoveryResult(provider,s,'cancelled',limitations=('Run cancelled',)) for s in applicable)
         with ExitStack() as stack:
@@ -91,20 +83,17 @@ def discover_selected(config, config_path, *, client_factory=DiscoveryClient, cl
     with ThreadPoolExecutor(max_workers=min(4,len(selected))) as pool:
         # map preserves fixed Provider order independent of network completion.
         results=tuple(result for group in pool.map(execute,selected) for result in group)
-    # Conferences not selected through DBLP are a real scope omission even when
-    # every selected journal provider succeeds.
-    if 'dblp' not in selected:
-        results += tuple(DiscoveryResult('dblp',source,'skipped',limitations=('DBLP not selected; Conference was not run',)) for source in scopes if source.kind=='conference')
     return IntegratedDiscovery(tuple(record for result in results for record in result.records),results,discovery_status(results,cancel.is_set()))
 
 
 def run_integrated(config_path, *, loaded_config=None, workspace_snapshot=None, cancel_event=None,
-                   progress_callback=None, client_factory=DiscoveryClient, completion=None):
+                   progress_callback=None, client_factory=DiscoveryClient):
     from allfold.application.run_commit import capture_run_workspace, commit_run_workspace
     from allfold.application.monitor import RunResult, RunOutcome, MonitorStatistics, MonitorIssue, MonitorIssueSeverity, MonitorIssueComponent
     from allfold.application.run_state import RunProvider, RunFacts, RunIssueFact, LastRunSnapshot, RecordedRunOutcome, LAST_RUN_SCHEMA_VERSION, LastRunSnapshotWriteError, write_last_run_snapshot
     from allfold.canonicalize import canonicalize_records, consolidate_evidence
-    from allfold.identifiers import strong_identifiers
+    from allfold.identifiers import evidence_identifiers
+    from allfold.persistence.discovery_evidence import append_discovery_evidence, DiscoveryScope
     from allfold.persistence.materialize import materialize_papers, read_workspace_identities
     from allfold.persistence.safe_write import ContentChangedError
     cancel=cancel_event or Event()
@@ -115,10 +104,6 @@ def run_integrated(config_path, *, loaded_config=None, workspace_snapshot=None, 
         config=snapshot.config
         validate_selection(config)
         dates=resolve_runtime_date(config,today=date.today())
-        # Initial identity scan is brief. Final materialization repeats it under
-        # the commit lock, so concurrent Runs cannot create duplicate identities.
-        with commit_run_workspace(snapshot) as lock:
-            initial=read_workspace_identities(lock)
         pacing={}
         clients={}
         class UnavailableClient:
@@ -132,12 +117,7 @@ def run_integrated(config_path, *, loaded_config=None, workspace_snapshot=None, 
         for provider in config.enabled_providers:
             try:
                 key=read_credential(config_path)[0] if provider=='openalex' else None
-                if provider in DISCOVERY_PROVIDERS:
-                    client=client_factory(provider,api_key=key,cancel_event=cancel,pacing_state=pacing,progress_callback=progress_callback)
-                else:
-                    from allfold.providers.supplemental import SupplementalClient
-                    client=SupplementalClient(provider,mailto=config.crossref_mailto,cancel_event=cancel,pacing_state=pacing,
-                                              progress_callback=progress_callback)
+                client=client_factory(provider,api_key=key,cancel_event=cancel,pacing_state=pacing,progress_callback=progress_callback)
                 clients[provider]=stack.enter_context(client)
             except (ValueError,OSError) as error:
                 clients[provider]=UnavailableClient(provider,str(error))
@@ -145,33 +125,13 @@ def run_integrated(config_path, *, loaded_config=None, workspace_snapshot=None, 
             progress_callback(ProgressEvent(stage=ProgressStage.DISCOVERING_PAPERS))
         discovery=discover_selected(config,config_path,clients=clients,cancel_event=cancel,progress_callback=progress_callback)
         records=discovery.records
-        supplementation=()
-        if not cancel.is_set():
-            if progress_callback:
-                progress_callback(ProgressEvent(stage=ProgressStage.PREPARING_PAPERS))
-            if completion is None:
-                from allfold.application.metadata_completion import complete_metadata
-                completion=complete_metadata
-            groups=consolidate_evidence(records).clusters
-            known, fresh=[],[]
-            for group in groups:
-                keys={key for record in group.evidence for key in strong_identifiers(record.external_ids,record.related_dois)}
-                (known if not initial.complete or any(key in initial.by_identifier or key in initial.blocked_identifiers for key in keys) else fresh).extend(group.evidence)
-            completed=completion(tuple(fresh),config.enabled_providers,clients=clients,cancel_event=cancel)
-            records=tuple(known)+tuple(completed.records)
-            supplementation=completed.issues
-        from allfold.application.source_dates import filter_source_dates
-        dated=filter_source_dates(records,dates.from_date,dates.to_date)
-        canonical=canonicalize_records(dated.records)
+        if progress_callback:
+            progress_callback(ProgressEvent(stage=ProgressStage.PREPARING_PAPERS))
+        canonical=canonicalize_records(records)
         issues=[MonitorIssue(MonitorIssueSeverity.ERROR if r.status=='failed' else MonitorIssueSeverity.WARNING,
                     MonitorIssueComponent.OPENALEX,'discovery',f'{r.provider} / {r.source.name}: {message}')
                 for r in discovery.providers for message in r.limitations]
-        issues.extend(MonitorIssue(MonitorIssueSeverity.WARNING,MonitorIssueComponent.CANONICALIZATION,'supplement',
-                                  f'{item.provider}: {item.message}') for item in supplementation)
         issues.extend(MonitorIssue(MonitorIssueSeverity.ERROR,MonitorIssueComponent.CANONICALIZATION,item.stage,item.message) for item in canonical.issues)
-        if dated.excluded:
-            issues.append(MonitorIssue(MonitorIssueSeverity.WARNING,MonitorIssueComponent.CANONICALIZATION,
-                'source_date',f'{dated.excluded} year-only candidates excluded by confirmed same-version publication dates outside the requested months'))
         created=existing=0
         def result():
             warnings=tuple(i for i in issues if i.severity is MonitorIssueSeverity.WARNING)
@@ -179,12 +139,10 @@ def run_integrated(config_path, *, loaded_config=None, workspace_snapshot=None, 
             outcome=(RunOutcome.CANCELLED if cancel.is_set() else RunOutcome.FAILED if discovery.status=='failed' else
                      RunOutcome.COMPLETED_WITH_ERRORS if errors else RunOutcome.COMPLETED_WITH_WARNINGS if warnings or discovery.status=='partial' else RunOutcome.COMPLETED)
             facts=RunFacts(finished_at=datetime.now(timezone.utc),created_papers=created,existing_papers=existing,
-                statistics={'integrated_candidates':sum(r.candidates for r in discovery.providers),'integrated_deduplicated':len(canonical.papers),
-                            'source_date_excluded':dated.excluded},
+                statistics={'integrated_candidates':sum(r.candidates for r in discovery.providers),'integrated_deduplicated':len(canonical.papers)},
                 issues=tuple(RunIssueFact(category=i.stage,message=i.message,severity=i.severity.value) for i in issues),
                 details={'discovery_status':'cancelled' if cancel.is_set() else discovery.status,
-                         'provider_runs':[r.fact() for r in discovery.providers],
-                         'supplement_failures':[dict(provider=i.provider,identifier=i.identifier,message=i.message) for i in supplementation]})
+                         'provider_runs':[r.fact() for r in discovery.providers]})
             return RunResult(RunProvider.INTEGRATED,dates,len(canonical.papers),created,existing,warnings,errors,outcome,
                              MonitorStatistics(),log_level=config.log_level,facts=facts)
         if cancel.is_set():
@@ -196,6 +154,21 @@ def run_integrated(config_path, *, loaded_config=None, workspace_snapshot=None, 
                 saved=materialize_papers(canonical.papers,config.output_dir,operation_lock=lock,cancel_event=cancel,progress_callback=progress_callback)
                 created,existing=len(saved.created_papers),len(saved.existing_papers)
                 issues.extend(MonitorIssue(MonitorIssueSeverity.ERROR,MonitorIssueComponent.MATERIALIZATION,'write',i.message) for i in saved.issues)
+                identities=read_workspace_identities(lock)
+                for group in consolidate_evidence(records).clusters:
+                    if cancel.is_set():
+                        break
+                    keys={key for record in group.evidence for key in evidence_identifiers(record)}
+                    owners={item.paper_id for key in keys if (item:=identities.by_identifier.get(key)) and item.paper_id}
+                    scopes=tuple(DiscoveryScope(provider=run.provider,journal=run.source.name,key=run.source.key,
+                        issns=run.source.issns,from_date=dates.from_date.isoformat(),to_date=dates.to_date.isoformat())
+                        for run in discovery.providers if any(record in group.evidence for record in run.records))
+                    for paper_id in owners:
+                        try:
+                            append_discovery_evidence(lock,paper_id,group.evidence,scopes)
+                        except (ValueError,OSError,ContentChangedError) as error:
+                            issues.append(MonitorIssue(MonitorIssueSeverity.ERROR,MonitorIssueComponent.MATERIALIZATION,
+                                'evidence_write',f'Discovery evidence could not be saved: {error}'))
                 final=result()
                 if not cancel.is_set():
                     try:

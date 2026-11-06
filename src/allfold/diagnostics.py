@@ -55,14 +55,14 @@ def summarize_run_diagnostics(diagnostics: Sequence[RunDiagnostic]) -> tuple[Run
 # Durable diagnostics are deliberately independent of the Paper/Workspace state.
 # Only coordinators may declare a terminal business outcome.
 
-KINDS = frozenset({'run', 'prepare', 'import', 'kept', 'enrich', 'covers'})
-PROVIDERS = frozenset({'integrated', 'openalex', 'crossref', 'europe_pmc', 'dblp', 'zbmath', 'wos'})
+KINDS = frozenset({'run', 'prepare', 'import', 'kept', 'enrich', 'api_completion', 'covers'})
+PROVIDERS = frozenset({'integrated', 'openalex', 'crossref', 'europe_pmc', 'arxiv', 'biorxiv', 'medrxiv', 'wos'})
 OUTCOMES = frozenset({'completed', 'partial', 'failed', 'cancelled', 'interrupted', 'uncertain',
                       'needs_attention', 'opened', 'no_effect', 'confirmed'})
 STATISTICS = frozenset({'retrieved', 'created', 'updated', 'total', 'processed', 'failed', 'skipped',
     'confirmed', 'exported', 'no_effect', 'uncertain', 'cancelled', 'completed', 'opened',
     'needs_attention', 'eligible', 'matched', 'downloaded', 'enriched', 'unchanged', 'candidates',
-    'papers', 'services', 'warnings', 'errors', 'excluded', 'duplicates', 'materialized', 'pdf_unverified'})
+    'no_match', 'lookup_failed', 'identity_mismatch', 'evidence', 'papers', 'services', 'warnings', 'errors', 'excluded', 'duplicates', 'materialized', 'pdf_unverified'})
 REASONS = frozenset({'runtime_interrupted', 'connection_lost', 'cancelled', 'partial', 'failed',
     'needs_attention', 'result_unconfirmed', 'pdf_unverified', 'no_effect', 'configuration_changed',
     'workspace_changed', 'service_unassigned', 'no_candidates', 'no_kept_papers', 'blocked',
@@ -124,7 +124,7 @@ def _details(value):
     for key in ('saved_fields', 'requested_fields'):
         fields = value.get(key)
         if isinstance(fields, list):
-            result[key] = sorted({field for field in fields if _enum(field, {'abstract', 'authors', 'publication_date'})})
+            result[key] = sorted({field for field in fields if _enum(field, {'abstract', 'authors', 'publication_date', 'date_evidence', 'first_public_at', 'sources', 'author_keywords', 'journal', 'conference', 'conference_id', 'publication_type'})})
     service_statistics = value.get('service_statistics')
     if isinstance(service_statistics, list):
         summaries = []

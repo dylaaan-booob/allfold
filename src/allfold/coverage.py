@@ -9,7 +9,6 @@ from enum import Enum
 
 class CoverageComponent(str, Enum):
     OPENALEX_DISCOVERY = "openalex_discovery"
-    CROSSREF_DISCOVERY = "crossref_discovery"
 
 
 class CoverageStatus(str, Enum):
@@ -48,8 +47,6 @@ def validate_reporting_identity(unit: CoverageUnit) -> None:
             raise ValueError(f"reporting {field} must be a non-empty string or null")
     if unit.component is CoverageComponent.OPENALEX_DISCOVERY:
         valid = unit.provider == "openalex" and unit.journal is not None and unit.issn is None and unit.doi is None
-    elif unit.component is CoverageComponent.CROSSREF_DISCOVERY:
-        valid = unit.provider == "crossref" and unit.journal is not None and unit.issn is not None and unit.doi is None
     else:
         valid = False
     if not valid:

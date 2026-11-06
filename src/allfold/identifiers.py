@@ -26,7 +26,7 @@ def valid_doi(value: str | None) -> str | None:
 
 
 
-RELIABLE_NAMESPACES = frozenset({"doi", "openalex", "arxiv", "dblp", "europe_pmc", "zbmath", "pmid", "pmcid", "wos"})
+RELIABLE_NAMESPACES = frozenset({"doi", "openalex", "arxiv", "dblp", "europe_pmc", "pmid", "pmcid", "wos", "biorxiv", "medrxiv"})
 
 
 def normalize_external_id(namespace: str, value: Any) -> str | None:
@@ -34,7 +34,7 @@ def normalize_external_id(namespace: str, value: Any) -> str | None:
     if namespace not in RELIABLE_NAMESPACES or not isinstance(value, str) or not value.strip():
         return None
     value = value.strip()
-    if namespace == "doi":
+    if namespace in {"doi", "biorxiv", "medrxiv"}:
         return valid_doi(value)
     if namespace == "openalex":
         value = value.removeprefix("https://openalex.org/").upper()
@@ -72,4 +72,12 @@ def paper_identifiers(paper: Any) -> frozenset[tuple[str, str]]:
     for alias in getattr(paper, "identity_aliases", ()):
         if value := normalize_external_id(alias.provider, alias.record_id):
             identities.add((alias.provider, value))
+    return frozenset(identities)
+
+
+def evidence_identifiers(record: Any) -> frozenset[tuple[str, str]]:
+    identities = set(strong_identifiers(record.external_ids, record.related_dois))
+    for reference in record.related_ids:
+        if value := normalize_external_id(reference.provider, reference.record_id):
+            identities.add((reference.provider, value))
     return frozenset(identities)

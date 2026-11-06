@@ -74,14 +74,14 @@ def test_primary_formal_record_and_dates_are_independent_of_arrival_order():
                         external_ids=ExternalIds(doi='10.5555/preprint', arxiv='2201.00001'),
                         related_dois=('10.5555/formal',),
                         authors=(Author(name='Preprint author'),),
-                        dates=(EvidenceDate(kind=Kind.PREPRINT, year=2022, month=1),))
+                        dates=(EvidenceDate(kind=Kind.PREPRINT, year=2022, month=1, first_version=True),))
     formal = evidence('crossref', '10.5555/formal', title='Formal title', journal='Journal',
                       monitor_journal_issns=('1234-5678',), publication_date='2026-03',
                       external_ids=ExternalIds(doi='10.5555/formal'),
                       authors=(Author(name='Formal author'),),
                       dates=(EvidenceDate(kind=Kind.ACCEPTED, year=2021, month=12),
                              EvidenceDate(kind=Kind.PUBLISHED_ONLINE, year=2026, month=2, day=3)),
-                      indexed_terms=(ProviderTopic(value='62G05', source='zbmath', kind='MSC'),))
+                      indexed_terms=(ProviderTopic(value='statistics', source='openalex', kind='topic'),))
     for records in ([preprint, formal], [formal, preprint]):
         paper, = canonicalize_records(records).papers
         assert paper.doi == '10.5555/formal'
@@ -90,9 +90,8 @@ def test_primary_formal_record_and_dates_are_independent_of_arrival_order():
         assert [a.name for a in paper.authors] == ['Formal author']
         assert paper.metadata.publication_date == '2026-03'
         assert paper.metadata.first_public_at == '2022-01'
-        assert paper.metadata.accepted_at == '2021-12'
-        assert not paper.metadata.accepted_approximate
-        assert paper.indexed_terms[0].kind == 'MSC'
+        assert any(d.kind==Kind.ACCEPTED and d.year==2021 and d.month==12 for d in paper.date_evidence)
+        assert paper.indexed_terms[0].kind == 'topic'
         assert {d.provider for d in paper.date_evidence} == {'arxiv', 'crossref'}
 
 
@@ -197,7 +196,8 @@ def test_workspace_api_exposes_conference_and_date_provenance(tmp_path, followed
     assert group['name'] == ('ML' if followed else 'Unmapped sources')
     item, = venue['papers']
     assert item['doi'] is None and item['conference'] == 'NeurIPS'
-    assert item['first_public_at'] is None and item['accepted_at'] is None
+    assert item['first_public_at'] is None
+    assert all(event['publication_type']=='conference' for event in item['date_evidence'])
     assert item['date_evidence'][0]['kind'] == 'conference-year'
     assert item['indexed_terms'][0]['kind'] == 'topic'
     assert item['external_ids']['dblp'] == 'conf/nips/Test'
@@ -214,10 +214,29 @@ def test_date_inference_uses_public_versions_and_formal_acceptance_only():
                         external_ids=ExternalIds(doi='10.5555/preprint'), related_dois=('10.5555/date',),
                         dates=(EvidenceDate(kind=Kind.ACCEPTED, year=2020), EvidenceDate(kind=Kind.PREPRINT, year=2022)))]
     paper, = canonicalize_records(records).papers
-    assert paper.metadata.first_public_at == '2021-05'
-    assert paper.metadata.accepted_at == '2021-05'
-    assert paper.metadata.accepted_approximate
-    assert not any(item.year == 2000 for item in paper.date_evidence)
+    assert paper.metadata.first_public_at is None  # a later preprint version does not establish its first public date
+    assert any(item.kind==Kind.PUBLISHED_ONLINE and item.year==2021 for item in paper.date_evidence)
+    assert any(item.year==2000 and item.kind==Kind.SOURCE for item in paper.date_evidence)
+
+
+@pytest.mark.parametrize('year,month,first,expected', [(2020, None, True, '2020'), (2020, 2, True, '2020-02'),
+    (2020, 2, False, None), (2099, 1, True, None)])
+def test_first_public_requires_established_nonfuture_preprint_date(year, month, first, expected):
+    from allfold.models import EvidenceDate, EvidenceDateKind as Kind
+    formal = evidence('crossref', 'formal', title='Formal', journal='Journal', publication_type='journal',
+        external_ids=ExternalIds(doi='10.5555/formal'), related_dois=('10.5555/preprint',),
+        dates=(EvidenceDate(kind=Kind.ACCEPTED, year=2018), EvidenceDate(kind=Kind.PUBLISHED_ONLINE, year=2019)))
+    preprint = evidence('arxiv', '2002.12345', title='Preprint', publication_type='preprint',
+        external_ids=ExternalIds(doi='10.5555/preprint', arxiv='2002.12345'),
+        dates=(EvidenceDate(kind=Kind.PREPRINT, year=year, month=month, first_version=first),))
+    paper, = canonicalize_records((formal, preprint)).papers
+    assert paper.metadata.first_public_at == expected and paper.doi == '10.5555/formal'
+
+
+def test_known_related_preprint_doi_without_date_does_not_supply_first_public():
+    paper, = canonicalize_records((evidence('crossref', 'formal', title='Formal', journal='Journal',
+        external_ids=ExternalIds(doi='10.5555/formal'), related_dois=('10.5555/preprint',), publication_date='2026-01'),)).papers
+    assert paper.metadata.first_public_at is None
 
 
 def test_wos_without_doi_uses_ut_and_create_only_shared_identity(tmp_path):
@@ -244,7 +263,7 @@ def test_wos_without_doi_uses_ut_and_create_only_shared_identity(tmp_path):
     assert second.skipped_existing_papers == 1 and second.created_papers == 0
 
 
-def test_identity_scan_rejects_unreadable_known_ids_and_reads_legacy_aliases(tmp_path):
+def test_identity_scan_rejects_unreadable_known_ids(tmp_path):
     from allfold.persistence.markdown_state import parse_paper_identity
     from allfold.persistence.materialize import render_paper_markdown
     paper, = canonicalize_records([evidence('crossref', 'formal', title='Title', journal='Journal',
@@ -253,10 +272,6 @@ def test_identity_scan_rejects_unreadable_known_ids_and_reads_legacy_aliases(tmp
     broken = text.replace('  openalex: W17', '  openalex: [W17, W18]')
     identity = parse_paper_identity(tmp_path/'paper.md', broken)
     assert not identity.index_complete
-    # Older hand-managed notes may carry the top-level ID without external_ids.
-    legacy = '---\ntype: paper\nid: '+str(paper.id)+'\ndoi: 10.5555/one\nopenalex_id: https://openalex.org/W17\n---\n'
-    identity = parse_paper_identity(tmp_path/'old.md', legacy)
-    assert ('openalex', 'W17') in identity.identifiers
 
 
 def test_import_plan_uses_only_primary_doi_and_excludes_unsupported_targets(tmp_path):

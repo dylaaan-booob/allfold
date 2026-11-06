@@ -6,6 +6,7 @@ import json
 import hashlib
 import hmac
 from dataclasses import dataclass
+from contextlib import nullcontext
 
 import yaml
 from pathlib import Path
@@ -38,8 +39,8 @@ class EnrichmentTarget:
     missing_authors: bool
 
 
-def read_paper_target(workspace: Path, paper_id: UUID) -> EnrichmentTarget:
-    with workspace_operation_lock(workspace) as lock:
+def read_paper_target(workspace: Path, paper_id: UUID, *, operation_lock=None) -> EnrichmentTarget:
+    with nullcontext(operation_lock) if operation_lock else workspace_operation_lock(workspace) as lock:
         directory = os.open('Papers', os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW, dir_fd=lock.directory)
         try:
             reads = {}
@@ -170,12 +171,49 @@ def fill_authors(original: str, authors: list[str]) -> str:
     return lines[0] + payload[:start] + json.dumps(authors, ensure_ascii=False) + payload[end:] + ''.join(lines[closing:])
 
 
+def set_managed_value(original, field, value):
+    """Splice one managed YAML value, retaining human content and unrelated bytes."""
+    lines = original.splitlines(keepends=True)
+    closing = next(i for i in range(1, len(lines)) if lines[i].rstrip('\r\n') in {'---', '...'})
+    payload = ''.join(lines[1:closing])
+    document = yaml.compose(payload)
+    if not isinstance(document, yaml.MappingNode) or document.flow_style:
+        raise ValueError('Cannot safely locate managed Paper fields')
+    entries = [(key, node) for key, node in document.value if key.value == field]
+    replacement = json.dumps(value, ensure_ascii=False)
+    if not entries:
+        newline = '\r\n' if lines[0].endswith('\r\n') else '\n'
+        return ''.join(lines[:closing]) + f'{field}: {replacement}{newline}' + ''.join(lines[closing:])
+    if len(entries) != 1:
+        raise ValueError(f'Duplicate {field}')
+    key, node = entries[0]
+    start, end = node.start_mark.index, node.end_mark.index
+    if start < key.end_mark.index or any(isinstance(token, (yaml.AnchorToken, yaml.AliasToken))
+            and start <= token.start_mark.index < end for token in yaml.scan(payload)):
+        raise ValueError(f'Cannot safely replace {field}')
+    if isinstance(node, (yaml.SequenceNode, yaml.MappingNode)) and not node.flow_style and node.value:
+        # End at the final scalar, retaining trailing comments/newlines verbatim.
+        def last(node):
+            if isinstance(node, yaml.MappingNode) and node.value:
+                return last(node.value[-1][1])
+            if isinstance(node, yaml.SequenceNode) and node.value:
+                return last(node.value[-1])
+            return node.end_mark.index
+        end = last(node)
+    if node.start_mark.column == 0:
+        replacement = '  ' + replacement
+    if start == end and start and payload[start - 1] == ':':
+        replacement = ' ' + replacement
+    return lines[0] + payload[:start] + replacement + payload[end:] + ''.join(lines[closing:])
+
+
+
 def save_enrichment(target: EnrichmentTarget, abstract: str | None = None,
-                    publication_date: str | None = None, authors: list[str] | None = None) -> None:
+                    publication_date: str | None = None, authors: list[str] | None = None, date_evidence=()) -> dict:
     current = read_enrichment_target(target.workspace, target.paper_id)
     if current != target:
         raise ContentChangedError('Paper or Workspace changed; enrichment was not saved')
-    if abstract is None and publication_date is None and authors is None:
+    if abstract is None and publication_date is None and authors is None and not date_evidence:
         raise ValueError('No enrichment candidate')
     contents = target.original
     if abstract is not None:
@@ -190,7 +228,20 @@ def save_enrichment(target: EnrichmentTarget, abstract: str | None = None,
         if not target.missing_authors:
             raise ValueError('Paper already has Authors')
         contents = fill_authors(contents, authors)
+    saved = {key: value for key, value in dict(abstract=abstract, publication_date=publication_date, authors=authors).items() if value is not None}
+    if date_evidence:
+        from allfold.models import EvidenceDate
+        from allfold.paper_dates import merge_dates
+        state = parse_paper_state(target.path, target.original)
+        dates = merge_dates(state.date_evidence, tuple(EvidenceDate.model_validate(item) for item in date_evidence))
+        if dates != state.date_evidence:
+            values = [item.model_dump(mode='json', exclude_none=True) for item in dates]
+            contents = set_managed_value(contents, 'date_evidence', values)
+            saved['date_evidence'] = values
+    if not saved:
+        raise ValueError('Translator returned no new usable fields or date events')
     _commit_fields(target, contents)
+    return saved
 
 
 def _reset_yaml_field(original: str, field: str) -> str:
@@ -259,11 +310,11 @@ def edit_paper_fields(workspace: Path, paper_id: UUID, revision: str, *,
     _commit_fields(target, contents)
 
 
-def _commit_fields(target: EnrichmentTarget, contents: str) -> None:
+def _commit_fields(target: EnrichmentTarget, contents: str, *, operation_lock=None) -> None:
     state = parse_paper_state(target.path, contents)
     if state is None or not state.updateable:
         raise ValueError('Enrichment would produce an invalid Paper')
-    with workspace_operation_lock(target.workspace) as lock:
+    with nullcontext(operation_lock) if operation_lock else workspace_operation_lock(target.workspace) as lock:
         if lock.identity != target.workspace_identity:
             raise ContentChangedError('Workspace identity changed')
         try:

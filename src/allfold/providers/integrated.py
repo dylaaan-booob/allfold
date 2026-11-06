@@ -15,20 +15,13 @@ import httpx
 from allfold.http_client import create_http_client
 from allfold.identifiers import normalize_doi, normalize_external_id, valid_doi
 from allfold.progress import ProgressEvent, ActivityUpdate, ActivityKind
-from allfold.keywords import And, Or, Prefix, Phrase, Proximity, matches_fields
-from allfold.models import Author, ExternalIds, MetadataSource, ProviderWorkEvidence, ProviderTopic, EvidenceDate, EvidenceDateKind
+from allfold.keywords import And, Or, Prefix, Phrase, Proximity
+from allfold.models import ProviderWorkEvidence
 
-LICENSE_REDACTION = "zbMATH Open Web Interface contents unavailable due to conflicting licenses."
-
-
-def available_zbmath_text(value):
-    return value.strip() if isinstance(value,str) and value.strip() and value.strip()!=LICENSE_REDACTION else None
-
-
-DISCOVERY_PROVIDERS = ('openalex', 'europe_pmc', 'dblp', 'zbmath')
+DISCOVERY_PROVIDERS = ('openalex', 'europe_pmc')
 SUPPLEMENT_PROVIDERS = ('crossref', 'arxiv', 'biorxiv', 'medrxiv')
 PROVIDERS = DISCOVERY_PROVIDERS + SUPPLEMENT_PROVIDERS
-BASE_URLS = {'openalex':'https://api.openalex.org', 'europe_pmc':'https://www.ebi.ac.uk/europepmc/webservices/rest', 'dblp':'https://dblp.org', 'zbmath':'https://api.zbmath.org/v1', 'crossref':'https://api.crossref.org', 'arxiv':'https://export.arxiv.org', 'biorxiv':'https://api.biorxiv.org', 'medrxiv':'https://api.biorxiv.org'}
+BASE_URLS = {'openalex':'https://api.openalex.org', 'europe_pmc':'https://www.ebi.ac.uk/europepmc/webservices/rest', 'crossref':'https://api.crossref.org', 'arxiv':'https://export.arxiv.org', 'biorxiv':'https://api.biorxiv.org', 'medrxiv':'https://api.biorxiv.org'}
 TRANSIENT_HTTP = {500:'Internal Server Error', 502:'Bad Gateway', 503:'Service Unavailable', 504:'Gateway Timeout'}
 
 
@@ -38,7 +31,6 @@ class SourceScope:
     name: str
     key: str = ''
     issns: tuple[str, ...] = ()
-    stream: str | None = None
 
 
 @dataclass(frozen=True)
@@ -53,11 +45,15 @@ class DiscoveryResult:
 
     def fact(self):
         return dict(provider=self.provider, source=self.source.name, source_kind=self.source.kind,
-                    stream=self.source.stream, status=self.status, candidates=self.candidates,
+                    status=self.status, candidates=self.candidates,
                     retained=len(self.records), total=self.total, limitations=list(self.limitations))
 
 
 class DiscoveryError(ValueError):
+    pass
+
+
+class IdentityMismatch(DiscoveryError):
     pass
 
 
@@ -88,22 +84,16 @@ def _word(node):
 def compile_query(ast, provider):
     """Compile one AST into approved fields only; never interpolate raw syntax."""
     if isinstance(ast, (And, Or)):
-        op = ('&' if isinstance(ast, And) else '|') if provider == 'zbmath' else ('AND' if isinstance(ast, And) else 'OR')
+        op = 'AND' if isinstance(ast, And) else 'OR'
         return f'({compile_query(ast.left, provider)} {op} {compile_query(ast.right, provider)})'
     value = _word(ast)
     if provider == 'europe_pmc':
         return f'(TITLE_ABS:{value} OR KW:{value})'
-    if provider == 'zbmath':
-        return f'(ti:{value} | ut:{value} | cc:{value})'
     return value
 
 
 def _prefix(ast):
     return _prefix(ast.left) or _prefix(ast.right) if isinstance(ast, (And, Or)) else isinstance(ast, Prefix)
-
-
-def _rows(value):
-    return value if isinstance(value, list) else [value] if isinstance(value, dict) else []
 
 
 def _positive(value, name):
@@ -116,27 +106,6 @@ def _positive(value, name):
         raise DiscoveryError(f'Invalid {name} in provider response') from None
 
 
-def _dblp_page(data, offset):
-    result = data.get('result') if isinstance(data, dict) else None
-    hits = result.get('hits') if isinstance(result, dict) else None
-    if not isinstance(hits, dict):
-        raise DiscoveryError('Invalid DBLP result structure')
-    total = _positive(hits.get('@total'), 'total')
-    computed = _positive(hits.get('@computed'), 'computed')
-    first = _positive(hits.get('@first'), 'first')
-    if first != offset:
-        raise DiscoveryError('Incomplete: DBLP returned a repeated or unexpected first offset')
-    raw = hits.get('hit')
-    if raw is not None and not isinstance(raw, (list, dict)):
-        raise DiscoveryError('Invalid DBLP publication list')
-    rows = _rows(raw)
-    if any(not isinstance(row, dict) or not isinstance(row.get('info'), dict) for row in rows):
-        raise DiscoveryError('Invalid DBLP publication structure')
-    if not rows and offset < min(total, computed):
-        raise DiscoveryError('Incomplete: DBLP returned an empty page before the accessible total')
-    return rows, total, computed
-
-
 class DiscoveryClient:
     """One provider/host owns rate limits, bounded retry and cancellation checks."""
     def __init__(self, provider, *, api_key=None, transport=None, cancel_event=None,
@@ -147,7 +116,7 @@ class DiscoveryClient:
         self.provider = provider
         self.api_key = api_key
         self.cancel = cancel_event or Event()
-        self.interval = (2.0 if provider == 'dblp' else 0.35) if interval is None else interval
+        self.interval = 0.35 if interval is None else interval
         self.sleep = sleep
         self._access_restriction = None
         self.page_size = min(page_size, 1000)
@@ -187,41 +156,6 @@ class DiscoveryClient:
         self.check_cancel()
         return response
 
-    def _dblp_metarefresh(self, response):
-        if self.provider != 'dblp':
-            return response
-        from allfold.providers.dblp_metarefresh import recovery_plan, same_query
-        plan = recovery_plan(response)
-        if plan is None:
-            return response
-        delay, target = plan
-        if self.progress:
-            self.progress(ProgressEvent(activity=ActivityUpdate(kind=ActivityKind.WORKING,
-                source='dblp', operation='dblp_metarefresh', label='DBLP: metarefresh verification',
-                detail=f'Waiting {delay:g} seconds before resuming the original query')))
-        try:
-            self._wait(delay)
-            verified = self._get(target, None, {}, follow_redirects=False)
-            original = str(response.request.url)
-            location = verified.headers.get('location')
-            if verified.status_code not in (302, 303) or not location or not same_query(location, original):
-                raise DiscoveryError('Verification did not return to the original query')
-            resumed = self._get(original, None, {}, follow_redirects=False)
-            if (resumed.status_code != 200 or 'text/html' in resumed.headers.get('content-type', '').lower()
-                    or resumed.text.lstrip().lower().startswith(('<!doctype html', '<html'))):
-                raise DiscoveryError('Verification did not return API metadata')
-            try:
-                data = resumed.json()
-            except ValueError:
-                raise DiscoveryError('Verification did not return JSON') from None
-            _dblp_page(data, _positive(response.request.url.params.get('f', '0'), 'requested offset'))
-            return resumed
-        except Cancelled:
-            raise
-        except DiscoveryError:
-            self._access_restriction = 'dblp: access limited; metarefresh recovery failed; further requests stopped for this Run'
-            raise DiscoveryError(self._access_restriction) from None
-
     def request(self, path, params, *, response_format="json"):
         self.check_cancel()
         if self._access_restriction:
@@ -230,7 +164,6 @@ class DiscoveryClient:
         headers = {"Authorization":"Bearer " + self.api_key} if self.provider == "openalex" and self.api_key else {}
         for attempt in range(3):
             response = self._get(BASE_URLS[self.provider] + path, params, headers)
-            response = self._dblp_metarefresh(response)
             temporary_error = TRANSIENT_HTTP.get(response.status_code)
             html = ('text/html' in response.headers.get('content-type','').lower()
                     or response.text.lstrip().lower().startswith(('<!doctype html','<html')))
@@ -287,8 +220,8 @@ class DiscoveryClient:
             return DiscoveryResult(self.provider, source, "skipped", limitations=("Metadata-only Provider",))
         records, limits, candidates, total = [], [], 0, None
         try:
-            if source.kind == 'conference' and self.provider != 'dblp':
-                return DiscoveryResult(self.provider, source, 'skipped', limitations=('Conference discovery requires DBLP',))
+            if source.kind != 'journal':
+                return DiscoveryResult(self.provider, source, 'skipped', limitations=('Only journal discovery is supported',))
             compile_query(ast,self.provider)  # Capability validation precedes source-resolution HTTP.
             pages = self._pages(source, ast, from_date, to_date)
             for raw, page_total, page_limits in pages:
@@ -301,17 +234,11 @@ class DiscoveryClient:
                             detail=source.name,current=candidates,total=total,unit='work')))
                     continue
                 candidates += 1
-                if self.provider=='zbmath' and LICENSE_REDACTION in str(raw) and 'zbMATH metadata restricted by licensing' not in limits:
-                    limits.append('zbMATH metadata restricted by licensing')
-                if self.provider == "dblp" and not matches_fields(ast, (raw.get("title", ""),)):
-                    continue
                 evidence = self.normalize(raw, source)
                 if evidence is not None:
                     evidence = evidence.model_copy(update={'provenance':evidence.provenance.model_copy(update={'role':'discovery'})})
                 if evidence is not None:
                     records.append(evidence)
-            if records and self.provider in {'dblp','zbmath'} and ((from_date.month,from_date.day)!=(1,1) or (to_date.month,to_date.day)!=(12,31)):
-                limits.append('Incomplete: year-only source dates cannot establish exact monthly coverage')
             status = 'partial' if any(x.startswith(('Truncated:', 'Incomplete:')) for x in limits) else 'complete' if records else 'empty'
         except UnsupportedSource as error:
             limits.append(str(error)); status = 'skipped'
@@ -324,12 +251,6 @@ class DiscoveryClient:
     def _pages(self, source, ast, start, end):
         if self.provider == 'europe_pmc':
             yield from self._europe_pmc_pages(source, ast, start, end)
-            return
-        if self.provider == 'zbmath':
-            yield from self._zbmath_pages(source, ast, start, end)
-            return
-        if self.provider == 'dblp':
-            yield from self._dblp_pages(source, ast, start, end)
             return
         if self.provider != 'openalex':
             raise DiscoveryError('Provider adapter unavailable')
@@ -374,118 +295,11 @@ class DiscoveryClient:
             seen.add(cursor); params['cursor'] = cursor
 
     def normalize(self, raw, source):
-        if self.provider == 'europe_pmc':
-            source_id, record_id = raw.get('source'), raw.get('id')
-            if not source_id or not record_id or not raw.get('title'):
-                raise DiscoveryError('Europe PMC record lacks source, identity or title')
-            ids = {'europe_pmc':f'{source_id}:{record_id}', 'doi':normalize_doi(raw.get('doi'))}
-            if source_id == 'MED': ids['pmid'] = str(record_id)
-            if raw.get('pmcid'): ids['pmcid'] = raw['pmcid']
-            keywords = raw.get('keywordList',{}).get('keyword',[])
-            return ProviderWorkEvidence(provenance=MetadataSource(provider='europe_pmc', record_id=f'{source_id}:{record_id}', retrieved_at=datetime.now(timezone.utc),url='https://europepmc.org/article/'+quote(str(source_id),safe='')+'/'+quote(str(record_id),safe='')),
-                title=raw['title'], journal=source.name or None, publication_type='preprint' if source_id == 'PPR' else 'journal', publication_date=raw.get('firstPublicationDate'), abstract=raw.get('abstractText'),
-                external_ids=ExternalIds(**ids), monitor_journal_issns=source.issns,
-                indexed_terms=tuple(ProviderTopic(value=k,source='europe_pmc',kind='keyword') for k in keywords if isinstance(k,str) and k) + tuple(ProviderTopic(value=k['descriptorName'],source='europe_pmc',kind='mesh') for k in raw.get('meshHeadingList',{}).get('meshHeading',[]) if k.get('descriptorName')),
-                authors=tuple(Author(name=x['fullName']) for x in raw.get('authorList',{}).get('author',[]) if x.get('fullName')))
-        if self.provider == 'zbmath':
-            title = available_zbmath_text(raw.get('title',{}).get('title'))
-            if not raw.get('id'):
-                raise DiscoveryError('zbMATH record lacks identity')
-            ids = {'zbmath':str(raw['id'])}
-            for link in raw.get('links',[]):
-                if link.get('type') == 'doi' and normalize_doi(link.get('identifier')):
-                    ids['doi'] = normalize_doi(link['identifier'])
-                if link.get('type') == 'arxiv' and link.get('identifier'):
-                    ids['arxiv'] = link['identifier']
-            return ProviderWorkEvidence(provenance=MetadataSource(provider='zbmath', record_id=str(raw['id']), retrieved_at=datetime.now(timezone.utc),url='https://zbmath.org/'+quote(str(raw['id']),safe=''),licenses=tuple(item for item in raw.get('license',[]) if isinstance(item,str) and item)),
-                title=title, journal=available_zbmath_text(source.name), publication_type='preprint' if raw.get('database') == 'arXiv' else 'journal', external_ids=ExternalIds(**ids),
-                publication_date=str(raw['year']) if raw.get('year') else None,
-                dates=(EvidenceDate(kind=EvidenceDateKind.ISSUED,year=int(raw['year'])),) if raw.get('year') else (),
-                indexed_terms=tuple(ProviderTopic(value=str(k.get('code') or k.get('text')),source='zbmath',kind='msc') for k in raw.get('msc',[]) if k.get('code') or k.get('text')) + tuple(ProviderTopic(value=k,source='zbmath',kind='keyword') for k in raw.get('keywords',[]) if available_zbmath_text(k)),
-                authors=tuple(Author(name=x['name']) for x in raw.get('contributors',{}).get('authors',[]) if available_zbmath_text(x.get('name'))),
-                monitor_journal_issns=source.issns)
-        if self.provider == 'dblp':
-            key, title = raw.get('key'), raw.get('title')
-            if not key or not title:
-                raise DiscoveryError('DBLP record lacks publication key or title')
-            editions = raw.get('ee',[])
-            editions = editions if isinstance(editions,list) else [editions]
-            edition_dois = set()
-            for item in editions:
-                value = item.get('text') or item.get('#text') if isinstance(item,dict) else item
-                if isinstance(value,str) and value.startswith(('https://doi.org/','http://doi.org/','https://dx.doi.org/','http://dx.doi.org/')):
-                    doi = valid_doi(value)
-                    if doi: edition_dois.add(doi)
-            primary = valid_doi(raw.get('doi')) or next(iter(sorted(edition_dois)),None)
-            names = raw.get('authors', {}).get('author', [])
-            names = names if isinstance(names, list) else [names]
-            return ProviderWorkEvidence(provenance=MetadataSource(provider='dblp', record_id=key, retrieved_at=datetime.now(timezone.utc),url='https://dblp.org/rec/'+quote(key,safe='/')),
-                title=title, journal=source.name if source.kind == 'journal' else None,
-                conference=source.name if source.kind == 'conference' else None, conference_id=source.key or source.stream if source.kind == 'conference' else None,
-                publication_type=source.kind, publication_date=str(raw['year']) if raw.get('year') else None,
-                external_ids=ExternalIds(dblp=key, doi=primary),related_dois=tuple(sorted(edition_dois-{primary})),
-                dates=(EvidenceDate(kind=EvidenceDateKind.CONFERENCE_YEAR if source.kind == 'conference' else EvidenceDateKind.ISSUED,year=int(raw['year'])),) if raw.get('year') else (),
-                authors=tuple(Author(name=x.get('text') if isinstance(x,dict) else x) for x in names if x),
-                monitor_journal_issns=source.issns)
-        if self.provider != 'openalex':
+        from allfold.providers.discovery_evidence import normalize_openalex, normalize_europe_pmc
+        normalizer = {'openalex': normalize_openalex, 'europe_pmc': normalize_europe_pmc}.get(self.provider)
+        if normalizer is None:
             raise DiscoveryError('Provider normalization unavailable')
-        if (raw.get('primary_location') or {}).get('raw_type') == 'journal-issue':
-            return None
-        record_id = str(raw.get('id') or '')
-        if not record_id or not raw.get('title'):
-            raise DiscoveryError('OpenAlex record lacks identity or title')
-        abstract = raw.get('abstract_inverted_index') or {}
-        tokens = {i: word for word, positions in abstract.items() for i in positions}
-        identifiers = {'openalex':record_id,'doi':normalize_doi(raw.get('doi'))}
-        for namespace in ('pmid','pmcid'):
-            identifier = normalize_external_id(namespace,(raw.get('ids') or {}).get(namespace))
-            if identifier:
-                identifiers[namespace] = identifier
-        return ProviderWorkEvidence(provenance=MetadataSource(provider='openalex', record_id=record_id, retrieved_at=datetime.now(timezone.utc),url=record_id),
-            title=raw['title'], journal=source.name or None, publication_type='preprint' if raw.get('type') in {'preprint','posted-content'} else 'journal', publication_date=raw.get('publication_date'),
-            related_dois=tuple(sorted({doi for location in raw.get('locations',[]) if (doi:=normalize_doi(location.get('doi'))) and doi != normalize_doi(raw.get('doi'))})),
-            abstract=' '.join(tokens[i] for i in sorted(tokens)) or None,
-            external_ids=ExternalIds(**identifiers),
-            monitor_journal_issns=source.issns,
-            authors=tuple(Author(name=x['author']['display_name']) for x in raw.get('authorships',[]) if x.get('author',{}).get('display_name')))
-
-    def _dblp_pages(self, source, ast, start, end):
-        if not source.stream or not re.fullmatch(r'streams/(?:conf|journals)/[a-zA-Z0-9_/-]+',source.stream):
-            raise UnsupportedSource('DBLP requires a verified source Stream mapping; this source was not queried')
-        # DBLP has no reliable phrase/group syntax. Keep native AND clauses;
-        # flatten grouped OR operands into a conservative clause instead of
-        # exponentially distributing them. The full AST still filters titles.
-        def candidate_clauses(node):
-            self.check_cancel()
-            if isinstance(node, And):
-                return candidate_clauses(node.left) + candidate_clauses(node.right)
-            if isinstance(node, Or):
-                children = candidate_clauses(node.left) + candidate_clauses(node.right)
-                return [[word for clause in children for word in clause]]
-            _word(node)
-            return [[word + ('' if isinstance(node,Prefix) else '$')] for word in node.value.split()]
-        keywords = ' '.join('|'.join(dict.fromkeys(clause)) for clause in candidate_clauses(ast))
-        years = '|'.join(f'year:{year}:' for year in range(start.year,end.year+1))
-        query = f'streamid:{source.stream.removeprefix("streams/")}: {years} {keywords}'
-        offset, seen = 0, set()
-        while True:
-            data = self.request('/search/publ/api',{'q':query,'format':'json','h':self.page_size,'f':offset})
-            rows, total, computed = _dblp_page(data, offset)
-            limits = ['DBLP title-only matching; year precision cannot establish exact monthly coverage']
-            if computed < total:
-                limits.append(f'Truncated: DBLP computed {computed} of {total} results')
-            yield None, total, limits
-            for row in rows:
-                raw = row.get('info',{})
-                key = raw.get('key') or str(raw.get('url','')).removeprefix('https://dblp.org/rec/')
-                raw = dict(raw,key=key)
-                if not key or key in seen:
-                    raise DiscoveryError('Incomplete: DBLP repeated a publication or made no progress')
-                seen.add(key)
-                yield raw, total, limits
-            offset += len(rows)
-            if offset >= min(total,computed):
-                return
+        return normalizer(raw, source)
 
     def _europe_pmc_pages(self, source, ast, start, end):
         if not source.issns:
@@ -512,58 +326,8 @@ class DiscoveryClient:
                 raise DiscoveryError('Incomplete: Europe PMC pagination made no progress')
             seen.add(cursor)
 
-    def _zbmath_pages(self, source, ast, start, end):
-        if not source.issns:
-            raise DiscoveryError('zbMATH requires a verified journal ISSN mapping')
-        serial_ids = set()
-        for issn in source.issns:
-            for raw, _ in self._zbmath_search_pages('serial', 'sn:' + issn):
-                if raw is None:
-                    continue
-                issns = [item.get('number') if isinstance(item,dict) else item for item in raw.get('issn',[])]
-                if issn in issns and raw.get('id'):
-                    serial_ids.add(str(raw['id']))
-        if not serial_ids:
-            raise UnsupportedSource('zbMATH has no verified journal serial mapping; source was not queried')
-        # Several serial identities for one ISSN can be predecessor/successor or
-        # translations. An ambiguous mapping cannot authorize extra sources.
-        if len(serial_ids) != 1:
-            raise UnsupportedSource('zbMATH journal serial mapping is ambiguous')
-        query = f'se:{next(iter(serial_ids))} & py:{start.year}-{end.year} & {compile_query(ast,"zbmath")}'
-        yield from self._zbmath_document_pages(query)
-
-    def _zbmath_document_pages(self, query):
-        limits = ('zbMATH year precision cannot establish exact monthly coverage; review text is excluded',)
-        for raw, total in self._zbmath_search_pages('document', query):
-            yield raw, total, limits
-
-    def _zbmath_search_pages(self, kind, query):
-        count, page, seen = 0, 0, set()
-        while True:
-            data = self.request('/' + kind + '/_search',{'search_string':query,'page':page,'results_per_page':self.page_size})
-            status = data.get('status',{})
-            if not isinstance(status, dict) or status.get('execution_bool') is not True:
-                raise DiscoveryError(f'zbMATH {kind} response is invalid or unsuccessful')
-            total = _positive(status.get('nr_total_results'),'total')
-            rows = data.get('result')
-            if not isinstance(rows,list):
-                raise DiscoveryError('zbMATH response is missing result')
-            yield None, total
-            for raw in rows:
-                key = raw.get('id')
-                if not key or key in seen:
-                    raise DiscoveryError('Incomplete: zbMATH pagination made no progress')
-                seen.add(key); count += 1
-                yield raw, total
-            if count >= total:
-                return
-            if not rows:
-                raise DiscoveryError('Incomplete: zbMATH returned an empty page before total')
-            page += 1
-
     def lookup(self, namespace, identifier):
         """Exact-identifier metadata lookup; no keyword discovery fallback."""
-        source = SourceScope('journal','')
         if self.provider == 'openalex' and namespace in {'doi','openalex'}:
             target = 'https://doi.org/' + identifier if namespace == 'doi' else identifier.rsplit('/',1)[-1]
             raw = self.request('/works/' + quote(target,safe='/:'),{})
@@ -588,14 +352,4 @@ class DiscoveryClient:
                     journal = raw.get('journalInfo',{}).get('journal',{}).get('title') or ''
                     output.append(self.normalize(raw,SourceScope('journal',journal)))
             return tuple(output)
-        if self.provider == 'zbmath' and namespace in {'doi','zbmath'}:
-            if namespace == 'zbmath':
-                if not identifier.isdigit(): raise DiscoveryError('Invalid zbMATH ID')
-                response = self.request('/document/' + identifier,{})
-                rows = _rows(response.get('result'))
-            else:
-                identifier=normalize_doi(identifier)
-                if not identifier or any(c in identifier for c in ('"', '\\')): raise DiscoveryError('Invalid DOI for native identifier lookup')
-                rows = [raw for raw, _, _ in self._zbmath_document_pages(f'doi:"{identifier}"') if raw]
-            return tuple(self.normalize(raw,SourceScope('journal',raw.get('source',{}).get('source') or '')) for raw in rows)
         return ()
