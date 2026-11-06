@@ -116,6 +116,27 @@ def _positive(value, name):
         raise DiscoveryError(f'Invalid {name} in provider response') from None
 
 
+def _dblp_page(data, offset):
+    result = data.get('result') if isinstance(data, dict) else None
+    hits = result.get('hits') if isinstance(result, dict) else None
+    if not isinstance(hits, dict):
+        raise DiscoveryError('Invalid DBLP result structure')
+    total = _positive(hits.get('@total'), 'total')
+    computed = _positive(hits.get('@computed'), 'computed')
+    first = _positive(hits.get('@first'), 'first')
+    if first != offset:
+        raise DiscoveryError('Incomplete: DBLP returned a repeated or unexpected first offset')
+    raw = hits.get('hit')
+    if raw is not None and not isinstance(raw, (list, dict)):
+        raise DiscoveryError('Invalid DBLP publication list')
+    rows = _rows(raw)
+    if any(not isinstance(row, dict) or not isinstance(row.get('info'), dict) for row in rows):
+        raise DiscoveryError('Invalid DBLP publication structure')
+    if not rows and offset < min(total, computed):
+        raise DiscoveryError('Incomplete: DBLP returned an empty page before the accessible total')
+    return rows, total, computed
+
+
 class DiscoveryClient:
     """One provider/host owns rate limits, bounded retry and cancellation checks."""
     def __init__(self, provider, *, api_key=None, transport=None, cancel_event=None,
@@ -188,9 +209,14 @@ class DiscoveryClient:
             if verified.status_code not in (302, 303) or not location or not same_query(location, original):
                 raise DiscoveryError('Verification did not return to the original query')
             resumed = self._get(original, None, {}, follow_redirects=False)
-            if ('text/html' in resumed.headers.get('content-type', '').lower()
+            if (resumed.status_code != 200 or 'text/html' in resumed.headers.get('content-type', '').lower()
                     or resumed.text.lstrip().lower().startswith(('<!doctype html', '<html'))):
-                raise DiscoveryError('Verification still returned HTML')
+                raise DiscoveryError('Verification did not return API metadata')
+            try:
+                data = resumed.json()
+            except ValueError:
+                raise DiscoveryError('Verification did not return JSON') from None
+            _dblp_page(data, _positive(response.request.url.params.get('f', '0'), 'requested offset'))
             return resumed
         except Cancelled:
             raise
@@ -457,17 +483,11 @@ class DiscoveryClient:
         offset, seen, count = 0, set(), 0
         for page in range(self.max_pages):
             data = self.request('/search/publ/api',{'q':query,'format':'json','h':self.page_size,'f':offset})
-            hits = data.get('result',{}).get('hits',{})
-            total = _positive(hits.get('@total'), 'total')
-            computed = _positive(hits.get('@computed'), 'computed')
-            first = _positive(hits.get('@first'), 'first')
-            if first != offset:
-                raise DiscoveryError('Incomplete: DBLP returned a repeated or unexpected first offset')
+            rows, total, computed = _dblp_page(data, offset)
             limits = ['DBLP title-only matching; year precision cannot establish exact monthly coverage']
             if computed < total:
                 limits.append(f'Truncated: DBLP computed {computed} of {total} results')
             yield None, total, limits
-            rows = _rows(hits.get('hit'))
             for row in rows:
                 raw = row.get('info',{})
                 key = raw.get('key') or str(raw.get('url','')).removeprefix('https://dblp.org/rec/')
@@ -481,8 +501,6 @@ class DiscoveryClient:
             offset += len(rows)
             if offset >= min(total,computed):
                 return
-            if not rows:
-                raise DiscoveryError('Incomplete: DBLP returned an empty page before the accessible total')
         raise DiscoveryError('Truncated: application page budget reached')
 
     def _europe_pmc_pages(self, source, ast, start, end):

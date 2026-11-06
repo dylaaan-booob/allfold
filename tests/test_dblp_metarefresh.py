@@ -80,6 +80,8 @@ def test_verification_redirect_is_not_proof_of_recovery(result):
         return httpx.Response(200, text='<html>Not metadata</html>' if result == 'html' else 'broken')
     with DiscoveryClient('dblp', transport=httpx.MockTransport(handler), interval=0, sleep=lambda _: None) as client:
         r = client.discover(SourceScope('conference', 'NeurIPS', stream='streams/conf/nips'), parse_keyword_expression('learning'), date(2025,1,1), date(2025,12,31))
+        with pytest.raises(DiscoveryError, match='access limited'):
+            client.request('/search/publ/api', {'q': 'streamid:conf/icml:'})
     assert r.status == 'failed' and not r.records
     assert len(calls) <= 3 and all(c.url.host == 'dblp.org' for c in calls)
 
@@ -100,7 +102,7 @@ def test_only_dblp_may_recover_and_a_client_never_repeats_verification():
         if request.url.path == VERIFY:
             return httpx.Response(302, headers={'location': str(calls[0].url)})
         if len(calls) == 3:
-            return httpx.Response(200, json={'result': {}})
+            return httpx.Response(200, json={'result': {'hits': {'@total': '0', '@computed': '0', '@first': '0'}}})
         return challenge(request)
     with DiscoveryClient('europe_pmc', transport=httpx.MockTransport(handler), interval=0) as client:
         with pytest.raises(DiscoveryError, match='access limited'):
