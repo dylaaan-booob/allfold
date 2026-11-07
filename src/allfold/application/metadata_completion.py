@@ -110,21 +110,23 @@ def _requests(records, *, allow_formal_preprint_reverse=True):
     yield from _native_targets(records)
     complete, answered = preprint_date_coverage(records)
     families = known_preprint_families(records)
+    first_public_saved = any(record.first_public_at for record in records)
     metadata = _ordinary_missing(records) or _journal_dates_missing(records)
-    if (complete or any(record.first_public_at for record in records)) and not metadata:
+    if (complete or first_public_saved) and not metadata:
         return
     preprint_pmids = {ref.record_id for record in records for ref in record.related_ids
         if ref.provider == 'pubmed' and ref.relation == 'preprint'}
     preprint_pmids.update(value for record in records if record.publication_type == 'preprint'
         for ns, value in strong_identifiers(record.external_ids) if ns == 'pmid')
     for pmid in sorted(preprint_pmids):
-        if _ordinary_missing(records) or preprint_identity('pmid', pmid) not in answered:
+        if _ordinary_missing(records) or not first_public_saved and preprint_identity('pmid', pmid) not in answered:
             yield 'pubmed', 'pmid', pmid, 'fetch-preprint'
     formal_pmids = sorted({value for record in records if record.publication_type != 'preprint'
         for ns, value in strong_identifiers(record.external_ids) if ns == 'pmid'})
     for pmid in formal_pmids:
         yield 'pubmed', 'pmid', pmid, 'fetch' if _ordinary_missing(records) else 'summary'
-        yield 'europe_pmc', 'pmid', pmid, 'preprints'
+        if not first_public_saved:
+            yield 'europe_pmc', 'pmid', pmid, 'preprints'
     # Each base API contributes independent evidence. Presence of Published
     # cannot suppress a Received, Accepted or electronic-publication target.
     for provider in ('crossref', 'openalex'):
@@ -145,13 +147,13 @@ def _requests(records, *, allow_formal_preprint_reverse=True):
                     and (ns, value) in strong_identifiers(record.external_ids) for record in records):
                 continue
             yield provider, ns, value
-    if not families and not any(record.first_public_at for record in records):
+    if not first_public_saved:
         for doi in sorted({value for record in records if record.publication_type != 'preprint'
                 for ns, value in strong_identifiers(record.external_ids) if ns == 'doi'}):
             yield 'crossref', 'doi', doi, 'preprints'
     # Reverse lookup discovers associations; it never guesses a known preprint's
     # platform or enumerates other systems once a family has been established.
-    if allow_formal_preprint_reverse and not known_preprint_families(records):
+    if allow_formal_preprint_reverse and not first_public_saved and not families:
         formal = {value for record in records for ns, value in strong_identifiers(record.external_ids)
             if ns == 'doi' and not value.startswith(('10.1101/', '10.64898/', '10.48550/arxiv.'))}
         for provider in ('biorxiv', 'medrxiv'):
@@ -248,11 +250,12 @@ def prime_completion_cache(record_groups, enabled_providers, *, clients, request
     """
     batches = {}
     for records in record_groups:
-        if (not _ordinary_missing(records) and not _journal_dates_missing(records)
-                and any(target not in request_cache for target in _native_targets(records))):
-            continue  # Known native proof can settle the remaining local goal.
+        native_only = (not _ordinary_missing(records) and not _journal_dates_missing(records)
+            and any(target not in request_cache for target in _native_targets(records)))
         for request in _requests(records, allow_formal_preprint_reverse=allow_formal_preprint_reverse):
             provider, namespace, identifier = request[:3]
+            if native_only and not (provider == 'crossref' and len(request) > 3 and request[3] == 'preprints'):
+                continue  # Settle native proof, but first collect independent explicit reverse relations.
             if provider not in enabled_providers or provider in {'arxiv', 'biorxiv', 'medrxiv'}:
                 continue
             if provider == 'europe_pmc' and namespace != 'pmid':
