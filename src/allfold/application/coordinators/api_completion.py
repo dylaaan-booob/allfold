@@ -12,7 +12,6 @@ from allfold.application.paper_enrichment import read_paper_target
 from allfold.application.run_commit import capture_run_workspace, commit_run_workspace
 from allfold.integrations.openalex_credentials import read_credential
 from allfold.models import WorkflowStatus
-from allfold.persistence.discovery_evidence import read_discovery_evidence, append_discovery_evidence
 from allfold.persistence.markdown_state import parse_paper_state
 from allfold.persistence.safe_write import ContentChangedError, TextWriteCommittedError
 from allfold.providers.integrated import DiscoveryClient, DISCOVERY_PROVIDERS
@@ -101,9 +100,8 @@ class ApiCompletion:
                             continue
                         if current != target:
                             raise ContentChangedError('Paper changed before API completion')
-                        with commit_run_workspace(snapshot, cancel_event=self._stop) as lock:
-                            handoff = read_discovery_evidence(target.workspace, target.paper_id, operation_lock=lock)
-                        prepared[target.paper_id] = (saved_paper_evidence(target), *handoff.records)
+                        with commit_run_workspace(snapshot, cancel_event=self._stop):
+                            prepared[target.paper_id] = (saved_paper_evidence(target),)
                     except Exception as error:
                         prepared[target.paper_id] = error
                 def request_guard():
@@ -136,7 +134,6 @@ class ApiCompletion:
                 for paper_id, completed in completions():
                     target = by_id[paper_id]
                     result = dict(paper_id=str(target.paper_id), status='unchanged', saved_fields=[], lookups=[], issues=[])
-                    write_stage = None
                     try:
                         if completed is not None and not isinstance(completed, Exception):
                             state = parse_paper_state(target.path, target.original)
@@ -163,24 +160,14 @@ class ApiCompletion:
                         with self._lock, commit_run_workspace(snapshot, cancel_event=self._stop) as lock:
                             if read_paper_target(target.workspace, target.paper_id, operation_lock=lock) != target:
                                 raise ContentChangedError('Paper changed; API completion was not saved')
-                            write_stage = 'paper'
                             fields = save_api_completion(target, completed.records, operation_lock=lock)
                             result.update(status='updated' if fields else 'unchanged', saved_fields=fields)
-                            write_stage = 'evidence'
-                            append_discovery_evidence(lock, target.paper_id,
-                                (record for record in completed.records if record.provenance.provider != 'workspace'))
                     except TextWriteCommittedError as error:
-                        if write_stage == 'paper':
-                            result.update(status='updated', saved_fields=error.saved_fields,
-                                warning='Paper saved; filesystem sync failed and handoff was not updated')
-                        else:
-                            result['warning'] = 'Evidence saved; filesystem sync failed'
+                        result.update(status='updated', saved_fields=error.saved_fields,
+                            warning='Paper saved; filesystem sync failed')
                         result['issues'].append(dict(provider='workspace', identifier='', status='failed', message=result['warning']))
                     except Exception as error:
-                        if write_stage == 'evidence' and result['status'] == 'updated':
-                            result['warning'] = 'Paper updated; discovery evidence could not be saved'
-                            result['issues'].append(dict(provider='workspace', identifier='', status='failed', message=result['warning']))
-                        elif self._stop.is_set():
+                        if self._stop.is_set():
                             result['status'] = 'cancelled'
                         else:
                             result.update(status='failed', message=str(error) if isinstance(error, (ValueError, OSError, RuntimeError)) else 'API completion failed for this Paper')

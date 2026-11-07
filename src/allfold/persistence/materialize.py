@@ -112,8 +112,6 @@ def render_paper_markdown(paper: CanonicalPaper) -> str:
     doi = normalize_doi(paper.external_ids.doi)
     if doi is not None and valid_doi(doi) is None:
         raise ValueError("Paper has an invalid primary DOI")
-    if any(valid_doi(value) is None for value in paper.related_dois):
-        raise ValueError("Paper has an invalid related DOI")
     if not paper_identifiers(paper):
         raise ValueError("Paper requires a reliable identity")
     external_ids = paper.external_ids.model_copy(update={"doi": doi})
@@ -126,8 +124,6 @@ def render_paper_markdown(paper: CanonicalPaper) -> str:
         "journal": paper.metadata.journal,
         "publication_date": paper.metadata.publication_date,
         "doi": doi,
-        "related_dois": list(paper.related_dois),
-        "identity_aliases": [item.model_dump(mode="json", include={"provider", "record_id"}) for item in paper.identity_aliases],
         "conference": paper.metadata.conference,
         "conference_id": paper.metadata.conference_id,
         "publication_type": paper.metadata.publication_type,
@@ -215,6 +211,7 @@ def _identity_indexes(states, papers_dir, issues):
         for identifier in state.identifiers:
             doi_index[identifier].add(state.path)
 
+    states_by_path = {state.path: state for state in states}
     conflicted_paths: set[Path] = set()
     for label, index in (("external identity", doi_index), ("UUID", uuid_index)):
         for identifier, paths in index.items():
@@ -222,7 +219,7 @@ def _identity_indexes(states, papers_dir, issues):
                 conflicted_paths.update(paths)
                 issues.append(MaterializationIssue(
                     papers_dir, f"duplicate durable {label} {identifier}: "
-                    + ", ".join(str(path) for path in sorted(paths)),
+                    + ", ".join(f"{states_by_path[path].paper_id} ({path})" for path in sorted(paths)),
                 ))
 
     return uuid_index, doi_index, conflicted_paths
@@ -306,8 +303,8 @@ def _match_papers(
         for key in keys:
             candidate_paths.update(doi_index.get(key, set()))
         if len(candidate_paths) > 1:
-            issues.append(MaterializationIssue(papers_dir, f"ambiguous identity for incoming Paper {paper.id}: "
-                          + ", ".join(str(path) for path in sorted(candidate_paths))))
+            issues.append(MaterializationIssue(papers_dir, f"ambiguous identity {sorted(keys)} for incoming Paper {paper.id}: "
+                          + ", ".join(f"{states_by_path[path].paper_id} ({path})" for path in sorted(candidate_paths))))
             matches.append(_PaperMatch(None, blocked=True))
             continue
         if candidate_paths:
@@ -322,7 +319,7 @@ def _match_papers(
         else:
             matches.append(_PaperMatch(None))
 
-    # Different incoming aliases may each resolve to the same saved Paper.
+    # Different incoming identifiers may each resolve to the same saved Paper.
     # Materialization counts that path once; only multiple saved targets conflict.
     return matches
 

@@ -142,7 +142,7 @@ Electron package metadata and scripts remain at the package root. `src/shared/pa
 
 ## Data ownership
 
-Local YAML owns monitor settings. The private `.allfold/user-data.sqlite` owns Journals, Conferences, Groups, Labels, direct Access Services and default Service assignments, isolated by the canonical configuration path. Existing valid `list.md` files seed each configuration once; subsequent Markdown edits do not change saved user state. Migration validates the complete managed data, records its source and digest, and leaves the original file intact. Paper Markdown owns UUID and primary/related DOI or reliable namespaced identity, workflow status and human content. [Paper identity](paper-identity.md) defines the create-only canonicalization, source/version metadata and partial date evidence contract.
+Local YAML owns monitor settings. The private `.allfold/user-data.sqlite` owns Journals, Conferences, Groups, Labels, direct Access Services and default Service assignments, isolated by the canonical configuration path. Existing valid `list.md` files seed each configuration once; subsequent Markdown edits do not change saved user state. Migration validates the complete managed data, records its source and digest, and leaves the original file intact. Paper Markdown owns UUID, primary DOI and direct reliable namespaced identifiers, workflow status and human content. [Paper identity](paper-identity.md) defines the create-only canonicalization, source/version metadata and partial date evidence contract.
 
 The private `.allfold/resources.sqlite` shares complete GOKB snapshots and the CARSI official Catalog across configurations. It holds external evidence, not users' Service preferences. Refresh commits only validated, complete data and retains the previous cache on failure. The Journal Resolver follows Journal → GOKB Platform → CARSI Resource, retaining multiple identities and products. Only a unique, reliable candidate can fill an empty default; saved user choices take precedence. Ordinary Run never requires GOKB.
 
@@ -152,19 +152,20 @@ Both databases live outside Workspace. Within the application project, configura
 
 ## Discovery and completion boundaries
 
-Provider adapters emit reusable `ProviderWorkEvidence`; canonicalization groups
+Provider adapters emit operation-local `ProviderWorkEvidence`; canonicalization groups
 explicit strong identities and selects missing metadata in a fixed order.
 Run executes selected WoS synchronously first under the parent slot and workflow identity, then selected OpenAlex/Europe PMC lightweight journal discovery. The native stage shares the captured configuration/Workspace/cancellation authority, releases Browser ownership after export, and never writes a second Run snapshot or history result. Gathered candidate identities select batched creation details only for unknown works; all saved Papers, including Rejected, and current WoS facts suppress redundant full details.
 Native publication-date filters determine its range; subsequent evidence never
 rejudges inclusion. Commit rechecks captured configuration, source revision,
 Workspace/Papers identity and the complete identity index before atomic creates.
-Existing Paper matches remain byte-identical. Compact `Evidence/<UUID>.json`
-records persist structured hits, query scopes, locations, relations and versions,
-including rediscovery of existing Papers. There is no raw-response archive or
-persistent task queue.
+Existing Paper matches remain byte-identical. Paper Markdown is the only persisted
+literature object; standalone Evidence, aliases and version relationships have no
+persistent store. Only direct reliable identifiers group Run records and establish
+saved ownership. Old Paper identity fields explicitly block safe indexing/writes;
+old files are preserved until a user chooses a backed-up Workspace Reset.
 
 The independent API-completion coordinator reads selected saved non-Rejected
-Papers plus handoff evidence, consumes local facts before scheduling independent
+Paper Markdown, uses its current fields before scheduling independent
 ordinary/date/First-public goals, and shares Run/workflow admission without
 browser operations. Known native preprint targets precede association discovery;
 coverage is recomputed after all relations in each response are absorbed. One
@@ -172,7 +173,10 @@ operation owns the request cache and arXiv batches across selected Papers. It
 owns progress, cancellation, per-Paper outcomes, History and shutdown settlement.
 Network work holds no Workspace lock; short commits recheck exact Paper bytes,
 file/directory identity, status, configuration and cancellation. Only empty
-ordinary metadata/First public and appended evidence may change. It never merges
+ordinary metadata/First public and appended Paper date/source facts may change.
+A saved First public satisfies that goal directly. Related versions can supply
+operation-local dates after response binding, without becoming durable identities.
+Only the Paper update is committed; unsaved records and caches are discarded. It never merges
 saved Papers or changes their primary identifiers, human content or workflow.
 
 First public requires established earliest linked preprint evidence. Typed

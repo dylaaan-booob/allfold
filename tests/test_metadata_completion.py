@@ -3,7 +3,7 @@ from threading import Event
 
 import pytest
 
-from allfold.canonicalize import canonicalize_records
+from allfold.canonicalize import canonicalize_records, completion_metadata
 from allfold.models import Author, ExternalIds, MetadataSource, ProviderWorkEvidence
 from allfold.application.metadata_completion import complete_metadata
 
@@ -156,13 +156,13 @@ def test_each_preprint_version_chain_requires_its_own_first_public_proof(later_y
         'provenance': first.provenance.model_copy(update={'record_id': '1901.12345', 'version': 'v2'}),
         'dates': (EvidenceDate(kind=EvidenceDateKind.PREPRINT, year=later_year),) if later_year else ()})
     records = (formal, first, later)
-    assert canonicalize_records(records).papers[0].metadata.first_public_at is None
+    assert completion_metadata(records).metadata.first_public_at is None
     earliest = later.model_copy(update={'dates': (EvidenceDate(kind=EvidenceDateKind.PREPRINT, year=2019, first_version=True),)})
     client = Lookup((earliest,))
     result = complete_metadata(records, ('arxiv',), clients={'arxiv': client})
     assert client.calls == [('arxiv', '1901.12345')]
     assert not result.issues
-    assert canonicalize_records(result.records).papers[0].metadata.first_public_at == '2019'
+    assert completion_metadata(result.records).metadata.first_public_at == '2019'
 
 
 def test_known_arxiv_doi_on_formal_record_is_an_unresolved_preprint_chain():
@@ -173,11 +173,11 @@ def test_known_arxiv_doi_on_formal_record_is_an_unresolved_preprint_chain():
         'publication_type': 'preprint', 'external_ids': ExternalIds(arxiv='2201.12345'),
         'dates': (EvidenceDate(kind=EvidenceDateKind.PREPRINT, year=2022, first_version=True),)})
     records = (formal, first)
-    assert canonicalize_records(records).papers[0].metadata.first_public_at is None
+    assert completion_metadata(records).metadata.first_public_at is None
     client = Lookup()
     result = complete_metadata(records, ('arxiv',), clients={'arxiv': client})
     assert client.calls == [('arxiv', '1901.12345')]
-    assert canonicalize_records(result.records).papers[0].metadata.first_public_at is None
+    assert completion_metadata(result.records).metadata.first_public_at is None
 
 
 def test_known_native_target_is_resolved_before_any_aggregation_and_then_stops():
@@ -212,7 +212,7 @@ def test_same_response_adds_another_family_before_stop_and_never_blind_probes():
         clients={'arxiv':native,'crossref':forbidden,'biorxiv':forbidden,'medrxiv':forbidden})
     assert native.calls == [('arxiv','2201.12345'),('arxiv','1901.12345')]
     assert not forbidden.calls and result.first_public_status == 'recorded'
-    assert canonicalize_records(result.records).papers[0].metadata.first_public_at == '2019'
+    assert completion_metadata(result.records).metadata.first_public_at == '2019'
 
 
 @pytest.mark.parametrize('kind',['accepted','published-online','published'])
@@ -251,7 +251,7 @@ def test_first_public_conflict_and_future_evidence_remain_unresolved(year):
             EvidenceDate(kind=EvidenceDateKind.PREPRINT,year=year,first_version=True))}),)
     result = complete_metadata(records,(),clients={})
     assert result.first_public_status == 'conflict'
-    assert canonicalize_records(records).papers[0].metadata.first_public_at is None
+    assert completion_metadata(records).metadata.first_public_at is None
 
 
 def test_resolved_preprint_does_not_hide_missing_formal_journal_source():
@@ -264,7 +264,7 @@ def test_resolved_preprint_does_not_hide_missing_formal_journal_source():
     crossref = Lookup((evidence('crossref','10.5555/formal'),))
     result = complete_metadata((formal,preprint),('crossref',),clients={'crossref':crossref})
     assert crossref.calls == [('doi','10.5555/formal')]
-    assert canonicalize_records(result.records).papers[0].metadata.journal == 'Followed journal'
+    assert completion_metadata(result.records).metadata.journal == 'Followed journal'
 
 
 def test_complete_preprint_only_work_needs_no_formal_journal_source():
@@ -312,7 +312,7 @@ def test_late_preprint_identity_reuses_previously_unmatched_cached_reverse_detai
     assert crossref.calls == [('doi', main)] and not native.calls
     assert result.first_public_status == 'recorded' and not result.issues
     assert {record.external_ids.doi for record in result.records} == {main, preprint}
-    paper, = canonicalize_records(result.records).papers
+    paper = completion_metadata(result.records)
     assert paper.metadata.abstract == 'Cached abstract' and paper.metadata.first_public_at == '2022'
     assert all(record.provenance.role == 'supplement' for record in result.records
                if record.provenance.provider == 'biorxiv')

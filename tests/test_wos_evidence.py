@@ -80,37 +80,31 @@ def test_wos_date_precision_does_not_borrow_formal_year_or_promote_early_access(
         assert next((date_value(item) for item in evidence.dates if item.kind.value == 'published-online'), None) == online
 
 
-def test_source_facts_survive_restart_and_repeat_evidence_deduplicates(tmp_path):
+def test_paper_dates_survive_restart_without_source_snapshot_storage(tmp_path):
     from datetime import timedelta
     from allfold.canonicalize import canonicalize_records
     from allfold.persistence.materialize import materialize_papers
-    from allfold.persistence.discovery_evidence import append_discovery_evidence, read_discovery_evidence
-    from allfold.persistence.safe_write import workspace_operation_lock
     raw = {'UT': ['WOS:1'], 'TI': ['Title'], 'SO': ['Journal'], 'DI': ['invalid'], 'PY': ['2027'], 'EA': ['SEP 2026']}
     evidence = wos.record_evidence(raw)
     paper, = canonicalize_records([evidence]).papers
     path, = materialize_papers([paper], tmp_path).created_papers
     original = path.read_bytes()
-    with workspace_operation_lock(tmp_path) as lock:
-        assert append_discovery_evidence(lock, paper.id, [evidence])
-    saved = read_discovery_evidence(tmp_path, paper.id)
-    assert saved.records == (evidence,)
+    from allfold.persistence.markdown_state import parse_paper_state
+    saved = parse_paper_state(path, path.read_text())
+    assert saved.external_ids.wos == 'WOS:1'
+    assert saved.publication_date == '2027'
+    assert {item.source_label for item in saved.date_evidence} == {'PD/PY', 'EA'}
     later = evidence.model_copy(update={'provenance': evidence.provenance.model_copy(update={
         'retrieved_at': evidence.provenance.retrieved_at + timedelta(days=1)})})
-    with workspace_operation_lock(tmp_path) as lock:
-        assert not append_discovery_evidence(lock, paper.id, [later])
-    assert read_discovery_evidence(tmp_path, paper.id) == saved
+    assert materialize_papers(canonicalize_records([later]).papers, tmp_path).existing_papers == (path,)
+    assert not (tmp_path / 'Evidence').exists()
     assert path.read_bytes() == original
 
 
-def test_retired_date_kinds_block_saved_paper_and_evidence_without_mutation(tmp_path):
-    import json
-    import pytest
+def test_retired_date_kinds_block_saved_paper_without_mutation(tmp_path):
     from allfold.canonicalize import canonicalize_records
     from allfold.persistence.materialize import materialize_papers
     from allfold.persistence.markdown_state import parse_paper_state
-    from allfold.persistence.discovery_evidence import append_discovery_evidence, read_discovery_evidence
-    from allfold.persistence.safe_write import workspace_operation_lock
     evidence = wos.record_evidence({'UT': ['WOS:1'], 'TI': ['Title'], 'PY': ['2027']})
     paper, = canonicalize_records([evidence]).papers
     path, = materialize_papers([paper], tmp_path).created_papers
@@ -122,18 +116,6 @@ def test_retired_date_kinds_block_saved_paper_and_evidence_without_mutation(tmp_
         assert not state.updateable
         assert any('explicitly rebuild' in problem for problem in state.problems)
         assert path.read_text() == contents
-    with workspace_operation_lock(tmp_path) as lock:
-        append_discovery_evidence(lock, paper.id, [evidence])
-    evidence_path = tmp_path / 'Evidence' / f'{paper.id}.json'
-    payload = json.loads(evidence_path.read_text())
-    payload['records'][0]['dates'][0]['kind'] = 'early-access'
-    contents = json.dumps(payload)
-    evidence_path.write_text(contents)
-    with pytest.raises(ValueError, match='explicitly rebuild'):
-        read_discovery_evidence(tmp_path, paper.id)
-    with workspace_operation_lock(tmp_path) as lock, pytest.raises(ValueError, match='explicitly rebuild'):
-        append_discovery_evidence(lock, paper.id, [evidence])
-    assert evidence_path.read_text() == contents
 
 
 def test_early_access_only_does_not_become_generic_publication_on_creation():

@@ -1,4 +1,4 @@
-"""Target-directed completion of saved evidence, independent of discovery."""
+"""Target-directed completion from saved Paper fields, independent of discovery."""
 from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
@@ -6,7 +6,7 @@ from dataclasses import dataclass
 from threading import Event
 from typing import Protocol
 
-from allfold.identifiers import strong_identifiers, evidence_identifiers
+from allfold.identifiers import strong_identifiers, related_identifiers
 from allfold.models import ProviderWorkEvidence
 
 LOOKUP_NAMESPACES = {
@@ -45,7 +45,7 @@ class CompletionResult:
 
 
 def _identities(record):
-    return set(evidence_identifiers(record))
+    return set(related_identifiers(record))
 
 
 def _ordinary_missing(records):
@@ -69,29 +69,24 @@ def _journal_dates_missing(records):
 
 
 def _native_targets(records):
-    from allfold.paper_dates import preprint_date_coverage, preprint_identity
+    from allfold.paper_dates import preprint_date_coverage, preprint_identity, preprint_query_refs
     _, answered = preprint_date_coverage(records)
+    first_public_saved = any(record.first_public_at for record in records)
     ordinary = _ordinary_missing(records)
     targets = set()
     for record in records:
         for ns, value in _identities(record):
-            if ns == 'arxiv' and (ordinary or preprint_identity(ns, value) not in answered):
+            if ns == 'arxiv' and (ordinary or not first_public_saved and preprint_identity(ns, value) not in answered):
                 targets.add(('arxiv', ns, value))
-            if ns == 'europe_pmc' and value.startswith('PPR:') and (ordinary or preprint_identity(ns, value) not in answered):
+            if ns == 'europe_pmc' and value.startswith('PPR:') and (ordinary or not first_public_saved and preprint_identity(ns, value) not in answered):
                 targets.add(('europe_pmc', ns, value))
         platforms = {(ref.provider, ref.record_id) for ref in record.related_ids if ref.provider in {'biorxiv','medrxiv'}}
         if record.provenance.provider in {'biorxiv','medrxiv'} and record.publication_type == 'preprint' and record.external_ids.doi:
             platforms.add((record.provenance.provider, record.external_ids.doi))
-        for item in record.dates:
-            if item.provider in {'biorxiv','medrxiv'} and item.record_id and item.kind.value == 'preprint':
-                from allfold.identifiers import valid_doi
-                raw = item.record_id
-                if raw.rpartition(':')[2].isdigit():
-                    raw = raw.rpartition(':')[0]
-                if doi := valid_doi(raw):
-                    platforms.add((item.provider, doi))
+        platforms.update((ref.provider, ref.record_id) for ref in preprint_query_refs(record.dates)
+            if ref.provider in {'biorxiv', 'medrxiv'})
         for platform, doi in platforms:
-            if ordinary or preprint_identity('doi', doi) not in answered:
+            if ordinary or not first_public_saved and preprint_identity('doi', doi) not in answered:
                 targets.add((platform, 'doi', doi))
     return sorted(targets)
 
@@ -102,7 +97,7 @@ def _requests(records):
     complete, answered = preprint_date_coverage(records)
     families = known_preprint_families(records)
     metadata = _ordinary_missing(records) or _journal_dates_missing(records)
-    if complete and not metadata:
+    if (complete or any(record.first_public_at for record in records)) and not metadata:
         return
     # Prefer the formal DOI's named relation before searching further aggregators.
     for provider in ('crossref', 'openalex', 'europe_pmc'):
@@ -144,13 +139,13 @@ def prime_arxiv_cache(record_groups, *, clients, request_cache, cancel_event=Non
         request_cache['arxiv', 'arxiv', identifier] = results.get(identifier, ())
 
 
-def _bound_records(supplements, namespace, identifier):
+def bind_records(supplements, identities):
     """A primary response identity establishes the root, never a related alias.
 
     A native reverse response may also contain details linked by that root.
     """
     pending = list(supplements)
-    accepted, identities = [], {(namespace, identifier)}
+    accepted, identities = [], set(identities)
     while pending:
         matched = [record for record in pending if identities & set(strong_identifiers(record.external_ids))]
         if not matched:
@@ -172,7 +167,7 @@ def _completion_steps(
     provider/namespace/identifier, including failures, for the whole operation.
     """
     from allfold.providers.integrated import Cancelled, ProviderHTTPError, IdentityMismatch
-    from allfold.persistence.discovery_evidence import evidence_key
+    from allfold.canonicalize import evidence_key
     from allfold.paper_dates import first_public_status
     output = sorted(records, key=lambda r: (r.provenance.provider, r.provenance.record_id))
     issues, lookups = [], []
@@ -200,7 +195,7 @@ def _completion_steps(
             if provider not in enabled_providers or isinstance(value, Exception):
                 continue
             for namespace, identifier in sorted(identities):
-                accepted, _ = _bound_records(value, namespace, identifier)
+                accepted, _ = bind_records(value, {(namespace, identifier)})
                 if accepted and not any((item.provider, item.namespace, item.identifier) == request for item in lookups):
                     lookups.append(CompletionLookup(*request, 'evidence'))
                     attempted.add(request)
@@ -212,7 +207,7 @@ def _completion_steps(
                         output.append(record)
                         seen.add(key)
     def result(cancelled=False):
-        status = 'cancelled' if cancelled else first_public_status(output)
+        status = 'cancelled' if cancelled else 'recorded' if any(record.first_public_at for record in output) else first_public_status(output)
         if status not in {'recorded', 'conflict', 'cancelled'} and issues:
             status = 'failed'
         return CompletionResult(tuple(output), tuple(issues), tuple(lookups), cancelled, status)
@@ -253,7 +248,7 @@ def _completion_steps(
             supplements = cache[request]
             if isinstance(supplements, Exception):
                 raise supplements
-            accepted, rejected = _bound_records(supplements, namespace, identifier)
+            accepted, rejected = bind_records(supplements, {(namespace, identifier)})
             status = 'evidence' if accepted else 'no_match'
             if rejected:
                 issues.append(CompletionIssue(provider, identifier, 'Metadata response does not match requested identity', 'identity_mismatch'))

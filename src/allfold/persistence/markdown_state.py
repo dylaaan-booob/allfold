@@ -66,7 +66,6 @@ class PaperMarkdownState:
     conference: str | None = None
     conference_id: str | None = None
     publication_type: str | None = None
-    related_dois: tuple[str, ...] = ()
     first_public_at: str | None = None
     indexed_terms: tuple[ProviderTopic, ...] = ()
     date_evidence: tuple[EvidenceDate, ...] = ()
@@ -227,21 +226,11 @@ def parse_paper_identity(path: Path, contents: str) -> PaperIdentity | None:
     primary_doi = next(iter(dois), None)
     if len(dois) > 1:
         problems.append("conflicting durable DOI identifiers")
-    related = frontmatter.get("related_dois", [])
-    if not isinstance(related, list):
-        problems.append("related_dois must be a list")
+    retired = sorted({'related_dois', 'identity_aliases'} & frontmatter.keys())
+    if retired:
+        problems.append('Incompatible legacy Paper identity fields (' + ', '.join(retired)
+            + '); back up and explicitly rebuild through Settings → Reset → Workspace; no automatic migration')
         complete = False
-        related = []
-    for raw in related:
-        try:
-            doi = normalize_doi(raw) if isinstance(raw, str) else None
-        except ValueError:
-            doi = None
-        if doi is None or not re.fullmatch(r"10\.\d{4,9}/[^\s]+", doi):
-            problems.append("related_dois contains an invalid DOI")
-            complete = False
-        else:
-            dois.add(doi)
     canonical_ids = {}
     for namespace, identifier in (raw_ids or {}).items():
         if not isinstance(namespace, str) or not namespace.strip():
@@ -257,25 +246,10 @@ def parse_paper_identity(path: Path, contents: str) -> PaperIdentity | None:
             complete = False
         if normalized:
             canonical_ids[namespace] = normalized
-    identifiers = set(strong_identifiers(canonical_ids, tuple(dois)))
-    aliases = frontmatter.get("identity_aliases", [])
-    if not isinstance(aliases, list):
-        aliases = []
-        problems.append("identity_aliases must be a list")
-        complete = False
-    for alias in aliases:
-        if not isinstance(alias, dict) or set(alias) != {"provider", "record_id"} or not isinstance(alias.get("provider"), str):
-            problems.append("invalid identity_aliases entry")
-            complete = False
-            continue
-        namespace = alias["provider"]
-        value = normalize_external_id(namespace, alias["record_id"])
-        if value is None or namespace == "doi":
-            problems.append("invalid identity_aliases identifier")
-            complete = False
-        else:
-            identifiers.add((namespace, value))
-    identifiers = frozenset(identifiers)
+    # Both fields directly assert identity. Preserve every conflicting DOI in
+    # the blocked index so neither can later be mistaken for a new work.
+    identifiers = strong_identifiers(canonical_ids) | frozenset(
+        key for doi in dois for key in strong_identifiers({'doi': doi}))
     if not identifiers:
         problems.append("cannot establish reliable Paper identity")
         complete = False
@@ -722,7 +696,6 @@ def parse_paper_state(
         conference=frontmatter.get("conference"),
         conference_id=frontmatter.get("conference_id"),
         publication_type=frontmatter.get("publication_type"),
-        related_dois=tuple(sorted(identity.dois - {identity.primary_doi})) if identity else (),
         first_public_at=date_fields.get("first_public_at"),
         indexed_terms=evidence_fields["indexed_terms"],
         date_evidence=evidence_fields["date_evidence"],

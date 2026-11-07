@@ -150,7 +150,6 @@ def run_integrated(config_path, *, loaded_config=None, workspace_snapshot=None, 
     from allfold.application.run_state import RunProvider, RunFacts, RunIssueFact, LastRunSnapshot, RecordedRunOutcome, INTEGRATED_RUN_SCHEMA_VERSION, LastRunSnapshotWriteError, write_last_run_snapshot
     from allfold.canonicalize import canonicalize_records, consolidate_evidence
     from allfold.identifiers import evidence_identifiers
-    from allfold.persistence.discovery_evidence import append_discovery_evidence, DiscoveryScope
     from allfold.persistence.materialize import materialize_papers, read_workspace_identities
     from allfold.persistence.safe_write import ContentChangedError
     cancel=cancel_event or Event()
@@ -201,23 +200,11 @@ def run_integrated(config_path, *, loaded_config=None, workspace_snapshot=None, 
         records=discovery.records
         if progress_callback:
             progress_callback(ProgressEvent(stage=ProgressStage.PREPARING_PAPERS))
-        # Known lightweight hits need no title and never become creation inputs.
-        incoming=[]
-        identity_issues=[]
-        for group in consolidate_evidence(records).clusters:
-            keys={key for record in group.evidence for key in evidence_identifiers(record)}
-            owners={item.paper_id for key in keys if (item:=initial_identities.by_identifier.get(key)) and item.paper_id}
-            if len(owners)>1 or keys & initial_identities.blocked_identifiers:
-                identity_issues.append('Ambiguous discovery identities match multiple or invalid saved Papers; evidence quarantined')
-            elif not owners:
-                incoming.extend(group.evidence)
-        canonical=canonicalize_records(incoming)
+        groups=consolidate_evidence(records).clusters
         issues=[MonitorIssue(MonitorIssueSeverity.ERROR if r.status=='failed' else MonitorIssueSeverity.WARNING,
                     MonitorIssueComponent.DISCOVERY,'discovery',f'{r.provider} / {r.source.name}: {message}')
                 for r in discovery.providers for message in r.limitations]
-        issues.extend(MonitorIssue(MonitorIssueSeverity.ERROR,MonitorIssueComponent.CANONICALIZATION,item.stage,item.message) for item in canonical.issues)
-        issues.extend(MonitorIssue(MonitorIssueSeverity.ERROR,MonitorIssueComponent.CANONICALIZATION,'identity',message) for message in identity_issues)
-        created=existing=0
+        created=existing=conflicts=0
         provider_totals=None
         def result():
             warnings=tuple(i for i in issues if i.severity is MonitorIssueSeverity.WARNING)
@@ -225,7 +212,7 @@ def run_integrated(config_path, *, loaded_config=None, workspace_snapshot=None, 
             outcome=(RunOutcome.CANCELLED if cancel.is_set() else RunOutcome.FAILED if discovery.status=='failed' else
                      RunOutcome.COMPLETED_WITH_ERRORS if errors else RunOutcome.COMPLETED_WITH_WARNINGS if warnings or discovery.status=='partial' else RunOutcome.COMPLETED)
             facts=RunFacts(finished_at=datetime.now(timezone.utc),created_papers=created,existing_papers=existing,
-                statistics={**discovery.statistics,'integrated_candidates':sum(r.candidates for r in discovery.providers),'integrated_deduplicated':len(canonical.papers)+existing},
+                statistics={**discovery.statistics,'integrated_candidates':sum(r.candidates for r in discovery.providers),'integrated_deduplicated':created+existing,'conflicts':discovery.statistics.get('conflicts',0)+conflicts},
                 journals=discovery.journals,
                 issues=tuple(RunIssueFact(category=i.stage,message=i.message,severity=i.severity.value) for i in issues),
                 details={**discovery.details,**({'provider_totals':provider_totals} if provider_totals is not None else {}),'discovery_status':'cancelled' if cancel.is_set() else discovery.status,
@@ -238,33 +225,46 @@ def run_integrated(config_path, *, loaded_config=None, workspace_snapshot=None, 
             progress_callback(ProgressEvent(stage=ProgressStage.UPDATING_WORKSPACE))
         try:
             with commit_run_workspace(snapshot,cancel_event=cancel) as lock:
+                # Classify the complete direct identifiers again under the commit
+                # lock, including IDs that cannot all fit one external_ids slot.
+                current=read_workspace_identities(lock)
+                incoming=[]
+                eligible=[]
+                for group in groups:
+                    keys={key for record in group.evidence for key in evidence_identifiers(record)}
+                    owners={item.paper_id for key in keys if (item:=current.by_identifier.get(key)) and item.paper_id}
+                    if len(owners)>1 or keys & current.blocked_identifiers:
+                        conflicts += 1
+                        involved={item.paper_id for key in keys for item in
+                            [current.by_identifier.get(key)] if item and item.paper_id}
+                        # Invalid or multiply-owned IDs are retained in index issues.
+                        issues.append(MonitorIssue(MonitorIssueSeverity.ERROR,MonitorIssueComponent.CANONICALIZATION,
+                            'identity',f'Ambiguous discovery identifiers {sorted(keys)}; Paper UUIDs {sorted(map(str,involved))}; '
+                            + '; '.join(item.message for item in current.issues)))
+                        continue
+                    eligible.append(group)
+                    if not owners:
+                        incoming.extend(group.evidence)
+                canonical=canonicalize_records(incoming)
+                issues.extend(MonitorIssue(MonitorIssueSeverity.ERROR,MonitorIssueComponent.CANONICALIZATION,item.stage,item.message)
+                    for item in canonical.issues)
                 saved=materialize_papers(canonical.papers,config.output_dir,operation_lock=lock,cancel_event=cancel,progress_callback=progress_callback)
-                created,existing=len(saved.created_papers),len(saved.existing_papers)
+                created=len(saved.created_papers)
                 issues.extend(MonitorIssue(MonitorIssueSeverity.ERROR,MonitorIssueComponent.MATERIALIZATION,'write',i.message) for i in saved.issues)
                 identities=read_workspace_identities(lock)
                 matched_owners=set()
-                for group in consolidate_evidence(records).clusters:
-                    if cancel.is_set():
-                        break
+                matched_record_ids=set()
+                for group in eligible:
                     keys={key for record in group.evidence for key in evidence_identifiers(record)}
                     owners={item.paper_id for key in keys if (item:=identities.by_identifier.get(key)) and item.paper_id}
-                    if len(owners) != 1 or keys & identities.blocked_identifiers:
-                        continue
-                    matched_owners.update(owners)
-                    scopes=tuple(DiscoveryScope(provider=run.provider,journal=run.source.name,key=run.source.key,
-                        issns=run.source.issns,from_date=dates.from_date.isoformat(),to_date=dates.to_date.isoformat())
-                        for run in discovery.providers if any(record in group.evidence for record in run.records))
-                    for paper_id in owners:
-                        try:
-                            append_discovery_evidence(lock,paper_id,group.evidence,scopes)
-                        except (ValueError,OSError,ContentChangedError) as error:
-                            issues.append(MonitorIssue(MonitorIssueSeverity.ERROR,MonitorIssueComponent.MATERIALIZATION,
-                                'evidence_write',f'Discovery evidence could not be saved: {error}'))
+                    if len(owners)==1 and not keys & identities.blocked_identifiers and identities.complete:
+                        matched_owners.update(owners)
+                        matched_record_ids.update(map(id,group.evidence))
                 created_ids={item.paper_id for item in identities.by_identifier.values() if item.path in saved.created_papers}
                 existing=len(matched_owners-created_ids)
                 updated_runs=[]
                 for run in discovery.providers:
-                    owners={item.paper_id for record in run.records for key in evidence_identifiers(record)
+                    owners={item.paper_id for record in run.records if id(record) in matched_record_ids for key in evidence_identifiers(record)
                         if (item:=identities.by_identifier.get(key)) and item.paper_id in matched_owners}
                     updated_runs.append(replace(run,created=len(owners & created_ids),existing=len(owners-created_ids)))
                 discovery=replace(discovery,providers=tuple(updated_runs))
@@ -272,7 +272,7 @@ def run_integrated(config_path, *, loaded_config=None, workspace_snapshot=None, 
                 for provider in RUN_PROVIDERS:
                     runs=[run for run in discovery.providers if run.provider==provider]
                     if not runs: continue
-                    owners={item.paper_id for run in runs for record in run.records for key in evidence_identifiers(record)
+                    owners={item.paper_id for run in runs for record in run.records if id(record) in matched_record_ids for key in evidence_identifiers(record)
                         if (item:=identities.by_identifier.get(key)) and item.paper_id in matched_owners}
                     provider_totals.append(dict(provider=provider,status=discovery_status(runs,cancel.is_set()),
                         candidates=sum(run.candidates for run in runs),created=len(owners & created_ids),existing=len(owners-created_ids),

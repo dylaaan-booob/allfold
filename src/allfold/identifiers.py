@@ -62,11 +62,10 @@ def normalize_external_id(namespace: str, value: Any) -> str | None:
     return value
 
 
-def strong_identifiers(external_ids: Any, related_dois=()) -> frozenset[tuple[str, str]]:
+def strong_identifiers(external_ids: Any) -> frozenset[tuple[str, str]]:
     values = external_ids.model_dump(exclude_none=True) if hasattr(external_ids, "model_dump") else external_ids
     identities = {(namespace, normalized) for namespace, value in (values or {}).items()
                   if (normalized := normalize_external_id(namespace, value)) is not None}
-    identities.update(("doi", doi) for value in related_dois if (doi := valid_doi(value)))
     for namespace, value in tuple(identities):
         if namespace == "doi" and value.startswith("10.48550/arxiv."):
             if arxiv := normalize_external_id("arxiv", value.removeprefix("10.48550/arxiv.")):
@@ -75,16 +74,22 @@ def strong_identifiers(external_ids: Any, related_dois=()) -> frozenset[tuple[st
 
 
 def paper_identifiers(paper: Any) -> frozenset[tuple[str, str]]:
-    identities = set(strong_identifiers(paper.external_ids, paper.related_dois))
-    for alias in getattr(paper, "identity_aliases", ()):
-        identities.update(strong_identifiers({alias.provider: alias.record_id}))
-    return frozenset(identities)
+    return strong_identifiers(paper.external_ids)
 
 
 def evidence_identifiers(record: Any) -> frozenset[tuple[str, str]]:
-    identities = set(strong_identifiers(record.external_ids, record.related_dois))
+    """Direct identifiers only: version relations never establish Paper ownership."""
+    return strong_identifiers(record.external_ids)
+
+
+def related_identifiers(record: Any) -> frozenset[tuple[str, str]]:
+    """Operation-local query links, never a persistent identity index."""
+    identities = set(evidence_identifiers(record))
+    for doi in record.related_dois:
+        identities.update(strong_identifiers({'doi': doi}))
     for reference in record.related_ids:
-        identities.update(strong_identifiers({reference.provider: reference.record_id}))
+        namespace = 'doi' if reference.provider in {'biorxiv', 'medrxiv'} else reference.provider
+        identities.update(strong_identifiers({namespace: reference.record_id}))
     return frozenset(identities)
 
 

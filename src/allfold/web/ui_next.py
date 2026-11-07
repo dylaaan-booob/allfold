@@ -154,7 +154,6 @@ def install_ui_next(app: FastAPI, config_path: Path, csrf_token: str, *, read_ta
                             date_evidence=[item.model_dump(mode="json", exclude_none=True) for item in paper.date_evidence],
                             indexed_terms=[item.model_dump(mode="json", exclude_none=True) for item in paper.indexed_terms],
                             external_ids=paper.external_ids.model_dump(exclude_none=True),
-                            related_dois=list(paper.related_dois),
                             sources=[source.model_dump(mode="json", exclude_none=True) for source in paper.sources],
                             authors=list(paper.authors), doi=paper.external_ids.doi,
                             discovered_at=paper.discovered_at.isoformat(), status=paper.status.value,

@@ -147,7 +147,7 @@ class EvidenceDate(DomainModel):
     @classmethod
     def reject_retired_date_kinds(cls, value):
         if isinstance(value, str) and value in {"published-print", "issued", "early-access"}:
-            raise ValueError("Unsupported legacy date kind; back up and explicitly rebuild the affected Paper/Evidence, then rerun discovery. No automatic migration.")
+            raise ValueError("Unsupported legacy date kind; back up and explicitly rebuild the affected Paper, then rerun discovery. No automatic migration.")
         return value
 
     @model_validator(mode="after")
@@ -176,7 +176,7 @@ class SourceFieldEvidence(DomainModel):
 
 
 class ProviderWorkEvidence(DomainModel):
-    """Structured provider evidence, reusable across explicit operations."""
+    """Operation-local provider facts; unsaved records are discarded after the operation."""
 
     provenance: MetadataSource
     source_fields: tuple[SourceFieldEvidence, ...] = ()
@@ -192,6 +192,7 @@ class ProviderWorkEvidence(DomainModel):
     conference: NonEmptyStr | None = None
     conference_id: NonEmptyStr | None = None
     publication_type: Literal["journal", "conference", "preprint"] | None = None
+    first_public_at: str | None = None
     publication_date: str | None = None
     related_dois: tuple[NonEmptyStr, ...] = ()
     related_ids: tuple[ProviderRecordRef, ...] = ()
@@ -207,7 +208,7 @@ class ProviderWorkEvidence(DomainModel):
     supplements: tuple[ProviderRecordRef, ...] = ()
     monitor_journal_issns: tuple[str, ...] = ()
 
-    @field_validator("publication_date", mode="before")
+    @field_validator("publication_date", "first_public_at", mode="before")
     @classmethod
     def validate_publication_date(cls, value: Any) -> str | None:
         return parse_publication_date(value)
@@ -286,10 +287,8 @@ class CanonicalPaper(DomainModel):
     sources: tuple[MetadataSource, ...] = ()
     workflow: Workflow = Field(default_factory=Workflow)
     journal_issns: tuple[str, ...] = ()
-    related_dois: tuple[NonEmptyStr, ...] = ()
     indexed_terms: tuple[ProviderTopic, ...] = ()
     date_evidence: tuple[EvidenceDate, ...] = ()
-    identity_aliases: tuple[ProviderRecordRef, ...] = ()
 
     @property
     def doi(self) -> str | None:

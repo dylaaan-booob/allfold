@@ -1176,7 +1176,7 @@ function renderPaper() {
   renderPaperFields(paper, ['abstract','authors','publication_date']);
   window.allfoldPaperDates.render(paper,$('paper-first-public'),$('paper-journal-dates'));
   $('paper-source').textContent=paper.conference || paper.journal || reviewJournal()?.name || '—';
-  $('paper-identifiers').textContent=[...Object.entries(paper.external_ids || {}).filter(([key])=>key!=='doi').map(([key,value])=>`${key}: ${value}`),...(paper.related_dois || []).map(value=>`Related DOI: ${value}`)].join('; ') || '—';
+  $('paper-identifiers').textContent=Object.entries(paper.external_ids || {}).filter(([key])=>key!=='doi').map(([key,value])=>`${key}: ${value}`).join('; ') || '—';
   $('paper-indexed-terms').textContent=(paper.indexed_terms || []).map(item=>`${item.value}${item.kind || item.source ? ` (${[item.kind,item.source].filter(Boolean).join(' · ')})` : ''}`).join('; ') || '—';
   $('paper-providers').textContent=(paper.sources || []).map(source=>`${source.provider}${source.role?` (${source.role})`:''}: ${source.record_id}${source.version?` · ${source.version}`:''}`).join('; ') || '—';
   $('paper-doi').textContent=paper.doi || 'DOI unavailable';

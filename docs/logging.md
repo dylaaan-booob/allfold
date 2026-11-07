@@ -155,8 +155,10 @@ publisher and Zotero/PDF acceptance; those require explicit manual validation.
 API-completion History statistics retain separate `first_public_recorded`,
 `first_public_no_association`, `first_public_known_unresolved`,
 `first_public_conflict`, `first_public_failed` and `first_public_cancelled` counts.
-These describe current evidence coverage independently of Paper update status or
-an existing protected First public value. Lookup evidence/no-match/failure counts
+These describe First public outcomes independently of Paper update status. An
+already saved First public is recorded and does not trigger a new first-version
+search. Run counts derive from direct identity matches and actual Paper creates;
+there is no standalone Evidence-write failure category. Lookup evidence/no-match/failure counts
 deduplicate provider/namespace/identifier targets within the operation, including
 shared arXiv batches. No preprint response bodies or identifiers are added to the
 persistent diagnostic event schema.

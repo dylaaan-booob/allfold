@@ -54,7 +54,8 @@ def read_paper_target(workspace: Path, paper_id: UUID, *, operation_lock=None) -
         state = parse_paper_state(path, read.contents)
         identity = parse_paper_identity(path, read.contents)
         if state is None or not state.updateable or state.paper_id != paper_id:
-            raise ValueError('Paper is invalid or its identity changed')
+            raise ValueError('Paper is invalid or its identity changed'
+                + (': ' + '; '.join(state.problems) if state is not None and state.problems else ''))
         if identity is None or identity.problems:
             raise ValueError('Paper identity is missing or conflicting')
         missing_abstract = not state.abstract or not state.abstract.strip()
