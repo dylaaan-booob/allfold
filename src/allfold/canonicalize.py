@@ -404,13 +404,15 @@ def _snapshot_issues(
             )
 
     date_values: dict[
-        EvidenceDateKind, set[tuple[int, int | None, int | None]]
+        tuple[EvidenceDateKind, str | None], set[tuple[int, int | None, int | None]]
     ] = defaultdict(set)
     for record in current:
         for item in record.dates:
             if _is_complete_date(item):
-                date_values[item.kind].add((item.year, item.month, item.day))
-    for date_kind, values in date_values.items():
+                # Native fields such as published and published-print share a
+                # business kind but can legitimately describe different dates.
+                date_values[item.kind, item.source_label].add((item.year, item.month, item.day))
+    for (date_kind, _source_label), values in date_values.items():
         if len(values) > 1:
             issues.append(
                 CanonicalizationIssue(

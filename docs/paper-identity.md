@@ -71,6 +71,9 @@ version, preprint version family, version type, original source label, source UR
 public preprint version. Equal facts deduplicate independently of fetch time;
 new events and conflicting source facts append. Same-day events with different
 types remain distinct. Sorting placeholders never enter saved/display dates.
+Snapshot date conflicts compare the same native source label. Distinct native
+fields such as Crossref `published` and `published-print` retain their dates
+under Published without being reported as contradictory snapshots.
 
 `first_public_at` requires a reliably linked preprint system and evidence for its
 first/earliest public version. A later version alone, unknown preprint date,

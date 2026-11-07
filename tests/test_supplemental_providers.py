@@ -137,6 +137,23 @@ def test_crossref_conference_acceptance_does_not_enter_journal_dates():
     assert not journal_dates(paper.date_evidence)
 
 
+def test_crossref_distinct_publication_fields_are_not_conflicting_snapshots():
+    with SupplementalClient('crossref', interval=0, transport=httpx.MockTransport(lambda _: httpx.Response(200, json={
+        'message': {'DOI':'10.5555/formal', 'type':'journal-article', 'title':['Formal'],
+            'published':{'date-parts':[[2026,9,28]]}, 'issued':{'date-parts':[[2026,9,28]]},
+            'published-online':{'date-parts':[[2026,9,28]]}, 'published-print':{'date-parts':[[2026,10,2]]}}}))) as client:
+        records = client.lookup('doi', '10.5555/formal')
+    result = canonicalize_records(records)
+    assert not result.issues
+    paper, = result.papers
+    assert {(d.source_label,d.month,d.day) for d in paper.date_evidence if d.kind.value=='published'} == {
+        ('published',9,28), ('issued',9,28), ('published-print',10,2)}
+    changed = records[0].model_copy(update={'dates':tuple(
+        d.model_copy(update={'day':29}) if d.source_label=='published' else d for d in records[0].dates)})
+    conflicting = canonicalize_records((*records, changed))
+    assert any(issue.stage=='date_conflict' and 'published date' in issue.message for issue in conflicting.issues)
+
+
 def test_explicit_crossref_preprint_relation_without_date_keeps_first_public_unsettled():
     from allfold.models import EvidenceDate, EvidenceDateKind
     with SupplementalClient('crossref', interval=0, transport=httpx.MockTransport(lambda _: httpx.Response(200, json={
