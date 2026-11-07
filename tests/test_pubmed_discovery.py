@@ -1,5 +1,6 @@
 """Merged native PubMed discovery and capability-aware exact metadata batches."""
 import httpx
+import pytest
 
 from allfold.keywords import parse_keyword_expression
 from allfold.providers.integrated import DiscoveryClient, SourceScope
@@ -82,13 +83,35 @@ def test_pubmed_http_200_application_error_never_becomes_empty_or_leaks_key():
         assert 'Entrez' in result.limitations[0]
 
 
+@pytest.mark.parametrize('location', ['outer', 'esearchresult'])
+@pytest.mark.parametrize('count', [0, 1])
+def test_pubmed_empty_error_lists_preserve_valid_search_results(location, count):
+    calls = []
+    def response(request):
+        calls.append(request.url.path)
+        if request.url.path.endswith('esearch.fcgi'):
+            search = {'count':str(count), 'idlist':['41'] if count else [],
+                      'webenv':'fixture', 'querykey':'1'}
+            body = {'esearchresult':search}
+            target = body if location == 'outer' else search
+            target['errorlist'] = {'phrasesnotfound':[], 'fieldsnotfound':[]}
+            return httpx.Response(200, json=body)
+        return httpx.Response(200, text='<PubmedArticleSet>'+article('41', A.issns[0])+'</PubmedArticleSet>')
+    with DiscoveryClient('pubmed', transport=httpx.MockTransport(response), interval=0) as client:
+        result = client.discover(A, parse_keyword_expression('causal'), '2026-10-01', '2026-10-31')
+    assert result.status == ('complete' if count else 'empty')
+    assert len(result.records) == count and not result.limitations
+    assert len(calls) == 1 + count
+
+
 def test_pubmed_summary_v2_dates_are_independent_and_fetch_is_stronger_capability():
     calls = []
     def response(request):
         calls.append(request)
         if request.url.path.endswith('efetch.fcgi'):
             return httpx.Response(200,text='<PubmedArticleSet>'+article('41',A.issns[0])+'</PubmedArticleSet>')
-        return httpx.Response(200,json={'result':{'uids':['41'],'41':{'uid':'41','title':'Summary title','pubdate':'2026 Oct',
+        return httpx.Response(200,json={'errorlist':{'phrasesnotfound':[], 'fieldsnotfound':[]},
+            'result':{'uids':['41'],'41':{'uid':'41','title':'Summary title','pubdate':'2026 Oct',
             'epubdate':'2026 Sep 30','history':[{'pubstatus':'received','date':'2026/03/01 00:00'},
             {'pubstatus':'accepted','date':'2026 Sep 10 00:00'},{'pubstatus':'entrez','date':'2026 Oct 2 00:00'}],
             'references':[{'reftype':'PreprintIn','pmid':'40'}]}}})

@@ -264,8 +264,10 @@ class DiscoveryClient:
                     raise ValueError
             except ValueError:
                 raise DiscoveryError(f'{self.provider}: invalid JSON response') from None
-            if self.provider == 'pubmed' and any(data.get(key) for key in ('error', 'errorlist')):
-                raise DiscoveryError('PubMed: Entrez application error')
+            if self.provider == 'pubmed':
+                from allfold.providers.pubmed import has_entrez_error
+                if has_entrez_error(data):
+                    raise DiscoveryError('PubMed: Entrez application error')
             return data
         raise DiscoveryError(f'{self.provider}: rate limited')
 
@@ -327,7 +329,7 @@ class DiscoveryClient:
             yield group
 
     def _pubmed_discovery_pages(self, scopes, ast, start, end):
-        from allfold.providers.pubmed import fetch_records
+        from allfold.providers.pubmed import fetch_records, has_entrez_error
         expression = compile_query(ast, 'pubmed')
         def params(issns):
             return {'db':'pubmed', 'retmode':'json', 'usehistory':'y', 'retmax':9999,
@@ -340,7 +342,7 @@ class DiscoveryClient:
                 query = params(issns)
                 query['term'] += f' AND ("{lower}"[Date - Publication] : "{upper}"[Date - Publication])'
                 data = self.request('/esearch.fcgi', query).get('esearchresult')
-                if not isinstance(data, dict) or data.get('errorlist') or data.get('error'):
+                if not isinstance(data, dict) or has_entrez_error(data):
                     raise DiscoveryError('PubMed: Entrez ESearch application error or invalid result')
                 total = _positive(data.get('count'), 'ESearch count')
                 if total > 9999:

@@ -15,6 +15,11 @@ MONTHS = {name.casefold(): index for index in range(1, 13) for name in (month_ab
 EVENTS = {'received':'received', 'accepted':'accepted', 'epublish':'published-online', 'ppublish':'published', 'aheadofprint':'published-online'}
 
 
+def has_entrez_error(payload):
+    errors = payload.get('errorlist')
+    return bool(payload.get('error')) or (any(errors.values()) if isinstance(errors, dict) else bool(errors))
+
+
 def _text(node):
     return ' '.join(''.join(node.itertext()).split()) if node is not None else ''
 
@@ -136,7 +141,7 @@ def _summary_date(value):
 
 
 def summary_records(payload):
-    if payload.get('error') or payload.get('errorlist'):
+    if has_entrez_error(payload):
         raise DiscoveryError('PubMed: Entrez ESummary application error')
     result = payload.get('result')
     if not isinstance(result, dict) or not isinstance(result.get('uids'), list):
