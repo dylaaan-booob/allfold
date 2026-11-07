@@ -71,9 +71,30 @@ def finish_run(store, task_id, result, *, provider=None, diagnostic=None, interr
     stats = summary['statistics']
     retrieved = stats.get('returned_records', 0) if provider == 'wos' else sum(
         value for key,value in stats.items() if key in {'integrated_candidates'})
+    sources = {}
+    for run in summary['details'].get('provider_totals', summary['details'].get('provider_runs', [])):
+        if run.get('provider') not in {'wos', 'openalex', 'europe_pmc'}:
+            continue
+        source = sources.setdefault(run['provider'], dict(provider=run['provider'], status='empty', candidates=0, created=0, existing=0, problems=0))
+        for key in ('candidates', 'created', 'existing'):
+            source[key] += run.get(key) or 0
+        source['problems'] += len(run.get('limitations') or [])
+        before, after = source['status'], run.get('status')
+        if 'cancelled' in {before, after}: source['status']='cancelled'
+        elif after in {'failed','partial','skipped'} or before in {'failed','partial','skipped'}:
+            source['status']='failed' if after=='failed' and before in {'empty','failed'} else 'partial'
+        elif after=='complete': source['status']='complete'
+    checks = {}
+    if 'batches' in summary['details']:
+        batches=summary['details']['batches']
+        checks=dict(batches=len(batches), completed_batches=sum(batch.get('complete') is True for batch in batches),
+            journal_hints=sum(journal.get('status')=='hint' for journal in summary['journals']),
+            date_hints=len(summary['details'].get('date_warnings') or []),
+            unmatched_records=stats.get('unmatched_journal_records',0))
     observe(store, 'finish', task_id, outcome,
         statistics={'created':summary['created_papers'], 'unchanged':summary['existing_papers'],
             'retrieved':retrieved, 'warnings':sum(i.get('severity') != 'error' for i in summary['issues']),
             'errors':sum(i.get('severity') == 'error' for i in summary['issues'])},
         diagnostic=diagnostic, details={'result_status':status, 'coverage_status':summary['coverage_status'],
+            'run_sources':list(sources.values()), 'wos_checks':checks,
             'reason':'connection_lost' if interrupted else 'partial' if outcome == 'partial' else outcome if outcome in {'failed','cancelled'} else None})

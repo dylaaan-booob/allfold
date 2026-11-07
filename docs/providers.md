@@ -1,20 +1,20 @@
 # Journal discovery and explicit metadata completion
 
-Allfold exposes three independent operations. **Integrated Run** discovers and saves reviewable journal Papers. **API 补全** operates on selected saved non-Rejected Papers after review, without requiring Keep or a recent Run. **网页 Enrich** retains its independent Translator workflow. Finishing a Run, opening results, changing selection or API completion never starts either of the other operations.
+Allfold exposes three independent operations. **Run** discovers and saves reviewable journal Papers. **API 补全** operates on selected saved non-Rejected Papers after review, without requiring Keep or a recent Run. **网页 Enrich** retains its independent Translator workflow. Finishing a Run, opening results, changing selection or API completion never starts either of the other operations.
 
 ## Provider roles
 
-| Provider | Integrated Run | Explicit API completion |
+| Provider | Run | Explicit API completion |
 | --- | --- | --- |
 | OpenAlex | Saved ISSNs → verified Source, scoped title/abstract/keywords and publication dates | Known DOI/Work ID and explicit location identifiers |
-| Europe PMC | Saved ISSNs, `TITLE_ABS` / `KW`, `FIRST_PDATE`, core results | Known DOI, source/record ID, PMID/PMCID, explicit preprint/version relations |
+| Europe PMC | Saved ISSNs, `TITLE_ABS` / `KW`, `FIRST_PDATE`, lite identity results | Known DOI, source/record ID, PMID/PMCID, explicit preprint/version relations |
 | Crossref | None | Known DOI metadata, named dates and explicit same-work relations |
 | arXiv | None | Known arXiv ID through `id_list`; Atom `published` establishes the first-version date |
 | bioRxiv / medRxiv | None | Platform-appropriate `details`/`pubs` lookups for known preprint or formal DOIs |
 | DBLP | Disabled | Disabled |
-| WoS | Separate existing browser workflow | Outside this operation |
+| WoS | First selected stage: native Journal ISSN/eISSN, keyword/date query and verified eight-option Plain Text export | Outside API completion |
 
-Run's `enabled_providers` defaults to OpenAlex and Europe PMC; either can be selected alone. The separate `completion_providers` defaults to OpenAlex, Europe PMC, Crossref, arXiv, bioRxiv and medRxiv. Saved YAML, autosave, Settings checkboxes, runtime validation and dispatch use these separate lists. No failed/unselected provider silently enables another. OpenAlex credentials retain their explicit submission mechanism; Crossref's optional contact is separate from discovery.
+Run's `enabled_providers` accepts WoS, OpenAlex and Europe PMC in any combination, including WoS only. It still defaults to OpenAlex and Europe PMC; existing selections never enable WoS automatically. The separate `completion_providers` defaults to OpenAlex, Europe PMC, Crossref, arXiv, bioRxiv and medRxiv. Saved YAML, autosave, Settings checkboxes, runtime validation and dispatch use these separate lists. No failed/unselected provider silently enables another. OpenAlex credentials retain their explicit submission mechanism; Crossref's optional contact is separate from discovery.
 
 DBLP's offline Conference Registry, Series management, reliable Paper identities and Research Scope exchange remain available. The obsolete journal-to-Stream map is removed; DBLP network retrieval remains disabled. Conference configuration does not become an executable Run scope or produce a missing-DBLP Partial result. A Run needs at least one followed Journal. See [Research Scope](research-scope.md) for offline management.
 
@@ -22,9 +22,13 @@ DBLP's offline Conference Registry, Series management, reliable Paper identities
 
 The shared parser accepts `AND`, `OR`, parentheses, adjacent quoted phrases and a word-final `*` with at least four preceding characters. `NOT`, proximity, internal/leading wildcards, `?` and malformed groups fail validation. Compilers preserve Boolean grouping and approved fields; no natural-language generation or full-collection scan is added.
 
-OpenAlex uses `search.title_abstract_keywords` (the scoped `.exact` variant for prefixes), verified `primary_location.source.id`, `from_publication_date` and `to_publication_date`. Europe PMC combines verified ISSNs, `TITLE_ABS`/`KW` and native `FIRST_PDATE:[start TO end]`, requesting core metadata. Both adapters exhaust accessible pages, validate envelopes/cursors and report failures or incomplete pagination without arbitrary application page/record quotas. Legal native hits are not subjected to local keyword or date rechecking.
+OpenAlex uses `search.title_abstract_keywords` (the scoped `.exact` variant for prefixes), verified `primary_location.source.id`, `from_publication_date` and `to_publication_date`. Europe PMC combines verified ISSNs, `TITLE_ABS`/`KW` and native `FIRST_PDATE:[start TO end]`, requesting `resultType=lite`. OpenAlex selects only identity/type/location fields at the top level. Both adapters exhaust accessible pages, validate envelopes/cursors and report failures or incomplete pagination without arbitrary application page/record quotas. Legal native hits are not subjected to local keyword or date rechecking.
 
-The requested publication range belongs to discovery. Later preprint, Accepted, online or print dates never remove a Paper from its original Run. A source's year/month precision remains year/month precision; no same-version date lookup rejudges monthly eligibility. [Paper identity](paper-identity.md) defines First public and named journal dates.
+Selected WoS executes first outside the HTTP pool, using the existing CARSI and Browser preparation/ownership mechanism. Its eight Custom choices and dynamic native range limit are verified before every export; see [native export contract](wos-export.md). Failed or partial WoS retains usable returned records and selected APIs still execute. Cancellation stops later stages and requests; committed writes remain. There is one parent Run slot, workflow identity, saved configuration/Workspace snapshot, result and history lifecycle. The legacy Run WoS HTTP URL delegates to the same selected-source Run.
+
+All lightweight API candidates are gathered before choosing creation details. Known identities include every saved Paper (including Rejected) and the current WoS records. Known hits append reusable evidence without full ordinary-metadata requests or Paper mutation. Unknown works choose a formal native record first, then a deterministic provider order; a shared work does not fetch complete ordinary metadata from both APIs. OpenAlex batches exact Work IDs in groups of at most 100; Europe PMC batches exact `EXT_ID`/`SRC` clauses. An implementation URL budget splits groups, and pagination drains every group without a total-record quota. List-truncated OpenAlex creation authorships/locations require an exact singleton response; unresolved caps, missing/wrong IDs and failed pages remain explicit limitations. Already-returned associations are retained for known hits. Ambiguous evidence matching multiple saved owners is quarantined rather than copied to both.
+
+The requested publication range belongs to discovery. Later preprint, Accepted, online or publication dates never remove a Paper from its original Run. A source's year/month precision remains year/month precision; no same-version date lookup rejudges monthly eligibility. [Paper identity](paper-identity.md) defines First public and named journal dates.
 
 ## Run results and snapshots
 
@@ -38,17 +42,16 @@ Cancelled, failed, partial retrieval, capture issues and successful empty result
 remain distinct. The old OpenAlex Coverage and standalone discovery contracts
 have no production role and are removed.
 
-Snapshot formats have separate versions and readers:
+The selected-source Run has one current snapshot contract:
 
-- Integrated Run writes schema **v5** to `Workspace/.allfold/last-integrated-run.json`.
+- Integrated Run writes schema **v6** to `Workspace/.allfold/last-integrated-run.json`.
   Its only top-level fields are `schema_version`, `provider`,
   `resolved_date_range`, `outcome` and `facts`; there is no `coverage` array.
-- An old Integrated Run **v4** snapshot returns `unsupported` with a rerun prompt.
+- An old Integrated Run **v4/v5** snapshot returns `unsupported` with a rerun prompt.
   Reading leaves it untouched. A new explicit Run writes the current result;
   no migration, Workspace Reset or configuration reconstruction is needed for
   this snapshot-only change.
-- WoS continues to write and read its existing **v4** format in
-  `Workspace/.allfold/last-wos-run.json`. Integrated's version does not govern it.
+- Legacy WoS **v4** files in `Workspace/.allfold/last-wos-run.json` remain untouched. They are not reconstructed into the unified Run result; run again with the desired selected sources.
 
 Malformed or mismatched records and unsafe paths remain invalid; missing files
 remain not found, and I/O failures retain their error. Snapshot writes retain
@@ -62,13 +65,15 @@ Run retains compact structured records under Workspace `Evidence/<Paper UUID>.js
 
 In Workspace, open **API 补全**, select one or more saved non-Rejected Papers and explicitly start. The current Paper is selected initially when available; the selection also includes older saved and exported Papers. Rejected Papers are excluded. After restart, the operation rebuilds its task from saved Paper identity and evidence. There is no permanent Paper-complete flag: another explicit invocation remains possible.
 
-Completion follows reliable identities and explicit version relations until targets are exhausted. Every provider/namespace/identifier is requested at most once per operation, including shared targets across Papers and failures. Native details returned during a formal-DOI reverse lookup are also reused for a separately selected preprint. Sufficient saved first-version evidence avoids unnecessary native lookups for that version family; another family's later-only, undated or conflicting evidence remains unresolved and can trigger its targeted lookup. New reliable identifiers can generate further queries. arXiv DOI/IDs route to arXiv and share the same writeback identity, while a known bioRxiv/medRxiv platform constrains its details lookup; formal DOI reverse lookup uses platforms that support it. No title/author fuzzy matching is used.
+Completion first consumes saved Paper and Evidence facts locally. It can run with no enabled completion providers. Network requests serve only empty title/authors/source/abstract, missing-all journal dates, or unresolved First public families; optional keywords, PMID and affiliations never create requests. Any valid Accepted, Published online or Published date suppresses date-only queries, including partial and future formal dates. Necessary responses can still contribute dates returned with other metadata.
 
-OpenAlex `locations` retains recognizable DOI, arXiv and native preprint URLs, PDF/landing locations, source and version. `related_works`, `acceptedVersion` and `is_accepted` do not establish a version relationship, a preprint or acceptance date. Europe PMC retains only explicit `Preprint in`/`Preprint of` relationships from `commentCorrectionList`; ordinary comments/corrections remain unrelated. Current `firstPublicationDate` and each `versionList.version[].firstPublishDate` keep their own record/version identity. An absent version list does not imply a single version.
+Known arXiv, explicitly identified bioRxiv/medRxiv and Europe PMC preprint targets run before aggregation. After every response, all returned relationships enter the known-family set before coverage is checked. Every known family needs acceptable first-version proof; an empty family set is unresolved. Once known families and ordinary/date goals are satisfied, completion stops instead of searching other systems. Otherwise enabled, identity-supported routes use saved OpenAlex work/location facts, PMID/Europe PMC records, and Crossref formal-DOI named relations. A formal-DOI native reverse lookup is an association fallback; a known preprint DOI never causes guesses at another platform. Selecting one native provider does not establish that a DOI belongs to it.
 
-API results distinguish updated Paper, unchanged Paper, excluded Paper, failure and cancellation; lookup results distinguish evidence, normal no-match, identity mismatch, failure and cancellation. One failed provider/Paper does not revoke other valid evidence or committed updates. Cancellation stops new dispatch and reports already completed safe writes. API completion has independent progress/results and History, rather than Run supplement counters.
+Every provider/namespace/identifier, including failures and cyclic relations, is reused within the operation across selected Papers. Native details returned during a formal-DOI reverse lookup also serve separately selected preprints. Known arXiv IDs across Papers share `id_list` batches, using local groups of at most 200 IDs and draining every group without truncation. Responses map by normalized ID rather than order: missing IDs remain no-match, wrong/error entries and conflicting duplicates remain failures, and unaffected siblings survive. Atom `published`, never `updated`, establishes v1. Cancellation and configuration/Workspace checks guard subsequent requests and batches; host pacing/retry remain shared.
 
-Known bioRxiv/medRxiv preprint DOIs are queried before formal-DOI reverse lookups. Once ordinary metadata and every known preprint family's first-version evidence are sufficient, the existing gap check skips remaining native lookups. Partial results distinguish source-query problems from failed Paper processing, and successful Paper results state whether First public is recorded or still undetermined; failures remain visible.
+OpenAlex locations retain validated official preprint identities but `related_works`, `acceptedVersion`, `is_accepted` and repository location alone do not prove a first-version date. Crossref accepts only permitted named same-work/preprint/version relationships with validated DOI, arXiv or anchored official URI identifiers; arbitrary URLs and unrelated references are ignored. A response must establish its own requested primary identity before its related records can contribute. Europe PMC keeps explicit `Preprint in`/`Preprint of` relationships and version-bound dates. Missing version lists or version numbers do not prove v1. Explicit bioRxiv/medRxiv publisher plus PPR/DOI facts can direct native lookup without inventing a version number.
+
+API results distinguish updated, unchanged, excluded, failed and cancelled Papers; lookup results distinguish evidence, no-match, identity mismatch, failure and cancellation. First-public coverage independently distinguishes recorded, no association, known unresolved, conflicting evidence, service failure and cancellation. Existing First public stays protected even when new families are unresolved or conflicting. History retains these coverage counts. One failed source/Paper does not revoke other valid facts or completed safe writes. No permanent no-match cache, raw HTTP archive or fuzzy matching is added.
 
 Ordinary metadata fills empty fields only. Authors remain a whole list. Existing First public, UUID, file identity, primary identifiers, human content and workflow status remain unchanged; new relationships do not merge saved Papers or fill a formal DOI-free Paper with a preprint DOI. Date/source facts append with stable deduplication. Exact content, file/directory/Workspace identity, configuration and cancellation are rechecked before writes. API admission shares the existing Run and workflow exclusion; configuration writes, Reset and local field edits cannot bypass the active task. See [Safety](safety.md).
 
@@ -103,3 +108,24 @@ Existing [PR #40](https://github.com/dylaaan-booob/allfold/pull/40) acceptance i
 Synthetic HTTP, rendered Electron fixtures, builds and CI establish only their tested layers. Real OpenAlex/Europe PMC responses, native preprint APIs, authenticated sites and Zotero outcomes require separately scoped acceptance.
 
 Interface references: [OpenAlex scoped search](https://help.openalex.org/api/searching/), [OpenAlex locations](https://help.openalex.org/data/locations/), [Europe PMC REST](https://dev.europepmc.org/RestfulWebService), [Europe PMC version fields](https://europepmc.org/docs/EBI_Europe_PMC_Web_Service_Reference.pdf), [Crossref metadata](https://github.com/CrossRef/rest-api-doc/blob/master/api_format.md), [arXiv API](https://info.arxiv.org/help/api/user-manual.html), [bioRxiv/medRxiv APIs](https://api.biorxiv.org/).
+
+### Shared WoS source facts
+
+The Plain Text parser exposes `record_evidence` before Paper canonicalization.
+It preserves UT, valid DI and optional PM as reliable identifiers; GA and identifiers
+mentioned only in titles, abstracts or citations never establish identity. An invalid
+optional DI/PM does not discard a record with another reliable identifier.
+AF takes priority over AU as one ordered list. SO remains the returned source title,
+SN/EI remain source ISSNs, and saved scope attribution remains separate. PT,
+multivalue DT, DE and ID, dates PD/PY/EA/EY, and returned volume/issue/pages/article
+number remain structured facts. Each native field records its returned values and
+`unselected`, `absent`, `valid` or `parse-invalid` state; the eight export choices
+include their dependent tags and inherent bibliographic/identity fields.
+
+Canonical creation prefers formal versions, then valid WoS ordinary fields, then
+deterministic other-source fills. Source retrieval time never decides ordinary
+field precedence. Repeated facts deduplicate independent of retrieval timestamps.
+Date-only requests use Accepted, Published online and publication_date; print,
+issued and early-access are not independent completion goals. Original native date
+labels remain provenance. Future formal dates and available year/month precision
+are preserved; First public retains its independent version and future-date checks.

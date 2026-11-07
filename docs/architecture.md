@@ -80,10 +80,7 @@ BrowserRuntime keeps one current association per physical page, including the wo
 ## History and diagnostics
 
 Python coordinators publish bounded business history independently of their
-Workspace result snapshots. Both Run providers expose current counts, statistics,
-issues and retrieval observations through `RunFacts`; Integrated snapshots use v5
-while WoS retains its independently read v4 format. Old Integrated v4 reads return
-unsupported and require a new Run, without migration or Reset. Electron and Python write separately owned, rotating
+Workspace result snapshots. The unified Run exposes selected-source counts, statistics, issues and retrieval observations through `RunFacts`; its Integrated snapshot uses v6. Old Integrated v4/v5 reads return unsupported and require a new Run, without migration or Reset. Legacy WoS snapshots remain untouched and are not reconstructed into unified results. Electron and Python write separately owned, rotating
 JSONL under a common configuration scope and startup runtime ID. Explicit workflow,
 task and request identities link native observations with coordinator-confirmed
 results. Page association snapshots are descriptive evidence, never browser or
@@ -157,7 +154,7 @@ Both databases live outside Workspace. Within the application project, configura
 
 Provider adapters emit reusable `ProviderWorkEvidence`; canonicalization groups
 explicit strong identities and selects missing metadata in a fixed order.
-Integrated Run schedules only selected OpenAlex/Europe PMC journal discovery.
+Run executes selected WoS synchronously first under the parent slot and workflow identity, then selected OpenAlex/Europe PMC lightweight journal discovery. The native stage shares the captured configuration/Workspace/cancellation authority, releases Browser ownership after export, and never writes a second Run snapshot or history result. Gathered candidate identities select batched creation details only for unknown works; all saved Papers, including Rejected, and current WoS facts suppress redundant full details.
 Native publication-date filters determine its range; subsequent evidence never
 rejudges inclusion. Commit rechecks captured configuration, source revision,
 Workspace/Papers identity and the complete identity index before atomic creates.
@@ -167,8 +164,11 @@ including rediscovery of existing Papers. There is no raw-response archive or
 persistent task queue.
 
 The independent API-completion coordinator reads selected saved non-Rejected
-Papers plus handoff evidence, reuses the identifier traversal and HTTP adapters,
-and shares Run/workflow admission without dispatching browser operations. It
+Papers plus handoff evidence, consumes local facts before scheduling independent
+ordinary/date/First-public goals, and shares Run/workflow admission without
+browser operations. Known native preprint targets precede association discovery;
+coverage is recomputed after all relations in each response are absorbed. One
+operation owns the request cache and arXiv batches across selected Papers. It
 owns progress, cancellation, per-Paper outcomes, History and shutdown settlement.
 Network work holds no Workspace lock; short commits recheck exact Paper bytes,
 file/directory identity, status, configuration and cancellation. Only empty

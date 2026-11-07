@@ -30,7 +30,7 @@ def test_run_retains_native_hit_without_lookups_and_reuses_durable_rediscovery(t
     def response(request):
         calls.append(request)
         assert request.url.path.endswith('/search')
-        assert 'FIRST_PDATE:[2026-01-01 TO 2026-03-31]' in request.url.params['query']
+        assert ('FIRST_PDATE:[2026-01-01 TO 2026-03-31]' in request.url.params['query'] if request.url.params['resultType']=='lite' else 'EXT_ID:42 AND SRC:MED' in request.url.params['query'])
         return httpx.Response(200, json={'hitCount': 1, 'resultList': {'result': [{
             'source': 'MED', 'id': '42', 'doi': '10.5555/formal', 'title': 'Native hit',
             'firstPublicationDate': '2025', 'abstractText': abstract,
@@ -49,10 +49,10 @@ def test_run_retains_native_hit_without_lookups_and_reuses_durable_rediscovery(t
     second = run_integrated(path, client_factory=factory)
     assert second.facts.existing_papers == 1 and saved.read_bytes() == original
     handoff = read_discovery_evidence(tmp_path / 'workspace', paper.paper_id)
-    assert any(record.abstract == abstract for record in handoff.records)
+    assert all(record.abstract is None for record in handoff.records)  # Known hits never refresh core metadata
     assert any(reference.record_id == 'PPR:PPR7' for record in handoff.records for reference in record.related_ids)
     assert handoff.scopes[0].from_date == '2026-01-01'
-    assert len(calls) == 2
+    assert len(calls) == 3
 
 
 def test_only_selected_discovery_providers_run_and_one_failure_preserves_hits(tmp_path):
@@ -104,7 +104,7 @@ def test_production_integrated_run_creates_doi_free_native_hit_and_preserves_sav
     assert latest.snapshot.facts.existing_papers==1
     import json
     raw = json.loads(latest.path.read_text())
-    assert raw['schema_version'] == 5 and 'coverage' not in raw
+    assert raw['schema_version'] == 6 and 'coverage' not in raw
     assert build_run_result_summary(latest) == build_run_result_summary(second)
 
 
@@ -240,7 +240,7 @@ def test_saved_provider_selection_reaches_request_coordinator_and_retired_entrie
     with TestClient(app,base_url='http://localhost') as client:
         csrf=client.get('/api/ui-next/settings').json()['csrf_token']
         state=client.get('/api/ui-next/run').json()
-        assert set(state['providers'])=={'integrated','wos'}
+        assert set(state['providers'])=={'integrated'}
         for old in ('openalex','crossref','pubmed'):
             assert client.post('/api/ui-next/run',json={'csrf_token':csrf,'provider':old}).status_code==422
         mismatch=client.post('/api/ui-next/run',json={'csrf_token':csrf,'enabled_providers':['openalex']})

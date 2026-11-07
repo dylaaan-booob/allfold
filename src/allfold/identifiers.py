@@ -47,14 +47,17 @@ def normalize_external_id(namespace: str, value: Any) -> str | None:
         return re.sub(r"^https?://dblp\.org/rec/", "", value).removesuffix(".html")
     if namespace == "europe_pmc":
         source, separator, identifier = value.partition(":")
-        return f"{source.upper()}:{identifier}" if separator and source and identifier else None
+        return f"{source.upper()}:{identifier}" if separator and source.isalnum() and identifier.isalnum() else None
     if namespace == "wos":
         return value.upper() if re.fullmatch(r"WOS:[0-9]+", value, re.I) else None
     if namespace == "pmid":
         value = re.sub(r"^https?://(?:pubmed\.ncbi\.nlm\.nih\.gov/|(?:www\.)?ncbi\.nlm\.nih\.gov/pubmed/)", "", value, flags=re.I).rstrip("/")
         return value if re.fullmatch(r"[0-9]+", value) else None
     if namespace == "pmcid":
-        value = re.sub(r"^https?://(?:(?:www\.)?ncbi\.nlm\.nih\.gov/pmc/articles/|pmc\.ncbi\.nlm\.nih\.gov/articles/)", "", value, flags=re.I).rstrip("/").upper()
+        value, is_uri = re.subn(r"^https?://(?:(?:www\.)?ncbi\.nlm\.nih\.gov/pmc/articles/|pmc\.ncbi\.nlm\.nih\.gov/articles/)", "", value, flags=re.I)
+        value = value.rstrip('/').upper()
+        if is_uri and value.isascii() and value.isdigit():
+            value = 'PMC' + value
         return value if re.fullmatch(r"PMC[0-9]+", value) else None
     return value
 
@@ -83,3 +86,27 @@ def evidence_identifiers(record: Any) -> frozenset[tuple[str, str]]:
     for reference in record.related_ids:
         identities.update(strong_identifiers({reference.provider: reference.record_id}))
     return frozenset(identities)
+
+
+def supported_preprint_uri(value: Any) -> tuple[str, str] | None:
+    """Interpret only anchored official preprint locations; never fetch a URI."""
+    from urllib.parse import urlsplit
+    if not isinstance(value, str):
+        return None
+    try:
+        url = urlsplit(value)
+        if (url.scheme not in {'http', 'https'} or url.username or url.password or url.query or url.fragment
+                or url.port not in {None, 80 if url.scheme == 'http' else 443}):
+            return None
+    except ValueError:
+        return None
+    if url.hostname in {'arxiv.org', 'www.arxiv.org', 'export.arxiv.org'}:
+        matched = re.fullmatch(r'/(?:abs|pdf)/(.+?)(?:\.pdf)?', url.path)
+        if matched and (identifier := normalize_external_id('arxiv', matched[1])):
+            return 'arxiv', identifier
+    for platform in ('biorxiv', 'medrxiv'):
+        if url.hostname in {platform + '.org', 'www.' + platform + '.org'}:
+            matched = re.fullmatch(r'/content/(10\.1101/[A-Za-z0-9./-]+?)(?:v[0-9]+)?(?:\.full(?:\.pdf)?)?', url.path)
+            if matched and (doi := valid_doi(matched[1])):
+                return platform, doi
+    return None

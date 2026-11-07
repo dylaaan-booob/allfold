@@ -306,7 +306,7 @@ class _Settings(BaseModel):
     @field_validator("enabled_providers", mode="before")
     @classmethod
     def valid_enabled(cls, value):
-        if not isinstance(value, (list, tuple)) or any(item not in ENABLED_PROVIDERS for item in value) or len(set(value)) != len(value):
+        if not isinstance(value, (list, tuple)) or any(item not in (*ENABLED_PROVIDERS, "wos") for item in value) or len(set(value)) != len(value):
             raise ValueError("enabled_providers must list unique supported Provider IDs")
         return tuple(value)
 

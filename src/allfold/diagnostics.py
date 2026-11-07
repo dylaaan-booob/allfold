@@ -31,6 +31,7 @@ OUTCOMES = frozenset({'completed', 'partial', 'failed', 'cancelled', 'interrupte
 STATISTICS = frozenset({'retrieved', 'created', 'updated', 'total', 'processed', 'failed', 'skipped',
     'confirmed', 'exported', 'no_effect', 'uncertain', 'cancelled', 'completed', 'opened',
     'needs_attention', 'eligible', 'matched', 'downloaded', 'enriched', 'unchanged', 'candidates',
+    'first_public_recorded', 'first_public_no_association', 'first_public_known_unresolved', 'first_public_conflict', 'first_public_failed', 'first_public_cancelled',
     'no_match', 'lookup_failed', 'identity_mismatch', 'evidence', 'papers', 'services', 'warnings', 'errors', 'excluded', 'duplicates', 'materialized', 'pdf_unverified'})
 REASONS = frozenset({'runtime_interrupted', 'connection_lost', 'cancelled', 'partial', 'failed',
     'needs_attention', 'result_unconfirmed', 'pdf_unverified', 'no_effect', 'configuration_changed',
@@ -85,15 +86,33 @@ def _details(value):
     if _enum(value.get('pdf_outcome'), {'confirmed', 'failed', 'unverified', 'not_requested', 'uncertain'}):
         result['pdf_outcome'] = value['pdf_outcome']
     for key, allowed in (('result_status', {'completed', 'completed_with_notices', 'incomplete', 'capture_issues', 'failed', 'cancelled'}),
-                         ('coverage_status', {'complete', 'partial', 'failed', 'unavailable', 'unknown'}),
+                         ('coverage_status', {'complete', 'empty', 'partial', 'failed', 'unavailable', 'unknown'}),
                          ('batch_phase', {'idle', 'running', 'completed', 'stopped', 'paused', 'blocked'}),
                          ('mode', {'full', 'import_only'})):
         if _enum(value.get(key), allowed):
             result[key] = value[key]
+    source_runs = value.get('run_sources')
+    if isinstance(source_runs, list):
+        sources = []
+        for item in source_runs:
+            if not isinstance(item, dict) or not _enum(item.get('provider'), {'wos','openalex','europe_pmc'}):
+                continue
+            if not _enum(item.get('status'), {'complete','empty','partial','failed','cancelled','skipped'}):
+                continue
+            safe = {key:item[key] for key in ('provider','status')}
+            safe.update({key:item[key] for key in ('candidates','created','existing','problems')
+                if type(item.get(key)) is int and 0 <= item[key] <= 1_000_000_000})
+            if not any(source['provider']==safe['provider'] for source in sources):
+                sources.append(safe)
+        result['run_sources'] = sources
+    checks = value.get('wos_checks')
+    if isinstance(checks, dict):
+        result['wos_checks'] = {key:checks[key] for key in ('batches','completed_batches','journal_hints','date_hints','unmatched_records')
+            if type(checks.get(key)) is int and 0 <= checks[key] <= 1_000_000_000}
     for key in ('saved_fields', 'requested_fields'):
         fields = value.get(key)
         if isinstance(fields, list):
-            result[key] = sorted({field for field in fields if _enum(field, {'abstract', 'authors', 'publication_date', 'date_evidence', 'first_public_at', 'sources', 'author_keywords', 'journal', 'conference', 'conference_id', 'publication_type'})})
+            result[key] = sorted({field for field in fields if _enum(field, {'title', 'abstract', 'authors', 'publication_date', 'date_evidence', 'first_public_at', 'sources', 'author_keywords', 'journal', 'conference', 'conference_id', 'publication_type'})})
     service_statistics = value.get('service_statistics')
     if isinstance(service_statistics, list):
         summaries = []

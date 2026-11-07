@@ -11,8 +11,8 @@ from pathlib import Path
 from allfold.persistence.safe_write import _open_directory_nofollow
 from allfold.config import JournalConfig, normalize_journal_issn
 
-from allfold.identifiers import normalize_doi
-from allfold.models import Author, CanonicalPaper, ExternalIds, MetadataSource, ProviderWorkEvidence, ProviderTopic, EvidenceDate, EvidenceDateKind, parse_publication_date
+from allfold.identifiers import normalize_doi, normalize_external_id
+from allfold.models import Author, CanonicalPaper, ExternalIds, MetadataSource, ProviderWorkEvidence, ProviderTopic, EvidenceDateKind, SourceFieldEvidence, parse_publication_date
 from allfold.canonicalize import canonicalize_records
 
 
@@ -181,66 +181,109 @@ def _bibliographic_date(raw: str, year: str = '') -> str | None:
     return None
 
 
-def publication_date(pd: str, py: str, ea: str) -> tuple[str | None, list[str]]:
+def publication_date(pd: str, py: str, ea: str = '') -> tuple[str | None, list[str]]:
+    """PD/PY only: online availability never replaces formal publication."""
     formal = _bibliographic_date(pd, py) or _bibliographic_date(py)
-    early = _bibliographic_date(ea)  # EA must supply its own year.
     issues = []
     embedded = re.findall(r'(?<!\d)[12]\d{3}(?!\d)', pd)
     if embedded and py and py not in embedded:
         issues.append('PD_PY_year_conflict')
     if pd and _bibliographic_date(pd, py) is None:
         issues.append('unusable_PD')
-    selected = formal
-    if (not formal or len(formal) == 4) and early and len(early) >= 7:
-        selected = early
-        issues.append('EA_fallback')
-    if selected is None:
+    if formal is None:
         issues.append('date_unavailable')
-    elif len(selected) == 4:
+    elif len(formal) == 4:
         issues.append('year_only')
-    return selected, issues
+    return formal, issues
 
 
-def record_paper(record: dict, journal: JournalConfig, warnings: list | None = None) -> CanonicalPaper:
+# Eight export choices include these native tags; identity/date/bibliographic tags
+# are inherent fields of Plain Text export, not additional selected checkboxes.
+WOS_SELECTED_FIELDS = frozenset({
+    'PT', 'UT', 'DI', 'PM', 'AU', 'AF', 'TI', 'SO', 'SN', 'EI', 'AB', 'DT', 'DE', 'ID',
+    'PD', 'PY', 'EA', 'EY', 'VL', 'IS', 'BP', 'EP', 'AR', 'BE', 'BN', 'GP', 'SE',
+})
+
+
+def record_evidence(record: dict, journal: JournalConfig | None = None, warnings: list | None = None,
+                    *, selected_fields=WOS_SELECTED_FIELDS) -> ProviderWorkEvidence:
+    """Preserve independently reusable WoS facts before selecting Paper metadata."""
+    from allfold.paper_dates import source_date
+
     def text(tag):
         return ' '.join(' '.join(record.get(tag, [])).split())
 
     if record.get('_invalid'):
         raise ValueError('Malformed record')
-    doi = normalize_doi(text('DI') or None)
-    ut = text('UT').upper()
-    if not re.fullmatch(r'WOS:\d+', ut):
-        ut = ''
-    pd, py, ea = (text(tag) for tag in ('PD', 'PY', 'EA'))
-    selected, date_issues = publication_date(pd, py, ea)
-    if warnings is not None and date_issues:
-        warnings.append(dict(journal=journal.key, doi=doi, ut=ut, PD=pd, PY=py, EA=ea,
-                             selected=selected, reasons=date_issues))
-    if doi and not re.fullmatch(r'10\.\d{4,9}/[^\s]+', doi):
-        raise ValueError('invalid_doi')
-    if not doi and not ut:
+    invalid = set()
+    ids = {}
+    for tag, namespace in (('DI', 'doi'), ('UT', 'wos'), ('PM', 'pmid')):
+        value = text(tag)
+        normalized = normalize_external_id(namespace, value) if value else None
+        if normalized:
+            ids[namespace] = normalized
+        elif value:
+            invalid.add(tag)
+    if not ids:
         raise ValueError('missing_identity')
-    title = text('TI')
-    if not title:
-        raise ValueError('Record has no title')
-    authors = [Author(name=name) for name in ([name for name in record.get('AF', []) if name.strip()] or record.get('AU') or [])
-               if name.strip() and not any(c in name for c in ']\n\r\0')]
-    dates = []
-    early = _bibliographic_date(ea)
-    if early:
-        parts = [int(part) for part in early.split('-')]
-        dates.append(EvidenceDate(kind=EvidenceDateKind.EARLY_ACCESS, year=parts[0],
-                                 month=parts[1] if len(parts) > 1 else None, day=parts[2] if len(parts) > 2 else None))
+    pd, py, ea, ey = (text(tag) for tag in ('PD', 'PY', 'EA', 'EY'))
+    selected, date_issues = publication_date(pd, py)
+    early = _bibliographic_date(ea, ey)  # Never borrow PY for a different event.
+    for tag, raw, parsed in (('PD', pd, _bibliographic_date(pd, py)),
+                             ('PY', py, _bibliographic_date(py)),
+                             ('EA', ea, early), ('EY', ey, _bibliographic_date(ey))):
+        if raw and parsed is None:
+            invalid.add(tag)
+    if warnings is not None and (date_issues or invalid):
+        warnings.append(dict(journal=journal.key if journal else None, doi=ids.get('doi'), ut=ids.get('wos'),
+            PD=pd, PY=py, EA=ea, EY=ey, selected=selected,
+            reasons=[*date_issues, *(f'unusable_{tag}' for tag in sorted(invalid))]))
+    authors = []
+    for tag in ('AF', 'AU'):
+        names = [name.strip() for name in record.get(tag, []) if name.strip()]
+        if any(any(c in name for c in ']\n\r\0') for name in names):
+            invalid.add(tag)
+        elif names and not authors:
+            authors = [Author(name=name) for name in names]
+    issns = []
+    for tag in ('SN', 'EI'):
+        for raw in record.get(tag, []):
+            if not raw.strip():
+                continue
+            try:
+                issns.append(normalize_journal_issn(raw))
+            except ValueError:
+                invalid.add(tag)
+    dates = tuple(event for value, kind, label in (
+        (selected, EvidenceDateKind.PUBLISHED, 'PD/PY'),
+        (early, EvidenceDateKind.PUBLISHED_ONLINE, 'EA/EY' if ey else 'EA'),
+    ) if value and (event := source_date(value, kind=kind, source_label=label)))
     keywords = lambda tag: tuple(value.strip() for value in text(tag).split(';') if value.strip())
-    evidence = ProviderWorkEvidence(
-        provenance=MetadataSource(provider='wos', record_id=ut or doi, retrieved_at=datetime.now(timezone.utc), role='discovery'),
-        title=title, journal=journal.name, publication_type='journal', abstract=text('AB') or None,
-        publication_date=selected, dates=tuple(dates), authors=tuple(authors),
+    fields = tuple(SourceFieldEvidence(tag=tag, values=tuple(record.get(tag, [])),
+        status='parse-invalid' if tag in invalid else 'valid' if text(tag) else
+            'absent' if tag in selected_fields else 'unselected')
+        for tag in sorted(WOS_SELECTED_FIELDS | {'GA'}))
+    pages = '-'.join(value for value in (text('BP'), text('EP')) if value)
+    return ProviderWorkEvidence(
+        provenance=MetadataSource(provider='wos', record_id=ids.get('wos') or ids.get('doi') or ids['pmid'],
+                                  retrieved_at=datetime.now(timezone.utc), role='discovery'),
+        title=text('TI') or None, journal=text('SO') or None, publication_type='journal',
+        source_publication_type=text('PT') or None, document_types=keywords('DT'), source_fields=fields,
+        journal_issns=tuple(sorted(set(issns))), volume=text('VL') or None, issue=text('IS') or None,
+        pages=pages or None, article_number=text('AR') or None,
+        abstract=text('AB') or None, publication_date=selected, dates=dates, authors=tuple(authors),
         author_keywords=keywords('DE'),
         indexed_terms=tuple(ProviderTopic(value=value, source='wos', kind='Keywords Plus') for value in keywords('ID')),
-        external_ids=ExternalIds(doi=doi, **({'wos': ut} if ut else {})), monitor_journal_issns=(journal.key,),
+        external_ids=ExternalIds(**ids), monitor_journal_issns=(journal.key,) if journal else (),
     )
-    return canonicalize_records([evidence]).papers[0]
+
+
+def record_paper(record: dict, journal: JournalConfig, warnings: list | None = None) -> CanonicalPaper:
+    evidence = record_evidence(record, journal, warnings)
+    result = canonicalize_records([evidence])
+    if not result.papers:
+        raise ValueError('Record has no title')
+    return result.papers[0]
 
 
 
@@ -288,7 +331,7 @@ class WoSRecords:
         self.papers, self.uts, self.conflicts = {}, {}, set()
 
     def add(self, paper: CanonicalPaper):
-        doi = paper.doi or f'wos:{paper.external_ids.wos}'
+        doi = paper.doi or next(f'{key}:{value}' for key, value in paper.external_ids.model_dump(exclude_none=True).items() if key in {'wos', 'pmid'})
         for source in paper.sources:
             previous = self.uts.get(source.record_id)
             if previous and previous != doi:

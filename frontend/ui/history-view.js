@@ -4,7 +4,7 @@ const esc=value=>String(value??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;
 const kinds={run:'Run',prepare:'Service Preparation',import:'Batch Import',kept:'Kept Workflow',enrich:'网页 Enrich',api_completion:'API 补全',covers:'Cover Search'};
 const outcomes={running:'进行中',completed:'完成',partial:'部分完成',failed:'失败',cancelled:'已取消',
   interrupted:'已中断',uncertain:'结果未确认',needs_attention:'需要处理',opened:'已打开',no_effect:'未产生保存',confirmed:'父条目已确认'};
-const metrics={no_match:'无匹配',lookup_failed:'请求失败',identity_mismatch:'身份不匹配',evidence:'取得证据',total:'总数',processed:'已处理',retrieved:'检索记录',created:'新增 Paper',updated:'更新',
+const metrics={first_public_recorded:'首版日期已记录',first_public_no_association:'尚无预印本关联',first_public_known_unresolved:'已知首版未确定',first_public_conflict:'首版证据冲突',first_public_failed:'首版查询失败',first_public_cancelled:'首版查询取消',no_match:'无匹配',lookup_failed:'请求失败',identity_mismatch:'身份不匹配',evidence:'取得证据',total:'总数',processed:'已处理',retrieved:'检索记录',created:'新增 Paper',updated:'更新',
   confirmed:'父条目已确认',exported:'父条目已导入',no_effect:'未保存',uncertain:'结果未确认',failed:'失败',
   skipped:'跳过',cancelled:'取消',completed:'完成',opened:'已打开',needs_attention:'需要处理',eligible:'符合条件',
   matched:'已匹配',downloaded:'已获取',enriched:'已补充',unchanged:'未变更',candidates:'候选',papers:'Paper',
@@ -52,6 +52,9 @@ export function renderHistoryRecord(record) {
   const requested=(details.requested_fields || []).filter(field=>fieldNames[field]).map(field=>fieldNames[field]);
   const rows=(details.results || []).map((item,index)=>`<li><span>${esc(item.paper_id?`Paper ${index+1}`:item.service_id?`Service ${index+1}`:`结果 ${index+1}`)}</span> · ${esc(resultText(item))}<p class="s-help">${esc(item.paper_id || '')}${item.service_id || item.service_assignment?` · ${esc(item.service_id || item.service_assignment)}`:''}</p>${item.diagnostic_message?`<p>${esc(item.diagnostic_message)}</p>`:''}</li>`).join('');
   const serviceCounts=(details.service_statistics || []).map(service=>`<p>${esc(service.service_id || service.service_assignment)} · ${Object.entries(service).filter(([key,value])=>metrics[key] && Number.isInteger(value)).map(([key,value])=>`${esc(metrics[key])} ${value}`).join(' · ')}</p>`).join('');
+  const sourceRows=(details.run_sources || []).map(source=>`<li>${esc(providerNames[source.provider] || source.provider)} · ${esc(resultLabel(source.status))} · ${esc(source.candidates ?? '—')} candidates · ${esc(source.created ?? '—')} new / ${esc(source.existing ?? '—')} existing${source.problems?` · ${esc(source.problems)} 来源提示`:''}</li>`).join('');
+  const checks=details.wos_checks || {};
+  const wosChecks=Number.isInteger(checks.batches)?`<p>WoS Export ${esc(checks.completed_batches ?? 0)}/${esc(checks.batches)} 批次 · ${esc(checks.journal_hints ?? 0)} 期刊清单提示 · ${esc(checks.date_hints ?? 0)} 日期提示 · ${esc(checks.unmatched_records ?? 0)} 未匹配记录</p>`:'';
   return `<article class="history-record" data-history-task="${esc(record.task_id)}">
     <div class="history-record-title"><h3>${esc(title)}</h3><strong>${esc(status)}</strong></div>
     <p class="s-help">${esc(time(record.started_at))} → ${esc(time(record.ended_at))}${record.before_workspace_reset?' · Workspace 重置前的历史任务':''}</p>
@@ -61,6 +64,7 @@ export function renderHistoryRecord(record) {
       ${requested.length?`<p>请求补充：${requested.map(esc).join('、')}</p>`:''}
       ${saved.length?`<p>已补充：${saved.map(esc).join('、')}</p>`:''}
       ${record.diagnostic_message?`<p>${esc(record.diagnostic_message)}</p>`:''}
+      ${sourceRows?`<ul>${sourceRows}</ul>`:''}${wosChecks}
       ${serviceCounts}${details.omitted_services?'<p>更多 Service 汇总已省略。</p>':''}
       ${rows?`<ol>${rows}</ol>`:''}${details.omitted_results?'<p>更多结果已省略；请结合诊断包中的保留证据。</p>':''}
       <p class="s-help">任务标识 ${esc(record.task_id)}</p>

@@ -90,7 +90,7 @@ Use a disposable configuration and Workspace. Browser control, external accounts
 4. With an authorized task, check background page creation/navigation does not switch or focus the user's current page, while explicit **查看任务页面** reaches the existing task page. Active task pages cannot be closed. Check popup, context menu, DevTools and guarded cache/site-data commands against the main host.
 5. Open History, Settings and Paper Tools dialogs while Browser is visible; verify the native view is hidden while needed and restores the same page. During fullscreen Run/Kept manual handoff, Browser must remain fully usable and returning must retain the current workflow and legal Continue/Cancel controls.
 6. Test Archive disabled on fresh preferences, legacy Paper links, missing Papers, Workspace refresh and busy guards. Re-enable Archive and verify its existing layout/resources and ARRAY's shared reader remain usable.
-7. Run selected-provider Integrated Run and separately authorized WoS in both presentation modes, including cancellation and interrupted polling recovery. Verify inline mode allows safe navigation, records completion/history and refreshes results without forcing a workspace change.
+7. Run WoS-only, API-only and mixed selected-source Runs in both presentation modes, including cancellation and interrupted polling recovery. Verify inline mode allows safe navigation, records completion/history and refreshes results without forcing a workspace change.
 8. Prepare/Import in both modes with authorized CARSI/Manual Service/CAPTCHA and Zotero. Check login waiting, explicit Continue, Cancel, transition, success/error, terminal acknowledgement and restart restoration. Inspect actual parent-item and PDF results separately; never retry an uncertain save solely because presentation changed.
 
 Python HTTPX callers share the [HTTP client and proxy layer](http.md). Its focused
@@ -131,10 +131,12 @@ evidence append/dedup, webpage month upgrade and event-only saves. The isolated
 Electron workspace fixture renders separate discovery/completion selections,
 named date events and explicit multi-Paper start/cancel without external APIs.
 Snapshot regressions in `tests/test_run_state.py`, `tests/test_run_commit.py` and
-`tests/test_wos.py` cover Integrated v5, unsupported Integrated v4, retained WoS v4,
+`tests/test_wos.py` cover unified Integrated v6, unsupported Integrated v4/v5, preserved legacy WoS v4,
 invalid/I/O cases, bound atomic writes and truthful write-failure counts.
 Synthetic Chromium Run results cover source failures, status/count rendering and
 WoS batches/date hints. Rare Accepted/event-only Translator responses and unusual
 version/date conflicts belong in synthetic automated tests; real samples are
 supplementary when available. These checks do not establish real-site,
 real-Workspace or Zotero acceptance.
+
+`tests/test_incremental_discovery.py` exercises the unified native-stage boundary, parent slot retention, partial export preservation, lightweight identity discovery, unknown-only batch details, >200 unordered Work IDs, whole-author singleton fallback and ambiguous-owner isolation. `electron/tests/task-presentation.test.cjs` covers unified browser-stage recovery and parent cancellation without opening native windows. History keeps sanitized source totals and WoS batch/journal/date hint counts; actual Custom controls and downloaded exports remain a separately authorized live acceptance boundary.

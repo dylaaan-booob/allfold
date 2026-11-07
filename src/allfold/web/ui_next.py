@@ -216,14 +216,8 @@ def install_ui_next(app: FastAPI, config_path: Path, csrf_token: str, *, read_ta
                 enabled_providers=config.enabled_providers,latest=read_last_run_snapshot(config.output_dir,RunProvider.INTEGRATED))
         except (ConfigurationError, OSError) as error:
             providers = {'integrated':dict(enabled=False,message=str(error),expression=None,latest=None)}
-        wos = app.state.wos_coordinator.state()
-        providers["wos"] = dict(enabled=wos["enabled"], message=wos["message"], latest=wos["latest"],
-                                snapshot=wos["snapshot"])
-        for provider, entry in providers.items():
-            current = wos['snapshot'] if provider == 'wos' else snapshot if snapshot.provider and snapshot.provider.value == provider else None
-            current_json = jsonable_encoder(current) if current else None
-            entry['result_summary'] = build_run_result_summary(
-                current if current_json and current_json.get('status') == 'FINISHED' else entry.get('latest'))
+        entry = providers['integrated']
+        entry['result_summary'] = build_run_result_summary(snapshot if snapshot.status.value == 'FINISHED' else entry.get('latest'))
         return dict(snapshot=jsonable_encoder(snapshot),
                     progress=build_run_presentation(snapshot, now=datetime.now(timezone.utc)),
                     result_summary=build_run_result_summary(snapshot) if snapshot.status.value == 'FINISHED' else None,
@@ -266,26 +260,17 @@ def install_ui_next(app: FastAPI, config_path: Path, csrf_token: str, *, read_ta
 
     @app.get("/api/ui-next/run-wos")
     def wos_state():
-        return response(wos_data(app.state.wos_coordinator.state()))
-
-    def wos_data(data):
-        record = data['snapshot'] if data['snapshot']['status'] == 'FINISHED' else data.get('latest')
-        data['result_summary'] = build_run_result_summary(record)
-        return data
+        # Legacy URL projects the same task and durable result.
+        return response(run_data())
 
     @app.post("/api/ui-next/run-wos")
     def wos_start(body: _Action):
-        if not valid(body):
-            return response({"message": "Invalid CSRF token"}, 403)
-        try:
-            with app.state.settings_write_lock:
-                return response(wos_data(app.state.wos_coordinator.start()))
-        except (ValueError, OSError, ContentChangedError) as error:
-            return response({"message": str(error)}, 409)
+        return run_start(_RunStart(csrf_token=body.csrf_token))
 
     @app.post("/api/ui-next/run-wos/cancel")
     def wos_cancel(body: _WoSCancel):
         if not valid(body):
             return response({"message": "Invalid CSRF token"}, 403)
-        accepted = app.state.wos_coordinator.cancel(body.task_id)
+        snapshot = app.state.run_coordinator.snapshot()
+        accepted = snapshot.task_id == body.task_id and app.state.run_coordinator.cancel()
         return response({"accepted": accepted}, 200 if accepted else 409)

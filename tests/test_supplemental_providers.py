@@ -204,3 +204,109 @@ def test_preprint_lookup_retains_more_than_16_linked_records(provider):
     assert len(calls) == 18
     assert {record.external_ids.doi for record in records} == {'10.5555/formal'} | {
         f'10.1101/{n:06}' for n in range(17)}
+
+
+def test_arxiv_batches_all_ids_and_maps_unordered_partial_duplicate_entries():
+    ids = [f'2201.{number:05}' for number in range(205)]
+    calls = []
+    def response(request):
+        requested = request.url.params['id_list'].split(',')
+        calls.append(requested)
+        entries = ''.join(f'<entry><id>https://arxiv.org/abs/{key}v3</id><title>Title</title>'
+            '<published>2022-01-02T00:00:00Z</published><updated>2025-01-01T00:00:00Z</updated></entry>'
+            for key in [*reversed(requested[1:]), requested[-1], '2301.99999'])
+        return httpx.Response(200, text=f'<feed xmlns="http://www.w3.org/2005/Atom">{entries}</feed>')
+    with SupplementalClient('arxiv', interval=0, transport=httpx.MockTransport(response)) as client:
+        results = client.lookup_many('arxiv', ids)
+    assert sum(map(len,calls)) == 205 and len(calls) == 2
+    assert set(results) == set(ids)
+    assert all(len(results[key]) == 1 and results[key][0].publication_date == '2022-01-02'
+        for key in ids if key not in {group[0] for group in calls})
+    assert all(isinstance(results[group[0]], Exception) for group in calls)
+
+
+def test_crossref_named_arxiv_and_official_uri_relations_reject_untrusted_shapes():
+    relations = {'has-preprint': [
+        {'id-type':'arxiv','id':'2201.12345v2'},
+        {'id-type':'uri','id':'https://www.medrxiv.org/content/10.1101/2022.01.01.123456v3.full.pdf'},
+        {'id-type':'uri','id':'https://evil.example/arxiv.org/abs/1901.12345'},
+        {'id-type':'uri','id':'https://arxiv.org@evil.example/abs/1901.12345'},
+        {'id-type':'uri','id':'https://arxiv.org/abs/1901.12345?track=1'}, None],
+        'is-referenced-by':[{'id-type':'arxiv','id':'1801.12345'}]}
+    with SupplementalClient('crossref', interval=0, transport=httpx.MockTransport(lambda request:
+        httpx.Response(200,json={'message':{'DOI':'10.5555/main','title':['Formal'],'type':'journal-article','relation':relations}}))) as client:
+        record, = client.lookup('doi','10.5555/main')
+    assert {(ref.provider,ref.record_id,ref.relation) for ref in record.related_ids} == {
+        ('arxiv','2201.12345','preprint'),('medrxiv','10.1101/2022.01.01.123456','preprint')}
+
+
+def test_arxiv_batch_cancellation_stops_later_groups_and_does_not_cache_forever():
+    from threading import Event
+    from allfold.providers.integrated import Cancelled
+    signal, calls = Event(), []
+    def response(request):
+        calls.append(request)
+        signal.set()
+        return httpx.Response(200,text='<feed xmlns="http://www.w3.org/2005/Atom"/>')
+    with SupplementalClient('arxiv',interval=0,cancel_event=signal,transport=httpx.MockTransport(response)) as client:
+        results = client.lookup_many('arxiv',[f'2201.{index:05}' for index in range(201)])
+    assert len(calls) == 1 and len(results) == 201
+    assert all(isinstance(result,Cancelled) for result in results.values())
+
+
+def test_arxiv_batch_service_failure_isolated_from_later_groups_and_atom_error():
+    calls = []
+    def response(request):
+        ids = request.url.params['id_list'].split(','); calls.append(ids)
+        if len(ids) > 1:
+            return httpx.Response(200,text='<feed xmlns="http://www.w3.org/2005/Atom"><entry><id>https://arxiv.org/api/errors#bad</id></entry></feed>')
+        return httpx.Response(200,text=f'<feed xmlns="http://www.w3.org/2005/Atom"><entry><id>https://arxiv.org/abs/{ids[0]}v1</id><published>2022-01-02T00:00:00Z</published></entry></feed>')
+    with SupplementalClient('arxiv',interval=0,transport=httpx.MockTransport(response)) as client:
+        results = client.lookup_many('arxiv',[f'2201.{index:05}' for index in range(201)])
+    assert len(calls) == 2
+    assert all(isinstance(results[f'2201.{index:05}'],Exception) for index in range(200))
+    assert results['2201.00200'][0].publication_date == '2022-01-02'
+
+
+def test_arxiv_next_group_rechecks_operation_ownership_before_network():
+    from allfold.persistence.safe_write import ContentChangedError
+    calls=[]
+    with SupplementalClient('arxiv',interval=0,transport=httpx.MockTransport(lambda request:
+        calls.append(request) or httpx.Response(200,text='<feed xmlns="http://www.w3.org/2005/Atom"/>'))) as client:
+        def guard():
+            if calls:
+                raise ContentChangedError('Configuration changed')
+        client.request_guard=guard
+        results=client.lookup_many('arxiv',[f'2201.{index:05}' for index in range(201)])
+    assert len(calls)==1
+    assert all(isinstance(value,ContentChangedError) for value in results.values())
+
+
+@pytest.mark.parametrize('labels', [
+    ('issued', 'published-print', 'published'), ('published-print', 'published', 'issued'),
+    ('published', 'issued', 'published-print'), ('issued', 'published-print'), ('issued',),
+])
+def test_crossref_publication_selection_uses_native_label_priority_not_response_order(labels):
+    years = {'issued': 2024, 'published-print': 2025, 'published': 2026}
+    raw = {'DOI': '10.5555/main', 'title': ['Paper'], 'type': 'journal-article',
+        **{label: {'date-parts': [[years[label]]]} for label in labels}}
+    with SupplementalClient('crossref', interval=0, transport=httpx.MockTransport(
+            lambda _: httpx.Response(200, json={'message': raw}))) as client:
+        record, = client.lookup('doi', '10.5555/main')
+    assert record.publication_date == ('2026' if 'published' in labels else '2025' if 'published-print' in labels else '2024')
+    assert {(item.source_label, item.year) for item in record.dates} == {(label, years[label]) for label in labels}
+
+
+@pytest.mark.parametrize('invalid_first', [False, True])
+def test_arxiv_batch_keeps_valid_siblings_when_one_identified_entry_cannot_be_parsed(invalid_first):
+    good = '<entry><id>https://arxiv.org/abs/2201.00001v1</id><title>Good</title><published>2022-01-02T00:00:00Z</published></entry>'
+    bad = '<entry><id>https://arxiv.org/abs/2201.00002v1</id><title>Bad</title><arxiv:doi/></entry>'
+    atom = '<feed xmlns="http://www.w3.org/2005/Atom" xmlns:arxiv="http://arxiv.org/schemas/atom">' + (
+        bad + good if invalid_first else good + bad) + '</feed>'
+    with SupplementalClient('arxiv', interval=0, transport=httpx.MockTransport(
+            lambda _: httpx.Response(200, text=atom))) as client:
+        results = client.lookup_many('arxiv', ['2201.00001', '2201.00002'])
+    good_record, = results['2201.00001']
+    assert good_record.external_ids.arxiv == '2201.00001'
+    assert good_record.publication_date == '2022-01-02'
+    assert isinstance(results['2201.00002'], ValueError)

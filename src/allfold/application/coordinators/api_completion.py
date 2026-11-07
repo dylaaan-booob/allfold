@@ -7,7 +7,7 @@ from uuid import UUID
 
 from allfold.application.api_completion import saved_paper_evidence, save_api_completion
 from allfold.application.history import observe
-from allfold.application.metadata_completion import complete_metadata
+from allfold.application.metadata_completion import complete_metadata_many
 from allfold.application.paper_enrichment import read_paper_target
 from allfold.application.run_commit import capture_run_workspace, commit_run_workspace
 from allfold.integrations.openalex_credentials import read_credential
@@ -63,8 +63,6 @@ class ApiCompletion:
                 if not slot:
                     raise ValueError('A Run is active')
                 snapshot = capture_run_workspace(self.config_path, create=False)
-                if not snapshot.config.completion_providers:
-                    raise ValueError('Select at least one API completion Provider')
                 targets = tuple(read_paper_target(snapshot.config.output_dir, paper_id) for paper_id in ids)
                 self._stop = threading.Event()
                 self._state = dict(phase='Running', request_id=secrets.token_hex(16), total=len(ids),
@@ -91,6 +89,26 @@ class ApiCompletion:
         cache, pacing, clients = {}, {}, {}
         try:
             with snapshot, ExitStack() as stack:
+                prepared = {}
+                # Read every selected Paper before network dispatch so native IDs
+                # can share batches. Each target retains its own refusal outcome.
+                for target in targets:
+                    try:
+                        current = read_paper_target(target.workspace, target.paper_id)
+                        state = parse_paper_state(current.path, current.original)
+                        if state.status is WorkflowStatus.REJECTED:
+                            prepared[target.paper_id] = None
+                            continue
+                        if current != target:
+                            raise ContentChangedError('Paper changed before API completion')
+                        with commit_run_workspace(snapshot, cancel_event=self._stop) as lock:
+                            handoff = read_discovery_evidence(target.workspace, target.paper_id, operation_lock=lock)
+                        prepared[target.paper_id] = (saved_paper_evidence(target), *handoff.records)
+                    except Exception as error:
+                        prepared[target.paper_id] = error
+                def request_guard():
+                    with commit_run_workspace(snapshot, cancel_event=self._stop):
+                        pass
                 for provider in config.completion_providers:
                     if self._stop.is_set():
                         break
@@ -98,27 +116,45 @@ class ApiCompletion:
                         key = read_credential(self.config_path)[0] if provider == 'openalex' else None
                         clients[provider] = stack.enter_context(self.client_factory(provider, api_key=key,
                             mailto=config.crossref_mailto, cancel_event=self._stop, pacing_state=pacing, progress_callback=self._progress))
+                        clients[provider].request_guard = request_guard
                     except (ValueError, OSError):
                         pass  # Traversal reports the unavailable adapter per requested lookup.
-                for target in targets:
+                by_id = {target.paper_id: target for target in targets}
+                def paper_guard(paper_id):
+                    target = by_id[paper_id]
+                    if read_paper_target(target.workspace, paper_id) != target:
+                        raise ContentChangedError('Paper changed before API completion')
+                    request_guard()
+                def completions():
+                    for paper_id, records in prepared.items():
+                        if not isinstance(records, tuple):
+                            yield paper_id, records
+                    yield from complete_metadata_many(
+                        {paper_id: records for paper_id, records in prepared.items() if isinstance(records, tuple)},
+                        config.completion_providers, clients=clients, cancel_event=self._stop,
+                        request_cache=cache, paper_guard=paper_guard)
+                for paper_id, completed in completions():
+                    target = by_id[paper_id]
                     result = dict(paper_id=str(target.paper_id), status='unchanged', saved_fields=[], lookups=[], issues=[])
                     write_stage = None
                     try:
+                        if completed is not None and not isinstance(completed, Exception):
+                            state = parse_paper_state(target.path, target.original)
+                            result.update(lookups=[asdict(item) for item in completed.lookups],
+                                issues=[asdict(item) for item in completed.issues],
+                                first_public_status=completed.first_public_status, first_public_recorded=bool(state.first_public_at))
                         if self._stop.is_set():
                             result['status'] = 'cancelled'
                             continue
-                        current = read_paper_target(target.workspace, target.paper_id)
-                        state = parse_paper_state(current.path, current.original)
-                        if state.status is WorkflowStatus.REJECTED:
+                        if completed is None:
                             result['status'] = 'excluded'
                             continue
+                        if isinstance(completed, Exception):
+                            raise completed
+                        current = read_paper_target(target.workspace, target.paper_id)
+                        state = parse_paper_state(current.path, current.original)
                         if current != target:
                             raise ContentChangedError('Paper changed before API completion')
-                        with commit_run_workspace(snapshot) as lock:
-                            handoff = read_discovery_evidence(target.workspace, target.paper_id, operation_lock=lock)
-                        completed = complete_metadata((saved_paper_evidence(target), *handoff.records),
-                            config.completion_providers, clients=clients, cancel_event=self._stop, request_cache=cache)
-                        result.update(lookups=[asdict(item) for item in completed.lookups], issues=[asdict(item) for item in completed.issues])
                         if completed.cancelled or self._stop.is_set():
                             result['status'] = 'cancelled'
                             continue
@@ -149,9 +185,12 @@ class ApiCompletion:
                         else:
                             result.update(status='failed', message=str(error) if isinstance(error, (ValueError, OSError, RuntimeError)) else 'API completion failed for this Paper')
                     finally:
+                        if result['status'] == 'cancelled':
+                            result['first_public_status'] = 'cancelled'
+                        elif result['status'] == 'failed':
+                            result['first_public_status'] = 'failed'
                         if result['status'] in {'updated', 'unchanged'}:
-                            result['first_public_status'] = ('recorded' if state.first_public_at or
-                                'first_public_at' in result['saved_fields'] else 'unresolved')
+                            result['first_public_recorded'] = bool(state.first_public_at or 'first_public_at' in result['saved_fields'])
                         with self._lock:
                             self._state['results'].append(result)
                             self._state['processed'] += 1
@@ -167,7 +206,8 @@ class ApiCompletion:
                 self._state['activity'] = None
                 lookups={(item['provider'],item['namespace'],item['identifier']):item['status'] for result in results for item in result['lookups']}
                 observe(self.diagnostics, 'finish', self._state['request_id'], self._state['phase'].lower(),
-                    statistics=dict(total=len(targets), processed=len(results), updated=sum(item['status'] == 'updated' for item in results),
+                    statistics=dict(**{f'first_public_{status}':sum(item.get('first_public_status') == status for item in results)
+                        for status in ('recorded','no_association','known_unresolved','conflict','failed','cancelled')}, total=len(targets), processed=len(results), updated=sum(item['status'] == 'updated' for item in results),
                         unchanged=sum(item['status'] == 'unchanged' for item in results), failed=sum(item['status'] == 'failed' for item in results),
                         cancelled=sum(item['status'] == 'cancelled' for item in results), excluded=sum(item['status'] == 'excluded' for item in results),
                         no_match=sum(status=='no_match' for status in lookups.values()), lookup_failed=sum(status=='failed' for status in lookups.values()),

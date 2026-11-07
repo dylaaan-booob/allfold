@@ -123,15 +123,13 @@ class EvidenceDateKind(str, Enum):
     SOURCE = "source-date"
     PUBLISHED = "published"
     PUBLISHED_ONLINE = "published-online"
-    PUBLISHED_PRINT = "published-print"
-    ISSUED = "issued"
     ACCEPTED = "accepted"
     PREPRINT = "preprint"
-    EARLY_ACCESS = "early-access"
     CONFERENCE_YEAR = "conference-year"
 
 
 class EvidenceDate(DomainModel):
+    source_label: NonEmptyStr | None = None
     kind: EvidenceDateKind
     provider: NonEmptyStr | None = None
     record_id: NonEmptyStr | None = None
@@ -144,6 +142,13 @@ class EvidenceDate(DomainModel):
     year: Annotated[int, Field(strict=True, ge=1, le=9999)]
     month: Annotated[int, Field(strict=True, ge=1, le=12)] | None = None
     day: Annotated[int, Field(strict=True, ge=1, le=31)] | None = None
+
+    @field_validator("kind", mode="before")
+    @classmethod
+    def reject_retired_date_kinds(cls, value):
+        if isinstance(value, str) and value in {"published-print", "issued", "early-access"}:
+            raise ValueError("Unsupported legacy date kind; back up and explicitly rebuild the affected Paper/Evidence, then rerun discovery. No automatic migration.")
+        return value
 
     @model_validator(mode="after")
     def validate_partial_date(self) -> EvidenceDate:
@@ -162,10 +167,26 @@ class ProviderTopic(DomainModel):
     kind: NonEmptyStr | None = None
 
 
+class SourceFieldEvidence(DomainModel):
+    """Returned native values and availability, without inferring missing facts."""
+
+    tag: NonEmptyStr
+    status: Literal["unselected", "absent", "valid", "parse-invalid"]
+    values: tuple[str, ...] = ()
+
+
 class ProviderWorkEvidence(DomainModel):
     """Structured provider evidence, reusable across explicit operations."""
 
     provenance: MetadataSource
+    source_fields: tuple[SourceFieldEvidence, ...] = ()
+    source_publication_type: NonEmptyStr | None = None
+    document_types: tuple[NonEmptyStr, ...] = ()
+    journal_issns: tuple[str, ...] = ()
+    volume: NonEmptyStr | None = None
+    issue: NonEmptyStr | None = None
+    pages: NonEmptyStr | None = None
+    article_number: NonEmptyStr | None = None
     title: NonEmptyStr | None = None
     journal: NonEmptyStr | None = None
     conference: NonEmptyStr | None = None

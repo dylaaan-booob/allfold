@@ -9,7 +9,7 @@ const hostRequire=require('node:module').createRequire(require.resolve('../src/w
 const {EventEmitter}=require('node:events');
 const {attachBrowserMechanisms}=require('./browser-fixture.cjs');
 const {ImportFailure,checkPage}=require('../src/workflows/import-errors.cjs');
-const {pageStep}=require('../src/workflows/page-actions.cjs');
+const {pageStep,SELECTORS}=require('../src/workflows/page-actions.cjs');
 const {institutionAuthPage}=require('../src/auth/institution-auth.cjs');
 function exportAuthentication() {
   let dialog=false,otp=false;
@@ -79,7 +79,7 @@ function queryFixture(stages,{cancel=false,authError=false,advance=()=>{}}={}) {
       {signal:controller.signal,progress:value=>progress.push(value)})};
 }
 const advanced='https://www.webofscience.com/wos/woscc/advanced-search';
-function fixture(t,{attributable=true,hold=false,challenge=false,domError=null,query=false,verification=false,cancelVerification=false,deferExportMenu=false,dialogInitiallyClosed=false}={}) {
+function fixture(t,{attributable=true,hold=false,challenge=false,domError=null,query=false,verification=false,cancelVerification=false,deferExportMenu=false,dialogInitiallyClosed=false,batchLimit=1000,customFields=SELECTORS.customFields}={}) {
   const root=fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(),'allfold-wos-test-')));
   t.after(()=>fs.rmSync(root,{force:true,recursive:true}));
   const filename=path.join(root,'allfold-wos','a'.repeat(32),'b'.repeat(32)+'.txt');
@@ -108,7 +108,8 @@ function fixture(t,{attributable=true,hold=false,challenge=false,domError=null,q
     if(op==='plainText'){dialogOpen=true;authentication?.open(verification);}
     if(op==='verification')return {ready:!challengeActive};
     if(op==='export' && domError)return {error:domError};
-    if(op==='dialog')return {ready:dialogOpen,limit:1000};
+    if(op==='dialog')return {ready:dialogOpen,limit:batchLimit};
+    if(op==='verifyCustom')return {verified:true,fields:customFields};
     if(op==='export') {
       ops.push({exportRange:args});
       partition.emit('will-download',{}, {cancel(){throw Error('unrelated download intercepted');}}, {});
@@ -127,7 +128,7 @@ function fixture(t,{attributable=true,hold=false,challenge=false,domError=null,q
   browser.inspectAuthentication=async()=>authentication?.inspect() || {waiting:false};
   const progress=[];
   const context=vm.createContext({module:{exports:{}},Date,URL,AbortSignal,setTimeout,clearTimeout,
-    require:name=>name==='./page-actions.cjs'?{pageStep:function(){},SELECTORS:{}}:
+    require:name=>name==='./page-actions.cjs'?{pageStep:function(){},SELECTORS}:
       name==='../browser/browser-task.cjs'?{...require('../src/browser/browser-task.cjs'),async pause(){
         if(authentication && verification) {
           if(!authentication.waitingForCode)throw Error('Unexpected authentication wait on business dialog');
@@ -151,6 +152,28 @@ test('WoS accepts only an observed native export URL into its issued file',async
   assert.equal(f.item.filename,f.filename);assert.equal(f.ops.filter(op=>op==='export').length,1);
   assert.equal(f.browser.partition.listenerCount('will-download'),0);assert.equal(f.ops.at(-1),'cleanup');
 });
+test('WoS reopens and verifies every persisted Custom field before arming a download',async t=>{
+  const f=fixture(t);await f.run();
+  assert.equal(f.ops.filter(op=>op==='saveCustom').length,2);
+  assert.ok(f.ops.indexOf('configureCustom')<f.ops.indexOf('verifyCustom'));
+  assert.ok(f.ops.indexOf('verifyCustom')<f.ops.indexOf('arm'));
+  assert.equal(f.ops.find(op=>op?.exportRange).exportRange.customVerified,true);
+});
+test('a wrong persisted Custom field set refuses export before installing a download observer',async t=>{
+  const f=fixture(t,{customFields:[...SELECTORS.customFields.slice(1),'citedRefUse_HOT_PAPER']});
+  await assert.rejects(f.run(),/export_content_unverified/);
+  assert.equal(f.ops.includes('arm'),false);
+  assert.equal(f.ops.includes('export'),false);
+  assert.equal(f.browser.partition.listenerCount('will-download'),0);
+});
+test('the current Custom range limit governs every batch without a hardcoded 1000 ceiling',async t=>{
+  const small=fixture(t,{batchLimit:1});
+  await assert.rejects(small.run({first:1,last:2}),/export_range_exceeds_limit/);
+  assert.equal(small.ops.includes('export'),false);
+  const large=fixture(t,{batchLimit:1500});
+  await large.run({first:1,last:1200});
+  assert.equal(large.ops.filter(op=>op==='export').length,1);
+});
 test('WoS query and consecutive exports keep the prepared page/document while another tab is visible',async t=>{
   const f=fixture(t,{query:true}),tab=f.browser.tabs.get(71);
   const identity={service_id:'svc_'+'1'.repeat(32),service_scope:{scope_id:'a'.repeat(64),
@@ -167,7 +190,8 @@ test('WoS query and consecutive exports keep the prepared page/document while an
   assert.equal(f.browser.taskTab,tab);
   assert.equal(f.browser.wosDocument,document);
   assert.equal(f.browser.selected.id,99);
-  assert.deepEqual(f.ops.filter(op=>op?.exportRange).map(op=>op.exportRange),[{first:1,last:1},{first:2,last:2}]);
+  assert.deepEqual(f.ops.filter(op=>op?.exportRange).map(op=>op.exportRange),[
+    {first:1,last:1,customVerified:true},{first:2,last:2,customVerified:true}]);
   const before=f.ops.length;
   await assert.rejects(f.run({...identity,service_scope:{...identity.service_scope,scope_id:'d'.repeat(64)}}),/document_changed/);
   assert.equal(f.ops.length,before);

@@ -152,7 +152,7 @@ def test_web_enrich_saves_returned_events_with_or_without_ordinary_updates(tmp_p
     state = parse_paper_state(path, path.read_text())
     assert state.publication_date == ('2026-09-21' if ordinary == 'month_upgrade' else '2026-09')
     assert state.first_public_at is None
-    assert {event.kind.value for event in state.date_evidence} == {'accepted', 'source-date'}
+    assert {event.kind.value for event in state.date_evidence} == {'accepted', 'published'}
 
 
 @pytest.mark.parametrize('change', ['doi', 'cancel', 'disconnect', 'revision'])

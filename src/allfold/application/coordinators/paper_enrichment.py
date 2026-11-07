@@ -62,9 +62,9 @@ def translator_date_events(item, target, metadata_source):
     from allfold.paper_dates import source_date
     from allfold.models import EvidenceDateKind
     events = []
-    for field, kind in (('date', EvidenceDateKind.SOURCE), ('accepted', EvidenceDateKind.ACCEPTED)):
+    for field, kind in (('date', EvidenceDateKind.PUBLISHED), ('accepted', EvidenceDateKind.ACCEPTED)):
         if value := publication_date_candidate(item, field):
-            event = source_date(value, kind=kind, provider='translator-' + ('doi' if metadata_source == 'doi' else 'web'),
+            event = source_date(value, kind=kind, source_label=field, provider='translator-' + ('doi' if metadata_source == 'doi' else 'web'),
                 record_id=target.doi, publication_type='preprint' if item.get('itemType') == 'preprint' else
                     'conference' if item.get('itemType') == 'conferencePaper' else 'journal',
                 url='https://doi.org/' + target.doi)

@@ -24,9 +24,10 @@ unchanged, including metadata, Notes, Tags and workflow status.
 New records use this fixed order, independent of request completion time:
 
 1. Formal records before records explicitly identified as preprints.
-2. Records attributed to a monitored Journal or Conference before supplements.
-3. Discovery evidence before supplemental evidence.
-4. Crossref, Europe PMC, OpenAlex, arXiv, bioRxiv, medRxiv, then
+2. WoS records before other providers within the same formal/preprint class.
+3. Records attributed to a monitored Journal or Conference before supplements.
+4. Discovery evidence before supplemental evidence.
+5. Crossref, Europe PMC, OpenAlex, arXiv, bioRxiv, medRxiv, then
    other providers ordered by provider and record ID.
 
 Duplicate snapshots use deterministic serialized payload order excluding the
@@ -58,7 +59,7 @@ types remain distinct. Sorting placeholders never enter saved/display dates.
 
 `first_public_at` requires a reliably linked preprint system and evidence for its
 first/earliest public version. A later version alone, unknown preprint date,
-future public event, formal online/print/publication, Accepted, database indexing,
+future public event, formal online/publication, Accepted, database indexing,
 retrieval/update times or Translator generic date cannot supply a fallback.
 Sufficient first-stage evidence can fill it at creation. Explicit API completion
 fills an empty value but never recalculates a nonempty one; later evidence still
@@ -73,12 +74,20 @@ Paper identifiers alone do not join independent preprint families.
 An added alias does not duplicate an already saved event.
 
 The UI's **期刊日期** is a chronological collection of journal-version events:
-Accepted, Published online, Published print, Published/Issued and unspecified
-source dates. Sources and precision remain visible, with record/version/URL in
-the basis. Preprint dates have their own First public basis. Bibliographic
+Accepted (only an explicit acceptance event), Published online and Published.
+WoS EA uses its own year or explicit EY for Published online; PD/PY feeds
+`publication_date` and Published, including year-only and future dates. It never
+approximates Accepted or borrows PY for EA. Native print/issued labels map to
+Published while retaining their original `source_label`; they are not separate
+business targets. Equal business events, dates, providers, records and versions
+share one visible row, with every raw source label retained in its tooltip.
+Sources and precision remain visible, with record/version/URL in the basis. Preprint dates have their own First public basis. Bibliographic
 `publication_date` remains available independently and can serve as a list-sort
 fallback without becoming a First public value. Old approximate Accepted fields
-are not read or converted into this collection.
+are not converted into this collection. Retired `published-print`, `issued` and
+`early-access` date kinds make an affected Paper/Evidence explicitly unsupported.
+Back up those files and explicitly rebuild them before rerunning discovery;
+Allfold never rewrites or silently discards their legacy facts.
 
 Run creates new Papers and leaves existing bytes untouched. Its separate
 Workspace Evidence records retain rediscovery facts for later explicit API

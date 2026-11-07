@@ -8,7 +8,7 @@ import math
 import re
 import time
 from threading import Event
-from urllib.parse import quote
+from urllib.parse import quote, urlencode
 
 import httpx
 
@@ -19,6 +19,7 @@ from allfold.keywords import And, Or, Prefix, Phrase, Proximity
 from allfold.models import ProviderWorkEvidence
 
 DISCOVERY_PROVIDERS = ('openalex', 'europe_pmc')
+RUN_PROVIDERS = ('wos', *DISCOVERY_PROVIDERS)
 SUPPLEMENT_PROVIDERS = ('crossref', 'arxiv', 'biorxiv', 'medrxiv')
 PROVIDERS = DISCOVERY_PROVIDERS + SUPPLEMENT_PROVIDERS
 BASE_URLS = {'openalex':'https://api.openalex.org', 'europe_pmc':'https://www.ebi.ac.uk/europepmc/webservices/rest', 'crossref':'https://api.crossref.org', 'arxiv':'https://export.arxiv.org', 'biorxiv':'https://api.biorxiv.org', 'medrxiv':'https://api.biorxiv.org'}
@@ -42,11 +43,13 @@ class DiscoveryResult:
     limitations: tuple[str, ...] = ()
     candidates: int = 0
     total: int | None = None
+    created: int | None = None
+    existing: int | None = None
 
     def fact(self):
         return dict(provider=self.provider, source=self.source.name, source_kind=self.source.kind,
                     status=self.status, candidates=self.candidates,
-                    retained=len(self.records), total=self.total, limitations=list(self.limitations))
+                    retained=len({(record.provenance.provider, record.provenance.record_id) for record in self.records}), total=self.total, limitations=list(self.limitations), created=self.created, existing=self.existing)
 
 
 class DiscoveryError(ValueError):
@@ -133,6 +136,9 @@ class DiscoveryClient:
     def check_cancel(self):
         if self.cancel.is_set():
             raise Cancelled('Run cancelled')
+        guard = getattr(self, 'request_guard', None)
+        if guard is not None:
+            guard()
 
     def _wait(self, seconds):
         self.check_cancel()
@@ -215,7 +221,10 @@ class DiscoveryClient:
                 raise DiscoveryError(f'{self.provider}: invalid JSON response') from None
         raise DiscoveryError(f'{self.provider}: rate limited')
 
-    def discover(self, source, ast, from_date, to_date):
+    def discover_candidates(self, source, ast, from_date, to_date):
+        return self.discover(source, ast, from_date, to_date, lightweight=True)
+
+    def discover(self, source, ast, from_date, to_date, *, lightweight=False):
         if self.provider not in DISCOVERY_PROVIDERS:
             return DiscoveryResult(self.provider, source, "skipped", limitations=("Metadata-only Provider",))
         records, limits, candidates, total = [], [], 0, None
@@ -223,7 +232,7 @@ class DiscoveryClient:
             if source.kind != 'journal':
                 return DiscoveryResult(self.provider, source, 'skipped', limitations=('Only journal discovery is supported',))
             compile_query(ast,self.provider)  # Capability validation precedes source-resolution HTTP.
-            pages = self._pages(source, ast, from_date, to_date)
+            pages = self._pages(source, ast, from_date, to_date, lightweight=lightweight)
             for raw, page_total, page_limits in pages:
                 total = page_total
                 limits.extend(item for item in page_limits if item not in limits)
@@ -234,7 +243,14 @@ class DiscoveryClient:
                             detail=source.name,current=candidates,total=total,unit='work')))
                     continue
                 candidates += 1
-                evidence = self.normalize(raw, source)
+                from allfold.providers.discovery_evidence import normalize_candidate
+                try:
+                    evidence = normalize_candidate(raw, source, self.provider) if lightweight else self.normalize(raw, source)
+                except (ValueError, KeyError, TypeError, AttributeError) as error:
+                    limits.append(f'Incomplete: unusable candidate ({type(error).__name__})')
+                    continue
+                if lightweight and self.provider == 'openalex' and raw.get('locations_count', 0) > len(raw.get('locations') or []):
+                    limits.append('Incomplete: OpenAlex discovery locations are shortened; returned associations retained')
                 if evidence is not None:
                     evidence = evidence.model_copy(update={'provenance':evidence.provenance.model_copy(update={'role':'discovery'})})
                 if evidence is not None:
@@ -248,9 +264,9 @@ class DiscoveryClient:
             limits.append(str(error)); status = 'partial' if candidates else 'failed'
         return DiscoveryResult(self.provider, source, status, tuple(records), tuple(dict.fromkeys(limits)), candidates, total)
 
-    def _pages(self, source, ast, start, end):
+    def _pages(self, source, ast, start, end, *, lightweight=False):
         if self.provider == 'europe_pmc':
-            yield from self._europe_pmc_pages(source, ast, start, end)
+            yield from self._europe_pmc_pages(source, ast, start, end, lightweight=lightweight)
             return
         if self.provider != 'openalex':
             raise DiscoveryError('Provider adapter unavailable')
@@ -274,6 +290,8 @@ class DiscoveryClient:
         params = {'filter':f'primary_location.source.id:{"|".join(ids)},from_publication_date:{start},to_publication_date:{end}',
                   'search.title_abstract_keywords' + ('.exact' if _prefix(ast) else ''):compile_query(ast, 'openalex'),
                   'per_page':self.page_size, 'cursor':'*'}
+        if lightweight:
+            params['select'] = 'id,doi,ids,type,primary_location,locations,locations_count'
         seen, count = set(), 0
         while True:
             data = self.request('/works', params)
@@ -301,16 +319,16 @@ class DiscoveryClient:
             raise DiscoveryError('Provider normalization unavailable')
         return normalizer(raw, source)
 
-    def _europe_pmc_pages(self, source, ast, start, end):
+    def _europe_pmc_pages(self, source, ast, start, end, *, lightweight=False):
         if not source.issns:
             raise DiscoveryError('Europe PMC requires a journal ISSN mapping')
         query = f'({" OR ".join("ISSN:" + issn for issn in source.issns)}) AND FIRST_PDATE:[{start} TO {end}] AND {compile_query(ast, "europe_pmc")}'
-        yield from self._europe_pages(query)
+        yield from self._europe_pages(query, result_type="lite" if lightweight else "core")
 
-    def _europe_pages(self, query):
+    def _europe_pages(self, query, *, result_type="core"):
         cursor, seen, count = '*', set(), 0
         while True:
-            data = self.request('/search',{'query':query,'format':'json','resultType':'core','pageSize':self.page_size,'cursorMark':cursor})
+            data = self.request('/search',{'query':query,'format':'json','resultType':result_type,'pageSize':self.page_size,'cursorMark':cursor})
             total = _positive(data.get('hitCount'), 'hitCount')
             rows = data.get('resultList',{}).get('result')
             if not isinstance(rows,list):
@@ -353,3 +371,80 @@ class DiscoveryClient:
                     output.append(self.normalize(raw,SourceScope('journal',journal)))
             return tuple(output)
         return ()
+
+
+    def lookup_many(self, namespace, identifiers):
+        """Batch exact native record identities; preserve successful pages on failures."""
+        requested = list(dict.fromkeys(identifiers))
+        records, problems = [], []
+        source = SourceScope('journal', '')
+        groups, group = [], []
+        def query(values):
+            if self.provider == 'openalex' and namespace == 'openalex':
+                return {'filter': 'openalex:' + '|'.join(value.rsplit('/', 1)[-1] for value in values), 'per_page': min(self.page_size, 100), 'cursor': '*'}
+            if self.provider == 'europe_pmc' and namespace == 'europe_pmc':
+                return {'query': ' OR '.join(f'(EXT_ID:{value.split(":", 1)[1]} AND SRC:{value.split(":", 1)[0]})' for value in values)}
+            raise DiscoveryError('Batch details require native provider identities')
+        for value in requested:
+            normalized = normalize_external_id(namespace, value)
+            if not normalized:
+                problems.append('Invalid detail identity'); continue
+            if len(urlencode(query([normalized]))) > 6000:
+                problems.append('Detail identity exceeds request URL budget'); continue
+            # 100 is the OpenAlex OR ceiling; URL budget is a local transport bound.
+            candidate = [*group, normalized]
+            if group and (len(candidate) > 100 or len(urlencode(query(candidate))) > 6000):
+                groups.append(group); group = []
+            group.append(normalized)
+        if group: groups.append(group)
+        for group in groups:
+            if self.cancel.is_set(): break
+            expected = {(namespace, value) for value in group}
+            found = set()
+            try:
+                if self.provider == 'europe_pmc':
+                    pages = self._europe_pages(query(group)['query'])
+                else:
+                    pages = self._openalex_detail_pages(query(group))
+                for raw, _, _ in pages:
+                    if raw is None: continue
+                    try:
+                        native = normalize_external_id(namespace, raw.get('id') if namespace == 'openalex' else f"{raw.get('source', '')}:{raw.get('id', '')}")
+                        if (namespace, native) not in expected:
+                            raise IdentityMismatch('Unexpected detail record identity')
+                        if (namespace, native) in found: continue
+                        if self.provider == 'openalex' and (raw.get('authors_count', 0) > len(raw.get('authorships') or []) or raw.get('locations_count', 0) > len(raw.get('locations') or [])):
+                            raw = self.request('/works/' + native.rsplit('/', 1)[-1], {})
+                            if normalize_external_id('openalex', raw.get('id')) != native:
+                                raise IdentityMismatch('Unexpected singleton detail identity')
+                            if raw.get('authors_count', 0) >= 5000:
+                                problems.append('Incomplete: OpenAlex author list reaches its singleton cap')
+                        venue = ((raw.get('primary_location') or {}).get('source') or {}).get('display_name') if self.provider == 'openalex' else ((raw.get('journalInfo') or {}).get('journal') or {}).get('title')
+                        record = self.normalize(raw, SourceScope('journal', venue or ''))
+                        if record is not None: records.append(record)
+                        found.add((namespace, native))
+                    except (ValueError, KeyError, TypeError, AttributeError) as error:
+                        problems.append(str(error))
+            except (DiscoveryError, ValueError, KeyError, TypeError, AttributeError) as error:
+                problems.append(str(error))
+            if not self.cancel.is_set():
+                problems.extend(f'Missing creation details: {value}' for _, value in sorted(expected - found))
+        status = 'cancelled' if self.cancel.is_set() else 'partial' if problems and records else 'failed' if problems else 'complete' if records else 'empty'
+        return DiscoveryResult(self.provider, source, status, tuple(records), tuple(dict.fromkeys(problems)), len(requested))
+
+    def _openalex_detail_pages(self, params):
+        seen, count = set(), 0
+        while True:
+            data = self.request('/works', params)
+            rows = data.get('results')
+            if not isinstance(rows, list): raise DiscoveryError('OpenAlex response is missing results')
+            total = _positive(data.get('meta', {}).get('count'), 'count')
+            for raw in rows:
+                count += 1
+                yield raw, total, ()
+            cursor = data.get('meta', {}).get('next_cursor')
+            if not cursor:
+                if count < total: raise DiscoveryError('Truncated: creation detail pagination ended early')
+                return
+            if not rows or cursor in seen: raise DiscoveryError('Incomplete: creation detail pagination made no progress')
+            seen.add(cursor); params['cursor'] = cursor
