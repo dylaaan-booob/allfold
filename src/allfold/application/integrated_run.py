@@ -89,8 +89,8 @@ def discover_selected(config, config_path, *, client_factory=DiscoveryClient, cl
 def run_integrated(config_path, *, loaded_config=None, workspace_snapshot=None, cancel_event=None,
                    progress_callback=None, client_factory=DiscoveryClient):
     from allfold.application.run_commit import capture_run_workspace, commit_run_workspace
-    from allfold.application.monitor import RunResult, RunOutcome, MonitorStatistics, MonitorIssue, MonitorIssueSeverity, MonitorIssueComponent
-    from allfold.application.run_state import RunProvider, RunFacts, RunIssueFact, LastRunSnapshot, RecordedRunOutcome, LAST_RUN_SCHEMA_VERSION, LastRunSnapshotWriteError, write_last_run_snapshot
+    from allfold.application.monitor import RunResult, RunOutcome, MonitorIssue, MonitorIssueSeverity, MonitorIssueComponent
+    from allfold.application.run_state import RunProvider, RunFacts, RunIssueFact, LastRunSnapshot, RecordedRunOutcome, INTEGRATED_RUN_SCHEMA_VERSION, LastRunSnapshotWriteError, write_last_run_snapshot
     from allfold.canonicalize import canonicalize_records, consolidate_evidence
     from allfold.identifiers import evidence_identifiers
     from allfold.persistence.discovery_evidence import append_discovery_evidence, DiscoveryScope
@@ -111,9 +111,6 @@ def run_integrated(config_path, *, loaded_config=None, workspace_snapshot=None, 
                 self.provider,self.message=provider,message
             def discover(self,source,*args):
                 return DiscoveryResult(self.provider,source,'failed',limitations=(self.message,))
-            def lookup(self,*args):
-                from allfold.providers.integrated import DiscoveryError
-                raise DiscoveryError(self.message)
         for provider in config.enabled_providers:
             try:
                 key=read_credential(config_path)[0] if provider=='openalex' else None
@@ -129,7 +126,7 @@ def run_integrated(config_path, *, loaded_config=None, workspace_snapshot=None, 
             progress_callback(ProgressEvent(stage=ProgressStage.PREPARING_PAPERS))
         canonical=canonicalize_records(records)
         issues=[MonitorIssue(MonitorIssueSeverity.ERROR if r.status=='failed' else MonitorIssueSeverity.WARNING,
-                    MonitorIssueComponent.OPENALEX,'discovery',f'{r.provider} / {r.source.name}: {message}')
+                    MonitorIssueComponent.DISCOVERY,'discovery',f'{r.provider} / {r.source.name}: {message}')
                 for r in discovery.providers for message in r.limitations]
         issues.extend(MonitorIssue(MonitorIssueSeverity.ERROR,MonitorIssueComponent.CANONICALIZATION,item.stage,item.message) for item in canonical.issues)
         created=existing=0
@@ -143,8 +140,8 @@ def run_integrated(config_path, *, loaded_config=None, workspace_snapshot=None, 
                 issues=tuple(RunIssueFact(category=i.stage,message=i.message,severity=i.severity.value) for i in issues),
                 details={'discovery_status':'cancelled' if cancel.is_set() else discovery.status,
                          'provider_runs':[r.fact() for r in discovery.providers]})
-            return RunResult(RunProvider.INTEGRATED,dates,len(canonical.papers),created,existing,warnings,errors,outcome,
-                             MonitorStatistics(),log_level=config.log_level,facts=facts)
+            return RunResult(provider=RunProvider.INTEGRATED, resolved_date_range=dates,
+                             warnings=warnings, errors=errors, outcome=outcome, facts=facts)
         if cancel.is_set():
             return result()
         if progress_callback:
@@ -172,10 +169,10 @@ def run_integrated(config_path, *, loaded_config=None, workspace_snapshot=None, 
                 final=result()
                 if not cancel.is_set():
                     try:
-                        write_last_run_snapshot(config.output_dir,LastRunSnapshot(schema_version=LAST_RUN_SCHEMA_VERSION,resolved_date_range=dates,
-                            outcome=RecordedRunOutcome(final.outcome.value),coverage=(),provider=RunProvider.INTEGRATED,facts=final.facts),operation_lock=lock)
+                        write_last_run_snapshot(config.output_dir,LastRunSnapshot(schema_version=INTEGRATED_RUN_SCHEMA_VERSION,resolved_date_range=dates,
+                            outcome=RecordedRunOutcome(final.outcome.value),provider=RunProvider.INTEGRATED,facts=final.facts),operation_lock=lock)
                     except LastRunSnapshotWriteError as error:
-                        issues.append(MonitorIssue(MonitorIssueSeverity.WARNING,MonitorIssueComponent.COVERAGE_SNAPSHOT,
+                        issues.append(MonitorIssue(MonitorIssueSeverity.WARNING,MonitorIssueComponent.SNAPSHOT,
                             'snapshot_write',f'Latest Run result could not be saved: {error}'))
                         final=result()
                 return final

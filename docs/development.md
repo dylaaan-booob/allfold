@@ -69,11 +69,13 @@ show their own windows, and Electron's
 requires the containing window to have focus. Concurrent fixture processes can
 otherwise steal that focus and invalidate mouse/keyboard acceptance.
 
-### Workbench manual acceptance
+### Workbench manual acceptance reference
 
 ARRAY/Journals rails, Sidebar allocation, the isolated rendered DOM test and remaining pointer/touch/low-height checks are documented in [workspace layout](workspace-layout.md). The full Electron test command includes its hidden-window fixture after UI build; it uses synthetic HTTP responses and a temporary profile.
 
-Use a disposable configuration and Workspace. Native/browser automation, external accounts and Zotero operations require task-specific authorization. Offline tests do not establish the following results:
+Select checks from this matrix according to the changed behavior and gaps in automated coverage; the full matrix is not a prerequisite for every PR. In particular, result-contract cleanup does not require unrelated real WoS, CARSI, Zotero, PDF or complete Browser workflows.
+
+Use a disposable configuration and Workspace. Browser control, external accounts and Zotero operations require task-specific authorization beyond isolated test fixtures. Offline tests do not establish the following real-workflow results:
 
 1. From each business workspace, open Browser and return. Verify Paper/Journal selection, reading scroll and unsaved Settings drafts; resize the window, vary Header/Footer content and change the main UI zoom. Confirm no overlap between native webpages, trusted controls and scroll regions, and that Browser keyboard navigation leaves the hidden business selection unchanged.
 2. Create/select/close ordinary pages; use URL entry, back/forward/reload, many tabs and loading/error states. Hide/show Browser and verify the same Page IDs, history and Session. Check shared CARSI, scoped Services with identical names, Manual, Popup, reused ImportPage and attachment helper pages without creating placeholder pages.
@@ -108,8 +110,9 @@ See [architecture](architecture.md) before changing ownership and [safety](safet
 ### Integrated discovery acceptance
 
 The [Provider guide](providers.md) records native fields, pagination and date limits,
-separate explicit selected-only API completion, configuration reconstruction and the manual acceptance
-checklist. HTTP fixtures and isolated Electron rendering do not establish live
+separate explicit selected-only API completion, configuration reconstruction,
+snapshot versions and the change-scoped manual acceptance reference. HTTP fixtures
+and isolated Electron rendering do not establish live
 provider or Zotero compatibility. Provider requests use the shared HTTP
 client; no provider credentials or real Workspace are test fixtures.
 
@@ -120,4 +123,11 @@ eligibility, no-match, exact-revision/directory/configuration refusal, cancellat
 evidence append/dedup, webpage month upgrade and event-only saves. The isolated
 Electron workspace fixture renders separate discovery/completion selections,
 named date events and explicit multi-Paper start/cancel without external APIs.
-These checks do not establish real-site, real-Workspace or Zotero acceptance.
+Snapshot regressions in `tests/test_run_state.py`, `tests/test_run_commit.py` and
+`tests/test_wos.py` cover Integrated v5, unsupported Integrated v4, retained WoS v4,
+invalid/I/O cases, bound atomic writes and truthful write-failure counts.
+Synthetic Chromium Run results cover source failures, status/count rendering and
+WoS batches/date hints. Rare Accepted/event-only Translator responses and unusual
+version/date conflicts belong in synthetic automated tests; real samples are
+supplementary when available. These checks do not establish real-site,
+real-Workspace or Zotero acceptance.

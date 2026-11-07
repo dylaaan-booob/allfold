@@ -4,21 +4,17 @@ const count=value=>Number.isInteger(value)?String(value):'未知';
 const labels={
   completed:'完成',completed_with_notices:'完成，有提示',incomplete:'完成，检索覆盖不完整',
   capture_issues:'完成，Paper 保存存在问题',failed:'运行失败',cancelled:'已取消',
-  complete:'检索完整',empty:'当前范围无记录',partial:'检索不完整',unavailable:'来源不可用',
-  unrecognized:'已确认未识别',identifier_warning:'部分标识未识别',unknown:'证据不足',observed:'已发现导出记录',
+  complete:'检索完整',empty:'当前范围无记录',partial:'检索不完整',
+  unknown:'证据不足',observed:'已发现导出记录',
   hint:'本地来源清单提示',resolved:'已解析',not_found:'未找到',request_failed:'请求失败',
-  ambiguous_source:'Source 有歧义',invalid_source:'Source 数据无效',invalid_identifier:'标识无效',
   local_not_listed:'未列入本地 WoS 来源清单，仍参与检索',
-  openalex_records:'OpenAlex records',
   integrated_candidates:'Candidates',integrated_deduplicated:'Distinct Papers',skipped:'未执行',
   returned_records:'Returned records',matched_journal_records:'Matched Journal records',issn_queries:'ISSN queries',
   unmatched_journal_records:'Unmatched Journal records',eligible_records:'Eligible records',
   no_doi:'Without DOI',conflicts:'Identity conflicts',write_failures:'Write failures',search_total:'Search results',
   missing_doi:'Missing DOI',existing_or_blocked_doi:'Existing or blocked DOI',
   unmapped_or_ambiguous_journal:'Unmapped or ambiguous Journal',missing_title:'Missing title',doi_conflict:'DOI conflict',
-  non_candidate_exclusion:'Non-candidate exclusions',scope_dispute:'Scope disputes',
-  repeated_title_separation:'Repeated-title separations',conflicting_doi_separation:'Conflicting-DOI separations',
-  retrieval:'检索',identity:'身份',paper_write:'Paper 保存',capture:'身份与保存',snapshot_write:'结果保存',
+  discovery:'检索',retrieval:'检索',identity:'身份',paper_write:'Paper 保存',capture:'身份与保存',snapshot_write:'结果保存',
   notice:'提示',exclusion:'正常排除',configuration:'配置',runtime:'运行',
   PD_PY_year_conflict:'出版日期与出版年份不一致',unusable_PD:'出版日期无法解析',date_unavailable:'无法确定出版日期',
 };
@@ -35,7 +31,7 @@ export function resultHeadline(result) {
 export function resultMessages(result) {
   if(!result || result.availability!=='available')return [];
   const messages=[];
-  if(['partial','failed','unavailable'].includes(result.coverage_status))messages.push(`检索覆盖不完整，详情见 ${result.journals.length?'Journal Coverage 与 ':''}Provider Details。`);
+  if(['partial','failed'].includes(result.coverage_status))messages.push(`检索覆盖不完整，详情见 ${result.journals.length?'Journal Coverage 与 ':''}Provider Details。`);
   const problems=result.journals.filter(journalProblem),hints=problems.filter(j=>j.status==='hint');
   if(problems.length>hints.length)messages.push(`${problems.length-hints.length} 本期刊有标识或检索提示。`);
   if(hints.length)messages.push(`${hints.length} 本期刊有本地 WoS 来源清单提示，仍参与检索。`);
@@ -98,10 +94,8 @@ export function renderRunResult(result,{compact=false,id='' }={}) {
     .filter(item=>item.reasons.length).map(item=>`<li>Record ${count(item.record_number)} · ${esc(item.doi || item.ut || '')} · ${item.reasons.map(reason=>esc(label(reason))).join(' · ')}</li>`).join('');
   const issues=result.issues.filter(i=>i.category!=='exclusion').map(issue=>`<li><strong>${esc(label(issue.category))}</strong> · ${esc(result.provider==='wos'?wosDiagnostic(issue.message):issue.message)}${issue.issn?` · ${esc(issue.issn)}`:''}</li>`).join('');
   const providerRuns=(details.provider_runs || []).map(run=>`<li><strong>${esc(run.provider)} · ${esc(run.source)}</strong> · ${esc(label(run.status))} · ${count(run.candidates)} candidates / ${count(run.retained)} retained${run.limitations?.length?`<p>${run.limitations.map(esc).join(' · ')}</p>`:''}</li>`).join('');
-  const sourceResolution=Object.fromEntries(Object.entries(details.source_resolution || {}).filter(([key])=>key!=='resolved'));
   return header+impact+coverage+`<details class="s-run-provider-details" data-result-detail="${esc(id)}:provider"><summary>Provider Details</summary>${metrics(stats,['integrated_candidates','integrated_deduplicated','returned_records','eligible_records','search_total'])}
     ${providerRuns?`<ul>${providerRuns}</ul>`:''}
-    ${metricSection('Source Resolution',sourceResolution)}
     ${metricSection('正常排除',details.skipped)}
     ${metricSection('记录诊断',details.exclusions)}
     ${batches?`<h4>Export batches</h4><ul>${batches}</ul>`:''}${warnings?`<h4>Publication date hints</h4><ul>${warnings}</ul>`:''}

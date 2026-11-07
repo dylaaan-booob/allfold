@@ -444,6 +444,75 @@ app.whenReady().then(async()=>{
     await capture('run-providers-small');
     await js("document.querySelector('#s-run [data-flyout]').click(),document.querySelector('#s-providers [data-provider=crossref]').click()");
     await capture('run-provider-overlay');
+    const integratedSummary={availability:'available',provider:'integrated',status:'incomplete',
+      outcome:'COMPLETED_WITH_ERRORS',coverage_status:'partial',created_papers:2,existing_papers:1,
+      finished_at:'2026-11-07T01:00:00Z',resolved_date_range:{from_date:'2026-01-01',to_date:'2026-03-31'},
+      journals:[],statistics:{integrated_candidates:3,integrated_deduplicated:3},
+      issues:[{category:'discovery',severity:'error',message:'europe_pmc / Synthetic Journal: request failed'}],
+      details:{discovery_status:'partial',provider_runs:[
+        {provider:'openalex',source:'Synthetic Journal',status:'complete',candidates:3,retained:3,limitations:[]},
+        {provider:'europe_pmc',source:'Synthetic Journal',status:'failed',candidates:0,retained:0,limitations:['request failed']}]}};
+    run.providers.integrated.result_summary=integratedSummary;
+    await js("document.getElementById('s-run-overview-open').click(),window.uiRunPage.refresh()");
+    await check(()=>{
+      const root=document.querySelector('#s-run-records .s-run-record');
+      root.querySelector('details').open=true;
+      const text=root.innerText;
+      for(const expected of ['完成，检索覆盖不完整','2 new papers','1 already saved','Provider Details','Candidates','Distinct Papers','openalex','europe_pmc','request failed','检索'])if(!text.includes(expected))throw Error('Missing Integrated result: '+expected);
+      if(/Source Resolution|OpenAlex records/.test(text) || root.querySelector('.s-run-coverage'))throw Error('Obsolete OpenAlex result surface');
+      const content=document.querySelector('#s-run .workspace-content');
+      if(content.scrollWidth>content.clientWidth+1)throw Error('Run result overflows constrained content');
+    });
+    await js("document.getElementById('s-run-records').scrollIntoView({block:'start'})");
+    await capture('run-results-partial');
+    await js("document.querySelector('#s-run-records .s-run-provider-details').scrollIntoView({block:'start'})");
+    await capture('run-results-partial-details');
+    for(const [status,retrieval,outcome] of [
+      ['completed','complete','COMPLETED'],['completed','empty','COMPLETED'],
+      ['failed','failed','FAILED'],['cancelled','cancelled','CANCELLED'],
+      ['capture_issues','complete','COMPLETED_WITH_ERRORS'],
+      ['completed_with_notices','complete','COMPLETED_WITH_WARNINGS']]){
+      const hasHits=['complete','partial'].includes(retrieval);
+      run.providers.integrated.result_summary={...integratedSummary,status,outcome,coverage_status:retrieval,
+        created_papers:hasHits?2:0,existing_papers:hasHits?1:0,
+        statistics:{integrated_candidates:hasHits?6:0,integrated_deduplicated:hasHits?3:0},
+        issues:status==='capture_issues'?[{category:'evidence_write',severity:'error',message:'Synthetic evidence write failed'}]:
+          status==='completed_with_notices'?[{category:'snapshot_write',severity:'warning',message:'Synthetic snapshot unavailable'}]:[],
+        details:{discovery_status:retrieval,provider_runs:integratedSummary.details.provider_runs.map(row=>({...row,
+          status:retrieval,candidates:hasHits?3:0,retained:hasHits?3:0,limitations:[]}))}};
+      await js('window.uiRunPage.refresh()');
+      const rendered=await js("document.querySelector('#s-run-records [data-result-status]').dataset.resultStatus");
+      if(rendered!==status)throw Error('Run terminal status changed: '+status+' / '+rendered);
+    }
+    run.providers.wos.result_summary={...integratedSummary,provider:'wos',outcome:'Partial',
+      journals:[{key:'0006-341X',name:'Synthetic WoS Journal',status:'hint',records:2,
+        identifiers:[{issn:'0006-341X',status:'local_not_listed',records:null}]}],
+      statistics:{returned_records:2,eligible_records:1,unmatched_journal_records:1},
+      details:{query_finished:true,search_total:3,
+        batches:[{first:1,last:3,expected:3,exported:2,eligible:1,complete:false,issues:['batch_count_mismatch']}],
+        date_warnings:[{record_number:1,doi:'10.5555/wos',reasons:['PD_PY_year_conflict']}]},
+      issues:[{category:'snapshot_write',severity:'warning',message:'Synthetic result not saved'}]};
+    await js("window.uiRunPage.refresh().then(()=>{document.querySelector('#s-run [data-flyout]').click();document.querySelector('#s-providers [data-provider=wos]').click();document.querySelector('#run-configuration-sidebar [data-sidebar-close]').click();})");
+    await check(()=>{
+      const root=document.getElementById('s-run-records');
+      root.querySelector('.s-run-provider-details').open=true;
+      root.querySelector('.s-run-journals details').open=true;
+      const text=root.innerText;
+      for(const expected of ['Journal Coverage','Synthetic WoS Journal','Export batches','Export 1–3','导出记录数与预期不一致','Publication date hints','出版日期与出版年份不一致','最近结果未保存','Unmatched Journal records'])if(!text.includes(expected))throw Error('Missing WoS result: '+expected);
+    });
+    await js("document.getElementById('s-run-records').scrollIntoView({block:'start'})");
+    await capture('run-results-wos');
+    await js("document.querySelector('#s-run-records .s-run-provider-details').scrollIntoView({block:'start'})");
+    await capture('run-results-wos-details');
+    run.providers.integrated.result_summary={availability:'unsupported',error:'旧版运行记录，请重新运行生成结果。'};
+    await js("window.uiRunPage.refresh().then(()=>document.getElementById('s-run-overview-open').click())");
+    await check(()=>{
+      const rows=document.querySelectorAll('#s-run-records .s-run-record');
+      if(!rows[0].innerText.includes('旧版运行记录，请重新运行生成结果。'))throw Error('Missing old Integrated rerun prompt');
+      if(!rows[1].querySelector('[data-result-status=incomplete]'))throw Error('Valid WoS result hidden by Integrated version');
+    });
+    await js("document.getElementById('s-run-records').scrollIntoView({block:'start'})");
+    await capture('run-results-unsupported');
     await navigate('settings');
     await capture('settings-small');
     await ready("window.inboxRun.available()");

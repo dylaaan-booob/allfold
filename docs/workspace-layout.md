@@ -56,7 +56,7 @@ The Electron window minimum is 600 × 480 logical pixels. The real Chromium DOM 
 
 Limited computer-use acceptance with synthetic data checked Index/Info, Journal selection across ARRAY/GRID, group filtering and Details collapse, Escape focus return, Service chooser cancellation, and empty synthetic Browser return. It did not establish native page Session behavior, pointer dragging, exact hover timing, touch or reliable independent scroll behavior.
 
-Manual acceptance still required:
+The following real-UI checks are a reference for changes affecting those behaviors, not requirements for every PR. Existing Electron/Chromium fixtures already establish the synthetic results described above and below. Select additional real-UI checks only for affected behavior the fixtures cannot cover. Browser control, external accounts, real user-data edits, Zotero and PDF operations require separate task-specific authorization:
 
 1. Real pointer hover across trigger/flyout boundaries, delayed dismissal, touch activation, Tab/Shift-Tab and Escape. Drag/keyboard-resize Sidebar at wide/narrow bounds; inspect clipping and focus with long Directory and Details content.
 2. At 600 × 480 and larger sizes, check Reader, list, flyout, forms and workflow scroll regions; vary host zoom, display scale, low height, messages and developer controls. Verify preferred width after repeated narrow/wide changes and restart.
@@ -165,4 +165,10 @@ opening it never dispatches a request. Rejected Papers are excluded, while older
 unkept, kept and exported saved Papers can be selected. Webpage Enrich remains
 independent. DOI-free Papers remain reviewable and locally
 editable; unavailable external actions explain their primary-DOI requirement.
-See [manual Provider acceptance](providers.md#old-data-and-manual-acceptance).
+Run result fixtures also render Integrated retrieval/status counts and per-source
+failures, unsupported old Integrated snapshots, and WoS Journal Coverage, export
+batches and date/diagnostic explanations at constrained bounds. They use synthetic
+API results and cannot establish real-service retrieval. Rare date/version cases
+and Translator Accepted/event-only responses use synthetic automatic tests;
+real samples are optional supplementary evidence.
+See [change-scoped Provider acceptance](providers.md#old-data-and-manual-acceptance).

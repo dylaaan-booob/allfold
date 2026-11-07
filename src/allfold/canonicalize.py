@@ -10,7 +10,6 @@ from collections.abc import Callable, Iterable, Sequence
 from dataclasses import dataclass
 from html.parser import HTMLParser
 
-from allfold.diagnostics import RunDiagnostic
 from allfold.paper_dates import date_value as _date_value
 from allfold.identifiers import normalize_doi, strong_identifiers, evidence_identifiers
 from allfold.models import (
@@ -45,7 +44,6 @@ class CanonicalizationIssue:
 class CanonicalizationResult:
     papers: tuple[CanonicalPaper, ...]
     issues: tuple[CanonicalizationIssue, ...]
-    diagnostics: tuple[RunDiagnostic, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -57,7 +55,6 @@ class EvidenceCluster:
 class EvidenceConsolidationResult:
     clusters: tuple[EvidenceCluster, ...]
     issues: tuple[CanonicalizationIssue, ...]
-    diagnostics: tuple[RunDiagnostic, ...] = ()
 
 
 def _normalize_text(value: str) -> str:

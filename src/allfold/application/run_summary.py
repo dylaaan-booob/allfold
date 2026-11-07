@@ -21,7 +21,7 @@ def _encode(value):
 
 
 def _visible_result_facts(facts: dict, provider: str) -> tuple[list, list, dict]:
-    """Filter known noise from encoded facts, for current Run facts."""
+    """Keep useful Journal and date notices from current Run facts."""
     journals = []
     for journal in facts.get("journals", []):
         identifiers = []
@@ -34,9 +34,6 @@ def _visible_result_facts(facts: dict, provider: str) -> tuple[list, list, dict]
             journals.append(journal)
 
     details = facts.get("details", {})
-    if provider == "openalex" and "source_resolution" in details:
-        details["source_resolution"] = {key: value for key, value in details["source_resolution"].items()
-                                         if key != "resolved" and value}
     if provider == "wos":
         dates = []
         for warning in details.get("date_warnings", []):
@@ -47,13 +44,9 @@ def _visible_result_facts(facts: dict, provider: str) -> tuple[list, list, dict]
         details["date_warnings"] = dates
 
     issues = []
-    missing_identifiers = {item["issn"]: item for journal in journals
-                           for item in journal["identifiers"] if item["status"] == "not_found"}
     for issue in facts.get("issues", []):
         message = issue["message"]
         if issue.get("severity") != "error":
-            if provider == "openalex" and message == "work has neither a valid DOI nor a usable title":
-                continue
             if (provider == "wos" and any(j["status"] == "hint" for j in journals) and
                     message.startswith("未列入当前本地 WoS 来源清单（")):
                 continue
@@ -78,29 +71,25 @@ def build_run_result_summary(record: object) -> dict[str, object] | None:
         return dict(availability="available", provider=raw.get("provider"), status="failed",
             outcome="FAILED", coverage_status="unknown", created_papers=None, existing_papers=None,
             finished_at=raw.get("finished_at"), resolved_date_range=None, journals=[], statistics={},
-            details={}, coverage=[], issues=[dict(category="runtime", severity="error", message=error["message"])])
+            details={}, issues=[dict(category="runtime", severity="error", message=error["message"])])
     facts = result.get("facts") or {}
-    coverage = result.get("coverage", raw.get("coverage", []))
     outcome = result.get("outcome")
     provider = result.get("provider", raw.get("provider"))
     journals, issues, details = _visible_result_facts(facts, provider)
-    statuses = {unit["status"] for unit in coverage}
     if provider == "integrated":
         coverage_status = details.get("discovery_status", "unknown")
     elif provider == "wos":
         coverage_status = ("complete" if details.get("query_finished") and all(b["complete"] for b in details.get("batches", []))
                            else "partial" if result.get("returned_records") else "failed")
     else:
-        coverage_status = ("complete" if statuses == {"COMPLETE"} else
-                           "partial" if "COMPLETE" in statuses or "PARTIAL" in statuses else
-                           "failed" if "FAILED" in statuses else "unavailable" if statuses else "unknown")
+        coverage_status = "unknown"
     if outcome in ("Cancelled", "CANCELLED"):
         status = "cancelled"
-    elif outcome in ("INVALID_CONFIGURATION", "Failed", "FAILED"):
+    elif outcome in ("Failed", "FAILED"):
         status = "failed"
     elif coverage_status == "failed":
         status = "failed"
-    elif coverage_status in ("partial", "unavailable"):
+    elif coverage_status == "partial":
         status = "incomplete"
     elif outcome == "Partial" or any(i.get("severity") == "error" for i in issues):
         status = "capture_issues"
@@ -113,8 +102,6 @@ def build_run_result_summary(record: object) -> dict[str, object] | None:
     else:
         status = "completed"
     statistics = facts.get("statistics", {})
-    statistics = {key: value for key, value in statistics.items()
-                  if provider in {"wos", "integrated"}}
     if provider == "wos":
         # Batch details remain the single display location; status still uses all failures.
         batch_messages = {f"{batch['first']}-{batch['last']}: {message}"
@@ -126,7 +113,7 @@ def build_run_result_summary(record: object) -> dict[str, object] | None:
         resolved_date_range=result.get("resolved_date_range", raw.get("resolved_date_range")) or
             (dict(from_date=raw["from_date"], to_date=raw["to_date"]) if raw.get("from_date") else None),
         created_papers=facts.get("created_papers"), existing_papers=facts.get("existing_papers"),
-        coverage_status=coverage_status, coverage=coverage, journals=journals,
+        coverage_status=coverage_status, journals=journals,
         issues=issues, statistics=statistics, details=details)
 
 

@@ -182,3 +182,25 @@ def test_crossref_explicit_preprint_versions_share_first_version_proof():
     paper, = canonicalize_records(records).papers
     assert paper.metadata.first_public_at == '2021-06'
     assert {(item.version, item.year) for item in paper.date_evidence} == {('1', 2021), ('2', 2022)}
+
+
+@pytest.mark.parametrize('provider', ['biorxiv', 'medrxiv'])
+def test_preprint_lookup_retains_more_than_16_linked_records(provider):
+    calls = []
+
+    def handler(request):
+        calls.append(request)
+        if request.url.path.startswith('/pubs/'):
+            rows = [{'preprint_doi': f'10.1101/{n:06}', 'published_doi': '10.5555/formal',
+                     'preprint_platform': provider, 'published_date': '2026-01-02'} for n in range(17)]
+        else:
+            doi = request.url.path.split('/na/')[0].split(f'/details/{provider}/')[1]
+            rows = [{'doi': doi, 'published': '10.5555/formal', 'server': provider,
+                     'date': '2022-01-02', 'version': '1', 'title': 'Preprint'}]
+        return httpx.Response(200, json={'messages': [{'status': 'ok'}], 'collection': rows})
+
+    with SupplementalClient(provider, transport=httpx.MockTransport(handler), interval=0) as client:
+        records = client.lookup('doi', '10.5555/formal')
+    assert len(calls) == 18
+    assert {record.external_ids.doi for record in records} == {'10.5555/formal'} | {
+        f'10.1101/{n:06}' for n in range(17)}

@@ -49,7 +49,7 @@ function report(text,details=[]) {
 function resultDetails(snapshot) {
   const result=snapshot.result;
   if(!result)return snapshot.unexpected_error?[snapshot.unexpected_error.message]:[];
-  return [...(result.warnings||[]),...(result.errors||[]),...(result.diagnostics||[]),...(result.issues||[])].map(item=>typeof item==='string'?item:item.message);
+  return [...(result.warnings||[]),...(result.errors||[]),...(result.issues||[])].map(item=>typeof item==='string'?item:item.message);
 }
 function showState(data) {
   const {snapshot,progress}=data;

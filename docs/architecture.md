@@ -80,7 +80,10 @@ BrowserRuntime keeps one current association per physical page, including the wo
 ## History and diagnostics
 
 Python coordinators publish bounded business history independently of their
-Workspace result snapshots. Electron and Python write separately owned, rotating
+Workspace result snapshots. Both Run providers expose current counts, statistics,
+issues and retrieval observations through `RunFacts`; Integrated snapshots use v5
+while WoS retains its independently read v4 format. Old Integrated v4 reads return
+unsupported and require a new Run, without migration or Reset. Electron and Python write separately owned, rotating
 JSONL under a common configuration scope and startup runtime ID. Explicit workflow,
 task and request identities link native observations with coordinator-confirmed
 results. Page association snapshots are descriptive evidence, never browser or
@@ -142,7 +145,7 @@ Electron package metadata and scripts remain at the package root. `src/shared/pa
 
 ## Data ownership
 
-Local YAML owns monitor settings. The private `.allfold/user-data.sqlite` owns Journals, Groups, Labels, direct Access Services and default Service assignments, isolated by the canonical configuration path. Existing valid `list.md` files seed each configuration once; subsequent Markdown edits do not change saved user state. Migration validates the complete managed data, records its source and digest, and leaves the original file intact. Paper Markdown owns UUID and primary/related DOI or reliable namespaced identity, workflow status and human content. [Paper identity](paper-identity.md) defines the create-only canonicalization, source/version metadata and partial date evidence contract.
+Local YAML owns monitor settings. The private `.allfold/user-data.sqlite` owns Journals, Conferences, Groups, Labels, direct Access Services and default Service assignments, isolated by the canonical configuration path. Existing valid `list.md` files seed each configuration once; subsequent Markdown edits do not change saved user state. Migration validates the complete managed data, records its source and digest, and leaves the original file intact. Paper Markdown owns UUID and primary/related DOI or reliable namespaced identity, workflow status and human content. [Paper identity](paper-identity.md) defines the create-only canonicalization, source/version metadata and partial date evidence contract.
 
 The private `.allfold/resources.sqlite` shares complete GOKB snapshots and the CARSI official Catalog across configurations. It holds external evidence, not users' Service preferences. Refresh commits only validated, complete data and retains the previous cache on failure. The Journal Resolver follows Journal → GOKB Platform → CARSI Resource, retaining multiple identities and products. Only a unique, reliable candidate can fill an empty default; saved user choices take precedence. Ordinary Run never requires GOKB.
 

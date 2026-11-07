@@ -14,7 +14,7 @@ from allfold.application.history import observe, finish_run
 from allfold.application.browser_runtime import ElectronDisconnected
 from allfold.browser_diagnostics import normalize_browser_diagnostic
 from allfold.application.run_state import (
-    LAST_RUN_SCHEMA_VERSION, RunProvider, RunFacts, RunIdentifierFact,
+    WOS_RUN_SCHEMA_VERSION, RunProvider, RunFacts, RunIdentifierFact,
     RunJournalFact, RunIssueFact, validate_saved_facts,
 )
 from allfold.application.runtime_metadata import metadata_directory
@@ -77,9 +77,9 @@ class WoSCoordinator:
                 if target.is_symlink() or not target.is_file():
                     raise ValueError('Latest WoS Run is not a regular file')
                 value = json.loads(read_text_exact(target))
-                if isinstance(value, dict) and type(value.get('schema_version')) is int and value['schema_version'] < LAST_RUN_SCHEMA_VERSION:
+                if isinstance(value, dict) and type(value.get('schema_version')) is int and value['schema_version'] < WOS_RUN_SCHEMA_VERSION:
                     return dict(status='unsupported', error='旧版运行记录，请重新运行生成结果。')
-                if not isinstance(value, dict) or value.get('schema_version') != LAST_RUN_SCHEMA_VERSION or value.get('provider') != 'wos' or not isinstance(value.get('result'), dict):
+                if not isinstance(value, dict) or value.get('schema_version') != WOS_RUN_SCHEMA_VERSION or value.get('provider') != 'wos' or not isinstance(value.get('result'), dict):
                     raise ValueError('Latest WoS Run has an invalid schema')
                 validate_saved_facts(value['result'].get('facts'))
                 self.last, self.last_workspace = value, config.output_dir
@@ -445,7 +445,7 @@ class WoSCoordinator:
                 batches=[{k: b[k] for k in ('first', 'last', 'expected', 'exported', 'eligible', 'complete', 'issues')}
                          for b in task['batches'].values()], date_warnings=task['date_warnings']))
         result['facts'] = facts.model_dump(mode='json')
-        snapshot = dict(schema_version=LAST_RUN_SCHEMA_VERSION, provider=RunProvider.WOS.value, started_at=task['started_at'], finished_at=finished_at.isoformat(),
+        snapshot = dict(schema_version=WOS_RUN_SCHEMA_VERSION, provider=RunProvider.WOS.value, started_at=task['started_at'], finished_at=finished_at.isoformat(),
             mode='topic', input=task['config'].keyword_expression, compiled=task['compiled'],
             from_date=str(task['dates'].from_date), to_date=str(task['dates'].to_date), result=result,
             query={k: task['query'][k] for k in ('text', 'total', 'next_first', 'finished')},
