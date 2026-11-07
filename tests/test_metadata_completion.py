@@ -457,3 +457,68 @@ def test_openalex_verified_location_binding_keeps_returned_top_identity_separate
     anchor = next(record for record in result.records if record.provenance.provider == 'openalex' and record.external_ids.doi == '10.1093/nar/gkag979')
     assert anchor.external_ids.openalex is None and anchor.title is None
     assert any(ref.provider == 'openalex' and ref.record_id == 'W7223175244' for ref in anchor.related_ids)
+
+
+def test_known_unverified_family_does_not_suppress_run_crossref_reverse_batch():
+    import httpx
+    from allfold.models import EvidenceDate, ProviderRecordRef
+    from allfold.providers.supplemental import SupplementalClient
+    formal_doi, new_preprint = '10.5555/formal', '10.64898/2019.01.01.123456'
+    formal = evidence('wos', formal_doi, abstract='Abstract', authors=(Author(name='Author'),),
+        dates=tuple(EvidenceDate(kind=kind, year=2026, publication_type='journal')
+            for kind in ('received', 'accepted', 'published-online', 'published')),
+        related_ids=(ProviderRecordRef(provider='arxiv', record_id='2201.12345', relation='preprint'),))
+    calls = []
+    def response(request):
+        calls.append(request)
+        if request.url.host == 'api.crossref.org':
+            reverse = 'relation.type:is-preprint-of' in request.url.params['filter']
+            rows = [{'DOI': new_preprint, 'title': ['New preprint family'], 'type': 'posted-content', 'publisher': 'bioRxiv',
+                'relation': {'is-preprint-of': [{'id-type': 'doi', 'id': formal_doi}]}}] if reverse else [
+                {'DOI': formal_doi, 'title': ['Formal'], 'type': 'journal-article'}]
+            return httpx.Response(200, json={'message': {'items': rows, 'total-results': len(rows)}})
+        if request.url.host == 'export.arxiv.org':
+            return httpx.Response(200, text='<feed xmlns="http://www.w3.org/2005/Atom"><entry>'
+                '<id>https://arxiv.org/abs/2201.12345v1</id><title>Known family</title>'
+                '<published>2022-01-02T00:00:00Z</published></entry></feed>')
+        assert request.url.path == f'/details/biorxiv/{new_preprint}/na/json'
+        return httpx.Response(200, json={'messages': [{'status': 'ok'}], 'collection': [{
+            'doi': new_preprint, 'title': 'New family', 'server': 'biorxiv', 'date': '2019-01-01', 'version': '1'}]})
+    with SupplementalClient('crossref', interval=0, transport=httpx.MockTransport(response)) as crossref, SupplementalClient(
+            'arxiv', interval=0, transport=httpx.MockTransport(response)) as arxiv, SupplementalClient(
+            'biorxiv', interval=0, transport=httpx.MockTransport(response)) as biorxiv:
+        result = complete_metadata((formal,), ('crossref', 'arxiv', 'biorxiv'), clients={
+            'crossref': crossref, 'arxiv': arxiv, 'biorxiv': biorxiv}, allow_formal_preprint_reverse=False)
+    assert not result.issues
+    assert any('relation.type:is-preprint-of' in request.url.params.get('filter', '') for request in calls)
+    assert result.first_public_status == 'recorded'
+    assert completion_metadata(result.records).metadata.first_public_at == '2019-01-01'
+
+
+def test_saved_first_public_with_received_gap_queries_dates_without_association_or_blind_native_probes():
+    import httpx
+    from allfold.models import EvidenceDate
+    from allfold.providers.supplemental import SupplementalClient
+    formal = evidence('workspace', '10.5555/saved', abstract='Abstract', authors=(Author(name='Author'),),
+        first_public_at='2020', dates=tuple(EvidenceDate(kind=kind, year=2026, publication_type='journal')
+            for kind in ('accepted', 'published-online', 'published'))).model_copy(
+        update={'external_ids': ExternalIds(doi='10.5555/saved', pmid='7')})
+    calls = []
+    def response(request):
+        calls.append(request)
+        if request.url.host == 'api.crossref.org':
+            rows = [] if 'relation.type:' in request.url.params['filter'] else [
+                {'DOI': '10.5555/saved', 'type': 'journal-article'}]
+            return httpx.Response(200, json={'message': {'items': rows, 'total-results': len(rows)}})
+        if request.url.host == 'www.ebi.ac.uk':
+            return httpx.Response(200, json={'hitCount': 0, 'resultList': {'result': []}})
+        return httpx.Response(200, json={'messages': [{'status': 'ok'}], 'collection': []})
+    from contextlib import ExitStack
+    with ExitStack() as stack:
+        clients = {provider: stack.enter_context(SupplementalClient(provider, interval=0, transport=httpx.MockTransport(response)))
+            for provider in ('crossref', 'europe_pmc', 'biorxiv', 'medrxiv')}
+        result = complete_metadata((formal,), tuple(clients), clients=clients)
+    assert not result.issues and result.first_public_status == 'recorded'
+    assert len(calls) == 1
+    assert calls[0].url.host == 'api.crossref.org' and calls[0].url.params['filter'] == 'doi:10.5555/saved'
+    assert next(record for record in result.records if record.provenance.provider == 'workspace').first_public_at == '2020'
