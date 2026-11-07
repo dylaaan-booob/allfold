@@ -149,3 +149,91 @@ def test_discovery_and_exact_lookup_share_inflight_truncated_work_singleton(sing
         assert found.status == located.status == 'failed'
         assert not found.records and not located.records
         assert all(any('404' in issue for issue in result.limitations) for result in (found,located))
+
+
+@pytest.mark.parametrize('bad_record', ['parse', 'identity', 'singleton404', 'singletonidentity'])
+def test_record_failure_keeps_verified_neighbors_callbacks_and_later_pages(bad_record):
+    calls, pages = [], []
+    bad = work(2)
+    if bad_record == 'parse':
+        bad['abstract_inverted_index'] = {'invalid': None}
+    elif bad_record == 'identity':
+        bad['id'] = 'invalid-work'
+    else:
+        bad['locations_count'] = 1
+    def response(request):
+        calls.append(request.url.path)
+        if request.url.path == '/works/W2':
+            return httpx.Response(404 if bad_record == 'singleton404' else 200, json=work(999))
+        if request.url.params.get('filter') == 'openalex:W2':
+            return httpx.Response(200, json={'meta': {'count': 1}, 'results': [bad]})
+        later = request.url.params['cursor'] == 'second'
+        return httpx.Response(200, json={'meta': {'count': 4, 'next_cursor': None if later else 'second'},
+            'results': [work(4, B.issns)] if later else [work(1), bad, work(3)]})
+    with DiscoveryClient('openalex', api_key='synthetic-key', interval=0, transport=httpx.MockTransport(response)) as client:
+        first, second = client.discover_many((A, B), parse_keyword_expression('causal'), '2026-10-01', '2026-10-31',
+            records_callback=pages.append)
+        if bad_record.startswith('singleton'):
+            repeated = client.lookup_many('openalex', ['W2', 'W3', 'W4'])
+            assert repeated.status == 'partial'
+            assert {row.external_ids.doi for row in repeated.records} == {'10.5555/3', '10.5555/4'}
+            assert calls.count('/works/W2') == 1
+    assert first.status == second.status == 'partial'
+    assert [row.external_ids.doi for row in first.records] == ['10.5555/1', '10.5555/3']
+    assert [row.external_ids.doi for row in second.records] == ['10.5555/4']
+    assert first.candidates == 2 and second.candidates == 1
+    assert first.total is second.total is None and len(first.limitations) == 1
+    assert [[row.external_ids.doi for row in page] for page in pages] == [
+        ['10.5555/1', '10.5555/3'], ['10.5555/4']]
+
+
+def test_missing_title_remains_a_verified_identity_for_completion():
+    from allfold.application.metadata_completion import complete_metadata
+    from allfold.models import Author
+    from allfold.canonicalize import completion_metadata
+    rows = [work(1), work(2, title=None), work(3)]
+    pages = []
+    with DiscoveryClient('openalex', interval=0, transport=httpx.MockTransport(lambda request:
+            httpx.Response(200, json={'meta': {'count': 3}, 'results': rows}))) as client:
+        discovered = client.discover_many((A,), parse_keyword_expression('causal'), '2026-10-01', '2026-10-31',
+            records_callback=pages.append)[0]
+        assert discovered.status == 'complete' and discovered.candidates == 3
+        missing = next(row for row in discovered.records if row.external_ids.doi == '10.5555/2')
+        assert missing.title is None and client.cached_lookup('doi', '10.5555/2')[0].title is None
+        class Formal:
+            def lookup(self, namespace, identifier):
+                return (missing.model_copy(update={'title': 'Completed formal title', 'abstract': 'Formal abstract',
+                    'authors': (Author(name='Formal One'), Author(name='Formal Two')),
+                    'provenance': missing.provenance.model_copy(update={'provider': 'crossref'})}),)
+        completed = complete_metadata((missing,), ('crossref',), clients={'crossref': Formal()},
+            allow_formal_preprint_reverse=False)
+    assert len(pages) == 1 and len(pages[0]) == 3
+    metadata = completion_metadata(completed.records)
+    assert metadata.metadata.title == 'Completed formal title'
+    assert metadata.authors == (Author(name='Formal One'), Author(name='Formal Two'))
+
+
+@pytest.mark.parametrize('revocation', ['cancel', 'workspace'])
+def test_record_isolation_does_not_continue_after_authority_revocation(revocation):
+    from allfold.persistence.safe_write import ContentChangedError
+    calls = []
+    cancel = Event()
+    def response(request):
+        calls.append(request.url.path)
+        if request.url.path == '/works/W2':
+            if revocation == 'cancel':
+                cancel.set()
+            else:
+                raise ContentChangedError('Controlled Workspace revocation')
+        return httpx.Response(200, json={'meta': {'count': 4, 'next_cursor': 'second'},
+            'results': [work(1), work(2, locations_count=1), work(3)]})
+    with DiscoveryClient('openalex', api_key='synthetic-key', interval=0,
+            cancel_event=cancel, transport=httpx.MockTransport(response)) as client:
+        def discover():
+            return client.discover_many((A,), parse_keyword_expression('causal'), '2026-10-01', '2026-10-31')[0]
+        if revocation == 'workspace':
+            with pytest.raises(ContentChangedError):
+                discover()
+        else:
+            assert discover().status == 'cancelled'
+    assert calls == ['/works', '/works/W2']

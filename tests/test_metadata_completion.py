@@ -522,3 +522,77 @@ def test_saved_first_public_with_received_gap_queries_dates_without_association_
     assert len(calls) == 1
     assert calls[0].url.host == 'api.crossref.org' and calls[0].url.params['filter'] == 'doi:10.5555/saved'
     assert next(record for record in result.records if record.provenance.provider == 'workspace').first_public_at == '2020'
+
+
+@pytest.mark.parametrize('verified', [False, True])
+def test_partial_reverse_page_is_absorbed_before_pending_native_family_can_finish(verified):
+    import httpx
+    from contextlib import ExitStack
+    from allfold.models import EvidenceDate, ProviderRecordRef
+    from allfold.paper_dates import first_public_status, known_preprint_families, preprint_date_coverage
+    from allfold.providers.supplemental import SupplementalClient
+    formal_doi, preprint = '10.5555/formal', '10.64898/2019.01.01.123456'
+    formal = evidence('wos', formal_doi, abstract='Abstract', authors=(Author(name='Author'),),
+        dates=tuple(EvidenceDate(kind=kind, year=2026, publication_type='journal')
+            for kind in ('received', 'accepted', 'published-online', 'published')),
+        related_ids=(ProviderRecordRef(provider='arxiv', record_id='2201.12345', relation='preprint'),))
+    calls = []
+    def response(request):
+        calls.append((request.url.host, request.url.path, request.url.params.get('cursor')))
+        if request.url.host == 'api.crossref.org':
+            assert 'relation.type:is-preprint-of' in request.url.params['filter']
+            if request.url.params['cursor'] != '*':
+                return httpx.Response(400)
+            return httpx.Response(200, json={'message': {'total-results': 2, 'next-cursor': 'second', 'items': [{
+                'DOI': preprint, 'type': 'posted-content', 'publisher': 'bioRxiv',
+                'relation': {'is-preprint-of': [{'id-type': 'doi', 'id': formal_doi}]}}]}})
+        if request.url.host == 'export.arxiv.org':
+            return httpx.Response(200, text='<feed xmlns="http://www.w3.org/2005/Atom"><entry>'
+                '<id>https://arxiv.org/abs/2201.12345v1</id><title>Known family</title>'
+                '<published>2022-01-02T00:00:00Z</published></entry></feed>')
+        assert request.url.path == f'/details/biorxiv/{preprint}/na/json'
+        return httpx.Response(200, json={'messages': [{'status': 'ok'}], 'collection': [{
+            'doi': preprint, 'server': 'biorxiv', 'date': '2019-01-01', 'version': '1' if verified else '2'}]})
+    cache = {('crossref', 'doi', formal_doi): (), ('crossref', 'doi', preprint): ()}
+    with ExitStack() as stack:
+        clients = {provider: stack.enter_context(SupplementalClient(provider, interval=0,
+            transport=httpx.MockTransport(response))) for provider in ('crossref', 'arxiv', 'biorxiv')}
+        result = complete_metadata((formal,), tuple(clients), clients=clients, request_cache=cache,
+            allow_formal_preprint_reverse=False)
+        # Cached partial facts and failure belong only to their formal target.
+        other = formal.model_copy(update={'external_ids': ExternalIds(doi='10.5555/other'),
+            'related_ids': (), 'first_public_at': '2020'})
+        unrelated = complete_metadata((other,), tuple(clients), clients=clients, request_cache=cache,
+            allow_formal_preprint_reverse=False)
+    assert result.status == 'partial'
+    assert len(result.issues) == 1 and result.issues[0].status == 'partial'
+    assert [(lookup.identifier, lookup.status) for lookup in result.lookups if lookup.capability == 'preprints'] == [
+        (formal_doi, 'partial')]
+    assert completion_metadata(result.records).metadata.first_public_at == ('2019-01-01' if verified else None)
+    assert f'doi:{preprint}' in known_preprint_families(result.records)
+    assert preprint_date_coverage(result.records)[0] is verified
+    assert first_public_status(result.records) == ('recorded' if verified else 'known_unresolved')
+    assert len(calls) == 4 and calls.count(('api.crossref.org', '/works', 'second')) == 1
+    assert unrelated.records == (other,) and not unrelated.issues and not unrelated.lookups
+
+
+def test_cached_batch_failure_is_reported_once_before_native_proof_satisfies_goals():
+    from allfold.models import EvidenceDate, ProviderRecordRef
+    from allfold.providers.integrated import DiscoveryError
+    formal = evidence('wos', '10.5555/formal', abstract='Abstract', authors=(Author(name='Author'),),
+        dates=tuple(EvidenceDate(kind=kind, year=2026, publication_type='journal')
+            for kind in ('received', 'accepted', 'published-online', 'published')),
+        related_ids=(ProviderRecordRef(provider='arxiv', record_id='2201.12345', relation='preprint'),)).model_copy(
+            update={'external_ids': ExternalIds(doi='10.5555/formal', pmid='7')})
+    native = Lookup((ProviderWorkEvidence(publication_type='preprint', external_ids=ExternalIds(arxiv='2201.12345'),
+        provenance=MetadataSource(provider='arxiv', record_id='2201.12345', retrieved_at=datetime.now(timezone.utc)),
+        dates=(EvidenceDate(kind='preprint', year=2022, first_version=True, publication_type='preprint'),)),))
+    failure = DiscoveryError('Controlled batch failure')
+    cache = {('pubmed', 'pmid', '7', capability): failure for capability in ('summary', 'fetch')}
+    cache[('pubmed', 'pmid', '8', 'fetch')] = DiscoveryError('Other Paper failure')
+    result = complete_metadata((formal,), ('pubmed', 'arxiv'), clients={'pubmed': Lookup(), 'arxiv': native},
+        request_cache=cache, allow_formal_preprint_reverse=False)
+    assert result.status == 'partial' and result.first_public_status == 'recorded'
+    assert [(issue.identifier, issue.message) for issue in result.issues] == [('7', 'Controlled batch failure')]
+    assert len([lookup for lookup in result.lookups if lookup.provider == 'pubmed']) == 1
+    assert native.calls == [('arxiv', '2201.12345')]

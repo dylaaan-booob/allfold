@@ -284,7 +284,7 @@ class DiscoveryClient:
             compile_query(ast, self.provider)
             if any(scope.kind != 'journal' or not scope.issns for scope in scopes):
                 raise DiscoveryError('Journal discovery requires valid ISSN/eISSN scopes')
-            batches = self._pubmed_discovery_pages(scopes, ast, from_date, to_date) if self.provider == 'pubmed' else self._openalex_discovery_pages(scopes, ast, from_date, to_date)
+            batches = self._pubmed_discovery_pages(scopes, ast, from_date, to_date) if self.provider == 'pubmed' else self._openalex_discovery_pages(scopes, ast, from_date, to_date, problems)
             seen = set()
             for page in batches:
                 verified = []
@@ -374,7 +374,7 @@ class DiscoveryClient:
                 if found != set(identifiers):
                     raise DiscoveryError('Incomplete: PubMed EFetch did not cover the full PMID set')
 
-    def _openalex_discovery_pages(self, scopes, ast, start, end):
+    def _openalex_discovery_pages(self, scopes, ast, start, end, problems):
         def params(issns):
             return {'filter':f'primary_location.source.issn:{"|".join(issns)},from_publication_date:{start},to_publication_date:{end}',
                 'search.title_abstract_keywords' + ('.exact' if _prefix(ast) else ''):compile_query(ast, 'openalex'),
@@ -383,8 +383,15 @@ class DiscoveryClient:
             for rows in self._openalex_pages(params(issns)):
                 page = []
                 for raw in rows:
-                    raw = self._complete_openalex(raw)
-                    record = self.normalize(raw, SourceScope('journal',''))
+                    self.check_cancel()
+                    try:
+                        raw = self._complete_openalex(raw)
+                        record = self.normalize(raw, SourceScope('journal',''))
+                    except Cancelled:
+                        raise
+                    except (DiscoveryError, ValueError, KeyError, TypeError, AttributeError) as error:
+                        problems.append(f'OpenAlex Work record: {error}')
+                        continue
                     if record is not None:
                         self._remember_openalex(record)
                         page.append(record)
@@ -558,13 +565,15 @@ class DiscoveryClient:
             advertised = total
             yield rows
             for raw in rows:
-                native = normalize_external_id('openalex',raw.get('id'))
+                count += 1
+                native = normalize_external_id('openalex',raw.get('id')) if isinstance(raw, dict) else None
+                # The consumer reports malformed individual records. They still
+                # occupy a result row; pagination totals count every returned row.
                 if not native:
-                    raise IdentityMismatch('OpenAlex record lacks reliable Work identity')
+                    continue
                 if native in seen_ids:
                     raise DiscoveryError('Incomplete: OpenAlex duplicate Work across pages')
                 seen_ids.add(native)
-                count += 1
             if count > total:
                 raise DiscoveryError('Incomplete: OpenAlex returned more records than advertised')
             cursor = data.get('meta',{}).get('next_cursor')
