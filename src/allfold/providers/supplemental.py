@@ -75,8 +75,11 @@ class SupplementalClient(DiscoveryClient):
             group = ids[offset:offset + 200]
             try:
                 content = self.request('/api/query', {'id_list': ','.join(group), 'max_results': len(group)}, response_format='xml')
-                records, wrong = self._arxiv_feed(content, set(group))
+                records, wrong, failures = self._arxiv_feed(content, set(group))
                 for key in group:
+                    if key in failures:
+                        results[key] = failures[key]
+                        continue
                     matches = [record for record in records if record.external_ids.arxiv == key]
                     # Repeated identical entries are harmless. Conflicting duplicate
                     # identities cannot be silently selected by response order.
@@ -97,33 +100,36 @@ class SupplementalClient(DiscoveryClient):
         if root.tag != "{http://www.w3.org/2005/Atom}feed":
             raise DiscoveryError("arXiv response is not an Atom feed")
         ns = {"a": "http://www.w3.org/2005/Atom", "arxiv": "http://arxiv.org/schemas/atom"}
-        records, wrong = [], False
+        records, wrong, failures = [], False, {}
         for entry in root.findall("a:entry", ns):
             url = entry.findtext("a:id", "", ns)
             identifier = normalize_external_id('arxiv', url)
             if identifier not in requested:
                 wrong = True
                 continue
-            published = _iso_date(entry.findtext("a:published", "", ns)[:10], EvidenceDateKind.PREPRINT)
-            if published:
-                published = published.model_copy(update={"first_version": True, "version": "v1", "publication_type": "preprint"})
-            doi = valid_doi(entry.findtext("arxiv:doi", None, ns))
-            version = re.search(r"v\d+$", url)
-            records.append(ProviderWorkEvidence(
-                provenance=MetadataSource(provider="arxiv", record_id=identifier,
-                    retrieved_at=datetime.now(timezone.utc), role="supplement", url=url,
-                    version=version.group(0) if version else None),
-                external_ids=ExternalIds(arxiv=identifier), related_dois=(doi,) if doi else (),
-                title=" ".join(entry.findtext("a:title", "", ns).split()) or None,
-                abstract=" ".join(entry.findtext("a:summary", "", ns).split()) or None,
-                authors=tuple(Author(name=name) for item in entry.findall("a:author", ns)
-                              if (name := item.findtext("a:name", "", ns).strip())),
-                publication_type="preprint", publication_date=_date_string(published) if published else None,
-                dates=(published,) if published else (),
-                indexed_terms=tuple(ProviderTopic(value=item.attrib["term"], source="arxiv", kind="category")
-                                    for item in entry.findall("a:category", ns) if item.attrib.get("term")),
-            ))
-        return tuple(records), wrong
+            try:
+                published = _iso_date(entry.findtext("a:published", "", ns)[:10], EvidenceDateKind.PREPRINT)
+                if published:
+                    published = published.model_copy(update={"first_version": True, "version": "v1", "publication_type": "preprint"})
+                doi = valid_doi(entry.findtext("arxiv:doi", None, ns))
+                version = re.search(r"v\d+$", url)
+                records.append(ProviderWorkEvidence(
+                    provenance=MetadataSource(provider="arxiv", record_id=identifier,
+                        retrieved_at=datetime.now(timezone.utc), role="supplement", url=url,
+                        version=version.group(0) if version else None),
+                    external_ids=ExternalIds(arxiv=identifier), related_dois=(doi,) if doi else (),
+                    title=" ".join(entry.findtext("a:title", "", ns).split()) or None,
+                    abstract=" ".join(entry.findtext("a:summary", "", ns).split()) or None,
+                    authors=tuple(Author(name=name) for item in entry.findall("a:author", ns)
+                                  if (name := item.findtext("a:name", "", ns).strip())),
+                    publication_type="preprint", publication_date=_date_string(published) if published else None,
+                    dates=(published,) if published else (),
+                    indexed_terms=tuple(ProviderTopic(value=item.attrib["term"], source="arxiv", kind="category")
+                                        for item in entry.findall("a:category", ns) if item.attrib.get("term")),
+                ))
+            except (ValueError, TypeError, AttributeError) as error:
+                failures[identifier] = error
+        return tuple(records), wrong, failures
 
     def _collection(self, path, *, doi):
         data = self.request(path, {})
@@ -275,8 +281,8 @@ class SupplementalClient(DiscoveryClient):
         source = MetadataSource(provider="crossref", record_id=doi, retrieved_at=datetime.now(timezone.utc),
                                 role="supplement", version=str(raw.get('version') or '').strip() or None,
                                 url="https://api.crossref.org/works/" + quote(doi, safe="/"))
-        publication = next((value for kind in (EvidenceDateKind.PUBLISHED,)
-                            for value in dates if value.kind == kind), None)
+        publication = next((value for label in ('published', 'published-print', 'issued')
+                            for value in dates if value.kind == EvidenceDateKind.PUBLISHED and value.source_label == label), None)
         return (record.model_copy(update={
             "provenance": source, "related_dois": tuple(sorted(related - {doi})), "dates": tuple(dates),
             "related_ids": tuple(sorted(refs, key=lambda ref: (ref.provider, ref.record_id))),

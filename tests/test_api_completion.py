@@ -593,3 +593,81 @@ def test_saved_native_reverse_online_event_never_becomes_a_preprint_lookup(tmp_p
         service.start((paper_id,));service.join()
         assert service.state()['phase']=='Completed'
     assert calls == ['/pubs/biorxiv/10.5555/decision/na/json','/details/biorxiv/10.1101/123456/na/json']
+
+
+@pytest.mark.parametrize('paper_count', [1, 2])
+@pytest.mark.parametrize('cancel_native', [False, True])
+def test_newly_discovered_arxiv_targets_share_a_batch_before_further_aggregation(tmp_path, paper_count, cancel_native):
+    from uuid import uuid4
+    from allfold.application.coordinators.api_completion import ApiCompletion
+    from allfold.application.browser_runtime import BrowserTaskLock
+    from test_application_decisions import write_paper, replace_frontmatter
+    config, workspace = write_valid_config(tmp_path)
+    config.write_text(config.read_text() + '\ncompletion_providers: [crossref, arxiv, openalex]\n')
+    ids = []
+    for index in range(paper_count):
+        paper_id = uuid4()
+        ids.append(paper_id)
+        path = write_paper(workspace, paper_id, filename=f'{index}.md')
+        replace_frontmatter(path, doi=f'10.5555/formal-{index}', external_ids={'doi': f'10.5555/formal-{index}'})
+    calls = []
+    def response(request):
+        calls.append((request.url.host, request.url.params.get('id_list')))
+        if request.url.host == 'api.crossref.org':
+            index = int(request.url.path[-1])
+            targets = ['2201.00001', '2201.00002'] if paper_count == 1 else [f'2201.{index + 1:05}']
+            return httpx.Response(200, json={'message': {
+                'DOI': f'10.5555/formal-{index}', 'type': 'journal-article',
+                'relation': {'has-preprint': [{'id-type': 'uri', 'id': f'https://arxiv.org/abs/{value}'} for value in targets]}}})
+        assert request.url.host == 'export.arxiv.org', 'Known native targets must precede further aggregators'
+        if cancel_native:
+            assert service.cancel(service.state()['request_id'])
+        return httpx.Response(200, text='<feed xmlns="http://www.w3.org/2005/Atom">' + ''.join(
+            f'<entry><id>https://arxiv.org/abs/{value}v2</id><title>Title</title>'
+            '<published>2022-01-02T00:00:00Z</published></entry>'
+            for value in reversed(request.url.params['id_list'].split(','))) + '</feed>')
+    from allfold.application.coordinators.api_completion import completion_client
+    service = ApiCompletion(config, BrowserTaskLock(), client_factory=lambda provider, **kwargs:
+        completion_client(provider, interval=0, transport=httpx.MockTransport(response), **kwargs))
+    service.start(ids)
+    service.join()
+    assert calls == [('api.crossref.org', None)] * paper_count + [('export.arxiv.org', '2201.00001,2201.00002')]
+    results = service.state()['results']
+    assert service.state()['phase'] == ('Cancelled' if cancel_native else 'Completed')
+    assert all(result['first_public_status'] == ('cancelled' if cancel_native else 'recorded') for result in results)
+    assert all(any(lookup['provider'] == 'crossref' and lookup['status'] == 'evidence'
+                   for lookup in result['lookups']) for result in results)
+    assert all(paper.first_public_at == (None if cancel_native else '2022-01-02') for paper in load_workspace(workspace).papers)
+
+
+def test_native_batch_relations_join_the_next_shared_wave(tmp_path):
+    from uuid import uuid4
+    from allfold.application.coordinators.api_completion import ApiCompletion
+    from allfold.application.browser_runtime import BrowserTaskLock
+    from test_application_decisions import write_paper, replace_frontmatter
+    config, workspace = write_valid_config(tmp_path)
+    config.write_text(config.read_text() + '\ncompletion_providers: [arxiv]\n')
+    paper_ids = []
+    for index in (1, 2):
+        paper_id = uuid4()
+        paper_ids.append(paper_id)
+        path = write_paper(workspace, paper_id, filename=f'{index}.md')
+        replace_frontmatter(path, doi=f'10.5555/{index}', external_ids={'doi': f'10.5555/{index}', 'arxiv': f'2201.{index:05}'})
+    batches = []
+    def response(request):
+        identifiers = request.url.params['id_list'].split(',')
+        batches.append(identifiers)
+        entries = []
+        for identifier in identifiers:
+            index = int(identifier[-1])
+            relation = f'<arxiv:doi>10.48550/arxiv.2201.{index + 2:05}</arxiv:doi>' if index < 3 else ''
+            entries.append(f'<entry><id>https://arxiv.org/abs/{identifier}</id><title>Title</title>'
+                f'<published>2022-01-02T00:00:00Z</published>{relation}</entry>')
+        return httpx.Response(200, text='<feed xmlns="http://www.w3.org/2005/Atom" xmlns:arxiv="http://arxiv.org/schemas/atom">' + ''.join(entries) + '</feed>')
+    service = ApiCompletion(config, BrowserTaskLock(), client_factory=lambda provider, **kwargs:
+        SupplementalClient(provider, interval=0, transport=httpx.MockTransport(response), **kwargs))
+    service.start(paper_ids)
+    service.join()
+    assert batches == [['2201.00001', '2201.00002'], ['2201.00003', '2201.00004']]
+    assert service.state()['phase'] == 'Completed'
+    assert all(result['first_public_status'] == 'recorded' for result in service.state()['results'])

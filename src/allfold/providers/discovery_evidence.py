@@ -151,6 +151,8 @@ def normalize_candidate(raw, source, provider):
     """Identity-only native discovery has no ordinary-metadata completeness claim."""
     now = datetime.now(timezone.utc)
     if provider == 'openalex':
+        if (raw.get('primary_location') or {}).get('raw_type') == 'journal-issue':
+            return None
         identity = normalize_external_id('openalex', raw.get('id'))
         if not identity:
             raise DiscoveryError('OpenAlex candidate lacks reliable Work identity')

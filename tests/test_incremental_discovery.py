@@ -1,5 +1,6 @@
 from datetime import date
 import httpx
+import pytest
 
 from allfold.keywords import parse_keyword_expression
 from allfold.providers.integrated import DiscoveryClient, SourceScope
@@ -284,3 +285,90 @@ def test_wos_failure_allows_selected_apis_but_parent_cancel_stops_them(tmp_path,
     assert calls == ([] if cancelled else ['lite','core'])
     assert result.facts.created_papers == (0 if cancelled else 1)
     assert result.facts.details['discovery_status'] == ('cancelled' if cancelled else 'partial')
+
+
+def test_openalex_journal_issue_is_excluded_before_creation_detail_lookup(tmp_path):
+    from allfold.application.integrated_run import run_integrated
+    from allfold.application.monitor import RunOutcome
+    from test_integrated_run import config
+    path, _ = config(tmp_path)
+    path.write_text(path.read_text() + 'enabled_providers: [openalex]\n')
+    calls = []
+    def response(request):
+        calls.append(request.url.path)
+        if request.url.path.startswith('/sources/'):
+            return httpx.Response(200, json={'id': 'https://openalex.org/S1', 'issn': ['0006-341X']})
+        return httpx.Response(200, json={'meta': {'count': 1}, 'results': [{
+            'id': 'https://openalex.org/W1', 'doi': '10.5555/issue', 'title': 'Learning special issue',
+            'type': 'other', 'primary_location': {'raw_type': 'journal-issue'}}]})
+    result = run_integrated(path, client_factory=lambda provider, **kwargs:
+        DiscoveryClient(provider, interval=0, transport=httpx.MockTransport(response), **kwargs))
+    assert calls == ['/sources/issn:0006-341X', '/works']
+    assert result.outcome == RunOutcome.COMPLETED
+    assert not result.errors and result.facts.created_papers == 0
+    assert result.facts.details['provider_runs'][0]['candidates'] == 1
+
+
+@pytest.mark.parametrize('existing_owner', [False, True])
+def test_unified_wos_quarantines_conflicting_ut_before_creation_and_evidence_append(tmp_path, existing_owner):
+    import threading
+    from concurrent.futures import Future
+    from types import SimpleNamespace
+    from dataclasses import replace
+    from pathlib import Path
+    from safety_config_helpers import current_mapping_document
+    from allfold.config import AccessService, load_config
+    from allfold.persistence.user_state import load_user_state, compare_write_user_state
+    from allfold.application.browser_runtime import BrowserTaskLock
+    from allfold.application.coordinators.preparation_coordinator import PreparationPhase
+    from allfold.application.coordinators.wos_coordinator import WoSCoordinator
+    from allfold.application.integrated_run import run_integrated
+    from allfold.application.workspace import load_workspace
+    from allfold.persistence.materialize import materialize_papers
+    from allfold.persistence.discovery_evidence import read_discovery_evidence
+    from allfold.providers.wos import record_paper
+    from test_wos import tagged, record
+    path, _, _, _ = current_mapping_document(tmp_path)
+    path.write_text(path.read_text() + 'institution:\n  name: Test University\nenabled_providers: [wos]\n')
+    initial = load_user_state(path)
+    compare_write_user_state(path, replace(initial.state, access_services=(*initial.state.access_services,
+        AccessService.create('Web of Science', 'https://www.webofscience.com/'))), initial.revision)
+    settings = load_config(path)
+    workspace = settings.output_dir
+    rows = [record(doi='10.5555/a', ut='WOS:1'), record(doi='10.5555/b', ut='WOS:1'),
+            record(doi='10.5555/safe', ut='WOS:2')]
+    if existing_owner:
+        saved = record_paper(rows[0], settings.journals[0])
+        materialize_papers((saved,), workspace)
+        original = next((workspace / 'Papers').glob('*.md'))
+        original_bytes = original.read_bytes()
+    class Preparation:
+        def start(self, path, **kwargs): return self.snapshot()
+        def snapshot(self):
+            return SimpleNamespace(task_id='prep', generation=1, phase=PreparationPhase.COMPLETED,
+                authorization_pending=False, message='Ready', waiting_for_user=False)
+        def wos_handoff(self, *args): return 71
+        def join(self): pass
+    class Bridge:
+        connected = True
+        def execute(self, action, data, progress=None):
+            future = Future()
+            if action == 'wos_query':
+                value = dict(page_id=71, total=3, batch_limit=500)
+            else:
+                Path(data['filename']).write_text(tagged(rows))
+                value = dict(filename=data['filename'])
+            future.set_result(value)
+            return future
+    stage = WoSCoordinator(path, Preparation(), threading.Lock(), bridge=Bridge(), browser_lock=BrowserTaskLock())
+    result = run_integrated(path, wos_stage=stage.execute_stage, workflow_id='parent-run')
+    assert result.facts.created_papers == 1
+    assert result.facts.details['discovery_status'] == 'partial'
+    assert stage.task['writes'].conflicts == 2
+    papers = load_workspace(workspace).papers
+    assert {paper.external_ids.doi for paper in papers} == ({'10.5555/a', '10.5555/safe'} if existing_owner else {'10.5555/safe'})
+    safe = next(paper for paper in papers if paper.external_ids.doi == '10.5555/safe')
+    assert {record.external_ids.doi for record in read_discovery_evidence(workspace, safe.paper_id).records} == {'10.5555/safe'}
+    if existing_owner:
+        assert original.read_bytes() == original_bytes
+        assert not read_discovery_evidence(workspace, saved.id).records

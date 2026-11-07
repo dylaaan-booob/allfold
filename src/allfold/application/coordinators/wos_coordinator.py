@@ -121,7 +121,13 @@ class WoSCoordinator:
                    workflow_id=workflow_id, progress_callback=progress_callback)
         task = self.task
         facts = RunFacts.model_validate(task['result']['facts'])
-        records = tuple(task['evidence'])
+        from allfold.identifiers import strong_identifiers
+        # The native union has already diagnosed conflicting UT/DOI records.
+        # Quarantine their identities before both creation and durable handoff.
+        conflicted = {identity for key, paper in task['records'].papers.items()
+            if key in task['records'].conflicts for identity in strong_identifiers(paper.external_ids)}
+        records = tuple(record for record in task['evidence']
+            if not conflicted.intersection(strong_identifiers(record.external_ids)))
         problems = tuple(task['result']['issues'])
         status = ('cancelled' if cancel_event.is_set() else 'partial' if problems and records else
                   'failed' if problems else 'complete' if records else 'empty')

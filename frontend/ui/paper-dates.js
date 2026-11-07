@@ -17,10 +17,16 @@
       const key=item=>[item.year,item.month || 1,item.day || 1].map((part,i)=>String(part).padStart(i?2:4,'0')).join('-');
       return key(a).localeCompare(key(b)) || detail(a).localeCompare(detail(b));
     });
-    journal.replaceChildren(...events.map(item=>{
+    const rows=new Map();
+    for(const item of events){
+      const key=JSON.stringify([names[item.kind],value(item),item.provider || '',item.record_id || '',item.version || '']);
+      if(!rows.has(key))rows.set(key,{item,details:new Set()});
+      rows.get(key).details.add(detail(item));
+    }
+    journal.replaceChildren(...Array.from(rows.values(),({item,details})=>{
       const line=document.createElement('div');
       line.textContent=[names[item.kind],value(item),item.provider].filter(Boolean).join(' · ');
-      line.title=detail(item);return line;
+      line.title=Array.from(details).join('\n');return line;
     }));
     if(!events.length)journal.textContent='—';
   }};

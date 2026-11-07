@@ -61,7 +61,8 @@ def _ordinary_missing(records):
 def _journal_dates_missing(records):
     from allfold.paper_dates import collect_dates
     from allfold.models import EvidenceDateKind
-    journal = any(record.journal or record.publication_type == 'journal' for record in records)
+    journal = any(record.publication_type != 'preprint' and
+        (record.journal or record.publication_type == 'journal') for record in records)
     return journal and not (any(record.publication_date for record in records if record.publication_type != 'preprint')
         or any(item.kind in {EvidenceDateKind.ACCEPTED, EvidenceDateKind.PUBLISHED_ONLINE, EvidenceDateKind.PUBLISHED}
             and item.publication_type == 'journal' for item in collect_dates(records)))
@@ -161,10 +162,10 @@ def _bound_records(supplements, namespace, identifier):
     return accepted, pending
 
 
-def complete_metadata(
+def _completion_steps(
     records: Sequence[ProviderWorkEvidence], enabled_providers: Sequence[str], *,
     clients: Mapping[str, MetadataLookup], cancel_event: Event | None = None, request_cache: dict | None = None,
-) -> CompletionResult:
+):
     """Resolve local goals, schedule one needed target, then re-evaluate.
 
     Absorb all relations in each response before checking coverage. Cache each
@@ -178,36 +179,55 @@ def complete_metadata(
     attempted, fetched = set(), set()
     cache = request_cache if request_cache is not None else {}
     seen = {evidence_key(record) for record in output}
-    # A prior selected Paper may already have obtained the exact same native
-    # details or relation. Reuse positive facts without another lookup or alias
-    # authority; only records rooted in this Paper's known identities qualify.
-    identities = {key for record in output for key in _identities(record)}
-    for request, value in cache.items():
-        provider = request[0]
-        if provider not in enabled_providers or isinstance(value, Exception):
-            continue
-        for namespace, identifier in sorted(identities):
-            accepted, _ = _bound_records(value, namespace, identifier)
-            if accepted and not any((item.provider, item.namespace, item.identifier) == request for item in lookups):
-                lookups.append(CompletionLookup(*request, 'evidence'))
-                attempted.add(request)
-            for record in accepted:
-                key = evidence_key(record)
-                if key not in seen:
-                    output.append(record)
-                    seen.add(key)
+    def reuse_cached_evidence():
+        # A prior selected Paper may already have obtained the exact same native
+        # details or relation. Reuse positive facts without another lookup or alias
+        # authority; only records rooted in this Paper's known identities qualify.
+        identities = {key for record in output for key in _identities(record)}
+        for request, value in cache.items():
+            provider = request[0]
+            if provider not in enabled_providers or isinstance(value, Exception):
+                continue
+            for namespace, identifier in sorted(identities):
+                accepted, _ = _bound_records(value, namespace, identifier)
+                if accepted and not any((item.provider, item.namespace, item.identifier) == request for item in lookups):
+                    lookups.append(CompletionLookup(*request, 'evidence'))
+                    attempted.add(request)
+                for record in accepted:
+                    record = record.model_copy(update={'provenance': record.provenance.model_copy(
+                        update={'provider': provider, 'role': 'supplement'})})
+                    key = evidence_key(record)
+                    if key not in seen:
+                        output.append(record)
+                        seen.add(key)
     def result(cancelled=False):
         status = 'cancelled' if cancelled else first_public_status(output)
         if status not in {'recorded', 'conflict', 'cancelled'} and issues:
             status = 'failed'
         return CompletionResult(tuple(output), tuple(issues), tuple(lookups), cancelled, status)
+    started = False
     while True:
+        reuse_cached_evidence()
+        if cancel_event is not None and cancel_event.is_set():
+            return result(True)
+        if started and not any(key[0] in enabled_providers and key not in attempted and key not in fetched
+                   for key in _requests(output)):
+            return result()
+        yield tuple(output)
+        started = True
+        # Another Paper or the native batch may have supplied reusable facts
+        # since this Paper paused. Re-evaluate before dispatching its next step.
+        reuse_cached_evidence()
         if cancel_event is not None and cancel_event.is_set():
             return result(True)
         request = next((key for key in _requests(output) if key[0] in enabled_providers
             and key not in attempted and key not in fetched), None)
         if request is None:
             return result()
+        if request[0] == 'arxiv' and request not in cache and hasattr(clients.get('arxiv'), 'lookup_many'):
+            # Cached native responses can reveal another family too. Hand that
+            # target back to the next shared wave instead of a single-ID call.
+            continue
         provider, namespace, identifier = request
         attempted.add(request)
         client = clients.get(provider)
@@ -248,3 +268,56 @@ def complete_metadata(
             status = 'identity_mismatch' if isinstance(error, IdentityMismatch) else 'failed'
             issues.append(CompletionIssue(provider, identifier, str(error), status))
             lookups.append(CompletionLookup(*request, status))
+
+
+def complete_metadata_many(record_groups, enabled_providers, *, clients, cancel_event=None,
+                           request_cache=None, paper_guard=None):
+    """Yield completed Papers while batching native targets across response waves.
+
+    Each active Paper advances by at most one necessary response per wave. New
+    relations therefore join the next native batch before that Paper can query
+    another aggregator. The guard runs before each wave and each Paper step;
+    failures are isolated to that Paper and completed results can be saved early.
+    """
+    cache = request_cache if request_cache is not None else {}
+    active, snapshots = {}, {}
+    for key, records in record_groups.items():
+        steps = _completion_steps(records, enabled_providers, clients=clients,
+            cancel_event=cancel_event, request_cache=cache)
+        try:
+            snapshots[key] = next(steps)
+            active[key] = steps
+        except Exception as outcome:
+            yield key, outcome.value if isinstance(outcome, StopIteration) else outcome
+    while active:
+        for key in tuple(active):
+            try:
+                if paper_guard and not (cancel_event is not None and cancel_event.is_set()):
+                    paper_guard(key)
+            except Exception as error:
+                active.pop(key).close()
+                snapshots.pop(key)
+                yield key, error
+        prime_arxiv_cache(snapshots.values(), clients={provider: client for provider, client in clients.items()
+            if provider in enabled_providers}, request_cache=cache, cancel_event=cancel_event)
+        for key, steps in tuple(active.items()):
+            try:
+                if paper_guard and not (cancel_event is not None and cancel_event.is_set()):
+                    paper_guard(key)
+                snapshots[key] = next(steps)
+            except Exception as outcome:
+                active.pop(key).close()
+                snapshots.pop(key)
+                yield key, outcome.value if isinstance(outcome, StopIteration) else outcome
+
+
+def complete_metadata(
+    records: Sequence[ProviderWorkEvidence], enabled_providers: Sequence[str], *,
+    clients: Mapping[str, MetadataLookup], cancel_event: Event | None = None, request_cache: dict | None = None,
+) -> CompletionResult:
+    """Complete one Paper through the same native batch scheduler."""
+    _, result = next(complete_metadata_many({0: records}, enabled_providers, clients=clients,
+        cancel_event=cancel_event, request_cache=request_cache))
+    if isinstance(result, Exception):
+        raise result
+    return result

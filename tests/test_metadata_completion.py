@@ -275,3 +275,20 @@ def test_complete_preprint_only_work_needs_no_formal_journal_source():
     native = Lookup(error=AssertionError('A preprint-only work does not need a formal journal source'))
     result = complete_metadata((preprint,),('arxiv',),clients={'arxiv':native})
     assert not native.calls and result.first_public_status == 'recorded'
+
+
+def test_normalized_openalex_preprint_source_does_not_create_a_formal_date_goal():
+    from allfold.providers.integrated import DiscoveryClient, SourceScope
+    from allfold.models import EvidenceDate, EvidenceDateKind
+    import httpx
+    with DiscoveryClient('openalex', transport=httpx.MockTransport(lambda _: pytest.fail('No discovery request'))) as client:
+        preprint = client.normalize({'id': 'https://openalex.org/W123', 'doi': '10.48550/arxiv.2201.12345',
+            'title': 'Preprint', 'type': 'preprint', 'abstract_inverted_index': {'Abstract': [0]},
+            'authorships': [{'author': {'display_name': 'Author'}}]}, SourceScope('journal', 'arXiv'))
+    preprint = preprint.model_copy(update={'dates': (
+        EvidenceDate(kind=EvidenceDateKind.PREPRINT, year=2022, first_version=True,
+                     provider='arxiv', record_id='2201.12345', publication_type='preprint'),)})
+    assert preprint.journal == 'arXiv'
+    forbidden = Lookup(error=AssertionError('Preprint source names do not need formal journal dates'))
+    result = complete_metadata((preprint,), ('crossref', 'arxiv'), clients={'crossref': forbidden, 'arxiv': forbidden})
+    assert not result.lookups and result.first_public_status == 'recorded'

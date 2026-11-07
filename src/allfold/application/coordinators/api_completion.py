@@ -7,7 +7,7 @@ from uuid import UUID
 
 from allfold.application.api_completion import saved_paper_evidence, save_api_completion
 from allfold.application.history import observe
-from allfold.application.metadata_completion import complete_metadata, prime_arxiv_cache
+from allfold.application.metadata_completion import complete_metadata_many
 from allfold.application.paper_enrichment import read_paper_target
 from allfold.application.run_commit import capture_run_workspace, commit_run_workspace
 from allfold.integrations.openalex_credentials import read_credential
@@ -119,30 +119,42 @@ class ApiCompletion:
                         clients[provider].request_guard = request_guard
                     except (ValueError, OSError):
                         pass  # Traversal reports the unavailable adapter per requested lookup.
-                prime_arxiv_cache((records for records in prepared.values() if isinstance(records, tuple)),
-                    clients=clients, request_cache=cache, cancel_event=self._stop)
-                for target in targets:
+                by_id = {target.paper_id: target for target in targets}
+                def paper_guard(paper_id):
+                    target = by_id[paper_id]
+                    if read_paper_target(target.workspace, paper_id) != target:
+                        raise ContentChangedError('Paper changed before API completion')
+                    request_guard()
+                def completions():
+                    for paper_id, records in prepared.items():
+                        if not isinstance(records, tuple):
+                            yield paper_id, records
+                    yield from complete_metadata_many(
+                        {paper_id: records for paper_id, records in prepared.items() if isinstance(records, tuple)},
+                        config.completion_providers, clients=clients, cancel_event=self._stop,
+                        request_cache=cache, paper_guard=paper_guard)
+                for paper_id, completed in completions():
+                    target = by_id[paper_id]
                     result = dict(paper_id=str(target.paper_id), status='unchanged', saved_fields=[], lookups=[], issues=[])
                     write_stage = None
                     try:
+                        if completed is not None and not isinstance(completed, Exception):
+                            state = parse_paper_state(target.path, target.original)
+                            result.update(lookups=[asdict(item) for item in completed.lookups],
+                                issues=[asdict(item) for item in completed.issues],
+                                first_public_status=completed.first_public_status, first_public_recorded=bool(state.first_public_at))
                         if self._stop.is_set():
                             result['status'] = 'cancelled'
                             continue
-                        records = prepared[target.paper_id]
-                        if records is None:
+                        if completed is None:
                             result['status'] = 'excluded'
                             continue
-                        if isinstance(records, Exception):
-                            raise records
+                        if isinstance(completed, Exception):
+                            raise completed
                         current = read_paper_target(target.workspace, target.paper_id)
                         state = parse_paper_state(current.path, current.original)
                         if current != target:
                             raise ContentChangedError('Paper changed before API completion')
-                        request_guard()
-                        completed = complete_metadata(records,
-                            config.completion_providers, clients=clients, cancel_event=self._stop, request_cache=cache)
-                        result.update(lookups=[asdict(item) for item in completed.lookups], issues=[asdict(item) for item in completed.issues],
-                            first_public_status=completed.first_public_status, first_public_recorded=bool(state.first_public_at))
                         if completed.cancelled or self._stop.is_set():
                             result['status'] = 'cancelled'
                             continue

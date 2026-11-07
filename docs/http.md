@@ -82,9 +82,10 @@ is not vendored or modified.
 
 Journal Run and explicit API completion independently construct selected Provider
 clients over the shared HTTP policy, finite retries and operation-local host
-pacing. Run never constructs metadata-only clients or performs identifier
-lookups. API completion deduplicates each provider/namespace/identifier across
-its selection and reuses sufficient saved evidence. Temporary HTTP errors and
+pacing. Run uses lightweight candidate discovery and batched identifier lookups
+only for creation details of unknown candidates. It never completes existing
+Papers or constructs metadata-only clients. API completion deduplicates each
+provider/namespace/identifier across its selection and reuses sufficient saved evidence. Temporary HTTP errors and
 429 honor Retry-After, with cancellable waits and progress. Recognized HTML
 verification stops the provider client without browser fallback, route/identity
 switching or enabling an unselected source. Valid empty responses/known-ID 404
