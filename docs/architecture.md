@@ -164,8 +164,11 @@ including rediscovery of existing Papers. There is no raw-response archive or
 persistent task queue.
 
 The independent API-completion coordinator reads selected saved non-Rejected
-Papers plus handoff evidence, reuses the identifier traversal and HTTP adapters,
-and shares Run/workflow admission without dispatching browser operations. It
+Papers plus handoff evidence, consumes local facts before scheduling independent
+ordinary/date/First-public goals, and shares Run/workflow admission without
+browser operations. Known native preprint targets precede association discovery;
+coverage is recomputed after all relations in each response are absorbed. One
+operation owns the request cache and arXiv batches across selected Papers. It
 owns progress, cancellation, per-Paper outcomes, History and shutdown settlement.
 Network work holds no Workspace lock; short commits recheck exact Paper bytes,
 file/directory identity, status, configuration and cancellation. Only empty

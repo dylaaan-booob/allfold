@@ -31,6 +31,7 @@ OUTCOMES = frozenset({'completed', 'partial', 'failed', 'cancelled', 'interrupte
 STATISTICS = frozenset({'retrieved', 'created', 'updated', 'total', 'processed', 'failed', 'skipped',
     'confirmed', 'exported', 'no_effect', 'uncertain', 'cancelled', 'completed', 'opened',
     'needs_attention', 'eligible', 'matched', 'downloaded', 'enriched', 'unchanged', 'candidates',
+    'first_public_recorded', 'first_public_no_association', 'first_public_known_unresolved', 'first_public_conflict', 'first_public_failed', 'first_public_cancelled',
     'no_match', 'lookup_failed', 'identity_mismatch', 'evidence', 'papers', 'services', 'warnings', 'errors', 'excluded', 'duplicates', 'materialized', 'pdf_unverified'})
 REASONS = frozenset({'runtime_interrupted', 'connection_lost', 'cancelled', 'partial', 'failed',
     'needs_attention', 'result_unconfirmed', 'pdf_unverified', 'no_effect', 'configuration_changed',
@@ -111,7 +112,7 @@ def _details(value):
     for key in ('saved_fields', 'requested_fields'):
         fields = value.get(key)
         if isinstance(fields, list):
-            result[key] = sorted({field for field in fields if _enum(field, {'abstract', 'authors', 'publication_date', 'date_evidence', 'first_public_at', 'sources', 'author_keywords', 'journal', 'conference', 'conference_id', 'publication_type'})})
+            result[key] = sorted({field for field in fields if _enum(field, {'title', 'abstract', 'authors', 'publication_date', 'date_evidence', 'first_public_at', 'sources', 'author_keywords', 'journal', 'conference', 'conference_id', 'publication_type'})})
     service_statistics = value.get('service_statistics')
     if isinstance(service_statistics, list):
         summaries = []

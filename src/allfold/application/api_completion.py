@@ -43,7 +43,7 @@ def save_api_completion(target, records, *, operation_lock):
     if state.publication_date is None and paper.metadata.publication_date:
         contents = fill_publication_date(contents, paper.metadata.publication_date)
         fields.append('publication_date')
-    for field in ('first_public_at', 'journal', 'conference', 'conference_id', 'publication_type', 'author_keywords'):
+    for field in ('title', 'first_public_at', 'journal', 'conference', 'conference_id', 'publication_type', 'author_keywords'):
         if not getattr(state, field) and (value := getattr(paper.metadata, field)):
             contents = set_managed_value(contents, field, value)
             fields.append(field)

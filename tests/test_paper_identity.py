@@ -318,3 +318,18 @@ def test_duplicate_provider_snapshots_fill_missing_fields_without_overwriting():
         assert paper.metadata.title == 'Discovery title'
         assert paper.metadata.abstract == 'Retrieved abstract'
         assert len(paper.sources) == 1
+
+
+def test_formal_published_date_never_falls_back_to_linked_preprint_date():
+    from allfold.models import EvidenceDate, EvidenceDateKind
+    formal = ProviderWorkEvidence(provenance=MetadataSource(provider='crossref',record_id='10.5555/formal',
+        retrieved_at=datetime(2026,1,1,tzinfo=timezone.utc)),external_ids=ExternalIds(doi='10.5555/formal'),
+        title='Formal',journal='Journal',publication_type='journal',
+        dates=(EvidenceDate(kind=EvidenceDateKind.PUBLISHED_ONLINE,year=2026,month=1),))
+    preprint = ProviderWorkEvidence(provenance=MetadataSource(provider='arxiv',record_id='2201.12345',
+        retrieved_at=datetime(2026,1,1,tzinfo=timezone.utc)),external_ids=ExternalIds(arxiv='2201.12345'),
+        related_dois=('10.5555/formal',),title='Preprint',publication_type='preprint',publication_date='2022-01-02',
+        dates=(EvidenceDate(kind=EvidenceDateKind.PREPRINT,year=2022,month=1,day=2,first_version=True),))
+    paper,=canonicalize_records((formal,preprint)).papers
+    assert paper.metadata.publication_date is None
+    assert paper.metadata.first_public_at == '2022-01-02'

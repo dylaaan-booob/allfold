@@ -660,7 +660,8 @@ def _build_paper(
             conference=conference,
             conference_id=field("conference_id"),
             publication_type=ordered[0].publication_type or ("conference" if ordered[0].conference else "journal" if ordered[0].journal else None),
-            publication_date=next((_publication_date(record) for record in ordered if _publication_date(record)), None),
+            publication_date=next((_publication_date(record) for record in ordered
+                if _is_preprint(record) == _is_preprint(ordered[0]) and _publication_date(record)), None),
             abstract=abstract,
             author_keywords=field("author_keywords") or (),
         ),

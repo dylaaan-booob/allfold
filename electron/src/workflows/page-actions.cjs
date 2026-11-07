@@ -238,7 +238,13 @@ function detailPageAction(action,expiresAt) {
         dialog: 'app-export-out-details',
         range: 'input[name="outputMethodType"][value="fromRange"]',
         first: 'input[name="markFrom"]', last: 'input[name="markTo"]',
-        content: '#option-authorTitleSourceAbstract', export: 'button#exportButton'
+        content: '#option-customFieldSelection', editContent: 'button.custom-field-selection',
+        customDialog: 'app-custom-field-selection-dialog', export: 'button#exportButton',
+        customFields: [
+            'authorTitleSource_AUTHORS', 'authorTitleSource_TITLE', 'authorTitleSource_SOURCE',
+            'authorTitleSource_ISSN', 'authorTitleSource_PMID', 'abstractKeywordAddress_ABSTRACT',
+            'abstractKeywordAddress_DOCTYPE', 'abstractKeywordAddress_KEYWORDS'
+        ]
     });
     // Every page mutation is synchronous and checks a short action deadline, not an ownership lease.
     // No timer or observer is allowed to dispatch clicks after this call returns.
@@ -265,6 +271,45 @@ function detailPageAction(action,expiresAt) {
             if (el.value !== String(value) || el.validity && !el.validity.valid) throw new Error('input_value_mismatch');
         };
         const dialog = () => one(selectors.dialog);
+        const customDialogs = () => [...document.querySelectorAll(selectors.customDialog)]
+            .filter(root => getComputedStyle(root).visibility !== 'hidden'
+                && (visible(root) || visible(root.closest?.('mat-dialog-container[role="dialog"][aria-modal="true"]'))));
+        const customDialog = () => {
+            const roots = customDialogs();
+            if (roots.length !== 1) throw new Error('control_not_unique');
+            return roots[0];
+        };
+        const rangeLimit = root => {
+            const end = one(selectors.last, root);
+            // The accessible description identifies the per-export cap; max, when
+            // present, can instead describe a result position and is not a fallback.
+            const match = (end.getAttribute('aria-label') || '').match(/\bmaximum of ([\d,]+) records\b/i);
+            const limit = match && Number(match[1].replace(/,/g, ''));
+            if (!Number.isSafeInteger(limit) || limit <= 0) throw new Error('export_range_unverified');
+            return limit;
+        };
+        const customFields = () => {
+            const root = customDialog();
+            // Group controls have no underscore; their mixed state is not a leaf selection.
+            // These aria labels, unlike Angular's generated input IDs, were checked on live WoS.
+            const fields = [...root.querySelectorAll('input[type="checkbox"][aria-label]')]
+                .filter(input => input.getAttribute('aria-label').includes('_'));
+            const names = fields.map(input => input.getAttribute('aria-label'));
+            if (new Set(names).size !== fields.length || !selectors.customFields.every(name => names.includes(name)))
+                throw new Error('export_content_unverified');
+            return fields;
+        };
+        const verifyCustom = () => {
+            const fields = customFields();
+            if (fields.some(input => input.indeterminate || input.checked !== selectors.customFields.includes(input.getAttribute('aria-label'))))
+                throw new Error('export_content_unverified');
+            return {verified: true, fields: fields.filter(input => input.checked).map(input => input.getAttribute('aria-label')).sort()};
+        };
+        const buttonText = (root, text) => {
+            const found = nodes('button', root).filter(el => (el.innerText || el.textContent || '').replace(/\s+/g, ' ').trim() === text);
+            if (found.length !== 1) throw new Error('control_not_unique');
+            return found[0];
+        };
         const key = '__allfoldWoSDownload';
         try {
             if (op === 'cleanup') {
@@ -298,17 +343,44 @@ function detailPageAction(action,expiresAt) {
                 return {ready: Number.isSafeInteger(total), total};
             }
             if (op === 'controlReady') return {ready: nodes(selectors[args.control]).length === 1};
+            if (op === 'openContent') {
+                if (customDialogs().length) throw new Error('export_content_unverified');
+                click(one('wos-select button[role="combobox"]', dialog())); return {ok: true};
+            }
             if (op === 'contentReady') return {ready: nodes(selectors.content).length === 1};
-            if (op === 'selectContent') {click(one(selectors.content)); return {ok: true};}
+            if (op === 'selectContent') {
+                const edit = one(selectors.editContent, one(selectors.content));
+                if ((edit.innerText || edit.textContent || '').trim() !== 'Edit') throw new Error('export_content_unverified');
+                // Edit also selects Custom. Saving returns to the Plain Text range dialog.
+                click(edit); return {ok: true};
+            }
+            if (op === 'customReady') return {ready: customDialogs().length === 1
+                && customDialog().querySelectorAll('input[type="checkbox"][aria-label]').length > 0};
+            if (op === 'configureCustom') {
+                for (const input of customFields()) {
+                    const desired = selectors.customFields.includes(input.getAttribute('aria-label'));
+                    if (input.checked !== desired) {
+                        const label = input.labels && [...input.labels].find(visible);
+                        click(visible(input) ? input : label || input);
+                    }
+                }
+                return verifyCustom();
+            }
+            if (op === 'verifyCustom') return verifyCustom();
+            if (op === 'saveCustom') {
+                verifyCustom();
+                click(buttonText(customDialog(), 'Save selections'));
+                return {ok: true};
+            }
             if (op === 'exportMenu') {click(one(selectors.exportMenu)); return {ok: true};}
             if (op === 'plainText') {click(one(selectors.plainText)); return {ok: true};}
             if (op === 'dialog') {
+                if (customDialogs().length) return {ready: false};
                 const dialogs = nodes(selectors.dialog);
                 if (dialogs.length !== 1) return {ready: false};
                 const end = nodes(selectors.last, dialogs[0]);
                 if (end.length !== 1) return {ready: false};
-                const max = Number(end[0].getAttribute('max'));
-                return {ready: true, limit: Number.isSafeInteger(max) && max > 0 ? Math.min(max, 1000) : 1000};
+                return {ready: true, limit: rangeLimit(dialogs[0])};
             }
             if (op === 'configure') {
                 const root = dialog();
@@ -316,11 +388,10 @@ function detailPageAction(action,expiresAt) {
                 if (radios.length !== 1) throw new Error('control_not_unique');
                 const radio = radios[0];
                 const label = radio.labels && [...radio.labels].find(visible);
-                click(visible(radio) ? radio : label || one(selectors.range, root));
+                if (!radio.checked) click(visible(radio) ? radio : label || one(selectors.range, root));
                 if (!radio.checked) throw new Error('export_range_unverified');
                 set(one(selectors.first, root), args.first);
                 set(one(selectors.last, root), args.last);
-                click(one('[role="combobox"]', root));
                 return {ok: true};
             }
             if (op === 'arm') {
@@ -348,12 +419,13 @@ function detailPageAction(action,expiresAt) {
             if (op === 'export') {
                 const root = dialog();
                 if (!one(selectors.range, root).checked || one(selectors.first, root).value !== String(args.first)
-                        || one(selectors.last, root).value !== String(args.last)) throw new Error('export_range_unverified');
-                // Angular material exposes the selected option through its combobox.
-                const content = document.querySelector(selectors.content);
-                const selected = content?.getAttribute('aria-selected') === 'true';
+                        || one(selectors.last, root).value !== String(args.last)
+                        || args.last - args.first + 1 > rangeLimit(root)) throw new Error('export_range_unverified');
+                // The host has just reopened Edit and checked every leaf. The label alone
+                // cannot prove which eight fields were selected; also require that result.
                 const values = nodes('[role="combobox"]', root).map(el => (el.innerText || el.textContent || '').replace(/\s+/g, ' ').trim());
-                if (!selected && !values.some(value => value === 'Author, Title, Source, Abstract'))
+                if (args.customVerified !== true || customDialogs().length
+                        || !values.some(value => value === 'Custom selection (8)'))
                     throw new Error('export_content_unverified');
                 click(one(selectors.export, root));
                 return {ok: true};

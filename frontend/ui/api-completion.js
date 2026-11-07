@@ -12,12 +12,12 @@
       ? `${phase} · ${task.processed} / ${task.total} · ${Object.entries(counts).map(([key,count])=>`${labels[key]} ${count}`).join(' · ')}${task.activity?.label?' · '+task.activity.label:''}`:'');
     $('api-completion-results').replaceChildren(...(task?.results || []).map(result=>{
       const row=document.createElement('li'),summary=document.createElement('details'),heading=document.createElement('summary');
-      const firstPublic={recorded:'首版日期已记录',unresolved:'首版日期尚未确定'}[result.first_public_status];
+      const firstPublic={recorded:'首版日期已记录',no_association:'尚无预印本关联',known_unresolved:'已知预印本首版尚未确定',conflict:'首版日期证据冲突',failed:'首版日期查询失败',cancelled:'首版日期查询已取消'}[result.first_public_status];
       heading.textContent=[papers.get(result.paper_id)?.title || result.paper_id,labels[result.status] || result.status,firstPublic].filter(Boolean).join(' · ');
       const detail=document.createElement('p'),lookups={};
       for(const lookup of result.lookups || [])lookups[lookup.status]=(lookups[lookup.status] || 0)+1;
       const lookupLabels={no_match:'无匹配',failed:'请求失败',identity_mismatch:'身份不匹配',cancelled:'取消',evidence:'取得证据'};
-      detail.textContent=[result.message,result.warning,...Object.entries(lookups).map(([key,count])=>`${lookupLabels[key]} ${count}`),...(result.issues || []).map(item=>`${item.provider}: ${item.message}`)].filter(Boolean).join(' · ');
+      detail.textContent=[result.message,result.warning,result.first_public_recorded && result.first_public_status!=='recorded'?'已保存的 First public 保留':null,...Object.entries(lookups).map(([key,count])=>`${lookupLabels[key]} ${count}`),...(result.issues || []).map(item=>`${item.provider}: ${item.message}`)].filter(Boolean).join(' · ');
       summary.append(heading,detail);row.append(summary);return row;
     }));
     $('api-completion-start').disabled=active() || !$('api-completion-papers').querySelector('input:checked');

@@ -9,6 +9,7 @@ _STAGES = frozenset({'navigation', 'authentication', 'preparation', 'translation
 _STEPS = frozenset({'request', 'page_load', 'resource_ready', 'resource_filter', 'resource_search',
                     'visit_target', 'verification', 'ready', 'search', 'result', 'exportMenu',
                     'controlReady', 'plainText', 'dialog', 'configure', 'contentReady',
+                    'openContent', 'customReady', 'configureCustom', 'verifyCustom', 'saveCustom',
                     'selectContent', 'export', 'arm', 'links', 'download', 'sandbox_load', 'sandbox_init',
                     'translator', 'document_operation', 'dom_observer', 'hidden_iframe', 'oa_resolver',
                     'note_save', 'attachment_create', 'attachment_save'})

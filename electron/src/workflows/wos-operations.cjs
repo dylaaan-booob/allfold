@@ -79,6 +79,31 @@ async function step(browser,tab,op,args,signal,progress,timeout=10000,requestDea
     }
   }
 }
+async function configureCustom(run) {
+  const open=async()=>{
+    await run('openContent');
+    await run('contentReady');
+    await run('selectContent');
+    await run('customReady');
+  };
+  await open();
+  await run('configureCustom');
+  await run('saveCustom');
+  await run('dialog');
+  // Read back a new editor instance: neither the displayed count nor the
+  // just-clicked inputs establish that the saved selection retained the fields.
+  await open();
+  const verified=await run('verifyCustom');
+  if(verified.verified!==true || !Array.isArray(verified.fields)
+    || verified.fields.length!==SELECTORS.customFields.length
+    || new Set(verified.fields).size!==verified.fields.length
+    || !SELECTORS.customFields.every(name=>verified.fields.includes(name))) {
+    const error=new BrowserFailure('wos_dom','export_content_unverified');
+    error.diagnostic.step='verifyCustom';throw error;
+  }
+  await run('saveCustom');
+  return run('dialog');
+}
 async function wosQuery(browser,data,{signal,progress}) {
   return withTaskDeadline(signal,'wos_dom',(bounded,deadline)=>
     wosQueryWithinDeadline(browser,data,{signal:bounded,progress},deadline));
@@ -99,13 +124,14 @@ async function wosQueryWithinDeadline(browser,data,{signal,progress},deadline) {
   await run('search',{query:data.query});
   const result=await run('result',{},85000);
   if(!Number.isSafeInteger(result.total) || result.total<0)throw Error('invalid_result_count');
-  let batchLimit=1000;
+  let batchLimit=0;
   if(result.total) {
     await run('controlReady',{control:'exportMenu'});
     await run('exportMenu');
     await run('controlReady',{control:'plainText'});
     await run('plainText');
-    batchLimit=(await run('dialog')).limit;
+    await run('dialog');
+    batchLimit=(await configureCustom(run)).limit;
   }
   browser.wosDocument=await waitFor(()=>browser.snapshot(tab),signal,deadline,'wos_dom','result');
   if(!browser.documentCurrent(browser.wosDocument))throw new BrowserFailure('navigation','document_changed');
@@ -116,8 +142,8 @@ async function wosExport(browser,data,{signal,progress}) {
   browser.enterBusiness();
   if(!doc || doc.pageId!==data.page_id || !browser.documentCurrent(doc))
     throw new BrowserFailure('navigation','document_changed');
-  if(!Number.isInteger(data.first) || !Number.isInteger(data.last) || data.first<1
-    || data.last<data.first || data.last-data.first>=1000)throw Error('invalid_export_range');
+  if(!Number.isSafeInteger(data.first) || !Number.isSafeInteger(data.last) || data.first<1
+    || data.last<data.first)throw Error('invalid_export_range');
   const root=path.resolve(data.download_root),filename=path.resolve(data.filename);
   const relative=path.relative(root,filename);
   if(path.isAbsolute(relative) || relative.startsWith('..') || !/^allfold-wos\/[a-f0-9]+\/[a-f0-9]+\.txt$/.test(relative))
@@ -137,10 +163,11 @@ async function wosExport(browser,data,{signal,progress}) {
     await step(browser,tab,'plainText',{},signal,progress);
     dialog=await step(browser,tab,'dialog',{},signal,progress);
   }
-  if(data.last-data.first+1>dialog.limit)throw Error('export_range_exceeds_limit');
+  const run=(op,args={})=>step(browser,tab,op,args,signal,progress);
+  dialog=await configureCustom(run);
+  if(!Number.isSafeInteger(dialog.limit) || dialog.limit<=0
+    || data.last-data.first+1>dialog.limit)throw Error('export_range_exceeds_limit');
   await step(browser,tab,'configure',{first:data.first,last:data.last},signal,progress);
-  await step(browser,tab,'contentReady',{},signal,progress);
-  await step(browser,tab,'selectContent',{},signal,progress);
   const token=randomBytes(16).toString('hex');
   await step(browser,tab,'arm',{token},signal,progress);
   let item=null,terminal=null,ambiguous=false,finished=false;
@@ -158,7 +185,7 @@ async function wosExport(browser,data,{signal,progress}) {
   browser.partition.on('will-download',listener);signal.addEventListener('abort',cancel,{once:true});
   let timer;
   try {
-    await step(browser,tab,'export',{first:data.first,last:data.last},signal,progress);
+    await step(browser,tab,'export',{first:data.first,last:data.last,customVerified:true},signal,progress);
     let state,waiting=false;
     while(true) {
       // Without a DownloadItem, cancellation ends the wait immediately.

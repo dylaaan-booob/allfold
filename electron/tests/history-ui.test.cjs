@@ -97,3 +97,10 @@ test('unified Run history presents selected sources and native batch hints',asyn
   assert.match(html,/3 candidates/);assert.match(html,/1 new \/ 2 existing/);assert.match(html,/WoS Export 1\/2/);
   assert.match(html,/1 期刊清单提示/);
 });
+
+test('API history keeps first-public coverage independent of successful Paper updates',async()=>{
+  const {renderHistoryRecord}=await import('../../frontend/ui/history-view.js');
+  const html=renderHistoryRecord({kind:'api_completion',task_id:'completion',outcome:'completed',
+    statistics:{updated:3,first_public_recorded:1,first_public_known_unresolved:1,first_public_conflict:1}});
+  assert.match(html,/首版日期已记录/);assert.match(html,/已知首版未确定/);assert.match(html,/首版证据冲突/);
+});
