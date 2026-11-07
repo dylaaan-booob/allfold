@@ -33,11 +33,10 @@ are unused and preserved until a user explicitly resets that Workspace.
 New records use this fixed order, independent of request completion time:
 
 1. Formal records before records explicitly identified as preprints.
-2. WoS records before other providers within the same formal/preprint class.
-3. Records attributed to a monitored Journal before supplements.
-4. Discovery evidence before supplemental evidence.
-5. Crossref, Europe PMC, OpenAlex, arXiv, bioRxiv, medRxiv, then
-   other providers ordered by provider and record ID.
+2. WoS, PubMed, Crossref, Europe PMC, OpenAlex, arXiv, bioRxiv,
+   medRxiv, then other providers ordered by provider and record ID.
+3. Within a Provider, records attributed to a monitored Journal before supplements,
+   then Discovery evidence before supplemental evidence.
 
 Duplicate snapshots use deterministic serialized payload order excluding the
 retrieval timestamp. Retrieval time and field completeness do not score metadata.
@@ -47,6 +46,14 @@ Publication dates are selected within each source's bibliographic record before
 moving to another source. The primary DOI belongs to the selected formal record
 when one is present; a preprint DOI does not fill a DOI-free formal target.
 Only direct identifiers selected into `external_ids` survive for later deduplication.
+
+Run retains each final Discovery root and builds its ordinary fields and direct
+identifiers from verified formal records. Bound related versions contribute only
+date facts, First public and source provenance; they cannot supply a formal
+Paper's title, authors, primary DOI or PMID, become saved identity owners or
+create another Paper. Exact OpenAlex location bindings with a different top DOI
+remain association evidence. Independently saved preprints remain independent.
+Distinct relation notes on the same Provider record are retained in stable order.
 
 `journal` and `conference` are separate bibliographic source fields. Conference
 names do not create followed sources and are never assigned fake ISSNs. `publication_type` distinguishes journal, conference and

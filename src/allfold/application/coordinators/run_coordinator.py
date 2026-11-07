@@ -187,6 +187,14 @@ class RunCoordinator:
             self.wos_stage.cancel(self._task_id)
         return True
 
+    def shutdown(self):
+        self.cancel()
+
+    def join(self):
+        worker = self._worker
+        if worker is not None and worker is not threading.current_thread():
+            worker.join()
+
     def _release_slot(self):
         if self._slot_owned:
             self._slot_owned = False

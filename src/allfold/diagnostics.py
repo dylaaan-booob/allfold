@@ -31,6 +31,7 @@ OUTCOMES = frozenset({'completed', 'partial', 'failed', 'cancelled', 'interrupte
 STATISTICS = frozenset({'retrieved', 'created', 'updated', 'total', 'processed', 'failed', 'skipped',
     'confirmed', 'exported', 'no_effect', 'uncertain', 'cancelled', 'completed', 'opened',
     'needs_attention', 'eligible', 'matched', 'downloaded', 'enriched', 'unchanged', 'candidates',
+    'completion_targets', 'completion_requests', 'completion_date_facts_added', 'integrated_candidates', 'integrated_deduplicated', 'work_location_targets',
     'first_public_recorded', 'first_public_no_association', 'first_public_known_unresolved', 'first_public_conflict', 'first_public_failed', 'first_public_cancelled',
     'no_match', 'lookup_failed', 'identity_mismatch', 'evidence', 'papers', 'services', 'warnings', 'errors', 'excluded', 'duplicates', 'materialized', 'pdf_unverified'})
 REASONS = frozenset({'runtime_interrupted', 'connection_lost', 'cancelled', 'partial', 'failed',
@@ -85,7 +86,9 @@ def _details(value):
         result['parent_outcome'] = value['parent_outcome']
     if _enum(value.get('pdf_outcome'), {'confirmed', 'failed', 'unverified', 'not_requested', 'uncertain'}):
         result['pdf_outcome'] = value['pdf_outcome']
-    for key, allowed in (('result_status', {'completed', 'completed_with_notices', 'incomplete', 'capture_issues', 'failed', 'cancelled'}),
+    for key, allowed in (('discovery_status', {'complete','empty','partial','failed','cancelled'}),
+                         ('completion_status', {'complete','empty','partial','failed','cancelled'}),
+                         ('result_status', {'completed', 'completed_with_notices', 'incomplete', 'capture_issues', 'failed', 'cancelled'}),
                          ('coverage_status', {'complete', 'empty', 'partial', 'failed', 'unavailable', 'unknown'}),
                          ('batch_phase', {'idle', 'running', 'completed', 'stopped', 'paused', 'blocked'}),
                          ('mode', {'full', 'import_only'})):

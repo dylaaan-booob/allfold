@@ -166,6 +166,7 @@ class DiscoveryClient:
                 self._wait(delay)
             self.pacing_state[self.host] = time.monotonic()
             try:
+                self.request_count = getattr(self, 'request_count', 0) + 1
                 if self.provider == 'pubmed' and self.api_key:
                     # NCBI accepts form POST. Keep its optional secret out of
                     # request URLs (including standard HTTP client log lines).
@@ -242,10 +243,7 @@ class DiscoveryClient:
             return data
         raise DiscoveryError(f'{self.provider}: rate limited')
 
-    def discover_candidates(self, source, ast, from_date, to_date):
-        return self.discover(source, ast, from_date, to_date)
-
-    def discover(self, source, ast, from_date, to_date, *, lightweight=False):
+    def discover(self, source, ast, from_date, to_date):
         """Single-scope convenience seam; Discovery always keeps complete evidence."""
         return self.discover_many((source,), ast, from_date, to_date)[0]
 

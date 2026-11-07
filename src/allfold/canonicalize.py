@@ -194,6 +194,7 @@ def _record_key(record: ProviderWorkEvidence) -> tuple[str, str]:
 
 def _provider_label(provider: str) -> str:
     labels = {
+        "pubmed": "PubMed",
         "openalex": "OpenAlex",
         "crossref": "Crossref",
         "semantic_scholar": "Semantic Scholar",
@@ -585,6 +586,7 @@ def _deduplicate_sources(
             sources[key] = selected.model_copy(update={
                 "role": "discovery" if "discovery" in {existing.role, source.role} else selected.role,
                 "licenses": tuple(sorted(set(existing.licenses + source.licenses))),
+                "note": "; ".join(sorted({part for note in (existing.note, source.note) if note for part in note.split("; ") if part})) or None,
             })
     return tuple(sources[key] for key in sorted(sources))
 
@@ -628,13 +630,13 @@ def _build_paper(
         issues.append(CanonicalizationIssue("missing_identity", "provider evidence has no reliable identity", record_ids))
         return None
     order = {provider: rank for rank, provider in enumerate((
-        "wos", "crossref", "europe_pmc", "openalex", "arxiv", "biorxiv", "medrxiv"))}
+        "wos", "pubmed", "crossref", "europe_pmc", "openalex", "arxiv", "biorxiv", "medrxiv"))}
     ordered = sorted(evidence, key=lambda record: (
         _is_preprint(record),
-        record.provenance.provider.casefold() != "wos",
+        order.get(record.provenance.provider.casefold(), 99),
         not bool(record.monitor_journal_issns),
         record.provenance.role == "supplement",
-        order.get(record.provenance.provider.casefold(), 99), _record_key(record), evidence_key(record),
+        _record_key(record), evidence_key(record),
     ))
     def field(name):
         return next((getattr(record, name) for record in ordered if getattr(record, name)), None)

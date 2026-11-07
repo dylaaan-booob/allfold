@@ -113,12 +113,12 @@ class WoSCoordinator:
                 progress=dict(stage_label=task['stage'] if task else 'Run WoS', elapsed_text=f'{elapsed // 60}:{elapsed % 60:02}',
                               announcement_message=task['message'] if task else message))
 
-    def execute_stage(self, workspace_snapshot, *, cancel_event, workflow_id=None, progress_callback=None):
+    def execute_stage(self, workspace_snapshot, *, cancel_event, workflow_id=None, progress_callback=None, records_callback=None):
         """Run the native stage synchronously under the parent's existing Run slot."""
         from allfold.application.integrated_run import IntegratedDiscovery
         from allfold.providers.integrated import DiscoveryResult, SourceScope
         self.start(parent_snapshot=workspace_snapshot, cancel_event=cancel_event,
-                   workflow_id=workflow_id, progress_callback=progress_callback)
+                   workflow_id=workflow_id, progress_callback=progress_callback, records_callback=records_callback)
         task = self.task
         facts = RunFacts.model_validate(task['result']['facts'])
         from allfold.identifiers import strong_identifiers
@@ -137,8 +137,10 @@ class WoSCoordinator:
             task['journal_counts'].get(journal.key, 0), task['query']['total']) for journal in task['config'].journals)
         return IntegratedDiscovery(records, results, status, facts.details, facts.journals, facts.statistics)
 
-    def start(self, *, parent_snapshot=None, cancel_event=None, workflow_id=None, progress_callback=None):
+    def start(self, *, parent_snapshot=None, cancel_event=None, workflow_id=None, progress_callback=None, records_callback=None):
         with self.lock:
+            if cancel_event is not None and cancel_event.is_set():
+                raise InterruptedError('Run cancelled before native start')
             config, compiled, service, dates = self._configuration()
             if parent_snapshot is not None and (config != parent_snapshot.config or self.path.read_bytes() != parent_snapshot.configuration):
                 raise ContentChangedError('Configuration changed before WoS stage')
@@ -181,7 +183,7 @@ class WoSCoordinator:
                     self.run_slot.release()
                 raise ValueError('Another browser workflow is active')
             task = dict(id=workflow_id or secrets.token_hex(16), owner=owner, config=config,
-                parent_snapshot=parent_snapshot, progress_callback=progress_callback, evidence=[],
+                parent_snapshot=parent_snapshot, progress_callback=progress_callback, records_callback=records_callback, evidence=[],
                 compiled=compiled, service=service, dates=dates,
                 service_scope=saved.scope,
                 config_text=config_text, state_revision=state_revision,
@@ -228,7 +230,23 @@ class WoSCoordinator:
                 self.bridge.cancel_current()
             return True
 
+    def check_dispatch_authority(self, cancel_event):
+        # Disconnect revokes new HTTP dispatch, but deliberately leaves the
+        # native Future and Browser owner to normal settlement/shutdown.
+        task = self.task
+        if task and task['cancelled'] is cancel_event and task['status'] == 'RUNNING' and not self.bridge.connected:
+            task['history_interrupted'] = True
+            cancel_event.set()
+
     def _current(self, task):
+        try:
+            self._assert_current(task)
+        except ContentChangedError:
+            if task.get('parent_snapshot') is not None:
+                task['cancelled'].set()
+            raise
+
+    def _assert_current(self, task):
         if task.get('parent_snapshot') is not None:
             from allfold.application.run_commit import commit_run_workspace
             with commit_run_workspace(task['parent_snapshot'], cancel_event=task['cancelled']):
@@ -344,6 +362,7 @@ class WoSCoordinator:
 
     def _electron_progress(self, task, value):
         with self.lock:
+            self.check_dispatch_authority(task['cancelled'])
             if not task['cancelled'].is_set():
                 task['waiting_for_user'] = value.get('waiting_for_user') is True
                 task['message'] = 'Complete login or verification in BROWSER' if task['waiting_for_user'] else task['stage']
@@ -353,7 +372,7 @@ class WoSCoordinator:
         callback = task.get('progress_callback')
         if callback:
             from allfold.progress import ProgressEvent, ActivityUpdate, ActivityKind
-            callback(ProgressEvent(activity=ActivityUpdate(kind=ActivityKind.WORKING,
+            callback(ProgressEvent(activity=ActivityUpdate(kind=ActivityKind.WAITING if task.get('waiting_for_user') else ActivityKind.WORKING,
                 operation='wos', source='wos', label=task['stage'], detail=task['message'])))
 
     def _run(self, task):
@@ -417,8 +436,17 @@ class WoSCoordinator:
                     if result.get('filename') != str(filename):
                         raise ValueError('Export path did not match the issued batch')
                     task['download_root'] = root
+                    previous = len(task['evidence'])
                     batch['issues'] = self._consume_export(task, batch, str(filename))
                     batch['complete'] = not batch['issues']
+                    if batch['complete'] and task.get('records_callback'):
+                        from allfold.identifiers import strong_identifiers
+                        conflicted = {identity for key, paper in task['records'].papers.items()
+                            if key in task['records'].conflicts for identity in strong_identifiers(paper.external_ids)}
+                        verified = tuple(record for record in task['evidence'][previous:]
+                            if not conflicted.intersection(strong_identifiers(record.external_ids)))
+                        if verified:
+                            task['records_callback'](verified)
                     task['issues'].extend(f'{first}-{last}: {issue}' for issue in batch['issues'])
                     task['query']['next_first'] = last + 1
                     if batch['issues']:
