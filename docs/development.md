@@ -69,6 +69,13 @@ show their own windows, and Electron's
 requires the containing window to have focus. Concurrent fixture processes can
 otherwise steal that focus and invalidate mouse/keyboard acceptance.
 
+Shipped Kept/Run and Enrich Browser acceptance use separate fixtures. Enrich's target
+Paper is part of its initial Workspace, and its readiness check verifies that Paper
+and enabled controls. It does not replace synthetic Workspace data after finishing
+Run. Both fixtures keep their task/page assertions and report Workspace reads,
+candidate IDs and renderer/native state on failure. The normal `npm test` glob
+includes both; no CI skip or workflow-specific opt-in is needed.
+
 ### Workbench manual acceptance reference
 
 ARRAY/Journals rails, Sidebar allocation, the isolated rendered DOM test and remaining pointer/touch/low-height checks are documented in [workspace layout](workspace-layout.md). The full Electron test command includes its hidden-window fixture after UI build; it uses synthetic HTTP responses and a temporary profile.

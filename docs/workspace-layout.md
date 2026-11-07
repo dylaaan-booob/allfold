@@ -66,8 +66,8 @@ The following real-UI checks are a reference for changes affecting those behavio
 
 ## Task Browser synthetic acceptance
 
-Two real Electron fixtures use temporary profiles and loopback HTTP pages. Both reject
-non-fixture HTTP(S) requests; neither starts Python, accesses an account/institution,
+Three real Electron fixtures use temporary profiles and loopback HTTP pages. All reject
+non-fixture HTTP(S) requests; none starts Python, accesses an account/institution,
 uses a real CAPTCHA provider or saves to Zotero.
 
 - `browser-presentation-dom.fixture.cjs` exercises production Runtime, Presentation,
@@ -80,17 +80,30 @@ uses a real CAPTCHA provider or saves to Zotero.
   and acknowledgement, and restored fullscreen Run WoS with exact task-page handoff.
   Its test runs with both macOS scrolling-only and always-visible scrollbars through
   process-local Cocoa arguments; it does not change the system preference.
+- `enrich-workspace-dom.fixture.cjs` independently loads the built UI with the target
+  Paper present in every initial Workspace response. It waits for that Paper and
+  usable Reader controls before starting Enrich, then checks background layout,
+  task-bound Browser entry/return, real verification input, retained Page/Session/Cookie,
+  focus and cancel controls, one start/zero cancels and completion refresh. It runs
+  both scrollbar modes without depending on the preceding Kept/Run scenarios.
+
+The shipped Kept/Run and Enrich fixtures report candidate IDs, target-Paper presence,
+Workspace readiness/busy state, dialogs/focus/navigation, in-flight fixture Workspace
+responses, recent request routes and native presentation state on failure. A renderer
+inspection failure is recorded without replacing the original test error.
 
 Run after the normal UI build:
 
 ```sh
-node --test --test-concurrency=1 electron/tests/browser-presentation-dom.test.cjs electron/tests/browser-workspaces-dom.test.cjs
+node --test --test-concurrency=1 electron/tests/browser-presentation-dom.test.cjs electron/tests/browser-workspaces-dom.test.cjs electron/tests/enrich-workspace-dom.test.cjs
 ALLFOLD_BROWSER_SCREENSHOTS=/tmp/allfold-browser-acceptance node --test electron/tests/browser-presentation-dom.test.cjs
 ALLFOLD_BROWSER_WORKSPACES_SCREENSHOTS=/tmp/allfold-browser-workspaces node --test electron/tests/browser-workspaces-dom.test.cjs
+ALLFOLD_ENRICH_WORKSPACE_SCREENSHOTS=/tmp/allfold-enrich-workspace node --test electron/tests/enrich-workspace-dom.test.cjs
 ```
 
 The optional directories contain paired trusted-host and native-page PNGs and
-`measurements.json` (the shipped fixture separates `WhenScrolling` and `Always`).
+`measurements.json` for Browser geometry; the shipped Kept/Run and independent Enrich
+fixtures separate `WhenScrolling` and `Always` screenshot directories.
 Electron host `capturePage()` excludes child Views; `-page.png`
 records the actual webpage viewport separately. The fixtures briefly show their own
 Window because macOS supplies no usable native child-View compositor surface for real
