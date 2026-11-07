@@ -80,3 +80,30 @@ def test_concurrent_identical_exact_batches_share_one_request_and_cache_empty():
         assert first.result().records == second.result().records
         assert client.cached_lookup('doi','10.5555/missing') == ()
     assert len(calls) == 1
+
+
+def test_exact_pagination_failure_keeps_verified_records_and_caches_missing_target_failure():
+    calls = []
+    with DiscoveryClient('openalex',api_key='synthetic-key',interval=0,transport=httpx.MockTransport(lambda request:
+        calls.append(request) or httpx.Response(200,json={'meta':{'count':2},'results':[work(2)]}))) as client:
+        first = client.lookup_many('doi',['10.5555/1','10.5555/2'])
+        repeated = client.lookup_many('doi',['10.5555/1','10.5555/2'])
+        assert isinstance(client.cached_lookup('doi','10.5555/1'),Exception)
+    assert first.status == repeated.status == 'partial'
+    assert [record.external_ids.doi for record in first.records] == ['10.5555/2']
+    assert first.records == repeated.records and len(calls)==1
+    assert any('pagination ended' in value for value in first.limitations)
+
+
+def test_truncated_locations_with_wrong_singleton_identity_fail_without_binding_or_replay():
+    calls = []
+    def response(request):
+        calls.append(request)
+        if request.url.path == '/works/W1':
+            return httpx.Response(200,json=work(2))
+        return httpx.Response(200,json={'meta':{'count':1},'results':[work(1,locations_count=2)]})
+    with DiscoveryClient('openalex',interval=0,transport=httpx.MockTransport(response)) as client:
+        first = client.lookup_many('doi',['10.5555/1'])
+        repeated = client.lookup_many('doi',['10.5555/1'])
+    assert first.status == repeated.status == 'failed' and not first.records and not first.bindings
+    assert 'another Work identity' in first.limitations[0] and len(calls)==2
