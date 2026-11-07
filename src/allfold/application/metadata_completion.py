@@ -54,9 +54,31 @@ def _identities(record):
     return set(related_identifiers(record))
 
 
-def _ordinary_missing(records):
+def formal_records(records, root_ids):
+    """Expand direct formal identities only; declared relations never own a root."""
+    pending = [record for record in records if record.publication_type != 'preprint']
+    accepted, keys = [], set(root_ids)
+    while pending:
+        matches = [record for record in pending if keys & strong_identifiers(record.external_ids)]
+        if not matches:
+            break
+        for record in matches:
+            pending.remove(record)
+            accepted.append(record)
+            keys.update(strong_identifiers(record.external_ids))
+    return tuple(accepted)
+
+
+def _ordinary_records(records, root_ids):
+    return formal_records(records, root_ids) if root_ids is not None else records
+
+
+def _ordinary_missing(records, root_ids=None):
+    records = _ordinary_records(records, root_ids)
     formal = any(record.publication_type in {'journal', 'conference'} or
         record.publication_type != 'preprint' and (record.journal or record.conference) for record in records)
+    if formal:
+        records = tuple(record for record in records if record.publication_type != 'preprint')
     source_present = any(record.publication_type != 'preprint' and (record.journal or record.conference)
         for record in records) if formal else any(record.journal or record.conference or
         record.publication_type == 'preprint' for record in records)
@@ -75,11 +97,13 @@ def _journal_dates_missing(records):
     return journal and not required.issubset(present)
 
 
-def _native_targets(records):
+def _native_targets(records, root_ids=None):
     from allfold.paper_dates import preprint_date_coverage, preprint_identity, preprint_query_refs
     _, answered = preprint_date_coverage(records)
     first_public_saved = any(record.first_public_at for record in records)
-    ordinary = _ordinary_missing(records)
+    # A related preprint cannot fill a formal root's ordinary fields. Its native
+    # request is needed only for independent version proof in that case.
+    ordinary = root_ids is None and _ordinary_missing(records)
     targets = set()
     for record in records:
         for ns, value in _identities(record):
@@ -105,13 +129,15 @@ def _native_targets(records):
     return sorted(targets)
 
 
-def _requests(records, *, allow_formal_preprint_reverse=True):
+def _requests(records, *, allow_formal_preprint_reverse=True, root_ids=None):
     from allfold.paper_dates import preprint_date_coverage, known_preprint_families, preprint_identity
-    yield from _native_targets(records)
+    yield from _native_targets(records, root_ids)
     complete, answered = preprint_date_coverage(records)
     families = known_preprint_families(records)
     first_public_saved = any(record.first_public_at for record in records)
-    metadata = _ordinary_missing(records) or _journal_dates_missing(records)
+    ordinary = _ordinary_missing(records, root_ids)
+    preprint_ordinary = ordinary and root_ids is None
+    metadata = ordinary or _journal_dates_missing(records)
     if (complete or first_public_saved) and not metadata:
         return
     preprint_pmids = {ref.record_id for record in records for ref in record.related_ids
@@ -119,12 +145,12 @@ def _requests(records, *, allow_formal_preprint_reverse=True):
     preprint_pmids.update(value for record in records if record.publication_type == 'preprint'
         for ns, value in strong_identifiers(record.external_ids) if ns == 'pmid')
     for pmid in sorted(preprint_pmids):
-        if _ordinary_missing(records) or not first_public_saved and preprint_identity('pmid', pmid) not in answered:
+        if preprint_ordinary or not first_public_saved and preprint_identity('pmid', pmid) not in answered:
             yield 'pubmed', 'pmid', pmid, 'fetch-preprint'
-    formal_pmids = sorted({value for record in records if record.publication_type != 'preprint'
+    formal_pmids = sorted({value for record in _ordinary_records(records, root_ids) if record.publication_type != 'preprint'
         for ns, value in strong_identifiers(record.external_ids) if ns == 'pmid'})
     for pmid in formal_pmids:
-        yield 'pubmed', 'pmid', pmid, 'fetch' if _ordinary_missing(records) else 'summary'
+        yield 'pubmed', 'pmid', pmid, 'fetch' if ordinary else 'summary'
         if not first_public_saved:
             yield 'europe_pmc', 'pmid', pmid, 'preprints'
     # Each base API contributes independent evidence. Presence of Published
@@ -141,7 +167,7 @@ def _requests(records, *, allow_formal_preprint_reverse=True):
                     break
             targets.update(key for key in identities - primary if key[0] in LOOKUP_NAMESPACES[provider])
         for ns, value in sorted(targets, key=lambda key: (preprint_identity(*key) in families, key)):
-            if not _ordinary_missing(records) and preprint_identity(ns, value) in answered:
+            if not preprint_ordinary and preprint_identity(ns, value) in answered:
                 continue
             if provider == 'openalex' and any(record.provenance.provider == 'openalex'
                     and (ns, value) in strong_identifiers(record.external_ids) for record in records):
@@ -241,7 +267,7 @@ def _batch_lookup(client, provider, namespace, identifiers, capability, cancel_e
 
 
 def prime_completion_cache(record_groups, enabled_providers, *, clients, request_cache,
-                           cancel_event=None, allow_formal_preprint_reverse=True):
+                           cancel_event=None, allow_formal_preprint_reverse=True, ordinary_root_ids=None):
     """Collect exact targets across Papers and run independent base API batches.
 
     Responses, no-match and failures are operation-local. Capability keys keep
@@ -249,10 +275,11 @@ def prime_completion_cache(record_groups, enabled_providers, *, clients, request
     request. Native version targets are scheduled in later shared waves.
     """
     batches = {}
-    for records in record_groups:
-        native_only = (not _ordinary_missing(records) and not _journal_dates_missing(records)
-            and any(target not in request_cache for target in _native_targets(records)))
-        for request in _requests(records, allow_formal_preprint_reverse=allow_formal_preprint_reverse):
+    for key, records in record_groups.items():
+        root_ids = ordinary_root_ids.get(key) if ordinary_root_ids is not None else None
+        native_only = (not _ordinary_missing(records, root_ids) and not _journal_dates_missing(records)
+            and any(target not in request_cache for target in _native_targets(records, root_ids)))
+        for request in _requests(records, allow_formal_preprint_reverse=allow_formal_preprint_reverse, root_ids=root_ids):
             provider, namespace, identifier = request[:3]
             if native_only and not (provider == 'crossref' and len(request) > 3 and request[3] == 'preprints'):
                 continue  # Settle native proof, but first collect independent explicit reverse relations.
@@ -283,12 +310,13 @@ def prime_completion_cache(record_groups, enabled_providers, *, clients, request
                 request_cache[request] = value
 
 
-def prime_arxiv_cache(record_groups, *, clients, request_cache, cancel_event=None):
+def prime_arxiv_cache(record_groups, *, clients, request_cache, cancel_event=None, ordinary_root_ids=None):
     """Batch needed known IDs across selected Papers for this operation."""
     client = clients.get('arxiv')
     if client is None or not hasattr(client, 'lookup_many'):
         return
-    ids = sorted({identifier for records in record_groups for provider, ns, identifier in _native_targets(records)
+    ids = sorted({identifier for key, records in record_groups.items() for provider, ns, identifier in _native_targets(
+        records, ordinary_root_ids.get(key) if ordinary_root_ids is not None else None)
         if provider == 'arxiv' and (provider, ns, identifier) not in request_cache})
     if not ids or cancel_event is not None and cancel_event.is_set():
         return
@@ -318,7 +346,7 @@ def bind_records(supplements, identities):
 def _completion_steps(
     records: Sequence[ProviderWorkEvidence], enabled_providers: Sequence[str], *,
     clients: Mapping[str, MetadataLookup], cancel_event: Event | None = None, request_cache: dict | None = None,
-    allow_formal_preprint_reverse=True,
+    allow_formal_preprint_reverse=True, ordinary_root_ids=None,
 ):
     """Resolve local goals, schedule one needed target, then re-evaluate.
 
@@ -374,7 +402,7 @@ def _completion_steps(
             else 'failed' if issues else 'empty' if lookups and all(item.status == 'no_match' for item in lookups) else 'complete')
         return CompletionResult(tuple(output), tuple(issues), tuple(lookups), cancelled, status, completion_status)
     def requests():
-        for key in _requests(output, allow_formal_preprint_reverse=allow_formal_preprint_reverse):
+        for key in _requests(output, allow_formal_preprint_reverse=allow_formal_preprint_reverse, root_ids=ordinary_root_ids):
             if len(key) > 3 and key[0] == 'crossref' and key[3] == 'preprints' and not hasattr(clients.get('crossref'), 'lookup_preprints'):
                 continue
             yield key
@@ -453,7 +481,7 @@ def _completion_steps(
 
 
 def complete_metadata_many(record_groups, enabled_providers, *, clients, cancel_event=None,
-                           request_cache=None, paper_guard=None, allow_formal_preprint_reverse=True):
+                           request_cache=None, paper_guard=None, allow_formal_preprint_reverse=True, ordinary_root_ids=None):
     """Yield completed Papers while batching native targets across response waves.
 
     Each active Paper advances by at most one necessary response per wave. New
@@ -462,10 +490,20 @@ def complete_metadata_many(record_groups, enabled_providers, *, clients, cancel_
     failures are isolated to that Paper and completed results can be saved early.
     """
     cache = request_cache if request_cache is not None else {}
+    for client in clients.values():
+        if hasattr(client, 'begin_completion'):
+            client.begin_completion()
+    # Independent completion starts from the selected Paper. Run supplies the
+    # original Discovery roots because its prepared groups already contain links.
+    if ordinary_root_ids is None:
+        ordinary_root_ids = {key: {identity for record in records for identity in strong_identifiers(record.external_ids)}
+            for key, records in record_groups.items() if any(record.publication_type != 'preprint' and
+                (record.journal or record.conference or record.publication_type in {'journal', 'conference'}) for record in records)}
     active, snapshots = {}, {}
     for key, records in record_groups.items():
         steps = _completion_steps(records, enabled_providers, clients=clients,
-            cancel_event=cancel_event, request_cache=cache, allow_formal_preprint_reverse=allow_formal_preprint_reverse)
+            cancel_event=cancel_event, request_cache=cache, allow_formal_preprint_reverse=allow_formal_preprint_reverse,
+            ordinary_root_ids=ordinary_root_ids.get(key))
         try:
             snapshots[key] = next(steps)
             active[key] = steps
@@ -480,10 +518,10 @@ def complete_metadata_many(record_groups, enabled_providers, *, clients, cancel_
                 active.pop(key).close()
                 snapshots.pop(key)
                 yield key, error
-        prime_completion_cache(snapshots.values(), enabled_providers, clients=clients, request_cache=cache,
-            cancel_event=cancel_event, allow_formal_preprint_reverse=allow_formal_preprint_reverse)
-        prime_arxiv_cache(snapshots.values(), clients={provider: client for provider, client in clients.items()
-            if provider in enabled_providers}, request_cache=cache, cancel_event=cancel_event)
+        prime_completion_cache(snapshots, enabled_providers, clients=clients, request_cache=cache,
+            cancel_event=cancel_event, allow_formal_preprint_reverse=allow_formal_preprint_reverse, ordinary_root_ids=ordinary_root_ids)
+        prime_arxiv_cache(snapshots, clients={provider: client for provider, client in clients.items()
+            if provider in enabled_providers}, request_cache=cache, cancel_event=cancel_event, ordinary_root_ids=ordinary_root_ids)
         for key, steps in tuple(active.items()):
             try:
                 if paper_guard and not (cancel_event is not None and cancel_event.is_set()):

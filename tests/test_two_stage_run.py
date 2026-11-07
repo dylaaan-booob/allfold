@@ -2,6 +2,8 @@ from dataclasses import replace
 from datetime import datetime, timezone
 from threading import Event, Thread
 
+import pytest
+
 from allfold.application.integrated_run import run_integrated, IntegratedDiscovery
 from allfold.models import ExternalIds, MetadataSource, ProviderWorkEvidence
 from allfold.providers.integrated import DiscoveryResult, SourceScope
@@ -99,6 +101,150 @@ def test_completion_failure_keeps_discovered_paper_and_reports_partial(tmp_path)
     result=run_integrated(path,client_factory=client_for((evidence(),)),completion_factory=Failure)
     assert result.facts.created_papers==1 and result.facts.details['completion_status']=='partial'
     assert build_run_result_summary(result)['coverage_status']=='partial'
+
+
+@pytest.mark.parametrize('linked_type', ['preprint', 'journal'])
+def test_formal_abstract_gap_fetches_pubmed_despite_complete_bound_preprint(tmp_path, linked_type):
+    import httpx
+    from allfold.application.workspace import load_workspace
+    from allfold.models import Author, EvidenceDate, EvidenceDateKind, ProviderRecordRef
+    from allfold.providers.integrated import DiscoveryClient
+    from test_pubmed_discovery import article
+    path, _ = config(tmp_path)
+    path.write_text(path.read_text() + 'enabled_providers: [wos]\n')
+    formal = record('wos', '10.1093/nar/gkag979').model_copy(update={
+        'abstract': None, 'authors': (Author(name='WoS One'), Author(name='WoS Two')),
+        'external_ids': ExternalIds(doi='10.1093/nar/gkag979', pmid='42908400')})
+    anchor = ProviderWorkEvidence(publication_type='journal', external_ids=ExternalIds(doi='10.1093/nar/gkag979'),
+        related_ids=(ProviderRecordRef(provider='openalex', record_id='W1'),),
+        provenance=MetadataSource(provider='openalex', record_id='W1:binding', retrieved_at=datetime.now(timezone.utc)))
+    preprint = ProviderWorkEvidence(title='Preprint title', abstract='Preprint abstract',
+        authors=(Author(name='Preprint Author'),), publication_type=linked_type,
+        external_ids=ExternalIds(doi='10.5555/preprint', pmid='42239170', arxiv='2201.12345', openalex='W1'),
+        provenance=MetadataSource(provider='openalex', record_id='W1', retrieved_at=datetime.now(timezone.utc)))
+    native_proof = ProviderWorkEvidence(publication_type='preprint',
+        external_ids=ExternalIds(doi='10.5555/preprint', pmid='42239170', arxiv='2201.12345'),
+        provenance=MetadataSource(provider='arxiv', record_id='2201.12345', retrieved_at=datetime.now(timezone.utc)),
+        dates=(EvidenceDate(kind=EvidenceDateKind.PREPRINT, year=2022, month=1, day=2,
+            first_version=True, publication_type='preprint'),))
+    capabilities, paths, native_calls = [], [], []
+    def response(request):
+        paths.append(request)
+        if request.url.path.endswith('efetch.fcgi'):
+            return httpx.Response(200, text='<PubmedArticleSet>' + article(
+                '42908400', '0006-341X', '10.1093/nar/gkag979') + '</PubmedArticleSet>')
+        return httpx.Response(200, json={'result': {'uids': ['42908400'], '42908400': {'uid': '42908400'}}})
+    class Pubmed(DiscoveryClient):
+        def lookup_many(self, namespace, ids, **kwargs):
+            capabilities.append(kwargs.get('capability'))
+            return super().lookup_many(namespace, ids, **kwargs)
+    class Helper(EmptyCompletion):
+        def lookup_many(self, namespace, ids, **kwargs):
+            if self.provider in {'arxiv', 'biorxiv', 'medrxiv'}:
+                native_calls.append((self.provider, tuple(ids)))
+            if self.provider == 'openalex':
+                return {identity: (anchor, preprint, native_proof) for identity in ids}
+            return super().lookup_many(namespace, ids, **kwargs)
+        def lookup(self, namespace, identity):
+            if self.provider in {'arxiv', 'biorxiv', 'medrxiv'}:
+                native_calls.append((self.provider, identity))
+            return ()
+    def factory(provider, **kwargs):
+        kwargs.pop('mailto', None)
+        return Pubmed(provider, transport=httpx.MockTransport(response), interval=0, **kwargs) if provider == 'pubmed' else Helper(provider)
+    def wos(*args, **kwargs):
+        return IntegratedDiscovery((formal,), (DiscoveryResult('wos', SourceScope('journal', 'Test'),
+            'complete', (formal,), candidates=1),), 'complete')
+    result = run_integrated(path, completion_factory=factory, wos_stage=wos)
+    created, = load_workspace(tmp_path / 'workspace').papers
+    assert capabilities == ['fetch'] and all(request.url.path.endswith('efetch.fcgi') for request in paths)
+    assert [request.url.params['id'] for request in paths] == ['42908400']
+    assert result.facts.created_papers == 1 and created.abstract == 'METHODS: Study abstract'
+    assert created.title == 'Formal 10.1093/nar/gkag979' and list(created.authors) == ['WoS One', 'WoS Two']
+    assert created.external_ids.doi == '10.1093/nar/gkag979' and created.external_ids.pmid == '42908400'
+    assert created.external_ids.arxiv is None and created.external_ids.openalex is None
+    assert created.first_public_at == '2022-01-02'
+    assert native_calls == []
+
+
+@pytest.mark.parametrize('provider', ['arxiv', 'biorxiv', 'medrxiv', 'europe_pmc'])
+@pytest.mark.parametrize('cancel_native', [False, True])
+def test_completion_http_activity_distinguishes_base_pages_and_blocked_native_verification(tmp_path, provider, cancel_native):
+    import httpx
+    from allfold.models import ProviderRecordRef
+    from allfold.progress import ProgressStage
+    from allfold.providers.supplemental import SupplementalClient
+    path, _ = config(tmp_path)
+    path.write_text(path.read_text() + 'enabled_providers: [wos]\n')
+    native_id = {'arxiv': '2201.12345', 'europe_pmc': 'PPR:PPR1'}.get(provider, '10.1101/123456')
+    rows = tuple(record('wos', doi, related_ids=(ProviderRecordRef(provider=provider, record_id=native_id,
+        relation='preprint'),)) for doi in ['10.5555/one', '10.5555/two'])
+    entered, release, cancel = Event(), Event(), Event()
+    events, calls, results, failures = [], [], [], []
+    def response(request):
+        calls.append(request)
+        if request.url.host == 'api.crossref.org':
+            if 'relation.type:' in request.url.params['filter']:
+                return httpx.Response(200, json={'message': {'total-results': 0, 'items': []}})
+            doi = '10.5555/one' if request.url.params['cursor'] == '*' else '10.5555/two'
+            return httpx.Response(200, json={'message': {'total-results': 2, 'next-cursor': 'page-two',
+                'items': [{'DOI': doi, 'type': 'journal-article', 'title': [doi]}]}})
+        entered.set()
+        assert release.wait(5), 'Test must release the native response'
+        if provider == 'arxiv':
+            return httpx.Response(200, text='''<feed xmlns="http://www.w3.org/2005/Atom"><entry>
+                <id>http://arxiv.org/abs/2201.12345v1</id><title>Preprint</title>
+                <published>2022-01-02T00:00:00Z</published></entry></feed>''')
+        if provider == 'europe_pmc':
+            assert 'SRC:PPR' in request.url.params['query']
+            return httpx.Response(200, json={'hitCount': 1, 'resultList': {'result': [{
+                'source': 'PPR', 'id': 'PPR1', 'title': 'Preprint', 'firstPublicationDate': '2022-01-02', 'versionNumber': 1}]}})
+        assert request.url.path.startswith('/details/' + provider + '/')
+        return httpx.Response(200, json={'messages': [{'status': 'ok'}], 'collection': [{
+            'doi': native_id, 'server': provider, 'title': 'Preprint', 'date': '2022-01-02', 'version': '1'}]})
+    def factory(name, **kwargs):
+        if name not in {'crossref', provider}:
+            return EmptyCompletion(name)
+        kwargs.pop('api_key', None)
+        return SupplementalClient(name, transport=httpx.MockTransport(response), interval=0, page_size=1, **kwargs)
+    def wos(*args, **kwargs):
+        return IntegratedDiscovery(rows, (DiscoveryResult('wos', SourceScope('journal', 'Test'),
+            'complete', rows, candidates=2),), 'complete')
+    def execute():
+        try:
+            results.append(run_integrated(path, completion_factory=factory, wos_stage=wos,
+                progress_callback=events.append, cancel_event=cancel))
+        except Exception as error:
+            failures.append(error)
+    worker = Thread(target=execute)
+    worker.start()
+    try:
+        assert entered.wait(3), 'Native version request must start'
+        native = [event.activity for event in events if event.activity and event.activity.operation == 'native-version']
+        assert native and native[-1].source == provider and native[-1].label == 'Native version verification'
+        assert native[-1].detail == 'Request dispatched' and native[-1].current == 1
+        base = [event.activity for event in events if event.activity and event.activity.operation == 'base-api'
+            and event.activity.detail == 'Response received']
+        assert len(base) == 3 and all(activity.label == 'Base API completion' for activity in base)
+        assert sorted(activity.current for activity in base) == [1, 2, 3]
+        assert not any(event.stage == ProgressStage.UPDATING_WORKSPACE for event in events)
+        if cancel_native:
+            cancel.set()
+    finally:
+        release.set()
+        worker.join(5)
+    assert not worker.is_alive() and not failures
+    result, = results
+    assert result.facts.created_papers == (0 if cancel_native else 2)
+    assert result.facts.statistics['completion_requests'] == len(calls) == 4
+    dispatches = [event.activity for event in events if event.activity and event.activity.detail == 'Request dispatched']
+    responses = [event.activity for event in events if event.activity and event.activity.detail == 'Response received']
+    assert len(dispatches) == 4 and len(responses) == (3 if cancel_native else 4)
+    if not cancel_native:
+        native_done = next(index for index, event in enumerate(events) if event.activity and
+            event.activity.operation == 'native-version' and event.activity.detail == 'Response received')
+        saved = next(index for index, event in enumerate(events) if event.stage == ProgressStage.UPDATING_WORKSPACE)
+        assert native_done < saved
 
 
 def test_work_response_extra_records_cannot_become_discovery_candidates(tmp_path):

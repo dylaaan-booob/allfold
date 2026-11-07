@@ -1,7 +1,7 @@
 """Scoped HTTP discovery. Adapters retain native hits and report bounded coverage."""
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import date, datetime, timezone, timedelta
 from email.utils import parsedate_to_datetime
 import math
@@ -119,6 +119,8 @@ class DiscoveryClient:
         if provider not in PROVIDERS:
             raise ValueError('Unknown Discovery Provider')
         self.progress = progress_callback
+        self._completing = False
+        self._progress_requests = {}
         self.provider = provider
         self.api_key = api_key
         self.cancel = cancel_event or Event()
@@ -149,6 +151,17 @@ class DiscoveryClient:
         if guard is not None:
             guard()
 
+    def begin_completion(self):
+        """Discovery/Work has settled; subsequent HTTP belongs to Completion."""
+        self._completing = True
+
+    def _completion_activity(self, url, params):
+        if not self._completing:
+            return None
+        native = (self.provider == 'arxiv' or self.provider in {'biorxiv', 'medrxiv'} and '/details/' in url
+            or self.provider == 'europe_pmc' and str(params.get('query', '')).startswith('SRC:PPR'))
+        return ('native-version', 'Native version verification') if native else ('base-api', 'Base API completion')
+
     def _wait(self, seconds):
         self.check_cancel()
         if self.sleep is time.sleep:
@@ -159,6 +172,7 @@ class DiscoveryClient:
         self.check_cancel()
 
     def _get(self, url, params, headers, *, follow_redirects=True):
+        activity = None
         while not self._host_lock.acquire(timeout=0.1):
             self.check_cancel()
         try:
@@ -169,6 +183,13 @@ class DiscoveryClient:
             self.pacing_state[self.host] = time.monotonic()
             try:
                 self.request_count = getattr(self, 'request_count', 0) + 1
+                if self.progress and (phase := self._completion_activity(url, params)):
+                    operation, label = phase
+                    self._progress_requests[operation] = self._progress_requests.get(operation, 0) + 1
+                    activity = ActivityUpdate(kind=ActivityKind.WORKING, source=self.provider,
+                        operation=operation, label=label, detail='Request dispatched',
+                        current=self._progress_requests[operation], unit='request')
+                    self.progress(ProgressEvent(activity=activity))
                 if self.provider == 'pubmed' and self.api_key:
                     # NCBI accepts form POST. Keep its optional secret out of
                     # request URLs (including standard HTTP client log lines).
@@ -177,9 +198,11 @@ class DiscoveryClient:
                     response = self.http.get(url, params=params, headers=headers, follow_redirects=follow_redirects)
             except httpx.HTTPError as error:
                 raise DiscoveryError(f'{self.provider}: network request failed ({type(error).__name__})') from None
+            self.check_cancel()
+            if activity is not None:
+                self.progress(ProgressEvent(activity=replace(activity, detail='Response received')))
         finally:
             self._host_lock.release()
-        self.check_cancel()
         return response
 
     def request(self, path, params, *, response_format="json"):
@@ -219,9 +242,10 @@ class DiscoveryClient:
                 if not math.isfinite(delay):
                     delay = default_delay
                 if self.progress:
+                    phase = self._completion_activity(BASE_URLS[self.provider] + path, params)
                     self.progress(ProgressEvent(activity=ActivityUpdate(
-                        kind=ActivityKind.RETRYING, source=self.provider, operation='http_retry',
-                        label=f'{self.provider}: HTTP {response.status_code} {temporary_error or "Too Many Requests"}',
+                        kind=ActivityKind.RETRYING, source=self.provider, operation=phase[0] + '-retry' if phase else 'http_retry',
+                        label=(phase[1] + ': ' if phase else '') + f'{self.provider}: HTTP {response.status_code} {temporary_error or "Too Many Requests"}',
                         detail=f'Retry {attempt + 2}/3 in {max(0, delay):g} seconds',
                     )))
                 self._wait(max(0, delay))

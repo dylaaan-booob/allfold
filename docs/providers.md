@@ -32,6 +32,10 @@ Selected PubMed, WoS and OpenAlex Discovery overlap within one parent Run, slot,
 
 Before creation, all saved Papers including Rejected participate in direct-identity conflict checks. Run completes only new candidates and preserves existing Paper bytes. Ordinary fields use fixed source priority with formal WoS bibliography first; author lists remain whole. Completion responses and version relationships never become extra Discovery candidates. Only reliable direct identifiers establish ownership; conflicting saved owners are skipped and reported. Counts derive from distinct candidates, completion activity and actual protected creates.
 
+Ordinary-field gaps use the same direct formal-identity chain as final creation. A related preprint or association-only Work cannot satisfy a formal root's missing title, authors, abstract or source, even when that Work is labelled journal. A formal PMID with such gaps requests EFetch; complete formal bibliography needs only ESummary for remaining date/relationship goals. Independently selected preprint Papers retain their own ordinary-metadata completion.
+
+Completion activity distinguishes **Base API completion** from **Native version verification** per provider. Actual HTTP dispatches and responses refresh activity, including paginated batches; the counters count requests rather than Papers. Cache reuse emits no HTTP activity or request count. Cancellation stops new dispatch and prevents cancelled responses from reporting completion activity.
+
 The requested publication range belongs to discovery. Later preprint, Accepted, online or publication dates never remove a Paper from its original Run. A source's year/month precision remains year/month precision; no same-version date lookup rejudges monthly eligibility. [Paper identity](paper-identity.md) defines First public and named journal dates.
 
 ## Run results and snapshots

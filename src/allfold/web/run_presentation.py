@@ -30,6 +30,9 @@ _SOURCE_LABELS = {
     "integrated": "Run",
     "wos": "Web of Science",
     "europe_pmc": "Europe PMC",
+    "arxiv": "arXiv",
+    "biorxiv": "bioRxiv",
+    "medrxiv": "medRxiv",
     "workspace": "Workspace",
 }
 
@@ -40,6 +43,7 @@ _UNIT_LABELS = {
     "journal": ("journal", "journals"),
     "paper": ("paper", "papers"),
     "work": ("work", "works"),
+    "request": ("request", "requests"),
 }
 
 
