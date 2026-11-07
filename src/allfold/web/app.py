@@ -912,6 +912,7 @@ def create_app(config_path: Path, *, electron_bridge: ElectronBridge, diagnostic
                     "Settings were partially saved: "
                     f"journal data written: {'yes' if result.journal_written else 'no'}, "
                     f"monitor configuration written: {'yes' if result.monitor_written else 'no'}, "
+                    f"PubMed API Key written: {'yes' if result.pubmed_key_written else 'no'}, "
                     f"OpenAlex API Key written: {'yes' if result.openalex_key_written else 'no'}. "
                     "Reload and reconcile before another Save."
                 )
