@@ -235,11 +235,11 @@ class DiscoveryClient:
                 data = response.json()
                 if not isinstance(data, dict):
                     raise ValueError
-                if self.provider == 'pubmed' and any(data.get(key) for key in ('error', 'errorlist')):
-                    raise DiscoveryError('PubMed: Entrez application error')
-                return data
             except ValueError:
                 raise DiscoveryError(f'{self.provider}: invalid JSON response') from None
+            if self.provider == 'pubmed' and any(data.get(key) for key in ('error', 'errorlist')):
+                raise DiscoveryError('PubMed: Entrez application error')
+            return data
         raise DiscoveryError(f'{self.provider}: rate limited')
 
     def discover_candidates(self, source, ast, from_date, to_date):

@@ -79,6 +79,7 @@ def test_pubmed_http_200_application_error_never_becomes_empty_or_leaks_key():
         with DiscoveryClient('pubmed',api_key='synthetic-secret-key',transport=httpx.MockTransport(lambda _:httpx.Response(200,json=body)),interval=0) as client:
             result = client.discover(A,parse_keyword_expression('causal'),'2026-10-01','2026-10-31')
         assert result.status == 'failed' and 'synthetic-secret-key' not in repr(result)
+        assert 'Entrez' in result.limitations[0]
 
 
 def test_pubmed_summary_v2_dates_are_independent_and_fetch_is_stronger_capability():
@@ -112,3 +113,17 @@ def test_pubmed_anonymous_and_keyed_pacing_are_optional_and_cancel_stops_dispatc
     with DiscoveryClient('pubmed',cancel_event=cancel,transport=httpx.MockTransport(lambda request:calls.append(request) or httpx.Response(200,json={}))) as cancelled:
         result=cancelled.discover(A,parse_keyword_expression('causal'),'2026-10-01','2026-10-31')
     assert result.status=='cancelled' and not calls
+
+
+def test_direct_formal_pmid_survives_merged_work_with_preprint_pmid():
+    from allfold.canonicalize import canonicalize_records
+    from allfold.providers.pubmed import fetch_records
+    formal_doi = '10.1093/nar/gkag979'
+    formal, = fetch_records('<PubmedArticleSet>'+article('42908400',A.issns[0],formal_doi)+'</PubmedArticleSet>')
+    with DiscoveryClient('openalex',transport=httpx.MockTransport(lambda _:httpx.Response(200,json={}))) as client:
+        merged = client.normalize({'id':'https://openalex.org/W7223175244','doi':formal_doi,'title':'Merged Work',
+            'ids':{'pmid':'https://pubmed.ncbi.nlm.nih.gov/42239170/'},'type':'article'},A)
+    paper, = canonicalize_records((merged,formal)).papers
+    assert paper.external_ids.model_dump()['pmid'] == '42908400'
+    assert paper.external_ids.doi == formal_doi and paper.external_ids.openalex == 'https://openalex.org/W7223175244'
+    assert any(ref.provider=='pmid' and ref.record_id=='42239170' for ref in merged.related_ids)
