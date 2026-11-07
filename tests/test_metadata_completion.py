@@ -324,15 +324,17 @@ def test_late_preprint_identity_reuses_previously_unmatched_cached_reverse_detai
 
 
 def test_base_api_batches_overlap_and_map_each_paper_before_native_waves():
-    from threading import Barrier
+    from threading import Barrier, Event
     import httpx
     from allfold.application.metadata_completion import complete_metadata_many
     from allfold.providers.supplemental import SupplementalClient
-    barrier = Barrier(3, timeout=3)
+    barrier, crossref_started = Barrier(2, timeout=3), Event()
     calls = []
     def response(request):
         calls.append(request)
-        barrier.wait()
+        if request.url.host != 'api.crossref.org' or not crossref_started.is_set():
+            crossref_started.set()
+            barrier.wait()
         if request.url.host == 'api.crossref.org':
             filters = request.url.params['filter']
             if 'relation.type:' in filters:
