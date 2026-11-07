@@ -73,7 +73,7 @@ def finish_run(store, task_id, result, *, provider=None, diagnostic=None, interr
         value for key,value in stats.items() if key in {'integrated_candidates'})
     sources = {}
     for run in summary['details'].get('provider_totals', summary['details'].get('provider_runs', [])):
-        if run.get('provider') not in {'wos', 'openalex', 'europe_pmc'}:
+        if run.get('provider') not in {'wos', 'pubmed', 'openalex'}:
             continue
         source = sources.setdefault(run['provider'], dict(provider=run['provider'], status='empty', candidates=0, created=0, existing=0, problems=0))
         for key in ('candidates', 'created', 'existing'):

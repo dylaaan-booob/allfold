@@ -11,6 +11,27 @@ def bundle(store, task_id=None):
         return {name: archive.read(name).decode() for name in archive.namelist()}
 
 
+def test_pubmed_run_sources_survive_restart_and_export_without_credentials(tmp_path):
+    config, root = tmp_path / 'config.yaml', tmp_path / 'logs'
+    store = DiagnosticStore(config, root=root, runtime_id='first')
+    store.begin('run', 'pubmed_run', provider='pubmed')
+    store.finish('pubmed_run', 'completed', details={'run_sources': [
+        {'provider': 'pubmed', 'status': 'complete', 'candidates': 2, 'created': 1,
+         'existing': 1, 'problems': 0, 'api_key': 'PRIVATE_KEY', 'query': 'PRIVATE_QUERY'},
+    ]})
+    restarted = DiagnosticStore(config, root=root, runtime_id='second')
+    record = restarted.history()['records'][0]
+    assert record['provider'] == 'pubmed'
+    assert record['details']['run_sources'] == [
+        {'provider': 'pubmed', 'status': 'complete', 'candidates': 2, 'created': 1,
+         'existing': 1, 'problems': 0},
+    ]
+    exported = bundle(restarted, 'pubmed_run')
+    assert json.loads(exported['summary.json'])['records'][0] == record
+    assert 'PRIVATE_KEY' not in ''.join(exported.values())
+    assert 'PRIVATE_QUERY' not in ''.join(exported.values())
+
+
 def test_history_survives_restart_and_never_promotes_an_unknown_import(tmp_path):
     config = tmp_path / 'monitor.yaml'
     config.write_text('keyword_expression: synthetic\n')
