@@ -363,8 +363,9 @@ def _completion_steps(
     seen = {evidence_key(record) for record in output}
     cache_requests, cache_identities = set(), set()
     reused_record_count = 0
+    reported_failures, cached_cancelled = set(), False
     def reuse_cached_evidence():
-        nonlocal reused_record_count
+        nonlocal reused_record_count, cached_cancelled
         # A prior selected Paper may already have obtained the exact same native
         # details or relation. Reuse positive facts without another lookup or alias
         # authority; only records rooted in this Paper's known identities qualify.
@@ -379,8 +380,27 @@ def _completion_steps(
             identities = new_identities if request in cache_requests else cache_identities
             cache_requests.add(request)
             provider = request[0]
-            if provider not in enabled_providers or isinstance(value, Exception):
+            if provider not in enabled_providers:
                 continue
+            if isinstance(value, Exception):
+                # A dispatched batch can finish while native proof is pending.
+                # Settle its outcome before that proof can satisfy the goals;
+                # only the requested Paper owns the failure, even when another
+                # Paper can reuse some of its verified positive facts.
+                if request[1:3] in cache_identities and request not in attempted:
+                    attempted.add(request)
+                    failure = (*request[:3], id(value))
+                    if failure not in reported_failures:
+                        reported_failures.add(failure)
+                        status = ('cancelled' if isinstance(value, Cancelled) else
+                            'partial' if getattr(value, 'records', ()) else
+                            'no_match' if isinstance(value, ProviderHTTPError) and value.status == 404 else
+                            'identity_mismatch' if isinstance(value, IdentityMismatch) else 'failed')
+                        lookups.append(_lookup(request, status))
+                        if status not in {'cancelled', 'no_match'}:
+                            issues.append(CompletionIssue(provider, request[2], str(value), status))
+                        cached_cancelled |= status == 'cancelled'
+                value = getattr(value, 'records', ())
             for namespace, identifier in sorted(identities):
                 accepted, _ = bind_records(value, {(namespace, identifier)})
                 if accepted and not any((item.provider, item.namespace, item.identifier) == request[:3]
@@ -409,7 +429,7 @@ def _completion_steps(
     started = False
     while True:
         reuse_cached_evidence()
-        if cancel_event is not None and cancel_event.is_set():
+        if cached_cancelled or cancel_event is not None and cancel_event.is_set():
             return result(True)
         if started and not any(key[0] in enabled_providers and key not in attempted and key not in fetched
                    for key in requests()):
@@ -419,7 +439,7 @@ def _completion_steps(
         # Another Paper or the native batch may have supplied reusable facts
         # since this Paper paused. Re-evaluate before dispatching its next step.
         reuse_cached_evidence()
-        if cancel_event is not None and cancel_event.is_set():
+        if cached_cancelled or cancel_event is not None and cancel_event.is_set():
             return result(True)
         request = next((key for key in requests() if key[0] in enabled_providers
             and key not in attempted and key not in fetched), None)

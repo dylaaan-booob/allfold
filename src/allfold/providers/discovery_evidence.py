@@ -48,8 +48,8 @@ def normalize_openalex(raw, source):
     if (raw.get('primary_location') or {}).get('raw_type') == 'journal-issue':
         return None
     record_id = str(raw.get('id') or '')
-    if not record_id or not raw.get('title'):
-        raise DiscoveryError('OpenAlex record lacks identity or title')
+    if not normalize_external_id('openalex', record_id):
+        raise DiscoveryError('OpenAlex record lacks reliable Work identity')
     now = datetime.now(timezone.utc)
     abstract = raw.get('abstract_inverted_index') or {}
     tokens = {i: word for word, positions in abstract.items() for i in positions}
@@ -67,7 +67,7 @@ def normalize_openalex(raw, source):
     issns = tuple(dict.fromkeys(str(value).upper() for value in (venue.get('issn') or [])
         if isinstance(value, str) and re.fullmatch(r'\d{4}-\d{3}[\dXx]', value)))
     return ProviderWorkEvidence(provenance=MetadataSource(provider='openalex', record_id=record_id, retrieved_at=now, url=record_id),
-        title=raw['title'], journal=venue.get('display_name') or source.name or None, journal_issns=issns,
+        title=raw.get('title'), journal=venue.get('display_name') or source.name or None, journal_issns=issns,
         publication_type='preprint' if raw.get('type') in {'preprint', 'posted-content'} else 'journal',
         publication_date=raw.get('publication_date'),
         related_dois=tuple(sorted(related - {identifiers['doi']})), related_ids=tuple(sorted(refs, key=lambda x: (x.provider, x.record_id))),

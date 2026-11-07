@@ -224,7 +224,14 @@ def run_integrated(config_path, *, loaded_config=None, workspace_snapshot=None, 
                 browser = browser_future.result() if browser_future else IntegratedDiscovery((),(), 'empty')
             finally:
                 work.finish()
-            locating.result()
+            try:
+                locating.result()
+            except ContentChangedError:
+                # All producers, including the native Future and Browser owner,
+                # have settled above. A cancelled Work guard is a parent outcome;
+                # genuine ownership invalidation remains latched in guard_errors.
+                if not cancel.is_set():
+                    raise
         if guard_errors:
             raise guard_errors[0]
         discovery = IntegratedDiscovery((*browser.records,*api.records),(*browser.providers,*api.providers),

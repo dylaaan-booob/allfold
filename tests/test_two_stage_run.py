@@ -340,6 +340,112 @@ def test_selected_native_disconnect_revokes_http_but_waits_native_settlement(tmp
     slot.release()
 
 
+@pytest.mark.parametrize('revocation', ['disconnect', 'configuration'])
+def test_work_guard_settles_native_before_parent_cancel_or_authority_error(tmp_path, monkeypatch, revocation):
+    import threading
+    from concurrent.futures import Future
+    from types import SimpleNamespace
+    import httpx
+    from safety_config_helpers import current_mapping_document
+    from allfold.config import AccessService
+    from allfold.persistence.user_state import load_user_state, compare_write_user_state
+    from allfold.application.browser_runtime import BrowserTaskLock
+    from allfold.application.coordinators.preparation_coordinator import PreparationPhase
+    from allfold.application.coordinators.wos_coordinator import WoSCoordinator
+    from allfold.application.coordinators.run_coordinator import RunCoordinator
+    from allfold.providers.integrated import DiscoveryClient
+    from allfold.web.electron_bridge import ElectronDisconnected
+    from allfold.diagnostics import DiagnosticStore
+    from test_pubmed_discovery import article
+    path, _, _, _ = current_mapping_document(tmp_path)
+    path.write_text(path.read_text() + 'institution:\n  name: Test University\nenabled_providers: [wos,pubmed]\n')
+    initial = load_user_state(path)
+    compare_write_user_state(path, replace(initial.state, access_services=(*initial.state.access_services,
+        AccessService.create('Web of Science', 'https://www.webofscience.com/'))), initial.revision)
+    class Preparation:
+        def start(self, *args, **kwargs): return self.snapshot()
+        def snapshot(self): return SimpleNamespace(task_id='prep', generation=1, phase=PreparationPhase.COMPLETED,
+            authorization_pending=False, message='Ready', waiting_for_user=False)
+        def wos_handoff(self, *args): return 71
+        def join(self): pass
+    query_started, revoked, guard_entered = Event(), Event(), Event()
+    class Bridge:
+        connected = True
+        pending = Future()
+        def execute(self, action, data, progress=None):
+            assert action == 'wos_query'
+            query_started.set()
+            return self.pending
+    bridge, browser, slot = Bridge(), BrowserTaskLock(), threading.Lock()
+    store = DiagnosticStore(path, root=tmp_path / 'logs')
+    native = WoSCoordinator(path, Preparation(), slot, bridge=bridge, browser_lock=browser, diagnostics=store)
+    authority_checks = []
+    check_authority = native.check_dispatch_authority
+    def check(cancel):
+        before = cancel.is_set()
+        check_authority(cancel)
+        if revoked.is_set():
+            authority_checks.append((cancel, before, cancel.is_set()))
+            guard_entered.set()
+    native.check_dispatch_authority = check
+    calls, streamed = [], []
+    def response(request):
+        assert not revoked.is_set(), 'No HTTP may dispatch after authority revocation'
+        calls.append(request.url.path)
+        if request.url.path.endswith('esearch.fcgi'):
+            return httpx.Response(200, json={'esearchresult': {'count': '1', 'idlist': ['41'],
+                'webenv': 'fixture-history', 'querykey': '1'}})
+        assert request.url.path.endswith('efetch.fcgi')
+        return httpx.Response(200, text='<PubmedArticleSet>' + article('41', '0006-341X', '10.5555/formal') + '</PubmedArticleSet>')
+    class Discovery(DiscoveryClient):
+        def discover_many(self, scopes, *args, records_callback=None):
+            def verified(rows):
+                assert query_started.wait(3)
+                streamed.extend(row.external_ids.doi for row in rows)
+                if revocation == 'disconnect':
+                    bridge.connected = False
+                else:
+                    path.write_text(path.read_text() + '# changed before Work guard\n')
+                revoked.set()
+                records_callback(rows)
+            return super().discover_many(scopes, *args, records_callback=verified)
+    def factory(provider, **kwargs):
+        return Discovery(provider, transport=httpx.MockTransport(response), interval=0, **kwargs)
+    def monitor(config_path, **kwargs):
+        kwargs.pop('provider')
+        return run_integrated(config_path, client_factory=factory, completion_factory=EmptyCompletion, **kwargs)
+    monkeypatch.setattr('allfold.application.coordinators.run_coordinator.run_monitor', monitor)
+    coordinator = RunCoordinator(path, run_slot=slot, diagnostics=store)
+    coordinator.wos_stage = native
+    coordinator.start()
+    try:
+        assert guard_entered.wait(3)
+        assert authority_checks[0][0].wait(3)
+        assert authority_checks[0][1:] == ((False, True) if revocation == 'disconnect' else (False, False))
+        assert streamed == ['10.5555/formal'] and len(calls) == 2
+        assert coordinator.snapshot().worker_alive and slot.locked() and browser.owner is not None
+        assert not bridge.pending.done()
+        pending_history = store.history()['records']
+        assert len(pending_history) == 1 and pending_history[0]['outcome'] == 'running'
+    finally:
+        if not bridge.pending.done():
+            bridge.pending.set_exception(ElectronDisconnected('Controlled native settlement'))
+        coordinator.join()
+    settled = coordinator.snapshot()
+    assert not settled.worker_alive and not slot.locked() and browser.owner is None
+    if revocation == 'disconnect':
+        assert settled.unexpected_error is None
+        assert settled.result.outcome.value == 'CANCELLED' and settled.result.facts.created_papers == 0
+        assert settled.result.facts.statistics['integrated_candidates'] == 1
+    else:
+        assert settled.result is None and settled.unexpected_error.category == 'ContentChangedError'
+    history = store.history()['records']
+    assert len(history) == 1 and history[0]['outcome'] == ('cancelled' if revocation == 'disconnect' else 'failed')
+    assert not list((tmp_path / 'workspace' / 'Papers').glob('*.md'))
+    assert not (tmp_path / 'workspace' / '.allfold' / 'last-integrated-run.json').exists()
+    assert not (tmp_path / 'workspace' / '.allfold' / 'last-wos-run.json').exists()
+
+
 def test_parent_shutdown_keeps_slot_until_run_worker_settles(tmp_path,monkeypatch):
     from allfold.application.coordinators.run_coordinator import RunCoordinator
     from allfold.application.monitor import RunResult,RunOutcome
