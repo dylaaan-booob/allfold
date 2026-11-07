@@ -1,4 +1,4 @@
-"""Local, revision-checked OpenAlex credentials beside a monitor config."""
+"""Local, revision-checked optional provider credentials beside a monitor config."""
 from __future__ import annotations
 
 import hashlib
@@ -16,20 +16,20 @@ class OpenAlexCredentialError(ValueError):
 
 
 def credential_path(config_path: Path, *, provider: str = "openalex") -> Path:
-    if provider != "openalex":
+    if provider not in {"openalex", "pubmed"}:
         raise ValueError("Unknown credential Provider")
     return config_path.absolute().with_suffix(f".{provider}-secrets.json")
 
 
 def validate_key(key: str | None, *, provider: str = "openalex") -> bool:
-    return bool(provider == "openalex" and key and key.isascii()
+    return bool(provider in {"openalex", "pubmed"} and key and key.isascii()
                 and all(33 <= ord(c) <= 126 for c in key))
 
 
 def read_credential(config_path: Path, *, provider: str = "openalex") -> tuple[str | None, str]:
     """Return the secret and an opaque revision; missing is anonymous access."""
     path = credential_path(config_path, provider=provider)
-    label = "OpenAlex"
+    label = {"openalex":"OpenAlex", "pubmed":"PubMed"}.get(provider, provider)
     try:
         if any(part.is_symlink() for part in (path, *path.parents)):
             raise OpenAlexCredentialError(f"{label} credential path must not contain symlinks")
@@ -54,7 +54,7 @@ def read_credential(config_path: Path, *, provider: str = "openalex") -> tuple[s
 
 
 def write_credential(config_path: Path, *, action: str, key: str | None, revision: str, provider: str = "openalex") -> None:
-    label = "OpenAlex"
+    label = {"openalex":"OpenAlex", "pubmed":"PubMed"}.get(provider, provider)
     if action not in {"replace", "clear"}:
         raise OpenAlexCredentialError(f"Choose replace or clear for the {label} API Key")
     if action == "replace" and (not validate_key(key, provider=provider)):

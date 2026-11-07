@@ -25,12 +25,13 @@ from allfold.persistence.user_state import application_data_dir
 # Only coordinators may declare a terminal business outcome.
 
 KINDS = frozenset({'run', 'prepare', 'import', 'kept', 'enrich', 'api_completion', 'covers'})
-PROVIDERS = frozenset({'integrated', 'openalex', 'crossref', 'europe_pmc', 'arxiv', 'biorxiv', 'medrxiv', 'wos'})
+PROVIDERS = frozenset({'integrated', 'pubmed', 'openalex', 'crossref', 'europe_pmc', 'arxiv', 'biorxiv', 'medrxiv', 'wos'})
 OUTCOMES = frozenset({'completed', 'partial', 'failed', 'cancelled', 'interrupted', 'uncertain',
                       'needs_attention', 'opened', 'no_effect', 'confirmed'})
 STATISTICS = frozenset({'retrieved', 'created', 'updated', 'total', 'processed', 'failed', 'skipped',
     'confirmed', 'exported', 'no_effect', 'uncertain', 'cancelled', 'completed', 'opened',
     'needs_attention', 'eligible', 'matched', 'downloaded', 'enriched', 'unchanged', 'candidates',
+    'completion_targets', 'completion_requests', 'completion_date_facts_added', 'integrated_candidates', 'integrated_deduplicated', 'work_location_targets',
     'first_public_recorded', 'first_public_no_association', 'first_public_known_unresolved', 'first_public_conflict', 'first_public_failed', 'first_public_cancelled',
     'no_match', 'lookup_failed', 'identity_mismatch', 'evidence', 'papers', 'services', 'warnings', 'errors', 'excluded', 'duplicates', 'materialized', 'pdf_unverified'})
 REASONS = frozenset({'runtime_interrupted', 'connection_lost', 'cancelled', 'partial', 'failed',
@@ -85,7 +86,9 @@ def _details(value):
         result['parent_outcome'] = value['parent_outcome']
     if _enum(value.get('pdf_outcome'), {'confirmed', 'failed', 'unverified', 'not_requested', 'uncertain'}):
         result['pdf_outcome'] = value['pdf_outcome']
-    for key, allowed in (('result_status', {'completed', 'completed_with_notices', 'incomplete', 'capture_issues', 'failed', 'cancelled'}),
+    for key, allowed in (('discovery_status', {'complete','empty','partial','failed','cancelled'}),
+                         ('completion_status', {'complete','empty','partial','failed','cancelled'}),
+                         ('result_status', {'completed', 'completed_with_notices', 'incomplete', 'capture_issues', 'failed', 'cancelled'}),
                          ('coverage_status', {'complete', 'empty', 'partial', 'failed', 'unavailable', 'unknown'}),
                          ('batch_phase', {'idle', 'running', 'completed', 'stopped', 'paused', 'blocked'}),
                          ('mode', {'full', 'import_only'})):
@@ -95,7 +98,7 @@ def _details(value):
     if isinstance(source_runs, list):
         sources = []
         for item in source_runs:
-            if not isinstance(item, dict) or not _enum(item.get('provider'), {'wos','openalex','europe_pmc'}):
+            if not isinstance(item, dict) or not _enum(item.get('provider'), {'wos','pubmed','openalex'}):
                 continue
             if not _enum(item.get('status'), {'complete','empty','partial','failed','cancelled','skipped'}):
                 continue

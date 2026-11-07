@@ -2,12 +2,17 @@
 const esc=value=>String(value??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const count=value=>Number.isInteger(value)?String(value):'未知';
 const labels={
-  completed:'完成',completed_with_notices:'完成，有提示',incomplete:'完成，检索覆盖不完整',
+  completed:'完成',completed_with_notices:'完成，有提示',incomplete:'完成，检索或补全不完整',
   capture_issues:'完成，Paper 保存存在问题',failed:'运行失败',cancelled:'已取消',
   complete:'检索完整',empty:'当前范围无记录',partial:'检索不完整',
   unknown:'证据不足',observed:'已发现导出记录',
   hint:'本地来源清单提示',resolved:'已解析',not_found:'未找到',request_failed:'请求失败',
   local_not_listed:'未列入本地 WoS 来源清单，仍参与检索',
+  completion_targets:'Completion targets',completion_requests:'Completion HTTP requests',
+  completion_date_facts_added:'Added date facts',first_public_recorded:'First public recorded',
+  first_public_no_association:'No preprint association',first_public_known_unresolved:'Unverified preprint',
+  first_public_conflict:'First public conflicts',first_public_failed:'First public failed',first_public_cancelled:'First public cancelled',
+  work_location_targets:'DOI Work targets',completion:'API Completion',work_location:'Work location',
   integrated_candidates:'Candidates',integrated_deduplicated:'Distinct Papers',skipped:'未执行',
   returned_records:'Returned records',matched_journal_records:'Matched Journal records',issn_queries:'ISSN queries',
   unmatched_journal_records:'Unmatched Journal records',eligible_records:'Eligible records',
@@ -31,7 +36,7 @@ export function resultHeadline(result) {
 export function resultMessages(result) {
   if(!result || result.availability!=='available')return [];
   const messages=[];
-  if(['partial','failed'].includes(result.coverage_status))messages.push(`检索覆盖不完整，详情见 ${result.journals.length?'Journal Coverage 与 ':''}Provider Details。`);
+  if(['partial','failed'].includes(result.coverage_status))messages.push(`检索或补全不完整，详情见 ${result.journals.length?'Journal Coverage 与 ':''}Provider Details。`);
   const problems=result.journals.filter(journalProblem),hints=problems.filter(j=>j.status==='hint');
   if(problems.length>hints.length)messages.push(`${problems.length-hints.length} 本期刊有标识或检索提示。`);
   if(hints.length)messages.push(`${hints.length} 本期刊有本地 WoS 来源清单提示，仍参与检索。`);
@@ -94,7 +99,8 @@ export function renderRunResult(result,{compact=false,id='' }={}) {
     .filter(item=>item.reasons.length).map(item=>`<li>Record ${count(item.record_number)} · ${esc(item.doi || item.ut || '')} · ${item.reasons.map(reason=>esc(label(reason))).join(' · ')}</li>`).join('');
   const issues=result.issues.filter(i=>i.category!=='exclusion').map(issue=>`<li><strong>${esc(label(issue.category))}</strong> · ${esc(result.provider==='wos'?wosDiagnostic(issue.message):issue.message)}${issue.issn?` · ${esc(issue.issn)}`:''}</li>`).join('');
   const providerRuns=(details.provider_runs || []).map(run=>`<li><strong>${esc(run.provider)} · ${esc(run.source)}</strong> · ${esc(label(run.status))} · ${count(run.candidates)} candidates / ${count(run.retained)} retained · ${count(run.created)} new / ${count(run.existing)} existing${run.limitations?.length?`<p>${run.limitations.map(esc).join(' · ')}</p>`:''}</li>`).join('');
-  return header+impact+coverage+`<details class="s-run-provider-details" data-result-detail="${esc(id)}:provider"><summary>Provider Details</summary>${metrics(stats,['integrated_candidates','integrated_deduplicated','returned_records','eligible_records','search_total','conflicts'])}
+  const phases=result.provider==='integrated'?`<p class="s-run-phases">Discovery · ${esc(label(details.discovery_status || 'unknown'))} / API Completion · ${esc(({complete:'完成',empty:'无需补全',partial:'部分完成',failed:'失败',cancelled:'已取消'})[details.completion_status] || '未知')}</p>`:'';
+  return header+impact+phases+coverage+`<details class="s-run-provider-details" data-result-detail="${esc(id)}:provider"><summary>Provider Details</summary>${metrics(stats,['integrated_candidates','integrated_deduplicated','returned_records','eligible_records','search_total','conflicts'])}
     ${providerRuns?`<ul>${providerRuns}</ul>`:''}
     ${metricSection('正常排除',details.skipped)}
     ${metricSection('记录诊断',details.exclusions)}

@@ -171,7 +171,7 @@ def test_native_details_no_match_or_failure_is_also_reused_within_operation(malf
     assert calls == ['/pubs/biorxiv/10.5555/formal/na/json', '/details/biorxiv/10.1101/123456/na/json']
 
 
-def test_crossref_explicit_preprint_versions_share_first_version_proof():
+def test_crossref_explicit_preprint_versions_keep_dates_without_native_first_version_proof():
     def response(request):
         first = request.url.path.endswith('/10.5555/v1')
         doi, related = ('10.5555/v1', '10.5555/v2') if first else ('10.5555/v2', '10.5555/v1')
@@ -182,7 +182,7 @@ def test_crossref_explicit_preprint_versions_share_first_version_proof():
         records = client.lookup('doi', '10.5555/v2') + client.lookup('doi', '10.5555/v1')
     assert len(canonicalize_records(records).papers) == 2
     paper = completion_metadata(records)
-    assert paper.metadata.first_public_at == '2021-06'
+    assert paper.metadata.first_public_at is None
     assert {(item.version, item.year) for item in paper.date_evidence} == {('1', 2021), ('2', 2022)}
 
 
@@ -312,3 +312,120 @@ def test_arxiv_batch_keeps_valid_siblings_when_one_identified_entry_cannot_be_pa
     assert good_record.external_ids.arxiv == '2201.00001'
     assert good_record.publication_date == '2022-01-02'
     assert isinstance(results['2201.00002'], ValueError)
+
+
+def test_crossref_assertions_preserve_history_semantics_and_date_precision():
+    raw = {'DOI': '10.5555/history', 'type': 'journal-article', 'title': ['Paper'],
+        'published': {'date-parts': [[2026]]}, 'published-online': {'date-parts': [[2026, 2]]},
+        'assertion': [
+            {'name': 'received', 'label': 'Received', 'value': '17 September 2025',
+             'group': {'name': 'publication_history', 'label': 'Publication History'}},
+            {'name': 'accepted', 'label': 'Accepted', 'value': '2026-01',
+             'group': {'name': 'ArticleHistory', 'label': 'Article history'}},
+            {'name': 'received', 'label': 'Received', 'value': '31 February 2025'},
+            {'name': 'created', 'label': 'Created', 'value': '2024-01-01'},
+            {'name': 'other', 'label': 'Deposit accepted', 'value': '2024-01-01'},
+        ]}
+    with SupplementalClient('crossref', interval=0, transport=httpx.MockTransport(
+            lambda _: httpx.Response(200, json={'message': raw}))) as client:
+        record, = client.lookup('doi', '10.5555/history')
+    assert {(item.kind.value, item.year, item.month, item.day) for item in record.dates} == {
+        ('received', 2025, 9, 17), ('accepted', 2026, 1, None),
+        ('published', 2026, None, None), ('published-online', 2026, 2, None)}
+    assert next(item for item in record.dates if item.kind.value == 'received').source_label == 'assertion:publication_history:received:Received'
+
+
+def test_crossref_batches_reverse_relations_with_explicit_target_mapping_and_cursor():
+    targets = ('10.1007/s10462-026-11743-y', '10.5555/second')
+    calls = []
+    def response(request):
+        calls.append(request)
+        assert request.url.path == '/works'
+        filters = request.url.params['filter']
+        assert all('relation.object:' + target in filters for target in targets)
+        page = request.url.params['cursor']
+        rows = ([{'DOI': '10.21203/rs.3.rs-8330917/v1', 'title': ['Preprint'], 'type': 'posted-content',
+            'posted': {'date-parts': [[2025, 12, 4]]}, 'version': '1',
+            'relation': {'is-preprint-of': [{'id-type': 'doi', 'id': targets[0]}]}}] if page == '*' else
+            [{'DOI': '10.5555/second-preprint', 'title': ['Second'], 'type': 'posted-content',
+            'relation': {'is-preprint-of': [{'id-type': 'doi', 'id': targets[1]}]}}])
+        return httpx.Response(200, json={'message': {'items': rows, 'total-results': 2, 'next-cursor': 'next' if page == '*' else 'end'}})
+    with SupplementalClient('crossref', interval=0, page_size=1, transport=httpx.MockTransport(response)) as client:
+        result = client.lookup_preprints(targets)
+    assert len(calls) == 2
+    for formal, preprint in zip(targets, ('10.21203/rs.3.rs-8330917/v1', '10.5555/second-preprint'), strict=True):
+        assert {record.external_ids.doi for record in result[formal]} == {formal, preprint}
+        assert result[formal][0].related_ids[0].record_id == preprint
+    assert not any(item.first_version for record in result[targets[0]] for item in record.dates)
+
+
+def test_europe_pmc_targets_has_preprint_batches_and_preserves_native_matching_note():
+    calls = []
+    note = 'Matched by title and first author'
+    def response(request):
+        calls.append(request)
+        query = request.url.params['query']
+        if 'HAS_PREPRINT:Y' in query:
+            assert all('EXT_ID:' + key in query for key in ('42908400', '1234'))
+            rows = [{'source': 'MED', 'id': '42908400', 'doi': '10.1093/nar/gkag979', 'title': 'Formal',
+                'commentCorrectionList': {'commentCorrection': [{'type': 'Preprint in', 'source': 'PPR',
+                    'id': 'PPR123', 'doi': '10.64898/2026.01.01.123456', 'note': note}]}}]
+        else:
+            assert 'SRC:PPR' in query
+            rows = [{'source': 'PPR', 'id': 'PPR123', 'doi': '10.64898/2026.01.01.123456', 'title': 'Preprint',
+                'firstPublicationDate': '2026-01-01', 'versionNumber': 2,
+                'bookOrReportDetails': {'publisher': 'bioRxiv'},
+                'versionList': {'version': [{'source': 'PPR', 'id': 'PPR122', 'versionNumber': 1,
+                    'firstPublishDate': '2025-12-31'}]}}]
+        return httpx.Response(200, json={'hitCount': len(rows), 'resultList': {'result': rows}})
+    with SupplementalClient('europe_pmc', interval=0, transport=httpx.MockTransport(response)) as client:
+        result = client.lookup_many('pmid', ['42908400', '1234'])
+        preprint, = client.lookup('europe_pmc', 'PPR:PPR123')
+    assert len(calls) == 2 and result['1234'] == ()
+    formal, = result['42908400']
+    assert formal.external_ids.pmid == '42908400'
+    assert formal.related_ids[0].note == note
+    assert note in formal.provenance.note
+    assert any(ref.provider == 'biorxiv' and ref.record_id.startswith('10.64898/') for ref in preprint.related_ids)
+    assert any(date.first_version and date.year == 2025 for date in preprint.dates)
+
+
+@pytest.mark.parametrize('provider', ['biorxiv', 'medrxiv'])
+def test_new_preprint_prefix_uses_native_details_not_formal_reverse(provider):
+    calls = []
+    doi = '10.64898/2026.01.01.123456'
+    with SupplementalClient(provider, interval=0, transport=httpx.MockTransport(lambda request:
+            calls.append(request.url.path) or httpx.Response(200, json={'messages': [{'status': 'ok'}],
+                'collection': [{'doi': doi, 'server': provider, 'version': '1', 'date': '2026-01-01', 'title': 'Preprint'}]}))) as client:
+        record, = client.lookup('doi', doi)
+    assert calls == [f'/details/{provider}/{doi}/na/json']
+    assert completion_metadata((record,)).metadata.first_public_at == '2026-01-01'
+
+
+def test_crossref_reverse_failed_page_retains_verified_relation_and_reports_partial():
+    calls = []
+    formal, preprint = '10.5555/formal', '10.5555/preprint'
+    def response(request):
+        calls.append(request)
+        rows = [{'DOI': preprint, 'type': 'posted-content',
+            'relation': {'is-preprint-of': [{'id-type': 'doi', 'id': formal}]}}] if len(calls) == 1 else []
+        return httpx.Response(200, json={'message': {'items': rows, 'total-results': 2, 'next-cursor': 'next'}})
+    with SupplementalClient('crossref', interval=0, page_size=1, transport=httpx.MockTransport(response)) as client:
+        result = client.lookup_preprints((formal,))[formal]
+    assert isinstance(result, Exception) and 'no progress' in str(result)
+    assert {record.external_ids.doi for record in result.records} == {formal, preprint}
+
+
+def test_crossref_exact_batch_maps_out_of_order_dates_without_using_response_order():
+    calls = []
+    def response(request):
+        calls.append(request)
+        assert request.url.params['filter'] == 'doi:10.5555/one,doi:10.5555/two'
+        return httpx.Response(200, json={'message': {'total-results': 2, 'items': [
+            {'DOI': '10.5555/two', 'type': 'journal-article', 'published': {'date-parts': [[2026, 2]]}},
+            {'DOI': '10.5555/one', 'type': 'journal-article', 'published': {'date-parts': [[2026, 1]]}}]}})
+    with SupplementalClient('crossref', interval=0, transport=httpx.MockTransport(response)) as client:
+        results = client.lookup_many('doi', ['10.5555/one', '10.5555/two', '10.5555/one'])
+    assert len(calls) == 1
+    assert results['10.5555/one'][0].publication_date == '2026-01'
+    assert results['10.5555/two'][0].publication_date == '2026-02'

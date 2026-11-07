@@ -42,7 +42,7 @@ def test_autosave_rejects_secrets_workspace_moves_and_service_removal(tmp_path):
     config, _, _, service = current_mapping_document(tmp_path)
     with TestClient(create_app(config, electron_bridge=OfflineBridge()), base_url='http://localhost') as client:
         opened = client.get('/api/ui-next/settings').json()
-        for changes in ({'output_dir': 'other'}, {'openalex_key_action': 'clear'}, {'access_services': []}):
+        for changes in ({'output_dir': 'other'}, {'openalex_key_action': 'clear'}, {'pubmed_key_action': 'clear'}, {'access_services': []}):
             rejected = client.post('/api/ui-next/settings/autosave', json=patch_body(opened, **changes)).json()
             assert not rejected['saved'] and rejected['outcome'] == 'INVALID_DRAFT'
         actual = client.get('/api/ui-next/settings').json()

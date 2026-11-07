@@ -16,6 +16,7 @@ from allfold.application.coordinators.run_coordinator import (
 _STAGE_LABELS = {
     ProgressStage.CHECKING_MONITOR: "Checking monitor",
     ProgressStage.DISCOVERING_PAPERS: "Discovering papers",
+    ProgressStage.COMPLETING_PAPERS: "API Completion",
     ProgressStage.PREPARING_PAPERS: "Preparing papers",
     ProgressStage.UPDATING_WORKSPACE: "Capturing papers",
 }
@@ -23,10 +24,15 @@ _STAGE_LABELS = {
 _SOURCE_LABELS = {
     "application": "Application",
     "crossref": "Crossref",
+    "pubmed": "PubMed",
     "openalex": "OpenAlex",
+    "openalex_work": "OpenAlex Work",
     "integrated": "Run",
     "wos": "Web of Science",
     "europe_pmc": "Europe PMC",
+    "arxiv": "arXiv",
+    "biorxiv": "bioRxiv",
+    "medrxiv": "medRxiv",
     "workspace": "Workspace",
 }
 
@@ -37,6 +43,7 @@ _UNIT_LABELS = {
     "journal": ("journal", "journals"),
     "paper": ("paper", "papers"),
     "work": ("work", "works"),
+    "request": ("request", "requests"),
 }
 
 

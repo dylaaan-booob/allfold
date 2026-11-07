@@ -33,11 +33,10 @@ are unused and preserved until a user explicitly resets that Workspace.
 New records use this fixed order, independent of request completion time:
 
 1. Formal records before records explicitly identified as preprints.
-2. WoS records before other providers within the same formal/preprint class.
-3. Records attributed to a monitored Journal before supplements.
-4. Discovery evidence before supplemental evidence.
-5. Crossref, Europe PMC, OpenAlex, arXiv, bioRxiv, medRxiv, then
-   other providers ordered by provider and record ID.
+2. WoS, PubMed, Crossref, Europe PMC, OpenAlex, arXiv, bioRxiv,
+   medRxiv, then other providers ordered by provider and record ID.
+3. Within a Provider, records attributed to a monitored Journal before supplements,
+   then Discovery evidence before supplemental evidence.
 
 Duplicate snapshots use deterministic serialized payload order excluding the
 retrieval timestamp. Retrieval time and field completeness do not score metadata.
@@ -47,6 +46,14 @@ Publication dates are selected within each source's bibliographic record before
 moving to another source. The primary DOI belongs to the selected formal record
 when one is present; a preprint DOI does not fill a DOI-free formal target.
 Only direct identifiers selected into `external_ids` survive for later deduplication.
+
+Run retains each final Discovery root and builds its ordinary fields and direct
+identifiers from verified formal records. Bound related versions contribute only
+date facts, First public and source provenance; they cannot supply a formal
+Paper's title, authors, primary DOI or PMID, become saved identity owners or
+create another Paper. Exact OpenAlex location bindings with a different top DOI
+remain association evidence. Independently saved preprints remain independent.
+Distinct relation notes on the same Provider record are retained in stable order.
 
 `journal` and `conference` are separate bibliographic source fields. Conference
 names do not create followed sources and are never assigned fake ISSNs. `publication_type` distinguishes journal, conference and
@@ -60,14 +67,14 @@ All date strings preserve `YYYY`, `YYYY-MM` or `YYYY-MM-DD` precision.
 `publication_date` describes the source's bibliographic publication record and
 remains independent of the discovery range and first-public sorting.
 `date_evidence` retains event kind, partial components, provider, record ID,
-version, preprint version family, version type, source URL and whether the source establishes a first
+version, preprint version family, version type, original source label, source URL and whether the source establishes a first
 public preprint version. Equal facts deduplicate independently of fetch time;
 new events and conflicting source facts append. Same-day events with different
 types remain distinct. Sorting placeholders never enter saved/display dates.
 
 `first_public_at` requires a reliably linked preprint system and evidence for its
 first/earliest public version. A later version alone, unknown preprint date,
-future public event, formal online/publication, Accepted, database indexing,
+future public event, formal online/publication, Received, Accepted, database indexing,
 retrieval/update times or Translator generic date cannot supply a fallback.
 Sufficient first-stage evidence can fill it at creation. Explicit API completion
 fills an empty value but never recalculates a nonempty one; later evidence still
@@ -82,7 +89,9 @@ Paper identifiers alone do not join independent preprint families.
 An added alias does not duplicate an already saved event.
 
 The UI's **期刊日期** is a chronological collection of journal-version events:
-Accepted (only an explicit acceptance event), Published online and Published.
+Received and Accepted (explicit manuscript-history events), Published online and
+Published. All four are independent completion goals; no single event satisfies
+the other goals.
 WoS EA uses its own year or explicit EY for Published online; PD/PY feeds
 `publication_date` and Published, including year-only and future dates. It never
 approximates Accepted or borrows PY for EA. Native print/issued labels map to
@@ -114,6 +123,11 @@ primary DOI/UUID, workflow or another Paper. Every known family still needs firs
 version proof when filling an empty First public. Unsaved relationships are
 discarded; another explicit completion may request them again. Shared response
 caches, deduplication, arXiv batches and cancellation remain operation-local.
+Response capabilities distinguish PubMed summary from complete EFetch; a complete
+EFetch can satisfy summary, while summary cannot satisfy full bibliography.
+Europe PMC relation notes remain source provenance, including declared automatic
+matching, without creating a persistent relationship graph. Crossref posted dates
+and version suffixes alone do not prove native first-version publication.
 Typed saved preprint date facts can reconstruct temporary query targets after
 restart, without entering the Paper identity index. Sufficient dates already in
 Paper can fill an empty First public with no network requests or source rewrite.

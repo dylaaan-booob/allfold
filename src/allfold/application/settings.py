@@ -106,6 +106,11 @@ class MonitorDraft:
     openalex_key_error: str = field(default="", compare=False)
     openalex_key_action: str = "keep"
     openalex_api_key: SecretStr | None = field(default=None, repr=False)
+    pubmed_key_configured: bool = field(default=False, compare=False)
+    pubmed_key_revision: str = "missing"
+    pubmed_key_error: str = field(default="", compare=False)
+    pubmed_key_action: str = "keep"
+    pubmed_api_key: SecretStr | None = field(default=None, repr=False)
 
 
 @dataclass(frozen=True)
@@ -192,6 +197,7 @@ class SettingsSaveResult:
     monitor_revision: ContentRevision
     journal_revision: ContentRevision
     openalex_key_written: bool = False
+    pubmed_key_written: bool = False
 
 
 @dataclass(frozen=True)
@@ -496,7 +502,7 @@ def load_settings(config_path: Path) -> SettingsLoadResult:
                                                     field=error.field, path=journal_path))
 
     credentials = {}
-    for provider in ("openalex",):
+    for provider in ("openalex", "pubmed"):
         try:
             key, key_revision = read_credential(config_path, provider=provider)
             configured, error_text = key is not None, ""
@@ -596,7 +602,7 @@ def validate_settings(
                 venue_whitelist=storage_fields.venue_whitelist,
             ),
         )
-        for provider in ("openalex",):
+        for provider in ("openalex", "pubmed"):
             action = getattr(draft, f"{provider}_key_action")
             secret = getattr(draft, f"{provider}_api_key")
             if action not in {"keep", "replace", "clear"}:
@@ -758,7 +764,7 @@ def save_settings(
                 else:
                     # Reset owns absent targets too; existence cannot bypass exclusion.
                     stack.enter_context(workspace_path_lock(path))
-            changed_keys = [provider for provider in ("openalex",)
+            changed_keys = [provider for provider in ("openalex", "pubmed")
                             if getattr(draft, f"{provider}_key_action") != "keep"]
             for provider in changed_keys:
                 try:

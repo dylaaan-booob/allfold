@@ -65,10 +65,10 @@ def provider_expressions(text: str):
         return {provider: {"expression": None, "error": str(error)} for provider in (*PROVIDERS,"integrated","wos")}
     for provider in (*PROVIDERS,"integrated","wos"):
         try:
-            if provider not in {"openalex", "europe_pmc", "integrated", "wos"}:
+            if provider not in {"pubmed", "openalex", "integrated", "wos"}:
                 values[provider] = {"expression": None, "error": ""}
                 continue
-            compiled = compile_wos_query(ast) if provider == "wos" else compile_query(ast,provider) if provider in {"openalex","europe_pmc"} else text
+            compiled = compile_wos_query(ast) if provider == "wos" else compile_query(ast,provider) if provider in {"pubmed","openalex"} else text
             values[provider] = {"expression": compiled, "error": ""}
         except ValueError as error:
             values[provider] = {"expression": None, "error": str(error)}

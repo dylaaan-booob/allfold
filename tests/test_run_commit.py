@@ -110,12 +110,10 @@ def test_two_processes_rescan_shared_identity_inside_commit_lock(configuration):
 
 def test_reset_while_real_http_adapter_waits_cannot_restore_old_run(configuration):
     import httpx
-    from allfold.application.integrated_run import run_integrated
+    from integrated_run_helpers import run_integrated
     from allfold.providers.integrated import DiscoveryClient
 
     def response(request):
-        if "/sources/" in request.url.path:
-            return httpx.Response(200, json={"id": "https://openalex.org/S123", "issn": ["0006-341X"]})
         assert execute_reset(configuration, preview_reset(configuration)).success
         return httpx.Response(200, json={"results": [{"id": "https://openalex.org/W123",
             "doi": "https://doi.org/10.5555/late", "title": "Causal inference", "publication_date": "2026-01-01"}],

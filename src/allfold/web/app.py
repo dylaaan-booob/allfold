@@ -239,11 +239,12 @@ def create_app(config_path: Path, *, electron_bridge: ElectronBridge, diagnostic
             yield
         finally:
             import asyncio
+            application.state.run_coordinator.shutdown()
             electron_bridge.finish_disconnected()
             await asyncio.to_thread(application.state.kept_workflow.shutdown)
             for worker in (application.state.api_completion, application.state.paper_enrichment, application.state.journal_cover_search, application.state.wos_coordinator):
                 await asyncio.to_thread(worker.shutdown)
-            for worker in (application.state.batch_import, application.state.preparation_coordinator,
+            for worker in (application.state.run_coordinator, application.state.batch_import, application.state.preparation_coordinator,
                            application.state.api_completion, application.state.paper_enrichment, application.state.journal_cover_search, application.state.wos_coordinator):
                 await asyncio.to_thread(worker.join)
             await asyncio.to_thread(application.state.kept_workflow.advance)
@@ -912,6 +913,7 @@ def create_app(config_path: Path, *, electron_bridge: ElectronBridge, diagnostic
                     "Settings were partially saved: "
                     f"journal data written: {'yes' if result.journal_written else 'no'}, "
                     f"monitor configuration written: {'yes' if result.monitor_written else 'no'}, "
+                    f"PubMed API Key written: {'yes' if result.pubmed_key_written else 'no'}, "
                     f"OpenAlex API Key written: {'yes' if result.openalex_key_written else 'no'}. "
                     "Reload and reconcile before another Save."
                 )

@@ -4,7 +4,7 @@ const esc=value=>String(value??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;
 const kinds={run:'Run',prepare:'Service Preparation',import:'Batch Import',kept:'Kept Workflow',enrich:'网页 Enrich',api_completion:'API 补全',covers:'Cover Search'};
 const outcomes={running:'进行中',completed:'完成',partial:'部分完成',failed:'失败',cancelled:'已取消',
   interrupted:'已中断',uncertain:'结果未确认',needs_attention:'需要处理',opened:'已打开',no_effect:'未产生保存',confirmed:'父条目已确认'};
-const metrics={first_public_recorded:'首版日期已记录',first_public_no_association:'尚无预印本关联',first_public_known_unresolved:'已知首版未确定',first_public_conflict:'首版证据冲突',first_public_failed:'首版查询失败',first_public_cancelled:'首版查询取消',no_match:'无匹配',lookup_failed:'请求失败',identity_mismatch:'身份不匹配',evidence:'取得证据',total:'总数',processed:'已处理',retrieved:'检索记录',created:'新增 Paper',updated:'更新',
+const metrics={integrated_candidates:'Discovery 候选',integrated_deduplicated:'去重 Paper',work_location_targets:'Work 定位 DOI',completion_targets:'补全 Paper',completion_requests:'补全 HTTP 请求',completion_date_facts_added:'新增日期事实',first_public_recorded:'首版日期已记录',first_public_no_association:'尚无预印本关联',first_public_known_unresolved:'已知首版未确定',first_public_conflict:'首版证据冲突',first_public_failed:'首版查询失败',first_public_cancelled:'首版查询取消',no_match:'无匹配',lookup_failed:'请求失败',identity_mismatch:'身份不匹配',evidence:'取得证据',total:'总数',processed:'已处理',retrieved:'检索记录',created:'新增 Paper',updated:'更新',
   confirmed:'父条目已确认',exported:'父条目已导入',no_effect:'未保存',uncertain:'结果未确认',failed:'失败',
   skipped:'跳过',cancelled:'取消',completed:'完成',opened:'已打开',needs_attention:'需要处理',eligible:'符合条件',
   matched:'已匹配',downloaded:'已获取',enriched:'已补充',unchanged:'未变更',candidates:'候选',papers:'Paper',
@@ -64,6 +64,7 @@ export function renderHistoryRecord(record) {
       ${requested.length?`<p>请求补充：${requested.map(esc).join('、')}</p>`:''}
       ${saved.length?`<p>已补充：${saved.map(esc).join('、')}</p>`:''}
       ${record.diagnostic_message?`<p>${esc(record.diagnostic_message)}</p>`:''}
+      ${record.kind==='run' && details.completion_status?`<p>Discovery · ${esc(resultLabel(details.discovery_status || 'unknown'))} / API Completion · ${esc(({complete:'完成',empty:'无需补全',partial:'部分完成',failed:'失败',cancelled:'已取消'})[details.completion_status] || '未知')}</p>`:''}
       ${sourceRows?`<ul>${sourceRows}</ul>`:''}${wosChecks}
       ${serviceCounts}${details.omitted_services?'<p>更多 Service 汇总已省略。</p>':''}
       ${rows?`<ol>${rows}</ol>`:''}${details.omitted_results?'<p>更多结果已省略；请结合诊断包中的保留证据。</p>':''}

@@ -56,3 +56,9 @@ closed records and a terminal `EF`, with the selected fields and automatically
 included identifiers/date tags. The original export remains private; tests
 use synthetic controls and records. This DOM observation does not by itself
 prove every later WoS session or product Run succeeds.
+
+In Integrated Run, each fully verified export batch may submit its DOI facts to
+the parent's operation-local Work queue. Submission does no inline HTTP or Paper
+write and does not alter these eight export choices. Count, path or duplicate-UT
+failure prevents that batch callback. Final native conflict quarantine still
+applies to all roots, including batches already submitted for Work lookup.

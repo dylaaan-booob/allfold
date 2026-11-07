@@ -73,7 +73,7 @@ def finish_run(store, task_id, result, *, provider=None, diagnostic=None, interr
         value for key,value in stats.items() if key in {'integrated_candidates'})
     sources = {}
     for run in summary['details'].get('provider_totals', summary['details'].get('provider_runs', [])):
-        if run.get('provider') not in {'wos', 'openalex', 'europe_pmc'}:
+        if run.get('provider') not in {'wos', 'pubmed', 'openalex'}:
             continue
         source = sources.setdefault(run['provider'], dict(provider=run['provider'], status='empty', candidates=0, created=0, existing=0, problems=0))
         for key in ('candidates', 'created', 'existing'):
@@ -94,7 +94,13 @@ def finish_run(store, task_id, result, *, provider=None, diagnostic=None, interr
     observe(store, 'finish', task_id, outcome,
         statistics={'created':summary['created_papers'], 'unchanged':summary['existing_papers'],
             'retrieved':retrieved, 'warnings':sum(i.get('severity') != 'error' for i in summary['issues']),
-            'errors':sum(i.get('severity') == 'error' for i in summary['issues'])},
+            'errors':sum(i.get('severity') == 'error' for i in summary['issues']),
+            **{key:value for key,value in stats.items() if key in {
+                'integrated_candidates','integrated_deduplicated','work_location_targets','completion_targets',
+                'completion_requests','completion_date_facts_added','first_public_recorded','first_public_no_association',
+                'first_public_known_unresolved','first_public_conflict','first_public_failed','first_public_cancelled'}}},
         diagnostic=diagnostic, details={'result_status':status, 'coverage_status':summary['coverage_status'],
             'run_sources':list(sources.values()), 'wos_checks':checks,
+            'discovery_status':summary['details'].get('discovery_status'),
+            'completion_status':summary['details'].get('completion_status'),
             'reason':'connection_lost' if interrupted else 'partial' if outcome == 'partial' else outcome if outcome in {'failed','cancelled'} else None})

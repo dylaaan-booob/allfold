@@ -54,8 +54,8 @@ class LogLevel(str, Enum):
     ERROR = "ERROR"
 
 
-DEFAULT_PROVIDER_ORDER = ("openalex", "europe_pmc", "crossref", "arxiv", "biorxiv", "medrxiv", "wos")
-ENABLED_PROVIDERS = ("openalex", "europe_pmc")
+DEFAULT_PROVIDER_ORDER = ("pubmed", "openalex", "europe_pmc", "crossref", "arxiv", "biorxiv", "medrxiv", "wos")
+ENABLED_PROVIDERS = ("pubmed", "openalex")
 COMPLETION_PROVIDERS = DEFAULT_PROVIDER_ORDER[:-1]
 
 
@@ -256,8 +256,8 @@ class _Settings(BaseModel):
     @field_validator("enabled_providers", mode="before")
     @classmethod
     def valid_enabled(cls, value):
-        if not isinstance(value, (list, tuple)) or any(item not in (*ENABLED_PROVIDERS, "wos") for item in value) or len(set(value)) != len(value):
-            raise ValueError("enabled_providers must list unique supported Provider IDs")
+        if not isinstance(value, (list, tuple)) or not value or any(item not in (*ENABLED_PROVIDERS, "wos") for item in value) or len(set(value)) != len(value):
+            raise ValueError("enabled_providers must list one or more unique PubMed, WoS or OpenAlex Provider IDs")
         return tuple(value)
 
     @field_validator("completion_providers", mode="before")
@@ -621,13 +621,15 @@ def parse_monitor_definition(path: Path, raw: Any) -> MonitorDefinition:
         )
 
     if (any(isinstance(key, str) and key.startswith("pubmed") for key in raw)
-            or any("pubmed" in value for key in ("provider_order", "provider_aliases", "enabled_providers")
-                   if isinstance((value := raw.get(key)), (list, tuple, dict)))):
+            or isinstance(raw.get("enabled_providers"), (list, tuple)) and "europe_pmc" in raw["enabled_providers"]
+            or "provider_order" in raw and (not isinstance(raw["provider_order"], (list,tuple))
+                or any(not isinstance(item, str) for item in raw["provider_order"])
+                or set(raw["provider_order"]) != set(DEFAULT_PROVIDER_ORDER))):
         raise ConfigurationError(
-            "PubMed configuration is no longer supported. Create a new configuration from "
-            "config.template.yaml and choose enabled_providers. Old Workspace data is not migrated; "
-            "use Settings Workspace Reset only if you explicitly want to discard it. "
-            "Existing credential files are preserved.", field="enabled_providers", path=path,
+            "Obsolete Provider roles or configuration fields. Back up and rebuild the YAML from "
+            "config.template.yaml; choose PubMed, WoS and/or OpenAlex for Discovery. "
+            "Europe PMC is now targeted PPR completion only. Existing Workspace, user-state and credentials are preserved.",
+            field="enabled_providers", path=path,
         )
 
     try:

@@ -200,6 +200,14 @@ markup.innerHTML=`<header class="s-header">
 <p id="s-run-expression-error" class="s-field-error" role="status">
 </p>
 </div>
+<fieldset data-provider-settings="pubmed" class="s-setting-group" aria-label="PubMed settings" hidden>
+<label class="s-setting-row" data-field="pubmedKey">
+<span class="s-setting-label">API Key</span>
+<input type="password" data-monitor="pubmedKey" autocomplete="new-password" spellcheck="false">
+</label>
+<p id="s-pubmed-key-status" class="s-help">
+</p>
+</fieldset>
 <fieldset data-provider-settings="openalex" class="s-setting-group" aria-label="OpenAlex settings" hidden>
 <label class="s-setting-row" data-field="openalexKey">
 <span class="s-setting-label">API Key</span>
@@ -208,6 +216,7 @@ markup.innerHTML=`<header class="s-header">
 <p id="s-openalex-key-status" class="s-help">
 </p>
 </fieldset>
+<fieldset data-provider-settings="europe_pmc" class="s-setting-group" aria-label="Europe PMC role" hidden><p class="s-help">Europe PMC 仅按已确认的正式 PMID 定向补全 PPR 关联；不执行期刊 Discovery。</p></fieldset>
 <fieldset data-provider-settings="crossref" class="s-setting-group" aria-label="Crossref settings" hidden>
 <label class="s-setting-row" data-field="crossrefMailto">
 <span class="s-setting-label">Contact Email</span>
@@ -378,7 +387,7 @@ const runLayoutHost=window.allfoldLayout.create({root:runPanel,workspace:'run',m
 const settingsLayoutHost=window.allfoldLayout.create({root:settingsPage,workspace:'settings',minContentWidth:360});
 let cropEditor=null;
 const configurationDirty=()=>Boolean(saved && draft && !same(saved,draft));
-const explicitDirty=()=>Boolean(saved && draft && (draft.monitor.workspace!==saved.monitor.workspace || ['openalex'].some(provider=>draft.monitor[provider+'KeyAction']!=='keep') || casDirty() || institutionInputInvalid));
+const explicitDirty=()=>Boolean(saved && draft && (draft.monitor.workspace!==saved.monitor.workspace || ['pubmed','openalex'].some(provider=>draft.monitor[provider+'KeyAction']!=='keep') || casDirty() || institutionInputInvalid));
 const casPasswordAction=()=>casDraft.password===keyMask?'keep':casDraft.password?'replace':casSaved.configured?'clear':'keep';
 const casDirty=()=>Boolean(casAPI && (casDraft.username.trim()!==casSaved.username || casPasswordAction()!=='keep'));
 const dirty=()=>configurationDirty() || casDirty() || institutionInputInvalid || autosaveStatus.dirty;
@@ -607,12 +616,12 @@ workspaceSearch.register('journals',{
 function syncMonitor() {
   document.querySelectorAll('[data-monitor]').forEach(input=>{const value=draft.monitor[input.dataset.monitor];if(input.type==='checkbox')input.checked=value;else input.value=value ?? '';});
   syncInstitution();
-  syncKey('openalex');scheduleExpressions();renderRun();
+  for(const provider of ['pubmed','openalex'])syncKey(provider);scheduleExpressions();renderRun();
 }
 document.querySelectorAll('[data-monitor]').forEach(input=>input.addEventListener(input.tagName==='SELECT' || input.type==='checkbox'?'change':'input',()=>{
   if(input.dataset.monitor==='institutionName')return;
   draft.monitor[input.dataset.monitor]=input.type==='checkbox'?input.checked:input.value;
-  for(const provider of ['openalex'])if(input.dataset.monitor===provider+'Key')syncKey(provider);
+  for(const provider of ['pubmed','openalex'])if(input.dataset.monitor===provider+'Key')syncKey(provider);
   changed({immediate:input.tagName==='SELECT' || input.type==='checkbox'});
   if(['expression'].includes(input.dataset.monitor))scheduleExpressions();
 }));
@@ -745,16 +754,16 @@ function renderRun() {
   $('s-run-title').textContent=overview?'Overview':providerName(selectedProvider);
   $('s-run-overview').hidden=!overview;$('s-run-provider').hidden=overview;
   $('s-provider-run').hidden=true;
-  $('s-run-provider').querySelector('.s-run-query').hidden=!['openalex','europe_pmc','wos'].includes(selectedProvider);
+  $('s-run-provider').querySelector('.s-run-query').hidden=!['pubmed','openalex','wos'].includes(selectedProvider);
   if(!overview){
     $('s-provider-run').dataset.runProvider=selectedProvider;
     $('s-run-expression').textContent=expressions[selectedProvider]?.expression || (!expressions[selectedProvider]?'正在生成表达式…':'');
     $('s-run-expression-error').textContent=expressions[selectedProvider]?.error || '';
   }
   for(const group of root.querySelectorAll('[data-provider-settings]'))group.hidden=group.dataset.providerSettings!==selectedProvider;
-  const discovery=new Set(['wos','openalex','europe_pmc']);
+  const discovery=new Set(['pubmed','wos','openalex']);
   const choices=(ids,role,values)=>ids.map(id=>`<label class="s-setting-row s-check"><span class="s-setting-label">${esc(providerName(id))}</span><input type="checkbox" data-${role}-provider="${id}" ${values.includes(id)?'checked':''}></label>`).join('');
-  $('s-run-operations').innerHTML=`<fieldset class="s-setting-group"><legend>Run</legend>${choices(providerOrder().filter(id=>discovery.has(id)),'discovery',draft.monitor.enabledProviders)}</fieldset><div class="s-run-operation"><button class="s-button" data-run-provider="integrated" disabled>Run ↗</button><p class="s-help" data-run-reason="integrated"></p></div><fieldset class="s-setting-group"><legend>API 补全</legend>${choices(providerOrder().filter(id=>id!=='wos'),'completion',draft.monitor.completionProviders)}</fieldset>`;
+  $('s-run-operations').innerHTML=`<fieldset class="s-setting-group"><legend>Journal Discovery</legend>${choices(providerOrder().filter(id=>discovery.has(id)),'discovery',draft.monitor.enabledProviders)}</fieldset><div class="s-run-operation"><button class="s-button" data-run-provider="integrated" disabled>Run ↗</button><p class="s-help" data-run-reason="integrated"></p></div><p class="s-help">Run 自动使用 PubMed、OpenAlex、Europe PMC、Crossref 与原生预印本 API 补全日期和关系；下方选择仅用于独立 API 补全。</p><fieldset class="s-setting-group"><legend>API 补全</legend>${choices(providerOrder().filter(id=>id!=='wos'),'completion',draft.monitor.completionProviders)}</fieldset>`;
   updateRunButtons();renderRunRecords();
 }
 function updateRunButtons() {
@@ -1269,11 +1278,11 @@ function groupKey(name) {return 'group:'+name;}
 function project(data) {
   const v=data.values,order=v.provider_order;
   if(!Array.isArray(order) || order.length!==Object.keys(providerDefaults).length || new Set(order).size!==order.length || order.some(id=>!Object.hasOwn(providerDefaults,id)))throw new Error('provider_order 必须完整且不重复地列出所有支持的 Provider；请修正 YAML 后 Reload。');
-  return {monitor:{name:v.name,expression:v.keyword_expression,enabledProviders:[...(v.enabled_providers || [])],completionProviders:[...(v.completion_providers || [])],aliases:{...(v.provider_aliases || {})},providerOrder:[...order],crossrefMailto:v.crossref_mailto || "",openalexKeyAction:"keep",openalexKey:v.openalex_key_configured?keyMask:"",from:v.from_month,to:v.to_month,
+  return {monitor:{name:v.name,expression:v.keyword_expression,enabledProviders:[...(v.enabled_providers || [])],completionProviders:[...(v.completion_providers || [])],aliases:{...(v.provider_aliases || {})},providerOrder:[...order],crossrefMailto:v.crossref_mailto || "",pubmedKeyAction:"keep",pubmedKey:v.pubmed_key_configured?keyMask:"",openalexKeyAction:"keep",openalexKey:v.openalex_key_configured?keyMask:"",from:v.from_month,to:v.to_month,
     workspace:v.output_dir,log:v.log_level,autoImport:v.auto_import_after_preparation,
     delay:v.transition_delay_seconds,displayName:v.display_name,zoteroTarget:v.zotero_target || null,institutionName:v.institution_name,
     idp:v.institution_idp_entity_id,useShibboleth:v.institution_use_shibboleth ?? false},
-    revisions:{openalex_key_revision:v.openalex_key_revision || "missing",monitor_revision_exists:v.monitor_revision_exists,monitor_revision_digest:v.monitor_revision_digest,
+    revisions:{pubmed_key_revision:v.pubmed_key_revision || "missing",openalex_key_revision:v.openalex_key_revision || "missing",monitor_revision_exists:v.monitor_revision_exists,monitor_revision_digest:v.monitor_revision_digest,
       journal_revision_exists:v.journal_revision_exists,journal_revision_digest:v.journal_revision_digest},
     list:{journals:v.journals.map(j=>({id:j.issn || j.eissn,name:j.name,issn:j.issn || null,eissn:j.eissn || null,
         serviceId:j.access_service_id || null,groupId:j.group?groupKey(j.group):null,labels:j.labels?j.labels.split(';').map(labelName):[]})),
@@ -1354,7 +1363,7 @@ async function applyExplicit(source,approval={}, {skipFlush=false}={}) {
   }
   if(!data.saved){showIssues(data);if(['PARTIAL_SAVE','REVISION_CONFLICT'].includes(data.save?.outcome))reconcileRequired=true;return false;}
   serverState=data;saved=project(data);draft=copy(saved);
-  for(const key of ['workspace','openalexKey','openalexKeyAction'])
+  for(const key of ['workspace','pubmedKey','pubmedKeyAction','openalexKey','openalexKeyAction'])
     if(!same(retained[key],source.monitor[key]) || same(source.monitor[key],previous[key]))draft.monitor[key]=retained[key];
   initializeAutosave(data);syncMonitor();renderJournalsPage();updateDirty();showIssues(data);await refreshRun();await refreshSavedWorkspace();return true;
 }
@@ -1363,7 +1372,7 @@ async function saveProviderKey(provider) {
   const source=copy(saved);source.monitor[provider+'KeyAction']=draft.monitor[provider+'KeyAction'];source.monitor[provider+'Key']=draft.monitor[provider+'Key'];
   return applyExplicit(source);
 }
-for(const provider of ['openalex']) {
+for(const provider of ['pubmed','openalex']) {
   const button=document.createElement('button');button.type='button';button.className='s-button';button.textContent='Review API Key change';button.dataset.secretProvider=provider;
   $(`s-${provider}-key-status`).parentElement.append(button);
   button.addEventListener('click',()=>{
@@ -1409,7 +1418,7 @@ $('s-autosave-reconcile').addEventListener('click',async()=>{
     }}]);
   }catch(error){message(error.message,'error');}
 });
-for(const input of document.querySelectorAll('[data-monitor]'))if(!['workspace','openalexKey'].includes(input.dataset.monitor))input.addEventListener('blur',()=>{if(!institutionInputInvalid)void autosave?.flush();});
+for(const input of document.querySelectorAll('[data-monitor]'))if(!['workspace','pubmedKey','openalexKey'].includes(input.dataset.monitor))input.addEventListener('blur',()=>{if(!institutionInputInvalid)void autosave?.flush();});
 window.addEventListener('online',()=>{if(autosave?.status==='Failed')void autosave.retry();});
 window.addEventListener('beforeunload',event=>{if(dirty() || autosave?.busy){event.preventDefault();event.returnValue='仍有待提交的配置；普通草稿可在恢复后核对，凭据不会进入恢复存储。';}});
 
@@ -1422,9 +1431,9 @@ function adoptState(data) {
 }
 function submission(source=draft) {
   if(institutionInputInvalid)throw new Error('请从候选列表选择机构，或清空选择。');
-  syncKey('openalex');
+  for(const provider of ['pubmed','openalex'])syncKey(provider);
   const form=new FormData(),m=source.monitor;
-  for(const [field,key] of Object.entries({name:'name',keyword_expression:'expression',crossref_mailto:'crossrefMailto',openalex_key_action:'openalexKeyAction',from_month:'from',to_month:'to',
+  for(const [field,key] of Object.entries({name:'name',keyword_expression:'expression',crossref_mailto:'crossrefMailto',pubmed_key_action:'pubmedKeyAction',openalex_key_action:'openalexKeyAction',from_month:'from',to_month:'to',
     output_dir:'workspace',log_level:'log',transition_delay_seconds:'delay',display_name:'displayName',
     institution_name:'institutionName',institution_idp_entity_id:'idp'}))form.set(field,String(m[key]??''));
   for(const id of m.providerOrder)form.append('provider_order',id);
@@ -1447,7 +1456,7 @@ async function formRequest(path,extra={},options={}) {
   if(operationPending)throw new Error('当前操作尚未结束。');
   closeLabelPicker();
   const form=options.draft===false?new FormData():submission(options.source || draft);
-  if(path==='/settings/save')for(const provider of ['openalex'])if((options.source || draft).monitor[provider+'KeyAction']==='replace')form.set(provider+'_api_key',(options.source || draft).monitor[provider+'Key']);
+  if(path==='/settings/save')for(const provider of ['pubmed','openalex'])if((options.source || draft).monitor[provider+'KeyAction']==='replace')form.set(provider+'_api_key',(options.source || draft).monitor[provider+'Key']);
   form.set('csrf_token',uiNext.csrf_token || '');for(const [key,value] of Object.entries(extra))form.set(key,value);
   setOperationPending(true);
   try {
@@ -1473,7 +1482,7 @@ function showIssues(data) {
   const all=[...new Map([...issues,...validation].map(i=>[JSON.stringify([i.field,i.message]),i])).values()];
   const texts=[...new Set(all.map(i=>i.message))];
   message([data.message,...texts].filter(Boolean).join(' '),data.saved?'normal':'error');
-  const fields={openalex_api_key:'openalexKey',name:'name',keyword_expression:'expression',crossref_mailto:'crossrefMailto',openalex_key_action:'openalexKeyAction',from_month:'from',to_month:'to',output_dir:'workspace',
+  const fields={pubmed_api_key:'pubmedKey',openalex_api_key:'openalexKey',name:'name',keyword_expression:'expression',crossref_mailto:'crossrefMailto',pubmed_key_action:'pubmedKeyAction',openalex_key_action:'openalexKeyAction',from_month:'from',to_month:'to',output_dir:'workspace',
     log_level:'log',transition_delay_seconds:'delay',display_name:'displayName',
     'institution.name':'institutionName','institution.idp_entity_id':'institutionName',
     'institution.use_shibboleth':'useShibboleth','institution':'institutionName',kept_workflow:'delay'};
@@ -1485,7 +1494,7 @@ function showIssues(data) {
   if(!first && all.some(issue=>issue.field?.startsWith('provider_aliases'))){selectedProvider='openalex';openSettings('run',true);renderRun();$('s-provider-alias').focus();}
   if(!first && all.some(issue=>/journal|access_service|groups|custom_labels/.test(issue.field || '')))openSettings('journals-page',true);
   if(first){const key=first.dataset.monitor;
-    if(['name','expression','from','to','openalexKey','crossrefMailto'].includes(key)){selectedProvider=key==='openalexKey'?'openalex':key==='crossrefMailto'?'crossref':'overview';openSettings('run',true);renderRun();}
+    if(['name','expression','from','to','pubmedKey','openalexKey','crossrefMailto'].includes(key)){selectedProvider=key==='pubmedKey'?'pubmed':key==='openalexKey'?'openalex':key==='crossrefMailto'?'crossref':'overview';openSettings('run',true);renderRun();}
     else if(['displayName','delay','autoImport','institutionName','idp','useShibboleth'].includes(key)){window.workspaceNavigation.go('kept',{instant:true});window.dispatchEvent(new CustomEvent('kept-open-sidebar',{detail:{view:['displayName','delay','autoImport'].includes(key)?'workflow':'access'}}));}
     else openSettings('settings',true);first.focus();}
 }

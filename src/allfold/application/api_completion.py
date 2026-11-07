@@ -54,9 +54,9 @@ def save_api_completion(target, records, *, operation_lock):
         contents = set_managed_value(contents, 'date_evidence', [item.model_dump(mode='json', exclude_none=True) for item in dates])
         fields.append('date_evidence')
     sources = list(state.sources)
-    keys = {(s.provider, s.record_id, s.version, s.url) for s in sources}
+    keys = {(s.provider, s.record_id, s.version, s.url, s.note) for s in sources}
     for source in paper.sources if pending else ():
-        key = source.provider, source.record_id, source.version, source.url
+        key = source.provider, source.record_id, source.version, source.url, source.note
         if source.provider != 'workspace' and key not in keys:
             sources.append(source)
             keys.add(key)
