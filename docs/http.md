@@ -80,16 +80,11 @@ is not vendored or modified.
 
 ## Discovery and API-completion Providers
 
-Journal Run and explicit API completion independently construct selected Provider
-clients over the shared HTTP policy, finite retries and operation-local host
-pacing. Run uses lightweight candidate discovery and batched identifier lookups
-only for creation details of unknown candidates. It never completes existing
-Papers or constructs metadata-only clients. API completion deduplicates each
-provider/namespace/identifier across its selection and reuses sufficient saved Paper fields and operation-local responses. Temporary HTTP errors and
-429 honor Retry-After, with cancellable waits and progress. Recognized HTML
-verification stops the provider client without browser fallback, route/identity
-switching or enabling an unselected source. Valid empty responses/known-ID 404
-are normal no-match, distinct from failure or identity mismatch.
+Journal Run and explicit API completion construct operation-local Provider clients over the shared HTTP policy, finite retries and host pacing. Run's selected PubMed/WoS/OpenAlex Discovery shares DOI/Work evidence with its declared automatic date/relationship stage; Europe PMC is targeted PPR completion only. The separate explicit completion selection remains independent. Neither path modifies existing Papers through Run, and network requests hold no Workspace write lock.
+
+Exact identifier batches use capability-aware operation caches: PubMed EFetch can satisfy ESummary goals, while ESummary cannot satisfy missing full bibliography; OpenAlex full locations are required before full-detail reuse. Shared host locks reserve pacing consistently for parallel producers and locators. PubMed uses 0.35-second anonymous or 0.11-second keyed spacing, with optional keys carried in form POST and no redirects. OpenAlex anonymous basic first-page access reports incomplete coverage when further cursor paging requires its optional key. API completion deduplicates identities and reuses sufficient saved fields and current-operation responses.
+
+Temporary HTTP errors and 429 honor Retry-After with cancellable waits and progress. Recognized HTML verification stops the client without browser fallback or enabling another Discovery source. Unexpected HTML, invalid envelopes and Entrez HTTP-200 application errors are failures. Valid empty exact responses are no-match; missing entries in an advertised batch, wrong identities and shortened pages remain explicit incomplete/failure results.
 
 arXiv uses a three-second interval; bioRxiv and medRxiv share their API host
 pacing. Webpage Enrich continues to

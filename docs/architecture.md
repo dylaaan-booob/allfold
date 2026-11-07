@@ -154,7 +154,9 @@ Both databases live outside Workspace. Within the application project, configura
 
 Provider adapters emit operation-local `ProviderWorkEvidence`; canonicalization groups
 explicit strong identities and selects missing metadata in a fixed order.
-Run executes selected WoS synchronously first under the parent slot and workflow identity, then selected OpenAlex/Europe PMC lightweight journal discovery. The native stage shares the captured configuration/Workspace/cancellation authority, releases Browser ownership after export, and never writes a second Run snapshot or history result. Gathered candidate identities select batched creation details only for unknown works; all saved Papers, including Rejected, and current WoS facts suppress redundant full details.
+One Integrated Run overlaps selected PubMed/WoS/OpenAlex journal Discovery under the parent slot and workflow identity. PubMed batches ESearch History/EFetch; OpenAlex merges native source-ISSN filters. Verified pages/native export batches stream DOI targets to shared exact Work lookup. Provider clients share operation-local capability caches and host pacing. Formal PubMed identity remains separate from a merged Work’s potentially preprint PMID. The Browser worker retains the same captured configuration/Workspace/cancellation authority and never writes a separate Run snapshot or History result.
+
+After Discovery and Work lookup settle, new candidates receive batched API date/relationship completion and dependent native preprint-version verification. Only then does one protected create chain run. Saved Papers including Rejected are excluded from completion and remain unchanged; fixed ordinary-field source priority is independent of response order. API helpers are distinct from selected journal Discovery and from the user's independent API Completion choices.
 Native publication-date filters determine its range; subsequent evidence never
 rejudges inclusion. Commit rechecks captured configuration, source revision,
 Workspace/Papers identity and the complete identity index before atomic creates.

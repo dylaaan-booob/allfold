@@ -49,7 +49,7 @@ def settings_response(request: Request, context, *, status_code=200, saved=False
     state = settings_state(request.app.state.config_path, context["csrf_token"],
                            disk=context.get("settings_disk_state"))
     state['logging'] = logging_state(request.app)
-    state.update(saved=saved, values=replace(context["settings_form"], openalex_api_key=None), issues=tuple((*state["issues"], *context["settings_issues"])),
+    state.update(saved=saved, values=replace(context["settings_form"], openalex_api_key=None, pubmed_api_key=None), issues=tuple((*state["issues"], *context["settings_issues"])),
                  message=context["settings_message"], save=context["settings_save"],
                  validation=context["settings_validation"],
                  deletion_plan=context["settings_deletion_plan"],
