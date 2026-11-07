@@ -178,3 +178,77 @@ def test_known_arxiv_doi_on_formal_record_is_an_unresolved_preprint_chain():
     result = complete_metadata(records, ('arxiv',), clients={'arxiv': client})
     assert client.calls == [('arxiv', '1901.12345')]
     assert canonicalize_records(result.records).papers[0].metadata.first_public_at is None
+
+
+def test_known_native_target_is_resolved_before_any_aggregation_and_then_stops():
+    from allfold.models import EvidenceDate, EvidenceDateKind, ProviderRecordRef
+    formal = evidence('workspace', '10.5555/formal', abstract='Complete abstract', publication_date='2026',
+        authors=(Author(name='Author'),), related_ids=(ProviderRecordRef(provider='arxiv', record_id='2201.12345'),))
+    first = evidence('arxiv', '10.48550/arxiv.2201.12345').model_copy(update={
+        'external_ids': ExternalIds(arxiv='2201.12345'), 'publication_type': 'preprint',
+        'dates': (EvidenceDate(kind=EvidenceDateKind.PREPRINT, year=2022, first_version=True),)})
+    native = Lookup((first,))
+    other = Lookup(error=AssertionError('Resolved local goals must not search unknown systems'))
+    result = complete_metadata((formal,), ('crossref','openalex','arxiv'),
+        clients={'crossref':other,'openalex':other,'arxiv':native})
+    assert native.calls == [('arxiv','2201.12345')]
+    assert not other.calls and not result.issues
+    assert result.first_public_status == 'recorded'
+
+
+def test_same_response_adds_another_family_before_stop_and_never_blind_probes():
+    from allfold.models import EvidenceDate, EvidenceDateKind, ProviderRecordRef
+    formal = evidence('workspace','10.5555/formal',abstract='Abstract',authors=(Author(name='Author'),),
+        publication_date='2026',related_ids=(ProviderRecordRef(provider='arxiv',record_id='2201.12345'),))
+    class Native(Lookup):
+        def lookup(self, namespace, identifier):
+            self.calls.append((namespace,identifier))
+            return (evidence('arxiv','10.48550/arxiv.'+identifier).model_copy(update={
+                'external_ids':ExternalIds(arxiv=identifier),'publication_type':'preprint',
+                'related_ids':(ProviderRecordRef(provider='arxiv',record_id='1901.12345'),) if identifier=='2201.12345' else (),
+                'dates':(EvidenceDate(kind=EvidenceDateKind.PREPRINT,year=2019 if identifier=='1901.12345' else 2022,first_version=True),)}),)
+    native, forbidden = Native(), Lookup(error=AssertionError('No other systems needed'))
+    result = complete_metadata((formal,),('arxiv','crossref','biorxiv','medrxiv'),
+        clients={'arxiv':native,'crossref':forbidden,'biorxiv':forbidden,'medrxiv':forbidden})
+    assert native.calls == [('arxiv','2201.12345'),('arxiv','1901.12345')]
+    assert not forbidden.calls and result.first_public_status == 'recorded'
+    assert canonicalize_records(result.records).papers[0].metadata.first_public_at == '2019'
+
+
+@pytest.mark.parametrize('kind',['accepted','published-online','published'])
+def test_one_journal_date_and_local_first_version_suppress_date_only_and_optional_queries(kind):
+    from allfold.models import EvidenceDate, EvidenceDateKind, ProviderRecordRef
+    formal = evidence('workspace','10.5555/formal',abstract='Abstract',authors=(Author(name='Author'),),
+        dates=(EvidenceDate(kind=kind,year=2030,publication_type='journal'),),
+        related_ids=(ProviderRecordRef(provider='arxiv',record_id='2201.12345'),))
+    preprint = evidence('arxiv','10.48550/arxiv.2201.12345').model_copy(update={
+        'external_ids':ExternalIds(arxiv='2201.12345'),'publication_type':'preprint',
+        'dates':(EvidenceDate(kind=EvidenceDateKind.PREPRINT,year=2022,first_version=True),)})
+    forbidden = Lookup(error=AssertionError('Optional fields or more date precision are not goals'))
+    result = complete_metadata((formal,preprint),('arxiv','crossref'),clients={'arxiv':forbidden,'crossref':forbidden})
+    assert not result.lookups and result.first_public_status == 'recorded'
+
+
+def test_wrong_response_primary_cannot_be_validated_by_related_requested_identity():
+    wrong = evidence('crossref','10.5555/wrong',related_dois=('10.5555/main',))
+    result = complete_metadata((evidence('workspace','10.5555/main'),),('crossref',),clients={'crossref':Lookup((wrong,))})
+    assert len(result.records) == 1 and result.lookups[0].status == 'identity_mismatch'
+
+
+def test_unknown_bio_platform_is_unresolved_without_guessing_enabled_server():
+    formal = evidence('workspace','10.5555/formal',related_dois=('10.1101/123456',))
+    forbidden = Lookup(error=AssertionError('Enabling a server does not prove platform identity'))
+    result = complete_metadata((formal,),('biorxiv',),clients={'biorxiv':forbidden})
+    assert not forbidden.calls and result.first_public_status == 'known_unresolved'
+
+
+@pytest.mark.parametrize('year',[2018,2999])
+def test_first_public_conflict_and_future_evidence_remain_unresolved(year):
+    from allfold.models import EvidenceDate, EvidenceDateKind
+    records = (evidence('arxiv','10.48550/arxiv.2201.12345').model_copy(update={
+        'external_ids':ExternalIds(arxiv='2201.12345'),'publication_type':'preprint',
+        'dates':(EvidenceDate(kind=EvidenceDateKind.PREPRINT,year=2022,first_version=True),
+            EvidenceDate(kind=EvidenceDateKind.PREPRINT,year=year,first_version=True))}),)
+    result = complete_metadata(records,(),clients={})
+    assert result.first_public_status == 'conflict'
+    assert canonicalize_records(records).papers[0].metadata.first_public_at is None

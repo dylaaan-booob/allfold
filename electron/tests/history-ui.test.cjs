@@ -88,3 +88,10 @@ test('history filters by execution Service and exposes stable Paper identities a
   assert.match(html,/All Services/);assert.match(html,/svc_a/);assert.match(html,/paper-a/);
   assert.match(html,/105/);assert.match(html,/PDF unverified/);
 });
+
+test('API history keeps first-public coverage independent of successful Paper updates',async()=>{
+  const {renderHistoryRecord}=await import('../../frontend/ui/history-view.js');
+  const html=renderHistoryRecord({kind:'api_completion',task_id:'completion',outcome:'completed',
+    statistics:{updated:3,first_public_recorded:1,first_public_known_unresolved:1,first_public_conflict:1}});
+  assert.match(html,/首版日期已记录/);assert.match(html,/已知首版未确定/);assert.match(html,/首版证据冲突/);
+});

@@ -21,13 +21,13 @@ function fixture(state){
 }
 const settle=()=>new Promise(resolve=>setImmediate(resolve));
 
-for(const first_public_status of ['recorded','unresolved'])test('Partial explains source problems and '+first_public_status+' first-public date',async()=>{
+for(const [first_public_status,label] of Object.entries({recorded:'首版日期已记录',no_association:'尚无预印本关联',known_unresolved:'已知预印本首版尚未确定',conflict:'首版日期证据冲突',failed:'首版日期查询失败',cancelled:'首版日期查询已取消'}))test('Partial explains source problems and '+first_public_status+' first-public date',async()=>{
   const state={value:{phase:'Partial',total:1,processed:1,results:[{paper_id:'paper-1',status:'updated',first_public_status,
     lookups:[{provider:'crossref',status:'failed'}],issues:[{provider:'crossref',message:'Request failed'}]}]}},f=fixture(state);
   f.restore();await settle();
   assert.match(f.nodes.get('api-completion-status').textContent,/部分来源查询异常/);
   const heading=f.nodes.get('api-completion-results').children[0].children[0].children[0].textContent;
-  assert.match(heading,new RegExp(first_public_status==='recorded'?'首版日期已记录':'首版日期尚未确定'));
+  assert.match(heading,new RegExp(label));
 });
 
 test('restoring an already terminal API task does not refresh the startup Workspace or disrupt another workflow',async()=>{

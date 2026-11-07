@@ -52,7 +52,7 @@ def _record_type(record):
         'journal' if record.journal else 'conference' if record.conference else None)
 
 
-def _preprint_families(records):
+def known_preprint_families(records):
     # Union only identities of one preprint version chain. A relation to another
     # preprint of the same research work does not establish the same chain.
     groups = []
@@ -98,7 +98,7 @@ def _preprint_families(records):
 
 def collect_dates(records):
     evidence = []
-    families = _preprint_families(records)
+    families = known_preprint_families(records)
     for record in records:
         dates = list(record.dates)
         record_type = _record_type(record)
@@ -136,7 +136,7 @@ def _date_bounds(item):
 
 
 def _resolved_preprints(evidence, records, today=None):
-    families = _preprint_families(records)
+    families = known_preprint_families(records)
     facts = {}
     for item in evidence:
         if item.kind != EvidenceDateKind.PREPRINT or item.publication_type != 'preprint':
@@ -146,8 +146,8 @@ def _resolved_preprints(evidence, records, today=None):
             facts.setdefault(family, []).append(item)
     resolved = {}
     for family, dates in facts.items():
-        first = [item for item in dates if item.first_version and _date_bounds(item)[0] <= (today or date.today())]
-        if not first:
+        first = [item for item in dates if item.first_version]
+        if not first or any(_date_bounds(item)[0] > (today or date.today()) for item in first):
             continue
         lower, upper = max(_date_bounds(item)[0] for item in first), min(_date_bounds(item)[1] for item in first)
         if lower > upper or any(_date_bounds(item)[1] < lower for item in dates):
@@ -172,3 +172,21 @@ def preprint_date_coverage(records):
 def journal_dates(evidence):
     return tuple(item for item in merge_dates(evidence)
         if item.publication_type == "journal" and item.kind != EvidenceDateKind.PREPRINT)
+
+
+def first_public_status(records):
+    evidence = collect_dates(records)
+    families, resolved = _resolved_preprints(evidence, records)
+    if not families:
+        return 'no_association'
+    if set(families.values()).issubset(resolved):
+        return 'recorded'
+    for family in set(families.values()) - resolved.keys():
+        dates = [item for item in evidence if item.version_family == family and item.kind == EvidenceDateKind.PREPRINT]
+        first = [item for item in dates if item.first_version]
+        if first:
+            lower = max(_date_bounds(item)[0] for item in first)
+            upper = min(_date_bounds(item)[1] for item in first)
+            if lower > date.today() or lower > upper or any(_date_bounds(item)[1] < lower for item in dates):
+                return 'conflict'
+    return 'known_unresolved'

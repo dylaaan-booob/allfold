@@ -31,7 +31,7 @@ def test_known_preprint_is_queried_before_redundant_formal_reverse_lookup(tmp_pa
         if request.url.host == 'api.crossref.org':
             is_formal = request.url.path.endswith(formal)
             item = {'DOI': formal if is_formal else preprint, 'title': ['Formal' if is_formal else 'Preprint'],
-                    'type': 'journal-article' if is_formal else 'posted-content'}
+                    'type': 'journal-article' if is_formal else 'posted-content', 'publisher': provider if not is_formal else 'Journal publisher'}
             if is_formal:
                 item['relation'] = {'has-preprint': [{'id-type': 'doi', 'id': preprint}]}
             return httpx.Response(200, json={'message': item})
@@ -66,7 +66,8 @@ def test_partial_completion_reports_whether_first_public_is_recorded(tmp_path, r
     service.join()
     result = service.state()
     assert result['phase'] == 'Partial'
-    assert result['results'][0]['first_public_status'] == ('recorded' if recorded else 'unresolved')
+    assert result['results'][0]['first_public_status'] == 'failed'
+    assert result['results'][0]['first_public_recorded'] is recorded
     assert result['results'][0]['lookups'][0]['status'] == 'identity_mismatch'
 
 
@@ -508,3 +509,87 @@ def test_paper_commit_sync_failure_preserves_saved_fields_through_commit_guard(t
     assert failures and load_workspace(workspace).inbox[0].abstract == 'Committed before sync failure'
     assert result['phase'] == 'Partial' and result['results'][0]['status'] == 'updated'
     assert 'abstract' in result['results'][0]['saved_fields'] and result['results'][0]['warning']
+
+
+def test_local_evidence_completes_without_enabled_network_sources(tmp_path):
+    from allfold.application.coordinators.api_completion import ApiCompletion
+    from allfold.application.browser_runtime import BrowserTaskLock
+    from allfold.models import Author
+    config, workspace = write_valid_config(tmp_path)
+    config.write_text(config.read_text() + '\ncompletion_providers: []\n')
+    paper_id, path = missing(workspace)
+    with workspace_operation_lock(workspace) as lock:
+        append_discovery_evidence(lock, paper_id, (ProviderWorkEvidence(
+            provenance=MetadataSource(provider='wos',record_id='WOS:123456',retrieved_at=datetime.now(timezone.utc)),
+            external_ids=ExternalIds(doi='10.5555/decision'), title='Saved title', journal='Journal',
+            abstract='Locally saved abstract', authors=(Author(name='Full author'),), publication_type='journal'),))
+    service = ApiCompletion(config, BrowserTaskLock(), client_factory=lambda *args,**kwargs:
+        pytest.fail('No network client is needed'))
+    service.start((paper_id,)); service.join()
+    result = service.state()
+    assert result['phase'] == 'Completed'
+    assert result['results'][0]['lookups'] == []
+    assert load_workspace(workspace).inbox[0].abstract == 'Locally saved abstract'
+    assert result['results'][0]['first_public_status'] == 'no_association'
+
+
+def test_selected_papers_share_one_arxiv_batch_and_preserve_existing_first_public(tmp_path):
+    from uuid import uuid4
+    from allfold.application.coordinators.api_completion import ApiCompletion
+    from allfold.application.browser_runtime import BrowserTaskLock
+    from test_application_decisions import write_paper, replace_frontmatter
+    config, workspace = write_valid_config(tmp_path)
+    config.write_text(config.read_text() + '\ncompletion_providers: [arxiv]\n')
+    ids, paths = [], []
+    for index in range(3):
+        paper_id = uuid4(); ids.append(paper_id)
+        path = write_paper(workspace,paper_id,filename=f'{index}.md'); paths.append(path)
+        replace_frontmatter(path,doi=f'10.5555/paper-{index}',external_ids={'doi':f'10.5555/paper-{index}'},
+            first_public_at='2020' if index == 2 else None)
+        with workspace_operation_lock(workspace) as lock:
+            append_discovery_evidence(lock,paper_id,(ProviderWorkEvidence(
+                provenance=MetadataSource(provider='wos',record_id=f'WOS:{index+1}',retrieved_at=datetime.now(timezone.utc)),
+                external_ids=ExternalIds(doi=f'10.5555/paper-{index}'),
+                related_ids=(ProviderRecordRef(provider='arxiv',record_id=f'2201.{index:05}'),)),))
+    from allfold.diagnostics import DiagnosticStore
+    store = DiagnosticStore(config,root=tmp_path / "logs")
+    calls = []
+    def response(request):
+        calls.append(request)
+        assert request.url.params['id_list'] == '2201.00000,2201.00001,2201.00002'
+        return httpx.Response(200,text='<feed xmlns="http://www.w3.org/2005/Atom">'+''.join(
+            f'<entry><id>https://arxiv.org/abs/2201.{index:05}v3</id><title>Title</title><published>2022-01-02T00:00:00Z</published></entry>'
+            for index in (1,0))+'</feed>')
+    service = ApiCompletion(config,BrowserTaskLock(),diagnostics=store,client_factory=lambda provider,**kwargs:
+        SupplementalClient(provider,interval=0,transport=httpx.MockTransport(response),**kwargs))
+    service.start(ids); service.join()
+    results = service.state()['results']
+    assert len(calls) == 1
+    assert [result['first_public_status'] for result in results] == ['recorded','recorded','known_unresolved']
+    assert results[2]['first_public_recorded'] is True
+    assert {paper.paper_id:paper.first_public_at for paper in load_workspace(workspace).papers}[ids[2]] == '2020'
+    statistics = store.history()['records'][0]['statistics']
+    assert statistics['first_public_recorded'] == 2
+    assert statistics['first_public_known_unresolved'] == 1
+    assert statistics['evidence'] == 2 and statistics['no_match'] == 1
+
+
+def test_saved_native_reverse_online_event_never_becomes_a_preprint_lookup(tmp_path):
+    from allfold.application.coordinators.api_completion import ApiCompletion
+    from allfold.application.browser_runtime import BrowserTaskLock
+    config,workspace = write_valid_config(tmp_path)
+    config.write_text(config.read_text() + '\ncompletion_providers: [biorxiv]\n')
+    paper_id,path = missing(workspace)
+    calls=[]
+    def response(request):
+        calls.append(request.url.path)
+        rows = [{'preprint_doi':'10.1101/123456','published_doi':'10.5555/decision','published_date':'2026-01'}] if '/pubs/' in request.url.path else [
+            {'doi':'10.1101/123456','published':'10.5555/decision','version':'1','date':'2022-01-02',
+             'title':'Title','abstract':'Abstract','authors':'Author','server':'biorxiv'}]
+        return httpx.Response(200,json={'messages':[{'status':'ok'}],'collection':rows})
+    for _ in range(2):
+        service=ApiCompletion(config,BrowserTaskLock(),client_factory=lambda provider,**kwargs:
+            SupplementalClient(provider,interval=0,transport=httpx.MockTransport(response),**kwargs))
+        service.start((paper_id,));service.join()
+        assert service.state()['phase']=='Completed'
+    assert calls == ['/pubs/biorxiv/10.5555/decision/na/json','/details/biorxiv/10.1101/123456/na/json']
