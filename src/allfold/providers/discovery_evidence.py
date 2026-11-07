@@ -89,7 +89,7 @@ def _europe_pmc_associations(raw):
         ids['pmcid'] = raw['pmcid']
     related, refs, dates = set(), set(), []
     publisher = str((raw.get('bookOrReportDetails') or {}).get('publisher') or '').strip().casefold()
-    if preprint and publisher in {'biorxiv', 'medrxiv'} and ids['doi'] and ids['doi'].startswith('10.1101/'):
+    if preprint and publisher in {'biorxiv', 'medrxiv'} and ids['doi'] and ids['doi'].startswith(('10.1101/', '10.64898/')):
         refs.add(ProviderRecordRef(provider=publisher, record_id=ids['doi'], relation='preprint', version_family='doi:' + ids['doi']))
     for relation in (raw.get('commentCorrectionList') or {}).get('commentCorrection', []):
         if str(relation.get('type', '')).strip().casefold() not in {'preprint in', 'preprint of'}:
@@ -98,13 +98,14 @@ def _europe_pmc_associations(raw):
         doi = valid_doi(relation.get('doi'))
         reference = f"{relation['source']}:{relation['id']}" if relation.get('source') and relation.get('id') else None
         target_family = ('doi:' + doi if doi else 'europe_pmc:' + reference if reference else None) if target_preprint else None
+        note = str(relation.get('note') or '').strip() or None
         if reference:
             refs.add(ProviderRecordRef(provider='europe_pmc', record_id=reference,
-                relation='preprint' if target_preprint else None, version_family=target_family))
+                relation='preprint' if target_preprint else None, version_family=target_family, note=note))
         if doi:
             related.add(doi)
             if target_preprint:
-                refs.add(ProviderRecordRef(provider='doi', record_id=doi, relation='preprint', version_family=target_family))
+                refs.add(ProviderRecordRef(provider='doi', record_id=doi, relation='preprint', version_family=target_family, note=note))
     version = str(raw.get('versionNumber') or '') or None
     versions = (raw.get('versionList') or {}).get('version', [])
     family = ('doi:' + ids['doi'] if ids['doi'] else 'europe_pmc:' + identity) if preprint else None
@@ -142,9 +143,11 @@ def normalize_europe_pmc(raw, source):
         raise DiscoveryError('Europe PMC record lacks title')
     source_id, record_id = raw.get('source'), raw.get('id')
     identity, preprint, ids, related, refs, dates, version = _europe_pmc_associations(raw)
+    notes = sorted({f"{ref.provider}:{ref.record_id}: {ref.note}" for ref in refs if ref.note})
     keywords = raw.get('keywordList', {}).get('keyword', [])
     return ProviderWorkEvidence(provenance=MetadataSource(provider='europe_pmc', record_id=identity,
         retrieved_at=datetime.now(timezone.utc), version=version,
+        note='; '.join(notes) or None,
         url='https://europepmc.org/article/' + quote(str(source_id), safe='') + '/' + quote(str(record_id), safe='')),
         title=raw['title'], journal=None if preprint else source.name or None,
         publication_type='preprint' if preprint else 'journal', publication_date=raw.get('firstPublicationDate'),

@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 import re
-from urllib.parse import quote
+from urllib.parse import quote, urlencode
 from xml.etree import ElementTree
 
 from allfold.identifiers import normalize_external_id, valid_doi, supported_preprint_uri
@@ -14,6 +14,13 @@ from allfold.providers.integrated import DiscoveryClient, DiscoveryError, Identi
 
 
 SAME_WORK_RELATIONS = frozenset({"is-preprint-of", "has-preprint", "is-version-of", "has-version", "is-identical-to"})
+
+
+class PartialLookup(DiscoveryError):
+    """A failed page must not discard verified facts from earlier pages."""
+    def __init__(self, message, records=()):
+        super().__init__(message)
+        self.records = tuple(records)
 
 
 def _first(values):
@@ -30,6 +37,42 @@ def _date(parts, kind):
         return None
 
 
+def _assertion_date(value, kind, **fields):
+    """Crossmark dates are literal history values, never free-text extraction."""
+    if not isinstance(value, str):
+        return None
+    value = value.strip()
+    if date := _iso_date(value, kind, **fields):
+        return date
+    for pattern in ('%d %B %Y', '%d %b %Y', '%B %d, %Y', '%b %d, %Y', '%B %Y', '%b %Y'):
+        try:
+            parsed = datetime.strptime(value, pattern)
+            return _iso_date(parsed.strftime('%Y-%m' if '%d' not in pattern else '%Y-%m-%d'), kind, **fields)
+        except ValueError:
+            continue
+    return None
+
+
+def _history_assertions(raw, publication_type):
+    for assertion in raw.get('assertion') or ():
+        if not isinstance(assertion, dict):
+            continue
+        # Exact event names prevent deposit/registration/indexing statements
+        # containing "accepted" from being reinterpreted as journal history.
+        labels = [str(assertion.get(field) or '').strip() for field in ('name', 'label')]
+        event = next((kind for label in labels for kind in (EvidenceDateKind.RECEIVED, EvidenceDateKind.ACCEPTED)
+            if re.sub(r'[^a-z]', '', label.casefold()) in {kind.value, kind.value + 'date', 'date' + kind.value}), None)
+        if event is None or publication_type == 'preprint':
+            continue
+        group = assertion.get('group') or {}
+        group_name = str(group.get('name') or group.get('label') or '') if isinstance(group, dict) else ''
+        if re.search(r'deposit|regist|index|database|license|copyright', ' '.join([group_name, labels[1]]), re.IGNORECASE):
+            continue
+        label = ':'.join(['assertion', group_name, *labels])
+        if date := _assertion_date(assertion.get('value'), event, source_label=label, publication_type=publication_type):
+            yield date
+
+
 
 
 class SupplementalClient(DiscoveryClient):
@@ -42,6 +85,11 @@ class SupplementalClient(DiscoveryClient):
         self._details_cache = {}
 
     def lookup(self, namespace, identifier):
+        if self.provider == 'europe_pmc':
+            result = self._europe_many(namespace, (identifier,)).get(identifier, ())
+            if isinstance(result, Exception):
+                raise result
+            return result
         if self.provider == "crossref" and namespace == "doi":
             return self._crossref(identifier)
         if self.provider == "arxiv" and namespace == "arxiv":
@@ -60,6 +108,10 @@ class SupplementalClient(DiscoveryClient):
         return result
 
     def lookup_many(self, namespace, identifiers):
+        if self.provider == 'crossref' and namespace == 'doi':
+            return self._crossref_many(identifiers)
+        if self.provider == 'europe_pmc':
+            return self._europe_many(namespace, identifiers)
         if self.provider != 'arxiv' or namespace != 'arxiv':
             raise ValueError('Batch lookup requires arXiv identities')
         results, ids = {}, []
@@ -90,6 +142,163 @@ class SupplementalClient(DiscoveryClient):
             except (ValueError, OSError, RuntimeError, TypeError, AttributeError) as error:
                 for key in group:
                     results[key] = error
+        return results
+
+    def _europe_many(self, namespace, identifiers):
+        """Formal PMID association batches and exact preprint IDs only."""
+        from allfold.providers.integrated import SourceScope
+        from allfold.providers.discovery_evidence import normalize_europe_pmc
+        requested = []
+        for value in dict.fromkeys(identifiers):
+            key = normalize_external_id(namespace, value)
+            if not key or namespace == 'europe_pmc' and not key.startswith('PPR:'):
+                raise DiscoveryError('Europe PMC completion requires a formal PMID or known preprint identity')
+            if namespace == 'doi' and any(char in key for char in '\\"'):
+                raise DiscoveryError('Invalid DOI in Europe PMC preprint query')
+            requested.append(key)
+        def query(group):
+            if namespace == 'pmid':
+                return 'SRC:MED AND HAS_PREPRINT:Y AND (' + ' OR '.join('EXT_ID:' + value for value in group) + ')'
+            if namespace == 'europe_pmc':
+                return 'SRC:PPR AND (' + ' OR '.join('EXT_ID:' + value.partition(':')[2] for value in group) + ')'
+            if namespace == 'doi':
+                return 'SRC:PPR AND (' + ' OR '.join('DOI:"' + value + '"' for value in group) + ')'
+            raise DiscoveryError('Europe PMC ordinary formal metadata lookup is not a completion path')
+        groups, group = [], []
+        for key in requested:
+            if group and (len(group) >= 100 or len(urlencode({'query': query([*group, key])})) > 6000):
+                groups.append(group)
+                group = []
+            if len(urlencode({'query': query([key])})) > 6000:
+                raise DiscoveryError('Europe PMC identity exceeds request URL budget')
+            group.append(key)
+        if group:
+            groups.append(group)
+        results = {}
+        for group in groups:
+            found, seen = {key: [] for key in group}, set()
+            try:
+                for raw, _, _ in self._europe_pages(query(group)):
+                    if raw is None:
+                        continue
+                    key = (normalize_external_id('doi', raw.get('doi')) if namespace == 'doi' else
+                        str(raw.get('id')) if namespace == 'pmid' and raw.get('source') == 'MED' else
+                        f"{raw.get('source')}:{raw.get('id')}")
+                    if key not in found:
+                        raise IdentityMismatch('Europe PMC batch returned an unexpected identity')
+                    identity = raw.get('source'), raw.get('id')
+                    if identity in seen:
+                        raise DiscoveryError('Incomplete: Europe PMC returned a duplicate result identity')
+                    seen.add(identity)
+                    journal = (raw.get('journalInfo') or {}).get('journal') or {}
+                    record = normalize_europe_pmc(raw, SourceScope('journal', journal.get('title') or ''))
+                    found[key].append(record)
+                results.update((key, tuple(records)) for key, records in found.items())
+            except (ValueError, OSError, RuntimeError, TypeError, AttributeError) as error:
+                results.update((key, PartialLookup(str(error), records) if records else error) for key, records in found.items())
+        return results
+
+    def _doi_groups(self, identifiers, field, extra=()):
+        group = []
+        for raw in dict.fromkeys(identifiers):
+            value = valid_doi(raw)
+            if not value or any(char in value for char in ',\\"'):
+                raise DiscoveryError('Invalid DOI for exact Crossref filter')
+            candidate = [*group, value]
+            filters = ','.join([*extra, *(field + ':' + item for item in candidate)])
+            if group and (len(candidate) > 100 or len(urlencode({'filter': filters})) > 6000):
+                yield group
+                group = []
+            if len(urlencode({'filter': field + ':' + value})) > 6000:
+                raise DiscoveryError('Crossref identity exceeds request URL budget')
+            group.append(value)
+        if group:
+            yield group
+
+    def _crossref_pages(self, filters):
+        cursor, cursors, count, total = '*', set(), 0, None
+        while True:
+            params = {'filter': filters, 'rows': min(self.page_size, 1000), 'cursor': cursor}
+            if self.mailto:
+                params['mailto'] = self.mailto
+            data = self.request('/works', params)
+            message = data.get('message')
+            if not isinstance(message, dict) or not isinstance(message.get('items'), list):
+                raise DiscoveryError('Crossref response is missing work-list items')
+            expected = message.get('total-results')
+            if type(expected) is not int or expected < 0:
+                raise DiscoveryError('Crossref response has invalid total-results')
+            if total is not None and expected != total:
+                raise DiscoveryError('Incomplete: Crossref result total changed during pagination')
+            total = expected
+            rows = message['items']
+            if count + len(rows) > total:
+                raise DiscoveryError('Crossref returned more records than its reported total')
+            for raw in rows:
+                count += 1
+                if not isinstance(raw, dict):
+                    raise DiscoveryError('Crossref returned an invalid work item')
+                yield raw
+            if count >= total:
+                return
+            next_cursor = message.get('next-cursor')
+            if not rows or not isinstance(next_cursor, str) or next_cursor in cursors or next_cursor == cursor:
+                raise DiscoveryError('Incomplete: Crossref pagination made no progress')
+            cursors.add(cursor)
+            cursor = next_cursor
+
+    def _crossref_many(self, identifiers):
+        results = {}
+        for group in self._doi_groups(identifiers, 'doi'):
+            found = {doi: [] for doi in group}
+            try:
+                for raw in self._crossref_pages(','.join('doi:' + doi for doi in group)):
+                    doi = valid_doi(raw.get('DOI'))
+                    if doi not in found:
+                        raise IdentityMismatch('Crossref batch returned an unexpected DOI')
+                    found[doi].extend(self._crossref_record(raw))
+                results.update((doi, tuple(records)) for doi, records in found.items())
+            except (ValueError, OSError, RuntimeError, TypeError, AttributeError) as error:
+                results.update((doi, PartialLookup(str(error), records) if records else error) for doi, records in found.items())
+        return results
+
+    def lookup_preprints(self, identifiers):
+        """Reverse only explicit is-preprint-of edges, mapped to their target DOI.
+
+        Repeated relation.object filters are OR; relation.type is ANDed. The
+        response relation is still checked because filters can match separate
+        relation entries in the same work.
+        """
+        results = {}
+        for group in self._doi_groups(identifiers, 'relation.object', ('relation.type:is-preprint-of',)):
+            found, seen = {doi: [] for doi in group}, set()
+            try:
+                filters = ','.join(['relation.type:is-preprint-of', *('relation.object:' + doi for doi in group)])
+                for raw in self._crossref_pages(filters):
+                    preprint = valid_doi(raw.get('DOI'))
+                    if not preprint:
+                        raise IdentityMismatch('Crossref reverse relation lacks a valid subject DOI')
+                    relation = raw.get('relation') or {}
+                    targets = {valid_doi(item.get('id')) for item in relation.get('is-preprint-of', ())
+                        if isinstance(item, dict) and item.get('id-type') == 'doi'}
+                    targets &= set(group)
+                    if not targets:
+                        raise IdentityMismatch('Crossref reverse result lacks the requested explicit target relation')
+                    records = self._crossref_record(raw)
+                    for target in sorted(targets):
+                        if (target, preprint) in seen:
+                            continue
+                        seen.add((target, preprint))
+                        # A formal anchor authenticates binding before the linked
+                        # preprint details; it cannot replace formal identity.
+                        found[target].append(ProviderWorkEvidence(
+                            provenance=records[0].provenance.model_copy(update={'record_id': target + ':reverse:' + preprint}),
+                            external_ids=ExternalIds(doi=target), publication_type='journal',
+                            related_dois=(preprint,), related_ids=(ProviderRecordRef(provider='doi', record_id=preprint, relation='preprint'),)))
+                        found[target].extend(records)
+                results.update((doi, tuple(records)) for doi, records in found.items())
+            except (ValueError, OSError, RuntimeError, TypeError, AttributeError) as error:
+                results.update((doi, PartialLookup(str(error), records) if records else error) for doi, records in found.items())
         return results
 
     def _arxiv_feed(self, content, requested):
@@ -187,7 +396,7 @@ class SupplementalClient(DiscoveryClient):
         if not doi:
             raise DiscoveryError(f"{self.provider}: lookup requires a valid DOI")
         encoded = quote(doi, safe="/")
-        if doi.startswith("10.1101/"):
+        if doi.startswith(("10.1101/", "10.64898/")):
             return self._bio_details(doi)
         rows = self._collection(f"/pubs/{self.provider}/{encoded}/na/json", doi=doi)
         records, seen = [], set()
@@ -224,6 +433,12 @@ class SupplementalClient(DiscoveryClient):
         raw = data.get("message")
         if not isinstance(raw, dict) or valid_doi(raw.get("DOI")) != doi:
             raise IdentityMismatch("Crossref response DOI does not match requested identity")
+        return self._crossref_record(raw)
+
+    def _crossref_record(self, raw):
+        doi = valid_doi(raw.get('DOI'))
+        if not doi:
+            raise IdentityMismatch('Crossref work lacks valid DOI identity')
         item, _ = normalize_crossref_discovered_work(raw, datetime.now(timezone.utc))
         record = item.to_evidence()
         preprint = raw.get("type") == "posted-content"
@@ -231,6 +446,7 @@ class SupplementalClient(DiscoveryClient):
         publication_type = ('preprint' if preprint else 'conference' if conference else
                             'journal' if raw.get('type') == 'journal-article' else None)
         dates = list(record.dates)
+        dates.extend(_history_assertions(raw, publication_type))
         for name, kind in (("accepted", EvidenceDateKind.ACCEPTED), ("posted", EvidenceDateKind.PREPRINT)):
             if name == "accepted" and preprint:
                 continue  # A platform's acceptance of posted content is not journal acceptance.
@@ -238,7 +454,7 @@ class SupplementalClient(DiscoveryClient):
             parts = container.get("date-parts", []) if isinstance(container, dict) else []
             if parts and (value := _date(parts[0], kind)):
                 dates.append(value.model_copy(update={"source_label": name, "publication_type": publication_type,
-                    "first_version": preprint and kind == EvidenceDateKind.PREPRINT and str(raw.get("version")) in {"1", "v1"}}))
+                    "first_version": False}))
         related, refs = set(), set()
         relations = raw.get("relation") or {}
         for kind in SAME_WORK_RELATIONS:
@@ -276,7 +492,7 @@ class SupplementalClient(DiscoveryClient):
         # A DOI prefix does not distinguish bioRxiv from medRxiv. Explicit
         # publisher metadata can direct native lookup without asserting v1.
         platform = str(raw.get('publisher') or '').strip().casefold()
-        if preprint and doi.startswith('10.1101/') and platform in {'biorxiv','medrxiv'}:
+        if preprint and doi.startswith(('10.1101/', '10.64898/')) and platform in {'biorxiv','medrxiv'}:
             refs.add(ProviderRecordRef(provider=platform, record_id=doi, relation='preprint'))
         source = MetadataSource(provider="crossref", record_id=doi, retrieved_at=datetime.now(timezone.utc),
                                 role="supplement", version=str(raw.get('version') or '').strip() or None,

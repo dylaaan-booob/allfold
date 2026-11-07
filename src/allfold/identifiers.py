@@ -86,7 +86,8 @@ def related_identifiers(record: Any) -> frozenset[tuple[str, str]]:
     for doi in record.related_dois:
         identities.update(strong_identifiers({'doi': doi}))
     for reference in record.related_ids:
-        namespace = 'doi' if reference.provider in {'biorxiv', 'medrxiv'} else reference.provider
+        namespace = ('doi' if reference.provider in {'biorxiv', 'medrxiv'} else
+                     'pmid' if reference.provider == 'pubmed' else reference.provider)
         identities.update(strong_identifiers({namespace: reference.record_id}))
     return frozenset(identities)
 
@@ -109,7 +110,7 @@ def supported_preprint_uri(value: Any) -> tuple[str, str] | None:
             return 'arxiv', identifier
     for platform in ('biorxiv', 'medrxiv'):
         if url.hostname in {platform + '.org', 'www.' + platform + '.org'}:
-            matched = re.fullmatch(r'/content/(10\.1101/[A-Za-z0-9./-]+?)(?:v[0-9]+)?(?:\.full(?:\.pdf)?)?', url.path)
+            matched = re.fullmatch(r'/content/((?:10\.1101|10\.64898)/[A-Za-z0-9./-]+?)(?:v[0-9]+)?(?:\.full(?:\.pdf)?)?', url.path)
             if matched and (doi := valid_doi(matched[1])):
                 return platform, doi
     return None

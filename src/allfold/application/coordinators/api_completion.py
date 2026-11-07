@@ -14,12 +14,12 @@ from allfold.integrations.openalex_credentials import read_credential
 from allfold.models import WorkflowStatus
 from allfold.persistence.markdown_state import parse_paper_state
 from allfold.persistence.safe_write import ContentChangedError, TextWriteCommittedError
-from allfold.providers.integrated import DiscoveryClient, DISCOVERY_PROVIDERS
+from allfold.providers.integrated import DiscoveryClient
 from allfold.providers.supplemental import SupplementalClient
 
 
 def completion_client(provider, **kwargs):
-    if provider in DISCOVERY_PROVIDERS:
+    if provider in {'pubmed', 'openalex'}:
         kwargs.pop('mailto', None)
         return DiscoveryClient(provider, **kwargs)
     kwargs.pop('api_key', None)
@@ -111,7 +111,7 @@ class ApiCompletion:
                     if self._stop.is_set():
                         break
                     try:
-                        key = read_credential(self.config_path)[0] if provider == 'openalex' else None
+                        key = read_credential(self.config_path, provider=provider)[0] if provider in {'pubmed', 'openalex'} else None
                         clients[provider] = stack.enter_context(self.client_factory(provider, api_key=key,
                             mailto=config.crossref_mailto, cancel_event=self._stop, pacing_state=pacing, progress_callback=self._progress))
                         clients[provider].request_guard = request_guard
@@ -139,6 +139,7 @@ class ApiCompletion:
                             state = parse_paper_state(target.path, target.original)
                             result.update(lookups=[asdict(item) for item in completed.lookups],
                                 issues=[asdict(item) for item in completed.issues],
+                                completion_status=completed.status,
                                 first_public_status=completed.first_public_status, first_public_recorded=bool(state.first_public_at))
                         if self._stop.is_set():
                             result['status'] = 'cancelled'
@@ -191,7 +192,7 @@ class ApiCompletion:
                     self._state['phase'] = ('Cancelled' if self._stop.is_set() or any(item['status']=='cancelled' for item in results) else
                         'Partial' if any(item['status'] == 'failed' or item['issues'] for item in results) else 'Completed')
                 self._state['activity'] = None
-                lookups={(item['provider'],item['namespace'],item['identifier']):item['status'] for result in results for item in result['lookups']}
+                lookups={(item['provider'],item['namespace'],item['identifier'],item.get('capability')):item['status'] for result in results for item in result['lookups']}
                 observe(self.diagnostics, 'finish', self._state['request_id'], self._state['phase'].lower(),
                     statistics=dict(**{f'first_public_{status}':sum(item.get('first_public_status') == status for item in results)
                         for status in ('recorded','no_association','known_unresolved','conflict','failed','cancelled')}, total=len(targets), processed=len(results), updated=sum(item['status'] == 'updated' for item in results),
