@@ -8,7 +8,7 @@ from threading import Event
 from typing import Protocol
 
 from allfold.identifiers import strong_identifiers, related_identifiers
-from allfold.models import ProviderWorkEvidence
+from allfold.models import ExternalIds, ProviderRecordRef, ProviderWorkEvidence
 
 LOOKUP_NAMESPACES = {
     'openalex': ('openalex', 'doi'), 'crossref': ('doi',),
@@ -95,6 +95,13 @@ def _native_targets(records):
         for platform, doi in platforms:
             if ordinary or not first_public_saved and preprint_identity('doi', doi) not in answered:
                 targets.add((platform, 'doi', doi))
+        preprint_dois = {ref.record_id for ref in record.related_ids if ref.provider == 'doi' and ref.relation == 'preprint'}
+        if record.publication_type == 'preprint' and record.external_ids.doi:
+            preprint_dois.add(record.external_ids.doi)
+        for doi in preprint_dois:
+            if (not doi.startswith('10.48550/arxiv.') and not any(value == doi for _, value in platforms)
+                    and (ordinary or not first_public_saved and preprint_identity('doi', doi) not in answered)):
+                targets.add(('europe_pmc', 'doi', doi))
     return sorted(targets)
 
 
@@ -106,6 +113,13 @@ def _requests(records, *, allow_formal_preprint_reverse=True):
     metadata = _ordinary_missing(records) or _journal_dates_missing(records)
     if (complete or any(record.first_public_at for record in records)) and not metadata:
         return
+    preprint_pmids = {ref.record_id for record in records for ref in record.related_ids
+        if ref.provider == 'pubmed' and ref.relation == 'preprint'}
+    preprint_pmids.update(value for record in records if record.publication_type == 'preprint'
+        for ns, value in strong_identifiers(record.external_ids) if ns == 'pmid')
+    for pmid in sorted(preprint_pmids):
+        if _ordinary_missing(records) or preprint_identity('pmid', pmid) not in answered:
+            yield 'pubmed', 'pmid', pmid, 'fetch-preprint'
     formal_pmids = sorted({value for record in records if record.publication_type != 'preprint'
         for ns, value in strong_identifiers(record.external_ids) if ns == 'pmid'})
     for pmid in formal_pmids:
@@ -150,6 +164,10 @@ def prime_record_cache(records, *, request_cache, capability=None):
     groups = {}
     for record in records:
         for namespace, identifier in strong_identifiers(record.external_ids):
+            supported = {'pubmed': {'pmid'}, 'openalex': {'openalex', 'doi'}, 'crossref': {'doi'},
+                'arxiv': {'arxiv'}, 'biorxiv': {'doi'}, 'medrxiv': {'doi'}, 'europe_pmc': {'europe_pmc'}}
+            if namespace not in supported.get(record.provenance.provider, set()):
+                continue
             key = record.provenance.provider, namespace, identifier
             if capability:
                 key = (*key, capability)
@@ -171,7 +189,7 @@ def _batch_lookup(client, provider, namespace, identifiers, capability, cancel_e
         if provider == 'crossref' and capability == 'preprints':
             result = client.lookup_preprints(identifiers)
         elif provider == 'pubmed':
-            result = client.lookup_many(namespace, identifiers, capability=capability)
+            result = client.lookup_many(namespace, identifiers, capability='fetch' if capability == 'fetch-preprint' else capability)
         else:
             result = client.lookup_many(namespace, identifiers)
         if isinstance(result, dict):
@@ -179,6 +197,36 @@ def _batch_lookup(client, provider, namespace, identifiers, capability, cancel_e
         output = {}
         for identifier in identifiers:
             accepted, _ = bind_records(result.records, {(namespace, identifier)})
+            if provider == 'openalex' and namespace == 'doi':
+                work_ids = {work for ns, requested, work in getattr(result, 'bindings', ())
+                    if ns == namespace and requested == identifier}
+                mapped = [record for record in result.records if
+                    any(('openalex', work) in strong_identifiers(record.external_ids) for work in work_ids)]
+                anchors = [ProviderWorkEvidence(provenance=record.provenance.model_copy(update={
+                    'record_id': f'{record.provenance.record_id}:binding:{identifier}',
+                    'note': 'Exact requested DOI matched an explicit Work location; linked Work identity remains separate'}),
+                    external_ids=ExternalIds(doi=identifier), publication_type='journal',
+                    related_ids=(ProviderRecordRef(provider='openalex', record_id=work),))
+                    for record in mapped for work in sorted(work_ids)
+                    if ('openalex', work) in strong_identifiers(record.external_ids)
+                    and ('doi', identifier) not in strong_identifiers(record.external_ids)]
+                accepted, _ = bind_records((*accepted, *anchors, *mapped), {(namespace, identifier)})
+            if provider == 'pubmed' and hasattr(client, 'cached_lookup'):
+                cached = client.cached_lookup(namespace, identifier, 'fetch' if capability == 'fetch-preprint' else capability)
+                if isinstance(cached, Exception):
+                    output[identifier] = cached
+                    continue
+                if cached is not None:
+                    accepted = list(cached)
+            if provider == 'pubmed' and capability == 'fetch-preprint':
+                from allfold.models import EvidenceDateKind
+                accepted = [record.model_copy(update={'publication_type': 'preprint', 'journal': None,
+                    'dates': tuple(item.model_copy(update={'publication_type': 'preprint',
+                        'kind': EvidenceDateKind.PREPRINT if item.kind in {EvidenceDateKind.PUBLISHED, EvidenceDateKind.PUBLISHED_ONLINE}
+                            else item.kind, 'first_version': False}) for item in record.dates)}) for record in accepted]
+            if provider == 'pubmed' and accepted:
+                output[identifier] = tuple(accepted)
+                continue
             if result.status in {'failed', 'partial', 'cancelled'}:
                 message = '; '.join(result.limitations) or 'Incomplete metadata batch response'
                 output[identifier] = (PartialLookup(message, accepted) if accepted else
@@ -319,7 +367,7 @@ def _completion_steps(
         status = 'cancelled' if cancelled else 'recorded' if any(record.first_public_at for record in output) else first_public_status(output)
         if status not in {'recorded', 'conflict', 'cancelled'} and issues:
             status = 'failed'
-        completion_status = ('cancelled' if cancelled else 'partial' if issues and any(item.status == 'evidence' for item in lookups)
+        completion_status = ('cancelled' if cancelled else 'partial' if issues and any(item.status in {'evidence', 'partial'} for item in lookups)
             else 'failed' if issues else 'empty' if lookups and all(item.status == 'no_match' for item in lookups) else 'complete')
         return CompletionResult(tuple(output), tuple(issues), tuple(lookups), cancelled, status, completion_status)
     def requests():

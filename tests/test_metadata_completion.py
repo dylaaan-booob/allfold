@@ -368,3 +368,90 @@ def test_run_disables_blind_native_pubs_while_independent_completion_retains_it(
         clients={'biorxiv': native}, allow_formal_preprint_reverse=allow_reverse)
     assert native.calls == ([('doi', '10.5555/no-clue')] if allow_reverse else [])
     assert result.first_public_status == 'no_association'
+
+
+def test_pubmed_completion_batches_confirmed_pmids_and_reuses_stronger_fetch_capability():
+    import httpx
+    from allfold.application.metadata_completion import complete_metadata_many
+    from allfold.providers.integrated import DiscoveryClient
+    from test_pubmed_discovery import article
+    calls = []
+    def response(request):
+        calls.append(request)
+        ids = request.url.params['id'].split(',')
+        if request.url.path.endswith('efetch.fcgi'):
+            return httpx.Response(200, text='<PubmedArticleSet>' + ''.join(article(key, '0006-341X', f'10.5555/{key}') for key in ids) + '</PubmedArticleSet>')
+        rows = {'uids': list(reversed(ids))}
+        rows.update((key, {'uid': key, 'title': 'Summary', 'pubdate': '2026 Oct', 'epubdate': '2026 Sep 30',
+            'articleids': [{'idtype': 'doi', 'value': f'10.5555/{key}'}],
+            'history': [{'pubstatus': 'received', 'date': '2026/03/01 00:00'},
+                {'pubstatus': 'accepted', 'date': '2026 Sep 10 00:00'}]}) for key in ids)
+        return httpx.Response(200, json={'result': rows})
+    groups = {key: (evidence('wos', f'10.5555/{key}', abstract=None if key == '3' else 'Abstract',
+        authors=(Author(name='Author'),)).model_copy(update={'external_ids': ExternalIds(doi=f'10.5555/{key}', pmid=key)}),)
+        for key in ('1', '2', '3', '4')}
+    with DiscoveryClient('pubmed', interval=0, transport=httpx.MockTransport(response)) as client:
+        client.lookup_many('pmid', ['4'], capability='fetch')  # Verified Discovery evidence.
+        results = dict(complete_metadata_many(groups, ('pubmed',), clients={'pubmed': client}))
+    assert len(calls) == 3
+    assert sorted((request.url.path.rsplit('/', 1)[-1], request.url.params['id']) for request in calls) == [
+        ('efetch.fcgi', '3'), ('efetch.fcgi', '4'), ('esummary.fcgi', '1,2')]
+    for key, result in results.items():
+        assert not result.issues
+        assert {item.kind.value for item in completion_metadata(result.records).date_evidence} >= {
+            'received', 'accepted', 'published-online', 'published'}
+    assert completion_metadata(results['3'].records).metadata.abstract == 'METHODS: Study abstract'
+
+
+def test_pubmed_preprint_reference_keeps_formal_pmid_and_follows_explicit_native_identity():
+    import httpx
+    from allfold.models import ProviderRecordRef
+    from allfold.providers.integrated import DiscoveryClient
+    from allfold.providers.supplemental import SupplementalClient
+    from test_pubmed_discovery import article
+    calls = []
+    formal = evidence('wos', '10.1093/nar/gkag979', abstract='Formal abstract', authors=(Author(name='Formal Author'),)).model_copy(update={
+        'external_ids': ExternalIds(doi='10.1093/nar/gkag979', pmid='42908400'),
+        'related_ids': (ProviderRecordRef(provider='pubmed', record_id='42239170', relation='preprint'),)})
+    def response(request):
+        calls.append(request)
+        if request.url.path.endswith('esummary.fcgi'):
+            return httpx.Response(200, json={'result': {'uids': ['42908400'], '42908400': {'uid': '42908400'}}})
+        if request.url.path.endswith('efetch.fcgi'):
+            return httpx.Response(200, text='<PubmedArticleSet>' + article('42239170', '0006-341X', '10.64898/2026.01.01.123456') + '</PubmedArticleSet>')
+        query = request.url.params['query']
+        if 'HAS_PREPRINT' in query:
+            return httpx.Response(200, json={'hitCount': 0, 'resultList': {'result': []}})
+        assert 'SRC:PPR' in query and 'DOI:"10.64898/2026.01.01.123456"' in query
+        return httpx.Response(200, json={'hitCount': 1, 'resultList': {'result': [{
+            'source': 'PPR', 'id': 'PPR1', 'title': 'Preprint', 'doi': '10.64898/2026.01.01.123456',
+            'firstPublicationDate': '2026-01-01', 'versionNumber': 1}]}})
+    with DiscoveryClient('pubmed', interval=0, transport=httpx.MockTransport(response)) as pubmed, SupplementalClient(
+            'europe_pmc', interval=0, transport=httpx.MockTransport(response)) as europe:
+        result = complete_metadata((formal,), ('pubmed', 'europe_pmc'), clients={'pubmed': pubmed, 'europe_pmc': europe})
+    assert not result.issues
+    assert result.first_public_status == 'recorded'
+    assert completion_metadata(result.records).metadata.first_public_at == '2026-01-01'
+    assert all(record.publication_type == 'preprint' for record in result.records
+        if record.external_ids.model_dump().get('pmid') == '42239170')
+    assert not any(request.url.params.get('id') == '42908400,42239170' for request in calls)
+
+
+def test_openalex_verified_location_binding_keeps_returned_top_identity_separate():
+    import httpx
+    from allfold.providers.integrated import DiscoveryClient
+    raw = {'id': 'https://openalex.org/W7223175244', 'doi': 'https://doi.org/10.1101/2026.04.01.123456',
+        'title': 'Merged Work title', 'type': 'preprint', 'ids': {'pmid': 'https://pubmed.ncbi.nlm.nih.gov/42239170/'},
+        'locations_count': 1, 'locations': [{'landing_page_url': 'https://doi.org/10.1093/nar/gkag979',
+            'source': {'id': 'https://openalex.org/S1'}}]}
+    formal = evidence('wos', '10.1093/nar/gkag979', abstract='Formal abstract', authors=(Author(name='Formal Author'),)).model_copy(
+        update={'external_ids': ExternalIds(doi='10.1093/nar/gkag979', pmid='42908400')})
+    with DiscoveryClient('openalex', interval=0, transport=httpx.MockTransport(lambda request: httpx.Response(200,
+            json={'results': [raw], 'meta': {'count': 1}}))) as client:
+        result = complete_metadata((formal,), ('openalex',), clients={'openalex': client})
+    assert not result.issues
+    returned = [record for record in result.records if record.external_ids.openalex]
+    assert len(returned) == 1 and returned[0].external_ids.doi == '10.1101/2026.04.01.123456'
+    anchor = next(record for record in result.records if record.provenance.provider == 'openalex' and record.external_ids.doi == '10.1093/nar/gkag979')
+    assert anchor.external_ids.openalex is None and anchor.title is None
+    assert any(ref.provider == 'openalex' and ref.record_id == 'W7223175244' for ref in anchor.related_ids)

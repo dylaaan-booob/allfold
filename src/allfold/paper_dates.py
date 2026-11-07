@@ -39,6 +39,8 @@ def merge_dates(*collections):
 
 
 def preprint_identity(namespace, identifier):
+    if namespace == 'pubmed':
+        namespace = 'pmid'
     if namespace in {'crossref', 'biorxiv', 'medrxiv'}:
         namespace = 'doi'
     value = normalize_external_id(namespace, identifier)
@@ -88,7 +90,7 @@ def known_preprint_families(records):
         preprint = _record_type(record) == 'preprint'
         if preprint and record.provenance.provider != 'workspace':
             keys = {preprint_identity(ns, value) for ns, value in strong_identifiers(record.external_ids)
-                if ns in {'doi', 'arxiv', 'biorxiv', 'medrxiv'} or ns == 'europe_pmc' and value.startswith('PPR:')}
+                if ns in {'doi', 'arxiv', 'biorxiv', 'medrxiv', 'pmid'} or ns == 'europe_pmc' and value.startswith('PPR:')}
             keys.update(preprint_identity(ref.provider, ref.record_id) for ref in record.related_ids if ref.relation == 'version')
             add(keys or {f'{record.provenance.provider}:{record.provenance.record_id}'})
         elif preprint and record.external_ids.doi:
