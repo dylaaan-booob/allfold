@@ -3,7 +3,7 @@ from datetime import date
 from calendar import monthrange
 import re
 
-from allfold.models import EvidenceDate, EvidenceDateKind
+from allfold.models import EvidenceDate, EvidenceDateKind, ProviderRecordRef
 from allfold.identifiers import normalize_external_id, strong_identifiers, related_identifiers
 
 
@@ -45,6 +45,26 @@ def preprint_identity(namespace, identifier):
     if namespace == 'doi' and value and value.startswith('10.48550/arxiv.'):
         namespace, value = 'arxiv', normalize_external_id('arxiv', value.removeprefix('10.48550/arxiv.'))
     return f'{namespace}:{value}' if value else None
+
+
+def preprint_query_refs(evidence):
+    """Recover query targets from saved preprint facts, never Paper ownership."""
+    refs = set()
+    for item in evidence:
+        if item.kind != EvidenceDateKind.PREPRINT or item.publication_type != 'preprint':
+            continue
+        provider, identifier = item.provider, item.record_id
+        if provider not in {'arxiv', 'biorxiv', 'medrxiv', 'europe_pmc', 'crossref'} or not identifier:
+            continue
+        if provider in {'biorxiv', 'medrxiv'} and identifier.rpartition(':')[2].isdigit():
+            identifier = identifier.rpartition(':')[0]
+        namespace = 'doi' if provider == 'crossref' else provider
+        value = normalize_external_id(namespace, identifier)
+        if not value or namespace == 'europe_pmc' and not value.startswith('PPR:'):
+            continue
+        refs.add(ProviderRecordRef(provider=namespace, record_id=value,
+            relation='preprint', version_family=item.version_family))
+    return tuple(sorted(refs, key=lambda ref: (ref.provider, ref.record_id, ref.version_family or '')))
 
 
 def _record_type(record):

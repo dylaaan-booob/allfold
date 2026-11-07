@@ -69,7 +69,7 @@ def _journal_dates_missing(records):
 
 
 def _native_targets(records):
-    from allfold.paper_dates import preprint_date_coverage, preprint_identity
+    from allfold.paper_dates import preprint_date_coverage, preprint_identity, preprint_query_refs
     _, answered = preprint_date_coverage(records)
     first_public_saved = any(record.first_public_at for record in records)
     ordinary = _ordinary_missing(records)
@@ -83,14 +83,8 @@ def _native_targets(records):
         platforms = {(ref.provider, ref.record_id) for ref in record.related_ids if ref.provider in {'biorxiv','medrxiv'}}
         if record.provenance.provider in {'biorxiv','medrxiv'} and record.publication_type == 'preprint' and record.external_ids.doi:
             platforms.add((record.provenance.provider, record.external_ids.doi))
-        for item in record.dates:
-            if item.provider in {'biorxiv','medrxiv'} and item.record_id and item.kind.value == 'preprint':
-                from allfold.identifiers import valid_doi
-                raw = item.record_id
-                if raw.rpartition(':')[2].isdigit():
-                    raw = raw.rpartition(':')[0]
-                if doi := valid_doi(raw):
-                    platforms.add((item.provider, doi))
+        platforms.update((ref.provider, ref.record_id) for ref in preprint_query_refs(record.dates)
+            if ref.provider in {'biorxiv', 'medrxiv'})
         for platform, doi in platforms:
             if ordinary or not first_public_saved and preprint_identity('doi', doi) not in answered:
                 targets.add((platform, 'doi', doi))

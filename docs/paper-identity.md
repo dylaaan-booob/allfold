@@ -115,6 +115,9 @@ primary DOI/UUID, workflow or another Paper. Every known family still needs firs
 version proof when filling an empty First public. Unsaved relationships are
 discarded; another explicit completion may request them again. Shared response
 caches, deduplication, arXiv batches and cancellation remain operation-local.
+Typed saved preprint date facts can reconstruct temporary query targets after
+restart, without entering the Paper identity index. Sufficient dates already in
+Paper can fill an empty First public with no network requests or source rewrite.
 
 ## Local editing and external actions
 

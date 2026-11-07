@@ -127,7 +127,7 @@ Focused operation regressions use `tests/test_integrated_run.py`,
 `tests/test_api_completion.py`, `tests/test_metadata_completion.py` and
 `tests/test_paper_enrichment.py`. They cover Paper-only rediscovery, direct-ID matching, legacy identity refusal, restart/unkept/Reject
 eligibility, no-match, exact-revision/directory/configuration refusal, cancellation,
-Paper date/source fact append/dedup, operation-local version relations, webpage month upgrade and event-only saves. The isolated
+Paper date/source fact append/dedup, date-backed restart queries and local First public saves, operation-local version relations, webpage month upgrade and event-only saves. The isolated
 Electron workspace fixture renders separate discovery/completion selections,
 named date events and explicit multi-Paper start/cancel without external APIs.
 Snapshot regressions in `tests/test_run_state.py`, `tests/test_run_commit.py` and

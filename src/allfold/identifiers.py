@@ -88,7 +88,8 @@ def related_identifiers(record: Any) -> frozenset[tuple[str, str]]:
     for doi in record.related_dois:
         identities.update(strong_identifiers({'doi': doi}))
     for reference in record.related_ids:
-        identities.update(strong_identifiers({reference.provider: reference.record_id}))
+        namespace = 'doi' if reference.provider in {'biorxiv', 'medrxiv'} else reference.provider
+        identities.update(strong_identifiers({namespace: reference.record_id}))
     return frozenset(identities)
 
 

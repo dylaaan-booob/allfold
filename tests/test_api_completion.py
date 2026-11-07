@@ -706,3 +706,74 @@ def test_completion_refuses_unbound_version_fields_and_preserves_primary_identit
         with pytest.raises(ValueError, match='not bound'):
             save_api_completion(target, (saved_paper_evidence(target), wrong), operation_lock=lock)
     assert path.read_bytes() == before
+
+
+@pytest.mark.parametrize('provider', ['biorxiv', 'medrxiv'])
+def test_restart_binds_native_first_version_response_to_saved_preprint_date(tmp_path, provider):
+    from allfold.application.coordinators.api_completion import ApiCompletion
+    from allfold.application.browser_runtime import BrowserTaskLock
+    from test_application_decisions import write_paper
+    from uuid import uuid4
+    config, workspace = write_valid_config(tmp_path)
+    config.write_text(config.read_text() + f'\ncompletion_providers: [{provider}]\n')
+    paper_id = uuid4()
+    path = write_paper(workspace, paper_id)
+    calls = []
+    version = '2'
+    def response(request):
+        calls.append(request.url.path)
+        rows = [{'preprint_doi': '10.1101/123456', 'published_doi': '10.5555/decision'}] if '/pubs/' in request.url.path else [
+            {'doi': '10.1101/123456', 'published': '10.5555/decision', 'version': version,
+             'date': '2022-01-02' if version == '2' else '2020-01-02'}]
+        return httpx.Response(200, json={'messages': [{'status': 'ok'}], 'collection': rows})
+    for attempt in range(2):
+        service = ApiCompletion(config, BrowserTaskLock(), client_factory=lambda selected, **kwargs:
+            SupplementalClient(selected, interval=0, transport=httpx.MockTransport(response), **kwargs))
+        service.start((paper_id,)); service.join()
+        assert service.state()['phase'] == 'Completed'
+        result, = service.state()['results']
+        assert result['first_public_status'] == ('known_unresolved' if not attempt else 'recorded')
+        assert result['first_public_recorded'] is bool(attempt)
+        version = '1'
+    assert calls == [f'/pubs/{provider}/10.5555/decision/na/json',
+        f'/details/{provider}/10.1101/123456/na/json', f'/details/{provider}/10.1101/123456/na/json']
+    paper, = load_workspace(workspace).papers
+    assert paper.first_public_at == '2020-01-02'
+    assert paper.external_ids.doi == '10.5555/decision' and paper.paper_id == paper_id
+    assert {(item.version, item.year) for item in paper.date_evidence} == {('1', 2020), ('2', 2022)}
+    assert 'related_dois:' not in path.read_text() and not (workspace / 'Evidence').exists()
+
+
+def test_restart_fills_first_public_from_sufficient_saved_dates_without_requests(tmp_path):
+    from allfold.application.coordinators.api_completion import ApiCompletion
+    from allfold.application.browser_runtime import BrowserTaskLock
+    from test_application_decisions import write_paper
+    from uuid import uuid4
+    config, workspace = write_valid_config(tmp_path)
+    config.write_text(config.read_text() + '\ncompletion_providers: [crossref, arxiv]\n')
+    paper_id = uuid4()
+    write_paper(workspace, paper_id)
+    calls = []
+    def response(request):
+        calls.append(request.url.host)
+        if request.url.host == 'api.crossref.org':
+            return httpx.Response(200, json={'message': {'DOI': '10.5555/decision', 'type': 'journal-article',
+                'relation': {'has-preprint': [{'id-type': 'arxiv', 'id': key} for key in ('2201.12345', '2201.54321')]}}})
+        return httpx.Response(200, text='<feed xmlns="http://www.w3.org/2005/Atom"><entry>'
+            '<id>https://arxiv.org/abs/2201.12345v1</id><title>Preprint</title>'
+            '<published>2022-01-02T00:00:00Z</published></entry></feed>')
+    for attempt in range(2):
+        service = ApiCompletion(config, BrowserTaskLock(), client_factory=lambda provider, **kwargs:
+            SupplementalClient(provider, interval=0, transport=httpx.MockTransport(response), **kwargs))
+        service.start((paper_id,)); service.join()
+        assert service.state()['phase'] == 'Completed'
+        result, = service.state()['results']
+        assert result['first_public_status'] == ('known_unresolved' if not attempt else 'recorded')
+        assert result['first_public_recorded'] is bool(attempt)
+        if attempt:
+            assert result['saved_fields'] == ['first_public_at'] and result['lookups'] == []
+    # Unknown, unsaved relationships from attempt 1 are intentionally not restored.
+    assert calls == ['api.crossref.org', 'export.arxiv.org']
+    paper, = load_workspace(workspace).papers
+    assert paper.first_public_at == '2022-01-02' and paper.paper_id == paper_id
+    assert paper.external_ids.doi == '10.5555/decision'
