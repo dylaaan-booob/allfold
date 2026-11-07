@@ -246,7 +246,10 @@ def parse_paper_identity(path: Path, contents: str) -> PaperIdentity | None:
             complete = False
         if normalized:
             canonical_ids[namespace] = normalized
-    identifiers = strong_identifiers({**canonical_ids, **({'doi': primary_doi} if primary_doi else {})})
+    # Both fields directly assert identity. Preserve every conflicting DOI in
+    # the blocked index so neither can later be mistaken for a new work.
+    identifiers = strong_identifiers(canonical_ids) | frozenset(
+        key for doi in dois for key in strong_identifiers({'doi': doi}))
     if not identifiers:
         problems.append("cannot establish reliable Paper identity")
         complete = False

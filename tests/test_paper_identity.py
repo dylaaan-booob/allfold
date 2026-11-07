@@ -380,3 +380,21 @@ def test_direct_namespaced_ids_match_across_runs_without_alias_fields(tmp_path, 
     assert not repeated.issues and repeated.existing_papers == (path,) and not repeated.created_papers
     assert path.read_bytes() == before
     assert b'identity_aliases:' not in before and b'related_dois:' not in before
+
+
+@pytest.mark.parametrize('incoming_doi', ['10.5555/one', '10.5555/two'])
+def test_conflicting_primary_doi_fields_quarantine_both_direct_values(tmp_path, incoming_doi):
+    from allfold.persistence.materialize import read_workspace_identities
+    from allfold.persistence.safe_write import workspace_operation_lock
+    from test_application_decisions import replace_frontmatter
+    paper, = canonicalize_records([evidence(title='Saved', external_ids=ExternalIds(doi='10.5555/one'))]).papers
+    path, = materialize_papers([paper], tmp_path).created_papers
+    replace_frontmatter(path, external_ids={'doi': '10.5555/two'})
+    before = path.read_bytes()
+    with workspace_operation_lock(tmp_path) as lock:
+        index = read_workspace_identities(lock)
+    assert {('doi', '10.5555/one'), ('doi', '10.5555/two')} <= index.blocked_identifiers
+    incoming, = canonicalize_records([evidence(title='New', external_ids=ExternalIds(doi=incoming_doi))]).papers
+    result = materialize_papers([incoming], tmp_path)
+    assert result.has_errors and not result.created_papers and not result.existing_papers
+    assert path.read_bytes() == before and len(list((tmp_path / 'Papers').glob('*.md'))) == 1
