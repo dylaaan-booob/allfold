@@ -11,6 +11,7 @@ from allfold.config import ConfigurationError, resolve_runtime_date, validate_ru
 from allfold.providers.integrated import DiscoveryClient, DiscoveryResult, SourceScope, DISCOVERY_PROVIDERS, RUN_PROVIDERS
 from allfold.integrations.openalex_credentials import read_credential
 from allfold.progress import ProgressEvent, ProgressStage, ActivityUpdate, ActivityKind
+from allfold.application.metadata_completion import formal_records
 
 
 @dataclass(frozen=True)
@@ -141,22 +142,6 @@ class _WorkQueue:
                 for value in cached.values() if isinstance(value,Exception))
 
 
-def _formal_records(records, root_keys):
-    """Expand direct formal identities only; declared relations never own a root."""
-    from allfold.identifiers import strong_identifiers
-    pending = [record for record in records if record.publication_type != 'preprint']
-    accepted, keys = [], set(root_keys)
-    while pending:
-        matches = [record for record in pending if keys & strong_identifiers(record.external_ids)]
-        if not matches:
-            break
-        for record in matches:
-            pending.remove(record)
-            accepted.append(record)
-            keys.update(strong_identifiers(record.external_ids))
-    return tuple(accepted)
-
-
 def run_integrated(config_path, *, loaded_config=None, workspace_snapshot=None, cancel_event=None,
                    progress_callback=None, client_factory=DiscoveryClient, completion_factory=None,
                    wos_stage=None, workflow_id=None):
@@ -253,7 +238,7 @@ def run_integrated(config_path, *, loaded_config=None, workspace_snapshot=None, 
         for group in consolidate_evidence(discovery.records).clusters:
             keys={key for record in group.evidence for key in strong_identifiers(record.external_ids)}
             located_formal.extend(record.model_copy(update={'provenance':record.provenance.model_copy(update={'role':'supplement'})})
-                for record in _formal_records(all_work,keys))
+                for record in formal_records(all_work,keys))
         consolidated = consolidate_evidence((*discovery.records,*located_formal))
         groups = consolidated.clusters
         issues=[MonitorIssue(MonitorIssueSeverity.ERROR if r.status=='failed' else MonitorIssueSeverity.WARNING,
@@ -304,13 +289,16 @@ def run_integrated(config_path, *, loaded_config=None, workspace_snapshot=None, 
             for doi,value in work.responses.items():
                 request_cache['openalex','doi',doi]=value
             prepared={}
+            ordinary_roots={}
             for index,records in targets.items():
                 keys={key for record in records for key in strong_identifiers(record.external_ids)}
+                ordinary_roots[index]=keys
                 associated,_=bind_records((*records,*all_work),keys)
                 prepared[index]=tuple(associated)
             before_requests=sum(getattr(client,'request_count',0) for client in clients.values())
             completions=complete_metadata_many(prepared,RUN_COMPLETION_PROVIDERS,clients=clients,cancel_event=cancel,
-                request_cache=request_cache,paper_guard=lambda _:guard(),allow_formal_preprint_reverse=False)
+                request_cache=request_cache,paper_guard=lambda _:guard(),allow_formal_preprint_reverse=False,
+                ordinary_root_ids=ordinary_roots)
             statuses=[]
             from allfold.paper_dates import collect_dates
             for index,completed in completions:
@@ -327,8 +315,8 @@ def run_integrated(config_path, *, loaded_config=None, workspace_snapshot=None, 
                     records=completed.records
                     issues.extend(MonitorIssue(MonitorIssueSeverity.WARNING,MonitorIssueComponent.CANONICALIZATION,
                         'completion',f'{issue.provider}: {issue.message}') for issue in completed.issues)
-                root_keys={key for record in targets[index] for key in strong_identifiers(record.external_ids)}
-                formal=_formal_records(records,root_keys)
+                root_keys=ordinary_roots[index]
+                formal=formal_records(records,root_keys)
                 completed_keys[index]={key for record in formal for key in evidence_identifiers(record)}
                 canonical=canonicalize_records(formal)
                 issues.extend(MonitorIssue(MonitorIssueSeverity.ERROR,MonitorIssueComponent.CANONICALIZATION,

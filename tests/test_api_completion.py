@@ -216,7 +216,11 @@ def test_api_admission_csrf_progress_reset_and_settings_ownership(tmp_path):
         csrf = settings['csrf_token']
         start = client.post(prefix + '/start', json={'csrf_token': csrf, 'paper_ids': [str(paper_id)]})
         assert start.status_code == 200 and waiting.wait(3)
-        assert client.get(prefix + '/state').json()['phase'] == 'Running'
+        running = client.get(prefix + '/state').json()
+        assert running['phase'] == 'Running'
+        assert running['activity']['operation'] == 'base-api'
+        assert running['activity']['label'] == 'Base API completion'
+        assert running['activity']['detail'] == 'Request dispatched'
         assert client.post(prefix + '/start', json={'csrf_token': csrf, 'paper_ids': [str(paper_id)]}).status_code == 409
         from allfold.web.settings_guard import settings_task_active
         assert settings_task_active(app)
