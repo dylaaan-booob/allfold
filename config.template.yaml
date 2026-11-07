@@ -3,6 +3,7 @@ name: Allfold
 venue_whitelist: list.md
 keyword_expression: 'machine AND learn*'
 provider_order:
+  - pubmed
   - openalex
   - europe_pmc
   - crossref
@@ -10,11 +11,13 @@ provider_order:
   - biorxiv
   - medrxiv
   - wos
-# Optional discovery source: wos (runs first using saved institutional access).
+# PubMed/OpenAlex keys are optional and saved explicitly outside YAML.
+# WoS is opt-in; selected discovery sources run in parallel.
 enabled_providers:
+  - pubmed
   - openalex
-  - europe_pmc
 completion_providers:
+  - pubmed
   - openalex
   - europe_pmc
   - crossref

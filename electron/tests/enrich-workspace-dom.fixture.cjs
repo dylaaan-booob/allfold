@@ -15,7 +15,7 @@ const settings={csrf_token:'fixture',issues:[],covers:{},cover_search,saved_work
   monitor_revision_exists:'1',monitor_revision_digest:'b'.repeat(64),journal_revision_exists:'1',journal_revision_digest:'c'.repeat(64),
   institution_name:'',institution_idp_entity_id:'',auto_import_after_preparation:false,transition_delay_seconds:'3',display_name:'Synthetic researcher',
   zotero_target:{server_id:'SyntheticServer',library_type:'user',library_id:'0',collection_key:null},
-  provider_aliases:{},provider_order:['openalex','europe_pmc','crossref','arxiv','biorxiv','medrxiv','wos'],enabled_providers:['openalex','europe_pmc'],completion_providers:['openalex','europe_pmc','crossref','arxiv','biorxiv','medrxiv'],groups:['Synthetic Group'],custom_labels:[],journals,access_services:services,
+  provider_aliases:{},provider_order:['pubmed','openalex','europe_pmc','crossref','arxiv','biorxiv','medrxiv','wos'],enabled_providers:['pubmed','openalex'],completion_providers:['pubmed','openalex','europe_pmc','crossref','arxiv','biorxiv','medrxiv'],groups:['Synthetic Group'],custom_labels:[],journals,access_services:services,
 }};
 const paper={id:'paper-1',title:'Synthetic kept paper',doi:'10.5555/presentation',publication_date:'2026-10-01',status:'kept',abstract:'Synthetic fixture only',authors:[],enrichPhase:'Idle'};
 const enrichPaper={...paper,id:'paper-enrich',title:'Synthetic Enrich paper',doi:'10.5555/enrich',status:'candidate',abstract:''};
@@ -78,7 +78,7 @@ app.whenReady().then(async()=>{
     for(const partition of [win.webContents.session,browser.partition])partition.webRequest.onBeforeRequest({urls:['http://*/*','https://*/*']},(details,callback)=>callback({cancel:new URL(details.url).origin!==origin}));
     ipcMain.handle('cas:status',()=>({available:false,configured:false,revision:'fixture'}));
     disposeIPC=installBrowserIPC({ipcMain,hostWindow:win,origin,browser});
-    await win.loadURL(origin+'/');win.show();win.focus();await ready(()=>Promise.resolve(win.isFocused()),'fixture Window focus');
+    await win.loadURL(origin+'/');win.show();app.focus({steal:true});win.focus();await ready(()=>Promise.resolve(win.isFocused()),'fixture Window focus');
     // Readiness includes the actual fixture Paper, rather than a previous scene's refresh.
     await ready(()=>host("window.uiWorkspace?.ready()&&window.inboxKept.candidates().some(entry=>entry.paper.id==='paper-enrich')&&!document.getElementById('array-candidates').disabled"),'initial Enrich Paper loaded');
     assert(await host("workspaceArray.openPaper('paper-enrich')"),'initial Enrich Paper could not open');
