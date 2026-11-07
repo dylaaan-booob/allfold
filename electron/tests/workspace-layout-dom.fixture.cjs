@@ -412,9 +412,9 @@ app.whenReady().then(async()=>{
     const integratedSummary={availability:'available',provider:'integrated',status:'incomplete',
       outcome:'COMPLETED_WITH_ERRORS',coverage_status:'partial',created_papers:2,existing_papers:1,
       finished_at:'2026-11-07T01:00:00Z',resolved_date_range:{from_date:'2026-01-01',to_date:'2026-03-31'},
-      journals:[],statistics:{integrated_candidates:3,integrated_deduplicated:3,conflicts:1},
+      journals:[],statistics:{integrated_candidates:3,integrated_deduplicated:3,conflicts:1,completion_targets:2,completion_requests:3,completion_date_facts_added:4,first_public_recorded:1},
       issues:[{category:'discovery',severity:'error',message:'pubmed / Synthetic Journal: request failed'}],
-      details:{discovery_status:'partial',provider_runs:[
+      details:{discovery_status:'partial',completion_status:'partial',provider_runs:[
         {provider:'openalex',source:'Synthetic Journal',status:'complete',candidates:3,retained:3,limitations:[]},
         {provider:'pubmed',source:'Synthetic Journal',status:'failed',candidates:0,retained:0,limitations:['request failed']}]}};
     run.providers.integrated.result_summary=integratedSummary;
@@ -423,7 +423,7 @@ app.whenReady().then(async()=>{
       const root=document.querySelector('#s-run-records .s-run-record');
       root.querySelector('details').open=true;
       const text=root.innerText;
-      for(const expected of ['完成，检索覆盖不完整','2 new papers','1 already saved','Provider Details','Candidates','Distinct Papers','Identity conflicts','openalex','pubmed','request failed','检索'])if(!text.includes(expected))throw Error('Missing Integrated result: '+expected);
+      for(const expected of ['完成，检索或补全不完整','2 new papers','1 already saved','Provider Details','Candidates','Distinct Papers','API Completion','Completion targets','Completion HTTP requests','Added date facts','First public recorded','Identity conflicts','openalex','pubmed','request failed','检索'])if(!text.includes(expected))throw Error('Missing Integrated result: '+expected);
       if(/Source Resolution|OpenAlex records/.test(text) || root.querySelector('.s-run-coverage'))throw Error('Obsolete OpenAlex result surface');
       const content=document.querySelector('#s-run .workspace-content');
       if(content.scrollWidth>content.clientWidth+1)throw Error('Run result overflows constrained content');

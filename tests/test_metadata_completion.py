@@ -29,7 +29,7 @@ class Lookup:
 
 
 def test_completion_only_uses_enabled_providers_and_never_replaces_discovery_fields():
-    discovered = evidence("europe_pmc", "10.5555/main", monitor_journal_issns=("0006-341X",),
+    discovered = evidence("pubmed", "10.5555/main", monitor_journal_issns=("0006-341X",),
                           authors=(Author(name="Original Author"),))
     crossref = Lookup((evidence("crossref", "10.5555/main", title="Other title", abstract="Missing abstract",
                                authors=(Author(name="Other Author"),)),))
@@ -42,7 +42,7 @@ def test_completion_only_uses_enabled_providers_and_never_replaces_discovery_fie
     assert paper.metadata.title == "Original"
     assert paper.metadata.abstract == "Missing abstract"
     assert [a.name for a in paper.authors] == ["Original Author"]
-    assert {s.provider: s.role for s in paper.sources} == {"europe_pmc": "discovery", "crossref": "supplement"}
+    assert {s.provider: s.role for s in paper.sources} == {"pubmed": "discovery", "crossref": "supplement"}
 
 
 def test_completion_failure_or_unrelated_response_never_removes_discovery():

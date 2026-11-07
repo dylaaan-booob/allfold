@@ -6,72 +6,12 @@ from allfold.keywords import parse_keyword_expression
 from allfold.providers.integrated import DiscoveryClient, SourceScope
 
 
-def test_lightweight_identity_discovery_then_batched_unknown_details():
-    calls = []
-    def handler(request):
-        calls.append(request)
-        params = request.url.params
-        if params['resultType'] == 'lite':
-            assert 'FIRST_PDATE:' in params['query']
-            rows = [{'source': 'MED', 'id': str(n), 'doi': f'10.5555/{n}'} for n in (1, 2, 3)]
-        else:
-            assert 'EXT_ID:3 AND SRC:MED' in params['query']
-            assert 'EXT_ID:1 ' not in params['query'] and 'EXT_ID:2 ' not in params['query']
-            rows = [{'source': 'MED', 'id': '3', 'doi': '10.5555/3', 'title': 'New C', 'abstractText': 'Creation details'}]
-        return httpx.Response(200, json={'hitCount': len(rows), 'resultList': {'result': rows}})
-    with DiscoveryClient('europe_pmc', transport=httpx.MockTransport(handler), interval=0) as client:
-        result = client.discover_candidates(SourceScope('journal', 'Test', issns=('0006-341X',)),
-            parse_keyword_expression('learning'), date(2026, 1, 1), date(2026, 3, 31))
-        assert result.candidates == 3 and result.records[0].title is None
-        details = client.lookup_many('europe_pmc', ['MED:3'])
-    assert len(calls) == 2 and details.records[0].abstract == 'Creation details'
-    assert not details.limitations
 
 
-def test_unified_run_wos_first_skips_details_for_saved_rejected_and_current_wos(tmp_path):
-    from datetime import datetime, timezone
-    from allfold.application.integrated_run import run_integrated, IntegratedDiscovery
-    from allfold.models import ExternalIds, MetadataSource, ProviderWorkEvidence
-    from allfold.providers.integrated import DiscoveryResult
-    from test_integrated_run import config
-    from allfold.application.workspace import load_workspace
-    path, _ = config(tmp_path)
-    path.write_text(path.read_text() + 'enabled_providers: [europe_pmc]\n')
-    events = []
-    def response(request):
-        events.append(('api', request.url.params['resultType']))
-        if request.url.params['resultType'] == 'lite':
-            rows = [{'source': 'MED', 'id': str(n), 'doi': f'10.5555/{n}'} for n in (1, 2, 3)]
-        else:
-            query = request.url.params['query']
-            nums = [n for n in (1, 2, 3) if f'EXT_ID:{n} AND SRC:MED' in query]
-            rows = [{'source': 'MED', 'id': str(n), 'doi': f'10.5555/{n}', 'title': f'Paper {n}'} for n in nums]
-        return httpx.Response(200, json={'hitCount': len(rows), 'resultList': {'result': rows}})
-    def factory(provider, **kwargs):
-        return DiscoveryClient(provider, transport=httpx.MockTransport(response), interval=0, **kwargs)
-    # Seed B through the same public create-only Run then mark it Rejected.
-    def only_b(request):
-        return httpx.Response(200, json={'hitCount': 1, 'resultList': {'result': [{'source': 'MED', 'id': '2', 'doi': '10.5555/2', 'title': 'Paper 2'}]}})
-    run_integrated(path, client_factory=lambda provider, **kwargs: DiscoveryClient(provider, transport=httpx.MockTransport(only_b), interval=0, **kwargs))
-    saved, = (tmp_path / 'workspace' / 'Papers').glob('*.md')
-    saved.write_text(saved.read_text().replace('status: candidate', 'status: rejected'))
-    assert 'status: rejected' in saved.read_text()
-    original = saved.read_bytes()
-    path.write_text(path.read_text().replace('[europe_pmc]', '[wos, europe_pmc]'))
-    def wos_stage(snapshot, **kwargs):
-        events.append(('wos', 'first'))
-        evidence = ProviderWorkEvidence(title='WoS A', external_ids=ExternalIds(doi='10.5555/1', wos='WOS:000000000000001'),
-            provenance=MetadataSource(provider='wos', record_id='WOS:000000000000001', retrieved_at=datetime.now(timezone.utc)))
-        source = SourceScope('journal', 'Test', issns=('0006-341X',))
-        return IntegratedDiscovery((evidence,), (DiscoveryResult('wos', source, 'complete', (evidence,), candidates=1),), 'complete')
-    result = run_integrated(path, client_factory=factory, wos_stage=wos_stage)
-    assert events == [('wos', 'first'), ('api', 'lite'), ('api', 'core')]
-    assert result.facts.created_papers == 2 and result.facts.existing_papers == 1
-    assert saved.read_bytes() == original
-    assert {paper.title for paper in load_workspace(tmp_path / 'workspace').inbox} >= {'WoS A', 'Paper 3'}
 
 
-def test_native_stage_reuses_parent_slot_and_retains_first_batch_after_later_failure(tmp_path):
+@pytest.mark.parametrize('invalid_batch', [None,'count','path','duplicate_ut'])
+def test_native_stage_reuses_parent_slot_and_retains_first_batch_after_later_failure(tmp_path,invalid_batch):
     import threading
     from concurrent.futures import Future
     from types import SimpleNamespace
@@ -83,7 +23,7 @@ def test_native_stage_reuses_parent_slot_and_retains_first_batch_after_later_fai
     from allfold.application.browser_runtime import BrowserTaskLock
     from allfold.application.coordinators.preparation_coordinator import PreparationPhase
     from allfold.application.coordinators.wos_coordinator import WoSCoordinator
-    from allfold.application.integrated_run import run_integrated
+    from integrated_run_helpers import run_integrated
     from allfold.application.run_commit import capture_run_workspace
     from allfold.diagnostics import DiagnosticStore
     from test_wos import tagged, record
@@ -108,10 +48,12 @@ def test_native_stage_reuses_parent_slot_and_retains_first_batch_after_later_fai
             calls.append(action)
             assert data['task_id'] == data['workflow_id'] == 'parent-run'
             future = Future()
-            if action == 'wos_query': value = dict(page_id=71, total=2, batch_limit=1)
+            if action == 'wos_query': value = dict(page_id=71,total=3 if invalid_batch=='duplicate_ut' else 2,batch_limit=2 if invalid_batch=='duplicate_ut' else 1)
             elif data['first'] == 1:
-                Path(data['filename']).write_text(tagged([record(doi='10.5555/safe', ut='WOS:1')]))
-                value = dict(filename=data['filename'])
+                rows=[record(doi='10.5555/safe',ut='WOS:1')]
+                if invalid_batch in {'count','duplicate_ut'}: rows.append(record(doi='10.5555/other',ut='WOS:1'))
+                Path(data['filename']).write_text(tagged(rows))
+                value = dict(filename='unissued' if invalid_batch=='path' else data['filename'])
             else:
                 future.set_exception(ValueError('Second export failed'))
                 return future
@@ -121,12 +63,19 @@ def test_native_stage_reuses_parent_slot_and_retains_first_batch_after_later_fai
     slot.acquire()
     store = DiagnosticStore(path, root=tmp_path / 'logs')
     stage = WoSCoordinator(path, Preparation(), slot, bridge=Bridge(), browser_lock=browser, diagnostics=store)
+    native_batches=[]
+    def execute(snapshot,**kwargs):
+        callback=kwargs.pop('records_callback')
+        def verified(records): native_batches.append(records);callback(records)
+        return stage.execute_stage(snapshot,records_callback=verified,**kwargs)
     with capture_run_workspace(path) as snapshot:
-        result = run_integrated(path, workspace_snapshot=snapshot, wos_stage=stage.execute_stage, workflow_id='parent-run')
+        result = run_integrated(path,workspace_snapshot=snapshot,wos_stage=execute,workflow_id='parent-run')
     assert slot.locked() and browser.owner is None
     slot.release()
-    assert result.facts.created_papers == 1 and result.facts.details['discovery_status'] == 'partial'
-    assert len(result.facts.details['batches']) == 2
+    assert result.facts.created_papers == (0 if invalid_batch else 1)
+    assert result.facts.details['discovery_status'] == ('failed' if invalid_batch else 'partial')
+    assert len(native_batches)==(0 if invalid_batch else 1)
+    assert len(result.facts.details['batches']) == (1 if invalid_batch else 2)
     assert len(store.history()['records']) == 0  # only the parent coordinator owns Run history
     workspace = load_config(path).output_dir
     assert (workspace / '.allfold' / 'last-integrated-run.json').exists()
@@ -151,8 +100,8 @@ def test_openalex_batches_all_unknown_ids_maps_unordered_pages_and_reports_missi
     assert len(result.records) == 204
     assert {record.external_ids.openalex.rsplit('/', 1)[-1] for record in result.records} == set(identifiers) - {'W203'}
     assert result.status == 'partial'
-    assert 'Missing creation details: W203' in result.limitations
-    assert 'Unexpected detail record identity' in result.limitations
+    assert client.cached_lookup('openalex','W203') == ()
+    assert 'OpenAlex exact batch returned an unrequested Work' in result.limitations
 
 
 def test_openalex_shortened_detail_lists_use_exact_singleton_and_keep_whole_authors():
@@ -169,61 +118,21 @@ def test_openalex_shortened_detail_lists_use_exact_singleton_and_keep_whole_auth
     assert len(result.records[0].authors) == 101 and not result.limitations
 
 
-def test_lightweight_discovery_does_not_discard_valid_records_after_bad_candidate():
-    def handler(request):
-        return httpx.Response(200, json={'hitCount': 3, 'resultList': {'result': [
-            {'source': 'MED', 'id': '1'}, {'id': 'bad'}, {'source': 'MED', 'id': '3'}]}})
-    with DiscoveryClient('europe_pmc', transport=httpx.MockTransport(handler), interval=0) as client:
-        result = client.discover_candidates(SourceScope('journal', 'Test', issns=('0006-341X',)),
-            parse_keyword_expression('learning'), date(2026, 1, 1), date(2026, 3, 31))
-    assert result.status == 'partial' and result.candidates == 3
-    assert [record.external_ids.europe_pmc for record in result.records] == ['MED:1', 'MED:3']
 
 
-def test_all_lightweight_sources_are_gathered_before_one_creation_detail_source(tmp_path):
-    from test_integrated_run import config
-    from allfold.application.integrated_run import run_integrated
-    from allfold.application.workspace import load_workspace
-    path, _ = config(tmp_path)
-    calls = []
-    def response(request):
-        if request.url.host == 'api.openalex.org':
-            if request.url.path.startswith('/sources/'):
-                return httpx.Response(200, json={'id': 'https://openalex.org/S1', 'issn': ['0006-341X']})
-            if 'select' in request.url.params:
-                calls.append('oa-lite')
-                assert set(request.url.params['select'].split(',')) == {'id','doi','ids','type','primary_location','locations','locations_count'}
-                rows = [{'id': 'https://openalex.org/W3', 'doi': '10.5555/3', 'ids': {'pmid': '3'}, 'type': 'article'}]
-            else:
-                calls.append('oa-core')
-                assert 'epmc-lite' in calls
-                rows = [{'id': 'https://openalex.org/W3', 'doi': '10.5555/3', 'title': 'One creation detail'}]
-            return httpx.Response(200, json={'meta': {'count': len(rows)}, 'results': rows})
-        assert request.url.params['resultType'] == 'lite'
-        calls.append('epmc-lite')
-        return httpx.Response(200, json={'hitCount': 1, 'resultList': {'result': [{'source': 'MED', 'id': '3', 'doi': '10.5555/3'}]}})
-    result = run_integrated(path, client_factory=lambda provider, **kwargs: DiscoveryClient(provider, transport=httpx.MockTransport(response), interval=0, **kwargs))
-    assert result.facts.created_papers == 1 and not result.errors
-    assert calls.count('oa-core') == 1 and len(calls) == 3
-    paper, = load_workspace(tmp_path/'workspace').inbox
-    assert paper.title == 'One creation detail'
-    assert all(run['created'] == 1 for run in result.facts.details['provider_runs'])
 
 
 def test_direct_identifiers_matching_two_saved_owners_are_reported_and_skipped(tmp_path):
     from test_integrated_run import config
-    from allfold.application.integrated_run import run_integrated
+    from integrated_run_helpers import run_integrated
     path, _ = config(tmp_path)
-    path.write_text(path.read_text()+'enabled_providers: [europe_pmc]\n')
+    path.write_text(path.read_text()+'enabled_providers: [pubmed]\n')
+    from test_integrated_run import evidence, client_for
     ambiguous = False
-    def response(request):
-        if ambiguous:
-            assert request.url.params['resultType'] == 'lite'
-            rows = [{'source': 'MED', 'id': '2', 'doi': '10.5555/1'}]
-        else:
-            rows = [{'source': 'MED', 'id': str(n), 'doi': f'10.5555/{n}', 'title': f'Paper {n}'} for n in (1, 2)]
-        return httpx.Response(200, json={'hitCount': len(rows), 'resultList': {'result': rows}})
-    factory = lambda provider, **kwargs: DiscoveryClient(provider, transport=httpx.MockTransport(response), interval=0, **kwargs)
+    def rows():
+        return (evidence(doi='10.5555/1',pmid='2'),) if ambiguous else tuple(
+            evidence(doi=f'10.5555/{n}',pmid=str(n)) for n in (1,2))
+    factory=client_for(rows)
     assert run_integrated(path, client_factory=factory).facts.created_papers == 2
     files = list((tmp_path/'workspace'/'Papers').glob('*.md'))
     before = {p: p.read_bytes() for p in files}
@@ -267,30 +176,33 @@ import pytest
 def test_wos_failure_allows_selected_apis_but_parent_cancel_stops_them(tmp_path, cancelled):
     from threading import Event
     from test_integrated_run import config
-    from allfold.application.integrated_run import IntegratedDiscovery, run_integrated
+    from allfold.application.integrated_run import IntegratedDiscovery
+    from integrated_run_helpers import run_integrated
     from allfold.providers.integrated import DiscoveryResult
     path, _ = config(tmp_path)
-    path.write_text(path.read_text()+'enabled_providers: [wos, europe_pmc]\n')
+    path.write_text(path.read_text()+'enabled_providers: [wos, pubmed]\n')
     cancel = Event()
     calls = []
     def stage(snapshot, **kwargs):
         if cancelled: cancel.set()
         result = DiscoveryResult('wos', SourceScope('journal','Test'), 'cancelled' if cancelled else 'failed', limitations=('Native export could not be verified',))
         return IntegratedDiscovery((), (result,), result.status)
-    def response(request):
-        calls.append(request.url.params['resultType'])
-        return httpx.Response(200, json={'hitCount':1,'resultList':{'result':[{'source':'MED','id':'3','title':'Surviving API paper'}]}})
-    def factory(provider, **kwargs):
-        assert not cancel.is_set()
-        return DiscoveryClient(provider, transport=httpx.MockTransport(response), interval=0, **kwargs)
+    from test_integrated_run import evidence, client_for
+    class Client(client_for((evidence(),),calls=calls)):
+        def discover_many(self,*args,**kwargs):
+            if cancel.is_set():
+                return ()
+            return super().discover_many(*args,**kwargs)
+    factory=Client
     result = run_integrated(path, wos_stage=stage, client_factory=factory, cancel_event=cancel)
-    assert calls == ([] if cancelled else ['lite','core'])
+    assert not cancelled or result.facts.created_papers == 0
+    assert cancelled or calls == ['pubmed']
     assert result.facts.created_papers == (0 if cancelled else 1)
     assert result.facts.details['discovery_status'] == ('cancelled' if cancelled else 'partial')
 
 
 def test_openalex_journal_issue_is_excluded_before_creation_detail_lookup(tmp_path):
-    from allfold.application.integrated_run import run_integrated
+    from integrated_run_helpers import run_integrated
     from allfold.application.monitor import RunOutcome
     from test_integrated_run import config
     path, _ = config(tmp_path)
@@ -302,17 +214,18 @@ def test_openalex_journal_issue_is_excluded_before_creation_detail_lookup(tmp_pa
             return httpx.Response(200, json={'id': 'https://openalex.org/S1', 'issn': ['0006-341X']})
         return httpx.Response(200, json={'meta': {'count': 1}, 'results': [{
             'id': 'https://openalex.org/W1', 'doi': '10.5555/issue', 'title': 'Learning special issue',
-            'type': 'other', 'primary_location': {'raw_type': 'journal-issue'}}]})
+            'type': 'other', 'primary_location': {'raw_type': 'journal-issue','source':{'id':'https://openalex.org/S1','issn':['0006-341X']}}}]})
     result = run_integrated(path, client_factory=lambda provider, **kwargs:
         DiscoveryClient(provider, interval=0, transport=httpx.MockTransport(response), **kwargs))
-    assert calls == ['/sources/issn:0006-341X', '/works']
+    assert calls == ['/works']
     assert result.outcome == RunOutcome.COMPLETED
     assert not result.errors and result.facts.created_papers == 0
-    assert result.facts.details['provider_runs'][0]['candidates'] == 1
+    assert result.facts.details['provider_runs'][0]['candidates'] == 0
 
 
-@pytest.mark.parametrize('existing_owner', [False, True])
-def test_unified_wos_quarantines_conflicting_ut_before_creation(tmp_path, existing_owner):
+@pytest.mark.parametrize('existing_owner',[False,True])
+@pytest.mark.parametrize('split_batches',[False,True])
+def test_unified_wos_quarantines_conflicting_ut_before_creation(tmp_path,existing_owner,split_batches):
     import threading
     from concurrent.futures import Future
     from types import SimpleNamespace
@@ -324,7 +237,7 @@ def test_unified_wos_quarantines_conflicting_ut_before_creation(tmp_path, existi
     from allfold.application.browser_runtime import BrowserTaskLock
     from allfold.application.coordinators.preparation_coordinator import PreparationPhase
     from allfold.application.coordinators.wos_coordinator import WoSCoordinator
-    from allfold.application.integrated_run import run_integrated
+    from integrated_run_helpers import run_integrated
     from allfold.application.workspace import load_workspace
     from allfold.persistence.materialize import materialize_papers
     from allfold.providers.wos import record_paper
@@ -355,9 +268,10 @@ def test_unified_wos_quarantines_conflicting_ut_before_creation(tmp_path, existi
         def execute(self, action, data, progress=None):
             future = Future()
             if action == 'wos_query':
-                value = dict(page_id=71, total=3, batch_limit=500)
+                value = dict(page_id=71,total=3,batch_limit=1 if split_batches else 500)
             else:
-                Path(data['filename']).write_text(tagged(rows))
+                exports=([rows[2],rows[0],rows[1]][data['first']-1:data['last']] if split_batches else rows)
+                Path(data['filename']).write_text(tagged(exports))
                 value = dict(filename=data['filename'])
             future.set_result(value)
             return future

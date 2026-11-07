@@ -156,33 +156,3 @@ def normalize_europe_pmc(raw, source):
         indexed_terms=tuple(ProviderTopic(value=k, source='europe_pmc', kind='keyword') for k in keywords if isinstance(k, str) and k)
             + tuple(ProviderTopic(value=k['descriptorName'], source='europe_pmc', kind='mesh') for k in raw.get('meshHeadingList', {}).get('meshHeading', []) if k.get('descriptorName')),
         authors=tuple(Author(name=x['fullName']) for x in raw.get('authorList', {}).get('author', []) if x.get('fullName')))
-
-
-def normalize_candidate(raw, source, provider):
-    """Identity-only native discovery has no ordinary-metadata completeness claim."""
-    now = datetime.now(timezone.utc)
-    if provider == 'openalex':
-        if (raw.get('primary_location') or {}).get('raw_type') == 'journal-issue':
-            return None
-        identity = normalize_external_id('openalex', raw.get('id'))
-        if not identity:
-            raise DiscoveryError('OpenAlex candidate lacks reliable Work identity')
-        ids = {'openalex': raw['id'], 'doi': valid_doi(raw.get('doi'))}
-        related, refs, locations = _openalex_associations(raw, now)
-        publication_type = 'preprint' if raw.get('type') in {'preprint', 'posted-content'} else 'journal'
-        for namespace in ('pmid', 'pmcid'):
-            if value := normalize_external_id(namespace, (raw.get('ids') or {}).get(namespace)):
-                if publication_type == 'preprint':
-                    ids[namespace] = value
-                else:
-                    refs.add(ProviderRecordRef(provider=namespace, record_id=value))
-        dates = ()
-    else:
-        identity, preprint, ids, related, refs, dates, _ = _europe_pmc_associations(raw)
-        locations = []
-        publication_type = 'preprint' if preprint else 'journal'
-    return ProviderWorkEvidence(provenance=MetadataSource(provider=provider, record_id=raw['id'] if provider == 'openalex' else identity,
-        retrieved_at=now, role='discovery'), external_ids=ExternalIds(**ids),
-        publication_type=publication_type, monitor_journal_issns=source.issns, dates=tuple(dates),
-        related_dois=tuple(sorted(related - {ids.get('doi')})),
-        related_ids=tuple(sorted(refs, key=lambda item: (item.provider, item.record_id))), locations=tuple(locations))

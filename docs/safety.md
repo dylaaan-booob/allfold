@@ -37,8 +37,25 @@ file itself cannot be read, no overwrite revision is available; the UI retains t
 draft and requires a successful status read before submitting. Status responses
 preserve newer credential input, which stays outside ordinary draft recovery.
 
-Integrated discovery performs network requests without holding the Workspace
-operation lock. It captures configuration and Workspace ownership before the
+Integrated Run performs concurrent selected Discovery/Work and unknown-root API
+Completion without holding the Workspace operation lock. Verified WoS batches
+submit DOI facts through an in-memory callback after count/path/identity checks;
+that callback performs no HTTP or Paper writes. Late native identity conflicts
+remain quarantined even if an earlier DOI was already located. All producers,
+Work batches and required retries settle before roots are classified against the
+complete saved index, including Rejected. Completion uses the captured authority
+and only new safe roots; related-version date/provenance folding cannot add a
+preprint Paper or copy its ordinary fields/identifiers into the formal root.
+
+Every helper dispatch shares the parent's configuration/Workspace/cancellation
+checks; invalidation latches cancellation across sources. A selected active WoS
+disconnect revokes new HTTP dispatch while its native Future and Browser owner
+remain held until native settlement. Application shutdown revokes the parent,
+settles pending native authority through controlled teardown, and joins the parent
+worker before its snapshot/slot can be released. Ordinary native source failures
+remain local and do not discard other sources' verified facts.
+
+Integrated Run captures configuration and Workspace ownership before the
 network phase, then rechecks that ownership, cancellation and the complete
 identity index under one short commit lock before atomic creates. Reset or
 replacement cannot cause a late result to recreate or write a different
