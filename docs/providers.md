@@ -36,6 +36,8 @@ Ordinary-field gaps use the same direct formal-identity chain as final creation.
 
 Completion activity distinguishes **Base API completion** from **Native version verification** per provider. Actual HTTP dispatches and responses refresh activity, including paginated batches; the counters count requests rather than Papers. Cache reuse emits no HTTP activity or request count. Cancellation stops new dispatch and prevents cancelled responses from reporting completion activity.
 
+Each HTTP Discovery source reports its settled status and retained-record count as soon as it finishes, even while WoS is waiting for user verification. A finished or failed source therefore does not retain its initial discovery activity until the whole phase ends.
+
 The requested publication range belongs to discovery. Later preprint, Accepted, online or publication dates never remove a Paper from its original Run. A source's year/month precision remains year/month precision; no same-version date lookup rejudges monthly eligibility. [Paper identity](paper-identity.md) defines First public and named journal dates.
 
 ## Run results and snapshots

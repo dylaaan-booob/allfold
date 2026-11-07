@@ -74,10 +74,16 @@ def discover_selected(config, config_path, *, client_factory=DiscoveryClient, cl
                 # The final handoff also covers producers with no page callback.
                 if records_callback:
                     records_callback(tuple(record for result in results for record in result.records))
-                return results
             except Exception as error:
-                return tuple(DiscoveryResult(provider,s,'cancelled' if cancel.is_set() else 'failed',
+                results = tuple(DiscoveryResult(provider,s,'cancelled' if cancel.is_set() else 'failed',
                     limitations=(f'{provider}: {type(error).__name__}',)) for s in scopes)
+            if progress_callback:
+                count = sum(len(result.records) for result in results)
+                status = discovery_status(results, cancel.is_set())
+                progress_callback(ProgressEvent(activity=ActivityUpdate(kind=ActivityKind.WORKING,
+                    operation='discovery', label=f'{provider} journal discovery: {status}', source=provider,
+                    current=count, total=count, unit='work')))
+            return results
     selected = tuple(p for p in DISCOVERY_PROVIDERS if p in config.enabled_providers)
     if not selected:
         return IntegratedDiscovery((), (), 'empty')

@@ -17,6 +17,53 @@ def record(provider, doi, **fields):
         provenance=MetadataSource(provider=provider, record_id=doi, retrieved_at=datetime.now(timezone.utc)), **fields)
 
 
+@pytest.mark.parametrize('outcome', ['complete', 'empty', 'partial', 'exception'])
+def test_finished_http_sources_report_outcome_while_wos_waits(tmp_path, outcome):
+    from concurrent.futures import ThreadPoolExecutor
+    from test_integrated_run import evidence
+    path, _ = config(tmp_path)
+    path.write_text(path.read_text() + 'enabled_providers: [wos,pubmed,openalex]\n')
+    release_wos, wos_started = Event(), Event()
+    settled = {provider: Event() for provider in ('pubmed', 'openalex')}
+    events = []
+    expected = {'pubmed': 'failed' if outcome == 'exception' else outcome, 'openalex': 'empty'}
+
+    def progress(event):
+        events.append(event)
+        activity = event.activity
+        if activity and activity.source in settled and activity.label.endswith(': ' + expected[activity.source]):
+            settled[activity.source].set()
+
+    class Client(EmptyCompletion):
+        def discover_many(self, scopes, *args, **kwargs):
+            if self.provider == 'pubmed' and outcome == 'exception':
+                raise OSError('Discovery transport failed')
+            status = expected[self.provider]
+            rows = (evidence(doi=None),) if status in {'complete', 'partial'} else ()
+            return tuple(DiscoveryResult(self.provider, source, status, rows,
+                limitations=('Incomplete source',) if status == 'partial' else (), candidates=len(rows)) for source in scopes)
+
+    def wos(*args, **kwargs):
+        wos_started.set()
+        assert release_wos.wait(5)
+        return IntegratedDiscovery((), (), 'empty')
+
+    with ThreadPoolExecutor(max_workers=1) as worker:
+        run = worker.submit(run_integrated, path, client_factory=Client, completion_factory=EmptyCompletion,
+            wos_stage=wos, progress_callback=progress)
+        try:
+            assert wos_started.wait(2)
+            assert all(signal.wait(1) for signal in settled.values()), 'Finished HTTP sources still appear active while WoS waits'
+            assert not run.done()
+            for provider, status in expected.items():
+                terminal = [event.activity for event in events if event.activity and event.activity.source == provider][-1]
+                assert terminal.label.endswith(': ' + status)
+                assert terminal.current == (1 if provider == 'pubmed' and outcome in {'complete', 'partial'} else 0)
+        finally:
+            release_wos.set()
+        run.result(timeout=5)
+
+
 def test_discovery_and_work_overlap_then_tail_drains_before_completion(tmp_path):
     path, settings=config(tmp_path, ('wos','pubmed','openalex'))
     path.write_text(path.read_text()+'enabled_providers: [wos,pubmed,openalex]\n')
