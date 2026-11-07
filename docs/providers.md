@@ -1,20 +1,20 @@
 # Journal discovery and explicit metadata completion
 
-Allfold exposes three independent operations. **Integrated Run** discovers and saves reviewable journal Papers. **API 补全** operates on selected saved non-Rejected Papers after review, without requiring Keep or a recent Run. **网页 Enrich** retains its independent Translator workflow. Finishing a Run, opening results, changing selection or API completion never starts either of the other operations.
+Allfold exposes three independent operations. **Run** discovers and saves reviewable journal Papers. **API 补全** operates on selected saved non-Rejected Papers after review, without requiring Keep or a recent Run. **网页 Enrich** retains its independent Translator workflow. Finishing a Run, opening results, changing selection or API completion never starts either of the other operations.
 
 ## Provider roles
 
-| Provider | Integrated Run | Explicit API completion |
+| Provider | Run | Explicit API completion |
 | --- | --- | --- |
 | OpenAlex | Saved ISSNs → verified Source, scoped title/abstract/keywords and publication dates | Known DOI/Work ID and explicit location identifiers |
-| Europe PMC | Saved ISSNs, `TITLE_ABS` / `KW`, `FIRST_PDATE`, core results | Known DOI, source/record ID, PMID/PMCID, explicit preprint/version relations |
+| Europe PMC | Saved ISSNs, `TITLE_ABS` / `KW`, `FIRST_PDATE`, lite identity results | Known DOI, source/record ID, PMID/PMCID, explicit preprint/version relations |
 | Crossref | None | Known DOI metadata, named dates and explicit same-work relations |
 | arXiv | None | Known arXiv ID through `id_list`; Atom `published` establishes the first-version date |
 | bioRxiv / medRxiv | None | Platform-appropriate `details`/`pubs` lookups for known preprint or formal DOIs |
 | DBLP | Disabled | Disabled |
-| WoS | Separate existing browser workflow | Outside this operation |
+| WoS | First selected stage: native Journal ISSN/eISSN, keyword/date query and verified eight-option Plain Text export | Outside API completion |
 
-Run's `enabled_providers` defaults to OpenAlex and Europe PMC; either can be selected alone. The separate `completion_providers` defaults to OpenAlex, Europe PMC, Crossref, arXiv, bioRxiv and medRxiv. Saved YAML, autosave, Settings checkboxes, runtime validation and dispatch use these separate lists. No failed/unselected provider silently enables another. OpenAlex credentials retain their explicit submission mechanism; Crossref's optional contact is separate from discovery.
+Run's `enabled_providers` accepts WoS, OpenAlex and Europe PMC in any combination, including WoS only. It still defaults to OpenAlex and Europe PMC; existing selections never enable WoS automatically. The separate `completion_providers` defaults to OpenAlex, Europe PMC, Crossref, arXiv, bioRxiv and medRxiv. Saved YAML, autosave, Settings checkboxes, runtime validation and dispatch use these separate lists. No failed/unselected provider silently enables another. OpenAlex credentials retain their explicit submission mechanism; Crossref's optional contact is separate from discovery.
 
 DBLP's offline Conference Registry, Series management, reliable Paper identities and Research Scope exchange remain available. The obsolete journal-to-Stream map is removed; DBLP network retrieval remains disabled. Conference configuration does not become an executable Run scope or produce a missing-DBLP Partial result. A Run needs at least one followed Journal. See [Research Scope](research-scope.md) for offline management.
 
@@ -22,7 +22,11 @@ DBLP's offline Conference Registry, Series management, reliable Paper identities
 
 The shared parser accepts `AND`, `OR`, parentheses, adjacent quoted phrases and a word-final `*` with at least four preceding characters. `NOT`, proximity, internal/leading wildcards, `?` and malformed groups fail validation. Compilers preserve Boolean grouping and approved fields; no natural-language generation or full-collection scan is added.
 
-OpenAlex uses `search.title_abstract_keywords` (the scoped `.exact` variant for prefixes), verified `primary_location.source.id`, `from_publication_date` and `to_publication_date`. Europe PMC combines verified ISSNs, `TITLE_ABS`/`KW` and native `FIRST_PDATE:[start TO end]`, requesting core metadata. Both adapters exhaust accessible pages, validate envelopes/cursors and report failures or incomplete pagination without arbitrary application page/record quotas. Legal native hits are not subjected to local keyword or date rechecking.
+OpenAlex uses `search.title_abstract_keywords` (the scoped `.exact` variant for prefixes), verified `primary_location.source.id`, `from_publication_date` and `to_publication_date`. Europe PMC combines verified ISSNs, `TITLE_ABS`/`KW` and native `FIRST_PDATE:[start TO end]`, requesting `resultType=lite`. OpenAlex selects only identity/type/location fields at the top level. Both adapters exhaust accessible pages, validate envelopes/cursors and report failures or incomplete pagination without arbitrary application page/record quotas. Legal native hits are not subjected to local keyword or date rechecking.
+
+Selected WoS executes first outside the HTTP pool, using the existing CARSI and Browser preparation/ownership mechanism. Its eight Custom choices and dynamic native range limit are verified before every export; see [native export contract](wos-export.md). Failed or partial WoS retains usable returned records and selected APIs still execute. Cancellation stops later stages and requests; committed writes remain. There is one parent Run slot, workflow identity, saved configuration/Workspace snapshot, result and history lifecycle. The legacy Run WoS HTTP URL delegates to the same selected-source Run.
+
+All lightweight API candidates are gathered before choosing creation details. Known identities include every saved Paper (including Rejected) and the current WoS records. Known hits append reusable evidence without full ordinary-metadata requests or Paper mutation. Unknown works choose a formal native record first, then a deterministic provider order; a shared work does not fetch complete ordinary metadata from both APIs. OpenAlex batches exact Work IDs in groups of at most 100; Europe PMC batches exact `EXT_ID`/`SRC` clauses. An implementation URL budget splits groups, and pagination drains every group without a total-record quota. List-truncated OpenAlex creation authorships/locations require an exact singleton response; unresolved caps, missing/wrong IDs and failed pages remain explicit limitations. Already-returned associations are retained for known hits. Ambiguous evidence matching multiple saved owners is quarantined rather than copied to both.
 
 The requested publication range belongs to discovery. Later preprint, Accepted, online or publication dates never remove a Paper from its original Run. A source's year/month precision remains year/month precision; no same-version date lookup rejudges monthly eligibility. [Paper identity](paper-identity.md) defines First public and named journal dates.
 
@@ -38,17 +42,16 @@ Cancelled, failed, partial retrieval, capture issues and successful empty result
 remain distinct. The old OpenAlex Coverage and standalone discovery contracts
 have no production role and are removed.
 
-Snapshot formats have separate versions and readers:
+The selected-source Run has one current snapshot contract:
 
-- Integrated Run writes schema **v5** to `Workspace/.allfold/last-integrated-run.json`.
+- Integrated Run writes schema **v6** to `Workspace/.allfold/last-integrated-run.json`.
   Its only top-level fields are `schema_version`, `provider`,
   `resolved_date_range`, `outcome` and `facts`; there is no `coverage` array.
-- An old Integrated Run **v4** snapshot returns `unsupported` with a rerun prompt.
+- An old Integrated Run **v4/v5** snapshot returns `unsupported` with a rerun prompt.
   Reading leaves it untouched. A new explicit Run writes the current result;
   no migration, Workspace Reset or configuration reconstruction is needed for
   this snapshot-only change.
-- WoS continues to write and read its existing **v4** format in
-  `Workspace/.allfold/last-wos-run.json`. Integrated's version does not govern it.
+- Legacy WoS **v4** files in `Workspace/.allfold/last-wos-run.json` remain untouched. They are not reconstructed into the unified Run result; run again with the desired selected sources.
 
 Malformed or mismatched records and unsafe paths remain invalid; missing files
 remain not found, and I/O failures retain their error. Snapshot writes retain

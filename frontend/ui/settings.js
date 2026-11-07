@@ -746,7 +746,7 @@ function renderRun() {
   $('s-provider-alias').closest('label').hidden=overview;
   $('s-run-title').textContent=overview?'Overview':providerName(selectedProvider);
   $('s-run-overview').hidden=!overview;$('s-run-provider').hidden=overview;
-  $('s-provider-run').hidden=selectedProvider!=='wos';
+  $('s-provider-run').hidden=true;
   $('s-run-provider').querySelector('.s-run-query').hidden=!['openalex','europe_pmc','wos'].includes(selectedProvider);
   if(!overview){
     $('s-provider-run').dataset.runProvider=selectedProvider;
@@ -754,9 +754,9 @@ function renderRun() {
     $('s-run-expression-error').textContent=expressions[selectedProvider]?.error || '';
   }
   for(const group of root.querySelectorAll('[data-provider-settings]'))group.hidden=group.dataset.providerSettings!==selectedProvider;
-  const discovery=new Set(['openalex','europe_pmc']);
+  const discovery=new Set(['wos','openalex','europe_pmc']);
   const choices=(ids,role,values)=>ids.map(id=>`<label class="s-setting-row s-check"><span class="s-setting-label">${esc(providerName(id))}</span><input type="checkbox" data-${role}-provider="${id}" ${values.includes(id)?'checked':''}></label>`).join('');
-  $('s-run-operations').innerHTML=`<fieldset class="s-setting-group"><legend>Integrated Run</legend>${choices(providerOrder().filter(id=>discovery.has(id)),'discovery',draft.monitor.enabledProviders)}</fieldset><div class="s-run-operation"><button class="s-button" data-run-provider="integrated" disabled>Integrated Run ↗</button><p class="s-help" data-run-reason="integrated"></p></div><fieldset class="s-setting-group"><legend>API 补全</legend>${choices(providerOrder().filter(id=>id!=='wos'),'completion',draft.monitor.completionProviders)}</fieldset><div class="s-run-operation"><button class="s-button" data-run-provider="wos" disabled>Run WoS ↗</button><p class="s-help" data-run-reason="wos"></p></div>`;
+  $('s-run-operations').innerHTML=`<fieldset class="s-setting-group"><legend>Run</legend>${choices(providerOrder().filter(id=>discovery.has(id)),'discovery',draft.monitor.enabledProviders)}</fieldset><div class="s-run-operation"><button class="s-button" data-run-provider="integrated" disabled>Run ↗</button><p class="s-help" data-run-reason="integrated"></p></div><fieldset class="s-setting-group"><legend>API 补全</legend>${choices(providerOrder().filter(id=>id!=='wos'),'completion',draft.monitor.completionProviders)}</fieldset>`;
   updateRunButtons();renderRunRecords();
 }
 function updateRunButtons() {
@@ -771,7 +771,7 @@ function updateRunButtons() {
 function renderRunRecords() {
   if(!runState){$('s-run-records').innerHTML='<p class="s-help">正在读取最近运行结果…</p>';return;}
   const expanded=new Set([...$('s-run-records').querySelectorAll('details[open]')].map(node=>node.dataset.resultDetail));
-  const ids=selectedProvider==='overview'?['integrated','wos']:[selectedProvider==='wos'?'wos':'integrated'];
+  const ids=['integrated'];
   $('s-run-records').innerHTML=ids.map(id=>{
     const entry=runState?.providers[id];
     return `<section class="s-run-record"><h3>${esc(providerName(id))}</h3>${renderRunResult(entry?.result_summary,{compact:selectedProvider==='overview',id})}</section>`;

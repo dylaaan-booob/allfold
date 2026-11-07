@@ -93,7 +93,7 @@ export function renderRunResult(result,{compact=false,id='' }={}) {
   const warnings=(details.date_warnings || []).map(item=>({...item,reasons:(item.reasons || []).filter(reason=>!['EA_fallback','year_only'].includes(reason))}))
     .filter(item=>item.reasons.length).map(item=>`<li>Record ${count(item.record_number)} · ${esc(item.doi || item.ut || '')} · ${item.reasons.map(reason=>esc(label(reason))).join(' · ')}</li>`).join('');
   const issues=result.issues.filter(i=>i.category!=='exclusion').map(issue=>`<li><strong>${esc(label(issue.category))}</strong> · ${esc(result.provider==='wos'?wosDiagnostic(issue.message):issue.message)}${issue.issn?` · ${esc(issue.issn)}`:''}</li>`).join('');
-  const providerRuns=(details.provider_runs || []).map(run=>`<li><strong>${esc(run.provider)} · ${esc(run.source)}</strong> · ${esc(label(run.status))} · ${count(run.candidates)} candidates / ${count(run.retained)} retained${run.limitations?.length?`<p>${run.limitations.map(esc).join(' · ')}</p>`:''}</li>`).join('');
+  const providerRuns=(details.provider_runs || []).map(run=>`<li><strong>${esc(run.provider)} · ${esc(run.source)}</strong> · ${esc(label(run.status))} · ${count(run.candidates)} candidates / ${count(run.retained)} retained · ${count(run.created)} new / ${count(run.existing)} existing${run.limitations?.length?`<p>${run.limitations.map(esc).join(' · ')}</p>`:''}</li>`).join('');
   return header+impact+coverage+`<details class="s-run-provider-details" data-result-detail="${esc(id)}:provider"><summary>Provider Details</summary>${metrics(stats,['integrated_candidates','integrated_deduplicated','returned_records','eligible_records','search_total'])}
     ${providerRuns?`<ul>${providerRuns}</ul>`:''}
     ${metricSection('正常排除',details.skipped)}

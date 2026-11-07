@@ -75,6 +75,9 @@ class CoordinatorSnapshot:
     last_activity_at: datetime | None = None
     worker_alive: bool = False
     inactivity_warning: bool = False
+    task_id: str | None = None
+    browser_active: bool = False
+    waiting_for_user: bool = False
 
     @property
     def current_activity(self) -> ActivitySnapshot | None:
@@ -86,6 +89,7 @@ class RunCoordinator:
 
     def __init__(self, config_path: Path, *, run_slot=None, diagnostics=None) -> None:
         self.diagnostics = diagnostics
+        self.wos_stage = None
         self._task_id = None
         self._config_path = config_path
         self._run_slot = run_slot or threading.Lock()
@@ -179,7 +183,9 @@ class RunCoordinator:
             if self._status is not CoordinatorStatus.RUNNING:
                 return False
             self._cancel_event.set()
-            return True
+        if self.wos_stage is not None and self.wos_stage.running:
+            self.wos_stage.cancel(self._task_id)
+        return True
 
     def _release_slot(self):
         if self._slot_owned:
@@ -201,6 +207,9 @@ class RunCoordinator:
                 active=self._status is CoordinatorStatus.RUNNING and worker_alive,
             )
             return CoordinatorSnapshot(
+                task_id=self._task_id,
+                browser_active=bool(self.wos_stage and self.wos_stage.task and self.wos_stage.task["status"] == "RUNNING"),
+                waiting_for_user=bool(self.wos_stage and self.wos_stage.task and self.wos_stage.task.get("waiting_for_user")),
                 provider=self._provider,
                 status=self._status,
                 progress_stage=progress.progress_stage,
@@ -231,7 +240,8 @@ class RunCoordinator:
         try:
             result = run_monitor(self._config_path, provider=self._provider,
                 progress_callback=self._update_progress, loaded_config=self._config_snapshot,
-                workspace_snapshot=self._workspace_snapshot, cancel_event=self._cancel_event)
+                workspace_snapshot=self._workspace_snapshot, cancel_event=self._cancel_event,
+                wos_stage=self.wos_stage.execute_stage if self.wos_stage else None, workflow_id=self._task_id)
         except BaseException as error:
             LOGGER.exception("Unexpected exception during monitor run")
             unexpected_error = UnexpectedRunError(
@@ -248,4 +258,6 @@ class RunCoordinator:
                 self._finished_at = datetime.now(timezone.utc)
                 self._status = CoordinatorStatus.FINISHED
                 self._release_slot()
-                finish_run(self.diagnostics, self._task_id, self._result, provider=self._provider.value)
+                native = self.wos_stage.task if self.wos_stage is not None else None
+                diagnostic = native.get('diagnostic') if native and native['id'] == self._task_id else None
+                finish_run(self.diagnostics, self._task_id, self._result, provider=self._provider.value, diagnostic=diagnostic)

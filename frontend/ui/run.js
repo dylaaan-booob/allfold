@@ -37,7 +37,7 @@ function setAnimationDisabled(disabled) {
   if(reduceRunMotion())stopRunAnimation();
   localStorage.setItem(animationPreferenceKey,String(disabled));
 }
-const providerLabels={integrated:'Integrated Run',wos:'Run WoS'};
+const providerLabels={integrated:'Run'};
 function disableRunButtons(disabled) {
   if(disabled)document.querySelectorAll('[data-run-provider]').forEach(button=>{button.disabled=true;});
   else window.uiRunPage?.updateButtons();
@@ -58,8 +58,8 @@ function showState(data) {
   $('run-elapsed').textContent=progress.elapsed_text || '0s';
   $('run-stage').textContent=progress.stage_label || snapshot.status;
   $('run-description').textContent=progress.announcement_message || (snapshot.inactivity_warning?'暂未收到新的活动。':'');
-  dialog.dataset.waitingForUser=String(snapshot.provider==='wos' && !!snapshot.waiting_for_user);
-  taskPageButton.hidden=snapshot.provider!=='wos' || snapshot.status!=='RUNNING';
+  dialog.dataset.waitingForUser=String(!!snapshot.waiting_for_user);
+  taskPageButton.hidden=!snapshot.browser_active || snapshot.status!=='RUNNING';
   $('run-wos-cancel').hidden=snapshot.status!=='RUNNING';
   $('run-wos-cancel').textContent='取消 '+(providerLabels[snapshot.provider] || 'Run');
 }
@@ -101,7 +101,7 @@ function open(data,trigger=null) {
   // Startup recovery can precede the Workspace controller's readiness. The
   // existing availability poll will restore this same task once entry succeeds.
   if(!useInline && window.uiRunPage?.open()!==true)return;
-  const run=active={inline:useInline,selection:window.inboxRun.selection(),ended:false,reduced:reduceRunMotion(),provider:data.snapshot.provider,kind:data.snapshot.provider==='wos'?'run-wos':'run',taskID:data.snapshot.task_id,trigger};
+  const run=active={inline:useInline,selection:window.inboxRun.selection(),ended:false,reduced:reduceRunMotion(),provider:data.snapshot.provider,kind:'run',taskID:data.snapshot.task_id,trigger};
   $('run-wash').hidden=true;$('run-stage-layer').hidden=false;
   dialog.classList.remove('returning');dialog.querySelector('.run-background').hidden=false;
   if(!run.inline)run.visual=new RunVisual(dialog,run.reduced);
@@ -113,11 +113,11 @@ function open(data,trigger=null) {
 async function start(provider,trigger=null) {
   if(active || starting || window.workspaceArray?.workflowBusy() || !window.uiRunPage?.canRun(provider) || !window.inboxRun?.available())return;
   starting=true;disableRunButtons(true);
-  const endpoint=provider==='wos'?'run-wos':'run';
+  const endpoint='run';
   try {
     if(window.allfoldAutosave && !await window.allfoldAutosave.flush()){report('配置尚未落盘，请检查 Pending / Failed / Conflict 状态。');return;}
     if(!window.uiRunPage?.canRun(provider))return;
-    open(await uiNext.request('/api/ui-next/'+endpoint,provider==='wos'?{}:{provider,enabled_providers:window.uiRunPage.selectedProviders()}),trigger);
+    open(await uiNext.request('/api/ui-next/'+endpoint,{provider:'integrated',enabled_providers:window.uiRunPage.selectedProviders()}),trigger);
   }
   catch(error){report(providerLabels[provider]+' 启动失败',resultDetails(error.state?.snapshot || {}).concat(error.message));}
   finally {starting=false;if(!active){try{await window.uiRunPage.refresh();}finally{disableRunButtons(false);}}}
@@ -141,10 +141,7 @@ async function restore() {
   try {
     const data=await uiNext.request('/api/ui-next/run');
     window.dispatchEvent(new CustomEvent('run-state',{detail:data}));
-    const wos=data.providers.wos;
-    if(wos.snapshot?.status==='RUNNING'){
-      if(!$('kept-flow').open)open(await uiNext.request('/api/ui-next/run-wos'));
-    }else if(data.snapshot.status==='RUNNING' && !$('kept-flow').open)open(data);
+    if(data.snapshot.status==='RUNNING' && !$('kept-flow').open)open(data);
   }catch(error){window.uiRunPage?.report(error.message);}
 }
 window.uiRun={start,retry,active:()=>!!active || starting,

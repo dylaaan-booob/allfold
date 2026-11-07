@@ -13,7 +13,7 @@ from allfold.date_range import ResolvedDateRange
 from allfold.persistence.safe_write import workspace_operation_lock
 
 
-def integrated_payload(version=5):
+def integrated_payload(version=6):
     payload = {
         'schema_version': version,
         'provider': 'integrated',
@@ -47,8 +47,9 @@ def save_payload(tmp_path, payload):
     return target
 
 
-def test_integrated_v4_is_unsupported_without_migration_or_deletion(tmp_path):
-    target = save_payload(tmp_path, integrated_payload(4))
+@pytest.mark.parametrize("version", [4, 5])
+def test_old_integrated_is_unsupported_without_migration_or_deletion(tmp_path, version):
+    target = save_payload(tmp_path, integrated_payload(version))
     original = target.read_bytes()
     result = read_last_run_snapshot(tmp_path, RunProvider.INTEGRATED)
     assert result.status.value == 'unsupported'
@@ -57,13 +58,13 @@ def test_integrated_v4_is_unsupported_without_migration_or_deletion(tmp_path):
     assert sorted(tmp_path.iterdir()) == [target.parent]
 
 
-def test_integrated_v5_atomic_create_and_replace_round_trip(tmp_path):
+def test_integrated_v6_atomic_create_and_replace_round_trip(tmp_path):
     value = snapshot()
     with workspace_operation_lock(tmp_path) as lock:
         write_last_run_snapshot(tmp_path, value, operation_lock=lock)
         target = tmp_path / '.allfold' / 'last-integrated-run.json'
         raw = json.loads(target.read_text())
-        assert raw['schema_version'] == 5
+        assert raw['schema_version'] == 6
         assert set(raw) == {'schema_version', 'provider', 'resolved_date_range', 'outcome', 'facts'}
         assert read_last_run_snapshot(tmp_path, RunProvider.INTEGRATED).snapshot == value
         updated = replace(value, facts=value.facts.model_copy(update={'created_papers': 0, 'existing_papers': 3}))

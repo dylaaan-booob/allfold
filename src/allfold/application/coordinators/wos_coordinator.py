@@ -25,7 +25,7 @@ from allfold.persistence.journal_registry import local_candidates
 from allfold.date_range import resolve_date_range
 from allfold.persistence.safe_write import CompareReadError, ContentChangedError, read_text_exact, workspace_operation_lock, workspace_text_directory
 from allfold.application.coordinators.preparation_coordinator import PreparationPhase
-from allfold.providers.wos import WoSRecords, compile_wos_query, combined_query, match_journal, record_paper, parse_tagged, read_export
+from allfold.providers.wos import WoSRecords, compile_wos_query, combined_query, match_journal, record_paper, record_evidence, parse_tagged, read_export
 
 
 class WoSCoordinator:
@@ -113,9 +113,29 @@ class WoSCoordinator:
                 progress=dict(stage_label=task['stage'] if task else 'Run WoS', elapsed_text=f'{elapsed // 60}:{elapsed % 60:02}',
                               announcement_message=task['message'] if task else message))
 
-    def start(self):
+    def execute_stage(self, workspace_snapshot, *, cancel_event, workflow_id=None, progress_callback=None):
+        """Run the native stage synchronously under the parent's existing Run slot."""
+        from allfold.application.integrated_run import IntegratedDiscovery
+        from allfold.providers.integrated import DiscoveryResult, SourceScope
+        self.start(parent_snapshot=workspace_snapshot, cancel_event=cancel_event,
+                   workflow_id=workflow_id, progress_callback=progress_callback)
+        task = self.task
+        facts = RunFacts.model_validate(task['result']['facts'])
+        records = tuple(task['evidence'])
+        problems = tuple(task['result']['issues'])
+        status = ('cancelled' if cancel_event.is_set() else 'partial' if problems and records else
+                  'failed' if problems else 'complete' if records else 'empty')
+        results = tuple(DiscoveryResult('wos', SourceScope('journal', journal.name, journal.key, journal.identifiers),
+            status, tuple(record for record in records if journal.key in record.monitor_journal_issns),
+            problems + tuple(warning for warning in task['warnings'] if not warning.startswith('{')),
+            task['journal_counts'].get(journal.key, 0), task['query']['total']) for journal in task['config'].journals)
+        return IntegratedDiscovery(records, results, status, facts.details, facts.journals, facts.statistics)
+
+    def start(self, *, parent_snapshot=None, cancel_event=None, workflow_id=None, progress_callback=None):
         with self.lock:
             config, compiled, service, dates = self._configuration()
+            if parent_snapshot is not None and (config != parent_snapshot.config or self.path.read_bytes() != parent_snapshot.configuration):
+                raise ContentChangedError('Configuration changed before WoS stage')
             if not self._browser_available():
                 raise ValueError('Electron browser runtime is unavailable')
             workspace_identity = None
@@ -147,35 +167,46 @@ class WoSCoordinator:
             saved = BrowserServiceSnapshot.read(self.path)
             if saved.config_contents != config_text or saved.revision != state_revision:
                 raise ContentChangedError('Configuration changed before Run WoS start')
-            if not self.run_slot.acquire(blocking=False):
+            if parent_snapshot is None and not self.run_slot.acquire(blocking=False):
                 raise ValueError('Another Run is already active')
             owner = self.browser_lock.acquire('wos')
             if owner is None:
-                self.run_slot.release()
+                if parent_snapshot is None:
+                    self.run_slot.release()
                 raise ValueError('Another browser workflow is active')
-            task = dict(id=secrets.token_hex(16), owner=owner, config=config,
+            task = dict(id=workflow_id or secrets.token_hex(16), owner=owner, config=config,
+                parent_snapshot=parent_snapshot, progress_callback=progress_callback, evidence=[],
                 compiled=compiled, service=service, dates=dates,
                 service_scope=saved.scope,
                 config_text=config_text, state_revision=state_revision,
                 workspace_identity=workspace_identity, status='RUNNING', stage='Access Check', message='Starting CARSI',
                 started_at=datetime.now(timezone.utc).isoformat(), started_clock=time.monotonic(),
-                cancelled=threading.Event(), records=WoSRecords(), query=dict(text=query, next_first=1, total=None, seen=set(), finished=False),
+                cancelled=cancel_event if cancel_event is not None else threading.Event(), records=WoSRecords(), query=dict(text=query, next_first=1, total=None, seen=set(), finished=False),
                 identifiers={identifier: journal for journal in config.journals for identifier in journal.identifiers},
                 not_listed=not_listed, batches={}, download_root=None, waiting_for_user=False, date_warnings=[],
                 issues=[], warnings=warnings, raw_records=0, matched_journal_records=0, unmatched_journal_records=0, no_doi=0,
                 eligible_records=0, journal_counts={}, writes=WoSWrites(), result=None, prep=None)
-            observe(self.diagnostics, "begin", "run", task["id"], provider="wos")
+            if parent_snapshot is None:
+                observe(self.diagnostics, "begin", "run", task["id"], provider="wos")
             self.task = task
-            worker = self._worker = threading.Thread(target=self._run, args=(task,), name='allfold-wos', daemon=False)
+            if parent_snapshot is not None:
+                worker = None
+            else:
+                worker = self._worker = threading.Thread(target=self._run, args=(task,), name='allfold-wos', daemon=False)
             try:
-                worker.start()
+                if worker is not None:
+                    worker.start()
             except BaseException:
                 self._release_owner(owner)
                 self.run_slot.release()
                 task['status'] = 'FINISHED'
                 observe(self.diagnostics, 'finish', task['id'], 'failed', details={'reason':'failed'})
                 raise
-            return self.state()
+            if worker is not None:
+                return self.state()
+        # Native waits must not hold the coordinator lock: Cancel remains callable.
+        self._run(task)
+        return self.state()
 
     def cancel(self, task_id):
         with self.lock:
@@ -192,6 +223,10 @@ class WoSCoordinator:
             return True
 
     def _current(self, task):
+        if task.get('parent_snapshot') is not None:
+            from allfold.application.run_commit import commit_run_workspace
+            with commit_run_workspace(task['parent_snapshot'], cancel_event=task['cancelled']):
+                pass
         if read_text_exact(self.path) != task['config_text'] or read_user_state(self.path).revision != task['state_revision']:
             raise ContentChangedError('Saved configuration changed during Run WoS')
         path = task['config'].output_dir
@@ -231,12 +266,9 @@ class WoSCoordinator:
                 task['matched_journal_records'] += 1
                 try:
                     warnings = []
-                    paper = record_paper(raw, journal, warnings)
+                    evidence = record_evidence(raw, journal, warnings)
                 except (ValueError, TypeError) as failure:
-                    if str(failure) == 'missing_doi':
-                        task['no_doi'] += 1
-                    else:
-                        issues.append(f'record_{position}_unusable')
+                    issues.append(f'record_{position}_unusable')
                     continue
                 finally:
                     for warning in warnings:
@@ -249,8 +281,14 @@ class WoSCoordinator:
                         task['warnings'].append(json.dumps(warning, ensure_ascii=False))
                 task['eligible_records'] += 1
                 batch['eligible'] += 1
-                if not paper.sources:
-                    task['warnings'].append(f'{paper.doi}: no valid WoS UT; no source identity invented')
+                task['evidence'].append(evidence)
+                if not evidence.external_ids.doi:
+                    task['no_doi'] += 1
+                try:
+                    paper = record_paper(raw, journal)
+                except (ValueError, TypeError):
+                    issues.append(f'record_{position}_unusable')
+                    continue
                 task['records'].add(paper)
             if batch['exported'] != batch['expected']:
                 issues.append('batch_count_mismatch')
@@ -285,7 +323,7 @@ class WoSCoordinator:
             codes = {'control_not_unique', 'control_disabled', 'input_value_mismatch',
                 'core_collection_unverified', 'stale_search_results', 'export_range_unverified',
                 'download_observer_busy', 'action_expired', 'export_content_unverified', 'unknown_dom_step', 'dom_step_failed'}
-            steps = {'ready', 'search', 'result', 'exportMenu', 'controlReady', 'plainText', 'dialog',
+            steps = {'openContent', 'configureCustom', 'custom', 'editCustom', 'customReady', 'setCustom', 'saveCustom', 'verifyCustom', 'ready', 'search', 'result', 'exportMenu', 'controlReady', 'plainText', 'dialog',
                 'configure', 'contentReady', 'selectContent', 'arm', 'export', 'links'}
             if (isinstance(diagnostic, dict) and diagnostic.get('stage') == 'wos_dom'
                     and diagnostic.get('code') in codes and diagnostic.get('step') in steps):
@@ -303,6 +341,14 @@ class WoSCoordinator:
             if not task['cancelled'].is_set():
                 task['waiting_for_user'] = value.get('waiting_for_user') is True
                 task['message'] = 'Complete login or verification in BROWSER' if task['waiting_for_user'] else task['stage']
+                self._publish_progress(task)
+
+    def _publish_progress(self, task):
+        callback = task.get('progress_callback')
+        if callback:
+            from allfold.progress import ProgressEvent, ActivityUpdate, ActivityKind
+            callback(ProgressEvent(activity=ActivityUpdate(kind=ActivityKind.WORKING,
+                operation='wos', source='wos', label=task['stage'], detail=task['message'])))
 
     def _run(self, task):
         import tempfile
@@ -318,6 +364,7 @@ class WoSCoordinator:
             while self.preparation.snapshot().authorization_pending:
                 snapshot = self.preparation.snapshot()
                 task.update(message=snapshot.message, waiting_for_user=snapshot.waiting_for_user)
+                self._publish_progress(task)
                 if task['cancelled'].is_set():
                     self.preparation.cancel(prep.task_id, prep.generation)
                 time.sleep(.1)
@@ -336,6 +383,7 @@ class WoSCoordinator:
                     raise ValueError(format_browser_diagnostic(diagnostic))
                 raise ValueError('CARSI did not open an attributable WoS target page')
             task.update(stage='WoS Query', waiting_for_user=False)
+            self._publish_progress(task)
             query = self._electron_call(task, 'wos_query', {'page_id': page, 'query': task['query']['text']})
             total = query.get('total')
             if type(total) is not int or total < 0 or query.get('page_id') != page:
@@ -343,11 +391,11 @@ class WoSCoordinator:
             task['query']['total'] = total
             task['query']['finished'] = total == 0
             limit = query.get('batch_limit')
-            if type(limit) is not int or not 1 <= limit <= 1000:
+            if type(limit) is not int or (total > 0 and limit < 1) or limit < 0:
                 raise ValueError('Invalid native export batch limit')
             with tempfile.TemporaryDirectory(prefix='allfold-wos-') as temporary:
                 root = Path(temporary).resolve()
-                for first in range(1, total + 1, limit):
+                for first in range(1, total + 1, max(1, limit)):
                     last = min(first + limit - 1, total)
                     token = secrets.token_hex(16)
                     relative = f"allfold-wos/{task['id']}/{token}.txt"
@@ -357,6 +405,7 @@ class WoSCoordinator:
                                  complete=False, issues=[], relative_name=relative)
                     task['batches'][token] = batch
                     task.update(stage='Official Export', message=f'Exporting {first}–{last}/{total}')
+                    self._publish_progress(task)
                     result = self._electron_call(task, 'wos_export', dict(page_id=page,
                         first=first, last=last, download_root=str(root), filename=str(filename)))
                     if result.get('filename') != str(filename):
@@ -375,7 +424,7 @@ class WoSCoordinator:
             self._current(task)
             if task['cancelled'].is_set():
                 raise InterruptedError()
-            if papers:
+            if papers and task.get('parent_snapshot') is None:
                 task['stage'] = 'Create New Papers'
                 with workspace_operation_lock(config.output_dir, create=True) as lock:
                     if task['workspace_identity'] is None:
@@ -396,8 +445,9 @@ class WoSCoordinator:
                 with self.lock:
                     task.update(status='FINISHED', waiting_for_user=False)
                     self._release_owner(task['owner'])
-                    self.run_slot.release()
-                    finish_run(self.diagnostics, task['id'], {'provider':'wos','result':task['result']}, provider='wos', diagnostic=task.get('diagnostic'), interrupted=task.get('history_interrupted', False))
+                    if task.get('parent_snapshot') is None:
+                        self.run_slot.release()
+                        finish_run(self.diagnostics, task['id'], {'provider':'wos','result':task['result']}, provider='wos', diagnostic=task.get('diagnostic'), interrupted=task.get('history_interrupted', False))
 
     def shutdown(self):
         if self.task:
@@ -451,6 +501,10 @@ class WoSCoordinator:
             query={k: task['query'][k] for k in ('text', 'total', 'next_first', 'finished')},
             batches=[{k: b[k] for k in ('first', 'last', 'expected', 'exported', 'eligible', 'complete', 'issues')}
                      for b in task['batches'].values()], date_warnings=task['date_warnings'])
+        if task.get('parent_snapshot') is not None:
+            with self.lock:
+                task.update(stage=outcome, result=result, finished_clock=time.monotonic())
+            return
         try:
             self._current(task)
             with workspace_operation_lock(task['config'].output_dir, create=True) as lock:

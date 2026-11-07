@@ -10,6 +10,7 @@ provider_order:
   - biorxiv
   - medrxiv
   - wos
+# Optional discovery source: wos (runs first using saved institutional access).
 enabled_providers:
   - openalex
   - europe_pmc

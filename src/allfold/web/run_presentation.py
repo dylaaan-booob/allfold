@@ -24,7 +24,8 @@ _SOURCE_LABELS = {
     "application": "Application",
     "crossref": "Crossref",
     "openalex": "OpenAlex",
-    "integrated": "Integrated Run",
+    "integrated": "Run",
+    "wos": "Web of Science",
     "europe_pmc": "Europe PMC",
     "workspace": "Workspace",
 }

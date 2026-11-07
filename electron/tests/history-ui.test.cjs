@@ -88,3 +88,12 @@ test('history filters by execution Service and exposes stable Paper identities a
   assert.match(html,/All Services/);assert.match(html,/svc_a/);assert.match(html,/paper-a/);
   assert.match(html,/105/);assert.match(html,/PDF unverified/);
 });
+
+test('unified Run history presents selected sources and native batch hints',async()=>{
+  const {renderHistoryRecord}=await import('../../frontend/ui/history-view.js');
+  const html=renderHistoryRecord({kind:'run',provider:'integrated',task_id:'run-unified',outcome:'partial',
+    details:{result_status:'incomplete',run_sources:[{provider:'wos',status:'partial',candidates:3,created:1,existing:2,problems:1}],
+      wos_checks:{batches:2,completed_batches:1,journal_hints:1,date_hints:0,unmatched_records:1}}});
+  assert.match(html,/3 candidates/);assert.match(html,/1 new \/ 2 existing/);assert.match(html,/WoS Export 1\/2/);
+  assert.match(html,/1 期刊清单提示/);
+});

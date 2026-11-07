@@ -28,7 +28,7 @@ from allfold.persistence.safe_write import (
     read_text_exact,
 )
 
-INTEGRATED_RUN_SCHEMA_VERSION = 5
+INTEGRATED_RUN_SCHEMA_VERSION = 6
 WOS_RUN_SCHEMA_VERSION = 4
 
 
@@ -87,7 +87,7 @@ class RunProvider(str, Enum):
 
     @property
     def label(self) -> str:
-        return "Integrated Run" if self is self.INTEGRATED else "Run WoS"
+        return "Run" if self is self.INTEGRATED else "Run WoS"
 
 
 def discovery_provider(provider: RunProvider) -> RunProvider:

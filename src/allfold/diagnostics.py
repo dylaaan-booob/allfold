@@ -85,11 +85,29 @@ def _details(value):
     if _enum(value.get('pdf_outcome'), {'confirmed', 'failed', 'unverified', 'not_requested', 'uncertain'}):
         result['pdf_outcome'] = value['pdf_outcome']
     for key, allowed in (('result_status', {'completed', 'completed_with_notices', 'incomplete', 'capture_issues', 'failed', 'cancelled'}),
-                         ('coverage_status', {'complete', 'partial', 'failed', 'unavailable', 'unknown'}),
+                         ('coverage_status', {'complete', 'empty', 'partial', 'failed', 'unavailable', 'unknown'}),
                          ('batch_phase', {'idle', 'running', 'completed', 'stopped', 'paused', 'blocked'}),
                          ('mode', {'full', 'import_only'})):
         if _enum(value.get(key), allowed):
             result[key] = value[key]
+    source_runs = value.get('run_sources')
+    if isinstance(source_runs, list):
+        sources = []
+        for item in source_runs:
+            if not isinstance(item, dict) or not _enum(item.get('provider'), {'wos','openalex','europe_pmc'}):
+                continue
+            if not _enum(item.get('status'), {'complete','empty','partial','failed','cancelled','skipped'}):
+                continue
+            safe = {key:item[key] for key in ('provider','status')}
+            safe.update({key:item[key] for key in ('candidates','created','existing','problems')
+                if type(item.get(key)) is int and 0 <= item[key] <= 1_000_000_000})
+            if not any(source['provider']==safe['provider'] for source in sources):
+                sources.append(safe)
+        result['run_sources'] = sources
+    checks = value.get('wos_checks')
+    if isinstance(checks, dict):
+        result['wos_checks'] = {key:checks[key] for key in ('batches','completed_batches','journal_hints','date_hints','unmatched_records')
+            if type(checks.get(key)) is int and 0 <= checks[key] <= 1_000_000_000}
     for key in ('saved_fields', 'requested_fields'):
         fields = value.get(key)
         if isinstance(fields, list):

@@ -80,10 +80,7 @@ BrowserRuntime keeps one current association per physical page, including the wo
 ## History and diagnostics
 
 Python coordinators publish bounded business history independently of their
-Workspace result snapshots. Both Run providers expose current counts, statistics,
-issues and retrieval observations through `RunFacts`; Integrated snapshots use v5
-while WoS retains its independently read v4 format. Old Integrated v4 reads return
-unsupported and require a new Run, without migration or Reset. Electron and Python write separately owned, rotating
+Workspace result snapshots. The unified Run exposes selected-source counts, statistics, issues and retrieval observations through `RunFacts`; its Integrated snapshot uses v6. Old Integrated v4/v5 reads return unsupported and require a new Run, without migration or Reset. Legacy WoS snapshots remain untouched and are not reconstructed into unified results. Electron and Python write separately owned, rotating
 JSONL under a common configuration scope and startup runtime ID. Explicit workflow,
 task and request identities link native observations with coordinator-confirmed
 results. Page association snapshots are descriptive evidence, never browser or
@@ -157,7 +154,7 @@ Both databases live outside Workspace. Within the application project, configura
 
 Provider adapters emit reusable `ProviderWorkEvidence`; canonicalization groups
 explicit strong identities and selects missing metadata in a fixed order.
-Integrated Run schedules only selected OpenAlex/Europe PMC journal discovery.
+Run executes selected WoS synchronously first under the parent slot and workflow identity, then selected OpenAlex/Europe PMC lightweight journal discovery. The native stage shares the captured configuration/Workspace/cancellation authority, releases Browser ownership after export, and never writes a second Run snapshot or history result. Gathered candidate identities select batched creation details only for unknown works; all saved Papers, including Rejected, and current WoS facts suppress redundant full details.
 Native publication-date filters determine its range; subsequent evidence never
 rejudges inclusion. Commit rechecks captured configuration, source revision,
 Workspace/Papers identity and the complete identity index before atomic creates.

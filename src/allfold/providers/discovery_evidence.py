@@ -12,19 +12,7 @@ from allfold.paper_dates import source_date
 
 
 
-def normalize_openalex(raw, source):
-    if (raw.get('primary_location') or {}).get('raw_type') == 'journal-issue':
-        return None
-    record_id = str(raw.get('id') or '')
-    if not record_id or not raw.get('title'):
-        raise DiscoveryError('OpenAlex record lacks identity or title')
-    now = datetime.now(timezone.utc)
-    abstract = raw.get('abstract_inverted_index') or {}
-    tokens = {i: word for word, positions in abstract.items() for i in positions}
-    identifiers = {'openalex': record_id, 'doi': normalize_doi(raw.get('doi'))}
-    for namespace in ('pmid', 'pmcid'):
-        if identifier := normalize_external_id(namespace, (raw.get('ids') or {}).get(namespace)):
-            identifiers[namespace] = identifier
+def _openalex_associations(raw, now):
     related, refs, locations = set(), set(), []
     for location in raw.get('locations', []):
         if not isinstance(location, dict):
@@ -52,6 +40,23 @@ def normalize_openalex(raw, source):
                     if match and (doi := valid_doi(match.group(1))):
                         related.add(doi)
                         refs.add(ProviderRecordRef(provider=platform, record_id=doi))
+    return related, refs, locations
+
+
+def normalize_openalex(raw, source):
+    if (raw.get('primary_location') or {}).get('raw_type') == 'journal-issue':
+        return None
+    record_id = str(raw.get('id') or '')
+    if not record_id or not raw.get('title'):
+        raise DiscoveryError('OpenAlex record lacks identity or title')
+    now = datetime.now(timezone.utc)
+    abstract = raw.get('abstract_inverted_index') or {}
+    tokens = {i: word for word, positions in abstract.items() for i in positions}
+    identifiers = {'openalex': record_id, 'doi': normalize_doi(raw.get('doi'))}
+    for namespace in ('pmid', 'pmcid'):
+        if identifier := normalize_external_id(namespace, (raw.get('ids') or {}).get(namespace)):
+            identifiers[namespace] = identifier
+    related, refs, locations = _openalex_associations(raw, now)
     return ProviderWorkEvidence(provenance=MetadataSource(provider='openalex', record_id=record_id, retrieved_at=now, url=record_id),
         title=raw['title'], journal=source.name or None,
         publication_type='preprint' if raw.get('type') in {'preprint', 'posted-content'} else 'journal',
@@ -62,10 +67,10 @@ def normalize_openalex(raw, source):
         authors=tuple(Author(name=x['author']['display_name']) for x in raw.get('authorships', []) if x.get('author', {}).get('display_name')))
 
 
-def normalize_europe_pmc(raw, source):
+def _europe_pmc_associations(raw):
     source_id, record_id = raw.get('source'), raw.get('id')
-    if not source_id or not record_id or not raw.get('title'):
-        raise DiscoveryError('Europe PMC record lacks source, identity or title')
+    if not isinstance(source_id, str) or not source_id.isalnum() or not isinstance(record_id, str) or not record_id.isalnum():
+        raise DiscoveryError('Europe PMC record lacks reliable source/identity')
     identity = f'{source_id}:{record_id}'
     preprint = source_id == 'PPR'
     ids = {'europe_pmc': identity, 'doi': normalize_doi(raw.get('doi'))}
@@ -74,6 +79,9 @@ def normalize_europe_pmc(raw, source):
     if raw.get('pmcid'):
         ids['pmcid'] = raw['pmcid']
     related, refs, dates = set(), set(), []
+    publisher = str((raw.get('bookOrReportDetails') or {}).get('publisher') or '').strip().casefold()
+    if preprint and publisher in {'biorxiv', 'medrxiv'} and ids['doi'] and ids['doi'].startswith('10.1101/'):
+        refs.add(ProviderRecordRef(provider=publisher, record_id=ids['doi'], relation='preprint', version_family='doi:' + ids['doi']))
     for relation in (raw.get('commentCorrectionList') or {}).get('commentCorrection', []):
         if str(relation.get('type', '')).strip().casefold() not in {'preprint in', 'preprint of'}:
             continue
@@ -117,6 +125,14 @@ def normalize_europe_pmc(raw, source):
             first_version=src == 'PPR' and number == '1')
         if event:
             dates.append(event)
+    return identity, preprint, ids, related, refs, dates, version
+
+
+def normalize_europe_pmc(raw, source):
+    if not raw.get('title'):
+        raise DiscoveryError('Europe PMC record lacks title')
+    source_id, record_id = raw.get('source'), raw.get('id')
+    identity, preprint, ids, related, refs, dates, version = _europe_pmc_associations(raw)
     keywords = raw.get('keywordList', {}).get('keyword', [])
     return ProviderWorkEvidence(provenance=MetadataSource(provider='europe_pmc', record_id=identity,
         retrieved_at=datetime.now(timezone.utc), version=version,
@@ -128,3 +144,28 @@ def normalize_europe_pmc(raw, source):
         indexed_terms=tuple(ProviderTopic(value=k, source='europe_pmc', kind='keyword') for k in keywords if isinstance(k, str) and k)
             + tuple(ProviderTopic(value=k['descriptorName'], source='europe_pmc', kind='mesh') for k in raw.get('meshHeadingList', {}).get('meshHeading', []) if k.get('descriptorName')),
         authors=tuple(Author(name=x['fullName']) for x in raw.get('authorList', {}).get('author', []) if x.get('fullName')))
+
+
+def normalize_candidate(raw, source, provider):
+    """Identity-only native discovery has no ordinary-metadata completeness claim."""
+    now = datetime.now(timezone.utc)
+    if provider == 'openalex':
+        identity = normalize_external_id('openalex', raw.get('id'))
+        if not identity:
+            raise DiscoveryError('OpenAlex candidate lacks reliable Work identity')
+        ids = {'openalex': raw['id'], 'doi': valid_doi(raw.get('doi'))}
+        for namespace in ('pmid', 'pmcid'):
+            if value := normalize_external_id(namespace, (raw.get('ids') or {}).get(namespace)):
+                ids[namespace] = value
+        related, refs, locations = _openalex_associations(raw, now)
+        publication_type = 'preprint' if raw.get('type') in {'preprint', 'posted-content'} else 'journal'
+        dates = ()
+    else:
+        identity, preprint, ids, related, refs, dates, _ = _europe_pmc_associations(raw)
+        locations = []
+        publication_type = 'preprint' if preprint else 'journal'
+    return ProviderWorkEvidence(provenance=MetadataSource(provider=provider, record_id=raw['id'] if provider == 'openalex' else identity,
+        retrieved_at=now, role='discovery'), external_ids=ExternalIds(**ids),
+        publication_type=publication_type, monitor_journal_issns=source.issns, dates=tuple(dates),
+        related_dois=tuple(sorted(related - {ids.get('doi')})),
+        related_ids=tuple(sorted(refs, key=lambda item: (item.provider, item.record_id))), locations=tuple(locations))

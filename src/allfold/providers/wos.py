@@ -262,7 +262,7 @@ def record_evidence(record: dict, journal: JournalConfig | None = None, warnings
     fields = tuple(SourceFieldEvidence(tag=tag, values=tuple(record.get(tag, [])),
         status='parse-invalid' if tag in invalid else 'valid' if text(tag) else
             'absent' if tag in selected_fields else 'unselected')
-        for tag in sorted(WOS_SELECTED_FIELDS | set(selected_fields) | set(record) | {'GA'}))
+        for tag in sorted(WOS_SELECTED_FIELDS | {'GA'}))
     pages = '-'.join(value for value in (text('BP'), text('EP')) if value)
     return ProviderWorkEvidence(
         provenance=MetadataSource(provider='wos', record_id=ids.get('wos') or ids.get('doi') or ids['pmid'],

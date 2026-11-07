@@ -293,6 +293,7 @@ def create_app(config_path: Path, *, electron_bridge: ElectronBridge, diagnostic
     app.state.preparation_coordinator = PreparationCoordinator(electron_bridge, app.state.browser_task_lock, diagnostics=app.state.diagnostics)
     app.state.wos_coordinator = WoSCoordinator(resolved_config_path, app.state.preparation_coordinator, run_slot,
         bridge=electron_bridge, browser_lock=app.state.browser_task_lock, diagnostics=app.state.diagnostics)
+    app.state.run_coordinator.wos_stage = app.state.wos_coordinator
     app.state.import_token = secrets.token_urlsafe(32)
     app.state.reset_confirmation = None
     app.state.reset_lock = threading.Lock()
