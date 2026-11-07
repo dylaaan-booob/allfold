@@ -256,3 +256,31 @@ def test_unified_history_retains_sanitized_source_and_native_hints(tmp_path):
     assert item['details']['run_sources'][0] == {'provider':'wos','status':'partial','candidates':2,'created':0,'existing':2,'problems':1}
     assert item['details']['wos_checks'] == {'batches':2,'completed_batches':1,'journal_hints':0,'date_hints':1,'unmatched_records':1}
     assert 'PRIVATE_' not in str(item)
+
+
+import pytest
+
+@pytest.mark.parametrize('cancelled', [False, True])
+def test_wos_failure_allows_selected_apis_but_parent_cancel_stops_them(tmp_path, cancelled):
+    from threading import Event
+    from test_integrated_run import config
+    from allfold.application.integrated_run import IntegratedDiscovery, run_integrated
+    from allfold.providers.integrated import DiscoveryResult
+    path, _ = config(tmp_path)
+    path.write_text(path.read_text()+'enabled_providers: [wos, europe_pmc]\n')
+    cancel = Event()
+    calls = []
+    def stage(snapshot, **kwargs):
+        if cancelled: cancel.set()
+        result = DiscoveryResult('wos', SourceScope('journal','Test'), 'cancelled' if cancelled else 'failed', limitations=('Native export could not be verified',))
+        return IntegratedDiscovery((), (result,), result.status)
+    def response(request):
+        calls.append(request.url.params['resultType'])
+        return httpx.Response(200, json={'hitCount':1,'resultList':{'result':[{'source':'MED','id':'3','title':'Surviving API paper'}]}})
+    def factory(provider, **kwargs):
+        assert not cancel.is_set()
+        return DiscoveryClient(provider, transport=httpx.MockTransport(response), interval=0, **kwargs)
+    result = run_integrated(path, wos_stage=stage, client_factory=factory, cancel_event=cancel)
+    assert calls == ([] if cancelled else ['lite','core'])
+    assert result.facts.created_papers == (0 if cancelled else 1)
+    assert result.facts.details['discovery_status'] == ('cancelled' if cancelled else 'partial')

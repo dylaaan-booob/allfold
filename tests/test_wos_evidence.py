@@ -142,3 +142,11 @@ def test_early_access_only_does_not_become_generic_publication_on_creation():
     paper, = canonicalize_records([record]).papers
     assert paper.metadata.publication_date is None
     assert [item.kind.value for item in paper.date_evidence] == ['published-online']
+
+
+def test_unselected_citations_and_addresses_are_not_archived_or_identity():
+    evidence = wos.record_evidence({'UT':['WOS:42'], 'TI':['Selected title'],
+        'CR':['PRIVATE reference DOI 10.5555/not-an-identity'], 'C1':['PRIVATE address']})
+    assert evidence.external_ids.wos == 'WOS:42' and evidence.external_ids.doi is None
+    assert not {'CR','C1'} & {field.tag for field in evidence.source_fields}
+    assert 'PRIVATE' not in evidence.model_dump_json()

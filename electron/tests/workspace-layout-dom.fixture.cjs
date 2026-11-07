@@ -414,10 +414,11 @@ app.whenReady().then(async()=>{
       document.querySelector('#settings-system-sidebar [data-sidebar-close]').click();
       await navigate('run');
       $('s-run-overview-open').click();
-      if(document.querySelectorAll('[data-discovery-provider]').length!==2)throw Error('Integrated Provider choices missing');
+      if(document.querySelectorAll('[data-discovery-provider]').length!==3)throw Error('Integrated Provider choices missing');
       if(document.querySelector('[data-provider="pubmed"], [data-monitor="pubmedKey"]'))throw Error('Retired PubMed still displayed');
       const starts=[...document.querySelectorAll('#s-run [data-run-provider]')].filter(node=>!node.hidden && node.getClientRects().length);
-      if(starts.length!==2 || !starts.some(node=>node.dataset.runProvider==='integrated') || !starts.some(node=>node.dataset.runProvider==='wos'))throw Error('Run must expose Integrated and independent WoS only');
+      if(starts.length!==1 || starts[0].dataset.runProvider!=='integrated')throw Error('Run must expose one unified selected-source action');
+      if(document.querySelector('[data-discovery-provider="wos"]').checked)throw Error('WoS must not become enabled automatically');
 
       if($('s-run').getBoundingClientRect().width>600 || $('s-run').querySelector('.workspace-content').clientWidth<360)throw Error('Run content lost available width');
       document.querySelector('#s-run [data-flyout]').click();
@@ -542,10 +543,11 @@ app.whenReady().then(async()=>{
       const $=id=>document.getElementById(id),assert=(ok,message)=>{if(!ok)throw Error(message);};
       await navigate('run');
       $('s-run-overview-open').click();
-      if(document.querySelectorAll('[data-discovery-provider]').length!==2)throw Error('Integrated Provider choices missing');
+      if(document.querySelectorAll('[data-discovery-provider]').length!==3)throw Error('Integrated Provider choices missing');
       if(document.querySelector('[data-provider="pubmed"], [data-monitor="pubmedKey"]'))throw Error('Retired PubMed still displayed');
       const starts=[...document.querySelectorAll('#s-run [data-run-provider]')].filter(node=>!node.hidden && node.getClientRects().length);
-      if(starts.length!==2 || !starts.some(node=>node.dataset.runProvider==='integrated') || !starts.some(node=>node.dataset.runProvider==='wos'))throw Error('Run must expose Integrated and independent WoS only');
+      if(starts.length!==1 || starts[0].dataset.runProvider!=='integrated')throw Error('Run must expose one unified selected-source action');
+      if(document.querySelector('[data-discovery-provider="wos"]').checked)throw Error('WoS must not become enabled automatically');
 $('s-run-overview-open').click();
       const input=document.querySelector('#s-run [data-monitor="name"]');input.focus();input.value='First autosave';input.dispatchEvent(new Event('input',{bubbles:true}));
       const pending=window.allfoldAutosave.flush();await new Promise(resolve=>setTimeout(resolve,20));

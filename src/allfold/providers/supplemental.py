@@ -41,12 +41,6 @@ class SupplementalClient(DiscoveryClient):
         self.mailto = mailto
         self._details_cache = {}
 
-    def check_cancel(self):
-        super().check_cancel()
-        guard = getattr(self, 'request_guard', None)
-        if guard:
-            guard()
-
     def lookup(self, namespace, identifier):
         if self.provider == "crossref" and namespace == "doi":
             return self._crossref(identifier)

@@ -3,7 +3,7 @@ from datetime import datetime, timezone
 import re
 from urllib.parse import quote, urlparse, unquote
 
-from allfold.identifiers import normalize_doi, normalize_external_id, valid_doi
+from allfold.identifiers import normalize_doi, normalize_external_id, valid_doi, supported_preprint_uri
 from allfold.models import (Author, EvidenceDate, EvidenceDateKind, ExternalIds,
     MetadataSource, ProviderRecordRef, ProviderTopic, ProviderWorkEvidence)
 from allfold.providers.integrated import DiscoveryError
@@ -26,20 +26,21 @@ def _openalex_associations(raw, now):
             venue = location.get('source') or {}
             locations.append(MetadataSource(provider='openalex', record_id=venue.get('id') or venue.get('display_name') or url,
                 retrieved_at=now, url=url, version=location.get('version')))
-            parsed = urlparse(url)
+            try:
+                parsed = urlparse(url)
+                port = parsed.port
+            except ValueError:
+                continue
             host, path = (parsed.hostname or '').lower(), unquote(parsed.path)
-            if host in {'doi.org', 'dx.doi.org'} and (doi := valid_doi(path.lstrip('/'))):
+            if (host in {'doi.org', 'dx.doi.org'} and not parsed.username and not parsed.password
+                    and not parsed.query and not parsed.fragment and port in {None, 80 if parsed.scheme == 'http' else 443}
+                    and (doi := valid_doi(path.lstrip('/')))):
                 related.add(doi)
-            if host in {'arxiv.org', 'www.arxiv.org', 'export.arxiv.org'}:
-                arxiv = normalize_external_id('arxiv', re.sub(r'^/(?:abs|pdf)/', '', path).removesuffix('.pdf'))
-                if arxiv:
-                    refs.add(ProviderRecordRef(provider='arxiv', record_id=arxiv))
-            for platform in ('biorxiv', 'medrxiv'):
-                if host in {platform + '.org', 'www.' + platform + '.org'}:
-                    match = re.match(r'/content/(10\.1101/.+?)(?:v\d+)?(?:\.full(?:\.pdf)?)?/?$', path)
-                    if match and (doi := valid_doi(match.group(1))):
-                        related.add(doi)
-                        refs.add(ProviderRecordRef(provider=platform, record_id=doi))
+            if target := supported_preprint_uri(url):
+                platform, identifier = target
+                refs.add(ProviderRecordRef(provider=platform, record_id=identifier, relation='preprint'))
+                if platform in {'biorxiv', 'medrxiv'}:
+                    related.add(identifier)
     return related, refs, locations
 
 
