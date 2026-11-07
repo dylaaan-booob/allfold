@@ -54,12 +54,20 @@ def normalize_openalex(raw, source):
     abstract = raw.get('abstract_inverted_index') or {}
     tokens = {i: word for word, positions in abstract.items() for i in positions}
     identifiers = {'openalex': record_id, 'doi': normalize_doi(raw.get('doi'))}
+    related, refs, locations = _openalex_associations(raw, now)
+    # Work merges can retain a preprint's PMID even when the top DOI is formal.
+    # A Work-level identifier is association evidence, not direct article proof.
     for namespace in ('pmid', 'pmcid'):
         if identifier := normalize_external_id(namespace, (raw.get('ids') or {}).get(namespace)):
-            identifiers[namespace] = identifier
-    related, refs, locations = _openalex_associations(raw, now)
+            if raw.get('type') in {'preprint', 'posted-content'}:
+                identifiers[namespace] = identifier
+            else:
+                refs.add(ProviderRecordRef(provider=namespace, record_id=identifier))
+    venue = (raw.get('primary_location') or {}).get('source') or {}
+    issns = tuple(dict.fromkeys(str(value).upper() for value in (venue.get('issn') or [])
+        if isinstance(value, str) and re.fullmatch(r'\d{4}-\d{3}[\dXx]', value)))
     return ProviderWorkEvidence(provenance=MetadataSource(provider='openalex', record_id=record_id, retrieved_at=now, url=record_id),
-        title=raw['title'], journal=source.name or None,
+        title=raw['title'], journal=venue.get('display_name') or source.name or None, journal_issns=issns,
         publication_type='preprint' if raw.get('type') in {'preprint', 'posted-content'} else 'journal',
         publication_date=raw.get('publication_date'),
         related_dois=tuple(sorted(related - {identifiers['doi']})), related_ids=tuple(sorted(refs, key=lambda x: (x.provider, x.record_id))),
@@ -157,11 +165,14 @@ def normalize_candidate(raw, source, provider):
         if not identity:
             raise DiscoveryError('OpenAlex candidate lacks reliable Work identity')
         ids = {'openalex': raw['id'], 'doi': valid_doi(raw.get('doi'))}
-        for namespace in ('pmid', 'pmcid'):
-            if value := normalize_external_id(namespace, (raw.get('ids') or {}).get(namespace)):
-                ids[namespace] = value
         related, refs, locations = _openalex_associations(raw, now)
         publication_type = 'preprint' if raw.get('type') in {'preprint', 'posted-content'} else 'journal'
+        for namespace in ('pmid', 'pmcid'):
+            if value := normalize_external_id(namespace, (raw.get('ids') or {}).get(namespace)):
+                if publication_type == 'preprint':
+                    ids[namespace] = value
+                else:
+                    refs.add(ProviderRecordRef(provider=namespace, record_id=value))
         dates = ()
     else:
         identity, preprint, ids, related, refs, dates, _ = _europe_pmc_associations(raw)
