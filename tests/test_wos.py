@@ -168,5 +168,33 @@ def test_coordinator_preserves_saved_service_scope_and_prepared_page_across_batc
     assert store.history()['records'][0]['outcome'] == ('failed' if change_after_query else 'completed')
     assert coordinator.state()['snapshot']['status'] == 'FINISHED'
     assert lock.owner is None
+    if not change_after_query:
+        import json
+        from allfold.application.run_state import (
+            INTEGRATED_RUN_SCHEMA_VERSION, LastRunSnapshot, RecordedRunOutcome, RunFacts,
+            write_last_run_snapshot,
+        )
+        from allfold.application.run_summary import build_run_result_summary
+        from allfold.date_range import ResolvedDateRange
+        from allfold.config import load_config
+        workspace = load_config(path).output_dir
+        target = workspace / '.allfold' / 'last-wos-run.json'
+        original = target.read_bytes()
+        value = json.loads(original)
+        assert value['schema_version'] == 4
+        write_last_run_snapshot(workspace, LastRunSnapshot(
+            INTEGRATED_RUN_SCHEMA_VERSION, RunProvider.INTEGRATED,
+            ResolvedDateRange(date(2026, 1, 1), date(2026, 1, 31)), RecordedRunOutcome.COMPLETED,
+            RunFacts.model_validate(value['result']['facts'])))
+        restarted = WoSCoordinator(path, prep, threading.Lock(), bridge=bridge, browser_lock=lock)
+        restored = restarted.state()['latest']
+        assert restored == value
+        summary = build_run_result_summary(restored)
+        assert summary['status'] == 'completed' and summary['coverage_status'] == 'complete'
+        assert summary['statistics']['returned_records'] == 2
+        assert len(summary['details']['batches']) == 2
+        assert summary['journals']
+        assert target.read_bytes() == original
+        assert [action for action, _ in bridge.calls] == ['wos_query', 'wos_export', 'wos_export']
 
 

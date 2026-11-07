@@ -460,8 +460,6 @@ def test_proxy_authentication_is_sent_without_logging_credentials(monkeypatch, c
 @pytest.mark.parametrize("provider", ["crossref", "openalex"])
 @pytest.mark.parametrize("injected", [False, True])
 def test_provider_requests_keep_proxy_query_and_retry_semantics(monkeypatch, provider, injected):
-    from datetime import date
-    from urllib.parse import parse_qs
     from allfold.providers.supplemental import SupplementalClient
     from allfold.providers.openalex import OpenAlexClient
 
@@ -495,8 +493,9 @@ def test_provider_requests_keep_proxy_query_and_retry_semantics(monkeypatch, pro
         assert params["mailto"] == "fixture@example.test"
     else:
         with OpenAlexClient(api_key="fixture-key", sleep=sleeps.append, **options) as client:
-            assert client.get_sources_by_issns(["1234-5679", "2345-6787"]) == {"ok": True}
-        assert requests[-1].url.params["filter"] == "issn:1234-5679|2345-6787"
+            assert client.get_source_by_issn("1234-5679") == {"ok": True}
+        assert requests[-1].url.path == "/sources/issn:1234-5679"
+        assert "host_organization_name" in requests[-1].url.params["select"]
         assert requests[-1].headers["Authorization"] == "Bearer fixture-key"
     assert len(requests) == 2
     assert sleeps
@@ -505,7 +504,6 @@ def test_provider_requests_keep_proxy_query_and_retry_semantics(monkeypatch, pro
 
 
 def test_provider_redirect_policies_are_preserved():
-    from datetime import date
     from allfold.providers.supplemental import SupplementalClient
     from allfold.providers.openalex import OpenAlexClient
 

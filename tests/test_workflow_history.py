@@ -148,17 +148,16 @@ def test_enrich_history_confirms_only_saved_fields_and_exact_task(tmp_path):
 
 
 def test_run_history_uses_retrieval_coverage_instead_of_last_stage(tmp_path, monkeypatch):
-    from types import SimpleNamespace
     from allfold.application.coordinators.run_coordinator import RunCoordinator
     from allfold.application.run_state import RunProvider
     from test_web_app import write_valid_config
-    from allfold.application.monitor import RunResult, RunOutcome, MonitorStatistics
+    from allfold.application.monitor import RunResult, RunOutcome
     from allfold.application.run_state import RunFacts
     config, _ = write_valid_config(tmp_path)
-    result = RunResult(provider=RunProvider.INTEGRATED, resolved_date_range=None, canonical_paper_count=3,
-        created_papers=2, matched_existing_papers=1, warnings=(), errors=(), outcome=RunOutcome.COMPLETED,
-        statistics=MonitorStatistics(openalex_records=3), facts=RunFacts(created_papers=2,existing_papers=1,details={"discovery_status":"partial"}),
-        coverage=({'status':'PARTIAL'},))
+    result = RunResult(provider=RunProvider.INTEGRATED, resolved_date_range=None,
+        warnings=(), errors=(), outcome=RunOutcome.COMPLETED,
+        facts=RunFacts(created_papers=2, existing_papers=1, statistics={"integrated_candidates": 3},
+                       details={"discovery_status": "partial"}))
     monkeypatch.setattr('allfold.application.coordinators.run_coordinator.run_monitor', lambda *a, **k: result)
     store = DiagnosticStore(config, root=tmp_path / 'logs')
     coordinator = RunCoordinator(config, diagnostics=store)
@@ -169,6 +168,8 @@ def test_run_history_uses_retrieval_coverage_instead_of_last_stage(tmp_path, mon
     assert record['details']['result_status'] == 'incomplete'
     assert record['details']['coverage_status'] == 'partial'
     assert record['statistics']['created'] == 2
+    assert record['statistics']['retrieved'] == 3
+    assert record['statistics']['unchanged'] == 1
 
 
 @pytest.mark.parametrize('observed,expected', [(True,'opened'), (False,'needs_attention')])

@@ -1,10 +1,5 @@
 """Run observations and bounded local evidence; neither determines business outcomes."""
 
-from collections import Counter
-from collections.abc import Sequence
-from dataclasses import dataclass
-from enum import Enum
-
 from contextlib import contextmanager
 from copy import deepcopy
 from datetime import datetime, timedelta, timezone
@@ -24,32 +19,6 @@ import zipfile
 from allfold.browser_diagnostics import normalize_browser_diagnostic
 from allfold.persistence.safe_write import _open_directory_nofollow
 from allfold.persistence.user_state import application_data_dir
-
-
-class RunDiagnosticKind(str, Enum):
-    NON_CANDIDATE_EXCLUSION = "non_candidate_exclusion"
-    SCOPE_DISPUTE = "scope_dispute"
-    REPEATED_TITLE_SEPARATION = "repeated_title_separation"
-    CONFLICTING_DOI_SEPARATION = "conflicting_doi_separation"
-
-
-@dataclass(frozen=True)
-class RunDiagnostic:
-    kind: RunDiagnosticKind
-    message: str
-    record_ids: tuple[str, ...]
-    journal: str | None = None
-
-
-@dataclass(frozen=True)
-class RunDiagnosticSummary:
-    kind: RunDiagnosticKind
-    logical_groups: int
-
-
-def summarize_run_diagnostics(diagnostics: Sequence[RunDiagnostic]) -> tuple[RunDiagnosticSummary, ...]:
-    counts = Counter(diagnostic.kind for diagnostic in diagnostics)
-    return tuple(RunDiagnosticSummary(kind, counts[kind]) for kind in RunDiagnosticKind if counts[kind])
 
 
 # Durable diagnostics are deliberately independent of the Paper/Workspace state.

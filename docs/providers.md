@@ -16,7 +16,7 @@ Allfold exposes three independent operations. **Integrated Run** discovers and s
 
 Run's `enabled_providers` defaults to OpenAlex and Europe PMC; either can be selected alone. The separate `completion_providers` defaults to OpenAlex, Europe PMC, Crossref, arXiv, bioRxiv and medRxiv. Saved YAML, autosave, Settings checkboxes, runtime validation and dispatch use these separate lists. No failed/unselected provider silently enables another. OpenAlex credentials retain their explicit submission mechanism; Crossref's optional contact is separate from discovery.
 
-DBLP's offline Conference Registry, Series management, identities and Research Scope exchange remain available. Conference configuration does not become an executable Run scope or produce a missing-DBLP Partial result. A Run needs at least one followed Journal. See [Research Scope](research-scope.md) for offline management.
+DBLP's offline Conference Registry, Series management, reliable Paper identities and Research Scope exchange remain available. The obsolete journal-to-Stream map is removed; DBLP network retrieval remains disabled. Conference configuration does not become an executable Run scope or produce a missing-DBLP Partial result. A Run needs at least one followed Journal. See [Research Scope](research-scope.md) for offline management.
 
 ## Queries and dates
 
@@ -25,6 +25,36 @@ The shared parser accepts `AND`, `OR`, parentheses, adjacent quoted phrases and 
 OpenAlex uses `search.title_abstract_keywords` (the scoped `.exact` variant for prefixes), verified `primary_location.source.id`, `from_publication_date` and `to_publication_date`. Europe PMC combines verified ISSNs, `TITLE_ABS`/`KW` and native `FIRST_PDATE:[start TO end]`, requesting core metadata. Both adapters exhaust accessible pages, validate envelopes/cursors and report failures or incomplete pagination without arbitrary application page/record quotas. Legal native hits are not subjected to local keyword or date rechecking.
 
 The requested publication range belongs to discovery. Later preprint, Accepted, online or print dates never remove a Paper from its original Run. A source's year/month precision remains year/month precision; no same-version date lookup rejudges monthly eligibility. [Paper identity](paper-identity.md) defines First public and named journal dates.
+
+## Run results and snapshots
+
+`RunFacts` is the shared source of Paper counts, statistics, issues and completion
+time for results and History. Integrated Run records retrieval completeness in
+`details.discovery_status` and per-source observations in `provider_runs`.
+OpenAlex and Europe PMC failures use the common Discovery category while their
+messages and source rows retain the actual provider and Journal. WoS retains its
+query completion, Journal Coverage, export batches, date hints and diagnostics.
+Cancelled, failed, partial retrieval, capture issues and successful empty results
+remain distinct. The old OpenAlex Coverage and standalone discovery contracts
+have no production role and are removed.
+
+Snapshot formats have separate versions and readers:
+
+- Integrated Run writes schema **v5** to `Workspace/.allfold/last-integrated-run.json`.
+  Its only top-level fields are `schema_version`, `provider`,
+  `resolved_date_range`, `outcome` and `facts`; there is no `coverage` array.
+- An old Integrated Run **v4** snapshot returns `unsupported` with a rerun prompt.
+  Reading leaves it untouched. A new explicit Run writes the current result;
+  no migration, Workspace Reset or configuration reconstruction is needed for
+  this snapshot-only change.
+- WoS continues to write and read its existing **v4** format in
+  `Workspace/.allfold/last-wos-run.json`. Integrated's version does not govern it.
+
+Malformed or mismatched records and unsafe paths remain invalid; missing files
+remain not found, and I/O failures retain their error. Snapshot writes retain
+Workspace binding, directory/path identity checks and atomic create/replace.
+A snapshot failure is reported without reversing Paper creates or changing the
+actual counts. History remains independent of Workspace snapshots.
 
 ## Evidence handoff and API completion
 
@@ -61,12 +91,14 @@ To adopt the new configuration explicitly:
 3. Reuse the same canonical YAML path to retain its existing Journals/Services scope in user-state SQLite. A different YAML path owns a new scope; use the existing Research Scope import/first initialization for that scope. There is no need to delete SQLite or use a factory reset. OpenAlex secret files remain beside their configuration.
 4. Restart with the rebuilt configuration and run a small journal range. No old Accepted approximation or First public fallback is converted into a new event.
 
-Use disposable configuration/data for manual acceptance:
+Use the following as a change-scoped manual reference, not a checklist required for every PR. This cleanup primarily uses automated tests and synthetic Electron/Chromium results. Select manual checks only for affected behavior not covered by those tests, using disposable configuration/data:
 
 - Run with both sources and with either alone; inspect native date filtering, paging/partial results, source failure and cancellation. Repeat a Run and verify existing Paper bytes plus new evidence handoff.
 - Reject after discovery; explicitly complete the remaining selected unkept Papers. Restart and complete older/kept/exported Papers; inspect progress, cancel/error/no-match outcomes and unchanged user content.
-- Check a known linked preprint, later-only versus earliest-version dates, precise source/version tooltips and chronological journal events. A formal-only Paper must have empty First public.
-- Run independent webpage Enrich for month upgrade and event-only save/refresh; confirm no Zotero item is saved. Independently verify existing DOI-free action restrictions and offline Conference/Research Scope management.
+- For changed date or Reader behavior, inspect source/version tooltips and chronological journal events with available samples. Synthetic responses cover earliest/later-only versions, multiple version families, date conflicts and precision; a formal-only Paper has empty First public.
+- For changed webpage Enrich behavior, check an available eligible request and month upgrade. Synthetic Translator responses cover explicit Accepted dates, event-only save/refresh and guarded writeback. Real rare-metadata samples are optional supplementary evidence; do not require finding an Accepted/event-only page or unusual version-conflict combination. Check DOI-free actions and offline Conference/Research Scope management when those functions change.
+
+Existing [PR #40](https://github.com/dylaaan-booob/allfold/pull/40) acceptance includes real OpenAlex/Europe PMC Runs, linked preprint dates and OUP Enrich in isolated profiles, including task-page entry/return. Real Accepted/event-only samples were waived in favor of isolated regressions; no Zotero save was performed. These are scoped historical results, not proof of every site or this checkout.
 
 Synthetic HTTP, rendered Electron fixtures, builds and CI establish only their tested layers. Real OpenAlex/Europe PMC responses, native preprint APIs, authenticated sites and Zotero outcomes require separately scoped acceptance.
 

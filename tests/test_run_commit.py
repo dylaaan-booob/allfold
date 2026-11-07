@@ -131,19 +131,20 @@ def test_reset_while_real_http_adapter_waits_cannot_restore_old_run(configuratio
 
 def test_last_run_write_uses_same_bound_workspace_as_paper_commit(configuration):
     from allfold.application.run_state import (
-        LAST_RUN_SCHEMA_VERSION, LastRunSnapshot, LastRunSnapshotWriteError,
+        INTEGRATED_RUN_SCHEMA_VERSION, LastRunSnapshot, LastRunSnapshotWriteError,
         RecordedRunOutcome, RunFacts, RunProvider, write_last_run_snapshot,
     )
     from allfold.config import resolve_runtime_date
-    from datetime import date
+    from datetime import date, datetime, timezone
     with capture_run_workspace(configuration) as snapshot:
         workspace = snapshot.config.output_dir
         with commit_run_workspace(snapshot) as lock:
             workspace.rename(configuration.parent / "original")
             workspace.mkdir()
-            facts = LastRunSnapshot(LAST_RUN_SCHEMA_VERSION, RunProvider.INTEGRATED,
+            facts = LastRunSnapshot(INTEGRATED_RUN_SCHEMA_VERSION, RunProvider.INTEGRATED,
                 resolve_runtime_date(snapshot.config, today=date(2026, 11, 5)),
-                RecordedRunOutcome.COMPLETED, (), RunFacts())
+                RecordedRunOutcome.COMPLETED, RunFacts(finished_at=datetime.now(timezone.utc),
+                    created_papers=0, existing_papers=0))
             with pytest.raises(LastRunSnapshotWriteError):
                 write_last_run_snapshot(workspace, facts, operation_lock=lock)
             assert not tuple(workspace.iterdir())

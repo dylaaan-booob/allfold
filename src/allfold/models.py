@@ -32,7 +32,7 @@ def parse_publication_date(value: Any) -> str | None:
     """Normalize Paper dates without inventing missing month or day components."""
     if value is None:
         return None
-    if type(value) is Date:  # Historical YAML timestamps represented full dates.
+    if type(value) is Date:  # YAML Paper frontmatter may decode a complete date as datetime.date.
         return value.isoformat()
     if not isinstance(value, str) or not re.fullmatch(r"[0-9]{4}(?:-[0-9]{2}(?:-[0-9]{2})?)?", value):
         raise ValueError("publication_date must be YYYY, YYYY-MM, YYYY-MM-DD or null")

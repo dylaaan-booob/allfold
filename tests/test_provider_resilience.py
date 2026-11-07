@@ -1,4 +1,4 @@
-"""All Integrated Run HTTP providers share bounded, correctly classified failures."""
+"""Discovery and explicit API-completion HTTP adapters classify bounded failures."""
 import httpx
 import pytest
 
