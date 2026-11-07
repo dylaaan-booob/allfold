@@ -1,5 +1,4 @@
 // RhinE / RhineLabUI MIT adaptation; see SOURCES.md and licenses/.
-import {conferenceDetail,conferenceValues} from './conference-editor.js';
 import {createAutosave} from './settings-autosave.js';
 import {renderRunResult} from './run-results.js';
 import {readImportChoices,renderImportRows} from './research-scope-import.js';
@@ -236,7 +235,7 @@ markup.innerHTML=`<header class="s-header">
 <div class="s-directory-order"><button id="s-edit-entity" class="s-button" title="Edit Group" aria-label="Edit Group">Edit</button><button id="s-new-entity" class="s-button">+</button><button id="s-delete-entity" class="s-button" disabled>−</button><button id="s-entity-up" class="s-button">↑</button><button id="s-entity-down" class="s-button">↓</button></div>
 </aside>
 <div class="s-browser workspace-content" tabindex="-1"><div class="s-browser-head s-journals-head"><h2 id="s-journals-title" data-journal-title>All Journals</h2>
-<div class="s-journal-add"><select id="s-source-kind" aria-label="Source category"><option value="journals">Journals</option><option value="conferences">Conferences</option></select><button id="s-add-journal" class="s-button">+ JOURNAL</button></div></div>
+<div class="s-journal-add"><button id="s-add-journal" class="s-button">+ JOURNAL</button></div></div>
 <div id="s-journals" class="s-journal-list"></div></div>
 <aside id="journal-sidebar" class="functional-sidebar" aria-label="Journal and directory details" hidden>
 <div class="sidebar-resize" role="separator" tabindex="0" aria-label="Resize Details" aria-orientation="vertical"></div>
@@ -363,10 +362,10 @@ const casEditVersions={username:0,password:0};
 let selectedProvider='overview',expressions={},runState=null,expressionTimer,expressionVersion=0;
 let journalLayout='array';
 let journalTitleScroll=null;
-const ui={category:'journals',scope:'subject',directory:{subject:'all',access:'all',custom:'all'},journal:null,detail:'entity',search:''};
+const ui={scope:'subject',directory:{subject:'all',access:'all',custom:'all'},journal:null,detail:'entity',search:''};
 let assignmentUndo=null;
 const covers=new Map();
-const identifiers=j=>j.dblp_stream?[j.abbreviation,j.dblp_stream]:[j.issn,j.eissn].filter(Boolean);
+const identifiers=j=>[j.issn,j.eissn].filter(Boolean);
 let coverJob={phase:'Idle',journal_key:null,busy:false,supported:false};
 let coverTimer=null;
 const dialog=$('s-dialog');let dialogFocus=null,dialogVersion=0;
@@ -385,9 +384,9 @@ const casDirty=()=>Boolean(casAPI && (casDraft.username.trim()!==casSaved.userna
 const dirty=()=>configurationDirty() || casDirty() || institutionInputInvalid || autosaveStatus.dirty;
 
 const list=()=>draft.list;
-const sources=()=>ui.category==='conferences'?list().conferences:list().journals;
-const sourceName=()=>ui.category==='conferences'?'Conferences':'Journals';
-const journal=id=>[...list().journals,...list().conferences].find(j=>j.id===id);
+const sources=()=>list().journals;
+const sourceName=()=>'Journals';
+const journal=id=>list().journals.find(j=>j.id===id);
 const group=id=>list().groups.find(g=>g.id===id);
 const groupName=id=>group(id)?.name || 'Ungrouped';
 function message(text,tone='normal') {$('s-message').textContent=text;$('s-message').dataset.tone=tone;$('s-message').hidden=!text;}
@@ -558,12 +557,11 @@ function setJournalLayout(layout) {
   journalLayout=layout;renderJournals();syncLayouts();
 }
 function setJournalScope(scope) {
-  if(!['subject','access','custom'].includes(scope) || scope===ui.scope || (ui.category==='conferences' && scope==='access'))return;
+  if(!['subject','access','custom'].includes(scope) || scope===ui.scope)return;
   ui.scope=scope;directoryScope=scope;reconcileSelections(true);renderJournalsPage();
 }
 for(const button of root.querySelectorAll('[data-layout]'))button.addEventListener('click',()=>setJournalLayout(button.dataset.layout));
 for(const button of root.querySelectorAll('[data-scope]'))button.addEventListener('click',()=>setJournalScope(button.dataset.scope));
-$('s-source-kind').addEventListener('change',event=>{ui.category=event.target.value;ui.scope=directoryScope='subject';ui.journal=null;ui.detail='entity';clearAssignmentUndo();journalLayoutHost.closeFlyout();journalLayoutHost.closeSidebar();renderJournalsPage();});
 syncLayouts();
 for(const surface of [root,shell])surface.addEventListener('keydown',event=>{
   if(event.key==='Escape' && !dialog.open){if($('s-journal-labels')?.open){event.preventDefault();closeLabelPicker();$('s-journal-labels').querySelector('summary').focus({preventScroll:true});}else if(preview)closePreview();else if($('s-file-menu').matches(':popover-open')){closeMenu();$('s-files').focus({preventScroll:true});}}
@@ -874,7 +872,7 @@ function renderJournals() {
   container.className=journalLayout==='grid'?'s-journal-grid':'s-journal-list';
   container.innerHTML=items.length?items.map(j=>{
     const attrs=`data-journal="${esc(j.id)}" data-current="${ui.journal===j.id && ui.detail==='journal'}" draggable="true" tabindex="0" role="group" aria-label="${esc(j.name)} · Enter for details"`;
-    if(journalLayout==='array' || ui.category==='conferences')return `<article class="s-journal-row" ${attrs}><div><strong data-journal-title title="${esc(j.name)}">${esc(j.name)}</strong><small>${esc(identifiers(j).join(' / '))} · ${esc(groupName(j.groupId))}</small></div></article>`;
+    if(journalLayout==='array')return `<article class="s-journal-row" ${attrs}><div><strong data-journal-title title="${esc(j.name)}">${esc(j.name)}</strong><small>${esc(identifiers(j).join(' / '))} · ${esc(groupName(j.groupId))}</small></div></article>`;
     const cover=coverOf(j);
     return `<article class="s-journal-card" ${attrs}><div class="s-card-art">${cover.image?`<img src="${esc(cover.image)}" alt="${esc(j.name)} cover" loading="lazy" style="${coverStyle(cover)}">`:'<span class="s-eyebrow">GENERATED COVER</span>'}</div><h3 data-journal-title title="${esc(j.name)}">${esc(j.name)}</h3><p class="s-card-meta">${esc(identifiers(j).join(' / '))}<br>${esc(groupName(j.groupId))}</p>${j.labels.length?`<p class="s-card-labels">${j.labels.map(esc).join(' · ')}</p>`:''}</article>`;
   }).join(''):`<p class="s-empty">${sources().length?'没有符合筛选的来源。':'关注列表为空，请添加来源。'}</p>`;
@@ -918,7 +916,6 @@ function renderJournalDetail() {
   const j=journal(ui.journal),detail=$('s-journal-detail'),actions=$('s-journal-actions');
   detail.hidden=actions.hidden=ui.detail!=='journal' || !j;
   if(!j){detail.innerHTML='';actions.innerHTML='';return;}
-  if(j.dblp_stream){renderConferenceDetail(j,detail,actions);return;}
   const cover=coverOf(j),isSaved=saved.list.journals.some(row=>row.id===j.id),busy=coverJob.busy;
   const previous=$('s-journal-labels'),open=previous?.dataset.journalId===j.id && previous.open;
   const labelScroll=previous?.querySelector('.s-label-options')?.scrollTop || 0;
@@ -938,39 +935,6 @@ function renderJournalDetail() {
   detail.querySelector('[data-cover=crop]').addEventListener('click',()=>cropCover(j));
   const resourceButton=document.createElement('button');resourceButton.className='s-button';resourceButton.textContent='Discover / choose Service';resourceButton.disabled=!isSaved;resourceButton.addEventListener('click',()=>void journalResources(j).catch(error=>message(error.message,'error')));detail.append(resourceButton);
   detail.querySelector('[data-cover=cancel]')?.addEventListener('click',()=>void coverAction('/settings/covers/search/cancel',{request_id:coverJob.request_id}));
-}
-function renderConferenceDetail(c,detail,actions) {
-  detail.innerHTML=conferenceDetail(c,list());
-  $('s-conference-group').addEventListener('change',event=>changeJournalAssignment(c,{groupId:event.target.value || null}));
-  detail.querySelectorAll('[data-conference-label]').forEach(input=>input.addEventListener('change',()=>assignLabel(c,input.dataset.conferenceLabel,input.checked)));
-  const index=list().conferences.indexOf(c);
-  actions.innerHTML=`<div class="s-actions"><button class="s-button" data-conference-move="-1" ${index===0?'disabled':''} aria-label="Move Conference up">↑</button><button class="s-button" data-conference-move="1" ${index===list().conferences.length-1?'disabled':''} aria-label="Move Conference down">↓</button><button class="s-button" data-remove-journal="${esc(c.id)}">Remove Conference</button></div>`;
-  actions.querySelectorAll('[data-conference-move]').forEach(button=>button.addEventListener('click',()=>{const next=index+Number(button.dataset.conferenceMove);const [entry]=list().conferences.splice(index,1);list().conferences.splice(next,0,entry);changed({immediate:true});renderJournalsPage();}));
-}
-function addConference() {
-  let candidates=[];
-  showDialog('Add Conference','<label>Name / abbreviation / DBLP Stream<input id="s-add-query" autocomplete="off"></label><div id="s-add-results"></div><p id="s-add-error" role="alert"></p>',[
-    cancel,
-    {label:'Search Registry',run:async()=>{
-      const query=$('s-add-query').value.trim();candidates=[];$('s-add-results').replaceChildren();
-      try {
-        const response=await fetch('/api/ui-next/settings/conferences/search?q='+encodeURIComponent(query),{cache:'no-store'}),data=await response.json();
-        if(!response.ok)throw new Error(data.message || 'Conference Registry unavailable');
-        if(!dialog.open || $('s-add-query')?.value.trim()!==query)return false;
-        candidates=data.candidates;
-        $('s-add-results').innerHTML=candidates.map((c,i)=>`<label class="s-lookup-candidate"><input type="radio" name="conference-candidate" value="${i}"><span><strong>${esc(c.abbreviation)} · ${esc(c.name)}</strong><small>${esc(c.dblp_stream)}</small></span></label>`).join('');
-        $('s-add-error').textContent=candidates.length?'':'本地 Registry 未找到匹配系列。';
-      }catch(error){if($('s-add-error'))$('s-add-error').textContent=error.message;}
-      return false;
-    }},
-    {label:'Follow',primary:true,run:()=>{
-      const chosen=$('s-add-results').querySelector('input:checked');if(!chosen){$('s-add-error').textContent='请选择会议系列。';return false;}
-      const c=candidates[Number(chosen.value)];
-      if(list().conferences.some(old=>old.id===c.id || old.dblp_stream===c.dblp_stream)){$('s-add-error').textContent='已关注此系列。';return false;}
-      list().conferences.push({id:c.id,name:c.name,abbreviation:c.abbreviation,aliases:c.aliases,dblp_stream:c.dblp_stream,groupId:ui.scope==='subject'?selectedEntity()?.id || null:null,labels:ui.scope==='custom' && selectedEntity()?[selectedEntity().name]:[]});
-      ui.journal=c.id;ui.detail='journal';changed({immediate:true});renderJournalsPage();journalLayoutHost.openSidebar('details');
-    }}]);
-  $('s-add-query').addEventListener('input',()=>{candidates=[];$('s-add-results').replaceChildren();});$('s-add-query').focus();
 }
 async function journalResources(j) {
   if(!await window.allfoldAutosave?.flush()){message('配置尚未保存，草稿保留；请重试或处理冲突。','error');return;}
@@ -993,9 +957,6 @@ async function journalResources(j) {
   ]);
 }
 function renderJournalsPage() {
-  $('s-add-journal').textContent=ui.category==='conferences'?'+ CONFERENCE':'+ JOURNAL';
-  root.querySelector('[data-scope=access]').hidden=ui.category==='conferences';
-  $('s-journal-layout').hidden=ui.category==='conferences';
   renderDirectory();
   stopJournalTitleScroll();
   const info=scopeInfo(),id=ui.directory[ui.scope];
@@ -1016,11 +977,11 @@ function renameEntity(entity,value) {
   const previous=entity.id,oldName=entity.name;
   if(ui.scope==='subject'){
     entity.id=groupKey(name);
-    for(const j of [...list().journals,...list().conferences])if(j.groupId===previous)j.groupId=entity.id;
+    for(const j of list().journals)if(j.groupId===previous)j.groupId=entity.id;
     if(assignmentUndo)for(const snapshot of [assignmentUndo.before,assignmentUndo.after])if(snapshot.groupId===previous)snapshot.groupId=entity.id;
   }else if(ui.scope==='custom'){
     const replace=labels=>[...new Set(labels.map(label=>label===oldName?name:label))];
-    for(const j of [...list().journals,...list().conferences])j.labels=replace(j.labels);
+    for(const j of list().journals)j.labels=replace(j.labels);
     if(assignmentUndo)for(const snapshot of [assignmentUndo.before,assignmentUndo.after])snapshot.labels=replace(snapshot.labels);
     if(target)list().labels=list().labels.filter(row=>row.id!==previous);else entity.id=labelKey(name);
   }
@@ -1034,7 +995,7 @@ function moveEntity(direction) {
 }
 function deleteEntity() {
   const entity=selectedEntity();if(!entity)return;
-  const info=scopeInfo(),scope=ui.scope,members=[...list().journals,...list().conferences].filter(j=>ui.scope==='subject'?j.groupId===entity.id:ui.scope==='custom'?j.labels.includes(entity.name):j.serviceId===entity.id);
+  const info=scopeInfo(),scope=ui.scope,members=list().journals.filter(j=>ui.scope==='subject'?j.groupId===entity.id:ui.scope==='custom'?j.labels.includes(entity.name):j.serviceId===entity.id);
   const effect=scope==='subject'?'将移至 Ungrouped，保留 Custom Labels。':scope==='access'?'将成为 Unassigned。':'将移除此标签的全部分配。';
   showDialog(`Delete ${info.entity}`,`<p>${esc(entity.name)}${scope==='access'?' / '+esc(entity.id):''}</p><p>${members.length} Journals ${effect}</p>${memberList(members.map(j=>j.name))}`,[cancel,{label:`Delete ${info.entity}`,primary:true,run:async()=>{
     if(scope==='access'){
@@ -1073,16 +1034,14 @@ $('s-journals').addEventListener('keydown',event=>{if(event.target.matches('[dat
 root.addEventListener('click',event=>{const button=event.target.closest('[data-remove-journal]');if(button)removeJournal(journal(button.dataset.removeJournal));});
 function removeJournal(j) {
   if(!j)return;
-  confirm(j.dblp_stream?'Remove Conference':'Remove Journal',`${j.name} / ${identifiers(j).join(' / ')}。仅从监测名单移除；保留 Workspace Papers、封面资产、Group 和 Label 注册项。`,()=>{
+  confirm('Remove Journal',`${j.name} / ${identifiers(j).join(' / ')}。仅从监测名单移除；保留 Workspace Papers、封面资产、Group 和 Label 注册项。`,()=>{
     if(assignmentUndo?.id===j.id)clearAssignmentUndo();
-    if(j.dblp_stream)list().conferences=list().conferences.filter(row=>row.id!==j.id);
-    else list().journals=list().journals.filter(row=>row.id!==j.id);
+    list().journals=list().journals.filter(row=>row.id!==j.id);
     if(ui.journal===j.id){ui.journal=null;ui.detail='entity';}
     changed({immediate:true});renderJournalsPage();
   },'Remove from list');
 }
 $('s-add-journal').addEventListener('click',()=>{
-  if(ui.category==='conferences'){addConference();return;}
   let candidates=[];
   showDialog('Add Journal','<label>Name / ISSN / eISSN<input id="s-add-query" autocomplete="off"></label><div id="s-add-results"></div><p id="s-add-error" role="alert"></p>',[
     cancel,
@@ -1230,7 +1189,7 @@ function beginPreview(kind,title,filename,summary,columns,choices) {
   updateDirty();$('s-preview-title').tabIndex=-1;$('s-preview-title').focus({preventScroll:true});
 }
 function selectImport() {
-  showDialog('Import Research Scope','<label>Markdown file<input id="s-import-file" type="file" accept=".md,text/markdown"></label><label><input id="s-import-query" type="checkbox"> 对缺少有效 Service 的 Journal 查询 GOKB（可选）</label><p class="s-help">支持 Journals / Conferences 名称列表或表格。Preview 后选择身份、补充名称/ISSN 或 Service，再确认增量添加。</p><p id="s-import-error" role="alert"></p>',[cancel,{label:'Preview',primary:true,run:async()=>{
+  showDialog('Import Research Scope','<label>Markdown file<input id="s-import-file" type="file" accept=".md,text/markdown"></label><label><input id="s-import-query" type="checkbox"> 对缺少有效 Service 的 Journal 查询 GOKB（可选）</label><p class="s-help">支持 Journals 名称列表或表格。Preview 后选择身份、补充名称/ISSN 或 Service，再确认增量添加。</p><p id="s-import-error" role="alert"></p>',[cancel,{label:'Preview',primary:true,run:async()=>{
     const file=$('s-import-file').files[0];if(!file){$('s-import-error').textContent='请选择 .md 文件。';return false;}
     await openImport(file,{},$('s-import-query').checked);
   }}]);
@@ -1316,7 +1275,7 @@ function project(data) {
     idp:v.institution_idp_entity_id,useShibboleth:v.institution_use_shibboleth ?? false},
     revisions:{openalex_key_revision:v.openalex_key_revision || "missing",monitor_revision_exists:v.monitor_revision_exists,monitor_revision_digest:v.monitor_revision_digest,
       journal_revision_exists:v.journal_revision_exists,journal_revision_digest:v.journal_revision_digest},
-    list:{conferences:(v.conferences || []).map(c=>({...c,groupId:c.group?groupKey(c.group):null})),journals:v.journals.map(j=>({id:j.issn || j.eissn,name:j.name,issn:j.issn || null,eissn:j.eissn || null,
+    list:{journals:v.journals.map(j=>({id:j.issn || j.eissn,name:j.name,issn:j.issn || null,eissn:j.eissn || null,
         serviceId:j.access_service_id || null,groupId:j.group?groupKey(j.group):null,labels:j.labels?j.labels.split(';').map(labelName):[]})),
       services:v.access_services.map(s=>({id:s.id,name:s.name,url:s.access_url,method:s.access_method})),
       groups:v.groups.map(name=>({id:groupKey(name),name})),
@@ -1338,7 +1297,6 @@ function ordinaryValues(source=draft) {
   const values=Object.fromEntries(Object.entries(ordinaryMonitorFields).map(([field,key])=>[field,copy(source.monitor[key])]));
   values.groups=source.list.groups.map(group=>group.name);values.custom_labels=source.list.labels.map(label=>label.name);
   values.access_services=source.list.services.map(service=>({id:service.id,name:service.name,access_url:service.url,access_method:service.method}));
-  values.conferences=conferenceValues(source.list);
   values.journals=source.list.journals.map(journal=>({name:journal.name,issn:journal.issn || '',eissn:journal.eissn || '',group:source.list.groups.find(group=>group.id===journal.groupId)?.name || '',labels:journal.labels.join('; '),access_service_id:journal.serviceId || ''}));
   return values;
 }
@@ -1479,7 +1437,6 @@ function submission(source=draft) {
   for(const [key,value] of Object.entries(source.revisions))form.set(key,value);
   for(const g of source.list.groups)form.append('settings_group',g.name);
   for(const label of source.list.labels)form.append('settings_custom_label',label.name);
-  form.set('conferences',JSON.stringify(conferenceValues(source.list)));
   const journals=source.list.journals;
   journals.forEach((j,i)=>{for(const [key,value] of Object.entries({journal_name:j.name,journal_issn:j.issn || '',journal_eissn:j.eissn || '',
     journal_group:source.list.groups.find(group=>group.id===j.groupId)?.name || '',journal_access_service_id:j.serviceId || '',journal_labels:j.labels.join('; '),journal_order:String(i)}))form.append(key,value);});

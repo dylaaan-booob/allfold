@@ -9,7 +9,6 @@ Python project code remains MIT under [LICENSE](../LICENSE). Electron host adapt
 - Python and npm dependencies: `uv.lock`, `electron/package-lock.json` and `tools/package-lock.json`.
 - Pydoll 3.0.0: public APIs are used by the Python adapter; retain the MIT notice described in Electron NOTICE. No separate Chromium is supplied by this integration.
 
-The offline Conference Registry records DBLP descriptive facts and Stream identities; see its [source snapshot and CC0 notice](../journal-lists/CONFERENCES.md). It does not contain the DBLP publication dump.
 
 ## Fixed official Zotero inputs
 

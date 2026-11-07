@@ -372,3 +372,18 @@ def test_openalex_fallback_verifies_both_identifiers_without_guessing_media(tmp_
         plan=preview_research_scope(tmp_path/'new.yaml',tmp_path/'list.md','| Name | ISSN | eISSN |\n| --- | --- | --- |\n| Remote Journal | 1234-5679 | 2345-6787 |\n',filename='scope.md',client=provider)
     assert plan.rows[0].status == 'add'
     assert plan.rows[0].journal.identifiers == ('1234-5679','2345-6787')
+
+
+def test_unknown_legacy_section_is_ignored_without_changing_input_or_scope(tmp_path):
+    from safety_config_helpers import current_mapping_document
+    config, legacy, *_ = current_mapping_document(tmp_path)
+    original = legacy.read_bytes()
+    saved = load_user_state(config)
+    text = export_user_data(config) + '\n## Conferences\n\n- Retired series\n\n| Bad | Legacy | Table |\n| invalid |\n'
+    preview = preview_research_scope(config, legacy, text, filename='legacy.md')
+    assert preview.proposed == saved.state
+    assert all(row.status == 'skip' for row in preview.rows)
+    confirmed = confirm_research_scope(preview)
+    assert confirmed.revision == saved.revision
+    assert legacy.read_bytes() == original
+    assert '## Conferences' not in export_user_data(config)

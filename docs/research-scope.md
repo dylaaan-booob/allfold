@@ -1,6 +1,6 @@
 # Research scope and Services
 
-Each configuration keeps its own followed Journals and Conference Series, order, Groups, Labels, Access Services and default Service assignments in SQLite. Sharing a Markdown file adds a research scope to the receiving configuration; it does not replace that configuration or change another configuration.
+Each configuration keeps its own followed Journals, order, Groups, Labels, Access Services and default Service assignments in SQLite. Sharing a Markdown file adds a research scope to the receiving configuration; it does not replace that configuration or change another configuration.
 
 ## Identify and import Journals
 
@@ -20,11 +20,11 @@ GOKB and the CARSI Catalog use shared local caches; explicit refresh replaces a 
 
 ## Export, backup and migration
 
-**Export User Data** generates Markdown from the current configuration's saved SQLite scope. It includes all Journals and Conferences, their order, Groups, Labels, Services and assignments, including independent Services such as Web of Science. It excludes credentials, institution passwords, API keys, sessions, Workspace papers, Zotero data, Registry and external caches.
+**Export User Data** generates Markdown from the current configuration's saved SQLite scope. It includes all Journals, their order, Groups, Labels, Services and assignments, including independent Services such as Web of Science. It excludes credentials, institution passwords, API keys, sessions, Workspace papers, Zotero data, Registry and external caches.
 
 For backup at the same configuration paths, preserve the private `.allfold/` directory along with YAML and other user data. For transfer to another location or configuration, export and import Markdown. Renaming a configuration changes its canonical scope identity.
 
-On first migration, Allfold validates the old managed Markdown sections before creating the scope, records the source and digest, and keeps the original file unchanged. Damaged, incomplete or conflicting source data is not silently repaired or used to overwrite valid SQLite state. Legacy Conferences are not automatically followed; their original Markdown remains available in the legacy file. Explicit Research Scope import supports the new Conference table. After migration, editing that file does not update saved Journal state.
+On first migration, Allfold validates the old managed Markdown sections before creating the scope, records the source and digest, and keeps the original file unchanged. Damaged, incomplete or conflicting source data is not silently repaired or used to overwrite valid SQLite state. Unrecognized Markdown sections are ignored and the original source file is left unchanged. After migration, editing that file does not update saved Journal state.
 
 ## Markdown formats
 
@@ -82,37 +82,3 @@ Export User Data writes this portable named format, preserving Journal, registry
 Preview offers per-row Skip, identity candidates with source evidence, editable names/ISSNs and CARSI/Manual/Unresolved corrections. Choose **Update Preview** after edits; Confirm uses only that verified Preview. Imported identifiers that overlap multiple saved Journals are conflicts requiring correction. A single existing identity is skipped before lookup, preserving its saved fields. Preview tokens are temporary and are invalidated by changed source, choices or Settings revisions; they do not survive application restart.
 
 Identity selections bind the complete ISSN/eISSN pair, including when candidates share one identifier. The Preview form's `import_choices` JSON maps row indices to corrections; its `candidate` value is an object such as `{"issn":"0006-341X","eissn":"1541-0420"}`, with `null` for a missing identifier. This is a temporary selection, not a new Journal ID. Explicit CARSI/Manual corrections remain selected across subsequent **Update Preview** operations.
-
-
-## Conference Series
-
-In Journals, select **Conferences** to search the local Registry by name,
-abbreviation, alias or DBLP Stream. Follow a series once across all years. The
-same Group and Label registries apply to both source categories; changing or
-deleting a shared Group/Label updates its assignments in both. Conference Details
-provides order controls and removal. Conferences have their own stable internal
-ID and Stream Key, with no ISSN, cover workflow or automatic Access Service.
-
-Research Scope Preview accepts Conference bullets under `## Conferences`, or a
-table with `Conference`, `DBLP Stream`, `Group` and `Labels`. Names resolve only
-against the local Registry. Ambiguous or unrecognized rows remain unresolved for
-correction; identity candidates bind both internal ID and Stream. Already-followed
-series retain their saved order and assignments. Export also includes
-`Conference ID`, `Abbreviation` and `Aliases`; import verifies identity against the
-Registry instead of inventing an ID from an abbreviation. Confirm uses the same
-configuration-scoped revision transaction as Journals.
-
-```markdown
-## Conferences
-
-| Conference | DBLP Stream | Group | Labels |
-| --- | --- | --- | --- |
-| NeurIPS | streams/conf/nips | Machine Learning | Follow |
-| ICML | streams/conf/icml | Machine Learning | Follow |
-```
-
-The initial Registry covers the 22 adopted series. Inclusion never adds a series
-to a user's scope. Only the explicitly followed Stream is queried; related
-Workshops or conferences are not added. A Stream may itself contain colocated
-proceedings, so exact main-event separation is not guaranteed. See the
-[offline source and rebuild instructions](../journal-lists/CONFERENCES.md).

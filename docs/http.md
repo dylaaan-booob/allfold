@@ -92,7 +92,6 @@ switching or enabling an unselected source. Valid empty responses/known-ID 404
 are normal no-match, distinct from failure or identity mismatch.
 
 arXiv uses a three-second interval; bioRxiv and medRxiv share their API host
-pacing. DBLP network retrieval is disabled in both operations. The offline
-Conference Registry does not use this transport. Webpage Enrich continues to
+pacing. Webpage Enrich continues to
 use the separate existing Chromium Session/Translator mechanism.
 See [Provider contracts and limits](providers.md).

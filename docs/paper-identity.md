@@ -3,8 +3,7 @@
 Paper Markdown is the only persisted literature object. A Paper's internal
 identity is its UUID. `external_ids.doi` and top-level `doi` contain the same
 normalized primary DOI, or both are null. Direct reliable namespaces include
-OpenAlex Work ID, WoS UT, Europe PMC `SOURCE:ID`, PMID, PMCID, arXiv ID and DBLP
-publication key. Unknown namespaces remain descriptive and do not establish a match.
+OpenAlex Work ID, WoS UT, Europe PMC `SOURCE:ID`, PMID, PMCID and arXiv ID. Unknown namespaces remain descriptive and do not establish a match.
 
 Canonicalization groups records only through common direct reliable identifiers.
 It reuses an explicitly returned OpenAlex Work ID, without rebuilding OpenAlex's
@@ -21,7 +20,8 @@ Papers are never merged, reassigned or rewritten by Run. Incomplete/unsafe ident
 scans block creation. Exact content, UUID, primary DOI, path and concurrent-write
 protections remain in force.
 
-The retired `identity_aliases` and `related_dois` Paper fields are incompatible,
+The retired `identity_aliases`, `related_dois`, `conference_id` and
+`external_ids.dblp` Paper fields are incompatible,
 including empty fields. Reads report the incompatibility and block safe indexing
 and writes; no identities are silently discarded. Back up before explicitly
 rebuilding via **Settings → Reset → Workspace**. Startup and ordinary operations
@@ -34,7 +34,7 @@ New records use this fixed order, independent of request completion time:
 
 1. Formal records before records explicitly identified as preprints.
 2. WoS records before other providers within the same formal/preprint class.
-3. Records attributed to a monitored Journal or Conference before supplements.
+3. Records attributed to a monitored Journal before supplements.
 4. Discovery evidence before supplemental evidence.
 5. Crossref, Europe PMC, OpenAlex, arXiv, bioRxiv, medRxiv, then
    other providers ordered by provider and record ID.
@@ -48,9 +48,8 @@ moving to another source. The primary DOI belongs to the selected formal record
 when one is present; a preprint DOI does not fill a DOI-free formal target.
 Only direct identifiers selected into `external_ids` survive for later deduplication.
 
-`journal` and `conference` are separate source fields. `conference_id` refers to
-the saved series identity; conference names are never saved as journal names or
-assigned fake ISSNs. `publication_type` distinguishes journal, conference and
+`journal` and `conference` are separate bibliographic source fields. Conference
+names do not create followed sources and are never assigned fake ISSNs. `publication_type` distinguishes journal, conference and
 preprint records. `indexed_terms` retains value, kind and provider source,
 separately from `author_keywords`. `sources` retains provider, record ID,
 retrieval time and optional discovery/supplement role, URL, version and licenses.

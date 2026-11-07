@@ -48,7 +48,6 @@ class CanonicalMetadata(DomainModel):
     title: NonEmptyStr
     journal: NonEmptyStr | None = None
     conference: NonEmptyStr | None = None
-    conference_id: NonEmptyStr | None = None
     publication_type: Literal["journal", "conference", "preprint"] | None = None
     first_public_at: str | None = None
     publication_date: str | None = None
@@ -125,7 +124,6 @@ class EvidenceDateKind(str, Enum):
     PUBLISHED_ONLINE = "published-online"
     ACCEPTED = "accepted"
     PREPRINT = "preprint"
-    CONFERENCE_YEAR = "conference-year"
 
 
 class EvidenceDate(DomainModel):
@@ -190,7 +188,6 @@ class ProviderWorkEvidence(DomainModel):
     title: NonEmptyStr | None = None
     journal: NonEmptyStr | None = None
     conference: NonEmptyStr | None = None
-    conference_id: NonEmptyStr | None = None
     publication_type: Literal["journal", "conference", "preprint"] | None = None
     first_public_at: str | None = None
     publication_date: str | None = None

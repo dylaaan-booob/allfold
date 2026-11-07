@@ -253,11 +253,10 @@ def test_saved_provider_selection_reaches_request_coordinator_and_retired_entrie
         assert observed[0][1]['cancel_event'] is not None
 
 
-def test_conferences_and_vetted_journal_use_only_their_executable_roles(tmp_path):
+def test_journal_run_uses_only_selected_executable_roles(tmp_path):
     from allfold.application.integrated_run import discover_selected,validate_selection
-    from allfold.config import ConferenceConfig
     path,settings=config(tmp_path)
-    settings=replace(settings, enabled_providers=('openalex',),journals=(JournalConfig(name='JMLR',issn='1532-4435'),),conferences=(ConferenceConfig(id='conf_'+'1'*32,name='ICML',abbreviation='ICML',dblp_stream='streams/conf/icml'),))
+    settings=replace(settings, enabled_providers=('openalex',),journals=(JournalConfig(name='JMLR',issn='1532-4435'),))
     scopes=validate_selection(settings)
     assert len(scopes)==1 and scopes[0].kind=='journal'
     calls=[]

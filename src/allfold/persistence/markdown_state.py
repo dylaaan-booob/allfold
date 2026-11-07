@@ -64,7 +64,6 @@ class PaperMarkdownState:
     journal_attribution_state: PaperJournalAttributionState = PaperJournalAttributionState.MISSING_OR_EMPTY
     journal_issns: tuple[str, ...] = ()
     conference: str | None = None
-    conference_id: str | None = None
     publication_type: str | None = None
     first_public_at: str | None = None
     indexed_terms: tuple[ProviderTopic, ...] = ()
@@ -252,6 +251,9 @@ def parse_paper_identity(path: Path, contents: str) -> PaperIdentity | None:
         key for doi in dois for key in strong_identifiers({'doi': doi}))
     if not identifiers:
         problems.append("cannot establish reliable Paper identity")
+        complete = False
+    if "conference_id" in frontmatter or any(str(key).strip().casefold() == "dblp" for key in (raw_ids or {})):
+        problems.append("Incompatible legacy Paper identity fields; back up Workspace and explicitly Reset before rebuilding")
         complete = False
     if "versions" in frontmatter or "preferred_version" in frontmatter:
         problems.append("unsupported pre-v0.5.2 Paper version schema")
@@ -565,6 +567,8 @@ def parse_paper_state(
     identity_external_ids, external_values = _identity_external_ids(
         frontmatter, problems
     )
+    if "conference_id" in frontmatter or "dblp" in external_values:
+        problems.append("Incompatible legacy Paper identity fields; back up Workspace and explicitly Reset before rebuilding")
     if "versions" in frontmatter or "preferred_version" in frontmatter:
         problems.append("unsupported pre-v0.5.2 Paper version schema")
 
@@ -598,7 +602,7 @@ def parse_paper_state(
     if journal is not None and (not isinstance(journal, str) or not journal.strip()):
         problems.append("journal must be a non-empty string or null")
         journal = None
-    for name in ("conference", "conference_id"):
+    for name in ("conference",):
         if frontmatter.get(name) is not None and (not isinstance(frontmatter[name], str) or not frontmatter[name].strip()):
             problems.append(f"{name} must be a non-empty string or null")
     date_fields = {}
@@ -694,7 +698,6 @@ def parse_paper_state(
         journal_attribution_state=journal_attribution_state,
         journal_issns=journal_issns,
         conference=frontmatter.get("conference"),
-        conference_id=frontmatter.get("conference_id"),
         publication_type=frontmatter.get("publication_type"),
         first_public_at=date_fields.get("first_public_at"),
         indexed_terms=evidence_fields["indexed_terms"],
