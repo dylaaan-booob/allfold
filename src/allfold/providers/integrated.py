@@ -129,6 +129,8 @@ class DiscoveryClient:
         self.cache = {}
         self._cache_lock = RLock()
         self._lookup_lock = RLock()
+        self._openalex_full_raw = {}
+        self._openalex_full_pending = {}
         self.http = create_http_client(transport=transport, timeout=30, follow_redirects=True)
         self.pacing_state = pacing_state if pacing_state is not None else {}
         self.host = httpx.URL(BASE_URLS[provider]).host
@@ -557,13 +559,46 @@ class DiscoveryClient:
         native = normalize_external_id('openalex',raw.get('id'))
         if not native:
             raise IdentityMismatch('OpenAlex returned invalid Work identity')
-        if raw.get('authors_count',0) > len(raw.get('authorships') or []) or raw.get('locations_count',0) > len(raw.get('locations') or []):
-            raw = self.request('/works/' + native.rsplit('/',1)[-1],{})
-            if normalize_external_id('openalex',raw.get('id')) != native:
+        shortened = raw.get('authors_count',0) > len(raw.get('authorships') or []) or raw.get('locations_count',0) > len(raw.get('locations') or [])
+        with self._cache_lock:
+            cached = self._openalex_full_raw.get(native)
+            if isinstance(cached, dict):
+                return cached
+            if not shortened:
+                self._openalex_full_raw[native] = raw
+                return raw
+            if isinstance(cached, Exception):
+                raise cached
+            pending = self._openalex_full_pending.get(native)
+            owner = pending is None
+            if owner:
+                pending = self._openalex_full_pending[native] = Event()
+        if not owner:
+            while not pending.wait(0.1):
+                self.check_cancel()
+            self.check_cancel()
+            with self._cache_lock:
+                cached = self._openalex_full_raw[native]
+            if isinstance(cached, Exception):
+                raise cached
+            return cached
+        try:
+            details = self.request('/works/' + native,{})
+            if normalize_external_id('openalex',details.get('id')) != native:
                 raise IdentityMismatch('OpenAlex singleton returned another Work identity')
-            if raw.get('authors_count',0) > len(raw.get('authorships') or []) or raw.get('locations_count',0) > len(raw.get('locations') or []):
+            if details.get('authors_count',0) > len(details.get('authorships') or []) or details.get('locations_count',0) > len(details.get('locations') or []):
                 raise DiscoveryError('Incomplete: OpenAlex singleton still has shortened authorships or locations')
-        return raw
+            with self._cache_lock:
+                self._openalex_full_raw[native] = details
+            return details
+        except (DiscoveryError, ValueError, KeyError, TypeError, AttributeError) as error:
+            with self._cache_lock:
+                self._openalex_full_raw.setdefault(native,error)
+            raise
+        finally:
+            with self._cache_lock:
+                self._openalex_full_pending.pop(native,None)
+                pending.set()
 
     def _remember_openalex(self, record):
         with self._cache_lock:
