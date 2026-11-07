@@ -485,11 +485,13 @@ app.whenReady().then(async()=>{
       const rendered=await js("document.querySelector('#s-run-records [data-result-status]').dataset.resultStatus");
       if(rendered!==status)throw Error('Run terminal status changed: '+status+' / '+rendered);
     }
-    run.providers.wos.result_summary={...integratedSummary,provider:'wos',outcome:'Partial',
+    run.providers.integrated.result_summary={...integratedSummary,outcome:'COMPLETED_WITH_ERRORS',
       journals:[{key:'0006-341X',name:'Synthetic WoS Journal',status:'hint',records:2,
         identifiers:[{issn:'0006-341X',status:'local_not_listed',records:null}]}],
-      statistics:{returned_records:2,eligible_records:1,unmatched_journal_records:1},
-      details:{query_finished:true,search_total:3,
+      statistics:{...integratedSummary.statistics,returned_records:2,eligible_records:1,unmatched_journal_records:1},
+      details:{...integratedSummary.details,query_finished:false,search_total:3,
+        provider_runs:[{provider:'wos',source:'Synthetic WoS Journal',status:'partial',candidates:3,
+          retained:2,created:1,existing:1,limitations:['batch_count_mismatch']},...integratedSummary.details.provider_runs],
         batches:[{first:1,last:3,expected:3,exported:2,eligible:1,complete:false,issues:['batch_count_mismatch']}],
         date_warnings:[{record_number:1,doi:'10.5555/wos',reasons:['PD_PY_year_conflict']}]},
       issues:[{category:'snapshot_write',severity:'warning',message:'Synthetic result not saved'}]};
@@ -499,7 +501,8 @@ app.whenReady().then(async()=>{
       root.querySelector('.s-run-provider-details').open=true;
       root.querySelector('.s-run-journals details').open=true;
       const text=root.innerText;
-      for(const expected of ['Journal Coverage','Synthetic WoS Journal','Export batches','Export 1–3','导出记录数与预期不一致','Publication date hints','出版日期与出版年份不一致','最近结果未保存','Unmatched Journal records'])if(!text.includes(expected))throw Error('Missing WoS result: '+expected);
+      for(const expected of ['Journal Coverage','Synthetic WoS Journal','Export batches','Export 1–3','导出记录数与预期不一致','Publication date hints','出版日期与出版年份不一致','最近结果未保存','Unmatched Journal records','wos','openalex','europe_pmc'])if(!text.includes(expected))throw Error('Missing unified WoS result: '+expected);
+      if(root.querySelectorAll('.s-run-record').length!==1)throw Error('WoS results must share one Run record');
     });
     await js("document.getElementById('s-run-records').scrollIntoView({block:'start'})");
     await capture('run-results-wos');
@@ -510,7 +513,7 @@ app.whenReady().then(async()=>{
     await check(()=>{
       const rows=document.querySelectorAll('#s-run-records .s-run-record');
       if(!rows[0].innerText.includes('旧版运行记录，请重新运行生成结果。'))throw Error('Missing old Integrated rerun prompt');
-      if(!rows[1].querySelector('[data-result-status=incomplete]'))throw Error('Valid WoS result hidden by Integrated version');
+      if(rows.length!==1)throw Error('Unsupported unified snapshot must not restore a separate legacy result');
     });
     await js("document.getElementById('s-run-records').scrollIntoView({block:'start'})");
     await capture('run-results-unsupported');
