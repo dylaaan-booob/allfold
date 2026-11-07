@@ -49,8 +49,13 @@ def _identities(record):
 
 
 def _ordinary_missing(records):
+    formal = any(record.publication_type in {'journal', 'conference'} or
+        record.publication_type != 'preprint' and (record.journal or record.conference) for record in records)
+    source_present = any(record.publication_type != 'preprint' and (record.journal or record.conference)
+        for record in records) if formal else any(record.journal or record.conference or
+        record.publication_type == 'preprint' for record in records)
     return (any(not any(getattr(record, field) for record in records) for field in ('title', 'abstract', 'authors'))
-        or not any(record.journal or record.conference or record.publication_type == 'preprint' for record in records))
+        or not source_present)
 
 
 def _journal_dates_missing(records):

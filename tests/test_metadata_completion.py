@@ -252,3 +252,26 @@ def test_first_public_conflict_and_future_evidence_remain_unresolved(year):
     result = complete_metadata(records,(),clients={})
     assert result.first_public_status == 'conflict'
     assert canonicalize_records(records).papers[0].metadata.first_public_at is None
+
+
+def test_resolved_preprint_does_not_hide_missing_formal_journal_source():
+    from allfold.models import EvidenceDate, EvidenceDateKind, ProviderRecordRef
+    formal = evidence('workspace','10.5555/formal',abstract='Abstract',authors=(Author(name='Author'),),
+        publication_date='2026',related_ids=(ProviderRecordRef(provider='arxiv',record_id='2201.12345'),)).model_copy(update={'journal':None})
+    preprint = evidence('arxiv','10.48550/arxiv.2201.12345').model_copy(update={
+        'external_ids':ExternalIds(arxiv='2201.12345'),'publication_type':'preprint','journal':None,
+        'dates':(EvidenceDate(kind=EvidenceDateKind.PREPRINT,year=2022,first_version=True),)})
+    crossref = Lookup((evidence('crossref','10.5555/formal'),))
+    result = complete_metadata((formal,preprint),('crossref',),clients={'crossref':crossref})
+    assert crossref.calls == [('doi','10.5555/formal')]
+    assert canonicalize_records(result.records).papers[0].metadata.journal == 'Followed journal'
+
+
+def test_complete_preprint_only_work_needs_no_formal_journal_source():
+    from allfold.models import EvidenceDate, EvidenceDateKind
+    preprint = evidence('arxiv','10.48550/arxiv.2201.12345',abstract='Abstract',authors=(Author(name='Author'),)).model_copy(update={
+        'external_ids':ExternalIds(arxiv='2201.12345'),'publication_type':'preprint','journal':None,
+        'dates':(EvidenceDate(kind=EvidenceDateKind.PREPRINT,year=2022,first_version=True),)})
+    native = Lookup(error=AssertionError('A preprint-only work does not need a formal journal source'))
+    result = complete_metadata((preprint,),('arxiv',),clients={'arxiv':native})
+    assert not native.calls and result.first_public_status == 'recorded'
