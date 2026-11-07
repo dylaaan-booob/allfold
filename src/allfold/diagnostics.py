@@ -112,7 +112,7 @@ def _details(value):
     for key in ('saved_fields', 'requested_fields'):
         fields = value.get(key)
         if isinstance(fields, list):
-            result[key] = sorted({field for field in fields if _enum(field, {'title', 'abstract', 'authors', 'publication_date', 'date_evidence', 'first_public_at', 'sources', 'author_keywords', 'journal', 'conference', 'conference_id', 'publication_type'})})
+            result[key] = sorted({field for field in fields if _enum(field, {'title', 'abstract', 'authors', 'publication_date', 'date_evidence', 'first_public_at', 'sources', 'author_keywords', 'journal', 'conference', 'publication_type'})})
     service_statistics = value.get('service_statistics')
     if isinstance(service_statistics, list):
         summaries = []

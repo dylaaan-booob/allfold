@@ -11,12 +11,11 @@ Allfold exposes three independent operations. **Run** discovers and saves review
 | Crossref | None | Known DOI metadata, named dates and explicit same-work relations |
 | arXiv | None | Known arXiv ID through `id_list`; Atom `published` establishes the first-version date |
 | bioRxiv / medRxiv | None | Platform-appropriate `details`/`pubs` lookups for known preprint or formal DOIs |
-| DBLP | Disabled | Disabled |
 | WoS | First selected stage: native Journal ISSN/eISSN, keyword/date query and verified eight-option Plain Text export | Outside API completion |
 
 Run's `enabled_providers` accepts WoS, OpenAlex and Europe PMC in any combination, including WoS only. It still defaults to OpenAlex and Europe PMC; existing selections never enable WoS automatically. The separate `completion_providers` defaults to OpenAlex, Europe PMC, Crossref, arXiv, bioRxiv and medRxiv. Saved YAML, autosave, Settings checkboxes, runtime validation and dispatch use these separate lists. No failed/unselected provider silently enables another. OpenAlex credentials retain their explicit submission mechanism; Crossref's optional contact is separate from discovery.
 
-DBLP's offline Conference Registry, Series management, reliable Paper identities and Research Scope exchange remain available. The obsolete journal-to-Stream map is removed; DBLP network retrieval remains disabled. Conference configuration does not become an executable Run scope or produce a missing-DBLP Partial result. A Run needs at least one followed Journal. See [Research Scope](research-scope.md) for offline management.
+A Run needs at least one followed Journal. See [Research Scope](research-scope.md) for Journal management.
 
 ## Queries and dates
 
@@ -106,7 +105,7 @@ Use the following as a change-scoped manual reference, not a checklist required 
 - Run with both sources and with either alone; inspect native date filtering, paging/partial results, source failure and cancellation. Repeat a Run and verify existing Paper bytes and the absence of standalone Evidence writes.
 - Reject after discovery; explicitly complete the remaining selected unkept Papers. Restart and complete older/kept/exported Papers; inspect progress, cancel/error/no-match outcomes and unchanged user content.
 - For changed date or Reader behavior, inspect source/version tooltips and chronological journal events with available samples. Synthetic responses cover earliest/later-only versions, multiple version families, date conflicts and precision; a formal-only Paper has empty First public.
-- For changed webpage Enrich behavior, check an available eligible request and month upgrade. Synthetic Translator responses cover explicit Accepted dates, event-only save/refresh and guarded writeback. Real rare-metadata samples are optional supplementary evidence; do not require finding an Accepted/event-only page or unusual version-conflict combination. Check DOI-free actions and offline Conference/Research Scope management when those functions change.
+- For changed webpage Enrich behavior, check an available eligible request and month upgrade. Synthetic Translator responses cover explicit Accepted dates, event-only save/refresh and guarded writeback. Real rare-metadata samples are optional supplementary evidence; do not require finding an Accepted/event-only page or unusual version-conflict combination. Check DOI-free actions and Journal/Research Scope management when those functions change.
 
 Existing [PR #40](https://github.com/dylaaan-booob/allfold/pull/40) acceptance includes real OpenAlex/Europe PMC Runs, linked preprint dates and OUP Enrich in isolated profiles, including task-page entry/return. Real Accepted/event-only samples were waived in favor of isolated regressions; no Zotero save was performed. These are scoped historical results, not proof of every site or this checkout.
 

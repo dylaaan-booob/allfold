@@ -26,7 +26,7 @@ def valid_doi(value: str | None) -> str | None:
 
 
 
-RELIABLE_NAMESPACES = frozenset({"doi", "openalex", "arxiv", "dblp", "europe_pmc", "pmid", "pmcid", "wos", "biorxiv", "medrxiv"})
+RELIABLE_NAMESPACES = frozenset({"doi", "openalex", "arxiv", "europe_pmc", "pmid", "pmcid", "wos", "biorxiv", "medrxiv"})
 
 
 def normalize_external_id(namespace: str, value: Any) -> str | None:
@@ -43,8 +43,6 @@ def normalize_external_id(namespace: str, value: Any) -> str | None:
         value = re.sub(r"^https?://arxiv\.org/abs/", "", value)
         value = re.sub(r"v[0-9]+$", "", value)
         return value if re.fullmatch(r"(?:[0-9]{4}\.[0-9]{4,5}|[a-z-]+(?:\.[A-Z]{2})?/[0-9]{7})", value) else None
-    if namespace == "dblp":
-        return re.sub(r"^https?://dblp\.org/rec/", "", value).removesuffix(".html")
     if namespace == "europe_pmc":
         source, separator, identifier = value.partition(":")
         return f"{source.upper()}:{identifier}" if separator and source.isalnum() and identifier.isalnum() else None

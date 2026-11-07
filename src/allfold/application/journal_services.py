@@ -58,4 +58,4 @@ def choose_journal_service(config_path: Path, key: str, *, method: str, name: st
     if load_settings(config_path).draft.monitor_revision != expected_monitor_revision:
         raise ContentChangedError('Monitor configuration changed; Reload')
     return compare_write_user_state(config_path, SettingsList(journals, snapshot.state.groups,
-        snapshot.state.custom_labels, tuple(services), snapshot.state.conferences), snapshot.revision)
+        snapshot.state.custom_labels, tuple(services)), snapshot.revision)

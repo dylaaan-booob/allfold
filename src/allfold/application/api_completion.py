@@ -13,7 +13,7 @@ def saved_paper_evidence(target):
     state = parse_paper_state(target.path, target.original)
     return ProviderWorkEvidence(
         provenance=MetadataSource(provider='workspace', record_id=str(state.paper_id), retrieved_at=state.discovered_at, role='discovery'),
-        title=state.title, journal=state.journal, conference=state.conference, conference_id=state.conference_id,
+        title=state.title, journal=state.journal, conference=state.conference,
         publication_type=state.publication_type or ('journal' if state.journal else None),
         publication_date=state.publication_date, abstract=state.abstract, authors=tuple(Author(name=name) for name in state.authors),
         external_ids=state.external_ids, first_public_at=state.first_public_at,
@@ -45,7 +45,7 @@ def save_api_completion(target, records, *, operation_lock):
     if pending and state.publication_date is None and paper.metadata.publication_date:
         contents = fill_publication_date(contents, paper.metadata.publication_date)
         fields.append('publication_date')
-    for field in ('title', 'first_public_at', 'journal', 'conference', 'conference_id', 'publication_type', 'author_keywords'):
+    for field in ('title', 'first_public_at', 'journal', 'conference', 'publication_type', 'author_keywords'):
         if (pending or field == 'first_public_at') and not getattr(state, field) and (value := getattr(paper.metadata, field)):
             contents = set_managed_value(contents, field, value)
             fields.append(field)

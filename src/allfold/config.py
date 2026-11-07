@@ -128,56 +128,6 @@ class JournalConfig(BaseModel):
         return tuple(dict.fromkeys(i for i in (self.issn, self.eissn) if i))
 
 
-class ConferenceConfig(BaseModel):
-    """A followed cross-year series; never a journal or an access Service."""
-    model_config = ConfigDict(extra="forbid", frozen=True, str_strip_whitespace=True)
-
-    id: str
-    name: NonEmptyStr
-    abbreviation: NonEmptyStr
-    aliases: tuple[str, ...] = ()
-    dblp_stream: str
-    group: NonEmptyStr | None = None
-    labels: tuple[str, ...] = ()
-
-    @field_validator("id")
-    @classmethod
-    def validate_id(cls, value):
-        if not re.fullmatch(r"conf_[0-9a-f]{32}", value):
-            raise ValueError("Conference ID must be conf_ followed by 32 lowercase hexadecimal digits")
-        return value
-
-    @field_validator("dblp_stream")
-    @classmethod
-    def validate_stream(cls, value):
-        if not re.fullmatch(r"streams/conf/[a-z0-9_-]+", value):
-            raise ValueError("Conference requires a DBLP conference Stream Key")
-        return value
-
-    @field_validator("aliases", "labels", mode="before")
-    @classmethod
-    def normalize_names(cls, value):
-        return normalize_journal_labels(value)
-
-    @field_validator("name", "abbreviation", "group")
-    @classmethod
-    def portable_text(cls, value):
-        if value is not None and any(c in value for c in "|\r\n\x00"):
-            raise ValueError("Conference fields cannot contain pipes, newlines or NUL")
-        return value
-
-    @property
-    def key(self) -> str:
-        return self.id
-
-
-def validate_conference_configs(conferences):
-    entries = tuple(ConferenceConfig.model_validate(c) for c in conferences)
-    if len({c.id for c in entries}) != len(entries) or len({c.dblp_stream for c in entries}) != len(entries):
-        raise ConfigurationError("Duplicate Conference identity or DBLP Stream", field="conferences")
-    return entries
-
-
 def validate_access_service_id(value: str) -> str:
     if not isinstance(value, str) or not re.fullmatch(r"svc_[0-9a-f]{32}", value):
         raise ValueError("Service ID must be svc_ followed by 32 lowercase hexadecimal digits")
@@ -383,7 +333,6 @@ class LoadedConfig:
     provider_order: tuple[str, ...] = DEFAULT_PROVIDER_ORDER
     crossref_mailto: str = ""
     user_state_revision: str | None = None
-    conferences: tuple[ConferenceConfig, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -733,7 +682,6 @@ def build_loaded_config(
     path: Path,
     definition: MonitorDefinition,
     journals: Sequence[JournalConfig],
-    conferences: Sequence[ConferenceConfig] = (),
 ) -> LoadedConfig:
     """Resolve paths and journal-domain rules into the runtime config model."""
 
@@ -752,7 +700,6 @@ def build_loaded_config(
         date_spec=definition.date_spec,
         log_level=definition.log_level,
         journals=normalized_journals,
-        conferences=validate_conference_configs(conferences),
         institution=definition.institution,
         kept_workflow=definition.kept_workflow,
         enabled_providers=definition.enabled_providers,
@@ -821,7 +768,7 @@ def load_config(path: Path) -> LoadedConfig:
             field="venue_whitelist",
             path=path,
         ) from error
-    return replace(build_loaded_config(path, definition, journals, snapshot.state.conferences), user_state_revision=snapshot.revision.digest)
+    return replace(build_loaded_config(path, definition, journals), user_state_revision=snapshot.revision.digest)
 
 
 def validate_access_services(services: Sequence[AccessService]) -> tuple[AccessService, ...]:
@@ -908,7 +855,6 @@ class SettingsList:
     groups: tuple[str, ...]
     custom_labels: tuple[str, ...]
     access_services: tuple[AccessService, ...]
-    conferences: tuple[ConferenceConfig, ...] = ()
 
 
 def validate_entity_names(names: Sequence[str], *, labels: bool = False) -> tuple[str, ...]:
@@ -962,7 +908,7 @@ def parse_settings_list_text(contents: str, *, path: Path) -> SettingsList:
 
 def render_settings_list_text(existing_contents: str | None, journals: Sequence[JournalConfig],
                               *, path: Path, groups: Sequence[str], custom_labels: Sequence[str],
-                              access_services: Sequence[AccessService], conferences: Sequence[ConferenceConfig] | None = None) -> str:
+                              access_services: Sequence[AccessService]) -> str:
     """Render changed managed tables; preserve unchanged tables and all other text."""
     journals = validate_journal_configs(journals)
     validate_journal_storage(journals)
@@ -981,9 +927,6 @@ def render_settings_list_text(existing_contents: str | None, journals: Sequence[
          "## Access Services\n\n| Service ID | Service | Access URL | Access Method |\n| --- | --- | --- | --- |\n"
          + "".join(f"| {s.id} | {s.name} | {s.access_url or ''} | {s.access_method} |\n" for s in services) + "\n"),
     )
-    if conferences is not None:
-        validate_entity_mapping(conferences, groups, custom_labels)
-        sections += (("Conferences", tuple(conferences), parse_conferences_text, render_conferences_text(conferences)),)
     for name, values, parser, replacement in sections:
         lines = target.splitlines(keepends=True)
         indexes = [i for i, line in enumerate(lines) if line.strip() == f"## {name}"]
@@ -996,32 +939,10 @@ def render_settings_list_text(existing_contents: str | None, journals: Sequence[
             finish = next((i for i in range(begin + 1, len(lines))
                            if _HEADING_PATTERN.match(lines[i].strip())), len(lines))
         else:
-            begin = next((i for i, line in enumerate(lines) if line.strip() == "## Conferences"), len(lines))
+            begin = len(lines)
             finish = begin
         prefix = "".join(lines[:begin])
         if prefix and not prefix.endswith("\n\n"):
             prefix += "\n" if prefix.endswith("\n") else "\n\n"
         target = prefix + replacement + "".join(lines[finish:])
     return target
-
-
-def render_conferences_text(conferences) -> str:
-    rows = validate_conference_configs(conferences)
-    return ("## Conferences\n\n| Conference ID | Conference | Abbreviation | Aliases | DBLP Stream | Group | Labels |\n"
-            "| --- | --- | --- | --- | --- | --- | --- |\n" + "".join(
-        f"| {c.id} | {c.name} | {c.abbreviation} | {'; '.join(c.aliases)} | {c.dblp_stream} | {c.group or ''} | {'; '.join(c.labels)} |\n"
-        for c in rows) + "\n")
-
-
-def parse_conferences_text(contents, *, path):
-    expected = ("Conference ID", "Conference", "Abbreviation", "Aliases", "DBLP Stream", "Group", "Labels")
-    section = _managed_rows(contents, path, "Conferences", expected)
-    if section is None:
-        return ()
-    _, rows = section
-    try:
-        return validate_conference_configs([ConferenceConfig(id=c[0], name=c[1], abbreviation=c[2],
-            aliases=parse_journal_labels(c[3]), dblp_stream=c[4], group=c[5] or None,
-            labels=parse_journal_labels(c[6])) for _, c in rows])
-    except ValueError as error:
-        raise ConfigurationError(str(error), field="conferences", path=path) from error

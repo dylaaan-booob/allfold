@@ -7,14 +7,14 @@ from allfold.persistence.materialize import materialize_papers
 from allfold.application.workspace import load_workspace
 
 
-def evidence(provider='dblp', record='conf/nips/Example26', **values):
+def evidence(provider='openalex', record='W1000', **values):
     return ProviderWorkEvidence(provenance=MetadataSource(provider=provider, record_id=record,
         retrieved_at=datetime(2026, 11, 5, tzinfo=timezone.utc)), **values)
 
 
 def test_doi_free_conference_round_trip_and_saved_bytes_are_immutable(tmp_path):
-    source = evidence(title='A conference paper', conference='NeurIPS', conference_id='neurips',
-                      external_ids=ExternalIds(dblp='conf/nips/Example26'), publication_date='2026')
+    source = evidence(title='A conference paper', conference='NeurIPS', publication_type='conference',
+                      external_ids=ExternalIds(openalex='W1000'), publication_date='2026')
     result = canonicalize_records([source])
     assert len(result.papers) == 1
     paper = result.papers[0]
@@ -98,7 +98,7 @@ def test_primary_formal_record_and_dates_are_independent_of_arrival_order():
 def test_doi_free_paper_local_edit_and_primary_doi_enrichment(tmp_path):
     import pytest
     from allfold.application.paper_enrichment import paper_fields, edit_paper_fields, read_enrichment_target
-    source = evidence(title='No DOI', conference='NeurIPS', external_ids=ExternalIds(dblp='conf/nips/Test'))
+    source = evidence(title='No DOI', conference='NeurIPS', external_ids=ExternalIds(openalex='W1001'))
     paper, = canonicalize_records([source]).papers
     path, = materialize_papers([paper], tmp_path).created_papers
     fields = paper_fields(tmp_path, paper.id)
@@ -118,8 +118,8 @@ def test_shared_work_ids_merge_but_titles_and_unknown_ids_never_do(tmp_path):
     from allfold.persistence.safe_write import workspace_operation_lock
     records = [evidence('openalex', 'A', title='Same title', journal='Journal', external_ids=ExternalIds(doi='10.5555/a', openalex='W123')),
                evidence('crossref', 'B', title='Same title', journal='Journal', external_ids=ExternalIds(doi='10.5555/b', openalex='https://openalex.org/W123')),
-               evidence('dblp', 'C', title='Same title', conference='Conference', external_ids=ExternalIds(dblp='conf/c/C')),
-               evidence('dblp', 'D', title='Same title', conference='Conference', external_ids=ExternalIds(dblp='conf/c/D'))]
+               evidence('openalex', 'C', title='Same title', conference='Conference', external_ids=ExternalIds(wos='WOS:2001')),
+               evidence('openalex', 'D', title='Same title', conference='Conference', external_ids=ExternalIds(wos='WOS:2002'))]
     papers = canonicalize_records(records).papers
     assert len(papers) == 3
     assert not canonicalize_records([evidence(title='Title', external_ids=ExternalIds(unknown='same'))]).papers
@@ -127,10 +127,10 @@ def test_shared_work_ids_merge_but_titles_and_unknown_ids_never_do(tmp_path):
     assert len(result.created_papers) == 3
     with workspace_operation_lock(tmp_path) as lock:
         index = read_workspace_identities(lock)
-    assert ('dblp', 'conf/c/C') in index.by_identifier
+    assert ('wos', 'WOS:2001') in index.by_identifier
     assert len({'10.5555/a', '10.5555/b'} & index.saved.keys()) == 1
     assert ('openalex', 'W123') in index.by_identifier
-    ambiguous, = canonicalize_records([evidence(title='Bridge', external_ids=ExternalIds(dblp='conf/c/C', openalex='W123'))]).papers
+    ambiguous, = canonicalize_records([evidence(title='Bridge', external_ids=ExternalIds(wos='WOS:2001', openalex='W123'))]).papers
     before = {path: path.read_bytes() for path in result.created_papers}
     blocked = materialize_papers([ambiguous], tmp_path)
     assert blocked.has_errors and not blocked.created_papers and not blocked.existing_papers
@@ -140,7 +140,7 @@ def test_shared_work_ids_merge_but_titles_and_unknown_ids_never_do(tmp_path):
 def test_cancellation_reports_committed_count_and_stops_next_write(tmp_path):
     from threading import Event
     cancel = Event()
-    papers = canonicalize_records([evidence(record=str(i), title=f'Title {i}', external_ids=ExternalIds(dblp=f'conf/c/{i}'))
+    papers = canonicalize_records([evidence(record=str(i), title=f'Title {i}', external_ids=ExternalIds(openalex=f'W{6000+i}'))
                                    for i in range(3)]).papers
     def progress(event):
         if event.activity and event.activity.operation == 'materialize_write' and event.activity.current == 1:
@@ -152,57 +152,48 @@ def test_cancellation_reports_committed_count_and_stops_next_write(tmp_path):
 
 
 def test_only_the_saved_direct_id_survives_across_runs(tmp_path):
-    first = evidence('dblp', 'conf/c/First', title='Title', conference='Conference',
-                     external_ids=ExternalIds(doi='10.5555/shared', dblp='conf/c/First'))
-    second = evidence('dblp', 'conf/c/Second', title='Title', conference='Conference',
-                      external_ids=ExternalIds(doi='10.5555/shared', dblp='conf/c/Second'))
+    first = evidence('openalex', 'W3001', title='Title', conference='Conference',
+                     external_ids=ExternalIds(doi='10.5555/shared', openalex='W3001'))
+    second = evidence('openalex', 'W3002', title='Title', conference='Conference',
+                      external_ids=ExternalIds(doi='10.5555/shared', openalex='W3002'))
     paper, = canonicalize_records([first, second]).papers
     created = materialize_papers([paper], tmp_path)
-    repeat, = canonicalize_records([second.model_copy(update={'external_ids': ExternalIds(dblp='conf/c/Second')})]).papers
+    repeat, = canonicalize_records([second.model_copy(update={'external_ids': ExternalIds(openalex='W3002')})]).papers
     result = materialize_papers([repeat], tmp_path)
     assert not result.existing_papers
     assert len(result.created_papers) == 1
 
 
-@pytest.mark.parametrize('followed', (False, True))
-def test_workspace_api_exposes_conference_and_date_provenance(tmp_path, followed):
+def test_workspace_api_exposes_bibliographic_conference_without_followed_source(tmp_path):
     from fastapi.testclient import TestClient
     from test_web_app import write_valid_config
     from electron_test_helpers import OfflineBridge
     from allfold.web.app import create_app
     from allfold.models import EvidenceDate, EvidenceDateKind as Kind, ProviderTopic
-    from allfold.config import ConferenceConfig
-    from allfold.persistence.user_state import load_user_state, compare_write_user_state
-    from dataclasses import replace
     config, workspace = write_valid_config(tmp_path)
-    conference_id = 'conf_00000000000000000000000000000001'
-    if followed:
-        state = load_user_state(config, tmp_path / 'list.md')
-        conference = ConferenceConfig(id=conference_id, name='NeurIPS', abbreviation='NeurIPS',
-                                      dblp_stream='streams/conf/nips', group='ML')
-        compare_write_user_state(config, replace(state.state, conferences=(conference,), groups=('ML',)), state.revision)
     paper, = canonicalize_records([evidence(title='Conference item', conference='NeurIPS',
-        conference_id=conference_id, publication_type='conference', publication_date='2026',
-        external_ids=ExternalIds(dblp='conf/nips/Test'),
-        indexed_terms=(ProviderTopic(value='machine learning', source='dblp', kind='topic'),),
-        dates=(EvidenceDate(kind=Kind.CONFERENCE_YEAR, year=2026),))]).papers
-    materialize_papers([paper], workspace)
+        publication_type='conference', publication_date='2026',
+        external_ids=ExternalIds(openalex='W1001'),
+        indexed_terms=(ProviderTopic(value='machine learning', source='openalex', kind='topic'),),
+        dates=(EvidenceDate(kind=Kind.SOURCE, year=2026),))]).papers
+    path, = materialize_papers([paper], workspace).created_papers
+    assert 'conference_id' not in path.read_text()
     with TestClient(create_app(config, electron_bridge=OfflineBridge()), base_url='http://localhost') as client:
         data = client.get('/api/ui-next/workspace').json()
     group, = data['subjects']
     venue, = group['journals']
-    assert venue['name'] == 'NeurIPS'
-    assert venue['source_type'] == 'conference'
-    assert venue['dblp_stream'] == ('streams/conf/nips' if followed else None)
-    assert group['name'] == ('ML' if followed else 'Unmapped sources')
+    assert venue['name'] == 'NeurIPS' and venue['source_type'] == 'unmapped'
+    assert 'dblp_stream' not in venue
+    assert group['name'] == 'Unmapped sources'
     item, = venue['papers']
     assert item['doi'] is None and item['conference'] == 'NeurIPS'
+    assert 'conference_id' not in item
     assert 'related_dois' not in item and 'identity_aliases' not in item
     assert item['first_public_at'] is None
     assert all(event['publication_type']=='conference' for event in item['date_evidence'])
-    assert item['date_evidence'][0]['kind'] == 'conference-year'
+    assert item['date_evidence'][0]['kind'] == 'source-date'
     assert item['indexed_terms'][0]['kind'] == 'topic'
-    assert item['external_ids']['dblp'] == 'conf/nips/Test'
+    assert item['external_ids']['openalex'] == 'W1001'
 
 
 def test_date_inference_uses_public_versions_and_formal_acceptance_only():
@@ -281,7 +272,7 @@ def test_import_plan_uses_only_primary_doi_and_excludes_unsupported_targets(tmp_
     from allfold.application.workspace import plan_workspace_import
     from allfold.persistence.safe_write import workspace_operation_lock
     from allfold.models import WorkflowStatus
-    records = [evidence(record='free', title='DOI-free', external_ids=ExternalIds(dblp='conf/c/free')),
+    records = [evidence(record='free', title='DOI-free', external_ids=ExternalIds(openalex='W4001')),
                evidence('arxiv', '2601.00001', title='Preprint', publication_type='preprint',
                         external_ids=ExternalIds(doi='10.5555/preprint-only')),
                evidence('crossref', 'formal', title='Formal', journal='Journal', publication_type='journal',
@@ -345,7 +336,7 @@ def test_retired_identity_fields_block_scan_creation_and_mutation_without_migrat
     from allfold.persistence.safe_write import workspace_operation_lock
     from allfold.application.paper_enrichment import read_paper_target
     from test_application_decisions import replace_frontmatter
-    paper, = canonicalize_records([evidence(title='Saved', external_ids=ExternalIds(dblp='conf/c/old'))]).papers
+    paper, = canonicalize_records([evidence(title='Saved', external_ids=ExternalIds(openalex='W5001'))]).papers
     path, = materialize_papers([paper], tmp_path).created_papers
     replace_frontmatter(path, **{field: value})
     original = path.read_bytes()
@@ -354,7 +345,7 @@ def test_retired_identity_fields_block_scan_creation_and_mutation_without_migrat
     assert not parse_paper_identity(path, path.read_text()).index_complete
     with workspace_operation_lock(tmp_path) as lock:
         assert not read_workspace_identities(lock).complete
-    incoming, = canonicalize_records([evidence(title='New', external_ids=ExternalIds(dblp='conf/c/new'))]).papers
+    incoming, = canonicalize_records([evidence(title='New', external_ids=ExternalIds(openalex='W5002'))]).papers
     result = materialize_papers([incoming], tmp_path)
     assert result.has_errors and not result.created_papers
     with pytest.raises(ValueError, match='Incompatible legacy Paper identity'):
@@ -398,3 +389,33 @@ def test_conflicting_primary_doi_fields_quarantine_both_direct_values(tmp_path, 
     result = materialize_papers([incoming], tmp_path)
     assert result.has_errors and not result.created_papers and not result.existing_papers
     assert path.read_bytes() == before and len(list((tmp_path / 'Papers').glob('*.md'))) == 1
+
+
+@pytest.mark.parametrize('retired', [{'conference_id': 'conf_'+'1'*32},
+    {'external_ids': {'openalex': 'W123', 'dblp': 'conf/example/old'}}])
+def test_retired_source_identity_is_not_silently_discarded(tmp_path, retired):
+    from allfold.persistence.markdown_state import parse_paper_state, parse_paper_identity
+    from allfold.application.paper_enrichment import read_paper_target
+    from test_application_decisions import replace_frontmatter
+    paper, = canonicalize_records([evidence(title='Saved', external_ids=ExternalIds(openalex='W123'))]).papers
+    path, = materialize_papers([paper], tmp_path).created_papers
+    replace_frontmatter(path, **retired)
+    before = path.read_bytes()
+    assert not parse_paper_state(path, path.read_text()).updateable
+    assert not parse_paper_identity(path, path.read_text()).index_complete
+    with pytest.raises(ValueError, match='Incompatible legacy Paper identity'):
+        read_paper_target(tmp_path, paper.id)
+    incoming, = canonicalize_records([evidence(title='New', external_ids=ExternalIds(openalex='W456'))]).papers
+    result = materialize_papers([incoming], tmp_path)
+    assert result.has_errors and not result.created_papers
+    assert path.read_bytes() == before
+
+
+@pytest.mark.parametrize('ids', [
+    {'dblp': 'conf/example/old'},
+    {'openalex': 'W123', 'dblp': 'conf/example/old'},
+    {'doi': '10.5555/formal', ' DBLP ': 'conf/example/old'},
+])
+def test_retired_namespace_cannot_create_a_new_paper_even_with_valid_ids(ids):
+    with pytest.raises(ValueError, match='Retired external identifier namespace'):
+        ExternalIds.model_validate(ids)

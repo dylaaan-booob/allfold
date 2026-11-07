@@ -115,30 +115,3 @@
 | svc_e1ebc2eca4a248729a55fe727bd54ef3 | EBSCO | http://search.ebscohost.com/ | carsi |
 | svc_4d6ec11f368e4a3691d0349243603d57 | Project Euclid | https://projecteuclid.org/ | manual |
 | svc_116d9abd1ad44c08bd5c9f80fe0d2df8 | Web of Science |  | carsi |
-
-## Conferences
-
-| Abbreviation | Full Name | Labels |
-|---|---|---|
-| NeurIPS | Conference on Neural Information Processing Systems |  |
-| ICML | International Conference on Machine Learning |  |
-| ICLR | International Conference on Learning Representations |  |
-| AISTATS | International Conference on Artificial Intelligence and Statistics |  |
-| COLT | Conference on Learning Theory |  |
-| UAI | Conference on Uncertainty in Artificial Intelligence |  |
-| AAAI | AAAI Conference on Artificial Intelligence |  |
-| IJCAI | International Joint Conference on Artificial Intelligence |  |
-| KDD | ACM SIGKDD Conference on Knowledge Discovery and Data Mining |  |
-| ICDM | IEEE International Conference on Data Mining | IEEE |
-| SDM | SIAM International Conference on Data Mining | SIAM |
-| ECML-PKDD | European Conference on Machine Learning and Principles and Practice of Knowledge Discovery in Databases |  |
-| MLSys | Conference on Machine Learning and Systems |  |
-| CVPR | IEEE/CVF Conference on Computer Vision and Pattern Recognition | IEEE |
-| ICCV | International Conference on Computer Vision | IEEE |
-| ECCV | European Conference on Computer Vision |  |
-| CCS | ACM Conference on Computer and Communications Security |  |
-| IEEE S&P | IEEE Symposium on Security and Privacy | IEEE |
-| USENIX Security | USENIX Security Symposium |  |
-| NDSS | Network and Distributed System Security Symposium |  |
-| ISMB | Intelligent Systems for Molecular Biology |  |
-| RECOMB | Research in Computational Molecular Biology |  |

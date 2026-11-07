@@ -168,8 +168,7 @@ do not establish real CAPTCHA compatibility or every external site's usable mini
 
 ## Source categories and Paper dates
 
-Journals includes Journals/Conferences categories in the existing workspace; no
-new top-level navigation is added. Paper Info/Reader shows actual Conference
+Journals manages followed journals. Paper Info/Reader shows actual bibliographic
 source names and separates preprint First public, chronological named journal
 date events and bibliographic publication dates. First public and journal events
 have separate source/version evidence tooltips. ARRAY's API tool (and Archive's

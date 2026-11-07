@@ -239,9 +239,7 @@ function quadImage(image, q, ox, oy, k, alpha = 1) {
   ctx.drawImage(image, 0, 0); ctx.restore();
 }
 function sourceIdentity(source) {
-  return source.source_type==='conference'
-    ? {value:source.dblp_stream || '—',label:'DBLP STREAM'}
-    : {value:source.issn || source.eissn || 'UNMAPPED',label:source.issn?'ISSN':source.eissn?'eISSN':'ISSN / eISSN'};
+  return {value:source.issn || source.eissn || 'UNMAPPED',label:source.issn?'ISSN':source.eissn?'eISSN':'ISSN / eISSN'};
 }
 function spine(q, ox, oy, k, identifier, label = 'ISSN / eISSN') {
   ctx.save(); ctx.transform((q[1][0] - q[0][0]) * k / 100, (q[1][1] - q[0][1]) * k / 100,
@@ -659,7 +657,7 @@ function renderJournalFile(groupIndex, slot) {
   layoutJournalTitle(j);
   $('ghost-subject').textContent = j.logicalGroupName.toUpperCase();
   $('archive-subject').textContent=j.logicalGroupName;
-  $('profile-identity').textContent = j.source_type==='conference'?sourceIdentity(j).value:[j.issn,j.eissn].filter(Boolean).join(' / ') || 'UNMAPPED';
+  $('profile-identity').textContent = [j.issn,j.eissn].filter(Boolean).join(' / ') || 'UNMAPPED';
   $('profile-publisher').textContent = j.publisher || '未配置';
   $('profile-service').textContent = j.service || '未配置';
   for (const [issn, list] of lists) list.hidden = issn !== j.key;

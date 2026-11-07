@@ -112,7 +112,6 @@ def install_ui_next(app: FastAPI, config_path: Path, csrf_token: str, *, read_ta
                 metadata = {}
                 registry_issues.append(str(error))
             service_by_id = {s.id: s for s in services}
-            conferences = {item.id: item for item in getattr(settings_list, "conferences", ())}
             records = {}
             subjects = defaultdict(list)
             for name in settings_list.groups:
@@ -132,23 +131,19 @@ def install_ui_next(app: FastAPI, config_path: Path, csrf_token: str, *, read_ta
             kept = []
             for paper in (*workspace.inbox, *workspace.kept):
                 journal = journal_for_paper(paper, journals)
-                conference = conferences.get(paper.conference_id)
                 source_name = paper.conference or paper.journal or "Unknown source"
-                key = (paper.conference_id or f"conference:{paper.conference}") if paper.conference else (
-                    journal.key if journal else f"unmapped:{source_name}")
+                key = journal.key if journal else f"unmapped:{source_name}"
                 if key not in records:
                     records[key] = dict(key=key, issn=None, eissn=None, name=source_name,
-                                        source_type="conference" if paper.conference else "journal",
-                                        dblp_stream=conference.dblp_stream if conference else None,
-                                        group=conference.group if conference else None,
-                                        labels=list(conference.labels) if conference else [], publisher=None, service=None,
+                                        source_type="journal" if journal else "unmapped",
+                                        group=None, labels=[], publisher=None, service=None,
                                         service_id=None, cover=None, papers=[])
-                    subjects[(conference.group, False) if conference else (None, True)].append(records[key])
+                    subjects[(None, True)].append(records[key])
                 record = records[key]
                 enrichment = app.state.paper_enrichment.state(paper.paper_id)
                 item = dict(id=str(paper.paper_id), title=paper.title,
                             publication_date=paper.publication_date, abstract=paper.abstract,
-                            conference=paper.conference, conference_id=paper.conference_id,
+                            conference=paper.conference,
                             journal=paper.journal, publication_type=paper.publication_type,
                             first_public_at=paper.first_public_at,
                             date_evidence=[item.model_dump(mode="json", exclude_none=True) for item in paper.date_evidence],

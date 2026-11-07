@@ -632,7 +632,7 @@ def _build_paper(
     ordered = sorted(evidence, key=lambda record: (
         _is_preprint(record),
         record.provenance.provider.casefold() != "wos",
-        not bool(record.monitor_journal_issns or record.conference_id),
+        not bool(record.monitor_journal_issns),
         record.provenance.role == "supplement",
         order.get(record.provenance.provider.casefold(), 99), _record_key(record), evidence_key(record),
     ))
@@ -658,7 +658,6 @@ def _build_paper(
             title=title,
             journal=None if conference and not ordered[0].journal else journal,
             conference=conference,
-            conference_id=field("conference_id"),
             publication_type=ordered[0].publication_type or ("conference" if ordered[0].conference else "journal" if ordered[0].journal else None),
             publication_date=next((_publication_date(record) for record in ordered
                 if _is_preprint(record) == _is_preprint(ordered[0]) and _publication_date(record)), None),

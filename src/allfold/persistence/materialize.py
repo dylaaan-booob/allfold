@@ -125,7 +125,6 @@ def render_paper_markdown(paper: CanonicalPaper) -> str:
         "publication_date": paper.metadata.publication_date,
         "doi": doi,
         "conference": paper.metadata.conference,
-        "conference_id": paper.metadata.conference_id,
         "publication_type": paper.metadata.publication_type,
         "first_public_at": paper.metadata.first_public_at,
         "date_evidence": [item.model_dump(mode="json", exclude_none=True) for item in paper.date_evidence],

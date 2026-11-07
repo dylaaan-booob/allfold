@@ -5,18 +5,17 @@ const temp=fs.mkdtempSync(path.join(os.tmpdir(),'allfold-layout-dom-'));
 app.setPath('userData',temp);app.commandLine.appendSwitch('force-prefers-reduced-motion','reduce');
 const ui=path.resolve(__dirname,'../../src/allfold/web/static/ui_next');
 const journals=Array.from({length:24},(_,i)=>({name:'Synthetic Journal '+i,issn:`000${i}-0000`,eissn:null,group:'Group '+i%4,labels:'Label '+i%3,access_service_id:i%2?'svc_fixture':null}));
-const conference={id:'conf_00000000000000000000000000000001',name:'International Conference on Machine Learning',abbreviation:'ICML',aliases:[],dblp_stream:'streams/conf/icml',group:null,labels:[]};
 const cover_search={phase:'Idle',busy:false,supported:false};
 const settings={config_path:'/fixture/monitor.yaml',csrf_token:'fixture',issues:[],covers:{},cover_search,saved_workspace:'/fixture/workspace',values:{
   name:'Synthetic Monitor',keyword_expression:'causal',from_month:'2026-01',to_month:'2026-01',output_dir:'workspace',log_level:'INFO',
   monitor_revision_exists:'1',monitor_revision_digest:'fixture',journal_revision_exists:'1',journal_revision_digest:'fixture',
   institution_name:'',institution_idp_entity_id:'',auto_import_after_preparation:false,transition_delay_seconds:'3',display_name:'',
   provider_aliases:{},provider_order:['openalex','europe_pmc','crossref','arxiv','biorxiv','medrxiv','wos'],enabled_providers:['openalex','europe_pmc'],completion_providers:['openalex','europe_pmc','crossref','arxiv','biorxiv','medrxiv'],groups:Array.from({length:20},(_,i)=>'Group '+i),
-  conferences:[],custom_labels:['Label 0','Label 1','Label 2'],journals,access_services:[{id:'svc_fixture',name:'Synthetic Service',access_method:'manual',access_url:''}],
+  custom_labels:['Label 0','Label 1','Label 2'],journals,access_services:[{id:'svc_fixture',name:'Synthetic Service',access_method:'manual',access_url:''}],
 }};
-const paper=(i,status='candidate')=>({id:'paper-'+i,title:'Synthetic Paper '+i,publication_date:'2026-10',conference:'Synthetic Conference',publication_type:'conference',first_public_at:'2022-04',date_evidence:[{kind:'preprint',year:2022,month:4,provider:'arxiv',record_id:'2204.12345',version:'v1',publication_type:'preprint',first_version:true},{kind:'accepted',year:2026,month:9,provider:'crossref',record_id:'10.5555/formal',publication_type:'journal'},{kind:'published-online',year:2026,month:10,provider:'crossref',record_id:'10.5555/formal',publication_type:'journal'}],external_ids:{dblp:'conf/example/Paper'},indexed_terms:[{value:'statistics',kind:'topic',source:'openalex'}],sources:[{provider:'dblp',record_id:'conf/example/Paper',role:'discovery'}],abstract:('An isolated synthetic paragraph for reader scroll verification. '.repeat(12)+'\n\n').repeat(24),authors:['Synthetic Author'],doi:i===0?null:'10.5555/layout-'+i,discovered_at:'2026-10-01T00:00:00Z',status,enrichPhase:'Idle'});
+const paper=(i,status='candidate')=>({id:'paper-'+i,title:'Synthetic Paper '+i,publication_date:'2026-10',conference:'Synthetic Conference',publication_type:'conference',first_public_at:'2022-04',date_evidence:[{kind:'preprint',year:2022,month:4,provider:'arxiv',record_id:'2204.12345',version:'v1',publication_type:'preprint',first_version:true},{kind:'accepted',year:2026,month:9,provider:'crossref',record_id:'10.5555/formal',publication_type:'journal'},{kind:'published-online',year:2026,month:10,provider:'crossref',record_id:'10.5555/formal',publication_type:'journal'}],external_ids:{openalex:'W123'},indexed_terms:[{value:'statistics',kind:'topic',source:'openalex'}],sources:[{provider:'openalex',record_id:'W123',role:'discovery'}],abstract:('An isolated synthetic paragraph for reader scroll verification. '.repeat(12)+'\n\n').repeat(24),authors:['Synthetic Author'],doi:i===0?null:'10.5555/layout-'+i,discovered_at:'2026-10-01T00:00:00Z',status,enrichPhase:'Idle'});
 const records=journals.map((j,i)=>({key:j.issn,issn:j.issn,name:j.name,group:j.group,labels:[],cover:null,papers:[paper(i*2),paper(i*2+1)]}));
-Object.assign(records[0],{name:'Synthetic Conference',source_type:'conference',issn:null,dblp_stream:'streams/conf/icml',group:'Old scope'});
+Object.assign(records[0],{name:'Synthetic Conference',source_type:'unmapped',issn:null,group:'Old scope'});
 const workspace={csrf_token:'fixture',import_token:'fixture',issues:[],counts:{candidates:48,active_journals:24},subjects:[{name:'Group 0',journals:records}],
   completion_papers:records.flatMap(journal=>journal.papers.map(({id,title,status})=>({id,title,status}))),
   kept:{papers:[{paper:paper(10,'kept'),journal:records[0]},{paper:paper(11,'kept'),journal:records[1]}],journals:records,services:[],settings:{},titles:{}}};
@@ -69,7 +68,7 @@ const server=http.createServer((req,res)=>{
     release(()=>{res.writeHead(200,{'Content-Type':'application/json'});res.end(body);});return;
   }
   if(route.startsWith('/api/') || route==='/settings/covers/search'){
-    const data=route==='/api/ui-next/settings/conferences/search'?{candidates:[conference]}:route==='/api/ui-next/workspace'?workspace:route==='/api/ui-next/settings'?settings:
+    const data=route==='/api/ui-next/workspace'?workspace:route==='/api/ui-next/settings'?settings:
       route==='/api/ui-next/run'?run:route==='/api/kept-workflow/queue'?keptQueue:route==='/api/ui-next/run-expression'?{providers:Object.fromEntries([...settings.values.provider_order,'integrated'].map(id=>[id,{expression:'causal',error:null}]))}:route==='/settings/covers/search'?cover_search:
       route==='/api/kept-workflow/state'?keptState:{active:false,phase:'idle',navigation:null,can_continue:false,can_cancel:false};
     res.writeHead(200,{'Content-Type':'application/json'});res.end(JSON.stringify(data));return;
@@ -117,43 +116,12 @@ app.whenReady().then(async()=>{
     win.webContents.on('console-message',event=>{if(event.level==='error')console.error('RENDERER',event.message,event.lineNumber,event.sourceId);});
     await win.loadURL(`http://127.0.0.1:${server.address().port}/`);
     await ready("window.uiWorkspace?.ready() && !document.getElementById('array-candidates').disabled && document.querySelectorAll('#s-journals [data-journal]').length===24");
-    await check(()=>{
-      if(!document.getElementById('array-journal-issn').parentElement.hidden || !document.getElementById('array-journal-eissn').parentElement.hidden)throw Error('Conference profile displays Journal ISSN fields');
-      if(document.getElementById('array-source-stream')?.textContent!=='streams/conf/icml')throw Error('Conference profile lost its native DBLP Stream');
-    });
     await check(async navigate=>{
+      if(document.getElementById('array-source-stream'))throw Error('Retired source field remains');
       await navigate('journals');
-      const category=document.getElementById('s-source-kind'),label=document.getElementById('s-add-journal');
-      const updates=new MutationObserver(()=>{});updates.observe(label,{childList:true});
-      try{
-        for(let i=0;i<8;i++){
-          const conferences=i%2===0;
-          category.value=conferences?'conferences':'journals';category.dispatchEvent(new Event('change'));
-          if(label.textContent!==(conferences?'+ CONFERENCE':'+ JOURNAL') || document.querySelectorAll('#s-journals [data-journal]').length!==(conferences?0:24))throw Error('Repeated category switch displayed the wrong source list');
-          if(updates.takeRecords().length!==1)throw Error('One category switch repeatedly rebuilt its displayed label');
-        }
-      }finally{updates.disconnect();}
+      if(document.getElementById('s-source-kind'))throw Error('Retired source category remains');
+      if(document.getElementById('s-add-journal').textContent!=='+ JOURNAL')throw Error('Journal add control missing');
     });
-    await check(async navigate=>{
-      await navigate('journals');
-      const category=document.getElementById('s-source-kind');category.value='conferences';category.dispatchEvent(new Event('change'));
-      if(document.querySelectorAll('#s-journals [data-journal]').length!==0)throw Error('Registry automatically followed series');
-      document.getElementById('s-add-journal').click();
-      document.getElementById('s-add-query').value='ICML';
-      [...document.querySelectorAll('#s-dialog button')].find(b=>b.textContent==='Search Registry').click();
-    });
-    await ready("document.querySelector('[name=conference-candidate]')");
-    await check(()=>{
-      document.querySelector('[name=conference-candidate]').checked=true;
-      [...document.querySelectorAll('#s-dialog button')].find(b=>b.textContent==='Follow').click();
-    });
-    await ready("window.allfoldAutosave.status==='Saved' && document.querySelectorAll('#s-journals [data-journal]').length===1");
-    await check(()=>{
-      if(document.getElementById('s-journal-detail').textContent.includes('ISSN') || document.getElementById('s-journal-service'))throw Error('Conference received Journal identity or Service controls');
-      const group=document.getElementById('s-conference-group');group.value='group:Group 0';group.dispatchEvent(new Event('change'));
-      const label=document.querySelector('[data-conference-label="Label 1"]');label.checked=true;label.dispatchEvent(new Event('change'));
-    });
-    await ready("window.allfoldAutosave.status==='Saved'");
     await ready("window.inboxRun.available()");
     const firstWorkspaceResponse=new Promise(resolve=>{holdWorkspaceResponse=resolve;});
     records[0].group='Earlier saved group';
@@ -162,17 +130,11 @@ app.whenReady().then(async()=>{
     records[0].group='Group 0';records[0].labels=['Label 1'];
     await check(()=>window.dispatchEvent(new Event('settings-saved')));
     releaseWorkspace();
-    await ready("window.inboxRun.available() && window.inboxKept.candidates().find(entry=>entry.journal.source_type==='conference')?.journal.group==='Group 0'");
+    await ready("window.inboxRun.available() && window.inboxKept.candidates().find(entry=>entry.journal.source_type==='unmapped')?.journal.group==='Group 0'");
     await navigate('workspace');
     await ready("document.getElementById('array-journal-subject').textContent==='Group 0'");
     await navigate('journals');
     await size(600,480,"window.workspaceNavigation.current()==='journals'");
-    await capture('conferences-600');
-    await check(()=>{
-      if(document.getElementById('s-conference-group').value!=='group:Group 0' || !document.querySelector('[data-conference-label="Label 1"]').checked)throw Error('Conference assignments lost');
-      const category=document.getElementById('s-source-kind');category.value='journals';category.dispatchEvent(new Event('change'));
-      if(document.querySelectorAll('#s-journals [data-journal]').length!==24)throw Error('Conference edits modified Journals');
-    });
     await size(1200,800,"window.workspaceNavigation.current()==='journals'");
     await check(async navigate=>{
       await navigate('run');
@@ -280,7 +242,7 @@ app.whenReady().then(async()=>{
       assert(!$('paper-journal-dates').textContent.includes('2022'),'preprint dates entered the journal date collection');
       assert($('paper-first-public').title.includes('arxiv') && !$('paper-first-public').title.includes('crossref'),'First public basis contains journal evidence');
       assert($('paper-source').textContent==='Synthetic Conference','conference source was lost');
-      assert($('paper-identifiers').textContent==='dblp: conf/example/Paper','Paper direct identity was changed');
+      assert($('paper-identifiers').textContent==='openalex: W123','Paper direct identity was changed');
       assert($('paper-indexed-terms').textContent.includes('topic · openalex'),'indexed term type/source was lost');
       assert($('paper-doi').textContent==='DOI unavailable' && !$('paper-doi').hasAttribute('href'),'DOI-free paper acquired a DOI link');
       assert([...$('paper-metadata-details').querySelectorAll('[data-enrich]')].every(node=>node.disabled),'DOI-free external Enrich was enabled');

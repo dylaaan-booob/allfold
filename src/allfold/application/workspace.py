@@ -45,7 +45,6 @@ class WorkspacePaper:
     journal_attribution_state: PaperJournalAttributionState = PaperJournalAttributionState.MISSING_OR_EMPTY
     journal_issns: tuple[str, ...] = ()
     conference: str | None = None
-    conference_id: str | None = None
     publication_type: str | None = None
     first_public_at: str | None = None
     indexed_terms: tuple[ProviderTopic, ...] = ()
@@ -176,7 +175,6 @@ def _project_paper(state: PaperMarkdownState) -> WorkspacePaper:
         journal_attribution_state=state.journal_attribution_state,
         journal_issns=state.journal_issns,
         conference=state.conference,
-        conference_id=state.conference_id,
         publication_type=state.publication_type,
         first_public_at=state.first_public_at,
         indexed_terms=state.indexed_terms,

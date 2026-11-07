@@ -12,11 +12,14 @@ import stat
 import yaml
 
 from allfold.config import (
-    AccessService, ConfigurationError, JournalConfig, ConferenceConfig, SettingsList, validate_conference_configs,
+    AccessService, ConfigurationError, JournalConfig, SettingsList,
     parse_settings_list_text, parse_monitor_definition, validate_access_mapping, validate_entity_mapping,
     validate_journal_configs, validate_journal_storage,
 )
 from allfold.persistence.safe_write import ContentChangedError, read_text_exact, source_file_identity
+
+
+USER_SCOPES_SCHEMA = '(config_path TEXT PRIMARY KEY, revision INTEGER NOT NULL, payload TEXT NOT NULL, migration_source TEXT, migration_digest TEXT, migrated_at TEXT)'
 
 
 @dataclass(frozen=True)
@@ -63,30 +66,26 @@ def validate_user_state(state: SettingsList) -> SettingsList:
     validate_journal_storage(journals)
     validate_access_mapping(journals, state.access_services)
     validate_entity_mapping(journals, state.groups, state.custom_labels)
-    conferences = validate_conference_configs(state.conferences)
-    validate_entity_mapping(conferences, state.groups, state.custom_labels)
-    return SettingsList(journals, tuple(state.groups), tuple(state.custom_labels), tuple(state.access_services), conferences)
+    return SettingsList(journals, tuple(state.groups), tuple(state.custom_labels), tuple(state.access_services))
 
 
 def _encode(state: SettingsList) -> str:
     state = validate_user_state(state)
     return json.dumps(dict(journals=[j.model_dump(mode="json") for j in state.journals],
                            groups=state.groups, custom_labels=state.custom_labels,
-                           conferences=[c.model_dump(mode="json") for c in state.conferences],
                            access_services=[s.model_dump(mode="json") for s in state.access_services]),
                       ensure_ascii=False, sort_keys=True, separators=(",", ":"))
 
 
 def _decode(payload: str) -> SettingsList:
     raw = json.loads(payload)
-    if not isinstance(raw, dict) or set(raw) not in ({"journals", "groups", "custom_labels", "access_services"}, {"journals", "groups", "custom_labels", "access_services", "conferences"}):
+    if not isinstance(raw, dict) or set(raw) != {"journals", "groups", "custom_labels", "access_services"}:
         raise ValueError("Invalid user state schema")
     if any(not isinstance(raw[k], list) for k in raw):
         raise ValueError("Invalid user state collections")
     return validate_user_state(SettingsList(
         tuple(JournalConfig.model_validate(j) for j in raw["journals"]), tuple(raw["groups"]),
-        tuple(raw["custom_labels"]), tuple(AccessService.model_validate(s) for s in raw["access_services"]),
-        tuple(ConferenceConfig.model_validate(c) for c in raw.get("conferences", []))))
+        tuple(raw["custom_labels"]), tuple(AccessService.model_validate(s) for s in raw["access_services"])))
 
 
 def _connect(path: Path, *, create: bool = False):
@@ -169,7 +168,7 @@ def load_user_state(config_path: Path, legacy_path: Path | None = None) -> UserS
         # No database is opened for creation until the complete source validates.
         with closing(_connect(path, create=True)) as connection:
             with connection:
-                connection.execute("CREATE TABLE IF NOT EXISTS user_scopes (config_path TEXT PRIMARY KEY, revision INTEGER NOT NULL, payload TEXT NOT NULL, migration_source TEXT, migration_digest TEXT, migrated_at TEXT)")
+                connection.execute("CREATE TABLE IF NOT EXISTS user_scopes " + USER_SCOPES_SCHEMA)
                 connection.execute("INSERT OR IGNORE INTO user_scopes VALUES (?, 1, ?, ?, ?, ?)",
                                    (str(config_path), payload, str(legacy_path.resolve()), source_digest,
                                     datetime.now(timezone.utc).isoformat()))
@@ -190,7 +189,7 @@ def compare_write_user_state(config_path: Path, state: SettingsList,
             connection.execute("BEGIN IMMEDIATE")
             try:
                 if create:
-                    connection.execute("CREATE TABLE IF NOT EXISTS user_scopes (config_path TEXT PRIMARY KEY, revision INTEGER NOT NULL, payload TEXT NOT NULL, migration_source TEXT, migration_digest TEXT, migrated_at TEXT)")
+                    connection.execute("CREATE TABLE IF NOT EXISTS user_scopes " + USER_SCOPES_SCHEMA)
                 row = _row(connection, config_path)
                 if row is None:
                     if expected_revision != ContentRevision(False, None):

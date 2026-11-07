@@ -1,6 +1,6 @@
 # Allfold
 
-A local-first desktop application for monitoring journals and conference series, reviewing reliably identified papers and importing selected papers into Zotero.
+A local-first desktop application for monitoring journals, reviewing reliably identified papers and importing selected papers into Zotero.
 
 Version **0.1.0** is a pre-release source version. The current development and verification platform is **macOS**. Website access, institutional authentication and Zotero attachments depend on the actual environment; offline checks do not establish compatibility with every site.
 
@@ -21,7 +21,7 @@ Setup installs locked dependencies, obtains fixed Zotero sources, builds the UI 
 
 ## Basic workflow
 
-1. In **Journals**, manage your followed Journals and Conference Series, Groups, Labels and journal Access Services. Conferences use the local DBLP Stream Registry. Each running configuration has its own saved scope. Import a Markdown research scope through Preview / Confirm, or export **User Data** to share it.
+1. In **Journals**, manage your followed Journals, Groups, Labels and Access Services. Each running configuration has its own saved scope. Import a Markdown research scope through Preview / Confirm, or export **User Data** to share it.
 2. In **Run**, set the Monitor name, keywords and publication months. Select any combination of Web of Science, OpenAlex and Europe PMC for one journal-only Run. OpenAlex and Europe PMC remain the defaults; WoS is opt-in and runs first through the existing institutional Browser flow. APIs then discover lightweight identities and request creation details only for new Papers. Run saves only new Paper Markdown; API-completion Providers are configured separately. See [Provider roles and query limits](docs/providers.md). Ordinary changes save automatically, and a new Run waits for saved configuration. Runs are independent and create-only; existing Paper files are not rewritten.
 3. Review candidates in **Workspace / ARRAY**. Reject unwanted Papers, then explicitly open **API 补全**, select one or more non-Rejected Papers and start completion. Keep is not required; saved Papers remain eligible after restart. Keep and Reject are explicit actions; notes and other human-managed content remain in Paper Markdown. Settings defaults **禁用 Archive 视图** on; turn it off to restore ARCHIVE.
 4. Open **Kept** for the Service queue, **PREPARE & IMPORT** or **IMPORT ONLY**. Run Zotero **10.0.6 or later** with its Local API enabled, authorize Allfold with **Always Allow**, and select a Library and optional Collection in Queue. This default saves with the current configuration. Select All Services or one saved Service before starting; the batch retains its original Zotero instance, target and Service scope through Prepare, waiting and Import.
@@ -50,9 +50,9 @@ Parent acceptance and PDF evidence are separate. Import tries Translator PDFs fi
 | `config.template.yaml` | Public starting configuration | Yes |
 | `config.example.yaml` or a custom root YAML file | Local settings | No |
 | `list.md` | Legacy migration seed and importable example | Yes |
-| `.allfold/user-data.sqlite` | Journals, Conferences, Groups, Labels and Services, isolated by configuration | No |
+| `.allfold/user-data.sqlite` | Journals, Groups, Labels and Services, isolated by configuration | No |
 | `.allfold/resources.sqlite` | Shared GOKB and official CARSI resource cache | No |
-| `journal-lists/journal-registry.sqlite` | Read-only Journal and Conference Registry | Yes |
+| `journal-lists/journal-registry.sqlite` | Read-only Journal Registry | Yes |
 | `workspace/` | Paper Markdown, review status and Run snapshots | No |
 | `journal-assets/` | Journal covers | No |
 | Electron application logs directory | Bounded configuration-scoped run history and structured diagnostics | No |
@@ -63,7 +63,7 @@ Submit API key replacement or clearing explicitly from the corresponding Run Pro
 
 Zotero authorization keys also use Electron protected storage, associated with the Local API's Server ID. A one-use **Allow** key can expire during a multi-request import; **Always Allow** supports the complete operation. Reauthorization never replays an uncertain write. Group metadata does not establish item or file write permission: Zotero checks these separately when saving. Deleted targets, permission failures and a changed Zotero instance do not redirect imports to another Library or Collection. See the [Local API protocol and compatibility notes](docs/zotero-local-api.md) for metadata and attachment boundaries.
 
-Configuration, legacy journal seed and Workspace paths must stay inside the project directory. On first use, each configuration validates and copies its legacy managed Markdown data into SQLite without changing the source file; later changes use SQLite. Include `.allfold/` in local backups. Use **Export User Data** to transfer a research scope to another configuration or application location, since canonical configuration paths identify saved scopes. Export contains no provider credentials, resource caches, Workspace papers or Zotero data. Conferences use the same configuration-scoped SQLite user state as Journals. Legacy Markdown is a first-migration or explicit exchange source, not the live store.
+Configuration, legacy journal seed and Workspace paths must stay inside the project directory. On first use, each configuration validates and copies its legacy managed Markdown data into SQLite without changing the source file; later changes use SQLite. Include `.allfold/` in local backups. Use **Export User Data** to transfer a research scope to another configuration or application location, since canonical configuration paths identify saved scopes. Export contains no provider credentials, resource caches, Workspace papers or Zotero data. Legacy Markdown is a first-migration or explicit exchange source, not the live store.
 
 Settings Reset selects one scope without requiring a typed word. **Workspace**
 permanently deletes the confirmed Workspace, including its latest Run snapshots;

@@ -12,7 +12,7 @@ Setup checks tools, creates `config.example.yaml` only if absent, installs locke
 
 Configure keywords, months and Provider settings in Run; Kept owns Workflow and Access settings. Application settings remain in Settings. Ordinary edits autosave, while credential replacement/clearing and high-impact operations require explicit submission. The public template is separate from local configuration; setup does not create or copy credentials.
 
-Journal and Conference state is stored in `.allfold/user-data.sqlite`, isolated by canonical configuration path. The YAML `venue_whitelist` remains the first-migration source, not the live data store. The Conference Registry source and reproducible table build are documented in [CONFERENCES](../journal-lists/CONFERENCES.md). Shared GOKB/CARSI data lives in `.allfold/resources.sqlite`; neither database belongs in a source candidate. Use temporary project/configuration directories and injected HTTP transports for migration, exchange and Resolver tests. Do not launch tests against personal YAML, Workspace, covers or Zotero.
+Journal state is stored in `.allfold/user-data.sqlite`, isolated by canonical configuration path. The YAML `venue_whitelist` remains the first-migration source, not the live data store. The Journal Registry rebuilds offline from the existing five source lists with `uv run --locked python tools/build_journal_registry.py`; its shipped rows and indexes are checked against an isolated rebuild. Shared GOKB/CARSI data lives in `.allfold/resources.sqlite`; neither database belongs in a source candidate. Use temporary project/configuration directories and injected HTTP transports for migration, exchange and Resolver tests. Do not launch tests against personal YAML, Workspace, covers or Zotero.
 
 ## Start and stop
 
@@ -140,3 +140,31 @@ supplementary when available. These checks do not establish real-site,
 real-Workspace or Zotero acceptance.
 
 `tests/test_incremental_discovery.py` exercises the unified native-stage boundary, parent slot retention, partial export preservation, lightweight identity discovery, unknown-only batch details, >200 unordered Work IDs, whole-author singleton fallback and ambiguous-owner isolation. `electron/tests/task-presentation.test.cjs` covers unified browser-stage recovery and parent cancellation without opening native windows. History keeps sanitized source totals and WoS batch/journal/date hint counts; actual Custom controls and downloaded exports remain a separately authorized live acceptance boundary.
+
+## One-time retired scope cleanup
+
+Existing user databases with the retired `conferences` collection require an
+explicit cleanup before the Journal-only runtime can read them. Stop the old
+application, then run this command against the exact database to update:
+
+```sh
+uv run --locked python tools/remove_conference_data.py /absolute/path/to/.allfold/user-data.sqlite
+```
+
+The tool validates every scope and the known schema before changing anything. It
+uses the existing safe SQLite path checks, compares the captured rows under
+`BEGIN IMMEDIATE`, and creates and verifies a complete private SQLite backup beside
+the database before writes. It removes only the retired collection, preserving
+Journals, Groups, Custom Labels, Access Services, assignments, migration metadata
+and configuration paths. Each changed scope advances its revision once; stale
+Settings writes are rejected. A second run does nothing. Unknown structures,
+corruption or concurrent changes cause refusal/rollback. The tool is separate from
+startup and normal serialization; it does not recreate a Conference configuration
+model or migrate Paper identities.
+
+Retain the reported backup until acceptance. To recover, stop Allfold and use
+SQLite's backup API from that backup into the original database; preserve the
+original and any sidecars until recovery is verified. Never copy over a database
+while the application is running. Paper data is untouched; retired Paper identity
+fields require a separately chosen, backed-up Workspace Reset as described in
+[Paper identity](paper-identity.md).

@@ -19,7 +19,7 @@ from allfold.integrations.openalex_credentials import read_credential, write_cre
 
 from allfold.config import (
     AccessService,
-    SettingsList, ConferenceConfig, validate_conference_configs, parse_conferences_text,
+    SettingsList,
     DEFAULT_PROVIDER_ORDER, ENABLED_PROVIDERS, COMPLETION_PROVIDERS,
     parse_access_services_text,
     parse_settings_list_text,
@@ -92,7 +92,6 @@ class MonitorDraft:
     monitor_revision: ContentRevision
     journal_revision: ContentRevision
     access_services: tuple[AccessService, ...] = ()
-    conferences: tuple[ConferenceConfig, ...] = ()
     groups: tuple[str, ...] = ()
     custom_labels: tuple[str, ...] = ()
     institution: InstitutionConfig | None = None
@@ -444,7 +443,6 @@ def load_settings(config_path: Path) -> SettingsLoadResult:
     journal_issues: list[SettingsIssue] = [journal_snapshot.issue] if journal_snapshot.issue else []
     journals: tuple[JournalConfig, ...] = ()
     access_services: tuple[AccessService, ...] = ()
-    conferences: tuple[ConferenceConfig, ...] = ()
     groups: tuple[str, ...] = ()
     custom_labels: tuple[str, ...] = ()
     if not journal_snapshot.revision.exists:
@@ -474,13 +472,6 @@ def load_settings(config_path: Path) -> SettingsLoadResult:
                     path=journal_path,
                 )
             )
-        # Only the successful SQLite projection owns Conferences. Legacy Markdown
-        # is left untouched and is never used for automatic Conference migration.
-        if journal_snapshot.issue is None:
-            try:
-                conferences = parse_conferences_text(contents, path=journal_path)
-            except ConfigurationError as error:
-                journal_issues.append(SettingsIssue(SettingsIssueSource.JOURNAL_DATA, str(error), field="conferences", path=journal_path))
         headings = {line.strip() for line in contents.splitlines()}
         if "## Access Services" in headings:
             try:
@@ -519,7 +510,6 @@ def load_settings(config_path: Path) -> SettingsLoadResult:
         name=fields.name,
         keyword_expression=fields.keyword_expression,
         journals=journals,
-        conferences=conferences,
         access_services=access_services,
         groups=groups,
         custom_labels=custom_labels,
@@ -550,7 +540,7 @@ def _read_journal_snapshot(config_path: Path, legacy_path: Path) -> _FileSnapsho
         state = snapshot.state
         contents = render_settings_list_text(None, state.journals, path=legacy_path,
                                             groups=state.groups, custom_labels=state.custom_labels,
-                                            access_services=state.access_services, conferences=state.conferences)
+                                            access_services=state.access_services)
         return _FileSnapshot(snapshot.revision, contents, None)
     except ConfigurationError as error:
         # Invalid initial Markdown can still be inspected, but its issue blocks Save.
@@ -614,10 +604,9 @@ def validate_settings(
             if action == "replace" and not validate_key(secret.get_secret_value() if secret else None, provider=provider):
                 raise ConfigurationError("API Key has an invalid format", field=f"{provider}_api_key")
         validate_access_mapping(draft.journals, draft.access_services)
-        config = build_loaded_config(config_path, definition, draft.journals, draft.conferences)
+        config = build_loaded_config(config_path, definition, draft.journals)
         validate_journal_storage(config.journals)
         validate_entity_mapping(draft.journals, draft.groups, draft.custom_labels)
-        validate_entity_mapping(validate_conference_configs(draft.conferences), draft.groups, draft.custom_labels)
         resolved = validate_runtime_config(config, today=date.today())
     except ConfigurationError as error:
         return SettingsValidationResult(
@@ -889,9 +878,9 @@ def _save_settings(
 
     storage_fields, _ = _monitor_fields(config_path, monitor_snapshot)
     list_unchanged = (
-        (draft.journals, draft.access_services, draft.groups, draft.custom_labels, draft.conferences)
+        (draft.journals, draft.access_services, draft.groups, draft.custom_labels)
         == (stored_state.draft.journals, stored_state.draft.access_services,
-            stored_state.draft.groups, stored_state.draft.custom_labels, stored_state.draft.conferences)
+            stored_state.draft.groups, stored_state.draft.custom_labels)
     )
     # 缺失的 Monitor 可以由用户明确提交的有效 Draft 首次创建；
     # 已存在但损坏的 Monitor，以及任何 Journal/Mapping 问题都不能借此覆盖。
@@ -959,9 +948,9 @@ def _save_settings(
     try:
         # 数据归属决定写入目标。纯用户状态编辑不触及 YAML。
         journal_changed = (
-            (draft.journals, draft.access_services, draft.groups, draft.custom_labels, draft.conferences)
+            (draft.journals, draft.access_services, draft.groups, draft.custom_labels)
             != (stored_state.draft.journals, stored_state.draft.access_services,
-                stored_state.draft.groups, stored_state.draft.custom_labels, stored_state.draft.conferences)
+                stored_state.draft.groups, stored_state.draft.custom_labels)
         )
         monitor_changed = (
             not monitor_snapshot.revision.exists
@@ -972,7 +961,7 @@ def _save_settings(
         journal_target = (
             render_settings_list_text(journal_snapshot.contents, draft.journals,
                                       groups=draft.groups, custom_labels=draft.custom_labels,
-                                      access_services=draft.access_services, conferences=draft.conferences, path=journal_path)
+                                      access_services=draft.access_services, path=journal_path)
             if journal_changed else journal_snapshot.contents
         )
         monitor_target = (
@@ -998,7 +987,7 @@ def _save_settings(
             raise ContentChangedError("monitor config changed before journal data write")
         if journal_changed:
             compare_write_user_state(config_path,
-                SettingsList(draft.journals, draft.groups, draft.custom_labels, draft.access_services, draft.conferences),
+                SettingsList(draft.journals, draft.groups, draft.custom_labels, draft.access_services),
                 journal_snapshot.revision)
     except (ContentChangedError, FileExistsError) as error:
         state = load_settings(config_path)
@@ -1019,8 +1008,8 @@ def _save_settings(
         state = load_settings(config_path)
         # A storage error can follow commit; reload the scope to report the actual result.
         committed = journal_changed and not state.issues and (
-            state.draft.journals, state.draft.groups, state.draft.custom_labels, state.draft.access_services, state.draft.conferences
-        ) == (draft.journals, draft.groups, draft.custom_labels, draft.access_services, draft.conferences)
+            state.draft.journals, state.draft.groups, state.draft.custom_labels, state.draft.access_services
+        ) == (draft.journals, draft.groups, draft.custom_labels, draft.access_services)
         return _result_from_state(
             outcome=SettingsSaveOutcome.PARTIAL_SAVE if committed else SettingsSaveOutcome.WRITE_FAILED,
             validation=validation,
