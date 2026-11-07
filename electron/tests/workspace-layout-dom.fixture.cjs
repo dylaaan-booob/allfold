@@ -280,7 +280,7 @@ app.whenReady().then(async()=>{
       assert(!$('paper-journal-dates').textContent.includes('2022'),'preprint dates entered the journal date collection');
       assert($('paper-first-public').title.includes('arxiv') && !$('paper-first-public').title.includes('crossref'),'First public basis contains journal evidence');
       assert($('paper-source').textContent==='Synthetic Conference','conference source was lost');
-      assert($('paper-identifiers').textContent.includes('dblp: conf/example/Paper'),'DOI-free identity was hidden');
+      assert($('paper-identifiers').textContent==='dblp: conf/example/Paper','Paper direct identity was changed');
       assert($('paper-indexed-terms').textContent.includes('topic · openalex'),'indexed term type/source was lost');
       assert($('paper-doi').textContent==='DOI unavailable' && !$('paper-doi').hasAttribute('href'),'DOI-free paper acquired a DOI link');
       assert([...$('paper-metadata-details').querySelectorAll('[data-enrich]')].every(node=>node.disabled),'DOI-free external Enrich was enabled');
@@ -448,7 +448,7 @@ app.whenReady().then(async()=>{
     const integratedSummary={availability:'available',provider:'integrated',status:'incomplete',
       outcome:'COMPLETED_WITH_ERRORS',coverage_status:'partial',created_papers:2,existing_papers:1,
       finished_at:'2026-11-07T01:00:00Z',resolved_date_range:{from_date:'2026-01-01',to_date:'2026-03-31'},
-      journals:[],statistics:{integrated_candidates:3,integrated_deduplicated:3},
+      journals:[],statistics:{integrated_candidates:3,integrated_deduplicated:3,conflicts:1},
       issues:[{category:'discovery',severity:'error',message:'europe_pmc / Synthetic Journal: request failed'}],
       details:{discovery_status:'partial',provider_runs:[
         {provider:'openalex',source:'Synthetic Journal',status:'complete',candidates:3,retained:3,limitations:[]},
@@ -459,7 +459,7 @@ app.whenReady().then(async()=>{
       const root=document.querySelector('#s-run-records .s-run-record');
       root.querySelector('details').open=true;
       const text=root.innerText;
-      for(const expected of ['完成，检索覆盖不完整','2 new papers','1 already saved','Provider Details','Candidates','Distinct Papers','openalex','europe_pmc','request failed','检索'])if(!text.includes(expected))throw Error('Missing Integrated result: '+expected);
+      for(const expected of ['完成，检索覆盖不完整','2 new papers','1 already saved','Provider Details','Candidates','Distinct Papers','Identity conflicts','openalex','europe_pmc','request failed','检索'])if(!text.includes(expected))throw Error('Missing Integrated result: '+expected);
       if(/Source Resolution|OpenAlex records/.test(text) || root.querySelector('.s-run-coverage'))throw Error('Obsolete OpenAlex result surface');
       const content=document.querySelector('#s-run .workspace-content');
       if(content.scrollWidth>content.clientWidth+1)throw Error('Run result overflows constrained content');
@@ -477,7 +477,7 @@ app.whenReady().then(async()=>{
       run.providers.integrated.result_summary={...integratedSummary,status,outcome,coverage_status:retrieval,
         created_papers:hasHits?2:0,existing_papers:hasHits?1:0,
         statistics:{integrated_candidates:hasHits?6:0,integrated_deduplicated:hasHits?3:0},
-        issues:status==='capture_issues'?[{category:'evidence_write',severity:'error',message:'Synthetic evidence write failed'}]:
+        issues:status==='capture_issues'?[{category:'write',severity:'error',message:'Synthetic Paper creation failed'}]:
           status==='completed_with_notices'?[{category:'snapshot_write',severity:'warning',message:'Synthetic snapshot unavailable'}]:[],
         details:{discovery_status:retrieval,provider_runs:integratedSummary.details.provider_runs.map(row=>({...row,
           status:retrieval,candidates:hasHits?3:0,retained:hasHits?3:0,limitations:[]}))}};

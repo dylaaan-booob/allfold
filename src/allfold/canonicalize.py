@@ -21,7 +21,6 @@ from allfold.models import (
     ExternalIds,
     MetadataSource,
     ProviderWorkEvidence,
-    ProviderRecordRef,
 )
 
 
@@ -207,11 +206,15 @@ def _is_complete_date(value: EvidenceDate) -> bool:
     return value.month is not None and value.day is not None
 
 
-def _snapshot_key(record: ProviderWorkEvidence) -> str:
-    """Order duplicate snapshots by payload, never transport completion time."""
-    payload = record.model_dump(mode="json")
-    payload["provenance"].pop("retrieved_at", None)
-    return json.dumps(payload, sort_keys=True)
+def evidence_key(record: ProviderWorkEvidence) -> str:
+    """Deduplicate operation-local facts independently of retrieval timestamps."""
+    def facts(value):
+        if isinstance(value, dict):
+            return {key: facts(item) for key, item in value.items() if key != 'retrieved_at'}
+        if isinstance(value, list):
+            return [facts(item) for item in value]
+        return value
+    return json.dumps(facts(record.model_dump(mode='json')), sort_keys=True, ensure_ascii=False)
 
 
 def _nonempty_conflicts(
@@ -436,7 +439,7 @@ def _normalize_retrievals(
         issues.extend(_snapshot_issues(snapshots))
         # Keep bounded invocation evidence: another snapshot may supply missing
         # fields or date/identity evidence. Source provenance is deduplicated later.
-        normalized.extend(sorted(snapshots, key=_snapshot_key))
+        normalized.extend(sorted(snapshots, key=evidence_key))
     return normalized, issues
 
 
@@ -631,7 +634,7 @@ def _build_paper(
         record.provenance.provider.casefold() != "wos",
         not bool(record.monitor_journal_issns or record.conference_id),
         record.provenance.role == "supplement",
-        order.get(record.provenance.provider.casefold(), 99), _record_key(record), _snapshot_key(record),
+        order.get(record.provenance.provider.casefold(), 99), _record_key(record), evidence_key(record),
     ))
     def field(name):
         return next((getattr(record, name) for record in ordered if getattr(record, name)), None)
@@ -650,9 +653,6 @@ def _build_paper(
     dates, date_evidence = _finalize_dates(ordered)
     return CanonicalPaper(
         date_evidence=date_evidence,
-        identity_aliases=tuple(ProviderRecordRef(provider=namespace, record_id=value)
-                              for namespace, value in sorted({key for record in evidence
-                                  for key in evidence_identifiers(record) if key[0] != "doi"})),
         metadata=CanonicalMetadata(
             **dates,
             title=title,
@@ -669,9 +669,6 @@ def _build_paper(
             update={"doi": doi},
         ),
         authors=field("authors") or (),
-        related_dois=tuple(sorted({value for record in evidence
-            for namespace, value in evidence_identifiers(record)
-            if namespace == "doi" and value != doi})),
         indexed_terms=tuple(dict.fromkeys(term for record in ordered for term in (*record.indexed_terms, *record.provider_topics))),
         sources=_deduplicate_sources(evidence),
         journal_issns=tuple(sorted({
@@ -731,3 +728,16 @@ def consolidate_evidence(
         clusters=clusters,
         issues=tuple(unique_issues),
     )
+
+
+def completion_metadata(records: Sequence[ProviderWorkEvidence]) -> CanonicalPaper:
+    """Combine response-bound facts for one selected Paper, including linked versions.
+
+    This does not establish identity or create a Paper. The caller validates the
+    response chain against its saved target and commits only eligible fields.
+    """
+    normalized, issues = _normalize_retrievals(records)
+    paper = _build_paper(tuple(range(len(normalized))), normalized, issues)
+    if paper is None:
+        raise ValueError('Completion response has insufficient metadata')
+    return paper

@@ -1,8 +1,9 @@
 """Build evidence from saved Papers and apply a narrow, exact-revision update."""
 from allfold.application.paper_enrichment import fill_abstract, fill_authors, fill_publication_date, _commit_fields, set_managed_value
-from allfold.canonicalize import canonicalize_records
-from allfold.models import Author, MetadataSource, ProviderRecordRef, ProviderWorkEvidence, WorkflowStatus
+from allfold.canonicalize import completion_metadata
+from allfold.models import Author, MetadataSource, ProviderWorkEvidence, WorkflowStatus
 from allfold.identifiers import strong_identifiers
+from allfold.application.metadata_completion import bind_records
 from allfold.persistence.safe_write import TextWriteCommittedError
 from allfold.paper_dates import merge_dates
 from allfold.persistence.markdown_state import parse_paper_state
@@ -15,9 +16,7 @@ def saved_paper_evidence(target):
         title=state.title, journal=state.journal, conference=state.conference, conference_id=state.conference_id,
         publication_type=state.publication_type or ('journal' if state.journal else None),
         publication_date=state.publication_date, abstract=state.abstract, authors=tuple(Author(name=name) for name in state.authors),
-        external_ids=state.external_ids, related_dois=state.related_dois,
-        related_ids=tuple(ProviderRecordRef(provider=namespace, record_id=value) for namespace, value in
-            sorted(state.identity_external_ids - strong_identifiers(state.external_ids, state.related_dois))),
+        external_ids=state.external_ids, first_public_at=state.first_public_at,
         dates=state.date_evidence, monitor_journal_issns=state.journal_issns)
 
 
@@ -29,10 +28,14 @@ def save_api_completion(target, records, *, operation_lock):
         raise ValueError('Rejected Paper is excluded from API completion')
     if not any(record.provenance.provider != 'workspace' for record in records):
         return []
-    canonical = canonicalize_records(records)
-    if len(canonical.papers) != 1:
-        raise ValueError('Completion evidence does not identify one research work')
-    paper = canonical.papers[0]
+    # The selected Paper owns this write; linked versions supply facts, never
+    # a replacement primary identity or permission to update another Paper.
+    seed = saved_paper_evidence(target)
+    pending = tuple(record for record in records if record.provenance.provider != 'workspace')
+    accepted, rejected = bind_records((seed, *pending), strong_identifiers(state.external_ids))
+    if rejected:
+        raise ValueError('Completion response is not bound to the selected Paper')
+    paper = completion_metadata(accepted)
     contents, fields = target.original, []
     if not state.abstract and paper.metadata.abstract:
         contents = fill_abstract(contents, paper.metadata.abstract)

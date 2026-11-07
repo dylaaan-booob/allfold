@@ -47,7 +47,6 @@ class WorkspacePaper:
     conference: str | None = None
     conference_id: str | None = None
     publication_type: str | None = None
-    related_dois: tuple[str, ...] = ()
     first_public_at: str | None = None
     indexed_terms: tuple[ProviderTopic, ...] = ()
     date_evidence: tuple[EvidenceDate, ...] = ()
@@ -179,7 +178,6 @@ def _project_paper(state: PaperMarkdownState) -> WorkspacePaper:
         conference=state.conference,
         conference_id=state.conference_id,
         publication_type=state.publication_type,
-        related_dois=state.related_dois,
         first_public_at=state.first_public_at,
         indexed_terms=state.indexed_terms,
         date_evidence=state.date_evidence,

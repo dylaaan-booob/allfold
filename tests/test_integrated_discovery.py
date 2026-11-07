@@ -32,7 +32,7 @@ def test_malformed_supplement_metadata_is_local_to_that_request():
 
 
 def test_openalex_biomedical_ids_join_doi_free_europe_pmc_records():
-    from allfold.canonicalize import canonicalize_records
+    from allfold.canonicalize import canonicalize_records, completion_metadata
     from allfold.providers.integrated import DiscoveryClient, SourceScope
     for ids, epmc in (({'pmid':'https://pubmed.ncbi.nlm.nih.gov/123/'},{'source':'MED','id':'123'}),
                       ({'pmcid':'https://www.ncbi.nlm.nih.gov/pmc/articles/PMC456/'},{'source':'MED','id':'999','pmcid':'PMC456'})):
@@ -126,7 +126,7 @@ def test_cancellation_during_response_stops_pagination_and_keeps_cancelled_state
 
 def test_openalex_locations_supply_preprint_ids_without_guessing_from_accepted_version():
     from allfold.providers.integrated import DiscoveryClient, SourceScope
-    from allfold.canonicalize import canonicalize_records
+    from allfold.canonicalize import canonicalize_records, completion_metadata
     with DiscoveryClient('openalex', transport=httpx.MockTransport(lambda _: pytest.fail('Normalization made a request'))) as client:
         record = client.normalize({'id': 'https://openalex.org/W42', 'title': 'Formal', 'publication_date': '2026-02',
             'related_works': ['https://openalex.org/W99'], 'locations': [
@@ -143,7 +143,7 @@ def test_openalex_locations_supply_preprint_ids_without_guessing_from_accepted_v
 @pytest.mark.parametrize('versions,expected', [([], None), ([{'id': 'PPR1', 'source': 'PPR', 'versionNumber': '1', 'firstPublishDate': '2020-06'}], '2020-06')])
 def test_europe_pmc_preserves_explicit_relations_and_per_version_dates(versions, expected):
     from allfold.providers.integrated import DiscoveryClient, SourceScope
-    from allfold.canonicalize import canonicalize_records
+    from allfold.canonicalize import canonicalize_records, completion_metadata
     with DiscoveryClient('europe_pmc', transport=httpx.MockTransport(lambda _: pytest.fail('Normalization made a request'))) as client:
         formal = client.normalize({'source': 'MED', 'id': '42', 'doi': '10.5555/formal', 'title': 'Formal',
             'firstPublicationDate': '2026-01-01', 'abstractText': 'Formal abstract',
@@ -154,7 +154,8 @@ def test_europe_pmc_preserves_explicit_relations_and_per_version_dates(versions,
         preprint = client.normalize({'source': 'PPR', 'id': 'PPR3', 'title': 'Preprint', 'versionNumber': '3',
             'firstPublicationDate': '2025-09-01', 'versionList': {'version': versions}}, SourceScope('journal', ''))
     assert [(ref.provider, ref.record_id) for ref in formal.related_ids] == [('europe_pmc', 'PPR:PPR3')]
-    paper, = canonicalize_records((formal, preprint)).papers
+    assert len(canonicalize_records((formal, preprint)).papers) == 2
+    paper = completion_metadata((formal, preprint))
     assert paper.doi == '10.5555/formal' and paper.metadata.first_public_at == expected
     assert any(d.record_id == 'PPR:PPR3' and d.version == '3' and d.year == 2025 for d in paper.date_evidence)
     if expected:
@@ -180,7 +181,7 @@ def test_europe_pmc_relation_aliases_identify_each_target_without_joining_distin
     from datetime import datetime, timezone
     from allfold.models import EvidenceDate, EvidenceDateKind, ExternalIds, MetadataSource, ProviderWorkEvidence
     from allfold.providers.integrated import DiscoveryClient, SourceScope
-    from allfold.canonicalize import canonicalize_records
+    from allfold.canonicalize import canonicalize_records, completion_metadata
     raw = {'source': 'MED', 'id': '42', 'doi': '10.5555/formal', 'title': 'Formal',
         'commentCorrectionList': {'commentCorrection': [
             {'type': 'Preprint in', 'source': 'PPR', 'id': f'PPR{number}', 'doi': f'10.1101/{number}'} for number in (1, 2)]}}
@@ -190,5 +191,6 @@ def test_europe_pmc_relation_aliases_identify_each_target_without_joining_distin
         retrieved_at=datetime.now(timezone.utc)), title='Preprint', publication_type='preprint', external_ids=ExternalIds(doi=f'10.1101/{number}'),
         dates=(EvidenceDate(kind=EvidenceDateKind.PREPRINT, year=2020 if number == 1 else 2021, month=6,
             first_version=number == 1 or second_first),)) for number in (1, 2))
-    paper, = canonicalize_records((formal, *preprints)).papers
+    assert len(canonicalize_records((formal, *preprints)).papers) == 3
+    paper = completion_metadata((formal, *preprints))
     assert paper.metadata.first_public_at == expected

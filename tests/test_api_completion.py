@@ -6,7 +6,6 @@ import pytest
 from allfold.application.decisions import reject_paper
 from allfold.application.workspace import load_workspace
 from allfold.models import ExternalIds, MetadataSource, ProviderRecordRef, ProviderWorkEvidence, WorkflowStatus
-from allfold.persistence.discovery_evidence import append_discovery_evidence
 from allfold.persistence.safe_write import workspace_operation_lock
 from allfold.providers.supplemental import SupplementalClient
 from test_paper_enrichment import missing
@@ -66,7 +65,7 @@ def test_partial_completion_reports_whether_first_public_is_recorded(tmp_path, r
     service.join()
     result = service.state()
     assert result['phase'] == 'Partial'
-    assert result['results'][0]['first_public_status'] == 'failed'
+    assert result['results'][0]['first_public_status'] == ('recorded' if recorded else 'failed')
     assert result['results'][0]['first_public_recorded'] is recorded
     assert result['results'][0]['lookups'][0]['status'] == 'identity_mismatch'
 
@@ -112,11 +111,8 @@ def test_saved_unkept_paper_completes_after_restart_and_rejected_paper_is_exclud
     reject_paper(workspace, rejected_id, WorkflowStatus.CANDIDATE)
     rejected = workspace / 'Papers' / 'rejected.md'
     original_rejected = rejected.read_bytes()
-    with workspace_operation_lock(workspace) as lock:
-        append_discovery_evidence(lock, paper_id, (ProviderWorkEvidence(
-            provenance=MetadataSource(provider='openalex', record_id='W42', retrieved_at=datetime.now(timezone.utc)),
-            external_ids=ExternalIds(doi='10.5555/decision'),
-            related_ids=(ProviderRecordRef(provider='arxiv', record_id='2201.12345'),)),))
+    from test_application_decisions import replace_frontmatter
+    replace_frontmatter(path, external_ids={'doi': '10.5555/decision', 'arxiv': '2201.12345'})
     calls = []
     def response(request):
         calls.append(request)
@@ -329,7 +325,7 @@ def test_cancellation_retains_previous_commit_and_stops_later_papers(tmp_path):
     assert calls == ['10.5555/0', '10.5555/1']
 
 
-def test_evidence_write_failure_reports_the_paper_update_that_was_committed(tmp_path):
+def test_obsolete_evidence_paths_do_not_affect_paper_completion(tmp_path):
     from allfold.application.coordinators.api_completion import ApiCompletion
     from allfold.application.browser_runtime import BrowserTaskLock
     from allfold.diagnostics import DiagnosticStore
@@ -346,19 +342,20 @@ def test_evidence_write_failure_reports_the_paper_update_that_was_committed(tmp_
     service.join()
     result = service.state()
     assert load_workspace(workspace).inbox[0].abstract == 'Committed abstract'
-    assert result['phase'] == 'Partial' and result['results'][0]['status'] == 'updated'
-    assert result['results'][0]['warning'] and 'abstract' in result['results'][0]['saved_fields']
+    assert result['phase'] == 'Completed' and result['results'][0]['status'] == 'updated'
+    assert 'warning' not in result['results'][0]
+    assert list((workspace / 'Evidence').iterdir()) == [workspace / 'Evidence' / f'{paper_id}.json']
     assert store.history()['records'][0]['statistics']['updated'] == 1
 
 
-def test_api_completion_uses_saved_identity_alias_without_a_handoff(tmp_path):
+def test_api_completion_uses_direct_saved_arxiv_id_without_a_handoff(tmp_path):
     from allfold.application.coordinators.api_completion import ApiCompletion
     from allfold.application.browser_runtime import BrowserTaskLock
     from test_application_decisions import replace_frontmatter
     config, workspace = write_valid_config(tmp_path)
     config.write_text(config.read_text() + '\ncompletion_providers: [arxiv]\n')
     paper_id, path = missing(workspace)
-    replace_frontmatter(path, doi=None, external_ids={}, identity_aliases=[{'provider': 'arxiv', 'record_id': '2201.12345'}])
+    replace_frontmatter(path, doi=None, external_ids={'arxiv': '2201.12345'})
     calls = []
     def response(request):
         calls.append(request)
@@ -384,7 +381,7 @@ def test_arxiv_doi_identity_survives_completion_writeback_without_atom_doi(tmp_p
     paper_id, path = missing(workspace)
     arxiv_doi = '10.48550/arxiv.2201.12345'
     primary = '10.5555/formal' if related else arxiv_doi
-    replace_frontmatter(path, doi=primary, external_ids={'doi': primary}, related_dois=[arxiv_doi] if related else [])
+    replace_frontmatter(path, doi=primary, external_ids={'doi': primary, **({'arxiv': '2201.12345'} if related else {})})
     service = ApiCompletion(config, BrowserTaskLock(), client_factory=lambda provider, **kwargs:
         SupplementalClient(provider, interval=0, transport=httpx.MockTransport(lambda _: httpx.Response(200, text='''
           <feed xmlns="http://www.w3.org/2005/Atom"><entry>
@@ -440,35 +437,34 @@ def test_new_preprint_alias_does_not_duplicate_already_saved_version_dates(tmp_p
             evidence = client.normalize({**raw, **addition}, SourceScope('journal', ''))
             with workspace_operation_lock(workspace) as lock:
                 target = read_paper_target(workspace, paper_id, operation_lock=lock)
-                save_api_completion(target, (saved_paper_evidence(target), evidence), operation_lock=lock)
+                root = ProviderWorkEvidence(provenance=MetadataSource(provider='crossref', record_id='10.5555/decision',
+                    retrieved_at=datetime.now(timezone.utc)), external_ids=ExternalIds(doi='10.5555/decision'),
+                    related_ids=(ProviderRecordRef(provider='europe_pmc', record_id='PPR:PPR3', relation='preprint'),))
+                save_api_completion(target, (saved_paper_evidence(target), root, evidence), operation_lock=lock)
             paper, = load_workspace(workspace).inbox
             assert paper.first_public_at == '2020-06'
             assert len(paper.date_evidence) == 2
 
 
-@pytest.mark.parametrize('handoff', [False, True])
-def test_saved_aggregate_preprint_ids_do_not_join_independent_version_families(tmp_path, handoff):
+def test_saved_date_facts_do_not_join_independent_version_families(tmp_path):
     from allfold.application.coordinators.api_completion import ApiCompletion
     from allfold.application.browser_runtime import BrowserTaskLock
-    from allfold.canonicalize import canonicalize_records
+    from allfold.canonicalize import completion_metadata
     from allfold.models import Author, EvidenceDate, EvidenceDateKind
     from allfold.persistence.materialize import materialize_papers
     config, workspace = write_valid_config(tmp_path)
     config.write_text(config.read_text() + '\ncompletion_providers: [biorxiv]\n')
     first = ProviderWorkEvidence(provenance=MetadataSource(provider='arxiv', record_id='2201.12345',
-        retrieved_at=datetime.now(timezone.utc)), external_ids=ExternalIds(arxiv='2201.12345'),
+        retrieved_at=datetime.now(timezone.utc)), external_ids=ExternalIds(arxiv='2201.12345', openalex='W123'),
         related_dois=('10.1101/123456',), publication_type='preprint', publication_date='2022-01-02',
         title='Preprint', abstract='Saved abstract', authors=(Author(name='Saved author'),),
         dates=(EvidenceDate(kind=EvidenceDateKind.PREPRINT, year=2022, month=1, day=2, first_version=True),))
     later = first.model_copy(update={'provenance': first.provenance.model_copy(update={'provider': 'biorxiv', 'record_id': '10.1101/123456:2'}),
-        'external_ids': ExternalIds(doi='10.1101/123456'), 'related_dois': (), 'publication_date': '2024-01',
+        'external_ids': ExternalIds(doi='10.1101/123456', openalex='W123'), 'related_dois': (), 'publication_date': '2024-01',
         'dates': (EvidenceDate(kind=EvidenceDateKind.PREPRINT, year=2024, month=1, version='2'),)})
-    paper, = canonicalize_records((first, later)).papers
+    paper = completion_metadata((first, later))
     assert paper.metadata.first_public_at is None
     assert materialize_papers((paper,), workspace).created_papers
-    if handoff:
-        with workspace_operation_lock(workspace) as lock:
-            append_discovery_evidence(lock, paper.id, (first, later))
     calls = []
     def response(request):
         calls.append(request.url.path)
@@ -511,25 +507,23 @@ def test_paper_commit_sync_failure_preserves_saved_fields_through_commit_guard(t
     assert 'abstract' in result['results'][0]['saved_fields'] and result['results'][0]['warning']
 
 
-def test_local_evidence_completes_without_enabled_network_sources(tmp_path):
+def test_no_enabled_network_sources_leaves_paper_gaps_unchanged(tmp_path):
     from allfold.application.coordinators.api_completion import ApiCompletion
     from allfold.application.browser_runtime import BrowserTaskLock
     from allfold.models import Author
     config, workspace = write_valid_config(tmp_path)
     config.write_text(config.read_text() + '\ncompletion_providers: []\n')
     paper_id, path = missing(workspace)
-    with workspace_operation_lock(workspace) as lock:
-        append_discovery_evidence(lock, paper_id, (ProviderWorkEvidence(
-            provenance=MetadataSource(provider='wos',record_id='WOS:123456',retrieved_at=datetime.now(timezone.utc)),
-            external_ids=ExternalIds(doi='10.5555/decision'), title='Saved title', journal='Journal',
-            abstract='Locally saved abstract', authors=(Author(name='Full author'),), publication_type='journal'),))
+    original = path.read_bytes()
     service = ApiCompletion(config, BrowserTaskLock(), client_factory=lambda *args,**kwargs:
         pytest.fail('No network client is needed'))
     service.start((paper_id,)); service.join()
     result = service.state()
     assert result['phase'] == 'Completed'
     assert result['results'][0]['lookups'] == []
-    assert load_workspace(workspace).inbox[0].abstract == 'Locally saved abstract'
+    assert path.read_bytes() == original
+    assert result['results'][0]['status'] == 'unchanged'
+    assert not (workspace / 'Evidence').exists()
     assert result['results'][0]['first_public_status'] == 'no_association'
 
 
@@ -546,17 +540,13 @@ def test_selected_papers_share_one_arxiv_batch_and_preserve_existing_first_publi
         path = write_paper(workspace,paper_id,filename=f'{index}.md'); paths.append(path)
         replace_frontmatter(path,doi=f'10.5555/paper-{index}',external_ids={'doi':f'10.5555/paper-{index}'},
             first_public_at='2020' if index == 2 else None)
-        with workspace_operation_lock(workspace) as lock:
-            append_discovery_evidence(lock,paper_id,(ProviderWorkEvidence(
-                provenance=MetadataSource(provider='wos',record_id=f'WOS:{index+1}',retrieved_at=datetime.now(timezone.utc)),
-                external_ids=ExternalIds(doi=f'10.5555/paper-{index}'),
-                related_ids=(ProviderRecordRef(provider='arxiv',record_id=f'2201.{index:05}'),)),))
+        replace_frontmatter(path, external_ids={'doi': f'10.5555/paper-{index}', 'arxiv': f'2201.{index:05}'})
     from allfold.diagnostics import DiagnosticStore
     store = DiagnosticStore(config,root=tmp_path / "logs")
     calls = []
     def response(request):
         calls.append(request)
-        assert request.url.params['id_list'] == '2201.00000,2201.00001,2201.00002'
+        assert request.url.params['id_list'] == '2201.00000,2201.00001'
         return httpx.Response(200,text='<feed xmlns="http://www.w3.org/2005/Atom">'+''.join(
             f'<entry><id>https://arxiv.org/abs/2201.{index:05}v3</id><title>Title</title><published>2022-01-02T00:00:00Z</published></entry>'
             for index in (1,0))+'</feed>')
@@ -565,13 +555,13 @@ def test_selected_papers_share_one_arxiv_batch_and_preserve_existing_first_publi
     service.start(ids); service.join()
     results = service.state()['results']
     assert len(calls) == 1
-    assert [result['first_public_status'] for result in results] == ['recorded','recorded','known_unresolved']
+    assert [result['first_public_status'] for result in results] == ['recorded','recorded','recorded']
     assert results[2]['first_public_recorded'] is True
     assert {paper.paper_id:paper.first_public_at for paper in load_workspace(workspace).papers}[ids[2]] == '2020'
     statistics = store.history()['records'][0]['statistics']
-    assert statistics['first_public_recorded'] == 2
-    assert statistics['first_public_known_unresolved'] == 1
-    assert statistics['evidence'] == 2 and statistics['no_match'] == 1
+    assert statistics['first_public_recorded'] == 3
+    assert statistics['first_public_known_unresolved'] == 0
+    assert statistics['evidence'] == 2 and statistics['no_match'] == 0
 
 
 def test_saved_native_reverse_online_event_never_becomes_a_preprint_lookup(tmp_path):
@@ -671,3 +661,48 @@ def test_native_batch_relations_join_the_next_shared_wave(tmp_path):
     assert batches == [['2201.00001', '2201.00002'], ['2201.00003', '2201.00004']]
     assert service.state()['phase'] == 'Completed'
     assert all(result['first_public_status'] == 'recorded' for result in service.state()['results'])
+
+
+@pytest.mark.parametrize('status', [WorkflowStatus.CANDIDATE, WorkflowStatus.KEPT, WorkflowStatus.EXPORTED])
+def test_complete_paper_never_searches_again_for_first_public_or_optional_fields(tmp_path, status):
+    from allfold.application.coordinators.api_completion import ApiCompletion
+    from allfold.application.browser_runtime import BrowserTaskLock
+    from test_application_decisions import write_paper, replace_frontmatter
+    from uuid import uuid4
+    config, workspace = write_valid_config(tmp_path)
+    config.write_text(config.read_text() + '\ncompletion_providers: [crossref, openalex, europe_pmc, arxiv, biorxiv, medrxiv]\n')
+    paper_id = uuid4()
+    path = write_paper(workspace, paper_id, status=status)
+    # Even an unresolved native family must not cause a date-only request when
+    # First public is saved. Optional fields are not completion request goals.
+    replace_frontmatter(path, first_public_at='2020', author_keywords=[], indexed_terms=[],
+        external_ids={'doi': '10.5555/decision', 'arxiv': '2201.12345'})
+    before = path.read_bytes()
+    def response(request):
+        pytest.fail('Complete Paper has no API request goal')
+    for _ in range(2):
+        service = ApiCompletion(config, BrowserTaskLock(), client_factory=lambda provider, **kwargs:
+            SupplementalClient(provider, interval=0, transport=httpx.MockTransport(response), **kwargs))
+        service.start((paper_id,)); service.join()
+        result, = service.state()['results']
+        assert service.state()['phase'] == 'Completed'
+        assert result['status'] == 'unchanged' and result['first_public_status'] == 'recorded'
+        assert result['lookups'] == []
+    assert path.read_bytes() == before
+    assert not (workspace / 'Evidence').exists()
+
+
+def test_completion_refuses_unbound_version_fields_and_preserves_primary_identity(tmp_path):
+    from allfold.application.api_completion import save_api_completion, saved_paper_evidence
+    from allfold.application.paper_enrichment import read_paper_target
+    config, workspace = write_valid_config(tmp_path)
+    paper_id, path = missing(workspace)
+    before = path.read_bytes()
+    wrong = ProviderWorkEvidence(provenance=MetadataSource(provider='crossref', record_id='10.5555/wrong',
+        retrieved_at=datetime.now(timezone.utc)), external_ids=ExternalIds(doi='10.5555/wrong'),
+        title='Wrong', abstract='Do not save', related_dois=('10.5555/decision',))
+    with workspace_operation_lock(workspace) as lock:
+        target = read_paper_target(workspace, paper_id, operation_lock=lock)
+        with pytest.raises(ValueError, match='not bound'):
+            save_api_completion(target, (saved_paper_evidence(target), wrong), operation_lock=lock)
+    assert path.read_bytes() == before

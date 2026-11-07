@@ -3,7 +3,7 @@ from datetime import datetime, timezone
 import httpx
 import pytest
 
-from allfold.canonicalize import canonicalize_records
+from allfold.canonicalize import canonicalize_records, completion_metadata, consolidate_evidence
 from allfold.models import ExternalIds, MetadataSource, ProviderWorkEvidence
 from allfold.providers.supplemental import SupplementalClient
 
@@ -36,7 +36,8 @@ def test_publication_lookup_accepts_current_native_preprint_doi_field(provider):
     assert records[0].external_ids.doi == '10.5555/formal'
     assert records[0].related_dois == ('10.1101/123456',)
     assert records[1].external_ids.doi == '10.1101/123456'
-    paper, = canonicalize_records(records).papers
+    assert len(consolidate_evidence(records).clusters) == 2
+    paper = completion_metadata(records)
     assert paper.doi == '10.5555/formal'
     assert paper.metadata.first_public_at == '2022-01-02'
 
@@ -106,9 +107,9 @@ def test_biorxiv_follows_known_formal_doi_to_original_versions_without_year_limi
         monitor_journal_issns=("0006-341X",), external_ids=ExternalIds(doi="10.5555/formal"))
     result = canonicalize_records((formal, *records))
     assert not result.issues
-    paper = result.papers[0]
+    assert len(result.papers) == 2
+    paper = completion_metadata((formal, *records))
     assert paper.doi == "10.5555/formal"
-    assert paper.related_dois == ("10.1101/123456",)
     assert paper.metadata.publication_date == "2026-01-02"
     assert paper.metadata.first_public_at == "2022-01-02"
     assert any(d.kind.value=="published-online" and (d.year,d.month,d.day)==(2026,1,2) for d in paper.date_evidence)
@@ -146,7 +147,7 @@ def test_explicit_crossref_preprint_relation_without_date_keeps_first_public_uns
         retrieved_at=datetime.now(timezone.utc)), title='First preprint', publication_type='preprint',
         external_ids=ExternalIds(doi='10.5555/first'),
         dates=(EvidenceDate(kind=EvidenceDateKind.PREPRINT, year=2022, first_version=True),))
-    paper, = canonicalize_records((formal, first)).papers
+    paper = completion_metadata((formal, first))
     assert paper.metadata.first_public_at is None
     assert any(ref.record_id == '10.5555/unknown' and ref.relation == 'preprint' for ref in formal.related_ids)
 
@@ -179,7 +180,8 @@ def test_crossref_explicit_preprint_versions_share_first_version_proof():
             'relation': {'has-version' if first else 'is-version-of': [{'id-type': 'doi', 'id': related}]}}})
     with SupplementalClient('crossref', interval=0, transport=httpx.MockTransport(response)) as client:
         records = client.lookup('doi', '10.5555/v2') + client.lookup('doi', '10.5555/v1')
-    paper, = canonicalize_records(records).papers
+    assert len(canonicalize_records(records).papers) == 2
+    paper = completion_metadata(records)
     assert paper.metadata.first_public_at == '2021-06'
     assert {(item.version, item.year) for item in paper.date_evidence} == {('1', 2021), ('2', 2022)}
 

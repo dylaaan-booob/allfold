@@ -17,12 +17,11 @@ def config(tmp_path, enabled=('europe_pmc','openalex')):
     return path,replace(load_config(path), enabled_providers=enabled)
 
 
-def test_run_retains_native_hit_without_lookups_and_reuses_durable_rediscovery(tmp_path):
+def test_run_preserves_paper_without_persisting_rediscovery(tmp_path):
     import httpx
     from allfold.application.integrated_run import run_integrated
     from allfold.application.workspace import load_workspace
     from allfold.providers.integrated import DiscoveryClient
-    from allfold.persistence.discovery_evidence import read_discovery_evidence
     path, _ = config(tmp_path)
     path.write_text(path.read_text() + 'enabled_providers: [europe_pmc]\ncompletion_providers: [crossref, arxiv]\n')
     calls = []
@@ -45,13 +44,14 @@ def test_run_retains_native_hit_without_lookups_and_reuses_durable_rediscovery(t
     assert paper.publication_date == '2025' and paper.first_public_at is None
     saved, = (tmp_path / 'workspace' / 'Papers').glob('*.md')
     original = saved.read_bytes()
-    abstract = 'New rediscovery evidence'
+    # Obsolete storage is neither read nor repaired; malformed contents remain untouched.
+    retired = tmp_path / 'workspace' / 'Evidence'
+    retired.write_text('Unmanaged legacy content')
+    abstract = 'New rediscovery metadata'
     second = run_integrated(path, client_factory=factory)
     assert second.facts.existing_papers == 1 and saved.read_bytes() == original
-    handoff = read_discovery_evidence(tmp_path / 'workspace', paper.paper_id)
-    assert all(record.abstract is None for record in handoff.records)  # Known hits never refresh core metadata
-    assert any(reference.record_id == 'PPR:PPR7' for record in handoff.records for reference in record.related_ids)
-    assert handoff.scopes[0].from_date == '2026-01-01'
+    assert retired.read_text() == 'Unmanaged legacy content'
+    assert b'identity_aliases:' not in original and b'related_dois:' not in original
     assert len(calls) == 3
 
 
@@ -164,7 +164,7 @@ def test_constructor_failure_isolated_and_all_failed_is_never_complete(tmp_path)
     assert build_run_result_summary(failed)['status']=='failed'
 
 
-def test_repeated_run_matches_separate_doi_aliases_to_one_saved_paper(tmp_path):
+def test_repeated_run_creates_separate_doi_with_only_a_version_relation(tmp_path):
     from allfold.application.integrated_run import run_integrated
     path, _ = config(tmp_path, ('europe_pmc',))
     path.write_text(path.read_text() + 'enabled_providers: [europe_pmc]\n')
@@ -201,7 +201,7 @@ def test_repeated_run_matches_separate_doi_aliases_to_one_saved_paper(tmp_path):
     }) for index, doi in enumerate(('10.5555/formal', '10.5555/preprint')))
     second = run_integrated(path, client_factory=Client)
     assert not second.errors
-    assert second.facts.created_papers == 0 and second.facts.existing_papers == 1
+    assert second.facts.created_papers == 1 and second.facts.existing_papers == 1
     assert saved.read_bytes() == before
     assert calls == ['discover', 'discover']
 

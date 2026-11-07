@@ -210,7 +210,7 @@ def test_all_lightweight_sources_are_gathered_before_one_creation_detail_source(
     assert all(run['created'] == 1 for run in result.facts.details['provider_runs'])
 
 
-def test_ambiguous_rediscovery_does_not_distribute_facts_to_two_saved_owners(tmp_path):
+def test_direct_identifiers_matching_two_saved_owners_are_reported_and_skipped(tmp_path):
     from test_integrated_run import config
     from allfold.application.integrated_run import run_integrated
     path, _ = config(tmp_path)
@@ -219,19 +219,21 @@ def test_ambiguous_rediscovery_does_not_distribute_facts_to_two_saved_owners(tmp
     def response(request):
         if ambiguous:
             assert request.url.params['resultType'] == 'lite'
-            rows = [{'source': 'MED', 'id': '1', 'doi': '10.5555/1',
-                'commentCorrectionList': {'commentCorrection': [{'type': 'Preprint in', 'source': 'MED', 'id': '2', 'doi': '10.5555/2'}]}}]
+            rows = [{'source': 'MED', 'id': '2', 'doi': '10.5555/1'}]
         else:
             rows = [{'source': 'MED', 'id': str(n), 'doi': f'10.5555/{n}', 'title': f'Paper {n}'} for n in (1, 2)]
         return httpx.Response(200, json={'hitCount': len(rows), 'resultList': {'result': rows}})
     factory = lambda provider, **kwargs: DiscoveryClient(provider, transport=httpx.MockTransport(response), interval=0, **kwargs)
     assert run_integrated(path, client_factory=factory).facts.created_papers == 2
-    files = [*(tmp_path/'workspace'/'Papers').glob('*.md'), *(tmp_path/'workspace'/'Evidence').glob('*.json')]
+    files = list((tmp_path/'workspace'/'Papers').glob('*.md'))
     before = {p: p.read_bytes() for p in files}
     ambiguous = True
     result = run_integrated(path, client_factory=factory)
     assert result.facts.created_papers == result.facts.existing_papers == 0
     assert any('Ambiguous' in issue.message for issue in result.errors)
+    assert result.facts.statistics['conflicts'] == 1
+    from allfold.persistence.markdown_state import parse_paper_state
+    assert all(str(parse_paper_state(p, p.read_text()).paper_id) in result.errors[0].message for p in files)
     assert {p: p.read_bytes() for p in files} == before
 
 
@@ -310,7 +312,7 @@ def test_openalex_journal_issue_is_excluded_before_creation_detail_lookup(tmp_pa
 
 
 @pytest.mark.parametrize('existing_owner', [False, True])
-def test_unified_wos_quarantines_conflicting_ut_before_creation_and_evidence_append(tmp_path, existing_owner):
+def test_unified_wos_quarantines_conflicting_ut_before_creation(tmp_path, existing_owner):
     import threading
     from concurrent.futures import Future
     from types import SimpleNamespace
@@ -325,7 +327,6 @@ def test_unified_wos_quarantines_conflicting_ut_before_creation_and_evidence_app
     from allfold.application.integrated_run import run_integrated
     from allfold.application.workspace import load_workspace
     from allfold.persistence.materialize import materialize_papers
-    from allfold.persistence.discovery_evidence import read_discovery_evidence
     from allfold.providers.wos import record_paper
     from test_wos import tagged, record
     path, _, _, _ = current_mapping_document(tmp_path)
@@ -368,7 +369,7 @@ def test_unified_wos_quarantines_conflicting_ut_before_creation_and_evidence_app
     papers = load_workspace(workspace).papers
     assert {paper.external_ids.doi for paper in papers} == ({'10.5555/a', '10.5555/safe'} if existing_owner else {'10.5555/safe'})
     safe = next(paper for paper in papers if paper.external_ids.doi == '10.5555/safe')
-    assert {record.external_ids.doi for record in read_discovery_evidence(workspace, safe.paper_id).records} == {'10.5555/safe'}
+    assert safe.external_ids.wos == 'WOS:2'
+    assert not (workspace / 'Evidence').exists()
     if existing_owner:
         assert original.read_bytes() == original_bytes
-        assert not read_discovery_evidence(workspace, saved.id).records

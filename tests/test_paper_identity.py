@@ -1,7 +1,7 @@
 from datetime import datetime, timezone
 import pytest
 
-from allfold.canonicalize import canonicalize_records
+from allfold.canonicalize import canonicalize_records, completion_metadata
 from allfold.models import ExternalIds, MetadataSource, ProviderWorkEvidence
 from allfold.persistence.materialize import materialize_papers
 from allfold.application.workspace import load_workspace
@@ -49,7 +49,7 @@ def test_doi_url_spellings_share_one_identity(tmp_path):
         assert repeated.existing_papers == first.created_papers and not repeated.created_papers
 
 
-def test_separate_doi_alias_candidates_count_one_saved_paper(tmp_path):
+def test_version_relation_does_not_identify_a_saved_paper(tmp_path):
     saved = evidence('crossref', 'formal', title='Formal paper', journal='Journal',
                      external_ids=ExternalIds(doi='10.5555/formal'),
                      related_dois=('10.5555/preprint',))
@@ -64,7 +64,7 @@ def test_separate_doi_alias_candidates_count_one_saved_paper(tmp_path):
     repeated = materialize_papers(candidates, tmp_path)
     assert not repeated.issues
     assert repeated.existing_papers == (path,)
-    assert not repeated.created_papers
+    assert len(repeated.created_papers) == 1
     assert path.read_bytes() == before
 
 
@@ -83,9 +83,9 @@ def test_primary_formal_record_and_dates_are_independent_of_arrival_order():
                              EvidenceDate(kind=Kind.PUBLISHED_ONLINE, year=2026, month=2, day=3)),
                       indexed_terms=(ProviderTopic(value='statistics', source='openalex', kind='topic'),))
     for records in ([preprint, formal], [formal, preprint]):
-        paper, = canonicalize_records(records).papers
+        assert len(canonicalize_records(records).papers) == 2
+        paper = completion_metadata(records)
         assert paper.doi == '10.5555/formal'
-        assert paper.related_dois == ('10.5555/preprint',)
         assert paper.metadata.title == 'Formal title'
         assert [a.name for a in paper.authors] == ['Formal author']
         assert paper.metadata.publication_date == '2026-03'
@@ -128,7 +128,8 @@ def test_shared_work_ids_merge_but_titles_and_unknown_ids_never_do(tmp_path):
     with workspace_operation_lock(tmp_path) as lock:
         index = read_workspace_identities(lock)
     assert ('dblp', 'conf/c/C') in index.by_identifier
-    assert {'10.5555/a', '10.5555/b'} <= index.saved.keys()
+    assert len({'10.5555/a', '10.5555/b'} & index.saved.keys()) == 1
+    assert ('openalex', 'W123') in index.by_identifier
     ambiguous, = canonicalize_records([evidence(title='Bridge', external_ids=ExternalIds(dblp='conf/c/C', openalex='W123'))]).papers
     before = {path: path.read_bytes() for path in result.created_papers}
     blocked = materialize_papers([ambiguous], tmp_path)
@@ -150,7 +151,7 @@ def test_cancellation_reports_committed_count_and_stops_next_write(tmp_path):
     assert any('cancelled' in issue.message for issue in result.issues)
 
 
-def test_related_strong_ids_survive_canonicalization_and_repeated_run(tmp_path):
+def test_only_the_saved_direct_id_survives_across_runs(tmp_path):
     first = evidence('dblp', 'conf/c/First', title='Title', conference='Conference',
                      external_ids=ExternalIds(doi='10.5555/shared', dblp='conf/c/First'))
     second = evidence('dblp', 'conf/c/Second', title='Title', conference='Conference',
@@ -159,8 +160,8 @@ def test_related_strong_ids_survive_canonicalization_and_repeated_run(tmp_path):
     created = materialize_papers([paper], tmp_path)
     repeat, = canonicalize_records([second.model_copy(update={'external_ids': ExternalIds(dblp='conf/c/Second')})]).papers
     result = materialize_papers([repeat], tmp_path)
-    assert result.existing_papers == created.created_papers
-    assert not result.created_papers
+    assert not result.existing_papers
+    assert len(result.created_papers) == 1
 
 
 @pytest.mark.parametrize('followed', (False, True))
@@ -196,6 +197,7 @@ def test_workspace_api_exposes_conference_and_date_provenance(tmp_path, followed
     assert group['name'] == ('ML' if followed else 'Unmapped sources')
     item, = venue['papers']
     assert item['doi'] is None and item['conference'] == 'NeurIPS'
+    assert 'related_dois' not in item and 'identity_aliases' not in item
     assert item['first_public_at'] is None
     assert all(event['publication_type']=='conference' for event in item['date_evidence'])
     assert item['date_evidence'][0]['kind'] == 'conference-year'
@@ -213,7 +215,7 @@ def test_date_inference_uses_public_versions_and_formal_acceptance_only():
                evidence('biorxiv', 'preprint', title='Title', publication_type='preprint',
                         external_ids=ExternalIds(doi='10.5555/preprint'), related_dois=('10.5555/date',),
                         dates=(EvidenceDate(kind=Kind.ACCEPTED, year=2020), EvidenceDate(kind=Kind.PREPRINT, year=2022)))]
-    paper, = canonicalize_records(records).papers
+    paper = completion_metadata(records)
     assert paper.metadata.first_public_at is None  # a later preprint version does not establish its first public date
     assert any(item.kind==Kind.PUBLISHED_ONLINE and item.year==2021 for item in paper.date_evidence)
     assert any(item.year==2000 and item.kind==Kind.PUBLISHED for item in paper.date_evidence)
@@ -229,7 +231,7 @@ def test_first_public_requires_established_nonfuture_preprint_date(year, month, 
     preprint = evidence('arxiv', '2002.12345', title='Preprint', publication_type='preprint',
         external_ids=ExternalIds(doi='10.5555/preprint', arxiv='2002.12345'),
         dates=(EvidenceDate(kind=Kind.PREPRINT, year=year, month=month, first_version=first),))
-    paper, = canonicalize_records((formal, preprint)).papers
+    paper = completion_metadata((formal, preprint))
     assert paper.metadata.first_public_at == expected and paper.doi == '10.5555/formal'
 
 
@@ -330,6 +332,51 @@ def test_formal_published_date_never_falls_back_to_linked_preprint_date():
         retrieved_at=datetime(2026,1,1,tzinfo=timezone.utc)),external_ids=ExternalIds(arxiv='2201.12345'),
         related_dois=('10.5555/formal',),title='Preprint',publication_type='preprint',publication_date='2022-01-02',
         dates=(EvidenceDate(kind=EvidenceDateKind.PREPRINT,year=2022,month=1,day=2,first_version=True),))
-    paper,=canonicalize_records((formal,preprint)).papers
+    paper=completion_metadata((formal,preprint))
     assert paper.metadata.publication_date is None
     assert paper.metadata.first_public_at == '2022-01-02'
+
+
+@pytest.mark.parametrize('field,value', [('related_dois', []), ('related_dois', ['10.5555/other']),
+    ('identity_aliases', []), ('identity_aliases', [{'provider': 'arxiv', 'record_id': '2201.12345'}])])
+def test_retired_identity_fields_block_scan_creation_and_mutation_without_migration(tmp_path, field, value):
+    from allfold.persistence.markdown_state import parse_paper_state, parse_paper_identity
+    from allfold.persistence.materialize import read_workspace_identities
+    from allfold.persistence.safe_write import workspace_operation_lock
+    from allfold.application.paper_enrichment import read_paper_target
+    from test_application_decisions import replace_frontmatter
+    paper, = canonicalize_records([evidence(title='Saved', external_ids=ExternalIds(dblp='conf/c/old'))]).papers
+    path, = materialize_papers([paper], tmp_path).created_papers
+    replace_frontmatter(path, **{field: value})
+    original = path.read_bytes()
+    state = parse_paper_state(path, path.read_text())
+    assert not state.updateable and any('Incompatible legacy Paper identity' in problem for problem in state.problems)
+    assert not parse_paper_identity(path, path.read_text()).index_complete
+    with workspace_operation_lock(tmp_path) as lock:
+        assert not read_workspace_identities(lock).complete
+    incoming, = canonicalize_records([evidence(title='New', external_ids=ExternalIds(dblp='conf/c/new'))]).papers
+    result = materialize_papers([incoming], tmp_path)
+    assert result.has_errors and not result.created_papers
+    with pytest.raises(ValueError, match='Incompatible legacy Paper identity'):
+        read_paper_target(tmp_path, paper.id)
+    assert path.read_bytes() == original and len(list((tmp_path / 'Papers').glob('*.md'))) == 1
+
+
+@pytest.mark.parametrize('saved_ids,incoming_ids', [
+    ({'openalex': 'https://openalex.org/W123'}, {'openalex': 'W123'}),
+    ({'wos': 'wos:12345'}, {'wos': 'WOS:12345'}),
+    ({'europe_pmc': 'med:42'}, {'europe_pmc': 'MED:42'}),
+    ({'pmid': 'https://pubmed.ncbi.nlm.nih.gov/42/'}, {'pmid': '42'}),
+    ({'pmcid': 'pmc123'}, {'pmcid': 'PMC123'}),
+    ({'doi': '10.48550/arxiv.2201.12345'}, {'arxiv': '2201.12345v3'}),
+    ({'arxiv': '2201.12345v2'}, {'doi': 'https://doi.org/10.48550/arxiv.2201.12345'}),
+])
+def test_direct_namespaced_ids_match_across_runs_without_alias_fields(tmp_path, saved_ids, incoming_ids):
+    first, = canonicalize_records([evidence(title='Saved', external_ids=ExternalIds(**saved_ids))]).papers
+    path, = materialize_papers([first], tmp_path).created_papers
+    before = path.read_bytes()
+    second, = canonicalize_records([evidence(title='Changed', external_ids=ExternalIds(**incoming_ids))]).papers
+    repeated = materialize_papers([second], tmp_path)
+    assert not repeated.issues and repeated.existing_papers == (path,) and not repeated.created_papers
+    assert path.read_bytes() == before
+    assert b'identity_aliases:' not in before and b'related_dois:' not in before

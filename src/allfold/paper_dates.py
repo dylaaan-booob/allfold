@@ -4,7 +4,7 @@ from calendar import monthrange
 import re
 
 from allfold.models import EvidenceDate, EvidenceDateKind
-from allfold.identifiers import normalize_external_id, strong_identifiers
+from allfold.identifiers import normalize_external_id, strong_identifiers, related_identifiers
 
 
 def source_date(value, kind=EvidenceDateKind.PUBLISHED, **fields):
@@ -67,7 +67,8 @@ def known_preprint_families(records):
     for record in records:
         preprint = _record_type(record) == 'preprint'
         if preprint and record.provenance.provider != 'workspace':
-            keys = {preprint_identity(ns, value) for ns, value in strong_identifiers(record.external_ids)}
+            keys = {preprint_identity(ns, value) for ns, value in strong_identifiers(record.external_ids)
+                if ns in {'doi', 'arxiv', 'biorxiv', 'medrxiv'} or ns == 'europe_pmc' and value.startswith('PPR:')}
             keys.update(preprint_identity(ref.provider, ref.record_id) for ref in record.related_ids if ref.relation == 'version')
             add(keys or {f'{record.provenance.provider}:{record.provenance.record_id}'})
         elif preprint and record.external_ids.doi:
@@ -79,7 +80,7 @@ def known_preprint_families(records):
                     or preprint and ref.relation == 'version'
                     or ref.provider == 'europe_pmc' and ref.record_id.startswith('PPR:')):
                 add({preprint_identity(ref.provider, ref.record_id), ref.version_family})
-        for namespace, value in strong_identifiers(record.external_ids, record.related_dois):
+        for namespace, value in related_identifiers(record):
             if (namespace in {'arxiv', 'biorxiv', 'medrxiv'}
                     or namespace == 'doi' and value.startswith(('10.48550/arxiv.', '10.1101/'))
                     or namespace == 'europe_pmc' and value.startswith('PPR:')):
