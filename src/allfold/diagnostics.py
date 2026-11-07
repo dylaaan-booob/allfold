@@ -25,7 +25,7 @@ from allfold.persistence.user_state import application_data_dir
 # Only coordinators may declare a terminal business outcome.
 
 KINDS = frozenset({'run', 'prepare', 'import', 'kept', 'enrich', 'api_completion', 'covers'})
-PROVIDERS = frozenset({'integrated', 'openalex', 'crossref', 'europe_pmc', 'arxiv', 'biorxiv', 'medrxiv', 'wos'})
+PROVIDERS = frozenset({'integrated', 'pubmed', 'openalex', 'crossref', 'europe_pmc', 'arxiv', 'biorxiv', 'medrxiv', 'wos'})
 OUTCOMES = frozenset({'completed', 'partial', 'failed', 'cancelled', 'interrupted', 'uncertain',
                       'needs_attention', 'opened', 'no_effect', 'confirmed'})
 STATISTICS = frozenset({'retrieved', 'created', 'updated', 'total', 'processed', 'failed', 'skipped',
@@ -95,7 +95,7 @@ def _details(value):
     if isinstance(source_runs, list):
         sources = []
         for item in source_runs:
-            if not isinstance(item, dict) or not _enum(item.get('provider'), {'wos','openalex','europe_pmc'}):
+            if not isinstance(item, dict) or not _enum(item.get('provider'), {'wos','pubmed','openalex'}):
                 continue
             if not _enum(item.get('status'), {'complete','empty','partial','failed','cancelled','skipped'}):
                 continue

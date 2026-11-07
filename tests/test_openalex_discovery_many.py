@@ -1,0 +1,82 @@
+"""Native merged journal lookup and verified exact Work evidence reuse."""
+from concurrent.futures import ThreadPoolExecutor
+from threading import Event
+
+import httpx
+
+from allfold.keywords import parse_keyword_expression
+from allfold.providers.integrated import DiscoveryClient, SourceScope
+
+A = SourceScope('journal','Journal A','a',('0006-341X','1541-0420'))
+B = SourceScope('journal','Journal B','b',('0090-5364',))
+
+
+def work(number, issns=('0006-341X',), **fields):
+    return {'id':f'https://openalex.org/W{number}', 'doi':f'https://doi.org/10.5555/{number}',
+        'title':f'Native title {number}', 'publication_date':'2026-10',
+        'primary_location':{'source':{'id':'https://openalex.org/S1','display_name':'Native Journal','issn':list(issns)}},
+        'authorships':[{'author':{'display_name':'A. Author'}}], 'locations':[], **fields}
+
+
+def test_merged_native_issn_mapping_keeps_each_primary_source_and_reuses_full_details():
+    calls, pages = [], []
+    def response(request):
+        calls.append(request)
+        assert request.url.path == '/works'
+        assert 'primary_location.source.issn:0006-341X|1541-0420|0090-5364' in request.url.params['filter']
+        assert request.url.params['search.title_abstract_keywords.exact'] == '(causal AND statist*)'
+        return httpx.Response(200,json={'meta':{'count':2,'next_cursor':None},'results':[work(2,B.issns),work(1)]})
+    with DiscoveryClient('openalex',transport=httpx.MockTransport(response),interval=0) as client:
+        results = client.discover_many((A,B),parse_keyword_expression('causal AND statist*'),'2026-10-01','2026-10-31',records_callback=pages.append)
+        cached = client.lookup_many('doi',['10.5555/1','10.5555/2'])
+    assert [result.status for result in results] == ['complete','complete']
+    assert [[record.external_ids.doi for record in result.records] for result in results] == [['10.5555/1'],['10.5555/2']]
+    assert results[0].records[0].journal_issns == ('0006-341X',)
+    assert len(calls) == 1 and len(pages) == 1
+    assert cached.bindings == (('doi','10.5555/1','W1'),('doi','10.5555/2','W2'))
+
+
+def test_exact_batch_maps_location_doi_completes_locations_and_isolates_preprint_pmid():
+    calls = []
+    formal, preprint = '10.1093/nar/gkag979','10.1101/2026.09.01.123456'
+    def response(request):
+        calls.append(request)
+        row = work(7223175244,doi='https://doi.org/'+formal, ids={'pmid':'https://pubmed.ncbi.nlm.nih.gov/42239170/'},locations_count=2,
+            locations=[{'landing_page_url':'https://doi.org/'+formal}])
+        if request.url.path == '/works/W7223175244':
+            row['locations'].append({'landing_page_url':'https://www.biorxiv.org/content/'+preprint+'v1'})
+            return httpx.Response(200,json=row)
+        return httpx.Response(200,json={'meta':{'count':1},'results':[row]})
+    with DiscoveryClient('openalex',transport=httpx.MockTransport(response),interval=0) as client:
+        result = client.lookup_many('doi',[formal,preprint])
+        repeated = client.lookup_many('openalex',['W7223175244'])
+    assert result.status == 'complete' and len(result.records) == 1
+    record = result.records[0]
+    assert record.external_ids.model_dump().get('pmid') is None
+    assert any(ref.provider == 'pmid' and ref.record_id == '42239170' and ref.relation is None for ref in record.related_ids)
+    assert any(ref.provider == 'biorxiv' for ref in record.related_ids)
+    assert len(record.locations) == 2 and len(result.bindings) == 2
+    assert repeated.records == result.records and len(calls) == 2
+
+
+def test_anonymous_pagination_is_explicitly_incomplete_and_keeps_first_page():
+    with DiscoveryClient('openalex',interval=0,transport=httpx.MockTransport(lambda _:httpx.Response(200,
+        json={'meta':{'count':2,'next_cursor':'second'},'results':[work(1)]}))) as client:
+        result = client.discover(A,parse_keyword_expression('causal'),'2026-10-01','2026-10-31')
+    assert result.status == 'partial' and len(result.records) == 1
+    assert any('API Key' in limitation for limitation in result.limitations)
+
+
+def test_concurrent_identical_exact_batches_share_one_request_and_cache_empty():
+    entered, release, calls = Event(), Event(), []
+    def response(request):
+        calls.append(request); entered.set(); assert release.wait(5)
+        return httpx.Response(200,json={'meta':{'count':1},'results':[work(1)]})
+    with DiscoveryClient('openalex',interval=0,transport=httpx.MockTransport(response)) as client, ThreadPoolExecutor(max_workers=2) as pool:
+        first = pool.submit(client.lookup_many,'doi',['10.5555/1','10.5555/missing'])
+        assert entered.wait(5)
+        second = pool.submit(client.lookup_many,'doi',['10.5555/1','10.5555/missing'])
+        release.set()
+        assert first.result().records == second.result().records
+        assert client.cached_lookup('doi','10.5555/missing') == ()
+    assert len(calls) == 1
