@@ -179,12 +179,23 @@ def _completion_steps(
     attempted, fetched = set(), set()
     cache = request_cache if request_cache is not None else {}
     seen = {evidence_key(record) for record in output}
+    cache_requests, cache_identities = set(), set()
+    reused_record_count = 0
     def reuse_cached_evidence():
+        nonlocal reused_record_count
         # A prior selected Paper may already have obtained the exact same native
         # details or relation. Reuse positive facts without another lookup or alias
         # authority; only records rooted in this Paper's known identities qualify.
-        identities = {key for record in output for key in _identities(record)}
+        # Cache responses are append-only for this operation. Match each new
+        # response against known identities, and old responses only against IDs
+        # added since the last pass; unchanged pairs never need rebinding.
+        new_identities = {key for record in output[reused_record_count:]
+            for key in _identities(record)} - cache_identities
+        reused_record_count = len(output)
+        cache_identities.update(new_identities)
         for request, value in cache.items():
+            identities = new_identities if request in cache_requests else cache_identities
+            cache_requests.add(request)
             provider = request[0]
             if provider not in enabled_providers or isinstance(value, Exception):
                 continue

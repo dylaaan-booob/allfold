@@ -292,3 +292,27 @@ def test_normalized_openalex_preprint_source_does_not_create_a_formal_date_goal(
     forbidden = Lookup(error=AssertionError('Preprint source names do not need formal journal dates'))
     result = complete_metadata((preprint,), ('crossref', 'arxiv'), clients={'crossref': forbidden, 'arxiv': forbidden})
     assert not result.lookups and result.first_public_status == 'recorded'
+
+
+def test_late_preprint_identity_reuses_previously_unmatched_cached_reverse_details():
+    from allfold.models import EvidenceDate, EvidenceDateKind, ProviderRecordRef
+    main, other, preprint = '10.5555/main', '10.5555/other', '10.1101/123456'
+    cache = {('biorxiv', 'doi', other): (
+        evidence('biorxiv', other, related_dois=(preprint,)),
+        evidence('biorxiv', preprint, abstract='Cached abstract').model_copy(update={
+            'publication_type': 'preprint', 'journal': None,
+            'dates': (EvidenceDate(kind=EvidenceDateKind.PREPRINT, year=2022, first_version=True),)}),
+    )}
+    formal = evidence('workspace', main, publication_date='2026', authors=(Author(name='Author'),))
+    crossref = Lookup((evidence('crossref', main, related_dois=(preprint,), related_ids=(
+        ProviderRecordRef(provider='biorxiv', record_id=preprint, relation='preprint'),)),))
+    native = Lookup(error=AssertionError('Previously cached reverse details already answer the late identity'))
+    result = complete_metadata((formal,), ('crossref', 'biorxiv'),
+        clients={'crossref': crossref, 'biorxiv': native}, request_cache=cache)
+    assert crossref.calls == [('doi', main)] and not native.calls
+    assert result.first_public_status == 'recorded' and not result.issues
+    assert {record.external_ids.doi for record in result.records} == {main, preprint}
+    paper, = canonicalize_records(result.records).papers
+    assert paper.metadata.abstract == 'Cached abstract' and paper.metadata.first_public_at == '2022'
+    assert all(record.provenance.role == 'supplement' for record in result.records
+               if record.provenance.provider == 'biorxiv')
