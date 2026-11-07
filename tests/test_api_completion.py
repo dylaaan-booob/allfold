@@ -12,6 +12,14 @@ from test_paper_enrichment import missing
 from test_web_app import write_valid_config
 
 
+def _crossref_response(request, *items):
+    if request.url.path == '/works':
+        filters = request.url.params['filter']
+        rows = [] if 'relation.type:' in filters else list(items)
+        return httpx.Response(200, json={'message': {'items': rows, 'total-results': len(rows)}})
+    return httpx.Response(200, json={'message': items[0]})
+
+
 @pytest.mark.parametrize('provider', ('biorxiv', 'medrxiv'))
 def test_known_preprint_is_queried_before_redundant_formal_reverse_lookup(tmp_path, provider):
     from uuid import uuid4
@@ -28,12 +36,12 @@ def test_known_preprint_is_queried_before_redundant_formal_reverse_lookup(tmp_pa
     def response(request):
         calls.append(request.url.path)
         if request.url.host == 'api.crossref.org':
-            is_formal = request.url.path.endswith(formal)
+            is_formal = 'doi:' + formal in request.url.params.get('filter', '') or request.url.path.endswith(formal)
             item = {'DOI': formal if is_formal else preprint, 'title': ['Formal' if is_formal else 'Preprint'],
                     'type': 'journal-article' if is_formal else 'posted-content', 'publisher': provider if not is_formal else 'Journal publisher'}
             if is_formal:
                 item['relation'] = {'has-preprint': [{'id-type': 'doi', 'id': preprint}]}
-            return httpx.Response(200, json={'message': item})
+            return _crossref_response(request, item)
         if request.url.path.startswith('/pubs/'):
             return httpx.Response(200, json={'messages': [{'status': 'service unavailable'}], 'collection': []})
         return httpx.Response(200, json={'messages': [{'status': 'ok'}], 'collection': [{
@@ -67,7 +75,7 @@ def test_partial_completion_reports_whether_first_public_is_recorded(tmp_path, r
     assert result['phase'] == 'Partial'
     assert result['results'][0]['first_public_status'] == ('recorded' if recorded else 'failed')
     assert result['results'][0]['first_public_recorded'] is recorded
-    assert result['results'][0]['lookups'][0]['status'] == 'identity_mismatch'
+    assert result['results'][0]['lookups'][0]['status'] == 'failed'
 
 
 @pytest.mark.parametrize('provider', ('biorxiv', 'medrxiv'))
@@ -154,8 +162,8 @@ def test_api_completion_refuses_changes_and_cancellation_during_lookup(tmp_path,
     def response(request):
         waiting.set()
         assert release.wait(3)
-        return httpx.Response(200, json={'message': {'DOI': '10.5555/decision', 'type': 'journal-article',
-            'abstract': 'New abstract', 'accepted': {'date-parts': [[2025, 12, 1]]}}})
+        return _crossref_response(request, {'DOI': '10.5555/decision', 'type': 'journal-article',
+            'abstract': 'New abstract', 'accepted': {'date-parts': [[2025, 12, 1]]}})
     def factory(provider, **kwargs):
         return SupplementalClient(provider, interval=0, transport=httpx.MockTransport(response), **kwargs)
     service = ApiCompletion(config, BrowserTaskLock(), client_factory=factory)
@@ -242,9 +250,9 @@ def test_repeated_api_completion_appends_facts_without_overwriting_first_public_
     replace_frontmatter(path, first_public_at='2022-01', authors=['Human Author'])
     path.write_text(path.read_text() + '\n## Human Section\nDo not edit.\n')
     def response(request):
-        return httpx.Response(200, json={'message': {'DOI': '10.5555/decision', 'type': 'journal-article',
+        return _crossref_response(request, {'DOI': '10.5555/decision', 'type': 'journal-article',
             'author': [{'given': 'Other', 'family': 'Author'}], 'accepted': {'date-parts': [[2025, 12]]},
-            'published-online': {'date-parts': [[2025, 12]]}, 'published-print': {'date-parts': [[2026]]}}})
+            'published-online': {'date-parts': [[2025, 12]]}, 'published-print': {'date-parts': [[2026]]}})
     def factory(provider, **kwargs):
         return SupplementalClient(provider, interval=0, transport=httpx.MockTransport(response), **kwargs)
     for attempt in range(2):
@@ -275,16 +283,17 @@ def test_operation_deduplicates_linked_lookups_without_merging_saved_papers(tmp_
     replace_frontmatter(second, doi='10.5555/second', external_ids={'doi': '10.5555/second'})
     calls = []
     def response(request):
-        doi = request.url.path.removeprefix('/works/')
-        calls.append(doi)
-        other = '10.5555/second' if doi == '10.5555/decision' else '10.5555/decision'
-        return httpx.Response(200, json={'message': {'DOI': doi, 'type': 'journal-article', 'abstract': 'API abstract',
-            'relation': {'is-version-of': [{'id-type': 'doi', 'id': other}]}}})
+        filters = request.url.params['filter']
+        calls.append(filters)
+        dois = [part.removeprefix('doi:') for part in filters.split(',') if part.startswith('doi:')]
+        return _crossref_response(request, *({'DOI': doi, 'type': 'journal-article', 'abstract': 'API abstract',
+            'relation': {'is-version-of': [{'id-type': 'doi', 'id': '10.5555/second' if doi == '10.5555/decision' else '10.5555/decision'}]}}
+            for doi in reversed(dois)))
     service = ApiCompletion(config, BrowserTaskLock(), client_factory=lambda provider, **kwargs:
         SupplementalClient(provider, interval=0, transport=httpx.MockTransport(response), **kwargs))
     service.start((first_id, second_id))
     service.join()
-    assert calls == ['10.5555/decision', '10.5555/second']
+    assert len(calls) == 2 and calls.count('doi:10.5555/decision,doi:10.5555/second') == 1
     assert len(load_workspace(workspace).papers) == 2
     for path, paper_id, doi in ((first, first_id, '10.5555/decision'), (second, second_id, '10.5555/second')):
         state = parse_paper_state(path, path.read_text())
@@ -292,7 +301,7 @@ def test_operation_deduplicates_linked_lookups_without_merging_saved_papers(tmp_
         assert state.title == 'Decision Paper' and state.status is WorkflowStatus.CANDIDATE
 
 
-def test_cancellation_retains_previous_commit_and_stops_later_papers(tmp_path):
+def test_cancellation_during_shared_batch_keeps_all_selected_paper_bytes(tmp_path):
     from uuid import uuid4
     from allfold.application.coordinators.api_completion import ApiCompletion
     from allfold.application.browser_runtime import BrowserTaskLock
@@ -309,20 +318,21 @@ def test_cancellation_retains_previous_commit_and_stops_later_papers(tmp_path):
     before = [path.read_bytes() for path in paths]
     calls = []
     def response(request):
-        doi = request.url.path.removeprefix('/works/')
-        calls.append(doi)
-        if len(calls) == 2:
+        filters = request.url.params['filter']
+        calls.append(filters)
+        if len(calls) == 1:
             assert service.cancel(service.state()['request_id'])
-        return httpx.Response(200, json={'message': {'DOI': doi, 'type': 'journal-article', 'accepted': {'date-parts': [[2025, 12, 1]]}}})
+        dois = [part.removeprefix('doi:') for part in filters.split(',') if part.startswith('doi:')]
+        return _crossref_response(request, *({'DOI': doi, 'type': 'journal-article', 'accepted': {'date-parts': [[2025, 12, 1]]}}
+            for doi in dois))
     service = ApiCompletion(config, BrowserTaskLock(), client_factory=lambda provider, **kwargs:
         SupplementalClient(provider, interval=0, transport=httpx.MockTransport(response), **kwargs))
     service.start(ids)
     service.join()
     assert service.state()['phase'] == 'Cancelled'
-    assert [result['status'] for result in service.state()['results']] == ['updated', 'cancelled', 'cancelled']
-    assert paths[0].read_bytes() != before[0]
-    assert [path.read_bytes() for path in paths[1:]] == before[1:]
-    assert calls == ['10.5555/0', '10.5555/1']
+    assert [result['status'] for result in service.state()['results']] == ['cancelled'] * 3
+    assert [path.read_bytes() for path in paths] == before
+    assert 1 <= len(calls) <= 2
 
 
 def test_obsolete_evidence_paths_do_not_affect_paper_completion(tmp_path):
@@ -334,8 +344,8 @@ def test_obsolete_evidence_paths_do_not_affect_paper_completion(tmp_path):
     paper_id, path = missing(workspace)
     store = DiagnosticStore(config, root=tmp_path / 'logs')
     def response(request):
-        (workspace / 'Evidence' / f'{paper_id}.json').mkdir(parents=True)
-        return httpx.Response(200, json={'message': {'DOI': '10.5555/decision', 'type': 'journal-article', 'abstract': 'Committed abstract'}})
+        (workspace / 'Evidence' / f'{paper_id}.json').mkdir(parents=True, exist_ok=True)
+        return _crossref_response(request, {'DOI': '10.5555/decision', 'type': 'journal-article', 'abstract': 'Committed abstract'})
     service = ApiCompletion(config, BrowserTaskLock(), diagnostics=store, client_factory=lambda provider, **kwargs:
         SupplementalClient(provider, interval=0, transport=httpx.MockTransport(response), **kwargs))
     service.start((paper_id,))
@@ -497,8 +507,7 @@ def test_paper_commit_sync_failure_preserves_saved_fields_through_commit_guard(t
         return original_sync(descriptor)
     monkeypatch.setattr(os, 'fsync', fail_committed_directory_sync)
     service = ApiCompletion(config, BrowserTaskLock(), client_factory=lambda provider, **kwargs:
-        SupplementalClient(provider, interval=0, transport=httpx.MockTransport(lambda _: httpx.Response(200, json={
-            'message': {'DOI': '10.5555/decision', 'type': 'journal-article', 'abstract': 'Committed before sync failure'}})), **kwargs))
+        SupplementalClient(provider, interval=0, transport=httpx.MockTransport(lambda _: _crossref_response(_, {'DOI': '10.5555/decision', 'type': 'journal-article', 'abstract': 'Committed before sync failure'})), **kwargs))
     service.start((paper_id,))
     service.join()
     result = service.state()
@@ -593,7 +602,7 @@ def test_newly_discovered_arxiv_targets_share_a_batch_before_further_aggregation
     from allfold.application.browser_runtime import BrowserTaskLock
     from test_application_decisions import write_paper, replace_frontmatter
     config, workspace = write_valid_config(tmp_path)
-    config.write_text(config.read_text() + '\ncompletion_providers: [crossref, arxiv, openalex]\n')
+    config.write_text(config.read_text() + '\ncompletion_providers: [crossref, arxiv]\n')
     ids = []
     for index in range(paper_count):
         paper_id = uuid4()
@@ -604,11 +613,15 @@ def test_newly_discovered_arxiv_targets_share_a_batch_before_further_aggregation
     def response(request):
         calls.append((request.url.host, request.url.params.get('id_list')))
         if request.url.host == 'api.crossref.org':
-            index = int(request.url.path[-1])
-            targets = ['2201.00001', '2201.00002'] if paper_count == 1 else [f'2201.{index + 1:05}']
-            return httpx.Response(200, json={'message': {
-                'DOI': f'10.5555/formal-{index}', 'type': 'journal-article',
-                'relation': {'has-preprint': [{'id-type': 'uri', 'id': f'https://arxiv.org/abs/{value}'} for value in targets]}}})
+            filters = request.url.params['filter']
+            dois = [part.removeprefix('doi:') for part in filters.split(',') if part.startswith('doi:')]
+            items = []
+            for doi in dois:
+                index = int(doi[-1])
+                targets = ['2201.00001', '2201.00002'] if paper_count == 1 else [f'2201.{index + 1:05}']
+                items.append({'DOI': doi, 'type': 'journal-article',
+                    'relation': {'has-preprint': [{'id-type': 'uri', 'id': f'https://arxiv.org/abs/{value}'} for value in targets]}})
+            return _crossref_response(request, *items)
         assert request.url.host == 'export.arxiv.org', 'Known native targets must precede further aggregators'
         if cancel_native:
             assert service.cancel(service.state()['request_id'])
@@ -621,7 +634,7 @@ def test_newly_discovered_arxiv_targets_share_a_batch_before_further_aggregation
         completion_client(provider, interval=0, transport=httpx.MockTransport(response), **kwargs))
     service.start(ids)
     service.join()
-    assert calls == [('api.crossref.org', None)] * paper_count + [('export.arxiv.org', '2201.00001,2201.00002')]
+    assert calls == [('api.crossref.org', None)] * 2 + [('export.arxiv.org', '2201.00001,2201.00002')]
     results = service.state()['results']
     assert service.state()['phase'] == ('Cancelled' if cancel_native else 'Completed')
     assert all(result['first_public_status'] == ('cancelled' if cancel_native else 'recorded') for result in results)
@@ -676,7 +689,9 @@ def test_complete_paper_never_searches_again_for_first_public_or_optional_fields
     # Even an unresolved native family must not cause a date-only request when
     # First public is saved. Optional fields are not completion request goals.
     replace_frontmatter(path, first_public_at='2020', author_keywords=[], indexed_terms=[],
-        external_ids={'doi': '10.5555/decision', 'arxiv': '2201.12345'})
+        external_ids={'doi': '10.5555/decision', 'arxiv': '2201.12345'},
+        date_evidence=[{'kind': kind, 'year': 2026, 'publication_type': 'journal'}
+            for kind in ('received', 'accepted', 'published-online', 'published')])
     before = path.read_bytes()
     def response(request):
         pytest.fail('Complete Paper has no API request goal')
@@ -747,18 +762,20 @@ def test_restart_binds_native_first_version_response_to_saved_preprint_date(tmp_
 def test_restart_fills_first_public_from_sufficient_saved_dates_without_requests(tmp_path):
     from allfold.application.coordinators.api_completion import ApiCompletion
     from allfold.application.browser_runtime import BrowserTaskLock
-    from test_application_decisions import write_paper
+    from test_application_decisions import write_paper, replace_frontmatter
     from uuid import uuid4
     config, workspace = write_valid_config(tmp_path)
     config.write_text(config.read_text() + '\ncompletion_providers: [crossref, arxiv]\n')
     paper_id = uuid4()
-    write_paper(workspace, paper_id)
+    path = write_paper(workspace, paper_id)
+    replace_frontmatter(path, date_evidence=[{'kind': kind, 'year': 2026, 'publication_type': 'journal'}
+        for kind in ('received', 'accepted', 'published-online', 'published')])
     calls = []
     def response(request):
         calls.append(request.url.host)
         if request.url.host == 'api.crossref.org':
-            return httpx.Response(200, json={'message': {'DOI': '10.5555/decision', 'type': 'journal-article',
-                'relation': {'has-preprint': [{'id-type': 'arxiv', 'id': key} for key in ('2201.12345', '2201.54321')]}}})
+            return _crossref_response(request, {'DOI': '10.5555/decision', 'type': 'journal-article',
+                'relation': {'has-preprint': [{'id-type': 'arxiv', 'id': key} for key in ('2201.12345', '2201.54321')]}})
         return httpx.Response(200, text='<feed xmlns="http://www.w3.org/2005/Atom"><entry>'
             '<id>https://arxiv.org/abs/2201.12345v1</id><title>Preprint</title>'
             '<published>2022-01-02T00:00:00Z</published></entry></feed>')
@@ -773,7 +790,7 @@ def test_restart_fills_first_public_from_sufficient_saved_dates_without_requests
         if attempt:
             assert result['saved_fields'] == ['first_public_at'] and result['lookups'] == []
     # Unknown, unsaved relationships from attempt 1 are intentionally not restored.
-    assert calls == ['api.crossref.org', 'export.arxiv.org']
+    assert calls == ['api.crossref.org', 'api.crossref.org', 'export.arxiv.org']
     paper, = load_workspace(workspace).papers
     assert paper.first_public_at == '2022-01-02' and paper.paper_id == paper_id
     assert paper.external_ids.doi == '10.5555/decision'
