@@ -26,10 +26,7 @@ from allfold.models import (
 
 
 _DATE_PRECEDENCE = (
-    EvidenceDateKind.PUBLISHED_PRINT,
-    EvidenceDateKind.PUBLISHED_ONLINE,
     EvidenceDateKind.PUBLISHED,
-    EvidenceDateKind.ISSUED,
 )
 
 
@@ -628,9 +625,10 @@ def _build_paper(
         issues.append(CanonicalizationIssue("missing_identity", "provider evidence has no reliable identity", record_ids))
         return None
     order = {provider: rank for rank, provider in enumerate((
-        "crossref", "europe_pmc", "openalex", "arxiv", "biorxiv", "medrxiv"))}
+        "wos", "crossref", "europe_pmc", "openalex", "arxiv", "biorxiv", "medrxiv"))}
     ordered = sorted(evidence, key=lambda record: (
         _is_preprint(record),
+        record.provenance.provider.casefold() != "wos",
         not bool(record.monitor_journal_issns or record.conference_id),
         record.provenance.role == "supplement",
         order.get(record.provenance.provider.casefold(), 99), _record_key(record), _snapshot_key(record),

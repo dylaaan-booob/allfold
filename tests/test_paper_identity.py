@@ -216,7 +216,7 @@ def test_date_inference_uses_public_versions_and_formal_acceptance_only():
     paper, = canonicalize_records(records).papers
     assert paper.metadata.first_public_at is None  # a later preprint version does not establish its first public date
     assert any(item.kind==Kind.PUBLISHED_ONLINE and item.year==2021 for item in paper.date_evidence)
-    assert any(item.year==2000 and item.kind==Kind.SOURCE for item in paper.date_evidence)
+    assert any(item.year==2000 and item.kind==Kind.PUBLISHED for item in paper.date_evidence)
 
 
 @pytest.mark.parametrize('year,month,first,expected', [(2020, None, True, '2020'), (2020, 2, True, '2020-02'),

@@ -159,7 +159,7 @@ class SupplementalClient(DiscoveryClient):
             if preprint in seen:
                 continue
             seen.add(preprint)
-            online = _iso_date(row.get("published_date"), EvidenceDateKind.PUBLISHED_ONLINE)
+            online = _iso_date(row.get("published_date"), EvidenceDateKind.PUBLISHED_ONLINE, source_label="published_date")
             records.append(ProviderWorkEvidence(
                 provenance=MetadataSource(provider=self.provider, record_id=preprint + ":publication",
                     retrieved_at=datetime.now(timezone.utc), role="supplement",
@@ -194,7 +194,7 @@ class SupplementalClient(DiscoveryClient):
             container = raw.get(name) or {}
             parts = container.get("date-parts", []) if isinstance(container, dict) else []
             if parts and (value := _date(parts[0], kind)):
-                dates.append(value.model_copy(update={"publication_type": publication_type,
+                dates.append(value.model_copy(update={"source_label": name, "publication_type": publication_type,
                     "first_version": preprint and kind == EvidenceDateKind.PREPRINT and str(raw.get("version")) in {"1", "v1"}}))
         related, refs = set(), set()
         relations = raw.get("relation") or {}
@@ -209,8 +209,7 @@ class SupplementalClient(DiscoveryClient):
         source = MetadataSource(provider="crossref", record_id=doi, retrieved_at=datetime.now(timezone.utc),
                                 role="supplement", version=str(raw.get('version') or '').strip() or None,
                                 url="https://api.crossref.org/works/" + quote(doi, safe="/"))
-        publication = next((value for kind in (EvidenceDateKind.PUBLISHED_ONLINE, EvidenceDateKind.PUBLISHED_PRINT,
-                                               EvidenceDateKind.PUBLISHED, EvidenceDateKind.ISSUED)
+        publication = next((value for kind in (EvidenceDateKind.PUBLISHED,)
                             for value in dates if value.kind == kind), None)
         return (record.model_copy(update={
             "provenance": source, "related_dois": tuple(sorted(related - {doi})), "dates": tuple(dates),

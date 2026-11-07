@@ -94,8 +94,8 @@ def normalize_europe_pmc(raw, source):
     if not family:
         family = next(('europe_pmc:' + f"{item['source']}:{item['id']}" for item in versions
             if item.get('source') == 'PPR' and item.get('id')), None)
-    current = source_date(raw.get('firstPublicationDate'), kind=EvidenceDateKind.PREPRINT if preprint else EvidenceDateKind.SOURCE,
-        record_id=identity, version=version, version_family=family if preprint else None,
+    current = source_date(raw.get('firstPublicationDate'), kind=EvidenceDateKind.PREPRINT if preprint else EvidenceDateKind.PUBLISHED,
+        source_label='firstPublicationDate', record_id=identity, version=version, version_family=family if preprint else None,
         publication_type='preprint' if preprint else 'journal', first_version=preprint and version == '1')
     if current:
         dates.append(current)
@@ -111,8 +111,8 @@ def normalize_europe_pmc(raw, source):
             if relation:
                 refs.add(ProviderRecordRef(provider='doi', record_id=doi, relation=relation, version_family=family))
         number = str(item.get('versionNumber') or '') or None
-        event = source_date(item.get('firstPublishDate'), kind=EvidenceDateKind.PREPRINT if src == 'PPR' else EvidenceDateKind.SOURCE,
-            record_id=reference, version=number, version_family=family if src == 'PPR' else None,
+        event = source_date(item.get('firstPublishDate'), kind=EvidenceDateKind.PREPRINT if src == 'PPR' else EvidenceDateKind.PUBLISHED,
+            source_label='firstPublishDate', record_id=reference, version=number, version_family=family if src == 'PPR' else None,
             publication_type='preprint' if src == 'PPR' else 'journal',
             first_version=src == 'PPR' and number == '1')
         if event:

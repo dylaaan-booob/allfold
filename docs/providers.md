@@ -24,7 +24,7 @@ The shared parser accepts `AND`, `OR`, parentheses, adjacent quoted phrases and 
 
 OpenAlex uses `search.title_abstract_keywords` (the scoped `.exact` variant for prefixes), verified `primary_location.source.id`, `from_publication_date` and `to_publication_date`. Europe PMC combines verified ISSNs, `TITLE_ABS`/`KW` and native `FIRST_PDATE:[start TO end]`, requesting core metadata. Both adapters exhaust accessible pages, validate envelopes/cursors and report failures or incomplete pagination without arbitrary application page/record quotas. Legal native hits are not subjected to local keyword or date rechecking.
 
-The requested publication range belongs to discovery. Later preprint, Accepted, online or print dates never remove a Paper from its original Run. A source's year/month precision remains year/month precision; no same-version date lookup rejudges monthly eligibility. [Paper identity](paper-identity.md) defines First public and named journal dates.
+The requested publication range belongs to discovery. Later preprint, Accepted, online or publication dates never remove a Paper from its original Run. A source's year/month precision remains year/month precision; no same-version date lookup rejudges monthly eligibility. [Paper identity](paper-identity.md) defines First public and named journal dates.
 
 ## Run results and snapshots
 
@@ -103,3 +103,24 @@ Existing [PR #40](https://github.com/dylaaan-booob/allfold/pull/40) acceptance i
 Synthetic HTTP, rendered Electron fixtures, builds and CI establish only their tested layers. Real OpenAlex/Europe PMC responses, native preprint APIs, authenticated sites and Zotero outcomes require separately scoped acceptance.
 
 Interface references: [OpenAlex scoped search](https://help.openalex.org/api/searching/), [OpenAlex locations](https://help.openalex.org/data/locations/), [Europe PMC REST](https://dev.europepmc.org/RestfulWebService), [Europe PMC version fields](https://europepmc.org/docs/EBI_Europe_PMC_Web_Service_Reference.pdf), [Crossref metadata](https://github.com/CrossRef/rest-api-doc/blob/master/api_format.md), [arXiv API](https://info.arxiv.org/help/api/user-manual.html), [bioRxiv/medRxiv APIs](https://api.biorxiv.org/).
+
+### Shared WoS source facts
+
+The Plain Text parser exposes `record_evidence` before Paper canonicalization.
+It preserves UT, valid DI and optional PM as reliable identifiers; GA and identifiers
+mentioned only in titles, abstracts or citations never establish identity. An invalid
+optional DI/PM does not discard a record with another reliable identifier.
+AF takes priority over AU as one ordered list. SO remains the returned source title,
+SN/EI remain source ISSNs, and saved scope attribution remains separate. PT,
+multivalue DT, DE and ID, dates PD/PY/EA/EY, and returned volume/issue/pages/article
+number remain structured facts. Each native field records its returned values and
+`unselected`, `absent`, `valid` or `parse-invalid` state; the eight export choices
+include their dependent tags and inherent bibliographic/identity fields.
+
+Canonical creation prefers formal versions, then valid WoS ordinary fields, then
+deterministic other-source fills. Source retrieval time never decides ordinary
+field precedence. Repeated facts deduplicate independent of retrieval timestamps.
+Date-only requests use Accepted, Published online and publication_date; print,
+issued and early-access are not independent completion goals. Original native date
+labels remain provenance. Future formal dates and available year/month precision
+are preserved; First public retains its independent version and future-date checks.

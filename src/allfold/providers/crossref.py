@@ -81,7 +81,8 @@ class CrossrefWorkRecord(DomainModel):
             ),
             dates=tuple(
                 EvidenceDate(
-                    kind=EvidenceDateKind(item.kind.value),
+                    kind=EvidenceDateKind.PUBLISHED_ONLINE if item.kind == CrossrefDateKind.PUBLISHED_ONLINE else EvidenceDateKind.PUBLISHED,
+                    source_label=item.kind.value,
                     year=item.year,
                     month=item.month,
                     day=item.day,

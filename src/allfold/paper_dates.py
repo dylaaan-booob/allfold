@@ -7,7 +7,7 @@ from allfold.models import EvidenceDate, EvidenceDateKind
 from allfold.identifiers import normalize_external_id, strong_identifiers
 
 
-def source_date(value, kind=EvidenceDateKind.SOURCE, **fields):
+def source_date(value, kind=EvidenceDateKind.PUBLISHED, **fields):
     if not isinstance(value, str) or not re.fullmatch(r"\d{4}(?:-\d{2}){0,2}", value):
         return None
     parts = [int(part) for part in value.split("-")]
@@ -104,11 +104,12 @@ def collect_dates(records):
         record_type = _record_type(record)
         if (record.publication_date and record.provenance.provider != 'workspace'
                 and not any(item.kind in {EvidenceDateKind.SOURCE, EvidenceDateKind.PUBLISHED, EvidenceDateKind.PUBLISHED_ONLINE,
-                    EvidenceDateKind.PUBLISHED_PRINT, EvidenceDateKind.ISSUED, EvidenceDateKind.EARLY_ACCESS, EvidenceDateKind.PREPRINT}
+                    EvidenceDateKind.PREPRINT}
                     and date_value(item) == record.publication_date for item in dates)):
             parts = [int(part) for part in record.publication_date.split("-")]
             # A generic source date is not evidence for Accepted or an online event.
-            dates.append(EvidenceDate(kind=EvidenceDateKind.PREPRINT if record_type == 'preprint' else EvidenceDateKind.SOURCE, year=parts[0],
+            kind = {"preprint": EvidenceDateKind.PREPRINT, "conference": EvidenceDateKind.SOURCE}.get(record_type, EvidenceDateKind.PUBLISHED)
+            dates.append(EvidenceDate(source_label="publication_date" if record_type != "conference" else None, kind=kind, year=parts[0],
                 month=parts[1] if len(parts) > 1 else None, day=parts[2] if len(parts) > 2 else None))
         for item in dates:
             family = item.version_family
