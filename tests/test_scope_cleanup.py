@@ -146,3 +146,23 @@ def test_deleted_settings_api_cannot_read_or_recreate_retired_sources(tmp_path):
         assert response.status_code == 200
         assert response.json()['saved'] is False and response.json()['outcome'] == 'INVALID_DRAFT'
     assert read_user_state(config) == before
+
+
+@pytest.mark.parametrize('schema', [
+    '(config_path, revision, payload, migration_source, migration_digest, migrated_at)',
+    cleanup.USER_SCOPES_SCHEMA.replace('PRIMARY KEY', ''),
+    cleanup.USER_SCOPES_SCHEMA.replace('INTEGER NOT NULL', 'INTEGER'),
+    cleanup.USER_SCOPES_SCHEMA.replace('revision INTEGER NOT NULL', 'revision INTEGER NOT NULL DEFAULT 1'),
+    cleanup.USER_SCOPES_SCHEMA.replace('migrated_at TEXT)', 'migrated_at TEXT, CHECK(revision > 0))'),
+])
+def test_cleanup_refuses_same_columns_with_unknown_types_or_constraints(tmp_path, schema):
+    config, other, saved, original = legacy_state(tmp_path)
+    path = tmp_path / 'unknown.sqlite'
+    with closing(sqlite3.connect(path)) as db, db:
+        db.execute('CREATE TABLE user_scopes ' + schema)
+        db.executemany('INSERT INTO user_scopes VALUES (?, ?, ?, ?, ?, ?)', original)
+    before = path.read_bytes()
+    with pytest.raises(ValueError, match='Unknown database schema'):
+        cleanup.remove_conference_data(path)
+    assert path.read_bytes() == before
+    assert not list(tmp_path.glob('*.bak'))

@@ -55,7 +55,8 @@ def _parse(contents):
         text = line.strip()
         if text.startswith('#'):
             heading = text.lstrip('#').strip().casefold()
-            section = heading if heading in sections else ('journals' if text.startswith('# ') else heading)
+            # Retired headings must not fall through to the plain titled Journal list.
+            section = heading if heading in sections or heading == 'conferences' else ('journals' if text.startswith('# ') else heading)
             header = None
             continue
         if not text or text.startswith('<!--'):

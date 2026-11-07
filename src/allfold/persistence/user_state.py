@@ -19,6 +19,9 @@ from allfold.config import (
 from allfold.persistence.safe_write import ContentChangedError, read_text_exact, source_file_identity
 
 
+USER_SCOPES_SCHEMA = '(config_path TEXT PRIMARY KEY, revision INTEGER NOT NULL, payload TEXT NOT NULL, migration_source TEXT, migration_digest TEXT, migrated_at TEXT)'
+
+
 @dataclass(frozen=True)
 class ContentRevision:
     exists: bool
@@ -165,7 +168,7 @@ def load_user_state(config_path: Path, legacy_path: Path | None = None) -> UserS
         # No database is opened for creation until the complete source validates.
         with closing(_connect(path, create=True)) as connection:
             with connection:
-                connection.execute("CREATE TABLE IF NOT EXISTS user_scopes (config_path TEXT PRIMARY KEY, revision INTEGER NOT NULL, payload TEXT NOT NULL, migration_source TEXT, migration_digest TEXT, migrated_at TEXT)")
+                connection.execute("CREATE TABLE IF NOT EXISTS user_scopes " + USER_SCOPES_SCHEMA)
                 connection.execute("INSERT OR IGNORE INTO user_scopes VALUES (?, 1, ?, ?, ?, ?)",
                                    (str(config_path), payload, str(legacy_path.resolve()), source_digest,
                                     datetime.now(timezone.utc).isoformat()))
@@ -186,7 +189,7 @@ def compare_write_user_state(config_path: Path, state: SettingsList,
             connection.execute("BEGIN IMMEDIATE")
             try:
                 if create:
-                    connection.execute("CREATE TABLE IF NOT EXISTS user_scopes (config_path TEXT PRIMARY KEY, revision INTEGER NOT NULL, payload TEXT NOT NULL, migration_source TEXT, migration_digest TEXT, migrated_at TEXT)")
+                    connection.execute("CREATE TABLE IF NOT EXISTS user_scopes " + USER_SCOPES_SCHEMA)
                 row = _row(connection, config_path)
                 if row is None:
                     if expected_revision != ContentRevision(False, None):

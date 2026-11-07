@@ -409,4 +409,13 @@ def test_retired_source_identity_is_not_silently_discarded(tmp_path, retired):
     result = materialize_papers([incoming], tmp_path)
     assert result.has_errors and not result.created_papers
     assert path.read_bytes() == before
-    assert not canonicalize_records([evidence(title='Retired only', external_ids=ExternalIds(dblp='conf/example/old'))]).papers
+
+
+@pytest.mark.parametrize('ids', [
+    {'dblp': 'conf/example/old'},
+    {'openalex': 'W123', 'dblp': 'conf/example/old'},
+    {'doi': '10.5555/formal', ' DBLP ': 'conf/example/old'},
+])
+def test_retired_namespace_cannot_create_a_new_paper_even_with_valid_ids(ids):
+    with pytest.raises(ValueError, match='Retired external identifier namespace'):
+        ExternalIds.model_validate(ids)

@@ -12,9 +12,8 @@ import tempfile
 
 from allfold.config import normalize_journal_labels
 from allfold.persistence.safe_write import ContentChangedError, source_file_identity
-from allfold.persistence.user_state import _connect, _decode
+from allfold.persistence.user_state import USER_SCOPES_SCHEMA, _connect, _decode
 
-_COLUMNS = ('config_path', 'revision', 'payload', 'migration_source', 'migration_digest', 'migrated_at')
 _FIELDS = {'id', 'name', 'abbreviation', 'aliases', 'dblp_stream', 'group', 'labels'}
 
 
@@ -63,11 +62,12 @@ def _clean_payload(payload):
 
 
 def _rows(connection):
-    schema = connection.execute("SELECT type, name FROM sqlite_master WHERE name NOT LIKE 'sqlite_%' ORDER BY type, name").fetchall()
-    if schema != [('table', 'user_scopes')]:
+    schema = connection.execute("SELECT type, name, sql FROM sqlite_master WHERE name NOT LIKE 'sqlite_%' ORDER BY type, name").fetchall()
+    expected = 'CREATE TABLE user_scopes ' + USER_SCOPES_SCHEMA
+    if (len(schema) != 1 or schema[0][:2] != ('table', 'user_scopes')
+            or not isinstance(schema[0][2], str)
+            or ' '.join(schema[0][2].split()).casefold() != expected.casefold()):
         raise ValueError('Unknown database schema; refusing cleanup')
-    if tuple(row[1] for row in connection.execute('PRAGMA table_info(user_scopes)')) != _COLUMNS:
-        raise ValueError('Unknown user_scopes schema')
     if connection.execute('PRAGMA quick_check').fetchall() != [('ok',)]:
         raise ValueError('Database integrity check failed')
     rows = connection.execute('SELECT * FROM user_scopes ORDER BY config_path').fetchall()

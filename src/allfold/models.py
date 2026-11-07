@@ -79,6 +79,8 @@ class ExternalIds(BaseModel):
         for key, identifier in value.items():
             if not isinstance(key, str) or not key.strip():
                 raise ValueError("external identifier names must be non-empty strings")
+            if key.strip().casefold() == "dblp":
+                raise ValueError("Retired external identifier namespace is not supported")
             if identifier is None and key in {"openalex", "doi", "arxiv", "crossref"}:
                 cleaned[key] = None
                 continue
