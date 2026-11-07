@@ -3,6 +3,7 @@ from concurrent.futures import ThreadPoolExecutor
 from threading import Event
 
 import httpx
+import pytest
 
 from allfold.keywords import parse_keyword_expression
 from allfold.providers.integrated import DiscoveryClient, SourceScope
@@ -107,3 +108,44 @@ def test_truncated_locations_with_wrong_singleton_identity_fail_without_binding_
         repeated = client.lookup_many('doi',['10.5555/1'])
     assert first.status == repeated.status == 'failed' and not first.records and not first.bindings
     assert 'another Work identity' in first.limitations[0] and len(calls)==2
+
+
+@pytest.mark.parametrize('singleton_status',[200,404])
+def test_discovery_and_exact_lookup_share_inflight_truncated_work_singleton(singleton_status):
+    from threading import get_ident
+    singleton_entered, exact_dispatched, release = Event(), Event(), Event()
+    singletons = []
+    exact_thread = None
+    full = work(1, locations_count=1, locations=[{'landing_page_url':'https://arxiv.org/abs/2201.12345'}])
+    def response(request):
+        if request.url.path == '/works/W1':
+            singletons.append(request)
+            singleton_entered.set()
+            assert release.wait(5)
+            return httpx.Response(singleton_status,json=full if singleton_status==200 else {})
+        return httpx.Response(200,json={'meta':{'count':1},'results':[work(1,locations_count=1)]})
+    with DiscoveryClient('openalex',interval=0,transport=httpx.MockTransport(response)) as client, ThreadPoolExecutor(max_workers=2) as pool:
+        def guard():
+            if get_ident() == exact_thread:
+                exact_dispatched.set()
+        client.request_guard = guard
+        discovery = pool.submit(client.discover_many,(A,),parse_keyword_expression('causal'),'2026-10-01','2026-10-31')
+        assert singleton_entered.wait(5)
+        def locate():
+            nonlocal exact_thread
+            exact_thread = get_ident()
+            return client.lookup_many('doi',['10.5555/1'])
+        exact = pool.submit(locate)
+        assert exact_dispatched.wait(5)
+        release.set()
+        found, = discovery.result(timeout=5)
+        located = exact.result(timeout=5)
+    assert len(singletons) == 1
+    if singleton_status == 200:
+        assert found.status == located.status == 'complete'
+        assert [location.url for location in found.records[0].locations] == [location.url for location in located.records[0].locations]
+        assert len(found.records[0].locations) == 1
+    else:
+        assert found.status == located.status == 'failed'
+        assert not found.records and not located.records
+        assert all(any('404' in issue for issue in result.limitations) for result in (found,located))
