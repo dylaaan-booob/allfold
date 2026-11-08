@@ -6,6 +6,59 @@ from allfold.keywords import parse_keyword_expression
 from allfold.config import JournalConfig
 
 
+@pytest.mark.parametrize('timeout', [httpx.ReadTimeout, httpx.ConnectTimeout])
+def test_timeout_retries_native_request_and_reports_progress(timeout):
+    from allfold.providers.integrated import DiscoveryClient
+    calls, waits, events = [], [], []
+    def response(request):
+        calls.append(request)
+        if len(calls) == 1:
+            raise timeout('synthetic-secret', request=request)
+        return httpx.Response(200, text='<feed/>')
+    with DiscoveryClient('arxiv', transport=httpx.MockTransport(response), interval=0,
+            sleep=waits.append, progress_callback=events.append) as client:
+        client.begin_completion()
+        assert client.request('/api/query', {'id_list':'2505.01146'}, response_format='xml') == '<feed/>'
+    assert len(calls)==2 and waits==[5]
+    retries=[event.activity for event in events if event.activity and event.activity.kind.value=='RETRYING']
+    assert len(retries)==1 and retries[0].operation=='native-version-retry'
+    assert 'Retry 2/3' in retries[0].label and 'Retry 2/3' in retries[0].detail
+    assert 'synthetic-secret' not in repr(events)
+
+
+@pytest.mark.parametrize('cancelled', [None, 'response', 'backoff'])
+def test_timeout_retry_is_bounded_and_cancellable(cancelled):
+    from threading import Event
+    from allfold.providers.integrated import DiscoveryClient, Cancelled, DiscoveryError
+    signal, calls, waits = Event(), [], []
+    def response(request):
+        calls.append(request)
+        if cancelled=='response':signal.set()
+        raise httpx.ReadTimeout('synthetic-secret', request=request)
+    def wait(seconds):
+        waits.append(seconds)
+        if cancelled=='backoff':signal.set()
+    with DiscoveryClient('arxiv', transport=httpx.MockTransport(response), interval=0,
+            sleep=wait, cancel_event=signal) as client:
+        with pytest.raises(Cancelled if cancelled else DiscoveryError) as error:
+            client.request('/api/query', {'id_list':'2505.01146'}, response_format='xml')
+    assert len(calls)==(1 if cancelled else 3)
+    assert waits==([] if cancelled=='response' else [5] if cancelled else [5,10])
+    assert 'synthetic-secret' not in str(error.value)
+
+
+def test_non_timeout_network_error_is_not_automatically_replayed():
+    from allfold.providers.integrated import DiscoveryClient, DiscoveryError
+    calls, waits = [], []
+    def response(request):
+        calls.append(request)
+        raise httpx.ConnectError('synthetic-secret', request=request)
+    with DiscoveryClient('arxiv', transport=httpx.MockTransport(response), interval=0, sleep=waits.append) as client:
+        with pytest.raises(DiscoveryError) as error:
+            client.request('/api/query', {'id_list':'2505.01146'})
+    assert len(calls)==1 and not waits and 'synthetic-secret' not in str(error.value)
+
+
 def test_openalex_null_source_completion_keeps_other_providers_hit():
     from allfold.application.metadata_completion import complete_metadata
     from allfold.models import ExternalIds, MetadataSource, ProviderWorkEvidence

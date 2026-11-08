@@ -61,6 +61,10 @@ class IdentityMismatch(DiscoveryError):
     pass
 
 
+class ProviderTimeoutError(DiscoveryError):
+    pass
+
+
 class ProviderHTTPError(DiscoveryError):
     def __init__(self, provider, status, *, detail=None):
         super().__init__(f'{provider}: HTTP {status}' + (f' ({detail})' if detail else ''))
@@ -196,6 +200,8 @@ class DiscoveryClient:
                     response = self.http.post(url, data=params, headers=headers, follow_redirects=False)
                 else:
                     response = self.http.get(url, params=params, headers=headers, follow_redirects=follow_redirects)
+            except httpx.TimeoutException as error:
+                raise ProviderTimeoutError(f'{self.provider}: network request failed ({type(error).__name__})') from None
             except httpx.HTTPError as error:
                 raise DiscoveryError(f'{self.provider}: network request failed ({type(error).__name__})') from None
             self.check_cancel()
@@ -204,6 +210,17 @@ class DiscoveryClient:
         finally:
             self._host_lock.release()
         return response
+
+    def _retry_wait(self, attempt, delay, message, path, params):
+        self.check_cancel()
+        if self.progress:
+            phase = self._completion_activity(BASE_URLS[self.provider] + path, params)
+            self.progress(ProgressEvent(activity=ActivityUpdate(
+                kind=ActivityKind.RETRYING, source=self.provider, operation=phase[0] + '-retry' if phase else 'http_retry',
+                label=(phase[1] + ': ' if phase else '') + message + f' · Retry {attempt + 2}/3',
+                detail=f'Retry {attempt + 2}/3 in {max(0, delay):g} seconds',
+            )))
+        self._wait(max(0, delay))
 
     def request(self, path, params, *, response_format="json"):
         self.check_cancel()
@@ -214,7 +231,13 @@ class DiscoveryClient:
             params['api_key'] = self.api_key
         headers = {"Authorization":"Bearer " + self.api_key} if self.provider == "openalex" and self.api_key else {}
         for attempt in range(3):
-            response = self._get(BASE_URLS[self.provider] + path, params, headers)
+            try:
+                response = self._get(BASE_URLS[self.provider] + path, params, headers)
+            except ProviderTimeoutError:
+                if attempt == 2:
+                    raise
+                self._retry_wait(attempt, 5 * (2 ** attempt), f'{self.provider}: request timed out', path, params)
+                continue
             temporary_error = TRANSIENT_HTTP.get(response.status_code)
             html = ('text/html' in response.headers.get('content-type','').lower()
                     or response.text.lstrip().lower().startswith(('<!doctype html','<html')))
@@ -241,14 +264,8 @@ class DiscoveryClient:
                         delay = default_delay
                 if not math.isfinite(delay):
                     delay = default_delay
-                if self.progress:
-                    phase = self._completion_activity(BASE_URLS[self.provider] + path, params)
-                    self.progress(ProgressEvent(activity=ActivityUpdate(
-                        kind=ActivityKind.RETRYING, source=self.provider, operation=phase[0] + '-retry' if phase else 'http_retry',
-                        label=(phase[1] + ': ' if phase else '') + f'{self.provider}: HTTP {response.status_code} {temporary_error or "Too Many Requests"}',
-                        detail=f'Retry {attempt + 2}/3 in {max(0, delay):g} seconds',
-                    )))
-                self._wait(max(0, delay))
+                self._retry_wait(attempt, delay,
+                    f'{self.provider}: HTTP {response.status_code} {temporary_error or "Too Many Requests"}', path, params)
                 continue
             if temporary_error:
                 raise ProviderHTTPError(self.provider, response.status_code, detail=f'{temporary_error} after 3 attempts')
