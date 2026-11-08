@@ -104,6 +104,7 @@ class MetadataSource(DomainModel):
     url: NonEmptyStr | None = None
     version: NonEmptyStr | None = None
     licenses: tuple[NonEmptyStr, ...] = ()
+    note: NonEmptyStr | None = None
 
     @field_validator("retrieved_at")
     @classmethod
@@ -118,6 +119,7 @@ class ProviderRecordRef(DomainModel):
     record_id: NonEmptyStr
     relation: Literal["preprint", "version"] | None = None
     version_family: NonEmptyStr | None = None
+    note: NonEmptyStr | None = None
 
 
 class EvidenceDateKind(str, Enum):
@@ -125,6 +127,7 @@ class EvidenceDateKind(str, Enum):
     PUBLISHED = "published"
     PUBLISHED_ONLINE = "published-online"
     ACCEPTED = "accepted"
+    RECEIVED = "received"
     PREPRINT = "preprint"
 
 

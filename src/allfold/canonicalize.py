@@ -194,6 +194,7 @@ def _record_key(record: ProviderWorkEvidence) -> tuple[str, str]:
 
 def _provider_label(provider: str) -> str:
     labels = {
+        "pubmed": "PubMed",
         "openalex": "OpenAlex",
         "crossref": "Crossref",
         "semantic_scholar": "Semantic Scholar",
@@ -403,13 +404,15 @@ def _snapshot_issues(
             )
 
     date_values: dict[
-        EvidenceDateKind, set[tuple[int, int | None, int | None]]
+        tuple[EvidenceDateKind, str | None], set[tuple[int, int | None, int | None]]
     ] = defaultdict(set)
     for record in current:
         for item in record.dates:
             if _is_complete_date(item):
-                date_values[item.kind].add((item.year, item.month, item.day))
-    for date_kind, values in date_values.items():
+                # Native fields such as published and published-print share a
+                # business kind but can legitimately describe different dates.
+                date_values[item.kind, item.source_label].add((item.year, item.month, item.day))
+    for (date_kind, _source_label), values in date_values.items():
         if len(values) > 1:
             issues.append(
                 CanonicalizationIssue(
@@ -585,6 +588,7 @@ def _deduplicate_sources(
             sources[key] = selected.model_copy(update={
                 "role": "discovery" if "discovery" in {existing.role, source.role} else selected.role,
                 "licenses": tuple(sorted(set(existing.licenses + source.licenses))),
+                "note": "; ".join(sorted({part for note in (existing.note, source.note) if note for part in note.split("; ") if part})) or None,
             })
     return tuple(sources[key] for key in sorted(sources))
 
@@ -628,13 +632,13 @@ def _build_paper(
         issues.append(CanonicalizationIssue("missing_identity", "provider evidence has no reliable identity", record_ids))
         return None
     order = {provider: rank for rank, provider in enumerate((
-        "wos", "crossref", "europe_pmc", "openalex", "arxiv", "biorxiv", "medrxiv"))}
+        "wos", "pubmed", "crossref", "europe_pmc", "openalex", "arxiv", "biorxiv", "medrxiv"))}
     ordered = sorted(evidence, key=lambda record: (
         _is_preprint(record),
-        record.provenance.provider.casefold() != "wos",
+        order.get(record.provenance.provider.casefold(), 99),
         not bool(record.monitor_journal_issns),
         record.provenance.role == "supplement",
-        order.get(record.provenance.provider.casefold(), 99), _record_key(record), evidence_key(record),
+        _record_key(record), evidence_key(record),
     ))
     def field(name):
         return next((getattr(record, name) for record in ordered if getattr(record, name)), None)

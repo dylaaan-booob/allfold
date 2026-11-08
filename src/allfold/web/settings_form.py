@@ -83,6 +83,11 @@ class SettingsFormValues:
     openalex_key_error: str = ""
     openalex_key_action: str = "keep"
     openalex_api_key: SecretStr | None = field(default=None, repr=False)
+    pubmed_key_configured: bool = False
+    pubmed_key_revision: str = "missing"
+    pubmed_key_error: str = ""
+    pubmed_key_action: str = "keep"
+    pubmed_api_key: SecretStr | None = field(default=None, repr=False)
 
 
 def _revision_fields(revision: ContentRevision) -> tuple[str, str]:
@@ -119,6 +124,8 @@ def settings_form_from_draft(draft: MonitorDraft) -> SettingsFormValues:
         provider_order=draft.provider_order, provider_aliases=draft.provider_aliases, crossref_mailto=draft.crossref_mailto,
         openalex_key_configured=draft.openalex_key_configured, openalex_key_revision=draft.openalex_key_revision,
         openalex_key_error=draft.openalex_key_error,
+        pubmed_key_configured=draft.pubmed_key_configured, pubmed_key_revision=draft.pubmed_key_revision,
+        pubmed_key_error=draft.pubmed_key_error,
         journals=rows,
         access_services=tuple(SettingsAccessServiceRow(s.id, s.name, s.access_url or "", s.access_method) for s in draft.access_services),
         groups=draft.groups,
@@ -173,6 +180,7 @@ def settings_form_from_submission(form: FormData) -> SettingsFormValues:
         "from_month", "to_month", "crossref_mailto",
         *(f"provider_alias_{provider}" for provider in DEFAULT_PROVIDER_ORDER),
         "openalex_key_action", "openalex_api_key", "openalex_key_revision",
+        "pubmed_key_action", "pubmed_api_key", "pubmed_key_revision",
         "monitor_revision_exists", "monitor_revision_digest", "journal_revision_exists", "journal_revision_digest",
         "journal_name", "journal_issn", "journal_eissn", "journal_access_service_id", "journal_group", "journal_labels", "journal_order", "provider_order", "enabled_providers", "completion_providers", "settings_group", "settings_custom_label",
         "service_id", "service_name", "service_access_url", "service_access_method",
@@ -209,6 +217,9 @@ def settings_form_from_submission(form: FormData) -> SettingsFormValues:
         provider_aliases={provider: str(form.get(f"provider_alias_{provider}", ""))
                           for provider in DEFAULT_PROVIDER_ORDER if f"provider_alias_{provider}" in form},
         crossref_mailto=str(form.get("crossref_mailto", "")),
+        pubmed_key_action=str(form.get("pubmed_key_action", "keep")),
+        pubmed_key_revision=str(form.get("pubmed_key_revision", "missing")),
+        pubmed_api_key=SecretStr(str(form.get("pubmed_api_key", ""))) if form.get("pubmed_api_key") else None,
         openalex_key_action=str(form.get("openalex_key_action", "keep")),
         openalex_key_revision=str(form.get("openalex_key_revision", "missing")),
         openalex_api_key=SecretStr(str(form.get("openalex_api_key", ""))) if form.get("openalex_api_key") else None,
@@ -338,6 +349,8 @@ def settings_draft_from_form(
             provider_order=provider_order, provider_aliases=values.provider_aliases, crossref_mailto=values.crossref_mailto,
             openalex_key_action=values.openalex_key_action, openalex_key_revision=values.openalex_key_revision,
             openalex_api_key=values.openalex_api_key,
+            pubmed_key_action=values.pubmed_key_action, pubmed_key_revision=values.pubmed_key_revision,
+            pubmed_api_key=values.pubmed_api_key,
             journals=tuple(journals),
             access_services=tuple(access_services),
             groups=values.groups,

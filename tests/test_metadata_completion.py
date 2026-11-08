@@ -29,7 +29,7 @@ class Lookup:
 
 
 def test_completion_only_uses_enabled_providers_and_never_replaces_discovery_fields():
-    discovered = evidence("europe_pmc", "10.5555/main", monitor_journal_issns=("0006-341X",),
+    discovered = evidence("pubmed", "10.5555/main", monitor_journal_issns=("0006-341X",),
                           authors=(Author(name="Original Author"),))
     crossref = Lookup((evidence("crossref", "10.5555/main", title="Other title", abstract="Missing abstract",
                                authors=(Author(name="Other Author"),)),))
@@ -42,7 +42,7 @@ def test_completion_only_uses_enabled_providers_and_never_replaces_discovery_fie
     assert paper.metadata.title == "Original"
     assert paper.metadata.abstract == "Missing abstract"
     assert [a.name for a in paper.authors] == ["Original Author"]
-    assert {s.provider: s.role for s in paper.sources} == {"europe_pmc": "discovery", "crossref": "supplement"}
+    assert {s.provider: s.role for s in paper.sources} == {"pubmed": "discovery", "crossref": "supplement"}
 
 
 def test_completion_failure_or_unrelated_response_never_removes_discovery():
@@ -183,7 +183,9 @@ def test_known_arxiv_doi_on_formal_record_is_an_unresolved_preprint_chain():
 def test_known_native_target_is_resolved_before_any_aggregation_and_then_stops():
     from allfold.models import EvidenceDate, EvidenceDateKind, ProviderRecordRef
     formal = evidence('workspace', '10.5555/formal', abstract='Complete abstract', publication_date='2026',
-        authors=(Author(name='Author'),), related_ids=(ProviderRecordRef(provider='arxiv', record_id='2201.12345'),))
+        authors=(Author(name='Author'),), dates=tuple(EvidenceDate(kind=kind, year=2026, publication_type='journal')
+            for kind in ('received', 'accepted', 'published-online', 'published')),
+        related_ids=(ProviderRecordRef(provider='arxiv', record_id='2201.12345'),))
     first = evidence('arxiv', '10.48550/arxiv.2201.12345').model_copy(update={
         'external_ids': ExternalIds(arxiv='2201.12345'), 'publication_type': 'preprint',
         'dates': (EvidenceDate(kind=EvidenceDateKind.PREPRINT, year=2022, first_version=True),)})
@@ -199,7 +201,9 @@ def test_known_native_target_is_resolved_before_any_aggregation_and_then_stops()
 def test_same_response_adds_another_family_before_stop_and_never_blind_probes():
     from allfold.models import EvidenceDate, EvidenceDateKind, ProviderRecordRef
     formal = evidence('workspace','10.5555/formal',abstract='Abstract',authors=(Author(name='Author'),),
-        publication_date='2026',related_ids=(ProviderRecordRef(provider='arxiv',record_id='2201.12345'),))
+        publication_date='2026', dates=tuple(EvidenceDate(kind=kind, year=2026, publication_type='journal')
+            for kind in ('received', 'accepted', 'published-online', 'published')),
+        related_ids=(ProviderRecordRef(provider='arxiv',record_id='2201.12345'),))
     class Native(Lookup):
         def lookup(self, namespace, identifier):
             self.calls.append((namespace,identifier))
@@ -215,8 +219,8 @@ def test_same_response_adds_another_family_before_stop_and_never_blind_probes():
     assert completion_metadata(result.records).metadata.first_public_at == '2019'
 
 
-@pytest.mark.parametrize('kind',['accepted','published-online','published'])
-def test_one_journal_date_and_local_first_version_suppress_date_only_and_optional_queries(kind):
+@pytest.mark.parametrize('kind',['received','accepted','published-online','published'])
+def test_one_journal_date_does_not_satisfy_other_independent_date_goals(kind):
     from allfold.models import EvidenceDate, EvidenceDateKind, ProviderRecordRef
     formal = evidence('workspace','10.5555/formal',abstract='Abstract',authors=(Author(name='Author'),),
         dates=(EvidenceDate(kind=kind,year=2030,publication_type='journal'),),
@@ -224,9 +228,10 @@ def test_one_journal_date_and_local_first_version_suppress_date_only_and_optiona
     preprint = evidence('arxiv','10.48550/arxiv.2201.12345').model_copy(update={
         'external_ids':ExternalIds(arxiv='2201.12345'),'publication_type':'preprint',
         'dates':(EvidenceDate(kind=EvidenceDateKind.PREPRINT,year=2022,first_version=True),)})
-    forbidden = Lookup(error=AssertionError('Optional fields or more date precision are not goals'))
-    result = complete_metadata((formal,preprint),('arxiv','crossref'),clients={'arxiv':forbidden,'crossref':forbidden})
-    assert not result.lookups and result.first_public_status == 'recorded'
+    forbidden, crossref = Lookup(error=AssertionError('Native goal is resolved')), Lookup()
+    result = complete_metadata((formal,preprint),('arxiv','crossref'),clients={'arxiv':forbidden,'crossref':crossref})
+    assert crossref.calls == [('doi', '10.5555/formal')]
+    assert not forbidden.calls and result.first_public_status == 'recorded'
 
 
 def test_wrong_response_primary_cannot_be_validated_by_related_requested_identity():
@@ -316,3 +321,278 @@ def test_late_preprint_identity_reuses_previously_unmatched_cached_reverse_detai
     assert paper.metadata.abstract == 'Cached abstract' and paper.metadata.first_public_at == '2022'
     assert all(record.provenance.role == 'supplement' for record in result.records
                if record.provenance.provider == 'biorxiv')
+
+
+def test_base_api_batches_overlap_and_map_each_paper_before_native_waves():
+    from threading import Barrier, Event
+    import httpx
+    from allfold.application.metadata_completion import complete_metadata_many
+    from allfold.providers.supplemental import SupplementalClient
+    barrier, crossref_started = Barrier(2, timeout=3), Event()
+    calls = []
+    def response(request):
+        calls.append(request)
+        if request.url.host != 'api.crossref.org' or not crossref_started.is_set():
+            crossref_started.set()
+            barrier.wait()
+        if request.url.host == 'api.crossref.org':
+            filters = request.url.params['filter']
+            if 'relation.type:' in filters:
+                rows = []
+            else:
+                assert 'doi:10.5555/one' in filters and 'doi:10.5555/two' in filters
+                rows = [{'DOI': doi, 'title': [doi], 'type': 'journal-article',
+                    'published-online': {'date-parts': [[2026, month]]},
+                    'assertion': [{'name': 'received', 'value': '2025-12'}]}
+                    for doi, month in [('10.5555/two', 2), ('10.5555/one', 1)]]
+            return httpx.Response(200, json={'message': {'total-results': len(rows), 'items': rows}})
+        assert request.url.params['query'] == 'SRC:MED AND HAS_PREPRINT:Y AND (EXT_ID:101 OR EXT_ID:202)'
+        return httpx.Response(200, json={'hitCount': 0, 'resultList': {'result': []}})
+    groups = {key: (evidence('wos', doi, abstract='Abstract', authors=(Author(name='Author'),)).model_copy(
+        update={'external_ids': ExternalIds(doi=doi, pmid=pmid)}),)
+        for key, doi, pmid in [('one', '10.5555/one', '101'), ('two', '10.5555/two', '202')]}
+    with SupplementalClient('crossref', interval=0, transport=httpx.MockTransport(response)) as crossref, SupplementalClient(
+            'europe_pmc', interval=0, transport=httpx.MockTransport(response)) as europe:
+        results = dict(complete_metadata_many(groups, ('crossref', 'europe_pmc'), clients={
+            'crossref': crossref, 'europe_pmc': europe}, allow_formal_preprint_reverse=False))
+    assert len(calls) == 3
+    assert all(not result.issues for result in results.values())
+    for key, month in [('one', 1), ('two', 2)]:
+        dates = completion_metadata(results[key].records).date_evidence
+        assert any(item.kind.value == 'published-online' and item.month == month for item in dates)
+        assert any(item.kind.value == 'received' and item.year == 2025 and item.day is None for item in dates)
+
+
+@pytest.mark.parametrize('allow_reverse', [False, True])
+def test_run_disables_blind_native_pubs_while_independent_completion_retains_it(allow_reverse):
+    native = Lookup()
+    result = complete_metadata((evidence('wos', '10.5555/no-clue'),), ('biorxiv',),
+        clients={'biorxiv': native}, allow_formal_preprint_reverse=allow_reverse)
+    assert native.calls == ([('doi', '10.5555/no-clue')] if allow_reverse else [])
+    assert result.first_public_status == 'no_association'
+
+
+def test_pubmed_completion_batches_confirmed_pmids_and_reuses_stronger_fetch_capability():
+    import httpx
+    from allfold.application.metadata_completion import complete_metadata_many
+    from allfold.providers.integrated import DiscoveryClient
+    from test_pubmed_discovery import article
+    calls = []
+    def response(request):
+        calls.append(request)
+        ids = request.url.params['id'].split(',')
+        if request.url.path.endswith('efetch.fcgi'):
+            return httpx.Response(200, text='<PubmedArticleSet>' + ''.join(article(key, '0006-341X', f'10.5555/{key}') for key in ids) + '</PubmedArticleSet>')
+        rows = {'uids': list(reversed(ids))}
+        rows.update((key, {'uid': key, 'title': 'Summary', 'pubdate': '2026 Oct', 'epubdate': '2026 Sep 30',
+            'articleids': [{'idtype': 'doi', 'value': f'10.5555/{key}'}],
+            'history': [{'pubstatus': 'received', 'date': '2026/03/01 00:00'},
+                {'pubstatus': 'accepted', 'date': '2026 Sep 10 00:00'}]}) for key in ids)
+        return httpx.Response(200, json={'result': rows})
+    groups = {key: (evidence('wos', f'10.5555/{key}', abstract=None if key == '3' else 'Abstract',
+        authors=(Author(name='Author'),)).model_copy(update={'external_ids': ExternalIds(doi=f'10.5555/{key}', pmid=key)}),)
+        for key in ('1', '2', '3', '4')}
+    with DiscoveryClient('pubmed', interval=0, transport=httpx.MockTransport(response)) as client:
+        client.lookup_many('pmid', ['4'], capability='fetch')  # Verified Discovery evidence.
+        results = dict(complete_metadata_many(groups, ('pubmed',), clients={'pubmed': client}))
+    assert len(calls) == 3
+    assert sorted((request.url.path.rsplit('/', 1)[-1], request.url.params['id']) for request in calls) == [
+        ('efetch.fcgi', '3'), ('efetch.fcgi', '4'), ('esummary.fcgi', '1,2')]
+    for key, result in results.items():
+        assert not result.issues
+        assert {item.kind.value for item in completion_metadata(result.records).date_evidence} >= {
+            'received', 'accepted', 'published-online', 'published'}
+    assert completion_metadata(results['3'].records).metadata.abstract == 'METHODS: Study abstract'
+
+
+def test_pubmed_preprint_reference_keeps_formal_pmid_and_follows_explicit_native_identity():
+    import httpx
+    from allfold.models import ProviderRecordRef
+    from allfold.providers.integrated import DiscoveryClient
+    from allfold.providers.supplemental import SupplementalClient
+    from test_pubmed_discovery import article
+    calls = []
+    formal = evidence('wos', '10.1093/nar/gkag979', abstract='Formal abstract', authors=(Author(name='Formal Author'),)).model_copy(update={
+        'external_ids': ExternalIds(doi='10.1093/nar/gkag979', pmid='42908400'),
+        'related_ids': (ProviderRecordRef(provider='pubmed', record_id='42239170', relation='preprint'),)})
+    def response(request):
+        calls.append(request)
+        if request.url.path.endswith('esummary.fcgi'):
+            return httpx.Response(200, json={'result': {'uids': ['42908400'], '42908400': {'uid': '42908400'}}})
+        if request.url.path.endswith('efetch.fcgi'):
+            return httpx.Response(200, text='<PubmedArticleSet>' + article('42239170', '0006-341X', '10.64898/2026.01.01.123456') + '</PubmedArticleSet>')
+        query = request.url.params['query']
+        if 'HAS_PREPRINT' in query:
+            return httpx.Response(200, json={'hitCount': 0, 'resultList': {'result': []}})
+        assert 'SRC:PPR' in query and 'DOI:"10.64898/2026.01.01.123456"' in query
+        return httpx.Response(200, json={'hitCount': 1, 'resultList': {'result': [{
+            'source': 'PPR', 'id': 'PPR1', 'title': 'Preprint', 'doi': '10.64898/2026.01.01.123456',
+            'firstPublicationDate': '2026-01-01', 'versionNumber': 1}]}})
+    with DiscoveryClient('pubmed', interval=0, transport=httpx.MockTransport(response)) as pubmed, SupplementalClient(
+            'europe_pmc', interval=0, transport=httpx.MockTransport(response)) as europe:
+        result = complete_metadata((formal,), ('pubmed', 'europe_pmc'), clients={'pubmed': pubmed, 'europe_pmc': europe})
+    assert not result.issues
+    assert result.first_public_status == 'recorded'
+    assert completion_metadata(result.records).metadata.first_public_at == '2026-01-01'
+    assert all(record.publication_type == 'preprint' for record in result.records
+        if record.external_ids.model_dump().get('pmid') == '42239170')
+    assert not any(request.url.params.get('id') == '42908400,42239170' for request in calls)
+
+
+def test_openalex_verified_location_binding_keeps_returned_top_identity_separate():
+    import httpx
+    from allfold.providers.integrated import DiscoveryClient
+    raw = {'id': 'https://openalex.org/W7223175244', 'doi': 'https://doi.org/10.1101/2026.04.01.123456',
+        'title': 'Merged Work title', 'type': 'preprint', 'ids': {'pmid': 'https://pubmed.ncbi.nlm.nih.gov/42239170/'},
+        'locations_count': 1, 'locations': [{'landing_page_url': 'https://doi.org/10.1093/nar/gkag979',
+            'source': {'id': 'https://openalex.org/S1'}}]}
+    formal = evidence('wos', '10.1093/nar/gkag979', abstract='Formal abstract', authors=(Author(name='Formal Author'),)).model_copy(
+        update={'external_ids': ExternalIds(doi='10.1093/nar/gkag979', pmid='42908400')})
+    with DiscoveryClient('openalex', interval=0, transport=httpx.MockTransport(lambda request: httpx.Response(200,
+            json={'results': [raw], 'meta': {'count': 1}}))) as client:
+        result = complete_metadata((formal,), ('openalex',), clients={'openalex': client})
+    assert not result.issues
+    returned = [record for record in result.records if record.external_ids.openalex]
+    assert len(returned) == 1 and returned[0].external_ids.doi == '10.1101/2026.04.01.123456'
+    anchor = next(record for record in result.records if record.provenance.provider == 'openalex' and record.external_ids.doi == '10.1093/nar/gkag979')
+    assert anchor.external_ids.openalex is None and anchor.title is None
+    assert any(ref.provider == 'openalex' and ref.record_id == 'W7223175244' for ref in anchor.related_ids)
+
+
+def test_known_unverified_family_does_not_suppress_run_crossref_reverse_batch():
+    import httpx
+    from allfold.models import EvidenceDate, ProviderRecordRef
+    from allfold.providers.supplemental import SupplementalClient
+    formal_doi, new_preprint = '10.5555/formal', '10.64898/2019.01.01.123456'
+    formal = evidence('wos', formal_doi, abstract='Abstract', authors=(Author(name='Author'),),
+        dates=tuple(EvidenceDate(kind=kind, year=2026, publication_type='journal')
+            for kind in ('received', 'accepted', 'published-online', 'published')),
+        related_ids=(ProviderRecordRef(provider='arxiv', record_id='2201.12345', relation='preprint'),))
+    calls = []
+    def response(request):
+        calls.append(request)
+        if request.url.host == 'api.crossref.org':
+            reverse = 'relation.type:is-preprint-of' in request.url.params['filter']
+            rows = [{'DOI': new_preprint, 'title': ['New preprint family'], 'type': 'posted-content', 'publisher': 'bioRxiv',
+                'relation': {'is-preprint-of': [{'id-type': 'doi', 'id': formal_doi}]}}] if reverse else [
+                {'DOI': formal_doi, 'title': ['Formal'], 'type': 'journal-article'}]
+            return httpx.Response(200, json={'message': {'items': rows, 'total-results': len(rows)}})
+        if request.url.host == 'export.arxiv.org':
+            return httpx.Response(200, text='<feed xmlns="http://www.w3.org/2005/Atom"><entry>'
+                '<id>https://arxiv.org/abs/2201.12345v1</id><title>Known family</title>'
+                '<published>2022-01-02T00:00:00Z</published></entry></feed>')
+        assert request.url.path == f'/details/biorxiv/{new_preprint}/na/json'
+        return httpx.Response(200, json={'messages': [{'status': 'ok'}], 'collection': [{
+            'doi': new_preprint, 'title': 'New family', 'server': 'biorxiv', 'date': '2019-01-01', 'version': '1'}]})
+    with SupplementalClient('crossref', interval=0, transport=httpx.MockTransport(response)) as crossref, SupplementalClient(
+            'arxiv', interval=0, transport=httpx.MockTransport(response)) as arxiv, SupplementalClient(
+            'biorxiv', interval=0, transport=httpx.MockTransport(response)) as biorxiv:
+        result = complete_metadata((formal,), ('crossref', 'arxiv', 'biorxiv'), clients={
+            'crossref': crossref, 'arxiv': arxiv, 'biorxiv': biorxiv}, allow_formal_preprint_reverse=False)
+    assert not result.issues
+    assert any('relation.type:is-preprint-of' in request.url.params.get('filter', '') for request in calls)
+    assert result.first_public_status == 'recorded'
+    assert completion_metadata(result.records).metadata.first_public_at == '2019-01-01'
+
+
+def test_saved_first_public_with_received_gap_queries_dates_without_association_or_blind_native_probes():
+    import httpx
+    from allfold.models import EvidenceDate
+    from allfold.providers.supplemental import SupplementalClient
+    formal = evidence('workspace', '10.5555/saved', abstract='Abstract', authors=(Author(name='Author'),),
+        first_public_at='2020', dates=tuple(EvidenceDate(kind=kind, year=2026, publication_type='journal')
+            for kind in ('accepted', 'published-online', 'published'))).model_copy(
+        update={'external_ids': ExternalIds(doi='10.5555/saved', pmid='7')})
+    calls = []
+    def response(request):
+        calls.append(request)
+        if request.url.host == 'api.crossref.org':
+            rows = [] if 'relation.type:' in request.url.params['filter'] else [
+                {'DOI': '10.5555/saved', 'type': 'journal-article'}]
+            return httpx.Response(200, json={'message': {'items': rows, 'total-results': len(rows)}})
+        if request.url.host == 'www.ebi.ac.uk':
+            return httpx.Response(200, json={'hitCount': 0, 'resultList': {'result': []}})
+        return httpx.Response(200, json={'messages': [{'status': 'ok'}], 'collection': []})
+    from contextlib import ExitStack
+    with ExitStack() as stack:
+        clients = {provider: stack.enter_context(SupplementalClient(provider, interval=0, transport=httpx.MockTransport(response)))
+            for provider in ('crossref', 'europe_pmc', 'biorxiv', 'medrxiv')}
+        result = complete_metadata((formal,), tuple(clients), clients=clients)
+    assert not result.issues and result.first_public_status == 'recorded'
+    assert len(calls) == 1
+    assert calls[0].url.host == 'api.crossref.org' and calls[0].url.params['filter'] == 'doi:10.5555/saved'
+    assert next(record for record in result.records if record.provenance.provider == 'workspace').first_public_at == '2020'
+
+
+@pytest.mark.parametrize('verified', [False, True])
+def test_partial_reverse_page_is_absorbed_before_pending_native_family_can_finish(verified):
+    import httpx
+    from contextlib import ExitStack
+    from allfold.models import EvidenceDate, ProviderRecordRef
+    from allfold.paper_dates import first_public_status, known_preprint_families, preprint_date_coverage
+    from allfold.providers.supplemental import SupplementalClient
+    formal_doi, preprint = '10.5555/formal', '10.64898/2019.01.01.123456'
+    formal = evidence('wos', formal_doi, abstract='Abstract', authors=(Author(name='Author'),),
+        dates=tuple(EvidenceDate(kind=kind, year=2026, publication_type='journal')
+            for kind in ('received', 'accepted', 'published-online', 'published')),
+        related_ids=(ProviderRecordRef(provider='arxiv', record_id='2201.12345', relation='preprint'),))
+    calls = []
+    def response(request):
+        calls.append((request.url.host, request.url.path, request.url.params.get('cursor')))
+        if request.url.host == 'api.crossref.org':
+            assert 'relation.type:is-preprint-of' in request.url.params['filter']
+            if request.url.params['cursor'] != '*':
+                return httpx.Response(400)
+            return httpx.Response(200, json={'message': {'total-results': 2, 'next-cursor': 'second', 'items': [{
+                'DOI': preprint, 'type': 'posted-content', 'publisher': 'bioRxiv',
+                'relation': {'is-preprint-of': [{'id-type': 'doi', 'id': formal_doi}]}}]}})
+        if request.url.host == 'export.arxiv.org':
+            return httpx.Response(200, text='<feed xmlns="http://www.w3.org/2005/Atom"><entry>'
+                '<id>https://arxiv.org/abs/2201.12345v1</id><title>Known family</title>'
+                '<published>2022-01-02T00:00:00Z</published></entry></feed>')
+        assert request.url.path == f'/details/biorxiv/{preprint}/na/json'
+        return httpx.Response(200, json={'messages': [{'status': 'ok'}], 'collection': [{
+            'doi': preprint, 'server': 'biorxiv', 'date': '2019-01-01', 'version': '1' if verified else '2'}]})
+    cache = {('crossref', 'doi', formal_doi): (), ('crossref', 'doi', preprint): ()}
+    with ExitStack() as stack:
+        clients = {provider: stack.enter_context(SupplementalClient(provider, interval=0,
+            transport=httpx.MockTransport(response))) for provider in ('crossref', 'arxiv', 'biorxiv')}
+        result = complete_metadata((formal,), tuple(clients), clients=clients, request_cache=cache,
+            allow_formal_preprint_reverse=False)
+        # Cached partial facts and failure belong only to their formal target.
+        other = formal.model_copy(update={'external_ids': ExternalIds(doi='10.5555/other'),
+            'related_ids': (), 'first_public_at': '2020'})
+        unrelated = complete_metadata((other,), tuple(clients), clients=clients, request_cache=cache,
+            allow_formal_preprint_reverse=False)
+    assert result.status == 'partial'
+    assert len(result.issues) == 1 and result.issues[0].status == 'partial'
+    assert [(lookup.identifier, lookup.status) for lookup in result.lookups if lookup.capability == 'preprints'] == [
+        (formal_doi, 'partial')]
+    assert completion_metadata(result.records).metadata.first_public_at == ('2019-01-01' if verified else None)
+    assert f'doi:{preprint}' in known_preprint_families(result.records)
+    assert preprint_date_coverage(result.records)[0] is verified
+    assert first_public_status(result.records) == ('recorded' if verified else 'known_unresolved')
+    assert len(calls) == 4 and calls.count(('api.crossref.org', '/works', 'second')) == 1
+    assert unrelated.records == (other,) and not unrelated.issues and not unrelated.lookups
+
+
+def test_cached_batch_failure_is_reported_once_before_native_proof_satisfies_goals():
+    from allfold.models import EvidenceDate, ProviderRecordRef
+    from allfold.providers.integrated import DiscoveryError
+    formal = evidence('wos', '10.5555/formal', abstract='Abstract', authors=(Author(name='Author'),),
+        dates=tuple(EvidenceDate(kind=kind, year=2026, publication_type='journal')
+            for kind in ('received', 'accepted', 'published-online', 'published')),
+        related_ids=(ProviderRecordRef(provider='arxiv', record_id='2201.12345', relation='preprint'),)).model_copy(
+            update={'external_ids': ExternalIds(doi='10.5555/formal', pmid='7')})
+    native = Lookup((ProviderWorkEvidence(publication_type='preprint', external_ids=ExternalIds(arxiv='2201.12345'),
+        provenance=MetadataSource(provider='arxiv', record_id='2201.12345', retrieved_at=datetime.now(timezone.utc)),
+        dates=(EvidenceDate(kind='preprint', year=2022, first_version=True, publication_type='preprint'),)),))
+    failure = DiscoveryError('Controlled batch failure')
+    cache = {('pubmed', 'pmid', '7', capability): failure for capability in ('summary', 'fetch')}
+    cache[('pubmed', 'pmid', '8', 'fetch')] = DiscoveryError('Other Paper failure')
+    result = complete_metadata((formal,), ('pubmed', 'arxiv'), clients={'pubmed': Lookup(), 'arxiv': native},
+        request_cache=cache, allow_formal_preprint_reverse=False)
+    assert result.status == 'partial' and result.first_public_status == 'recorded'
+    assert [(issue.identifier, issue.message) for issue in result.issues] == [('7', 'Controlled batch failure')]
+    assert len([lookup for lookup in result.lookups if lookup.provider == 'pubmed']) == 1
+    assert native.calls == [('arxiv', '2201.12345')]

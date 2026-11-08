@@ -1,16 +1,17 @@
-"""One selected-provider retrieval phase followed by one guarded creation phase."""
+"""One concurrent Discovery/Work phase and one Completion-before-create phase."""
 from __future__ import annotations
 
 from concurrent.futures import ThreadPoolExecutor
 from contextlib import ExitStack
 from dataclasses import dataclass, field, replace
 from datetime import date, datetime, timezone
-from threading import Event
+from threading import Event, Condition, Lock
 
 from allfold.config import ConfigurationError, resolve_runtime_date, validate_runtime_keyword
 from allfold.providers.integrated import DiscoveryClient, DiscoveryResult, SourceScope, DISCOVERY_PROVIDERS, RUN_PROVIDERS
 from allfold.integrations.openalex_credentials import read_credential
 from allfold.progress import ProgressEvent, ProgressStage, ActivityUpdate, ActivityKind
+from allfold.application.metadata_completion import formal_records
 
 
 @dataclass(frozen=True)
@@ -33,7 +34,7 @@ def validate_selection(config):
     if not scopes:
         raise ConfigurationError('Follow at least one Journal before running', field='sources')
     if not config.enabled_providers or set(config.enabled_providers) - set(RUN_PROVIDERS):
-        raise ConfigurationError('Select WoS, OpenAlex and/or Europe PMC for journal discovery', field='enabled_providers')
+        raise ConfigurationError('Select PubMed, WoS and/or OpenAlex for journal discovery', field='enabled_providers')
     return scopes
 
 
@@ -48,177 +49,304 @@ def discovery_status(results, cancelled=False):
     return 'failed'
 
 
-def discover_selected(config, config_path, *, client_factory=DiscoveryClient, clients=None, cancel_event=None, progress_callback=None, lightweight=False):
+def discover_selected(config, config_path, *, client_factory=DiscoveryClient, clients=None,
+                      cancel_event=None, progress_callback=None, records_callback=None):
+    """Execute only selected journal producers, retaining native complete evidence."""
     scopes = validate_selection(config)
-    dates = resolve_runtime_date(config,today=date.today())
+    dates = resolve_runtime_date(config, today=date.today())
     cancel = cancel_event or Event()
-    def progress(provider, source, status, count=0):
-        if progress_callback:
-            progress_callback(ProgressEvent(activity=ActivityUpdate(kind=ActivityKind.WORKING,
-                operation='discovery:' + source.key, label=provider + ': ' + status,source=provider,
-                detail=source.name,current=count,unit='work')))
     def execute(provider):
-        results=[]
-        applicable=scopes
-        if cancel.is_set():
-            return tuple(DiscoveryResult(provider,s,'cancelled',limitations=('Run cancelled',)) for s in applicable)
         with ExitStack() as stack:
             try:
-                if clients is not None:
-                    client=clients[provider]
+                if cancel.is_set():
+                    return tuple(DiscoveryResult(provider,s,'cancelled') for s in scopes)
+                if clients is None:
+                    key = read_credential(config_path, provider=provider)[0]
+                    client = stack.enter_context(client_factory(provider, api_key=key,
+                        cancel_event=cancel, progress_callback=progress_callback))
                 else:
-                    key=read_credential(config_path)[0] if provider=='openalex' else None
-                    client=stack.enter_context(client_factory(provider,api_key=key,cancel_event=cancel,progress_callback=progress_callback))
-                for source in applicable:
-                    if cancel.is_set():
-                        results.append(DiscoveryResult(provider,source,'cancelled',limitations=('Run cancelled',)))
-                        continue
-                    progress(provider,source,'running')
-                    discover = getattr(client, 'discover_candidates', client.discover) if lightweight else client.discover
-                    result=discover(source,config.keyword_ast,dates.from_date,dates.to_date)
-                    results.append(result)
-                    progress(provider,source,result.status,result.candidates)
+                    client = clients[provider]
+                if progress_callback:
+                    progress_callback(ProgressEvent(activity=ActivityUpdate(kind=ActivityKind.WORKING,
+                        operation='discovery', label=provider + ' journal discovery', source=provider)))
+                results = client.discover_many(scopes, config.keyword_ast, dates.from_date, dates.to_date,
+                    records_callback=records_callback)
+                # The final handoff also covers producers with no page callback.
+                if records_callback:
+                    records_callback(tuple(record for result in results for record in result.records))
             except Exception as error:
-                # Host transport or credential failure is local to this provider.
-                for source in applicable[len(results):]:
-                    results.append(DiscoveryResult(provider,source,'failed',limitations=(f'{provider}: {type(error).__name__}',)))
-        return tuple(results)
-    selected=tuple(p for p in DISCOVERY_PROVIDERS if p in config.enabled_providers)
+                results = tuple(DiscoveryResult(provider,s,'cancelled' if cancel.is_set() else 'failed',
+                    limitations=(f'{provider}: {type(error).__name__}',)) for s in scopes)
+            if progress_callback:
+                count = sum(len(result.records) for result in results)
+                status = discovery_status(results, cancel.is_set())
+                progress_callback(ProgressEvent(activity=ActivityUpdate(kind=ActivityKind.WORKING,
+                    operation='discovery', label=f'{provider} journal discovery: {status}', source=provider,
+                    current=count, total=count, unit='work')))
+            return results
+    selected = tuple(p for p in DISCOVERY_PROVIDERS if p in config.enabled_providers)
     if not selected:
         return IntegratedDiscovery((), (), 'empty')
-    with ThreadPoolExecutor(max_workers=min(4,len(selected))) as pool:
-        # map preserves fixed Provider order independent of network completion.
-        results=tuple(result for group in pool.map(execute,selected) for result in group)
-    return IntegratedDiscovery(tuple(record for result in results for record in result.records),results,discovery_status(results,cancel.is_set()))
+    with ThreadPoolExecutor(max_workers=len(selected), thread_name_prefix='run-discovery') as pool:
+        results = tuple(result for group in pool.map(execute, selected) for result in group)
+    return IntegratedDiscovery(tuple(record for result in results for record in result.records),
+        results, discovery_status(results, cancel.is_set()))
 
 
-def creation_details(discovery, clients, identities, cancel):
-    """Gather all lightweight identities before selecting one creation source per work."""
-    from allfold.canonicalize import consolidate_evidence
-    from allfold.identifiers import evidence_identifiers, normalize_external_id
-    if cancel.is_set():
-        return discovery
-    needed={provider: [] for provider in DISCOVERY_PROVIDERS}
-    candidates={}
-    for cluster in consolidate_evidence(discovery.records).clusters:
-        keys={key for record in cluster.evidence for key in evidence_identifiers(record)}
-        if (not identities.complete or keys & identities.blocked_identifiers or
-                any(key in identities.by_identifier for key in keys) or
-                any(record.provenance.provider=='wos' or record.title for record in cluster.evidence)):
-            continue
-        ordered=sorted((record for record in cluster.evidence if record.provenance.provider in DISCOVERY_PROVIDERS),
-            key=lambda record:(record.publication_type!='journal',DISCOVERY_PROVIDERS.index(record.provenance.provider)))
-        for choice in ordered:
-            provider=choice.provenance.provider
-            native=normalize_external_id(provider,getattr(choice.external_ids,provider))
-            if native:
-                needed[provider].append(native)
-                candidates[(provider,native)]=cluster.evidence
-                break
-    runs=list(discovery.providers)
-    for provider, identifiers in needed.items():
-        if not identifiers or cancel.is_set(): continue
-        client=clients[provider]
-        try:
-            detail=client.lookup_many(provider,identifiers)
-        except Exception as error:
-            detail=DiscoveryResult(provider, SourceScope('journal',''), 'failed', limitations=(f'Creation details: {type(error).__name__}',))
-        for index, run in enumerate(runs):
-            if run.provider!=provider: continue
-            additions=[]
-            run_keys={key for record in run.records for key in evidence_identifiers(record)}
-            for record in detail.records:
-                native=normalize_external_id(provider,getattr(record.external_ids,provider))
-                cluster=candidates.get((provider,native),())
-                cluster_keys={key for item in cluster for key in evidence_identifiers(item)}
-                if not cluster_keys & run_keys: continue
-                additions.append(record.model_copy(update={
-                    'journal':record.journal or run.source.name,
-                    'monitor_journal_issns':tuple(sorted(set(record.monitor_journal_issns+run.source.issns))),
-                    'provenance':record.provenance.model_copy(update={'role':'discovery'})}))
-            limits=tuple(dict.fromkeys((*run.limitations,*detail.limitations)))
-            status='cancelled' if cancel.is_set() else 'partial' if limits else run.status
-            runs[index]=replace(run,records=(*run.records,*additions),limitations=limits,status=status)
-    return replace(discovery, records=tuple(record for run in runs for record in run.records),
-        providers=tuple(runs), status=discovery_status(runs,cancel.is_set()))
+RUN_COMPLETION_PROVIDERS = ('pubmed', 'openalex', 'europe_pmc', 'crossref', 'arxiv', 'biorxiv', 'medrxiv')
+
+
+class _WorkQueue:
+    """Operation-local bounded batches; the producer callback never performs I/O."""
+    def __init__(self, client, cancel, guard, progress_callback):
+        self.client, self.cancel, self.guard, self.progress = client, cancel, guard, progress_callback
+        self.condition = Condition()
+        self.pending, self.seen, self.finished = [], set(), False
+        self.responses, self.problems = {}, []
+
+    def submit(self, records):
+        from allfold.identifiers import strong_identifiers
+        values = {value for record in records if record.provenance.provider != 'openalex'
+            for namespace, value in strong_identifiers(record.external_ids) if namespace == 'doi'}
+        with self.condition:
+            for value in sorted(values - self.seen):
+                self.seen.add(value)
+                self.pending.append(value)
+            self.condition.notify_all()
+
+    def finish(self):
+        with self.condition:
+            self.finished = True
+            self.condition.notify_all()
+
+    def run(self):
+        from allfold.application.metadata_completion import _batch_lookup
+        while True:
+            with self.condition:
+                self.condition.wait_for(lambda: self.pending or self.finished or self.cancel.is_set(), timeout=.1)
+                if self.cancel.is_set() or not self.pending and self.finished:
+                    return
+                if not self.pending:
+                    continue
+                # Briefly coalesce page/native callbacks without waiting for any
+                # producer to finish. Network/cache work happens outside this lock.
+                if len(self.pending) < 50 and not self.finished:
+                    self.condition.wait(timeout=.025)
+                batch, self.pending = self.pending[:50], self.pending[50:]
+            if self.cancel.is_set():
+                return
+            self.guard()
+            if self.progress:
+                self.progress(ProgressEvent(activity=ActivityUpdate(kind=ActivityKind.WORKING,
+                    operation='work-location', label='OpenAlex Work location', source='openalex_work',
+                    current=len(self.responses), unit='work')))
+            # lookup_many reuses the adapter's full/in-flight cache and returns
+            # explicit requested-DOI bindings for different top-level identities.
+            cached = _batch_lookup(self.client,'openalex','doi',batch,None,self.cancel)
+            self.responses.update(cached)
+            self.problems.extend(f'OpenAlex Work location: {type(value).__name__}'
+                for value in cached.values() if isinstance(value,Exception))
 
 
 def run_integrated(config_path, *, loaded_config=None, workspace_snapshot=None, cancel_event=None,
-                   progress_callback=None, client_factory=DiscoveryClient, wos_stage=None, workflow_id=None):
+                   progress_callback=None, client_factory=DiscoveryClient, completion_factory=None,
+                   wos_stage=None, workflow_id=None):
     from allfold.application.run_commit import capture_run_workspace, commit_run_workspace
     from allfold.application.monitor import RunResult, RunOutcome, MonitorIssue, MonitorIssueSeverity, MonitorIssueComponent
     from allfold.application.run_state import RunProvider, RunFacts, RunIssueFact, LastRunSnapshot, RecordedRunOutcome, INTEGRATED_RUN_SCHEMA_VERSION, LastRunSnapshotWriteError, write_last_run_snapshot
-    from allfold.canonicalize import canonicalize_records, consolidate_evidence
-    from allfold.identifiers import evidence_identifiers
+    from allfold.application.metadata_completion import complete_metadata_many, prime_record_cache, bind_records
+    from allfold.application.coordinators.api_completion import completion_client
+    from allfold.canonicalize import canonicalize_records, consolidate_evidence, completion_metadata
+    from allfold.identifiers import evidence_identifiers, strong_identifiers
     from allfold.persistence.materialize import materialize_papers, read_workspace_identities
     from allfold.persistence.safe_write import ContentChangedError
-    cancel=cancel_event or Event()
+    cancel = cancel_event or Event()
+    completion_factory = completion_factory or completion_client
     if progress_callback:
         progress_callback(ProgressEvent(stage=ProgressStage.CHECKING_MONITOR))
     with ExitStack() as stack:
-        snapshot=workspace_snapshot or stack.enter_context(capture_run_workspace(config_path,loaded_config))
-        config=snapshot.config
+        snapshot = workspace_snapshot or stack.enter_context(capture_run_workspace(config_path,loaded_config))
+        config = snapshot.config
         validate_selection(config)
-        dates=resolve_runtime_date(config,today=date.today())
-        pacing={}
-        clients={}
+        dates = resolve_runtime_date(config,today=date.today())
+        pacing, clients, request_cache = {}, {}, {}
+        guard_errors, guard_lock = [], Lock()
+        def guard():
+            native_owner = getattr(wos_stage, '__self__', None)
+            if native_owner is not None and hasattr(native_owner, 'check_dispatch_authority'):
+                native_owner.check_dispatch_authority(cancel)
+            try:
+                with commit_run_workspace(snapshot,cancel_event=cancel):
+                    pass
+            except ContentChangedError as error:
+                with guard_lock:
+                    if not cancel.is_set():
+                        guard_errors.append(error)
+                    cancel.set()  # Revocation is global, even when an adapter catches its exception.
+                raise
         class UnavailableClient:
-            def __init__(self,provider,message):
-                self.provider,self.message=provider,message
-            def discover(self,source,*args):
-                return DiscoveryResult(self.provider,source,'failed',limitations=(self.message,))
-        with commit_run_workspace(snapshot) as lock:
-            initial_identities = read_workspace_identities(lock)
-        browser = IntegratedDiscovery((), (), 'empty')
-        if 'wos' in config.enabled_providers and not cancel.is_set():
+            def __init__(self, provider, message): self.provider,self.message=provider,message
+            def discover_many(self, scopes, *args, **kwargs):
+                return tuple(DiscoveryResult(self.provider, source, 'failed', limitations=(self.message,)) for source in scopes)
+            def lookup_many(self, namespace, ids, **kwargs):
+                raise ValueError(self.message)
+            def lookup(self, *args): raise ValueError(self.message)
+        # Fixed helper set is independent of Discovery and explicit Completion switches.
+        for provider in RUN_COMPLETION_PROVIDERS:
+            try:
+                key = read_credential(config_path,provider=provider)[0] if provider in DISCOVERY_PROVIDERS else None
+                kwargs = dict(api_key=key,cancel_event=cancel,pacing_state=pacing,progress_callback=progress_callback)
+                factory = client_factory if provider in config.enabled_providers else completion_factory
+                if factory is completion_factory:
+                    kwargs['mailto'] = config.crossref_mailto
+                client = factory(provider,**kwargs)
+                client.request_guard = guard
+                clients[provider] = stack.enter_context(client)
+            except (ValueError,OSError) as error:
+                clients[provider] = UnavailableClient(provider,str(error))
+        if progress_callback:
+            progress_callback(ProgressEvent(stage=ProgressStage.DISCOVERING_PAPERS))
+        work = _WorkQueue(clients['openalex'],cancel,guard,progress_callback)
+        def native():
+            if cancel.is_set():
+                return IntegratedDiscovery((),(), 'cancelled')
             try:
                 if wos_stage is None:
                     raise ValueError('WoS browser stage is unavailable')
-                browser = wos_stage(snapshot, cancel_event=cancel, workflow_id=workflow_id, progress_callback=progress_callback)
-            except (ValueError, OSError, ContentChangedError) as error:
-                source = SourceScope('journal', 'Web of Science')
-                browser = IntegratedDiscovery((), (DiscoveryResult('wos', source, 'failed', limitations=(str(error),)),), 'failed')
-        for provider in DISCOVERY_PROVIDERS:
-            if provider not in config.enabled_providers or cancel.is_set():
-                continue
+                result = wos_stage(snapshot,cancel_event=cancel,workflow_id=workflow_id,
+                    progress_callback=progress_callback,records_callback=work.submit)
+                work.submit(result.records)
+                return result
+            except Exception as error:
+                source=SourceScope('journal','Web of Science')
+                return IntegratedDiscovery((),(DiscoveryResult('wos',source,'cancelled' if cancel.is_set() else 'failed',
+                    limitations=(str(error),)),),'cancelled' if cancel.is_set() else 'failed')
+        with ThreadPoolExecutor(max_workers=3,thread_name_prefix='integrated-run') as pool:
+            locating = pool.submit(work.run)
+            browser_future = pool.submit(native) if 'wos' in config.enabled_providers else None
             try:
-                key=read_credential(config_path)[0] if provider=='openalex' else None
-                client=client_factory(provider,api_key=key,cancel_event=cancel,pacing_state=pacing,progress_callback=progress_callback)
-                def guard():
-                    with commit_run_workspace(snapshot,cancel_event=cancel):
-                        pass
-                client.request_guard=guard
-                clients[provider]=stack.enter_context(client)
-            except (ValueError,OSError) as error:
-                clients[provider]=UnavailableClient(provider,str(error))
-        if progress_callback:
-            progress_callback(ProgressEvent(stage=ProgressStage.DISCOVERING_PAPERS))
-        api=discover_selected(config,config_path,clients=clients,cancel_event=cancel,progress_callback=progress_callback,lightweight=True)
-        discovery=IntegratedDiscovery((*browser.records, *api.records), (*browser.providers, *api.providers),
-            discovery_status((*browser.providers, *api.providers),cancel.is_set()), browser.details, browser.journals, browser.statistics)
-        discovery = creation_details(discovery, clients, initial_identities, cancel)
-        records=discovery.records
-        if progress_callback:
-            progress_callback(ProgressEvent(stage=ProgressStage.PREPARING_PAPERS))
-        groups=consolidate_evidence(records).clusters
+                api = discover_selected(config,config_path,clients=clients,cancel_event=cancel,
+                    progress_callback=progress_callback,records_callback=work.submit)
+                browser = browser_future.result() if browser_future else IntegratedDiscovery((),(), 'empty')
+            finally:
+                work.finish()
+            try:
+                locating.result()
+            except ContentChangedError:
+                # All producers, including the native Future and Browser owner,
+                # have settled above. A cancelled Work guard is a parent outcome;
+                # genuine ownership invalidation remains latched in guard_errors.
+                if not cancel.is_set():
+                    raise
+        if guard_errors:
+            raise guard_errors[0]
+        discovery = IntegratedDiscovery((*browser.records,*api.records),(*browser.providers,*api.providers),
+            discovery_status((*browser.providers,*api.providers),cancel.is_set()),browser.details,browser.journals,browser.statistics)
+        if work.problems and discovery.status in {'complete','empty'}:
+            discovery = replace(discovery,status='partial')
+        # Work lookup may add direct Work identities to a discovered formal
+        # DOI. Association-only anchors retain their related Work separately.
+        all_work=tuple(record for value in work.responses.values() if not isinstance(value,Exception) for record in value)
+        located_formal=[]
+        for group in consolidate_evidence(discovery.records).clusters:
+            keys={key for record in group.evidence for key in strong_identifiers(record.external_ids)}
+            located_formal.extend(record.model_copy(update={'provenance':record.provenance.model_copy(update={'role':'supplement'})})
+                for record in formal_records(all_work,keys))
+        consolidated = consolidate_evidence((*discovery.records,*located_formal))
+        groups = consolidated.clusters
         issues=[MonitorIssue(MonitorIssueSeverity.ERROR if r.status=='failed' else MonitorIssueSeverity.WARNING,
-                    MonitorIssueComponent.DISCOVERY,'discovery',f'{r.provider} / {r.source.name}: {message}')
-                for r in discovery.providers for message in r.limitations]
+            MonitorIssueComponent.DISCOVERY,'discovery',f'{r.provider} / {r.source.name}: {message}')
+            for r in discovery.providers for message in r.limitations]
+        issues.extend(MonitorIssue(MonitorIssueSeverity.ERROR,MonitorIssueComponent.CANONICALIZATION,item.stage,item.message)
+            for item in consolidated.issues)
+        issues.extend(MonitorIssue(MonitorIssueSeverity.WARNING,MonitorIssueComponent.DISCOVERY,'work_location',message)
+            for message in dict.fromkeys(work.problems))
         created=existing=conflicts=0
         provider_totals=None
+        completion_status='empty'
+        phase_statistics=dict(completion_targets=0,completion_requests=0,completion_date_facts_added=0,
+            first_public_recorded=0,work_location_targets=len(work.seen))
         def result():
             warnings=tuple(i for i in issues if i.severity is MonitorIssueSeverity.WARNING)
             errors=tuple(i for i in issues if i.severity is MonitorIssueSeverity.ERROR)
             outcome=(RunOutcome.CANCELLED if cancel.is_set() else RunOutcome.FAILED if discovery.status=='failed' else
-                     RunOutcome.COMPLETED_WITH_ERRORS if errors else RunOutcome.COMPLETED_WITH_WARNINGS if warnings or discovery.status=='partial' else RunOutcome.COMPLETED)
+                RunOutcome.COMPLETED_WITH_ERRORS if errors else RunOutcome.COMPLETED_WITH_WARNINGS
+                if warnings or discovery.status=='partial' or completion_status in {'partial','failed'} else RunOutcome.COMPLETED)
             facts=RunFacts(finished_at=datetime.now(timezone.utc),created_papers=created,existing_papers=existing,
-                statistics={**discovery.statistics,'integrated_candidates':sum(r.candidates for r in discovery.providers),'integrated_deduplicated':created+existing,'conflicts':discovery.statistics.get('conflicts',0)+conflicts},
-                journals=discovery.journals,
-                issues=tuple(RunIssueFact(category=i.stage,message=i.message,severity=i.severity.value) for i in issues),
-                details={**discovery.details,**({'provider_totals':provider_totals} if provider_totals is not None else {}),'discovery_status':'cancelled' if cancel.is_set() else discovery.status,
-                         'provider_runs':[r.fact() for r in discovery.providers]})
-            return RunResult(provider=RunProvider.INTEGRATED, resolved_date_range=dates,
-                             warnings=warnings, errors=errors, outcome=outcome, facts=facts)
+                statistics={**discovery.statistics,**phase_statistics,'integrated_candidates':sum(r.candidates for r in discovery.providers),
+                    'integrated_deduplicated':len(groups),'conflicts':discovery.statistics.get('conflicts',0)+conflicts},
+                journals=discovery.journals,issues=tuple(RunIssueFact(category=i.stage,message=i.message,severity=i.severity.value) for i in issues),
+                details={**discovery.details,**({'provider_totals':provider_totals} if provider_totals is not None else {}),
+                    'discovery_status':'cancelled' if cancel.is_set() else discovery.status,
+                    'completion_status':'cancelled' if cancel.is_set() else completion_status,
+                    'provider_runs':[r.fact() for r in discovery.providers]})
+            return RunResult(provider=RunProvider.INTEGRATED,resolved_date_range=dates,
+                warnings=warnings,errors=errors,outcome=outcome,facts=facts)
+        if cancel.is_set():
+            return result()
+        # Classify the complete saved index, including Rejected, before helper requests.
+        with commit_run_workspace(snapshot,cancel_event=cancel) as lock:
+            current=read_workspace_identities(lock)
+            targets={index:group.evidence for index,group in enumerate(groups)
+                if current.complete and not (keys:={key for record in group.evidence for key in evidence_identifiers(record)}) & current.blocked_identifiers
+                and not any(key in current.by_identifier for key in keys)}
+        phase_statistics['completion_targets']=len(targets)
+        completed_papers={}
+        completed_keys={}
+        if targets:
+            if progress_callback:
+                progress_callback(ProgressEvent(stage=ProgressStage.COMPLETING_PAPERS))
+            prime_record_cache(tuple(record for record in discovery.records if record.provenance.provider=='pubmed'),
+                request_cache=request_cache,capability='fetch')
+            prime_record_cache(tuple(record for record in discovery.records if record.provenance.provider=='openalex'),request_cache=request_cache)
+            for doi,value in work.responses.items():
+                request_cache['openalex','doi',doi]=value
+            prepared={}
+            ordinary_roots={}
+            for index,records in targets.items():
+                keys={key for record in records for key in strong_identifiers(record.external_ids)}
+                ordinary_roots[index]=keys
+                associated,_=bind_records((*records,*all_work),keys)
+                prepared[index]=tuple(associated)
+            before_requests=sum(getattr(client,'request_count',0) for client in clients.values())
+            completions=complete_metadata_many(prepared,RUN_COMPLETION_PROVIDERS,clients=clients,cancel_event=cancel,
+                request_cache=request_cache,paper_guard=lambda _:guard(),allow_formal_preprint_reverse=False,
+                ordinary_root_ids=ordinary_roots)
+            statuses=[]
+            from allfold.paper_dates import collect_dates
+            for index,completed in completions:
+                if isinstance(completed,Exception):
+                    statuses.append('failed')
+                    issues.append(MonitorIssue(MonitorIssueSeverity.WARNING,MonitorIssueComponent.CANONICALIZATION,
+                        'completion',f'API Completion: {type(completed).__name__}'))
+                    records=prepared[index]
+                else:
+                    statuses.append(completed.status)
+                    first_public_key = 'first_public_' + completed.first_public_status
+                    if completed.first_public_status in {'no_association','known_unresolved','conflict','failed','cancelled'}:
+                        phase_statistics[first_public_key] = phase_statistics.get(first_public_key,0)+1
+                    records=completed.records
+                    issues.extend(MonitorIssue(MonitorIssueSeverity.WARNING,MonitorIssueComponent.CANONICALIZATION,
+                        'completion',f'{issue.provider}: {issue.message}') for issue in completed.issues)
+                root_keys=ordinary_roots[index]
+                formal=formal_records(records,root_keys)
+                completed_keys[index]={key for record in formal for key in evidence_identifiers(record)}
+                canonical=canonicalize_records(formal)
+                issues.extend(MonitorIssue(MonitorIssueSeverity.ERROR,MonitorIssueComponent.CANONICALIZATION,
+                    item.stage,item.message) for item in canonical.issues)
+                if len(canonical.papers)!=1:
+                    continue
+                base=canonical.papers[0]
+                folded=completion_metadata(records)
+                completed_papers[index]=base.model_copy(update={'date_evidence':folded.date_evidence,
+                    'sources':folded.sources,'metadata':base.metadata.model_copy(update={'first_public_at':folded.metadata.first_public_at})})
+                phase_statistics['completion_date_facts_added']+=len(set(folded.date_evidence)-set(collect_dates(prepared[index])))
+                phase_statistics['first_public_recorded']+=bool(folded.metadata.first_public_at)
+            phase_statistics['completion_requests']=sum(getattr(client,'request_count',0) for client in clients.values())-before_requests
+            completion_status=('cancelled' if cancel.is_set() else 'partial' if any(status in {'failed','partial'} for status in statuses)
+                else 'complete')
+        if guard_errors:
+            raise guard_errors[0]
         if cancel.is_set():
             return result()
         if progress_callback:
@@ -230,8 +358,8 @@ def run_integrated(config_path, *, loaded_config=None, workspace_snapshot=None, 
                 current=read_workspace_identities(lock)
                 incoming=[]
                 eligible=[]
-                for group in groups:
-                    keys={key for record in group.evidence for key in evidence_identifiers(record)}
+                for index, group in enumerate(groups):
+                    keys=completed_keys.get(index,{key for record in group.evidence for key in evidence_identifiers(record)})
                     owners={item.paper_id for key in keys if (item:=current.by_identifier.get(key)) and item.paper_id}
                     if len(owners)>1 or keys & current.blocked_identifiers:
                         conflicts += 1
@@ -244,11 +372,9 @@ def run_integrated(config_path, *, loaded_config=None, workspace_snapshot=None, 
                         continue
                     eligible.append(group)
                     if not owners:
-                        incoming.extend(group.evidence)
-                canonical=canonicalize_records(incoming)
-                issues.extend(MonitorIssue(MonitorIssueSeverity.ERROR,MonitorIssueComponent.CANONICALIZATION,item.stage,item.message)
-                    for item in canonical.issues)
-                saved=materialize_papers(canonical.papers,config.output_dir,operation_lock=lock,cancel_event=cancel,progress_callback=progress_callback)
+                        if index in completed_papers:
+                            incoming.append(completed_papers[index])
+                saved=materialize_papers(incoming,config.output_dir,operation_lock=lock,cancel_event=cancel,progress_callback=progress_callback)
                 created=len(saved.created_papers)
                 issues.extend(MonitorIssue(MonitorIssueSeverity.ERROR,MonitorIssueComponent.MATERIALIZATION,'write',i.message) for i in saved.issues)
                 identities=read_workspace_identities(lock)

@@ -7,7 +7,8 @@ import pytest
 
 from allfold.keywords import parse_keyword_expression
 from allfold.progress import ActivityKind
-from allfold.providers.integrated import DiscoveryClient, SourceScope
+from allfold.providers.integrated import DiscoveryResult, SourceScope
+from allfold.providers.supplemental import SupplementalClient
 
 
 SOURCE = SourceScope('journal', 'Biometrics', issns=('0006-341X',))
@@ -22,8 +23,13 @@ def page(identifier='42', *, total=1, cursor=None):
     return value
 
 
-def discover(client):
-    return client.discover(SOURCE, QUERY, date(2026, 1, 1), date(2026, 1, 31))
+def targeted_association(client):
+    value = client.lookup_many('pmid', ['42'])['42']
+    records = value.records if isinstance(value, Exception) and hasattr(value,'records') else () if isinstance(value,Exception) else value
+    problems = (str(value),) if isinstance(value,Exception) else ()
+    status = 'cancelled' if client.cancel.is_set() else 'partial' if problems and records else 'failed' if problems else 'complete' if records else 'empty'
+    return DiscoveryResult('europe_pmc',SOURCE,status,records,problems)
+
 
 
 def test_html_service_unavailable_retries_same_scoped_query_then_recovers():
@@ -34,9 +40,9 @@ def test_html_service_unavailable_retries_same_scoped_query_then_recovers():
             return httpx.Response(503, headers={'content-type': 'text/html', 'Retry-After': '7'},
                                   text='<html><h1>503 Service Unavailable</h1></html>')
         return httpx.Response(200, json=page())
-    with DiscoveryClient('europe_pmc', transport=httpx.MockTransport(response), interval=0,
+    with SupplementalClient('europe_pmc', transport=httpx.MockTransport(response), interval=0,
                          sleep=waits.append, progress_callback=events.append) as client:
-        result = discover(client)
+        result = targeted_association(client)
     assert result.status == 'complete' and len(result.records) == 1
     assert len(calls) == 2 and calls[0].url == calls[1].url
     assert waits == [7]
@@ -51,9 +57,9 @@ def test_persistent_503_preserves_first_page_and_stops_after_three_attempts():
         if len(calls) == 1:
             return httpx.Response(200, json=page(total=2, cursor='next-page'))
         return httpx.Response(503, text='Service Unavailable')
-    with DiscoveryClient('europe_pmc', transport=httpx.MockTransport(response), interval=0,
+    with SupplementalClient('europe_pmc', transport=httpx.MockTransport(response), interval=0,
                          sleep=waits.append, page_size=1) as client:
-        result = discover(client)
+        result = targeted_association(client)
     assert result.status == 'partial' and len(result.records) == 1
     assert len(calls) == 4 and waits == [5, 10]
     assert all(request.url.params['cursorMark'] == 'next-page' for request in calls[1:])
@@ -68,19 +74,19 @@ def test_cancel_during_service_backoff_stops_next_request():
     def progress(event):
         if event.activity and event.activity.kind is ActivityKind.RETRYING:
             cancel.set()
-    with DiscoveryClient('europe_pmc', transport=httpx.MockTransport(response), interval=0,
+    with SupplementalClient('europe_pmc', transport=httpx.MockTransport(response), interval=0,
                          cancel_event=cancel, progress_callback=progress) as client:
-        result = discover(client)
+        result = targeted_association(client)
     assert result.status == 'cancelled' and len(calls) == 1
 
 
 @pytest.mark.parametrize('status', [200, 202, 503])
 def test_actual_html_challenge_is_never_retried(status):
     calls = []
-    with DiscoveryClient('europe_pmc', transport=httpx.MockTransport(lambda request:
+    with SupplementalClient('europe_pmc', transport=httpx.MockTransport(lambda request:
         calls.append(request) or httpx.Response(status, headers={'content-type': 'text/html'},
                                                 text='<html>Anubis challenge</html>')), interval=0) as client:
-        result = discover(client)
+        result = targeted_association(client)
     assert result.status == 'failed' and len(calls) == 1
     assert 'access limited' in result.limitations[0]
 
@@ -88,7 +94,7 @@ def test_actual_html_challenge_is_never_retried(status):
 @pytest.mark.parametrize('payload', [{'version': '6.9'}, {'hitCount': 0}])
 def test_incomplete_200_json_is_failed_instead_of_empty(payload):
     calls = []
-    with DiscoveryClient('europe_pmc', transport=httpx.MockTransport(lambda request:
+    with SupplementalClient('europe_pmc', transport=httpx.MockTransport(lambda request:
         calls.append(request) or httpx.Response(200, json=payload)), interval=0) as client:
-        result = discover(client)
+        result = targeted_association(client)
     assert result.status == 'failed' and len(calls) == 1

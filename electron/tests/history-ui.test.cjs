@@ -18,7 +18,7 @@ test('history reuses Run status wording and distinguishes opened evidence from a
   const {renderHistoryRecord}=await import('../../frontend/ui/history-view.js');
   const run=renderHistoryRecord({kind:'run',provider:'crossref',task_id:'run_1',outcome:'partial',
     statistics:{created:2},details:{result_status:'incomplete'}});
-  assert.match(run,/Crossref/);assert.match(run,/检索覆盖不完整/);
+  assert.match(run,/Crossref/);assert.match(run,/检索或补全不完整/);
   const prep=renderHistoryRecord({kind:'prepare',task_id:'prep_1',outcome:'opened',statistics:{opened:1},
     details:{results:[{service_id:'svc_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',outcome:'opened',reason:'target_opened'}]}});
   assert.match(prep,/已打开/);assert.match(prep,/不代表订阅或下载已验证/);

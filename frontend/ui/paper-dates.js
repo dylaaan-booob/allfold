@@ -1,5 +1,5 @@
 (() => {
-  const names={'accepted':'Accepted','published-online':'Published online',published:'Published','source-date':'Published'};
+  const names={'received':'Received','accepted':'Accepted','published-online':'Published online',published:'Published','source-date':'Published'};
   const value=item=>[item.year,item.month,item.day].filter(part=>part!==undefined && part!==null).map((part,i)=>i?String(part).padStart(2,'0'):String(part).padStart(4,'0')).join('-');
   const detail=item=>[item.provider,item.record_id,item.version,item.source_label,item.url].filter(Boolean).join(' · ');
   window.allfoldPaperDates={render(paper,first,journal){

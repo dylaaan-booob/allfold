@@ -162,3 +162,20 @@ there is no standalone Evidence-write failure category. Lookup evidence/no-match
 deduplicate provider/namespace/identifier targets within the operation, including
 shared arXiv batches. No preprint response bodies or identifiers are added to the
 persistent diagnostic event schema.
+
+Integrated Run retains one parent History/result and latest snapshot. Discovery
+`provider_runs`/`run_sources` contain only selected PubMed, WoS and OpenAlex sources;
+automatic helpers do not become extra Discovery sources. Separate allowlisted
+`discovery_status` and `completion_status` report complete, empty, partial, failed
+or cancelled phases. Completion failure preserves discovered facts and reports
+partial coverage instead of claiming all dates were completed.
+
+Numeric Run statistics distinguish `integrated_candidates` (source hits),
+`integrated_deduplicated` (final roots), `work_location_targets` (unique DOI queue
+inputs), `completion_targets` (unknown safe roots), `completion_requests` (physical
+HTTP dispatches during phase two, including pages/retries),
+`completion_date_facts_added`, First public outcomes and actual Paper creates.
+Cached evidence/per-Paper lookup projections do not increment physical requests.
+Source created/existing counts overlap and must not be summed as global Paper
+counts. No request URL, response body, API key, relation identifier or arbitrary
+Provider error payload is added to persistent History diagnostics.

@@ -139,7 +139,15 @@ version/date conflicts belong in synthetic automated tests; real samples are
 supplementary when available. These checks do not establish real-site,
 real-Workspace or Zotero acceptance.
 
-`tests/test_incremental_discovery.py` exercises the unified native-stage boundary, parent slot retention, partial export preservation, lightweight identity discovery, unknown-only batch details, >200 unordered Work IDs, whole-author singleton fallback and ambiguous-owner isolation. `electron/tests/task-presentation.test.cjs` covers unified browser-stage recovery and parent cancellation without opening native windows. History keeps sanitized source totals and WoS batch/journal/date hint counts; actual Custom controls and downloaded exports remain a separately authorized live acceptance boundary.
+`tests/test_two_stage_run.py` uses controlled Events/Futures to prove overlapping
+PubMed/WoS/OpenAlex producers, Work lookup before producer completion, deduplication
+and tail drain, fixed helper roles, unknown-only completion, relation-only date
+folding, formal/preprint identity isolation, physical request counts, failure
+isolation, global dispatch revocation, native-disconnect settlement and parent
+shutdown/join. `tests/test_incremental_discovery.py` retains parent slot/partial
+export checks, verified-batch refusal for count/path/duplicate-UT failures,
+late conflict quarantine, >200 unordered Work IDs, whole-author full-detail
+fallback and ambiguous-owner isolation. `electron/tests/task-presentation.test.cjs` covers unified browser-stage recovery and parent cancellation without opening native windows. History keeps sanitized source totals and WoS batch/journal/date hint counts; actual Custom controls and downloaded exports remain a separately authorized live acceptance boundary.
 
 ## One-time retired scope cleanup
 

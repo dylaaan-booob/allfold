@@ -10,7 +10,7 @@ const settings={config_path:'/fixture/monitor.yaml',csrf_token:'fixture',issues:
   name:'Synthetic Monitor',keyword_expression:'causal',from_month:'2026-01',to_month:'2026-01',output_dir:'workspace',log_level:'INFO',
   monitor_revision_exists:'1',monitor_revision_digest:'fixture',journal_revision_exists:'1',journal_revision_digest:'fixture',
   institution_name:'',institution_idp_entity_id:'',auto_import_after_preparation:false,transition_delay_seconds:'3',display_name:'',
-  provider_aliases:{},provider_order:['openalex','europe_pmc','crossref','arxiv','biorxiv','medrxiv','wos'],enabled_providers:['openalex','europe_pmc'],completion_providers:['openalex','europe_pmc','crossref','arxiv','biorxiv','medrxiv'],groups:Array.from({length:20},(_,i)=>'Group '+i),
+  provider_aliases:{},provider_order:['pubmed','openalex','europe_pmc','crossref','arxiv','biorxiv','medrxiv','wos'],enabled_providers:['pubmed','openalex'],completion_providers:['pubmed','openalex','europe_pmc','crossref','arxiv','biorxiv','medrxiv'],groups:Array.from({length:20},(_,i)=>'Group '+i),
   custom_labels:['Label 0','Label 1','Label 2'],journals,access_services:[{id:'svc_fixture',name:'Synthetic Service',access_method:'manual',access_url:''}],
 }};
 const paper=(i,status='candidate')=>({id:'paper-'+i,title:'Synthetic Paper '+i,publication_date:'2026-10',conference:'Synthetic Conference',publication_type:'conference',first_public_at:'2022-04',date_evidence:[{kind:'preprint',year:2022,month:4,provider:'arxiv',record_id:'2204.12345',version:'v1',publication_type:'preprint',first_version:true},{kind:'accepted',year:2026,month:9,provider:'crossref',record_id:'10.5555/formal',publication_type:'journal'},{kind:'published-online',year:2026,month:10,provider:'crossref',record_id:'10.5555/formal',publication_type:'journal'}],external_ids:{openalex:'W123'},indexed_terms:[{value:'statistics',kind:'topic',source:'openalex'}],sources:[{provider:'openalex',record_id:'W123',role:'discovery'}],abstract:('An isolated synthetic paragraph for reader scroll verification. '.repeat(12)+'\n\n').repeat(24),authors:['Synthetic Author'],doi:i===0?null:'10.5555/layout-'+i,discovered_at:'2026-10-01T00:00:00Z',status,enrichPhase:'Idle'});
@@ -377,14 +377,16 @@ app.whenReady().then(async()=>{
       await navigate('run');
       $('s-run-overview-open').click();
       if(document.querySelectorAll('[data-discovery-provider]').length!==3)throw Error('Integrated Provider choices missing');
-      if(document.querySelector('[data-provider="pubmed"], [data-monitor="pubmedKey"]'))throw Error('Retired PubMed still displayed');
+      if(!document.querySelector('[data-provider="pubmed"]') || !document.querySelector('[data-monitor="pubmedKey"]'))throw Error('PubMed provider or optional credential missing');
+      if(document.querySelector('[data-discovery-provider="europe_pmc"]'))throw Error('Europe PMC must remain completion-only');
+      if(!document.querySelector('[data-discovery-provider="pubmed"]').checked || !document.querySelector('[data-discovery-provider="openalex"]').checked)throw Error('PubMed/OpenAlex Discovery defaults missing');
       const starts=[...document.querySelectorAll('#s-run [data-run-provider]')].filter(node=>!node.hidden && node.getClientRects().length);
       if(starts.length!==1 || starts[0].dataset.runProvider!=='integrated')throw Error('Run must expose one unified selected-source action');
       if(document.querySelector('[data-discovery-provider="wos"]').checked)throw Error('WoS must not become enabled automatically');
 
       if($('s-run').getBoundingClientRect().width>600 || $('s-run').querySelector('.workspace-content').clientWidth<360)throw Error('Run content lost available width');
       document.querySelector('#s-run [data-flyout]').click();
-      if($('run-provider-flyout').hidden || $('s-providers').children.length!==7)throw Error('Run Provider Directory did not open');
+      if($('run-provider-flyout').hidden || $('s-providers').children.length!==8)throw Error('Run Provider Directory did not open');
       $('s-providers').querySelector('[data-provider="crossref"]').click();
       if($('run-configuration-sidebar').hidden || $('s-run').dataset.sidebarMode!=='overlay')throw Error('Provider configuration must overlay at 600x480');
       if(!document.querySelector('#run-configuration-sidebar [data-monitor="crossrefMailto"]'))throw Error('Provider settings not in Functional Sidebar');
@@ -410,18 +412,18 @@ app.whenReady().then(async()=>{
     const integratedSummary={availability:'available',provider:'integrated',status:'incomplete',
       outcome:'COMPLETED_WITH_ERRORS',coverage_status:'partial',created_papers:2,existing_papers:1,
       finished_at:'2026-11-07T01:00:00Z',resolved_date_range:{from_date:'2026-01-01',to_date:'2026-03-31'},
-      journals:[],statistics:{integrated_candidates:3,integrated_deduplicated:3,conflicts:1},
-      issues:[{category:'discovery',severity:'error',message:'europe_pmc / Synthetic Journal: request failed'}],
-      details:{discovery_status:'partial',provider_runs:[
+      journals:[],statistics:{integrated_candidates:3,integrated_deduplicated:3,conflicts:1,completion_targets:2,completion_requests:3,completion_date_facts_added:4,first_public_recorded:1},
+      issues:[{category:'discovery',severity:'error',message:'pubmed / Synthetic Journal: request failed'}],
+      details:{discovery_status:'partial',completion_status:'partial',provider_runs:[
         {provider:'openalex',source:'Synthetic Journal',status:'complete',candidates:3,retained:3,limitations:[]},
-        {provider:'europe_pmc',source:'Synthetic Journal',status:'failed',candidates:0,retained:0,limitations:['request failed']}]}};
+        {provider:'pubmed',source:'Synthetic Journal',status:'failed',candidates:0,retained:0,limitations:['request failed']}]}};
     run.providers.integrated.result_summary=integratedSummary;
     await js("document.getElementById('s-run-overview-open').click(),window.uiRunPage.refresh()");
     await check(()=>{
       const root=document.querySelector('#s-run-records .s-run-record');
       root.querySelector('details').open=true;
       const text=root.innerText;
-      for(const expected of ['完成，检索覆盖不完整','2 new papers','1 already saved','Provider Details','Candidates','Distinct Papers','Identity conflicts','openalex','europe_pmc','request failed','检索'])if(!text.includes(expected))throw Error('Missing Integrated result: '+expected);
+      for(const expected of ['完成，检索或补全不完整','2 new papers','1 already saved','Provider Details','Candidates','Distinct Papers','API Completion','Completion targets','Completion HTTP requests','Added date facts','First public recorded','Identity conflicts','openalex','pubmed','request failed','检索'])if(!text.includes(expected))throw Error('Missing Integrated result: '+expected);
       if(/Source Resolution|OpenAlex records/.test(text) || root.querySelector('.s-run-coverage'))throw Error('Obsolete OpenAlex result surface');
       const content=document.querySelector('#s-run .workspace-content');
       if(content.scrollWidth>content.clientWidth+1)throw Error('Run result overflows constrained content');
@@ -463,7 +465,7 @@ app.whenReady().then(async()=>{
       root.querySelector('.s-run-provider-details').open=true;
       root.querySelector('.s-run-journals details').open=true;
       const text=root.innerText;
-      for(const expected of ['Journal Coverage','Synthetic WoS Journal','Export batches','Export 1–3','导出记录数与预期不一致','Publication date hints','出版日期与出版年份不一致','最近结果未保存','Unmatched Journal records','wos','openalex','europe_pmc'])if(!text.includes(expected))throw Error('Missing unified WoS result: '+expected);
+      for(const expected of ['Journal Coverage','Synthetic WoS Journal','Export batches','Export 1–3','导出记录数与预期不一致','Publication date hints','出版日期与出版年份不一致','最近结果未保存','Unmatched Journal records','wos','openalex','pubmed'])if(!text.includes(expected))throw Error('Missing unified WoS result: '+expected);
       if(root.querySelectorAll('.s-run-record').length!==1)throw Error('WoS results must share one Run record');
     });
     await js("document.getElementById('s-run-records').scrollIntoView({block:'start'})");
@@ -509,7 +511,9 @@ app.whenReady().then(async()=>{
       await navigate('run');
       $('s-run-overview-open').click();
       if(document.querySelectorAll('[data-discovery-provider]').length!==3)throw Error('Integrated Provider choices missing');
-      if(document.querySelector('[data-provider="pubmed"], [data-monitor="pubmedKey"]'))throw Error('Retired PubMed still displayed');
+      if(!document.querySelector('[data-provider="pubmed"]') || !document.querySelector('[data-monitor="pubmedKey"]'))throw Error('PubMed provider or optional credential missing');
+      if(document.querySelector('[data-discovery-provider="europe_pmc"]'))throw Error('Europe PMC must remain completion-only');
+      if(!document.querySelector('[data-discovery-provider="pubmed"]').checked || !document.querySelector('[data-discovery-provider="openalex"]').checked)throw Error('PubMed/OpenAlex Discovery defaults missing');
       const starts=[...document.querySelectorAll('#s-run [data-run-provider]')].filter(node=>!node.hidden && node.getClientRects().length);
       if(starts.length!==1 || starts[0].dataset.runProvider!=='integrated')throw Error('Run must expose one unified selected-source action');
       if(document.querySelector('[data-discovery-provider="wos"]').checked)throw Error('WoS must not become enabled automatically');

@@ -48,18 +48,26 @@ def normalize_openalex(raw, source):
     if (raw.get('primary_location') or {}).get('raw_type') == 'journal-issue':
         return None
     record_id = str(raw.get('id') or '')
-    if not record_id or not raw.get('title'):
-        raise DiscoveryError('OpenAlex record lacks identity or title')
+    if not normalize_external_id('openalex', record_id):
+        raise DiscoveryError('OpenAlex record lacks reliable Work identity')
     now = datetime.now(timezone.utc)
     abstract = raw.get('abstract_inverted_index') or {}
     tokens = {i: word for word, positions in abstract.items() for i in positions}
     identifiers = {'openalex': record_id, 'doi': normalize_doi(raw.get('doi'))}
+    related, refs, locations = _openalex_associations(raw, now)
+    # Work merges can retain a preprint's PMID even when the top DOI is formal.
+    # A Work-level identifier is association evidence, not direct article proof.
     for namespace in ('pmid', 'pmcid'):
         if identifier := normalize_external_id(namespace, (raw.get('ids') or {}).get(namespace)):
-            identifiers[namespace] = identifier
-    related, refs, locations = _openalex_associations(raw, now)
+            if raw.get('type') in {'preprint', 'posted-content'}:
+                identifiers[namespace] = identifier
+            else:
+                refs.add(ProviderRecordRef(provider=namespace, record_id=identifier))
+    venue = (raw.get('primary_location') or {}).get('source') or {}
+    issns = tuple(dict.fromkeys(str(value).upper() for value in (venue.get('issn') or [])
+        if isinstance(value, str) and re.fullmatch(r'\d{4}-\d{3}[\dXx]', value)))
     return ProviderWorkEvidence(provenance=MetadataSource(provider='openalex', record_id=record_id, retrieved_at=now, url=record_id),
-        title=raw['title'], journal=source.name or None,
+        title=raw.get('title'), journal=venue.get('display_name') or source.name or None, journal_issns=issns,
         publication_type='preprint' if raw.get('type') in {'preprint', 'posted-content'} else 'journal',
         publication_date=raw.get('publication_date'),
         related_dois=tuple(sorted(related - {identifiers['doi']})), related_ids=tuple(sorted(refs, key=lambda x: (x.provider, x.record_id))),
@@ -81,7 +89,7 @@ def _europe_pmc_associations(raw):
         ids['pmcid'] = raw['pmcid']
     related, refs, dates = set(), set(), []
     publisher = str((raw.get('bookOrReportDetails') or {}).get('publisher') or '').strip().casefold()
-    if preprint and publisher in {'biorxiv', 'medrxiv'} and ids['doi'] and ids['doi'].startswith('10.1101/'):
+    if preprint and publisher in {'biorxiv', 'medrxiv'} and ids['doi'] and ids['doi'].startswith(('10.1101/', '10.64898/')):
         refs.add(ProviderRecordRef(provider=publisher, record_id=ids['doi'], relation='preprint', version_family='doi:' + ids['doi']))
     for relation in (raw.get('commentCorrectionList') or {}).get('commentCorrection', []):
         if str(relation.get('type', '')).strip().casefold() not in {'preprint in', 'preprint of'}:
@@ -90,13 +98,14 @@ def _europe_pmc_associations(raw):
         doi = valid_doi(relation.get('doi'))
         reference = f"{relation['source']}:{relation['id']}" if relation.get('source') and relation.get('id') else None
         target_family = ('doi:' + doi if doi else 'europe_pmc:' + reference if reference else None) if target_preprint else None
+        note = str(relation.get('note') or '').strip() or None
         if reference:
             refs.add(ProviderRecordRef(provider='europe_pmc', record_id=reference,
-                relation='preprint' if target_preprint else None, version_family=target_family))
+                relation='preprint' if target_preprint else None, version_family=target_family, note=note))
         if doi:
             related.add(doi)
             if target_preprint:
-                refs.add(ProviderRecordRef(provider='doi', record_id=doi, relation='preprint', version_family=target_family))
+                refs.add(ProviderRecordRef(provider='doi', record_id=doi, relation='preprint', version_family=target_family, note=note))
     version = str(raw.get('versionNumber') or '') or None
     versions = (raw.get('versionList') or {}).get('version', [])
     family = ('doi:' + ids['doi'] if ids['doi'] else 'europe_pmc:' + identity) if preprint else None
@@ -134,9 +143,11 @@ def normalize_europe_pmc(raw, source):
         raise DiscoveryError('Europe PMC record lacks title')
     source_id, record_id = raw.get('source'), raw.get('id')
     identity, preprint, ids, related, refs, dates, version = _europe_pmc_associations(raw)
+    notes = sorted({f"{ref.provider}:{ref.record_id}: {ref.note}" for ref in refs if ref.note})
     keywords = raw.get('keywordList', {}).get('keyword', [])
     return ProviderWorkEvidence(provenance=MetadataSource(provider='europe_pmc', record_id=identity,
         retrieved_at=datetime.now(timezone.utc), version=version,
+        note='; '.join(notes) or None,
         url='https://europepmc.org/article/' + quote(str(source_id), safe='') + '/' + quote(str(record_id), safe='')),
         title=raw['title'], journal=None if preprint else source.name or None,
         publication_type='preprint' if preprint else 'journal', publication_date=raw.get('firstPublicationDate'),
@@ -145,30 +156,3 @@ def normalize_europe_pmc(raw, source):
         indexed_terms=tuple(ProviderTopic(value=k, source='europe_pmc', kind='keyword') for k in keywords if isinstance(k, str) and k)
             + tuple(ProviderTopic(value=k['descriptorName'], source='europe_pmc', kind='mesh') for k in raw.get('meshHeadingList', {}).get('meshHeading', []) if k.get('descriptorName')),
         authors=tuple(Author(name=x['fullName']) for x in raw.get('authorList', {}).get('author', []) if x.get('fullName')))
-
-
-def normalize_candidate(raw, source, provider):
-    """Identity-only native discovery has no ordinary-metadata completeness claim."""
-    now = datetime.now(timezone.utc)
-    if provider == 'openalex':
-        if (raw.get('primary_location') or {}).get('raw_type') == 'journal-issue':
-            return None
-        identity = normalize_external_id('openalex', raw.get('id'))
-        if not identity:
-            raise DiscoveryError('OpenAlex candidate lacks reliable Work identity')
-        ids = {'openalex': raw['id'], 'doi': valid_doi(raw.get('doi'))}
-        for namespace in ('pmid', 'pmcid'):
-            if value := normalize_external_id(namespace, (raw.get('ids') or {}).get(namespace)):
-                ids[namespace] = value
-        related, refs, locations = _openalex_associations(raw, now)
-        publication_type = 'preprint' if raw.get('type') in {'preprint', 'posted-content'} else 'journal'
-        dates = ()
-    else:
-        identity, preprint, ids, related, refs, dates, _ = _europe_pmc_associations(raw)
-        locations = []
-        publication_type = 'preprint' if preprint else 'journal'
-    return ProviderWorkEvidence(provenance=MetadataSource(provider=provider, record_id=raw['id'] if provider == 'openalex' else identity,
-        retrieved_at=now, role='discovery'), external_ids=ExternalIds(**ids),
-        publication_type=publication_type, monitor_journal_issns=source.issns, dates=tuple(dates),
-        related_dois=tuple(sorted(related - {ids.get('doi')})),
-        related_ids=tuple(sorted(refs, key=lambda item: (item.provider, item.record_id))), locations=tuple(locations))

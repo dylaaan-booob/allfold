@@ -15,7 +15,7 @@ const settings={csrf_token:'fixture',issues:[],covers:{},cover_search,saved_work
   monitor_revision_exists:'1',monitor_revision_digest:'b'.repeat(64),journal_revision_exists:'1',journal_revision_digest:'c'.repeat(64),
   institution_name:'',institution_idp_entity_id:'',auto_import_after_preparation:false,transition_delay_seconds:'3',display_name:'Synthetic researcher',
   zotero_target:{server_id:'SyntheticServer',library_type:'user',library_id:'0',collection_key:null},
-  provider_aliases:{},provider_order:['openalex','europe_pmc','crossref','arxiv','biorxiv','medrxiv','wos'],enabled_providers:['openalex','europe_pmc'],completion_providers:['openalex','europe_pmc','crossref','arxiv','biorxiv','medrxiv'],groups:['Synthetic Group'],custom_labels:[],journals,access_services:services,
+  provider_aliases:{},provider_order:['pubmed','openalex','europe_pmc','crossref','arxiv','biorxiv','medrxiv','wos'],enabled_providers:['pubmed','openalex'],completion_providers:['pubmed','openalex','europe_pmc','crossref','arxiv','biorxiv','medrxiv'],groups:['Synthetic Group'],custom_labels:[],journals,access_services:services,
 }};
 const paper={id:'paper-1',title:'Synthetic kept paper',doi:'10.5555/presentation',publication_date:'2026-10-01',status:'kept',abstract:'Synthetic fixture only',authors:[],enrichPhase:'Idle'};
 const record={key:'0000-0001',...journals[0],labels:[],papers:[]};
@@ -68,7 +68,7 @@ app.whenReady().then(async()=>{
     win=new BrowserWindow({width:1200,height:800,show:false,webPreferences:{sandbox:true,contextIsolation:true,backgroundThrottling:false,partition:'browser-workspaces-host',preload:path.join(__dirname,'../src/preload/preload.cjs')}});
     browser=new BrowserRuntime({hostWindow:win,isTaskRunning:()=>keptState.active||runActive});await browser.ready;const update=browser.setPresentation.bind(browser);browser.setPresentation=value=>{nativeUpdates.push({...value});return update(value)};
     for(const partition of [win.webContents.session,browser.partition])partition.webRequest.onBeforeRequest({urls:['http://*/*','https://*/*']},(details,callback)=>callback({cancel:new URL(details.url).origin!==origin}));
-    ipcMain.handle('cas:status',()=>({available:false,configured:false,revision:'fixture'}));disposeIPC=installBrowserIPC({ipcMain,hostWindow:win,origin,browser});await win.loadURL(origin+'/');win.show();win.focus();await ready(()=>Promise.resolve(win.isFocused()),'fixture Window focus');
+    ipcMain.handle('cas:status',()=>({available:false,configured:false,revision:'fixture'}));disposeIPC=installBrowserIPC({ipcMain,hostWindow:win,origin,browser});await win.loadURL(origin+'/');win.show();app.focus({steal:true});win.focus();await ready(()=>Promise.resolve(win.isFocused()),'fixture Window focus');
     await ready(()=>host("window.uiWorkspace?.ready()&&!document.getElementById('kept-open').disabled&&document.querySelectorAll('#s-journals [data-journal]').length===1"),'shipped UI ready');
     const background=browser.createTab({present:false});await background.view.webContents.loadURL(origin+'/background-layout');
     assert(await background.view.webContents.executeJavaScript('(()=>{const frame=document.querySelector("iframe"),box=frame.contentDocument.querySelector("input"),rect=box.getBoundingClientRect();return innerWidth>0&&innerHeight>0&&frame.contentDocument.elementFromPoint(rect.x+rect.width/2,rect.y+rect.height/2)===box;})()'),'background responsive checkbox has no usable viewport');
