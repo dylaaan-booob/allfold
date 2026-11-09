@@ -78,13 +78,31 @@ defines the macOS SOCKS configuration format.
 The implementation uses original HTTPX and the standard library; upstream source
 is not vendored or modified.
 
-## Discovery and API-completion Providers
+## Journal Run and native preprint APIs
 
-Journal Run and explicit API completion construct operation-local Provider clients over the shared HTTP policy, finite retries and host pacing. Run's selected PubMed/WoS/OpenAlex Discovery shares DOI/Work evidence with its declared automatic date/relationship stage; Europe PMC is targeted PPR completion only. The separate explicit completion selection remains independent. Neither path modifies existing Papers through Run, and network requests hold no Workspace write lock.
+Run and the Info preprint lookup use operation-local clients over the shared
+HTTP policy and host pacing. Network requests hold no Workspace write lock.
+Run reuses verified DOI/Work evidence across Discovery and metadata completion.
+It batches quoted PubMed article identifiers after saved-Paper exclusion,
+checking each returned PMID against its direct DOI and reusing fetched records.
 
-Exact identifier batches use capability-aware operation caches: PubMed EFetch can satisfy ESummary goals, while ESummary cannot satisfy missing full bibliography; OpenAlex full locations are required before full-detail reuse. Shared host locks reserve pacing consistently for parallel producers and locators. PubMed uses 0.35-second anonymous or 0.11-second keyed spacing, with optional keys carried in form POST and no redirects. OpenAlex anonymous basic first-page access reports incomplete coverage when further cursor paging requires its optional key. API completion deduplicates identities and reuses sufficient saved fields and current-operation responses.
+Exact identifier batches use capability-aware caches. PubMed EFetch can satisfy
+ESummary goals, and ESummary supports date/relationship lookups. OpenAlex full
+locations are required for full-detail reuse. Shared host locks reserve pacing
+across parallel producers and locators. PubMed uses 0.35-second anonymous or
+0.11-second keyed spacing. Keys travel in form POST without redirects. Anonymous
+OpenAlex basic first-page access reports incomplete coverage if further cursor
+paging needs a key.
 
-Temporary HTTP errors and 429 honor Retry-After with cancellable waits and progress. Recognized HTML verification stops the client without browser fallback or enabling another Discovery source. Unexpected HTML, invalid envelopes and Entrez HTTP-200 application errors are failures. Valid empty exact responses are no-match; missing entries in an advertised batch, wrong identities and shortened pages remain explicit incomplete/failure results.
+The normal retry policy covers temporary HTTP errors and 429 with cancellable
+waits and progress. Run's final metadata settlement allows one additional
+network attempt per eligible failed request, with successful responses reused.
+If a redirect chain ends in a transient failure, settlement retries the failed
+target with the redirect's authorization policy already applied. Request counts
+include each dispatched hop.
+Recognized verification pages stop the client. Invalid envelopes, Entrez
+application errors, wrong identities and shortened pages are explicit failures
+or incomplete results. Valid empty exact responses count as no-match.
 
 arXiv uses a three-second interval; bioRxiv and medRxiv share their API host
 pacing. Webpage Enrich continues to

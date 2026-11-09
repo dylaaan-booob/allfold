@@ -18,10 +18,10 @@ async def drain_application(application):
     # Keep this loop receiving that result while shutdown waits for its lock.
     await asyncio.to_thread(application.state.kept_workflow.shutdown)
     await asyncio.to_thread(application.state.batch_import.stop)
-    for worker in (application.state.paper_enrichment, application.state.journal_cover_search, application.state.wos_coordinator):
+    for worker in (application.state.preprint_lookup, application.state.paper_enrichment, application.state.journal_cover_search, application.state.wos_coordinator):
         await asyncio.to_thread(worker.shutdown)
     for worker in (application.state.batch_import, application.state.preparation_coordinator,
-                   application.state.paper_enrichment, application.state.journal_cover_search, application.state.wos_coordinator):
+                   application.state.preprint_lookup, application.state.paper_enrichment, application.state.journal_cover_search, application.state.wos_coordinator):
         await asyncio.to_thread(worker.join)
     await asyncio.to_thread(application.state.kept_workflow.advance)
 

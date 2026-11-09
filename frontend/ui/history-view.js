@@ -1,15 +1,17 @@
-import {resultLabel} from './run-results.js';
+import {completionLabel,resultLabel} from './run-results.js';
 import {importOutcomeMessage,preparationReason,providerNames} from './business-results.js';
 const esc=value=>String(value??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
-const kinds={run:'Run',prepare:'Service Preparation',import:'Batch Import',kept:'Kept Workflow',enrich:'网页 Enrich',api_completion:'API 补全',covers:'Cover Search'};
+const kinds={run:'Run',prepare:'Service Preparation',import:'Batch Import',kept:'Kept Workflow',enrich:'网页 Enrich',covers:'Cover Search'};
 const outcomes={running:'进行中',completed:'完成',partial:'部分完成',failed:'失败',cancelled:'已取消',
   interrupted:'已中断',uncertain:'结果未确认',needs_attention:'需要处理',opened:'已打开',no_effect:'未产生保存',confirmed:'父条目已确认'};
-const metrics={integrated_candidates:'Discovery 候选',integrated_deduplicated:'去重 Paper',work_location_targets:'Work 定位 DOI',completion_targets:'补全 Paper',completion_requests:'补全 HTTP 请求',completion_date_facts_added:'新增日期事实',first_public_recorded:'首版日期已记录',first_public_no_association:'尚无预印本关联',first_public_known_unresolved:'已知首版未确定',first_public_conflict:'首版证据冲突',first_public_failed:'首版查询失败',first_public_cancelled:'首版查询取消',no_match:'无匹配',lookup_failed:'请求失败',identity_mismatch:'身份不匹配',evidence:'取得证据',total:'总数',processed:'已处理',retrieved:'检索记录',created:'新增 Paper',updated:'更新',
+const metrics={integrated_candidates:'Discovery 候选',integrated_deduplicated:'去重 Paper',work_location_targets:'Work 定位 DOI',completion_targets:'补全 Paper',completion_requests:'补全 HTTP 请求',completion_date_facts_added:'新增日期事实',first_public_recorded:'首版日期已记录',first_public_no_association:'尚无预印本关联',first_public_known_unresolved:'已知首版未确定',first_public_conflict:'首版证据冲突',first_public_failed:'首版查询失败',first_public_cancelled:'首版查询取消',total:'总数',processed:'已处理',retrieved:'检索记录',created:'新增 Paper',updated:'更新',
+  pmid_resolution_matched:'已验证 PMID',pmid_resolution_no_match:'无 PMID 匹配',
+  pmid_resolution_conflicts:'PMID 冲突',pmid_resolution_failed:'PMID 查询失败',pmid_resolution_cancelled:'PMID 查询取消',
   confirmed:'父条目已确认',exported:'父条目已导入',no_effect:'未保存',uncertain:'结果未确认',failed:'失败',
   skipped:'跳过',cancelled:'取消',completed:'完成',opened:'已打开',needs_attention:'需要处理',eligible:'符合条件',
   matched:'已匹配',downloaded:'已获取',enriched:'已补充',unchanged:'未变更',candidates:'候选',papers:'Paper',
   services:'Service',warnings:'提示',errors:'问题',excluded:'排除',duplicates:'重复',materialized:'已写入',pdf_unverified:'PDF unverified'};
-const fieldNames={abstract:'摘要',authors:'作者',publication_date:'出版日期',date_evidence:'日期事件',first_public_at:'First public',sources:'来源'};
+const fieldNames={abstract:'摘要',authors:'作者',publication_date:'出版日期',date_evidence:'日期事件'};
 const reasons={runtime_interrupted:'上次运行未留下可确认的最终结果。',connection_lost:'连接中断，最终结果可能未确认。',
   cancelled:'任务已取消。',partial:'部分工作未完成，请展开查看结果。',failed:'任务未完成，请查看问题并导出诊断。',
   needs_attention:'需要人工处理后再继续。',result_unconfirmed:'保存结果未确认；请先检查 Zotero，勿直接重试。',
@@ -35,9 +37,7 @@ export function historyIntegrityMessage(integrity={}) {
 }
 export function renderHistoryRecord(record) {
   const details=record.details || {},stats=record.statistics || {};
-  const status=record.kind==='api_completion' && record.outcome==='partial'
-    ? stats.failed?'部分 Paper 处理失败':stats.lookup_failed || stats.identity_mismatch?'Paper 已处理，部分来源查询异常':'Paper 已处理，部分写入需检查'
-    : record.kind==='run' && details.result_status && !['interrupted','uncertain','cancelled'].includes(record.outcome)
+  const status=record.kind==='run' && details.result_status && !['interrupted','uncertain','cancelled'].includes(record.outcome)
       ? resultLabel(details.result_status):outcomes[record.outcome] || '需要检查';
   const title=record.kind==='run'?`Run ${providerNames[record.provider] || ''}`:kinds[record.kind] || '任务';
   const counts=Object.entries(stats).filter(([key,value])=>metrics[key] && Number.isInteger(value) && (value>0 || ['total','created','confirmed'].includes(key)))
@@ -64,7 +64,7 @@ export function renderHistoryRecord(record) {
       ${requested.length?`<p>请求补充：${requested.map(esc).join('、')}</p>`:''}
       ${saved.length?`<p>已补充：${saved.map(esc).join('、')}</p>`:''}
       ${record.diagnostic_message?`<p>${esc(record.diagnostic_message)}</p>`:''}
-      ${record.kind==='run' && details.completion_status?`<p>Discovery · ${esc(resultLabel(details.discovery_status || 'unknown'))} / API Completion · ${esc(({complete:'完成',empty:'无需补全',partial:'部分完成',failed:'失败',cancelled:'已取消'})[details.completion_status] || '未知')}</p>`:''}
+      ${record.kind==='run' && details.completion_status?`<p>Discovery · ${esc(resultLabel(details.discovery_status || 'unknown'))} / Run metadata completion · ${esc(completionLabel(details.completion_status,stats.completion_targets))}</p>`:''}
       ${sourceRows?`<ul>${sourceRows}</ul>`:''}${wosChecks}
       ${serviceCounts}${details.omitted_services?'<p>更多 Service 汇总已省略。</p>':''}
       ${rows?`<ol>${rows}</ol>`:''}${details.omitted_results?'<p>更多结果已省略；请结合诊断包中的保留证据。</p>':''}

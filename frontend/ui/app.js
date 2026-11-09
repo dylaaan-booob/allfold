@@ -125,7 +125,6 @@ let enrichment = null;
 const reviewedPapers = new Map();
 const keptPapers = new Map();
 let keptSnapshot;
-let completionPapers=[];
 let readerContext=null;
 const reviewPanel=document.querySelector('.review-right');
 const paperNavigation=reviewPanel.querySelector('.paper-navigation');
@@ -1172,13 +1171,14 @@ function renderPaper() {
   if (!readerContext) $('directory-position').textContent=`${pad(index+1)} / ${pad(papers.length)} PAPERS`;
   for (const id of ['previous-paper','next-paper']) $(id).disabled=papers.length===1 || enrichment?.phase==='Saving';
   renderPaperFields(paper, ['abstract','authors','publication_date']);
-  window.allfoldPaperDates.render(paper,$('paper-first-public'),$('paper-journal-dates'));
+  window.allfoldPaperDates.render(paper,$('paper-dates'),$('paper-date-evidence'));
   $('paper-source').textContent=paper.conference || paper.journal || reviewJournal()?.name || '—';
   $('paper-identifiers').textContent=Object.entries(paper.external_ids || {}).filter(([key])=>key!=='doi').map(([key,value])=>`${key}: ${value}`).join('; ') || '—';
   $('paper-indexed-terms').textContent=(paper.indexed_terms || []).map(item=>`${item.value}${item.kind || item.source ? ` (${[item.kind,item.source].filter(Boolean).join(' · ')})` : ''}`).join('; ') || '—';
   $('paper-providers').textContent=(paper.sources || []).map(source=>`${source.provider}${source.role?` (${source.role})`:''}: ${source.record_id}${source.version?` · ${source.version}`:''}`).join('; ') || '—';
   $('paper-doi').textContent=paper.doi || 'DOI unavailable';
   if (paper.doi) $('paper-doi').href=`https://doi.org/${encodeURI(paper.doi)}`; else $('paper-doi').removeAttribute('href');
+  window.allfoldPreprintLookup.select(readerContext ? paper : null);
   detail.dataset.paperId=paper.id;
   detail.classList.toggle('abstract-locked', !paper.abstract?.trim());
   if (changed) detail.scrollTop=0;
@@ -1728,7 +1728,7 @@ async function applySnapshot(data,selection=window.inboxRun?.selection(),coverVe
     return {...group,id};
   });
   shelfCapacity=archiveDebug.values.shelfCapacity;
-  rebuildShelves(selection);keptSnapshot=data.kept;completionPapers=data.completion_papers || [];
+  rebuildShelves(selection);keptSnapshot=data.kept;
   if(wasArray)state.view=shelves.length?'selected':'empty';
   keptPapers.clear();for(const entry of data.kept.papers){entry.paper=merge(entry.paper);keptPapers.set(entry.paper.id,entry);}
   for(const [key,list] of lists)if(!shelves.some(g=>g.journals.some(j=>j.key===key))){list.remove();lists.delete(key);}
@@ -1783,13 +1783,13 @@ window.addEventListener('workspace-reset',()=>{
   uiNext.workspaceEpoch++;uiNext.data=null;snapshotApplying=false;
   closeArrayReader(true);clearInspectionPanel();
   paragraphLayout?.clear();cancelRetrieval();decryption.reset(null,true);paperMetadata.open=false;
-  for(const id of ['view-paper-title','view-paper-id','paper-position','paper-authors','paper-date','paper-first-public','paper-journal-dates','paper-source','paper-identifiers','paper-indexed-terms','paper-providers','paper-doi','paper-abstract'])$(id).replaceChildren();
+  for(const id of ['view-paper-title','view-paper-id','paper-position','paper-authors','paper-date','paper-source','paper-identifiers','paper-indexed-terms','paper-providers','paper-doi','paper-abstract'])$(id).replaceChildren();
+  window.allfoldPaperDates.render(null,$('paper-dates'),$('paper-date-evidence'));
   $('paper-doi').removeAttribute('href');delete $('paper-detail').dataset.paperId;
   $('paper-metadata-summary').textContent='Infos';
   Object.assign(paperTools,{paperId:null,fields:null,loading:false,error:'',
     generation:paperTools.generation+1,diagnosticGeneration:paperTools.diagnosticGeneration+1});
   keptPapers.clear();reviewedPapers.clear();
-  completionPapers=[];
   keptSnapshot={...keptSnapshot,papers:[],titles:{}};
   logicalGroups=[];shelves=[];rows=[];
   inspection.time=inspection.target=0;inspection.completionPending=false;state.pendingPaper=null;state.view='empty';
@@ -1832,6 +1832,8 @@ function closeArrayReader(snapshot=false) {
   if(readerContext){
     paragraphLayout?.clear();cancelRetrieval();decryption.reset(null,true);
     readerContext=null;state.pendingPaper=null;
+    window.allfoldPreprintLookup.select(null);
+    window.allfoldPaperDates.render(null,$('paper-dates'),$('paper-date-evidence'));
     $('paper-detail').prepend(paperMetadata);
     $('paper-detail').prepend(paperTitle);
     paperMetadata.open=false;
@@ -1843,8 +1845,6 @@ function closeArrayReader(snapshot=false) {
   }
   return true;
 }
-window.allfoldCompletionPapers=()=>({current:currentPaper()?.id,papers:[...new Map([...completionPapers,...paperObjects().values()].map(p=>[p.id,p])).values()]
-  .filter(paper=>paper.status!=='rejected' && reviewedPapers.get(paper.id)!=='rejected')});
 window.allfoldRefreshWorkspace=refreshWorkspace;
 window.inboxKept={
   available:()=>state.ready && !decisionPending && !snapshotApplying && !paperToolsBusy() && enrichment?.phase!=='Saving' && !$('run-view').open &&

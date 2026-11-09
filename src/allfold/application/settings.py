@@ -20,7 +20,7 @@ from allfold.integrations.openalex_credentials import read_credential, write_cre
 from allfold.config import (
     AccessService,
     SettingsList,
-    DEFAULT_PROVIDER_ORDER, ENABLED_PROVIDERS, COMPLETION_PROVIDERS,
+    DEFAULT_PROVIDER_ORDER, ENABLED_PROVIDERS,
     parse_access_services_text,
     parse_settings_list_text,
     parse_entity_registry,
@@ -99,7 +99,6 @@ class MonitorDraft:
     provider_aliases: dict[str, str] = field(default_factory=dict)
     provider_order: tuple[str, ...] = DEFAULT_PROVIDER_ORDER
     enabled_providers: tuple[str, ...] = ENABLED_PROVIDERS
-    completion_providers: tuple[str, ...] = COMPLETION_PROVIDERS
     crossref_mailto: str = ""
     openalex_key_configured: bool = field(default=False, compare=False)
     openalex_key_revision: str = "missing"
@@ -220,7 +219,6 @@ class _DraftFields:
     provider_aliases: dict[str, str] = field(default_factory=dict)
     provider_order: tuple[str, ...] = DEFAULT_PROVIDER_ORDER
     enabled_providers: tuple[str, ...] = ENABLED_PROVIDERS
-    completion_providers: tuple[str, ...] = COMPLETION_PROVIDERS
     crossref_mailto: str = ""
 
 
@@ -341,7 +339,6 @@ def _recovery_fields(config_path: Path, raw: Any) -> _DraftFields:
         kept_workflow=kept_workflow,
         provider_order=raw.get("provider_order", defaults.provider_order),
         enabled_providers=raw.get("enabled_providers", defaults.enabled_providers),
-        completion_providers=raw.get("completion_providers", defaults.completion_providers),
         provider_aliases=raw.get("provider_aliases", {}) if isinstance(raw.get("provider_aliases", {}), dict) else {},
         crossref_mailto=raw.get("crossref_mailto", "") if isinstance(raw.get("crossref_mailto", ""), str) else "",
     )
@@ -397,7 +394,6 @@ def _monitor_fields(
             institution=definition.institution,
             kept_workflow=definition.kept_workflow,
             enabled_providers=definition.enabled_providers,
-            completion_providers=definition.completion_providers,
             provider_order=definition.provider_order, provider_aliases=definition.provider_aliases, crossref_mailto=definition.crossref_mailto,
         ),
         (),
@@ -527,7 +523,6 @@ def load_settings(config_path: Path) -> SettingsLoadResult:
         institution=fields.institution,
         kept_workflow=fields.kept_workflow,
         enabled_providers=fields.enabled_providers,
-        completion_providers=fields.completion_providers,
         provider_order=fields.provider_order, provider_aliases=fields.provider_aliases, crossref_mailto=fields.crossref_mailto,
     )
     return SettingsLoadResult(
@@ -568,7 +563,6 @@ def _draft_monitor_mapping(
         "venue_whitelist": venue_whitelist,
         "keyword_expression": draft.keyword_expression,
         "enabled_providers": draft.enabled_providers,
-        "completion_providers": draft.completion_providers,
         "provider_order": draft.provider_order,
         "provider_aliases": draft.provider_aliases,
         "crossref_mailto": draft.crossref_mailto,
@@ -689,7 +683,6 @@ def _render_monitor_yaml(
         "venue_whitelist": str(venue_whitelist),
         "keyword_expression": draft.keyword_expression,
         "enabled_providers": list(draft.enabled_providers),
-        "completion_providers": list(draft.completion_providers),
         "provider_order": list(draft.provider_order),
         "provider_aliases": draft.provider_aliases,
         "crossref_mailto": draft.crossref_mailto,

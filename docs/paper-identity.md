@@ -79,9 +79,8 @@ under Published without being reported as contradictory snapshots.
 first/earliest public version. A later version alone, unknown preprint date,
 future public event, formal online/publication, Received, Accepted, database indexing,
 retrieval/update times or Translator generic date cannot supply a fallback.
-Sufficient first-stage evidence can fill it at creation. Explicit API completion
-fills an empty value but never recalculates a nonempty one; later evidence still
-appends. Missing version history is not evidence of a single version.
+Sufficient evidence fills it at creation. The Info preprint lookup can fill
+an empty value and append later evidence while retaining a recorded First public. Missing version history is not evidence of a single version.
 Each known preprint version family needs its own first-version proof. One family's
 date cannot settle another family's later-only or undated record. Conflicting
 first-version facts or an evidently earlier version leave the value unresolved;
@@ -91,49 +90,36 @@ Aliases returned within one relation identify one target family; saved aggregate
 Paper identifiers alone do not join independent preprint families.
 An added alias does not duplicate an already saved event.
 
-The UI's **期刊日期** is a chronological collection of journal-version events:
-Received and Accepted (explicit manuscript-history events), Published online and
-Published. All four are independent completion goals; no single event satisfies
-the other goals.
-WoS EA uses its own year or explicit EY for Published online; PD/PY feeds
-`publication_date` and Published, including year-only and future dates. It never
-approximates Accepted or borrows PY for EA. Native print/issued labels map to
-Published while retaining their original `source_label`; they are not separate
-business targets. Equal business events, dates, providers, records and versions
-share one visible row, with every raw source label retained in its tooltip.
-Sources and precision remain visible, with record/version/URL in the basis. Preprint dates have their own First public basis. Bibliographic
-`publication_date` remains available independently and can serve as a list-sort
-fallback without becoming a First public value. Old approximate Accepted fields
-are not converted into this collection. Retired `published-print`, `issued` and
-`early-access` date kinds make an affected Paper explicitly unsupported.
-Back up those files and explicitly rebuild them before rerunning discovery;
-Allfold never rewrites or silently discards their legacy facts.
+The reader shows First public, Received, Accepted and Published. Received and
+Accepted use the earliest reliable explicit history event of the corresponding
+kind on the formal journal record. Published uses the earliest normalized
+Published or Published online event for that journal record. Native labels such
+as WoS EA and PD/PY and Crossref issued remain in the underlying facts.
+A missing date stays blank. Info lists all saved date facts in date order with
+their labels, precision, source, version and safe source links. The separate
+bibliographic `publication_date` stays available as metadata and for list sorting.
 
-Run creates new Papers and leaves existing bytes untouched. There is no independent
-Evidence store or cross-operation handoff. Provider records normalize and combine
-facts only during the operation. API completion reads selected saved non-Rejected
-Paper Markdown, including old, Kept and Exported Papers after restart, without
-requiring Keep. It queries only actual gaps, fills ordinary empty fields, keeps
-authors whole and appends deduplicated `date_evidence` and `sources` in Paper.
-`indexed_terms` retains creation/display support without becoming a request goal.
-A saved `first_public_at` satisfies that goal directly; no new first-version
-search starts just to discover unknown systems. Existing values are protected.
+Date precision defines a calendar interval. Disjoint intervals sort by which
+ends before the other begins. Overlapping valid ISO dates share a prefix, so
+their enclosing year or month sorts first. For example, `2026-03` takes
+precedence over `2026-03-13`. The reader shows that verified month, and Info
+retains both facts. Selection uses display strings with their actual precision
+and makes no changes to stored evidence.
 
-Responses must match the requested direct identity before explicit relations can
-lead to another lookup. Related preprint versions with different DOIs can supply
-First public facts within this operation; they do not change the selected target,
-primary DOI/UUID, workflow or another Paper. Every known family still needs first
-version proof when filling an empty First public. Unsaved relationships are
-discarded; another explicit completion may request them again. Shared response
-caches, deduplication, arXiv batches and cancellation remain operation-local.
-Response capabilities distinguish PubMed summary from complete EFetch; a complete
-EFetch can satisfy summary, while summary cannot satisfy full bibliography.
-Europe PMC relation notes remain source provenance, including declared automatic
-matching, without creating a persistent relationship graph. Crossref posted dates
-and version suffixes alone do not prove native first-version publication.
-Typed saved preprint date facts can reconstruct temporary query targets after
-restart, without entering the Paper identity index. Sufficient dates already in
-Paper can fill an empty First public with no network requests or source rewrite.
+Run groups and excludes saved identities before batching missing formal
+DOI-to-PMID associations. PubMed verifies each DOI using a direct returned
+identifier. Ambiguous or incomplete responses cannot establish a new binding.
+Only an unambiguous confirmed formal PMID can enter the new Paper's identity.
+
+The Info preprint lookup verifies explicit bioRxiv/medRxiv relations and their
+native versions for the selected Paper. Related versions contribute dates and
+source facts while the Paper's UUID, primary identifiers, bibliography and
+workflow state remain protected. Every known version family needs first-version
+proof before an empty First public can be filled. Request caches and temporary
+relations are scoped to the operation. Response capabilities distinguish
+PubMed summary from full EFetch evidence. Europe PMC relation notes are source
+provenance. Crossref posted dates and version suffixes alone cannot prove native
+first-version publication.
 
 ## Local editing and external actions
 
@@ -150,5 +136,5 @@ authority.
 
 Isolated regressions: [Paper identity](../tests/test_paper_identity.py),
 [materialization](../tests/test_materialize.py),
-[API completion](../tests/test_api_completion.py),
+[preprint lookup](../tests/test_preprint_lookup.py),
 [webpage Enrich](../tests/test_paper_enrichment.py) and [WoS](../tests/test_wos.py).

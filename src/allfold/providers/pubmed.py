@@ -20,6 +20,22 @@ def has_entrez_error(payload):
     return bool(payload.get('error')) or (any(errors.values()) if isinstance(errors, dict) else bool(errors))
 
 
+def esearch_identifiers(payload):
+    """Require the entire PubMed ESearch UID set before using it as identity evidence."""
+    data = payload.get('esearchresult')
+    if not isinstance(data, dict) or has_entrez_error(data):
+        raise DiscoveryError('PubMed: Entrez ESearch application error or invalid result')
+    count, identifiers = data.get('count'), data.get('idlist')
+    if not re.fullmatch(r'[0-9]+', str(count)) or len(str(count)) > 4 or int(count) > 9999:
+        raise DiscoveryError('Incomplete: invalid or excessive PubMed ESearch count')
+    if (not isinstance(identifiers, list) or len(identifiers) != int(count)
+            or any(not isinstance(value, str) or not re.fullmatch(r'[0-9]+', value) for value in identifiers)
+            or len(set(identifiers)) != len(identifiers)
+            or str(data.get('retstart', '0')) != '0'):
+        raise DiscoveryError('Incomplete: PubMed ESearch PMID set is shortened or invalid')
+    return tuple(identifiers)
+
+
 def _text(node):
     return ' '.join(''.join(node.itertext()).split()) if node is not None else ''
 
@@ -41,9 +57,9 @@ def _date(node):
     return value + (f'-{int(day):02d}' if day and month and day.isdigit() else '')
 
 
-def _event(value, kind, label, pmid):
+def _event(value, kind, label, pmid, publication_type):
     return source_date(value, kind=kind, source_label=label, provider='pubmed', record_id=pmid,
-                       publication_type='journal', url=f'https://pubmed.ncbi.nlm.nih.gov/{pmid}/')
+                       publication_type=publication_type, url=f'https://pubmed.ncbi.nlm.nih.gov/{pmid}/')
 
 
 def _relation(kind, identifier):
@@ -88,16 +104,19 @@ def fetch_records(xml):
                 if ids.get('doi') and ids['doi'] != doi:
                     raise IdentityMismatch('PubMed: conflicting direct DOI')
                 ids['doi'] = doi
+        preprint = (any(_text(node).casefold() == 'preprint' for node in article.findall('./PublicationTypeList/PublicationType'))
+            or any(node.get('RefType', '').casefold() == 'preprintof' for node in citation.findall('./CommentsCorrectionsList/CommentsCorrections')))
+        publication_type = 'preprint' if preprint else 'journal'
         dates = []
         for event in data.findall('./History/PubMedPubDate') if data is not None else ():
             label = event.get('PubStatus')
-            if label in EVENTS and (fact := _event(_date(event), EVENTS[label], 'PubMedPubDate:' + label, pmid)):
+            if label in EVENTS and (fact := _event(_date(event), EVENTS[label], 'PubMedPubDate:' + label, pmid, publication_type)):
                 dates.append(fact)
         for event in article.findall('ArticleDate'):
-            if event.get('DateType') == 'Electronic' and (fact := _event(_date(event), 'published-online', 'ArticleDate:Electronic', pmid)):
+            if event.get('DateType') == 'Electronic' and (fact := _event(_date(event), 'published-online', 'ArticleDate:Electronic', pmid, publication_type)):
                 dates.append(fact)
         publication = _date(article.find('./Journal/JournalIssue/PubDate'))
-        if fact := _event(publication, 'published', 'JournalIssue:PubDate', pmid):
+        if fact := _event(publication, 'published', 'JournalIssue:PubDate', pmid, publication_type):
             dates.append(fact)
         authors = []
         for author in article.findall('./AuthorList/Author'):
@@ -115,7 +134,7 @@ def fetch_records(xml):
         records.append(ProviderWorkEvidence(provenance=MetadataSource(provider='pubmed', record_id=pmid,
             retrieved_at=datetime.now(timezone.utc), url=f'https://pubmed.ncbi.nlm.nih.gov/{pmid}/'),
             title=_text(article.find('ArticleTitle')) or None, journal=article.findtext('./Journal/Title'),
-            journal_issns=issns, publication_type='journal', publication_date=publication,
+            journal_issns=issns, publication_type=publication_type, publication_date=publication,
             abstract='\n'.join(abstract) or None, authors=tuple(authors), external_ids=ExternalIds(**ids), dates=tuple(dates), related_ids=refs,
             volume=article.findtext('./Journal/JournalIssue/Volume'), issue=article.findtext('./Journal/JournalIssue/Issue'),
             pages=article.findtext('./Pagination/MedlinePgn')))
@@ -163,12 +182,15 @@ def summary_records(payload):
                 raise IdentityMismatch('PubMed: conflicting direct PMID')
             if kind == 'pmc' and (pmcid := normalize_external_id('pmcid', value)):
                 ids['pmcid'] = pmcid
+        preprint = (any(str(kind).casefold() == 'preprint' for kind in item.get('pubtype', []))
+            or any(str(ref.get('reftype') or ref.get('type')).casefold() == 'preprintof' for ref in item.get('references', [])))
+        publication_type = 'preprint' if preprint else 'journal'
         for event in item.get('history', []):
             label = event.get('pubstatus')
-            if label in EVENTS and (fact := _event(_summary_date(event.get('date')), EVENTS[label], 'history:' + label, pmid)):
+            if label in EVENTS and (fact := _event(_summary_date(event.get('date')), EVENTS[label], 'history:' + label, pmid, publication_type)):
                 dates.append(fact)
         for field, kind in (('pubdate','published'), ('epubdate','published-online')):
-            if fact := _event(_summary_date(item.get(field)), kind, field, pmid):
+            if fact := _event(_summary_date(item.get(field)), kind, field, pmid, publication_type):
                 dates.append(fact)
         for relation in item.get('references', []):
             if ref := _relation(relation.get('reftype') or relation.get('type'), relation.get('pmid')):
@@ -176,7 +198,7 @@ def summary_records(payload):
         records.append(ProviderWorkEvidence(provenance=MetadataSource(provider='pubmed', record_id=pmid,
             retrieved_at=datetime.now(timezone.utc), url=f'https://pubmed.ncbi.nlm.nih.gov/{pmid}/'),
             title=item.get('title') or None, journal=item.get('fulljournalname') or item.get('source') or None,
-            publication_type='journal', publication_date=_summary_date(item.get('pubdate')),
+            publication_type=publication_type, publication_date=_summary_date(item.get('pubdate')),
             journal_issns=tuple(dict.fromkeys(value for value in (item.get('issn'), item.get('essn')) if value)),
             authors=tuple(Author(name=author['name']) for author in item.get('authors', []) if author.get('name')),
             external_ids=ExternalIds(**ids), dates=tuple(dates), related_ids=tuple(refs)))

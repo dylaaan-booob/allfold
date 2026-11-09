@@ -5,7 +5,7 @@ business tasks and results. Structured **diagnostics** explain the native and Py
 operations behind those tasks. Neither store restores Workspace data, confirms a
 Zotero save, nor authorizes an Import retry.
 
-Run, explicit API completion, CARSI Prepare, Kept/Batch Import, webpage Enrich and Cover Search share explicit
+Run, CARSI Prepare, Kept/Batch Import, webpage Enrich and Cover Search share explicit
 workflow/task identities. Native requests have their own request IDs. Service and
 page metadata come from the existing invocation snapshots and page associations;
 logging does not grant browser or institution-credential authority. Native
@@ -18,22 +18,17 @@ provide its Item/PDF/Fallback results. Item and attachment keys, Local API
 authorization, PDF candidate URLs and raw bytes are not new History or diagnostic
 fields. The snapshot does not persist across restarts or inspect saved PDF files.
 
-## Completion results
+## Metadata results
 
-`api_completion` is an independent task kind, separate from Run and webpage
-`enrich`. It records processed/updated/unchanged/excluded/failed/cancelled Paper
-counts and distinct evidence/no-match/lookup-failure/identity-mismatch counts.
-Its live result identifies each selected Paper and saved fields; normal no-match
-does not become a lookup failure. Previously committed writes survive a later
-failure or cancellation. If Paper commit succeeds but handoff storage fails,
-the Paper remains counted as updated and the task separately reports that
-evidence failure as Partial. There are no Run supplement-failure counters.
+The single-Paper preprint lookup reports completion, no match, failure and
+cancellation in ARRAY Info. Run metadata completion is part of the parent Run
+result.
 
 Webpage Enrich's requested fields remain its ordinary Abstract/Authors/publication
 date gaps. Its saved-field allowlist also includes `date_evidence`, so event-only
-saves appear as actual updates. API metadata/evidence fields have explicit
-allowlists as well. Diagnostic observations include counts and field names,
-never Paper text, raw provider responses, credentials or sensitive URLs.
+saves appear as actual updates. Diagnostic observations include reviewed counts
+and field names. Paper text, raw provider responses, credentials and sensitive URLs
+stay outside diagnostics.
 
 ## Storage and limits
 
@@ -152,17 +147,6 @@ Offline tests cover isolated persistence, privacy, correlation, rotation and Res
 They do not establish real Electron dialog/download behavior or CARSI, WoS,
 publisher and Zotero/PDF acceptance; those require explicit manual validation.
 
-API-completion History statistics retain separate `first_public_recorded`,
-`first_public_no_association`, `first_public_known_unresolved`,
-`first_public_conflict`, `first_public_failed` and `first_public_cancelled` counts.
-These describe First public outcomes independently of Paper update status. An
-already saved First public is recorded and does not trigger a new first-version
-search. Run counts derive from direct identity matches and actual Paper creates;
-there is no standalone Evidence-write failure category. Lookup evidence/no-match/failure counts
-deduplicate provider/namespace/identifier targets within the operation, including
-shared arXiv batches. No preprint response bodies or identifiers are added to the
-persistent diagnostic event schema.
-
 Integrated Run retains one parent History/result and latest snapshot. Discovery
 `provider_runs`/`run_sources` contain only selected PubMed, WoS and OpenAlex sources;
 automatic helpers do not become extra Discovery sources. Separate allowlisted
@@ -173,8 +157,11 @@ partial coverage instead of claiming all dates were completed.
 Numeric Run statistics distinguish `integrated_candidates` (source hits),
 `integrated_deduplicated` (final roots), `work_location_targets` (unique DOI queue
 inputs), `completion_targets` (unknown safe roots), `completion_requests` (physical
-HTTP dispatches during phase two, including pages/retries),
-`completion_date_facts_added`, First public outcomes and actual Paper creates.
+HTTP dispatches during identity resolution and metadata completion, including pages and final retries),
+`completion_date_facts_added`, DOI-to-PMID outcomes, First public outcomes and
+actual Paper creates. PMID outcomes separate verified matches, no match,
+identity conflicts, failure and cancellation.
+First public coverage distinguishes recorded, no association, unresolved, conflict, failure and cancellation.
 Cached evidence/per-Paper lookup projections do not increment physical requests.
 Source created/existing counts overlap and must not be summed as global Paper
 counts. No request URL, response body, API key, relation identifier or arbitrary

@@ -29,7 +29,7 @@ def form(state):
         "institution_name", "institution_idp_entity_id",
     )}
     data.update({f"provider_alias_{key}": value for key, value in v["provider_aliases"].items()})
-    data.update(csrf_token=state["csrf_token"], settings_group=v["groups"], settings_custom_label=v["custom_labels"], provider_order=v["provider_order"], enabled_providers=v["enabled_providers"], completion_providers=v["completion_providers"])
+    data.update(csrf_token=state["csrf_token"], settings_group=v["groups"], settings_custom_label=v["custom_labels"], provider_order=v["provider_order"], enabled_providers=v["enabled_providers"])
     data["auto_import_after_preparation"] = "1" if v["auto_import_after_preparation"] else ""
     data["institution_use_shibboleth"] = "1" if v["institution_use_shibboleth"] else ""
     for source, mapping in (

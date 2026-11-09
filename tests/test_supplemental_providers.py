@@ -15,7 +15,7 @@ def test_native_no_match_does_not_hide_errors_or_truncated_doi(provider, status)
     with SupplementalClient(provider, interval=0, transport=httpx.MockTransport(lambda request:
             httpx.Response(200, json={'messages': [{'status': status}], 'collection': []}))) as client:
         with pytest.raises(DiscoveryError):
-            client.lookup('doi', '10.1093/bioinformatics/btaf638')
+            client.lookup_published_preprints('10.1093/bioinformatics/btaf638')
 
 
 @pytest.mark.parametrize('provider', ('biorxiv', 'medrxiv'))
@@ -32,7 +32,7 @@ def test_publication_lookup_accepts_current_native_preprint_doi_field(provider):
             'date': '2022-01-02', 'version': '1', 'title': 'Original preprint',
         }]})
     with SupplementalClient(provider, transport=httpx.MockTransport(response), interval=0) as client:
-        records = client.lookup('doi', '10.5555/formal')
+        records = client.lookup_published_preprints('10.5555/formal')
     assert records[0].external_ids.doi == '10.5555/formal'
     assert records[0].related_dois == ('10.1101/123456',)
     assert records[1].external_ids.doi == '10.1101/123456'
@@ -99,7 +99,7 @@ def test_biorxiv_follows_known_formal_doi_to_original_versions_without_year_limi
                      "abstract": "Original metadata"} for date, version in (("2022-01-02", "1"), ("2024-01-02", "2"))]
         return httpx.Response(200, json={"messages": [{"status": "ok"}], "collection": rows})
     with SupplementalClient("biorxiv", transport=httpx.MockTransport(response), interval=0) as client:
-        records = client.lookup("doi", "10.5555/formal")
+        records = client.lookup_published_preprints("10.5555/formal")
     assert [r.url.path for r in requests] == ["/pubs/biorxiv/10.5555/formal/na/json", "/details/biorxiv/10.1101/123456/na/json"]
     formal = ProviderWorkEvidence(provenance=MetadataSource(provider="europe_pmc", record_id="MED:42",
         retrieved_at=datetime(2026, 1, 1, tzinfo=timezone.utc), role="discovery"),
@@ -170,7 +170,7 @@ def test_explicit_crossref_preprint_relation_without_date_keeps_first_public_uns
 
 
 @pytest.mark.parametrize('malformed', [False, True])
-def test_native_details_no_match_or_failure_is_also_reused_within_operation(malformed):
+def test_native_details_reuses_no_match_but_allows_retry_after_failure(malformed):
     from allfold.providers.integrated import DiscoveryError
     calls = []
     def response(request):
@@ -179,13 +179,16 @@ def test_native_details_no_match_or_failure_is_also_reused_within_operation(malf
             'invalid collection' if malformed else [])
         return httpx.Response(200, json={'messages': [{'status': 'ok'}], 'collection': rows})
     with SupplementalClient('biorxiv', interval=0, transport=httpx.MockTransport(response)) as client:
-        for doi in ('10.5555/formal', '10.1101/123456'):
-            if malformed:
-                with pytest.raises(DiscoveryError):
-                    client.lookup('doi', doi)
-            else:
-                client.lookup('doi', doi)
-    assert calls == ['/pubs/biorxiv/10.5555/formal/na/json', '/details/biorxiv/10.1101/123456/na/json']
+        if malformed:
+            with pytest.raises(DiscoveryError):
+                client.lookup_published_preprints('10.5555/formal')
+            with pytest.raises(DiscoveryError):
+                client.lookup('doi', '10.1101/123456')
+        else:
+            client.lookup_published_preprints('10.5555/formal')
+            assert client.lookup('doi', '10.1101/123456') == ()
+    details = '/details/biorxiv/10.1101/123456/na/json'
+    assert calls == ['/pubs/biorxiv/10.5555/formal/na/json', *([details] * (2 if malformed else 1))]
 
 
 def test_crossref_explicit_preprint_versions_keep_dates_without_native_first_version_proof():
@@ -219,7 +222,7 @@ def test_preprint_lookup_retains_more_than_16_linked_records(provider):
         return httpx.Response(200, json={'messages': [{'status': 'ok'}], 'collection': rows})
 
     with SupplementalClient(provider, transport=httpx.MockTransport(handler), interval=0) as client:
-        records = client.lookup('doi', '10.5555/formal')
+        records = client.lookup_published_preprints('10.5555/formal')
     assert len(calls) == 18
     assert {record.external_ids.doi for record in records} == {'10.5555/formal'} | {
         f'10.1101/{n:06}' for n in range(17)}

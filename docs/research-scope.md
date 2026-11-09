@@ -16,7 +16,7 @@ Manual Services use a user-supplied public HTTP(S) URL and do not enter automati
 
 For Journals without a supplied valid Service, the Import Preview offers optional GOKB resolution. It follows all Current TIPP pages and retains the associated Journal UUIDs, Platforms, Packages and candidate products. Multiple GOKB identities or CARSI products remain visible for a Journal-level choice. A unique reliable candidate may fill an empty default. Neither refresh nor an imported choice overwrites an existing default, and a Journal-level choice never becomes an application-wide Platform rule.
 
-GOKB and the CARSI Catalog use shared local caches; explicit refresh replaces a snapshot only after successful validation. Failed refresh retains the last valid data and reports failure separately from a confirmed empty GOKB result. Ordinary Run uses saved Journal identifiers without contacting GOKB. Candidate evidence does not establish institutional entitlement, a successful login or PDF availability.
+GOKB and the CARSI Catalog use shared local caches; explicit refresh replaces a snapshot only after successful validation. Failed refresh retains the last valid data and reports failure separately from a confirmed empty GOKB result. Ordinary Run uses saved Journal identifiers without contacting GOKB. Its later identity and date completion applies only to discovered new Papers and does not extend the journal or date scope. See [Run Provider roles](providers.md). Candidate evidence does not establish institutional entitlement, a successful login or PDF availability.
 
 ## Export, backup and migration
 

@@ -44,16 +44,6 @@ test('interruption takes priority over a Run snapshot and accepted parents do no
   assert.match(batch,/Zotero 已接受父条目/);assert.match(batch,/Paper 状态写入失败/);assert.match(batch,/勿直接重试/);
 });
 
-test('API history distinguishes source problems from Paper processing failures',async()=>{
-  const {renderHistoryRecord}=await import('../../frontend/ui/history-view.js');
-  const source=renderHistoryRecord({kind:'api_completion',task_id:'api-source',outcome:'partial',
-    statistics:{updated:1,failed:0,lookup_failed:1}});
-  assert.match(source,/Paper 已处理，部分来源查询异常/);
-  const paper=renderHistoryRecord({kind:'api_completion',task_id:'api-paper',outcome:'partial',
-    statistics:{updated:1,failed:1,lookup_failed:1}});
-  assert.match(paper,/部分 Paper 处理失败/);
-});
-
 test('diagnostic download carries CSRF and does not turn JSON errors into ZIP downloads',async()=>{
   const {requestDiagnosticBundle}=await import('../../frontend/ui/history-view.js');
   let request;
@@ -98,9 +88,24 @@ test('unified Run history presents selected sources and native batch hints',asyn
   assert.match(html,/1 期刊清单提示/);
 });
 
-test('API history keeps first-public coverage independent of successful Paper updates',async()=>{
+test('Run history keeps first-public coverage independent of Paper creation',async()=>{
   const {renderHistoryRecord}=await import('../../frontend/ui/history-view.js');
-  const html=renderHistoryRecord({kind:'api_completion',task_id:'completion',outcome:'completed',
-    statistics:{updated:3,first_public_recorded:1,first_public_known_unresolved:1,first_public_conflict:1}});
+  const html=renderHistoryRecord({kind:'run',provider:'integrated',task_id:'run-dates',outcome:'completed',
+    statistics:{created:3,pmid_resolution_matched:1,pmid_resolution_no_match:2,
+      first_public_recorded:1,first_public_known_unresolved:1,first_public_conflict:1}});
+  assert.match(html,/已验证 PMID 1/);assert.match(html,/无 PMID 匹配 2/);
   assert.match(html,/首版日期已记录/);assert.match(html,/已知首版未确定/);assert.match(html,/首版证据冲突/);
+});
+
+test('Run results distinguish no completion match from a phase without targets',async()=>{
+  const {renderHistoryRecord}=await import('../../frontend/ui/history-view.js');
+  const {renderRunResult}=await import('../../frontend/ui/run-results.js');
+  const result={availability:'available',provider:'integrated',status:'completed',
+    created_papers:1,existing_papers:0,details:{discovery_status:'complete',completion_status:'empty'},
+    journals:[],issues:[],statistics:{completion_targets:1,pmid_resolution_no_match:1}};
+  assert.match(renderRunResult(result),/Run metadata completion · 无匹配/);
+  const history={kind:'run',provider:'integrated',task_id:'no-match',outcome:'completed',
+    details:result.details,statistics:result.statistics};
+  assert.match(renderHistoryRecord(history),/Run metadata completion · 无匹配/);
+  assert.match(renderHistoryRecord({...history,statistics:{completion_targets:0}}),/Run metadata completion · 无需补全/);
 });
