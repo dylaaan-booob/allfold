@@ -28,8 +28,12 @@ async function browserHistory() {
   // Reuse the official sandbox. All live document traffic stays in the synthetic partition.
   sandbox.browser=browser;
   const fixturePages={
-    // Use an existing history fixture to isolate the article route's DOI binding.
-    ['/'+euclidArticle]: article(history(received)),
+    // The Euclid full article presents its history in a semicolon-delimited row.
+    ['/'+euclidArticle]: article(
+      '<div><span>Received: 1 September 2020</span>; <span>Revised: 1 December 2021</span>; '
+      +'<span>Published: June 2022</span></div>'
+      +'<p><span>Accepted: 1999</span></p>'
+      +'<div class="related-articles"><div><span>Received: 1998</span>; <span>Published: 1999</span></div></div>'),
     '/late': article(history(received)+later('document.querySelector("ul").insertAdjacentHTML("beforeend",'+JSON.stringify(accepted)+')')),
     '/scielo-late': article('<a class="_doi" href="https://doi.org/'+doi+'">'+doi+'</a>'
       +'<div class="articleSection--history"><ul class="articleTimeline"><li><strong>Received</strong><br>29 February 2024</li></ul></div>'
@@ -117,9 +121,12 @@ async function browserHistory() {
   }
   const facts=result=>result.dateCandidates.map(({kind,value})=>[kind,value]);
   try {
-    const euclid=await translate(euclidArticle,['received']);
+    const euclid=await translate(euclidArticle,['received'],{deadline:Date.now()+5000});
     assert.equal(euclid.result.translator,'Euclid');
-    assert.deepEqual(euclid.result.dateCandidates?.map(({kind,value})=>[kind,value]),[['received','2024-02-29']]);
+    assert.deepEqual(euclid.result.dateCandidates,[{
+      kind:'received',value:'2020-09-01',source_label:'Received:',
+      url:'https://projecteuclid.org/'+euclidArticle,record_id:doi,
+    }]);
     const immediate=await translate('templates');
     assert.ok(immediate.elapsed<1500,'complete history should return without polling');
     assert.deepEqual(facts(immediate.result).sort(),[

@@ -144,6 +144,10 @@ window.allfoldTranslatorReady=(async () => {
     return /^10\.\d{4,9}\/\S+$/.test(value)?value:null;
   }
   const scieloTranslator='3eabecf9-663a-4774-a3e6-0790d2732eed';
+  const euclidTranslator='2e1c09a0-3006-11de-8c30-0800200c9a66';
+  function euclidFullArticle(url) {
+    return url.hostname==='projecteuclid.org' && url.pathname.startsWith('/journals/') && url.pathname.endsWith('.full');
+  }
   function documentDOIs(document,url,translatorID) {
     const keys=new Set(['citation_doi','bepress_citation_doi','prism.doi','dc.identifier','dc.identifier.doi','dcterms.identifier']);
     const values=[...document.head.querySelectorAll('meta[content]')]
@@ -155,9 +159,7 @@ window.allfoldTranslatorReady=(async () => {
     values.push(source.searchParams.get('id'),source.searchParams.get('doi'));
     try {
       // Project Euclid's full article route appends ".full" after the DOI.
-      const euclidFullArticle=translatorID==='2e1c09a0-3006-11de-8c30-0800200c9a66'
-        && source.hostname==='projecteuclid.org' && source.pathname.startsWith('/journals/') && source.pathname.endsWith('.full');
-      const pathname=euclidFullArticle?source.pathname.slice(0,-5):source.pathname;
+      const pathname=translatorID===euclidTranslator && euclidFullArticle(source)?source.pathname.slice(0,-5):source.pathname;
       values.push(decodeURIComponent(pathname).match(/(?:^|\/)(10\.\d{4,9}\/[^/]+)$/)?.[1]);
     } catch { /* A malformed URL escape cannot establish a DOI. */ }
     return new Set(values.map(value=>doiValue(value?.trim().replace(/^doi:\s*/i,''))).filter(Boolean));
@@ -191,7 +193,7 @@ window.allfoldTranslatorReady=(async () => {
   const historyLabel=/^(?:manuscript\s+)?(received|accepted)\s*:?$/i;
   const peripheralContent='nav, #references, .references, [role="doc-bibliography"], '
     +'.related-articles, .recommended-articles, [data-testid="related-articles"], [data-testid="recommended-articles"]';
-  function historyCandidates(document,{doi,url},accepted) {
+  function historyCandidates(document,{doi,url,translatorID},accepted) {
     const facts=new Map();
     const add=(label,raw,time)=>{
       if(raw!=null && typeof raw!=='string')return;
@@ -270,6 +272,19 @@ window.allfoldTranslatorReady=(async () => {
       else fromText(text,row.querySelector('time')?.getAttribute('datetime'));
     }
     for(const row of entries('.foot-notes .history > p'))fromTextList(row,row.textContent);
+    if(translatorID===euclidTranslator && euclidFullArticle(new URL(url))) {
+      // Euclid groups Received, any revisions, and Published in one date-only row.
+      const dateEntry=/^(?:received|revised|accepted|published):\s*(.+)$/i;
+      for(const span of entries('span')) {
+        const first=span.textContent.trim();
+        if(!/^received:/i.test(first))continue;
+        const row=span.parentElement;
+        const text=row.textContent.trim().replace(/\.$/,'');
+        const events=text.split(';').map(event=>event.trim());
+        if(events[0]===first && /^published:/i.test(events.at(-1))
+          && events.every(event=>historyDate(event.match(dateEntry)?.[1])))fromTextList(row,text);
+      }
+    }
     for(const row of entries([
       '.itemPageRangeHistory > span',
       'ul.article-chapter-history-list > li',
@@ -304,7 +319,7 @@ window.allfoldTranslatorReady=(async () => {
       const document=createDocument(snapshot,true,[]);
       const ids=documentDOIs(document,snapshot.url,translatorID);
       const matches=ids.size===1 && ids.has(doi);
-      return {mismatch:ids.size>0 && !matches,dateCandidates:matches?historyCandidates(document,{doi,url:snapshot.url}):[]};
+      return {mismatch:ids.size>0 && !matches,dateCandidates:matches?historyCandidates(document,{doi,url:snapshot.url,translatorID}):[]};
     },
     async translate({snapshot,candidate,cookie='',doi,forEnrichment=false,historyKinds=[]}) {
       let state=detection;
@@ -332,7 +347,7 @@ window.allfoldTranslatorReady=(async () => {
           const history=forEnrichment && historyKinds.length>0 && item.itemType==='journalArticle';
           const ids=history?documentDOIs(document,state.url,selected.translatorID):null;
           const dateCandidates=history && (!ids.size || ids.size===1 && ids.has(doi))
-            ?historyCandidates(document,{doi,url:state.url},item.accepted):undefined;
+            ?historyCandidates(document,{doi,url:state.url,translatorID:selected.translatorID},item.accepted):undefined;
           if(proxy?.toProper)for(const item of items)for(const attachment of item.attachments || [])if(attachment.url)attachment._allfoldProperURL=proxy.toProper(attachment.url);
           return {ok:true,...info,proxy:proxy?.toJSON?proxy.toJSON():proxy || null,
             items:JSON.parse(JSON.stringify(items)),apiItem:forEnrichment?undefined:apiParent(item,proxy),itemCount:1,dateCandidates};
