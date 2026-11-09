@@ -1,4 +1,4 @@
-"""Target-directed completion from saved Paper fields, independent of discovery."""
+"""Shared, target-directed API completion for Run candidates."""
 from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
@@ -168,7 +168,7 @@ def _native_targets(records, root_ids=None):
     return sorted(targets)
 
 
-def _requests(records, *, allow_formal_preprint_reverse=True, root_ids=None):
+def _requests(records, *, root_ids=None):
     from allfold.paper_dates import preprint_date_coverage, known_preprint_families, preprint_identity
     yield from _native_targets(records, root_ids)
     complete, answered = preprint_date_coverage(records)
@@ -216,14 +216,6 @@ def _requests(records, *, allow_formal_preprint_reverse=True, root_ids=None):
         for doi in sorted({value for record in records if record.publication_type != 'preprint'
                 for ns, value in strong_identifiers(record.external_ids) if ns == 'doi'}):
             yield 'crossref', 'doi', doi, 'preprints'
-    # Reverse lookup discovers associations; it never guesses a known preprint's
-    # platform or enumerates other systems once a family has been established.
-    if allow_formal_preprint_reverse and not first_public_saved and not families:
-        formal = {value for record in records for ns, value in strong_identifiers(record.external_ids)
-            if ns == 'doi' and not value.startswith(('10.1101/', '10.64898/', '10.48550/arxiv.'))}
-        for provider in ('biorxiv', 'medrxiv'):
-            for doi in sorted(formal):
-                yield provider, 'doi', doi
 
 
 def prime_record_cache(records, *, request_cache, capability=None):
@@ -319,7 +311,7 @@ def _completion_batch(client, provider, namespace, identifiers, capability, canc
 
 
 def prime_completion_cache(record_groups, enabled_providers, *, clients, request_cache,
-                           cancel_event=None, allow_formal_preprint_reverse=True, ordinary_root_ids=None, settlement=None):
+                           cancel_event=None, ordinary_root_ids=None, settlement=None):
     """Collect exact targets across Papers and run independent base API batches.
 
     Responses, no-match and failures are operation-local. Capability keys keep
@@ -331,7 +323,7 @@ def prime_completion_cache(record_groups, enabled_providers, *, clients, request
         root_ids = ordinary_root_ids.get(key) if ordinary_root_ids is not None else None
         native_only = (not _ordinary_missing(records, root_ids) and not _journal_dates_missing(records)
             and any(target not in request_cache for target in _native_targets(records, root_ids)))
-        for request in _requests(records, allow_formal_preprint_reverse=allow_formal_preprint_reverse, root_ids=root_ids):
+        for request in _requests(records, root_ids=root_ids):
             provider, namespace, identifier = request[:3]
             if native_only and not (provider == 'crossref' and len(request) > 3 and request[3] == 'preprints'):
                 continue  # Settle native proof, but first collect independent explicit reverse relations.
@@ -354,7 +346,7 @@ def prime_completion_cache(record_groups, enabled_providers, *, clients, request
             batches.setdefault((provider, namespace, capability), set()).add(identifier)
     if not batches or cancel_event is not None and cancel_event.is_set():
         return
-    with ThreadPoolExecutor(max_workers=min(6, len(batches)), thread_name_prefix='api-completion') as pool:
+    with ThreadPoolExecutor(max_workers=min(6, len(batches)), thread_name_prefix='run-completion') as pool:
         futures = [(key, pool.submit(_completion_batch, clients.get(key[0]), *key[:2], sorted(ids),
             key[2], cancel_event, request_cache, settlement))
             for key, ids in sorted(batches.items(), key=lambda item: str(item[0]))]
@@ -397,7 +389,7 @@ def bind_records(supplements, identities):
 def _completion_steps(
     records: Sequence[ProviderWorkEvidence], enabled_providers: Sequence[str], *,
     clients: Mapping[str, MetadataLookup], cancel_event: Event | None = None, request_cache: dict | None = None,
-    allow_formal_preprint_reverse=True, ordinary_root_ids=None, settlement=None,
+    ordinary_root_ids=None, settlement=None,
 ):
     """Resolve local goals, schedule one needed target, then re-evaluate.
 
@@ -495,7 +487,7 @@ def _completion_steps(
             else 'failed' if issues else 'empty' if lookups and all(item.status == 'no_match' for item in lookups) else 'complete')
         return CompletionResult(tuple(output), tuple(issues), tuple(lookups), cancelled, status, completion_status)
     def requests():
-        for key in _requests(output, allow_formal_preprint_reverse=allow_formal_preprint_reverse, root_ids=ordinary_root_ids):
+        for key in _requests(output, root_ids=ordinary_root_ids):
             if len(key) > 3 and key[0] == 'crossref' and key[3] == 'preprints' and not hasattr(clients.get('crossref'), 'lookup_preprints'):
                 continue
             yield key
@@ -581,21 +573,21 @@ def _completion_steps(
 
 
 def complete_metadata_many(record_groups, enabled_providers, *, clients, cancel_event=None,
-                           request_cache=None, paper_guard=None, allow_formal_preprint_reverse=True, ordinary_root_ids=None,
+                           request_cache=None, paper_guard=None, ordinary_root_ids=None,
                            settlement=None):
     """Yield completed Papers while batching native targets across response waves.
 
     Each active Paper advances by at most one necessary response per wave. New
     relations therefore join the next native batch before that Paper can query
     another aggregator. The guard runs before each wave and each Paper step;
-    failures are isolated to that Paper and completed results can be saved early.
+    failures remain local to the affected candidate.
     """
     cache = request_cache if request_cache is not None else {}
     for client in clients.values():
         if hasattr(client, 'begin_completion'):
             client.begin_completion()
-    # Independent completion starts from the selected Paper. Run supplies the
-    # original Discovery roots because its prepared groups already contain links.
+    # Run passes original Discovery roots for prepared groups that already
+    # include related records.
     if ordinary_root_ids is None:
         ordinary_root_ids = {key: {identity for record in records for identity in strong_identifiers(record.external_ids)}
             for key, records in record_groups.items() if any(record.publication_type != 'preprint' and
@@ -603,7 +595,7 @@ def complete_metadata_many(record_groups, enabled_providers, *, clients, cancel_
     active, snapshots = {}, {}
     for key, records in record_groups.items():
         steps = _completion_steps(records, enabled_providers, clients=clients,
-            cancel_event=cancel_event, request_cache=cache, allow_formal_preprint_reverse=allow_formal_preprint_reverse,
+            cancel_event=cancel_event, request_cache=cache,
             ordinary_root_ids=ordinary_root_ids.get(key), settlement=settlement)
         try:
             snapshots[key] = next(steps)
@@ -620,7 +612,7 @@ def complete_metadata_many(record_groups, enabled_providers, *, clients, cancel_
                 snapshots.pop(key)
                 yield key, error
         prime_completion_cache(snapshots, enabled_providers, clients=clients, request_cache=cache,
-            cancel_event=cancel_event, allow_formal_preprint_reverse=allow_formal_preprint_reverse,
+            cancel_event=cancel_event,
             ordinary_root_ids=ordinary_root_ids, settlement=settlement)
         prime_arxiv_cache(snapshots, clients={provider: client for provider, client in clients.items()
             if provider in enabled_providers}, request_cache=cache, cancel_event=cancel_event,
@@ -639,11 +631,10 @@ def complete_metadata_many(record_groups, enabled_providers, *, clients, cancel_
 def complete_metadata(
     records: Sequence[ProviderWorkEvidence], enabled_providers: Sequence[str], *,
     clients: Mapping[str, MetadataLookup], cancel_event: Event | None = None, request_cache: dict | None = None,
-    allow_formal_preprint_reverse=True,
 ) -> CompletionResult:
-    """Complete one Paper through the same native batch scheduler."""
+    """Complete one candidate through the shared batch scheduler."""
     _, result = next(complete_metadata_many({0: records}, enabled_providers, clients=clients,
-        cancel_event=cancel_event, request_cache=request_cache, allow_formal_preprint_reverse=allow_formal_preprint_reverse))
+        cancel_event=cancel_event, request_cache=request_cache))
     if isinstance(result, Exception):
         raise result
     return result

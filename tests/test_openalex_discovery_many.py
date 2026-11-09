@@ -205,8 +205,7 @@ def test_missing_title_remains_a_verified_identity_for_completion():
                 return (missing.model_copy(update={'title': 'Completed formal title', 'abstract': 'Formal abstract',
                     'authors': (Author(name='Formal One'), Author(name='Formal Two')),
                     'provenance': missing.provenance.model_copy(update={'provider': 'crossref'})}),)
-        completed = complete_metadata((missing,), ('crossref',), clients={'crossref': Formal()},
-            allow_formal_preprint_reverse=False)
+        completed = complete_metadata((missing,), ('crossref',), clients={'crossref': Formal()})
     assert len(pages) == 1 and len(pages[0]) == 3
     metadata = completion_metadata(completed.records)
     assert metadata.metadata.title == 'Completed formal title'

@@ -704,3 +704,45 @@ def test_run_retries_only_the_failed_completion_page_and_keeps_partial_evidence(
         assert run.facts.created_papers == 2 and papers[one].date_evidence
         assert bool(papers[two].date_evidence) == recovers
         assert run.facts.details['completion_status'] == ('complete' if recovers else 'partial')
+
+
+def test_run_recovers_native_preprint_details_before_create(tmp_path):
+    import httpx
+
+    from allfold.application.workspace import load_workspace
+    from allfold.models import ProviderRecordRef
+    from allfold.providers.supplemental import SupplementalClient
+
+    path, _ = config(tmp_path)
+    path.write_text(path.read_text() + 'enabled_providers: [wos]\n')
+    preprint = '10.5555/native-preprint'
+    formal = record('wos', '10.5555/formal', related_ids=(
+        ProviderRecordRef(provider='biorxiv', record_id=preprint, relation='preprint'),
+    ))
+    calls = []
+
+    def handler(request):
+        assert request.url.path == f'/details/biorxiv/{preprint}/na/json'
+        calls.append(request)
+        assert not list((tmp_path / 'workspace' / 'Papers').glob('*.md'))
+        if len(calls) <= 3:
+            return httpx.Response(503)
+        return httpx.Response(200, json={'messages': [{'status': 'ok'}], 'collection': [
+            {'doi': preprint, 'server': 'biorxiv', 'date': '2025-08-17', 'version': '1'},
+        ]})
+
+    def factory(provider, **kwargs):
+        if provider == 'biorxiv':
+            return SupplementalClient(provider, transport=httpx.MockTransport(handler), interval=0,
+                sleep=lambda _: None, **kwargs)
+        return EmptyCompletion(provider)
+
+    def wos(*args, **kwargs):
+        return IntegratedDiscovery((formal,), (DiscoveryResult('wos', SourceScope('journal', 'Test'),
+            'complete', (formal,), candidates=1),), 'complete')
+
+    run = run_integrated(path, wos_stage=wos, completion_factory=factory)
+    paper, = load_workspace(tmp_path / 'workspace').papers
+    assert run.facts.statistics['completion_requests'] == len(calls) == 4
+    assert run.facts.details['completion_status'] == 'complete'
+    assert paper.first_public_at == '2025-08-17' and paper.external_ids.doi == '10.5555/formal'

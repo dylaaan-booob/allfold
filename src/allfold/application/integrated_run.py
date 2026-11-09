@@ -244,7 +244,7 @@ def run_integrated(config_path, *, loaded_config=None, workspace_snapshot=None, 
             def lookup(self, *args): raise ValueError(self.message)
             def resolve_pubmed_dois(self, identifiers):
                 return dict.fromkeys(identifiers, DiscoveryError(self.message))
-        # Fixed helper set is independent of Discovery and explicit Completion switches.
+        # Fixed completion helpers are independent of the selected Discovery sources.
         for provider in RUN_COMPLETION_PROVIDERS:
             try:
                 key = read_credential(config_path,provider=provider)[0] if provider in DISCOVERY_PROVIDERS else None
@@ -392,7 +392,7 @@ def run_integrated(config_path, *, loaded_config=None, workspace_snapshot=None, 
             def complete(enriched, settlement=None):
                 return tuple(complete_metadata_many(enriched, RUN_COMPLETION_PROVIDERS, clients=clients,
                     cancel_event=cancel, request_cache=request_cache, paper_guard=lambda _: guard(),
-                    allow_formal_preprint_reverse=False, ordinary_root_ids=ordinary_roots, settlement=settlement))
+                    ordinary_root_ids=ordinary_roots, settlement=settlement))
 
             enriched, resolutions = prepare_completion()
             completions = complete(enriched, settlement)

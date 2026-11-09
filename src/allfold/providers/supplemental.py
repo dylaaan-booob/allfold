@@ -95,7 +95,10 @@ class SupplementalClient(DiscoveryClient):
         if self.provider == "arxiv" and namespace == "arxiv":
             return self._arxiv(identifier)
         if self.provider in {"biorxiv", "medrxiv"} and namespace == "doi":
-            return self._biorxiv(identifier)
+            doi = valid_doi(identifier)
+            if not doi:
+                raise DiscoveryError(f"{self.provider}: native details require a valid DOI")
+            return self._bio_details(doi)
         return ()
 
     def _arxiv(self, identifier):
@@ -387,14 +390,6 @@ class SupplementalClient(DiscoveryClient):
             self._details_cache[doi] = tuple(self._bio_record(row, doi) for row in
                 self._collection(f"/details/{self.provider}/{quote(doi, safe='/')}/na/json", doi=doi))
         return self._details_cache[doi]
-
-    def _biorxiv(self, identifier):
-        doi = valid_doi(identifier)
-        if not doi:
-            raise DiscoveryError(f"{self.provider}: lookup requires a valid DOI")
-        if doi.startswith(("10.1101/", "10.64898/")):
-            return self._bio_details(doi)
-        return self.lookup_published_preprints(doi)
 
     def lookup_published_preprints(self, identifier):
         """Follow explicit native publication relations for a formal DOI."""
