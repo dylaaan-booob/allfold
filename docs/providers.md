@@ -106,7 +106,7 @@ Webpage Enrich runs serially through the read-only Translator path. It can fill 
 
 Background native pages receive a nonzero layout viewport without selecting, revealing or focusing them. Enrich exposes **打开 Browser 验证** while waiting for verification; it shows the existing task-bound page without leaving Workspace or cancelling the task. Solver targeting, interactability checks and retry limits remain unchanged.
 
-An Imperva access-denial document with the Incapsula incident marker is reported as restricted access even if it returns HTTP 200. Browser workflows reject that response before using it as an article document.
+An Imperva response with the Incapsula incident marker and a single CAPTCHA code (`edet=12`) waits for the user to complete verification in Browser. The existing task resumes when the article loads in the same tab. The Cloudflare Solver is skipped for this challenge. Other recognized Imperva denials are reported as restricted access, including when they return HTTP 200.
 
 ## Old data and manual acceptance
 

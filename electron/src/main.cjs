@@ -147,7 +147,7 @@ async function executeOperation(message) {
       browser.beginOperation(controller.signal,{...message.data,request_id:message.id});
       browser.operation.action=message.action;
       let lastProgress,waiting=false;
-      const progress=(data,progressStage=stage)=>{
+      const progress=(data,progressStage=stage,diagnostic)=>{
         const signature=JSON.stringify([progressStage,data.message,data.waiting_for_user]);
         if(signature!==lastProgress) {
           lastProgress=signature;
@@ -155,7 +155,7 @@ async function executeOperation(message) {
         }
         if(typeof data.waiting_for_user==='boolean' && data.waiting_for_user!==waiting) {
           waiting=data.waiting_for_user;
-          log('info','manual_wait',{...context,page_id:browser.taskTab?.id,waiting});
+          log('info','manual_wait',{...diagnostic,...context,page_id:browser.taskTab?.id,waiting});
         }
         send({type:'progress',id:message.id,action:message.action,data});
       };
@@ -178,7 +178,7 @@ async function executeOperation(message) {
         }
         progress({message:'Opening DOI in Browser'});
         const doc=await browser.navigate('https://doi.org/'+encodeURIComponent(doi),{signal:controller.signal,
-          onWaiting:()=>progress({waiting_for_user:true,message:'Checking verification; open BROWSER for manual verification if needed, or Cancel to stop'})});
+          onWaiting:diagnostic=>progress({waiting_for_user:true,message:'Checking verification; open BROWSER for manual verification if needed, or Cancel to stop'},stage,diagnostic)});
         if(controller.signal.aborted)throw new BrowserFailure('navigation','canceled');
         if(waiting) {
           waiting=false;

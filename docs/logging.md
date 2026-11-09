@@ -77,7 +77,7 @@ Arbitrary strings are excluded rather than merely truncated.
 | `service_id`, `paper_id` | Reviewed saved identities, without names, DOI or content |
 | `page_id`, `source_page_id`, `role`, `generation` | Descriptive page association and navigation generation |
 | `stage`, `step`, `code`, `status`, `net_error` | Reviewed operation stage, stable failure code and bounded network evidence |
-| `imperva_edet`, `imperva_incident_id` | Optional numeric code and support reference from a recognized Imperva denial. The event's UTC time records when Allfold reported the failure. |
+| `imperva_edet`, `imperva_incident_id` | Optional numeric code and support reference from a recognized Imperva response. The event's UTC time records when Allfold reported restricted access or began waiting for verification. |
 | `outcome`, `parent`, `pdf` | Business/native result, parent-save evidence and separate PDF evidence |
 
 Default diagnostics exclude credentials, Cookie/Authorization, request and response

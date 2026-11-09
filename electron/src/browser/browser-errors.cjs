@@ -18,13 +18,15 @@ function checkPage(status, title, html) {
     const deniedFrame = /<iframe\b[^>]*\ssrc\s*=\s*(["'])\/_Incapsula_Resource(?:\?([^"']*))?\1[^>]*>\s*Request unsuccessful\.\s*Incapsula incident ID:\s*([0-9]{1,32}-[0-9]{1,32}(?=\s|<|$))?/i;
     const denied = frameShell && deniedFrame.exec(frameShell[1]);
     if (denied) {
-      const failure = new BrowserFailure('navigation', 'site_restricted', status);
       const [, , query, displayed] = denied;
       const params = new URLSearchParams(query?.replace(/&amp;/gi, '&'));
       const codes = params.getAll('edet');
+      const edet = codes.length === 1 && /^[0-9]{1,3}$/.test(codes[0]) ? Number(codes[0]) : undefined;
       const ids = params.getAll('incident_id');
       const incident = ids.length ? ids[0] : displayed;
-      if (codes.length === 1 && /^[0-9]{1,3}$/.test(codes[0])) failure.diagnostic.imperva_edet = Number(codes[0]);
+      // Imperva's CAPTCHA is interactive even though the outer document says "Request unsuccessful".
+      const failure = new BrowserFailure('navigation', edet === 12 ? 'verification_page' : 'site_restricted', status);
+      if (edet !== undefined) failure.diagnostic.imperva_edet = edet;
       if (ids.length <= 1 && /^[0-9]{1,32}-[0-9]{1,32}$/.test(incident)
           && (!displayed || displayed === incident)) failure.diagnostic.imperva_incident_id = incident;
       throw failure;

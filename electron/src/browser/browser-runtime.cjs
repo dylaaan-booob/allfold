@@ -560,7 +560,7 @@ class BrowserRuntime {
       const navigation=await (tab.authContext?.active
         ?Promise.race([loading,tab.authContext.fatal]):loading);
       const doc=await this.waitForPage(tab,{signal:controller.signal,deadline,finish:false,navigationChain:navigation.chain,solveCloudflare,
-        onWaiting:waiting=>{if(waiting)onWaiting?.();}});
+        onWaiting:(waiting,diagnostic)=>{if(waiting)onWaiting?.(diagnostic);}});
       this.reportPage('info','navigation_ready',tab,{stage:'navigation',code:'page_ready',status:doc.status});
       return doc;
     } catch(error) {

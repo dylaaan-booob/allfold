@@ -92,6 +92,28 @@ test('Enrich reports the Imperva denial fields without handing the page to Zoter
   assert.equal(event.imperva_incident_id,'123-456');
 });
 
+test('Enrich reports Imperva verification as a wait and translates after the page is ready', async () => {
+  const f=fixture(), waiting=deferred(), verified=deferred();
+  f.context.browser.navigate=async (_url,{onWaiting})=>{
+    onWaiting({stage:'navigation',code:'verification_page',status:200,imperva_edet:12,imperva_incident_id:'123-456'});
+    waiting.resolve();
+    await verified.promise;
+    return {pageId:1,url:'https://example.org/article'};
+  };
+  const task=f.context.execute({id:'enrich',action:'enrich_paper',data:{doi:'10.5555/test'}});
+  await waiting.promise;
+  assert.equal(f.calls.translation,0);
+  assert.ok(f.messages.some(m=>m.type==='progress' && m.id==='enrich' && m.data.waiting_for_user));
+  assert.equal(f.messages.some(m=>m.type==='result'),false);
+  const event=f.logs.find(e=>e.event==='manual_wait' && e.waiting);
+  assert.equal(event.imperva_edet,12);
+  assert.equal(event.imperva_incident_id,'123-456');
+  verified.resolve();
+  await task;
+  assert.equal(f.calls.translation,1);
+  assert.ok(f.messages.some(m=>m.type==='result' && m.id==='enrich' && m.data.metadata_source==='web'));
+});
+
 test('Import reuses one page and replaces Paper/Service context, including an unmatched Paper',async()=>{
   const f=fixture();let created=0;
   f.context.newTaskPage=async()=>{created++;return {id:1};};
