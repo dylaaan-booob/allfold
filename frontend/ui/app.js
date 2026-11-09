@@ -1171,7 +1171,7 @@ function renderPaper() {
   if (!readerContext) $('directory-position').textContent=`${pad(index+1)} / ${pad(papers.length)} PAPERS`;
   for (const id of ['previous-paper','next-paper']) $(id).disabled=papers.length===1 || enrichment?.phase==='Saving';
   renderPaperFields(paper, ['abstract','authors','publication_date']);
-  window.allfoldPaperDates.render(paper,$('paper-first-public'),$('paper-journal-dates'));
+  window.allfoldPaperDates.render(paper,$('paper-dates'),$('paper-date-evidence'));
   $('paper-source').textContent=paper.conference || paper.journal || reviewJournal()?.name || '—';
   $('paper-identifiers').textContent=Object.entries(paper.external_ids || {}).filter(([key])=>key!=='doi').map(([key,value])=>`${key}: ${value}`).join('; ') || '—';
   $('paper-indexed-terms').textContent=(paper.indexed_terms || []).map(item=>`${item.value}${item.kind || item.source ? ` (${[item.kind,item.source].filter(Boolean).join(' · ')})` : ''}`).join('; ') || '—';
@@ -1783,7 +1783,8 @@ window.addEventListener('workspace-reset',()=>{
   uiNext.workspaceEpoch++;uiNext.data=null;snapshotApplying=false;
   closeArrayReader(true);clearInspectionPanel();
   paragraphLayout?.clear();cancelRetrieval();decryption.reset(null,true);paperMetadata.open=false;
-  for(const id of ['view-paper-title','view-paper-id','paper-position','paper-authors','paper-date','paper-first-public','paper-journal-dates','paper-source','paper-identifiers','paper-indexed-terms','paper-providers','paper-doi','paper-abstract'])$(id).replaceChildren();
+  for(const id of ['view-paper-title','view-paper-id','paper-position','paper-authors','paper-date','paper-source','paper-identifiers','paper-indexed-terms','paper-providers','paper-doi','paper-abstract'])$(id).replaceChildren();
+  window.allfoldPaperDates.render(null,$('paper-dates'),$('paper-date-evidence'));
   $('paper-doi').removeAttribute('href');delete $('paper-detail').dataset.paperId;
   $('paper-metadata-summary').textContent='Infos';
   Object.assign(paperTools,{paperId:null,fields:null,loading:false,error:'',
@@ -1832,6 +1833,7 @@ function closeArrayReader(snapshot=false) {
     paragraphLayout?.clear();cancelRetrieval();decryption.reset(null,true);
     readerContext=null;state.pendingPaper=null;
     window.allfoldPreprintLookup.select(null);
+    window.allfoldPaperDates.render(null,$('paper-dates'),$('paper-date-evidence'));
     $('paper-detail').prepend(paperMetadata);
     $('paper-detail').prepend(paperTitle);
     paperMetadata.open=false;

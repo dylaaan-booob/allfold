@@ -16,14 +16,6 @@ provider_order:
 enabled_providers:
   - pubmed
   - openalex
-completion_providers:
-  - pubmed
-  - openalex
-  - europe_pmc
-  - crossref
-  - arxiv
-  - biorxiv
-  - medrxiv
 provider_aliases: {}
 crossref_mailto: ''
 output_dir: workspace
