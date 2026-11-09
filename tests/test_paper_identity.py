@@ -175,9 +175,14 @@ def test_workspace_api_exposes_bibliographic_conference_without_followed_source(
         publication_type='conference', publication_date='2026',
         external_ids=ExternalIds(openalex='W1001'),
         indexed_terms=(ProviderTopic(value='machine learning', source='openalex', kind='topic'),),
-        dates=(EvidenceDate(kind=Kind.SOURCE, year=2026),))]).papers
+        dates=(
+            EvidenceDate(kind=Kind.SOURCE, year=2026, url='https://example.test/conference'),
+            EvidenceDate(kind=Kind.SOURCE, year=2027, url='http://127.0.0.1:9100/internal'),
+            EvidenceDate(kind=Kind.SOURCE, year=2028, url='https://user:secret@example.test/conference'),
+        ))]).papers
     path, = materialize_papers([paper], workspace).created_papers
-    assert 'conference_id' not in path.read_text()
+    before = path.read_bytes()
+    assert b'conference_id' not in before
     with TestClient(create_app(config, electron_bridge=OfflineBridge()), base_url='http://localhost') as client:
         data = client.get('/api/ui-next/workspace').json()
     group, = data['subjects']
@@ -192,6 +197,10 @@ def test_workspace_api_exposes_bibliographic_conference_without_followed_source(
     assert item['first_public_at'] is None
     assert all(event['publication_type']=='conference' for event in item['date_evidence'])
     assert item['date_evidence'][0]['kind'] == 'source-date'
+    assert [event.get('url') for event in item['date_evidence']] == [
+        'https://example.test/conference', None, None,
+    ]
+    assert path.read_bytes() == before
     assert item['indexed_terms'][0]['kind'] == 'topic'
     assert item['external_ids']['openalex'] == 'W1001'
 
