@@ -42,6 +42,8 @@ async function browserHistory() {
     '/accepted-only': article(history(accepted)),
     '/accepted-rdf': article(history(accepted),html.split('</head>')[0]
       +'<meta name="dcterms.dateAccepted" content="2024-03"><meta name="dcterms.dateSubmitted" content="2024-02-29">'),
+    '/accepted-timestamp': article('',html.split('</head>')[0]
+      +'<meta name="dcterms.dateAccepted" content="2024-03-02T00:45:00+02:00">'),
     '/no-history': article(later('setTimeout(()=>document.body.insertAdjacentHTML("beforeend",'
       +JSON.stringify(history(received+accepted))+'),30000)')),
     '/templates': article(
@@ -127,6 +129,8 @@ async function browserHistory() {
       kind:'accepted',value:'2024-03',source_label:'Manuscript accepted:',
       url:'https://offline.invalid/accepted-rdf',record_id:doi,
     }]);
+    const timestamp=await translate('accepted-timestamp',['accepted']);
+    assert.deepEqual(facts(timestamp.result),[['accepted','2024-03-02']]);
     await assert.rejects(translate('cancel',historyKinds,{cancel:true}),{message:'canceled'});
     for(const name of ['replaced','child-replaced','doi-change','doi-change-complete'])
       await assert.rejects(translate(name),{message:'document_changed'},name);

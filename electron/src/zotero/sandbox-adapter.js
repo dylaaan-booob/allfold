@@ -161,7 +161,11 @@ window.allfoldTranslatorReady=(async () => {
   function historyDate(raw) {
     if(typeof raw!=='string')return null;
     const text=raw.trim().replace(/\s+/g,' ').toLowerCase();
-    const iso=text.match(/^(\d{4})(?:-(\d{2})(?:-(\d{2}))?)?$/);
+    const dateTime=text.match(/^(\d{4}-\d{2}-\d{2})[t ](.+)$/);
+    const isoTime=/^(?:[01]\d|2[0-3]):[0-5]\d(?::[0-5]\d(?:\.\d+)?)?(?:z|[+-](?:[01]\d|2[0-3]):?[0-5]\d)?$/;
+    // A publisher's timestamp supplies its written calendar day.
+    const calendarText=dateTime && isoTime.test(dateTime[2])?dateTime[1]:text;
+    const iso=calendarText.match(/^(\d{4})(?:-(\d{2})(?:-(\d{2}))?)?$/);
     const dayFirst=text.match(/^(\d{1,2}) ([a-z]+)\.? (\d{4})$/);
     const monthFirst=text.match(/^([a-z]+)\.?(?: (\d{1,2}))?,? (\d{4})$/);
     let year,month,day;
