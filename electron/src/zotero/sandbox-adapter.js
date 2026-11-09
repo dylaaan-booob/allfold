@@ -154,7 +154,11 @@ window.allfoldTranslatorReady=(async () => {
     const source=new URL(url);
     values.push(source.searchParams.get('id'),source.searchParams.get('doi'));
     try {
-      values.push(decodeURIComponent(source.pathname).match(/(?:^|\/)(10\.\d{4,9}\/[^/]+)$/)?.[1]);
+      // Project Euclid's full article route appends ".full" after the DOI.
+      const euclidFullArticle=translatorID==='2e1c09a0-3006-11de-8c30-0800200c9a66'
+        && source.hostname==='projecteuclid.org' && source.pathname.startsWith('/journals/') && source.pathname.endsWith('.full');
+      const pathname=euclidFullArticle?source.pathname.slice(0,-5):source.pathname;
+      values.push(decodeURIComponent(pathname).match(/(?:^|\/)(10\.\d{4,9}\/[^/]+)$/)?.[1]);
     } catch { /* A malformed URL escape cannot establish a DOI. */ }
     return new Set(values.map(value=>doiValue(value?.trim().replace(/^doi:\s*/i,''))).filter(Boolean));
   }

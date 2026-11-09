@@ -306,6 +306,27 @@ test('a failed/canceled ImportPage can be explicitly reused, and a delayed old n
   assert.equal(tab.view.webContents.getURL(),'https://example.org/new');
 });
 
+test('Browser refuses an HTTP 200 Imperva block before handing the document to the caller',async t=>{
+  const {BrowserRuntime}=fixture(t);
+  let solverCalls=0;
+  const browser=new BrowserRuntime({solveCloudflare:async()=>{solverCalls++;}});
+  t.after(()=>browser.close());await browser.ready;
+  const tab=browser.createTab({present:false});
+  const signal=new AbortController().signal;
+  browser.beginOperation(signal,{request_id:'blocked'});
+  const url='https://projecteuclid.org/journals/example/10.5555/article.full';
+  const contents=tab.view.webContents;
+  const block='<iframe src="/_Incapsula_Resource?fixture=block">Request unsuccessful. Incapsula incident ID: fixture</iframe>';
+  contents.html='<body><iframe src="/_Incapsula_Resource?fixture=helper" hidden></iframe>'+block+'</body>';
+  await assert.rejects(browser.navigate(url,{tab,signal}),{diagnostic:{stage:'navigation',code:'site_restricted',status:200}});
+  assert.equal(solverCalls,0);
+  browser.endTask();
+
+  browser.beginOperation(signal,{request_id:'article'});
+  contents.html='<body><article>Example article</article>'+block+'</body>';
+  assert.equal((await browser.navigate(url,{tab,signal})).status,200);
+});
+
 test('Prepare reuses an unassigned Portal across Services and records resource/target popup provenance',async t=>{
   const {prepareService}=require('../src/workflows/browser-operations.cjs');
   const {BrowserRuntime}=fixture(t),browser=new BrowserRuntime();

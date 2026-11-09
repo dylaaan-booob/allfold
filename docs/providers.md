@@ -106,6 +106,8 @@ Webpage Enrich runs serially through the read-only Translator path. It can fill 
 
 Background native pages receive a nonzero layout viewport without selecting, revealing or focusing them. Enrich exposes **打开 Browser 验证** while waiting for verification; it shows the existing task-bound page without leaving Workspace or cancelling the task. Solver targeting, interactability checks and retry limits remain unchanged.
 
+An Imperva access-denial document with the Incapsula incident marker is reported as restricted access even if it returns HTTP 200. Browser workflows reject that response before using it as an article document.
+
 ## Old data and manual acceptance
 
 Old Paper `identity_aliases`/`related_dois` fields are explicitly incompatible, even when empty: safe identity scanning and writes are blocked. No migration or automatic cleanup is performed. Obsolete Evidence files are ignored and preserved. Old dates, Provider lists and Run formats are not migrated. If a local YAML contains the retired `completion_providers` key, back up the YAML and remove that entry before loading it. The tracked template has the current fields. Workspace Reset removes only the confirmed Workspace, including Papers, obsolete Evidence files if present, and Run snapshots. It does **not** remove YAML, `.allfold/user-data.sqlite`, resource caches, covers or credentials. Normal startup, read, autosave or a configuration error never deletes these objects.

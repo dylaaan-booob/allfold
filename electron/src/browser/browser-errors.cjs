@@ -12,6 +12,13 @@ function checkPage(status, title, html) {
     throw new BrowserFailure('navigation', 'site_restricted', 418);
   if (/\bCPE00001\b/.test(html) && /There was a problem providing the content you requested/i.test(html))
     throw new BrowserFailure('navigation', 'content_access_blocked', status);
+  // Imperva can serve an access-denial document with an HTTP 200 status.
+  if (status === 200 && /_Incapsula_Resource/.test(html)) {
+    const frameShell = /<body\b[^>]*>((?:\s*<iframe\b[^>]*>[^<]*<\/iframe>)+)\s*<\/body>/i.exec(html);
+    const deniedFrame = /<iframe\b[^>]*\ssrc\s*=\s*(["'])\/_Incapsula_Resource(?:\?[^"']*)?\1[^>]*>\s*Request unsuccessful\.\s*Incapsula incident ID:/i;
+    if (frameShell && deniedFrame.test(frameShell[1]))
+      throw new BrowserFailure('navigation', 'site_restricted', status);
+  }
   // A localized challenge document has both page options and its challenge-page orchestrator.
   const cloudflareDocument = /\b_cf_chl_opt\s*=\s*\{/.test(html)
     && /\/cdn-cgi\/challenge-platform\/[^\s"'<>]*orchestrate\/chl_page\//i.test(html);

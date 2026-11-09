@@ -21,12 +21,15 @@ const accepted='<li>Manuscript accepted: 2024-03</li>';
 const history=(rows='')=>'<section class="publication-history"><ul class="rlist">'+rows+'</ul></section>';
 const article=(body,metadata=html.split('</head>')[0])=>metadata+'</head><body>'+body+'</body></html>';
 const later=script=>'<script>setTimeout(()=>{'+script+'},1500)</script>';
+const euclidArticle='journals/fixture/'+doi+'.full';
 
 async function browserHistory() {
   const browser=new BrowserRuntime();
   // Reuse the official sandbox. All live document traffic stays in the synthetic partition.
   sandbox.browser=browser;
   const fixturePages={
+    // Use an existing history fixture to isolate the article route's DOI binding.
+    ['/'+euclidArticle]: article(history(received)),
     '/late': article(history(received)+later('document.querySelector("ul").insertAdjacentHTML("beforeend",'+JSON.stringify(accepted)+')')),
     '/scielo-late': article('<a class="_doi" href="https://doi.org/'+doi+'">'+doi+'</a>'
       +'<div class="articleSection--history"><ul class="articleTimeline"><li><strong>Received</strong><br>29 February 2024</li></ul></div>'
@@ -85,7 +88,7 @@ async function browserHistory() {
   await browser.ready;
   await browser.partition.protocol.handle('https',request=>{
     const url=new URL(request.url);
-    const text=['offline.invalid','www.scielo.br'].includes(url.hostname) && fixturePages[url.pathname];
+    const text=['offline.invalid','www.scielo.br','projecteuclid.org'].includes(url.hostname) && fixturePages[url.pathname];
     return new Response(text || 'Unknown isolated fixture',{status:text?200:404,headers:{'Content-Type':'text/html'}});
   });
   async function translate(name,kinds=historyKinds,{cancel=false,deadline}={}) {
@@ -93,7 +96,8 @@ async function browserHistory() {
     browser.beginOperation(signal);browser.operation.action='enrich_paper';
     const tab=await newTaskPage(browser,signal);
     try {
-      const origin=name==='scielo-late'?'https://www.scielo.br':'https://offline.invalid';
+      const origin=name===euclidArticle?'https://projecteuclid.org':
+        name==='scielo-late'?'https://www.scielo.br':'https://offline.invalid';
       const doc=await browser.navigate(origin+'/'+name,{signal,deadline:Date.now()+5000});
       browser.enterBusiness();
       const started=Date.now();
@@ -113,6 +117,9 @@ async function browserHistory() {
   }
   const facts=result=>result.dateCandidates.map(({kind,value})=>[kind,value]);
   try {
+    const euclid=await translate(euclidArticle,['received']);
+    assert.equal(euclid.result.translator,'Euclid');
+    assert.deepEqual(euclid.result.dateCandidates?.map(({kind,value})=>[kind,value]),[['received','2024-02-29']]);
     const immediate=await translate('templates');
     assert.ok(immediate.elapsed<1500,'complete history should return without polling');
     assert.deepEqual(facts(immediate.result).sort(),[
