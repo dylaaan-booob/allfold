@@ -226,7 +226,8 @@ async function executeOperation(message) {
     log(canceled?'info':failed?'warn':'info','task_finished',{...context,page_id:resultPageId,
       duration_ms:Date.now()-started,outcome:canceled?'canceled':outcome,
       parent:data.parent?.outcome,pdf:data.pdf?.outcome,stage:diagnostic.stage || stage,
-      step:diagnostic.step,code:diagnostic.code || data.reason,net_error:diagnostic.net_error,status:diagnostic.status});
+      step:diagnostic.step,code:diagnostic.code || data.reason,net_error:diagnostic.net_error,status:diagnostic.status,
+      imperva_edet:diagnostic.imperva_edet,imperva_incident_id:diagnostic.imperva_incident_id});
     send({type:'result',id:message.id,action:message.action,data:{...data,diagnostics_status:diagnosticsStatus()}});
   })();
   activeRequest=operation;

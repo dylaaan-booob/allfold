@@ -316,15 +316,28 @@ test('Browser refuses an HTTP 200 Imperva block before handing the document to t
   browser.beginOperation(signal,{request_id:'blocked'});
   const url='https://projecteuclid.org/journals/example/10.5555/article.full';
   const contents=tab.view.webContents;
-  const block='<iframe src="/_Incapsula_Resource?fixture=block">Request unsuccessful. Incapsula incident ID: fixture</iframe>';
+  const block='<iframe src="/_Incapsula_Resource?incident_id=123456-987654&amp;edet=15&amp;opaque=private">'
+    +'Request unsuccessful. Incapsula incident ID: 123456-987654</iframe>';
   contents.html='<body><iframe src="/_Incapsula_Resource?fixture=helper" hidden></iframe>'+block+'</body>';
-  await assert.rejects(browser.navigate(url,{tab,signal}),{diagnostic:{stage:'navigation',code:'site_restricted',status:200}});
+  await assert.rejects(browser.navigate(url,{tab,signal}),{diagnostic:{stage:'navigation',code:'site_restricted',status:200,
+    imperva_edet:15,imperva_incident_id:'123456-987654'}});
   assert.equal(solverCalls,0);
   browser.endTask();
 
   browser.beginOperation(signal,{request_id:'article'});
   contents.html='<body><article>Example article</article>'+block+'</body>';
   assert.equal((await browser.navigate(url,{tab,signal})).status,200);
+});
+
+test('Imperva diagnostics omit ambiguous parameters and accept a displayed incident ID',()=>{
+  const {checkPage}=require('../src/browser/browser-errors.cjs');
+  const page=(query,id)=>'<body><iframe src="/_Incapsula_Resource?'+query
+    +'">Request unsuccessful. Incapsula incident ID: '+id+'</iframe></body>';
+  const blocked={stage:'navigation',code:'site_restricted',status:200};
+  assert.throws(()=>checkPage(200,'',page('edet=15&amp;edet=16&amp;incident_id=111-222','333-444')),
+    {diagnostic:blocked});
+  assert.throws(()=>checkPage(200,'',page('edet=16%20private','123-456')),
+    {diagnostic:{...blocked,imperva_incident_id:'123-456'}});
 });
 
 test('Prepare reuses an unassigned Portal across Services and records resource/target popup provenance',async t=>{

@@ -9,6 +9,7 @@ import zipfile
 
 import pytest
 
+from allfold.browser_diagnostics import normalize_browser_diagnostic
 from allfold.diagnostics import DiagnosticStore
 
 
@@ -97,6 +98,9 @@ logger.log('info','task_finished',{workflow_id:'workflow_1',task_id:'batch_1',
   service_id:'svc_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',stage:'attachment',step:'hidden_iframe',
   code:'load_failed',net_error:'ERR_CONNECTION_RESET',status:503,parent:'uncertain',pdf:'unverified',
   host:'private.invalid',body:'PRIVATE_SENTINEL',url:'https://private.invalid/?token=PRIVATE_SENTINEL'});
+logger.log('warn','task_finished',{workflow_id:'workflow_1',task_id:'batch_1',
+  request_id:'imperva_request',action:'import_paper',stage:'navigation',
+  code:'site_restricted',status:200,imperva_edet:15,imperva_incident_id:'123-456'});
 logger.log('error','task_finished',{workflow_id:'workflow_2',task_id:'batch_2',
   request_id:'unrelated_request',action:'import_paper',parent:'confirmed'});
 const other=createLogger({root,scopeId:'b'.repeat(64),runtimeId:'other_runtime',stderr(){}});
@@ -120,6 +124,12 @@ other.log('error','task_finished',{workflow_id:'workflow_1',task_id:'batch_1',
         assert native['service_id'] == 'svc_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'
         assert native['workflow_id'] == 'workflow_1'
         assert native['task_id'] == 'batch_1'
+        blocked = next(event for event in events if event.get('request_id') == 'imperva_request')
+        assert normalize_browser_diagnostic(blocked) == {
+            'stage': 'navigation', 'code': 'site_restricted', 'status': 200,
+            'imperva_edet': 15, 'imperva_incident_id': '123-456',
+        }
+        assert blocked['time'].endswith('Z')
         encoded = b'\n'.join(bundle.read(name) for name in bundle.namelist())
         for excluded in (b'unrelated_request', b'other_scope_request', b'PRIVATE_SENTINEL', b'private.invalid'):
             assert excluded not in encoded

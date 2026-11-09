@@ -377,6 +377,15 @@
       "type": "string",
       "pattern": "^ERR_[A-Z0-9_]{1,80}$"
     },
+    "imperva_edet": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 999
+    },
+    "imperva_incident_id": {
+      "type": "string",
+      "pattern": "^[0-9]{1,32}-[0-9]{1,32}$"
+    },
     "outcome": {
       "type": "string",
       "enum": [

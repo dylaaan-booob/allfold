@@ -79,6 +79,19 @@ test('Enrich runs the official read-only Translator and never dispatches ItemSav
   assert.equal(f.messages.find(m=>m.type==='result').data.item.DOI,'10.5555/test');
 });
 
+test('Enrich reports the Imperva denial fields without handing the page to Zotero', async () => {
+  const f=fixture(),{checkPage}=require('../src/browser/browser-errors.cjs');
+  f.context.browser.navigate=async()=>checkPage(200,'','<body><iframe src="/_Incapsula_Resource?edet=16&amp;private=fixture">'
+    +'Request unsuccessful. Incapsula incident ID: 123-456</iframe></body>');
+  await f.context.execute({id:'enrich',action:'enrich_paper',data:{doi:'10.5555/test'}});
+  assert.equal(f.calls.translation,0);
+  const diagnostic=f.messages.find(m=>m.type==='result').data.diagnostic;
+  assert.deepEqual(diagnostic,{stage:'navigation',code:'site_restricted',status:200,imperva_edet:16,imperva_incident_id:'123-456'});
+  const event=f.logs.find(e=>e.event==='task_finished');
+  assert.equal(event.imperva_edet,16);
+  assert.equal(event.imperva_incident_id,'123-456');
+});
+
 test('Import reuses one page and replaces Paper/Service context, including an unmatched Paper',async()=>{
   const f=fixture();let created=0;
   f.context.newTaskPage=async()=>{created++;return {id:1};};
