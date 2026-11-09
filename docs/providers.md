@@ -32,7 +32,7 @@ Selected PubMed, WoS and OpenAlex Discovery overlap within one parent Run, slot,
 
 Before creation, all saved Papers including Rejected participate in direct-identity conflict checks. Run completes only new candidates and preserves existing Paper bytes. Ordinary fields use fixed source priority with formal WoS bibliography first; author lists remain whole. Completion responses and version relationships never become extra Discovery candidates. Only reliable direct identifiers establish ownership; conflicting saved owners are skipped and reported. Counts derive from distinct candidates, completion activity and actual protected creates.
 
-Run batches unique new formal DOIs missing a directly confirmed PMID. PubMed ESearch uses quoted `[aid]` clauses without the Discovery date, ISSN or keyword filters. Each result set is checked for completeness, and ESummary or EFetch verifies the returned direct DOI for each PMID. A complete empty lookup is normal. An incomplete response or ambiguous binding reports a limitation. The confirmed formal PMID is available to subsequent helpers and persists in the new Paper. [PubMed Article Identifier](https://pubmed.ncbi.nlm.nih.gov/help/#aid), [NCBI E-utilities](https://www.ncbi.nlm.nih.gov/books/NBK25499/).
+Run batches unique new formal DOIs missing a directly confirmed PMID. PubMed ESearch uses quoted `[aid]` clauses without the Discovery date, ISSN or keyword filters. Each result set is checked for completeness, and ESummary or EFetch verifies the returned direct DOI for each PMID. A complete empty lookup is normal. An incomplete response or ambiguous binding reports a limitation. A confirmed formal PMID is available to subsequent helpers and persists in the new Paper. If a later EFetch directly contradicts the binding, Run drops the disputed PMID and facts reached solely through it. [PubMed Article Identifier](https://pubmed.ncbi.nlm.nih.gov/help/#aid), [NCBI E-utilities](https://www.ncbi.nlm.nih.gov/books/NBK25499/).
 
 Ordinary-field gaps use the same direct formal-identity chain as final creation. A related preprint or association-only Work cannot satisfy a formal root's missing title, authors, abstract or source, even when that Work is labelled journal. A formal PMID with such gaps requests EFetch; complete formal bibliography needs only ESummary for remaining date/relationship goals.
 
@@ -133,9 +133,12 @@ Interface references: [NCBI E-utilities](https://www.ncbi.nlm.nih.gov/books/NBK2
 ### Shared WoS source facts
 
 The Plain Text parser exposes `record_evidence` before Paper canonicalization.
-It preserves UT, valid DI and optional PM as reliable identifiers; GA and identifiers
-mentioned only in titles, abstracts or citations never establish identity. An invalid
-optional DI/PM does not discard a record with another reliable identifier.
+It preserves UT, valid DI and optional PM. For DOI-bearing WoS records, Run
+requires PubMed to confirm the formal PMID before using it for identity or
+metadata lookup. An unresolved reported PMID that overlaps a saved DOI-free
+Paper blocks a possible duplicate and reports an identity conflict. DOI-free WoS
+records retain their supported direct identifiers. GA and identifiers mentioned
+only in titles, abstracts or citations cannot establish identity.
 AF takes priority over AU as one ordered list. SO remains the returned source title,
 SN/EI remain source ISSNs, and saved scope attribution remains separate. PT,
 multivalue DT, DE and ID, dates PD/PY/EA/EY, and returned volume/issue/pages/article

@@ -97,6 +97,9 @@ paging needs a key.
 The normal retry policy covers temporary HTTP errors and 429 with cancellable
 waits and progress. Run's final metadata settlement allows one additional
 network attempt per eligible failed request, with successful responses reused.
+If a redirect chain ends in a transient failure, settlement retries the failed
+target with the redirect's authorization policy already applied. Request counts
+include each dispatched hop.
 Recognized verification pages stop the client. Invalid envelopes, Entrez
 application errors, wrong identities and shortened pages are explicit failures
 or incomplete results. Valid empty exact responses count as no-match.
