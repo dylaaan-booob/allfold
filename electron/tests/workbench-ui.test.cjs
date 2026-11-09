@@ -8,7 +8,9 @@ function fixture({preferences={},tabs=[],services={scope:{scope_id:'scope-a'},se
     setAttribute(name,value){this.attributes[name]=String(value);}
     getAttribute(name){return this.attributes[name];}
     replaceChildren(...children){this.children=children;}
-    append(...children){for(const child of children){if(child.parentElement)child.parentElement.children=child.parentElement.children.filter(node=>node!==child);child.parentElement=this;this.children.push(child);}}
+    append(...children){for(const child of children)this.insertBefore(child,null);}
+    insertBefore(child,next){child.remove();child.parentElement=this;this.children.splice(next?this.children.indexOf(next):this.children.length,0,child);}
+    remove(){if(this.parentElement)this.parentElement.children=this.parentElement.children.filter(child=>child!==this);this.parentElement=null;}
     contains(node){return node===this || this.children.some(child=>child.contains(node));}
     closest(selector){return selector==='[hidden]'?(this.hidden?this:this.parentElement?.closest(selector)):null;}
     focus(){document.activeElement=this;}

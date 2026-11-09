@@ -152,7 +152,18 @@ class BrowserRuntime {
     };
     contents.on('did-stop-loading',()=>{void handleAuth();});
     contents.on('did-navigate-in-page',(_event,_url,main)=>{if(main)void handleAuth();});
-    for (const name of ['page-title-updated', 'did-navigate-in-page', 'did-start-loading', 'did-stop-loading'])
+    let mainFrameLoading=false;
+    const publishLoading=()=>{
+      const loading=contents.isLoadingMainFrame();
+      if(loading===mainFrameLoading)return;
+      mainFrameLoading=loading;this.publish();
+    };
+    contents.on('did-start-navigation',(event,url,inPlace,main)=>{
+      if((event.isMainFrame ?? main) && !(event.isSameDocument ?? inPlace))publishLoading();
+    });
+    contents.on('did-start-loading',publishLoading);
+    contents.on('did-stop-loading',publishLoading);
+    for (const name of ['page-title-updated', 'did-navigate-in-page'])
       contents.on(name, () => this.publish());
     contents.on('destroyed', () => {
       this.reportPage('info','page_closed',tab,{reason:this.destroying?'app_exit':tab.closeReason});
@@ -331,7 +342,7 @@ class BrowserRuntime {
       cacheSize:this.cacheSize,taskRunning:this.isTaskRunning(),
       tabs:[...this.tabs.values()].map(tab => {
       const wc=tab.view.webContents;
-      return {id:tab.id,title:wc.getTitle() || 'New tab',url:wc.getURL(),loading:wc.isLoading(),
+      return {id:tab.id,title:wc.getTitle() || 'New tab',url:wc.getURL(),loading:wc.isLoadingMainFrame(),
         busy:this.taskActive && this.taskTab===tab,
         association:this.pageAssociation(tab.id),openerId:tab.opener?.id || null,
         error:tab.error?{kind:tab.error.kind,code:tab.error.code,reason:tab.error.reason}:null,

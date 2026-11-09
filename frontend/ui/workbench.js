@@ -83,7 +83,7 @@ window.allfoldWorkbench=(()=>{
     $('browser-open')?.setAttribute('aria-label',value?'返回 Allfold':'打开 Browser 工作视图');
     // The business host reveals Queue before its saved control receives focus.
     window.dispatchEvent(new CustomEvent('workbench:browser-state',{detail:{visible:value,source,mode}}));
-    if(!value){returning=true;if(returnFocus?.isConnected && !returnFocus.disabled)returnFocus.focus({preventScroll:true});
+    if(!value){$('app-notice-popover')?.hidePopover?.();returning=true;if(returnFocus?.isConnected && !returnFocus.disabled)returnFocus.focus({preventScroll:true});
       requestAnimationFrame(()=>{
         if(!visible && window.workspaceNavigation?.current?.()===workspaceAtShow)
           for(const saved of scrollSnapshot)if(saved.node.isConnected && saved.node.firstChild===saved.firstChild && saved.node.dataset.paperId===saved.paper){
@@ -144,20 +144,39 @@ window.allfoldWorkbench=(()=>{
   }
   function pageButton(page) {
     const button=document.createElement('button');button.type='button';button.dataset.pageId=String(page.id);
-    button.textContent=(page.error?'! ':page.loading?'… ':'')+(page.title || 'New page');
-    button.setAttribute('aria-pressed',String(page.id===state.selected));
+    button.append(document.createElement('span'));
     button.onclick=()=>void command('select',{id:page.id});return button;
+  }
+  function updatePageButton(button,page) {
+    button.children[0].textContent=(page.error?'! ':page.loading?'… ':'')+(page.title || 'New page');
+    button.setAttribute('aria-pressed',String(page.id===state.selected));
+  }
+  function syncChildren(parent,children) {
+    const wanted=new Set(children);
+    for(const child of [...parent.children])if(!wanted.has(child))child.remove();
+    children.forEach((child,index)=>{
+      const current=parent.children[index] || null;
+      if(child!==current)parent.insertBefore(child,current);
+    });
+  }
+  function tabRow(page) {
+    const row=document.createElement('div');row.className='browser-tab';row.dataset.pageId=String(page.id);
+    const close=document.createElement('button');close.type='button';close.textContent='×';
+    close.onclick=()=>void command('close',{id:page.id});
+    row.append(pageButton(page),close);return row;
   }
   function render(value) {
     state=value || state;
     const tabs=state.tabs || [];
-    $('browser-tabs').replaceChildren(...tabs.map(page=>{
-      const row=document.createElement('div');row.className='browser-tab';row.dataset.pageId=String(page.id);
+    const tabList=$('browser-tabs'),serviceList=$('browser-service-pages'),focused=document.activeElement;
+    const tabRows=new Map([...tabList.children].map(row=>[row.dataset.pageId,row]));
+    syncChildren(tabList,tabs.map(page=>{
+      const row=tabRows.get(String(page.id)) || tabRow(page);
       row.dataset.selected=String(page.id===state.selected);
-      const select=pageButton(page);select.title=page.title || 'New page';
-      const close=document.createElement('button');close.type='button';close.textContent='×';close.disabled=!!page.busy;
-      close.setAttribute('aria-label','关闭 '+(page.title || 'New page'));close.onclick=()=>void command('close',{id:page.id});
-      row.append(select,close);return row;
+      const [select,close]=row.children;
+      updatePageButton(select,page);select.title=page.title || 'New page';
+      close.disabled=!!page.busy;close.setAttribute('aria-label','关闭 '+(page.title || 'New page'));
+      return row;
     }));
     const selected=tabs.find(page=>page.id===state.selected);
     if(document.activeElement!==$('browser-url'))$('browser-url').value=selected?.url || '';
@@ -181,22 +200,32 @@ window.allfoldWorkbench=(()=>{
         key==='carsi'?'CARSI 共享认证':'其他 / 共享',pages:[],scope,serviceId});
       groups.get(key).pages.push(page);
     }
-    $('browser-service-pages').replaceChildren(...[...groups.values()].map(group=>{
-      const section=document.createElement('section'),heading=document.createElement('h3'),list=document.createElement('div');
+    const sections=new Map([...serviceList.children].map(section=>[section.dataset.groupKey,section]));
+    const serviceButtons=new Map([...sections.values()].flatMap(section=>[...section.children[1].children].map(button=>[button.dataset.pageId,button])));
+    syncChildren(serviceList,[...groups].map(([key,group])=>{
+      let section=sections.get(key);
+      if(!section){section=document.createElement('section');section.dataset.groupKey=key;
+        section.append(document.createElement('h3'),document.createElement('div'));}
+      const [heading,list]=section.children;
       heading.textContent=group.name;section.dataset.scope=group.scope || '';section.dataset.serviceId=group.serviceId || '';
       if(group.scope)heading.title=`Scope ${group.scope} · ${group.serviceId}`;
-      list.replaceChildren(...group.pages.map(page=>{
-        const row=pageButton(page),association=page.association;
-        const description=document.createElement('small');
-        description.textContent=[roles[association?.role] || (page.openerId?'Popup':'手动页'),
+      syncChildren(list,group.pages.map(page=>{
+        let button=serviceButtons.get(String(page.id));
+        if(!button){button=pageButton(page);button.append(document.createElement('small'));}
+        updatePageButton(button,page);
+        const association=page.association;
+        button.children[1].textContent=[roles[association?.role] || (page.openerId?'Popup':'手动页'),
           association?.paper_id?`Paper ${association.paper_id}`:association?.doi,
           association?.source_page_id?`来源 #${association.source_page_id}`:page.openerId?`来源 #${page.openerId}`:null,
           association?.active?'任务中':null].filter(Boolean).join(' · ');
-        row.append(description);return row;
-      }));section.append(heading,list);return section;
+        return button;
+      }));return section;
     }));
+    // A Page can move to another Service while its button still holds keyboard focus.
+    if(focused?.isConnected && document.activeElement!==focused && !focused.disabled &&
+      (tabList.contains(focused) || serviceList.contains(focused)))focused.focus({preventScroll:true});
     if(state.selected!==lastSelected){lastSelected=state.selected;
-      const index=tabs.findIndex(page=>page.id===state.selected);$('browser-tabs').children[index]?.scrollIntoView({block:'nearest',inline:'nearest'});}
+      const index=tabs.findIndex(page=>page.id===state.selected);tabList.children[index]?.scrollIntoView({block:'nearest',inline:'nearest'});}
     schedule();
   }
   $('browser-open')?.addEventListener('click',()=>{if(visible)present(false);else void show();});
@@ -229,7 +258,10 @@ window.allfoldWorkbench=(()=>{
   desktop?.onBrowserLayout(schedule);
   if(desktop)void desktop.browserState().then(render).catch(()=>{});
   new MutationObserver(()=>{if(visible)publish();}).observe(document.body,{subtree:true,attributes:true,attributeFilter:['open','hidden','data-sidebar-mode']});
-  new ResizeObserver(schedule).observe($('browser-body'));
+  const layoutObserver=new ResizeObserver(schedule);
+  // Chrome and Kept status rows can move a Compact viewport without resizing it.
+  for(const element of [$('browser-body'),document.querySelector('.browser-controls'),document.querySelector('.masthead'),
+    $('kept-scope-status'),$('kept-workflow-host')])if(element)layoutObserver.observe(element);
   new ResizeObserver(sizeServices).observe($('browser-work-area'));
   window.addEventListener('resize',schedule);
   document.addEventListener?.('toggle',()=>{if(visible)publish();schedule();},true);

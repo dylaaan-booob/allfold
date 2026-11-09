@@ -1,6 +1,10 @@
+.message-region{flex:1;min-width:min(260px,100%);letter-spacing:normal}
+.message-region:has(#app-notice[hidden]){display:none}
 #app-notice{position:static;display:grid;grid-template-columns:minmax(0,1fr) 22px;gap:8px;width:100%;max-width:none;max-height:74px;padding:6px 8px;border:1px solid var(--rule);background:transparent;font-size:10px}
 .message-body{min-width:0;max-height:60px;overflow:auto;overflow-wrap:anywhere;overscroll-behavior:contain}
 #app-notice-summary{margin:0;line-height:1.5}
-#app-notice-messages p{margin:6px 0;line-height:1.5;white-space:pre-wrap}
+#app-notice-messages p,#app-notice-popover p{margin:6px 0;line-height:1.5;white-space:pre-wrap}
 .app-notice details{margin-top:5px}.app-notice summary{cursor:pointer;color:#a84700}
+#app-notice-open{display:none;padding:0 4px;color:#a84700;white-space:nowrap}
+#app-notice-popover{position:fixed;inset:auto 18px 43px auto;margin:0;width:min(480px,calc(100% - 36px));max-height:min(50vh,300px);overflow:auto;overflow-wrap:anywhere;overscroll-behavior:contain;padding:8px 12px;border:1px solid var(--rule);background:var(--paper);color:var(--ink);font-size:12px}
 #message-close{align-self:start;padding:0;width:22px;height:22px;font-size:17px;line-height:1}

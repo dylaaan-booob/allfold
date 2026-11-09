@@ -217,7 +217,6 @@
           <button type="button" id="browser-clear-site-data" title="清除所有站点数据和登录状态；需要确认">清除站点数据</button>
         </div></details>
       </form>
-      <p id="browser-message" role="status" aria-live="polite"></p>
     </div>
     <div id="browser-work-area">
       <div id="browser-body"><p id="browser-empty">选择已有页面，或使用 ＋ 新建页面。</p></div>
@@ -228,12 +227,14 @@
   </div>
   <footer><span><i></i> <span id="section-label">WORKSPACE</span> <b id="mode-label">ARCHIVE / BROWSE</b></span>
     <span id="browser-status" role="status"></span>
+    <p id="browser-message" role="status" aria-live="polite"></p>
     <aside class="message-region" aria-label="消息">
       <section id="app-notice" class="app-notice" hidden>
         <div class="message-body">
           <p id="app-notice-summary" role="status" aria-live="polite"></p>
           <details id="app-notice-details" hidden><summary>详情</summary><div id="app-notice-messages"></div></details>
         </div>
+        <button id="app-notice-open" type="button" popovertarget="app-notice-popover">详情</button>
         <button id="message-close" type="button" aria-label="关闭消息">×</button>
       </section>
     </aside>
@@ -279,6 +280,9 @@
       <span id="paper-tools-status" role="status" aria-live="polite"></span>
     </div>
     <span id="snapshot-label">WORKSPACE</span></footer>
+  <section id="app-notice-popover" popover aria-label="消息详情">
+    <p id="app-notice-popover-summary"></p><div id="app-notice-popover-messages"></div>
+  </section>
   <dialog id="history-dialog" class="s-dialog" aria-labelledby="history-title">
     <h2 id="history-title">运行历史</h2>
     <label>Service <select id="history-service-filter" aria-label="History Service"><option value="">All Services</option></select></label>

@@ -27,6 +27,7 @@ window.uiNext={
     this.data=data;this.csrf_token=data.csrf_token;return data;
   },
   notice(message,details=[]) {
+    document.getElementById('app-notice-popover').hidePopover();
     document.getElementById('app-notice').hidden=!message;
     document.getElementById('app-notice-summary').textContent=message;
     const disclosure=document.getElementById('app-notice-details');
@@ -37,3 +38,9 @@ window.uiNext={
   },
 };
 document.getElementById('message-close').addEventListener('click',()=>uiNext.notice(''));
+document.getElementById('app-notice-popover').addEventListener('beforetoggle',event=>{
+  if(event.newState!=='open')return;
+  document.getElementById('app-notice-popover-summary').textContent=document.getElementById('app-notice-summary').textContent;
+  document.getElementById('app-notice-popover-messages').replaceChildren(
+    ...[...document.getElementById('app-notice-messages').children].map(line=>line.cloneNode(true)));
+});
