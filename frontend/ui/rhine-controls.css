@@ -21,8 +21,6 @@
 #settings-shell .s-header-actions{display:flex;align-items:center;flex-wrap:nowrap;gap:8px 12px}
 #settings-shell .s-dirty{font-size:9px}
 #settings-shell .s-button{height:28px;min-height:28px;padding:0 12px}
-.message-region{flex:1;min-width:min(260px,100%);letter-spacing:normal}
-.message-region:has(#app-notice[hidden]){display:none}
 /* header.js::drawRight search, with semantic input and original magnifier. */
 .s-header-search input::placeholder{font:500 9.5px/24px var(--font);letter-spacing:.14em;color:var(--muted)}
 .s-header-search svg{position:absolute;right:0;top:0;width:20px;height:24px;fill:none;stroke:currentColor;stroke-width:1;pointer-events:none}
