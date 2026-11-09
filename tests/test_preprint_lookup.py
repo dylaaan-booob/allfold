@@ -98,6 +98,7 @@ def test_only_selected_formal_paper_gets_native_version_evidence(tmp_path, provi
 
 
 @pytest.mark.parametrize('versions', [
+    None,
     (),
     (version('biorxiv', '2'),),
     (version('biorxiv', date='2022-02'),),
@@ -107,31 +108,45 @@ def test_only_selected_formal_paper_gets_native_version_evidence(tmp_path, provi
 def test_unresolved_first_public_saves_verified_relationship_without_inference(tmp_path, versions):
     config, workspace = write_valid_config(tmp_path)
     paper_id, path = missing(workspace)
-    service = PreprintLookup(config, BrowserTaskLock(), client_factory=factory(native_fixture('biorxiv', *versions)))
+    native = native_fixture('biorxiv', *(versions or ()))
+
+    def respond(request):
+        if versions is None and request.url.path.startswith('/details/'):
+            return httpx.Response(404)
+        return native(request)
+
+    service = PreprintLookup(config, BrowserTaskLock(), client_factory=factory(respond))
     result = lookup(service, paper_id)
     assert result['phase'] == 'Completed' and 'first_public_at' not in result['saved_fields']
     actual, _ = document_parts(path)
     assert actual.get('first_public_at') is None
     assert any(source['record_id'] == PREPRINT + ':publication' for source in actual['sources'])
-    assert len(actual.get('date_evidence', [])) == len(versions)
+    assert len(actual.get('date_evidence', [])) == len(versions or ())
 
 
-@pytest.mark.parametrize('outcome', ['no_match', 'http_failure', 'truncated_status', 'wrong_formal', 'wrong_preprint',
+@pytest.mark.parametrize('outcome', ['no_match', 'no_match_404', 'verification_404', 'http_failure',
+                                    'truncated_status', 'wrong_formal', 'wrong_preprint',
                                     'wrong_platform', 'wrong_details_publication', 'self_relation',
                                     'second_provider_failed', 'conflicting_alias', 'invalid_envelope'])
 def test_no_match_and_failed_binding_do_not_write_paper(tmp_path, outcome):
     config, workspace = write_valid_config(tmp_path)
     paper_id, path = missing(workspace)
     before = path.read_bytes()
+    calls = []
 
     def respond(request):
         route = request.url.path
+        calls.append(route)
+        if outcome == 'no_match_404':
+            return httpx.Response(404)
+        if outcome == 'verification_404':
+            return httpx.Response(404, text='<html>Verify you are human</html>')
         if outcome == 'second_provider_failed' and '/medrxiv/' in route:
             return collection(status='service unavailable')
         if outcome == 'invalid_envelope':
             return httpx.Response(200, json={'collection': []})
         if outcome == 'http_failure' and route.startswith('/details/'):
-            return httpx.Response(404, json={})
+            return httpx.Response(400, json={})
         if outcome == 'truncated_status':
             return collection(status='Preprint for DOI 10.5555/decisio not found')
         if outcome == 'no_match' or '/medrxiv/' in route:
@@ -156,7 +171,11 @@ def test_no_match_and_failed_binding_do_not_write_paper(tmp_path, outcome):
 
     service = PreprintLookup(config, BrowserTaskLock(), client_factory=factory(respond))
     result = lookup(service, paper_id)
-    assert result['phase'] == ('NoMatch' if outcome == 'no_match' else 'Failed')
+    if outcome in {'no_match', 'no_match_404'}:
+        assert result['phase'] == 'NoMatch'
+        assert calls == [f'/pubs/{provider}/{FORMAL}/na/json' for provider in ('biorxiv', 'medrxiv')]
+    else:
+        assert result['phase'] == 'Failed'
     assert result['message'] and not result['saved_fields']
     assert path.read_bytes() == before
 
@@ -369,3 +388,25 @@ def test_native_v1_does_not_resolve_an_independent_preprint_family(tmp_path, exi
     assert result['phase'] == 'Completed'
     assert not paper.get('first_public_at')
     assert any(fact['provider'] == 'biorxiv' and fact['first_version'] for fact in paper['date_evidence'])
+
+
+def test_failed_worker_start_does_not_leave_running_state_or_hold_admission(tmp_path, monkeypatch):
+    from threading import Lock, Thread
+
+    config, workspace = write_valid_config(tmp_path)
+    paper_id, _ = missing(workspace)
+    task_lock, run_slot = BrowserTaskLock(), Lock()
+    service = PreprintLookup(config, task_lock, run_slot=run_slot,
+        client_factory=factory(lambda _: collection(status='no results found')))
+
+    def cannot_start(_):
+        raise RuntimeError('Cannot start thread')
+
+    with monkeypatch.context() as context:
+        context.setattr(Thread, 'start', cannot_start)
+        with pytest.raises(RuntimeError, match='Cannot start thread'):
+            service.start(paper_id)
+    assert not service.running and service.state(paper_id)['phase'] == 'Idle'
+    assert task_lock.owner is None and not run_slot.locked()
+    service.join()
+    assert lookup(service, paper_id)['phase'] == 'NoMatch'

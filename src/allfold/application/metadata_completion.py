@@ -407,19 +407,23 @@ def _completion_steps(
     cache_requests, cache_identities = set(), set()
     reused_record_count = 0
     reported_failures, cached_cancelled = set(), False
-    root_dois = {value for namespace, value in ordinary_root_ids or () if namespace == 'doi'}
+    formal_ids = {key for record in formal_records(records, ordinary_root_ids or ())
+        for key in strong_identifiers(record.external_ids)}
+    formal_dois = {value for namespace, value in formal_ids if namespace == 'doi'}
 
-    def conflicting_pubmed_record(request, record):
-        return (request[0] == 'pubmed' and request[1:3] in ordinary_root_ids
-            and request[3] != 'fetch-preprint' and
-            (record.publication_type == 'preprint'
-                or root_dois and record.external_ids.doi and record.external_ids.doi not in root_dois))
-
-    def partition_pubmed_records(request, records):
-        if ordinary_root_ids is None or request[0] != 'pubmed' or len(request) < 4:
+    def partition_pmid_records(request, records):
+        if (request[0] not in {'pubmed', 'europe_pmc'} or request[1] != 'pmid'
+                or request[1:3] not in formal_ids or request[3:] == ('fetch-preprint',)):
             return records, ()
-        rejected = tuple(record for record in records if conflicting_pubmed_record(request, record))
+        rejected = tuple(record for record in records if request[1:3] in strong_identifiers(record.external_ids)
+            and (record.publication_type == 'preprint'
+                or formal_dois and record.external_ids.doi and record.external_ids.doi not in formal_dois))
         return (tuple(record for record in records if record not in rejected), rejected) if rejected else (records, ())
+
+    def report_pmid_conflict(request):
+        provider = 'PubMed' if request[0] == 'pubmed' else 'Europe PMC'
+        issues.append(CompletionIssue(request[0], request[2],
+            f'{provider} response conflicts with direct formal identity', 'identity_mismatch'))
 
     def reuse_cached_evidence():
         nonlocal reused_record_count, cached_cancelled
@@ -437,8 +441,14 @@ def _completion_steps(
             identities = new_identities if request in cache_requests else cache_identities
             cache_requests.add(request)
             provider = request[0]
-            if provider not in enabled_providers:
+            if provider not in enabled_providers or (
+                    provider in {'pubmed', 'europe_pmc'} and request[1] == 'pmid'
+                    and request[1:3] not in cache_identities):
                 continue
+            records, rejected = partition_pmid_records(request, value if not isinstance(value, Exception)
+                else getattr(value, 'records', ()))
+            if rejected and request not in attempted:
+                report_pmid_conflict(request)
             if isinstance(value, Exception):
                 # A dispatched batch can finish while native proof is pending.
                 # Settle its outcome before that proof can satisfy the goals;
@@ -450,24 +460,18 @@ def _completion_steps(
                     if failure not in reported_failures:
                         reported_failures.add(failure)
                         status = ('cancelled' if isinstance(value, Cancelled) else
-                            'partial' if getattr(value, 'records', ()) else
+                            'partial' if records else
                             'no_match' if isinstance(value, ProviderHTTPError) and value.status == 404 else
                             'identity_mismatch' if isinstance(value, IdentityMismatch) else 'failed')
                         lookups.append(_lookup(request, status))
                         if status not in {'cancelled', 'no_match'}:
                             issues.append(CompletionIssue(provider, request[2], str(value), status))
                         cached_cancelled |= status == 'cancelled'
-                value = getattr(value, 'records', ())
-            if provider == 'pubmed' and request[1:3] not in cache_identities:
-                continue
-            value, rejected = partition_pubmed_records(request, value)
             if rejected and request not in attempted:
                 attempted.add(request)
                 lookups.append(_lookup(request, 'identity_mismatch'))
-                issues.append(CompletionIssue(provider, request[2],
-                    'PubMed response conflicts with direct formal identity', 'identity_mismatch'))
             for namespace, identifier in sorted(identities):
-                accepted, _ = bind_records(value, {(namespace, identifier)})
+                accepted, _ = bind_records(records, {(namespace, identifier)})
                 if accepted and not any((item.provider, item.namespace, item.identifier) == request[:3]
                         and item.capability == (request[3] if len(request) > 3 else None) for item in lookups):
                     lookups.append(_lookup(request, 'evidence'))
@@ -483,8 +487,9 @@ def _completion_steps(
         status = 'cancelled' if cancelled else 'recorded' if any(record.first_public_at for record in output) else first_public_status(output)
         if status not in {'recorded', 'conflict', 'cancelled'} and issues:
             status = 'failed'
-        completion_status = ('cancelled' if cancelled else 'partial' if issues and any(item.status in {'evidence', 'partial'} for item in lookups)
-            else 'failed' if issues else 'empty' if lookups and all(item.status == 'no_match' for item in lookups) else 'complete')
+        successful = {item.status for item in lookups} & {'evidence', 'no_match', 'partial'}
+        completion_status = ('cancelled' if cancelled else 'partial' if issues and successful else
+            'failed' if issues else 'complete' if 'evidence' in successful else 'empty')
         return CompletionResult(tuple(output), tuple(issues), tuple(lookups), cancelled, status, completion_status)
     def requests():
         for key in _requests(output, root_ids=ordinary_root_ids):
@@ -540,12 +545,15 @@ def _completion_steps(
                 raise supplements
             if partial_result is not None:
                 supplements = partial_result.records
+            supplements, conflicts = partition_pmid_records(request, supplements)
             accepted, rejected = bind_records(supplements, {(namespace, identifier)})
-            accepted, conflicts = partition_pubmed_records(request, accepted)
             status = 'evidence' if accepted else 'no_match'
-            if rejected or conflicts:
+            if conflicts:
+                report_pmid_conflict(request)
+            elif rejected:
                 issues.append(CompletionIssue(provider, identifier, 'Metadata response does not match requested identity', 'identity_mismatch'))
-                status = 'identity_mismatch'
+            if conflicts or rejected:
+                status = 'partial' if accepted else 'identity_mismatch'
             for record in accepted:
                 fetched.update((provider, ns, value) for ns, value in strong_identifiers(record.external_ids))
                 source = record.provenance.model_copy(update={'provider': provider, 'role': 'supplement'})
@@ -556,7 +564,7 @@ def _completion_steps(
                     seen.add(key)
             if partial_result is not None:
                 issues.append(CompletionIssue(provider, identifier, str(partial_result), 'partial'))
-                status = 'partial'
+                status = 'partial' if accepted else 'failed'
             lookups.append(_lookup(request, status))
         except Cancelled:
             lookups.append(_lookup(request, 'cancelled'))

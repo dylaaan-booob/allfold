@@ -134,7 +134,9 @@ class DiscoveryClient:
         self._completion_responses = {}
         self._exact_batch_plans = {}
         self._settlement_requests = None
+        self._settlement_targets = {}
         self._progress_requests = {}
+        self.request_count = 0
         self.provider = provider
         self.api_key = api_key
         self.cancel = cancel_event or Event()
@@ -147,7 +149,8 @@ class DiscoveryClient:
         self._lookup_lock = RLock()
         self._openalex_full_raw = {}
         self._openalex_full_pending = {}
-        self.http = create_http_client(transport=transport, timeout=30, follow_redirects=True)
+        self.http = create_http_client(transport=transport, timeout=30, follow_redirects=True,
+            event_hooks={'request': [self._before_http_request]})
         self.pacing_state = pacing_state if pacing_state is not None else {}
         self.host = httpx.URL(BASE_URLS[provider]).host
         self._host_lock = self.pacing_state.setdefault(('lock', self.host), RLock())
@@ -209,7 +212,16 @@ class DiscoveryClient:
             self.sleep(seconds)
         self.check_cancel()
 
-    def _get(self, url, params, headers, *, follow_redirects=True):
+    def _before_http_request(self, request):
+        # HTTPX runs this hook before every physical dispatch, including redirects.
+        self.check_cancel()
+        self.request_count += 1
+        trace = self._request_trace
+        if trace.sent_request:
+            trace.redirect_target = request
+        trace.sent_request = True
+
+    def _get(self, url, params, headers, *, follow_redirects=True, redirect_target=None):
         activity = None
         while not self._host_lock.acquire(timeout=0.1):
             self.check_cancel()
@@ -228,8 +240,11 @@ class DiscoveryClient:
                         current=self._progress_requests[operation], unit='request')
                     self.progress(ProgressEvent(activity=activity))
                     self.check_cancel()
-                self.request_count = getattr(self, 'request_count', 0) + 1
-                if self.provider == 'pubmed' and self.api_key:
+                self._request_trace.sent_request = False
+                self._request_trace.redirect_target = None
+                if redirect_target is not None:
+                    response = self.http.send(redirect_target, follow_redirects=False)
+                elif self.provider == 'pubmed' and self.api_key:
                     # NCBI accepts form POST. Keep its optional secret out of
                     # request URLs (including standard HTTP client log lines).
                     response = self.http.post(url, data=params, headers=headers, follow_redirects=False)
@@ -277,23 +292,30 @@ class DiscoveryClient:
             retry = self._settlement_requests is not None and key in self._settlement_requests
             if retry:
                 self._settlement_requests.remove(key)
-        try:
-            if cached is not None and not retry:
-                if isinstance(cached, Exception):
-                    raise cached
-                return cached
-            value = self._request(path, params, response_format, attempts=1 if retry else 3)
-        except DiscoveryError as error:
-            value = error
-        with self._cache_lock:
-            self._completion_responses[key] = value
+            redirect_target = self._settlement_targets.pop(key, None) if retry else None
+        if cached is not None and not retry:
+            value = cached
+        else:
+            try:
+                value = self._request(path, params, response_format, attempts=1 if retry else 3,
+                    follow_redirects=not retry, redirect_target=redirect_target)
+            except DiscoveryError as error:
+                value = error
+            with self._cache_lock:
+                self._completion_responses[key] = value
+                if failures is not None and self._transient_failure(value):
+                    target = self._request_trace.redirect_target
+                    if target is not None:
+                        # Replay the prepared request with HTTPX's redirect header
+                        # policy already applied. Keep it in memory for this operation.
+                        self._settlement_targets[key] = target
         if isinstance(value, Exception):
             if failures is not None and self._transient_failure(value):
                 failures.append(key)
             raise value
         return value
 
-    def _request(self, path, params, response_format, *, attempts):
+    def _request(self, path, params, response_format, *, attempts, follow_redirects=True, redirect_target=None):
         if self._access_restriction:
             raise DiscoveryError(self._access_restriction)
         params = dict(params)
@@ -302,7 +324,8 @@ class DiscoveryClient:
         headers = {"Authorization":"Bearer " + self.api_key} if self.provider == "openalex" and self.api_key else {}
         for attempt in range(attempts):
             try:
-                response = self._get(BASE_URLS[self.provider] + path, params, headers)
+                response = self._get(BASE_URLS[self.provider] + path, params, headers,
+                    follow_redirects=follow_redirects, redirect_target=redirect_target)
             except ProviderTimeoutError:
                 if attempt == attempts - 1:
                     raise
@@ -626,19 +649,25 @@ class DiscoveryClient:
     def _pubmed_doi_matches(self, dois, pmids):
         if not pmids:
             return dict.fromkeys(dois, ())
-        summary = self.lookup_many('pmid', pmids, capability='summary')
-        if summary.status != 'complete':
-            raise DiscoveryError('; '.join(summary.limitations) or 'Incomplete: PubMed DOI identity summaries')
-        records = {record.external_ids.pmid: record for record in summary.records}
+        def exact_records(identifiers, capability):
+            result = self.lookup_many('pmid', identifiers, capability=capability)
+            if result.status == 'complete':
+                return {record.external_ids.pmid: record for record in result.records}
+            if result.status == 'cancelled':
+                raise Cancelled('Run cancelled')
+            for identifier in identifiers:
+                error = self.cached_lookup('pmid', identifier, capability)
+                if isinstance(error, DiscoveryError):
+                    raise error
+            raise DiscoveryError('; '.join(result.limitations) or f'Incomplete: PubMed DOI identity {capability} batch')
+
+        records = exact_records(pmids, 'summary')
         if set(records) != set(pmids):
             raise DiscoveryError('Incomplete: PubMed DOI identity summaries')
         unresolved = [pmid for pmid, record in records.items()
             if not record.external_ids.doi and record.publication_type != 'preprint']
         if unresolved:
-            fetched = self.lookup_many('pmid', unresolved, capability='fetch')
-            if fetched.status != 'complete':
-                raise DiscoveryError('; '.join(fetched.limitations) or 'Incomplete: PubMed DOI identity records')
-            records.update((record.external_ids.pmid, record) for record in fetched.records)
+            records.update(exact_records(unresolved, 'fetch'))
         if any(record.publication_type != 'preprint' and not record.external_ids.doi for record in records.values()):
             raise DiscoveryError('Incomplete: PubMed DOI identity record lacks a direct DOI')
         if any(record.publication_type != 'preprint' and record.external_ids.doi not in dois for record in records.values()):
@@ -655,7 +684,8 @@ class DiscoveryClient:
         with self._cache_lock:
             if capability == 'fetch':
                 self.cache[('pmid', pmid, 'fetch')] = (record,)
-            self.cache[('pmid', pmid, 'summary')] = self.cache.get(('pmid', pmid, 'fetch'), (record,))
+            fetched = self.cache.get(('pmid', pmid, 'fetch'))
+            self.cache[('pmid', pmid, 'summary')] = fetched if isinstance(fetched, tuple) else (record,)
 
     def cached_lookup(self, namespace, identifier, capability='full'):
         normalized = normalize_doi(identifier) if namespace == 'doi' else normalize_external_id(namespace, identifier)

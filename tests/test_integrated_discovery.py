@@ -237,3 +237,53 @@ def test_europe_pmc_relation_aliases_identify_each_target_without_joining_distin
     assert len(canonicalize_records((formal, *preprints)).papers) == 3
     paper = completion_metadata((formal, *preprints))
     assert paper.metadata.first_public_at == expected
+
+
+@pytest.mark.parametrize('failure', ['http', 'timeout'])
+def test_final_settlement_retries_only_the_failed_redirect_target(failure):
+    from allfold.providers.integrated import DiscoveryClient, DiscoveryError
+
+    calls = []
+    def respond(request):
+        calls.append((request.url.host, request.url.path))
+        if request.url.host == 'api.openalex.org':
+            assert request.headers['Authorization'] == 'Bearer synthetic-key'
+            return httpx.Response(302, headers={'Location': 'https://fixture.invalid/target'})
+        assert 'Authorization' not in request.headers
+        if calls.count(('fixture.invalid', '/target')) < 4:
+            if failure == 'timeout':
+                raise httpx.ReadTimeout('fixture timeout')
+            return httpx.Response(503)
+        return httpx.Response(200, json={'results': []})
+
+    with DiscoveryClient('openalex', api_key='synthetic-key', transport=httpx.MockTransport(respond),
+            interval=0, sleep=lambda _: None) as client:
+        with client.capture_transient_failures() as failures:
+            with pytest.raises(DiscoveryError):
+                client.request('/works', {})
+        assert failures
+        client.begin_settlement()
+        assert client.request('/works', {}) == {'results': []}
+        assert client.request('/works', {}) == {'results': []}
+        assert client.request_count == len(calls) == 7
+    assert calls == [('api.openalex.org', '/works'), ('fixture.invalid', '/target')] * 3 + [
+        ('fixture.invalid', '/target')]
+
+
+def test_cancellation_before_redirect_stops_dispatch_and_does_not_count_it():
+    from threading import Event
+
+    from allfold.providers.integrated import Cancelled, DiscoveryClient
+
+    cancel, calls = Event(), []
+    def respond(request):
+        calls.append(request.url.path)
+        cancel.set()
+        return httpx.Response(302, headers={'Location': '/target'})
+
+    with DiscoveryClient('openalex', cancel_event=cancel, transport=httpx.MockTransport(respond),
+            interval=0) as client:
+        with pytest.raises(Cancelled):
+            client.request('/works', {})
+        assert client.request_count == 1
+    assert calls == ['/works']

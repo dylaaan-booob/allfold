@@ -253,3 +253,56 @@ def test_pubmed_doi_resolution_fetches_missing_direct_doi_and_retains_summary_hi
     assert resolved.external_ids.pmid == '42'
     assert [(date.month, date.day) for date in resolved.dates if date.kind.value == 'received'] == [(1, 6)]
     assert calls == ['esearch.fcgi', 'esummary.fcgi', 'efetch.fcgi']
+
+
+@pytest.mark.parametrize('capability', ['summary', 'fetch'])
+@pytest.mark.parametrize('outcome', ['cancelled', 'conflict', 'http_failure'])
+def test_pubmed_doi_resolution_preserves_exact_request_outcomes(capability, outcome):
+    from threading import Event
+
+    from allfold.providers.integrated import Cancelled, IdentityMismatch, ProviderHTTPError
+
+    doi, pmid = '10.5555/formal', '42'
+    cancel = Event()
+    calls = []
+
+    def respond(request):
+        path = request.url.path.rsplit('/', 1)[-1]
+        calls.append(path)
+        if path == 'esearch.fcgi':
+            return httpx.Response(200, json={'esearchresult': {'count': '1', 'idlist': [pmid]}})
+        if path == 'esummary.fcgi' and capability == 'fetch':
+            return httpx.Response(200, json={'result': {'uids': [pmid], pmid: {'uid': pmid}}})
+        if outcome == 'cancelled':
+            cancel.set()
+            return httpx.Response(200, json={})
+        if outcome == 'http_failure':
+            return httpx.Response(400)
+        if capability == 'fetch':
+            return httpx.Response(200, text='<PubmedArticleSet>' +
+                article('43', A.issns[0], doi) + '</PubmedArticleSet>')
+        return httpx.Response(200, json={'result': {'uids': [pmid], pmid: {
+            'uid': pmid, 'articleids': [{'idtype': 'doi', 'value': doi},
+                {'idtype': 'doi', 'value': '10.5555/other'}]}}})
+
+    with DiscoveryClient('pubmed', interval=0, cancel_event=cancel, transport=httpx.MockTransport(respond)) as client:
+        result = client.resolve_pubmed_dois((doi,))[doi]
+    assert isinstance(result, {'cancelled': Cancelled, 'conflict': IdentityMismatch,
+        'http_failure': ProviderHTTPError}[outcome])
+    assert calls == ['esearch.fcgi', 'esummary.fcgi'] + (['efetch.fcgi'] if capability == 'fetch' else [])
+
+
+def test_successful_pubmed_summary_can_follow_an_unavailable_fetch():
+    def respond(request):
+        if request.url.path.endswith('efetch.fcgi'):
+            return httpx.Response(404)
+        assert request.url.path.endswith('esummary.fcgi')
+        return httpx.Response(200, json={'result': {'uids': ['42'], '42': {'uid': '42',
+            'history': [{'pubstatus': 'received', 'date': '2026/01/06'}]}}})
+
+    with DiscoveryClient('pubmed', interval=0, transport=httpx.MockTransport(respond)) as client:
+        assert client.lookup_many('pmid', ('42',), capability='fetch').status == 'failed'
+        summary = client.lookup_many('pmid', ('42',), capability='summary')
+    assert summary.status == 'complete'
+    record, = summary.records
+    assert [(item.kind.value, item.day) for item in record.dates] == [('received', 6)]

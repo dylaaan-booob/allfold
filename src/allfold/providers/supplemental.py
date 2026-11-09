@@ -10,7 +10,7 @@ from allfold.identifiers import normalize_external_id, valid_doi, supported_prep
 from allfold.models import Author, EvidenceDate, EvidenceDateKind, ExternalIds, MetadataSource, ProviderRecordRef, ProviderTopic, ProviderWorkEvidence
 from allfold.providers.crossref import normalize_crossref_discovered_work
 from allfold.paper_dates import date_value as _date_string, source_date as _iso_date
-from allfold.providers.integrated import DiscoveryClient, DiscoveryError, IdentityMismatch
+from allfold.providers.integrated import DiscoveryClient, DiscoveryError, IdentityMismatch, ProviderHTTPError
 
 
 SAME_WORK_RELATIONS = frozenset({"is-preprint-of", "has-preprint", "is-version-of", "has-version", "is-identical-to"})
@@ -344,7 +344,12 @@ class SupplementalClient(DiscoveryClient):
         return tuple(records), wrong, failures
 
     def _collection(self, path, *, doi):
-        data = self.request(path, {})
+        try:
+            data = self.request(path, {})
+        except ProviderHTTPError as error:
+            if error.status == 404:
+                return []
+            raise
         messages = data.get("messages", [])
         no_match = {"no posts found", "no results found", f"preprint for doi {doi} not found"}
         if not isinstance(messages, list) or not messages or any(not isinstance(item, dict) for item in messages):

@@ -630,3 +630,14 @@ def test_preprint_relations_join_shared_native_batches_across_completion_waves()
             clients={'crossref': crossref, 'arxiv': arxiv}))
     assert batches == [['2201.00001', '2201.00002'], ['2201.00003', '2201.00004']]
     assert all(result.first_public_status == 'recorded' and not result.issues for result in outcomes.values())
+
+
+def test_cached_europe_pmc_pmid_response_cannot_bind_another_paper_by_returned_doi():
+    formal = evidence('wos', '10.5555/formal', abstract='Discovery abstract', authors=(Author(name='Author'),))
+    response = evidence('europe_pmc', '10.5555/formal', publication_date='2020-01-01').model_copy(
+        update={'external_ids': ExternalIds(doi='10.5555/formal', pmid='42')})
+    cache = {('europe_pmc', 'pmid', '42', 'preprints'): (response,)}
+    client = Lookup(error=AssertionError('Europe PMC cannot query a formal DOI'))
+    result = complete_metadata((formal,), ('europe_pmc',), clients={'europe_pmc': client}, request_cache=cache)
+    assert result.records == (formal,)
+    assert not result.lookups and not result.issues

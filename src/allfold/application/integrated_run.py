@@ -12,6 +12,7 @@ from allfold.integrations.openalex_credentials import read_credential
 from allfold.progress import ProgressEvent, ProgressStage, ActivityUpdate, ActivityKind
 from allfold.application.metadata_completion import formal_records
 from allfold.identifiers import evidence_identifiers, strong_identifiers
+from allfold.models import ExternalIds
 from allfold.providers.integrated import (
     Cancelled, DISCOVERY_PROVIDERS, RUN_PROVIDERS, DiscoveryClient, DiscoveryError, DiscoveryResult,
     IdentityMismatch, SourceScope,
@@ -295,6 +296,20 @@ def run_integrated(config_path, *, loaded_config=None, workspace_snapshot=None, 
             raise guard_errors[0]
         discovery = IntegratedDiscovery((*browser.records,*api.records),(*browser.providers,*api.providers),
             discovery_status((*browser.providers,*api.providers),cancel.is_set()),browser.details,browser.journals,browser.statistics)
+        # A WoS PM on a DOI-bearing article is a reported identifier. PubMed
+        # must confirm the pair before the PMID can merge, enrich or own a Paper.
+        normalized, reported_pmids = {}, {}
+        for record in discovery.records:
+            ids = record.external_ids.model_dump(exclude_none=True)
+            if record.provenance.provider == 'wos' and ids.get('doi') and (pmid := ids.pop('pmid', None)):
+                clean = record.model_copy(update={'external_ids': ExternalIds(**ids)})
+                normalized[id(record)] = clean
+                reported_pmids[id(clean)] = ('pmid', pmid)
+        if normalized:
+            discovery = replace(discovery,
+                records=tuple(normalized.get(id(record), record) for record in discovery.records),
+                providers=tuple(replace(run, records=tuple(normalized.get(id(record), record)
+                    for record in run.records)) for run in discovery.providers))
         if work.problems and discovery.status in {'complete','empty'}:
             discovery = replace(discovery,status='partial')
         # Work lookup may add direct Work identities to a discovered formal
@@ -400,29 +415,35 @@ def run_integrated(config_path, *, loaded_config=None, workspace_snapshot=None, 
                 enriched, resolutions = prepare_completion()
                 completions = complete(enriched)
 
-            for doi, outcome in resolutions.values():
-                status = ('cancelled' if isinstance(outcome, Cancelled) else
-                    'conflicts' if isinstance(outcome, IdentityMismatch) else
-                    'failed' if isinstance(outcome, Exception) else 'matched' if outcome else 'no_match')
-                key = 'pmid_resolution_' + status
-                phase_statistics[key] = phase_statistics.get(key, 0) + 1
-                if status in {'conflicts', 'failed'}:
-                    issues.append(MonitorIssue(MonitorIssueSeverity.WARNING, MonitorIssueComponent.CANONICALIZATION,
-                        'pmid_resolution', f'PubMed DOI {doi}: {outcome}'))
-            statuses=['partial'] if any(issue.stage == 'pmid_resolution' for issue in issues) else []
-            from allfold.paper_dates import collect_dates
+            statuses = set()
+            from allfold.paper_dates import collect_dates, first_public_status
             for index,completed in completions:
                 if isinstance(completed,Exception):
-                    statuses.append('failed')
+                    statuses.add('failed')
                     issues.append(MonitorIssue(MonitorIssueSeverity.WARNING,MonitorIssueComponent.CANONICALIZATION,
                         'completion',f'Run metadata completion: {type(completed).__name__}'))
                     records=enriched[index]
                 else:
-                    statuses.append(completed.status)
-                    first_public_key = 'first_public_' + completed.first_public_status
-                    if completed.first_public_status in {'no_association','known_unresolved','conflict','failed','cancelled'}:
-                        phase_statistics[first_public_key] = phase_statistics.get(first_public_key,0)+1
-                    records=completed.records
+                    if completed.lookups or completed.status != 'empty':
+                        statuses.add(completed.status)
+                    records = completed.records
+                    first_public = completed.first_public_status
+                    doi, match = resolutions.get(index, (None, ()))
+                    if match and not isinstance(match, Exception):
+                        pmid = match[0].external_ids.pmid
+                        if any(lookup.provider == 'pubmed' and lookup.namespace == 'pmid' and lookup.identifier == pmid
+                                and lookup.capability == 'fetch' and lookup.status == 'identity_mismatch'
+                                for lookup in completed.lookups):
+                            resolutions[index] = doi, IdentityMismatch('PubMed EFetch contradicts the resolved formal PMID')
+                            # Remove both direct facts on the disputed identity and
+                            # relations that are unreachable from the Discovery root.
+                            retained = [record for record in records if ('pmid', pmid) not in evidence_identifiers(record)]
+                            records, _ = bind_records(retained, ordinary_roots[index])
+                            first_public = ('recorded' if any(record.first_public_at for record in records)
+                                else first_public_status(records))
+                    if first_public in {'no_association','known_unresolved','conflict','failed','cancelled'}:
+                        key = 'first_public_' + first_public
+                        phase_statistics[key] = phase_statistics.get(key, 0) + 1
                     issues.extend(MonitorIssue(MonitorIssueSeverity.WARNING,MonitorIssueComponent.CANONICALIZATION,
                         'completion',f'{issue.provider}: {issue.message}') for issue in completed.issues)
                 root_keys=ordinary_roots[index]
@@ -439,9 +460,23 @@ def run_integrated(config_path, *, loaded_config=None, workspace_snapshot=None, 
                     'sources':folded.sources,'metadata':base.metadata.model_copy(update={'first_public_at':folded.metadata.first_public_at})})
                 phase_statistics['completion_date_facts_added']+=len(set(folded.date_evidence)-set(collect_dates(prepared[index])))
                 phase_statistics['first_public_recorded']+=bool(folded.metadata.first_public_at)
+            for doi, outcome in resolutions.values():
+                status = ('cancelled' if isinstance(outcome, Cancelled) else
+                    'conflicts' if isinstance(outcome, IdentityMismatch) else
+                    'failed' if isinstance(outcome, Exception) else 'matched' if outcome else 'no_match')
+                key = 'pmid_resolution_' + status
+                phase_statistics[key] = phase_statistics.get(key, 0) + 1
+                statuses.add({'cancelled': 'cancelled', 'conflicts': 'failed', 'failed': 'failed',
+                    'matched': 'complete', 'no_match': 'empty'}[status])
+                if status in {'conflicts', 'failed'}:
+                    issues.append(MonitorIssue(MonitorIssueSeverity.WARNING, MonitorIssueComponent.CANONICALIZATION,
+                        'pmid_resolution', f'PubMed DOI {doi}: {outcome}'))
             phase_statistics['completion_requests']=sum(getattr(client,'request_count',0) for client in clients.values())-before_requests
-            completion_status=('cancelled' if cancel.is_set() else 'partial' if any(status in {'failed','partial'} for status in statuses)
-                else 'complete')
+            if 'cancelled' in statuses:
+                cancel.set()
+            completion_status = ('cancelled' if cancel.is_set() else
+                'partial' if 'partial' in statuses or 'failed' in statuses and statuses & {'complete', 'empty'} else
+                'failed' if 'failed' in statuses else 'complete' if 'complete' in statuses else 'empty')
         if guard_errors:
             raise guard_errors[0]
         if cancel.is_set():
@@ -467,6 +502,19 @@ def run_integrated(config_path, *, loaded_config=None, workspace_snapshot=None, 
                             'identity',f'Ambiguous discovery identifiers {sorted(keys)}; Paper UUIDs {sorted(map(str,involved))}; '
                             + '; '.join(item.message for item in current.issues)))
                         continue
+                    if not owners and not any(namespace == 'pmid' for namespace, _ in keys):
+                        # An unresolved reported PMID cannot identify a saved
+                        # DOI-free Paper or justify creating a possible duplicate.
+                        unverified = {reported_pmids[id(record)] for record in group.evidence
+                            if id(record) in reported_pmids}
+                        if unverified & current.blocked_identifiers or any(
+                                (owner := current.by_identifier.get(key)) and
+                                not any(namespace == 'doi' for namespace, _ in owner.identifiers)
+                                for key in unverified):
+                            conflicts += 1
+                            issues.append(MonitorIssue(MonitorIssueSeverity.ERROR,MonitorIssueComponent.CANONICALIZATION,
+                                'identity',f'Unconfirmed WoS PMID overlaps a saved Paper: {sorted(unverified)}'))
+                            continue
                     eligible.append((group, keys))
                     if not owners:
                         if index in completed_papers:

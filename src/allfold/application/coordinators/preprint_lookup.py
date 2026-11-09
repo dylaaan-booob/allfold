@@ -48,12 +48,12 @@ class PreprintLookup:
                     target = read_paper_target(snapshot.config.output_dir, paper_id, operation_lock=lock)
                     doi = require_lookup_doi(target)
                 self._stop = threading.Event()
-                self._paper_id = paper_id
-                self._state = dict(phase='Running', request_id=secrets.token_hex(16),
+                state = dict(phase='Running', request_id=secrets.token_hex(16),
                     message='Looking up bioRxiv and medRxiv…', saved_fields=[])
-                self._worker = threading.Thread(target=self._run, args=(snapshot, owner, target, doi),
-                                                name='preprint-lookup', daemon=False)
-                self._worker.start()
+                worker = threading.Thread(target=self._run, args=(snapshot, owner, target, doi),
+                                          name='preprint-lookup', daemon=False)
+                worker.start()
+                self._worker, self._paper_id, self._state = worker, paper_id, state
                 return self.state(paper_id)
             except BaseException:
                 if snapshot is not None:
@@ -123,5 +123,7 @@ class PreprintLookup:
             self.cancel(self._paper_id, self._state.get('request_id'))
 
     def join(self):
-        if self._worker:
-            self._worker.join()
+        with self._lock:
+            worker = self._worker
+        if worker:
+            worker.join()
