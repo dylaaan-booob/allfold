@@ -5,6 +5,8 @@ const kinds={run:'Run',prepare:'Service Preparation',import:'Batch Import',kept:
 const outcomes={running:'进行中',completed:'完成',partial:'部分完成',failed:'失败',cancelled:'已取消',
   interrupted:'已中断',uncertain:'结果未确认',needs_attention:'需要处理',opened:'已打开',no_effect:'未产生保存',confirmed:'父条目已确认'};
 const metrics={integrated_candidates:'Discovery 候选',integrated_deduplicated:'去重 Paper',work_location_targets:'Work 定位 DOI',completion_targets:'补全 Paper',completion_requests:'补全 HTTP 请求',completion_date_facts_added:'新增日期事实',first_public_recorded:'首版日期已记录',first_public_no_association:'尚无预印本关联',first_public_known_unresolved:'已知首版未确定',first_public_conflict:'首版证据冲突',first_public_failed:'首版查询失败',first_public_cancelled:'首版查询取消',total:'总数',processed:'已处理',retrieved:'检索记录',created:'新增 Paper',updated:'更新',
+  pmid_resolution_matched:'已验证 PMID',pmid_resolution_no_match:'无 PMID 匹配',
+  pmid_resolution_conflicts:'PMID 冲突',pmid_resolution_failed:'PMID 查询失败',pmid_resolution_cancelled:'PMID 查询取消',
   confirmed:'父条目已确认',exported:'父条目已导入',no_effect:'未保存',uncertain:'结果未确认',failed:'失败',
   skipped:'跳过',cancelled:'取消',completed:'完成',opened:'已打开',needs_attention:'需要处理',eligible:'符合条件',
   matched:'已匹配',downloaded:'已获取',enriched:'已补充',unchanged:'未变更',candidates:'候选',papers:'Paper',

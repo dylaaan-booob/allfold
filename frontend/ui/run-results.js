@@ -9,6 +9,8 @@ const labels={
   hint:'本地来源清单提示',resolved:'已解析',not_found:'未找到',request_failed:'请求失败',
   local_not_listed:'未列入本地 WoS 来源清单，仍参与检索',
   completion_targets:'Completion targets',completion_requests:'Completion HTTP requests',
+  pmid_resolution:'DOI → PMID',pmid_resolution_matched:'Verified PMID',pmid_resolution_no_match:'No PMID match',
+  pmid_resolution_conflicts:'PMID conflicts',pmid_resolution_failed:'PMID lookup failed',pmid_resolution_cancelled:'PMID lookup cancelled',
   completion_date_facts_added:'Added date facts',first_public_recorded:'First public recorded',
   first_public_no_association:'No preprint association',first_public_known_unresolved:'Unverified preprint',
   first_public_conflict:'First public conflicts',first_public_failed:'First public failed',first_public_cancelled:'First public cancelled',

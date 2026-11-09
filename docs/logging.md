@@ -158,7 +158,9 @@ Numeric Run statistics distinguish `integrated_candidates` (source hits),
 `integrated_deduplicated` (final roots), `work_location_targets` (unique DOI queue
 inputs), `completion_targets` (unknown safe roots), `completion_requests` (physical
 HTTP dispatches during identity resolution and metadata completion, including pages and final retries),
-`completion_date_facts_added`, First public outcomes and actual Paper creates.
+`completion_date_facts_added`, DOI-to-PMID outcomes, First public outcomes and
+actual Paper creates. PMID outcomes separate verified matches, no match,
+identity conflicts, failure and cancellation.
 First public coverage distinguishes recorded, no association, unresolved, conflict, failure and cancellation.
 Cached evidence/per-Paper lookup projections do not increment physical requests.
 Source created/existing counts overlap and must not be summed as global Paper

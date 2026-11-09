@@ -32,6 +32,7 @@ STATISTICS = frozenset({'retrieved', 'created', 'updated', 'total', 'processed',
     'confirmed', 'exported', 'no_effect', 'uncertain', 'cancelled', 'completed', 'opened',
     'needs_attention', 'eligible', 'matched', 'downloaded', 'enriched', 'unchanged', 'candidates',
     'completion_targets', 'completion_requests', 'completion_date_facts_added', 'integrated_candidates', 'integrated_deduplicated', 'work_location_targets',
+    'pmid_resolution_matched', 'pmid_resolution_no_match', 'pmid_resolution_conflicts', 'pmid_resolution_failed', 'pmid_resolution_cancelled',
     'first_public_recorded', 'first_public_no_association', 'first_public_known_unresolved', 'first_public_conflict', 'first_public_failed', 'first_public_cancelled',
     'papers', 'services', 'warnings', 'errors', 'excluded', 'duplicates', 'materialized', 'pdf_unverified'})
 REASONS = frozenset({'runtime_interrupted', 'connection_lost', 'cancelled', 'partial', 'failed',

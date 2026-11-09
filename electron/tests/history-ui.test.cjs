@@ -91,6 +91,8 @@ test('unified Run history presents selected sources and native batch hints',asyn
 test('Run history keeps first-public coverage independent of Paper creation',async()=>{
   const {renderHistoryRecord}=await import('../../frontend/ui/history-view.js');
   const html=renderHistoryRecord({kind:'run',provider:'integrated',task_id:'run-dates',outcome:'completed',
-    statistics:{created:3,first_public_recorded:1,first_public_known_unresolved:1,first_public_conflict:1}});
+    statistics:{created:3,pmid_resolution_matched:1,pmid_resolution_no_match:2,
+      first_public_recorded:1,first_public_known_unresolved:1,first_public_conflict:1}});
+  assert.match(html,/已验证 PMID 1/);assert.match(html,/无 PMID 匹配 2/);
   assert.match(html,/首版日期已记录/);assert.match(html,/已知首版未确定/);assert.match(html,/首版证据冲突/);
 });
