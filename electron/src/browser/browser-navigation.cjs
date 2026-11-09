@@ -213,6 +213,7 @@ async function inspectPage({snapshot,current,authentication,inspectAuthenticatio
     if(error.diagnostic?.code!=='verification_page') {
       if(!authWaiting && !auth.waiting)throw error;
     } else {
+      if(error.diagnostic.imperva_edet!==undefined)return {doc,waiting:true,diagnostic:error.diagnostic};
       const key=JSON.stringify([doc.pageId,doc.processId,doc.frameToken]);
       const attempt=solveCloudflare?solverDocuments.get(key):null;
       if(solveCloudflare && (!attempt || attempt.attempts<2 && attempt.retryable)) {
@@ -241,7 +242,7 @@ async function waitForPage(observe,{signal,deadline=Infinity,onWaiting,stage='na
     }
     if(!result.loading && !result.waiting && Number.isInteger(result.doc.status))
       throw new BrowserFailure('navigation','http_error',result.doc.status);
-    if(result.waiting)onWaiting?.(true);
+    if(result.waiting)onWaiting?.(true,result.diagnostic);
     if(!result.recheck)await waitFor(()=>pause(signal),signal,deadline,stage,step);
   }
 }

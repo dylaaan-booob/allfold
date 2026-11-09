@@ -686,7 +686,7 @@ class DiagnosticStore:
                     'page_id, source_page_id, role and generation describe the captured page relationship; '
                     'scope_id and service_id describe verified configuration metadata, never permission or task authority. '
                     'source distinguishes Python/Electron; event, stage, step, code, status and net_error are fixed technical facts. '
-                    'imperva_edet and imperva_incident_id identify a recognized Imperva denial when present. '
+                    'imperva_edet and imperva_incident_id identify a recognized Imperva response when present. '
                     'History outcome is coordinator-confirmed business state; a native event outcome describes only that operation. '
                     'parent and pdf distinguish parent-item evidence from unverified attachment persistence. '
                     'recent_scope includes only the last seven UTC days across startups, using one export time. '

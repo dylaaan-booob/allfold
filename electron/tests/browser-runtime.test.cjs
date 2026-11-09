@@ -329,6 +329,35 @@ test('Browser refuses an HTTP 200 Imperva block before handing the document to t
   assert.equal((await browser.navigate(url,{tab,signal})).status,200);
 });
 
+test('Imperva CAPTCHA waits for the same page to finish verification without calling the Solver',async t=>{
+  const {BrowserRuntime}=fixture(t);
+  let solverCalls=0;
+  const browser=new BrowserRuntime({solveCloudflare:async()=>{solverCalls++;}});
+  t.after(()=>browser.close());await browser.ready;
+  const tab=browser.createTab({present:false});
+  const signal=new AbortController().signal;
+  browser.beginOperation(signal,{request_id:'imperva-challenge'});
+  const contents=tab.view.webContents;
+  contents.html='<body><iframe src="/_Incapsula_Resource?edet=12&amp;incident_id=123-456">'
+    +'Request unsuccessful. Incapsula incident ID: 123-456</iframe></body>';
+  const url='https://projecteuclid.org/journals/example/10.5555/article.full';
+  let reportWaiting;
+  const waiting=new Promise(resolve=>{reportWaiting=resolve;});
+  const navigation=browser.navigate(url,{tab,signal,deadline:Date.now()+5000,onWaiting:reportWaiting});
+  const diagnostic=await Promise.race([waiting,navigation.then(()=>assert.fail('Returned before verification'))]);
+  assert.deepEqual(diagnostic,{stage:'navigation',code:'verification_page',status:200,
+    imperva_edet:12,imperva_incident_id:'123-456'});
+  assert.equal(browser.taskTab,tab);
+  assert.equal(solverCalls,0);
+
+  contents.html='<body><article>Example article after verification</article></body>';
+  await contents.loadURL(url);
+  const doc=await navigation;
+  assert.equal(doc.pageId,tab.id);
+  assert.match(doc.html,/Example article after verification/);
+  assert.equal(solverCalls,0);
+});
+
 test('Imperva diagnostics omit ambiguous parameters and accept a displayed incident ID',()=>{
   const {checkPage}=require('../src/browser/browser-errors.cjs');
   const page=(query,id)=>'<body><iframe src="/_Incapsula_Resource?'+query
