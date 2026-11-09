@@ -150,3 +150,106 @@ def test_direct_formal_pmid_survives_merged_work_with_preprint_pmid():
     assert paper.external_ids.model_dump()['pmid'] == '42908400'
     assert paper.external_ids.doi == formal_doi and paper.external_ids.openalex == 'https://openalex.org/W7223175244'
     assert any(ref.provider=='pmid' and ref.record_id=='42239170' for ref in merged.related_ids)
+
+
+@pytest.mark.parametrize('search, rows, expected', [
+    (['43', '42'], {'42': '10.1093/bioinformatics/btag793', '43': '10.5555/second'}, '42'),
+    (['42', '43'], {'42': '10.1093/bioinformatics/btag793', '43': '10.1093/bioinformatics/btag793'}, 'conflict'),
+    (['42'], {'42': '10.5555/unrequested'}, 'conflict'),
+    (['42', '43'], {'42': '10.1093/bioinformatics/btag793'}, 'incomplete'),
+    (['42', '42'], {'42': '10.1093/bioinformatics/btag793'}, 'incomplete'),
+    ([], {}, None),
+])
+def test_pubmed_resolves_only_direct_unambiguous_dois_in_complete_batches(search, rows, expected):
+    from allfold.providers.integrated import DiscoveryError, IdentityMismatch
+    target, other = '10.1093/bioinformatics/btag793', '10.5555/second'
+    calls = []
+    def response(request):
+        calls.append(request)
+        if request.url.path.endswith('esearch.fcgi'):
+            assert request.url.params['term'] == f'"{target}"[aid] OR "{other}"[aid]'
+            return httpx.Response(200, json={'esearchresult': {'count': str(len(search)), 'idlist': search}})
+        assert request.url.path.endswith('esummary.fcgi')
+        assert set(request.url.params['id'].split(',')) == set(search)
+        return httpx.Response(200, json={'result': {'uids': list(rows), **{
+            pmid: {'uid': pmid, 'articleids': [{'idtype': 'doi', 'value': doi}],
+                'history': [{'pubstatus': 'received', 'date': '2026/01/06'},
+                    {'pubstatus': 'entrez', 'date': '2026/09/01'}]}
+            for pmid, doi in rows.items()}}})
+    with DiscoveryClient('pubmed', transport=httpx.MockTransport(response), interval=0) as client:
+        matches = client.resolve_pubmed_dois((f'https://doi.org/{target.upper()}', other, target))
+        value = matches[target]
+        if expected == 'conflict':
+            assert isinstance(value, IdentityMismatch)
+        elif expected == 'incomplete':
+            assert isinstance(value, DiscoveryError)
+        elif expected is None:
+            assert value == ()
+        else:
+            match, = value
+            assert match.external_ids.pmid == expected and match.external_ids.doi == target
+            assert [date.kind.value for date in match.dates] == ['received']
+            reused = client.lookup_many('pmid', [expected], capability='summary')
+            assert reused.records == value
+    assert len(calls) == (1 if not search or len(set(search)) != len(search) else 2)
+
+
+def test_pubmed_doi_batches_respect_transport_limit_and_stop_on_cancel():
+    from threading import Event
+    from urllib.parse import parse_qs
+
+    from allfold.providers.integrated import Cancelled, DiscoveryError
+
+    dois = [f'10.5555/article{i:03d}' for i in range(230)]
+    invalid = '10.5555/query"[Title]'
+    for stop in (False, True):
+        cancel, calls = Event(), []
+
+        def handler(request):
+            assert request.method == 'POST' and not request.url.query
+            fields = parse_qs(request.content.decode())
+            assert fields['api_key'] == ['synthetic-key']
+            assert len(request.content) < 6000
+            calls.append(fields['term'][0])
+            if stop and len(calls) == 2:
+                cancel.set()
+            return httpx.Response(200, json={'esearchresult': {'count': '0', 'idlist': []}})
+
+        with DiscoveryClient('pubmed', api_key='synthetic-key', cancel_event=cancel, interval=0,
+                transport=httpx.MockTransport(handler)) as client:
+            values = client.resolve_pubmed_dois([*dois, invalid])
+        assert isinstance(values[invalid], DiscoveryError)
+        assert calls == [' OR '.join(f'"{doi}"[aid]' for doi in dois[offset:offset + 100])
+            for offset in ([0, 100] if stop else [0, 100, 200])]
+        assert all(values[doi] == () for doi in dois[:100])
+        if stop:
+            assert isinstance(values[dois[100]], Cancelled) and dois[200] not in values
+        else:
+            assert all(values[doi] == () for doi in dois)
+
+
+def test_pubmed_doi_resolution_fetches_missing_direct_doi_and_retains_summary_history():
+    doi = '10.5555/formal'
+    calls = []
+
+    def handler(request):
+        path = request.url.path.rsplit('/', 1)[-1]
+        calls.append(path)
+        if path == 'esearch.fcgi':
+            return httpx.Response(200, json={'esearchresult': {'count': '2', 'idlist': ['41', '42']}})
+        if path == 'esummary.fcgi':
+            return httpx.Response(200, json={'result': {'uids': ['41', '42'],
+                '41': {'uid': '41', 'pubtype': ['Preprint'], 'articleids': [{'idtype': 'doi', 'value': doi}]},
+                '42': {'uid': '42', 'history': [{'pubstatus': 'received', 'date': '2026/01/06'}]}}})
+        assert request.url.params['id'] == '42'
+        xml = article('42', A.issns[0], doi).split('<History>')[0] + '</PubmedData></PubmedArticle>'
+        return httpx.Response(200, text='<PubmedArticleSet>' + xml + '</PubmedArticleSet>')
+
+    with DiscoveryClient('pubmed', interval=0, transport=httpx.MockTransport(handler)) as client:
+        matches = client.resolve_pubmed_dois((doi,))
+        resolved, = matches[doi]
+        fetched = client.lookup_many('pmid', ['42'], capability='fetch')
+        assert fetched.records == (resolved,)
+    assert resolved.external_ids.pmid == '42'
+    assert [(date.month, date.day) for date in resolved.dates if date.kind.value == 'received'] == [(1, 6)]
+    assert calls == ['esearch.fcgi', 'esummary.fcgi', 'efetch.fcgi']

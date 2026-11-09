@@ -4,6 +4,7 @@ from __future__ import annotations
 from collections.abc import Mapping, Sequence
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
+from functools import partial
 from threading import Event
 from typing import Protocol
 
@@ -13,6 +14,44 @@ from allfold.models import ExternalIds, ProviderRecordRef, ProviderWorkEvidence
 LOOKUP_NAMESPACES = {
     'openalex': ('openalex', 'doi'), 'crossref': ('doi',),
 }
+
+
+def completion_client(provider, **kwargs):
+    from allfold.providers.integrated import DiscoveryClient, DISCOVERY_PROVIDERS
+    from allfold.providers.supplemental import SupplementalClient
+
+    if provider in DISCOVERY_PROVIDERS:
+        kwargs.pop('mailto', None)
+        return DiscoveryClient(provider, **kwargs)
+    kwargs.pop('api_key', None)
+    return SupplementalClient(provider, **kwargs)
+
+
+class CompletionSettlement:
+    """Keep replay callbacks only for lookups with transient HTTP failures."""
+
+    def __init__(self):
+        self.pending = []
+
+    def capture(self, client, lookup, update):
+        if not hasattr(client, 'capture_transient_failures'):
+            return lookup()
+        with client.capture_transient_failures() as failures:
+            result = lookup()
+        if failures:
+            self.pending.append((client, lookup, update))
+        return result
+
+    def settle(self, cancel_event):
+        if not self.pending or cancel_event.is_set():
+            return False
+        for client in dict.fromkeys(client for client, _, _ in self.pending):
+            client.begin_settlement()
+        for _, lookup, update in self.pending:
+            if cancel_event.is_set():
+                break
+            update(lookup())
+        return True
 
 
 class MetadataLookup(Protocol):
@@ -266,8 +305,21 @@ def _batch_lookup(client, provider, namespace, identifiers, capability, cancel_e
         return {identifier: error for identifier in identifiers}
 
 
+def _cache_batch(cache, provider, namespace, capability, values):
+    for identifier, value in values.items():
+        request = (provider, namespace, identifier) + ((capability,) if capability else ())
+        cache[request] = value
+
+
+def _completion_batch(client, provider, namespace, identifiers, capability, cancel_event, cache, settlement):
+    lookup = partial(_batch_lookup, client, provider, namespace, identifiers, capability, cancel_event)
+    if settlement is None:
+        return lookup()
+    return settlement.capture(client, lookup, partial(_cache_batch, cache, provider, namespace, capability))
+
+
 def prime_completion_cache(record_groups, enabled_providers, *, clients, request_cache,
-                           cancel_event=None, allow_formal_preprint_reverse=True, ordinary_root_ids=None):
+                           cancel_event=None, allow_formal_preprint_reverse=True, ordinary_root_ids=None, settlement=None):
     """Collect exact targets across Papers and run independent base API batches.
 
     Responses, no-match and failures are operation-local. Capability keys keep
@@ -291,8 +343,9 @@ def prime_completion_cache(record_groups, enabled_providers, *, clients, request
                 continue
             client = clients.get(provider)
             capability = request[3] if len(request) > 3 else None
-            if capability == 'summary' and (*request[:3], 'fetch') in request_cache:
-                request_cache[request] = request_cache[(*request[:3], 'fetch')]
+            fetched = request_cache.get((*request[:3], 'fetch'))
+            if capability == 'summary' and isinstance(fetched, tuple):
+                request_cache[request] = fetched
                 continue
             if capability == 'preprints' and provider == 'crossref' and not hasattr(client, 'lookup_preprints'):
                 continue
@@ -302,15 +355,14 @@ def prime_completion_cache(record_groups, enabled_providers, *, clients, request
     if not batches or cancel_event is not None and cancel_event.is_set():
         return
     with ThreadPoolExecutor(max_workers=min(6, len(batches)), thread_name_prefix='api-completion') as pool:
-        futures = [(key, pool.submit(_batch_lookup, clients.get(key[0]), *key[:2], sorted(ids), key[2], cancel_event))
+        futures = [(key, pool.submit(_completion_batch, clients.get(key[0]), *key[:2], sorted(ids),
+            key[2], cancel_event, request_cache, settlement))
             for key, ids in sorted(batches.items(), key=lambda item: str(item[0]))]
         for (provider, namespace, capability), future in futures:
-            for identifier, value in future.result().items():
-                request = (provider, namespace, identifier) + ((capability,) if capability else ())
-                request_cache[request] = value
+            _cache_batch(request_cache, provider, namespace, capability, future.result())
 
 
-def prime_arxiv_cache(record_groups, *, clients, request_cache, cancel_event=None, ordinary_root_ids=None):
+def prime_arxiv_cache(record_groups, *, clients, request_cache, cancel_event=None, ordinary_root_ids=None, settlement=None):
     """Batch needed known IDs across selected Papers for this operation."""
     client = clients.get('arxiv')
     if client is None or not hasattr(client, 'lookup_many'):
@@ -320,9 +372,8 @@ def prime_arxiv_cache(record_groups, *, clients, request_cache, cancel_event=Non
         if provider == 'arxiv' and (provider, ns, identifier) not in request_cache})
     if not ids or cancel_event is not None and cancel_event.is_set():
         return
-    results = client.lookup_many('arxiv', ids)
-    for identifier in ids:
-        request_cache['arxiv', 'arxiv', identifier] = results.get(identifier, ())
+    results = _completion_batch(client, 'arxiv', 'arxiv', ids, None, cancel_event, request_cache, settlement)
+    _cache_batch(request_cache, 'arxiv', 'arxiv', None, results)
 
 
 def bind_records(supplements, identities):
@@ -346,7 +397,7 @@ def bind_records(supplements, identities):
 def _completion_steps(
     records: Sequence[ProviderWorkEvidence], enabled_providers: Sequence[str], *,
     clients: Mapping[str, MetadataLookup], cancel_event: Event | None = None, request_cache: dict | None = None,
-    allow_formal_preprint_reverse=True, ordinary_root_ids=None,
+    allow_formal_preprint_reverse=True, ordinary_root_ids=None, settlement=None,
 ):
     """Resolve local goals, schedule one needed target, then re-evaluate.
 
@@ -364,6 +415,20 @@ def _completion_steps(
     cache_requests, cache_identities = set(), set()
     reused_record_count = 0
     reported_failures, cached_cancelled = set(), False
+    root_dois = {value for namespace, value in ordinary_root_ids or () if namespace == 'doi'}
+
+    def conflicting_pubmed_record(request, record):
+        return (request[0] == 'pubmed' and request[1:3] in ordinary_root_ids
+            and request[3] != 'fetch-preprint' and
+            (record.publication_type == 'preprint'
+                or root_dois and record.external_ids.doi and record.external_ids.doi not in root_dois))
+
+    def partition_pubmed_records(request, records):
+        if ordinary_root_ids is None or request[0] != 'pubmed' or len(request) < 4:
+            return records, ()
+        rejected = tuple(record for record in records if conflicting_pubmed_record(request, record))
+        return (tuple(record for record in records if record not in rejected), rejected) if rejected else (records, ())
+
     def reuse_cached_evidence():
         nonlocal reused_record_count, cached_cancelled
         # A prior selected Paper may already have obtained the exact same native
@@ -401,6 +466,14 @@ def _completion_steps(
                             issues.append(CompletionIssue(provider, request[2], str(value), status))
                         cached_cancelled |= status == 'cancelled'
                 value = getattr(value, 'records', ())
+            if provider == 'pubmed' and request[1:3] not in cache_identities:
+                continue
+            value, rejected = partition_pubmed_records(request, value)
+            if rejected and request not in attempted:
+                attempted.add(request)
+                lookups.append(_lookup(request, 'identity_mismatch'))
+                issues.append(CompletionIssue(provider, request[2],
+                    'PubMed response conflicts with direct formal identity', 'identity_mismatch'))
             for namespace, identifier in sorted(identities):
                 accepted, _ = bind_records(value, {(namespace, identifier)})
                 if accepted and not any((item.provider, item.namespace, item.identifier) == request[:3]
@@ -454,24 +527,31 @@ def _completion_steps(
         client = clients.get(provider)
         try:
             if request not in cache:
-                try:
-                    if client is None:
-                        raise ValueError('Selected metadata adapter is unavailable')
-                    if len(request) > 3:
-                        cache[request] = _batch_lookup(client, provider, namespace, (identifier,), request[3], cancel_event)[identifier]
-                    else:
-                        cache[request] = client.lookup(namespace, identifier)
-                except (ValueError, OSError, RuntimeError, TypeError, AttributeError) as error:
-                    cache[request] = error
+                if len(request) > 3:
+                    values = _completion_batch(client, provider, namespace, (identifier,), request[3],
+                        cancel_event, cache, settlement)
+                    cache[request] = values[identifier]
+                else:
+                    def lookup(client=client, namespace=namespace, identifier=identifier):
+                        try:
+                            if client is None:
+                                raise ValueError('Selected metadata adapter is unavailable')
+                            return client.lookup(namespace, identifier)
+                        except (ValueError, OSError, RuntimeError, TypeError, AttributeError) as error:
+                            return error
+
+                    cache[request] = (lookup() if settlement is None else
+                        settlement.capture(client, lookup, partial(cache.__setitem__, request)))
             supplements = cache[request]
-            partial = supplements if isinstance(supplements, Exception) and getattr(supplements, 'records', ()) else None
-            if isinstance(supplements, Exception) and partial is None:
+            partial_result = supplements if isinstance(supplements, Exception) and getattr(supplements, 'records', ()) else None
+            if isinstance(supplements, Exception) and partial_result is None:
                 raise supplements
-            if partial is not None:
-                supplements = partial.records
+            if partial_result is not None:
+                supplements = partial_result.records
             accepted, rejected = bind_records(supplements, {(namespace, identifier)})
+            accepted, conflicts = partition_pubmed_records(request, accepted)
             status = 'evidence' if accepted else 'no_match'
-            if rejected:
+            if rejected or conflicts:
                 issues.append(CompletionIssue(provider, identifier, 'Metadata response does not match requested identity', 'identity_mismatch'))
                 status = 'identity_mismatch'
             for record in accepted:
@@ -482,8 +562,8 @@ def _completion_steps(
                 if key not in seen:
                     output.append(record)
                     seen.add(key)
-            if partial is not None:
-                issues.append(CompletionIssue(provider, identifier, str(partial), 'partial'))
+            if partial_result is not None:
+                issues.append(CompletionIssue(provider, identifier, str(partial_result), 'partial'))
                 status = 'partial'
             lookups.append(_lookup(request, status))
         except Cancelled:
@@ -501,7 +581,8 @@ def _completion_steps(
 
 
 def complete_metadata_many(record_groups, enabled_providers, *, clients, cancel_event=None,
-                           request_cache=None, paper_guard=None, allow_formal_preprint_reverse=True, ordinary_root_ids=None):
+                           request_cache=None, paper_guard=None, allow_formal_preprint_reverse=True, ordinary_root_ids=None,
+                           settlement=None):
     """Yield completed Papers while batching native targets across response waves.
 
     Each active Paper advances by at most one necessary response per wave. New
@@ -523,7 +604,7 @@ def complete_metadata_many(record_groups, enabled_providers, *, clients, cancel_
     for key, records in record_groups.items():
         steps = _completion_steps(records, enabled_providers, clients=clients,
             cancel_event=cancel_event, request_cache=cache, allow_formal_preprint_reverse=allow_formal_preprint_reverse,
-            ordinary_root_ids=ordinary_root_ids.get(key))
+            ordinary_root_ids=ordinary_root_ids.get(key), settlement=settlement)
         try:
             snapshots[key] = next(steps)
             active[key] = steps
@@ -539,9 +620,11 @@ def complete_metadata_many(record_groups, enabled_providers, *, clients, cancel_
                 snapshots.pop(key)
                 yield key, error
         prime_completion_cache(snapshots, enabled_providers, clients=clients, request_cache=cache,
-            cancel_event=cancel_event, allow_formal_preprint_reverse=allow_formal_preprint_reverse, ordinary_root_ids=ordinary_root_ids)
+            cancel_event=cancel_event, allow_formal_preprint_reverse=allow_formal_preprint_reverse,
+            ordinary_root_ids=ordinary_root_ids, settlement=settlement)
         prime_arxiv_cache(snapshots, clients={provider: client for provider, client in clients.items()
-            if provider in enabled_providers}, request_cache=cache, cancel_event=cancel_event, ordinary_root_ids=ordinary_root_ids)
+            if provider in enabled_providers}, request_cache=cache, cancel_event=cancel_event,
+            ordinary_root_ids=ordinary_root_ids, settlement=settlement)
         for key, steps in tuple(active.items()):
             try:
                 if paper_guard and not (cancel_event is not None and cancel_event.is_set()):

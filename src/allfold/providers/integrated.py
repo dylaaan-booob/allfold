@@ -1,13 +1,15 @@
 """Scoped HTTP discovery. Adapters retain native hits and report bounded coverage."""
 from __future__ import annotations
 
+from contextlib import contextmanager
 from dataclasses import dataclass, replace
 from datetime import date, datetime, timezone, timedelta
 from email.utils import parsedate_to_datetime
 import math
 import re
+import ssl
 import time
-from threading import Event, RLock
+from threading import Event, RLock, local
 from urllib.parse import quote, urlencode
 
 import httpx
@@ -62,6 +64,10 @@ class IdentityMismatch(DiscoveryError):
 
 
 class ProviderTimeoutError(DiscoveryError):
+    pass
+
+
+class ProviderConnectionError(DiscoveryError):
     pass
 
 
@@ -124,6 +130,10 @@ class DiscoveryClient:
             raise ValueError('Unknown Discovery Provider')
         self.progress = progress_callback
         self._completing = False
+        self._request_trace = local()
+        self._completion_responses = {}
+        self._exact_batch_plans = {}
+        self._settlement_requests = None
         self._progress_requests = {}
         self.provider = provider
         self.api_key = api_key
@@ -159,6 +169,30 @@ class DiscoveryClient:
         """Discovery/Work has settled; subsequent HTTP belongs to Completion."""
         self._completing = True
 
+    @contextmanager
+    def capture_transient_failures(self):
+        failures = []
+        self._request_trace.failures = failures
+        try:
+            yield failures
+        finally:
+            del self._request_trace.failures
+
+    def begin_settlement(self):
+        """Permit one extra dispatch for each failed completion HTTP request."""
+        with self._cache_lock:
+            self._settlement_requests = {key for key, value in self._completion_responses.items()
+                if self._transient_failure(value)}
+            failures = {id(self._completion_responses[key]) for key in self._settlement_requests}
+            for cache in (self.cache, self._openalex_full_raw):
+                for key in [key for key, value in cache.items() if id(value) in failures]:
+                    del cache[key]
+
+    @staticmethod
+    def _transient_failure(error):
+        return (isinstance(error, (ProviderTimeoutError, ProviderConnectionError))
+            or isinstance(error, ProviderHTTPError) and error.status in TRANSIENT_HTTP)
+
     def _completion_activity(self, url, params):
         if not self._completing:
             return None
@@ -186,7 +220,6 @@ class DiscoveryClient:
                 self._wait(delay)
             self.pacing_state[self.host] = time.monotonic()
             try:
-                self.request_count = getattr(self, 'request_count', 0) + 1
                 if self.progress and (phase := self._completion_activity(url, params)):
                     operation, label = phase
                     self._progress_requests[operation] = self._progress_requests.get(operation, 0) + 1
@@ -194,6 +227,8 @@ class DiscoveryClient:
                         operation=operation, label=label, detail='Request dispatched',
                         current=self._progress_requests[operation], unit='request')
                     self.progress(ProgressEvent(activity=activity))
+                    self.check_cancel()
+                self.request_count = getattr(self, 'request_count', 0) + 1
                 if self.provider == 'pubmed' and self.api_key:
                     # NCBI accepts form POST. Keep its optional secret out of
                     # request URLs (including standard HTTP client log lines).
@@ -203,7 +238,14 @@ class DiscoveryClient:
             except httpx.TimeoutException as error:
                 raise ProviderTimeoutError(f'{self.provider}: network request failed ({type(error).__name__})') from None
             except httpx.HTTPError as error:
-                raise DiscoveryError(f'{self.provider}: network request failed ({type(error).__name__})') from None
+                failure = DiscoveryError
+                if isinstance(error, (httpx.ConnectError, httpx.ReadError, httpx.WriteError, httpx.RemoteProtocolError)):
+                    cause = error
+                    while cause is not None and not isinstance(cause, ssl.SSLCertVerificationError):
+                        cause = cause.__cause__
+                    if cause is None:
+                        failure = ProviderConnectionError
+                raise failure(f'{self.provider}: network request failed ({type(error).__name__})') from None
             self.check_cancel()
             if activity is not None:
                 self.progress(ProgressEvent(activity=replace(activity, detail='Response received')))
@@ -224,17 +266,45 @@ class DiscoveryClient:
 
     def request(self, path, params, *, response_format="json"):
         self.check_cancel()
+        failures = getattr(self._request_trace, 'failures', None)
+        if failures is None and self._settlement_requests is None:
+            return self._request(path, params, response_format, attempts=3)
+        # Replay uses parsed HTTP responses, including successful pagination
+        # prefixes, and sends only the failed request with its exact parameters.
+        key = path, tuple(sorted(params.items())), response_format
+        with self._cache_lock:
+            cached = self._completion_responses.get(key)
+            retry = self._settlement_requests is not None and key in self._settlement_requests
+            if retry:
+                self._settlement_requests.remove(key)
+        try:
+            if cached is not None and not retry:
+                if isinstance(cached, Exception):
+                    raise cached
+                return cached
+            value = self._request(path, params, response_format, attempts=1 if retry else 3)
+        except DiscoveryError as error:
+            value = error
+        with self._cache_lock:
+            self._completion_responses[key] = value
+        if isinstance(value, Exception):
+            if failures is not None and self._transient_failure(value):
+                failures.append(key)
+            raise value
+        return value
+
+    def _request(self, path, params, response_format, *, attempts):
         if self._access_restriction:
             raise DiscoveryError(self._access_restriction)
         params = dict(params)
         if self.provider == 'pubmed' and self.api_key:
             params['api_key'] = self.api_key
         headers = {"Authorization":"Bearer " + self.api_key} if self.provider == "openalex" and self.api_key else {}
-        for attempt in range(3):
+        for attempt in range(attempts):
             try:
                 response = self._get(BASE_URLS[self.provider] + path, params, headers)
             except ProviderTimeoutError:
-                if attempt == 2:
+                if attempt == attempts - 1:
                     raise
                 self._retry_wait(attempt, 5 * (2 ** attempt), f'{self.provider}: request timed out', path, params)
                 continue
@@ -252,7 +322,7 @@ class DiscoveryClient:
                 self._access_restriction = (f'{self.provider}: access limited by {kind} (HTTP {response.status_code}); '
                                             'further automatic requests to this provider are stopped for this Run')
                 raise DiscoveryError(self._access_restriction)
-            if (response.status_code == 429 or temporary_error) and attempt < 2:
+            if (response.status_code == 429 or temporary_error) and attempt < attempts - 1:
                 default_delay = 5 * (2 ** attempt) if temporary_error else 1
                 retry = response.headers.get('retry-after', str(default_delay))
                 try:
@@ -268,7 +338,7 @@ class DiscoveryClient:
                     f'{self.provider}: HTTP {response.status_code} {temporary_error or "Too Many Requests"}', path, params)
                 continue
             if temporary_error:
-                raise ProviderHTTPError(self.provider, response.status_code, detail=f'{temporary_error} after 3 attempts')
+                raise ProviderHTTPError(self.provider, response.status_code, detail=f'{temporary_error} after {attempts} attempts' if attempts > 1 else temporary_error)
             if response.status_code != 200:
                 raise ProviderHTTPError(self.provider, response.status_code)
             if html:
@@ -344,6 +414,16 @@ class DiscoveryClient:
             group.append(value)
         if group:
             yield group
+
+    def _exact_batches(self, namespace, identities, capability, params, *, limit=100):
+        key = namespace, tuple(identities), capability
+        if self._settlement_requests is not None and key in self._exact_batch_plans:
+            return self._exact_batch_plans[key]
+        missing = [value for value in identities if self.cached_lookup(namespace, value, capability) is None]
+        groups = tuple(self._groups(missing, params, limit=limit))
+        if getattr(self._request_trace, 'failures', None) is not None and groups:
+            self._exact_batch_plans.setdefault(key, groups)
+        return groups
 
     def _pubmed_discovery_pages(self, scopes, ast, start, end):
         from allfold.providers.pubmed import fetch_records, has_entrez_error
@@ -510,12 +590,72 @@ class DiscoveryClient:
         status = 'cancelled' if self.cancel.is_set() else 'partial' if problems and records else 'failed' if problems else 'complete' if records else 'empty'
         return DiscoveryResult(self.provider,SourceScope('journal',''),status,tuple(records),tuple(dict.fromkeys(problems)),len(requested))
 
+    def resolve_pubmed_dois(self, identifiers):
+        """Return only exact, unambiguous formal DOI/PMID pairs per search batch."""
+        from allfold.providers.pubmed import esearch_identifiers
+
+        if self.provider != 'pubmed':
+            raise DiscoveryError('DOI to PMID resolution requires PubMed')
+        requested, results = {}, {}
+        for identifier in identifiers:
+            doi = valid_doi(identifier) if isinstance(identifier, str) and identifier.strip() else None
+            if not doi or not doi.isprintable() or any(character in doi for character in '"\\'):
+                results[identifier] = DiscoveryError('Invalid DOI for PubMed Article Identifier query')
+            else:
+                requested[doi] = None
+
+        def params(dois):
+            return {'db': 'pubmed', 'retmode': 'json', 'retmax': 9999, 'retstart': 0,
+                'term': ' OR '.join(f'"{doi}"[aid]' for doi in dois)}
+
+        for doi in tuple(requested):
+            if len(urlencode(params([doi]))) > 6000:
+                results[doi] = DiscoveryError('DOI exceeds PubMed request URL budget')
+                del requested[doi]
+        for group in self._groups(requested, params):
+            try:
+                self.check_cancel()
+                pmids = esearch_identifiers(self.request('/esearch.fcgi', params(group)))
+                results.update(self._pubmed_doi_matches(group, pmids))
+            except DiscoveryError as error:
+                results.update((doi, error) for doi in group)
+                if isinstance(error, Cancelled):
+                    break
+        return results
+
+    def _pubmed_doi_matches(self, dois, pmids):
+        if not pmids:
+            return dict.fromkeys(dois, ())
+        summary = self.lookup_many('pmid', pmids, capability='summary')
+        if summary.status != 'complete':
+            raise DiscoveryError('; '.join(summary.limitations) or 'Incomplete: PubMed DOI identity summaries')
+        records = {record.external_ids.pmid: record for record in summary.records}
+        if set(records) != set(pmids):
+            raise DiscoveryError('Incomplete: PubMed DOI identity summaries')
+        unresolved = [pmid for pmid, record in records.items()
+            if not record.external_ids.doi and record.publication_type != 'preprint']
+        if unresolved:
+            fetched = self.lookup_many('pmid', unresolved, capability='fetch')
+            if fetched.status != 'complete':
+                raise DiscoveryError('; '.join(fetched.limitations) or 'Incomplete: PubMed DOI identity records')
+            records.update((record.external_ids.pmid, record) for record in fetched.records)
+        if any(record.publication_type != 'preprint' and not record.external_ids.doi for record in records.values()):
+            raise DiscoveryError('Incomplete: PubMed DOI identity record lacks a direct DOI')
+        if any(record.publication_type != 'preprint' and record.external_ids.doi not in dois for record in records.values()):
+            raise IdentityMismatch('PubMed DOI search returned an unrequested direct DOI')
+        matches = {doi: [] for doi in dois}
+        for record in records.values():
+            if record.publication_type != 'preprint':
+                matches[record.external_ids.doi].append(record)
+        return {doi: tuple(rows) if len(rows) <= 1 else
+            IdentityMismatch('Multiple PubMed records have the same direct DOI') for doi, rows in matches.items()}
+
     def _remember_pubmed(self, record, capability):
         pmid = record.external_ids.model_dump().get('pmid')
         with self._cache_lock:
-            self.cache[('pmid', pmid, capability)] = (record,)
             if capability == 'fetch':
-                self.cache[('pmid', pmid, 'summary')] = (record,)
+                self.cache[('pmid', pmid, 'fetch')] = (record,)
+            self.cache[('pmid', pmid, 'summary')] = self.cache.get(('pmid', pmid, 'fetch'), (record,))
 
     def cached_lookup(self, namespace, identifier, capability='full'):
         normalized = normalize_doi(identifier) if namespace == 'doi' else normalize_external_id(namespace, identifier)
@@ -536,21 +676,34 @@ class DiscoveryClient:
                     problems.append('Invalid PubMed PMID')
                 else:
                     valid.append(normalized)
-            missing = [value for value in valid if self.cached_lookup('pmid',value,capability) is None]
             def params(values):
                 return {'db':'pubmed', 'id':','.join(values), 'retmode':'xml' if capability == 'fetch' else 'json', 'version':'2.0'}
-            for group in self._groups(missing, params, limit=200):
+            for group in self._exact_batches(namespace, valid, capability, params, limit=200):
                 try:
                     data = self.request('/efetch.fcgi' if capability == 'fetch' else '/esummary.fcgi', params(group),
                                         response_format='xml' if capability == 'fetch' else 'json')
                     page = fetch_records(data) if capability == 'fetch' else summary_records(data)
-                    found = set()
+                    found = {record.external_ids.pmid for record in page}
+                    if not found.issubset(group) or len(found) != len(page):
+                        raise IdentityMismatch('PubMed: unexpected or duplicate PMID in exact batch')
                     for record in page:
-                        pmid = record.external_ids.model_dump().get('pmid')
-                        if pmid not in group or pmid in found:
-                            raise IdentityMismatch('PubMed: unexpected or duplicate PMID in exact batch')
-                        found.add(pmid)
-                        self._remember_pubmed(record,capability)
+                        pmid = record.external_ids.pmid
+                        previous = self.cached_lookup('pmid', pmid, 'summary')
+                        if capability == 'fetch' and isinstance(previous, tuple) and previous:
+                            known, = previous
+                            if (known.external_ids.doi and record.external_ids.doi
+                                    and known.external_ids.doi != record.external_ids.doi
+                                    or (known.publication_type == 'preprint') != (record.publication_type == 'preprint')):
+                                with self._cache_lock:
+                                    self.cache['pmid', pmid, capability] = IdentityMismatch('PubMed: summary and article identities disagree')
+                                continue
+                            record = record.model_copy(update={
+                                'external_ids': record.external_ids.model_copy(update={
+                                    'doi': record.external_ids.doi or known.external_ids.doi}),
+                                'dates': tuple(dict.fromkeys((*known.dates, *record.dates))),
+                                'related_ids': tuple(dict.fromkeys((*known.related_ids, *record.related_ids))),
+                            })
+                        self._remember_pubmed(record, capability)
                     with self._cache_lock:
                         for value in set(group)-found:
                             self.cache[('pmid',value,capability)] = DiscoveryError('Incomplete: PubMed exact batch omitted PMID ' + value)
@@ -675,12 +828,11 @@ class DiscoveryClient:
             else:
                 problems.append('Invalid OpenAlex exact lookup identity')
         with self._lookup_lock:
-            missing = [value for value in requested if self.cached_lookup(namespace,value) is None]
             def params(values):
                 field = 'doi' if namespace == 'doi' else 'openalex'
                 return {'filter':field + ':' + '|'.join('https://doi.org/'+value if namespace == 'doi' else value.rsplit('/',1)[-1] for value in values),
                         'per_page':min(self.page_size,100), **({'cursor':'*'} if self.api_key else {'page':1})}
-            for group in self._groups(missing,params):
+            for group in self._exact_batches(namespace, requested, 'full', params):
                 found = set()
                 try:
                     for page in self._openalex_pages(params(group)):
