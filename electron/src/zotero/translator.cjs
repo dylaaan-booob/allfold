@@ -111,7 +111,7 @@ class TranslatorSandbox {
       'window.allfoldTranslator.'+method+'('+JSON.stringify(args)+')'),operation.signal,deadline,'translation','translator');
     this.current(operation);return result;
   }
-  async completeHistory(source,doi,historyKinds,initial,{signal,deadline,logContext,sourceFrame}) {
+  async completeHistory(source,doi,historyKinds,initial,{signal,deadline,logContext,sourceFrame,translatorID}) {
     const candidates=new Map(initial.map(item=>[item.kind+':'+item.value,item]));
     const missing=()=>historyKinds.some(kind=>![...candidates.values()].some(item=>item.kind===kind));
     const end=Math.min(deadline,Date.now()+30000);
@@ -126,7 +126,7 @@ class TranslatorSandbox {
         if(!source.documentId || fresh.documentId!==source.documentId || fresh.url!==source.url)
           throw new ImportFailure('translation','document_changed');
         operation ||= await this.openOperation(source,{signal,deadline:end,logContext});
-        const observed=await this.invoke(operation,'readHistory',{snapshot:fresh,doi},end);
+        const observed=await this.invoke(operation,'readHistory',{snapshot:fresh,doi,translatorID},end);
         if(observed.mismatch)throw new ImportFailure('translation','document_changed');
         for(const item of observed.dateCandidates)candidates.set(item.kind+':'+item.value,item);
         if(!missing() || Date.now()>=end)break;
@@ -271,7 +271,7 @@ class TranslatorSandbox {
           return frame;
         };
         dateCandidates=await this.completeHistory(historySource,doi,historyKinds,dateCandidates,
-          {signal:activeSignal,deadline:result.historyDeadline,logContext,sourceFrame});
+          {signal:activeSignal,deadline:result.historyDeadline,logContext,sourceFrame,translatorID:result.translatorID});
       }
       log('info','translation_completed',details);this.lastTranslator=result.translator;
       return {item:result.items[0],apiItem:result.apiItem,proxy:result.proxy || null,sourceDocument:result.sourceDocument,metadataSource:result.metadataSource,

@@ -28,6 +28,10 @@ async function browserHistory() {
   sandbox.browser=browser;
   const fixturePages={
     '/late': article(history(received)+later('document.querySelector("ul").insertAdjacentHTML("beforeend",'+JSON.stringify(accepted)+')')),
+    '/scielo-late': article('<a class="_doi" href="https://doi.org/'+doi+'">'+doi+'</a>'
+      +'<div class="articleSection--history"><ul class="articleTimeline"><li><strong>Received</strong><br>29 February 2024</li></ul></div>'
+      +later('document.querySelector("ul").insertAdjacentHTML("beforeend","<li><strong>Accepted</strong><br>2024-03</li>")'),
+      html.split('</head>')[0].replace(/<meta name="citation_doi"[^>]*>/,'')),
     '/cancel': article(history(received)),
     '/replaced': article(history(received)+later('location.replace("/replacement")')),
     '/replacement': article(history(received+accepted)),
@@ -73,6 +77,7 @@ async function browserHistory() {
       +'<div id="article-dates"><div class="article-dates"><nobr>Received: 21 Jan 2025</nobr></div></div>'
       +'<div id="article-information"><dl class="article-dates"><dt>Received</dt><dd><time datetime="2024-12-01">December 1, 2024</time></dd>'
       +'<dt>Accepted</dt><dd>January 14, 2025</dd></dl></div>'
+      +'<div class="foot-notes"><div class="history"><p>Received: October 13, 2024; Accepted: February 06, 2025</p></div></div>'
       +'<p>Received: 1999</p><aside>'+history('<li>Accepted: 1998</li>')+'</aside>'
       +'<section id="references">'+history('<li>Accepted: 1997</li>')+'</section>'
       +'<div class="related-articles"><div class="itemPageRangeHistory"><span>Received 1996</span></div></div>'),
@@ -80,7 +85,7 @@ async function browserHistory() {
   await browser.ready;
   await browser.partition.protocol.handle('https',request=>{
     const url=new URL(request.url);
-    const text=url.hostname==='offline.invalid' && fixturePages[url.pathname];
+    const text=['offline.invalid','www.scielo.br'].includes(url.hostname) && fixturePages[url.pathname];
     return new Response(text || 'Unknown isolated fixture',{status:text?200:404,headers:{'Content-Type':'text/html'}});
   });
   async function translate(name,kinds=historyKinds,{cancel=false,deadline}={}) {
@@ -88,7 +93,8 @@ async function browserHistory() {
     browser.beginOperation(signal);browser.operation.action='enrich_paper';
     const tab=await newTaskPage(browser,signal);
     try {
-      const doc=await browser.navigate('https://offline.invalid/'+name,{signal,deadline:Date.now()+5000});
+      const origin=name==='scielo-late'?'https://www.scielo.br':'https://offline.invalid';
+      const doc=await browser.navigate(origin+'/'+name,{signal,deadline:Date.now()+5000});
       browser.enterBusiness();
       const started=Date.now();
       const timer=cancel?setTimeout(()=>controller.abort(),350):null;
@@ -116,11 +122,15 @@ async function browserHistory() {
       ['accepted','2025-04-11'],['received','2025-01-21'],
       ['received','2024-12-01'],['accepted','2025-01-14'],
       ['received','2010-10'],
+      ['received','2024-10-13'],['accepted','2025-02-06'],
     ].sort());
     assert.ok(immediate.result.dateCandidates.every(item=>item.url==='https://offline.invalid/templates' && item.record_id===doi));
     const late=await translate('late');
     assert.deepEqual(facts(late.result),[['received','2024-02-29'],['accepted','2024-03']]);
     assert.ok(late.elapsed>=1250);
+    const scielo=await translate('scielo-late');
+    assert.equal(scielo.result.translator,'SciELO');
+    assert.deepEqual(facts(scielo.result),[['received','2024-02-29'],['accepted','2024-03']]);
     const already=await translate('isolated-frames',['received']);
     assert.deepEqual(facts(already.result),[['received','2024-02-29']]);
     const rdf=await translate('accepted-rdf',['accepted']);

@@ -143,11 +143,14 @@ window.allfoldTranslatorReady=(async () => {
     const value=String(raw || '').trim().replace(/^https?:\/\/(?:dx\.)?doi\.org\//i,'').toLowerCase();
     return /^10\.\d{4,9}\/\S+$/.test(value)?value:null;
   }
-  function documentDOIs(document,url) {
+  const scieloTranslator='3eabecf9-663a-4774-a3e6-0790d2732eed';
+  function documentDOIs(document,url,translatorID) {
     const keys=new Set(['citation_doi','bepress_citation_doi','prism.doi','dc.identifier','dc.identifier.doi','dcterms.identifier']);
     const values=[...document.head.querySelectorAll('meta[content]')]
       .filter(node=>keys.has((node.getAttribute('name') || node.getAttribute('property') || '').toLowerCase()))
       .map(node=>node.content);
+    // This is the article DOI locator used by the selected SciELO Translator.
+    if(translatorID===scieloTranslator)values.push(document.querySelector('a._doi[href]')?.getAttribute('href'));
     const source=new URL(url);
     values.push(source.searchParams.get('id'),source.searchParams.get('doi'));
     try {
@@ -220,6 +223,10 @@ window.allfoldTranslatorReady=(async () => {
       const match=text.trim().match(/^((?:manuscript\s+)?(?:received|accepted)(?:\s*:|(?=\s)))\s*(.+)$/is);
       if(match)add(match[1],match[2],time);
     };
+    const fromTextList=(row,text)=>{
+      if(row.querySelector('time'))return;
+      for(const event of text.trim().replace(/\.$/,'').split(';'))fromText(event);
+    };
     for(const row of entries('li.c-bibliographic-information__list-item'))
       fromRow(row,null,'.c-bibliographic-information__value time');
     for(const row of entries('.Summary__dates > div')) {
@@ -227,7 +234,7 @@ window.allfoldTranslatorReady=(async () => {
       const values=row.querySelectorAll(':scope > p:not(.h5)');
       if(label && values.length===1)fromRow(row,label.textContent,':scope > p:not(.h5)');
     }
-    for(const label of entries('#artText .articleinfo p > strong')) {
+    for(const label of entries('#artText .articleinfo p > strong, .articleSection--history .articleTimeline > li > strong')) {
       let raw='';
       const times=[];
       for(let next=label.nextSibling;next && next.nodeName!=='STRONG';next=next.nextSibling) {
@@ -255,10 +262,10 @@ window.allfoldTranslatorReady=(async () => {
     for(const row of entries('section.publication-history > ul.rlist > li')) {
       const text=row.textContent.trim();
       const editorial=text.match(/^Editorial history\s*:\s*(.+)$/is);
-      if(editorial) {
-        for(const event of editorial[1].replace(/\.$/,'').split(';'))fromText(event);
-      } else fromText(text,row.querySelector('time')?.getAttribute('datetime'));
+      if(editorial)fromTextList(row,editorial[1]);
+      else fromText(text,row.querySelector('time')?.getAttribute('datetime'));
     }
+    for(const row of entries('.foot-notes .history > p'))fromTextList(row,row.textContent);
     for(const row of entries([
       '.itemPageRangeHistory > span',
       'ul.article-chapter-history-list > li',
@@ -289,9 +296,9 @@ window.allfoldTranslatorReady=(async () => {
             proxy:t.proxy?.toJSON?t.proxy.toJSON():t.proxy || null}))};
       }catch(error){return failure(error,{observers:state.observers});}
     },
-    readHistory({snapshot,doi}) {
+    readHistory({snapshot,doi,translatorID}) {
       const document=createDocument(snapshot,true,[]);
-      const ids=documentDOIs(document,snapshot.url);
+      const ids=documentDOIs(document,snapshot.url,translatorID);
       const matches=ids.size===1 && ids.has(doi);
       return {mismatch:ids.size>0 && !matches,dateCandidates:matches?historyCandidates(document,{doi,url:snapshot.url}):[]};
     },
@@ -319,7 +326,7 @@ window.allfoldTranslatorReady=(async () => {
           const item=items[0];
           if(forEnrichment)addPublicationParts(item);
           const history=forEnrichment && historyKinds.length>0 && item.itemType==='journalArticle';
-          const ids=history?documentDOIs(document,state.url):null;
+          const ids=history?documentDOIs(document,state.url,selected.translatorID):null;
           const dateCandidates=history && (!ids.size || ids.size===1 && ids.has(doi))
             ?historyCandidates(document,{doi,url:state.url},item.accepted):undefined;
           if(proxy?.toProper)for(const item of items)for(const attachment of item.attachments || [])if(attachment.url)attachment._allfoldProperURL=proxy.toProper(attachment.url);
