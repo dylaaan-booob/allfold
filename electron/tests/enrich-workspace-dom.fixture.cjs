@@ -18,7 +18,8 @@ const settings={csrf_token:'fixture',issues:[],covers:{},cover_search,saved_work
   provider_aliases:{},provider_order:['pubmed','openalex','europe_pmc','crossref','arxiv','biorxiv','medrxiv','wos'],enabled_providers:['pubmed','openalex'],groups:['Synthetic Group'],custom_labels:[],journals,access_services:services,
 }};
 const paper={id:'paper-1',title:'Synthetic kept paper',doi:'10.5555/presentation',publication_date:'2026-10-01',status:'kept',abstract:'Synthetic fixture only',authors:[],enrichPhase:'Idle'};
-const enrichPaper={...paper,id:'paper-enrich',title:'Synthetic Enrich paper',doi:'10.5555/enrich',status:'candidate',abstract:''};
+const enrichPaper={...paper,id:'paper-enrich',title:'Synthetic Enrich paper',doi:'10.5555/enrich',status:'candidate',
+  authors:['Synthetic author'],history_missing:['received','accepted']};
 const record={key:'0000-0001',...journals[0],labels:[],papers:[enrichPaper]};
 const workspace={csrf_token:'fixture',import_token:'fixture',issues:[],counts:{candidates:1,active_journals:1},subjects:[{name:'Synthetic Group',journals:[record]}],kept:{papers:[{paper,journal:record}],journals:[record],services,settings:{},titles:{'paper-1':paper.title}}};
 let enrichState={phase:'Idle',supported:true,waiting_for_user:false};
@@ -81,8 +82,9 @@ app.whenReady().then(async()=>{
     // Readiness includes the actual fixture Paper, rather than a previous scene's refresh.
     await ready(()=>host("window.uiWorkspace?.ready()&&window.inboxKept.candidates().some(entry=>entry.paper.id==='paper-enrich')&&!document.getElementById('array-candidates').disabled"),'initial Enrich Paper loaded');
     assert(await host("workspaceArray.openPaper('paper-enrich')"),'initial Enrich Paper could not open');
-    await ready(()=>host("!!document.querySelector('#paper-detail [data-enrich]:not(:disabled)')"),'Enrich start ready');
-    await click(win.webContents,'#paper-detail [data-enrich]:not(:disabled)');
+    const receivedButton='[data-date-kind="received"] [data-enrich]:not(:disabled)';
+    await ready(()=>host(`!!document.querySelector(${JSON.stringify(receivedButton)})`),'Date-only Enrich start ready');
+    await click(win.webContents,receivedButton);
     await ready(()=>host("!!document.getElementById('enrich-task-page')&&!document.getElementById('enrich-task-page').hidden"),'Enrich verification entry');
     const id=tab.id,session=tab.view.webContents.session,load=await page('fixtureLoad');
     assert(browser.selected===null&&!browser.presentation.mounted,'background Enrich page was selected or presented');
@@ -95,8 +97,12 @@ app.whenReady().then(async()=>{
     assert(await host("document.activeElement.id==='enrich-task-page'&&document.getElementById('cancel-enrich').hidden===false"),'Enrich return lost focus or task controls');
     assert(tab.id===id&&tab.view.webContents.session===session&&await page('fixtureLoad')===load,'Enrich handoff recreated Page, Session or document');
     assert((await session.cookies.get({url:origin})).some(cookie=>cookie.name==='synthetic_session'),'Enrich handoff lost Cookie');
-    enrichPaper.abstract='Enriched synthetic abstract';enrichState={...enrichState,phase:'Completed',waiting_for_user:false,message:'Enrichment saved',saved:{abstract:enrichPaper.abstract}};
-    await ready(()=>host("document.getElementById('paper-abstract').textContent.includes('Enriched synthetic abstract')&&document.getElementById('enrich-task-page').hidden&&document.getElementById('cancel-enrich').hidden"),'Enrich completion refresh');
+    enrichPaper.history_missing=['accepted'];
+    enrichPaper.date_evidence=[{kind:'received',year:2026,month:8,day:21,publication_type:'journal',provider:'translator-web',record_id:enrichPaper.doi}];
+    enrichState={...enrichState,phase:'Completed',waiting_for_user:false,message:'Enrichment saved',saved:{date_evidence:enrichPaper.date_evidence}};
+    await ready(()=>host(`document.querySelector('[data-date-kind="received"]').textContent==='2026-08-21'
+      && document.querySelector('[data-date-kind="accepted"] [data-enrich]:not(:disabled)')
+      && document.getElementById('enrich-task-page').hidden && document.getElementById('cancel-enrich').hidden`),'Date-only Enrich completion and next date available');
     assert(requests.filter(request=>request.route==='/api/papers/paper-enrich/enrichment/start').length===1,'Enrich handoff restarted task');
     assert(!requests.some(request=>request.route==='/api/papers/paper-enrich/enrichment/cancel'),'Enrich Browser handoff cancelled task');
     await capture('enrich-completed');browser.endTask();

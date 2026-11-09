@@ -7,18 +7,20 @@ from allfold.application.paper_enrichment import (
     read_enrichment_target, save_enrichment, paper_fields, edit_paper_fields,
 )
 from allfold.identifiers import normalize_doi
-from allfold.persistence.safe_write import TextWriteCommittedError
+from allfold.persistence.safe_write import ContentChangedError, TextWriteCommittedError
+from allfold.url_safety import normalize_public_http_url
 from allfold.browser_diagnostics import format_browser_diagnostic, normalize_browser_diagnostic
 from allfold.application.history import observe
 from allfold.application.browser_runtime import ElectronDisconnected
 
 
-from allfold.models import parse_publication_date
+from allfold.models import EvidenceDateKind, parse_publication_date
+from allfold.paper_dates import source_date
 
 
-def publication_date_candidate(item, field="date"):
+def publication_date_candidate(item):
     """Preserve the precision of parsed parts from Zotero's sandbox."""
-    raw, parts = item.get(field), item.get(field + '_parts')
+    raw, parts = item.get('date'), item.get('date_parts')
     if not isinstance(raw, str) or not raw.strip() or not isinstance(parts, dict):
         return None
     if 'year' not in parts or set(parts) - {'year', 'month', 'day'}:
@@ -58,29 +60,50 @@ def authors_candidate(item):
     return names or None
 
 
-def translator_date_events(item, target, metadata_source):
-    from allfold.paper_dates import source_date
-    from allfold.models import EvidenceDateKind
+def translator_date_events(item, target, metadata_source, history, source_url):
     events = []
-    for field, kind in (('date', EvidenceDateKind.PUBLISHED), ('accepted', EvidenceDateKind.ACCEPTED)):
-        if value := publication_date_candidate(item, field):
-            event = source_date(value, kind=kind, source_label=field, provider='translator-' + ('doi' if metadata_source == 'doi' else 'web'),
-                record_id=target.doi, publication_type='preprint' if item.get('itemType') == 'preprint' else
-                    'conference' if item.get('itemType') == 'conferencePaper' else 'journal',
-                url='https://doi.org/' + target.doi)
-            if event:
-                events.append(event.model_dump(mode='json', exclude_none=True))
+    if (target.missing_date or target.missing_abstract or target.missing_authors) and (value := publication_date_candidate(item)):
+        event = source_date(value, kind=EvidenceDateKind.PUBLISHED, source_label='date',
+            provider='translator-doi' if metadata_source == 'doi' else 'translator-web',
+            record_id=target.doi, publication_type='preprint' if item.get('itemType') == 'preprint' else
+                'conference' if item.get('itemType') == 'conferencePaper' else 'journal',
+            url='https://doi.org/' + target.doi)
+        if event:
+            events.append(event.model_dump(mode='json', exclude_none=True))
+    if metadata_source != 'web' or item.get('itemType') != 'journalArticle' or not target.history_kinds or not isinstance(history, list):
+        return events
+    if not isinstance(source_url, str):
+        return events
+    try:
+        url = normalize_public_http_url(source_url)
+    except ValueError:
+        return events
+    if not url:
+        return events
+    seen = set()
+    for candidate in history:
+        if not isinstance(candidate, dict) or candidate.get('record_id') != target.doi:
+            continue
+        kind, label = candidate.get('kind'), candidate.get('source_label')
+        if kind not in ('received', 'accepted') or not isinstance(label, str) or not label.strip() or candidate.get('url') != url:
+            continue
+        value = candidate.get('value')
+        event = source_date(value, kind=kind, source_label=label, provider='translator-web',
+                            record_id=target.doi, publication_type='journal', url=url)
+        if event and (key := (kind, value, url)) not in seen:
+            seen.add(key)
+            events.append(event.model_dump(mode='json', exclude_none=True))
     return events
 
 
 class PaperEnrichment:
-    def __init__(self, bridge, browser_lock, *, diagnostics=None):
+    def __init__(self, bridge, browser_lock, *, diagnostics=None, current_workspace=None):
         self.bridge, self.browser_lock = bridge, browser_lock
         self.diagnostics = diagnostics
+        self.current_workspace = current_workspace
         self._lock = threading.RLock()
         self._task = None
         self._worker = None
-        self._completed_papers = set()
         self._latest = {}
 
     @property
@@ -89,8 +112,7 @@ class PaperEnrichment:
 
     def state(self, paper_id, request_id=None):
         with self._lock:
-            state = dict(phase='Idle', supported=self.bridge.connected, message='', request_id=None,
-                         completed_in_session=paper_id in self._completed_papers)
+            state = dict(phase='Idle', supported=self.bridge.connected, message='', request_id=None)
             diagnostic = self._latest.get(paper_id)
             if diagnostic and (request_id is None or diagnostic['request_id'] == request_id):
                 state['diagnostic'] = diagnostic
@@ -103,13 +125,11 @@ class PaperEnrichment:
                     missing_date=target.missing_date and 'publication_date' not in task['saved'])
             return state
 
-    def start(self, workspace, paper_id, *, developer_retry=False):
+    def start(self, workspace, paper_id):
         target = read_enrichment_target(workspace, paper_id)
         with self._lock:
             if self.running:
                 raise ValueError('Enrichment is still running')
-            if paper_id in self._completed_papers and not developer_retry:
-                raise ValueError('Enrichment was already saved in this session')
             if not self.bridge.connected:
                 raise ValueError('Electron runtime unavailable')
             owner = self.browser_lock.acquire('enrichment')
@@ -137,6 +157,7 @@ class PaperEnrichment:
                 if task['stop'].is_set():
                     raise InterruptedError()
                 pending = self.bridge.execute('enrich_paper', {'doi': target.doi,
+                    'history_kinds': list(target.history_kinds),
                     'task_id':task['request_id'], 'workflow_id':task['request_id'], 'paper_id':str(target.paper_id)}, lambda data: self._progress(task, data))
             result = pending.result()
             task['diagnostic'] = normalize_browser_diagnostic(result.get('diagnostic'))
@@ -160,40 +181,39 @@ class PaperEnrichment:
                 if target.missing_date and (date := publication_date_candidate(item)):
                     if target.publication_date is None or len(date) == 10:
                         candidate['publication_date'] = date
-                events = translator_date_events(item, target, result.get('metadata_source'))
+                events = translator_date_events(item, target, result.get('metadata_source'),
+                                                result.get('date_candidates'), result.get('source_url'))
                 if events:
                     candidate['date_evidence'] = events
-                if not candidate:
-                    raise ValueError('Translator returned no usable missing fields or date events')
+                if self.current_workspace and self.current_workspace().resolve() != target.workspace:
+                    raise ContentChangedError('Workspace changed during Enrich')
                 task['phase'] = 'Saving'
                 try:
                     candidate = save_enrichment(target, candidate.get('abstract'), candidate.get('publication_date'),
                                     authors=candidate.get('authors'), date_evidence=candidate.get('date_evidence', ()))
-                    task['message'] = 'Enrichment saved'
+                    task['message'] = 'Enrichment saved' if candidate else 'No new usable fields or date evidence found'
                 except TextWriteCommittedError:
                     task["sync_warning"] = True
                     task['message'] = 'Enrichment saved; filesystem sync failed'
                 task.update(phase='Completed', saved=candidate)
-                self._completed_papers.add(target.paper_id)
         except InterruptedError:
             task.update(phase='Cancelled', message='Enrichment cancelled')
         except Exception as error:
             if isinstance(error, ElectronDisconnected):
                 task["history_interrupted"] = True
-            task.update(phase='Failed', message=str(error) if isinstance(error, (ValueError, OSError)) else 'Enrichment failed')
+            task.update(phase='Failed', message=str(error) if isinstance(error, (ValueError, OSError, ContentChangedError)) else 'Enrichment failed')
         finally:
             with self._lock:
                 task['waiting_for_user'] = False
                 self._latest[target.paper_id] = dict(request_id=task['request_id'], phase=task['phase'],
                     message=task['message'], started_at=task['started_at'], finished_at=datetime.now(timezone.utc).isoformat(),
-                    requirements=dict(abstract=target.missing_abstract, authors=target.missing_authors,
+                    requirements=dict(abstract=target.missing_abstract, authors=target.missing_authors, history=list(target.history_kinds),
                         publication_date='any' if target.missing_date else 'none'), saved_fields=list(task['saved']), attempts=[])
                 self.browser_lock.release(task['owner'])
                 observe(self.diagnostics, 'finish', task['request_id'], 'interrupted' if task.get('history_interrupted') else task['phase'].lower(),
-                    statistics={'enriched':int(task['phase'] == 'Completed'), 'updated':len(task['saved'])},
+                    statistics={'enriched':int(bool(task['saved'])), 'updated':len(task['saved'])},
                     diagnostic=task.get('diagnostic'), details={'saved_fields':list(task['saved']),
-                        'requested_fields':[field for field, missing in (('abstract',target.missing_abstract),
-                            ('authors',target.missing_authors),('publication_date',target.missing_date)) if missing],
+                        'requested_fields':list(target.missing_fields),
                         'sync_warning':task.get('sync_warning',False),
                         'reason':'connection_lost' if task.get('history_interrupted') else 'cancelled' if task['phase'] == 'Cancelled' else 'failed' if task['phase'] == 'Failed' else None})
 

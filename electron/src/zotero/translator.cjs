@@ -6,7 +6,7 @@ const {pathToFileURL}=require('node:url');
 const {randomBytes}=require('node:crypto');
 const {normalizeDOI}=require('./local-importer.cjs');
 const {ImportFailure}=require('../workflows/import-errors.cjs');
-const {withTaskDeadline,waitFor,checkCanceled}=require('../browser/browser-task.cjs');
+const {withTaskDeadline,waitFor,checkCanceled,pause}=require('../browser/browser-task.cjs');
 const {log,attachmentCounts}=require('../shared/logging.cjs');
 const {requestSessionHTTP,RequestTransportError}=require('./session-http.cjs');
 function validateTranslatorURL(value) {
@@ -103,18 +103,64 @@ class TranslatorSandbox {
   async run(doc,method,args,options) {
     const operation=await this.openOperation(doc,options);
     try {
-      const result=await waitFor(()=>this.window.webContents.executeJavaScript(
-        'window.allfoldTranslator.'+method+'('+JSON.stringify(args)+')'),operation.signal,options.deadline ?? Infinity,'translation','translator');
-      this.current(operation);return result;
+      return await this.invoke(operation,method,args,options.deadline);
     }finally{await this.endOperation(operation);}
   }
-  async translate(root,doi,{signal,forEnrichment=false,workspaceMetadata,logContext}={}) {
+  async invoke(operation,method,args,deadline) {
+    const result=await waitFor(()=>this.window.webContents.executeJavaScript(
+      'window.allfoldTranslator.'+method+'('+JSON.stringify(args)+')'),operation.signal,deadline,'translation','translator');
+    this.current(operation);return result;
+  }
+  async completeHistory(source,doi,historyKinds,initial,{signal,deadline,logContext,sourceFrame}) {
+    const candidates=new Map(initial.map(item=>[item.kind+':'+item.value,item]));
+    const missing=()=>historyKinds.some(kind=>![...candidates.values()].some(item=>item.kind===kind));
+    const end=Math.min(deadline,Date.now()+30000);
+    let operation;
+    try {
+      while(missing() && Date.now()<end) {
+        await pause(signal,Math.min(1250,end-Date.now()));
+        if(Date.now()>=end)break;
+        const frame=sourceFrame();
+        const fresh=await this.browser.snapshot(this.browser.tabs.get(source.pageId),frame,{signal,deadline:end});
+        sourceFrame();
+        if(!source.documentId || fresh.documentId!==source.documentId || fresh.url!==source.url)
+          throw new ImportFailure('translation','document_changed');
+        operation ||= await this.openOperation(source,{signal,deadline:end,logContext});
+        const observed=await this.invoke(operation,'readHistory',{snapshot:fresh,doi},end);
+        if(observed.mismatch)throw new ImportFailure('translation','document_changed');
+        for(const item of observed.dateCandidates)candidates.set(item.kind+':'+item.value,item);
+      }
+    } catch(error) {
+      checkCanceled(signal);
+      if(error.diagnostic?.code!=='timeout' || Date.now()<end)throw error;
+    } finally {
+      if(operation)await this.endOperation(operation);
+    }
+    sourceFrame();
+    return [...candidates.values()];
+  }
+  async translate(root,doi,{signal,deadline:taskDeadline=Infinity,forEnrichment=false,historyKinds=[],workspaceMetadata,logContext}={}) {
     doi=normalizeDOI(doi);
     const browser=this.browser,contents=browser.tabs?.get(root.pageId)?.view.webContents,lifecycle=new AbortController();
+    const owner=browser.operation;
     const activeSignal=AbortSignal.any([lifecycle.signal,...(signal?[signal]:[])]);
     const current=()=>{checkCanceled(activeSignal);if(!browser.documentCurrent(root))throw new ImportFailure('translation','document_changed');};
     const changed=()=>{if(!browser.documentCurrent(root))lifecycle.abort(new ImportFailure('translation','document_changed'));};
     const closed=()=>lifecycle.abort(new ImportFailure('translation','page_closed'));
+    const navigatedFrames=new Set();
+    let historySource;
+    const navigationStarted=event=>{
+      const frame=event.frame;
+      const token=frame && !frame.isDestroyed()?frame.frameToken:null;
+      const selected=historySource && token===historySource.frameToken;
+      const originalURL=event.isMainFrame?root.url:selected?historySource.url:token?frame.url:null;
+      // A site's replaceState with the current URL keeps both the document and the route.
+      if(event.isSameDocument && event.url===originalURL)return;
+      if(token)navigatedFrames.add(token);
+      if(event.isMainFrame || selected)
+        lifecycle.abort(new ImportFailure('translation','document_changed'));
+    };
+    if(forEnrichment && historyKinds.length)contents?.on('did-start-navigation',navigationStarted);
     contents?.on('did-frame-navigate',changed);contents?.once('destroyed',closed);contents?.once('render-process-gone',closed);
     let documents=[root],result,watches=[],frameChanged=false;
     const frameLoaded=()=>{frameChanged=true;};contents?.on('did-frame-finish-load',frameLoaded);
@@ -122,7 +168,7 @@ class TranslatorSandbox {
       const error=result?.error || {};
       if(result?.terminal)throw new ImportFailure('translation',error.code==='timeout'?'timeout':error.code==='document_changed'?'document_changed':'canceled');
     };
-    const scan=async(bounded=activeSignal,deadline=Infinity)=>{
+    const scan=async(bounded=activeSignal,deadline=taskDeadline)=>{
       do {
         frameChanged=false;current();watches=[];
         documents=await browser.translationDocuments(root,{signal:bounded,deadline});
@@ -145,12 +191,12 @@ class TranslatorSandbox {
           try {
             current();
             const cookie=await browser.pageCookie(doc,{signal:bounded,deadline});
-            last=await this.run(doc,'translate',{snapshot:doc,candidate,cookie,doi,forEnrichment},
+            last=await this.run(doc,'translate',{snapshot:doc,candidate,cookie,doi,forEnrichment,historyKinds},
               {signal:bounded,deadline,logContext});
             failed(last);remember(doc,last);
             if(!last.ok)log('warn','translation_attempt_failed',{...logContext,stage:'translation',metadata_source:'web',translator:last.translator,translator_id:last.translatorID,code:last.error?.code || 'translator_failed',status:last.error?.status,transport_code:last.error?.code,net_error:last.error?.net_error,
               error_kind:last.error?.error_kind,error_name:last.error?.error_name,api_name:last.error?.api_name});
-            if(last.ok)return {...last,sourceDocument:doc,metadataSource:'web'};
+            if(last.ok)return {...last,sourceDocument:doc,metadataSource:'web',historyDeadline:deadline};
           }catch(error){current();checkCanceled(bounded);if(doc.rootFrameToken&&!browser.documentCurrent(doc)){frameChanged=true;continue;}throw error;}
         }
         result=last;
@@ -159,7 +205,8 @@ class TranslatorSandbox {
     };
     try {
       result=await scan();
-      if(!result.ok && watches.length)await withTaskDeadline(activeSignal,'translation',async(bounded,deadline)=>{
+      if(!result.ok && watches.length)await withTaskDeadline(activeSignal,'translation',async(bounded,watchDeadline)=>{
+        const deadline=Math.min(taskDeadline,watchDeadline);
         while(!result.ok && watches.length) {
           current();const observations=[];
           const watchKey=()=>JSON.stringify(watches.map(({doc,configs})=>({pageId:doc.pageId,frameToken:doc.frameToken,configs})));
@@ -189,7 +236,7 @@ class TranslatorSandbox {
       current();
       if(!result.ok) {
         const source=documents.find(doc=>doc.type==='application/pdf'&&browser.documentCurrent(doc)) || root;
-        result=await this.run(source,'searchDOI',{doi,url:source.url,forEnrichment},{signal:activeSignal,logContext});
+        result=await this.run(source,'searchDOI',{doi,url:source.url,forEnrichment},{signal:activeSignal,deadline:taskDeadline,logContext});
         failed(result);current();
         if(!result.ok)log('warn','translation_attempt_failed',{...logContext,stage:'translation',metadata_source:'doi',code:result.error?.code || 'translator_failed',status:result.error?.status,transport_code:result.error?.code,net_error:result.error?.net_error,
           error_kind:result.error?.error_kind,error_name:result.error?.error_name,api_name:result.error?.api_name});
@@ -210,11 +257,27 @@ class TranslatorSandbox {
           error_kind:result.error?.error_kind,error_name:result.error?.error_name,api_name:result.error?.api_name});
         throw new ImportFailure('translation',code,result.error?.status);
       }
+      let dateCandidates=result.dateCandidates;
+      if(dateCandidates) {
+        historySource=result.sourceDocument;
+        const sourceFrame=()=>{
+          current();
+          if(browser.operation!==owner || navigatedFrames.has(historySource.frameToken) || !browser.documentCurrent(historySource))
+            throw new ImportFailure('translation','document_changed');
+          const frame=browser.documentFrame?.(historySource);
+          if(frame && frame.url!==historySource.url)throw new ImportFailure('translation','document_changed');
+          return frame;
+        };
+        dateCandidates=await this.completeHistory(historySource,doi,historyKinds,dateCandidates,
+          {signal:activeSignal,deadline:result.historyDeadline,logContext,sourceFrame});
+      }
       log('info','translation_completed',details);this.lastTranslator=result.translator;
-      return {item:result.items[0],apiItem:result.apiItem,proxy:result.proxy || null,sourceDocument:result.sourceDocument,metadataSource:result.metadataSource};
+      return {item:result.items[0],apiItem:result.apiItem,proxy:result.proxy || null,sourceDocument:result.sourceDocument,metadataSource:result.metadataSource,
+        dateCandidates,translator:result.translator,translatorID:result.translatorID};
     }finally {
       lifecycle.abort();contents?.removeListener('did-frame-navigate',changed);contents?.removeListener('did-frame-finish-load',frameLoaded);
       contents?.removeListener('destroyed',closed);contents?.removeListener('render-process-gone',closed);
+      contents?.removeListener('did-start-navigation',navigationStarted);
     }
   }
   close() {this.operation?.cleanup?.();this.operation?.controller.abort();this.operation=null;ipcMain.removeHandler('translator:request');if(this.window&&!this.window.isDestroyed())this.window.destroy();}

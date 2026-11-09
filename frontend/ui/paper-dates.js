@@ -64,7 +64,18 @@
         }
       }
       for (const field of summary.querySelectorAll('[data-date-kind]')) {
-        field.textContent = dates.get(field.dataset.dateKind) || '';
+        const kind = field.dataset.dateKind;
+        field.textContent = dates.get(kind) || '';
+        if (!field.textContent && paper?.status === 'candidate' && paper.doi && paper.history_missing?.includes(kind)) {
+          const button = document.createElement('button');
+          button.type = 'button';
+          button.className = 'date-precision';
+          button.dataset.enrich = '';
+          button.textContent = '?';
+          button.setAttribute('aria-label', '补全 ' + kind + ' 日期');
+          button.disabled = true;
+          field.append(button);
+        }
       }
       evidenceList.replaceChildren(...evidence.map(evidenceRow));
     },

@@ -135,9 +135,127 @@ window.allfoldTranslatorReady=(async () => {
     return Zotero.Utilities.Item.itemToAPIJSON(clean)[0];
   }
   function matchingDOI(item,doi) {
-    const value=String(item?.DOI || '').trim().replace(/^https?:\/\/(?:dx\.)?doi\.org\//i,'').toLowerCase();
-    if(!/^10\.\d{4,9}\/\S+$/.test(value))return 'translator_doi_missing';
+    const value=doiValue(item?.DOI);
+    if(!value)return 'translator_doi_missing';
     return value===doi?null:'doi_mismatch';
+  }
+  function doiValue(raw) {
+    const value=String(raw || '').trim().replace(/^(?:https?:\/\/(?:dx\.)?doi\.org\/|doi:\s*)/i,'').toLowerCase();
+    return /^10\.\d{4,9}\/\S+$/.test(value)?value:null;
+  }
+  function documentDOIs(document,url) {
+    const keys=new Set(['citation_doi','bepress_citation_doi','prism.doi','dc.identifier','dc.identifier.doi','dcterms.identifier']);
+    const values=[...document.head.querySelectorAll('meta[content]')]
+      .filter(node=>keys.has((node.getAttribute('name') || node.getAttribute('property') || '').toLowerCase()))
+      .map(node=>node.content);
+    const source=new URL(url);
+    values.push(source.searchParams.get('id'),source.searchParams.get('doi'));
+    try {
+      values.push(decodeURIComponent(source.pathname).match(/(?:^|\/)(10\.\d{4,9}\/[^/]+)$/)?.[1]);
+    } catch { /* A malformed URL escape cannot establish a DOI. */ }
+    return new Set(values.map(doiValue).filter(Boolean));
+  }
+  const monthNames='january february march april may june july august september october november december'.split(' ');
+  const months=new Map(monthNames.flatMap((name,i)=>[[name,i+1],[name.slice(0,3),i+1]]));
+  months.set('sept',9);
+  function historyDate(raw) {
+    if(typeof raw!=='string')return null;
+    const text=raw.trim().replace(/\s+/g,' ').toLowerCase();
+    const iso=text.match(/^(\d{4})(?:-(\d{2})(?:-(\d{2}))?)?$/);
+    const dayFirst=text.match(/^(\d{1,2}) ([a-z]+)\.? (\d{4})$/);
+    const monthFirst=text.match(/^([a-z]+)\.?(?: (\d{1,2}),?)? (\d{4})$/);
+    let year,month,day;
+    if(iso) [,year,month,day]=iso;
+    else if(dayFirst || monthFirst) {
+      const [,name]=monthFirst || [];
+      year=(dayFirst || monthFirst)[3];
+      month=months.get(dayFirst?.[2] || name);
+      day=dayFirst?.[1] || monthFirst?.[2];
+      if(!month)return null;
+    } else return null;
+    if(+year<1 || month!==undefined && (+month<1 || +month>12)
+      || day!==undefined && (+day<1 || +day>new Date(Date.UTC(+year+400,+month,0)).getUTCDate()))return null;
+    return [year,month,day].filter(part=>part!==undefined).map(part=>String(part).padStart(2,'0')).join('-');
+  }
+  const historyLabel=/^(?:manuscript\s+)?(received|accepted)\s*:?$/i;
+  function historyCandidates(document,{doi,url},accepted) {
+    const facts=new Map();
+    const add=(label,raw,time)=>{
+      const source_label=label.trim().replace(/\s+/g,' ');
+      const kind=source_label.match(historyLabel)?.[1].toLowerCase();
+      const visible=historyDate(raw),structured=historyDate(time);
+      if(!kind || raw?.trim() && !visible || time && !structured || visible && structured && visible!==structured)return;
+      const value=visible || structured;
+      if(value)facts.set(kind+':'+value,{kind,value,source_label,url,record_id:doi});
+    };
+    add('accepted',accepted);
+    // These locators delimit article-history entries. Event names and dates
+    // are parsed identically regardless of the selected Web Translator.
+    const fromValue=(label,value)=>{
+      const time=value.matches('time')?value:value.querySelector('time');
+      add(label,value.textContent,time?.getAttribute('datetime'));
+    };
+    const fromRow=(row,label,selector)=>{
+      const value=row.querySelector(selector);
+      if(!value)return;
+      if(!label) {
+        const copy=row.cloneNode(true);
+        copy.querySelector(selector).remove();
+        copy.querySelectorAll('.u-hide').forEach(node=>node.remove());
+        label=copy.textContent;
+      }
+      fromValue(label,value);
+    };
+    const fromText=row=>{
+      const match=row.textContent.trim().match(/^((?:manuscript\s+)?(?:received|accepted)(?:\s*:|(?=\s)))\s*(.+)$/is);
+      if(match)add(match[1],match[2],row.querySelector('time')?.getAttribute('datetime'));
+    };
+    for(const row of document.querySelectorAll('li.c-bibliographic-information__list-item'))
+      fromRow(row,null,'.c-bibliographic-information__value time');
+    for(const row of document.querySelectorAll('.Summary__dates > div')) {
+      const label=row.querySelector(':scope > p.h5');
+      const values=row.querySelectorAll(':scope > p:not(.h5)');
+      if(label && values.length===1)fromRow(row,label.textContent,':scope > p:not(.h5)');
+    }
+    for(const label of document.querySelectorAll('#artText .articleinfo p > strong')) {
+      let raw='';
+      const times=[];
+      for(let next=label.nextSibling;next && next.nodeName!=='STRONG';next=next.nextSibling) {
+        raw+=next.textContent;
+        if(next.nodeName==='TIME')times.push(next);
+        else if(next.nodeType===Node.ELEMENT_NODE)times.push(...next.querySelectorAll('time'));
+      }
+      if(times.length<=1)add(label.textContent,raw.trim().replace(/;$/,''),times[0]?.getAttribute('datetime'));
+    }
+    for(const section of document.querySelectorAll('section.article-section')) {
+      if(section.querySelector('h3.article-section__header_text')?.textContent.trim().toLowerCase()!=='publication history')continue;
+      for(const row of section.querySelectorAll('.article-section__body ol.list--bullet > li'))
+        fromRow(row,null,'time');
+    }
+    for(const row of document.querySelectorAll('li[data-testid="publication-history-item"]'))
+      fromRow(row,null,':scope > [data-testid="publication-date-label"]');
+    for(const row of document.querySelectorAll('.pub-history-wrap .history-entry')) {
+      const label=row.querySelector('.wi-state');
+      if(label)fromRow(row,label.textContent,'.wi-date');
+    }
+    for(const label of document.querySelectorAll('#article-information dl.article-dates > dt')) {
+      const value=label.nextElementSibling;
+      if(value?.matches('dd'))fromValue(label.textContent,value);
+    }
+    for(const row of document.querySelectorAll([
+      'section.publication-history > ul.rlist > li',
+      '.itemPageRangeHistory > span',
+      'ul.article-chapter-history-list > li',
+      'section.core-history > div',
+      '#article-dates .article-dates > nobr',
+    ].join(',')))fromText(row);
+    return [...facts.values()];
+  }
+  function addPublicationParts(item) {
+    const parsed=Zotero.Date.strToDate(item.date || '');
+    item.date_parts={};
+    for(const key of ['year','month','day'])if(parsed[key]!=null && /^\d+$/.test(String(parsed[key])))
+      item.date_parts[key]=Number(parsed[key])+(key==='month'?1:0);
   }
   window.allfoldTranslator = {
     count:registry.length,
@@ -155,7 +273,13 @@ window.allfoldTranslatorReady=(async () => {
             proxy:t.proxy?.toJSON?t.proxy.toJSON():t.proxy || null}))};
       }catch(error){return failure(error,{observers:state.observers});}
     },
-    async translate({snapshot,candidate,cookie='',doi,forEnrichment=false}) {
+    readHistory({snapshot,doi}) {
+      const document=createDocument(snapshot,true,[]);
+      const ids=documentDOIs(document,snapshot.url);
+      const matches=ids.size===1 && ids.has(doi);
+      return {mismatch:ids.size>0 && !matches,dateCandidates:matches?historyCandidates(document,{doi,url:snapshot.url}):[]};
+    },
+    async translate({snapshot,candidate,cookie='',doi,forEnrichment=false,historyKinds=[]}) {
       let state=detection;
       if(snapshot && candidate) {
         const selected=byID.get(candidate.translatorID);
@@ -176,14 +300,15 @@ window.allfoldTranslatorReady=(async () => {
           if(!state.active)return {...failure(Error('Translation canceled')),terminal:true};
           const code=!items?.length?'translator_no_items':items.length!==1?'translator_multiple_items':matchingDOI(items[0],doi) || (typeof items[0].title!=='string' || !items[0].title.trim() || typeof items[0].itemType!=='string' || ['multiple','webpage','attachment','note'].includes(items[0].itemType)?'translator_invalid_item':null);
           if(code){last={ok:false,...info,itemCount:items?.length || 0,error:{kind:'translation',code,message:code}};continue;}
-          if(forEnrichment)for(const item of items)for(const field of ['date','accepted']) {
-            const parsed=Zotero.Date.strToDate(item[field] || '');item[field+'_parts']={};
-            for(const key of ['year','month','day'])if(parsed[key]!=null && /^\d+$/.test(String(parsed[key])))
-              item[field+'_parts'][key]=Number(parsed[key])+(key==='month'?1:0);
-          }
+          const item=items[0];
+          if(forEnrichment)addPublicationParts(item);
+          const history=forEnrichment && historyKinds.length>0 && item.itemType==='journalArticle';
+          const ids=history?documentDOIs(document,state.url):null;
+          const dateCandidates=history && (!ids.size || ids.size===1 && ids.has(doi))
+            ?historyCandidates(document,{doi,url:state.url},item.accepted):undefined;
           if(proxy?.toProper)for(const item of items)for(const attachment of item.attachments || [])if(attachment.url)attachment._allfoldProperURL=proxy.toProper(attachment.url);
           return {ok:true,...info,proxy:proxy?.toJSON?proxy.toJSON():proxy || null,
-            items:JSON.parse(JSON.stringify(items)),apiItem:forEnrichment?undefined:apiParent(items[0],proxy),itemCount:1};
+            items:JSON.parse(JSON.stringify(items)),apiItem:forEnrichment?undefined:apiParent(item,proxy),itemCount:1,dateCandidates};
         }catch(error){last=failure(error,info);if(last.terminal)break;}
       }
       return {...last,observers:state.observers};
@@ -199,11 +324,7 @@ window.allfoldTranslatorReady=(async () => {
         const code=!items?.length?'translator_no_items':items.length!==1?'translator_multiple_items':
           matchingDOI(items[0],doi) || (typeof items[0].title!=='string' || !items[0].title.trim() || typeof items[0].itemType!=='string' || ['multiple','webpage','attachment','note'].includes(items[0].itemType)?'translator_invalid_item':null);
         if(code)return {ok:false,...info,itemCount:items?.length || 0,error:{kind:'translation',code}};
-        if(forEnrichment)for(const item of items)for(const field of ['date','accepted']) {
-          const parsed=Zotero.Date.strToDate(item[field] || '');item[field+'_parts']={};
-          for(const key of ['year','month','day'])if(parsed[key]!=null && /^\d+$/.test(String(parsed[key])))
-            item[field+'_parts'][key]=Number(parsed[key])+(key==='month'?1:0);
-        }
+        if(forEnrichment)addPublicationParts(items[0]);
         return {ok:true,...info,items:JSON.parse(JSON.stringify(items)),apiItem:forEnrichment?undefined:apiParent(items[0],info.proxy?new Zotero.Proxy(info.proxy):null),itemCount:1};
       }catch(error){return failure(error,info);}
     },

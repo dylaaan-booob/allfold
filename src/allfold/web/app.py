@@ -286,7 +286,8 @@ def create_app(config_path: Path, *, electron_bridge: ElectronBridge, diagnostic
     run_slot = threading.Lock()
     app.state.run_coordinator = RunCoordinator(resolved_config_path, run_slot=run_slot, diagnostics=app.state.diagnostics)
     app.state.preprint_lookup = PreprintLookup(resolved_config_path, app.state.browser_task_lock, run_slot=run_slot)
-    app.state.paper_enrichment = PaperEnrichment(electron_bridge, app.state.browser_task_lock, diagnostics=app.state.diagnostics)
+    app.state.paper_enrichment = PaperEnrichment(electron_bridge, app.state.browser_task_lock,
+        diagnostics=app.state.diagnostics, current_workspace=lambda: load_config(resolved_config_path).output_dir)
     app.state.journal_cover_search = JournalCoverSearch(electron_bridge, app.state.browser_task_lock, diagnostics=app.state.diagnostics)
     app.state.batch_import = BatchImportService(electron_bridge, app.state.browser_task_lock, diagnostics=app.state.diagnostics)
     app.state.preparation_coordinator = PreparationCoordinator(electron_bridge, app.state.browser_task_lock, diagnostics=app.state.diagnostics)
@@ -495,7 +496,7 @@ def create_app(config_path: Path, *, electron_bridge: ElectronBridge, diagnostic
                 return JSONResponse({'error': 'Unknown action'}, status_code=404)
             with app.state.settings_write_lock:
                 workspace = load_config(resolved_config_path).output_dir
-                state = service.start(workspace, paper_id, developer_retry=body.developer_retry)
+                state = service.start(workspace, paper_id)
             return JSONResponse(state)
         except (ConfigurationError, ValueError, OSError, ContentChangedError, CompareReadError) as exc:
             return JSONResponse({'error': str(exc)}, status_code=409)

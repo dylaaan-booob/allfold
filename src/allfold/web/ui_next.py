@@ -15,6 +15,7 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from allfold.application.decisions import DecisionOutcome, keep_paper, reject_paper
 from allfold.application.journal_covers import cover_details
+from allfold.application.paper_enrichment import missing_history
 from allfold.application.preprint_lookup import formal_lookup_doi
 from allfold.application.run_state import RunProvider, read_last_run_snapshot
 from allfold.application.workspace import journal_for_paper, load_workspace
@@ -154,6 +155,7 @@ def install_ui_next(app: FastAPI, config_path: Path, csrf_token: str, *, read_ta
                     subjects[(None, True)].append(records[key])
                 record = records[key]
                 enrichment = app.state.paper_enrichment.state(paper.paper_id)
+                history_missing = missing_history(paper)
                 item = dict(id=str(paper.paper_id), title=paper.title,
                             publication_date=paper.publication_date, abstract=paper.abstract,
                             conference=paper.conference,
@@ -167,7 +169,9 @@ def install_ui_next(app: FastAPI, config_path: Path, csrf_token: str, *, read_ta
                             preprint_lookup_available=bool(formal_lookup_doi(
                                 paper.external_ids.doi, paper.publication_type, paper.journal, paper.conference)),
                             discovered_at=paper.discovered_at.isoformat(), status=paper.status.value,
-                            enriched=enrichment["completed_in_session"],
+                            history_missing=list(history_missing),
+                            enriched=bool(paper.abstract and paper.abstract.strip() and paper.authors
+                                and paper.publication_date and len(paper.publication_date) != 7 and not history_missing),
                             enrichPhase=enrichment["phase"], enrichMessage=enrichment["message"],
                             enrichment_request_id=enrichment["request_id"],
                             syncWarning="sync failed" in enrichment["message"])
