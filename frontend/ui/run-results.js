@@ -27,6 +27,10 @@ const labels={
 };
 const label=value=>labels[value] || value;
 export const resultLabel=label;
+export function completionLabel(status, targets) {
+  if(status==='empty')return targets>0?'无匹配':'无需补全';
+  return ({complete:'完成',partial:'部分完成',failed:'失败',cancelled:'已取消'})[status] || '未知';
+}
 const identifierProblem=item=>!['resolved','complete','empty','unknown'].includes(item.status);
 const journalProblem=journal=>!['complete','empty','observed','unknown'].includes(journal.status) || journal.identifiers.some(identifierProblem);
 
@@ -101,7 +105,7 @@ export function renderRunResult(result,{compact=false,id='' }={}) {
     .filter(item=>item.reasons.length).map(item=>`<li>Record ${count(item.record_number)} · ${esc(item.doi || item.ut || '')} · ${item.reasons.map(reason=>esc(label(reason))).join(' · ')}</li>`).join('');
   const issues=result.issues.filter(i=>i.category!=='exclusion').map(issue=>`<li><strong>${esc(label(issue.category))}</strong> · ${esc(result.provider==='wos'?wosDiagnostic(issue.message):issue.message)}${issue.issn?` · ${esc(issue.issn)}`:''}</li>`).join('');
   const providerRuns=(details.provider_runs || []).map(run=>`<li><strong>${esc(run.provider)} · ${esc(run.source)}</strong> · ${esc(label(run.status))} · ${count(run.candidates)} candidates / ${count(run.retained)} retained · ${count(run.created)} new / ${count(run.existing)} existing${run.limitations?.length?`<p>${run.limitations.map(esc).join(' · ')}</p>`:''}</li>`).join('');
-  const phases=result.provider==='integrated'?`<p class="s-run-phases">Discovery · ${esc(label(details.discovery_status || 'unknown'))} / Run metadata completion · ${esc(({complete:'完成',empty:'无需补全',partial:'部分完成',failed:'失败',cancelled:'已取消'})[details.completion_status] || '未知')}</p>`:'';
+  const phases=result.provider==='integrated'?`<p class="s-run-phases">Discovery · ${esc(label(details.discovery_status || 'unknown'))} / Run metadata completion · ${esc(completionLabel(details.completion_status,stats.completion_targets))}</p>`:'';
   return header+impact+phases+coverage+`<details class="s-run-provider-details" data-result-detail="${esc(id)}:provider"><summary>Provider Details</summary>${metrics(stats,['integrated_candidates','integrated_deduplicated','returned_records','eligible_records','search_total','conflicts'])}
     ${providerRuns?`<ul>${providerRuns}</ul>`:''}
     ${metricSection('正常排除',details.skipped)}

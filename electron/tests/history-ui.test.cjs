@@ -96,3 +96,16 @@ test('Run history keeps first-public coverage independent of Paper creation',asy
   assert.match(html,/已验证 PMID 1/);assert.match(html,/无 PMID 匹配 2/);
   assert.match(html,/首版日期已记录/);assert.match(html,/已知首版未确定/);assert.match(html,/首版证据冲突/);
 });
+
+test('Run results distinguish no completion match from a phase without targets',async()=>{
+  const {renderHistoryRecord}=await import('../../frontend/ui/history-view.js');
+  const {renderRunResult}=await import('../../frontend/ui/run-results.js');
+  const result={availability:'available',provider:'integrated',status:'completed',
+    created_papers:1,existing_papers:0,details:{discovery_status:'complete',completion_status:'empty'},
+    journals:[],issues:[],statistics:{completion_targets:1,pmid_resolution_no_match:1}};
+  assert.match(renderRunResult(result),/Run metadata completion · 无匹配/);
+  const history={kind:'run',provider:'integrated',task_id:'no-match',outcome:'completed',
+    details:result.details,statistics:result.statistics};
+  assert.match(renderHistoryRecord(history),/Run metadata completion · 无匹配/);
+  assert.match(renderHistoryRecord({...history,statistics:{completion_targets:0}}),/Run metadata completion · 无需补全/);
+});

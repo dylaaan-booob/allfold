@@ -1,4 +1,4 @@
-"""Discovery and explicit API-completion HTTP adapters classify bounded failures."""
+"""Discovery and metadata HTTP adapters classify bounded failures."""
 import httpx
 import pytest
 
