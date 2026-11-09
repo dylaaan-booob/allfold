@@ -149,8 +149,7 @@
         "import",
         "kept",
         "prepare",
-        "run",
-        "api_completion"
+        "run"
       ]
     },
     "provider": {

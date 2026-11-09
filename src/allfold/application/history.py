@@ -97,6 +97,8 @@ def finish_run(store, task_id, result, *, provider=None, diagnostic=None, interr
             'errors':sum(i.get('severity') == 'error' for i in summary['issues']),
             **{key:value for key,value in stats.items() if key in {
                 'integrated_candidates','integrated_deduplicated','work_location_targets','completion_targets',
+                'pmid_resolution_matched','pmid_resolution_no_match','pmid_resolution_conflicts',
+                'pmid_resolution_failed','pmid_resolution_cancelled',
                 'completion_requests','completion_date_facts_added','first_public_recorded','first_public_no_association',
                 'first_public_known_unresolved','first_public_conflict','first_public_failed','first_public_cancelled'}}},
         diagnostic=diagnostic, details={'result_status':status, 'coverage_status':summary['coverage_status'],

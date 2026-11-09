@@ -156,7 +156,7 @@ Provider adapters emit operation-local `ProviderWorkEvidence`; canonicalization 
 explicit strong identities and selects missing metadata in a fixed order.
 One Integrated Run overlaps selected PubMed/WoS/OpenAlex journal Discovery under the parent slot and workflow identity. PubMed batches ESearch History/EFetch; OpenAlex merges native source-ISSN filters. Verified pages/native export batches stream DOI targets to shared exact Work lookup. Provider clients share operation-local capability caches, in-flight full Work details and host pacing. A bounded producer/consumer queue coalesces DOI inputs while sources remain active, then drains the final short batch after every producer settles. Work lookup responses enrich discovered roots and never add Discovery candidates. Formal PubMed identity remains separate from a merged Work’s potentially preprint PMID. The Browser worker retains the same captured configuration/Workspace/cancellation authority and never writes a separate Run snapshot or History result.
 
-After Discovery and Work lookup settle, new candidates receive batched API date/relationship completion and dependent native preprint-version verification. Only then does one protected create chain run. Bound version records supply dates/First public/provenance while direct formal evidence alone supplies ordinary metadata and persisted identity. Saved Papers including Rejected are excluded from completion and remain unchanged; fixed ordinary-field source priority is independent of response order. Run always declares PubMed, OpenAlex, Europe PMC, Crossref, arXiv, bioRxiv and medRxiv helpers independently of both selection controls. Native preprint requests follow known associations; automatic Run disables blind formal-DOI bioRxiv/medRxiv reverse scans. API helpers are distinct from selected journal Discovery and from the user's independent API Completion choices.
+After Discovery and Work lookup settle, Run deduplicates and excludes saved Papers including Rejected. Batched PubMed article-ID lookup resolves missing direct formal PMIDs. The shared completion engine adds metadata, date and relationship evidence, follows known native preprint targets and gives exhausted transient requests one additional attempt in final settlement. Bound versions contribute date evidence and provenance. Direct formal records supply ordinary metadata and persisted identity. Run uses fixed PubMed, OpenAlex, Europe PMC, Crossref, arXiv, bioRxiv and medRxiv helpers independently of the selected Discovery sources. Only then does one protected create chain run.
 Native publication-date filters determine its range; subsequent evidence never
 rejudges inclusion. Commit rechecks captured configuration, source revision,
 Workspace/Papers identity and the complete identity index before atomic creates.
@@ -166,20 +166,13 @@ persistent store. Only direct reliable identifiers group Run records and establi
 saved ownership. Old Paper identity fields explicitly block safe indexing/writes;
 old files are preserved until a user chooses a backed-up Workspace Reset.
 
-The independent API-completion coordinator reads selected saved non-Rejected
-Paper Markdown, uses its current fields before scheduling independent
-ordinary/date/First-public goals, and shares Run/workflow admission without
-browser operations. Known native preprint targets precede association discovery;
-coverage is recomputed after all relations in each response are absorbed. One
-operation owns the request cache and arXiv batches across selected Papers. It
-owns progress, cancellation, per-Paper outcomes, History and shutdown settlement.
-Network work holds no Workspace lock; short commits recheck exact Paper bytes,
-file/directory identity, status, configuration and cancellation. Only empty
-ordinary metadata/First public and appended Paper date/source facts may change.
-A saved First public satisfies that goal directly. Related versions can supply
-operation-local dates after response binding, without becoming durable identities.
-Only the Paper update is committed; unsaved records and caches are discarded. It never merges
-saved Papers or changes their primary identifiers, human content or workflow.
+The Info preprint lookup coordinator binds to one saved Paper and verifies both
+native bioRxiv/medRxiv publication and version responses. It shares Run/workflow
+admission without browser authority. Network work holds no Workspace write
+lock. The guarded commit checks the exact Paper, configuration, Workspace and
+cancellation before appending verified preprint dates and sources and filling an
+empty First public. The lookup keeps its result and request cache within the
+operation.
 
 First public requires established earliest linked preprint evidence. Typed
 journal events remain a separate date collection. Webpage Enrich retains its

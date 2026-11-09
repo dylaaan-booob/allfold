@@ -47,13 +47,15 @@ def test_openalex_explicit_credentials_keep_revision_and_clear_contract(tmp_path
 def test_selected_providers_survive_settings_save_and_runtime_load(tmp_path):
     config, _, _, _ = current_mapping_document(tmp_path)
     selected = ("pubmed",)
-    completion = ("crossref", "arxiv")
-    saved = save_settings(config, replace(load_settings(config).draft, enabled_providers=selected, completion_providers=completion))
+    order = ("wos", *load_settings(config).draft.provider_order[:-1])
+    aliases = {"wos": "Web of Science", "crossref": "Crossref Dates"}
+    saved = save_settings(config, replace(load_settings(config).draft, enabled_providers=selected,
+                                          provider_order=order, provider_aliases=aliases))
     assert saved.outcome is SettingsSaveOutcome.SAVED
     assert load_settings(config).draft.enabled_providers == selected
     assert load_config(config).enabled_providers == selected
-    assert load_config(config).completion_providers == completion
-    assert load_settings(config).draft.completion_providers == completion
+    assert load_config(config).provider_order == order
+    assert load_settings(config).draft.provider_aliases == aliases
     assert "pubmed" in config.read_text()
 
 
@@ -67,10 +69,10 @@ def test_retired_configuration_reports_explicit_new_config_guidance(tmp_path, le
 
 def test_provider_defaults_and_all_nonempty_discovery_combinations(tmp_path):
     from itertools import combinations
-    from allfold.config import DEFAULT_PROVIDER_ORDER, ENABLED_PROVIDERS, COMPLETION_PROVIDERS
+    from allfold.config import DEFAULT_PROVIDER_ORDER, ENABLED_PROVIDERS
     from allfold.web.ui_next import provider_expressions
     assert ENABLED_PROVIDERS == ('pubmed','openalex')
-    assert DEFAULT_PROVIDER_ORDER[0] == 'pubmed' and 'europe_pmc' in COMPLETION_PROVIDERS
+    assert DEFAULT_PROVIDER_ORDER[0] == 'pubmed' and 'europe_pmc' in DEFAULT_PROVIDER_ORDER
     for size in range(1,4):
         for selected in combinations(('pubmed','wos','openalex'),size):
             definition = parse_monitor_definition(tmp_path/'monitor.yaml', {'keyword_expression':'causal',

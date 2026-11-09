@@ -57,7 +57,7 @@ from allfold.persistence.safe_write import ContentChangedError, WorkspaceOperati
 from allfold.models import WorkflowStatus
 from allfold.integrations.zotero_local import ZoteroLocalClient
 from allfold.application.coordinators.paper_enrichment import PaperEnrichment
-from allfold.application.coordinators.api_completion import ApiCompletion
+from allfold.application.coordinators.preprint_lookup import PreprintLookup
 from allfold.application.coordinators.wos_coordinator import WoSCoordinator
 from allfold.application.coordinators.run_coordinator import CoordinatorStatus, RunCoordinator
 from allfold.web.settings_api import install_settings_api, settings_response, settings_error
@@ -95,10 +95,9 @@ class _EnrichmentAction(BaseModel):
     developer_retry: StrictBool = False
 
 
-class _ApiCompletionAction(BaseModel):
+class _PreprintLookupAction(BaseModel):
     model_config = ConfigDict(extra='forbid')
     csrf_token: str
-    paper_ids: tuple[UUID, ...] = ()
     request_id: str | None = None
 
 
@@ -242,10 +241,10 @@ def create_app(config_path: Path, *, electron_bridge: ElectronBridge, diagnostic
             application.state.run_coordinator.shutdown()
             electron_bridge.finish_disconnected()
             await asyncio.to_thread(application.state.kept_workflow.shutdown)
-            for worker in (application.state.api_completion, application.state.paper_enrichment, application.state.journal_cover_search, application.state.wos_coordinator):
+            for worker in (application.state.preprint_lookup, application.state.paper_enrichment, application.state.journal_cover_search, application.state.wos_coordinator):
                 await asyncio.to_thread(worker.shutdown)
             for worker in (application.state.run_coordinator, application.state.batch_import, application.state.preparation_coordinator,
-                           application.state.api_completion, application.state.paper_enrichment, application.state.journal_cover_search, application.state.wos_coordinator):
+                           application.state.preprint_lookup, application.state.paper_enrichment, application.state.journal_cover_search, application.state.wos_coordinator):
                 await asyncio.to_thread(worker.join)
             await asyncio.to_thread(application.state.kept_workflow.advance)
 
@@ -286,8 +285,7 @@ def create_app(config_path: Path, *, electron_bridge: ElectronBridge, diagnostic
 
     run_slot = threading.Lock()
     app.state.run_coordinator = RunCoordinator(resolved_config_path, run_slot=run_slot, diagnostics=app.state.diagnostics)
-    app.state.api_completion = ApiCompletion(resolved_config_path, app.state.browser_task_lock,
-        run_slot=run_slot, diagnostics=app.state.diagnostics)
+    app.state.preprint_lookup = PreprintLookup(resolved_config_path, app.state.browser_task_lock, run_slot=run_slot)
     app.state.paper_enrichment = PaperEnrichment(electron_bridge, app.state.browser_task_lock, diagnostics=app.state.diagnostics)
     app.state.journal_cover_search = JournalCoverSearch(electron_bridge, app.state.browser_task_lock, diagnostics=app.state.diagnostics)
     app.state.batch_import = BatchImportService(electron_bridge, app.state.browser_task_lock, diagnostics=app.state.diagnostics)
@@ -461,26 +459,28 @@ def create_app(config_path: Path, *, electron_bridge: ElectronBridge, diagnostic
     def enrichment_state(paper_id: UUID, request_id: str | None = None):
         return JSONResponse(app.state.paper_enrichment.state(paper_id, request_id))
 
-    @app.get('/api/papers/api-completion/state')
-    def api_completion_state():
-        return JSONResponse(app.state.api_completion.state(), headers={'Cache-Control': 'no-store'})
+    @app.get('/api/papers/{paper_id}/preprint-lookup/state')
+    def preprint_lookup_state(paper_id: UUID, request_id: str | None = None):
+        return JSONResponse(app.state.preprint_lookup.state(paper_id, request_id),
+                            headers={'Cache-Control': 'no-store'})
 
-    @app.post('/api/papers/api-completion/start')
-    def api_completion_start(body: _ApiCompletionAction):
+    @app.post('/api/papers/{paper_id}/preprint-lookup/start')
+    def preprint_lookup_start(paper_id: UUID, body: _PreprintLookupAction):
         if not _csrf_valid(body.csrf_token, csrf_token):
             return JSONResponse({'error': 'Invalid CSRF token'}, status_code=403)
         try:
-            with app.state.settings_write_lock:
-                return JSONResponse(app.state.api_completion.start(body.paper_ids))
+            with app.state.settings_write_lock, app.state.reset_lock:
+                return JSONResponse(app.state.preprint_lookup.start(paper_id))
         except (ConfigurationError, ValueError, OSError, ContentChangedError, CompareReadError) as error:
             return JSONResponse({'error': str(error)}, status_code=409)
 
-    @app.post('/api/papers/api-completion/cancel')
-    def api_completion_cancel(body: _ApiCompletionAction):
+    @app.post('/api/papers/{paper_id}/preprint-lookup/cancel')
+    def preprint_lookup_cancel(paper_id: UUID, body: _PreprintLookupAction):
         if not _csrf_valid(body.csrf_token, csrf_token):
             return JSONResponse({'error': 'Invalid CSRF token'}, status_code=403)
-        accepted = app.state.api_completion.cancel(body.request_id)
-        return JSONResponse({'accepted': accepted}, status_code=200 if accepted else 409)
+        accepted = app.state.preprint_lookup.cancel(paper_id, body.request_id)
+        return JSONResponse({'accepted': True} if accepted else {'error': 'Preprint lookup is no longer active'},
+                            status_code=200 if accepted else 409)
 
     @app.post("/api/papers/{paper_id}/enrichment/{action}")
     def enrichment_action(paper_id: UUID, action: str, body: _EnrichmentAction):
@@ -517,10 +517,10 @@ def create_app(config_path: Path, *, electron_bridge: ElectronBridge, diagnostic
         with app.state.reset_lock:
             try:
                 if (app.state.run_coordinator.snapshot().status is CoordinatorStatus.RUNNING
-                        or app.state.api_completion.running
+                        or app.state.preprint_lookup.running
                         or app.state.wos_coordinator.running or app.state.batch_import.running
                         or app.state.kept_workflow.snapshot().active):
-                    raise ValueError('A Run or Import is active; field edit refused')
+                    raise ValueError('Another workflow is active; field edit refused')
                 workspace = load_config(resolved_config_path).output_dir
                 app.state.paper_enrichment.edit_fields(workspace, paper_id, body.revision, **changes)
                 return JSONResponse({'saved': True})

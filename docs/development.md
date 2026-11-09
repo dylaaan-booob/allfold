@@ -116,20 +116,18 @@ See [architecture](architecture.md) before changing ownership and [safety](safet
 
 ### Integrated discovery acceptance
 
-The [Provider guide](providers.md) records native fields, pagination and date limits,
-separate explicit selected-only API completion, configuration reconstruction,
-snapshot versions and the change-scoped manual acceptance reference. HTTP fixtures
-and isolated Electron rendering do not establish live
-provider or Zotero compatibility. Provider requests use the shared HTTP
-client; no provider credentials or real Workspace are test fixtures.
+The [Provider guide](providers.md) describes Discovery, creation-time completion,
+the Info preprint lookup and change-scoped acceptance. HTTP fixtures and rendered
+Electron tests use synthetic data and isolated configurations. Real Provider
+compatibility and Zotero acceptance require separate verification.
 
-Focused operation regressions use `tests/test_integrated_run.py`,
-`tests/test_api_completion.py`, `tests/test_metadata_completion.py` and
-`tests/test_paper_enrichment.py`. They cover Paper-only rediscovery, direct-ID matching, legacy identity refusal, restart/unkept/Reject
-eligibility, no-match, exact-revision/directory/configuration refusal, cancellation,
-Paper date/source fact append/dedup, date-backed restart queries and local First public saves, operation-local version relations, webpage month upgrade and event-only saves. The isolated
-Electron workspace fixture renders separate discovery/completion selections,
-named date events and explicit multi-Paper start/cancel without external APIs.
+Focused regressions use `tests/test_integrated_run.py`, `tests/test_two_stage_run.py`,
+`tests/test_preprint_lookup.py`, `tests/test_metadata_completion.py` and
+`tests/test_paper_enrichment.py`. They exercise create-only rediscovery,
+batched PubMed identity validation, HTTP settlement, exact Paper and Workspace
+authority, cancellation, deduplication and event-only Enrich saves. The
+Electron workspace fixture renders the four date values, full Info evidence,
+and the one-Paper lookup with isolated API responses.
 Snapshot regressions in `tests/test_run_state.py`, `tests/test_run_commit.py` and
 `tests/test_wos.py` cover unified Integrated v6, unsupported Integrated v4/v5, preserved legacy WoS v4,
 invalid/I/O cases, bound atomic writes and truthful write-failure counts.
