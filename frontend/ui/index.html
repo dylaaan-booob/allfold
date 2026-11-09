@@ -98,9 +98,11 @@
       <div class="paper-navigation"><div class="paper-stepper"><button id="previous-paper" aria-label="上一篇 Paper">←</button><strong id="paper-position"></strong><button id="next-paper" aria-label="下一篇 Paper">→</button></div></div>
       <article id="paper-detail" tabindex="-1">
         <h1 id="view-paper-title" tabindex="-1"></h1>
-        <dl class="paper-metadata paper-dates">
-          <div><dt>First public</dt><dd id="paper-first-public"></dd></div>
-          <div><dt>期刊日期</dt><dd id="paper-journal-dates"></dd></div>
+        <dl id="paper-dates" class="paper-metadata paper-dates">
+          <div><dt>First public</dt><dd id="paper-first-public" data-date-kind="first-public"></dd></div>
+          <div><dt>Received</dt><dd data-date-kind="received"></dd></div>
+          <div><dt>Accepted</dt><dd data-date-kind="accepted"></dd></div>
+          <div><dt>Published</dt><dd data-date-kind="published"></dd></div>
         </dl>
         <button id="api-completion-open" class="s-button" type="button">API 补全</button>
         <details id="paper-metadata-details">
@@ -113,6 +115,7 @@
           <div><dt>Identifiers</dt><dd id="paper-identifiers"></dd></div>
           <div><dt>Indexed terms</dt><dd id="paper-indexed-terms"></dd></div>
           <div><dt>Providers</dt><dd id="paper-providers"></dd></div>
+          <div><dt>Date evidence</dt><dd><ol id="paper-date-evidence" class="paper-date-evidence"></ol></dd></div>
         </dl>
         </details>
         <div class="review-controls" hidden><p id="enrich-status" role="status" aria-live="polite"></p><button id="enrich-task-page" hidden>打开 Browser 验证</button><button id="cancel-enrich" hidden>Cancel</button></div>

@@ -20,7 +20,8 @@ from allfold.application.workspace import journal_for_paper, load_workspace
 from allfold.application.journal_lookup import journal_metadata
 from allfold.persistence.user_state import load_user_state, read_user_state
 from allfold.config import ConfigurationError, load_config
-from allfold.models import WorkflowStatus
+from allfold.models import EvidenceDate, WorkflowStatus
+from allfold.url_safety import normalize_public_http_url
 from allfold.keywords import parse_keyword_expression
 from allfold.persistence.safe_write import ContentChangedError
 from allfold.application.coordinators.run_coordinator import StartOutcome
@@ -29,6 +30,17 @@ from allfold.providers.integrated import PROVIDERS, compile_query
 from allfold.application.integrated_run import validate_selection
 from allfold.integrations.openalex_credentials import read_credential, OpenAlexCredentialError
 from allfold.web.run_presentation import build_run_presentation, build_run_result_summary
+
+
+def _date_evidence_payload(event: EvidenceDate) -> dict:
+    fact = event.model_dump(mode="json", exclude_none=True, exclude={"url"})
+    try:
+        url = normalize_public_http_url(event.url)
+    except ValueError:
+        return fact
+    if url:
+        fact["url"] = url
+    return fact
 
 
 def ui_next_page() -> FileResponse:
@@ -146,7 +158,7 @@ def install_ui_next(app: FastAPI, config_path: Path, csrf_token: str, *, read_ta
                             conference=paper.conference,
                             journal=paper.journal, publication_type=paper.publication_type,
                             first_public_at=paper.first_public_at,
-                            date_evidence=[item.model_dump(mode="json", exclude_none=True) for item in paper.date_evidence],
+                            date_evidence=[_date_evidence_payload(event) for event in paper.date_evidence],
                             indexed_terms=[item.model_dump(mode="json", exclude_none=True) for item in paper.indexed_terms],
                             external_ids=paper.external_ids.model_dump(exclude_none=True),
                             sources=[source.model_dump(mode="json", exclude_none=True) for source in paper.sources],
