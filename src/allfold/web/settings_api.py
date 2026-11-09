@@ -194,7 +194,7 @@ def install_resource_api(app, config_path, csrf_token):
 # deliberately remain on the explicit Preview/Confirm operation boundary.
 AUTOSAVE_FIELDS = frozenset({
     'name', 'keyword_expression', 'from_month', 'to_month', 'log_level',
-    'crossref_mailto', 'provider_aliases', 'provider_order', 'enabled_providers', 'completion_providers',
+    'crossref_mailto', 'provider_aliases', 'provider_order', 'enabled_providers',
     'display_name', 'transition_delay_seconds', 'auto_import_after_preparation', 'zotero_target',
     'institution_name', 'institution_idp_entity_id', 'institution_use_shibboleth',
     'journals', 'access_services', 'groups', 'custom_labels',
@@ -231,7 +231,7 @@ def install_autosave_api(app, config_path, csrf_token):
                 for key, row_type in (('journals', SettingsJournalRow), ('access_services', SettingsAccessServiceRow)):
                     if key in updates:
                         updates[key] = tuple(row_type(**row) for row in updates[key])
-                for key in ('provider_order', 'enabled_providers', 'completion_providers', 'groups', 'custom_labels'):
+                for key in ('provider_order', 'enabled_providers', 'groups', 'custom_labels'):
                     if key in updates:
                         updates[key] = tuple(updates[key])
                 values = replace(values, **updates)

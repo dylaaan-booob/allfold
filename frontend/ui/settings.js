@@ -762,8 +762,8 @@ function renderRun() {
   }
   for(const group of root.querySelectorAll('[data-provider-settings]'))group.hidden=group.dataset.providerSettings!==selectedProvider;
   const discovery=new Set(['pubmed','wos','openalex']);
-  const choices=(ids,role,values)=>ids.map(id=>`<label class="s-setting-row s-check"><span class="s-setting-label">${esc(providerName(id))}</span><input type="checkbox" data-${role}-provider="${id}" ${values.includes(id)?'checked':''}></label>`).join('');
-  $('s-run-operations').innerHTML=`<fieldset class="s-setting-group"><legend>Journal Discovery</legend>${choices(providerOrder().filter(id=>discovery.has(id)),'discovery',draft.monitor.enabledProviders)}</fieldset><div class="s-run-operation"><button class="s-button" data-run-provider="integrated" disabled>Run ↗</button><p class="s-help" data-run-reason="integrated"></p></div><p class="s-help">Run 自动使用 PubMed、OpenAlex、Europe PMC、Crossref 与原生预印本 API 补全日期和关系；下方选择仅用于独立 API 补全。</p><fieldset class="s-setting-group"><legend>API 补全</legend>${choices(providerOrder().filter(id=>id!=='wos'),'completion',draft.monitor.completionProviders)}</fieldset>`;
+  const choices=ids=>ids.map(id=>`<label class="s-setting-row s-check"><span class="s-setting-label">${esc(providerName(id))}</span><input type="checkbox" data-discovery-provider="${id}" ${draft.monitor.enabledProviders.includes(id)?'checked':''}></label>`).join('');
+  $('s-run-operations').innerHTML=`<fieldset class="s-setting-group"><legend>Journal Discovery</legend>${choices(providerOrder().filter(id=>discovery.has(id)))}</fieldset><div class="s-run-operation"><button class="s-button" data-run-provider="integrated" disabled>Run ↗</button><p class="s-help" data-run-reason="integrated"></p></div><p class="s-help">Run 自动使用 PubMed、OpenAlex、Europe PMC、Crossref 与原生预印本 API 在保存新 Paper 前补全身份、日期和预印本关系。</p>`;
   updateRunButtons();renderRunRecords();
 }
 function updateRunButtons() {
@@ -790,11 +790,10 @@ async function refreshRun() {
   catch(error){$('s-run-feedback').textContent=error.message;}
 }
 $('s-run-operations').addEventListener('change',event=>{
-  const id=event.target.dataset.discoveryProvider || event.target.dataset.completionProvider;if(!id)return;
-  const field=event.target.dataset.completionProvider?'completionProviders':'enabledProviders';
-  const selected=new Set(draft.monitor[field]);
+  const id=event.target.dataset.discoveryProvider;if(!id)return;
+  const selected=new Set(draft.monitor.enabledProviders);
   if(event.target.checked)selected.add(id);else selected.delete(id);
-  draft.monitor[field]=providerOrder().filter(provider=>selected.has(provider));
+  draft.monitor.enabledProviders=providerOrder().filter(provider=>selected.has(provider));
   changed({immediate:true});
 });
 $('s-providers').addEventListener('click',event=>{const button=event.target.closest('[data-provider]');if(button){selectedProvider=button.dataset.provider;renderRun();runLayoutHost.closeFlyout();runLayoutHost.openSidebar('configuration');}});
@@ -1278,7 +1277,7 @@ function groupKey(name) {return 'group:'+name;}
 function project(data) {
   const v=data.values,order=v.provider_order;
   if(!Array.isArray(order) || order.length!==Object.keys(providerDefaults).length || new Set(order).size!==order.length || order.some(id=>!Object.hasOwn(providerDefaults,id)))throw new Error('provider_order 必须完整且不重复地列出所有支持的 Provider；请修正 YAML 后 Reload。');
-  return {monitor:{name:v.name,expression:v.keyword_expression,enabledProviders:[...(v.enabled_providers || [])],completionProviders:[...(v.completion_providers || [])],aliases:{...(v.provider_aliases || {})},providerOrder:[...order],crossrefMailto:v.crossref_mailto || "",pubmedKeyAction:"keep",pubmedKey:v.pubmed_key_configured?keyMask:"",openalexKeyAction:"keep",openalexKey:v.openalex_key_configured?keyMask:"",from:v.from_month,to:v.to_month,
+  return {monitor:{name:v.name,expression:v.keyword_expression,enabledProviders:[...(v.enabled_providers || [])],aliases:{...(v.provider_aliases || {})},providerOrder:[...order],crossrefMailto:v.crossref_mailto || "",pubmedKeyAction:"keep",pubmedKey:v.pubmed_key_configured?keyMask:"",openalexKeyAction:"keep",openalexKey:v.openalex_key_configured?keyMask:"",from:v.from_month,to:v.to_month,
     workspace:v.output_dir,log:v.log_level,autoImport:v.auto_import_after_preparation,
     delay:v.transition_delay_seconds,displayName:v.display_name,zoteroTarget:v.zotero_target || null,institutionName:v.institution_name,
     idp:v.institution_idp_entity_id,useShibboleth:v.institution_use_shibboleth ?? false},
@@ -1301,7 +1300,7 @@ function applyCoverDetails(data) {
   for(const [id,detail] of Object.entries(data.covers || {}))setCoverDetail(id,detail);
   for(const id of covers.keys())if(!Object.hasOwn(data.covers || {},id))covers.delete(id);
 }
-const ordinaryMonitorFields={zotero_target:'zoteroTarget',name:'name',keyword_expression:'expression',from_month:'from',to_month:'to',log_level:'log',enabled_providers:'enabledProviders',completion_providers:'completionProviders',crossref_mailto:'crossrefMailto',provider_aliases:'aliases',provider_order:'providerOrder',display_name:'displayName',transition_delay_seconds:'delay',auto_import_after_preparation:'autoImport',institution_name:'institutionName',institution_idp_entity_id:'idp',institution_use_shibboleth:'useShibboleth'};
+const ordinaryMonitorFields={zotero_target:'zoteroTarget',name:'name',keyword_expression:'expression',from_month:'from',to_month:'to',log_level:'log',enabled_providers:'enabledProviders',crossref_mailto:'crossrefMailto',provider_aliases:'aliases',provider_order:'providerOrder',display_name:'displayName',transition_delay_seconds:'delay',auto_import_after_preparation:'autoImport',institution_name:'institutionName',institution_idp_entity_id:'idp',institution_use_shibboleth:'useShibboleth'};
 function ordinaryValues(source=draft) {
   const values=Object.fromEntries(Object.entries(ordinaryMonitorFields).map(([field,key])=>[field,copy(source.monitor[key])]));
   values.groups=source.list.groups.map(group=>group.name);values.custom_labels=source.list.labels.map(label=>label.name);
@@ -1438,7 +1437,6 @@ function submission(source=draft) {
     institution_name:'institutionName',institution_idp_entity_id:'idp'}))form.set(field,String(m[key]??''));
   for(const id of m.providerOrder)form.append('provider_order',id);
   for(const id of m.enabledProviders)form.append('enabled_providers',id);
-  for(const id of m.completionProviders)form.append('completion_providers',id);
   for(const [id,alias] of Object.entries(m.aliases))form.set('provider_alias_'+id,alias);
   form.set('zotero_target',JSON.stringify(m.zoteroTarget || null));
   form.set('auto_import_after_preparation',m.autoImport?'1':'');

@@ -12,7 +12,7 @@ const labels={
   completion_date_facts_added:'Added date facts',first_public_recorded:'First public recorded',
   first_public_no_association:'No preprint association',first_public_known_unresolved:'Unverified preprint',
   first_public_conflict:'First public conflicts',first_public_failed:'First public failed',first_public_cancelled:'First public cancelled',
-  work_location_targets:'DOI Work targets',completion:'API Completion',work_location:'Work location',
+  work_location_targets:'DOI Work targets',completion:'Run metadata completion',work_location:'Work location',
   integrated_candidates:'Candidates',integrated_deduplicated:'Distinct Papers',skipped:'未执行',
   returned_records:'Returned records',matched_journal_records:'Matched Journal records',issn_queries:'ISSN queries',
   unmatched_journal_records:'Unmatched Journal records',eligible_records:'Eligible records',
@@ -99,7 +99,7 @@ export function renderRunResult(result,{compact=false,id='' }={}) {
     .filter(item=>item.reasons.length).map(item=>`<li>Record ${count(item.record_number)} · ${esc(item.doi || item.ut || '')} · ${item.reasons.map(reason=>esc(label(reason))).join(' · ')}</li>`).join('');
   const issues=result.issues.filter(i=>i.category!=='exclusion').map(issue=>`<li><strong>${esc(label(issue.category))}</strong> · ${esc(result.provider==='wos'?wosDiagnostic(issue.message):issue.message)}${issue.issn?` · ${esc(issue.issn)}`:''}</li>`).join('');
   const providerRuns=(details.provider_runs || []).map(run=>`<li><strong>${esc(run.provider)} · ${esc(run.source)}</strong> · ${esc(label(run.status))} · ${count(run.candidates)} candidates / ${count(run.retained)} retained · ${count(run.created)} new / ${count(run.existing)} existing${run.limitations?.length?`<p>${run.limitations.map(esc).join(' · ')}</p>`:''}</li>`).join('');
-  const phases=result.provider==='integrated'?`<p class="s-run-phases">Discovery · ${esc(label(details.discovery_status || 'unknown'))} / API Completion · ${esc(({complete:'完成',empty:'无需补全',partial:'部分完成',failed:'失败',cancelled:'已取消'})[details.completion_status] || '未知')}</p>`:'';
+  const phases=result.provider==='integrated'?`<p class="s-run-phases">Discovery · ${esc(label(details.discovery_status || 'unknown'))} / Run metadata completion · ${esc(({complete:'完成',empty:'无需补全',partial:'部分完成',failed:'失败',cancelled:'已取消'})[details.completion_status] || '未知')}</p>`:'';
   return header+impact+phases+coverage+`<details class="s-run-provider-details" data-result-detail="${esc(id)}:provider"><summary>Provider Details</summary>${metrics(stats,['integrated_candidates','integrated_deduplicated','returned_records','eligible_records','search_total','conflicts'])}
     ${providerRuns?`<ul>${providerRuns}</ul>`:''}
     ${metricSection('正常排除',details.skipped)}

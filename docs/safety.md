@@ -37,15 +37,14 @@ file itself cannot be read, no overwrite revision is available; the UI retains t
 draft and requires a successful status read before submitting. Status responses
 preserve newer credential input, which stays outside ordinary draft recovery.
 
-Integrated Run performs concurrent selected Discovery/Work and unknown-root API
-Completion without holding the Workspace operation lock. Verified WoS batches
-submit DOI facts through an in-memory callback after count/path/identity checks;
-that callback performs no HTTP or Paper writes. Late native identity conflicts
-remain quarantined even if an earlier DOI was already located. All producers,
-Work batches and required retries settle before roots are classified against the
-complete saved index, including Rejected. Completion uses the captured authority
-and only new safe roots; related-version date/provenance folding cannot add a
-preprint Paper or copy its ordinary fields/identifiers into the formal root.
+Integrated Run overlaps selected Discovery with shared Work lookup without
+holding the Workspace operation lock. Verified WoS batches submit DOI facts
+through an in-memory callback after count/path/identity checks. Late native
+identity conflicts remain quarantined even if a DOI was already located. Run
+classifies roots against the complete saved index, including Rejected, before
+DOI-to-PMID resolution and metadata completion. The captured authority covers
+normal and final retry dispatch. Related versions can supply dates and provenance
+while formal direct evidence supplies the persisted identities.
 
 Every helper dispatch shares the parent's configuration/Workspace/cancellation
 checks; invalidation latches cancellation across sources. A selected active WoS
@@ -63,16 +62,12 @@ Workspace. Cancellation stops subsequent creates and retains the actual count
 of files already committed. [Paper identity](paper-identity.md) defines the
 persisted identity, source, date and DOI-action boundaries.
 
-Explicit API completion shares configuration/Reset/workflow admission and the Run
-slot, without acquiring browser request authority. It requires existing saved
-Papers and does not initialize a missing Workspace. Requests run outside the
-Workspace lock; commits verify configuration/source scope, Workspace/Papers
-identity, exact Paper content, UUID, primary identity and cancellation. A Reject
-or other intervening edit prevents the stale write. Ordinary fields/First public
-fill only empty values, authors stay whole and date/source facts append with
-deduplication. Existing primary identifiers and human content are preserved.
-Run never modifies an existing Paper or standalone Evidence. Completion commits
-only the selected Paper. Temporary related versions do not change primary DOI, UUID
-or ownership. Legacy Paper identity_aliases/related_dois explicitly block safe
-indexing/writes; old files are never silently migrated, deleted or rewritten.
-[API regressions](../tests/test_api_completion.py) cover these operation boundaries.
+The Info preprint lookup shares configuration/Reset/workflow admission and the
+Run slot without acquiring browser authority. It requires one existing
+non-Rejected Paper with a valid formal DOI. Requests run outside the Workspace
+lock. Commit checks configuration and source scope, Workspace/Papers identity,
+exact Paper revision, UUID, primary identity and cancellation. A Reject or
+intervening edit prevents the stale write. The operation appends deduplicated
+preprint date and source facts and fills only an empty First public.
+[Preprint lookup regressions](../tests/test_preprint_lookup.py) cover these
+boundaries.

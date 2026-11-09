@@ -168,15 +168,13 @@ do not establish real CAPTCHA compatibility or every external site's usable mini
 
 ## Source categories and Paper dates
 
-Journals manages followed journals. Paper Info/Reader shows actual bibliographic
-source names and separates preprint First public, chronological named journal
-date events and bibliographic publication dates. First public and journal events
-have separate source/version evidence tooltips. ARRAY's API tool (and Archive's
-Reader button) opens explicit multi-Paper selection, progress/results and Cancel;
-opening it never dispatches a request. Rejected Papers are excluded, while older,
-unkept, kept and exported saved Papers can be selected. Webpage Enrich remains
-independent. DOI-free Papers remain reviewable and locally
-editable; unavailable external actions explain their primary-DOI requirement.
+Journals manages followed journals. Paper Reader shows the bibliographic source
+name and four dates at their available precision. ARRAY **Info** keeps the
+bibliographic date and chronological evidence, including original source labels,
+record IDs, preprint version details and source links. Its bioRxiv/medRxiv lookup
+targets the selected Paper and reports the outcome in place. DOI-free Papers
+remain reviewable and locally editable. Unavailable external actions explain
+their DOI requirements. Webpage Enrich remains independent.
 Run result fixtures also render Integrated retrieval/status counts and per-source
 failures, unsupported old Integrated snapshots, and WoS Journal Coverage, export
 batches and date/diagnostic explanations at constrained bounds. They use synthetic

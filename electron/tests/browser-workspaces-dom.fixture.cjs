@@ -15,7 +15,7 @@ const settings={csrf_token:'fixture',issues:[],covers:{},cover_search,saved_work
   monitor_revision_exists:'1',monitor_revision_digest:'b'.repeat(64),journal_revision_exists:'1',journal_revision_digest:'c'.repeat(64),
   institution_name:'',institution_idp_entity_id:'',auto_import_after_preparation:false,transition_delay_seconds:'3',display_name:'Synthetic researcher',
   zotero_target:{server_id:'SyntheticServer',library_type:'user',library_id:'0',collection_key:null},
-  provider_aliases:{},provider_order:['pubmed','openalex','europe_pmc','crossref','arxiv','biorxiv','medrxiv','wos'],enabled_providers:['pubmed','openalex'],completion_providers:['pubmed','openalex','europe_pmc','crossref','arxiv','biorxiv','medrxiv'],groups:['Synthetic Group'],custom_labels:[],journals,access_services:services,
+  provider_aliases:{},provider_order:['pubmed','openalex','europe_pmc','crossref','arxiv','biorxiv','medrxiv','wos'],enabled_providers:['pubmed','openalex'],groups:['Synthetic Group'],custom_labels:[],journals,access_services:services,
 }};
 const paper={id:'paper-1',title:'Synthetic kept paper',doi:'10.5555/presentation',publication_date:'2026-10-01',status:'kept',abstract:'Synthetic fixture only',authors:[],enrichPhase:'Idle'};
 const record={key:'0000-0001',...journals[0],labels:[],papers:[]};
@@ -36,9 +36,7 @@ const server=http.createServer(async(req,res)=>{
     if(route==='/api/kept-workflow/start')keptState={workflow_id:'kept-a',generation:7,planned_total:3,batch:{total:3,task_id:'import-a',results:[{paper_id:'previous-1',service_id:serviceId,parent_outcome:'confirmed',outcome:'exported'},{paper_id:'previous-2',service_id:serviceId,parent_outcome:'uncertain',outcome:'stopped'}]},service_id:serviceId,service_name:services[0].name,preparation_task_id:'prepare-a',phase:'waiting_for_user',active:true,can_continue:false,can_cancel:true,waiting_for_login:true,mode:'prepare_import',settings:{display_name:'Synthetic researcher',auto_import_after_preparation:false},preparation:{services,manual_services:[],results:[]},message:'Local synthetic challenge needs manual input'};
     if(route==='/api/kept-workflow/cancel')keptState={...keptState,phase:'interrupted',active:false,can_cancel:false,waiting_for_login:false,navigation:'kept'};
     if(route==='/api/kept-workflow/acknowledge')keptState={active:false,phase:'idle',navigation:null,can_continue:false,can_cancel:false};
-    // A previous API task must not refresh over a restoring Kept workflow.
-    const data=route==='/api/papers/api-completion/state'?{phase:'Completed',request_id:'previous-api',total:0,processed:0,results:[],activity:null}:
-      route==='/api/ui-next/workspace'?workspace:route==='/api/ui-next/settings'?settings:route==='/api/kept-workflow/queue'?queue:
+    const data=route==='/api/ui-next/workspace'?workspace:route==='/api/ui-next/settings'?settings:route==='/api/kept-workflow/queue'?queue:
       route==='/api/ui-next/browser-services'?{scope,services}:route.startsWith('/api/ui-next/run')&&!route.endsWith('expression')?runData():
       route==='/api/ui-next/run-expression'?{providers:Object.fromEntries([...settings.values.provider_order,'integrated'].map(id=>[id,{expression:'causal',error:null}]))}:
       route==='/api/kept-workflow/state'||route==='/api/kept-workflow/start'||route==='/api/kept-workflow/cancel'||route==='/api/kept-workflow/acknowledge'?keptState:route==='/settings/covers/search'?cover_search:
