@@ -746,3 +746,42 @@ def test_run_recovers_native_preprint_details_before_create(tmp_path):
     assert run.facts.statistics['completion_requests'] == len(calls) == 4
     assert run.facts.details['completion_status'] == 'complete'
     assert paper.first_public_at == '2025-08-17' and paper.external_ids.doi == '10.5555/formal'
+
+
+def test_resolved_pmid_counts_existing_doi_free_paper_for_discovery_source(tmp_path):
+    import httpx
+
+    from allfold.canonicalize import canonicalize_records
+    from allfold.persistence.materialize import materialize_papers
+    from allfold.providers.integrated import DiscoveryClient
+    from test_integrated_run import evidence
+
+    path, _ = config(tmp_path)
+    path.write_text(path.read_text() + 'enabled_providers: [wos]\n')
+    workspace = tmp_path / 'workspace'
+    saved = materialize_papers(canonicalize_records((evidence(doi=None, pmid='42'),)).papers, workspace)
+    saved_path, = saved.created_papers
+    original = saved_path.read_bytes()
+    formal = record('wos', '10.5555/formal')
+
+    def handler(request):
+        if request.url.path.endswith('esearch.fcgi'):
+            return httpx.Response(200, json={'esearchresult': {'count': '1', 'idlist': ['42']}})
+        assert request.url.path.endswith('esummary.fcgi')
+        return httpx.Response(200, json={'result': {'uids': ['42'], '42': {
+            'uid': '42', 'articleids': [{'idtype': 'doi', 'value': '10.5555/formal'}]}}})
+
+    def factory(provider, *, mailto='', **kwargs):
+        if provider == 'pubmed':
+            return DiscoveryClient(provider, transport=httpx.MockTransport(handler), interval=0, **kwargs)
+        return EmptyCompletion(provider)
+
+    def wos(*args, **kwargs):
+        return IntegratedDiscovery((formal,), (DiscoveryResult('wos', SourceScope('journal', 'Test'),
+            'complete', (formal,), candidates=1),), 'complete')
+
+    run = run_integrated(path, wos_stage=wos, completion_factory=factory)
+    assert run.facts.created_papers == 0 and run.facts.existing_papers == 1
+    assert saved_path.read_bytes() == original
+    assert run.facts.details['provider_runs'][0]['existing'] == 1
+    assert run.facts.details['provider_totals'][0]['existing'] == 1

@@ -415,7 +415,7 @@ def run_integrated(config_path, *, loaded_config=None, workspace_snapshot=None, 
                 if isinstance(completed,Exception):
                     statuses.append('failed')
                     issues.append(MonitorIssue(MonitorIssueSeverity.WARNING,MonitorIssueComponent.CANONICALIZATION,
-                        'completion',f'API Completion: {type(completed).__name__}'))
+                        'completion',f'Run metadata completion: {type(completed).__name__}'))
                     records=enriched[index]
                 else:
                     statuses.append(completed.status)
@@ -475,27 +475,24 @@ def run_integrated(config_path, *, loaded_config=None, workspace_snapshot=None, 
                 created=len(saved.created_papers)
                 issues.extend(MonitorIssue(MonitorIssueSeverity.ERROR,MonitorIssueComponent.MATERIALIZATION,'write',i.message) for i in saved.issues)
                 identities=read_workspace_identities(lock)
-                matched_owners=set()
-                matched_record_ids=set()
+                matched_record_owners={}
                 for group, keys in eligible:
                     owners={item.paper_id for key in keys if (item:=identities.by_identifier.get(key)) and item.paper_id}
                     if len(owners)==1 and not keys & identities.blocked_identifiers and identities.complete:
-                        matched_owners.update(owners)
-                        matched_record_ids.update(map(id,group.evidence))
+                        owner, = owners
+                        matched_record_owners.update((id(record), owner) for record in group.evidence)
                 created_ids={item.paper_id for item in identities.by_identifier.values() if item.path in saved.created_papers}
-                existing=len(matched_owners-created_ids)
+                existing=len(set(matched_record_owners.values())-created_ids)
                 updated_runs=[]
                 for run in discovery.providers:
-                    owners={item.paper_id for record in run.records if id(record) in matched_record_ids for key in evidence_identifiers(record)
-                        if (item:=identities.by_identifier.get(key)) and item.paper_id in matched_owners}
+                    owners={matched_record_owners[id(record)] for record in run.records if id(record) in matched_record_owners}
                     updated_runs.append(replace(run,created=len(owners & created_ids),existing=len(owners-created_ids)))
                 discovery=replace(discovery,providers=tuple(updated_runs))
                 provider_totals=[]
                 for provider in RUN_PROVIDERS:
                     runs=[run for run in discovery.providers if run.provider==provider]
                     if not runs: continue
-                    owners={item.paper_id for run in runs for record in run.records if id(record) in matched_record_ids for key in evidence_identifiers(record)
-                        if (item:=identities.by_identifier.get(key)) and item.paper_id in matched_owners}
+                    owners={matched_record_owners[id(record)] for run in runs for record in run.records if id(record) in matched_record_owners}
                     provider_totals.append(dict(provider=provider,status=discovery_status(runs,cancel.is_set()),
                         candidates=sum(run.candidates for run in runs),created=len(owners & created_ids),existing=len(owners-created_ids),
                         limitations=list(dict.fromkeys(message for run in runs for message in run.limitations))))
