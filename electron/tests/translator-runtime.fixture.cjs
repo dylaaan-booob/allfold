@@ -32,6 +32,7 @@ async function browserHistory() {
     '/replaced': article(history(received)+later('location.replace("/replacement")')),
     '/replacement': article(history(received+accepted)),
     '/doi-change': article(history(received)+later('document.querySelector("meta[name=citation_doi]").content="10.5555/other"')),
+    '/doi-change-complete': article(history(received+accepted)),
     // The frame shares the root URL without a recursive frame request. This
     // lets the official registry run Embedded Metadata on the child document.
     '/child': article(history(received)+'<script>window.history.replaceState(null,"","/child-replaced")</script>'),
@@ -57,9 +58,11 @@ async function browserHistory() {
       +'<li>Accepted: <time datetime="March 2, 2020">March 2, 2020</time></li>'
       +'<li>Accepted Manuscript Published: <time datetime="2020-03-03">March 3, 2020</time></li>'
       +'</ol></div></section>'
+      +'<aside><div data-testid="publication-history-section"><ul>'
       +'<li data-testid="publication-history-item">Accepted: <span data-testid="publication-date-label">2021-10-31</span></li>'
-      +'<li data-testid="publication-history-item">Accepted: <span data-testid="publication-date-label">2021-10-31</span></li>'
+      +'<li data-testid="publication-history-item">Accepted: <span data-testid="publication-date-label">2021-10-31</span></li></ul></div></aside>'
       +history(received+'<li>Revised: 2024-01-01</li><li>Submitted: 2020</li><li>Accepted: March 4</li>')
+      +history('<li><label>Editorial history: </label>Manuscript received&nbsp;October, 2010; final revision received&nbsp;March, 2012.</li>')
       +'<div class="pub-history-wrap"><div class="history-entry"><div class="wi-state">Received:</div>'
       +'<div class="wi-date">01 March 2024</div></div></div>'
       +'<div class="itemPageRangeHistory"><span>Received 10 Mar 2026</span><span>Accepted author version posted online: 10 Jun 2026</span></div>'
@@ -68,7 +71,9 @@ async function browserHistory() {
       +'<div id="article-dates"><div class="article-dates"><nobr>Received: 21 Jan 2025</nobr></div></div>'
       +'<div id="article-information"><dl class="article-dates"><dt>Received</dt><dd><time datetime="2024-12-01">December 1, 2024</time></dd>'
       +'<dt>Accepted</dt><dd>January 14, 2025</dd></dl></div>'
-      +'<p>Received: 1999</p><aside><p>Accepted: 1998</p></aside><section id="references"><p>Accepted: 1997</p></section>'),
+      +'<p>Received: 1999</p><aside>'+history('<li>Accepted: 1998</li>')+'</aside>'
+      +'<section id="references">'+history('<li>Accepted: 1997</li>')+'</section>'
+      +'<div class="related-articles"><div class="itemPageRangeHistory"><span>Received 1996</span></div></div>'),
   };
   await browser.ready;
   await browser.partition.protocol.handle('https',request=>{
@@ -85,10 +90,17 @@ async function browserHistory() {
       browser.enterBusiness();
       const started=Date.now();
       const timer=cancel?setTimeout(()=>controller.abort(),350):null;
+      const run=sandbox.run;
+      if(name==='doi-change-complete')sandbox.run=async function(doc,method,...args) {
+        const translated=await run.call(this,doc,method,...args);
+        if(method==='translate' && translated.ok)await tab.view.webContents.executeJavaScript(
+          'document.querySelector("meta[name=citation_doi]").content="10.5555/other"');
+        return translated;
+      };
       try {
         const result=await sandbox.translate(doc,doi,{forEnrichment:true,historyKinds:kinds,signal,deadline});
         return {result,elapsed:Date.now()-started};
-      } finally {clearTimeout(timer);}
+      } finally {clearTimeout(timer);sandbox.run=run;}
     } finally {browser.endTask();tab.view.webContents.close();}
   }
   const facts=result=>result.dateCandidates.map(({kind,value})=>[kind,value]);
@@ -101,6 +113,7 @@ async function browserHistory() {
       ['received','2024-03-01'],['received','2026-03-10'],['accepted','2026-03-17'],
       ['accepted','2025-04-11'],['received','2025-01-21'],
       ['received','2024-12-01'],['accepted','2025-01-14'],
+      ['received','2010-10'],
     ].sort());
     assert.ok(immediate.result.dateCandidates.every(item=>item.url==='https://offline.invalid/templates' && item.record_id===doi));
     const late=await translate('late');
@@ -115,7 +128,7 @@ async function browserHistory() {
       url:'https://offline.invalid/accepted-rdf',record_id:doi,
     }]);
     await assert.rejects(translate('cancel',historyKinds,{cancel:true}),{message:'canceled'});
-    for(const name of ['replaced','child-replaced','doi-change'])
+    for(const name of ['replaced','child-replaced','doi-change','doi-change-complete'])
       await assert.rejects(translate(name),{message:'document_changed'},name);
     const bounded=await translate('no-history');
     assert.ok(bounded.elapsed>=29500 && bounded.elapsed<32000,'optional date work should end after 30 seconds');
@@ -133,9 +146,9 @@ app.whenReady().then(async()=>{
       'container-title':'Offline Journal',author:[{family:'Smith',given:'Alex'}],issued:{'date-parts':[[2026,3,14]]}}),
       {status:200,headers:{'Content-Type':'application/vnd.citationstyles.csl+json'}});
   });
-  const doc={pageId:7,url,html,frameToken:'offline-document'};
+  const doc={pageId:7,url,html,frameToken:'offline-document',documentId:'synthetic-document'};
   const browser={partition,tabs:new Map(),documentCurrent:value=>value.frameToken===doc.frameToken,
-    translationDocuments:async()=>[doc],pageCookie:async()=>''};
+    translationDocuments:async()=>[doc],snapshot:async()=>doc,pageCookie:async()=>''};
   sandbox=new TranslatorSandbox();await sandbox.init(browser);
   const result=await sandbox.translate(doc,doi);
   assert.equal(result.metadataSource,'web');assert.equal(result.item.title,'Offline Web Translation');assert.equal(result.apiItem.DOI,doi);

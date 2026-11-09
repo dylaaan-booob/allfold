@@ -142,14 +142,23 @@ def history_candidate(kind, value, label=None):
 
 
 def test_date_only_enrich_retries_remaining_event_and_skips_duplicate(tmp_path):
+    from electron_test_helpers import edit
     paper_id, path = missing(tmp_path)
     path.write_text(path.read_text().replace(MISSING_ABSTRACT, 'Existing abstract'))
     enrich = PaperEnrichment(PendingBridge(), BrowserTaskLock())
     item = dict(itemType='journalArticle', DOI='10.5555/decision', abstractNote='Do not overwrite',
                 creators=CREATORS, date='2020', date_parts={'year': 2020})
     received = history_candidate('received', '2026-07-09')
-    for events, saved in (([received], True), ([{**received, 'source_label': 'Manuscript received:'}], False),
-                          ([history_candidate('accepted', '2026-08')], True)):
+    attempts = (([received], True), ([{**received, 'source_label': 'Manuscript received:'}], False),
+                ([history_candidate('accepted', '2026-08')], True))
+    for events, saved in attempts:
+        if not saved:
+            # Duplicate results must preserve the Paper's existing ordering.
+            state = parse_paper_state(path, path.read_text())
+            edit(path, date_evidence=[
+                dict(kind='published', year=2026, month=9, publication_type='journal', provider='pubmed', record_id='123'),
+                state.date_evidence[0].model_dump(mode='json', exclude_none=True),
+            ])
         enrich.start(tmp_path, paper_id)
         enrichment_command(enrich)
         before = path.read_bytes()
@@ -160,7 +169,7 @@ def test_date_only_enrich_retries_remaining_event_and_skips_duplicate(tmp_path):
             assert path.read_bytes() == before
     state = parse_paper_state(path, path.read_text())
     assert [(event.kind.value, event.month, event.day) for event in state.date_evidence] == [
-        ('received', 7, 9), ('accepted', 8, None),
+        ('received', 7, 9), ('accepted', 8, None), ('published', 9, None),
     ]
     assert state.abstract == 'Existing abstract'
     assert state.authors == ('Ada Author',)

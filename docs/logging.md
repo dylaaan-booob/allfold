@@ -24,9 +24,10 @@ The single-Paper preprint lookup reports completion, no match, failure and
 cancellation in ARRAY Info. Run metadata completion is part of the parent Run
 result.
 
-Webpage Enrich's requested fields remain its ordinary Abstract/Authors/publication
-date gaps. Its saved-field allowlist also includes `date_evidence`, so event-only
-saves appear as actual updates. Diagnostic observations include reviewed counts
+Webpage Enrich records eligible Abstract, Authors, publication date, Received
+and Accepted gaps as requested fields. Saving a journal event records
+`date_evidence` as an actual update. A completed response without new evidence
+records no saved fields. Diagnostic observations include reviewed counts
 and field names. Paper text, raw provider responses, credentials and sensitive URLs
 stay outside diagnostics.
 

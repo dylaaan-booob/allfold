@@ -140,7 +140,7 @@ window.allfoldTranslatorReady=(async () => {
     return value===doi?null:'doi_mismatch';
   }
   function doiValue(raw) {
-    const value=String(raw || '').trim().replace(/^(?:https?:\/\/(?:dx\.)?doi\.org\/|doi:\s*)/i,'').toLowerCase();
+    const value=String(raw || '').trim().replace(/^https?:\/\/(?:dx\.)?doi\.org\//i,'').toLowerCase();
     return /^10\.\d{4,9}\/\S+$/.test(value)?value:null;
   }
   function documentDOIs(document,url) {
@@ -153,7 +153,7 @@ window.allfoldTranslatorReady=(async () => {
     try {
       values.push(decodeURIComponent(source.pathname).match(/(?:^|\/)(10\.\d{4,9}\/[^/]+)$/)?.[1]);
     } catch { /* A malformed URL escape cannot establish a DOI. */ }
-    return new Set(values.map(doiValue).filter(Boolean));
+    return new Set(values.map(value=>doiValue(value?.trim().replace(/^doi:\s*/i,''))).filter(Boolean));
   }
   const monthNames='january february march april may june july august september october november december'.split(' ');
   const months=new Map(monthNames.flatMap((name,i)=>[[name,i+1],[name.slice(0,3),i+1]]));
@@ -163,7 +163,7 @@ window.allfoldTranslatorReady=(async () => {
     const text=raw.trim().replace(/\s+/g,' ').toLowerCase();
     const iso=text.match(/^(\d{4})(?:-(\d{2})(?:-(\d{2}))?)?$/);
     const dayFirst=text.match(/^(\d{1,2}) ([a-z]+)\.? (\d{4})$/);
-    const monthFirst=text.match(/^([a-z]+)\.?(?: (\d{1,2}),?)? (\d{4})$/);
+    const monthFirst=text.match(/^([a-z]+)\.?(?: (\d{1,2}))?,? (\d{4})$/);
     let year,month,day;
     if(iso) [,year,month,day]=iso;
     else if(dayFirst || monthFirst) {
@@ -178,9 +178,12 @@ window.allfoldTranslatorReady=(async () => {
     return [year,month,day].filter(part=>part!==undefined).map(part=>String(part).padStart(2,'0')).join('-');
   }
   const historyLabel=/^(?:manuscript\s+)?(received|accepted)\s*:?$/i;
+  const peripheralContent='nav, #references, .references, [role="doc-bibliography"], '
+    +'.related-articles, .recommended-articles, [data-testid="related-articles"], [data-testid="recommended-articles"]';
   function historyCandidates(document,{doi,url},accepted) {
     const facts=new Map();
     const add=(label,raw,time)=>{
+      if(raw!=null && typeof raw!=='string')return;
       const source_label=label.trim().replace(/\s+/g,' ');
       const kind=source_label.match(historyLabel)?.[1].toLowerCase();
       const visible=historyDate(raw),structured=historyDate(time);
@@ -191,6 +194,9 @@ window.allfoldTranslatorReady=(async () => {
     add('accepted',accepted);
     // These locators delimit article-history entries. Event names and dates
     // are parsed identically regardless of the selected Web Translator.
+    const entries=(selector,scope=document,articlePanel)=>[...scope.querySelectorAll(selector)]
+      .filter(node=>!node.closest(peripheralContent)
+        && (!node.closest('aside') || articlePanel && node.closest(articlePanel)));
     const fromValue=(label,value)=>{
       const time=value.matches('time')?value:value.querySelector('time');
       add(label,value.textContent,time?.getAttribute('datetime'));
@@ -206,18 +212,18 @@ window.allfoldTranslatorReady=(async () => {
       }
       fromValue(label,value);
     };
-    const fromText=row=>{
-      const match=row.textContent.trim().match(/^((?:manuscript\s+)?(?:received|accepted)(?:\s*:|(?=\s)))\s*(.+)$/is);
-      if(match)add(match[1],match[2],row.querySelector('time')?.getAttribute('datetime'));
+    const fromText=(text,time)=>{
+      const match=text.trim().match(/^((?:manuscript\s+)?(?:received|accepted)(?:\s*:|(?=\s)))\s*(.+)$/is);
+      if(match)add(match[1],match[2],time);
     };
-    for(const row of document.querySelectorAll('li.c-bibliographic-information__list-item'))
+    for(const row of entries('li.c-bibliographic-information__list-item'))
       fromRow(row,null,'.c-bibliographic-information__value time');
-    for(const row of document.querySelectorAll('.Summary__dates > div')) {
+    for(const row of entries('.Summary__dates > div')) {
       const label=row.querySelector(':scope > p.h5');
       const values=row.querySelectorAll(':scope > p:not(.h5)');
       if(label && values.length===1)fromRow(row,label.textContent,':scope > p:not(.h5)');
     }
-    for(const label of document.querySelectorAll('#artText .articleinfo p > strong')) {
+    for(const label of entries('#artText .articleinfo p > strong')) {
       let raw='';
       const times=[];
       for(let next=label.nextSibling;next && next.nodeName!=='STRONG';next=next.nextSibling) {
@@ -227,28 +233,34 @@ window.allfoldTranslatorReady=(async () => {
       }
       if(times.length<=1)add(label.textContent,raw.trim().replace(/;$/,''),times[0]?.getAttribute('datetime'));
     }
-    for(const section of document.querySelectorAll('section.article-section')) {
+    for(const section of entries('section.article-section')) {
       if(section.querySelector('h3.article-section__header_text')?.textContent.trim().toLowerCase()!=='publication history')continue;
-      for(const row of section.querySelectorAll('.article-section__body ol.list--bullet > li'))
+      for(const row of entries('.article-section__body ol.list--bullet > li',section))
         fromRow(row,null,'time');
     }
-    for(const row of document.querySelectorAll('li[data-testid="publication-history-item"]'))
+    for(const row of entries('li[data-testid="publication-history-item"]',document,'[data-testid="publication-history-section"]'))
       fromRow(row,null,':scope > [data-testid="publication-date-label"]');
-    for(const row of document.querySelectorAll('.pub-history-wrap .history-entry')) {
+    for(const row of entries('.pub-history-wrap .history-entry')) {
       const label=row.querySelector('.wi-state');
       if(label)fromRow(row,label.textContent,'.wi-date');
     }
-    for(const label of document.querySelectorAll('#article-information dl.article-dates > dt')) {
+    for(const label of entries('#article-information dl.article-dates > dt')) {
       const value=label.nextElementSibling;
       if(value?.matches('dd'))fromValue(label.textContent,value);
     }
-    for(const row of document.querySelectorAll([
-      'section.publication-history > ul.rlist > li',
+    for(const row of entries('section.publication-history > ul.rlist > li')) {
+      const text=row.textContent.trim();
+      const editorial=text.match(/^Editorial history\s*:\s*(.+)$/is);
+      if(editorial) {
+        for(const event of editorial[1].replace(/\.$/,'').split(';'))fromText(event);
+      } else fromText(text,row.querySelector('time')?.getAttribute('datetime'));
+    }
+    for(const row of entries([
       '.itemPageRangeHistory > span',
       'ul.article-chapter-history-list > li',
       'section.core-history > div',
       '#article-dates .article-dates > nobr',
-    ].join(',')))fromText(row);
+    ].join(',')))fromText(row.textContent,row.querySelector('time')?.getAttribute('datetime'));
     return [...facts.values()];
   }
   function addPublicationParts(item) {

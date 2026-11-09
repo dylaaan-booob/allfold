@@ -260,7 +260,7 @@ def save_enrichment(target: EnrichmentTarget, abstract: str | None = None,
         existing_web = {web_fact(event) for event in state.date_evidence if is_web_history(event)}
         dates = merge_dates(state.date_evidence, (
             event for event in additions if not is_web_history(event) or web_fact(event) not in existing_web))
-        if dates != state.date_evidence:
+        if dates != merge_dates(state.date_evidence):
             values = [item.model_dump(mode='json', exclude_none=True) for item in dates]
             contents = set_managed_value(contents, 'date_evidence', values)
             saved['date_evidence'] = values

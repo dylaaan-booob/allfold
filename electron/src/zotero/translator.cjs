@@ -117,9 +117,9 @@ class TranslatorSandbox {
     const end=Math.min(deadline,Date.now()+30000);
     let operation;
     try {
-      while(missing() && Date.now()<end) {
-        await pause(signal,Math.min(1250,end-Date.now()));
-        if(Date.now()>=end)break;
+      // Confirm the live DOI and document even when the original snapshot
+      // already supplied both dates while the official Translator was running.
+      while(Date.now()<end) {
         const frame=sourceFrame();
         const fresh=await this.browser.snapshot(this.browser.tabs.get(source.pageId),frame,{signal,deadline:end});
         sourceFrame();
@@ -129,10 +129,12 @@ class TranslatorSandbox {
         const observed=await this.invoke(operation,'readHistory',{snapshot:fresh,doi},end);
         if(observed.mismatch)throw new ImportFailure('translation','document_changed');
         for(const item of observed.dateCandidates)candidates.set(item.kind+':'+item.value,item);
+        if(!missing() || Date.now()>=end)break;
+        await pause(signal,Math.min(1250,end-Date.now()));
       }
     } catch(error) {
       checkCanceled(signal);
-      if(error.diagnostic?.code!=='timeout' || Date.now()<end)throw error;
+      if(error.diagnostic?.code!=='timeout')throw error;
     } finally {
       if(operation)await this.endOperation(operation);
     }
