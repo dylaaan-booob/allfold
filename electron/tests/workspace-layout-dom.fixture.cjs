@@ -10,14 +10,13 @@ const settings={config_path:'/fixture/monitor.yaml',csrf_token:'fixture',issues:
   name:'Synthetic Monitor',keyword_expression:'causal',from_month:'2026-01',to_month:'2026-01',output_dir:'workspace',log_level:'INFO',
   monitor_revision_exists:'1',monitor_revision_digest:'fixture',journal_revision_exists:'1',journal_revision_digest:'fixture',
   institution_name:'',institution_idp_entity_id:'',auto_import_after_preparation:false,transition_delay_seconds:'3',display_name:'',
-  provider_aliases:{},provider_order:['pubmed','openalex','europe_pmc','crossref','arxiv','biorxiv','medrxiv','wos'],enabled_providers:['pubmed','openalex'],completion_providers:['pubmed','openalex','europe_pmc','crossref','arxiv','biorxiv','medrxiv'],groups:Array.from({length:20},(_,i)=>'Group '+i),
+  provider_aliases:{},provider_order:['pubmed','openalex','europe_pmc','crossref','arxiv','biorxiv','medrxiv','wos'],enabled_providers:['pubmed','openalex'],groups:Array.from({length:20},(_,i)=>'Group '+i),
   custom_labels:['Label 0','Label 1','Label 2'],journals,access_services:[{id:'svc_fixture',name:'Synthetic Service',access_method:'manual',access_url:''}],
 }};
-const paper=(i,status='candidate')=>({id:'paper-'+i,title:'Synthetic Paper '+i,publication_date:'2026-10',conference:'Synthetic Conference',publication_type:'conference',first_public_at:'2022-04',date_evidence:[{kind:'preprint',year:2022,month:4,provider:'arxiv',record_id:'2204.12345',version:'v1',publication_type:'preprint',first_version:true},{kind:'accepted',year:2026,month:9,provider:'crossref',record_id:'10.5555/formal',publication_type:'journal'},{kind:'published-online',year:2026,month:10,provider:'crossref',record_id:'10.5555/formal',publication_type:'journal'}],external_ids:{openalex:'W123'},indexed_terms:[{value:'statistics',kind:'topic',source:'openalex'}],sources:[{provider:'openalex',record_id:'W123',role:'discovery'}],abstract:('An isolated synthetic paragraph for reader scroll verification. '.repeat(12)+'\n\n').repeat(24),authors:['Synthetic Author'],doi:i===0?null:'10.5555/layout-'+i,discovered_at:'2026-10-01T00:00:00Z',status,enrichPhase:'Idle'});
+const paper=(i,status='candidate')=>({id:'paper-'+i,title:'Synthetic Paper '+i,publication_date:'2026-10',conference:'Synthetic Conference',publication_type:'conference',first_public_at:'2022-04',date_evidence:[{kind:'preprint',year:2022,month:4,provider:'arxiv',record_id:'2204.12345',version:'v1',publication_type:'preprint',first_version:true},{kind:'accepted',year:2026,month:9,provider:'crossref',record_id:'10.5555/formal',publication_type:'journal'},{kind:'published-online',year:2026,month:10,provider:'crossref',record_id:'10.5555/formal',publication_type:'journal'}],external_ids:{openalex:'W123'},indexed_terms:[{value:'statistics',kind:'topic',source:'openalex'}],sources:[{provider:'openalex',record_id:'W123',role:'discovery'}],abstract:('An isolated synthetic paragraph for reader scroll verification. '.repeat(12)+'\n\n').repeat(24),authors:['Synthetic Author'],doi:i===0?null:'10.5555/layout-'+i,preprint_lookup_available:i!==0,discovered_at:'2026-10-01T00:00:00Z',status,enrichPhase:'Idle'});
 const records=journals.map((j,i)=>({key:j.issn,issn:j.issn,name:j.name,group:j.group,labels:[],cover:null,papers:[paper(i*2),paper(i*2+1)]}));
 Object.assign(records[0],{name:'Synthetic Conference',source_type:'unmapped',issn:null,group:'Old scope'});
 const workspace={csrf_token:'fixture',import_token:'fixture',issues:[],counts:{candidates:48,active_journals:24},subjects:[{name:'Group 0',journals:records}],
-  completion_papers:records.flatMap(journal=>journal.papers.map(({id,title,status})=>({id,title,status}))),
   kept:{papers:[{paper:paper(10,'kept'),journal:records[0]},{paper:paper(11,'kept'),journal:records[1]}],journals:records,services:[],settings:{},titles:{}}};
 const run={active:false,snapshot:{status:'IDLE',provider:null},providers:Object.fromEntries(['integrated','wos'].map(id=>[id,{enabled:false,message:'Offline fixture',result_summary:null}]))};
 const keptQueue={services:[{id:'all',name:'All Services',kept:2,eligible:2},{id:'unassigned',name:'Unassigned',kept:2,eligible:2}],papers:[],import_token:'fixture'};
@@ -25,25 +24,36 @@ let keptState={active:false,phase:'idle',navigation:null,can_continue:false,can_
 const mimes={'.html':'text/html','.js':'text/javascript','.css':'text/css','.json':'application/json','.woff2':'font/woff2','.ttf':'font/ttf','.otf':'font/otf','.png':'image/png','.mp4':'video/mp4'};
 let rejectAutosave=false,holdWorkspaceResponse,resolveInitialCAS,credentialState={ok:false,error:'cas_store_unreadable',configured:false,username:'',revision:'d'.repeat(64)};
 const credentialWrites=[];
-const completionStarts=[];
-let completionState={phase:'Idle',results:[],total:0,processed:0};
+const preprintStarts=[];
+let preprintState={phase:'Idle',saved_fields:[]};
 const server=http.createServer((req,res)=>{
   const route=new URL(req.url,'http://fixture').pathname;
   if(route==='/api/ui-next/papers/paper-0/reject'){
     records[0].papers=records[0].papers.filter(paper=>paper.id!=='paper-0');
     res.writeHead(200,{'Content-Type':'application/json'});res.end(JSON.stringify({outcome:'UPDATED',resulting_status:'rejected'}));return;
   }
-  if(route==='/api/papers/api-completion/start'){
+  const preprint=route.match(/^\/api\/papers\/([^/]+)\/preprint-lookup\/(state|start|cancel)$/);
+  if(preprint){
+    const [,id,action]=preprint;
+    const send=(data,status=200)=>{res.writeHead(status,{'Content-Type':'application/json'});res.end(JSON.stringify(data));};
+    if(action==='state'){
+      send(preprintStarts.at(-1)?.id===id ? preprintState : {phase:'Idle',saved_fields:[]});return;
+    }
     let text='';req.on('data',chunk=>{text+=chunk;});req.on('end',()=>{
-      const value=JSON.parse(text);completionStarts.push(value);
-      completionState={phase:'Running',request_id:'fixture-completion',total:value.paper_ids.length,processed:0,results:[]};
-      res.writeHead(200,{'Content-Type':'application/json'});res.end(JSON.stringify(completionState));
+      const body=JSON.parse(text);
+      if(action==='start'){
+        preprintStarts.push({id,body});
+        preprintState={phase:'Running',request_id:'fixture-preprint',message:'Looking up…',saved_fields:[]};
+        if(id==='paper-2'){
+          records[1].papers.find(paper=>paper.id===id).sources.push({provider:'biorxiv',record_id:'10.1101/fixture:publication',role:'supplement'});
+          preprintState={...preprintState,phase:'Completed',message:'Preprint evidence saved',saved_fields:['sources']};
+        }
+        send(preprintState);
+      }else if(id===preprintStarts.at(-1)?.id && body.request_id===preprintState.request_id){
+        preprintState={...preprintState,phase:'Cancelled',message:'Preprint lookup cancelled'};
+        send({accepted:true});
+      }else send({error:'Unexpected preprint target'},409);
     });return;
-  }
-  if(route==='/api/papers/api-completion/state' || route==='/api/papers/api-completion/cancel'){
-    if(route.endsWith('/cancel'))completionState={...completionState,phase:'Cancelled',processed:completionState.total,
-      results:completionStarts.at(-1).paper_ids.map(paper_id=>({paper_id,status:'cancelled',lookups:[],issues:[]}))};
-    res.writeHead(200,{'Content-Type':'application/json'});res.end(JSON.stringify(route.endsWith('/cancel')?{accepted:true}:completionState));return;
   }
   if(route==='/api/ui-next/zotero'){
     const data={ok:true,server_id:'SERVERFIXTUR',version:'10.0.6',authorized:true,libraries:[
@@ -219,21 +229,34 @@ app.whenReady().then(async()=>{
     });
     await navigate('workspace');
     await capture('paper-identity');
-    if(completionStarts.length)throw Error('Viewing results automatically started API completion');
-    await js("document.getElementById('array-api-completion-open').click()");
-    await ready("document.getElementById('api-completion-dialog').open");
+    if(preprintStarts.length)throw Error('Viewing results automatically started a preprint lookup');
     await check(()=>{
-      const choices=[...document.querySelectorAll('#api-completion-papers input')];
-      if(choices.filter(input=>input.checked).length!==1 || choices.find(input=>input.checked).value!=='paper-0')throw Error('API completion did not select the current unkept DOI-free Paper');
-      choices.find(input=>!input.checked).click();
-      document.getElementById('api-completion-start').click();
+      const $=id=>document.getElementById(id);
+      if($('array-api-completion-open') || $('api-completion-dialog') || $('api-completion-open'))throw Error('Retired completion UI is still present');
+      if($('array-sidebar').hidden)document.querySelector('#kept-view [data-sidebar-view=info]').click();
+      if($('paper-preprint-lookup').closest('[hidden]') || !$('preprint-lookup-start').disabled ||
+         !$('preprint-lookup-status').textContent.includes('正式论文 DOI'))throw Error('DOI-free Paper can dispatch a lookup or lacks a reason');
+      window.workspaceArray.openPaper('paper-1');
     });
-    await ready("document.getElementById('api-completion-status').textContent.startsWith('Running') && !document.getElementById('api-completion-cancel').hidden");
-    await capture('api-completion');
-    await js("document.getElementById('api-completion-cancel').click()");
-    await ready("document.getElementById('api-completion-status').textContent.startsWith('Cancelled') && document.querySelectorAll('#api-completion-results li').length===2");
-    if(completionStarts.length!==1 || completionStarts[0].paper_ids.length!==2)throw Error('API completion did not retain the explicit batch selection');
-    await js("document.getElementById('api-completion-close').click()");
+    await ready("document.getElementById('paper-detail').dataset.paperId==='paper-1' && !document.getElementById('preprint-lookup-start').disabled");
+    await js("document.getElementById('preprint-lookup-start').click()");
+    await ready("!document.getElementById('preprint-lookup-cancel').hidden");
+    await capture('paper-preprint-lookup');
+    await check(()=>{
+      window.workspaceArray.openPaper('paper-0');
+      if(!document.getElementById('preprint-lookup-cancel').hidden)throw Error('A different Paper acquired the active lookup');
+      window.workspaceArray.openPaper('paper-1');
+      document.getElementById('preprint-lookup-cancel').click();
+    });
+    await ready("document.getElementById('preprint-lookup-status').textContent==='Preprint lookup cancelled'");
+    if(preprintStarts.length!==1 || preprintStarts[0].id!=='paper-1' || Object.keys(preprintStarts[0].body).join()!=='csrf_token')throw Error('Lookup dispatch was not limited to the selected Paper');
+    await js("window.workspaceArray.openPaper('paper-2');document.getElementById('preprint-lookup-start').click()");
+    await ready("document.getElementById('preprint-lookup-status').textContent==='Preprint evidence saved' && document.getElementById('paper-providers').textContent.includes('10.1101/fixture:publication')");
+    if(preprintStarts.length!==2 || preprintStarts[1].id!=='paper-2')throw Error('Second lookup used the wrong Paper');
+    await check(()=>{
+      window.workspaceArray.openPaper('paper-0');
+      document.querySelector('#array-sidebar [data-sidebar-close]').click();
+    });
     await ready("window.inboxRun.available()");
     await check(async navigate=>{
       const $=id=>document.getElementById(id),assert=(ok,message)=>{if(!ok)throw Error(message);},sleep=ms=>new Promise(r=>setTimeout(r,ms));
@@ -423,7 +446,7 @@ app.whenReady().then(async()=>{
       const root=document.querySelector('#s-run-records .s-run-record');
       root.querySelector('details').open=true;
       const text=root.innerText;
-      for(const expected of ['完成，检索或补全不完整','2 new papers','1 already saved','Provider Details','Candidates','Distinct Papers','API Completion','Completion targets','Completion HTTP requests','Added date facts','First public recorded','Identity conflicts','openalex','pubmed','request failed','检索'])if(!text.includes(expected))throw Error('Missing Integrated result: '+expected);
+      for(const expected of ['完成，检索或补全不完整','2 new papers','1 already saved','Provider Details','Candidates','Distinct Papers','Run metadata completion','Completion targets','Completion HTTP requests','Added date facts','First public recorded','Identity conflicts','openalex','pubmed','request failed','检索'])if(!text.includes(expected))throw Error('Missing Integrated result: '+expected);
       if(/Source Resolution|OpenAlex records/.test(text) || root.querySelector('.s-run-coverage'))throw Error('Obsolete OpenAlex result surface');
       const content=document.querySelector('#s-run .workspace-content');
       if(content.scrollWidth>content.clientWidth+1)throw Error('Run result overflows constrained content');
@@ -587,12 +610,6 @@ $('s-run-overview-open').click();
     await ready("!document.getElementById('reject-paper').disabled");
     await js("document.getElementById('reject-paper').click()");
     await ready("!window.inboxKept.candidates().some(entry=>entry.paper.id==='paper-0')");
-    await js("document.getElementById('array-api-completion-open').click()");
-    await check(()=>{
-      if(document.querySelector('#api-completion-papers input[value="paper-0"]'))throw Error('Rejected Paper re-entered API completion from the lightweight snapshot');
-      if(!document.querySelector('#api-completion-papers input[value="paper-1"]'))throw Error('Reject removed a remaining candidate from API completion');
-      document.getElementById('api-completion-close').click();
-    });
     console.log('LAYOUT DOM PASS');
   }catch(error){console.error(error.stack);process.exitCode=1;}
   finally {ipcMain.removeHandler('layout:cas-status');win?.destroy();server.close();fs.rmSync(temp,{recursive:true,force:true});app.exit(process.exitCode || 0);}

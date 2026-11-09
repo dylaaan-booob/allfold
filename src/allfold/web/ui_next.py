@@ -15,6 +15,7 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from allfold.application.decisions import DecisionOutcome, keep_paper, reject_paper
 from allfold.application.journal_covers import cover_details
+from allfold.application.preprint_lookup import formal_lookup_doi
 from allfold.application.run_state import RunProvider, read_last_run_snapshot
 from allfold.application.workspace import journal_for_paper, load_workspace
 from allfold.application.journal_lookup import journal_metadata
@@ -151,6 +152,8 @@ def install_ui_next(app: FastAPI, config_path: Path, csrf_token: str, *, read_ta
                             external_ids=paper.external_ids.model_dump(exclude_none=True),
                             sources=[source.model_dump(mode="json", exclude_none=True) for source in paper.sources],
                             authors=list(paper.authors), doi=paper.external_ids.doi,
+                            preprint_lookup_available=bool(formal_lookup_doi(
+                                paper.external_ids.doi, paper.publication_type, paper.journal, paper.conference)),
                             discovered_at=paper.discovered_at.isoformat(), status=paper.status.value,
                             enriched=enrichment["completed_in_session"],
                             enrichPhase=enrichment["phase"], enrichMessage=enrichment["message"],
@@ -172,8 +175,6 @@ def install_ui_next(app: FastAPI, config_path: Path, csrf_token: str, *, read_ta
                     groups.append(dict(name=name, journals=active))
             return response(dict(
                 subjects=groups, csrf_token=csrf_token, import_token=import_token,
-                completion_papers=[dict(id=str(p.paper_id), title=p.title, status=p.status.value)
-                    for p in workspace.papers if p.status is not WorkflowStatus.REJECTED],
                 counts=dict(candidates=len(workspace.inbox), active_journals=sum(len(g["journals"]) for g in groups)),
                 kept=dict(papers=kept, journals=[{k: r[k] for k in ("key", "issn", "eissn", "name", "source_type", "service_id")} for r in records.values()],
                           services=[s.model_dump() for s in services], settings=config.kept_workflow,

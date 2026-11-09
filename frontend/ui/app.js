@@ -125,7 +125,6 @@ let enrichment = null;
 const reviewedPapers = new Map();
 const keptPapers = new Map();
 let keptSnapshot;
-let completionPapers=[];
 let readerContext=null;
 const reviewPanel=document.querySelector('.review-right');
 const paperNavigation=reviewPanel.querySelector('.paper-navigation');
@@ -1179,6 +1178,7 @@ function renderPaper() {
   $('paper-providers').textContent=(paper.sources || []).map(source=>`${source.provider}${source.role?` (${source.role})`:''}: ${source.record_id}${source.version?` · ${source.version}`:''}`).join('; ') || '—';
   $('paper-doi').textContent=paper.doi || 'DOI unavailable';
   if (paper.doi) $('paper-doi').href=`https://doi.org/${encodeURI(paper.doi)}`; else $('paper-doi').removeAttribute('href');
+  window.allfoldPreprintLookup.select(readerContext ? paper : null);
   detail.dataset.paperId=paper.id;
   detail.classList.toggle('abstract-locked', !paper.abstract?.trim());
   if (changed) detail.scrollTop=0;
@@ -1728,7 +1728,7 @@ async function applySnapshot(data,selection=window.inboxRun?.selection(),coverVe
     return {...group,id};
   });
   shelfCapacity=archiveDebug.values.shelfCapacity;
-  rebuildShelves(selection);keptSnapshot=data.kept;completionPapers=data.completion_papers || [];
+  rebuildShelves(selection);keptSnapshot=data.kept;
   if(wasArray)state.view=shelves.length?'selected':'empty';
   keptPapers.clear();for(const entry of data.kept.papers){entry.paper=merge(entry.paper);keptPapers.set(entry.paper.id,entry);}
   for(const [key,list] of lists)if(!shelves.some(g=>g.journals.some(j=>j.key===key))){list.remove();lists.delete(key);}
@@ -1789,7 +1789,6 @@ window.addEventListener('workspace-reset',()=>{
   Object.assign(paperTools,{paperId:null,fields:null,loading:false,error:'',
     generation:paperTools.generation+1,diagnosticGeneration:paperTools.diagnosticGeneration+1});
   keptPapers.clear();reviewedPapers.clear();
-  completionPapers=[];
   keptSnapshot={...keptSnapshot,papers:[],titles:{}};
   logicalGroups=[];shelves=[];rows=[];
   inspection.time=inspection.target=0;inspection.completionPending=false;state.pendingPaper=null;state.view='empty';
@@ -1832,6 +1831,7 @@ function closeArrayReader(snapshot=false) {
   if(readerContext){
     paragraphLayout?.clear();cancelRetrieval();decryption.reset(null,true);
     readerContext=null;state.pendingPaper=null;
+    window.allfoldPreprintLookup.select(null);
     $('paper-detail').prepend(paperMetadata);
     $('paper-detail').prepend(paperTitle);
     paperMetadata.open=false;
@@ -1843,8 +1843,6 @@ function closeArrayReader(snapshot=false) {
   }
   return true;
 }
-window.allfoldCompletionPapers=()=>({current:currentPaper()?.id,papers:[...new Map([...completionPapers,...paperObjects().values()].map(p=>[p.id,p])).values()]
-  .filter(paper=>paper.status!=='rejected' && reviewedPapers.get(paper.id)!=='rejected')});
 window.allfoldRefreshWorkspace=refreshWorkspace;
 window.inboxKept={
   available:()=>state.ready && !decisionPending && !snapshotApplying && !paperToolsBusy() && enrichment?.phase!=='Saving' && !$('run-view').open &&

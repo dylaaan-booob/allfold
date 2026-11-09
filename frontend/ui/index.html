@@ -32,8 +32,8 @@
   <script defer src="paragraph-layout.js"></script>
   <script defer src="assets/vendor/cropperjs-1.7.0/cropper.min.js"></script>
   <script defer src="paper-dates.js"></script>
+  <script defer src="preprint-lookup.js"></script>
   <script defer src="app.js"></script>
-  <script defer src="api-completion.js"></script>
   <script defer src="workbench.js"></script>
   <script type="module" src="run.js"></script>
   <script type="module" src="kept-app.js"></script>
@@ -102,7 +102,6 @@
           <div><dt>First public</dt><dd id="paper-first-public"></dd></div>
           <div><dt>期刊日期</dt><dd id="paper-journal-dates"></dd></div>
         </dl>
-        <button id="api-completion-open" class="s-button" type="button">API 补全</button>
         <details id="paper-metadata-details">
         <summary id="paper-metadata-summary">Infos</summary>
         <dl class="paper-metadata">
@@ -145,12 +144,17 @@
       <div class="sidebar-heading"><span>INFO</span><button data-sidebar-close aria-label="Close Info">×</button></div>
       <div class="array-context-scroll sidebar-scroll" data-functional-view="info">
       <section id="array-journal-profile"><h2 id="array-journal-name"></h2><dl class="array-profile"><div><dt>ISSN</dt><dd id="array-journal-issn"></dd></div><div><dt>eISSN</dt><dd id="array-journal-eissn"></dd></div><div><dt>SUBJECT</dt><dd id="array-journal-subject"></dd></div><div><dt>LABEL</dt><dd id="array-journal-labels"></dd></div></dl></section>
+      <div id="paper-preprint-lookup" hidden>
+        <button id="preprint-lookup-start" class="s-button" type="button" aria-describedby="preprint-lookup-status">查询 bioRxiv / medRxiv 预印本</button>
+        <button id="preprint-lookup-cancel" class="s-button" type="button" hidden>取消查询</button>
+        <p id="preprint-lookup-status" role="status" aria-live="polite" hidden></p>
+      </div>
       <div id="array-candidate-infos" class="array-paper-infos"></div>
 
       <div id="array-kept-infos" class="array-paper-infos"></div>
       </div>
     </aside>
-    <nav class="tool-rail" aria-label="ARRAY tools"><button id="array-api-completion-open" class="rail-button" title="API 补全" aria-label="API 补全">API</button><button class="rail-button" data-sidebar-view="info" aria-controls="array-sidebar" title="INFO" aria-label="Info"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 11v6M12 7v1"/></svg></button></nav>
+    <nav class="tool-rail" aria-label="ARRAY tools"><button class="rail-button" data-sidebar-view="info" aria-controls="array-sidebar" title="INFO" aria-label="Info"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 11v6M12 7v1"/></svg></button></nav>
   </section>
   </main>
   <section id="kept-workspace" class="workbench-layout" hidden inert aria-label="Kept">
@@ -279,12 +283,6 @@
     <p id="history-status" class="s-help" role="status" aria-live="polite"></p>
     <div id="history-records"></div>
     <div class="s-actions"><button id="history-refresh" class="s-button" type="button">Refresh</button><button id="history-close" class="s-button" type="button">Close</button></div>
-  </dialog>
-  <dialog id="api-completion-dialog" class="s-dialog" aria-labelledby="api-completion-title">
-    <h2 id="api-completion-title">API 补全</h2>
-    <div class="s-dialog-body"><div id="api-completion-papers" aria-label="选择 Paper"></div>
-    <p id="api-completion-status" role="status" aria-live="polite"></p><ol id="api-completion-results"></ol></div>
-    <div class="s-actions"><button id="api-completion-start" class="s-button">开始补全</button><button id="api-completion-cancel" class="s-button" hidden>取消任务</button><button id="api-completion-close" class="s-button">关闭</button></div>
   </dialog>
   <dialog id="paper-tools-dialog" class="s-dialog" aria-labelledby="paper-tools-title">
     <h2 id="paper-tools-title"></h2>
