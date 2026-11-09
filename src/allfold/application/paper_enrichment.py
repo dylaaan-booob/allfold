@@ -16,7 +16,9 @@ from allfold.application.decisions import _locate_paper, _read_paper_candidate
 from allfold.persistence.markdown_state import (
     analyze_body, parse_paper_identity, parse_paper_state, render_abstract_section,
 )
-from allfold.models import WorkflowStatus, parse_publication_date
+from allfold.identifiers import valid_doi
+from allfold.models import EvidenceDate, EvidenceDateKind, WorkflowStatus, parse_publication_date
+from allfold.paper_dates import date_value, merge_dates
 from allfold.persistence.safe_write import (
     CompareReadError, ContentChangedError, TextWriteCommittedError, replace_regular_text_at_identity,
     workspace_operation_lock,
@@ -37,6 +39,26 @@ class EnrichmentTarget:
     missing_abstract: bool
     missing_date: bool
     missing_authors: bool
+    history_kinds: tuple[str, ...]
+
+    @property
+    def missing_fields(self) -> tuple[str, ...]:
+        return (*tuple(field for field, missing in (
+            ('abstract', self.missing_abstract), ('authors', self.missing_authors),
+            ('publication_date', self.missing_date),
+        ) if missing), *self.history_kinds)
+
+
+def missing_history(paper) -> tuple[str, ...]:
+    formal_journal = paper.publication_type == 'journal' or (
+        paper.publication_type is None and paper.journal and not paper.conference)
+    if not formal_journal:
+        return ()
+    # Match the Reader's date summary: Provider record IDs need not be DOIs.
+    recorded = {event.kind for event in paper.date_evidence if
+                event.publication_type == 'journal' and event.provider and event.record_id}
+    return tuple(kind.value for kind in (EvidenceDateKind.RECEIVED, EvidenceDateKind.ACCEPTED)
+                 if kind not in recorded)
 
 
 def read_paper_target(workspace: Path, paper_id: UUID, *, operation_lock=None) -> EnrichmentTarget:
@@ -62,17 +84,17 @@ def read_paper_target(workspace: Path, paper_id: UUID, *, operation_lock=None) -
         missing_date = state.publication_date is None or len(state.publication_date) == 7
         missing_authors = not state.authors
         lock.verify()
-        return EnrichmentTarget(lock.path, path, paper_id, identity.primary_doi, read.contents,
+        return EnrichmentTarget(lock.path, path, paper_id, valid_doi(identity.primary_doi), read.contents,
                               lock.identity, read.directory_identity, read.file_identity, state.publication_date,
-                              missing_abstract, missing_date, missing_authors)
+                              missing_abstract, missing_date, missing_authors, missing_history(state))
 
 
 def read_enrichment_target(workspace: Path, paper_id: UUID) -> EnrichmentTarget:
     target = read_paper_target(workspace, paper_id)
     if not target.doi:
         raise ValueError("A valid primary DOI is required for external Enrich")
-    if not (target.missing_abstract or target.missing_date or target.missing_authors):
-        raise ValueError('Paper already has an Abstract, publication date and Authors')
+    if not target.missing_fields:
+        raise ValueError('Paper has no eligible missing Enrich fields')
     return target
 
 
@@ -214,8 +236,6 @@ def save_enrichment(target: EnrichmentTarget, abstract: str | None = None,
     current = read_enrichment_target(target.workspace, target.paper_id)
     if current != target:
         raise ContentChangedError('Paper or Workspace changed; enrichment was not saved')
-    if abstract is None and publication_date is None and authors is None and not date_evidence:
-        raise ValueError('No enrichment candidate')
     contents = target.original
     if abstract is not None:
         if not target.missing_abstract:
@@ -231,17 +251,21 @@ def save_enrichment(target: EnrichmentTarget, abstract: str | None = None,
         contents = fill_authors(contents, authors)
     saved = {key: value for key, value in dict(abstract=abstract, publication_date=publication_date, authors=authors).items() if value is not None}
     if date_evidence:
-        from allfold.models import EvidenceDate
-        from allfold.paper_dates import merge_dates
         state = parse_paper_state(target.path, target.original)
-        dates = merge_dates(state.date_evidence, tuple(EvidenceDate.model_validate(item) for item in date_evidence))
-        if dates != state.date_evidence:
+        additions = tuple(EvidenceDate.model_validate(item) for item in date_evidence)
+        def web_fact(event):
+            return event.kind, event.record_id, event.url, date_value(event)
+        def is_web_history(event):
+            return event.provider == 'translator-web' and event.kind in {EvidenceDateKind.RECEIVED, EvidenceDateKind.ACCEPTED}
+        existing_web = {web_fact(event) for event in state.date_evidence if is_web_history(event)}
+        dates = merge_dates(state.date_evidence, (
+            event for event in additions if not is_web_history(event) or web_fact(event) not in existing_web))
+        if dates != merge_dates(state.date_evidence):
             values = [item.model_dump(mode='json', exclude_none=True) for item in dates]
             contents = set_managed_value(contents, 'date_evidence', values)
             saved['date_evidence'] = values
-    if not saved:
-        raise ValueError('Translator returned no new usable fields or date events')
-    _commit_fields(target, contents)
+    if saved:
+        _commit_fields(target, contents)
     return saved
 
 

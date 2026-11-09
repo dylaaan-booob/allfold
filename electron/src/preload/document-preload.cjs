@@ -2,6 +2,7 @@
 // Snapshot serialization adapts pinned remoteTranslate.js (AGPL-3.0-or-later).
 // Host-initiated fixed operations only. No contextBridge API is exposed to sites.
 const {ipcRenderer,webFrame}=require('electron');
+const documentId=Array.from(crypto.getRandomValues(new Uint32Array(4))).join('-');
 const operations={
   snapshot() {
     let html=document.documentElement?.outerHTML || '';
@@ -40,6 +41,6 @@ ipcRenderer.on('document:operation',async(_event,{id,action,args})=>{
   try {
     const result=await webFrame.executeJavaScriptInIsolatedWorld(999,[{code:
       '('+operation.toString().replace(/^\w+\(/,'function(')+')('+JSON.stringify(args || {})+')'}]);
-    ipcRenderer.send('document:result',{id,result});
+    ipcRenderer.send('document:result',{id,result:action==='snapshot'?{...result,documentId}:result});
   }catch {ipcRenderer.send('document:result',{id,error:'document_operation_failed'});}
 });

@@ -1148,6 +1148,7 @@ function missingFields(paper) {
   if (!paper.abstract?.trim()) fields.push('abstract');
   if (!paper.authors.length) fields.push('authors');
   if (!paper.publication_date || paper.publication_date.length === 7) fields.push('publication_date');
+  fields.push(...(paper.history_missing || []));
   return fields;
 }
 function renderField(id, text, missing, bars=1) {
@@ -1237,6 +1238,7 @@ function updateEnrichedFields(fields) {
   const paper=currentPaper(), detail=$('paper-detail');
   decryption.reset(null,true);
   renderPaperFields(paper,fields);
+  if (fields.includes('date_evidence')) window.allfoldPaperDates.render(paper,$('paper-dates'),$('paper-date-evidence'));
   detail.classList.toggle('abstract-locked',!paper.abstract?.trim());
   fillAbstractPlaceholder();
   const targets={abstract:'paper-abstract',authors:'paper-authors',publication_date:'paper-date'};
@@ -1256,7 +1258,7 @@ function renderEnrich() {
   for(const id of ['previous-paper','next-paper']) $(id).disabled=decisionPending || Boolean(snapshotApplying) || paperToolsBusy() || phase==='Saving' || reviewPapers().length===1;
   document.querySelectorAll('#paper-detail [data-enrich], #paper-metadata-details [data-enrich]').forEach(node=>{
     node.disabled=!canEnrich(paper);
-    node.title=node.disabled ? (!paper.doi?'需要有效的主要 DOI；仍可编辑本地字段':active?'正在补全缺失信息':paper.enriched?'本次补全已完成，信息仍未获得':'当前暂不可补全') : '点击补全缺失信息';
+    node.title=node.disabled ? (!paper.doi?'需要有效的主要 DOI；仍可编辑本地字段':active?'正在补全缺失信息':'当前暂不可补全') : '点击补全缺失信息';
   });
   $('cancel-enrich').hidden=phase!=='Retrieving';
   $('enrich-task-page').hidden=!waiting;
@@ -1270,9 +1272,9 @@ function renderEnrich() {
   document.querySelectorAll('#paper-detail .missing-field, #paper-metadata-details .missing-field, #paper-metadata-details .date-precision').forEach(n=>n.classList.toggle('scanning',phase==='Retrieving'));
   fillAbstractPlaceholder();
 }
-function canEnrich(paper=currentPaper(),developerRetry=false) {
+function canEnrich(paper=currentPaper()) {
   const reading=readerContext ? arrayActive() : state.view==='journal' && inspection.target && inspection.time===inspection.duration && !inspection.removeAfter;
-  return Boolean(reading && paper?.doi && (developerRetry || !paper.enriched) && missingFields(paper).length && !decisionPending && !snapshotApplying && !paperToolsBusy() && !window.workspaceArray?.workflowBusy() &&
+  return Boolean(reading && paper?.status==='candidate' && paper.doi && !paper.enriched && missingFields(paper).length && !decisionPending && !snapshotApplying && !paperToolsBusy() && !window.workspaceArray?.workflowBusy() &&
     !['Retrieving','Saving'].includes(paper.enrichPhase) && !['Retrieving','Saving'].includes(enrichment?.phase));
 }
 
@@ -1296,7 +1298,7 @@ function renderPaperTools(reload=false) {
   const checks=[...document.querySelectorAll('[data-paper-reset]')];
   checks.forEach(node=>{node.disabled=!ready;});
   $('paper-reset-fields').disabled=!ready || !checks.some(node=>node.checked);
-  $('paper-dev-enrich').disabled=!ready || !canEnrich(paper,true);
+  $('paper-dev-enrich').disabled=!ready || !canEnrich(paper);
   $('paper-abstract-input').disabled=!ready || Boolean(paperTools.fields.abstract?.trim());
   $('paper-diagnostics').disabled=paperToolsBusy() || decisionPending || Boolean(snapshotApplying);
   $('paper-tools-status').textContent=paperTools.pending?'正在保存…':paperTools.loading?'正在读取字段…':paperTools.error;
@@ -1375,7 +1377,7 @@ async function submitPaperEdit(kind) {
 }
 $('paper-dev-tools').addEventListener('change',()=>renderPaperTools());
 $('paper-reset-fields').addEventListener('click',()=>void submitPaperEdit('reset'));
-$('paper-dev-enrich').addEventListener('click',()=>void startEnrich(true));
+$('paper-dev-enrich').addEventListener('click',()=>void startEnrich());
 $('paper-abstract-input').addEventListener('click',()=>openPaperDialog('input'));
 $('paper-diagnostics').addEventListener('click',()=>openPaperDialog('diagnostics'));
 $('paper-input-text').addEventListener('input',()=>{$('paper-dialog-save').disabled=paperTools.pending || !$('paper-input-text').value.trim();});
@@ -1427,7 +1429,7 @@ async function pollEnrich(operation) {
     }
     if(result.phase==='Completed') {
       const fields=Object.keys(result.saved || {});
-      operation.paper.enriched=true;operation.paper.syncWarning=result.message.includes('sync failed');
+      operation.paper.syncWarning=result.message.includes('sync failed');
       await refreshWorkspace();
       if(currentPaper()?.id===operation.paperId) {updateEnrichedFields(fields);if(!readerContext && inboxActive())paintDirectory();}
       return;
@@ -1441,13 +1443,13 @@ async function pollEnrich(operation) {
   if(currentPaper()?.id===operation.paperId)renderEnrich();
   if(enrichment===operation && !operation.cancelled)operation.timer=setTimeout(()=>void pollEnrich(operation),1000);
 }
-async function startEnrich(developerRetry=false) {
+async function startEnrich() {
   const paper=currentPaper();
-  if(!canEnrich(paper,developerRetry) || reviewPanel.closest('[inert]'))return;
+  if(!canEnrich(paper) || reviewPanel.closest('[inert]'))return;
   const operation=enrichment={paperId:paper.id,paper,phase:'Retrieving',requestID:null,cancelled:false};
   paper.enrichMessage='Retrieving missing fields…';renderEnrich();
   try {
-    operation.startTask=uiNext.request(`${enrichmentURL(operation)}/start`,{developer_retry:developerRetry});
+    operation.startTask=uiNext.request(`${enrichmentURL(operation)}/start`,{});
     const result=await operation.startTask;
     operation.requestID=result.request_id;
     if(operation.cancelled)return;

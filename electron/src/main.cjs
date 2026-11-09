@@ -187,12 +187,18 @@ async function executeOperation(message) {
         browser.enterBusiness();
         stage='translation';
         progress({message:'Running official Translator'});
-        const {item,apiItem,proxy,sourceDocument,metadataSource}=await translator.translate(doc,doi,{signal:controller.signal,forEnrichment:message.action==='enrich_paper',workspaceMetadata:message.action==='import_paper'?message.data.metadata:undefined,logContext:{...context,page_id:doc.pageId}});
+        const forEnrichment=message.action==='enrich_paper';
+        const historyKinds=forEnrichment && Array.isArray(message.data.history_kinds)
+          ? ['received','accepted'].filter(kind=>message.data.history_kinds.includes(kind)) : [];
+        const {item,apiItem,proxy,sourceDocument,metadataSource,dateCandidates}=await translator.translate(doc,doi,{
+          signal:controller.signal,forEnrichment,historyKinds,workspaceMetadata:forEnrichment?undefined:message.data.metadata,
+          logContext:{...context,page_id:doc.pageId}});
         if(controller.signal.aborted)throw new BrowserFailure('translation','canceled');
         // A navigation while translating invalidates the source document.
         if (!browser.documentCurrent(doc) || !browser.documentCurrent(sourceDocument)) throw new BrowserFailure('translation','document_changed');
         if(message.action==='enrich_paper') {
-          data={item,metadata_source:metadataSource};
+          data={item,metadata_source:metadataSource,date_candidates:dateCandidates,
+            source_url:dateCandidates?.length?sourceDocument.url:undefined};
         } else {
           log('info','metadata_selected',{...context,stage:'translation',page_id:sourceDocument.pageId,metadata_source:metadataSource});
           progress({message:'Native Zotero save in progress'},'parent_save');
@@ -220,7 +226,8 @@ async function executeOperation(message) {
     log(canceled?'info':failed?'warn':'info','task_finished',{...context,page_id:resultPageId,
       duration_ms:Date.now()-started,outcome:canceled?'canceled':outcome,
       parent:data.parent?.outcome,pdf:data.pdf?.outcome,stage:diagnostic.stage || stage,
-      step:diagnostic.step,code:diagnostic.code || data.reason,net_error:diagnostic.net_error,status:diagnostic.status});
+      step:diagnostic.step,code:diagnostic.code || data.reason,net_error:diagnostic.net_error,status:diagnostic.status,
+      imperva_edet:diagnostic.imperva_edet,imperva_incident_id:diagnostic.imperva_incident_id});
     send({type:'result',id:message.id,action:message.action,data:{...data,diagnostics_status:diagnosticsStatus()}});
   })();
   activeRequest=operation;

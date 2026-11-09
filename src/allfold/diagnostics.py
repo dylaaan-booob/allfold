@@ -116,7 +116,8 @@ def _details(value):
     for key in ('saved_fields', 'requested_fields'):
         fields = value.get(key)
         if isinstance(fields, list):
-            result[key] = sorted({field for field in fields if _enum(field, {'abstract', 'authors', 'publication_date', 'date_evidence'})})
+            result[key] = sorted({field for field in fields if _enum(field, {
+                'abstract', 'authors', 'publication_date', 'date_evidence', 'received', 'accepted'})})
     service_statistics = value.get('service_statistics')
     if isinstance(service_statistics, list):
         summaries = []
@@ -685,6 +686,7 @@ class DiagnosticStore:
                     'page_id, source_page_id, role and generation describe the captured page relationship; '
                     'scope_id and service_id describe verified configuration metadata, never permission or task authority. '
                     'source distinguishes Python/Electron; event, stage, step, code, status and net_error are fixed technical facts. '
+                    'imperva_edet and imperva_incident_id identify a recognized Imperva denial when present. '
                     'History outcome is coordinator-confirmed business state; a native event outcome describes only that operation. '
                     'parent and pdf distinguish parent-item evidence from unverified attachment persistence. '
                     'recent_scope includes only the last seven UTC days across startups, using one export time. '

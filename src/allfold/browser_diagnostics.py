@@ -45,6 +45,13 @@ def normalize_browser_diagnostic(value: object) -> dict[str, object] | None:
     net_error = value.get('net_error')
     if isinstance(net_error, str) and re.fullmatch(r'ERR_[A-Z0-9_]{1,80}', net_error):
         result['net_error'] = net_error
+    if result.get('stage') == 'navigation' and result.get('code') == 'site_restricted':
+        edet = value.get('imperva_edet')
+        if type(edet) is int and 0 <= edet <= 999:
+            result['imperva_edet'] = edet
+        incident_id = value.get('imperva_incident_id')
+        if isinstance(incident_id, str) and re.fullmatch(r'[0-9]{1,32}-[0-9]{1,32}', incident_id):
+            result['imperva_incident_id'] = incident_id
     return result or None
 
 

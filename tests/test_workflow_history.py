@@ -136,13 +136,14 @@ def test_enrich_history_confirms_only_saved_fields_and_exact_task(tmp_path):
     assert data['task_id'] == started['request_id']
     assert data['workflow_id'] == started['request_id']
     assert data['paper_id'] == str(paper_id)
+    assert data['history_kinds'] == ['received', 'accepted']
     assert store.history()['records'][0]['outcome'] == 'running'
     bridge.future.set_result({'item': {'DOI':bridge.calls[0][1]['doi'], 'itemType':'journalArticle', 'abstractNote':'Sensitive research'}})
     enrich.join()
     record = store.history()['records'][0]
     assert record['outcome'] == 'completed'
     assert record['details']['saved_fields'] == ['abstract']
-    assert record['details']['requested_fields'] == ['abstract']
+    assert record['details']['requested_fields'] == ['abstract', 'accepted', 'received']
     assert record['details']['sync_warning'] is False
     assert 'Sensitive research' not in str(record)
 

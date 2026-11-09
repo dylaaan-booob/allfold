@@ -12,6 +12,24 @@ function checkPage(status, title, html) {
     throw new BrowserFailure('navigation', 'site_restricted', 418);
   if (/\bCPE00001\b/.test(html) && /There was a problem providing the content you requested/i.test(html))
     throw new BrowserFailure('navigation', 'content_access_blocked', status);
+  // Imperva can serve an access-denial document with an HTTP 200 status.
+  if (status === 200 && /_Incapsula_Resource/.test(html)) {
+    const frameShell = /<body\b[^>]*>((?:\s*<iframe\b[^>]*>[^<]*<\/iframe>)+)\s*<\/body>/i.exec(html);
+    const deniedFrame = /<iframe\b[^>]*\ssrc\s*=\s*(["'])\/_Incapsula_Resource(?:\?([^"']*))?\1[^>]*>\s*Request unsuccessful\.\s*Incapsula incident ID:\s*([0-9]{1,32}-[0-9]{1,32}(?=\s|<|$))?/i;
+    const denied = frameShell && deniedFrame.exec(frameShell[1]);
+    if (denied) {
+      const failure = new BrowserFailure('navigation', 'site_restricted', status);
+      const [, , query, displayed] = denied;
+      const params = new URLSearchParams(query?.replace(/&amp;/gi, '&'));
+      const codes = params.getAll('edet');
+      const ids = params.getAll('incident_id');
+      const incident = ids.length ? ids[0] : displayed;
+      if (codes.length === 1 && /^[0-9]{1,3}$/.test(codes[0])) failure.diagnostic.imperva_edet = Number(codes[0]);
+      if (ids.length <= 1 && /^[0-9]{1,32}-[0-9]{1,32}$/.test(incident)
+          && (!displayed || displayed === incident)) failure.diagnostic.imperva_incident_id = incident;
+      throw failure;
+    }
+  }
   // A localized challenge document has both page options and its challenge-page orchestrator.
   const cloudflareDocument = /\b_cf_chl_opt\s*=\s*\{/.test(html)
     && /\/cdn-cgi\/challenge-platform\/[^\s"'<>]*orchestrate\/chl_page\//i.test(html);

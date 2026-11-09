@@ -24,9 +24,10 @@ The single-Paper preprint lookup reports completion, no match, failure and
 cancellation in ARRAY Info. Run metadata completion is part of the parent Run
 result.
 
-Webpage Enrich's requested fields remain its ordinary Abstract/Authors/publication
-date gaps. Its saved-field allowlist also includes `date_evidence`, so event-only
-saves appear as actual updates. Diagnostic observations include reviewed counts
+Webpage Enrich records eligible Abstract, Authors, publication date, Received
+and Accepted gaps as requested fields. Saving a journal event records
+`date_evidence` as an actual update. A completed response without new evidence
+records no saved fields. Diagnostic observations include reviewed counts
 and field names. Paper text, raw provider responses, credentials and sensitive URLs
 stay outside diagnostics.
 
@@ -76,6 +77,7 @@ Arbitrary strings are excluded rather than merely truncated.
 | `service_id`, `paper_id` | Reviewed saved identities, without names, DOI or content |
 | `page_id`, `source_page_id`, `role`, `generation` | Descriptive page association and navigation generation |
 | `stage`, `step`, `code`, `status`, `net_error` | Reviewed operation stage, stable failure code and bounded network evidence |
+| `imperva_edet`, `imperva_incident_id` | Optional numeric code and support reference from a recognized Imperva denial. The event's UTC time records when Allfold reported the failure. |
 | `outcome`, `parent`, `pdf` | Business/native result, parent-save evidence and separate PDF evidence |
 
 Default diagnostics exclude credentials, Cookie/Authorization, request and response

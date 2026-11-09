@@ -11,7 +11,7 @@ const metrics={integrated_candidates:'Discovery 候选',integrated_deduplicated:
   skipped:'跳过',cancelled:'取消',completed:'完成',opened:'已打开',needs_attention:'需要处理',eligible:'符合条件',
   matched:'已匹配',downloaded:'已获取',enriched:'已补充',unchanged:'未变更',candidates:'候选',papers:'Paper',
   services:'Service',warnings:'提示',errors:'问题',excluded:'排除',duplicates:'重复',materialized:'已写入',pdf_unverified:'PDF unverified'};
-const fieldNames={abstract:'摘要',authors:'作者',publication_date:'出版日期',date_evidence:'日期事件'};
+const fieldNames={abstract:'摘要',authors:'作者',publication_date:'出版日期',date_evidence:'日期事件',received:'Received',accepted:'Accepted'};
 const reasons={runtime_interrupted:'上次运行未留下可确认的最终结果。',connection_lost:'连接中断，最终结果可能未确认。',
   cancelled:'任务已取消。',partial:'部分工作未完成，请展开查看结果。',failed:'任务未完成，请查看问题并导出诊断。',
   needs_attention:'需要人工处理后再继续。',result_unconfirmed:'保存结果未确认；请先检查 Zotero，勿直接重试。',

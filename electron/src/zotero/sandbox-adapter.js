@@ -135,9 +135,169 @@ window.allfoldTranslatorReady=(async () => {
     return Zotero.Utilities.Item.itemToAPIJSON(clean)[0];
   }
   function matchingDOI(item,doi) {
-    const value=String(item?.DOI || '').trim().replace(/^https?:\/\/(?:dx\.)?doi\.org\//i,'').toLowerCase();
-    if(!/^10\.\d{4,9}\/\S+$/.test(value))return 'translator_doi_missing';
+    const value=doiValue(item?.DOI);
+    if(!value)return 'translator_doi_missing';
     return value===doi?null:'doi_mismatch';
+  }
+  function doiValue(raw) {
+    const value=String(raw || '').trim().replace(/^https?:\/\/(?:dx\.)?doi\.org\//i,'').toLowerCase();
+    return /^10\.\d{4,9}\/\S+$/.test(value)?value:null;
+  }
+  const scieloTranslator='3eabecf9-663a-4774-a3e6-0790d2732eed';
+  const euclidTranslator='2e1c09a0-3006-11de-8c30-0800200c9a66';
+  function euclidFullArticle(url) {
+    return url.hostname==='projecteuclid.org' && url.pathname.startsWith('/journals/') && url.pathname.endsWith('.full');
+  }
+  function documentDOIs(document,url,translatorID) {
+    const keys=new Set(['citation_doi','bepress_citation_doi','prism.doi','dc.identifier','dc.identifier.doi','dcterms.identifier']);
+    const values=[...document.head.querySelectorAll('meta[content]')]
+      .filter(node=>keys.has((node.getAttribute('name') || node.getAttribute('property') || '').toLowerCase()))
+      .map(node=>node.content);
+    // This is the article DOI locator used by the selected SciELO Translator.
+    if(translatorID===scieloTranslator)values.push(document.querySelector('a._doi[href]')?.getAttribute('href'));
+    const source=new URL(url);
+    values.push(source.searchParams.get('id'),source.searchParams.get('doi'));
+    try {
+      // Project Euclid's full article route appends ".full" after the DOI.
+      const pathname=translatorID===euclidTranslator && euclidFullArticle(source)?source.pathname.slice(0,-5):source.pathname;
+      values.push(decodeURIComponent(pathname).match(/(?:^|\/)(10\.\d{4,9}\/[^/]+)$/)?.[1]);
+    } catch { /* A malformed URL escape cannot establish a DOI. */ }
+    return new Set(values.map(value=>doiValue(value?.trim().replace(/^doi:\s*/i,''))).filter(Boolean));
+  }
+  const monthNames='january february march april may june july august september october november december'.split(' ');
+  const months=new Map(monthNames.flatMap((name,i)=>[[name,i+1],[name.slice(0,3),i+1]]));
+  months.set('sept',9);
+  function historyDate(raw) {
+    if(typeof raw!=='string')return null;
+    const text=raw.trim().replace(/\s+/g,' ').toLowerCase();
+    const dateTime=text.match(/^(\d{4}-\d{2}-\d{2})[t ](.+)$/);
+    const isoTime=/^(?:[01]\d|2[0-3]):[0-5]\d(?::[0-5]\d(?:\.\d+)?)?(?:z|[+-](?:[01]\d|2[0-3]):?[0-5]\d)?$/;
+    // A publisher's timestamp supplies its written calendar day.
+    const calendarText=dateTime && isoTime.test(dateTime[2])?dateTime[1]:text;
+    const iso=calendarText.match(/^(\d{4})(?:-(\d{2})(?:-(\d{2}))?)?$/);
+    const dayFirst=text.match(/^(\d{1,2}) ([a-z]+)\.? (\d{4})$/);
+    const monthFirst=text.match(/^([a-z]+)\.?(?: (\d{1,2}))?,? (\d{4})$/);
+    let year,month,day;
+    if(iso) [,year,month,day]=iso;
+    else if(dayFirst || monthFirst) {
+      const [,name]=monthFirst || [];
+      year=(dayFirst || monthFirst)[3];
+      month=months.get(dayFirst?.[2] || name);
+      day=dayFirst?.[1] || monthFirst?.[2];
+      if(!month)return null;
+    } else return null;
+    if(+year<1 || month!==undefined && (+month<1 || +month>12)
+      || day!==undefined && (+day<1 || +day>new Date(Date.UTC(+year+400,+month,0)).getUTCDate()))return null;
+    return [year,month,day].filter(part=>part!==undefined).map(part=>String(part).padStart(2,'0')).join('-');
+  }
+  const historyLabel=/^(?:manuscript\s+)?(received|accepted)\s*:?$/i;
+  const peripheralContent='nav, #references, .references, [role="doc-bibliography"], '
+    +'.related-articles, .recommended-articles, [data-testid="related-articles"], [data-testid="recommended-articles"]';
+  function historyCandidates(document,{doi,url,translatorID},accepted) {
+    const facts=new Map();
+    const add=(label,raw,time)=>{
+      if(raw!=null && typeof raw!=='string')return;
+      const source_label=label.trim().replace(/\s+/g,' ');
+      const kind=source_label.match(historyLabel)?.[1].toLowerCase();
+      const visible=historyDate(raw),structured=historyDate(time);
+      if(!kind || raw?.trim() && !visible || time && !structured || visible && structured && visible!==structured)return;
+      const value=visible || structured;
+      if(value)facts.set(kind+':'+value,{kind,value,source_label,url,record_id:doi});
+    };
+    add('accepted',accepted);
+    // These locators delimit article-history entries. Event names and dates
+    // are parsed identically regardless of the selected Web Translator.
+    const entries=(selector,scope=document,articlePanel)=>[...scope.querySelectorAll(selector)]
+      .filter(node=>!node.closest(peripheralContent)
+        && (!node.closest('aside') || articlePanel && node.closest(articlePanel)));
+    const fromValue=(label,value)=>{
+      const time=value.matches('time')?value:value.querySelector('time');
+      add(label,value.textContent,time?.getAttribute('datetime'));
+    };
+    const fromRow=(row,label,selector)=>{
+      const value=row.querySelector(selector);
+      if(!value)return;
+      if(!label) {
+        const copy=row.cloneNode(true);
+        copy.querySelector(selector).remove();
+        copy.querySelectorAll('.u-hide').forEach(node=>node.remove());
+        label=copy.textContent;
+      }
+      fromValue(label,value);
+    };
+    const fromText=(text,time)=>{
+      const match=text.trim().match(/^((?:manuscript\s+)?(?:received|accepted)(?:\s*:|(?=\s)))\s*(.+)$/is);
+      if(match)add(match[1],match[2],time);
+    };
+    const fromTextList=(row,text)=>{
+      if(row.querySelector('time'))return;
+      for(const event of text.trim().replace(/\.$/,'').split(';'))fromText(event);
+    };
+    for(const row of entries('li.c-bibliographic-information__list-item'))
+      fromRow(row,null,'.c-bibliographic-information__value time');
+    for(const row of entries('.Summary__dates > div')) {
+      const label=row.querySelector(':scope > p.h5');
+      const values=row.querySelectorAll(':scope > p:not(.h5)');
+      if(label && values.length===1)fromRow(row,label.textContent,':scope > p:not(.h5)');
+    }
+    for(const label of entries('#artText .articleinfo p > strong, .articleSection--history .articleTimeline > li > strong')) {
+      let raw='';
+      const times=[];
+      for(let next=label.nextSibling;next && next.nodeName!=='STRONG';next=next.nextSibling) {
+        raw+=next.textContent;
+        if(next.nodeName==='TIME')times.push(next);
+        else if(next.nodeType===Node.ELEMENT_NODE)times.push(...next.querySelectorAll('time'));
+      }
+      if(times.length<=1)add(label.textContent,raw.trim().replace(/;$/,''),times[0]?.getAttribute('datetime'));
+    }
+    for(const section of entries('section.article-section')) {
+      if(section.querySelector('h3.article-section__header_text')?.textContent.trim().toLowerCase()!=='publication history')continue;
+      for(const row of entries('.article-section__body ol.list--bullet > li',section))
+        fromRow(row,null,'time');
+    }
+    for(const row of entries('li[data-testid="publication-history-item"]',document,'[data-testid="publication-history-section"]'))
+      fromRow(row,null,':scope > [data-testid="publication-date-label"]');
+    for(const row of entries('.pub-history-wrap .history-entry')) {
+      const label=row.querySelector('.wi-state');
+      if(label)fromRow(row,label.textContent,'.wi-date');
+    }
+    for(const label of entries('#article-information dl.article-dates > dt')) {
+      const value=label.nextElementSibling;
+      if(value?.matches('dd'))fromValue(label.textContent,value);
+    }
+    for(const row of entries('section.publication-history > ul.rlist > li')) {
+      const text=row.textContent.trim();
+      const editorial=text.match(/^Editorial history\s*:\s*(.+)$/is);
+      if(editorial)fromTextList(row,editorial[1]);
+      else fromText(text,row.querySelector('time')?.getAttribute('datetime'));
+    }
+    for(const row of entries('.foot-notes .history > p'))fromTextList(row,row.textContent);
+    if(translatorID===euclidTranslator && euclidFullArticle(new URL(url))) {
+      // Euclid groups Received, any revisions, and Published in one date-only row.
+      const dateEntry=/^(?:received|revised|accepted|published):\s*(.+)$/i;
+      for(const span of entries('span')) {
+        const first=span.textContent.trim();
+        if(!/^received:/i.test(first))continue;
+        const row=span.parentElement;
+        const text=row.textContent.trim().replace(/\.$/,'');
+        const events=text.split(';').map(event=>event.trim());
+        if(events[0]===first && /^published:/i.test(events.at(-1))
+          && events.every(event=>historyDate(event.match(dateEntry)?.[1])))fromTextList(row,text);
+      }
+    }
+    for(const row of entries([
+      '.itemPageRangeHistory > span',
+      'ul.article-chapter-history-list > li',
+      'section.core-history > div',
+      '#article-dates .article-dates > nobr',
+    ].join(',')))fromText(row.textContent,row.querySelector('time')?.getAttribute('datetime'));
+    return [...facts.values()];
+  }
+  function addPublicationParts(item) {
+    const parsed=Zotero.Date.strToDate(item.date || '');
+    item.date_parts={};
+    for(const key of ['year','month','day'])if(parsed[key]!=null && /^\d+$/.test(String(parsed[key])))
+      item.date_parts[key]=Number(parsed[key])+(key==='month'?1:0);
   }
   window.allfoldTranslator = {
     count:registry.length,
@@ -155,7 +315,13 @@ window.allfoldTranslatorReady=(async () => {
             proxy:t.proxy?.toJSON?t.proxy.toJSON():t.proxy || null}))};
       }catch(error){return failure(error,{observers:state.observers});}
     },
-    async translate({snapshot,candidate,cookie='',doi,forEnrichment=false}) {
+    readHistory({snapshot,doi,translatorID}) {
+      const document=createDocument(snapshot,true,[]);
+      const ids=documentDOIs(document,snapshot.url,translatorID);
+      const matches=ids.size===1 && ids.has(doi);
+      return {mismatch:ids.size>0 && !matches,dateCandidates:matches?historyCandidates(document,{doi,url:snapshot.url,translatorID}):[]};
+    },
+    async translate({snapshot,candidate,cookie='',doi,forEnrichment=false,historyKinds=[]}) {
       let state=detection;
       if(snapshot && candidate) {
         const selected=byID.get(candidate.translatorID);
@@ -176,14 +342,15 @@ window.allfoldTranslatorReady=(async () => {
           if(!state.active)return {...failure(Error('Translation canceled')),terminal:true};
           const code=!items?.length?'translator_no_items':items.length!==1?'translator_multiple_items':matchingDOI(items[0],doi) || (typeof items[0].title!=='string' || !items[0].title.trim() || typeof items[0].itemType!=='string' || ['multiple','webpage','attachment','note'].includes(items[0].itemType)?'translator_invalid_item':null);
           if(code){last={ok:false,...info,itemCount:items?.length || 0,error:{kind:'translation',code,message:code}};continue;}
-          if(forEnrichment)for(const item of items)for(const field of ['date','accepted']) {
-            const parsed=Zotero.Date.strToDate(item[field] || '');item[field+'_parts']={};
-            for(const key of ['year','month','day'])if(parsed[key]!=null && /^\d+$/.test(String(parsed[key])))
-              item[field+'_parts'][key]=Number(parsed[key])+(key==='month'?1:0);
-          }
+          const item=items[0];
+          if(forEnrichment)addPublicationParts(item);
+          const history=forEnrichment && historyKinds.length>0 && item.itemType==='journalArticle';
+          const ids=history?documentDOIs(document,state.url,selected.translatorID):null;
+          const dateCandidates=history && (!ids.size || ids.size===1 && ids.has(doi))
+            ?historyCandidates(document,{doi,url:state.url,translatorID:selected.translatorID},item.accepted):undefined;
           if(proxy?.toProper)for(const item of items)for(const attachment of item.attachments || [])if(attachment.url)attachment._allfoldProperURL=proxy.toProper(attachment.url);
           return {ok:true,...info,proxy:proxy?.toJSON?proxy.toJSON():proxy || null,
-            items:JSON.parse(JSON.stringify(items)),apiItem:forEnrichment?undefined:apiParent(items[0],proxy),itemCount:1};
+            items:JSON.parse(JSON.stringify(items)),apiItem:forEnrichment?undefined:apiParent(item,proxy),itemCount:1,dateCandidates};
         }catch(error){last=failure(error,info);if(last.terminal)break;}
       }
       return {...last,observers:state.observers};
@@ -199,11 +366,7 @@ window.allfoldTranslatorReady=(async () => {
         const code=!items?.length?'translator_no_items':items.length!==1?'translator_multiple_items':
           matchingDOI(items[0],doi) || (typeof items[0].title!=='string' || !items[0].title.trim() || typeof items[0].itemType!=='string' || ['multiple','webpage','attachment','note'].includes(items[0].itemType)?'translator_invalid_item':null);
         if(code)return {ok:false,...info,itemCount:items?.length || 0,error:{kind:'translation',code}};
-        if(forEnrichment)for(const item of items)for(const field of ['date','accepted']) {
-          const parsed=Zotero.Date.strToDate(item[field] || '');item[field+'_parts']={};
-          for(const key of ['year','month','day'])if(parsed[key]!=null && /^\d+$/.test(String(parsed[key])))
-            item[field+'_parts'][key]=Number(parsed[key])+(key==='month'?1:0);
-        }
+        if(forEnrichment)addPublicationParts(items[0]);
         return {ok:true,...info,items:JSON.parse(JSON.stringify(items)),apiItem:forEnrichment?undefined:apiParent(items[0],info.proxy?new Zotero.Proxy(info.proxy):null),itemCount:1};
       }catch(error){return failure(error,info);}
     },

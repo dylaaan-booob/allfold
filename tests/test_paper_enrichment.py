@@ -122,7 +122,7 @@ def enrichment_command(enrich):
     return enrich.state(enrich._task['target'].paper_id)
 
 
-def finish_enrichment(enrich, items):
+def finish_enrichment(enrich, items, **response):
     future = enrich.bridge.future
     if future.done():
         return None
@@ -131,9 +131,101 @@ def finish_enrichment(enrich, items):
         for old, new in [('item_type','itemType'),('doi','DOI'),('abstract','abstractNote')]:
             if old in item:
                 item[new] = item.pop(old)
-    future.set_result({'item':item})
+    future.set_result({'item':item, 'source_url':'https://publisher.example/article', **response})
     enrich.join()
     return enrich.state(enrich._task['target'].paper_id)
+
+
+def history_candidate(kind, value, label=None):
+    return dict(kind=kind, value=value, source_label=label or kind.title(),
+                url='https://publisher.example/article', record_id='10.5555/decision')
+
+
+def test_date_only_enrich_retries_remaining_event_and_skips_duplicate(tmp_path):
+    from electron_test_helpers import edit
+    paper_id, path = missing(tmp_path)
+    path.write_text(path.read_text().replace(MISSING_ABSTRACT, 'Existing abstract'))
+    enrich = PaperEnrichment(PendingBridge(), BrowserTaskLock())
+    item = dict(itemType='journalArticle', DOI='10.5555/decision', abstractNote='Do not overwrite',
+                creators=CREATORS, date='2020', date_parts={'year': 2020})
+    received = history_candidate('received', '2026-07-09')
+    attempts = (([received], True), ([{**received, 'source_label': 'Manuscript received:'}], False),
+                ([history_candidate('accepted', '2026-08')], True))
+    for events, saved in attempts:
+        if not saved:
+            # Duplicate results must preserve the Paper's existing ordering.
+            state = parse_paper_state(path, path.read_text())
+            edit(path, date_evidence=[
+                dict(kind='published', year=2026, month=9, publication_type='journal', provider='pubmed', record_id='123'),
+                state.date_evidence[0].model_dump(mode='json', exclude_none=True),
+            ])
+        enrich.start(tmp_path, paper_id)
+        enrichment_command(enrich)
+        before = path.read_bytes()
+        result = finish_enrichment(enrich, [item], metadata_source='web', date_candidates=events)
+        assert result['phase'] == 'Completed'
+        assert set(result['saved']) == ({'date_evidence'} if saved else set())
+        if not saved:
+            assert path.read_bytes() == before
+    state = parse_paper_state(path, path.read_text())
+    assert [(event.kind.value, event.month, event.day) for event in state.date_evidence] == [
+        ('received', 7, 9), ('accepted', 8, None), ('published', 9, None),
+    ]
+    assert state.abstract == 'Existing abstract'
+    assert state.authors == ('Ada Author',)
+    assert state.publication_date == '2026-09-20'
+    assert state.first_public_at is None
+    with pytest.raises(ValueError, match='no eligible missing'):
+        enrich.start(tmp_path, paper_id)
+
+
+def test_date_only_web_api_uses_formal_evidence_and_stops_on_workspace_change(tmp_path):
+    from electron_test_helpers import edit
+    config, workspace = write_valid_config(tmp_path)
+    paper_id, path = missing(workspace)
+    path.write_text(path.read_text().replace(MISSING_ABSTRACT, 'Existing abstract'))
+    edit(path, date_evidence=[
+        dict(kind='accepted', year=2026, month=8, publication_type='journal', provider='pubmed', record_id='12345678'),
+        dict(kind='received', year=2026, month=7, publication_type='preprint', provider='biorxiv', record_id='123'),
+    ])
+    bridge = PendingBridge()
+    app = create_app(config, electron_bridge=bridge)
+    with TestClient(app, base_url='http://localhost') as client:
+        snapshot = client.get('/api/ui-next/workspace').json()
+        paper = next(p for subject in snapshot['subjects'] for journal in subject['journals'] for p in journal['papers'])
+        assert paper['history_missing'] == ['received'] and not paper['enriched']
+        endpoint = f'/api/papers/{paper_id}/enrichment'
+        assert client.post(f'{endpoint}/start', json={'csrf_token':app.state.csrf_token}).status_code == 200
+        enrich = app.state.paper_enrichment
+        enrichment_command(enrich)
+        before = path.read_bytes()
+        config.write_text(config.read_text().replace('output_dir: workspace', 'output_dir: other-workspace'))
+        item = dict(itemType='journalArticle', DOI='10.5555/decision')
+        result = finish_enrichment(enrich, [item], metadata_source='web',
+                                   date_candidates=[history_candidate('received', '2026-07-09')])
+        assert result['phase'] == 'Failed' and 'Workspace changed' in result['message']
+        assert path.read_bytes() == before
+
+
+@pytest.mark.parametrize('item_type,source', [('conferencePaper', 'web'), ('journalArticle', 'doi'), ('journalArticle', 'web')])
+def test_unverified_history_is_ignored_without_writing(tmp_path, item_type, source):
+    paper_id, path = missing(tmp_path)
+    path.write_text(path.read_text().replace(MISSING_ABSTRACT, 'Existing abstract'))
+    enrich = PaperEnrichment(PendingBridge(), BrowserTaskLock())
+    enrich.start(tmp_path, paper_id)
+    enrichment_command(enrich)
+    before = path.read_bytes()
+    events = [history_candidate('received', '2026-07-09')]
+    if source == 'web' and item_type == 'journalArticle':
+        events = [
+            {**events[0], 'url': 'https://publisher.example/other-article'},
+            {**events[0], 'record_id': '10.5555/other'},
+            {**events[0], 'value': '2026-02-30'},
+        ]
+    result = finish_enrichment(enrich, [dict(itemType=item_type, DOI='10.5555/decision')],
+                               metadata_source=source, date_candidates=events)
+    assert result['phase'] == 'Completed'
+    assert result['saved'] == {} and path.read_bytes() == before
 
 
 @pytest.mark.parametrize('ordinary', ['month_upgrade', 'events_only'])
@@ -143,10 +235,10 @@ def test_web_enrich_saves_returned_events_with_or_without_ordinary_updates(tmp_p
     enrich.start(tmp_path, paper_id)
     enrichment_command(enrich)
     item = dict(itemType='journalArticle', DOI='10.5555/decision',
-        accepted='2026-08', accepted_parts={'year': 2026, 'month': 8},
         date='2026-09-21' if ordinary == 'month_upgrade' else '2026-09',
         date_parts={'year': 2026, 'month': 9, **({'day': 21} if ordinary == 'month_upgrade' else {})})
-    result = finish_enrichment(enrich, [item])
+    result = finish_enrichment(enrich, [item], metadata_source='web',
+                               date_candidates=[history_candidate('accepted', '2026-08')])
     assert result['phase'] == 'Completed'
     assert 'date_evidence' in result['saved']
     state = parse_paper_state(path, path.read_text())
@@ -166,11 +258,11 @@ def test_web_date_events_share_all_response_and_revision_guards(tmp_path, change
     if change == 'revision':
         path.write_text(path.read_text() + 'Human edit\n')
     before = path.read_bytes()
-    item = dict(itemType='journalArticle', DOI='10.5555/other' if change == 'doi' else '10.5555/decision',
-                accepted='2026-08-01', accepted_parts={'year': 2026, 'month': 8, 'day': 1})
+    item = dict(itemType='journalArticle', DOI='10.5555/other' if change == 'doi' else '10.5555/decision')
     if change == 'disconnect':
         bridge.future.set_exception(ElectronDisconnected('Disconnected'))
         enrich.join()
     else:
-        finish_enrichment(enrich, [item])
+        finish_enrichment(enrich, [item], metadata_source='web',
+                          date_candidates=[history_candidate('accepted', '2026-08-01')])
     assert path.read_bytes() == before

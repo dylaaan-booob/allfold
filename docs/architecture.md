@@ -175,9 +175,17 @@ empty First public. The lookup keeps its result and request cache within the
 operation.
 
 First public requires established earliest linked preprint evidence. Typed
-journal events remain a separate date collection. Webpage Enrich retains its
-independent serial read-only Translator path, three ordinary-field triggers and
-month-to-day date exception; already-returned date events can accompany that
-response, including event-only writes. Its DOI/document/revision/cancellation
-checks apply to all returned fields. Neither operation starts the other.
+journal events remain a separate date collection. Webpage Enrich can fill a
+missing Received or Accepted for a journal Candidate independently of Abstract,
+Authors and publication date. The month-to-day publication date upgrade still
+applies. After a matching official Web Translator returns a journal article,
+the Allfold Adapter reads the same source document's manuscript history into
+separate date candidates. Missing events can trigger up to 30 seconds of
+cancellable snapshots of that same document, bounded by the Browser task.
+Each native candidate carries its event kind, ISO date at source precision,
+original label, document URL and target DOI. Python verifies the candidate
+against the response source before converting it to journal `EvidenceDate`.
+DOI Content Negotiation can supply ordinary metadata. Each event can be saved
+on its own, and a response without new evidence leaves the Paper unchanged.
+The DOI, document, revision and cancellation checks apply before saving.
 WoS retains its independent browser lifecycle while sharing the Paper model.

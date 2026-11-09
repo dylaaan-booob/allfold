@@ -125,10 +125,10 @@ first-version publication.
 
 DOI-free Papers can be read, kept/rejected and edited through existing local
 field operations, subject to UUID, exact-content revision and path checks.
-Webpage Enrich requires a valid primary DOI and an ordinary field gap. It retains
-the existing month-to-valid-day publication-date upgrade exception and can save
-already-returned date events without an ordinary-field change. It never starts
-for missing First public or journal events alone. Prepare and Import require that
+Webpage Enrich requires a valid primary DOI and an eligible field gap. For a
+journal Candidate, either Received or Accepted can independently qualify and be
+saved. The month-to-valid-day publication date upgrade remains eligible. First
+public is handled by preprint lookup. Prepare and Import require that
 same primary DOI and exclude unsupported preprint targets. Temporary related DOIs never
 become an arbitrary fallback target. Native translator DOI checks remain bound
 to the primary DOI. No change here grants browser, institution or Zotero write
