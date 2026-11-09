@@ -1,4 +1,4 @@
-import {resultLabel} from './run-results.js';
+import {completionLabel,resultLabel} from './run-results.js';
 import {importOutcomeMessage,preparationReason,providerNames} from './business-results.js';
 const esc=value=>String(value??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const kinds={run:'Run',prepare:'Service Preparation',import:'Batch Import',kept:'Kept Workflow',enrich:'网页 Enrich',covers:'Cover Search'};
@@ -64,7 +64,7 @@ export function renderHistoryRecord(record) {
       ${requested.length?`<p>请求补充：${requested.map(esc).join('、')}</p>`:''}
       ${saved.length?`<p>已补充：${saved.map(esc).join('、')}</p>`:''}
       ${record.diagnostic_message?`<p>${esc(record.diagnostic_message)}</p>`:''}
-      ${record.kind==='run' && details.completion_status?`<p>Discovery · ${esc(resultLabel(details.discovery_status || 'unknown'))} / Run metadata completion · ${esc(({complete:'完成',empty:'无需补全',partial:'部分完成',failed:'失败',cancelled:'已取消'})[details.completion_status] || '未知')}</p>`:''}
+      ${record.kind==='run' && details.completion_status?`<p>Discovery · ${esc(resultLabel(details.discovery_status || 'unknown'))} / Run metadata completion · ${esc(completionLabel(details.completion_status,stats.completion_targets))}</p>`:''}
       ${sourceRows?`<ul>${sourceRows}</ul>`:''}${wosChecks}
       ${serviceCounts}${details.omitted_services?'<p>更多 Service 汇总已省略。</p>':''}
       ${rows?`<ol>${rows}</ol>`:''}${details.omitted_results?'<p>更多结果已省略；请结合诊断包中的保留证据。</p>':''}
