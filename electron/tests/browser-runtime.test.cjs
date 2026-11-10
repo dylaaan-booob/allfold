@@ -968,7 +968,7 @@ test('initial Paper loading allows two delayed refreshes before replacing only t
   assert.equal(recovery.at(-1).source_page_id,pages[0].id);
 });
 
-for(const mode of ['same-tab','popup','timeout','unknown','ambiguous','unsafe-method','authority','double-fail']) {
+for(const mode of ['same-tab','popup','follow-up','follow-up-post','timeout','unknown','ambiguous','unsafe-method','authority','double-fail']) {
   test('CARSI Visit recovery preserves authority for '+mode,async t=>{
     if(mode==='timeout')t.mock.timers.enable({apis:['Date'],now:1000});
     const {loginInstitution,prepareLoggedInService}=require('../src/workflows/browser-operations.cjs');
@@ -978,6 +978,8 @@ for(const mode of ['same-tab','popup','timeout','unknown','ambiguous','unsafe-me
     const portalURL='https://ds.carsi.edu.cn/resource/resource.php';
     const detailURL='https://ds.carsi.edu.cn/resource/resourceDetail.php?id=synthetic';
     const targetURL='https://publisher.example/target';
+    const followUp=mode==='follow-up' || mode==='follow-up-post';
+    const method=mode==='unsafe-method' || mode==='follow-up-post'?'POST':'GET';
     let visits=0,refreshes=0,authorities=0,requestId=0,oldTarget;
     const recovery=[],created=[];
     browser.events.on('tab-created',(_event,tab)=>{
@@ -999,17 +1001,30 @@ for(const mode of ['same-tab','popup','timeout','unknown','ambiguous','unsafe-me
         visits++;
         if(visits===1 || mode==='double-fail') {
           oldTarget ||= target;
+          let failedURL=followUp?'https://publisher.example/landing':targetURL;
           const fail=()=>{
-            target.url=targetURL;
-            target.emit('did-start-navigation',{},targetURL,false,true);
+            target.url=failedURL;
+            target.emit('did-start-navigation',{},failedURL,false,true);
             if(mode==='timeout' && refreshes===1) {
               target.loading=true;
               setImmediate(()=>t.mock.timers.setTime(86000));
               return;
             }
-            networkFailure(partition,target,{id:++requestId,url:targetURL,method:mode==='unsafe-method'?'POST':'GET'});
+            networkFailure(partition,target,{id:++requestId,url:failedURL,method});
           };
-          target.reload=()=>{refreshes++;fail();};
+          target.reload=()=>{
+            refreshes++;
+            if(mode==='follow-up' && refreshes===1) {
+              void target.loadURL(failedURL);
+              failedURL='https://publisher.example/final';
+              target.emit('will-navigate',{},failedURL);
+            }
+            fail();
+          };
+          if(followUp) {
+            await target.loadURL(targetURL);
+            target.emit('will-navigate',{},failedURL);
+          }
           fail();
           if(mode==='unknown')return {status:'pending'};
           if(mode==='ambiguous')wc.popup({url:'about:blank'}).createWindow({});
@@ -1047,8 +1062,8 @@ for(const mode of ['same-tab','popup','timeout','unknown','ambiguous','unsafe-me
       assert.equal(recovery.at(-1).source_page_id,oldTarget.id);
       return;
     }
-    if(['unknown','ambiguous','unsafe-method','authority'].includes(mode)) {
-      if(mode==='unsafe-method')await assert.rejects(preparation,isLoadFailure);
+    if(method==='POST' || ['unknown','ambiguous','authority'].includes(mode)) {
+      if(method==='POST')await assert.rejects(preparation,isLoadFailure);
       else if(mode==='authority')await assert.rejects(preparation,/document_changed/);
       else assert.equal((await preparation).outcome,'Needs attention');
       assert.equal(visits,1);

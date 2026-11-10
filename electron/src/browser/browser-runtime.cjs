@@ -565,9 +565,9 @@ class BrowserRuntime {
           authorize:owner.validateRecovery?()=>owner.validateRecovery({...options,stage:'navigation'}):undefined});
       }),recoveryReport:owner?.recordRecovery};
   }
-  beginPageLoad(tab,signal,deadline=Infinity,{fresh=false,replayable}={}) {
+  beginPageLoad(tab,signal,deadline=Infinity,{fresh=false,replayable,replayFollowingGets}={}) {
     this.bindTaskPage(tab,signal);tab.loadOwner=this.operation;tab.loadAllowed=true;
-    const options={...this.navigationOptions(tab,{signal,deadline}),replayable};
+    const options={...this.navigationOptions(tab,{signal,deadline}),replayable,replayFollowingGets};
     return fresh?tab.navigation.begin(options):tab.navigation.adopt(options);
   }
   finishPageLoad(tab=this.taskTab) {if(tab){tab.loadAllowed=false;tab.navigation.finish();}}

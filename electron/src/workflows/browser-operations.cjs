@@ -404,7 +404,9 @@ async function visitCARSIResource(browser,portal,data,{signal,progress,attempt,p
         || attempt.ambiguous || attempt.manual)
         throw new BrowserFailure('preparation','unverified_official_page');
     };
-    browser.runInOperation(owner,()=>browser.beginPageLoad(tab,signal,requestDeadline,{replayable:true}));
+    browser.runInOperation(owner,()=>browser.beginPageLoad(tab,signal,requestDeadline,{
+      replayable:true,replayFollowingGets:true,
+    }));
   };
   const observesTarget=(tab,event,url,inPlace,main)=>{
     if((event.isMainFrame ?? main) && !(event.isSameDocument ?? inPlace))observe(tab,event.url ?? url);

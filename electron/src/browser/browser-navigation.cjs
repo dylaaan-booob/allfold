@@ -205,6 +205,9 @@ class NavigationRecovery {
     if(method!=='GET') {
       nav.chain.unsafeRequest=true;
       this.blockReplay();
+    } else if(nav.chain.replayFollowingGets) {
+      // A subsequent document can recover only after observing its main-frame GET.
+      nav.replayable=true;
     }
   }
   observeRequestFailure({id,url,error}) {
@@ -218,14 +221,16 @@ class NavigationRecovery {
   }
   blockReplay() {
     const nav=this.current;
-    if(nav)nav.replayable=false;
+    if(!nav)return;
+    nav.replayable=false;
+    nav.chain.replayFollowingGets=false;
   }
   begin({automatic=false,owner=null,signal,deadline=Infinity,enabled=true,resume=false,replayable=false,valid=()=>true,
-    beforeRefresh,recoveryReport,initialURL=null}={}) {
+    beforeRefresh,recoveryReport,initialURL=null,replayFollowingGets=false}={}) {
     const previous=this.current;
     const sameOwner=owner && previous?.owner===owner;
     this.finish({preserve:resume});
-    const chain=resume && previous?.owner===owner?previous.chain:{reloads:0,lastFailure:null,requestIds:new Set()};
+    const chain=resume && previous?.owner===owner?previous.chain:{reloads:0,lastFailure:null,requestIds:new Set(),replayFollowingGets};
     const nav=this.current={generation:++this.generation,chain,get reloads(){return chain.reloads;},automatic,owner,signal,enabled,
       replayable,valid,beforeRefresh,recoveryReport,deadline:sameOwner?Math.min(deadline,previous.deadline):deadline,
       loadDeadline:sameOwner && resume?previous.loadDeadline:null,active:true,pendingStart:true,started:false,
@@ -253,6 +258,7 @@ class NavigationRecovery {
     const sameOwner=nav.owner===owner;
     nav.automatic=true;nav.owner=owner;nav.signal=signal;nav.enabled=enabled;
     if(options.replayable!==undefined)nav.replayable=options.replayable;
+    if(options.replayFollowingGets)nav.chain.replayFollowingGets=true;
     nav.valid=valid;nav.beforeRefresh=beforeRefresh;nav.recoveryReport=recoveryReport;
     nav.deadline=sameOwner?Math.min(nav.deadline,deadline):deadline;
     nav.active=!nav.failure;
@@ -314,6 +320,7 @@ class NavigationRecovery {
   finish({preserve=false}={}) {
     const nav=this.current;
     if(!nav)return;
+    if(!preserve)nav.chain.replayFollowingGets=false;
     nav.active=false;nav.detach?.();nav.refresh?.abort();
     if(nav.chain.lastFailure && (!preserve || nav.refresh)) {
       this.recoveryEvent(nav,'recovery_exhausted',nav.chain.lastFailure,{
