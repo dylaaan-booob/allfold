@@ -15,6 +15,7 @@ import time
 import httpx
 
 from allfold.http_client import create_http_client
+from allfold.http_deadline import DEADLINE_REMAINING, HTTPDeadlineExceeded
 from allfold.progress import ActivityKind
 
 REGULAR_ATTEMPTS = 3
@@ -177,7 +178,7 @@ class ProviderReadClient:
         self._trace = local()
         self._access_failure = None
         self.request_count = 0
-        self.http = create_http_client(transport=transport, timeout=timeout, event_hooks={
+        self.http = create_http_client(transport=transport, timeout=timeout, deadline_reads=True, event_hooks={
             'request': [self._before_request], 'response': [self._observe_response],
         })
 
@@ -235,9 +236,12 @@ class ProviderReadClient:
 
     def _check_response_deadline(self, operation, status):
         if self._remaining(operation) <= 0:
-            if status >= 400:
-                operation.failure = ProviderHTTPError(self.provider, status)
-            raise ProviderBudgetExceeded(f'{self.provider}: Provider request recovery budget exhausted')
+            self._response_budget_exhausted(operation, status)
+
+    def _response_budget_exhausted(self, operation, status):
+        if status is not None and status >= 400:
+            operation.failure = ProviderHTTPError(self.provider, status)
+        raise ProviderBudgetExceeded(f'{self.provider}: Provider request recovery budget exhausted')
 
     def _wait(self, operation, seconds):
         self.check_authority()
@@ -253,6 +257,7 @@ class ProviderReadClient:
             self.check_authority()
 
     def _before_request(self, request):
+        self._trace.status = None
         operation = self._trace.operation
         scope = self._scope(request)
         waiting_status = None
@@ -304,9 +309,11 @@ class ProviderReadClient:
             elif delay > 0:
                 self._wait(operation, delay)
         request.extensions['timeout'] = httpx.Timeout(min(self._timeout, operation.deadline - now)).as_dict()
+        deadline, monotonic = operation.deadline, self._now
+        request.extensions[DEADLINE_REMAINING] = lambda: deadline - monotonic()
 
     def _observe_response(self, response):
-        status = response.status_code
+        status = self._trace.status = response.status_code
         if status in TRANSIENT_HTTP:
             delay = _retry_after(response.headers.get('retry-after'), self._wall_time)
             if delay is not None or status == 429:
@@ -334,17 +341,20 @@ class ProviderReadClient:
             action = 'provider_retry'
         self._trace.operation = operation
         self._trace.retry_after = False
+        self._trace.status = None
         try:
             return self._read(prepare, operation, decode, follow_redirects, action, final)
         finally:
             del self._trace.operation
             del self._trace.retry_after
+            del self._trace.status
 
     def _read(self, prepare, operation, decode, follow_redirects, action, final):
         attempts = range(1, REGULAR_ATTEMPTS + 1) if not final else (operation.attempt,)
         for attempt in attempts:
             operation.attempt = attempt
             self._trace.retry_after = False
+            self._trace.status = None
             try:
                 self.check_authority()
                 if self._access_failure is not None:
@@ -352,7 +362,12 @@ class ProviderReadClient:
                 try:
                     request = operation.request if final else prepare()
                     response = self.http.send(request, follow_redirects=follow_redirects)
+                except HTTPDeadlineExceeded:
+                    self.check_authority()
+                    self._response_budget_exhausted(operation, self._trace.status)
                 except (httpx.HTTPError, httpx.InvalidURL) as error:
+                    self.check_authority()
+                    self._check_response_deadline(operation, self._trace.status)
                     raise _transport_failure(self.provider, error) from None
                 self.check_authority()
                 self._check_response_deadline(operation, response.status_code)

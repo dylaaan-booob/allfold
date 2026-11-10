@@ -1,7 +1,7 @@
 # Python HTTP and proxies
 
 Project-owned synchronous HTTPX callers use `allfold.http_client.create_http_client`.
-It returns a normal owned `httpx.Client`; use `with` or close it after the operation.
+It returns an owned `httpx.Client`. Use `with` or close it after the operation.
 Timeouts, redirects, streaming, request errors and Provider retry/pacing logic stay
 with HTTPX and the caller. Each client owns its direct/proxy connection pools and
 snapshots its configuration at creation. It changes neither `os.environ` nor user
@@ -75,8 +75,8 @@ Mechanism references: [HTTPX public transports](https://www.python-httpx.org/adv
 [invalid-entry handling](https://github.com/pydantic/httpx2/pull/1267).
 The [CPython system proxy adapter](https://github.com/python/cpython/blob/v3.12.14/Modules/_scproxy.c)
 defines the macOS SOCKS configuration format.
-The implementation uses original HTTPX and the standard library; upstream source
-is not vendored or modified.
+The deadline transport uses HTTPX's asynchronous transport and the already
+locked AnyIO [shared blocking portal](https://anyio.readthedocs.io/en/stable/threads.html#starting-an-on-demand-shared-blocking-portal).
 
 ## Journal Run and native preprint APIs
 
@@ -112,16 +112,19 @@ scope of a redirect uses the headers HTTPX prepared for that hop. HTTP 429
 and transient server statuses with a valid Retry-After extend only their scope.
 Retry-After accepts delta-seconds and HTTP dates. The deadline can only move
 later while active, even if the sender has exhausted its attempts. Responses
-already in flight settle normally. New dispatches recheck the cooldown after
+already in flight keep their own deadlines. New dispatches recheck the cooldown after
 waiting. Expired entries are discarded, and process exit clears the in-memory
 state.
 
 The 90-second logical request budget begins with the first attempt and covers
 pacing, backoff, cooldown, redirects and any final Completion check. A shorter
-caller deadline takes precedence. Each dispatch caps its HTTPX timeout at the
-remaining budget. The Provider also checks the deadline at response headers,
-while consuming chunks and before decoding a complete response. If a cooldown cannot fit, the current operation ends and
-the cooldown remains in force. Final Completion settlement can send the exact
+caller deadline takes precedence. Provider clients keep synchronous request and
+response hooks and opt in to cancellable I/O through HTTPX's async transport.
+Connection setup, waiting for headers and blocked body reads use the remaining
+time from the same absolute deadline. Expiry cancels the active I/O, releases
+the response and prevents another attempt. A cooldown already published from
+response headers remains in force. If a cooldown cannot fit, the current
+operation ends. Final Completion settlement can send the exact
 failed prepared request once, with its original budget, successful cached
 prefixes and the redirect's applied authorization policy. Counts include each
 physical dispatch, including redirects and the final check. Cache hits and

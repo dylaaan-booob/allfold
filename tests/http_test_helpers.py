@@ -33,7 +33,10 @@ def http_server(respond=None, *, tls=None, tunnel_target=None):
             body = self.rfile.read(int(self.headers.get("Content-Length", "0")))
             requests.append(SimpleNamespace(method=self.command, path=self.path, body=body,
                                             headers=self.headers, peer=self.client_address))
-            status, headers, content = respond(self) if respond else (200, {}, b"origin")
+            response = respond(self) if respond else (200, {}, b"origin")
+            if response is None:  # A streaming fixture wrote its own response.
+                return
+            status, headers, content = response
             try:
                 self.send_response(status)
                 for name, value in headers.items():

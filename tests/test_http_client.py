@@ -482,7 +482,7 @@ def test_provider_requests_keep_proxy_query_and_retry_semantics(monkeypatch, pro
                 used_proxies.append(options["proxy"].url.host)
                 return handle(request)
             return httpx.MockTransport(route)
-        monkeypatch.setattr(httpx, "HTTPTransport", transport)
+        monkeypatch.setattr(httpx, "AsyncHTTPTransport", transport)
         options = {}
 
     if provider == "crossref":

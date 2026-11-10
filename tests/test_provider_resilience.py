@@ -2,6 +2,7 @@
 from datetime import datetime, timedelta, timezone
 from email.utils import format_datetime
 from threading import Event, Thread
+import time
 
 import httpx
 import pytest
@@ -9,6 +10,7 @@ import pytest
 from allfold.providers.integrated import DiscoveryClient, DiscoveryError, ProviderHTTPError, PROVIDERS
 from allfold.providers.openalex import OpenAlexClient
 from allfold.providers.provider_http import ProviderBudgetExceeded, ProviderCooldowns
+from http_test_helpers import http_server, isolate_proxy_environment
 
 
 class Clock:
@@ -122,6 +124,125 @@ def test_provider_deadline_stops_a_late_response_without_another_dispatch(stream
     assert chunks == (['closed'] if streamed else [])
 
 
+@pytest.mark.parametrize(('route', 'status'), [('direct', 200), ('proxy', 200), ('connect', 200), ('direct', 503)])
+def test_provider_deadline_interrupts_a_blocked_body_read(monkeypatch, route, status):
+    from contextlib import ExitStack
+    from pathlib import Path
+    import ssl
+    from allfold.providers import integrated
+
+    isolate_proxy_environment(monkeypatch)
+    body_started, allow_tail, tail_released = Event(), Event(), Event()
+    cooldowns = ProviderCooldowns()
+
+    def slow_body(handler):
+        time.sleep(0.35)
+        handler.send_response(status)
+        handler.send_header('Content-Length', '11')
+        if status == 503:
+            handler.send_header('Retry-After', '60')
+        handler.end_headers()
+        handler.wfile.write(b'{"ok":')
+        handler.wfile.flush()
+        body_started.set()
+        allow_tail.wait(0.7)
+        tail_released.set()
+        try:
+            handler.wfile.write(b'true}')
+        except (BrokenPipeError, ConnectionResetError):
+            pass
+
+    with ExitStack() as stack:
+        tls = None
+        if route == 'connect':
+            fixtures = Path(__file__).parent / 'fixtures/http'
+            cert = fixtures / 'localhost-cert.pem'
+            tls = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
+            tls.load_cert_chain(cert, fixtures / 'localhost-key.pem')
+            monkeypatch.setenv('SSL_CERT_FILE', str(cert))
+        server = stack.enter_context(http_server(slow_body, tls=tls))
+        url = server.url
+        if route == 'proxy':
+            monkeypatch.setenv('HTTP_PROXY', server.url)
+            url = 'http://provider.invalid'
+        if route == 'connect':
+            proxy = stack.enter_context(http_server(tunnel_target=('127.0.0.1', server.port)))
+            monkeypatch.setenv('HTTPS_PROXY', proxy.url)
+        monkeypatch.setitem(integrated.BASE_URLS, 'crossref', url)
+        try:
+            with DiscoveryClient('crossref', interval=0, cooldowns=cooldowns,
+                                 deadline=time.monotonic() + 0.8) as client:
+                expected = ProviderHTTPError if status == 503 else ProviderBudgetExceeded
+                with pytest.raises(expected) as stopped:
+                    client.request('/fixture', {})
+                if status == 503:
+                    assert stopped.value.status == 503
+                assert client.request_count == 1
+                assert body_started.is_set()
+                assert not tail_released.is_set(), 'read returned only after the server released its final chunk'
+                if route == 'connect':
+                    assert proxy.closed.wait(1), 'aborted read left the proxy tunnel open'
+        finally:
+            allow_tail.set()
+        assert server.closed.wait(1), 'aborted read left the server connection open'
+        assert [request.path for request in server.requests] == [url + '/fixture' if route == 'proxy' else '/fixture']
+        if route == 'connect':
+            assert [request.method for request in proxy.requests] == ['CONNECT']
+        if status == 503:
+            with DiscoveryClient('crossref', interval=0, cooldowns=cooldowns,
+                                 deadline=time.monotonic() + 1) as waiting:
+                with pytest.raises(ProviderBudgetExceeded, match='HTTP 503 cooldown'):
+                    waiting.request('/another', {})
+                assert waiting.request_count == 0
+
+
+def test_completion_final_check_routes_only_the_failed_redirect_target(monkeypatch):
+    from allfold.providers import integrated
+
+    isolate_proxy_environment(monkeypatch)
+    clock = Clock()
+
+    def respond(_):
+        if len(origin.requests) < 4:
+            return 503, {'Retry-After': '3'}, b''
+        return 200, {}, b'{"results":[]}'
+
+    with http_server(respond) as origin:
+        with http_server(lambda _: (302, {'Location': origin.url + '/target'}, b'')) as proxy:
+            monkeypatch.setenv('HTTP_PROXY', proxy.url)
+            monkeypatch.setenv('NO_PROXY', f'127.0.0.1:{origin.port}')
+            monkeypatch.setitem(integrated.BASE_URLS, 'openalex', 'http://provider.invalid')
+            with DiscoveryClient('openalex', api_key='synthetic-key', interval=0,
+                                 cooldowns=ProviderCooldowns(), **clock.options()) as client:
+                with client.capture_transient_failures() as failures:
+                    with pytest.raises(ProviderHTTPError):
+                        client.request('/works', {})
+                assert failures
+                client.begin_settlement()
+                assert client.request('/works', {}) == {'results': []}
+                assert client.request('/works', {}) == {'results': []}
+                assert client.request_count == 7
+            assert [request.path for request in proxy.requests] == ['http://provider.invalid/works'] * 3
+            assert all(request.headers['Authorization'] == 'Bearer synthetic-key' for request in proxy.requests)
+        assert [request.path for request in origin.requests] == ['/target'] * 4
+        assert all('Authorization' not in request.headers for request in origin.requests)
+    assert clock.waits == [3, 3, 3]
+
+
+def test_provider_deadline_transport_sends_buffered_pubmed_form(monkeypatch):
+    from urllib.parse import parse_qs
+    from allfold.providers import integrated
+
+    isolate_proxy_environment(monkeypatch)
+    with http_server(lambda _: (200, {}, b'{"esearchresult":{}}')) as origin:
+        monkeypatch.setitem(integrated.BASE_URLS, 'pubmed', origin.url)
+        with DiscoveryClient('pubmed', api_key='synthetic-key', interval=0) as client:
+            assert client.request('/esearch.fcgi', {'term': 'fixture'}) == {'esearchresult': {}}
+        [request] = origin.requests
+        assert (request.method, request.path) == ('POST', '/esearch.fcgi')
+        assert parse_qs(request.body.decode()) == {'api_key': ['synthetic-key'], 'term': ['fixture']}
+
+
 @pytest.mark.parametrize('revoked', ['cancel', 'authority'])
 def test_cooldown_wait_rechecks_cancellation_and_request_authority(revoked):
     from allfold.persistence.safe_write import ContentChangedError
@@ -204,8 +325,10 @@ def test_retry_after_http_date_and_invalid_values_are_bounded(header, wait):
 
 
 def test_app_clients_share_cooldown_with_parallel_lookups_by_origin_and_credential(monkeypatch):
+    import asyncio
     from allfold.providers import provider_http
     clock, pacing = Clock(), {}
+    isolate_proxy_environment(monkeypatch)
     # Exercise the application-owned default with a synthetic HTTPX transport.
     monkeypatch.setattr(provider_http, '_APPLICATION_COOLDOWNS', ProviderCooldowns())
     calls, statuses, failures = [], [], []
@@ -225,7 +348,10 @@ def test_app_clients_share_cooldown_with_parallel_lookups_by_origin_and_credenti
             return httpx.Response(429, headers={'Retry-After': '2'})
         return httpx.Response(200, json={'result': 'ok'})
 
-    monkeypatch.setattr(httpx, 'HTTPTransport', lambda **options: httpx.MockTransport(respond))
+    async def route(request):
+        return await asyncio.to_thread(respond, request)
+
+    monkeypatch.setattr(httpx, 'AsyncHTTPTransport', lambda **options: httpx.MockTransport(route))
 
     def sent_before_gate(name, deadline=None):
         try:
