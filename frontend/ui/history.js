@@ -37,6 +37,7 @@ function open() {
   void refresh();
 }
 $('history-open').addEventListener('click',open);
+workspaceSearch.registerCommand('history',{name:'History',run:open});
 $('history-refresh').addEventListener('click',()=>void refresh());
 $('history-service-filter').addEventListener('change',()=>void refresh());
 $('history-close').addEventListener('click',()=>dialog.close());
