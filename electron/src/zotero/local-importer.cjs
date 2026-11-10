@@ -44,10 +44,12 @@ async function saveImportOnce({item,apiItem,doi,doc,browser,signal,target,api,re
  result.parent={outcome:'uncertain',requested_id:parentKey};
  try {const receipt=await write(beforeDispatch=>api.create(target,parent,{beforeDispatch}));result.parent={outcome:'confirmed',requested_id:parentKey,accepted_id:parentKey,status:receipt.status,protocol:'local-api-v3'};}
  catch(error){if(error.no_effect)result.parent={...result.parent,outcome:'no_effect'};result.stop_batch=true;result.diagnostic={stage:'parent_save',code:error.code || 'failed',...(error.status?{status:error.status}:{})};result.error='Save failed or is uncertain. Inspect Zotero before retrying.';return result;}
- const createChild=async(value,kind)=>{
+ const createChild=async(value,kind,authorizeDispatch)=>{
    current();const key=objectKey();result.zotero[kind].push(key);
    // Once dispatched, never replay or replace this object after any error.
-   await write(beforeDispatch=>api.create(target,{...value,key,version:0,parentItem:parentKey,tags:value.tags || [],relations:value.relations || {}},{beforeDispatch}));return key;
+   await write(beforeDispatch=>api.create(target,{...value,key,version:0,parentItem:parentKey,
+     tags:value.tags || [],relations:value.relations || {}},{authorizeDispatch,beforeDispatch}));
+   return key;
  };
  let attachmentWriteFailed=false;
  for(const note of item.notes || []) {
@@ -60,10 +62,11 @@ async function saveImportOnce({item,apiItem,doi,doc,browser,signal,target,api,re
  });
  const saveAttachment=async(attachment,source)=>{
    let downloaded;
+   const authorizeDispatch=()=>downloader.authorize({signal,deadline:deadline ?? Infinity,check:current});
    try {
      const attachmentDownload=download();
      downloaded=await attachmentDownload.fetch(attachment,source);
-     await attachmentDownload.authorize({signal,deadline:deadline ?? Infinity,check:current});
+     await authorizeDispatch();
    } catch(error) {
      record(downloader?.terminalError(error) || error,source==='translator'?'initial_fetch':'oa_resolver');
      return false;
@@ -71,9 +74,9 @@ async function saveImportOnce({item,apiItem,doi,doc,browser,signal,target,api,re
    const {bytes,mime,url}=downloaded,isPDF=mime==='application/pdf',filename=isPDF?'paper.pdf':mime==='application/epub+zip'?'paper.epub':'attachment.bin';
    let key;
    try {
-     key=await createChild({itemType:'attachment',linkMode:'imported_url',title:attachment.title || (isPDF?'Full Text PDF':'Attachment'),url:safeAttachmentURL(attachment._allfoldProperURL || url),contentType:mime,filename},'attachment_keys');
-     await downloader.authorize({signal,deadline:deadline ?? Infinity,check:current});
-     await write(beforeDispatch=>api.upload(target,key,bytes,{filename,contentType:mime,beforeDispatch}));
+     key=await createChild({itemType:'attachment',linkMode:'imported_url',title:attachment.title || (isPDF?'Full Text PDF':'Attachment'),
+       url:safeAttachmentURL(attachment._allfoldProperURL || url),contentType:mime,filename},'attachment_keys',authorizeDispatch);
+     await write(beforeDispatch=>api.upload(target,key,bytes,{filename,contentType:mime,authorizeDispatch,beforeDispatch}));
      if(isPDF){result.pdf.registered=true;result.pdf.source=source;result.pdf.receipts.push({key,endpoint_completed:true,registered:true,source});}return true;
    }catch(error){attachmentWriteFailed=true;result.stop_batch=true;record(error,key?'attachment_save':'attachment_create');if(isPDF)result.pdf.receipts.push({key:key || result.zotero.attachment_keys.at(-1),endpoint_completed:false,registered:false,source});return false;}
  };

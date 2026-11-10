@@ -390,6 +390,36 @@ test('remote Import authority is rechecked after PDF verification and before the
  assert.equal(result.pdf.failures[0].code,'document_changed');assert.equal(result.pdf.registered,false);
  assert.equal(f.created.length,1);assert.equal(lookups,0);assert.deepEqual(f.uploaded,[]);
 });
+test('authority lost during DNS stops the PDF before dispatch',async()=>{
+ const f=fixture();let authorized=true;
+ const result=await f.run({item:{...item,attachments:[{mimeType:'application/pdf',url:'https://publisher.example/full.pdf'}]},
+  browser:{partition:{resolveHost:async()=>{authorized=false;return {endpoints:[{address:'93.184.216.34'}]};}},
+   documentCurrent:()=>true},
+  validateRecovery:async()=>{if(!authorized)throw Object.assign(Error(),{code:'document_changed'});}});
+ assert.equal(result.parent.outcome,'confirmed');
+ assert.equal(result.pdf.failures[0].code,'document_changed');
+ assert.equal(f.downloads,0);
+ assert.equal(f.created.length,1);
+});
+test('attachment writes recheck authority after native credentials are read',async()=>{
+ const {ImportResources}=require('../src/zotero/import-resources.cjs');
+ for(const [holdRead,expected] of [[3,['parent']],[4,['parent','child']]]) {
+  const f=fixture(),writer=nativeWriter({holdRead});
+  let authorized=true;
+  const pending=f.run({api:writer.api,resources:new ImportResources({pdfLimit:1,writerLimit:1}),
+   item:{...item,attachments:[{mimeType:'application/pdf',url:'https://publisher.example/full.pdf'}]},
+   validateRecovery:async()=>{if(!authorized)throw Object.assign(Error(),{code:'document_changed'});}});
+  await writer.entered.promise;
+  authorized=false;
+  writer.release.resolve();
+  const result=await pending;
+  assert.equal(result.parent.outcome,'confirmed');
+  assert.equal(result.pdf.registered,false);
+  assert.equal(result.pdf.failures[0].code,'document_changed');
+  assert.deepEqual(writer.writes,expected);
+  assert.equal(result.uncertain_write,undefined);
+ }
+});
 test('cancellation and source changes during hidden recovery block visible helpers and new writes',async()=>{
  for(const duringDownload of [false,true])for(const canceled of [true,false]) {
   const f=fixture(),controller=new AbortController(),helpers=[];let current=true,downloads=0,fallback=0;

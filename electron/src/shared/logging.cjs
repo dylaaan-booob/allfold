@@ -15,8 +15,7 @@ function valid(value,definition) {
 }
 function recoveryEvidence(details) {
   const evidence={};
-  for(const key of ['stage','step','code','status','net_code','net_error','failure_kind',
-    'transport_error','dispatch_outcome','recovery_stop','page_id','source_page_id']) {
+  for(const key of schema.recovery_evidence_fields) {
     if(valid(details[key],schema.fields[key]))evidence[key]=details[key];
   }
   return evidence;

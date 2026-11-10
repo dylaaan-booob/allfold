@@ -7,8 +7,8 @@ import threading
 
 SCHEMA = json.loads(Path(__file__).with_name('diagnostic_schema.json').read_text())
 RECOVERY_ACTIONS = frozenset(SCHEMA['fields']['recovery_action']['enum'])
-_EVIDENCE_FIELDS = ('stage', 'step', 'code', 'status', 'net_code', 'net_error', 'failure_kind',
-                    'transport_error', 'dispatch_outcome', 'recovery_stop', 'page_id', 'source_page_id')
+_EVIDENCE_FIELDS = SCHEMA['recovery_evidence_fields']
+_MAX_COUNT = 1_000_000
 _OUTCOMES = {
     'recovery_scheduled': 'stopped',
     'recovery_succeeded': 'recovered',
@@ -52,19 +52,37 @@ def recovery_progress_message(value):
     return _PROGRESS_MESSAGES.get(normalize_recovery_action(value))
 
 
+def _summary_key(entry):
+    action = entry['recovery_action']
+    # Provider and Native cooldowns are separate dependencies and can overlap.
+    return action, action == 'cooldown_wait' and entry['first'].get('stage') == 'provider'
+
+
 def normalize_recovery(value):
     if not isinstance(value, list):
         return []
     result = {}
-    for entry in value[:len(RECOVERY_ACTIONS)]:
+    for entry in value[:len(RECOVERY_ACTIONS) + 1]:
         if not isinstance(entry, dict):
             continue
         action, count, outcome = normalize_recovery_action(entry.get('recovery_action')), entry.get('count'), entry.get('outcome')
-        if (action and type(count) is int and 0 <= count <= 1_000_000
+        if (action and type(count) is int and 0 <= count <= _MAX_COUNT
                 and isinstance(outcome, str) and outcome in _OUTCOMES.values()):
-            result.setdefault(action, dict(recovery_action=action, count=count, outcome=outcome,
-                first=_evidence(entry.get('first')), last=_evidence(entry.get('last'))))
+            summary = dict(recovery_action=action, count=count, outcome=outcome,
+                           first=_evidence(entry.get('first')), last=_evidence(entry.get('last')))
+            result.setdefault(_summary_key(summary), summary)
     return list(result.values())
+
+
+def merge_recovery(earlier, later):
+    merged = {_summary_key(entry): entry for entry in normalize_recovery(earlier)}
+    for entry in normalize_recovery(later):
+        key = _summary_key(entry)
+        previous = merged.get(key)
+        if previous is not None:
+            entry.update(first=previous['first'], count=min(_MAX_COUNT, previous['count'] + entry['count']))
+        merged[key] = entry
+    return list(merged.values())
 
 
 class RecoverySummary:
@@ -82,7 +100,7 @@ class RecoverySummary:
         evidence = _evidence(details)
         with self._lock:
             previous = self._entries.get(action)
-            count = min(1_000_000, (previous['count'] if previous else 0) + (outcome == 'stopped'))
+            count = min(_MAX_COUNT, (previous['count'] if previous else 0) + (outcome == 'stopped'))
             self._entries[action] = dict(recovery_action=action, count=count, outcome=outcome,
                 first=previous['first'] if previous else evidence, last=evidence)
 

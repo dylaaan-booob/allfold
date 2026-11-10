@@ -119,7 +119,8 @@ state.
 The 90-second logical request budget begins with the first attempt and covers
 pacing, backoff, cooldown, redirects and any final Completion check. A shorter
 caller deadline takes precedence. Each dispatch caps its HTTPX timeout at the
-remaining budget. If a cooldown cannot fit, the current operation ends and
+remaining budget. The Provider also checks the deadline at response headers,
+while consuming chunks and before decoding a complete response. If a cooldown cannot fit, the current operation ends and
 the cooldown remains in force. Final Completion settlement can send the exact
 failed prepared request once, with its original budget, successful cached
 prefixes and the redirect's applied authorization policy. Counts include each

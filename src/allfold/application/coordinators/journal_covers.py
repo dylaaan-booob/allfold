@@ -6,6 +6,7 @@ import secrets
 import threading
 
 from allfold.browser_diagnostics import format_browser_diagnostic, normalize_browser_diagnostic
+from allfold.recovery_diagnostics import normalize_recovery, recovery_progress_message
 from allfold.application.history import observe
 from allfold.application.browser_runtime import ElectronDisconnected
 from allfold.application.journal_covers import (
@@ -83,6 +84,7 @@ class JournalCoverSearch:
                     {'journal_key': journal.key, 'name': journal.name, 'task_id':task['request_id'], 'workflow_id':task['request_id']}, lambda data: self._progress(task, data))
             result = pending.result()
             with self._lock:
+                task['recovery'] = normalize_recovery(result.get('recovery'))
                 if task['stop'].is_set():
                     raise InterruptedError()
                 diagnostic = normalize_browser_diagnostic(result.get('diagnostic'))
@@ -123,13 +125,15 @@ class JournalCoverSearch:
                 task['settled'] = True
                 observe(self.diagnostics, 'finish', task['request_id'], 'interrupted' if task.get('history_interrupted') else task['phase'].lower(),
                     statistics={'downloaded':int(task['phase'] == 'Completed')}, diagnostic=task.get('diagnostic'),
-                    details={'reason':'connection_lost' if task.get('history_interrupted') else 'cancelled' if task['phase'] == 'Cancelled' else 'failed' if task['phase'] == 'Failed' else None})
+                    details={'recovery':task.get('recovery'), 'reason':'connection_lost' if task.get('history_interrupted') else
+                        'cancelled' if task['phase'] == 'Cancelled' else 'failed' if task['phase'] == 'Failed' else None})
 
     def _progress(self, task, data):
         with self._lock:
             if not task['stop'].is_set():
                 task.update(waiting_for_user=data.get('waiting_for_user') is True,
-                    message='Complete verification in BROWSER' if data.get('waiting_for_user') else 'Searching this Journal')
+                    message='Complete verification in BROWSER' if data.get('waiting_for_user') else
+                        recovery_progress_message(data.get('recovery_action')) or 'Searching this Journal')
 
     def cancel(self, request_id):
         with self._lock:

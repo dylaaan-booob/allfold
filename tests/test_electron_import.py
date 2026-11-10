@@ -217,8 +217,11 @@ def test_openalex_subrequest_is_bound_to_exact_import_and_attachment_deadline(ex
     calls = []
     target = {"server_id":"SERVERFIXTUR", "library_type":"user", "library_id":"0", "collection_key":None}
 
-    def lookup(doi, *, deadline, **operation_options):
+    def lookup(doi, *, deadline, recovery_observer, **operation_options):
         calls.append((doi, deadline - time.monotonic()))
+        evidence = {'stage': 'provider', 'recovery_action': 'provider_retry', 'code': 'network_error'}
+        recovery_observer('recovery_scheduled', evidence)
+        recovery_observer('recovery_succeeded', evidence)
         return {"candidates": ["https://oa.example/paper.pdf"]}
 
     bridge = ElectronBridge("secret", "testserver", openalex_pdf=lookup)
@@ -240,12 +243,16 @@ def test_openalex_subrequest_is_bound_to_exact_import_and_attachment_deadline(ex
             assert socket.receive_json() == {"type":"openalex_pdf_result", "id":request["id"], "action":"import_paper",
                 "lookup_id":"lookup1", "data":result}
             socket.send_json({"type":"result", "id":request["id"], "action":"import_paper", "data":confirmed()})
-            pending.result(timeout=2)
+            settled = pending.result(timeout=2)
     if expired:
         assert not calls
+        assert 'recovery' not in settled
     else:
         [(doi, remaining)] = calls
         assert doi == "10.5555/test" and 0 < remaining <= 10
+        [summary] = settled['recovery']
+        assert (summary['recovery_action'], summary['count'], summary['outcome']) == ('provider_retry', 1, 'recovered')
+        assert summary['first'] == {'stage': 'provider', 'code': 'network_error'}
 
 
 @pytest.mark.parametrize("changed", [{"doi":"10.5555/other"}, {"parent_key":"../../file"}, {"target":{}},

@@ -6,7 +6,7 @@ import logging
 import threading
 import secrets
 from allfold.application.history import observe, finish_run
-from allfold.recovery_diagnostics import RecoverySummary
+from allfold.recovery_diagnostics import RecoverySummary, merge_recovery
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from enum import Enum
@@ -276,6 +276,7 @@ class RunCoordinator:
                 self._status = CoordinatorStatus.FINISHED
                 self._release_slot()
                 native = self.wos_stage.task if self.wos_stage is not None else None
-                diagnostic = native.get('diagnostic') if native and native['id'] == self._task_id else None
+                native = native if native and native['id'] == task_id else {}
                 finish_run(self.diagnostics, task_id, self._result, provider=self._provider.value,
-                           diagnostic=diagnostic, recovery=recovery.snapshot())
+                           diagnostic=native.get('diagnostic'),
+                           recovery=merge_recovery(recovery.snapshot(), native.get('recovery')))

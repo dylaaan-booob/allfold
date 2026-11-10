@@ -82,12 +82,44 @@ def test_long_retry_after_survives_operation_budget_without_early_dispatch():
     assert calls == [100] and clock.waits == []
     assert any(event == 'recovery_exhausted' and detail['recovery_action'] == 'cooldown_wait'
                and detail['recovery_stop'] == 'budget' and detail['status'] == 503
+               and detail['dispatch_outcome'] == 'not_dispatched'
                for event, detail in evidence)
 
     clock.now += 60
     with client() as later:
         assert later.request('/works/10.5555/known', {}) == {'result': 'recovered'}
     assert calls == [100, 220] and clock.waits == [60]
+
+
+@pytest.mark.parametrize('streamed', [False, True])
+def test_provider_deadline_stops_a_late_response_without_another_dispatch(streamed):
+    clock, calls, chunks = Clock(), [], []
+
+    class DelayedBody(httpx.SyncByteStream):
+        def __iter__(self):
+            yield b'{"result":'
+            clock.now += 3
+            yield b'"late"'
+            chunks.append('read past deadline')
+            yield b'}'
+
+        def close(self):
+            chunks.append('closed')
+
+    def respond(request):
+        calls.append(request)
+        if streamed:
+            return httpx.Response(200, stream=DelayedBody())
+        clock.now += 3
+        return httpx.Response(200, json={'result': 'late'})
+
+    with DiscoveryClient('crossref', deadline=clock.now + 2, interval=0,
+                         transport=httpx.MockTransport(respond), **clock.options()) as client:
+        with pytest.raises(ProviderBudgetExceeded):
+            client.request('/fixture', {})
+        assert client.request_count == 1
+    assert len(calls) == 1
+    assert chunks == (['closed'] if streamed else [])
 
 
 @pytest.mark.parametrize('revoked', ['cancel', 'authority'])

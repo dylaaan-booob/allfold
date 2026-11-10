@@ -19,7 +19,7 @@ from fastapi import WebSocket, WebSocketDisconnect
 from allfold.application.browser_runtime import ElectronDisconnected
 from allfold.application.history import observe
 from allfold.browser_diagnostics import normalize_browser_diagnostic
-from allfold.recovery_diagnostics import normalize_recovery, normalize_recovery_action
+from allfold.recovery_diagnostics import RecoverySummary, merge_recovery, normalize_recovery, normalize_recovery_action
 from allfold.identifiers import valid_doi
 from allfold.integrations.cloudflare_solver import solve_cloudflare
 
@@ -44,6 +44,7 @@ class _Operation:
     stop: threading.Event = field(default_factory=threading.Event)
     challenges: dict[str, threading.Event] = field(default_factory=dict)
     lookup_requested: bool = False
+    lookup_recovery: RecoverySummary | None = None
     recovery_check: asyncio.Task | None = None
 
     def stop_callbacks(self) -> None:
@@ -181,7 +182,11 @@ class ElectronBridge:
                             data = {**data, "recovery_action": normalize_recovery_action(data["recovery_action"])}
                         pending.progress(data)
                 elif kind == "result":
-                    if "recovery" in data:
+                    if pending.lookup_recovery is not None:
+                        recovery = merge_recovery(data.get("recovery"), pending.lookup_recovery.snapshot())
+                        if recovery or "recovery" in data:
+                            data = {**data, "recovery": recovery}
+                    elif "recovery" in data:
                         data = {**data, "recovery": normalize_recovery(data["recovery"])}
                     self._observe_result(pending, data)
                     pending.stop_callbacks()
@@ -245,7 +250,10 @@ class ElectronBridge:
     async def _lookup_pdf(self, socket, pending: _Operation, lookup_id: str, doi: str, deadline: float | None) -> None:
         if pending.stop.is_set():
             return
+        recovery = pending.lookup_recovery = RecoverySummary()
+
         def report_recovery(event, details):
+            recovery.record(event, details)
             observe(self.diagnostics, "event", event,
                 {**{key: pending.context[key] for key in _CONTEXT_FIELDS if key in pending.context}, **details})
 

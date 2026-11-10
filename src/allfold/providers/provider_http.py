@@ -56,6 +56,19 @@ class ProviderBudgetExceeded(DiscoveryError):
     pass
 
 
+class _DeadlineStream(httpx.SyncByteStream):
+    def __init__(self, stream, check):
+        self._stream, self._check = stream, check
+
+    def __iter__(self):
+        for chunk in self._stream:
+            self._check()
+            yield chunk
+
+    def close(self):
+        self._stream.close()
+
+
 def _transport_failure(provider, error):
     causes = []
     cause = error
@@ -195,7 +208,8 @@ class ProviderReadClient:
                        attempt=operation.attempt, attempt_limit=operation.attempt_limit,
                        remaining_ms=max(0, round((operation.deadline - self._now()) * 1000)))
         if failure is not None:
-            dispatch = {'responded': 'confirmed', 'not_sent': 'not_dispatched'}.get(failure.outcome, 'unknown')
+            dispatch = ('not_dispatched' if action == 'cooldown_wait' else
+                        {'responded': 'confirmed', 'not_sent': 'not_dispatched'}.get(failure.outcome, 'unknown'))
             details.update(code=failure.code, failure_kind=failure.kind, dispatch_outcome=dispatch)
             if failure.transport_error is not None:
                 details['transport_error'] = failure.transport_error
@@ -218,6 +232,12 @@ class ProviderReadClient:
 
     def _remaining(self, operation):
         return operation.deadline - self._now()
+
+    def _check_response_deadline(self, operation, status):
+        if self._remaining(operation) <= 0:
+            if status >= 400:
+                operation.failure = ProviderHTTPError(self.provider, status)
+            raise ProviderBudgetExceeded(f'{self.provider}: Provider request recovery budget exhausted')
 
     def _wait(self, operation, seconds):
         self.check_authority()
@@ -287,14 +307,21 @@ class ProviderReadClient:
 
     def _observe_response(self, response):
         status = response.status_code
-        if status not in TRANSIENT_HTTP:
-            return
-        delay = _retry_after(response.headers.get('retry-after'), self._wall_time)
-        if delay is not None or status == 429:
-            # An exhausted sender and a canceled sender still publish the response.
-            self._cooldowns.extend(self._scope(response.request), self._now(), status,
-                                   1 if delay is None else delay)
-        self._trace.retry_after = delay is not None
+        if status in TRANSIENT_HTTP:
+            delay = _retry_after(response.headers.get('retry-after'), self._wall_time)
+            if delay is not None or status == 429:
+                # An exhausted sender and a canceled sender still publish the response.
+                self._cooldowns.extend(self._scope(response.request), self._now(), status,
+                                       1 if delay is None else delay)
+            self._trace.retry_after = delay is not None
+        operation = self._trace.operation
+
+        def check():
+            self._check_response_deadline(operation, status)
+
+        check()
+        if not response.is_stream_consumed:
+            response.stream = _DeadlineStream(response.stream, check)
 
     def read(self, prepare, operation, *, decode, follow_redirects, final=False):
         if final:
@@ -328,6 +355,7 @@ class ProviderReadClient:
                 except (httpx.HTTPError, httpx.InvalidURL) as error:
                     raise _transport_failure(self.provider, error) from None
                 self.check_authority()
+                self._check_response_deadline(operation, response.status_code)
                 result = self._decode(response, decode)
             except ProviderBudgetExceeded:
                 operation.exhausted = True

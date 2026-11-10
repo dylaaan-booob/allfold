@@ -126,9 +126,8 @@ class AttachmentDownload {
    const url=safeAttachmentURL(value);
    // A cooldown wait can outlive the authority check and DNS result. Run both when the gate opens.
    const authorize=async()=>{
-     await this.authorize();
      await waitFor(()=>validateDownloadURL(this.browser.partition,url),this.signal,Infinity,'attachment','download');
-     this.check();
+     await this.authorize();
    };
    if(this.browser.cooldown)await this.browser.cooldown.wait(url,{signal:this.signal,deadline,
      authorize,validate:this.check,report,stage:'attachment',step:'download',pageId:this.doc.pageId});

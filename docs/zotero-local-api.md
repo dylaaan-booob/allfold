@@ -289,7 +289,9 @@ bounded helper flow. HTTP 404 skips the helpers. The old ItemSaver-specific
 Amazon CAPTCHA adapter was removed with its writer VM and remains unverified.
 
 Cancellation and original Document and Import authority checks guard download
-dispatch and subsequent writes. A confirmed parent and its known keys survive
+dispatch and subsequent writes. DNS checks precede the final download authority
+check. Attachment writes recheck Import authority after acquiring the write
+permit and reading credentials, before each new POST. A confirmed parent and its known keys survive
 an attachment failure. Download recovery never replays child creation, upload
 or registration. Diagnostics record fixed failure evidence and attempt counts
 without URLs, headers, Zotero keys or response data.

@@ -128,6 +128,10 @@ def test_coordinator_preserves_saved_service_scope_and_prepared_page_across_batc
             return PreparedService(self.prepared_page(saved, service_id), 'e' * 64, manually_confirmed)
 
 
+    recovery = [{'recovery_action': 'page_refresh', 'count': 1, 'outcome': 'recovered',
+        'first': {'stage': 'navigation', 'code': 'load_failed', 'net_code': -100},
+        'last': {'stage': 'navigation', 'page_id': 71}}]
+
     class Bridge:
         connected = True
         calls = []
@@ -137,7 +141,7 @@ def test_coordinator_preserves_saved_service_scope_and_prepared_page_across_batc
             if action == 'wos_query':
                 if change_after_query:
                     path.write_text(path.read_text() + '\n# changed during Query\n')
-                result = dict(page_id=71, total=2, batch_limit=1)
+                result = dict(page_id=71, total=2, batch_limit=1, recovery=recovery)
             else:
                 assert action == 'wos_export'
                 Path(data['filename']).write_text(tagged([record(doi=f"10.1234/{data['first']}",
@@ -164,6 +168,7 @@ def test_coordinator_preserves_saved_service_scope_and_prepared_page_across_batc
     assert all(data['workflow_id'] == start['snapshot']['task_id'] for _,data in bridge.calls)
     assert store.history()['records'][0]['task_id'] == start['snapshot']['task_id']
     assert store.history()['records'][0]['outcome'] == ('failed' if change_after_query else 'completed')
+    assert store.history()['records'][0]['details']['recovery'] == recovery
     assert coordinator.state()['snapshot']['status'] == 'FINISHED'
     assert lock.owner is None
     if not change_after_query:

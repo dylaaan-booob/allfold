@@ -777,5 +777,19 @@
       "recovery_action",
       "stage"
     ]
-  }
+  },
+  "recovery_evidence_fields": [
+    "stage",
+    "step",
+    "code",
+    "status",
+    "net_code",
+    "net_error",
+    "failure_kind",
+    "transport_error",
+    "dispatch_outcome",
+    "recovery_stop",
+    "page_id",
+    "source_page_id"
+  ]
 }
