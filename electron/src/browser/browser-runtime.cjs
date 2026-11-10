@@ -65,7 +65,6 @@ class BrowserRuntime {
     this.selected = null;
     this.operationContext=new AsyncLocalStorage();
     this.operations=new Set();
-    this.legacyOperation=null;
     this.presentation=new BrowserPresentation(hostWindow);
     this.destroying = false;
     this.cookieAdapter=new PartitionedCookieAdapter({session:this.partition,cdpURL,
@@ -419,21 +418,13 @@ class BrowserRuntime {
     withLogContext({},()=>log(level,event,{...snapshot,...details,
       ...(typeof details.code==='number'?{net_code:details.code,code:undefined}:{})}));
   }
-  get operation() {return this.operationContext.getStore() ?? this.legacyOperation;}
+  get operation() {return this.operationContext.getStore();}
   get taskTab() {return this.operation?.taskTab ?? null;}
   get taskActive() {return !!this.operation?.taskTab;}
-  newOperation(signal,data={}) {
+  async runTask(signal,data,run) {
     const owner={signal,phase:'loading',solverDocuments:new Map(),association:operationAssociation(data),
       taskTab:null,navigationAbort:null};
     this.operations.add(owner);
-    return owner;
-  }
-  beginOperation(signal,data={}) {
-    if(this.legacyOperation)throw Error('Browser operation already active');
-    this.legacyOperation=this.newOperation(signal,data);
-  }
-  async runTask(signal,data,run) {
-    const owner=this.newOperation(signal,data);
     try {return await this.runInOperation(owner,run);}
     finally {this.releaseOperation(owner);}
   }
@@ -448,10 +439,9 @@ class BrowserRuntime {
     checkCanceled(signal);
     if(this.destroying || this.tabs.get(tab?.id)!==tab || tab.view.webContents.isDestroyed())
       throw new BrowserFailure('navigation','page_closed');
-    if(!this.operation)this.beginOperation(signal);
     const owner=this.operation;
-    checkCanceled(owner.signal);
     if(!this.operations.has(owner))throw new BrowserFailure('navigation','canceled');
+    checkCanceled(owner.signal);
     if(tab.taskOwner && tab.taskOwner!==owner)throw new BrowserFailure('navigation','navigation_active');
     tab.taskOwner=owner;
     return owner;
@@ -572,19 +562,16 @@ class BrowserRuntime {
   }
 
   async navigate(url,{tab=this.taskTab,signal=this.operation?.signal,deadline=Infinity,onWaiting,solveCloudflare=this.solveCloudflare}={}) {
-    const previous=this.operation;
+    const owner=this.operation;
+    if(!this.operations.has(owner))throw new BrowserFailure('navigation','canceled');
     await waitFor(()=>this.ready,signal,deadline);
     checkCanceled(signal);
-    if(this.destroying || previous!==this.operation || (previous && !this.operations.has(previous)))
-      throw new BrowserFailure('navigation','canceled');
-    if(previous?.navigationAbort)throw new BrowserFailure('navigation','navigation_active');
+    if(this.destroying || !this.operations.has(owner))throw new BrowserFailure('navigation','canceled');
+    if(owner.navigationAbort)throw new BrowserFailure('navigation','navigation_active');
+    if(!tab)throw new BrowserFailure('navigation','page_closed');
     const target=browserURL(url);
-    if(!tab) {
-      if(previous)throw new BrowserFailure('navigation','page_closed');
-      tab=this.createTab({present:false});
-    }
     this.bindTaskPage(tab,signal);
-    const owner=this.operation,controller=new AbortController();
+    const controller=new AbortController();
     const cancel=()=>controller.abort(signal.reason);
     signal?.addEventListener('abort',cancel,{once:true});
     owner.navigationAbort=controller;
@@ -769,9 +756,6 @@ class BrowserRuntime {
     return current.processId===doc.processId && current.frameToken===doc.frameToken?frame:null;
   }
   documentCurrent(doc) {return !!this.documentFrame(doc);}
-  endTask() {
-    if(this.legacyOperation)this.releaseOperation(this.legacyOperation);
-  }
   releaseOperation(owner) {
     if(!this.operations.delete(owner))return;
     owner.navigationAbort?.abort();
@@ -787,7 +771,6 @@ class BrowserRuntime {
       if(tab.taskOwner===owner){tab.taskOwner=null;tab.taskSignal=null;}
       if(tab.loadOwner===owner){tab.loadOwner=null;tab.loadAllowed=false;}
     }
-    if(this.legacyOperation===owner)this.legacyOperation=null;
     this.publish();
   }
   close() {

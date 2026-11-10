@@ -59,84 +59,85 @@ app.whenReady().then(async()=>{
     win.show();app.focus({steal:true});win.focus();await ready(()=>Promise.resolve(win.isFocused()),'fixture Window focus');
     await ready(()=>host('!!window.allfoldWorkbench'),'shell');
     const tab=browser.createTab({present:false});await tab.view.webContents.loadURL(origin+'/challenge');
-    browser.beginOperation(new AbortController().signal,{workflow_id:'run-a',task_id:'prepare-a',request_id:'request-a'});browser.associatePage(tab,{role:'wos-query'});browser.bindTaskPage(tab);
     const id=tab.id,session=tab.view.webContents.session,load=await page(tab,'fixtureLoad');
-    await click(win.webContents,'#browser-open');const wide=await bounds('wide Focus');
-    await capture('wide-focus',tab);
-    // Mouse and keyboard go through Chromium's input path, never element.click().
-    await click(tab.view.webContents,'#human');assert(await page(tab,'human.checked'),'mouse could not check synthetic challenge');
-    await key(tab.view.webContents,'Tab');assert(await page(tab,"document.activeElement.id==='code'"),'Tab did not enter code field');
-    await key(tab.view.webContents,'Tab',['shift']);assert(await page(tab,"document.activeElement.id==='human'"),'Shift+Tab did not restore checkbox');
-    await key(tab.view.webContents,'Tab');await tab.view.webContents.insertText('42');await key(tab.view.webContents,'Tab');await key(tab.view.webContents,'Enter');
-    assert(await page(tab,"result.textContent==='Synthetic challenge complete'"),'keyboard could not submit local challenge: '+JSON.stringify(await page(tab,'({active:document.activeElement.id,code:code.value,result:result.textContent})')));
-    await click(tab.view.webContents,'#popup');assert(await page(tab,"document.getElementById('local-dialog').open"),'local webpage dialog did not open');await key(tab.view.webContents,'Escape');
-    assert(!(await page(tab,"document.getElementById('local-dialog').open")),'Escape did not close local webpage dialog');
-    await size(600,480);let rect=await bounds('600x480 Focus');
-    assert(rect.width>=320&&rect.height>=180&&rect.height<wide.height,'Focus viewport does not adapt to available area');
-    const focusedBeforeOverlay=await page(tab,'document.activeElement.id');
-    await click(win.webContents,'#browser-tabs-toggle');await ready(()=>Promise.resolve(browser.presentation.suspended&&!browser.presentation.mounted),'Tabs flyout occlusion');
-    await key(win.webContents,'Escape');await ready(()=>Promise.resolve(!!browser.presentation.mounted),'Tabs restore');
-    await click(win.webContents,'#fixture-dialog');await ready(()=>Promise.resolve(browser.presentation.suspended&&!browser.presentation.mounted),'Dialog occlusion');
-    await click(win.webContents,'#fixture-dialog-close');await ready(()=>Promise.resolve(!!browser.presentation.mounted),'Dialog restore');
-    await click(win.webContents,'#fixture-popover-open');await ready(()=>Promise.resolve(browser.presentation.suspended&&!browser.presentation.mounted),'Popover occlusion');
-    await click(win.webContents,'#fixture-popover-close');await ready(()=>Promise.resolve(!!browser.presentation.mounted),'Popover restore');
-    assert(await page(tab,'fixtureLoad')===load&&await page(tab,"human.checked&&code.value==='42'")&&await page(tab,'document.activeElement.id')===focusedBeforeOverlay,'overlay changed page or focused form');
-    // Another existing page can be selected and restored; no new Runtime / Session.
-    await size(900,680);
-    const other=browser.createTab({present:false});await other.view.webContents.loadURL(origin+'/other');
-    await afterPaint();
-    const selector=`#browser-tabs [data-page-id="${id}"] button`;
-    await click(win.webContents,'#browser-tabs-toggle');
-    await host(`(()=>{window.focusedPageButton=document.querySelector(${JSON.stringify(selector)});focusedPageButton.focus()})()`);
-    assert(await host('document.activeElement===focusedPageButton'),'Tab did not receive keyboard focus');
-    await page(other,"document.title='Background Tab'");
-    await ready(()=>host("$('browser-tabs').textContent.includes('Background Tab')"),'background title update');
-    assert(await host('focusedPageButton.isConnected&&document.activeElement===focusedPageButton'),'Tab lost keyboard focus on a background update');
-    assert(browser.selected===tab,'Background update changed the selected page');
-    await click(win.webContents,`#browser-tabs [data-page-id="${other.id}"] button`);assert(browser.selected===other,'page switch');
-    await click(win.webContents,'#browser-tabs-toggle');
-    await click(win.webContents,selector);assert(browser.selected===tab,'page restore');
-    await click(win.webContents,'#browser-return');
-    assert(await host("document.activeElement.id==='browser-open'&&$('fixture-import-draft').value==='preserved'"),'Import draft and focus return');
-    assert(!browser.presentation.mounted,'Import intercepted by native view');
-    await click(win.webContents,'#fixture-run');await host("(()=>{const dialog=document.getElementById('run-view');dialog.append(document.getElementById('fixture-task-page'));dialog.show()})()");
-    await click(win.webContents,'#fixture-task-page');const run=await bounds('Run task Focus');assert(browser.selected===tab,'Run selected unrelated page');
-    for(let attempt=0;attempt<3;attempt++){
-      await page(tab,`(()=>{const frame=document.createElement('iframe');frame.id='held-frame';frame.src='/held?attempt=${attempt}';document.body.append(frame)})()`);
-      await ready(()=>Promise.resolve(heldResponse&&tab.view.webContents.isLoading()),'child-only load starts');await afterPaint();
-      assert(!tab.view.webContents.isLoadingMainFrame()&&browser.state().tabs.find(item=>item.id===id).loading===false,'Child-only load appeared as main-page loading');
-      assert(JSON.stringify(await bounds('child-only load '+attempt))===JSON.stringify(run),'Child-only load moved the native viewport');
-      heldResponse.end('<title>Child frame</title>');heldResponse=null;
-      await ready(()=>Promise.resolve(!tab.view.webContents.isLoading()),'child-only load settles');await page(tab,"document.getElementById('held-frame').remove()");
-    }
-    await host("uiNext.notice('通知正文 '.repeat(80),['诊断详情'])");
-    assert(JSON.stringify(await bounds('Run with a long notice'))===JSON.stringify(run),'Notice squeezed the native viewport');
-    await click(win.webContents,'#app-notice-open');
-    await ready(()=>Promise.resolve(browser.presentation.suspended&&!browser.presentation.mounted),'notice details suspend overlapping native page');
-    assert(await host("$('app-notice-popover').matches(':popover-open')&&$('app-notice-popover').textContent.includes('诊断详情')"),'notice details unavailable');
-    await key(win.webContents,'Escape');await ready(()=>Promise.resolve(!!browser.presentation.mounted),'notice details close');
-    await host("uiNext.notice('')");assert(JSON.stringify(await bounds('Run notice closed'))===JSON.stringify(run),'Closing the notice moved the native viewport');
-    await capture('run-task-focus',tab);await click(win.webContents,'#browser-return');assert(await host("document.activeElement.id==='fixture-task-page'&&document.getElementById('fixture-run-draft').value==='immutable query'&&document.getElementById('run-view').open&&getComputedStyle(document.getElementById('run-view')).visibility==='visible'"),'Run draft/focus lost');await host("document.getElementById('run-view').close()");
-    await host("allfoldWorkbench.showTaskPage({workflowId:'missing',source:'run'})");assert(!browser.presentation.mounted&&await host("$('app-notice-summary').textContent.includes('尚无')"),'missing task page did not remain a no-op');await host("uiNext.notice('')");
-    await click(win.webContents,'#fixture-kept');await click(win.webContents,'#browser-open');
-    win.webContents.setZoomFactor(1.25);await size(600,480);rect=await bounds('600x480 zoom 1.25');
-    assert(rect.x>=0&&rect.y>=0&&rect.x+rect.width<=600&&rect.y+rect.height<=480&&rect.height>=180,'zoomed native rectangle escapes content or is unusably short: '+JSON.stringify(rect));
-    await page(tab,'scrollTo(0,0)');await click(tab.view.webContents,'#human');await key(tab.view.webContents,'Tab');await key(tab.view.webContents,'Tab');await key(tab.view.webContents,'Enter');
-    assert(await page(tab,"result.textContent==='Try code 42'"),'zoomed Focus input failed');await capture('600x480-zoom-125',tab);
-    assert(tab.id===id&&tab.view.webContents.session===session&&await page(tab,'fixtureLoad')===load,'presentation recreated the page/session');
-    assert((await session.cookies.get({url:origin})).some(cookie=>cookie.name==='synthetic_session'&&cookie.value==='preserved'),'presentation lost Session cookie');
-    // Keep the old document alive while a real resize requests its final layout.
-    reloadResponseDelay=200;
-    for(let index=0;index<3;index++){
-      await host('window.fixtureReloadPending=true');
-      win.webContents.once('did-start-navigation',()=>win.setSize(1180+index*10,800));
-      win.reload();await ready(()=>host('!window.fixtureReloadPending&&!!window.allfoldWorkbench'),'committed host reload');
-      await ready(()=>Promise.resolve(!browser.presentation.visible&&!browser.presentation.mounted),'new host hides old native presentation');
-      await host('allfoldWorkbench.show()');await bounds('host reload with final old-document layout '+index);
-    }
-    assert(browser.selected.id===id&&browser.selected.view.webContents.session===session&&await page(tab,'fixtureLoad')===load,'host reload stress recreated the Page/Session');
-    const idle=await bounds('Before main navigation');
-    browser.endTask();
+    const idle=await browser.runTask(new AbortController().signal,{workflow_id:'run-a',task_id:'prepare-a',request_id:'request-a'},async()=>{
+      browser.associatePage(tab,{role:'wos-query'});browser.bindTaskPage(tab);
+      await click(win.webContents,'#browser-open');const wide=await bounds('wide Focus');
+      await capture('wide-focus',tab);
+      // Mouse and keyboard go through Chromium's input path, never element.click().
+      await click(tab.view.webContents,'#human');assert(await page(tab,'human.checked'),'mouse could not check synthetic challenge');
+      await key(tab.view.webContents,'Tab');assert(await page(tab,"document.activeElement.id==='code'"),'Tab did not enter code field');
+      await key(tab.view.webContents,'Tab',['shift']);assert(await page(tab,"document.activeElement.id==='human'"),'Shift+Tab did not restore checkbox');
+      await key(tab.view.webContents,'Tab');await tab.view.webContents.insertText('42');await key(tab.view.webContents,'Tab');await key(tab.view.webContents,'Enter');
+      assert(await page(tab,"result.textContent==='Synthetic challenge complete'"),'keyboard could not submit local challenge: '+JSON.stringify(await page(tab,'({active:document.activeElement.id,code:code.value,result:result.textContent})')));
+      await click(tab.view.webContents,'#popup');assert(await page(tab,"document.getElementById('local-dialog').open"),'local webpage dialog did not open');await key(tab.view.webContents,'Escape');
+      assert(!(await page(tab,"document.getElementById('local-dialog').open")),'Escape did not close local webpage dialog');
+      await size(600,480);let rect=await bounds('600x480 Focus');
+      assert(rect.width>=320&&rect.height>=180&&rect.height<wide.height,'Focus viewport does not adapt to available area');
+      const focusedBeforeOverlay=await page(tab,'document.activeElement.id');
+      await click(win.webContents,'#browser-tabs-toggle');await ready(()=>Promise.resolve(browser.presentation.suspended&&!browser.presentation.mounted),'Tabs flyout occlusion');
+      await key(win.webContents,'Escape');await ready(()=>Promise.resolve(!!browser.presentation.mounted),'Tabs restore');
+      await click(win.webContents,'#fixture-dialog');await ready(()=>Promise.resolve(browser.presentation.suspended&&!browser.presentation.mounted),'Dialog occlusion');
+      await click(win.webContents,'#fixture-dialog-close');await ready(()=>Promise.resolve(!!browser.presentation.mounted),'Dialog restore');
+      await click(win.webContents,'#fixture-popover-open');await ready(()=>Promise.resolve(browser.presentation.suspended&&!browser.presentation.mounted),'Popover occlusion');
+      await click(win.webContents,'#fixture-popover-close');await ready(()=>Promise.resolve(!!browser.presentation.mounted),'Popover restore');
+      assert(await page(tab,'fixtureLoad')===load&&await page(tab,"human.checked&&code.value==='42'")&&await page(tab,'document.activeElement.id')===focusedBeforeOverlay,'overlay changed page or focused form');
+      // Another existing page can be selected and restored; no new Runtime / Session.
+      await size(900,680);
+      const other=browser.createTab({present:false});await other.view.webContents.loadURL(origin+'/other');
+      await afterPaint();
+      const selector=`#browser-tabs [data-page-id="${id}"] button`;
+      await click(win.webContents,'#browser-tabs-toggle');
+      await host(`(()=>{window.focusedPageButton=document.querySelector(${JSON.stringify(selector)});focusedPageButton.focus()})()`);
+      assert(await host('document.activeElement===focusedPageButton'),'Tab did not receive keyboard focus');
+      await page(other,"document.title='Background Tab'");
+      await ready(()=>host("$('browser-tabs').textContent.includes('Background Tab')"),'background title update');
+      assert(await host('focusedPageButton.isConnected&&document.activeElement===focusedPageButton'),'Tab lost keyboard focus on a background update');
+      assert(browser.selected===tab,'Background update changed the selected page');
+      await click(win.webContents,`#browser-tabs [data-page-id="${other.id}"] button`);assert(browser.selected===other,'page switch');
+      await click(win.webContents,'#browser-tabs-toggle');
+      await click(win.webContents,selector);assert(browser.selected===tab,'page restore');
+      await click(win.webContents,'#browser-return');
+      assert(await host("document.activeElement.id==='browser-open'&&$('fixture-import-draft').value==='preserved'"),'Import draft and focus return');
+      assert(!browser.presentation.mounted,'Import intercepted by native view');
+      await click(win.webContents,'#fixture-run');await host("(()=>{const dialog=document.getElementById('run-view');dialog.append(document.getElementById('fixture-task-page'));dialog.show()})()");
+      await click(win.webContents,'#fixture-task-page');const run=await bounds('Run task Focus');assert(browser.selected===tab,'Run selected unrelated page');
+      for(let attempt=0;attempt<3;attempt++){
+        await page(tab,`(()=>{const frame=document.createElement('iframe');frame.id='held-frame';frame.src='/held?attempt=${attempt}';document.body.append(frame)})()`);
+        await ready(()=>Promise.resolve(heldResponse&&tab.view.webContents.isLoading()),'child-only load starts');await afterPaint();
+        assert(!tab.view.webContents.isLoadingMainFrame()&&browser.state().tabs.find(item=>item.id===id).loading===false,'Child-only load appeared as main-page loading');
+        assert(JSON.stringify(await bounds('child-only load '+attempt))===JSON.stringify(run),'Child-only load moved the native viewport');
+        heldResponse.end('<title>Child frame</title>');heldResponse=null;
+        await ready(()=>Promise.resolve(!tab.view.webContents.isLoading()),'child-only load settles');await page(tab,"document.getElementById('held-frame').remove()");
+      }
+      await host("uiNext.notice('通知正文 '.repeat(80),['诊断详情'])");
+      assert(JSON.stringify(await bounds('Run with a long notice'))===JSON.stringify(run),'Notice squeezed the native viewport');
+      await click(win.webContents,'#app-notice-open');
+      await ready(()=>Promise.resolve(browser.presentation.suspended&&!browser.presentation.mounted),'notice details suspend overlapping native page');
+      assert(await host("$('app-notice-popover').matches(':popover-open')&&$('app-notice-popover').textContent.includes('诊断详情')"),'notice details unavailable');
+      await key(win.webContents,'Escape');await ready(()=>Promise.resolve(!!browser.presentation.mounted),'notice details close');
+      await host("uiNext.notice('')");assert(JSON.stringify(await bounds('Run notice closed'))===JSON.stringify(run),'Closing the notice moved the native viewport');
+      await capture('run-task-focus',tab);await click(win.webContents,'#browser-return');assert(await host("document.activeElement.id==='fixture-task-page'&&document.getElementById('fixture-run-draft').value==='immutable query'&&document.getElementById('run-view').open&&getComputedStyle(document.getElementById('run-view')).visibility==='visible'"),'Run draft/focus lost');await host("document.getElementById('run-view').close()");
+      await host("allfoldWorkbench.showTaskPage({workflowId:'missing',source:'run'})");assert(!browser.presentation.mounted&&await host("$('app-notice-summary').textContent.includes('尚无')"),'missing task page did not remain a no-op');await host("uiNext.notice('')");
+      await click(win.webContents,'#fixture-kept');await click(win.webContents,'#browser-open');
+      win.webContents.setZoomFactor(1.25);await size(600,480);rect=await bounds('600x480 zoom 1.25');
+      assert(rect.x>=0&&rect.y>=0&&rect.x+rect.width<=600&&rect.y+rect.height<=480&&rect.height>=180,'zoomed native rectangle escapes content or is unusably short: '+JSON.stringify(rect));
+      await page(tab,'scrollTo(0,0)');await click(tab.view.webContents,'#human');await key(tab.view.webContents,'Tab');await key(tab.view.webContents,'Tab');await key(tab.view.webContents,'Enter');
+      assert(await page(tab,"result.textContent==='Try code 42'"),'zoomed Focus input failed');await capture('600x480-zoom-125',tab);
+      assert(tab.id===id&&tab.view.webContents.session===session&&await page(tab,'fixtureLoad')===load,'presentation recreated the page/session');
+      assert((await session.cookies.get({url:origin})).some(cookie=>cookie.name==='synthetic_session'&&cookie.value==='preserved'),'presentation lost Session cookie');
+      // Keep the old document alive while a real resize requests its final layout.
+      reloadResponseDelay=200;
+      for(let index=0;index<3;index++){
+        await host('window.fixtureReloadPending=true');
+        win.webContents.once('did-start-navigation',()=>win.setSize(1180+index*10,800));
+        win.reload();await ready(()=>host('!window.fixtureReloadPending&&!!window.allfoldWorkbench'),'committed host reload');
+        await ready(()=>Promise.resolve(!browser.presentation.visible&&!browser.presentation.mounted),'new host hides old native presentation');
+        await host('allfoldWorkbench.show()');await bounds('host reload with final old-document layout '+index);
+      }
+      assert(browser.selected.id===id&&browser.selected.view.webContents.session===session&&await page(tab,'fixtureLoad')===load,'host reload stress recreated the Page/Session');
+      return bounds('Before main navigation');
+    });
     const navigate=url=>browser.command({action:'navigate',id,url:origin+url});
     const pending=navigate('/held?main');
     await ready(()=>Promise.resolve(heldResponse),'main load starts');

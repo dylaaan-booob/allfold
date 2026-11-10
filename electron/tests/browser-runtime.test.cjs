@@ -166,14 +166,18 @@ test('institution auth is task-scoped and a popup cannot submit after cancellati
   ordinary.view.webContents.runAuth=code=>JSON.parse(code.slice(code.lastIndexOf('(...')+4,-1))[0]==='inspect'?{step:'login',waiting:true}:(actions++,{acted:true});
   ordinary.taskSignal=controller.signal;
   await browser.handleAuthentication(ordinary);assert.equal(reads,0);
-  browser.beginAuthentication(ordinary,controller.signal);
-  const wc=ordinary.view.webContents.popup({url:'about:blank'}).createWindow({});
-  const popup=browser.tabs.get(wc.id);await wc.loadURL('https://idp.example.edu/login');
-  wc.runAuth=ordinary.view.webContents.runAuth;
-  const pending=browser.handleAuthentication(popup);await new Promise(setImmediate);
-  assert.equal(reads,1);controller.abort();resolveCredentials({username:'PRIVATE_USER',password:'PRIVATE_PASSWORD'});
-  await pending;assert.equal(actions,0);
+  assert.throws(()=>browser.beginAuthentication(ordinary,controller.signal),/canceled/);
+  await browser.runTask(controller.signal,{request_id:'login'},async()=>{
+    browser.beginAuthentication(ordinary,controller.signal);
+    const wc=ordinary.view.webContents.popup({url:'about:blank'}).createWindow({});
+    const popup=browser.tabs.get(wc.id);await wc.loadURL('https://idp.example.edu/login');
+    wc.runAuth=ordinary.view.webContents.runAuth;
+    const pending=browser.handleAuthentication(popup);await new Promise(setImmediate);
+    assert.equal(reads,1);controller.abort();resolveCredentials({username:'PRIVATE_USER',password:'PRIVATE_PASSWORD'});
+    await pending;assert.equal(actions,0);
+  });
 });
+
 for(const submission of [
   {url:'https://other.example/submit',body:'csrf=PRIVATE',referrer:'https://idp.example.edu/login'},
   {url:'file:///tmp/submit',body:'csrf=PRIVATE',referrer:'https://idp.example.edu/login'},
@@ -182,12 +186,15 @@ for(const submission of [
   const {BrowserRuntime,logs}=fixture(t),browser=new BrowserRuntime(),controller=new AbortController();
   t.after(()=>browser.close());await browser.ready;
   const tab=browser.createTab(),wc=tab.view.webContents;
-  await wc.loadURL('https://idp.example.edu/login');browser.beginAuthentication(tab,controller.signal);
-  wc.runAuth=code=>JSON.parse(code.slice(code.lastIndexOf('(...')+4,-1))[0]==='inspect'
-    ?{step:'release',waiting:true}:{submission};
-  let posts=0;wc.loadURL=()=>{posts++;return Promise.resolve();};
-  await browser.handleAuthentication(tab);assert.equal(posts,0);
-  assert.doesNotMatch(JSON.stringify(logs),/PRIVATE|csrf=|submit|stale/);
+  await wc.loadURL('https://idp.example.edu/login');
+  await browser.runTask(controller.signal,{request_id:'consent'},async()=>{
+    browser.beginAuthentication(tab,controller.signal);
+    wc.runAuth=code=>JSON.parse(code.slice(code.lastIndexOf('(...')+4,-1))[0]==='inspect'
+      ?{step:'release',waiting:true}:{submission};
+    let posts=0;wc.loadURL=()=>{posts++;return Promise.resolve();};
+    await browser.handleAuthentication(tab);assert.equal(posts,0);
+    assert.doesNotMatch(JSON.stringify(logs),/PRIVATE|csrf=|submit|stale/);
+  });
 });
 test('Main chooses institution mode only for a live authorized authentication context',async t=>{
   const {BrowserRuntime}=fixture(t),browser=new BrowserRuntime(),controller=new AbortController();
@@ -199,91 +206,99 @@ test('Main chooses institution mode only for a live authorized authentication co
     modes.push(args[3]);return {step:'none',waiting:false};
   };
   await browser.inspectAuthentication(tab);
-  const auth=browser.beginAuthentication(tab,controller.signal);
-  await browser.inspectAuthentication(tab);
-  auth.institution=false;
-  await browser.inspectAuthentication(tab);
-  auth.origins.add('https://idp.example.edu');
-  await browser.inspectAuthentication(tab);
-  controller.abort();await browser.inspectAuthentication(tab);
+  await browser.runTask(controller.signal,{request_id:'auth-mode'},async()=>{
+    const auth=browser.beginAuthentication(tab,controller.signal);
+    await browser.inspectAuthentication(tab);
+    auth.institution=false;
+    await browser.inspectAuthentication(tab);
+    auth.origins.add('https://idp.example.edu');
+    await browser.inspectAuthentication(tab);
+    controller.abort();await browser.inspectAuthentication(tab);
+  });
   assert.deepEqual(modes,['page','institution','page','institution','page']);
 });
 test('selecting another tab does not retarget the document, but reload/navigation invalidates it',async t=>{
   const {BrowserRuntime}=fixture(t),browser=new BrowserRuntime();
-  const doc=await browser.navigate('https://example.org/paper');
-  const task=browser.taskTab;
-  await browser.command({action:'new'});
-  assert.notEqual(browser.selected,task);
-  assert.equal(browser.documentCurrent(doc),true);
-  await assert.rejects(browser.command({action:'close',id:task.id}),/active task page/);
-  await browser.command({action:'navigate',id:task.id,url:'https://example.org/paper'});
-  assert.equal(browser.documentCurrent(doc),false);
-  browser.endTask();await browser.command({action:'close',id:task.id});
+  t.after(()=>browser.close());await browser.ready;
+  const task=browser.createTab({present:false});
+  assert.throws(()=>browser.bindTaskPage(task),/canceled/);
+  await assert.rejects(browser.navigate('https://example.org/paper',{tab:task}),/canceled/);
+  await browser.runTask(new AbortController().signal,{request_id:'selection'},async()=>{
+    const doc=await browser.navigate('https://example.org/paper',{tab:task});
+    await browser.command({action:'new'});
+    assert.notEqual(browser.selected,task);
+    assert.equal(browser.documentCurrent(doc),true);
+    await assert.rejects(browser.command({action:'close',id:task.id}),/active task page/);
+    await browser.command({action:'navigate',id:task.id,url:'https://example.org/paper'});
+    assert.equal(browser.documentCurrent(doc),false);
+  });
+  await browser.command({action:'close',id:task.id});
   assert.equal(browser.tabs.has(task.id),false);
 });
 test('Service queries isolate configurations without pages and task navigation preserves presentation',async t=>{
   const {BrowserRuntime}=fixture(t),browser=new BrowserRuntime();
   t.after(()=>browser.close());await browser.ready;
   const visible=browser.createTab();
-  browser.beginOperation(new AbortController().signal,{request_id:'first',task_id:'batch',
-    service_scope:serviceScope,service_id:serviceId});
-  assert.equal(browser.servicePages(serviceScope.scope_id,serviceId).length,0);
-  assert.equal(browser.tabs.size,1);
-  const tab=browser.createTab({present:false});
-  browser.associatePage(tab,{role:'import',doi:'10.5555/first'});
-  browser.bindTaskPage(tab);
-  const doc=await browser.navigate('https://example.org/first');
-  assert.equal(browser.selected,visible);
-  assert.equal(doc.pageId,tab.id);
-  assert.equal(browser.servicePages(serviceScope.scope_id,serviceId)[0].active,true);
+  const signal=new AbortController().signal;
+  let tab;
+  await browser.runTask(signal,{request_id:'first',task_id:'batch',service_scope:serviceScope,service_id:serviceId},async()=>{
+    assert.equal(browser.servicePages(serviceScope.scope_id,serviceId).length,0);
+    assert.equal(browser.tabs.size,1);
+    tab=browser.createTab({present:false});
+    browser.associatePage(tab,{role:'import',doi:'10.5555/first'});
+    const doc=await browser.navigate('https://example.org/first',{tab});
+    assert.equal(browser.selected,visible);
+    assert.equal(doc.pageId,tab.id);
+    assert.equal(browser.servicePages(serviceScope.scope_id,serviceId)[0].active,true);
+  });
   const otherScope={...serviceScope,scope_id:'d'.repeat(64)};
-  browser.endTask();
   assert.equal(browser.taskTab,null);
   assert.equal(browser.pageAssociation(tab.id).active,false);
-  browser.beginOperation(new AbortController().signal,{request_id:'second',task_id:'batch',
-    service_scope:otherScope,service_id:serviceId});
-  browser.associatePage(tab,{role:'import',doi:'10.5555/second'});
-  browser.bindTaskPage(tab);
-  await browser.navigate('https://example.org/second');
-  assert.equal(browser.servicePages(serviceScope.scope_id,serviceId).length,0);
-  assert.equal(browser.servicePages(otherScope.scope_id,serviceId).length,1);
-  assert.equal(browser.tabs.size,2);
-  assert.equal(browser.selected,visible);
-  browser.endTask();
-  browser.beginOperation(new AbortController().signal,{request_id:'third',task_id:'batch',service_scope:otherScope});
-  browser.associatePage(tab,{role:'import',doi:'10.5555/unmatched'});
-  browser.bindTaskPage(tab);
-  assert.equal(browser.pageAssociation(tab.id).service_id,null);
-  assert.equal(browser.servicePages(otherScope.scope_id,serviceId).length,0);
+  await browser.runTask(signal,{request_id:'second',task_id:'batch',service_scope:otherScope,service_id:serviceId},async()=>{
+    browser.associatePage(tab,{role:'import',doi:'10.5555/second'});
+    await browser.navigate('https://example.org/second',{tab});
+    assert.equal(browser.servicePages(serviceScope.scope_id,serviceId).length,0);
+    assert.equal(browser.servicePages(otherScope.scope_id,serviceId).length,1);
+    assert.equal(browser.tabs.size,2);
+    assert.equal(browser.selected,visible);
+  });
+  await browser.runTask(signal,{request_id:'third',task_id:'batch',service_scope:otherScope},()=>{
+    browser.associatePage(tab,{role:'import',doi:'10.5555/unmatched'});
+    browser.bindTaskPage(tab);
+    assert.equal(browser.pageAssociation(tab.id).service_id,null);
+    assert.equal(browser.servicePages(otherScope.scope_id,serviceId).length,0);
+  });
 });
 test('popup provenance is descriptive, disappears on destruction, and never authorizes credentials',async t=>{
   let reads=0;
   const {BrowserRuntime}=fixture(t),browser=new BrowserRuntime({readCASCredentials:async()=>{reads++;return {};}});
   t.after(()=>browser.close());await browser.ready;
   const controller=new AbortController();
-  browser.beginOperation(controller.signal,{request_id:'first',service_scope:serviceScope,service_id:serviceId});
-  const source=browser.createTab();browser.associatePage(source,{role:'service-resource'});
-  browser.bindTaskPage(source);
-  const wc=source.view.webContents.popup({url:'https://idp.example.edu/login'}).createWindow({});
-  const popup=browser.tabs.get(wc.id);
-  await wc.loadURL('https://idp.example.edu/login');
-  wc.runAuth=()=>({step:'login',waiting:true});
-  await browser.handleAuthentication(popup);
-  assert.equal(reads,0);
-  assert.equal(browser.pageAssociation(popup.id).service_id,serviceId);
-  assert.equal(browser.pageAssociation(popup.id).source_page_id,source.id);
-  source.view.webContents.close();
-  assert.equal(popup.opener,null);
-  assert.equal(browser.pageAssociation(source.id),null);
-  assert.equal(browser.pageAssociation(popup.id).source_page_id,null);
-  await assert.rejects(browser.navigate('https://example.org/late'),/page_closed/);
+  let wc,popup;
+  await browser.runTask(controller.signal,{request_id:'first',service_scope:serviceScope,service_id:serviceId},async()=>{
+    const source=browser.createTab();browser.associatePage(source,{role:'service-resource'});
+    browser.bindTaskPage(source);
+    wc=source.view.webContents.popup({url:'https://idp.example.edu/login'}).createWindow({});
+    popup=browser.tabs.get(wc.id);
+    await wc.loadURL('https://idp.example.edu/login');
+    wc.runAuth=()=>({step:'login',waiting:true});
+    await browser.handleAuthentication(popup);
+    assert.equal(reads,0);
+    assert.equal(browser.pageAssociation(popup.id).service_id,serviceId);
+    assert.equal(browser.pageAssociation(popup.id).source_page_id,source.id);
+    source.view.webContents.close();
+    assert.equal(popup.opener,null);
+    assert.equal(browser.pageAssociation(source.id),null);
+    assert.equal(browser.pageAssociation(popup.id).source_page_id,null);
+    await assert.rejects(browser.navigate('https://example.org/late'),/page_closed/);
+    assert.equal(browser.tabs.size,1);
+    controller.abort();assert.equal(browser.pageAssociation(popup.id).active,false);
+  });
   assert.equal(browser.tabs.size,1);
-  controller.abort();assert.equal(browser.pageAssociation(popup.id).active,false);
-  browser.endTask();
-  assert.equal(browser.tabs.size,1);
-  browser.beginOperation(new AbortController().signal,{request_id:'second'});
-  assert.equal(browser.taskTab,null);
-  await assert.rejects(browser.navigate('https://example.org/new'),/page_closed/);
+  await browser.runTask(new AbortController().signal,{request_id:'second'},async()=>{
+    assert.equal(browser.taskTab,null);
+    await assert.rejects(browser.navigate('https://example.org/new'),/page_closed/);
+  });
   wc.emit('render-process-gone',{}, {reason:'crashed',exitCode:1});
   assert.equal(browser.pageAssociation(popup.id),null);
   assert.equal(browser.servicePages(serviceScope.scope_id,serviceId).length,0);
@@ -293,22 +308,28 @@ test('a failed/canceled ImportPage can be explicitly reused, and a delayed old n
   const {BrowserRuntime}=fixture(t),browser=new BrowserRuntime();
   t.after(()=>browser.close());await browser.ready;
   const first=new AbortController(),tab=browser.createTab();
-  browser.beginOperation(first.signal,{request_id:'old'});browser.bindTaskPage(tab);
-  tab.navigation.begin({automatic:true,owner:browser.operation,signal:first.signal});
-  first.abort();browser.endTask();
-  browser.beginOperation(new AbortController().signal,{request_id:'new'});
-  browser.bindTaskPage(tab);
-  assert.equal((await browser.navigate('https://example.org/new')).pageId,tab.id);
-  browser.endTask();
-  browser.beginOperation(new AbortController().signal,{request_id:'late'});browser.bindTaskPage(tab);
-  let ready;browser.ready=new Promise(resolve=>{ready=resolve;});
-  const pending=browser.navigate('https://example.org/old-late');
-  browser.endTask();browser.beginOperation(new AbortController().signal,{request_id:'latest'});
-  const other=browser.createTab({present:false});browser.bindTaskPage(other);
-  ready();await assert.rejects(pending,/canceled/);
-  assert.equal(browser.taskTab,other);
-  assert.equal(other.view.webContents.getURL(),'');
-  assert.equal(tab.view.webContents.getURL(),'https://example.org/new');
+  await browser.runTask(first.signal,{request_id:'old'},()=>{
+    browser.beginPageLoad(tab,first.signal);
+    first.abort();
+  });
+  const signal=new AbortController().signal;
+  await browser.runTask(signal,{request_id:'new'},async()=>{
+    assert.equal((await browser.navigate('https://example.org/new',{tab})).pageId,tab.id);
+  });
+  let ready,pending;
+  await browser.runTask(signal,{request_id:'late'},()=>{
+    browser.bindTaskPage(tab);
+    browser.ready=new Promise(resolve=>{ready=resolve;});
+    pending=browser.navigate('https://example.org/old-late');
+    pending.catch(()=>{});
+  });
+  await browser.runTask(signal,{request_id:'latest'},async()=>{
+    const other=browser.createTab({present:false});browser.bindTaskPage(other);
+    ready();await assert.rejects(pending,/canceled/);
+    assert.equal(browser.taskTab,other);
+    assert.equal(other.view.webContents.getURL(),'');
+    assert.equal(tab.view.webContents.getURL(),'https://example.org/new');
+  });
 });
 
 test('Browser refuses an HTTP 200 Imperva block before handing the document to the caller',async t=>{
@@ -318,20 +339,18 @@ test('Browser refuses an HTTP 200 Imperva block before handing the document to t
   t.after(()=>browser.close());await browser.ready;
   const tab=browser.createTab({present:false});
   const signal=new AbortController().signal;
-  browser.beginOperation(signal,{request_id:'blocked'});
   const url='https://projecteuclid.org/journals/example/10.5555/article.full';
   const contents=tab.view.webContents;
   const block='<iframe src="/_Incapsula_Resource?incident_id=123456-987654&amp;edet=15&amp;opaque=private">'
     +'Request unsuccessful. Incapsula incident ID: 123456-987654</iframe>';
   contents.html='<body><iframe src="/_Incapsula_Resource?fixture=helper" hidden></iframe>'+block+'</body>';
-  await assert.rejects(browser.navigate(url,{tab,signal}),{diagnostic:{stage:'navigation',code:'site_restricted',status:200,
+  await assert.rejects(browser.runTask(signal,{request_id:'blocked'},()=>browser.navigate(url,{tab,signal})),{diagnostic:{stage:'navigation',code:'site_restricted',status:200,
     imperva_edet:15,imperva_incident_id:'123456-987654'}});
   assert.equal(solverCalls,0);
-  browser.endTask();
-
-  browser.beginOperation(signal,{request_id:'article'});
   contents.html='<body><article>Example article</article>'+block+'</body>';
-  assert.equal((await browser.navigate(url,{tab,signal})).status,200);
+  await browser.runTask(signal,{request_id:'article'},async()=>{
+    assert.equal((await browser.navigate(url,{tab,signal})).status,200);
+  });
 });
 
 test('Imperva CAPTCHA waits for the same page to finish verification without calling the Solver',async t=>{
@@ -341,18 +360,18 @@ test('Imperva CAPTCHA waits for the same page to finish verification without cal
   t.after(()=>browser.close());await browser.ready;
   const tab=browser.createTab({present:false});
   const signal=new AbortController().signal;
-  browser.beginOperation(signal,{request_id:'imperva-challenge'});
   const contents=tab.view.webContents;
   contents.html='<body><iframe src="/_Incapsula_Resource?edet=12&amp;incident_id=123-456">'
     +'Request unsuccessful. Incapsula incident ID: 123-456</iframe></body>';
   const url='https://projecteuclid.org/journals/example/10.5555/article.full';
   let reportWaiting;
   const waiting=new Promise(resolve=>{reportWaiting=resolve;});
-  const navigation=browser.navigate(url,{tab,signal,deadline:Date.now()+5000,onWaiting:reportWaiting});
+  const navigation=browser.runTask(signal,{request_id:'imperva-challenge'},()=>
+    browser.navigate(url,{tab,signal,deadline:Date.now()+5000,onWaiting:reportWaiting}));
   const diagnostic=await Promise.race([waiting,navigation.then(()=>assert.fail('Returned before verification'))]);
   assert.deepEqual(diagnostic,{stage:'navigation',code:'verification_page',status:200,
     imperva_edet:12,imperva_incident_id:'123-456'});
-  assert.equal(browser.taskTab,tab);
+  assert.equal(browser.state().taskPageId,tab.id);
   assert.equal(solverCalls,0);
 
   contents.html='<body><article>Example article after verification</article></body>';
@@ -379,27 +398,29 @@ test('Manual URL opening preserves the task; Covers use an auxiliary page withou
   const {BrowserRuntime,logs}=fixture(t),browser=new BrowserRuntime();
   t.after(()=>browser.close());await browser.ready;
   const signal=new AbortController().signal;
-  browser.beginOperation(signal,{request_id:'import',service_scope:serviceScope,service_id:serviceId});
-  const task=browser.createTab();browser.associatePage(task,{role:'import'});browser.bindTaskPage(task);
-  const manual=await browser.openURL('https://manual.example.org/');
-  assert.equal(browser.taskTab,task);assert.equal(browser.selected,manual);
-  assert.equal(browser.pageAssociation(manual.id),null);
-  browser.endTask();
-  browser.beginOperation(signal,{request_id:'cover',service_scope:{...serviceScope,secret:'PRIVATE'},service_id:serviceId});
-  browser.events.once('tab-created',(_event,tab)=>{
-    const original=tab.view.webContents.executeJavaScriptInIsolatedWorld.bind(tab.view.webContents);
-    tab.view.webContents.executeJavaScriptInIsolatedWorld=async(world,scripts)=>scripts?{ready:true,source_url:null}:original();
+  let manual,cover;
+  await browser.runTask(signal,{request_id:'import',service_scope:serviceScope,service_id:serviceId},async()=>{
+    const task=browser.createTab();browser.associatePage(task,{role:'import'});browser.bindTaskPage(task);
+    manual=await browser.openURL('https://manual.example.org/');
+    assert.equal(browser.taskTab,task);assert.equal(browser.selected,manual);
+    assert.equal(browser.pageAssociation(manual.id),null);
   });
-  assert.equal((await searchJournalCover(browser,{name:'Saved Journal'},{signal,progress(){}})).source_url,null);
-  const cover=browser.taskTab;
-  assert.equal(browser.pageAssociation(cover.id).role,'auxiliary');
-  assert.equal(browser.pageAssociation(cover.id).service_id,null);
-  assert.equal(browser.selected,manual);
-  browser.endTask();assert.equal(browser.tabs.size,3);
+  await browser.runTask(signal,{request_id:'cover',service_scope:{...serviceScope,secret:'PRIVATE'},service_id:serviceId},async()=>{
+    browser.events.once('tab-created',(_event,tab)=>{
+      const original=tab.view.webContents.executeJavaScriptInIsolatedWorld.bind(tab.view.webContents);
+      tab.view.webContents.executeJavaScriptInIsolatedWorld=async(world,scripts)=>scripts?{ready:true,source_url:null}:original();
+    });
+    assert.equal((await searchJournalCover(browser,{name:'Saved Journal'},{signal,progress(){}})).source_url,null);
+    cover=browser.taskTab;
+    assert.equal(browser.pageAssociation(cover.id).role,'auxiliary');
+    assert.equal(browser.pageAssociation(cover.id).service_id,null);
+    assert.equal(browser.selected,manual);
+  });
+  assert.equal(browser.tabs.size,3);
   assert.doesNotMatch(JSON.stringify(browser.pageAssociation(cover.id)),/PRIVATE|secret/);
   assert.doesNotMatch(JSON.stringify(logs),/PRIVATE|secret/);
   assert.equal(logs.find(event=>event.event==='page_associated').scope_id,serviceScope.scope_id);
-  assert.throws(()=>browser.beginOperation(signal,{service_id:serviceId}),/Invalid browser Service identity/);
+  await assert.rejects(browser.runTask(signal,{service_id:serviceId},()=>{}),/Invalid browser Service identity/);
   browser.close();assert.equal(browser.tabs.size,0);assert.equal(browser.selected,null);
 });
 
@@ -608,37 +629,46 @@ test('ordinary verification controls and explicit QR login still wait for manual
 
 test('canceled attachment recovery cannot create a helper tab',async t=>{
   const {BrowserRuntime}=fixture(t),browser=new BrowserRuntime();t.after(()=>browser.close());await browser.ready;
-  const controller=new AbortController();browser.beginOperation(controller.signal);browser.operation.action='import_paper';
-  const tab=browser.createTab();browser.bindTaskPage(tab);
-  await tab.view.webContents.loadURL('https://one.test/article');const doc=await browser.snapshot(tab);controller.abort();
-  const count=browser.tabs.size;
-  await assert.rejects(browser.bypassAttachment('https://one.test/file',doc,{visible:true,signal:controller.signal}));
-  assert.equal(browser.tabs.size,count);
+  const controller=new AbortController();
+  await browser.runTask(controller.signal,{request_id:'canceled-attachment'},async()=>{
+    browser.operation.action='import_paper';
+    const tab=browser.createTab();browser.bindTaskPage(tab);
+    await tab.view.webContents.loadURL('https://one.test/article');const doc=await browser.snapshot(tab);controller.abort();
+    const count=browser.tabs.size;
+    await assert.rejects(browser.bypassAttachment('https://one.test/file',doc,{visible:true,signal:controller.signal}));
+    assert.equal(browser.tabs.size,count);
+  });
 });
+
 
 test('attachment capture timeout and source replacement cannot leak listeners or accept late responses',async t=>{
   t.mock.timers.enable({apis:['Date','setTimeout'],now:1000});
   const {BrowserRuntime}=fixture(t),browser=new BrowserRuntime();t.after(()=>browser.close());await browser.ready;
-  browser.beginOperation(new AbortController().signal);browser.operation.action='import_paper';
-  const tab=browser.createTab();browser.bindTaskPage(tab);
-  await tab.view.webContents.loadURL('https://one.test/article');const doc=await browser.snapshot(tab);
-  const first=browser.captureAttachment(tab,doc,{deadline:Date.now()+5000});t.mock.timers.tick(5000);
-  await assert.rejects(first.url,error=>error.diagnostic?.code==='timeout');assert.equal(browser.attachmentCaptures.size,0);
-  const second=browser.captureAttachment(tab,doc);
-  await tab.view.webContents.loadURL('https://one.test/replacement');
-  await assert.rejects(second.url,error=>error.diagnostic?.code==='document_changed');assert.equal(browser.attachmentCaptures.size,0);
-  browser.operation.action='enrich_paper';
-  assert.throws(()=>browser.captureAttachment(tab,doc));
+  await browser.runTask(new AbortController().signal,{request_id:'attachment-capture'},async()=>{
+    browser.operation.action='import_paper';
+    const tab=browser.createTab();browser.bindTaskPage(tab);
+    await tab.view.webContents.loadURL('https://one.test/article');const doc=await browser.snapshot(tab);
+    const first=browser.captureAttachment(tab,doc,{deadline:Date.now()+5000});t.mock.timers.tick(5000);
+    await assert.rejects(first.url,error=>error.diagnostic?.code==='timeout');assert.equal(browser.attachmentCaptures.size,0);
+    const second=browser.captureAttachment(tab,doc);
+    await tab.view.webContents.loadURL('https://one.test/replacement');
+    await assert.rejects(second.url,error=>error.diagnostic?.code==='document_changed');assert.equal(browser.attachmentCaptures.size,0);
+    browser.operation.action='enrich_paper';
+    assert.throws(()=>browser.captureAttachment(tab,doc));
+  });
 });
+
 test('reused page lifecycle records retain each workflow association before replacement and renderer invalidation',async t=>{
   const {BrowserRuntime,logs}=fixture(t),browser=new BrowserRuntime();t.after(()=>browser.close());await browser.ready;
   const controller=new AbortController(),tab=browser.createTab();
-  browser.beginOperation(controller.signal,{request_id:'request_a',task_id:'task_a',workflow_id:'workflow_a',service_scope:serviceScope,service_id:serviceId});
-  browser.associatePage(tab,{role:'import'});browser.bindTaskPage(tab,controller.signal);browser.endTask();
+  await browser.runTask(controller.signal,{request_id:'request_a',task_id:'task_a',workflow_id:'workflow_a',service_scope:serviceScope,service_id:serviceId},()=>{
+    browser.associatePage(tab,{role:'import'});browser.bindTaskPage(tab,controller.signal);
+  });
   assert.equal(browser.pageAssociation(tab.id).workflow_id,'workflow_a');
-  browser.beginOperation(controller.signal,{request_id:'request_b',task_id:'task_b',workflow_id:'workflow_b',service_scope:serviceScope,service_id:serviceId});
-  browser.associatePage(tab,{role:'import'});browser.bindTaskPage(tab,controller.signal);
-  tab.view.webContents.emit('render-process-gone',{}, {reason:'crashed',exitCode:1});
+  await browser.runTask(controller.signal,{request_id:'request_b',task_id:'task_b',workflow_id:'workflow_b',service_scope:serviceScope,service_id:serviceId},()=>{
+    browser.associatePage(tab,{role:'import'});browser.bindTaskPage(tab,controller.signal);
+    tab.view.webContents.emit('render-process-gone',{}, {reason:'crashed',exitCode:1});
+  });
   assert.equal(browser.pageAssociation(tab.id),null);
   const replaced=logs.find(e=>e.event==='page_association_replaced');assert.equal(replaced.workflow_id,'workflow_a');assert.equal(replaced.request_id,'request_a');
   const crashed=logs.find(e=>e.event==='page_renderer_gone');assert.equal(crashed.workflow_id,'workflow_b');assert.equal(crashed.service_id,serviceId);

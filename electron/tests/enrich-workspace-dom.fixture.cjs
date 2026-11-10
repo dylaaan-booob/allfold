@@ -26,6 +26,8 @@ let enrichState={phase:'Idle',supported:true,waiting_for_user:false};
 const queue={services:[{id:'all',name:'All Services',kept:1,eligible:1},{id:serviceId,name:services[0].name,kept:1,eligible:1},{id:'unassigned',name:'Unassigned',kept:0,eligible:0},{id:'ambiguous',name:'Ambiguous',kept:0,eligible:0}],papers:[{paper_id:'paper-1',title:paper.title,doi:paper.doi,service_id:serviceId,assignment:'assigned',reason:''}],import_token:'fixture'};
 const keptState={active:false,phase:'idle',navigation:null,can_cancel:false};
 const runData={active:false,snapshot:{status:'IDLE',provider:null},providers:Object.fromEntries(['integrated','wos'].map(id=>[id,{enabled:false,message:'Offline fixture',snapshot:{status:'IDLE'},result_summary:null}]))};
+const finishEnrich=Promise.withResolvers();
+let nativeEnrich;
 const requests=[],workspaceReads={started:0,inFlight:0,lastCandidateIds:[]};
 const challenge=`<!doctype html><html><head><meta charset="utf-8"><style>body{font:16px sans-serif}label{display:block;margin:12px}input,button{font:inherit}</style></head><body><form><label><input id="human" type="checkbox"> Local synthetic verification</label><label>Code <input id="code"></label><button id="verify">Verify</button><output id="result">Waiting</output></form><script>window.fixtureLoad=crypto.randomUUID();document.cookie='synthetic_session=preserved; SameSite=Lax';document.querySelector('form').onsubmit=event=>{event.preventDefault();result.textContent=human.checked&&code.value==='42'?'Synthetic challenge complete':'Try code 42'};</script></body></html>`;
 const mimes={'.html':'text/html','.js':'text/javascript','.css':'text/css','.json':'application/json','.woff2':'font/woff2','.ttf':'font/ttf','.otf':'font/otf','.png':'image/png','.mp4':'video/mp4'};
@@ -36,9 +38,15 @@ const server=http.createServer(async(req,res)=>{
     let body='';for await(const chunk of req)body+=chunk;
     requests.push({route,body:body?JSON.parse(body):null});
     if(route==='/api/papers/paper-enrich/enrichment/start'){
-      browser.beginOperation(new AbortController().signal,{workflow_id:'enrich-a',task_id:'enrich-a',request_id:'native-enrich'});
-      tab=browser.createTab({present:false});browser.associatePage(tab,{role:'auxiliary',service:false});browser.bindTaskPage(tab);
-      await tab.view.webContents.loadURL(origin+'/challenge');
+      const started=Promise.withResolvers();
+      nativeEnrich=browser.runTask(new AbortController().signal,{workflow_id:'enrich-a',task_id:'enrich-a',request_id:'native-enrich'},async()=>{
+        tab=browser.createTab({present:false});browser.associatePage(tab,{role:'auxiliary',service:false});browser.bindTaskPage(tab);
+        await tab.view.webContents.loadURL(origin+'/challenge');
+        started.resolve();
+        await finishEnrich.promise;
+      });
+      nativeEnrich.catch(started.reject);
+      await started.promise;
       enrichState={phase:'Retrieving',request_id:'enrich-a',waiting_for_user:true,message:'Complete verification in BROWSER',saved:{}};
     }
     if(route==='/api/papers/paper-enrich/enrichment/cancel')enrichState={...enrichState,phase:'Cancelled',waiting_for_user:false};
@@ -105,9 +113,9 @@ app.whenReady().then(async()=>{
       && document.getElementById('enrich-task-page').hidden && document.getElementById('cancel-enrich').hidden`),'Date-only Enrich completion and next date available');
     assert(requests.filter(request=>request.route==='/api/papers/paper-enrich/enrichment/start').length===1,'Enrich handoff restarted task');
     assert(!requests.some(request=>request.route==='/api/papers/paper-enrich/enrichment/cancel'),'Enrich Browser handoff cancelled task');
-    await capture('enrich-completed');browser.endTask();
+    await capture('enrich-completed');finishEnrich.resolve();await nativeEnrich;
     if(process.env.ALLFOLD_ENRICH_WORKSPACE_SCREENSHOTS)fs.writeFileSync(path.join(process.env.ALLFOLD_ENRICH_WORKSPACE_SCREENSHOTS,'measurements.json'),JSON.stringify(measurements,null,2)+'\n');
     console.log('ENRICH WORKSPACE DOM PASS');
   }catch(error){failed=true;console.error(error.stack);console.error('RECENT NATIVE UPDATES',JSON.stringify(nativeUpdates.slice(-12)));console.error('FIXTURE DIAGNOSTICS',JSON.stringify({...await diagnostics(),enrichPhase:enrichState.phase}));await capture('enrich-failure');}
-  finally{ipcMain.removeHandler('cas:status');disposeIPC?.();browser?.close();win?.destroy();await new Promise(resolve=>server.close(resolve));fs.rmSync(temp,{recursive:true,force:true});app.exit(failed?1:0);}
+  finally{finishEnrich.resolve();await nativeEnrich?.catch(()=>{});ipcMain.removeHandler('cas:status');disposeIPC?.();browser?.close();win?.destroy();await new Promise(resolve=>server.close(resolve));fs.rmSync(temp,{recursive:true,force:true});app.exit(failed?1:0);}
 });

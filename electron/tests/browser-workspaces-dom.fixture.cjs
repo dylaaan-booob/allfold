@@ -102,11 +102,11 @@ app.whenReady().then(async()=>{
     tab=browser.createTab({present:false});await tab.view.webContents.loadURL(origin+'/challenge');const id=tab.id,session=tab.view.webContents.session,load=await page('fixtureLoad');
     const sameSite=browser.createTab({present:false});await sameSite.view.webContents.loadURL(origin+'/challenge');
     await sameSite.view.webContents.executeJavaScript("document.title='Unassigned Local Page'");
-    browser.beginOperation(new AbortController().signal,{workflow_id:'login-a',task_id:'prepare-a',request_id:'request-login',service_id:serviceId,service_scope:scope});
-    browser.associatePage(tab,{role:'service-target'});browser.endTask();
+    await browser.runTask(new AbortController().signal,{workflow_id:'login-a',task_id:'prepare-a',request_id:'request-login',service_id:serviceId,service_scope:scope},
+      ()=>browser.associatePage(tab,{role:'service-target'}));
     const portal=browser.createTab({present:false});
-    browser.beginOperation(new AbortController().signal,{workflow_id:'login-a',task_id:'carsi-a',request_id:'request-carsi'});
-    browser.associatePage(portal,{role:'carsi-portal'});browser.endTask();
+    await browser.runTask(new AbortController().signal,{workflow_id:'login-a',task_id:'carsi-a',request_id:'request-carsi'},
+      ()=>browser.associatePage(portal,{role:'carsi-portal'}));
     await page("document.title='Synthetic Service Page'");
     await search('Synthetic Service Page');await key(win.webContents,'Enter');
     let rect=await measured('shipped wide Focus');
@@ -143,12 +143,15 @@ app.whenReady().then(async()=>{
     await ready(()=>host("document.getElementById('kept-progress').textContent.includes('已跳过 1')"),'Import displays skipped count');
     const importRequest=requests.find(request=>request.route==='/api/kept-workflow/start')?.body;
     assert(importRequest?.skip_unprepared?.join()===serviceId&&!Object.hasOwn(importRequest,'mode'),'Import changed the skip decision or sent a legacy mode');
-    keptState={active:false,phase:'idle',navigation:null,can_cancel:false};browser.endTask();runActive=true;browser.beginOperation(new AbortController().signal,{workflow_id:'run-a',task_id:'query-wos',request_id:'request-run'});browser.associatePage(tab,{role:'wos-query'});browser.bindTaskPage(tab);await win.reload();
-    await ready(()=>host("document.getElementById('run-view').open&&!document.querySelector('.run-task-page').hidden"),'actual restored Run fullscreen');assert(await host("workspaceNavigation.current()==='run'"),'restored Run fullscreen did not enter Run workspace');await click(win.webContents,'.run-task-page');await measured('shipped Run fullscreen handoff');
-    assert(await host("!document.getElementById('browser-pane').hidden"),'actual Run handoff did not request Run Focus host');assert(browser.selected===tab,'Run retargeted unrelated task page');await capture('shipped-run-fullscreen-handoff');
-    await click(win.webContents,'#browser-return');assert(await host("document.getElementById('run-view').open&&getComputedStyle(document.getElementById('run-view')).visibility==='visible'&&document.activeElement.classList.contains('run-task-page')&&!document.getElementById('run-wos-cancel').disabled"),'Run fullscreen return rights/focus');
-    assert(tab.id===id&&tab.view.webContents.session===session&&await page('fixtureLoad')===load,'actual workspace presentation recreated native Page/Session');assert((await session.cookies.get({url:origin})).some(cookie=>cookie.name==='synthetic_session'),'actual workspace presentation lost Cookie');
-    runActive=false;await ready(()=>host('!uiRun.active()'),'Run terminal state');browser.endTask();
+    keptState={active:false,phase:'idle',navigation:null,can_cancel:false};runActive=true;
+    await browser.runTask(new AbortController().signal,{workflow_id:'run-a',task_id:'query-wos',request_id:'request-run'},async()=>{
+      browser.associatePage(tab,{role:'wos-query'});browser.bindTaskPage(tab);await win.reload();
+      await ready(()=>host("document.getElementById('run-view').open&&!document.querySelector('.run-task-page').hidden"),'actual restored Run fullscreen');assert(await host("workspaceNavigation.current()==='run'"),'restored Run fullscreen did not enter Run workspace');await click(win.webContents,'.run-task-page');await measured('shipped Run fullscreen handoff');
+      assert(await host("!document.getElementById('browser-pane').hidden"),'actual Run handoff did not request Run Focus host');assert(browser.selected===tab,'Run retargeted unrelated task page');await capture('shipped-run-fullscreen-handoff');
+      await click(win.webContents,'#browser-return');assert(await host("document.getElementById('run-view').open&&getComputedStyle(document.getElementById('run-view')).visibility==='visible'&&document.activeElement.classList.contains('run-task-page')&&!document.getElementById('run-wos-cancel').disabled"),'Run fullscreen return rights/focus');
+      assert(tab.id===id&&tab.view.webContents.session===session&&await page('fixtureLoad')===load,'actual workspace presentation recreated native Page/Session');assert((await session.cookies.get({url:origin})).some(cookie=>cookie.name==='synthetic_session'),'actual workspace presentation lost Cookie');
+      runActive=false;await ready(()=>host('!uiRun.active()'),'Run terminal state');
+    });
     if(process.env.ALLFOLD_BROWSER_WORKSPACES_SCREENSHOTS)fs.writeFileSync(path.join(process.env.ALLFOLD_BROWSER_WORKSPACES_SCREENSHOTS,'measurements.json'),JSON.stringify(measurements,null,2)+'\n');console.log(JSON.stringify(measurements));console.log('BROWSER WORKSPACES DOM PASS');
   }catch(error){failed=true;console.error(error.stack);console.error('RECENT NATIVE UPDATES',JSON.stringify(nativeUpdates.slice(-12)));console.error('FIXTURE DIAGNOSTICS',JSON.stringify(await diagnostics()));await capture('shipped-failure');}
   finally{ipcMain.removeHandler('cas:status');disposeIPC?.();browser?.close();win?.destroy();await new Promise(resolve=>server.close(resolve));fs.rmSync(temp,{recursive:true,force:true});app.exit(failed?1:0);}

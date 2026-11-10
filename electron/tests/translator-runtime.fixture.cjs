@@ -101,27 +101,29 @@ async function browserHistory() {
   });
   async function translate(name,kinds=historyKinds,{cancel=false,deadline}={}) {
     const controller=new AbortController(),{signal}=controller;
-    browser.beginOperation(signal);browser.operation.action='enrich_paper';
-    const tab=await newTaskPage(browser,signal);
-    try {
-      const origin=name===euclidArticle?'https://projecteuclid.org':
-        name==='scielo-late'?'https://www.scielo.br':'https://offline.invalid';
-      const doc=await browser.navigate(origin+'/'+name,{signal,deadline:Date.now()+5000});
-      browser.enterBusiness();
-      const started=Date.now();
-      const timer=cancel?setTimeout(()=>controller.abort(),350):null;
-      const run=sandbox.run;
-      if(name==='doi-change-complete')sandbox.run=async function(doc,method,...args) {
-        const translated=await run.call(this,doc,method,...args);
-        if(method==='translate' && translated.ok)await tab.view.webContents.executeJavaScript(
-          'document.querySelector("meta[name=citation_doi]").content="10.5555/other"');
-        return translated;
-      };
+    return browser.runTask(signal,{},async()=>{
+      browser.operation.action='enrich_paper';
+      const tab=await newTaskPage(browser,signal);
       try {
-        const result=await sandbox.translate(doc,doi,{forEnrichment:true,historyKinds:kinds,signal,deadline});
-        return {result,elapsed:Date.now()-started};
-      } finally {clearTimeout(timer);sandbox.run=run;}
-    } finally {browser.endTask();tab.view.webContents.close();}
+        const origin=name===euclidArticle?'https://projecteuclid.org':
+          name==='scielo-late'?'https://www.scielo.br':'https://offline.invalid';
+        const doc=await browser.navigate(origin+'/'+name,{signal,deadline:Date.now()+5000});
+        browser.enterBusiness();
+        const started=Date.now();
+        const timer=cancel?setTimeout(()=>controller.abort(),350):null;
+        const run=sandbox.run;
+        if(name==='doi-change-complete')sandbox.run=async function(doc,method,...args) {
+          const translated=await run.call(this,doc,method,...args);
+          if(method==='translate' && translated.ok)await tab.view.webContents.executeJavaScript(
+            'document.querySelector("meta[name=citation_doi]").content="10.5555/other"');
+          return translated;
+        };
+        try {
+          const result=await sandbox.translate(doc,doi,{forEnrichment:true,historyKinds:kinds,signal,deadline});
+          return {result,elapsed:Date.now()-started};
+        } finally {clearTimeout(timer);sandbox.run=run;}
+      } finally {tab.view.webContents.close();}
+    });
   }
   const facts=result=>result.dateCandidates.map(({kind,value})=>[kind,value]);
   try {
