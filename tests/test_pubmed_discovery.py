@@ -76,11 +76,44 @@ def test_pubmed_native_date_shards_exhaust_esearch_window_and_report_impossible_
 
 
 def test_pubmed_http_200_application_error_never_becomes_empty_or_leaks_key():
-    for body in ({'error':'synthetic-secret-key'},{'esearchresult':{'errorlist':{'phrasesnotfound':['synthetic-secret-key']}}}):
+    for body in (
+        {'error': 'synthetic-secret-key'},
+        {'esearchresult': {'count': '0', 'idlist': [], 'errorlist': {
+            'phrasesnotfound': [A.issns[0], 'synthetic-secret-key']}}},
+        {'esearchresult': {'count': '0', 'idlist': [], 'errorlist': {
+            'phrasesnotfound': [A.issns[0]], 'fieldsnotfound': ['ISSN']}}},
+        {'esearchresult': {'count': '0', 'idlist': [], 'errorlist': {'phrasesnotfound': A.issns[0]}}},
+    ):
         with DiscoveryClient('pubmed',api_key='synthetic-secret-key',transport=httpx.MockTransport(lambda _:httpx.Response(200,json=body)),interval=0) as client:
             result = client.discover(A,parse_keyword_expression('causal'),'2026-10-01','2026-10-31')
         assert result.status == 'failed' and 'synthetic-secret-key' not in repr(result)
         assert 'Entrez' in result.limitations[0]
+
+
+@pytest.mark.parametrize('count', [0, 1])
+def test_pubmed_unindexed_issn_does_not_discard_valid_search(count):
+    calls = []
+
+    def response(request):
+        calls.append(request.url.path)
+        if request.url.path.endswith('esearch.fcgi'):
+            assert f'{B.issns[0]}[ISSN]' in request.url.params['term']
+            return httpx.Response(200, json={'esearchresult': {
+                'count': str(count), 'idlist': ['41'] if count else [],
+                'webenv': 'fixture', 'querykey': '1',
+                'errorlist': {'phrasesnotfound': [B.issns[0]], 'fieldsnotfound': []},
+            }})
+        assert request.url.params['WebEnv'] == 'fixture'
+        return httpx.Response(200, text='<PubmedArticleSet>' + article('41', A.issns[0]) + '</PubmedArticleSet>')
+
+    with DiscoveryClient('pubmed', transport=httpx.MockTransport(response), interval=0) as client:
+        indexed, unindexed = client.discover_many(
+            (A, B), parse_keyword_expression('causal'), '2026-10-01', '2026-10-31')
+
+    assert indexed.status == ('complete' if count else 'empty')
+    assert len(indexed.records) == count and not indexed.limitations
+    assert unindexed.status == 'empty' and not unindexed.limitations
+    assert len(calls) == 1 + count
 
 
 @pytest.mark.parametrize('location', ['outer', 'esearchresult'])
