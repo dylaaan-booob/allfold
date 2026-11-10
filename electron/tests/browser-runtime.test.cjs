@@ -764,3 +764,54 @@ test('supported Cloudflare challenges invoke Solver while hCaptcha remains manua
     });
   }
 });
+
+test('Enrich, cancellation and Import retain the same locked Paper tab for its Workspace',async t=>{
+  const {BrowserRuntime}=fixture(t),browser=new BrowserRuntime();
+  t.after(()=>browser.close());await browser.ready;
+  const data={workspace_identity:'a'.repeat(64),paper_id:'fd8460a2-7cf1-4f02-b346-cbcbd2fe6e45'};
+  const doi='10.5555/fixture',stop=new AbortController();
+  let first;
+  await browser.runTask(stop.signal,{...data,request_id:'enrich'},async()=>{
+    first=await browser.openPaperPage(data,doi,{role:'enrich',signal:stop.signal});
+    const page=browser.state().tabs.find(tab=>tab.id===first.pageId);
+    assert.equal(page.managed,true);assert.equal(page.busy,true);
+    await assert.rejects(browser.command({action:'reload',id:page.id}),/active task page/i);
+    stop.abort();
+  });
+  const tab=browser.tabs.get(first.pageId);
+  assert.ok(tab);assert.equal(browser.pageAssociation(tab.id).active,false);
+  for(const action of ['close','navigate','back','forward']) {
+    const command={action,id:tab.id,...(action==='navigate'?{url:'https://unrelated.example/'}:{})};
+    await assert.rejects(browser.command(command),/managed page/i);
+  }
+  const signal=new AbortController().signal;
+  await browser.runTask(signal,{...data,request_id:'import'},async()=>{
+    const imported=await browser.openPaperPage(data,doi,{role:'import',signal});
+    assert.equal(imported.pageId,first.pageId);
+    assert.equal(imported.frameToken,first.frameToken);
+    assert.equal(browser.pageAssociation(tab.id).role,'import');
+  });
+  await browser.command({action:'reload',id:tab.id});
+  assert.equal(tab.view.webContents.reloads,1);
+  await tab.view.webContents.loadURL('https://publisher.example/site-navigation');
+  await browser.runTask(signal,{...data,request_id:'retry'},async()=>{
+    const restored=await browser.openPaperPage(data,doi,{role:'import',signal});
+    assert.equal(restored.pageId,tab.id);
+    assert.equal(restored.url,'https://doi.org/10.5555%2Ffixture');
+    assert.notEqual(restored.frameToken,first.frameToken);
+  });
+  await assert.rejects(browser.runTask(signal,{...data,request_id:'changed'},async()=>{
+    const changed=await browser.openPaperPage(data,'10.5555/corrected',{role:'enrich',signal});
+    assert.equal(changed.pageId,tab.id);
+    assert.equal(changed.url,'https://doi.org/10.5555%2Fcorrected');
+    throw Error('fixture translation failure');
+  }),/fixture translation failure/);
+  assert.ok(browser.tabs.has(tab.id));
+  assert.equal(browser.pageAssociation(tab.id).active,false);
+  const other={...data,workspace_identity:'b'.repeat(64)};
+  await browser.runTask(signal,{...other,request_id:'other'},async()=>{
+    const opened=await browser.openPaperPage(other,doi,{role:'import',signal});
+    assert.notEqual(opened.pageId,tab.id);
+  });
+  assert.equal(browser.tabs.size,2);
+});

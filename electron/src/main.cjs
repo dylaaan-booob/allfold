@@ -15,7 +15,7 @@ const {failedImport}=require('./workflows/import-errors.cjs');
 const {BrowserFailure,diagnosticFor}=require('./browser/browser-errors.cjs');
 const {log,errorCode,initializeLogging,withLogContext,associationLogContext,diagnosticsReset,diagnosticsStatus,setLogLevel} = require('./shared/logging.cjs');
 const {operationAssociation}=require('./browser/page-association.cjs');
-const {prepareService,searchJournalCover,newTaskPage}=require('./workflows/browser-operations.cjs');
+const {prepareService,searchJournalCover}=require('./workflows/browser-operations.cjs');
 const {wosQuery,wosExport}=require('./workflows/wos-operations.cjs');
 const {readCASCredentials,casStatus,saveCASCredentials,clearCASCredentials,casErrorCode}=require('./auth/cas-credentials.cjs');
 const {confirmConfigurationExit,confirmBlockedUnload}=require('./shared/configuration-exit.cjs');
@@ -187,13 +187,9 @@ async function executeOperation(message,current) {
         } else {
           if(!['import_paper','enrich_paper'].includes(message.action)) throw Error('Unsupported Electron operation');
           const doi=normalizeDOI(message.data.doi);
-          if(message.action==='enrich_paper')await newTaskPage(browser,controller.signal);
-          else {
-            const tab=await newTaskPage(browser,controller.signal);
-            browser.associatePage(tab,{role:'import',doi});
-          }
-          progress({message:'Opening DOI in Browser'});
-          const doc=await browser.navigate('https://doi.org/'+encodeURIComponent(doi),{signal:controller.signal,
+          const forEnrichment=message.action==='enrich_paper';
+          progress({message:'Opening Paper in Browser'});
+          const doc=await browser.openPaperPage(message.data,doi,{signal:controller.signal,role:forEnrichment?'enrich':'import',
             onWaiting:diagnostic=>progress({waiting_for_user:true,message:'Checking verification; open BROWSER for manual verification if needed, or Cancel to stop'},stage,diagnostic)});
           if(controller.signal.aborted)throw new BrowserFailure('navigation','canceled');
           if(waiting) {
@@ -203,7 +199,6 @@ async function executeOperation(message,current) {
           browser.enterBusiness();
           stage='translation';
           progress({message:'Running official Translator'});
-          const forEnrichment=message.action==='enrich_paper';
           const historyKinds=forEnrichment && Array.isArray(message.data.history_kinds)
             ? ['received','accepted'].filter(kind=>message.data.history_kinds.includes(kind)) : [];
           const {item,apiItem,proxy,sourceDocument,metadataSource,dateCandidates}=await translator.translate(doc,doi,{

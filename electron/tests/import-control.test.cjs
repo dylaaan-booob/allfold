@@ -20,9 +20,15 @@ function fixture() {
     operationAssociation:require('../src/browser/page-association.cjs').operationAssociation,
     log:(level,event,details)=>logs.push({level,event,...details}),
     AbortController, ImportFailure, BrowserFailure, diagnosticFor, failedImport, normalizeDOI: value => value,
-    newTaskPage:async()=>{const tab={id:++pageId};taskContext.getStore().taskTab=tab;return tab;},
     send(message) {messages.push(JSON.parse(JSON.stringify(message)));},
-    browser: {tabs:new Map(),async navigate() {return {pageId:this.taskTab.id,url:'https://example.org/article'};},
+    browser: {tabs:new Map(),
+      async openPaperPage(data,doi,options){
+        const tab={id:++pageId};
+        taskContext.getStore().taskTab=tab;
+        this.associatePage(tab,{role:options.role,doi});
+        return this.navigate('https://doi.org/'+encodeURIComponent(doi),options);
+      },
+      async navigate() {return {pageId:this.taskTab.id,url:'https://example.org/article'};},
       documentCurrent:()=>true,
       get operation(){return taskContext.getStore();},get taskTab(){return this.operation?.taskTab;},
       async runTask(signal,association,run){try{return await taskContext.run({signal,association},run);}finally{calls.end++;}},
