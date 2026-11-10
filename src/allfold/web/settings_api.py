@@ -272,12 +272,16 @@ def install_credential_api(app, csrf_token):
                 return json_response({'ok': False, 'error': 'cas_task_active',
                     'message': 'Active task owns the saved configuration; credential draft retained.'}, 409)
             owner = app.state.browser_task_lock.acquire('credentials')
+            if owner is None:
+                return json_response({'ok': False, 'error': 'cas_task_active'}, 409)
             try:
                 if not app.state.electron_bridge.connected:
                     raise ElectronDisconnected()
                 result = app.state.electron_bridge.execute('cas_credentials', {
                     key: body[key] for key in ('operation', 'username', 'password', 'expected_revision')
                 }).result()
+                if result.get('ok') is True:
+                    app.state.login.invalidate_credentials()
                 # Native returns a bounded status only, never password/plaintext.
                 return json_response({key: result[key] for key in
                     ('ok', 'error', 'configured', 'username', 'revision') if key in result})

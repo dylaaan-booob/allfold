@@ -120,6 +120,9 @@ def test_coordinator_preserves_saved_service_scope_and_prepared_page_across_batc
         def prepared_page(self, saved, service_id):
             assert any(service.id == service_id and service.name == "Web of Science" for service in saved.services)
             return 71
+        def prepared_authority(self, saved, service_id):
+            return self.prepared_page(saved, service_id), 'e' * 64
+
 
     class Bridge:
         connected = True
@@ -148,7 +151,7 @@ def test_coordinator_preserves_saved_service_scope_and_prepared_page_across_batc
     assert [action for action, _ in bridge.calls] == (['wos_query'] if change_after_query else
                                                      ['wos_query', 'wos_export', 'wos_export'])
     assert all(data['page_id'] == 71 and data['service_id'] == next(s.id for s in saved.services if s.name == 'Web of Science')
-               and data['service_scope'] == saved.scope for _, data in bridge.calls)
+               and data['service_scope'] == saved.scope and data['preparation_key'] == 'e' * 64 for _, data in bridge.calls)
     assert len({data['task_id'] for _, data in bridge.calls}) == 1
     assert all(data['workflow_id'] == start['snapshot']['task_id'] for _,data in bridge.calls)
     assert store.history()['records'][0]['task_id'] == start['snapshot']['task_id']

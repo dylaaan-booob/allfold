@@ -7,15 +7,21 @@ const {navigate}=require('./browser-operations.cjs');
 const {pause,checkCanceled,waitFor,withTaskDeadline,timeoutFailure}=require('../browser/browser-task.cjs');
 const {BrowserFailure,checkPage}=require('../browser/browser-errors.cjs');
 
-function taskPage(browser,data,signal) {
+function taskPage(browser,data,signal,{exporting=false}={}) {
   const tab=browser.tabs.get(data.page_id);
   if(!tab)throw Error('wos_target_lost');
   const association=browser.pageAssociation(tab.id);
-  if(data.service_id!=null && (association?.service_id!==data.service_id
-    || ['scope_id','config_revision','user_state_revision'].some(key=>association?.service_scope?.[key]!==data.service_scope?.[key])))
+  const scope=data.service_scope;
+  const scopeFields=['scope_id','config_revision','user_state_revision'];
+  if(!data.service_id || association?.service_id!==data.service_id
+    || !scopeFields.every(key=>typeof scope?.[key]==='string' && /^[a-f0-9]{64}$/.test(scope[key]))
+    || association.service_scope?.scope_id!==scope.scope_id
+    || typeof data.preparation_key!=='string' || !/^[a-f0-9]{64}$/.test(data.preparation_key)
+    || tab.preparationKey!==data.preparation_key
+    || (exporting && !scopeFields.every(key=>tab.wosServiceScope?.[key]===scope[key])))
     throw new BrowserFailure('navigation','document_changed');
-  browser.associatePage(tab,{role:browser.operation?.action==='wos_export'?'wos-export':'wos-query',
-    source:browser.tabs.get(association?.source_page_id)});
+  browser.associatePage(tab,{role:exporting?'wos-export':'wos-query',
+    source:browser.tabs.get(association.source_page_id)});
   if(tab.carsiOwned && !tab.authContext?.active)browser.beginAuthentication(tab,signal,{institution:false});
   tab.taskSignal=signal;
   browser.bindTaskPage(tab,signal);
@@ -112,6 +118,7 @@ async function wosQueryWithinDeadline(browser,data,{signal,progress},deadline) {
   const tab=taskPage(browser,data,signal);
   browser.beginPageLoad(tab,signal,deadline);
   tab.wosDocument=null;
+  tab.wosServiceScope=null;
   tab.wosWorkflowId=browser.operation?.association.workflow_id;
   const run=(op,args={},timeout=10000)=>step(browser,tab,op,args,signal,progress,timeout,deadline);
   // Let CARSI/SSO finish in the existing page before starting another navigation.
@@ -136,10 +143,11 @@ async function wosQueryWithinDeadline(browser,data,{signal,progress},deadline) {
   }
   tab.wosDocument=await waitFor(()=>browser.snapshot(tab),signal,deadline,'wos_dom','result');
   if(!browser.documentCurrent(tab.wosDocument))throw new BrowserFailure('navigation','document_changed');
+  tab.wosServiceScope=Object.freeze({...data.service_scope});
   return {total:result.total,batch_limit:batchLimit,page_id:tab.id};
 }
 async function wosExport(browser,data,{signal,progress}) {
-  const tab=taskPage(browser,data,signal),doc=tab.wosDocument;
+  const tab=taskPage(browser,data,signal,{exporting:true}),doc=tab.wosDocument;
   browser.enterBusiness();
   if(tab.wosWorkflowId!==browser.operation?.association.workflow_id
     || !doc || doc.pageId!==data.page_id || !browser.documentCurrent(doc))

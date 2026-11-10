@@ -432,12 +432,13 @@ test('explicit Manual Service Visit retains a scoped target without CARSI creden
   const browser=new BrowserRuntime({readCASCredentials:async()=>{reads++;}});
   t.after(()=>browser.close());await browser.ready;
   const data={access_url:'https://library.example.org/',service_scope:serviceScope,
-    service_id:serviceId,workflow_id:'login_manual',task_id:'visit_manual'};
+    service_id:serviceId,workflow_id:'login_manual',task_id:'visit_manual',preparation_key:'e'.repeat(64)};
   const signal=new AbortController().signal;
   const result=await browser.runTask(signal,data,()=>visitManualService(browser,data,{signal,progress(){}}));
   assert.equal(result.outcome,'Opened');
   const page=browser.tabs.get(result.evidence.target_page_id),association=browser.pageAssociation(page.id);
   assert.equal(page.view.webContents.getURL(),data.access_url);
+  assert.equal(page.preparationKey,data.preparation_key);
   assert.equal(association.role,'service-target');assert.equal(association.service_id,serviceId);
   assert.equal(association.active,false);assert.equal(page.managed,true);assert.equal(page.authContext,undefined);
   assert.equal(browser.selected,null);assert.equal(browser.tabs.size,1);assert.equal(reads,0);
@@ -830,7 +831,8 @@ test('Login opens one managed CARSI Portal and prepares independent Service page
   assert.equal(login.outcome,'Opened');assert.equal(reads,1);assert.equal(submissions,1);
   const entry=browser.tabs.get(login.portal_page_id);
   const prepare=(id,name,progress=()=>{})=>{
-    const data={...common,request_id:name,task_id:name,service_id:id,portal_page_id:entry.id,name};
+    const data={...common,request_id:name,task_id:name,service_id:id,portal_page_id:entry.id,name,
+      preparation_key:id.slice(4).repeat(2)};
     return browser.runTask(signal,data,()=>prepareLoggedInService(browser,data,{signal,progress}));
   };
   const manual=prepare(manualId,'ManualCaptcha',value=>{
@@ -843,6 +845,7 @@ test('Login opens one managed CARSI Portal and prepares independent Service page
   assert.equal(searches.length,2);assert.notEqual(searches[0].tabId,searches[1].tabId);
   assert.equal(searches.some(search=>search.tabId===entry.id),false);
   const {target_page_id:autoId}=auto.evidence;
+  assert.equal(browser.tabs.get(autoId).preparationKey,serviceId.slice(4).repeat(2));
   assert.deepEqual(solved,[{pageId:autoId,serviceId}]);
   const manualTarget=browser.servicePages(serviceScope.scope_id,manualId).find(page=>page.role==='service-target');
   assert.ok(manualTarget);assert.notEqual(manualTarget.page_id,autoId);

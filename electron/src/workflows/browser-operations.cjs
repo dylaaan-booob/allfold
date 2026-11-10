@@ -217,7 +217,14 @@ async function loginInstitution(browser,data,{signal,progress}) {
   });
 }
 
+function requirePreparationKey(data) {
+  if(!data.service_id || !data.service_scope?.scope_id || typeof data.preparation_key!=='string'
+    || !/^[a-f0-9]{64}$/.test(data.preparation_key))
+    throw new BrowserFailure('preparation','document_changed');
+}
+
 async function prepareLoggedInService(browser,data,{signal,progress}) {
+  requirePreparationKey(data);
   return withTaskDeadline(signal,'preparation',async(bounded,deadline)=>{
     const entry=browser.tabs.get(data.portal_page_id);
     const source=browser.pageAssociation(data.portal_page_id);
@@ -234,10 +241,12 @@ async function prepareLoggedInService(browser,data,{signal,progress}) {
 }
 
 async function visitManualService(browser,data,{signal,progress}) {
+  requirePreparationKey(data);
   return withTaskDeadline(signal,'preparation',async(bounded,deadline)=>{
     const tab=await newTaskPage(browser,bounded,{role:'service-target',managed:true});
     const document=await navigate(browser,tab,data.access_url,bounded,progress,deadline);
     if(!browser.documentCurrent(document))throw new BrowserFailure('navigation','document_changed');
+    tab.preparationKey=data.preparation_key;
     return {outcome:'Opened',reason:'target_opened',evidence:{visit_action_observed:true,
       navigation_observed:true,target_page_id:tab.id}};
   });
@@ -386,6 +395,7 @@ async function visitCARSIResource(browser,portal,data,{signal,progress},requestD
     if(ambiguous)return {outcome:'Needs attention',reason:'unverified_official_page'};
     progress({waiting_for_user:false});
     target.carsiOwned=true;
+    target.preparationKey=data.preparation_key;
     target.institutionOrigins=new Set(portal.authContext.origins);
     portal.institutionOrigins=new Set(portal.authContext.origins);
     return {outcome:'Opened',reason:'target_opened',evidence:{visit_action_observed:true,

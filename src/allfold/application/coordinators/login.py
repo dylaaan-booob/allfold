@@ -46,9 +46,11 @@ class LoginCoordinator:
         self._mutex = threading.RLock()
         self._worker = None
         self._stop = threading.Event()
-        self._scope = None
+        self._auth_key = None
+        self._credential_epoch = uuid4().hex
         self._workflow_id = None
         self._results = {}
+        self._keys = {}
         self._phase = 'idle'
         self._carsi = ServicePreparation()
 
@@ -58,21 +60,42 @@ class LoginCoordinator:
 
     def snapshot(self, saved):
         with self._mutex:
-            results = self._results if self._scope == saved.scope else {}
+            carsi = self._carsi if self._auth_key == saved.authentication_key(self._credential_epoch) else ServicePreparation()
             return {
                 'active': self.running, 'workflow_id': self._workflow_id,
-                'phase': self._phase, 'scope': saved.scope, 'carsi': self._carsi,
+                'phase': self._phase, 'scope': saved.scope, 'carsi': carsi,
                 'services': [
                     {'id': service.id, 'name': service.name, 'access_method': service.access_method,
-                     'access_url': service.access_url, 'preparation': results.get(service.id, ServicePreparation())}
+                     'access_url': service.access_url, 'preparation': self._service_result(saved, service) or ServicePreparation()}
                     for service in saved.services
                 ],
             }
 
-    def prepared_page(self, saved, service_id):
+    def _service_result(self, saved, service):
+        if self._keys.get(service.id) == saved.preparation_key(service, self._credential_epoch):
+            return self._results.get(service.id)
+        return None
+
+    def prepared_authority(self, saved, service_id):
         with self._mutex:
-            result = self._results.get(service_id) if self._scope == saved.scope else None
-            return result.page_id if result is not None and result.status == 'Opened' else None
+            service = next((service for service in saved.services if service.id == service_id), None)
+            result = self._service_result(saved, service) if service is not None else None
+            if result is not None and result.status == 'Opened':
+                return result.page_id, self._keys[service_id]
+            return None
+
+    def prepared_page(self, saved, service_id):
+        binding = self.prepared_authority(saved, service_id)
+        return binding[0] if binding is not None else None
+
+    def invalidate_credentials(self):
+        """Called under Browser admission after a confirmed native credential change."""
+        with self._mutex:
+            self._credential_epoch = uuid4().hex
+            self._results.clear()
+            self._keys.clear()
+            self._carsi = ServicePreparation()
+            self._auth_key = None
 
     def start(self, config_path: Path, *, manual_service_id=None):
         saved = BrowserServiceSnapshot.read(config_path)
@@ -86,7 +109,7 @@ class LoginCoordinator:
             if not services or not services[0].access_url:
                 raise ValueError('Choose a saved Manual Service with an access URL')
         needs_carsi = any(service.access_method == 'carsi' for service in services)
-        institution = config.institution
+        institution = saved.institution
         authentication = dict(institution_name=institution.name if institution else None,
             use_shibboleth=institution.use_shibboleth if institution else False,
             login_url=institution_login_url(institution.idp_entity_id if institution else None))
@@ -101,13 +124,15 @@ class LoginCoordinator:
                 raise ValueError('Another Browser workflow is active')
             self._stop = threading.Event()
             self._workflow_id = uuid4().hex
-            scope = saved.scope
-            if manual_service_id is None or self._scope != scope:
-                self._results = {}
+            auth_key = saved.authentication_key(self._credential_epoch)
+            if manual_service_id is None or self._auth_key != auth_key:
+                self._results.clear()
+                self._keys.clear()
                 self._carsi = ServicePreparation()
-            self._scope = scope
+            self._auth_key = auth_key
             self._phase = 'carsi' if needs_carsi else 'preparing'
             for service in services:
+                self._keys[service.id] = saved.preparation_key(service, self._credential_epoch)
                 self._results[service.id] = ServicePreparation(task_id=uuid4().hex, workflow_id=self._workflow_id)
             observe(self.diagnostics, 'begin', 'login', self._workflow_id)
             self._worker = threading.Thread(target=self._run,
@@ -193,17 +218,24 @@ class LoginCoordinator:
                     return self._dispatch(owner, saved, 'prepare_service' if service.access_method == 'carsi' else 'visit_manual_service', {
                         'task_id': current.task_id, 'name': service.name,
                         'portal_page_id': portal_page, 'access_url': service.access_url,
+                        'preparation_key': self._keys[service.id],
                     }, service.id)
 
             eligible = (service for service in services if service.access_method == 'carsi' or manual_service_id is not None)
             for service, future in bounded_dispatch(eligible, key=lambda service: service.id, start=start,
-                    limit=concurrency, group_limit=1, stopped=self._stop.is_set):
+                    limit=concurrency, group_limit=1, stopped=lambda: self._stop.is_set() or phase == 'failed'):
                 try:
                     data = future.result()
                 except ElectronDisconnected:
                     data = {'reason': 'connection_lost'}
                 except (OSError, RuntimeError, ValueError):
                     data = {'reason': 'failed'}
+                try:
+                    saved.verify()
+                except (OSError, RuntimeError, ValueError):
+                    phase = 'failed'
+                if phase == 'failed':
+                    data = {'reason': 'configuration_changed'}
                 with self._mutex:
                     self._results[service.id] = self._settle_service(self._results[service.id], data)
         except ElectronDisconnected:

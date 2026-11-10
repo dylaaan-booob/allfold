@@ -234,6 +234,9 @@ def test_wos_uses_independent_sqlite_service_and_detects_changes(tmp_path, chang
         def prepared_page(self, saved, service_id):
             assert any(service.id == service_id and service.name == "Web of Science" for service in saved.services)
             return 71
+        def prepared_authority(self, saved, service_id):
+            return self.prepared_page(saved, service_id), 'e' * 64
+
 
     config, legacy, journal, service = current_mapping_document(tmp_path)
     config.write_text(config.read_text() + "\ninstitution:\n  name: Fixture University\n")

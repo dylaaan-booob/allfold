@@ -38,6 +38,8 @@ function domFixture(pathname,{challenge=false,hidden=false,emptyHost=false}={}) 
   const run=(op,args={})=>vm.runInContext('('+pageStep.toString()+')(...'+JSON.stringify([op,args,{},Date.now()+3000])+')',context);
   return {context,listeners,run};
 }
+const preparedIdentity={service_id:'svc_'+'1'.repeat(32),preparation_key:'e'.repeat(64),service_scope:{
+  scope_id:'a'.repeat(64),config_revision:'b'.repeat(64),user_state_revision:'c'.repeat(64)}};
 function queryFixture(stages,{cancel=false,authError=false,advance=()=>{}}={}) {
   const controller=new AbortController(),events=[],progress=[],entryWindows=[];
   let index=0,current={...stages[0]};
@@ -50,7 +52,8 @@ function queryFixture(stages,{cancel=false,authError=false,advance=()=>{}}={}) {
       if(op==='ready' && current.ready===false)return {ready:false};
       return {ready:true};
     }};
-  const tab={id:71,view:{webContents:wc},recoveryActive:false,reloads:1};
+  const tab={id:71,view:{webContents:wc},association:preparedIdentity,
+    preparationKey:preparedIdentity.preparation_key,recoveryActive:false,reloads:1};
   const browser={tabs:new Map([[71,tab]]),select(){},async checkAuthentication(){if(authError)throw new ImportFailure('authentication','institution_credentials_rejected');return false;},
     async snapshot(){return {pageId:71,url:current.url,status:200,title:'Fixture',html:'Fixture'};},
     documentCurrent:()=>true,documentFrame:()=>wc};
@@ -75,7 +78,7 @@ function queryFixture(stages,{cancel=false,authError=false,advance=()=>{}}={}) {
       name==='./import-errors.cjs'?{ImportFailure,checkPage}:hostRequire(name)});
   vm.runInContext(fs.readFileSync(path.join(__dirname,'../src/workflows/wos-operations.cjs'),'utf8'),context);
   return {events,progress,controller,tab,entryWindows,
-    run:()=>context.module.exports.wosQuery(browser,{page_id:71,query:'fixture query'},
+    run:()=>context.module.exports.wosQuery(browser,{...preparedIdentity,page_id:71,query:'fixture query'},
       {signal:controller.signal,progress:value=>progress.push(value)})};
 }
 const advanced='https://www.webofscience.com/wos/woscc/advanced-search';
@@ -119,7 +122,8 @@ function fixture(t,{attributable=true,hold=false,challenge=false,domError=null,q
     }
     return op==='links'?{urls:attributable?item.getURLChain():['https://other.example/download']}:{ok:true};
   }};
-  const tab={id:71,view:{webContents:wc},wosDocument:doc};
+  const tab={id:71,view:{webContents:wc},association:preparedIdentity,
+    preparationKey:preparedIdentity.preparation_key,wosServiceScope:preparedIdentity.service_scope,wosDocument:doc};
   const browser={tabs:new Map([[71,tab]]),partition,
     liveToken:doc.frameToken,select(){},async checkAuthentication(){return authentication?.inspect().waiting || false;},async snapshot(){return {...doc,url:wc.getURL()};},
     documentCurrent(value){return this.liveToken===value.frameToken;},
@@ -139,9 +143,9 @@ function fixture(t,{attributable=true,hold=false,challenge=false,domError=null,q
       name==='./import-errors.cjs'?{ImportFailure,checkPage}:hostRequire(name)});
   vm.runInContext(fs.readFileSync(path.join(__dirname,'../src/workflows/wos-operations.cjs'),'utf8'),context);
   return {browser,controller,item,ops,ready,settle:()=>settle(),
-    runQuery:(data={})=>context.module.exports.wosQuery(browser,{page_id:71,query:'fixture query',...data},
+    runQuery:(data={})=>context.module.exports.wosQuery(browser,{...preparedIdentity,page_id:71,query:'fixture query',...data},
       {signal:controller.signal,progress:value=>progress.push(value)}),
-    progress,run:(data={})=>context.module.exports.wosExport(browser,{page_id:71,download_root:root,filename,first:1,last:1,...data},
+    progress,run:(data={})=>context.module.exports.wosExport(browser,{...preparedIdentity,page_id:71,download_root:root,filename,first:1,last:1,...data},
       {signal:controller.signal,progress(value){progress.push(value);if(challenge && value.waiting_for_user) {
         challengeActive=false;setImmediate(()=>settle());
       }}}),filename};
@@ -176,11 +180,13 @@ test('the current Custom range limit governs every batch without a hardcoded 100
 });
 test('WoS query and consecutive exports keep the prepared page/document while another tab is visible',async t=>{
   const f=fixture(t,{query:true}),tab=f.browser.tabs.get(71);
-  const identity={service_id:'svc_'+'1'.repeat(32),service_scope:{scope_id:'a'.repeat(64),
-    config_revision:'b'.repeat(64),user_state_revision:'c'.repeat(64)}};
-  tab.association={...identity,source_page_id:55};
+  const identity={...preparedIdentity,service_scope:{...preparedIdentity.service_scope,
+    config_revision:'f'.repeat(64),user_state_revision:'0'.repeat(64)}};
+  tab.association={...preparedIdentity,source_page_id:55};
   f.browser.selected={id:99};
   f.browser.select=()=>{throw Error('Task must not change presentation');};
+  await assert.rejects(f.runQuery({...identity,preparation_key:'1'.repeat(64)}),/document_changed/);
+  assert.equal(f.ops.length,0);
   const query=await f.runQuery(identity);
   assert.equal(query.page_id,71);assert.equal(query.total,94);
   const document=f.browser.tabs.get(71).wosDocument;
@@ -194,6 +200,7 @@ test('WoS query and consecutive exports keep the prepared page/document while an
     {first:1,last:1,customVerified:true},{first:2,last:2,customVerified:true}]);
   const before=f.ops.length;
   await assert.rejects(f.run({...identity,service_scope:{...identity.service_scope,scope_id:'d'.repeat(64)}}),/document_changed/);
+  await assert.rejects(f.run(preparedIdentity),/document_changed/);
   assert.equal(f.ops.length,before);
   assert.equal(f.browser.partition.listenerCount('will-download'),0);
 });

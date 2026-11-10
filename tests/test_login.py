@@ -119,3 +119,84 @@ def test_discover_asks_for_login_without_preparing_or_taking_browser_owner(tmp_p
     with pytest.raises(ValueError, match='Workflows → Login'):
         discover.start()
     assert native.operations.empty() and lock.owner is None
+
+
+def test_prepared_pages_survive_unrelated_revisions_and_invalidate_only_changed_authority(tmp_path):
+    path, services = login_fixture(tmp_path, count=2)
+    first, wos, manual = services
+    native, lock = Native(), BrowserTaskLock()
+    login = LoginCoordinator(native, lock)
+    login.start(path)
+    _, _, carsi = native.operations.get(timeout=2)
+    carsi.set_result({'outcome': 'Opened', 'portal_page_id': 17})
+    keys = {}
+    for page in (100, 101):
+        action, data, future = native.operations.get(timeout=2)
+        assert action == 'prepare_service'
+        keys[data['service_id']] = data['preparation_key']
+        future.set_result(opened(page))
+    login.join()
+    before = BrowserServiceSnapshot.read(path)
+    first_page = login.prepared_page(before, first.id)
+    wos_page = login.prepared_page(before, wos.id)
+    assert first_page and wos_page and first_page != wos_page
+
+    path.write_text(path.read_text() + '\nkept_workflow:\n  zotero_target:\n'
+        '    server_id: SERVERFIXTUR\n    library_type: user\n    library_id: "0"\n')
+    saved = load_user_state(path)
+    compare_write_user_state(path, replace(saved.state, journals=()), saved.revision)
+    current = BrowserServiceSnapshot.read(path)
+    assert before.scope != current.scope
+    assert login.prepared_authority(current, first.id) == (first_page, keys[first.id])
+    assert login.prepared_authority(current, wos.id) == (wos_page, keys[wos.id])
+
+    saved = load_user_state(path)
+    changed = first.model_copy(update={'access_url': 'https://changed.example.org/'})
+    compare_write_user_state(path, replace(saved.state, access_services=(changed, wos, manual)), saved.revision)
+    current = BrowserServiceSnapshot.read(path)
+    assert login.prepared_page(current, first.id) is None
+    assert login.prepared_page(current, wos.id) == wos_page
+
+    path.write_text(path.read_text().replace('Fixture University', 'Changed University'))
+    current = BrowserServiceSnapshot.read(path)
+    assert login.prepared_page(current, wos.id) is None
+    assert login.snapshot(current)['carsi'].status == 'Not prepared'
+
+
+def test_credential_mutation_invalidates_prepared_page_only_after_confirmed_success(tmp_path):
+    from fastapi.testclient import TestClient
+    from allfold.web.app import create_app
+    from electron_test_helpers import OfflineBridge
+
+    path, services = login_fixture(tmp_path, count=2)
+    manual = services[-1]
+
+    class Bridge(OfflineBridge):
+        connected = True
+        updated = False
+
+        def execute(self, action, data, progress=None):
+            future = Future()
+            if action == 'visit_manual_service':
+                future.set_result(opened(17))
+            else:
+                assert action == 'cas_credentials'
+                future.set_result({'ok': self.updated})
+            return future
+
+    bridge = Bridge()
+    app = create_app(path, electron_bridge=bridge, diagnostics_root=tmp_path / 'logs')
+    with TestClient(app, base_url='http://localhost') as client:
+        csrf = app.state.csrf_token
+        login = client.post('/api/login/start', json={'csrf_token': csrf, 'service_id': manual.id})
+        assert login.status_code == 200
+        app.state.login.join()
+        saved = BrowserServiceSnapshot.read(path)
+        assert app.state.login.prepared_page(saved, manual.id) == 17
+        body = {'csrf_token': csrf, 'operation': 'clear', 'expected_revision': 'test',
+                'username': '', 'password': ''}
+        assert client.post('/api/ui-next/settings/credentials', json=body).json()['ok'] is False
+        assert app.state.login.prepared_page(saved, manual.id) == 17
+        bridge.updated = True
+        assert client.post('/api/ui-next/settings/credentials', json=body).json()['ok'] is True
+        assert app.state.login.prepared_page(saved, manual.id) is None

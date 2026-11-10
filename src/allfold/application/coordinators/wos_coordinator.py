@@ -173,8 +173,8 @@ class WoSCoordinator:
             saved = BrowserServiceSnapshot.read(self.path)
             if saved.config_contents != config_text or saved.revision != state_revision:
                 raise ContentChangedError('Configuration changed before Run WoS start')
-            page = self.login.prepared_page(saved, service.id)
-            if page is None:
+            prepared = self.login.prepared_authority(saved, service.id)
+            if prepared is None:
                 raise ValueError('Prepare Web of Science in Workflows → Login')
             if parent_snapshot is None and not self.run_slot.acquire(blocking=False):
                 raise ValueError('Another Run is already active')
@@ -183,10 +183,16 @@ class WoSCoordinator:
                 if parent_snapshot is None:
                     self.run_slot.release()
                 raise ValueError('Another browser workflow is active')
+            if self.login.prepared_authority(saved, service.id) != prepared:
+                self.browser_lock.release(owner)
+                if parent_snapshot is None:
+                    self.run_slot.release()
+                raise ValueError('Prepare Web of Science in Workflows → Login')
+            page, preparation_key = prepared
             task = dict(id=workflow_id or secrets.token_hex(16), owner=owner, config=config,
                 parent_snapshot=parent_snapshot, progress_callback=progress_callback, records_callback=records_callback, evidence=[],
                 compiled=compiled, service=service, dates=dates,
-                service_scope=saved.scope,
+                service_scope=saved.scope, preparation_key=preparation_key,
                 config_text=config_text, state_revision=state_revision,
                 workspace_identity=workspace_identity, status='RUNNING', stage='WoS Query', message='Using prepared WoS page',
                 started_at=datetime.now(timezone.utc).isoformat(), started_clock=time.monotonic(),
@@ -329,7 +335,8 @@ class WoSCoordinator:
                 raise InterruptedError()
             self.browser_lock.require(task['owner'])
             pending = self.bridge.execute(action, {**data, 'task_id': task['id'], 'workflow_id':task['id'],
-                'service_id': task['service'].id, 'service_scope': task['service_scope']},
+                'service_id': task['service'].id, 'service_scope': task['service_scope'],
+                'preparation_key': task['preparation_key']},
                 lambda value: self._electron_progress(task, value))
         result = pending.result()
         self._current(task)
