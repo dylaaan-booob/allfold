@@ -8,6 +8,7 @@ import asyncio
 import hmac
 import re
 import threading
+import time
 from collections.abc import Callable
 from concurrent.futures import Future
 from dataclasses import dataclass, field
@@ -25,6 +26,7 @@ from allfold.integrations.cloudflare_solver import solve_cloudflare
 
 _CONTROL_ACTIONS = {"diagnostics_reset", "cas_credentials", "zotero_local"}
 _RECOVERY_ACTIONS = {"prepare_service", "enrich_paper", "import_paper"}
+_MAX_ATTACHMENT_LOOKUP_SECONDS = 240
 _CONTEXT_FIELDS = ("workflow_id", "task_id", "parent_task_id", "service_id", "paper_id")
 _SOCKET_ERRORS = (WebSocketDisconnect, OSError, RuntimeError)
 _RECEIVE_ERRORS = (*_SOCKET_ERRORS, ValueError, TimeoutError)
@@ -136,16 +138,20 @@ class ElectronBridge:
                 if kind == "openalex_pdf":
                     expected = pending.import_identity
                     lookup_id = message.get("lookup_id")
+                    deadline_ms = data.get("deadline_ms")
                     if (self.openalex_pdf is None or expected is None or pending.lookup_requested
                             or not isinstance(lookup_id, str) or not re.fullmatch(r"[A-Za-z0-9]{1,64}", lookup_id)
                             or valid_doi(data.get("doi")) != expected["doi"]
                             or data.get("target") != expected["target"]
+                            or ("deadline_ms" in data and (type(deadline_ms) is not int or not 0 <= deadline_ms < 2**53))
                             or not isinstance(data.get("parent_key"), str)
                             or not re.fullmatch(r"[23456789ABCDEFGHIJKLMNPQRSTUVWXYZ]{8}", data["parent_key"])):
                         raise ValueError("Invalid OpenAlex Import request")
                     if not pending.stop.is_set():
                         pending.lookup_requested = True
-                        start_worker(self._lookup_pdf(socket, pending, lookup_id, expected["doi"]))
+                        deadline = (time.monotonic() + min(_MAX_ATTACHMENT_LOOKUP_SECONDS, deadline_ms / 1000 - time.time())
+                                    if deadline_ms is not None else None)
+                        start_worker(self._lookup_pdf(socket, pending, lookup_id, expected["doi"], deadline))
                 elif kind == "solve_cloudflare":
                     challenge_id = message.get("challenge_id")
                     url = data.get("url")
@@ -236,7 +242,7 @@ class ElectronBridge:
         except _SOCKET_ERRORS:
             pass
 
-    async def _lookup_pdf(self, socket, pending: _Operation, lookup_id: str, doi: str) -> None:
+    async def _lookup_pdf(self, socket, pending: _Operation, lookup_id: str, doi: str, deadline: float | None) -> None:
         if pending.stop.is_set():
             return
         def report_recovery(event, details):
@@ -244,8 +250,11 @@ class ElectronBridge:
                 {**{key: pending.context[key] for key in _CONTEXT_FIELDS if key in pending.context}, **details})
 
         try:
-            data = await asyncio.to_thread(self.openalex_pdf, doi, cancel_event=pending.stop,
-                                           recovery_observer=report_recovery)
+            if deadline is not None and time.monotonic() >= deadline:
+                data = {"candidates": [], "diagnostic": {"code": "timeout"}}
+            else:
+                data = await asyncio.to_thread(self.openalex_pdf, doi, cancel_event=pending.stop,
+                    recovery_observer=report_recovery, deadline=deadline)
         except Exception:
             data = {"candidates": [], "diagnostic": {"code": "openalex_lookup_failed"}}
         await self._callback(socket, pending, pending.stop, pending.envelope(

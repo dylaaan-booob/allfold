@@ -12,12 +12,14 @@ MAX_PDF_CANDIDATES = 4
 
 
 def lookup_pdf_candidates(doi: str, *, config_path: Path | None = None,
-                          client: OpenAlexClient | None = None, cancel_event=None, recovery_observer=None) -> dict:
+                          client: OpenAlexClient | None = None, cancel_event=None, recovery_observer=None,
+                          deadline: float | None = None) -> dict:
     """Return bounded direct PDF URLs only, never landing pages or provider secrets."""
     if client is None:
         try:
             key, _ = read_credential(config_path, provider="openalex")
-            with OpenAlexClient(api_key=key, cancel_event=cancel_event, recovery_observer=recovery_observer) as owned:
+            with OpenAlexClient(api_key=key, cancel_event=cancel_event, recovery_observer=recovery_observer,
+                                deadline=deadline) as owned:
                 return lookup_pdf_candidates(doi, client=owned)
         except (OSError, ValueError):
             return {"candidates": [], "diagnostic": {"code": "openalex_credential_unavailable"}}
