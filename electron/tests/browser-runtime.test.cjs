@@ -968,7 +968,8 @@ test('initial Paper loading allows two delayed refreshes before replacing only t
   assert.equal(recovery.at(-1).source_page_id,pages[0].id);
 });
 
-for(const mode of ['same-tab','popup','follow-up','follow-up-post','timeout','unknown','ambiguous','unsafe-method','authority','double-fail']) {
+for(const mode of ['same-tab','popup','follow-up','follow-up-post','after-limit-get','after-limit-post',
+  'timeout','unknown','ambiguous','unsafe-method','authority','double-fail']) {
   test('CARSI Visit recovery preserves authority for '+mode,async t=>{
     if(mode==='timeout')t.mock.timers.enable({apis:['Date'],now:1000});
     const {loginInstitution,prepareLoggedInService}=require('../src/workflows/browser-operations.cjs');
@@ -978,6 +979,8 @@ for(const mode of ['same-tab','popup','follow-up','follow-up-post','timeout','un
     const portalURL='https://ds.carsi.edu.cn/resource/resource.php';
     const detailURL='https://ds.carsi.edu.cn/resource/resourceDetail.php?id=synthetic';
     const targetURL='https://publisher.example/target';
+    const afterRefreshURL='https://publisher.example/after-refresh';
+    const afterLimitMethod={'after-limit-get':'GET','after-limit-post':'POST'}[mode];
     const followUp=mode==='follow-up' || mode==='follow-up-post';
     const method=mode==='unsafe-method' || mode==='follow-up-post'?'POST':'GET';
     let visits=0,refreshes=0,authorities=0,requestId=0,oldTarget;
@@ -985,7 +988,10 @@ for(const mode of ['same-tab','popup','follow-up','follow-up-post','timeout','un
     browser.events.on('tab-created',(_event,tab)=>{
       created.push(tab);
       const wc=tab.view.webContents,load=wc.loadURL.bind(wc),snapshot=wc.executeJavaScriptInIsolatedWorld.bind(wc);
-      wc.loadURL=url=>load(url.includes('/Shibboleth.sso/')?portalURL:url);
+      wc.loadURL=url=>{
+        assert.notEqual(url,afterRefreshURL,'resource reentry must not load the failed request URL');
+        return load(url.includes('/Shibboleth.sso/')?portalURL:url);
+      };
       wc.runAuth=async code=>{
         const [action]=JSON.parse(code.slice(code.lastIndexOf('(...')+4,-1));
         if(action==='ready')return {status:'ready',checked:false};
@@ -1002,7 +1008,7 @@ for(const mode of ['same-tab','popup','follow-up','follow-up-post','timeout','un
         if(visits===1 || mode==='double-fail') {
           oldTarget ||= target;
           let failedURL=followUp?'https://publisher.example/landing':targetURL;
-          const fail=()=>{
+          const fail=(requestMethod=method)=>{
             target.url=failedURL;
             target.emit('did-start-navigation',{},failedURL,false,true);
             if(mode==='timeout' && refreshes===1) {
@@ -1010,10 +1016,17 @@ for(const mode of ['same-tab','popup','follow-up','follow-up-post','timeout','un
               setImmediate(()=>t.mock.timers.setTime(86000));
               return;
             }
-            networkFailure(partition,target,{id:++requestId,url:failedURL,method});
+            networkFailure(partition,target,{id:++requestId,url:failedURL,method:requestMethod});
           };
           target.reload=()=>{
             refreshes++;
+            if(afterLimitMethod && refreshes===2) {
+              void target.loadURL(failedURL);
+              failedURL=afterRefreshURL;
+              target.emit('will-navigate',{},failedURL);
+              fail(afterLimitMethod);
+              return;
+            }
             if(mode==='follow-up' && refreshes===1) {
               void target.loadURL(failedURL);
               failedURL='https://publisher.example/final';

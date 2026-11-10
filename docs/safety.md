@@ -26,9 +26,11 @@ before business actions. The Browser binds each main-frame network request ID to
 its navigation generation and checks the exact promise of an explicit load.
 Native failure events retain URL and frame evidence. The Session request observer
 also identifies non-GET navigation.
-A stateful authentication action or manual verification blocks replay of that
+A stateful authentication action or manual verification blocks recovery of that
 attempt. CARSI reentry after Visit requires an acknowledged click and one
-attributable target. Before any Visit, the resource search must have reached a
+attributable target. When the refresh budget is exhausted, the method of the
+failed target navigation does not decide whether to make a new Visit from the
+verified resource. Before any Visit, the resource search must have reached a
 verified detail document through the existing read-only controls.
 
 Before reentry or initial Paper replacement, the native operation rechecks its

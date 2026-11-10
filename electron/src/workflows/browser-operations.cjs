@@ -290,10 +290,13 @@ async function prepareLoggedInService(browser,data,{signal,progress}) {
       } catch(error) {
         const failed=browser.taskTab;
         if(index)record('recovery_exhausted',error,{page_id:failed?.id,recovery_stop:recoveryStop(error,bounded)});
-        if(index || !error.rebuildPage || bounded.aborted || !browser.ownsPage(owner,failed?.id)
+        if(index || bounded.aborted || !browser.ownsPage(owner,failed?.id)
           || failed.pageAttempt!==attempt || attempt.visitStarted && !attempt.visitConfirmed
-          || attempt.ambiguous || attempt.manual || failed.navigation.current?.chain.unsafeRequest
-          || authentication?.actionDispatched)throw error;
+          || attempt.ambiguous || attempt.manual || authentication?.actionDispatched)throw error;
+        // An exhausted target can start a new Visit through CARSI regardless of the failed request's method.
+        const exhaustedTarget=attempt.visitConfirmed && browser.pageAssociation(failed.id)?.role==='service-target'
+          && failed.navigation.exhaustedRefreshes(error);
+        if(!exhaustedTarget && (!error.rebuildPage || failed.navigation.current?.chain.unsafeRequest))throw error;
         checkCARSISession([failed],bounded);
         verifyPortal();
         if(Date.now()>=deadline)throw timeoutFailure('preparation','request');

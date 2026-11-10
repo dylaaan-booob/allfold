@@ -71,10 +71,12 @@ refreshed. Destruction invalidates live ownership. The association is process-lo
 A managed main-frame load has an 85-second window and at most two refreshes.
 The refresh delays are 350 and 700 ms, each multiplied by a random factor from
 0.75 to 1.25. During CARSI Prepare, the target page shares that refresh budget
-across redirects and subsequent main-frame GET navigations. Once refreshes
-are exhausted or a page-load timeout occurs, an eligible Prepare can reenter
-through the CARSI resource once. An eligible initial Paper load can similarly
-replace its page once. The new page gets its own loading
+across redirects and subsequent main-frame GET navigations. A transient target
+load failure after two refreshes can start one new Visit from the CARSI resource,
+even if the second refresh completed and a later navigation failed. This path
+does not resend the failed request. An eligible page-load timeout can also
+trigger reentry. An eligible initial Paper load can similarly replace its page
+once. The new page gets its own loading
 window within the original 10-minute native loading or Prepare deadline and a
 three-minute cap from the start of business recovery.
 

@@ -141,6 +141,11 @@ class NavigationRecovery {
     return this.current===nav && nav.active && nav.automatic && nav.enabled && nav.replayable && !nav.signal?.aborted
       && !nav.chain.unsafeRequest && nav.valid() && !this.contents.isDestroyed();
   }
+  exhaustedRefreshes(failure) {
+    const nav=this.current;
+    return nav?.automatic && nav.failure===failure && nav.reloads>=REFRESH_LIMIT
+      && !!origin(nav.url) && transientLoad(failure);
+  }
   handleFailure(nav,failure) {
     nav.loaded=false;nav.dispatchToken=null;
     this.tab.status=null;this.tab.error={kind:'load',code:failure.diagnostic.net_code ?? failure.diagnostic.code};
