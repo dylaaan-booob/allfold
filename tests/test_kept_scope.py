@@ -231,8 +231,10 @@ def test_import_uses_prepared_service_in_fixed_scope_and_hides_native_keys(tmp_p
         app.state.login.join()
         queue = client.get('/api/kept-workflow/queue', params={'service_id':other.id}).json()
         assert not queue['unprepared_services']
-        response = client.post('/api/kept-workflow/start', json={'csrf_token':app.state.csrf_token,
-            'import_token':queue['import_token'], 'service_id':other.id})
+        body = {'csrf_token': app.state.csrf_token, 'import_token': queue['import_token'], 'service_id': other.id}
+        stale = client.post('/api/kept-workflow/start', json={**body, 'skip_unprepared': [other.id]})
+        assert stale.status_code == 409
+        response = client.post('/api/kept-workflow/start', json=body)
         assert response.status_code == 200
         app.state.kept_workflow.join()
         assert [action for action, _ in bridge.calls] == ['visit_manual_service', 'zotero_local', 'import_paper']
@@ -313,3 +315,28 @@ def test_parallel_import_drains_exact_paper_results_after_uncertainty(tmp_path):
                 future.set_result({'settled': True, 'parent': {'outcome': 'no_effect'}})
         batch.join()
         lock.release(owner)
+
+
+
+def test_scoped_import_can_settle_explicit_skips_without_a_native_connection(tmp_path):
+    from fastapi.testclient import TestClient
+    from allfold.web.app import create_app
+    from electron_test_helpers import OfflineBridge, state
+
+    config, service, _, values = scoped_workspace(tmp_path)
+    app = create_app(config, electron_bridge=OfflineBridge(), diagnostics_root=tmp_path / 'logs')
+    with TestClient(app, base_url='http://localhost') as client:
+        queue = client.get('/api/kept-workflow/queue', params={'service_id': service.id}).json()
+        assert queue['unprepared_services'] == [{'id': service.id, 'name': service.name}]
+        started = client.post('/api/kept-workflow/start', json={
+            'csrf_token': app.state.csrf_token, 'import_token': queue['import_token'],
+            'service_id': service.id, 'skip_unprepared': [service.id],
+        })
+        assert started.status_code == 200
+        app.state.kept_workflow.join()
+        terminal = client.get('/api/kept-workflow/state').json()
+        assert terminal['phase'] == 'completed'
+        observed, = terminal['batch']['results']
+        assert observed['paper_id'] == str(values[0].id)
+        assert observed['outcome'] == 'skipped' and observed['reason_code'] == 'service_unprepared'
+        assert state(tmp_path / 'workspace' / 'Papers' / 'a.md').status.value == 'kept'

@@ -433,3 +433,54 @@ def test_disconnect_holds_all_pending_native_saves_until_teardown():
         for result in results:
             with pytest.raises(ElectronDisconnected):
                 result.result(timeout=2)
+
+
+def test_disconnect_during_drain_releases_websocket_before_teardown_settles_native_futures():
+    import asyncio
+    from fastapi import WebSocketDisconnect
+
+    async def scenario():
+        bridge = ElectronBridge("secret", "testserver")
+        incoming, outgoing = asyncio.Queue(), asyncio.Queue()
+        draining = asyncio.Event()
+
+        class Socket:
+            headers = {"host": "testserver"}
+
+            async def accept(self):
+                pass
+
+            async def receive_json(self):
+                message = await incoming.get()
+                if message is None:
+                    raise WebSocketDisconnect()
+                return message
+
+            async def send_json(self, message):
+                await outgoing.put(message)
+
+            async def close(self, code=1000):
+                pass
+
+        async def drain():
+            draining.set()
+            # A normal drain waits for the native result. Once transport is
+            # lost, process teardown must own the remaining settlement.
+            await asyncio.shield(asyncio.wrap_future(result))
+
+        await incoming.put({"token": "secret"})
+        bridge.shutdown = drain
+        connection = asyncio.create_task(bridge.connect(Socket()))
+        assert (await asyncio.wait_for(outgoing.get(), 1))["type"] == "ready"
+        result = bridge.execute("import_paper", {"workflow_id": "batch", "task_id": "paper"})
+        assert (await asyncio.wait_for(outgoing.get(), 1))["type"] == "execute"
+        await incoming.put({"type": "shutdown"})
+        await asyncio.wait_for(draining.wait(), 1)
+        await incoming.put(None)
+        await asyncio.wait_for(connection, 1)
+        assert not result.done()
+        bridge.finish_disconnected()
+        with pytest.raises(ElectronDisconnected):
+            await asyncio.wrap_future(result)
+
+    asyncio.run(scenario())

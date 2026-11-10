@@ -306,3 +306,32 @@ test('same-URL challenges use their own CDP target and ignore stale replies afte
   assert.ok(f.messages.some(message=>message.type==='cancel_cloudflare' && message.id===a.id));
   assert.ok(!f.messages.some(message=>message.type==='cancel_cloudflare' && message.id===b.id));
 });
+
+test('a lost bridge during orderly quit still drains native saves before stopping Python',{timeout:5000},async()=>{
+  const {EventEmitter}=require('node:events');
+  const f=fixture(),saving=deferred(),settle=deferred(),terminated=deferred();
+  class Socket extends EventEmitter {
+    constructor(){super();Socket.instance=this;}
+    addEventListener(...args){this.on(...args);}
+    close(){this.emit('close');}
+  }
+  let quitHandler;
+  Object.assign(f.context,{WebSocket:Socket,bridgeReady:false,base:'http://127.0.0.1:18767',token:'fixture',
+    readyToExit:false,exitApproved:false,exitCheck:null,window:null,
+    python:{exitCode:null,signalCode:null,kill(signal){terminated.resolve(signal);}},
+    app:{on(_name,handler){quitHandler=handler;},quit(){}}});
+  vm.runInContext(source.slice(source.indexOf('async function connect('),source.indexOf('async function main(')),f.context);
+  vm.runInContext(source.slice(source.indexOf("app.on('before-quit',event=>{"),source.indexOf("app.on('window-all-closed'")),f.context);
+  const connecting=f.context.connect();
+  Socket.instance.emit('message',{data:JSON.stringify({type:'ready',log_level:'info'})});
+  await connecting;
+  f.context.saveOnce=()=>{saving.resolve();return settle.promise;};
+  const active=f.run();await saving.promise;
+  quitHandler({preventDefault(){}});
+  assert.equal(f.messages.some(message=>message.type==='shutdown'),true);
+  Socket.instance.close();
+  let stopped=false;void terminated.promise.then(()=>{stopped=true;});
+  await Promise.resolve();assert.equal(stopped,false);
+  settle.resolve({parent:{outcome:'confirmed'}});await active;
+  assert.equal(await terminated.promise,'SIGTERM');
+});

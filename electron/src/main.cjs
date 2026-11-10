@@ -53,6 +53,15 @@ function stopOperations() {
 function waitForOperations() {
   return Promise.allSettled([...operations.values()].map(current=>current.settlement));
 }
+let pythonShutdownReady=false,disconnectedDrain;
+function drainDisconnectedPython() {
+  // Socket loss may happen after an orderly quit has already sent shutdown.
+  // Only request Python teardown once every escaped native save has settled.
+  disconnectedDrain ??= waitForOperations().then(()=>{
+    if(python && python.exitCode===null && python.signalCode===null)python.kill('SIGTERM');
+    else {readyToExit=true;app.quit();}
+  });
+}
 async function solveCloudflare(doc,{signal,deadline=Infinity}={}) {
   const owner=browser.operation,current=operations.get(owner?.association.request_id);
   const contents=browser.tabs.get(doc.pageId)?.view.webContents;
@@ -324,6 +333,7 @@ async function connect() {
         else if(message.type === 'openalex_pdf_result')settleOpenAlexPDF(pendingOperation(message),message);
         else if(message.type === 'shutdown_ready') {
           // Python has processed the final result and can now exit gracefully.
+          pythonShutdownReady=true;
           socket.close();
         } else if(message.type === 'execute' && typeof message.id === 'string') {
           void execute(message).catch(()=>socket.close());
@@ -337,7 +347,7 @@ async function connect() {
         log('error','bridge_disconnected');
         dialog.showErrorBox('Allfold','Electron connection lost. No saves will be replayed. Inspect Zotero before retrying.');
         app.quit();
-      }
+      } else if(!pythonShutdownReady)drainDisconnectedPython();
     });
   });
 }
@@ -436,13 +446,8 @@ app.on('before-quit',event=>{
   log('info','app_exiting');
   if(bridgeReady) {
     // Sent immediately: Python stops the next dispatch while this request settles.
-    send({type:'shutdown'});
-  } else {
-    // Startup failure or transport loss: wait for any native Local API save first.
-    void waitForOperations().then(()=>{
-      if(python && python.exitCode === null && python.signalCode === null) python.kill('SIGTERM');
-      else {readyToExit=true;app.quit();}
-    });
-  }
+    try {send({type:'shutdown'});}
+    catch (_) {drainDisconnectedPython();}
+  } else drainDisconnectedPython();
 });
 app.on('window-all-closed',()=>app.quit());

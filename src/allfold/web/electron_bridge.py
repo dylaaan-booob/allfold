@@ -183,7 +183,13 @@ class ElectronBridge:
             if workers:
                 await asyncio.gather(*workers)
             if drain is not None:
-                await drain
+                # Uvicorn waits for this socket handler before lifespan teardown.
+                # Leave pending native results for teardown to mark uncertain once
+                # Main has finished its escaped saves and stopped this process.
+                if drain.cancel():
+                    await asyncio.gather(drain, return_exceptions=True)
+                else:
+                    await drain
 
     def _observe_result(self, pending: _Operation, data: dict) -> None:
         if pending.action in _CONTROL_ACTIONS:
