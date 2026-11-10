@@ -52,7 +52,7 @@ def test_single_service_dispatch_and_history_use_execution_mapping(tmp_path):
     class Bridge:
         connected = True
         calls = []
-        def execute(self, action, data, progress=None):
+        def execute(self, action, data, progress=None, *, verify_recovery=None):
             if action == 'zotero_local':
                 future = Future(); future.set_result({'ok': True}); return future
             self.calls.append(data)
@@ -87,7 +87,7 @@ def test_scope_filter_runs_after_global_duplicate_scan(tmp_path):
           status=WorkflowStatus.CANDIDATE)
     class Bridge:
         connected = True
-        def execute(self, *args):
+        def execute(self, *args, **kwargs):
             raise AssertionError('Duplicate DOI must never dispatch')
     lock = BrowserTaskLock()
     batch = BatchImportService(Bridge(), lock)
@@ -130,7 +130,7 @@ def test_import_requires_explicit_unprepared_skips_and_keeps_the_doi_path(tmp_pa
         def __init__(self):
             self.calls = []
 
-        def execute(self, action, data, progress=None):
+        def execute(self, action, data, progress=None, *, verify_recovery=None):
             self.calls.append((action, data))
             future = Future()
             if action == 'zotero_local':
@@ -207,7 +207,7 @@ def test_import_uses_prepared_service_and_exposes_only_safe_local_keys(tmp_path)
         def __init__(self):
             self.calls = []
 
-        def execute(self, action, data, progress=None):
+        def execute(self, action, data, progress=None, *, verify_recovery=None):
             self.calls.append((action, data))
             future = Future()
             if action == 'zotero_local':
@@ -266,7 +266,7 @@ def test_parallel_import_drains_exact_paper_results_after_uncertainty(tmp_path):
         def __init__(self):
             self.dispatched = Queue()
 
-        def execute(self, action, data, progress=None):
+        def execute(self, action, data, progress=None, *, verify_recovery=None):
             assert action == 'import_paper'
             future = Future()
             self.dispatched.put((data, future))

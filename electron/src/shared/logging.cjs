@@ -13,6 +13,14 @@ function valid(value,definition) {
   if(definition.type==='boolean')return typeof value==='boolean';
   return typeof value==='string' && (definition.enum?definition.enum.includes(value):new RegExp(definition.pattern).test(value));
 }
+function recoveryEvidence(details) {
+  const evidence={};
+  for(const key of ['stage','step','code','status','net_code','net_error','failure_kind',
+    'transport_error','dispatch_outcome','recovery_stop','page_id','source_page_id']) {
+    if(valid(details[key],schema.fields[key]))evidence[key]=details[key];
+  }
+  return evidence;
+}
 function sanitize(record) {
   const result={};
   for(const [key,value] of Object.entries(record || {}))if(schema.fields[key] && valid(value,schema.fields[key]))result[key]=value;
@@ -71,4 +79,4 @@ function attachmentCounts(items=[]) {
 }
 module.exports={log:(...args)=>logger.log(...args),initializeLogging,createLogger,withLogContext,associationLogContext,
   diagnosticsStatus:()=>logger.status(),diagnosticsReset:data=>logger.reset(data),setLogLevel:level=>logger.setLevel(level),
-  sanitize,errorCode,hostname,attachmentCounts};
+  sanitize,errorCode,hostname,attachmentCounts,recoveryEvidence};

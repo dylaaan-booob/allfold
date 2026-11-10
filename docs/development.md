@@ -95,6 +95,13 @@ Use a disposable configuration and Workspace. Browser control, external accounts
 7. Run WoS-only, API-only and mixed selected-source Runs in both presentation modes, including cancellation and interrupted polling recovery. Verify inline mode allows safe navigation, records completion/history and refreshes results without forcing a workspace change.
 8. With authorized CARSI and Manual Services, check one login, independent preparation pages, partial results and the exact manual verification page. Test managed Paper page reuse and a fixed Import into an isolated Zotero target. Check explicit skips, cancellation and uncertain write settlement. Inspect actual parent-item and PDF results separately; never retry an uncertain save solely because presentation changed.
 
+For layered recovery, sample EBSCO, WoS and Cambridge Prepare with the authorized
+Session. Observe the normal tab ownership and the workflow status during any
+actual refresh or CARSI reentry. Synthetic load and timeout tests cover recovery
+branches when the site does not reproduce a failure. In a separately authorized
+Zotero target, confirm the parent and saved PDF separately and inspect the UI
+wording for any uncertain result.
+
 Python HTTPX callers share the [HTTP client and proxy layer](http.md). Its focused
 tests cover isolated request routing, TLS, transport lifecycle and cache failures;
 Chromium authentication remains a separate manual acceptance boundary.

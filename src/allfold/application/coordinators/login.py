@@ -12,6 +12,7 @@ from allfold.application.browser_runtime import ElectronDisconnected
 from allfold.application.browser_services import BrowserServiceSnapshot
 from allfold.application.history import observe
 from allfold.browser_diagnostics import normalize_browser_diagnostic
+from allfold.recovery_diagnostics import normalize_recovery, normalize_recovery_action
 from allfold.config import ConfigurationError, InstitutionConfig, load_config
 
 
@@ -39,6 +40,8 @@ class ServicePreparation:
     diagnostic: dict | None = None
     waiting_for_user: bool = False
     manually_confirmed: bool = False
+    recovery_action: str | None = None
+    recovery: list | None = None
 
 
 @dataclass(frozen=True)
@@ -198,8 +201,11 @@ class LoginCoordinator:
     def _progress(self, service_id, data):
         with self._mutex:
             current = self._carsi if service_id is None else self._results[service_id]
+            if self._stop.is_set():
+                return
             page = data.get('page_id')
             updated = replace(current, waiting_for_user=data.get('waiting_for_user') is True,
+                recovery_action=normalize_recovery_action(data.get('recovery_action')),
                 page_id=page if type(page) is int and page > 0 else current.page_id)
             if service_id is None:
                 self._carsi = updated
@@ -209,10 +215,25 @@ class LoginCoordinator:
     def _dispatch(self, owner, saved, action, data, service_id=None):
         self.browser_lock.require(owner)
         saved.verify()
+        recovery = {}
+        if action == 'prepare_service':
+            workflow = self._workflow_id
+            epoch = self._credential_epoch
+            key = data['preparation_key']
+
+            def verify_recovery():
+                self.browser_lock.require(owner)
+                saved.verify()
+                with self._mutex:
+                    if (self._stop.is_set() or self._workflow_id != workflow or self._credential_epoch != epoch
+                            or self._keys.get(service_id) != key):
+                        raise InterruptedError('Preparation authority changed')
+
+            recovery['verify_recovery'] = verify_recovery
         return self.bridge.execute(action, {
             **data, 'workflow_id': self._workflow_id, 'service_scope': saved.scope,
             'service_id': service_id,
-        }, lambda progress: self._progress(service_id, progress))
+        }, lambda progress: self._progress(service_id, progress), **recovery)
 
     def _settle_service(self, current, data):
         evidence = data.get('evidence') or {}
@@ -223,6 +244,7 @@ class LoginCoordinator:
         status = ('Opened' if opened else 'Canceled' if self._stop.is_set() else
                   'Needs attention' if data.get('outcome') in {'Opened', 'Needs attention'} else 'Failed')
         return replace(current, status=status, waiting_for_user=False, diagnostic=diagnostic,
+            recovery_action=None, recovery=normalize_recovery(data.get('recovery')) or None,
             page_id=target if opened else current.page_id,
             reason=('target_opened' if opened else diagnostic.get('code') if diagnostic else
                     'unverified_official_page' if data.get('outcome') == 'Opened' else data.get('reason', 'failed')))
@@ -246,7 +268,8 @@ class LoginCoordinator:
                     self._carsi = replace(self._carsi, status='Opened' if success else
                         'Canceled' if self._stop.is_set() else 'Failed', waiting_for_user=False,
                         page_id=portal_page if success else self._carsi.page_id,
-                        diagnostic=normalize_browser_diagnostic(result.get('diagnostic')))
+                        diagnostic=normalize_browser_diagnostic(result.get('diagnostic')), recovery_action=None,
+                        recovery=normalize_recovery(result.get('recovery')) or None)
                 if not success:
                     phase = 'failed'
                     return
@@ -283,7 +306,7 @@ class LoginCoordinator:
                 except (OSError, RuntimeError, ValueError):
                     phase = 'failed'
                 if phase == 'failed':
-                    data = {'reason': 'configuration_changed'}
+                    data = {'reason': 'configuration_changed', 'recovery': data.get('recovery')}
                 with self._mutex:
                     self._results[service.id] = self._settle_service(self._results[service.id], data)
         except ElectronDisconnected:
@@ -302,7 +325,7 @@ class LoginCoordinator:
                     current = self._results[service.id]
                     if current.status in {'Not prepared', 'Preparing'}:
                         self._results[service.id] = replace(current, status='Canceled' if stopped else 'Needs attention',
-                            reason='cancelled' if stopped else 'carsi_login_required', waiting_for_user=False)
+                            reason='cancelled' if stopped else 'carsi_login_required', waiting_for_user=False, recovery_action=None)
                 counts = {status: sum(self._results[s.id].status == label for s in services)
                           for status, label in [('opened','Opened'), ('needs_attention','Needs attention'), ('failed','Failed')]}
                 outcome = ('cancelled' if stopped else phase if phase != 'completed' else
@@ -311,9 +334,10 @@ class LoginCoordinator:
                     'opened' if counts['opened'] else 'no_effect')
                 observe(self.diagnostics, 'finish', self._workflow_id, outcome,
                     statistics={'services': len(services), **counts},
-                    details={'results': [{'service_id': s.id,
+                    details={'recovery': self._carsi.recovery, 'results': [{'service_id': s.id,
                         'outcome': self._results[s.id].status.lower().replace(' ', '_').replace('canceled', 'cancelled'),
-                        'reason': self._results[s.id].reason, 'diagnostic': self._results[s.id].diagnostic}
+                        'reason': self._results[s.id].reason, 'diagnostic': self._results[s.id].diagnostic,
+                        'recovery': self._results[s.id].recovery}
                         for s in services]})
                 self.browser_lock.release(owner)
 

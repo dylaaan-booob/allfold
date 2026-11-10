@@ -350,7 +350,7 @@ def test_app_composition_keeps_workflow_ids_through_import_and_http_export(tmp_p
 
     config, _, _, _ = scoped_workspace(tmp_path)
     class Transport(PendingBridge):
-        def execute(self, action, data, progress=None):
+        def execute(self, action, data, progress=None, *, verify_recovery=None):
             if action == 'zotero_local':
                 from concurrent.futures import Future
                 future = Future()

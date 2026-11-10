@@ -10,6 +10,7 @@ from allfold.identifiers import normalize_doi
 from allfold.persistence.safe_write import ContentChangedError, TextWriteCommittedError
 from allfold.url_safety import normalize_public_http_url
 from allfold.browser_diagnostics import format_browser_diagnostic, normalize_browser_diagnostic
+from allfold.recovery_diagnostics import normalize_recovery, recovery_progress_message
 from allfold.application.history import observe
 from allfold.application.browser_runtime import ElectronDisconnected
 from allfold.application.browser_services import BrowserServiceSnapshot, browser_workspace_identity
@@ -163,6 +164,17 @@ class PaperEnrichment:
                 paper = parse_paper_state(target.path, target.original)
                 if paper is not None:
                     service_id, _ = paper_service_assignment(paper, saved.journals)
+
+            def verify_recovery():
+                if task['stop'].is_set():
+                    raise InterruptedError()
+                self.browser_lock.require(task['owner'])
+                if saved is not None:
+                    saved.verify()
+                if (self.current_workspace and self.current_workspace().resolve() != target.workspace
+                        or read_enrichment_target(target.workspace, target.paper_id) != target):
+                    raise ContentChangedError('Enrich authority changed during page recovery')
+
             with self._lock:
                 if task['stop'].is_set():
                     raise InterruptedError()
@@ -173,9 +185,11 @@ class PaperEnrichment:
                     'workspace_identity': browser_workspace_identity(target.workspace, target.workspace_identity),
                     'service_id': service_id, 'service_scope': saved.scope if saved else None,
                     'history_kinds': list(target.history_kinds),
-                    'task_id':task['request_id'], 'workflow_id':task['request_id'], 'paper_id':str(target.paper_id)}, lambda data: self._progress(task, data))
+                    'task_id':task['request_id'], 'workflow_id':task['request_id'], 'paper_id':str(target.paper_id)},
+                    lambda data: self._progress(task, data), verify_recovery=verify_recovery)
             result = pending.result()
             task['diagnostic'] = normalize_browser_diagnostic(result.get('diagnostic'))
+            task['recovery'] = normalize_recovery(result.get('recovery'))
             with self._lock:
                 if task['stop'].is_set():
                     raise InterruptedError()
@@ -230,7 +244,7 @@ class PaperEnrichment:
                 observe(self.diagnostics, 'finish', task['request_id'], 'interrupted' if task.get('history_interrupted') else task['phase'].lower(),
                     statistics={'enriched':int(bool(task['saved'])), 'updated':len(task['saved'])},
                     diagnostic=task.get('diagnostic'), details={'saved_fields':list(task['saved']),
-                        'requested_fields':list(target.missing_fields),
+                        'requested_fields':list(target.missing_fields), 'recovery':task.get('recovery'),
                         'sync_warning':task.get('sync_warning',False),
                         'reason':'connection_lost' if task.get('history_interrupted') else 'cancelled' if task['phase'] == 'Cancelled' else 'failed' if task['phase'] == 'Failed' else None})
 
@@ -238,7 +252,8 @@ class PaperEnrichment:
         with self._lock:
             if not task['stop'].is_set():
                 task.update(waiting_for_user=data.get('waiting_for_user') is True,
-                    message='Complete verification in BROWSER' if data.get('waiting_for_user') else 'Retrieving missing fields…')
+                    message='Complete verification in BROWSER' if data.get('waiting_for_user') else
+                        recovery_progress_message(data.get('recovery_action')) or 'Retrieving missing fields…')
 
     def cancel(self, paper_id, request_id):
         with self._lock:

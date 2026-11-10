@@ -24,7 +24,7 @@ def test_import_pins_settings_and_revalidates_pending_changes_after_release(tmp_
         def __init__(self):
             self.calls, self.dispatched, self.future = [], threading.Event(), Future()
 
-        def execute(self, action, data, progress=None):
+        def execute(self, action, data, progress=None, *, verify_recovery=None):
             if action == 'import_paper':
                 self.calls.append(data)
                 self.dispatched.set()

@@ -32,7 +32,7 @@ class Native:
         self.operations = Queue()
         self.cancellations = 0
 
-    def execute(self, action, data, progress):
+    def execute(self, action, data, progress, *, verify_recovery=None):
         result = Future()
         self.operations.put((action, data, result))
         return result
@@ -252,7 +252,7 @@ def test_credential_mutation_invalidates_prepared_page_only_after_confirmed_succ
         connected = True
         updated = False
 
-        def execute(self, action, data, progress=None):
+        def execute(self, action, data, progress=None, *, verify_recovery=None):
             future = Future()
             if action == 'visit_manual_service':
                 future.set_result(opened(17))

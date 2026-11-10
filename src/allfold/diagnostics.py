@@ -18,6 +18,7 @@ import zipfile
 
 from allfold.application.history import safe_zotero_keys
 from allfold.browser_diagnostics import normalize_browser_diagnostic
+from allfold.recovery_diagnostics import SCHEMA as _SCHEMA, field_valid, normalize_recovery
 from allfold.persistence.safe_write import _open_directory_nofollow
 from allfold.persistence.user_state import application_data_dir
 
@@ -45,7 +46,6 @@ REASONS = frozenset({'runtime_interrupted', 'connection_lost', 'cancelled', 'par
 IDENTIFIER = re.compile(r'[A-Za-z0-9_-]{1,128}\Z')
 SCOPE = re.compile(r'[a-f0-9]{64}\Z')
 LEVELS = frozenset({'debug', 'info', 'warn', 'error'})
-_SCHEMA = json.loads(Path(__file__).with_name('diagnostic_schema.json').read_text())
 
 
 
@@ -71,6 +71,8 @@ def _details(value):
     if not isinstance(value, dict):
         return {}
     result = {}
+    if recovery := normalize_recovery(value.get('recovery')):
+        result['recovery'] = recovery
     if _enum(value.get('batch_scope'), {'all', 'service'}):
         result['batch_scope'] = value['batch_scope']
     service = value.get('service_id')
@@ -162,6 +164,8 @@ def _details(value):
             diagnostic = normalize_browser_diagnostic(item.get('diagnostic'))
             if diagnostic:
                 safe['diagnostic'] = diagnostic
+            if recovery := normalize_recovery(item.get('recovery')):
+                safe['recovery'] = recovery
             results.append(safe)
         result['results'] = results
         omitted = value.get('omitted_results', 0)
@@ -183,22 +187,7 @@ def validate_event(value):
     """Independent data-schema validation for each persisted/exported field."""
     if not isinstance(value, dict):
         return None
-    result = {}
-    for key, rule in _SCHEMA['fields'].items():
-        field = value.get(key)
-        kind = rule['type']
-        valid = ((kind == 'integer' and type(field) is int)
-                 or (kind == 'boolean' and type(field) is bool)
-                 or (kind == 'string' and isinstance(field, str)))
-        if not valid:
-            continue
-        if 'enum' in rule and field not in rule['enum']:
-            continue
-        if 'pattern' in rule and (len(field) > 128 or re.fullmatch(rule['pattern'], field) is None):
-            continue
-        if kind == 'integer' and not rule['minimum'] <= field <= rule['maximum']:
-            continue
-        result[key] = field
+    result = {key: value[key] for key, rule in _SCHEMA['fields'].items() if field_valid(value.get(key), rule)}
     if any(key not in result for key in _SCHEMA['required']):
         return None
     if not _time(result['time']):

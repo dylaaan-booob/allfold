@@ -12,6 +12,19 @@ logging does not grant browser or institution-credential authority. Native
 completion can precede Python validation and guarded writes, so only the owning
 coordinator finishes a business history record. Login includes each saved Service outcome. Import retains explicit skips and separates parent confirmation from attachment uncertainty.
 
+Recovery uses the same workflow, task and Native request IDs. Provider attempts
+carry workflow and task IDs when available and retain their separate physical
+request counts. Recovery events record the action, bounded attempt and wait
+evidence, reviewed failure classification, and old and new Page IDs where
+applicable. Numeric Chromium errors and HTTP statuses remain separate from
+stable business codes. Retained page-load events remain readable.
+
+History retains the recovery count and last outcome by action, with the first
+and last reviewed evidence. The operation accumulates this summary in memory
+and passes it through the final result. Log rotation or a failed event write
+cannot remove the summary from a settled result. Manual Browser activity after
+settlement cannot change that result.
+
 **Last Import** indicators are a separate process-local projection of the
 latest execution. Exact-key object queries and confirmed attachment registration
 provide its Item/PDF/Fallback results. The live batch and local History show
