@@ -36,6 +36,9 @@ def test_native_stage_reuses_parent_slot_and_retains_first_batch_after_later_fai
             assert any(service.id == service_id and service.name == "Web of Science" for service in saved.services)
             return 71
 
+        def prepared_authority(self, saved, service_id):
+            return self.prepared_page(saved, service_id), 'd' * 64
+
     calls = []
     class Bridge:
         connected = True
@@ -254,6 +257,9 @@ def test_unified_wos_quarantines_conflicting_ut_before_creation(tmp_path,existin
         def prepared_page(self, saved, service_id):
             assert any(service.id == service_id and service.name == "Web of Science" for service in saved.services)
             return 71
+
+        def prepared_authority(self, saved, service_id):
+            return self.prepared_page(saved, service_id), 'd' * 64
 
     class Bridge:
         connected = True

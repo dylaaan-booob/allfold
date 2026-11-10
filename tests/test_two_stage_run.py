@@ -368,6 +368,9 @@ def test_selected_native_disconnect_revokes_http_but_waits_native_settlement(tmp
             assert any(service.id == service_id and service.name == "Web of Science" for service in saved.services)
             return 71
 
+        def prepared_authority(self, saved, service_id):
+            return self.prepared_page(saved, service_id), 'd' * 64
+
     query_started, disconnected=Event(),Event()
     class Bridge:
         connected=True
@@ -428,6 +431,9 @@ def test_work_guard_settles_native_before_parent_cancel_or_authority_error(tmp_p
         def prepared_page(self, saved, service_id):
             assert any(service.id == service_id and service.name == "Web of Science" for service in saved.services)
             return 71
+
+        def prepared_authority(self, saved, service_id):
+            return self.prepared_page(saved, service_id), 'd' * 64
 
     query_started, revoked, guard_entered = Event(), Event(), Event()
     class Bridge:

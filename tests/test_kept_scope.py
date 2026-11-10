@@ -195,7 +195,7 @@ def test_queue_on_a_fresh_workspace_keeps_saved_services_visible_without_writes(
     assert not (tmp_path / 'workspace').exists()
 
 
-def test_import_uses_prepared_service_in_fixed_scope_and_hides_native_keys(tmp_path):
+def test_import_uses_prepared_service_and_exposes_only_safe_local_keys(tmp_path):
     from fastapi.testclient import TestClient
     from allfold.web.app import create_app
     from electron_test_helpers import OfflineBridge
@@ -242,7 +242,8 @@ def test_import_uses_prepared_service_in_fixed_scope_and_hides_native_keys(tmp_p
         assert observed['paper_id'] == str(values[1].id) and observed['service_id'] == other.id
         assert observed['item_exists'] and observed['pdf_attached'] and observed['fallback_used']
         assert observed['pdf_source'] == 'openalex'
-        assert 'ABCDEFGH' not in str(observed) and 'BCDEFGHI' not in str(observed)
+        assert observed['zotero_keys'] == {'parent_key': 'ABCDEFGH', 'attachment_keys': ['BCDEFGHI']}
+        assert 'native_identity' not in observed
         saved = load_user_state(config)
         compare_write_user_state(config, replace(saved.state, journals=tuple(
             journal.model_copy(update={'access_service_id':service.id}) for journal in saved.state.journals)), saved.revision)
