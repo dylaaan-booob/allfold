@@ -10,7 +10,6 @@
   <link rel="stylesheet" href="document-decryption.css">
   <link rel="stylesheet" href="run.css">
   <link rel="stylesheet" href="kept.css">
-  <link rel="stylesheet" href="kept-app.css">
   <link rel="stylesheet" href="notifications.css">
   <link rel="stylesheet" href="assets/vendor/cropperjs-1.7.0/cropper.min.css">
   <link rel="stylesheet" href="settings.css">
@@ -37,6 +36,7 @@
   <script defer src="workbench.js"></script>
   <script type="module" src="run.js"></script>
   <script type="module" src="kept-app.js"></script>
+  <script type="module" src="login.js"></script>
   <script type="module" src="settings.js"></script>
   <script type="module" src="history.js"></script>
 </head>
@@ -44,24 +44,47 @@
   <header class="masthead">
     <div class="identity"><svg class="identity-mark" viewBox="0 0 66 46" aria-hidden="true"><path d="M9 8h18v30H9zM39 8h18v30H39zM27 8l12 4v26l-12-4z" fill="none" stroke="currentColor"/><path d="M33 4v38" stroke="#ff7a01"/></svg><div><strong>ALLFOLD</strong><small>研究档案馆 / Local journal archive</small></div></div>
     <div class="header-browse"><div class="view-nav-scroll"><nav class="view-nav" aria-label="Workspace views">
-      <span id="view-nav-plate" aria-hidden="true"><span class="nav-clip"><span class="nav-inverse"><span><small>01</small><span class="nav-label">WORKSPACE</span></span><span><small>02</small><span class="nav-label">RUN</span></span><span><small>03</small><span class="nav-label">JOURNALS</span></span><span><small>04</small><span class="nav-label">KEPT</span></span><span><small>05</small><span class="nav-label">SETTINGS</span></span></span></span></span>
+      <span id="view-nav-plate" aria-hidden="true"><span class="nav-clip"><span class="nav-inverse"><span><small>01</small><span class="nav-label">WORKSPACE</span></span><span><small>02</small><span class="nav-label">WORKFLOWS</span></span><span><small>03</small><span class="nav-label">JOURNALS</span></span><span><small>04</small><span class="nav-label">SETTINGS</span></span></span></span></span>
       <button id="workspace-open" aria-current="page" disabled><small>01</small><span class="nav-label">WORKSPACE</span></button>
-      <button id="run-open" disabled><small>02</small><span class="nav-label">RUN</span></button>
+      <button id="workflows-open" disabled><small>02</small><span class="nav-label">WORKFLOWS</span></button>
       <button id="journals-open" disabled><small>03</small><span class="nav-label">JOURNALS</span></button>
-      <button id="kept-open" disabled><small>04</small><span class="nav-label">KEPT</span></button>
-      <button id="settings-open" disabled><small>05</small><span class="nav-label">SETTINGS</span></button>
-    </nav></div>
-    <button id="history-open" class="s-button" aria-label="运行历史">HISTORY</button>
-    </div>
-    <div class="header-utilities">
-      <div id="workspace-search" hidden>
-        <label class="s-header-search"><input id="s-search" type="search" placeholder="SEARCH JOURNALS" aria-label="Search Journals" autocomplete="off" disabled><svg viewBox="0 0 20 24" aria-hidden="true"><circle cx="10" cy="11" r="3.5"/><path d="m12.6 13.6 3.4 3.4"/></svg></label>
-        <div id="workspace-search-results" role="listbox" aria-label="匹配期刊" hidden></div>
-      </div>
+      <button id="settings-open" disabled><small>04</small><span class="nav-label">SETTINGS</span></button>
+    </nav></div></div>
+    <div class="header-utilities" role="group" aria-label="Allfold tools">
+      <button id="browser-open" class="s-button" type="button" aria-pressed="false">BROWSER</button>
+      <button id="search-open" class="s-button" type="button" aria-haspopup="dialog" aria-keyshortcuts="Control+K Meta+K">SEARCH</button>
+      <button id="history-open" class="s-button" type="button" aria-haspopup="dialog">HISTORY</button>
     </div>
   </header>
   <div id="workbench-content">
   <div id="allfold-pane">
+  <nav id="workflow-nav" aria-label="Workflows" hidden>
+    <button type="button" data-workflow="login">Login</button>
+    <button type="button" data-workflow="run">Discover</button>
+    <button type="button" data-workflow="kept">Import to Zotero</button>
+  </nav>
+  <section id="login-page" class="workbench-layout" hidden inert aria-label="Login">
+    <aside class="navigation-flyout" hidden><button type="button" data-flyout-close aria-label="Close directory">×</button></aside>
+    <div id="login-main" class="workspace-content" tabindex="-1">
+      <header class="workflow-heading"><h1>Login</h1>
+        <div class="workflow-actions">
+          <button id="login-start" type="button" class="s-button" disabled>Login</button>
+          <button id="login-cancel" type="button" class="s-button" hidden>Cancel</button>
+          <button id="login-confirm" type="button" class="s-button" hidden>Manual confirmation of login</button>
+        </div>
+      </header>
+      <p id="login-status" role="status" aria-live="polite">正在读取已保存的 Services…</p>
+      <div id="login-carsi"></div>
+      <div id="login-services" aria-label="Saved Access Services"></div>
+    </div>
+    <aside id="login-sidebar" class="functional-sidebar" aria-label="Login tools" hidden>
+      <div class="sidebar-resize" role="separator" tabindex="0" aria-label="Resize Login tools" aria-orientation="vertical"></div>
+      <div class="sidebar-heading"><span>LOGIN</span><button data-sidebar-close aria-label="Close Login tools">×</button></div>
+      <div class="sidebar-scroll" data-functional-view="access"><div id="login-access-settings"></div></div>
+      <div class="sidebar-scroll" data-functional-view="workflow"><div id="login-workflow-settings"></div></div>
+    </aside>
+    <nav class="tool-rail" aria-label="Login tools"><button class="rail-button" data-sidebar-view="access" aria-label="Access" title="ACCESS">A</button><button class="rail-button" data-sidebar-view="workflow" aria-label="Concurrency" title="CONCURRENCY">W</button></nav>
+  </section>
   <main id="selected-view" data-workspace-layout="archive">
     <div id="archive-layout-controls"><div id="workspace-layout" class="s-layout" role="group" aria-label="Workspace layout"><span class="s-layout-caption">LAYOUT</span><span class="s-layout-options"><button id="workspace-archive" data-layout="archive" aria-pressed="true" disabled>ARCHIVE</button><button id="workspace-array" data-layout="array" aria-pressed="false" disabled>ARRAY</button></span></div></div>
     <section class="collection" aria-label="Journal archive">
@@ -160,11 +183,11 @@
     <nav class="tool-rail" aria-label="ARRAY tools"><button class="rail-button" data-sidebar-view="info" aria-controls="array-sidebar" title="INFO" aria-label="Info"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 11v6M12 7v1"/></svg></button></nav>
   </section>
   </main>
-  <section id="kept-workspace" class="workbench-layout" hidden inert aria-label="Kept">
-    <nav class="navigation-rail" aria-label="Kept navigation"><button id="kept-directory-toggle" class="rail-button" data-flyout="services" aria-label="Service Directory" title="SERVICE DIRECTORY"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5h16M4 12h16M4 19h16"/></svg></button></nav>
+  <section id="kept-workspace" class="workbench-layout" hidden inert aria-label="Import to Zotero">
+    <nav class="navigation-rail" aria-label="Import navigation"><button id="kept-directory-toggle" class="rail-button" data-flyout="services" aria-label="Service Directory" title="SERVICE DIRECTORY"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5h16M4 12h16M4 19h16"/></svg></button></nav>
     <aside id="kept-directory" class="navigation-flyout" aria-label="Service Directory" tabindex="-1" hidden><div class="flyout-heading"><span>SERVICE DIRECTORY</span><button data-flyout-close aria-label="Close Service Directory">×</button></div><div id="kept-service-list" data-flyout-list></div></aside>
     <div id="kept-main" class="workspace-content" tabindex="-1">
-      <header class="kept-queue-heading"><h1>Queue</h1><button id="kept-browser-open" class="s-button">BROWSER ↗</button></header>
+      <header class="workflow-heading"><h1>Import to Zotero</h1></header>
       <div id="kept-zotero-target" class="kept-zotero-target" aria-label="Zotero target">
         <label>Library <select data-zotero-library aria-label="Zotero Library"></select></label>
         <label>Collection <select data-zotero-collection aria-label="Zotero Collection"></select></label>
@@ -172,20 +195,20 @@
         <span data-zotero-status role="status"></span>
       </div>
       <p id="kept-scope-status" role="status">All Services</p>
-      <div id="kept-import-actions" class="kept-actions"><button id="kept-start">PREPARE &amp; IMPORT ↗</button><button id="kept-import-only">IMPORT ONLY ↗</button></div>
-      <div id="kept-workflow-host"></div>
-      <div id="kept-queue-body"><div id="kept-statistics" tabindex="0" aria-label="Service statistics"></div><div id="kept-queue-results" aria-live="polite"></div><div id="kept-paper-identities"></div></div>
-      <div id="kept-browser-host" hidden></div>
+      <div id="kept-import-actions" class="workflow-actions">
+        <button id="kept-start" type="button" class="s-button" disabled>Import</button>
+        <button id="kept-task-page" type="button" class="s-button" hidden>查看任务页面</button>
+        <button id="kept-leave" type="button" class="s-button" hidden>Cancel</button>
+      </div>
+      <p id="kept-progress" role="status" aria-live="polite" hidden></p>
     </div>
-    <aside id="kept-sidebar" class="functional-sidebar" aria-label="Kept tools" hidden>
-      <div class="sidebar-resize" role="separator" tabindex="0" aria-label="Resize Kept tools" aria-orientation="vertical"></div>
-      <div class="sidebar-heading"><span>KEPT</span><button data-sidebar-close aria-label="Close Kept tools">×</button></div>
-      <div class="sidebar-scroll" data-functional-view="access"><div id="kept-access-settings"></div></div>
+    <aside id="kept-sidebar" class="functional-sidebar" aria-label="Import tools" hidden>
+      <div class="sidebar-resize" role="separator" tabindex="0" aria-label="Resize Import tools" aria-orientation="vertical"></div>
+      <div class="sidebar-heading"><span>IMPORT</span><button data-sidebar-close aria-label="Close Import tools">×</button></div>
       <div class="sidebar-scroll" data-functional-view="workflow"><div id="kept-workflow-settings"></div></div>
       <div class="sidebar-scroll" data-functional-view="results"><section id="array-import-profile"><div class="kept-record-heading"><span>IMPORT / LATEST</span><span id="kept-record-count">—</span></div><p id="kept-record-summary" role="status">本次尚未导入。</p><ol id="kept-record-items"></ol></section></div>
-      <div class="sidebar-scroll" data-functional-view="service"><div id="kept-service-detail"></div></div>
     </aside>
-    <nav class="tool-rail" aria-label="Kept tools"><button class="rail-button" data-sidebar-view="access" aria-label="Access" title="ACCESS">A</button><button class="rail-button" data-sidebar-view="workflow" aria-label="Workflow" title="WORKFLOW">W</button><button class="rail-button" data-sidebar-view="service" aria-label="Service details" title="SERVICE">S</button><button class="rail-button" data-sidebar-view="results" aria-label="Results and Diagnostics" title="RESULTS / DIAGNOSTICS">R</button></nav>
+    <nav class="tool-rail" aria-label="Import tools"><button class="rail-button" data-sidebar-view="workflow" aria-label="Workflow" title="WORKFLOW">W</button><button class="rail-button" data-sidebar-view="results" aria-label="Results and Diagnostics" title="RESULTS / DIAGNOSTICS">R</button></nav>
   </section>
   <section id="configuration-workspace" hidden class="configuration-ui" aria-label="Workspace configuration">
     <div class="s-content">
@@ -195,33 +218,27 @@
     </div>
   </section>
   </div>
-  <section id="browser-pane" hidden aria-label="Browser 工作视图">
-    <div class="browser-controls">
-      <div class="browser-tabbar">
-        <button id="browser-return" type="button">← QUEUE</button><button id="browser-compact" type="button">COMPACT</button><button id="browser-focus" type="button">FOCUS</button>
-        <div id="browser-tabs" aria-label="页面"></div>
-        <button id="browser-new" type="button" aria-label="新建页面">＋</button>
-        <button id="browser-tools-toggle" type="button" aria-controls="browser-address" aria-expanded="true">TOOLS</button>
-        <button id="browser-services-toggle" type="button" aria-controls="browser-services" aria-expanded="true">SERVICES</button>
+  <section id="browser-pane" class="workbench-layout" hidden aria-label="Browser">
+    <nav class="navigation-rail" aria-label="Browser navigation">
+      <button id="browser-tabs-toggle" class="rail-button" type="button" data-flyout="tabs" title="TABS" aria-label="Tabs"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 6h13M8 12h13M8 18h13M3 6h1M3 12h1M3 18h1"/></svg></button>
+      <button id="browser-new" class="rail-button" type="button" aria-label="New page" title="New page">＋</button>
+    </nav>
+    <aside id="browser-tab-flyout" class="navigation-flyout" aria-label="Tabs" tabindex="-1" hidden>
+      <div class="flyout-heading"><span>TABS</span><button type="button" data-flyout-close aria-label="Close Tabs">×</button></div>
+      <div id="browser-tabs" data-flyout-list></div>
+    </aside>
+    <div class="workspace-content browser-content">
+      <div class="browser-controls">
+        <form id="browser-address">
+          <button id="browser-return" type="button" aria-label="Return to workspace">← ALLFOLD</button>
+          <button type="button" id="browser-back" aria-label="后退">←</button>
+          <button type="button" id="browser-forward" aria-label="前进">→</button>
+          <button type="button" id="browser-reload" aria-label="刷新">↻</button>
+          <input id="browser-url" aria-label="地址" placeholder="输入 https:// 地址" autocomplete="off" spellcheck="false">
+          <button type="submit" id="browser-go">前往</button>
+        </form>
       </div>
-      <form id="browser-address">
-        <button type="button" id="browser-back" aria-label="后退">←</button>
-        <button type="button" id="browser-forward" aria-label="前进">→</button>
-        <button type="button" id="browser-reload" aria-label="刷新">↻</button>
-        <input id="browser-url" aria-label="地址" placeholder="输入 https:// 地址" autocomplete="off" spellcheck="false">
-        <button type="submit">前往</button>
-        <details id="browser-maintenance"><summary>维护</summary><div>
-          <button type="button" id="browser-devtools">DevTools</button>
-          <button type="button" id="browser-cache-size">HTTP 缓存：未查询</button>
-          <button type="button" id="browser-clear-cache" title="清理 HTTP、代码及站点缓存，保留登录数据">清理缓存</button>
-          <button type="button" id="browser-clear-site-data" title="清除所有站点数据和登录状态；需要确认">清除站点数据</button>
-        </div></details>
-      </form>
-    </div>
-    <div id="browser-work-area">
       <div id="browser-body"><p id="browser-empty">选择已有页面，或使用 ＋ 新建页面。</p></div>
-      <div id="browser-services-resize" role="separator" tabindex="0" aria-label="调整 Services 宽度" aria-orientation="vertical" aria-valuemin="180" aria-valuemax="560" aria-valuenow="288"></div>
-      <aside id="browser-services" aria-label="Services"><h2>SERVICES</h2><div id="browser-service-pages"></div></aside>
     </div>
   </section>
   </div>
@@ -259,10 +276,6 @@
       <label>railWidth <input id="layout-railWidth" type="number" step="1" aria-label="railWidth"></label>
       <label>flyoutPreferredWidth <input id="layout-flyoutPreferredWidth" type="number" step="1" aria-label="flyoutPreferredWidth"></label>
       <label>sidebarPreferredWidth <input id="layout-sidebarPreferredWidth" type="number" step="1" aria-label="sidebarPreferredWidth"></label>
-      <label>browserPreferredWidth <input id="layout-browserPreferredWidth" type="number" step="1" aria-label="Compact Browser preferredWidth"></label>
-      <label>browserPreferredHeight <input id="layout-browserPreferredHeight" type="number" step="1" aria-label="Compact Browser preferredHeight"></label>
-      <span>browserEffectiveWidth <output id="layout-browserEffectiveWidth"></output></span>
-      <span>browserEffectiveHeight <output id="layout-browserEffectiveHeight"></output></span>
       <span>sidebarEffectiveWidth <output id="layout-sidebarEffectiveWidth"></output></span>
       <span>contentWidth <output id="layout-contentWidth"></output></span>
       <span>sidebarMode <output id="layout-sidebarMode"></output></span>
@@ -283,6 +296,15 @@
   <section id="app-notice-popover" popover aria-label="消息详情">
     <p id="app-notice-popover-summary"></p><div id="app-notice-popover-messages"></div>
   </section>
+  <dialog id="workspace-search" aria-label="Quick Open">
+    <div class="quick-open-field">
+      <input id="s-search" type="search" role="combobox" aria-controls="workspace-search-results" aria-expanded="false"
+        aria-autocomplete="list" aria-label="Quick Open" placeholder="Search or type &gt; for commands" autocomplete="off" autofocus>
+      <button id="search-close" type="button" aria-label="Close Search">×</button>
+    </div>
+    <div id="workspace-search-results" role="listbox" aria-label="Search results"></div>
+    <p id="workspace-search-empty" role="status" hidden>没有匹配的结果。</p>
+  </dialog>
   <dialog id="history-dialog" class="s-dialog" aria-labelledby="history-title">
     <h2 id="history-title">运行历史</h2>
     <label>Service <select id="history-service-filter" aria-label="History Service"><option value="">All Services</option></select></label>
@@ -306,12 +328,14 @@
       <button id="paper-dialog-save" class="s-button s-primary" type="button" hidden>Save</button>
     </div>
   </dialog>
-  <dialog id="kept-flow" aria-label="Kept import animation">
-    <div id="kept-film" aria-hidden="true"><div id="kept-scene"></div><video muted playsinline preload="auto"></video><video muted playsinline preload="auto"></video></div>
-    <div id="kept-flow-actions">
-      <section id="kept-flow-gate" hidden aria-label="Continue import"><p id="kept-gate-message" role="status"></p><div id="kept-manual-services"></div><button id="kept-continue">CONTINUE TO IMPORT ↗</button></section>
-      <div id="kept-skip-slot" hidden><button id="kept-skip">CLICK TO SKIP</button><span id="kept-skip-status" role="status" tabindex="-1" hidden></span></div>
-      <button id="kept-leave" aria-label="结束本次流程">结束本次流程</button>
+  <dialog id="kept-confirm" aria-labelledby="kept-confirm-title">
+    <h2 id="kept-confirm-title">Services 未准备</h2>
+    <p>跳过以下 Services 的 Paper。它们仍保留在 Kept。</p>
+    <ul id="kept-confirm-services"></ul>
+    <div class="workflow-actions">
+      <button id="kept-confirm-close" class="s-button" type="button">返回</button>
+      <button id="kept-confirm-login" class="s-button" type="button">Open Login</button>
+      <button id="kept-continue" class="s-button" type="button">Skip and Continue</button>
     </div>
   </dialog>
   <dialog id="run-view" aria-labelledby="run-title">

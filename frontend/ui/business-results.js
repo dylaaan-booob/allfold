@@ -13,7 +13,16 @@ export function preparationReason(reason) {
   return ({target_opened:'已观察到目标页面打开，不代表订阅或下载已验证。',
     manual_action_required:'需要在 BROWSER 中手动处理。',ambiguous_resource:'匹配到多个资源，需要人工确认。',
     unverified_official_page:'尚未确认官方资源页面。',resource_not_found:'未找到对应资源。',
-    navigation_failed:'目标页面未能打开。',timeout:'页面操作超时，后续队列已停止。',
-    institution_credentials_rejected:'机构认证失败，请在 Settings 检查凭据。',
-    carsi_session_expired:'CARSI 会话已失效，请在 BROWSER 重新登录。'})[reason] || '';
+    navigation_failed:'目标页面未能打开。',timeout:'页面操作超时。',
+    institution_credentials_rejected:'机构认证失败，请在 Login 检查凭据。',
+    carsi_session_expired:'CARSI 会话已失效，请重新运行 Login。'})[reason] || '';
+}
+
+export function zoteroKeyDetails(keys) {
+  if(!keys)return '';
+  return [
+    keys.parent_key && `Parent ${keys.parent_key}`,
+    keys.attachment_keys?.length && `Attachments ${keys.attachment_keys.join(', ')}`,
+    keys.note_keys?.length && `Notes ${keys.note_keys.join(', ')}`,
+  ].filter(Boolean).join(' · ');
 }

@@ -1,274 +1,342 @@
-"""One authenticated Electron connection and one in-flight browser operation.
+"""Multiplex independent native operations over one authenticated connection.
 
-No operation is replayed on disconnection. In particular a native save with a
-lost result is uncertain, even if the remote operation happened to finish.
+A lost result does not establish native settlement. Pending saves are never replayed.
 """
 from __future__ import annotations
+
 import asyncio
 import hmac
 import re
 import threading
 from collections.abc import Callable
-from uuid import uuid4
 from concurrent.futures import Future
+from dataclasses import dataclass, field
+from uuid import uuid4
+
 from fastapi import WebSocket, WebSocketDisconnect
-from allfold.integrations.cloudflare_solver import solve_cloudflare
+
 from allfold.application.browser_runtime import ElectronDisconnected
 from allfold.application.history import observe
 from allfold.browser_diagnostics import normalize_browser_diagnostic
 from allfold.identifiers import valid_doi
+from allfold.integrations.cloudflare_solver import solve_cloudflare
+
+
+_CONTROL_ACTIONS = {"diagnostics_reset", "cas_credentials", "zotero_local"}
+_CONTEXT_FIELDS = ("workflow_id", "task_id", "parent_task_id", "service_id", "paper_id")
+_SOCKET_ERRORS = (WebSocketDisconnect, OSError, RuntimeError)
+_RECEIVE_ERRORS = (*_SOCKET_ERRORS, ValueError, TimeoutError)
+
+
+@dataclass
+class _Operation:
+    id: str
+    action: str
+    result: asyncio.Future[dict]
+    progress: Callable | None
+    context: dict
+    import_identity: dict | None
+    stop: threading.Event = field(default_factory=threading.Event)
+    challenges: dict[str, threading.Event] = field(default_factory=dict)
+    lookup_requested: bool = False
+
+    def stop_callbacks(self) -> None:
+        self.stop.set()
+        for stop in self.challenges.values():
+            stop.set()
+
+    def envelope(self, message_type, **fields) -> dict:
+        return {"type": message_type, "id": self.id, "action": self.action, **fields}
 
 
 class ElectronBridge:
     def __init__(self, token: str, authority: str, *, cdp_url: str = "", diagnostics=None, openalex_pdf=None):
         self.diagnostics = diagnostics
         self.openalex_pdf = openalex_pdf
-        self._pending_import = None
-        self._lookup_stop = None
-        self._lookup_requested = False
-        self._pending_context = {}
         self._token = token
         self._authority = authority
         self._cdp_url = cdp_url
         self._socket: WebSocket | None = None
         self._loop: asyncio.AbstractEventLoop | None = None
-        self._pending: tuple[str, str, asyncio.Future, Callable | None] | None = None
-        self._challenge_stop: tuple[tuple, str, threading.Event] | None = None
+        self._pending: dict[str, _Operation] = {}
+        # The Pydoll adapter temporarily suppresses its process-wide raw logging.
+        self._solver_slot = asyncio.Lock()
+        self._send_lock = asyncio.Lock()
         self.closing = False
+        self._native_drained = False
         self.shutdown = None
 
     @property
     def connected(self) -> bool:
         return self._socket is not None and not self.closing
 
+    async def _send(self, socket: WebSocket, message: dict) -> None:
+        async with self._send_lock:
+            await socket.send_json(message)
+
     async def connect(self, socket: WebSocket) -> None:
-        if (self._socket is not None or self._pending is not None or self.closing
+        if (self._socket is not None or self._pending or self.closing
                 or socket.headers.get("host") != self._authority
                 or socket.headers.get("origin") is not None):
             await socket.close(code=1008)
             return
         await socket.accept()
-        task = None
-        challenge_task = None
-        lookup_task = None
+        drain = None
+        workers: set[asyncio.Task] = set()
+
+        def start_worker(coroutine):
+            task = asyncio.create_task(coroutine)
+            workers.add(task)
+            task.add_done_callback(workers.discard)
+
         try:
             hello = await asyncio.wait_for(socket.receive_json(), timeout=5)
             token = hello.get("token") if isinstance(hello, dict) else None
             if not isinstance(token, str) or not hmac.compare_digest(token, self._token):
                 await socket.close(code=1008)
                 return
-            # Recheck after handshake to avoid two simultaneous clients winning.
-            if self._socket is not None:
+            if self._socket is not None or self._pending or self.closing:
                 await socket.close(code=1008)
                 return
             self._socket, self._loop = socket, asyncio.get_running_loop()
             observe(self.diagnostics, "native_status", hello.get("diagnostics_status"))
-            await socket.send_json({"type": "ready", "log_level": getattr(self.diagnostics, "level", "info")})
+            await self._send(socket, {"type": "ready", "log_level": getattr(self.diagnostics, "level", "info")})
             while True:
                 message = await socket.receive_json()
                 if not isinstance(message, dict):
                     raise ValueError("Invalid Electron message")
-                if message.get("type") == "shutdown":
-                    if self._lookup_stop is not None:
-                        self._lookup_stop.set()
-                    if self._challenge_stop is not None:
-                        self._challenge_stop[2].set()
+                kind = message.get("type")
+                if kind == "shutdown":
                     if not self.closing:
                         self.closing = True
-                        task = asyncio.create_task(self._drain(socket))
+                        for pending in self._pending.values():
+                            pending.stop_callbacks()
+                        drain = asyncio.create_task(self._drain(socket))
                     continue
-                if message.get("type") == "cancel_cloudflare":
-                    challenge = self._challenge_stop
-                    if (challenge is not None and message.get("id") == challenge[0][0]
-                            and message.get("action") == challenge[0][1]
-                            and message.get("challenge_id") == challenge[1]):
-                        challenge[2].set()
+                request_id = message.get("id")
+                pending = self._pending.get(request_id) if isinstance(request_id, str) else None
+                if kind == "cancel_cloudflare":
+                    challenge_id = message.get("challenge_id")
+                    if (pending is not None and message.get("action") == pending.action
+                            and isinstance(challenge_id, str)):
+                        stop = pending.challenges.get(challenge_id)
+                        if stop is not None:
+                            stop.set()
                     continue
-                pending = self._pending
-                if (pending is None or message.get("id") != pending[0]
-                        or message.get("action") != pending[1]):
+                if pending is None or message.get("action") != pending.action or pending.result.done():
                     raise ValueError("Stale Electron result")
                 data = message.get("data")
                 if not isinstance(data, dict):
                     raise ValueError("Invalid Electron data")
-                if message.get("type") == "openalex_pdf":
-                    expected = self._pending_import
+                if kind == "openalex_pdf":
+                    expected = pending.import_identity
                     lookup_id = message.get("lookup_id")
-                    if (pending[1] != "import_paper" or self.openalex_pdf is None or expected is None
-                            or self._lookup_requested or self.closing or self._lookup_stop.is_set()
+                    if (self.openalex_pdf is None or expected is None or pending.lookup_requested
                             or not isinstance(lookup_id, str) or not re.fullmatch(r"[A-Za-z0-9]{1,64}", lookup_id)
                             or valid_doi(data.get("doi")) != expected["doi"]
                             or data.get("target") != expected["target"]
                             or not isinstance(data.get("parent_key"), str)
                             or not re.fullmatch(r"[23456789ABCDEFGHIJKLMNPQRSTUVWXYZ]{8}", data["parent_key"])):
                         raise ValueError("Invalid OpenAlex Import request")
-                    self._lookup_requested = True
-                    lookup_task = asyncio.create_task(self._lookup_pdf(socket, pending, lookup_id, expected["doi"], self._lookup_stop))
-                elif message.get("type") == "solve_cloudflare":
+                    if not pending.stop.is_set():
+                        pending.lookup_requested = True
+                        start_worker(self._lookup_pdf(socket, pending, lookup_id, expected["doi"]))
+                elif kind == "solve_cloudflare":
                     challenge_id = message.get("challenge_id")
                     url = data.get("url")
-                    if (not isinstance(challenge_id, str) or not challenge_id
-                            or not isinstance(url, str) or not url):
+                    target_id = data.get("target_id")
+                    if (not isinstance(challenge_id, str) or not re.fullmatch(r"[a-f0-9]{32}", challenge_id)
+                            or not isinstance(url, str) or not url.startswith(("https://", "http://"))
+                            or not isinstance(target_id, str) or not re.fullmatch(r"[A-Fa-f0-9]{32}", target_id)
+                            or challenge_id in pending.challenges or pending.action in _CONTROL_ACTIONS):
                         raise ValueError("Invalid challenge request")
-                    if challenge_task is not None and not challenge_task.done():
-                        if self._challenge_stop is not None and not self._challenge_stop[2].is_set():
-                            raise ValueError("Concurrent challenge request")
-                    stop = threading.Event()
-                    self._challenge_stop = pending, challenge_id, stop
-                    if challenge_task is not None and not challenge_task.done():
-                        # Await the actual worker, including cleanup; canceling to_thread is insufficient.
-                        await challenge_task
-                    if self._pending is not pending or pending[2].done() or self.closing or stop.is_set():
-                        stop.set()
-                        if self._challenge_stop is not None and self._challenge_stop[2] is stop:
-                            self._challenge_stop = None
-                        continue
-                    challenge_task = asyncio.create_task(
-                        self._solve_cloudflare(socket, pending, challenge_id, url, stop))
-                elif message.get("type") == "progress":
-                    if pending[3]:
-                        pending[3](data)
-                elif message.get("type") == "result" and not pending[2].done():
-                    if pending[1] not in {"diagnostics_reset", "cas_credentials", "zotero_local"}:
-                        observe(self.diagnostics, "native_status", data.get("diagnostics_status"))
-                        diagnostic = normalize_browser_diagnostic(data.get("diagnostic")) or {}
-                        parent = data.get("parent")
-                        outcome = parent.get("outcome") if isinstance(parent, dict) else data.get("outcome")
-                        if outcome is None:
-                            outcome = "failed" if diagnostic else "retrieved" if data.get("item") or data.get("image_base64") else "downloaded" if data.get("filename") else "queried" if type(data.get("total")) is int else "no_result"
-                        observe(self.diagnostics, "event", "task_finished", {**self._pending_context, **diagnostic, "outcome": outcome})
-                    pending[2].set_result(data)
+                    if not pending.stop.is_set():
+                        stop = pending.challenges[challenge_id] = threading.Event()
+                        start_worker(self._solve_cloudflare(socket, pending, challenge_id, url, target_id, stop))
+                elif kind == "progress":
+                    if pending.progress:
+                        pending.progress(data)
+                elif kind == "result":
+                    self._observe_result(pending, data)
+                    pending.stop_callbacks()
+                    pending.result.set_result(data)
                 else:
                     raise ValueError("Unexpected Electron message")
-        except (WebSocketDisconnect, ValueError, TimeoutError, RuntimeError):
+        except _RECEIVE_ERRORS:
             pass
         finally:
-            if self._lookup_stop is not None:
-                self._lookup_stop.set()
-            if self._challenge_stop is not None:
-                self._challenge_stop[2].set()
             if self._socket is socket:
                 self._socket = None
-                if self._pending is not None and not self._pending[2].done() and self._pending[1] not in {"diagnostics_reset", "cas_credentials", "zotero_local"}:
-                    observe(self.diagnostics, "event", "bridge_disconnected", {**self._pending_context, "code": "bridge_disconnected", "outcome": "uncertain"})
-                    observe(self.diagnostics, "native_status", {"available": False, "incomplete": True})
-                if self._pending is not None and self._pending[3]:
-                    self._pending[3]({"message": "Electron disconnected; waiting for application shutdown, no replay"})
+                for pending in self._pending.values():
+                    pending.stop_callbacks()
+                    if pending.result.done():
+                        continue
+                    if pending.action not in _CONTROL_ACTIONS:
+                        observe(self.diagnostics, "event", "bridge_disconnected", {
+                            **pending.context, "code": "bridge_disconnected", "outcome": "uncertain"})
+                        observe(self.diagnostics, "native_status", {"available": False, "incomplete": True})
+                    if pending.progress:
+                        pending.progress({"message": "Electron disconnected; waiting for application shutdown, no replay"})
+                if self._native_drained:
+                    self.finish_disconnected()
             try:
                 await socket.close()
-            except (WebSocketDisconnect, RuntimeError):
+            except _SOCKET_ERRORS:
                 pass
-            if challenge_task is not None:
-                await challenge_task
-            if lookup_task is not None:
-                await lookup_task
-            if task is not None:
-                await task
+            if workers:
+                await asyncio.gather(*workers)
+            if drain is not None:
+                # Uvicorn waits for this socket handler before lifespan teardown.
+                # Leave pending native results for teardown to mark uncertain once
+                # Main has finished its escaped saves and stopped this process.
+                if drain.cancel():
+                    await asyncio.gather(drain, return_exceptions=True)
+                else:
+                    await drain
 
-    async def _lookup_pdf(self, socket, pending, lookup_id, doi, stop):
+    def _observe_result(self, pending: _Operation, data: dict) -> None:
+        if pending.action in _CONTROL_ACTIONS:
+            return
+        observe(self.diagnostics, "native_status", data.get("diagnostics_status"))
+        diagnostic = normalize_browser_diagnostic(data.get("diagnostic")) or {}
+        parent = data.get("parent")
+        outcome = parent.get("outcome") if isinstance(parent, dict) else data.get("outcome")
+        if outcome is None:
+            outcome = ("failed" if diagnostic else "retrieved" if data.get("item") or data.get("image_base64")
+                       else "downloaded" if data.get("filename") else "queried" if type(data.get("total")) is int
+                       else "no_result")
+        observe(self.diagnostics, "event", "task_finished", {**pending.context, **diagnostic, "outcome": outcome})
+
+    async def _callback(self, socket, pending: _Operation, stop: threading.Event, message: dict) -> None:
+        try:
+            async with self._send_lock:
+                if (not stop.is_set() and not pending.stop.is_set() and self._socket is socket
+                        and self._pending.get(pending.id) is pending and not pending.result.done()):
+                    await socket.send_json(message)
+        except _SOCKET_ERRORS:
+            pass
+
+    async def _lookup_pdf(self, socket, pending: _Operation, lookup_id: str, doi: str) -> None:
+        if pending.stop.is_set():
+            return
         try:
             data = await asyncio.to_thread(self.openalex_pdf, doi)
         except Exception:
             data = {"candidates": [], "diagnostic": {"code": "openalex_lookup_failed"}}
-        if (not stop.is_set() and not self.closing and self._socket is socket
-                and self._pending is pending and not pending[2].done()):
-            try:
-                await socket.send_json({"type": "openalex_pdf_result", "id": pending[0],
-                    "action": pending[1], "lookup_id": lookup_id, "data": data})
-            except (WebSocketDisconnect, OSError, RuntimeError):
-                pass
+        await self._callback(socket, pending, pending.stop, pending.envelope(
+            "openalex_pdf_result", lookup_id=lookup_id, data=data))
 
-    async def _solve_cloudflare(self, socket: WebSocket, pending: tuple,
-                                challenge_id: str, url: str, stop: threading.Event) -> None:
-        # Keep receiving cancel/shutdown messages while the synchronous driver runs.
-        data = await asyncio.to_thread(solve_cloudflare, self._cdp_url, url, stop)
-        # The worker is settled before its result is sent; a subsequent request may now wait for this send.
-        if self._challenge_stop is not None and self._challenge_stop[2] is stop:
-            self._challenge_stop = None
-        if (not stop.is_set() and self._socket is socket
-                and self._pending is pending and not pending[2].done()):
-            try:
-                await socket.send_json({"type": "solve_cloudflare_result", "id": pending[0],
-                    "action": pending[1], "challenge_id": challenge_id, "data": data})
-            except (WebSocketDisconnect, OSError, RuntimeError):
-                pass
+    async def _solve_cloudflare(self, socket, pending: _Operation, challenge_id: str,
+                                url: str, target_id: str, stop: threading.Event) -> None:
+        try:
+            # Wait off the receive loop. Holding the slot until the worker returns
+            # prevents cleanup or logger restoration from crossing another solve.
+            async with self._solver_slot:
+                if stop.is_set():
+                    return
+                data = await asyncio.to_thread(solve_cloudflare, self._cdp_url, url, stop, target_id=target_id)
+            await self._callback(socket, pending, stop, pending.envelope(
+                "solve_cloudflare_result", challenge_id=challenge_id, data=data))
+        finally:
+            pending.challenges.pop(challenge_id, None)
+
+    def native_drained(self):
+        """Main's fallback shutdown confirms that no issued native write is still active."""
+        def confirm():
+            self.closing = True
+            self._native_drained = True
+            self.finish_disconnected()
+
+        if self._loop is not None:
+            self._loop.call_soon_threadsafe(confirm)
 
     def finish_disconnected(self):
-        """Called only by process teardown after Main has waited for the native Local API save.
-
-        A dropped transport cannot prove a native operation settled. Keep the
-        pending worker (and its Workspace lock) until controlled shutdown.
-        """
-        if self._socket is None and self._pending is not None and not self._pending[2].done():
-            self._pending[2].set_exception(ElectronDisconnected("Electron disconnected; inspect Zotero before retry"))
+        """Process teardown calls this after Main has waited for native saves."""
+        if self._socket is None:
+            for pending in self._pending.values():
+                if not pending.result.done():
+                    pending.result.set_exception(ElectronDisconnected(
+                        "Electron disconnected; inspect Zotero before retry"))
 
     async def _drain(self, socket: WebSocket):
         if self.shutdown:
             await self.shutdown()
         try:
-            await socket.send_json({"type": "shutdown_ready"})
-        except (WebSocketDisconnect, RuntimeError):
+            await self._send(socket, {"type": "shutdown_ready"})
+        except _SOCKET_ERRORS:
             pass
 
     async def _execute(self, action: str, data: dict, progress: Callable | None) -> dict:
-        if not self.connected:
+        socket = self._socket
+        if socket is None or self.closing:
             raise ElectronDisconnected("Electron runtime is unavailable")
-        if self._pending is not None:
-            raise RuntimeError("A browser request is already in flight")
         request_id = uuid4().hex
         result = asyncio.get_running_loop().create_future()
-        self._pending = request_id, action, result, progress
-        self._lookup_requested = False
-        self._lookup_stop = threading.Event()
         target = data.get("zotero_target")
-        self._pending_import = ({"doi": valid_doi(data.get("doi")), "target": {
+        import_identity = ({"doi": valid_doi(data.get("doi")), "target": {
             key: target.get(key) for key in ("server_id", "library_type", "library_id", "collection_key")}}
             if action == "import_paper" and isinstance(target, dict) else None)
-        self._pending_context = {key: data[key] for key in ("workflow_id", "task_id", "parent_task_id", "service_id", "paper_id") if key in data}
+        context = {key: data[key] for key in _CONTEXT_FIELDS if key in data}
         scope = data.get("service_scope")
         if isinstance(scope, dict):
-            self._pending_context.update({key:scope[key] for key in ("config_revision", "user_state_revision") if key in scope})
-        self._pending_context.update(request_id=request_id, action=action)
-        if action not in {"diagnostics_reset", "cas_credentials", "zotero_local"}:
+            context.update({key: scope[key] for key in ("config_revision", "user_state_revision") if key in scope})
+        context.update(request_id=request_id, action=action)
+        pending = self._pending[request_id] = _Operation(request_id, action, result, progress, context, import_identity)
+        if action not in _CONTROL_ACTIONS:
             data = {**data, "log_level": getattr(self.diagnostics, "level", "info")}
-            observe(self.diagnostics, "event", "task_started", self._pending_context)
+            observe(self.diagnostics, "event", "task_started", context)
         try:
-            await self._socket.send_json({"type": "execute", "id": request_id, "action": action, "data": data})
-            # An active native save must settle. Timeout must not release Workspace ownership.
+            try:
+                await self._send(socket, pending.envelope("execute", data=data))
+            except _SOCKET_ERRORS:
+                # Dispatch may have reached Main. Trigger controlled teardown and
+                # leave this request pending until native writes have drained.
+                try:
+                    await socket.close()
+                except _SOCKET_ERRORS:
+                    pass
             return await result
-        except (WebSocketDisconnect, OSError, RuntimeError) as error:
-            raise ElectronDisconnected("Electron result unavailable; no automatic replay") from error
         finally:
-            if self._lookup_stop is not None:
-                self._lookup_stop.set()
-            self._pending_import = None
-            if self._challenge_stop is not None and self._challenge_stop[0] is self._pending:
-                self._challenge_stop[2].set()
-            self._pending = None
-            self._pending_context = {}
+            pending.stop_callbacks()
+            self._pending.pop(request_id, None)
 
     def execute(self, action: str, data: dict, progress: Callable | None = None) -> Future[dict]:
-        """Register from a business worker; await the returned Future outside its stop mutex."""
+        """Register from a business worker; await the result outside its stop mutex."""
         if self._loop is None:
             raise ElectronDisconnected("Electron has not connected")
         return asyncio.run_coroutine_threadsafe(self._execute(action, data, progress), self._loop)
 
-    async def _cancel_current(self) -> bool:
-        pending = self._pending
-        if pending is None or self._socket is None:
+    async def _cancel(self, workflow_id: str | None, task_id: str | None) -> bool:
+        pending = [operation for operation in self._pending.values() if not operation.result.done()
+                   and (workflow_id is None or operation.context.get("workflow_id") == workflow_id)
+                   and (task_id is None or operation.context.get("task_id") == task_id)]
+        for operation in pending:
+            operation.stop_callbacks()
+        socket = self._socket
+        if socket is None:
             return False
-        try:
-            await self._socket.send_json({"type": "cancel", "id": pending[0], "action": pending[1]})
-        except (WebSocketDisconnect, OSError, RuntimeError):
-            return False
-        return True
+        sent = False
+        for operation in pending:
+            if operation.result.done():
+                continue
+            try:
+                await self._send(socket, operation.envelope("cancel"))
+                sent = True
+            except _SOCKET_ERRORS:
+                break
+        return sent
 
-    def cancel_current(self):
-        """Stop pre-save work; Main never aborts an escaped native save."""
-        challenge = self._challenge_stop
-        if self._lookup_stop is not None:
-            self._lookup_stop.set()
-        if challenge is not None and challenge[0] is self._pending:
-            challenge[2].set()
+    def _schedule_cancel(self, workflow_id: str | None = None, task_id: str | None = None) -> Future[bool] | None:
         if self._loop is not None:
-            return asyncio.run_coroutine_threadsafe(self._cancel_current(), self._loop)
+            return asyncio.run_coroutine_threadsafe(self._cancel(workflow_id, task_id), self._loop)
+        return None
+
+    def cancel_current(self) -> Future[bool] | None:
+        """Stop every active request under the current Browser workflow owner."""
+        return self._schedule_cancel()
+
+    def cancel_workflow(self, workflow_id: str) -> Future[bool] | None:
+        return self._schedule_cancel(workflow_id)
+
+    def cancel_task(self, workflow_id: str, task_id: str) -> Future[bool] | None:
+        return self._schedule_cancel(workflow_id, task_id)

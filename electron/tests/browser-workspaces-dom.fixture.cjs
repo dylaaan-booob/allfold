@@ -20,8 +20,9 @@ const settings={csrf_token:'fixture',issues:[],covers:{},cover_search,saved_work
 const paper={id:'paper-1',title:'Synthetic kept paper',doi:'10.5555/presentation',publication_date:'2026-10-01',status:'kept',abstract:'Synthetic fixture only',authors:[],enrichPhase:'Idle'};
 const record={key:'0000-0001',...journals[0],labels:[],papers:[]};
 const workspace={csrf_token:'fixture',import_token:'fixture',issues:[],counts:{candidates:0,active_journals:1},subjects:[{name:'Synthetic Group',journals:[record]}],kept:{papers:[{paper,journal:record}],journals:[record],services,settings:{},titles:{'paper-1':paper.title}}};
-const queue={services:[{id:'all',name:'All Services',kept:1,eligible:1},{id:serviceId,name:services[0].name,kept:1,eligible:1},{id:'unassigned',name:'Unassigned',kept:0,eligible:0},{id:'ambiguous',name:'Ambiguous',kept:0,eligible:0}],papers:[{paper_id:'paper-1',title:paper.title,doi:paper.doi,service_id:serviceId,assignment:'assigned',reason:''}],import_token:'fixture'};
-let keptState={active:false,phase:'idle',navigation:null,can_continue:false,can_cancel:false},runActive=false;
+const queue={unprepared_services:[services[0]],services:[{id:'all',name:'All Services',kept:1,eligible:1},{id:serviceId,name:services[0].name,kept:1,eligible:1},{id:'unassigned',name:'Unassigned',kept:0,eligible:0},{id:'ambiguous',name:'Ambiguous',kept:0,eligible:0}],papers:[{paper_id:'paper-1',title:paper.title,doi:paper.doi,service_id:serviceId,assignment:'assigned',reason:''}],import_token:'fixture'};
+let loginState={active:false,phase:'idle',scope,carsi:{status:'Not prepared'},services:services.map(service=>({...service,preparation:{status:'Not prepared'}}))};
+let keptState={active:false,phase:'idle',navigation:null,can_cancel:false},runActive=false;
 const runData=()=>({active:runActive,snapshot:{status:runActive?'RUNNING':'IDLE',provider:'integrated',task_id:'run-a',browser_active:runActive,waiting_for_user:runActive},progress:{stage_label:'Waiting for synthetic challenge',elapsed_text:'2s',announcement_message:'Local fixture only'},providers:Object.fromEntries(['integrated','wos'].map(id=>[id,{enabled:true,message:'',snapshot:{status:id==='wos'&&runActive?'RUNNING':'IDLE'},result_summary:null}]))});
 const requests=[],workspaceReads={started:0,inFlight:0,lastCandidateIds:[]};
 const challenge=`<!doctype html><html><head><meta charset="utf-8"><style>*{box-sizing:border-box}body{margin:0;padding:10px;font:16px/1.4 sans-serif;background:#f2f5fb;color:#192942}h1{font-size:18px;margin:0 0 8px}.box{border:2px solid #4a68a0;background:white;padding:8px}label{display:block;margin:4px 0}input,button{font:inherit;min-height:30px;max-width:100%}#result{font-weight:bold}#long{height:700px;background:linear-gradient(#edf2fa,#c5d3e8)}</style></head><body><h1>Local synthetic challenge</h1><form class="box"><label><input id="human" type="checkbox"> Check square</label><label>Code <input id="code" size="5"></label><button id="verify">Verify code</button><output id="result">Waiting</output></form><div id="long">Scroll to final control</div><button id="bottom">Final control</button><p id="bottom-result"></p><script>window.fixtureLoad=crypto.randomUUID();document.cookie='synthetic_session=preserved; SameSite=Lax';document.querySelector('form').onsubmit=event=>{event.preventDefault();result.textContent=human.checked&&code.value==='42'?'Synthetic challenge complete':'Try code 42'};bottom.onclick=()=>document.getElementById('bottom-result').textContent='Clicked';</script></body></html>`;
@@ -33,10 +34,13 @@ const server=http.createServer(async(req,res)=>{
   if(route==='/checkbox-frame'){res.writeHead(200,{'Content-Type':'text/html'});res.end('<input type="checkbox">');return;}
   if(route.startsWith('/api/')||route==='/settings/covers/search'){
     let body='';for await(const chunk of req)body+=chunk;requests.push({route,body:body?JSON.parse(body):null});
-    if(route==='/api/kept-workflow/start')keptState={workflow_id:'kept-a',generation:7,planned_total:3,batch:{total:3,task_id:'import-a',results:[{paper_id:'previous-1',service_id:serviceId,parent_outcome:'confirmed',outcome:'exported'},{paper_id:'previous-2',service_id:serviceId,parent_outcome:'uncertain',outcome:'stopped'}]},service_id:serviceId,service_name:services[0].name,preparation_task_id:'prepare-a',phase:'waiting_for_user',active:true,can_continue:false,can_cancel:true,waiting_for_login:true,mode:'prepare_import',settings:{display_name:'Synthetic researcher',auto_import_after_preparation:false},preparation:{services,manual_services:[],results:[]},message:'Local synthetic challenge needs manual input'};
-    if(route==='/api/kept-workflow/cancel')keptState={...keptState,phase:'interrupted',active:false,can_cancel:false,waiting_for_login:false,navigation:'kept'};
-    if(route==='/api/kept-workflow/acknowledge')keptState={active:false,phase:'idle',navigation:null,can_continue:false,can_cancel:false};
-    const data=route==='/api/ui-next/workspace'?workspace:route==='/api/ui-next/settings'?settings:route==='/api/kept-workflow/queue'?queue:
+    if(route==='/api/login/start')loginState={...loginState,phase:'completed',confirmation_workflow_id:'login-a',
+      services:services.map(service=>({...service,preparation:{status:'Needs attention',reason:'manual_action_required'}}))};
+    if(route==='/api/kept-workflow/start')keptState={workflow_id:'kept-a',generation:7,planned_total:1,
+      batch:{total:1,task_id:'import-a',results:[{paper_id:'paper-1',service_id:serviceId,
+        parent_outcome:'not_saved',outcome:'skipped',reason:'Unprepared Service skipped'}]},
+      phase:'completed',active:false,can_cancel:false,message:'Local synthetic Import settled'};
+    const data=route.startsWith('/api/login/')?loginState:route==='/api/ui-next/workspace'?workspace:route==='/api/ui-next/settings'?settings:route==='/api/kept-workflow/queue'?queue:
       route==='/api/ui-next/browser-services'?{scope,services}:route.startsWith('/api/ui-next/run')&&!route.endsWith('expression')?runData():
       route==='/api/ui-next/run-expression'?{providers:Object.fromEntries([...settings.values.provider_order,'integrated'].map(id=>[id,{expression:'causal',error:null}]))}:
       route==='/api/kept-workflow/state'||route==='/api/kept-workflow/start'||route==='/api/kept-workflow/cancel'||route==='/api/kept-workflow/acknowledge'?keptState:route==='/settings/covers/search'?cover_search:
@@ -67,45 +71,88 @@ app.whenReady().then(async()=>{
     browser=new BrowserRuntime({hostWindow:win,isTaskRunning:()=>keptState.active||runActive});await browser.ready;const update=browser.setPresentation.bind(browser);browser.setPresentation=value=>{nativeUpdates.push({...value});return update(value)};
     for(const partition of [win.webContents.session,browser.partition])partition.webRequest.onBeforeRequest({urls:['http://*/*','https://*/*']},(details,callback)=>callback({cancel:new URL(details.url).origin!==origin}));
     ipcMain.handle('cas:status',()=>({available:false,configured:false,revision:'fixture'}));disposeIPC=installBrowserIPC({ipcMain,hostWindow:win,origin,browser});await win.loadURL(origin+'/');win.show();app.focus({steal:true});win.focus();await ready(()=>Promise.resolve(win.isFocused()),'fixture Window focus');
-    await ready(()=>host("window.uiWorkspace?.ready()&&!document.getElementById('kept-open').disabled&&document.querySelectorAll('#s-journals [data-journal]').length===1"),'shipped UI ready');
+    await ready(()=>host("window.uiWorkspace?.ready()&&!document.getElementById('settings-open').disabled&&document.querySelectorAll('#s-journals [data-journal]').length===1"),'shipped UI ready');
+    assert(await host("Array.from(document.querySelectorAll('.view-nav > button .nav-label'),node=>node.textContent).join('|')==='WORKSPACE|WORKFLOWS|JOURNALS|SETTINGS'"),'top-level Workflows navigation');
+    const type=async value=>host(`Object.assign(document.getElementById('s-search'),{value:${JSON.stringify(value)}}).dispatchEvent(new Event('input'))`);
+    const search=async value=>{await click(win.webContents,'#search-open');await ready(()=>host("document.activeElement.id==='s-search'"),'Quick Open focus');await type(value);};
+    await click(win.webContents,'#settings-open');
+    await search('Synthetic');
+    for(const kind of ['Paper','Journal','Service']){
+      await ready(()=>host(`Array.from(document.querySelectorAll('#workspace-search-results [role=option] small')).some(node=>node.textContent.startsWith('${kind}'))`),kind+' in global Search');
+    }
+    await type('> History');
+    assert(await host("document.querySelectorAll('#workspace-search-results [role=option]').length===1"),'command search mixed in other results');
+    await key(win.webContents,'Enter');
+    await ready(()=>host("document.getElementById('history-dialog').open"),'Search runs a registered command');
+    await click(win.webContents,'#history-close');
+    await search('Synthetic Journal 0000-0001');await key(win.webContents,'Enter');
+    await ready(()=>host("workspaceNavigation.current()==='journals'&&!document.querySelector('#s-journals-page .functional-sidebar').hidden"),'journal search opens Details');
+    await host("window.addEventListener('workflow-service-selected',event=>window.selectedService=event.detail.serviceId)");
+    await search('Synthetic Service A');await key(win.webContents,'Enter');
+    await ready(()=>host(`workspaceNavigation.current()==='login'&&window.selectedService===${JSON.stringify(serviceId)}`),'service search opens Login');
+    await ready(()=>host(`document.activeElement.dataset.serviceId===${JSON.stringify(serviceId)}`),'Service result focuses its Login row');
+    await click(win.webContents,'#login-start');
+    await ready(()=>host("document.getElementById('login-services').textContent.includes('Needs attention')"),'Login presents the Service result');
+    assert(await host("!document.getElementById('login-confirm').hidden && !document.querySelector('#login-services [data-login-action=page]')"),'Login exposes one batch confirmation');
+    assert(requests.filter(request=>request.route==='/api/login/start').length===1,'Login did not submit one explicit task');
+    await search('Synthetic kept paper');await key(win.webContents,'Enter');
+    await ready(()=>host("workspaceNavigation.current()==='workspace'&&document.getElementById('view-paper-title').textContent==='Synthetic kept paper'"),'paper search opens Reader');
     const background=browser.createTab({present:false});await background.view.webContents.loadURL(origin+'/background-layout');
     assert(await background.view.webContents.executeJavaScript('(()=>{const frame=document.querySelector("iframe"),box=frame.contentDocument.querySelector("input"),rect=box.getBoundingClientRect();return innerWidth>0&&innerHeight>0&&frame.contentDocument.elementFromPoint(rect.x+rect.width/2,rect.y+rect.height/2)===box;})()'),'background responsive checkbox has no usable viewport');
     assert(browser.selected===null&&!browser.presentation.mounted,'background layout selected or presented a Page');await browser.command({action:'close',id:background.id});
     tab=browser.createTab({present:false});await tab.view.webContents.loadURL(origin+'/challenge');const id=tab.id,session=tab.view.webContents.session,load=await page('fixtureLoad');
-    await click(win.webContents,'#kept-open');await ready(()=>host("workspaceNavigation.current()==='kept'&&document.querySelectorAll('#kept-statistics tbody tr').length===4"),'Kept Queue');await capture('shipped-wide-queue');
-    assert(await host("document.getElementById('kept-zotero-target').getClientRects().length>0"),'Queue Zotero target is not visible');
-    await click(win.webContents,'#kept-browser-open');let rect=await measured('shipped wide Compact');assert(await host("document.getElementById('kept-zotero-target').getClientRects().length===0"),'Zotero target consumes Browser viewport height');assert(rect.width>=320&&rect.height>=299&&rect.height<=300,'wide Compact dimensions '+JSON.stringify(rect));await completeChallenge();await capture('shipped-wide-compact');
-    await click(win.webContents,'#browser-focus');const wideFocus=await measured('shipped wide Focus');assert(wideFocus.height>rect.height,'wide Focus did not expand');await capture('shipped-wide-focus');
-    await click(win.webContents,'#browser-tools-toggle');const withTools=await measured('shipped wide Focus tools');assert(withTools.height<wideFocus.height&&await host("!document.getElementById('browser-address').hidden"),'Focus tools did not reveal address');await click(win.webContents,'#browser-tools-toggle');await click(win.webContents,'#browser-compact');
-    await size(600,480);rect=await measured('shipped 600x480 Compact');assert(rect.width>=300&&rect.height>=120,'600x480 Compact unusable '+JSON.stringify(rect));await page("code.value='' ");await completeChallenge();await capture('shipped-600x480-compact');
-    await click(win.webContents,'#browser-focus');await measured('shipped 600x480 Focus');await capture('shipped-600x480-focus');
-    tab.view.webContents.sendInputEvent({type:'mouseWheel',x:100,y:60,deltaY:-650,deltaX:0,canScroll:true});await ready(()=>page('scrollY>100'),'actual native scroll');await page("document.getElementById('bottom').scrollIntoView()");await click(tab.view.webContents,'#bottom');assert(await page("document.getElementById('bottom-result').textContent==='Clicked'"),'scroll control');
-    await click(win.webContents,'#kept-directory-toggle');await ready(()=>Promise.resolve(browser.presentation.suspended&&!browser.presentation.mounted),'actual Kept Flyout');await capture('shipped-600x480-flyout');await key(win.webContents,'Escape');await ready(()=>Promise.resolve(!!browser.presentation.mounted),'Flyout restore');
-    await click(win.webContents,'#kept-workspace [data-sidebar-view="workflow"]');await ready(()=>Promise.resolve(browser.presentation.suspended&&!browser.presentation.mounted),'actual Kept Overlay Sidebar');await capture('shipped-600x480-sidebar');await click(win.webContents,'#kept-sidebar [data-sidebar-close]');await ready(()=>Promise.resolve(!!browser.presentation.mounted),'Sidebar restore');
-    await click(win.webContents,'#history-open');await ready(()=>Promise.resolve(browser.presentation.suspended&&!browser.presentation.mounted),'actual History dialog');await capture('shipped-600x480-dialog');await click(win.webContents,'#history-close');await ready(()=>Promise.resolve(!!browser.presentation.mounted),'History restore');
-    win.webContents.setZoomFactor(1.25);await size(600,480);rect=await measured('shipped 600x480 Zoom 1.25 Focus');assert(rect.height>=100&&rect.width>=300,'zoomed actual Kept viewport unusable '+JSON.stringify(rect));await page("code.value='' ");await completeChallenge();await page('scrollTo(0,0)');await capture('shipped-600x480-zoom125-complete');
-    await click(win.webContents,'#browser-compact');rect=await measured('shipped 600x480 Zoom 1.25 Compact');assert(rect.height>=100,'zoomed Compact too short '+JSON.stringify(rect));await page("code.value='' ");await completeChallenge();await capture('shipped-600x480-zoom125-compact-complete');
-    await click(win.webContents,'#browser-tools-toggle');assert(await host("document.getElementById('browser-address').hidden"),'constrained TOOLS did not collapse');
-    await click(win.webContents,'#browser-tools-toggle');assert(await host("!document.getElementById('browser-address').hidden"),'constrained TOOLS did not expand');await measured('shipped constrained tools restored');
-    await click(win.webContents,'#browser-return');assert(await host("!document.getElementById('kept-queue-body').hidden&&document.activeElement.id==='kept-browser-open'"),'actual Queue return focus');
-    win.webContents.setZoomFactor(1);await size(1200,800);await click(win.webContents,'#kept-directory-toggle');await click(win.webContents,`#kept-service-list [data-service-id="${serviceId}"]`);
-    browser.beginOperation(new AbortController().signal,{workflow_id:'kept-a',task_id:'prepare-a',request_id:'request-kept',service_id:serviceId,service_scope:scope});browser.associatePage(tab,{role:'service-resource'});browser.bindTaskPage(tab);
-    await click(win.webContents,'#kept-start');await ready(()=>host("document.getElementById('kept-flow').open&&!document.getElementById('kept-task-page').hidden"),'actual Kept fullscreen task');await click(win.webContents,'#kept-task-page');await click(win.webContents,'#browser-focus');await measured('shipped Kept fullscreen handoff');
-    assert(browser.selected===tab&&await host("document.getElementById('kept-flow').open&&getComputedStyle(document.getElementById('kept-flow')).visibility==='hidden'&&document.getElementById('kept-scope-status').textContent.includes('Synthetic Service A')"),'Kept task host identity / occlusion');await capture('shipped-kept-fullscreen-handoff');
-    await click(win.webContents,'#browser-return');await ready(()=>host("document.getElementById('kept-flow').open&&getComputedStyle(document.getElementById('kept-flow')).visibility==='visible'&&document.activeElement.id==='kept-task-page'&&!document.getElementById('kept-leave').disabled"),'Kept fullscreen task return rights/focus');
-    assert(requests.filter(request=>request.route==='/api/kept-workflow/start').length===1,'presentation restarted Kept task');
-    await host("localStorage.setItem('allfold.ui.fullscreen-disabled','true')");await win.reload();await ready(()=>host("workspaceNavigation.current()==='kept'&&!document.getElementById('kept-flow').open&&!document.getElementById('kept-inline').hidden"),'restored inline Kept task');
-    win.webContents.setZoomFactor(1.25);await size(600,480);await capture('shipped-inline-before-handoff');await click(win.webContents,'#kept-task-page');rect=await measured('shipped 600x480 Zoom 1.25 inline task Focus');assert(rect.height>=100,'inline manual controls crowd native viewport '+JSON.stringify(rect));
-    assert(await host("!document.getElementById('kept-leave').disabled&&!document.getElementById('kept-inline').hidden"),'inline manual controls hidden');assert(await host("document.querySelector('.kept-scope-counts').textContent.includes('计划 3 · 已处理 2 · 父条目确认 1 · 待处理 1')"),'actual batch counts not visible');await click(win.webContents,'.kept-scope-counts');if(await host("document.querySelector('.kept-scope-counts').scrollWidth>document.querySelector('.kept-scope-counts').clientWidth")){await key(win.webContents,'End');await key(win.webContents,'ArrowRight');assert(await host("document.querySelector('.kept-scope-counts').scrollLeft>0"),'counter row not keyboard scrollable');}await page("code.value='' ");await completeChallenge();await capture('shipped-600x480-zoom125-inline-complete');await click(win.webContents,'#browser-return');
-    await click(win.webContents,'#kept-leave');await ready(()=>host('!workspaceArray.workflowBusy()'),'Kept cancellation and acknowledgement');
-    const cancellation=requests.find(request=>request.route==='/api/kept-workflow/cancel');assert(cancellation?.body.workflow_id==='kept-a'&&cancellation.body.generation===7,'return changed Kept cancellation identity');
-    await host("localStorage.setItem('allfold.ui.fullscreen-disabled','false')");win.webContents.setZoomFactor(1);await size(1200,800);
-    keptState={active:false,phase:'idle',navigation:null,can_continue:false,can_cancel:false};browser.endTask();runActive=true;browser.beginOperation(new AbortController().signal,{workflow_id:'run-a',task_id:'prepare-wos',request_id:'request-run'});browser.associatePage(tab,{role:'wos-query'});browser.bindTaskPage(tab);await win.reload();
-    await ready(()=>host("document.getElementById('run-view').open&&!document.querySelector('.run-task-page').hidden"),'actual restored Run fullscreen');assert(await host("workspaceNavigation.current()==='run'"),'restored Run fullscreen did not enter Run workspace');await click(win.webContents,'.run-task-page');await measured('shipped Run fullscreen handoff');
-    assert(await host("document.getElementById('browser-pane').dataset.source==='run'&&document.getElementById('browser-pane').dataset.mode==='focus'"),'actual Run handoff did not request Run Focus host');assert(browser.selected===tab,'Run retargeted unrelated task page');await capture('shipped-run-fullscreen-handoff');
-    await click(win.webContents,'#browser-return');assert(await host("document.getElementById('run-view').open&&getComputedStyle(document.getElementById('run-view')).visibility==='visible'&&document.activeElement.classList.contains('run-task-page')&&!document.getElementById('run-wos-cancel').disabled"),'Run fullscreen return rights/focus');
-    assert(tab.id===id&&tab.view.webContents.session===session&&await page('fixtureLoad')===load,'actual workspace presentation recreated native Page/Session');assert((await session.cookies.get({url:origin})).some(cookie=>cookie.name==='synthetic_session'),'actual workspace presentation lost Cookie');
-    runActive=false;await ready(()=>host('!uiRun.active()'),'Run terminal state');browser.endTask();
+    const sameSite=browser.createTab({present:false});await sameSite.view.webContents.loadURL(origin+'/challenge');
+    await sameSite.view.webContents.executeJavaScript("document.title='Unassigned Local Page'");
+    await browser.runTask(new AbortController().signal,{workflow_id:'login-a',task_id:'prepare-a',request_id:'request-login',service_id:serviceId,service_scope:scope},
+      ()=>browser.associatePage(tab,{role:'service-target'}));
+    const portal=browser.createTab({present:false});
+    await browser.runTask(new AbortController().signal,{workflow_id:'login-a',task_id:'carsi-a',request_id:'request-carsi'},
+      ()=>browser.associatePage(portal,{role:'carsi-portal'}));
+    await page("document.title='Synthetic Service Page'");
+    await search('Synthetic Service Page');await key(win.webContents,'Enter');
+    let rect=await measured('shipped wide Focus');
+    assert(browser.selected===tab&&rect.width>=700&&rect.height>=400,'Search did not mount the selected tab in Focus');
+    await completeChallenge();await capture('shipped-wide-focus');
+    await click(win.webContents,'#browser-tabs-toggle');await ready(()=>Promise.resolve(browser.presentation.suspended&&!browser.presentation.mounted),'grouped Tabs flyout');
+    const groups=await host("Array.from(document.querySelectorAll('#browser-tabs details > summary'),node=>node.textContent)");
+    assert(groups.join('|')==='CARSI|Synthetic Service A|Other','Tabs did not group by saved identity and role: '+groups.join('|'));
+    assert(await host(`document.querySelector('#browser-tabs [data-group-key="other"] [data-page-id="${sameSite.id}"]')!==null`),'ordinary tab was classified by its URL');
+    const selectedGroup=`#browser-tabs [data-service-id="${serviceId}"]`;
+    await click(win.webContents,selectedGroup+' > summary');
+    assert(await host(`!document.querySelector('${selectedGroup}').open`),'Service group did not collapse');
+    await key(win.webContents,'Escape');
+    await ready(()=>Promise.resolve(!!browser.presentation.mounted),'Tabs dismissal restores native Page');
+    assert(await host("document.activeElement.id==='browser-tabs-toggle'"),'Tabs dismissal did not restore trigger focus');
+    await click(win.webContents,'#search-open');await ready(()=>Promise.resolve(browser.presentation.suspended&&!browser.presentation.mounted),'Search suspends native Page');
+    await capture('shipped-quick-open');await key(win.webContents,'Escape');await ready(()=>Promise.resolve(!!browser.presentation.mounted),'Search restores native Page');
+    await click(win.webContents,'#history-open');await ready(()=>Promise.resolve(browser.presentation.suspended&&!browser.presentation.mounted),'History suspends native Page');
+    await click(win.webContents,'#history-close');await ready(()=>Promise.resolve(!!browser.presentation.mounted),'History restores native Page');
+    win.webContents.setZoomFactor(1.25);await size(600,480);rect=await measured('shipped 600x480 Zoom 1.25 Focus');
+    assert(rect.height>=180&&rect.width>=300,'zoomed Focus viewport unusable '+JSON.stringify(rect));
+    await page("code.value='' ");await completeChallenge();await page('scrollTo(0,0)');await capture('shipped-600x480-zoom125-complete');
+    await click(win.webContents,'#browser-return');await ready(()=>host("workspaceNavigation.current()==='workspace'&&document.getElementById('view-paper-title').textContent==='Synthetic kept paper'"),'Browser returns to the same Paper');
+    win.webContents.setZoomFactor(1);await size(1200,800);
+    await click(win.webContents,'#workflows-open');await click(win.webContents,'#workflow-nav [data-workflow="kept"]');
+    await ready(()=>host("workspaceNavigation.current()==='kept'&&!document.getElementById('kept-workspace').hidden"),'Import Workflows page');
+    await click(win.webContents,'#browser-open');await measured('shipped Import Focus');
+    await click(win.webContents,'#browser-return');assert(await host("workspaceNavigation.current()==='kept'&&document.activeElement.id==='browser-open'"),'Import page return focus');
+    await ready(()=>host("!document.getElementById('kept-start').disabled"),'Import is ready');
+    await click(win.webContents,'#kept-start');
+    await ready(()=>host("document.getElementById('kept-confirm').open"),'Import asks about unprepared Services');
+    assert(!requests.some(request=>request.route==='/api/kept-workflow/start'),'Import dispatched before explicit skip');
+    await click(win.webContents,'#kept-continue');
+    await ready(()=>host("document.getElementById('kept-progress').textContent.includes('已跳过 1')"),'Import displays skipped count');
+    const importRequest=requests.find(request=>request.route==='/api/kept-workflow/start')?.body;
+    assert(importRequest?.skip_unprepared?.join()===serviceId&&!Object.hasOwn(importRequest,'mode'),'Import changed the skip decision or sent a legacy mode');
+    keptState={active:false,phase:'idle',navigation:null,can_cancel:false};runActive=true;
+    await browser.runTask(new AbortController().signal,{workflow_id:'run-a',task_id:'query-wos',request_id:'request-run'},async()=>{
+      browser.associatePage(tab,{role:'wos-query'});browser.bindTaskPage(tab);await win.reload();
+      await ready(()=>host("document.getElementById('run-view').open&&!document.querySelector('.run-task-page').hidden"),'actual restored Run fullscreen');assert(await host("workspaceNavigation.current()==='run'"),'restored Run fullscreen did not enter Run workspace');await click(win.webContents,'.run-task-page');await measured('shipped Run fullscreen handoff');
+      assert(await host("!document.getElementById('browser-pane').hidden"),'actual Run handoff did not request Run Focus host');assert(browser.selected===tab,'Run retargeted unrelated task page');await capture('shipped-run-fullscreen-handoff');
+      await click(win.webContents,'#browser-return');assert(await host("document.getElementById('run-view').open&&getComputedStyle(document.getElementById('run-view')).visibility==='visible'&&document.activeElement.classList.contains('run-task-page')&&!document.getElementById('run-wos-cancel').disabled"),'Run fullscreen return rights/focus');
+      assert(tab.id===id&&tab.view.webContents.session===session&&await page('fixtureLoad')===load,'actual workspace presentation recreated native Page/Session');assert((await session.cookies.get({url:origin})).some(cookie=>cookie.name==='synthetic_session'),'actual workspace presentation lost Cookie');
+      runActive=false;await ready(()=>host('!uiRun.active()'),'Run terminal state');
+    });
     if(process.env.ALLFOLD_BROWSER_WORKSPACES_SCREENSHOTS)fs.writeFileSync(path.join(process.env.ALLFOLD_BROWSER_WORKSPACES_SCREENSHOTS,'measurements.json'),JSON.stringify(measurements,null,2)+'\n');console.log(JSON.stringify(measurements));console.log('BROWSER WORKSPACES DOM PASS');
   }catch(error){failed=true;console.error(error.stack);console.error('RECENT NATIVE UPDATES',JSON.stringify(nativeUpdates.slice(-12)));console.error('FIXTURE DIAGNOSTICS',JSON.stringify(await diagnostics()));await capture('shipped-failure');}
   finally{ipcMain.removeHandler('cas:status');disposeIPC?.();browser?.close();win?.destroy();await new Promise(resolve=>server.close(resolve));fs.rmSync(temp,{recursive:true,force:true});app.exit(failed?1:0);}

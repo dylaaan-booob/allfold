@@ -137,7 +137,7 @@ const paperToolsBusy=()=>paperTools.pending || $('paper-tools-dialog').open;
 const currentPaper = () => readerContext ? readerContext.entries.find(e=>e.paper.id===state.pendingPaper)?.paper : selectedJournal()?.papers.find(p => p.id === state.pendingPaper);
 const reviewPapers = () => readerContext ? readerContext.entries.map(e=>e.paper) : (selectedJournal()?.papers || []);
 const reviewJournal = () => readerContext ? readerContext.entries.find(e=>e.paper.id===state.pendingPaper)?.journal : selectedJournal();
-const configurationActive=()=>['journals','run','kept','settings'].includes(window.workspaceNavigation.current());
+const configurationActive=()=>['journals','login','run','kept','settings'].includes(window.workspaceNavigation.current());
 const inboxActive=()=>window.workspaceNavigation.current()==='workspace' && $('selected-view').dataset.workspaceLayout==='archive';
 const arrayActive=()=>window.workspaceNavigation.current()==='workspace' && $('selected-view').dataset.workspaceLayout==='array';
 const navigationBusy=()=>decisionPending || Boolean(snapshotApplying) || paperToolsBusy() || enrichment?.phase==='Saving' ||
@@ -147,13 +147,13 @@ function refreshInboxControls() {
   const busy=navigationBusy(),previewOpen=$('s-file-preview')?.hidden===false;
   const settingsBusy=$('configuration-workspace').dataset.busy==='true';
   $('open-journal-more').disabled=!state.ready || state.view!=='selected' || busy || previewOpen || settingsBusy ||
-    !inboxActive() || $('run-view').open || $('kept-flow').open;
+    !inboxActive() || $('run-view').open;
   const debugView=arrayActive()?'array':inboxActive()?(state.view==='journal'?'journal':'selected'):'none';
   const showArchiveDebug=inboxActive() && document.documentElement.classList.contains('developer-mode');
   $('archive-debug').hidden=!showArchiveDebug;
   document.documentElement.classList.toggle('archive-debug-active',showArchiveDebug);
   archiveDebug.setContext(debugView,showArchiveDebug,state.ready && !busy && !previewOpen && !settingsBusy &&
-    !window.workspaceArray?.workflowBusy() && !$('run-view').open && !$('kept-flow').open &&
+    !window.workspaceArray?.workflowBusy() && !$('run-view').open &&
     (debugView!=='journal' || (inspection.target && inspection.time===inspection.duration)));
   renderPaperTools();
 }
@@ -171,18 +171,6 @@ const selectedRow = () => rows[state.shelf];
 const selectedJournal = () => shelves[state.shelf]?.journals[selectedRow()?.sel];
 let W = 0, H = 0, ratio = 1, running = false, lastTime = 0, lastWheel = 0;
 const canvas = $('archive'), ctx = canvas.getContext('2d');
-workspaceSearch.register('inbox', {
-  label:'SEARCH INBOX JOURNALS',
-  disabled:()=>!state.ready || state.view!=='selected' || decisionPending || Boolean(snapshotApplying) || Boolean(inspection.time),
-  items:()=>shelves.flatMap(group=>group.journals.map(j=>({id:j.key,name:j.name,detail:`${j.logicalGroupName} · ${j.papers.length} PAPERS` }))),
-  select:item=>{
-    const group=shelves.findIndex(g=>g.journals.some(j=>j.key===item.id));
-    if(group<0)return;
-    const index=shelves[group].journals.findIndex(j=>j.key===item.id);
-    selectJournal(group,index,group);canvas.focus({preventScroll:true});
-  },
-});
-
 function caseTargets(i, r, active, row, hover = AR.hover) {
     const d = slotOf(row, i) - slotOf(row, r.sel), bell = Math.exp(-d * d / 4.5) - .32 * Math.exp(-d * d / 18);
     const isSel = active && i === r.sel;
@@ -1293,7 +1281,7 @@ function renderPaperTools(reload=false) {
   if(reload || (!paperTools.fields && !paperTools.loading && !paperTools.error))void loadPaperFields(paperId);
   const busy=decisionPending || Boolean(snapshotApplying) || paperToolsBusy() ||
     ['Retrieving','Saving'].includes(enrichment?.phase) || ['Retrieving','Saving'].includes(paper.enrichPhase) ||
-    window.workspaceArray?.workflowBusy() || $('run-view').open || $('kept-flow').open;
+    window.workspaceArray?.workflowBusy() || $('run-view').open;
   const ready=Boolean(paperTools.fields && !paperTools.loading && !busy);
   const checks=[...document.querySelectorAll('[data-paper-reset]')];
   checks.forEach(node=>{node.disabled=!ready;});
@@ -1463,7 +1451,7 @@ $('enrich-task-page').addEventListener('click',async()=>{
   const operation=enrichment;
   if(operation?.phase!=='Retrieving' || !operation.waitingForUser || !operation.requestID)return;
   try {
-    if(!await window.allfoldWorkbench?.showTaskPage({workflowId:operation.requestID,taskId:operation.requestID,source:'enrich'}))
+    if(!await window.allfoldWorkbench?.showTaskPage({workflowId:operation.requestID,taskId:operation.requestID}))
       uiNext.notice('当前验证页面尚未就绪，请稍后重试。');
   }catch(error){uiNext.notice(error.message);}
 });
@@ -1908,11 +1896,19 @@ window.inboxKept={
 };
 new ResizeObserver(()=>{if(readerContext && arrayActive()) fillAbstractPlaceholder();}).observe($('kept-reader'));
 window.inboxRun={
-  available:()=>state.ready && !decisionPending && !snapshotApplying && !paperToolsBusy() && enrichment?.phase!=='Saving' && !['Retrieving','Saving'].includes(enrichment?.phase) && !$('kept-flow').open && !window.workspaceArray?.workflowBusy() && !window.uiRun?.active() &&
+  available:()=>state.ready && !decisionPending && !snapshotApplying && !paperToolsBusy() && enrichment?.phase!=='Saving' && !['Retrieving','Saving'].includes(enrichment?.phase) && !window.workspaceArray?.workflowBusy() && !window.uiRun?.active() &&
     (inspection.time===0 || inspection.time===inspection.duration),
   selection:()=>({issn:selectedJournal()?.key,scroll:lists.get(selectedJournal()?.key)?.scrollTop || 0}),
   prepare:async(_papers,selection)=>{await refreshWorkspace(selection);},
 };
+workspaceSearch.register('papers',{
+  label:'Paper',
+  items:()=>[...candidateEntries(),...keptPapers.values()].map(({paper,journal})=>({
+    id:paper.id,name:paper.title,detail:journal.name,keywords:paper.doi,
+  })),
+  select:item=>window.workspaceArray?.openPaper(item.id,{readKept:true}),
+});
+window.addEventListener('workspace-data-changed',workspaceSearch.refresh);
 window.uiWorkspace={
   refresh:async selection=>{
     if(state.ready)return refreshWorkspace(selection);
@@ -1926,7 +1922,6 @@ window.addEventListener('pagehide',event=>{cancelRetrieval();if(!event.persisted
 window.workspaceNavigation.register('workspace',{
   canNavigate:({to,workflowRecovery})=>!navigationBusy() && (!(window.workspaceArray?.navigationBusy?.() ?? window.workspaceArray?.workflowBusy()) || (workflowRecovery===true && to==='kept')),
   canEnter:()=>state.ready,
-  search:()=>inboxActive()?'inbox':window.workspaceArray?.search() || 'candidates',
   leave:()=>{
     window.workspaceArray?.leave();
     cancelRetrieval();renderEnrich();

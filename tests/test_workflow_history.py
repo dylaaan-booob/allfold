@@ -174,28 +174,28 @@ def test_run_history_uses_retrieval_coverage_instead_of_last_stage(tmp_path, mon
 
 
 @pytest.mark.parametrize('observed,expected', [(True,'opened'), (False,'needs_attention')])
-def test_prepare_history_requires_observed_target_evidence(tmp_path, observed, expected):
+def test_login_history_requires_observed_target_evidence(tmp_path, observed, expected):
     from safety_config_helpers import current_mapping_document
-    from allfold.application.coordinators.preparation_coordinator import PreparationCoordinator
-    from allfold.config import load_config
-    from allfold.persistence.user_state import load_user_state
-    from electron_test_helpers import PendingBridge
+    from allfold.application.coordinators.login import LoginCoordinator
+    from test_login import Native
     config, _, _, service = current_mapping_document(tmp_path)
     config.write_text(config.read_text() + 'institution:\n  name: Fixture University\n')
     store = DiagnosticStore(config, root=tmp_path / 'logs')
-    bridge, lock = PendingBridge(), BrowserTaskLock()
-    prep = PreparationCoordinator(bridge, lock, diagnostics=store)
-    started = prep.start(config, service=service, workflow_id='root', parent_task_id='root')
-    assert bridge.dispatched.wait(2)
-    assert bridge.calls[0][1]['workflow_id'] == 'root'
-    bridge.future.set_result({'outcome':'Opened','evidence':{'visit_action_observed':observed,
-        'navigation_observed':True, 'target_page_id':17}})
-    prep.join()
+    bridge, lock = Native(), BrowserTaskLock()
+    login = LoginCoordinator(bridge, lock, diagnostics=store)
+    started = login.start(config)
+    action, _, future = bridge.operations.get(timeout=2)
+    assert action == 'login_carsi'
+    future.set_result({'outcome': 'Opened', 'portal_page_id': 9})
+    action, request, future = bridge.operations.get(timeout=2)
+    assert action == 'prepare_service' and request['workflow_id'] == started['workflow_id']
+    future.set_result({'outcome':'Opened',
+        'evidence':{'visit_action_observed':observed, 'navigation_observed':True, 'target_page_id':17}})
+    login.join()
     record = store.history()['records'][0]
-    assert record['task_id'] == started.task_id
+    assert record['task_id'] == started['workflow_id']
     assert record['outcome'] == expected
     assert record['details']['results'][0]['outcome'] == expected
-
 
 def test_cover_history_does_not_confirm_invalid_native_image(tmp_path):
     from safety_config_helpers import current_mapping_document
@@ -213,36 +213,6 @@ def test_cover_history_does_not_confirm_invalid_native_image(tmp_path):
     record = store.history()['records'][0]
     assert record['outcome'] == 'failed'
     assert record['statistics']['downloaded'] == 0
-    assert lock.owner is None
-
-
-def test_kept_root_aggregates_batch_partial_without_claiming_success(tmp_path):
-    from types import SimpleNamespace
-    import threading
-    from allfold.application.coordinators.kept_workflow import KeptWorkflow
-    from allfold.config import KeptWorkflowConfig
-    paper(tmp_path / 'workspace', 'fixture')
-    store = DiagnosticStore(tmp_path / 'config.yaml', root=tmp_path / 'logs')
-    bridge, lock = Bridge(), BrowserTaskLock()
-    batch = BatchImportService(bridge, lock, diagnostics=store)
-    def begin(target, authorization, **context):
-        return batch.start(target.workspace, browser_owner=flow.browser_owner, **context)
-    flow = KeptWorkflow(None, batch, threading.RLock(), begin_import=begin,
-        has_kept=lambda target:True, browser_lock=lock, diagnostics=store)
-    started = flow.start(SimpleNamespace(workspace=tmp_path / 'workspace'),
-        SimpleNamespace(kept_workflow=KeptWorkflowConfig(), institution=None), 'grant', mode='import_only')
-    assert bridge.dispatched.wait(2)
-    bridge.future.set_result({'settled':True,'parent':{'outcome':'no_effect'}})
-    batch.join()
-    flow.advance()
-    records = store.history()['records']
-    root = next(r for r in records if r['kind'] == 'kept')
-    imported = next(r for r in records if r['kind'] == 'import')
-    assert root['task_id'] == root['workflow_id'] == started.workflow_id
-    assert root['outcome'] == 'partial'
-    assert root['statistics']['no_effect'] == 1
-    assert imported['parent_task_id'] == root['task_id']
-    assert imported['workflow_id'] == root['workflow_id']
     assert lock.owner is None
 
 
@@ -366,37 +336,59 @@ def test_enrich_disconnect_is_interrupted_history_and_never_saved(tmp_path):
     assert path.read_bytes() == original
 
 
-def test_app_composition_keeps_workflow_ids_through_import_and_http_export(tmp_path):
+@pytest.mark.parametrize('native,outcome', [
+    (confirmed(), 'completed'),
+    ({'settled': True, 'parent': {'outcome': 'no_effect'}}, 'partial'),
+    ({**confirmed(), 'uncertain_write': True}, 'uncertain'),
+])
+def test_app_composition_keeps_workflow_ids_through_import_and_http_export(tmp_path, native, outcome):
     import zipfile, io, json
-    from test_web_app import write_valid_config
+    from test_kept_scope import scoped_workspace
     from fastapi.testclient import TestClient
     from allfold.web.app import create_app
-    from allfold.application.import_target import _ImportTarget
-    config, workspace = write_valid_config(tmp_path)
-    paper(workspace, 'fixture')
-    bridge = Bridge()
-    # Full app shutdown also calls the browser workers' cancellation seam.
-    bridge.closing = False
-    bridge.finish_disconnected = lambda:None
+    from electron_test_helpers import PendingBridge
+
+    config, _, _, _ = scoped_workspace(tmp_path)
+    class Transport(PendingBridge):
+        def execute(self, action, data, progress=None):
+            if action == 'zotero_local':
+                from concurrent.futures import Future
+                future = Future()
+                future.set_result({'ok': True})
+                return future
+            return super().execute(action, data, progress)
+
+    bridge = Transport()
+    # Isolate one DOI-only Paper while keeping the saved Service scope available.
+    for name in ['a', 'b', 'ambiguous']:
+        (tmp_path / 'workspace' / 'Papers' / f'{name}.md').unlink()
     app = create_app(config, electron_bridge=bridge, diagnostics_root=tmp_path / 'logs')
     with TestClient(app, base_url='http://localhost') as client:
-        target, loaded = _ImportTarget.read(config)
-        started = app.state.kept_workflow.start(target, loaded, app.state.import_token, mode='import_only')
+        queue = client.get('/api/kept-workflow/queue').json()
+        response = client.post('/api/kept-workflow/start', json={'csrf_token': app.state.csrf_token,
+            'import_token': queue['import_token']})
+        assert response.status_code == 200
+        started = response.json()
         assert bridge.dispatched.wait(2)
-        assert bridge.calls[0][1]['workflow_id'] == started.workflow_id
-        bridge.future.set_result(confirmed())
-        app.state.batch_import.join()
-        app.state.kept_workflow.advance()
+        assert bridge.calls[0][1]['workflow_id'] == started['workflow_id']
+        bridge.future.set_result(native)
+        app.state.kept_workflow.join()
         records = client.get('/api/history').json()['records']
         root = next(r for r in records if r['kind'] == 'kept')
-        assert root['task_id'] == started.workflow_id
-        assert root['outcome'] == 'completed'
+        imported = next(r for r in records if r['kind'] == 'import')
+        assert root['task_id'] == root['workflow_id'] == started['workflow_id']
+        assert root['outcome'] == outcome
+        assert imported['parent_task_id'] == root['task_id']
+        assert imported['workflow_id'] == root['workflow_id']
+        assert root['statistics']['no_effect'] == (outcome == 'partial')
+        assert root['statistics']['uncertain'] == (outcome == 'uncertain')
+        assert root['statistics']['confirmed'] == (outcome != 'partial')
+        assert app.state.browser_task_lock.owner is None
         response = client.post('/api/diagnostics/export', json={'csrf_token':app.state.csrf_token, 'task_id':root['task_id']})
         assert response.status_code == 200
         summary = json.loads(zipfile.ZipFile(io.BytesIO(response.content)).read('summary.json'))
         assert len(summary['records']) == 2
         assert {r['workflow_id'] for r in summary['records']} == {root['workflow_id']}
-
 
 def test_import_history_keeps_reviewed_attachment_failure_without_unconfirming_parent(tmp_path):
     paper(tmp_path / 'workspace', 'fixture')
@@ -434,3 +426,29 @@ def test_attachment_message_describes_problem_and_preserves_pdf_uncertainty(code
     assert '403' in message and 'ERR_ABORTED' in message
     assert '父条目失败' not in message
     assert '重试' not in message
+
+
+def test_known_zotero_keys_survive_local_history_and_stay_out_of_diagnostic_exports(tmp_path):
+    import io
+    import zipfile
+
+    workspace = tmp_path / 'workspace'
+    paper(workspace, 'uncertain')
+    config, logs = tmp_path / 'config.yaml', tmp_path / 'logs'
+    store = DiagnosticStore(config, root=logs)
+    lock, bridge = BrowserTaskLock(), Bridge()
+    batch = BatchImportService(bridge, lock, diagnostics=store)
+    batch.start(workspace, browser_owner=lock.acquire('kept'))
+    assert bridge.dispatched.wait(2)
+    bridge.future.set_result({'settled': True, 'parent': {'outcome': 'uncertain'},
+        'zotero': {'parent_key': 'ABCD2345', 'attachment_keys': ['WXYZ2345', 'invalid'],
+                   'target': {'server_id': 'private-instance'}}})
+    batch.join()
+    recovered = DiagnosticStore(config, root=logs)
+    record = recovered.history()['records'][0]
+    assert record['details']['results'][0]['zotero_keys'] == {
+        'parent_key': 'ABCD2345', 'attachment_keys': ['WXYZ2345']}
+    with zipfile.ZipFile(io.BytesIO(recovered.export(record['task_id']))) as bundle:
+        for name in bundle.namelist():
+            data = bundle.read(name)
+            assert all(private not in data for private in (b'ABCD2345', b'WXYZ2345', b'private-instance'))

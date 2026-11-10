@@ -1,8 +1,8 @@
 'use strict';
 // Target sizes are preferences; measured sizes never flow back into them.
 window.allfoldLayoutModel=(()=>{
-  const defaults=Object.freeze({railWidth:48,flyoutPreferredWidth:280,sidebarPreferredWidth:320,browserPreferredWidth:960,browserPreferredHeight:300});
-  const limits=Object.freeze({railWidth:[36,72],flyoutPreferredWidth:[220,480],sidebarPreferredWidth:[260,560],browserPreferredWidth:[320,2400],browserPreferredHeight:[140,1200]});
+  const defaults=Object.freeze({railWidth:48,flyoutPreferredWidth:280,sidebarPreferredWidth:320});
+  const limits=Object.freeze({railWidth:[36,72],flyoutPreferredWidth:[220,480],sidebarPreferredWidth:[260,560]});
   const minOperationalSize=Object.freeze({array:360,journals:320,sidebar:260});
   function targets(stored) {
     const value={...defaults};

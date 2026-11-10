@@ -15,9 +15,18 @@ MONTHS = {name.casefold(): index for index in range(1, 13) for name in (month_ab
 EVENTS = {'received':'received', 'accepted':'accepted', 'epublish':'published-online', 'ppublish':'published', 'aheadofprint':'published-online'}
 
 
-def has_entrez_error(payload):
+def has_entrez_error(payload, *, queried_issns=()):
+    if payload.get('error'):
+        return True
     errors = payload.get('errorlist')
-    return bool(payload.get('error')) or (any(errors.values()) if isinstance(errors, dict) else bool(errors))
+    if not isinstance(errors, dict):
+        return bool(errors)
+    missing_phrases = errors.get('phrasesnotfound')
+    if isinstance(missing_phrases, list) and all(
+        isinstance(phrase, str) and phrase in queried_issns for phrase in missing_phrases
+    ):
+        return any(value for name, value in errors.items() if name != 'phrasesnotfound')
+    return any(errors.values())
 
 
 def esearch_identifiers(payload):

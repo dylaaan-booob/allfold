@@ -12,7 +12,7 @@ from allfold.application.journal_covers import cover_details
 from allfold.application.settings import load_settings, _read_journal_snapshot, SettingsIssueSource, SettingsIssue
 from allfold.application.journal_lookup import journal_metadata, search_journals
 from allfold.providers.openalex import OpenAlexError
-from allfold.config import ConfigurationError
+from allfold.config import ConfigurationError, WORKFLOW_CONCURRENCY_FIELDS
 from allfold.web.settings_form import settings_form_from_draft
 
 
@@ -195,7 +195,7 @@ def install_resource_api(app, config_path, csrf_token):
 AUTOSAVE_FIELDS = frozenset({
     'name', 'keyword_expression', 'from_month', 'to_month', 'log_level',
     'crossref_mailto', 'provider_aliases', 'provider_order', 'enabled_providers',
-    'display_name', 'transition_delay_seconds', 'auto_import_after_preparation', 'zotero_target',
+    *WORKFLOW_CONCURRENCY_FIELDS, 'zotero_target',
     'institution_name', 'institution_idp_entity_id', 'institution_use_shibboleth',
     'journals', 'access_services', 'groups', 'custom_labels',
 })
@@ -272,12 +272,16 @@ def install_credential_api(app, csrf_token):
                 return json_response({'ok': False, 'error': 'cas_task_active',
                     'message': 'Active task owns the saved configuration; credential draft retained.'}, 409)
             owner = app.state.browser_task_lock.acquire('credentials')
+            if owner is None:
+                return json_response({'ok': False, 'error': 'cas_task_active'}, 409)
             try:
                 if not app.state.electron_bridge.connected:
                     raise ElectronDisconnected()
                 result = app.state.electron_bridge.execute('cas_credentials', {
                     key: body[key] for key in ('operation', 'username', 'password', 'expected_revision')
                 }).result()
+                if result.get('ok') is True:
+                    app.state.login.invalidate_credentials()
                 # Native returns a bounded status only, never password/plaintext.
                 return json_response({key: result[key] for key in
                     ('ok', 'error', 'configured', 'username', 'revision') if key in result})

@@ -23,6 +23,7 @@ class Element extends Target {
   querySelector(selector){return this.children.find(node=>selector.startsWith('.')?node.className===selector.slice(1):node.id===selector.slice(1)) || new Element();}
   querySelectorAll(){return [];}
   show(){this.open=true;}
+  showModal(){this.show();}
   close(){const was=this.open;this.open=false;if(was)this.dispatchEvent({type:'close'});}
   focus(){}
   scrollIntoView(){}
@@ -35,7 +36,6 @@ async function taskUI(script,{inline=true,request,ready=false,reduced=false,arch
   get('kept-view').hidden=get('kept-view').inert=layout!=='array';get('kept-view').append(get('array-import-profile'));
   get('selected-view').dataset.workspaceLayout=layout;get('workspace-layout').parentElement=get('array-layout-controls');
   get('s-run').append(Object.assign(new Element(),{className:'s-run-body'}));get('run-view').querySelector=selector=>selector==='.run-status-area'?get('run-status-area'):new Element();get('run-stage-layer').append(get('run-title'));get('run-stage-layer').append(get('run-status-area'));get('run-view').append(get('run-stage-layer'));get('run-status-area').append(get('run-elapsed'),get('run-stage'),get('run-description'),get('run-wos-cancel'));
-  get('kept-flow').append(get('kept-flow-actions'));get('kept-flow-actions').append(get('kept-flow-gate'),get('kept-leave'),get('kept-skip-slot'));get('kept-flow-gate').append(get('kept-gate-message'),get('kept-manual-services'),get('kept-continue'));
   const window=new Target(),document=new Target(),timers=new Map(),calls=[],presentations=[];
   document.getElementById=get;document.createElement=tag=>new Element(tag);document.querySelector=()=>null;document.querySelectorAll=()=>[];document.baseURI='http://allfold.test/static/ui_next/';document.activeElement=null;document.hidden=false;
   let nextTimer=1,currentPage=page,prepares=0,refreshes=0,opens=0,visuals=0;
@@ -54,8 +54,7 @@ async function taskUI(script,{inline=true,request,ready=false,reduced=false,arch
     CustomEvent:class{constructor(type,options){this.type=type;this.detail=options?.detail;}},Event:class{constructor(type){this.type=type;}},
     matchMedia:()=>Object.assign(new Target(),{matches:reduced}),localStorage:{getItem:()=>null,setItem(){}},
     setTimeout:fn=>{const id=nextTimer++;timers.set(id,fn);return id;},clearTimeout:id=>timers.delete(id),setInterval:()=>0,clearInterval(){},
-    SurfaceTransition:class{finish(){}},RunVisual:class{constructor(){visuals++;}stop(){}start(){}},KeptPlayer:class{constructor(){visuals++;}stop(){}play(){}draw(){}resize(){}setReduced(){}resume(){}},
-    sceneReady:async()=>{},shots:{access:{duration:1},welcome:{holdAt:1}},
+    SurfaceTransition:class{finish(){}},RunVisual:class{constructor(){visuals++;}stop(){}start(){}},
   };
   Object.assign(context,await import('../../frontend/ui/run-results.js'),await import('../../frontend/ui/business-results.js'));
   vm.createContext(context);

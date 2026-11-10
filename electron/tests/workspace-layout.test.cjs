@@ -14,14 +14,13 @@ test('rails are allocated first; sidebar yields to the content minimum and overl
 });
 test('corrupt targets fall back independently and obsolete journal columns/left widths are ignored',()=>{
   const m=model();
-  assert.deepEqual({...m.targets({railWidth:0,sidebarPreferredWidth:'400',flyoutPreferredWidth:Infinity})},{railWidth:48,flyoutPreferredWidth:280,sidebarPreferredWidth:320,browserPreferredWidth:960,browserPreferredHeight:300});
-  assert.deepEqual({...m.targets({railWidth:60,sidebarPreferredWidth:420,columns:2,left:900})},{railWidth:60,flyoutPreferredWidth:280,sidebarPreferredWidth:420,browserPreferredWidth:960,browserPreferredHeight:300});
-  assert.deepEqual({...m.targets(null)},{railWidth:48,flyoutPreferredWidth:280,sidebarPreferredWidth:320,browserPreferredWidth:960,browserPreferredHeight:300});
+  assert.deepEqual({...m.targets({railWidth:0,sidebarPreferredWidth:'400',flyoutPreferredWidth:Infinity})},{railWidth:48,flyoutPreferredWidth:280,sidebarPreferredWidth:320});
+  assert.deepEqual({...m.targets({railWidth:60,sidebarPreferredWidth:420,columns:2,left:900})},{railWidth:60,flyoutPreferredWidth:280,sidebarPreferredWidth:420});
+  assert.deepEqual({...m.targets(null)},{railWidth:48,flyoutPreferredWidth:280,sidebarPreferredWidth:320});
 });
-test('Compact Browser targets reject invalid stored preferences',()=>{
+test('retired Compact preferences do not affect workbench layout targets',()=>{
   const m=model();
-  assert.equal(m.targets({browserPreferredWidth:0,browserPreferredHeight:'240'}).browserPreferredWidth,960);
-  assert.equal(m.targets({browserPreferredWidth:0,browserPreferredHeight:'240'}).browserPreferredHeight,300);
+  assert.deepEqual({...m.targets({browserPreferredWidth:320,browserPreferredHeight:140})},{...m.defaults});
 });
 function fixture(preferences={}) {
   const elements=new Map(),timers=new Map(),observers=[],storage=new Map(Object.entries(preferences)),previews=[];

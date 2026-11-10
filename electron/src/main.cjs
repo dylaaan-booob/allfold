@@ -8,6 +8,7 @@ const {BrowserRuntime} = require('./browser/browser-runtime.cjs');
 const {installBrowserIPC}=require('./browser/browser-ipc.cjs');
 const {TranslatorSandbox} = require('./zotero/translator.cjs');
 const {saveOnce,normalizeDOI} = require('./zotero/local-importer.cjs');
+const {ImportResources}=require('./zotero/import-resources.cjs');
 const {LocalAPI}=require('./zotero/local-api.cjs');
 const {requestOpenAlexPDF,settleOpenAlexPDF}=require('./zotero/openalex-callback.cjs');
 const zoteroLocal=new LocalAPI();
@@ -15,7 +16,7 @@ const {failedImport}=require('./workflows/import-errors.cjs');
 const {BrowserFailure,diagnosticFor}=require('./browser/browser-errors.cjs');
 const {log,errorCode,initializeLogging,withLogContext,associationLogContext,diagnosticsReset,diagnosticsStatus,setLogLevel} = require('./shared/logging.cjs');
 const {operationAssociation}=require('./browser/page-association.cjs');
-const {prepareService,searchJournalCover,newTaskPage}=require('./workflows/browser-operations.cjs');
+const {loginInstitution,prepareLoggedInService,visitManualService,searchJournalCover}=require('./workflows/browser-operations.cjs');
 const {wosQuery,wosExport}=require('./workflows/wos-operations.cjs');
 const {readCASCredentials,casStatus,saveCASCredentials,clearCASCredentials,casErrorCode}=require('./auth/cas-credentials.cjs');
 const {confirmConfigurationExit,confirmBlockedUnload}=require('./shared/configuration-exit.cjs');
@@ -29,9 +30,9 @@ app.commandLine.appendSwitch('remote-debugging-address','127.0.0.1');
 if(cdpPort.status===0)app.commandLine.appendSwitch('remote-debugging-port',cdpPort.stdout.trim());
 protocol.registerSchemesAsPrivileged([{scheme:'allfold-zotero',privileges:{standard:true,secure:true,supportFetchAPI:true}}]);
 let python,window,browser,translator,socket,base;
-let exiting=false,readyToExit=false,activeRequest=null,bridgeReady=false;
+let exiting=false,readyToExit=false,bridgeReady=false;
 let exitApproved=false,exitCheck=null;
-let activeOperation=null;
+const operations=new Map();
 const token=randomBytes(32).toString('hex');
 function trusted(event) {
   return window && event.sender === window.webContents && event.senderFrame === event.sender.mainFrame
@@ -41,15 +42,40 @@ function send(message) {
   if (socket?.readyState !== WebSocket.OPEN) throw Error('Electron bridge disconnected');
   socket.send(JSON.stringify(message));
 }
+const CONTROL_ACTIONS=new Set(['zotero_local','cas_credentials','diagnostics_reset']);
+function pendingOperation(message) {
+  const current=operations.get(message.id);
+  return current?.action===message.action?current:null;
+}
+function stopOperations() {
+  for(const current of operations.values())current.controller.abort();
+}
+function waitForOperations() {
+  return Promise.allSettled([...operations.values()].map(current=>current.settlement));
+}
+let pythonShutdownReady=false,disconnectedDrain;
+function drainDisconnectedPython() {
+  // Socket loss may happen after an orderly quit has already sent shutdown.
+  // Only request Python teardown once every escaped native save has settled.
+  disconnectedDrain ??= waitForOperations().then(()=>{
+    if(python && python.exitCode===null && python.signalCode===null)python.kill('SIGUSR1');
+    else {readyToExit=true;app.quit();}
+  });
+}
 async function solveCloudflare(doc,{signal,deadline=Infinity}={}) {
-  const current=activeOperation;
-  if(!current || current.controller.signal.aborted || !bridgeReady || !browser.documentCurrent(doc))return;
+  const owner=browser.operation,current=operations.get(owner?.association.request_id);
+  const contents=browser.tabs.get(doc.pageId)?.view.webContents;
+  const currentDocument=()=>browser.ownsPage(owner,doc.pageId) && browser.documentCurrent(doc)
+    && contents?.getURL()===doc.url && !contents.isLoadingMainFrame();
+  if(!current || current.controller.signal.aborted || !bridgeReady || !currentDocument()
+    || signal?.aborted || Date.now()>=deadline)return;
+  let targetId;
+  try {targetId=contents.getOrCreateDevToolsTargetId();} catch (_) {return;}
+  if(!/^[a-f0-9]{32}$/i.test(targetId))return;
   const challengeId=randomBytes(16).toString('hex');
   const context={request_id:current.id,action:current.action,page_id:doc.pageId};
-  const contents=browser.tabs.get(doc.pageId)?.view.webContents;
-  if(!contents || signal?.aborted || Date.now()>=deadline)return;
   const signals=[...new Set([signal,current.controller.signal].filter(Boolean))];
-  let timer,cancel,canceled=false;
+  let timer,cancel;
   const changed=(event,_url,inPlace,main)=>{
     if((event.isMainFrame ?? main) && !(event.isSameDocument ?? inPlace))cancel();
   };
@@ -57,19 +83,22 @@ async function solveCloudflare(doc,{signal,deadline=Infinity}={}) {
   try {
     const result=await new Promise(resolve=>{
       cancel=()=>{
-        if(canceled || current.challenge?.id!==challengeId)return;
-        canceled=true;
+        if(!current.challenges.delete(challengeId))return;
         try {send({type:'cancel_cloudflare',id:current.id,action:current.action,challenge_id:challengeId});}
         catch (_) {}
         resolve({outcome:'not_executed',reason:'canceled'});
       };
-      current.challenge={id:challengeId,resolve,cancel};
+      current.challenges.set(challengeId,{resolve:data=>{
+        if(!currentDocument() || signals.some(item=>item.aborted) || Date.now()>=deadline){cancel();return;}
+        resolve(data);
+      },cancel});
       for(const item of signals)item.addEventListener('abort',cancel,{once:true});
-      contents.on('did-start-navigation',changed);contents.once('destroyed',cancel);
+      contents.on('did-start-navigation',changed);
+      contents.once('destroyed',cancel);contents.once('render-process-gone',cancel);
       if(Number.isFinite(deadline))timer=setTimeout(cancel,Math.max(0,deadline-Date.now()));
-      if(signals.some(item=>item.aborted) || !browser.documentCurrent(doc)){cancel();return;}
+      if(signals.some(item=>item.aborted) || !currentDocument()){cancel();return;}
       try {send({type:'solve_cloudflare',id:current.id,action:current.action,
-        challenge_id:challengeId,data:{url:doc.url}});}
+        challenge_id:challengeId,data:{url:doc.url,target_id:targetId}});}
       catch (_) {resolve({outcome:'not_executed',reason:'bridge_unavailable'});}
     });
     // A returned solver is not proof that the challenge was cleared.
@@ -79,164 +108,169 @@ async function solveCloudflare(doc,{signal,deadline=Infinity}={}) {
   } finally {
     clearTimeout(timer);
     for(const item of signals)item.removeEventListener('abort',cancel);
-    contents.removeListener('did-start-navigation',changed);contents.removeListener('destroyed',cancel);
-    if(current.challenge?.id===challengeId)current.challenge=null;
+    contents.removeListener('did-start-navigation',changed);
+    contents.removeListener('destroyed',cancel);contents.removeListener('render-process-gone',cancel);
+    current.challenges.delete(challengeId);
   }
+}
+async function executeControl(message,signal) {
+  const value=message.data;
+  if(message.action==='diagnostics_reset')return diagnosticsReset(value);
+  if(message.action==='cas_credentials') {
+    try {
+      if(!value || !['save','clear'].includes(value.operation))throw Error('Invalid credential operation');
+      return await (value.operation==='save'?saveCASCredentials(value):clearCASCredentials(value));
+    }catch(error){return {ok:false,error:casErrorCode(error)};}
+  }
+  try {
+    if(value?.operation==='targets')return await zoteroLocal.targets();
+    if(value?.operation==='authorize')return await zoteroLocal.authorize({signal});
+    if(value?.operation==='validate'){await zoteroLocal.validate(value.target);return {ok:true};}
+    throw Error('Invalid Local API operation');
+  }catch(error){return {ok:false,error:error.code || 'api_failure',...(error.status?{status:error.status}:{})};}
 }
 async function execute(message) {
-  if(message.action==='zotero_local') {
-    if(activeRequest || exiting)throw Error('Native operation is active');
-    const current={id:message.id,action:message.action,controller:new AbortController()};
-    activeOperation=current;
-    const operation=(async()=>{
-      let data;
-      try {
-        const value=message.data;
-        if(value?.operation==='targets')data=await zoteroLocal.targets();
-        else if(value?.operation==='authorize')data=await zoteroLocal.authorize({signal:current.controller.signal});
-        else if(value?.operation==='validate'){await zoteroLocal.validate(value.target);data={ok:true};}
-        else throw Error('Invalid Local API operation');
-      }catch(error){data={ok:false,error:error.code || 'api_failure',...(error.status?{status:error.status}:{})};}
+  const control=CONTROL_ACTIONS.has(message.action);
+  if(exiting) {
+    // A request sent just before Python sees shutdown still needs a terminal response.
+    const error=new BrowserFailure('navigation','canceled');
+    const data=control?{ok:false,error:'canceled'}:message.action==='import_paper'
+      ?failedImport(error,'navigation',false):{diagnostic:error.diagnostic};
+    send({type:'result',id:message.id,action:message.action,data});
+    return;
+  }
+  if(operations.has(message.id))throw Error('Duplicate native Request ID');
+  if(operations.size && (control || [...operations.values()].some(value=>CONTROL_ACTIONS.has(value.action))))
+    throw Error('Concurrent dispatch conflicts with an active native control operation');
+  const current={id:message.id,action:message.action,controller:new AbortController(),challenges:new Map()};
+  operations.set(current.id,current);
+  current.settlement=Promise.resolve().then(async()=>{
+    if(control) {
+      const data=await executeControl(message,current.controller.signal);
       send({type:'result',id:message.id,action:message.action,data});
-    })();
-    activeRequest=operation;
-    try {await operation;}finally{if(activeRequest===operation)activeRequest=null;if(activeOperation===current)activeOperation=null;}
-    return;
+      return;
+    }
+    let association;
+    try {association=operationAssociation({...message.data,request_id:message.id});}catch(_){association=null;}
+    setLogLevel(message.data?.log_level);
+    return withLogContext({...associationLogContext(association),action:message.action},()=>executeOperation(message,current));
+  });
+  try {await current.settlement;}
+  finally {
+    operations.delete(current.id);
+    if(!control)browser.publish();
   }
-  if(message.action==='cas_credentials') {
-    if(activeRequest || exiting)throw Error('Native operation is active');
-    const operation=(async()=>{
-      let data;
-      try {
-        const value=message.data;
-        if(!value || !['save','clear'].includes(value.operation))throw Error('Invalid credential operation');
-        data=await (value.operation==='save'?saveCASCredentials(value):clearCASCredentials(value));
-      }catch(error){data={ok:false,error:casErrorCode(error)};}
-      send({type:'result',id:message.id,action:message.action,data});
-    })();
-    activeRequest=operation;
-    try {await operation;}finally{if(activeRequest===operation)activeRequest=null;}
-    return;
-  }
-  if(message.action==='diagnostics_reset') {
-    if(activeRequest || exiting)throw Error('Native operation is active');
-    send({type:'result',id:message.id,action:message.action,data:diagnosticsReset(message.data)});
-    return;
-  }
-  let association;
-  try {association=operationAssociation({...message.data,request_id:message.id});}catch(_){association=null;}
-  // beginOperation retains the existing validation and failure protocol.
-  setLogLevel(message.data?.log_level);
-  return withLogContext({...associationLogContext(association),action:message.action},()=>executeOperation(message));
 }
-async function executeOperation(message) {
-  if (activeRequest || exiting) {
-    // Python serializes dispatch and stops new work before shutdown.
-    throw Error('Concurrent browser dispatch refused');
+let importBatch;
+function importResources(current,{workflow_id:id,limits}) {
+  if(!id || !limits || !Object.entries({translator:6,pdf:8,writer:4}).every(([key,max])=>
+    Number.isInteger(limits[key]) && limits[key]>=1 && limits[key]<=max))
+    throw Error('Invalid Import batch limits');
+  if(importBatch?.id!==id) {
+    if([...operations.values()].some(operation=>operation.importBatchId && operation.importBatchId!==id))
+      throw Error('Another Import batch is still settling');
+    translator.setLimit(limits.translator);
+    importBatch={id,limits:{...limits},resources:new ImportResources({pdfLimit:limits.pdf,writerLimit:limits.writer})};
   }
-  const controller=new AbortController();
-  const current={id:message.id,action:message.action,controller};
+  if(['translator','pdf','writer'].some(key=>limits[key]!==importBatch.limits[key]))
+    throw Error('Import batch limits changed');
+  current.importBatchId=id;
+  return importBatch.resources;
+}
+async function executeOperation(message,current) {
+  const {controller}=current;
   const started=Date.now(),context={request_id:message.id,action:message.action};
   log('debug','task_started',context);
-  activeOperation=current;
-  const operation=(async()=>{
-    let saving=false;
-    let stage='navigation';
-    let data,resultPageId;
-    try {
-      browser.beginOperation(controller.signal,{...message.data,request_id:message.id});
+  let saving=false;
+  let stage='navigation';
+  let data,resultPageId;
+  try {
+    data=await browser.runTask(controller.signal,{...message.data,request_id:message.id},async()=>{
       browser.operation.action=message.action;
-      let lastProgress,waiting=false;
-      const progress=(data,progressStage=stage,diagnostic)=>{
-        const signature=JSON.stringify([progressStage,data.message,data.waiting_for_user]);
-        if(signature!==lastProgress) {
-          lastProgress=signature;
-          log('debug','task_progress',{...context,page_id:browser.taskTab?.id,stage:progressStage});
-        }
-        if(typeof data.waiting_for_user==='boolean' && data.waiting_for_user!==waiting) {
-          waiting=data.waiting_for_user;
-          log('info','manual_wait',{...diagnostic,...context,page_id:browser.taskTab?.id,waiting});
-        }
-        send({type:'progress',id:message.id,action:message.action,data});
-      };
-      if(message.action === 'prepare_service') {
-        stage='preparation';
-        data=await prepareService(browser,message.data,{signal:controller.signal,progress});
-      } else if(message.action === 'search_journal_cover') {
-        data=await searchJournalCover(browser,message.data,{signal:controller.signal,progress});
-      } else if(message.action === 'wos_query' || message.action === 'wos_export') {
-        stage=message.action==='wos_query'?'wos_dom':'wos_download';
-        data=await (message.action==='wos_query'?wosQuery:wosExport)(browser,message.data,{signal:controller.signal,progress});
-      } else {
-        if(!['import_paper','enrich_paper'].includes(message.action)) throw Error('Unsupported Electron operation');
-        const doi=normalizeDOI(message.data.doi);
-        if(message.action==='enrich_paper')await newTaskPage(browser,controller.signal);
-        else {
-          if(!browser.importPage || !browser.tabs.has(browser.importPage.id))browser.importPage=await newTaskPage(browser,controller.signal);
-          browser.associatePage(browser.importPage,{role:'import',doi});
-          browser.bindTaskPage(browser.importPage,controller.signal);
-        }
-        progress({message:'Opening DOI in Browser'});
-        const doc=await browser.navigate('https://doi.org/'+encodeURIComponent(doi),{signal:controller.signal,
-          onWaiting:diagnostic=>progress({waiting_for_user:true,message:'Checking verification; open BROWSER for manual verification if needed, or Cancel to stop'},stage,diagnostic)});
+      try {
         if(controller.signal.aborted)throw new BrowserFailure('navigation','canceled');
-        if(waiting) {
-          waiting=false;
-          log('info','manual_wait',{...context,page_id:browser.taskTab?.id,waiting:false});
-        }
-        browser.enterBusiness();
-        stage='translation';
-        progress({message:'Running official Translator'});
-        const forEnrichment=message.action==='enrich_paper';
-        const historyKinds=forEnrichment && Array.isArray(message.data.history_kinds)
-          ? ['received','accepted'].filter(kind=>message.data.history_kinds.includes(kind)) : [];
-        const {item,apiItem,proxy,sourceDocument,metadataSource,dateCandidates}=await translator.translate(doc,doi,{
-          signal:controller.signal,forEnrichment,historyKinds,workspaceMetadata:forEnrichment?undefined:message.data.metadata,
-          logContext:{...context,page_id:doc.pageId}});
-        if(controller.signal.aborted)throw new BrowserFailure('translation','canceled');
-        // A navigation while translating invalidates the source document.
-        if (!browser.documentCurrent(doc) || !browser.documentCurrent(sourceDocument)) throw new BrowserFailure('translation','document_changed');
-        if(message.action==='enrich_paper') {
-          data={item,metadata_source:metadataSource,date_candidates:dateCandidates,
-            source_url:dateCandidates?.length?sourceDocument.url:undefined};
+        let lastProgress,waiting=false;
+        const progress=(data,progressStage=stage,diagnostic)=>{
+          const signature=JSON.stringify([progressStage,data.message,data.waiting_for_user]);
+          if(signature!==lastProgress) {
+            lastProgress=signature;
+            log('debug','task_progress',{...context,page_id:browser.taskTab?.id,stage:progressStage});
+          }
+          if(typeof data.waiting_for_user==='boolean' && data.waiting_for_user!==waiting) {
+            waiting=data.waiting_for_user;
+            log('info','manual_wait',{...diagnostic,...context,page_id:browser.taskTab?.id,waiting});
+          }
+          send({type:'progress',id:message.id,action:message.action,data:{...data,page_id:browser.taskTab?.id}});
+        };
+        if(message.action === 'login_carsi') {
+          stage='authentication';
+          return await loginInstitution(browser,message.data,{signal:controller.signal,progress});
+        } else if(message.action === 'prepare_service' || message.action === 'visit_manual_service') {
+          stage='preparation';
+          const prepare=message.action==='visit_manual_service'?visitManualService:prepareLoggedInService;
+          return await prepare(browser,message.data,{signal:controller.signal,progress});
+        } else if(message.action === 'search_journal_cover') {
+          return await searchJournalCover(browser,message.data,{signal:controller.signal,progress});
+        } else if(message.action === 'wos_query' || message.action === 'wos_export') {
+          stage=message.action==='wos_query'?'wos_dom':'wos_download';
+          return await (message.action==='wos_query'?wosQuery:wosExport)(browser,message.data,{signal:controller.signal,progress});
         } else {
+          if(!['import_paper','enrich_paper'].includes(message.action)) throw Error('Unsupported Electron operation');
+          const doi=normalizeDOI(message.data.doi);
+          const forEnrichment=message.action==='enrich_paper';
+          const resources=forEnrichment?null:importResources(current,message.data);
+          progress({message:'Opening Paper in Browser'});
+          const doc=await browser.openPaperPage(message.data,doi,{signal:controller.signal,role:forEnrichment?'enrich':'import',
+            onWaiting:diagnostic=>progress({waiting_for_user:true,message:'Checking verification; open BROWSER for manual verification if needed, or Cancel to stop'},stage,diagnostic)});
+          if(controller.signal.aborted)throw new BrowserFailure('navigation','canceled');
+          if(waiting) {
+            waiting=false;
+            log('info','manual_wait',{...context,page_id:browser.taskTab?.id,waiting:false});
+          }
+          browser.enterBusiness();
+          stage='translation';
+          progress({message:'Running official Translator'});
+          const historyKinds=forEnrichment && Array.isArray(message.data.history_kinds)
+            ? ['received','accepted'].filter(kind=>message.data.history_kinds.includes(kind)) : [];
+          const {item,apiItem,proxy,sourceDocument,metadataSource,dateCandidates}=await translator.translate(doc,doi,{
+            signal:controller.signal,forEnrichment,historyKinds,workspaceMetadata:forEnrichment?undefined:message.data.metadata,
+            logContext:{...context,page_id:doc.pageId}});
+          if(controller.signal.aborted)throw new BrowserFailure('translation','canceled');
+          // A navigation while translating invalidates the source document.
+          if (!browser.documentCurrent(doc) || !browser.documentCurrent(sourceDocument)) throw new BrowserFailure('translation','document_changed');
+          if(message.action==='enrich_paper') {
+            return {item,metadata_source:metadataSource,date_candidates:dateCandidates,
+              source_url:dateCandidates?.length?sourceDocument.url:undefined};
+          }
           log('info','metadata_selected',{...context,stage:'translation',page_id:sourceDocument.pageId,metadata_source:metadataSource});
           progress({message:'Native Zotero save in progress'},'parent_save');
           saving=true;
           stage='parent_save';
-          data=await saveOnce({item,apiItem,proxy,doi,target:message.data.zotero_target,doc:sourceDocument,browser,signal:controller.signal,
-            fallbackPDF:request=>requestOpenAlexPDF(current,request,{send,connected:bridgeReady,doi,target:message.data.zotero_target}),
-            logContext:{...context,page_id:doc.pageId,metadata_source:metadataSource}});
+          return await saveOnce({item,apiItem,proxy,doi,resources,target:message.data.zotero_target,doc:sourceDocument,browser,signal:controller.signal,
+              fallbackPDF:request=>requestOpenAlexPDF(current,request,{send,connected:bridgeReady,doi,target:message.data.zotero_target}),
+              logContext:{...context,page_id:doc.pageId,metadata_source:metadataSource}});
         }
+      } finally {
+        for(const challenge of current.challenges.values())challenge.cancel();
+        current.openalex?.cancel();
+        resultPageId=browser.taskTab?.id;
       }
-    } catch (error) {
-      data=message.action==='import_paper'?failedImport(error,stage,saving)
-        :{diagnostic:diagnosticFor(error,stage)};
-    } finally {
-      current.challenge?.cancel();
-      current.openalex?.cancel();
-      resultPageId=browser.taskTab?.id;
-      browser.endTask();
-    }
-    const diagnostic=data.diagnostic || {};
-    const outcome=data.parent?.outcome || data.outcome || (data.item?'retrieved':data.filename?'downloaded':Number.isInteger(data.total)?'queried':data.source_url?'retrieved':'no_result');
-    const canceled=(controller.signal.aborted || diagnostic.code==='canceled')
-      && !['confirmed','uncertain'].includes(data.parent?.outcome);
-    const failed=!!data.diagnostic || !!data.error || data.outcome==='Needs attention' || outcome==='no_result' || ['no_effect','uncertain'].includes(data.parent?.outcome);
-    log(canceled?'info':failed?'warn':'info','task_finished',{...context,page_id:resultPageId,
-      duration_ms:Date.now()-started,outcome:canceled?'canceled':outcome,
-      parent:data.parent?.outcome,pdf:data.pdf?.outcome,stage:diagnostic.stage || stage,
-      step:diagnostic.step,code:diagnostic.code || data.reason,net_error:diagnostic.net_error,status:diagnostic.status,
-      imperva_edet:diagnostic.imperva_edet,imperva_incident_id:diagnostic.imperva_incident_id});
-    send({type:'result',id:message.id,action:message.action,data:{...data,diagnostics_status:diagnosticsStatus()}});
-  })();
-  activeRequest=operation;
-  browser.publish();
-  try {await operation;} finally {
-    if(activeRequest === operation) activeRequest=null;
-    if(activeOperation === current) activeOperation=null;
-    browser.publish();
+    });
+  } catch (error) {
+    data=message.action==='import_paper'?failedImport(error,stage,saving)
+      :{diagnostic:diagnosticFor(error,stage)};
   }
+  const diagnostic=data.diagnostic || {};
+  const outcome=data.parent?.outcome || data.outcome || (data.item?'retrieved':data.filename?'downloaded':Number.isInteger(data.total)?'queried':data.source_url?'retrieved':'no_result');
+  const canceled=(controller.signal.aborted || diagnostic.code==='canceled')
+    && !['confirmed','uncertain'].includes(data.parent?.outcome);
+  const failed=!!data.diagnostic || !!data.error || data.outcome==='Needs attention' || outcome==='no_result' || ['no_effect','uncertain'].includes(data.parent?.outcome);
+  log(canceled?'info':failed?'warn':'info','task_finished',{...context,page_id:resultPageId,
+    duration_ms:Date.now()-started,outcome:canceled?'canceled':outcome,
+    parent:data.parent?.outcome,pdf:data.pdf?.outcome,stage:diagnostic.stage || stage,
+    step:diagnostic.step,code:diagnostic.code || data.reason,net_error:diagnostic.net_error,status:diagnostic.status,
+    imperva_edet:diagnostic.imperva_edet,imperva_incident_id:diagnostic.imperva_incident_id});
+  send({type:'result',id:message.id,action:message.action,data:{...data,diagnostics_status:diagnosticsStatus()}});
 }
 async function startPython(config,cdpURL) {
   if(!fs.existsSync(path.join(ROOT,'.venv/bin/python'))) throw Error('Run uv sync --locked --group dev in the project copy first');
@@ -250,8 +284,7 @@ async function startPython(config,cdpURL) {
   });
   python.on('error',()=>{dialog.showErrorBox('Allfold','Python could not start');app.quit();});
   python.on('exit',(code,signal)=>{
-    activeOperation?.controller.abort();
-    activeOperation?.challenge?.resolve({outcome:'failed',reason:'python_exited'});
+    stopOperations();
     if (!exiting) log('error','python_exited',{exit_code:code});
     if (!exiting && base) dialog.showErrorBox('Allfold','Python exited. Inspect the terminal output before restarting.');
     readyToExit=true;
@@ -288,20 +321,18 @@ async function connect() {
         const message=JSON.parse(event.data);
         if(message.type === 'ready') {setLogLevel(message.log_level);bridgeReady=true;resolve();}
         else if(message.type === 'cancel') {
-          if(activeOperation?.id===message.id && activeOperation.action===message.action)
-            activeOperation.controller.abort();
+          pendingOperation(message)?.controller.abort();
         }
         else if(message.type === 'solve_cloudflare_result') {
-          const current=activeOperation;
-          if(!current || current.id!==message.id || current.action!==message.action
-            || current.controller.signal.aborted || !current.challenge
-            || current.challenge.id!==message.challenge_id)return;
+          const current=pendingOperation(message),challenge=current?.challenges.get(message.challenge_id);
+          if(!challenge || current.controller.signal.aborted)return;
           if(!message.data || typeof message.data!=='object')throw Error('Invalid challenge result');
-          current.challenge.resolve(message.data);
+          challenge.resolve(message.data);
         }
-        else if(message.type === 'openalex_pdf_result')settleOpenAlexPDF(activeOperation,message);
+        else if(message.type === 'openalex_pdf_result')settleOpenAlexPDF(pendingOperation(message),message);
         else if(message.type === 'shutdown_ready') {
           // Python has processed the final result and can now exit gracefully.
+          pythonShutdownReady=true;
           socket.close();
         } else if(message.type === 'execute' && typeof message.id === 'string') {
           void execute(message).catch(()=>socket.close());
@@ -310,13 +341,12 @@ async function connect() {
     });
     socket.addEventListener('close',()=>{
       bridgeReady=false;
-      activeOperation?.controller.abort();
-      activeOperation?.challenge?.resolve({outcome:'failed',reason:'bridge_disconnected'});
+      stopOperations();
       if(!exiting) {
         log('error','bridge_disconnected');
         dialog.showErrorBox('Allfold','Electron connection lost. No saves will be replayed. Inspect Zotero before retrying.');
         app.quit();
-      }
+      } else if(!pythonShutdownReady)drainDisconnectedPython();
     });
   });
 }
@@ -364,7 +394,7 @@ async function main() {
   window.webContents.on('will-prevent-unload',event=>{
     if(exitApproved || confirmBlockedUnload(window,dialog))event.preventDefault();
   });
-  browser=new BrowserRuntime({hostWindow:window,cdpURL,solveCloudflare,isTaskRunning:()=>!!activeRequest,readCASCredentials:async()=>{
+  browser=new BrowserRuntime({hostWindow:window,cdpURL,solveCloudflare,isTaskRunning:()=>operations.size>0,readCASCredentials:async()=>{
     if(exiting)return null;
     const credentials=await readCASCredentials();
     return exiting?null:credentials;
@@ -400,27 +430,23 @@ app.on('before-quit',event=>{
     }).catch(()=>{exitCheck=null;});
     return;
   }
-  activeOperation?.controller.abort();
-  if(readyToExit && activeRequest) {
+  if(readyToExit && operations.size) {
     event.preventDefault();
     exiting=true;
-    activeRequest.catch(()=>{}).finally(()=>app.quit());
+    stopOperations();
+    void waitForOperations().then(()=>app.quit());
     return;
   }
   if(readyToExit){browser?.close();translator?.close();return;}
   event.preventDefault();
   if(exiting)return;
   exiting=true;
+  stopOperations();
   log('info','app_exiting');
   if(bridgeReady) {
     // Sent immediately: Python stops the next dispatch while this request settles.
-    send({type:'shutdown'});
-  } else {
-    // Startup failure or transport loss: wait for any native Local API save first.
-    Promise.resolve(activeRequest).catch(()=>{}).then(()=>{
-      if(python && python.exitCode === null && python.signalCode === null) python.kill('SIGTERM');
-      else {readyToExit=true;app.quit();}
-    });
-  }
+    try {send({type:'shutdown'});}
+    catch (_) {drainDisconnectedPython();}
+  } else drainDisconnectedPython();
 });
 app.on('window-all-closed',()=>app.quit());

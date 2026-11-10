@@ -12,6 +12,9 @@ from allfold.url_safety import normalize_public_http_url
 from allfold.browser_diagnostics import format_browser_diagnostic, normalize_browser_diagnostic
 from allfold.application.history import observe
 from allfold.application.browser_runtime import ElectronDisconnected
+from allfold.application.browser_services import BrowserServiceSnapshot, browser_workspace_identity
+from allfold.application.workspace import paper_service_assignment
+from allfold.persistence.markdown_state import parse_paper_state
 
 
 from allfold.models import EvidenceDateKind, parse_publication_date
@@ -97,10 +100,11 @@ def translator_date_events(item, target, metadata_source, history, source_url):
 
 
 class PaperEnrichment:
-    def __init__(self, bridge, browser_lock, *, diagnostics=None, current_workspace=None):
+    def __init__(self, bridge, browser_lock, *, diagnostics=None, current_workspace=None, config_path=None):
         self.bridge, self.browser_lock = bridge, browser_lock
         self.diagnostics = diagnostics
         self.current_workspace = current_workspace
+        self.config_path = config_path
         self._lock = threading.RLock()
         self._task = None
         self._worker = None
@@ -153,10 +157,21 @@ class PaperEnrichment:
     def _run(self, task):
         target = task['target']
         try:
+            saved = BrowserServiceSnapshot.read(self.config_path) if self.config_path is not None else None
+            service_id = None
+            if saved is not None:
+                paper = parse_paper_state(target.path, target.original)
+                if paper is not None:
+                    service_id, _ = paper_service_assignment(paper, saved.journals)
             with self._lock:
                 if task['stop'].is_set():
                     raise InterruptedError()
+                self.browser_lock.require(task['owner'])
+                if saved is not None:
+                    saved.verify()
                 pending = self.bridge.execute('enrich_paper', {'doi': target.doi,
+                    'workspace_identity': browser_workspace_identity(target.workspace, target.workspace_identity),
+                    'service_id': service_id, 'service_scope': saved.scope if saved else None,
                     'history_kinds': list(target.history_kinds),
                     'task_id':task['request_id'], 'workflow_id':task['request_id'], 'paper_id':str(target.paper_id)}, lambda data: self._progress(task, data))
             result = pending.result()
@@ -166,6 +181,10 @@ class PaperEnrichment:
                     raise InterruptedError()
                 if not self.bridge.connected:
                     raise ElectronDisconnected('Electron disconnected before enrichment save')
+                if self.current_workspace and self.current_workspace().resolve() != target.workspace:
+                    raise ContentChangedError('Workspace changed during Enrich')
+                if saved is not None:
+                    saved.verify()
                 item = result.get('item')
                 if not isinstance(item, dict):
                     raise ValueError(format_browser_diagnostic(result.get('diagnostic')))
@@ -185,8 +204,6 @@ class PaperEnrichment:
                                                 result.get('date_candidates'), result.get('source_url'))
                 if events:
                     candidate['date_evidence'] = events
-                if self.current_workspace and self.current_workspace().resolve() != target.workspace:
-                    raise ContentChangedError('Workspace changed during Enrich')
                 task['phase'] = 'Saving'
                 try:
                     candidate = save_enrichment(target, candidate.get('abstract'), candidate.get('publication_date'),

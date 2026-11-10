@@ -10,7 +10,7 @@ npm --prefix electron run setup
 
 Setup checks tools, creates `config.example.yaml` only if absent, installs locked Python/Electron/build dependencies, explicitly installs the Electron binary, fetches exact official Zotero revisions, builds the UI and assembles Runtime. Existing modified or incorrect required vendor checkouts are rejected; setup does not reset or clean them. Only the named `src/translate`, `src/utilities` and `src/zotero-schema` submodules are initialized, without recursion. Unused Desktop and Google Docs checkouts may remain absent or retain local changes without being touched. The production revisions are in [upstream.lock](../electron/upstream.lock).
 
-Configure keywords, months and Provider settings in Run; Kept owns Workflow and Access settings. Application settings remain in Settings. Ordinary edits autosave, while credential replacement/clearing and high-impact operations require explicit submission. The public template is separate from local configuration; setup does not create or copy credentials.
+Configure keywords, months and Provider settings in Discover. The Login toolbar owns Institution and Service preparation concurrency. Import exposes the Paper, Translator, PDF and Zotero writer limits. Application settings remain in Settings. Ordinary edits autosave, while credential replacement/clearing and high-impact operations require explicit submission. The public template is separate from local configuration; setup does not create or copy credentials.
 
 Journal state is stored in `.allfold/user-data.sqlite`, isolated by canonical configuration path. The YAML `venue_whitelist` remains the first-migration source, not the live data store. The Journal Registry rebuilds offline from the existing five source lists with `uv run --locked python tools/build_journal_registry.py`; its shipped rows and indexes are checked against an isolated rebuild. Shared GOKB/CARSI data lives in `.allfold/resources.sqlite`; neither database belongs in a source candidate. Use temporary project/configuration directories and injected HTTP transports for migration, exchange and Resolver tests. Do not launch tests against personal YAML, Workspace, covers or Zotero.
 
@@ -35,7 +35,7 @@ Editable UI files are in [frontend/ui](../frontend/ui/). Build the complete deli
 node tools/build-ui-next.mjs
 ```
 
-This copies static assets and bundles Kept JS/CSS into ignored `src/allfold/web/static/ui_next/`. The served URL remains `/static/ui_next/`. Edit sources, not generated files; the application reports missing UI resources instead of using an old source location.
+This copies static assets into ignored `src/allfold/web/static/ui_next/`. The served URL remains `/static/ui_next/`. Edit sources, not generated files; the application reports missing UI resources instead of using an old source location.
 
 With existing pristine vendor sources, rebuild the translation Runtime using:
 
@@ -55,13 +55,13 @@ uv run --locked pytest
 npm --prefix electron test
 ```
 
-`check` discovers project-owned JS/CJS/MJS in Electron sources and scripts, the UI and tools. It excludes dependencies, third-party assets and generated output; tests parse their own files, and esbuild handles Kept TypeScript.
+`check` discovers project-owned JS/CJS/MJS in Electron sources and scripts, the UI and tools. It excludes dependencies, third-party assets and generated output; tests parse their own files.
 
 The real-source Runtime checks assemble all 752 Translators at the locked revision and verify deterministic manifests, selective native submodule initialization, preserved legacy extra checkouts, trusted PR #26 migration and refusal of unsafe inputs. A hidden Electron fixture runs official Web translation, DOI Content Negotiation with dynamically loaded CSL JSON and read-only Enrich against synthetic HTTP. It verifies that only the virtual JSON saver remains and exercises article history parsing, delayed snapshots, the 30-second budget, cancellation and source replacement.
 
 For live Enrich checks, use a disposable Electron profile and public articles. Use the existing Browser navigation and Solver flow and record the article response after verification. A Solver result describes an attempt on a recognized verification page. A generic HTTP 403 or persistent challenge can still block access to the article. Compare the extracted events with the actual Translator source document and distinguish access, translation, capture and parsing failures from a source without dates.
 
-The retained suite covers data preservation, path/identity safety, authority, cancellation, single-save settlement, fixed-source ownership and source preparation. Tests use isolated fixtures and transport doubles. UI build and module dependency checks cover the directory layout. Use [package scripts](../electron/package.json), the [UI build tool](../tools/build-ui-next.mjs) and [CI](../.github/workflows/ci.yml) as the executable command definitions.
+The retained suite covers data preservation, path/identity safety, authority, cancellation, concurrent settlement and uncertainty, fixed-source ownership and source preparation. Tests use isolated fixtures and transport doubles. UI build and module dependency checks cover the directory layout. Use [package scripts](../electron/package.json), the [UI build tool](../tools/build-ui-next.mjs) and [CI](../.github/workflows/ci.yml) as the executable command definitions.
 
 CI starts from a fresh checkout without Vendor caches, runs full Setup and asserts the selective source/runtime inventory before offline checks on macOS. It does not publish or use real credentials. A local pass does not prove that GitHub Actions ran, that the UI is visually correct or that real institutional access and Zotero/PDF saving work. Changes to those paths need relevant manual acceptance with explicit browser authorization.
 
@@ -71,7 +71,7 @@ show their own windows, and Electron's
 requires the containing window to have focus. Concurrent fixture processes can
 otherwise steal that focus and invalidate mouse/keyboard acceptance.
 
-Shipped Kept/Run and Enrich Browser acceptance use separate fixtures. Enrich's target
+Shipped Workflows and Enrich Browser acceptance use separate fixtures. Enrich's target
 Paper is part of its initial Workspace, and its readiness check verifies that Paper
 and enabled controls. It does not replace synthetic Workspace data after finishing
 Run. Both fixtures keep their task/page assertions and report Workspace reads,
@@ -87,13 +87,13 @@ Select checks from this matrix according to the changed behavior and gaps in aut
 Use a disposable configuration and Workspace. Browser control, external accounts and Zotero operations require task-specific authorization beyond isolated test fixtures. Offline tests do not establish the following real-workflow results:
 
 1. From each business workspace, open Browser and return. Verify Paper/Journal selection, reading scroll and unsaved Settings drafts; resize the window, vary Header/Footer content and change the main UI zoom. Confirm no overlap between native webpages, trusted controls and scroll regions, and that Browser keyboard navigation leaves the hidden business selection unchanged.
-2. Create/select/close ordinary pages; use URL entry, back/forward/reload, many tabs and loading/error states. Hide/show Browser and verify the same Page IDs, history and Session. Check shared CARSI, scoped Services with identical names, Manual, Popup, reused ImportPage and attachment helper pages without creating placeholder pages.
-3. Resize/collapse Services and restart; verify valid preferences restore, narrow windows constrain effective size, and returning to a wide window restores the user width. The app starts in Allfold without creating pages solely to restore preferences.
-4. With an authorized task, check background page creation/navigation does not switch or focus the user's current page, while explicit **查看任务页面** reaches the existing task page. Active task pages cannot be closed. Check popup, context menu, DevTools and guarded cache/site-data commands against the main host.
-5. Open History, Settings and Paper Tools dialogs while Browser is visible; verify the native view is hidden while needed and restores the same page. During fullscreen Run/Kept manual handoff, Browser must remain fully usable and returning must retain the current workflow and legal Continue/Cancel controls.
+2. Create/select/close ordinary pages; use URL entry, back/forward/reload, many tabs and loading/error states. Hide/show Browser and verify the same Page IDs, history and Session. Check CARSI, scoped Services with identical names, and Other, including popups and reused Paper pages.
+3. Open and dismiss the Browser Tabs flyout using pointer and keyboard. Collapse a Service group and verify scroll and focus on return. Search for local Papers, Journals, Services and tabs from the four workspaces; use `>` for commands.
+4. With an authorized task, check background page creation/navigation does not switch or focus the user's current page, while explicit **查看任务页面** reaches the existing task page. Check that a managed page rejects toolbar navigation and close, and allows reload when idle. Inspect popup and context-menu behavior in the main host.
+5. Open Search and History while Browser is visible; verify the native view is hidden while needed and restores the same page. During a Discover or Login manual handoff, Browser remains usable and returning restores the workflow controls.
 6. Test Archive disabled on fresh preferences, legacy Paper links, missing Papers, Workspace refresh and busy guards. Re-enable Archive and verify its existing layout/resources and ARRAY's shared reader remain usable.
 7. Run WoS-only, API-only and mixed selected-source Runs in both presentation modes, including cancellation and interrupted polling recovery. Verify inline mode allows safe navigation, records completion/history and refreshes results without forcing a workspace change.
-8. Prepare/Import in both modes with authorized CARSI/Manual Service/CAPTCHA and Zotero. Check login waiting, explicit Continue, Cancel, transition, success/error, terminal acknowledgement and restart restoration. Inspect actual parent-item and PDF results separately; never retry an uncertain save solely because presentation changed.
+8. With authorized CARSI and Manual Services, check one login, independent preparation pages, partial results and the exact manual verification page. Test managed Paper page reuse and a fixed Import into an isolated Zotero target. Check explicit skips, cancellation and uncertain write settlement. Inspect actual parent-item and PDF results separately; never retry an uncertain save solely because presentation changed.
 
 Python HTTPX callers share the [HTTP client and proxy layer](http.md). Its focused
 tests cover isolated request routing, TLS, transport lifecycle and cache failures;

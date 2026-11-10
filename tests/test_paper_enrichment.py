@@ -1,5 +1,5 @@
-from electron_test_helpers import OfflineBridge
-from electron_test_helpers import PendingBridge
+from concurrent.futures import Future
+from electron_test_helpers import PendingBridge, paper
 from allfold.application.browser_runtime import BrowserTaskLock
 from uuid import uuid4
 
@@ -31,20 +31,38 @@ def missing(workspace, status=WorkflowStatus.CANDIDATE):
 def test_field_api_is_available_offline_and_respects_csrf_revision_and_workflow(tmp_path):
     config, workspace = write_valid_config(tmp_path)
     paper_id, path = missing(workspace)
-    app = create_app(config, electron_bridge=OfflineBridge())
+    paper(workspace, 'other-kept-paper')
+    with config.open('a') as stream:
+        stream.write('kept_workflow:\n  zotero_target:\n    server_id: SERVERFIXTUR\n'
+                     '    library_type: user\n    library_id: "0"\n')
+
+    class Bridge(PendingBridge):
+        def execute(self, action, data, progress=None):
+            if action == 'zotero_local':
+                future = Future()
+                future.set_result({'ok': True})
+                return future
+            return super().execute(action, data, progress)
+
+    bridge = Bridge()
+    app = create_app(config, electron_bridge=bridge)
     with TestClient(app, base_url='http://localhost') as client:
         endpoint = f'/api/papers/{paper_id}'
         snapshot = client.get(f'{endpoint}/fields').json()
         body = {'revision': snapshot['revision'], 'abstract': 'Manual abstract.'}
         assert client.post(f'{endpoint}/abstract/input', json={**body, 'csrf_token': 'invalid'}).status_code == 403
         body['csrf_token'] = app.state.csrf_token
-        from dataclasses import replace
-        workflow=app.state.kept_workflow
-        workflow._snapshot=replace(workflow.snapshot(),phase='preparing')
+        queue = client.get('/api/kept-workflow/queue').json()
+        started = client.post('/api/kept-workflow/start', json={
+            'csrf_token': body['csrf_token'], 'import_token': queue['import_token'],
+        })
+        assert started.status_code == 200 and bridge.dispatched.wait(2)
         before = path.read_bytes()
         assert client.post(f'{endpoint}/abstract/input', json=body).status_code == 409
         assert path.read_bytes() == before
-        workflow._snapshot=replace(workflow.snapshot(),phase='idle')
+        bridge.future.set_result({'settled': True, 'parent': {'outcome': 'no_effect'}})
+        app.state.kept_workflow.join()
+        bridge.connected = False
         assert client.post(f'{endpoint}/abstract/input', json={**body, 'abstract': '  '}).status_code == 409
         assert client.post(f'{endpoint}/abstract/input', json=body).json()['saved'] is True
         assert client.post(f'{endpoint}/fields/reset', json={

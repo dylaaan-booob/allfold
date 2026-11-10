@@ -1,7 +1,7 @@
 import {completionLabel,resultLabel} from './run-results.js';
-import {importOutcomeMessage,preparationReason,providerNames} from './business-results.js';
+import {importOutcomeMessage,preparationReason,providerNames,zoteroKeyDetails} from './business-results.js';
 const esc=value=>String(value??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
-const kinds={run:'Run',prepare:'Service Preparation',import:'Batch Import',kept:'Kept Workflow',enrich:'网页 Enrich',covers:'Cover Search'};
+const kinds={run:'Discover',login:'Login',prepare:'Service Preparation',import:'Batch Import',kept:'Import to Zotero',enrich:'网页 Enrich',covers:'Cover Search'};
 const outcomes={running:'进行中',completed:'完成',partial:'部分完成',failed:'失败',cancelled:'已取消',
   interrupted:'已中断',uncertain:'结果未确认',needs_attention:'需要处理',opened:'已打开',no_effect:'未产生保存',confirmed:'父条目已确认'};
 const metrics={integrated_candidates:'Discovery 候选',integrated_deduplicated:'去重 Paper',work_location_targets:'Work 定位 DOI',completion_targets:'补全 Paper',completion_requests:'补全 HTTP 请求',completion_date_facts_added:'新增日期事实',first_public_recorded:'首版日期已记录',first_public_no_association:'尚无预印本关联',first_public_known_unresolved:'已知首版未确定',first_public_conflict:'首版证据冲突',first_public_failed:'首版查询失败',first_public_cancelled:'首版查询取消',total:'总数',processed:'已处理',retrieved:'检索记录',created:'新增 Paper',updated:'更新',
@@ -50,7 +50,7 @@ export function renderHistoryRecord(record) {
   if(details.sync_warning)messages.push('业务写入已完成，但文件系统同步未确认，请保留备份。');
   const saved=(details.saved_fields || []).filter(field=>fieldNames[field]).map(field=>fieldNames[field]);
   const requested=(details.requested_fields || []).filter(field=>fieldNames[field]).map(field=>fieldNames[field]);
-  const rows=(details.results || []).map((item,index)=>`<li><span>${esc(item.paper_id?`Paper ${index+1}`:item.service_id?`Service ${index+1}`:`结果 ${index+1}`)}</span> · ${esc(resultText(item))}<p class="s-help">${esc(item.paper_id || '')}${item.service_id || item.service_assignment?` · ${esc(item.service_id || item.service_assignment)}`:''}</p>${item.diagnostic_message?`<p>${esc(item.diagnostic_message)}</p>`:''}</li>`).join('');
+  const rows=(details.results || []).map((item,index)=>`<li><span>${esc(item.paper_id?`Paper ${index+1}`:item.service_id?`Service ${index+1}`:`结果 ${index+1}`)}</span> · ${esc(resultText(item))}<p class="s-help">${esc(item.paper_id || '')}${item.service_id || item.service_assignment?` · ${esc(item.service_id || item.service_assignment)}`:''}</p>${item.diagnostic_message?`<p>${esc(item.diagnostic_message)}</p>`:''}${item.zotero_keys?`<p>${esc(zoteroKeyDetails(item.zotero_keys))}</p>`:''}</li>`).join('');
   const serviceCounts=(details.service_statistics || []).map(service=>`<p>${esc(service.service_id || service.service_assignment)} · ${Object.entries(service).filter(([key,value])=>metrics[key] && Number.isInteger(value)).map(([key,value])=>`${esc(metrics[key])} ${value}`).join(' · ')}</p>`).join('');
   const sourceRows=(details.run_sources || []).map(source=>`<li>${esc(providerNames[source.provider] || source.provider)} · ${esc(resultLabel(source.status))} · ${esc(source.candidates ?? '—')} candidates · ${esc(source.created ?? '—')} new / ${esc(source.existing ?? '—')} existing${source.problems?` · ${esc(source.problems)} 来源提示`:''}</li>`).join('');
   const checks=details.wos_checks || {};

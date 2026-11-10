@@ -1,7 +1,6 @@
 # WoS Plain Text export
 
-Run uses the saved Web of Science CARSI Service and its task-bound Core
-Collection page. The export content is a fixed business selection, not a user
+Discover uses the saved Web of Science Access Service and its Core Collection page from Login. The export content is a fixed business selection, not a user
 field editor in Allfold:
 
 | Group | Selected fields |

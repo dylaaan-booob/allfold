@@ -1,4 +1,5 @@
 """Failure-isolated observations at coordinator boundaries, never workflow authority."""
+import re
 import sys
 
 
@@ -10,6 +11,24 @@ def observe(store, method, *args, **kwargs):
     except Exception:
         print('Allfold diagnostics: coordinator observation unavailable.', file=sys.stderr)
         return None
+
+
+def safe_zotero_keys(value):
+    """Project exact Local API keys without including target or authorization data."""
+    if not isinstance(value, dict):
+        return {}
+
+    def valid(key):
+        return isinstance(key, str) and re.fullmatch(r"[23456789ABCDEFGHIJKLMNPQRSTUVWXYZ]{8}", key) is not None
+
+    result = {}
+    if valid(value.get('parent_key')):
+        result['parent_key'] = value['parent_key']
+    for name in ('attachment_keys', 'note_keys'):
+        keys = value.get(name)
+        if isinstance(keys, list) and (known := [key for key in keys if valid(key)]):
+            result[name] = known
+    return result
 
 
 def batch_history(snapshot):
@@ -26,9 +45,10 @@ def batch_history(snapshot):
         warnings=sum(bool(r.diagnostic and r.diagnostic.get("stage") == "attachment") for r in snapshot.results),
         total=len(snapshot.plan.papers) if snapshot.plan else 0, processed=sum(r.outcome != 'skipped' for r in snapshot.results))
     results = [dict(paper_id=str(r.paper_id), service_id=r.service_id, service_assignment=r.service_assignment,
-        outcome={'exported':'confirmed', 'blocked':'needs_attention',
+        outcome='uncertain' if r.uncertain_write else {'exported':'confirmed', 'blocked':'needs_attention',
         'skipped':'no_effect'}.get(r.outcome, r.outcome), parent_outcome=r.parent_outcome,
-        pdf_outcome='unverified', reason=r.reason_code, diagnostic=r.diagnostic) for r in snapshot.results]
+        pdf_outcome='unverified', reason=r.reason_code, diagnostic=r.diagnostic,
+        zotero_keys=safe_zotero_keys(r.native_identity)) for r in snapshot.results]
     service_statistics = {}
     completed = {result.paper_id: result for result in snapshot.results}
     for paper in snapshot.plan.papers if snapshot.plan else ():
@@ -40,7 +60,7 @@ def batch_history(snapshot):
         result = completed.get(paper.paper_id)
         if result:
             for name, count in dict(processed=result.outcome != 'skipped', confirmed=result.parent_outcome == 'confirmed',
-                no_effect=result.outcome == 'no_effect', uncertain=result.parent_outcome == 'uncertain',
+                no_effect=result.outcome == 'no_effect', uncertain=result.parent_outcome == 'uncertain' or result.uncertain_write,
                 skipped=result.outcome == 'skipped', warnings=bool(result.diagnostic),
                 pdf_unverified=result.pdf_outcome is not None).items():
                 counts_by_service[name] += count

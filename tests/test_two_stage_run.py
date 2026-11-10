@@ -355,7 +355,7 @@ def test_selected_native_disconnect_revokes_http_but_waits_native_settlement(tmp
     from allfold.config import AccessService
     from allfold.persistence.user_state import load_user_state, compare_write_user_state
     from allfold.application.browser_runtime import BrowserTaskLock
-    from allfold.application.coordinators.preparation_coordinator import PreparationPhase
+    from allfold.application.coordinators.login import PreparedService
     from allfold.application.coordinators.wos_coordinator import WoSCoordinator
     from allfold.providers.integrated import DiscoveryClient
     from allfold.web.electron_bridge import ElectronDisconnected
@@ -364,12 +364,14 @@ def test_selected_native_disconnect_revokes_http_but_waits_native_settlement(tmp
     initial=load_user_state(path)
     compare_write_user_state(path,replace(initial.state,access_services=(*initial.state.access_services,
         AccessService.create('Web of Science','https://www.webofscience.com/'))),initial.revision)
-    class Preparation:
-        def start(self,*args,**kwargs): return self.snapshot()
-        def snapshot(self): return SimpleNamespace(task_id='prep',generation=1,phase=PreparationPhase.COMPLETED,
-            authorization_pending=False,message='Ready',waiting_for_user=False)
-        def wos_handoff(self,*args): return 71
-        def join(self): pass
+    class Login:
+        def prepared_page(self, saved, service_id):
+            assert any(service.id == service_id and service.name == "Web of Science" for service in saved.services)
+            return 71
+
+        def prepared_authority(self, saved, service_id):
+            return PreparedService(self.prepared_page(saved, service_id), 'd' * 64)
+
     query_started, disconnected=Event(),Event()
     class Bridge:
         connected=True
@@ -380,7 +382,7 @@ def test_selected_native_disconnect_revokes_http_but_waits_native_settlement(tmp
             query_started.set()
             return self.pending
     bridge=Bridge();browser=BrowserTaskLock();slot=threading.Lock();slot.acquire()
-    stage=WoSCoordinator(path,Preparation(),slot,bridge=bridge,browser_lock=browser)
+    stage=WoSCoordinator(path,Login(),slot,bridge=bridge,browser_lock=browser)
     calls=[]
     def response(request):
         calls.append(request.url.path)
@@ -415,7 +417,7 @@ def test_work_guard_settles_native_before_parent_cancel_or_authority_error(tmp_p
     from allfold.config import AccessService
     from allfold.persistence.user_state import load_user_state, compare_write_user_state
     from allfold.application.browser_runtime import BrowserTaskLock
-    from allfold.application.coordinators.preparation_coordinator import PreparationPhase
+    from allfold.application.coordinators.login import PreparedService
     from allfold.application.coordinators.wos_coordinator import WoSCoordinator
     from allfold.application.coordinators.run_coordinator import RunCoordinator
     from allfold.providers.integrated import DiscoveryClient
@@ -427,12 +429,14 @@ def test_work_guard_settles_native_before_parent_cancel_or_authority_error(tmp_p
     initial = load_user_state(path)
     compare_write_user_state(path, replace(initial.state, access_services=(*initial.state.access_services,
         AccessService.create('Web of Science', 'https://www.webofscience.com/'))), initial.revision)
-    class Preparation:
-        def start(self, *args, **kwargs): return self.snapshot()
-        def snapshot(self): return SimpleNamespace(task_id='prep', generation=1, phase=PreparationPhase.COMPLETED,
-            authorization_pending=False, message='Ready', waiting_for_user=False)
-        def wos_handoff(self, *args): return 71
-        def join(self): pass
+    class Login:
+        def prepared_page(self, saved, service_id):
+            assert any(service.id == service_id and service.name == "Web of Science" for service in saved.services)
+            return 71
+
+        def prepared_authority(self, saved, service_id):
+            return PreparedService(self.prepared_page(saved, service_id), 'd' * 64)
+
     query_started, revoked, guard_entered = Event(), Event(), Event()
     class Bridge:
         connected = True
@@ -443,7 +447,7 @@ def test_work_guard_settles_native_before_parent_cancel_or_authority_error(tmp_p
             return self.pending
     bridge, browser, slot = Bridge(), BrowserTaskLock(), threading.Lock()
     store = DiagnosticStore(path, root=tmp_path / 'logs')
-    native = WoSCoordinator(path, Preparation(), slot, bridge=bridge, browser_lock=browser, diagnostics=store)
+    native = WoSCoordinator(path, Login(), slot, bridge=bridge, browser_lock=browser, diagnostics=store)
     authority_checks = []
     check_authority = native.check_dispatch_authority
     def check(cancel):

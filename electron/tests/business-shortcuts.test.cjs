@@ -1,13 +1,13 @@
 'use strict';
 const test=require('node:test'),assert=require('node:assert/strict');
 const {taskUI}=require('./task-ui-fixture.cjs');
-const idle={phase:'idle',active:false,can_continue:false,can_cancel:false};
+const idle={phase:'idle',active:false,can_cancel:false};
 function keydown(document,target,key) {
   const event={type:'keydown',target,key,defaultPrevented:false,preventDefault(){this.defaultPrevented=true;}};
   document.dispatchEvent(event);return event;
 }
 for(const status of ['candidates','kept'])test(`Browser controls leave the hidden ${status} selection and keyboard defaults unchanged`,async()=>{
-  const f=await taskUI('kept.js',{page:'workspace',request:async url=>url.includes('/assets/kept/')?{}:idle});
+  const f=await taskUI('kept.js',{page:'workspace',request:async url=>url.includes('/queue')?{services:[]}:idle});
   const journal={key:'journal-2',name:'Second Journal'};
   f.entries.push({paper:{id:'paper-2',title:'Second paper'},journal});
   f.window.inboxKept.data().journals.push(journal);

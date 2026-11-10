@@ -338,3 +338,155 @@ def test_batch_continues_only_after_known_no_effect(tmp_path, first, expected_ca
         assert not batch.snapshot().results
 
 
+
+
+def test_parallel_native_requests_route_progress_cancellation_and_settlement_independently():
+    bridge = ElectronBridge("secret", "testserver")
+    app = FastAPI()
+    app.websocket("/ws")(bridge.connect)
+    first_progress, second_progress = [], []
+    with TestClient(app) as client, client.websocket_connect("/ws") as socket:
+        socket.send_json({"token": "secret"})
+        assert socket.receive_json()["type"] == "ready"
+        first = bridge.execute("import_paper", {"workflow_id": "batch", "task_id": "first"}, first_progress.append)
+        a = socket.receive_json()
+        second = bridge.execute("import_paper", {"workflow_id": "batch", "task_id": "second"}, second_progress.append)
+        bridge.cancel_task("batch", "first")
+        b = socket.receive_json()
+        assert b["type"] == "execute" and a["id"] != b["id"]
+        assert socket.receive_json() == {"type": "cancel", "id": a["id"], "action": "import_paper"}
+        for message, progress in ((b, "second saving"), (a, "first settling")):
+            socket.send_json({"type": "progress", "id": message["id"], "action": message["action"],
+                              "data": {"message": progress}})
+        socket.send_json({"type": "result", "id": b["id"], "action": b["action"], "data": confirmed()})
+        assert second.result(timeout=2) == confirmed()
+        assert not first.done()
+        assert first_progress == [{"message": "first settling"}]
+        assert second_progress == [{"message": "second saving"}]
+        socket.send_json({"type": "result", "id": a["id"], "action": a["action"],
+                          "data": {"settled": True, "parent": {"outcome": "no_effect"}}})
+        assert first.result(timeout=2)["parent"]["outcome"] == "no_effect"
+
+
+def test_parallel_cloudflare_requests_keep_receiving_results_and_cancel_only_their_target(monkeypatch):
+    first_started = threading.Event()
+    first_stopped = threading.Event()
+    targets = ("a" * 32, "b" * 32)
+    calls = []
+
+    def solve(_endpoint, url, stop, *, target_id):
+        calls.append((url, target_id))
+        if target_id == targets[0]:
+            first_started.set()
+            if stop.wait(2):
+                first_stopped.set()
+        return {"outcome": "clicked", "reason": "checkbox_clicked"}
+
+    monkeypatch.setattr("allfold.web.electron_bridge.solve_cloudflare", solve)
+    bridge = ElectronBridge("secret", "testserver")
+    app = FastAPI()
+    app.websocket("/ws")(bridge.connect)
+    url = "https://fixture.example/challenge"
+    with TestClient(app) as client, client.websocket_connect("/ws") as socket:
+        socket.send_json({"token": "secret"})
+        socket.receive_json()
+        results, requests = [], []
+        for task, target in zip(("first", "second"), targets):
+            results.append(bridge.execute("prepare_service", {"workflow_id": "login", "task_id": task}))
+            request = socket.receive_json()
+            challenge = {"id": request["id"], "action": request["action"], "challenge_id": target}
+            requests.append(challenge)
+            socket.send_json({**challenge, "type": "solve_cloudflare", "data": {"url": url, "target_id": target}})
+            assert first_started.wait(2)
+        other = bridge.execute("prepare_service", {"workflow_id": "login", "task_id": "third"})
+        other_request = socket.receive_json()
+        socket.send_json({"type": "result", "id": other_request["id"], "action": other_request["action"],
+                          "data": {"outcome": "Opened"}})
+        assert other.result(timeout=2) == {"outcome": "Opened"}
+        assert calls == [(url, targets[0])]
+        assert bridge.cancel_task("login", "first").result(timeout=2)
+        assert socket.receive_json() == {"type": "cancel", "id": requests[0]["id"], "action": "prepare_service"}
+        assert first_stopped.wait(2)
+        assert socket.receive_json() == {**requests[1], "type": "solve_cloudflare_result",
+            "data": {"outcome": "clicked", "reason": "checkbox_clicked"}}
+        assert calls == [(url, target) for target in targets]
+        for result, request in zip(results, requests):
+            socket.send_json({"type": "result", "id": request["id"], "action": request["action"],
+                              "data": {"outcome": "Opened"}})
+            assert result.result(timeout=2) == {"outcome": "Opened"}
+
+
+def test_disconnect_holds_all_pending_native_saves_until_teardown():
+    bridge = ElectronBridge("secret", "testserver")
+    app = FastAPI()
+    app.websocket("/ws")(bridge.connect)
+    with TestClient(app) as client:
+        with client.websocket_connect("/ws") as socket:
+            socket.send_json({"token": "secret"})
+            socket.receive_json()
+            results = []
+            for task in ("first", "second"):
+                results.append(bridge.execute("import_paper", {"workflow_id": "batch", "task_id": task}))
+                assert socket.receive_json()["type"] == "execute"
+        assert all(not result.done() for result in results)
+        client.portal.call(bridge.finish_disconnected)
+        for result in results:
+            with pytest.raises(ElectronDisconnected):
+                result.result(timeout=2)
+
+
+@pytest.mark.parametrize('signal_before_disconnect', [False, True])
+def test_disconnect_during_drain_settles_only_after_main_confirms_native_drain(signal_before_disconnect):
+    import asyncio
+    from fastapi import WebSocketDisconnect
+
+    async def scenario():
+        bridge = ElectronBridge("secret", "testserver")
+        incoming, outgoing = asyncio.Queue(), asyncio.Queue()
+        draining = asyncio.Event()
+
+        class Socket:
+            headers = {"host": "testserver"}
+
+            async def accept(self):
+                pass
+
+            async def receive_json(self):
+                message = await incoming.get()
+                if message is None:
+                    raise WebSocketDisconnect()
+                return message
+
+            async def send_json(self, message):
+                await outgoing.put(message)
+
+            async def close(self, code=1000):
+                pass
+
+        async def drain():
+            draining.set()
+            # A normal drain waits for the native result. Once transport is
+            # lost, process teardown must own the remaining settlement.
+            await asyncio.shield(asyncio.wrap_future(result))
+
+        await incoming.put({"token": "secret"})
+        bridge.shutdown = drain
+        connection = asyncio.create_task(bridge.connect(Socket()))
+        assert (await asyncio.wait_for(outgoing.get(), 1))["type"] == "ready"
+        result = bridge.execute("import_paper", {"workflow_id": "batch", "task_id": "paper"})
+        assert (await asyncio.wait_for(outgoing.get(), 1))["type"] == "execute"
+        await incoming.put({"type": "shutdown"})
+        await asyncio.wait_for(draining.wait(), 1)
+        if signal_before_disconnect:
+            bridge.native_drained()
+            await asyncio.sleep(0)
+            assert not result.done()
+        await incoming.put(None)
+        await asyncio.wait_for(connection, 1)
+        if not signal_before_disconnect:
+            assert not result.done()
+            bridge.native_drained()
+        with pytest.raises(ElectronDisconnected):
+            await asyncio.wait_for(asyncio.wrap_future(result), 1)
+
+    asyncio.run(scenario())

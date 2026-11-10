@@ -120,7 +120,7 @@ class WorkspaceSnapshot:
         return self.papers_for(WorkflowStatus.EXPORTED)
 
 
-def journals_for_paper(paper: WorkspacePaper, journals: Sequence[JournalConfig]) -> tuple[JournalConfig, ...]:
+def journals_for_paper(paper: WorkspacePaper | PaperMarkdownState, journals: Sequence[JournalConfig]) -> tuple[JournalConfig, ...]:
     """Match only saved identifiers; names never establish journal identity."""
     if paper.journal_attribution_state is not PaperJournalAttributionState.VALID:
         return ()
@@ -133,7 +133,7 @@ def journal_for_paper(paper: WorkspacePaper, journals: Sequence[JournalConfig]) 
     return matches[0] if len(matches) == 1 else None
 
 
-def paper_service_assignment(paper: WorkspacePaper, journals: Sequence[JournalConfig]) -> tuple[str | None, str]:
+def paper_service_assignment(paper: WorkspacePaper | PaperMarkdownState, journals: Sequence[JournalConfig]) -> tuple[str | None, str]:
     """Classify every saved identifier match; display and dispatch share this rule."""
     matches = journals_for_paper(paper, journals)
     choices = {journal.access_service_id for journal in matches}
@@ -345,9 +345,9 @@ def plan_workspace_import(lock, journals: Sequence[JournalConfig] = (), *, servi
             if state.status is not WorkflowStatus.KEPT:
                 reasons.append(f"status is {state.status.value if state.status else 'invalid'}, requires kept")
             if not state.external_ids or not state.external_ids.doi:
-                reasons.append("A valid primary DOI is required for Prepare/Import")
+                reasons.append("A valid primary DOI is required for Import")
             if state.publication_type == "preprint":
-                reasons.append("Preprint Prepare/Import is not supported")
+                reasons.append("Preprint Import is not supported")
             eligible = state.automatic_export_eligible
             if reasons or not eligible:
                 non_target = state.status in {WorkflowStatus.CANDIDATE, WorkflowStatus.REJECTED, WorkflowStatus.EXPORTED}

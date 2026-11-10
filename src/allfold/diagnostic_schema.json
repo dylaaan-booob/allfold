@@ -135,7 +135,9 @@
         "diagnostics_reset",
         "enrich_paper",
         "import_paper",
+        "login_carsi",
         "prepare_service",
+        "visit_manual_service",
         "search_journal_cover",
         "wos_export",
         "wos_query"
@@ -149,6 +151,7 @@
         "import",
         "kept",
         "prepare",
+        "login",
         "run"
       ]
     },
@@ -267,6 +270,7 @@
         "cache_size_failed",
         "canceled",
         "carsi_session_expired",
+        "carsi_login_required",
         "cas_credentials_required",
         "cas_encryption_unavailable",
         "cas_invalid_credentials",
@@ -276,6 +280,10 @@
         "cas_store_write_failed",
         "cdp_unavailable",
         "conflict",
+        "checkbox_clicked",
+        "checkbox_not_found",
+        "checkbox_not_unique",
+        "page_not_unique",
         "connection_lost",
         "content_access_blocked",
         "control_disabled",
@@ -361,7 +369,8 @@
         "unverified_official_page",
         "unverified_results_page",
         "upload_failed",
-        "verification_page"
+        "verification_page",
+        "write_stopped"
       ]
     },
     "transport_code": {
@@ -393,6 +402,7 @@
         "Opened",
         "canceled",
         "cancelled",
+        "clicked",
         "completed",
         "confirmed",
         "downloaded",

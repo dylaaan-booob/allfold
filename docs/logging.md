@@ -5,18 +5,20 @@ business tasks and results. Structured **diagnostics** explain the native and Py
 operations behind those tasks. Neither store restores Workspace data, confirms a
 Zotero save, nor authorizes an Import retry.
 
-Run, CARSI Prepare, Kept/Batch Import, webpage Enrich and Cover Search share explicit
+Discover, Login, Import, webpage Enrich and Cover Search share explicit
 workflow/task identities. Native requests have their own request IDs. Service and
 page metadata come from the existing invocation snapshots and page associations;
 logging does not grant browser or institution-credential authority. Native
 completion can precede Python validation and guarded writes, so only the owning
-coordinator finishes a business history record.
+coordinator finishes a business history record. Login includes each saved Service outcome. Import retains explicit skips and separates parent confirmation from attachment uncertainty.
 
-Kept's **Last Import** indicators are a separate process-local projection of the
+**Last Import** indicators are a separate process-local projection of the
 latest execution. Exact-key object queries and confirmed attachment registration
-provide its Item/PDF/Fallback results. Item and attachment keys, Local API
-authorization, PDF candidate URLs and raw bytes are not new History or diagnostic
-fields. The snapshot does not persist across restarts or inspect saved PDF files.
+provide its Item/PDF/Fallback results. The live batch and local History show
+known parent, attachment and note keys for reconciliation. Exported diagnostics
+omit those keys. Local API authorization, PDF candidate URLs and raw bytes stay
+outside History and diagnostics. Last Import's live verification snapshot ends
+when the app exits.
 
 ## Metadata results
 
@@ -58,7 +60,7 @@ Recording failure leaves stderr available and marks evidence incomplete. It cann
 change a decided business result or replay a native save. Normal writes are local;
 there is no automatic upload. Abrupt process or power loss can lose events that
 were not written. An unfinished task from an earlier runtime is presented as
-interrupted, or uncertain for Import/Kept, and never inferred successful.
+interrupted, or uncertain for Import, and never inferred successful.
 
 ## Event schema and privacy
 

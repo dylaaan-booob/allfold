@@ -25,10 +25,6 @@ markup.innerHTML=`<header class="s-header">
 <span class="s-setting-label">Monitor Name</span>
 <input type="text" data-monitor="name" >
 </label>
-<label class="s-setting-row" data-field="displayName">
-<span class="s-setting-label">Display Name</span>
-<input type="text" data-monitor="displayName" maxlength="120">
-</label>
 </fieldset>
 <fieldset class="s-setting-group">
 <legend>Workflow</legend>
@@ -46,14 +42,6 @@ markup.innerHTML=`<header class="s-header">
 </select>
 </label>
 <p id="s-log-help" class="s-help s-field-wide">级别修改后重启应用生效；运行记录与关键结果始终保留。</p>
-<label class="s-setting-row" data-field="delay">
-<span class="s-setting-label">Transition Delay / seconds</span>
-<input type="number" data-monitor="delay" min="0" step="any">
-</label>
-<label class="s-setting-row s-check" data-field="autoImport">
-<input type="checkbox" data-monitor="autoImport">
-<span class="s-setting-label">Kept Auto Import after Preparation</span>
-</label>
 </fieldset>
 <fieldset id="s-institution" class="s-setting-group">
 <legend>Institution</legend>
@@ -114,7 +102,7 @@ markup.innerHTML=`<header class="s-header">
 <input id="s-disable-fullscreen" type="checkbox">
 <span class="s-setting-label">禁用全屏运行界面</span>
 </label>
-<p class="s-help">Run 与 Prepare / Import 在各自工作区显示进度。下次新任务生效；重启恢复使用当前设置。此本地偏好立即生效。</p>
+<p class="s-help">Discover 在 Workflows 中显示进度。设置对下次任务生效。</p>
       <details>
 <summary>Zotero Integration</summary>
 <div class="s-diagnostic">
@@ -320,15 +308,30 @@ $('s-providers').setAttribute('data-flyout-list','');
 const runSidebar=sideShell('run-configuration-sidebar','PROVIDER');
 runSidebar.querySelector('.sidebar-scroll').append(runContext.querySelector('.s-provider-alias'));
 for(const fieldset of runPanel.querySelectorAll('[data-provider-settings]'))runSidebar.querySelector('.sidebar-scroll').append(fieldset);
-const wosAccess=document.createElement('section');wosAccess.dataset.providerSettings='wos';wosAccess.innerHTML='<h3>Institution Access</h3><p id="s-wos-access-status" class="s-help"></p><button id="s-wos-access" class="s-button">Open Kept Access</button>';runSidebar.querySelector('.sidebar-scroll').append(wosAccess);
+const wosAccess=document.createElement('section');wosAccess.dataset.providerSettings='wos';wosAccess.innerHTML='<h3>Institution Access</h3><p id="s-wos-access-status" class="s-help"></p><button id="s-wos-access" class="s-button">Open Login</button>';runSidebar.querySelector('.sidebar-scroll').append(wosAccess);
 const runHistory=document.createElement('section');runHistory.className='s-run-history';runHistory.append(...runContext.childNodes);runContext.remove();runMain.querySelector('.s-run-body').append(runHistory);
 runPanel.prepend(rail('Run navigation',`<button class="rail-button" id="s-run-overview-open" title="Overview" aria-label="Overview">${icon('M4 4h16v16H4zM4 10h16M10 10v10')}</button><button class="rail-button" data-flyout="providers" title="Provider Directory" aria-label="Provider Directory">${icon('M4 5h16M4 12h16M4 19h16')}</button>`));
 runPanel.append(runSidebar,rail('Run tools',`<button class="rail-button" data-sidebar-view="configuration" aria-label="Provider configuration" title="Provider configuration">${icon('M4 6h16M4 12h16M4 18h16M8 3v6M16 9v6M10 15v6')}</button>`,true));
 const monitorName=settingsPage.querySelector('[data-field="name"]');$('s-run-overview').querySelector('fieldset').prepend(monitorName);
 const keptSettings=document.createElement('div');keptSettings.id='s-kept-configuration-bridge';keptSettings.hidden=true;document.body.append(keptSettings);
-const workflowFields=document.createElement('fieldset');workflowFields.className='s-setting-group';workflowFields.id='s-kept-workflow-fields';workflowFields.innerHTML='<legend>Workflow</legend>';
-for(const field of ['displayName','delay','autoImport'])workflowFields.append(settingsPage.querySelector(`[data-field="${field}"]`));
-keptSettings.append(workflowFields,$('s-institution'),$('s-institution-auth'));
+const concurrencyFields=[
+  ['prepare_service_concurrency','prepareServiceConcurrency','Service preparation',5],
+  ['paper_service_concurrency','paperServiceConcurrency','Papers per Service',8],
+  ['paper_global_concurrency','paperGlobalConcurrency','Total Papers',16],
+  ['translator_concurrency','translatorConcurrency','Translator workers',6],
+  ['pdf_concurrency','pdfConcurrency','PDF downloads',8],
+  ['zotero_writer_concurrency','zoteroWriterConcurrency','Zotero writers',4],
+];
+function concurrencyGroup(fields) {
+  const group=document.createElement('fieldset');
+  group.className='s-setting-group';
+  group.innerHTML='<legend>Concurrency</legend>'+fields.map(([,key,label,max])=>
+    `<label class="s-setting-row" data-field="${key}"><span class="s-setting-label">${label}</span>
+      <input type="number" data-monitor="${key}" min="1" max="${max}" step="1"></label>`).join('');
+  return group;
+}
+const loginLimits=concurrencyGroup(concurrencyFields.slice(0,1)),workflowFields=concurrencyGroup(concurrencyFields.slice(1));
+keptSettings.append(loginLimits,workflowFields,$('s-institution'),$('s-institution-auth'));
 settingsPage.querySelector('.s-settings-main').querySelector('fieldset').remove();
 const applicationGroup=settingsPage.querySelector('.s-settings-main fieldset');applicationGroup.querySelector('legend').textContent='Application';applicationGroup.dataset.settingsSection='application';
 const workspaceApply=document.createElement('button');workspaceApply.id='s-workspace-apply';workspaceApply.className='s-button';workspaceApply.textContent='Review Workspace change';applicationGroup.append(workspaceApply);
@@ -347,13 +350,17 @@ settingsPage.prepend(rail('Settings navigation',settingsButtons));
 const settingsFlyout=document.createElement('aside');settingsFlyout.className='navigation-flyout';settingsFlyout.hidden=true;settingsFlyout.innerHTML='<button data-flyout-close aria-label="Close Settings directory">×</button>';settingsPage.append(settingsFlyout,settingsSidebar,rail('Settings tools',`<button class="rail-button" data-sidebar-view="system" title="System / Diagnostics" aria-label="System / Diagnostics">${icon('M4 4h16v16H4zM12 10v7M12 7v1')}</button>`,true));
 for(const button of settingsPage.querySelectorAll('[data-settings-open]'))button.addEventListener('click',()=>{for(const node of settingsPage.querySelectorAll('[data-settings-section]'))node.hidden=node.dataset.settingsSection!==button.dataset.settingsOpen;for(const entry of settingsPage.querySelectorAll('[data-settings-open]'))entry.setAttribute('aria-pressed',String(entry===button));});
 settingsPage.querySelector('[data-settings-open="application"]').setAttribute('aria-pressed','true');
-for(const host of [runMain.querySelector('.s-run-body'),settingsMain,workflowFields,$('s-institution')]){const status=document.createElement('p');status.className='s-help s-domain-save-status';status.dataset.autosaveStatus='';host.append(status);}
-function mountKeptSettings() {
-  const access=$('kept-access-settings'),workflow=$('kept-workflow-settings');
+for(const host of [runMain.querySelector('.s-run-body'),settingsMain,loginLimits,workflowFields,$('s-institution')]){const status=document.createElement('p');status.className='s-help s-domain-save-status';status.dataset.autosaveStatus='';host.append(status);}
+function mountWorkflowSettings() {
+  const access=$('login-access-settings') || $('kept-access-settings');
+  const login=$('login-workflow-settings'),workflow=$('kept-workflow-settings');
   if(access)for(const node of [$('s-institution'),$('s-institution-auth')])if(node.parentElement!==access)access.append(node);
+  if(login && loginLimits.parentElement!==login)login.append(loginLimits);
   if(workflow && workflowFields.parentElement!==workflow)workflow.append(workflowFields);
 }
-window.addEventListener('kept-settings-mount',mountKeptSettings);window.addEventListener('workspace-navigation-state',mountKeptSettings);mountKeptSettings();
+for(const name of ['login-settings-mount','kept-settings-mount','workspace-navigation-state'])
+  window.addEventListener(name,mountWorkflowSettings);
+mountWorkflowSettings();
 const esc=value=>String(value??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const copy=value=>structuredClone(value);
 const same=(a,b)=>JSON.stringify(a)===JSON.stringify(b);
@@ -422,7 +429,7 @@ document.addEventListener('focusout',event=>{if(event.target.matches('#s-provide
 function changed({immediate=false}={}) {revision++;if(autosave && !loading)autosave.edit(ordinaryValues(),{immediate});updateDirty();renderRun();}
 function setOperationPending(value) {
   operationPending=value;root.dataset.busy=String(value);
-  root.querySelector('.s-content').inert=value || loading;for(const id of ['kept-access-settings','kept-workflow-settings'])if($(id))$(id).inert=value || loading;updateDirty();
+  root.querySelector('.s-content').inert=value || loading;for(const id of ['login-access-settings','login-workflow-settings','kept-workflow-settings'])if($(id))$(id).inert=value || loading;updateDirty();
 }
 function casErrorText(code) {
   return ({cas_encryption_unavailable:'系统安全存储不可用，未保存或自动填写凭据。',
@@ -520,7 +527,6 @@ function openSettings(next='settings',instant=false) {
 }
 for(const page of ['journals','run','settings'])window.workspaceNavigation.register(page,{
   canEnter:configurationAvailable,canLeave:configurationAvailable,
-  search:()=>page==='journals' && !preview?'journals':null,
   leave:()=>{rememberScroll();journalLayoutHost.closeFlyout({restoreFocus:false});runLayoutHost.closeFlyout({restoreFocus:false});stopJournalTitleScroll();closeLabelPicker();transitions.get(view).dispose();closeMenu();},
   enter:({instant})=>{
     const next=page==='journals'?'journals-page':page;
@@ -609,9 +615,18 @@ $('s-files').addEventListener('click',()=>{
 document.addEventListener('pointerdown',event=>{if(!event.target.closest('.s-files'))closeMenu();if(!event.target.closest('.s-label-field'))closeLabelPicker();});
 
 workspaceSearch.register('journals',{
-  label:'SEARCH JOURNALS',value:()=>ui.search,
-  disabled:()=>loading || operationPending || Boolean(preview),
-  input:query=>{ui.search=query;reconcileSelections(true);renderJournalsPage();},
+  label:'Journal',
+  items:()=>saved?.list.journals.map(j=>({
+    id:j.id,name:j.name,detail:identifiers(j).join(' / '),keywords:(j.aliases || []).join(' '),
+  })) || [],
+  select:item=>{
+    if(!journal(item.id) || !openSettings('journals-page',true))return false;
+    if(!entityMembers().some(j=>j.id===item.id))ui.directory[ui.scope]='all';
+    selectJournal(item.id);
+    const row=[...$('s-journals').querySelectorAll('[data-journal]')].find(row=>row.dataset.journal===item.id);
+    row?.focus({preventScroll:true});row?.scrollIntoView({block:'nearest'});
+    return true;
+  },
 });
 function syncMonitor() {
   document.querySelectorAll('[data-monitor]').forEach(input=>{const value=draft.monitor[input.dataset.monitor];if(input.type==='checkbox')input.checked=value;else input.value=value ?? '';});
@@ -748,7 +763,7 @@ function renderRun() {
   $('s-provider-up').disabled=position<=0;$('s-provider-down').disabled=position<0 || position===providerOrder().length-1;
   if(document.activeElement!==$('s-provider-alias'))$('s-provider-alias').value=providerName(selectedProvider) || '';
   $('s-run-overview-open').setAttribute('aria-pressed',String(selectedProvider==='overview'));
-  $('s-wos-access-status').textContent=`${saved?.monitor.institutionName || 'Institution 未配置'} · CARSI ${casSaved.configured?'凭据已配置':'凭据未配置'}`;
+  $('s-wos-access-status').textContent='Web of Science 使用 Login 中已准备的 Service 页面。';
   const overview=selectedProvider==='overview';
   $('s-provider-alias').closest('label').hidden=overview;
   $('s-run-title').textContent=overview?'Overview':providerName(selectedProvider);
@@ -798,7 +813,7 @@ $('s-run-operations').addEventListener('change',event=>{
 });
 $('s-providers').addEventListener('click',event=>{const button=event.target.closest('[data-provider]');if(button){selectedProvider=button.dataset.provider;renderRun();runLayoutHost.closeFlyout();runLayoutHost.openSidebar('configuration');}});
 $('s-run-overview-open').addEventListener('click',()=>{selectedProvider='overview';renderRun();runLayoutHost.closeFlyout();runLayoutHost.closeSidebar();});
-$('s-wos-access').addEventListener('click',()=>{if(window.workspaceNavigation.go('kept',{instant:true}))window.dispatchEvent(new CustomEvent('kept-open-sidebar',{detail:{view:'access'}}));});
+$('s-wos-access').addEventListener('click',()=>window.workspaceNavigation.go('login',{instant:true}));
 $('s-provider-alias').addEventListener('change',()=>{
   const id=selectedProvider;if(id==='overview')return;
   const input=$('s-provider-alias'),value=input.value.trim();
@@ -969,7 +984,7 @@ function renderJournalsPage() {
   stopJournalTitleScroll();
   const info=scopeInfo(),id=ui.directory[ui.scope];
   $('s-journals-title').textContent=$('s-journals-title').title=id==='all'?'All '+sourceName():id==='none'?info.empty:selectedEntity()?.name || 'All '+sourceName();
-  renderJournals();renderEntityDetail();renderJournalDetail();syncLayouts();
+  renderJournals();renderEntityDetail();renderJournalDetail();syncLayouts();workspaceSearch.refresh();
 }
 function assignLabel(j,name,assigned) {
   if(!list().labels.some(label=>label.name===name))return;
@@ -1278,8 +1293,8 @@ function project(data) {
   const v=data.values,order=v.provider_order;
   if(!Array.isArray(order) || order.length!==Object.keys(providerDefaults).length || new Set(order).size!==order.length || order.some(id=>!Object.hasOwn(providerDefaults,id)))throw new Error('provider_order 必须完整且不重复地列出所有支持的 Provider；请修正 YAML 后 Reload。');
   return {monitor:{name:v.name,expression:v.keyword_expression,enabledProviders:[...(v.enabled_providers || [])],aliases:{...(v.provider_aliases || {})},providerOrder:[...order],crossrefMailto:v.crossref_mailto || "",pubmedKeyAction:"keep",pubmedKey:v.pubmed_key_configured?keyMask:"",openalexKeyAction:"keep",openalexKey:v.openalex_key_configured?keyMask:"",from:v.from_month,to:v.to_month,
-    workspace:v.output_dir,log:v.log_level,autoImport:v.auto_import_after_preparation,
-    delay:v.transition_delay_seconds,displayName:v.display_name,zoteroTarget:v.zotero_target || null,institutionName:v.institution_name,
+    workspace:v.output_dir,log:v.log_level,
+    ...Object.fromEntries(concurrencyFields.map(([name,key])=>[key,v[name]])),zoteroTarget:v.zotero_target || null,institutionName:v.institution_name,
     idp:v.institution_idp_entity_id,useShibboleth:v.institution_use_shibboleth ?? false},
     revisions:{pubmed_key_revision:v.pubmed_key_revision || "missing",openalex_key_revision:v.openalex_key_revision || "missing",monitor_revision_exists:v.monitor_revision_exists,monitor_revision_digest:v.monitor_revision_digest,
       journal_revision_exists:v.journal_revision_exists,journal_revision_digest:v.journal_revision_digest},
@@ -1300,7 +1315,7 @@ function applyCoverDetails(data) {
   for(const [id,detail] of Object.entries(data.covers || {}))setCoverDetail(id,detail);
   for(const id of covers.keys())if(!Object.hasOwn(data.covers || {},id))covers.delete(id);
 }
-const ordinaryMonitorFields={zotero_target:'zoteroTarget',name:'name',keyword_expression:'expression',from_month:'from',to_month:'to',log_level:'log',enabled_providers:'enabledProviders',crossref_mailto:'crossrefMailto',provider_aliases:'aliases',provider_order:'providerOrder',display_name:'displayName',transition_delay_seconds:'delay',auto_import_after_preparation:'autoImport',institution_name:'institutionName',institution_idp_entity_id:'idp',institution_use_shibboleth:'useShibboleth'};
+const ordinaryMonitorFields={zotero_target:'zoteroTarget',name:'name',keyword_expression:'expression',from_month:'from',to_month:'to',log_level:'log',enabled_providers:'enabledProviders',crossref_mailto:'crossrefMailto',provider_aliases:'aliases',provider_order:'providerOrder',...Object.fromEntries(concurrencyFields.map(([name,key])=>[name,key])),institution_name:'institutionName',institution_idp_entity_id:'idp',institution_use_shibboleth:'useShibboleth'};
 function ordinaryValues(source=draft) {
   const values=Object.fromEntries(Object.entries(ordinaryMonitorFields).map(([field,key])=>[field,copy(source.monitor[key])]));
   values.groups=source.list.groups.map(group=>group.name);values.custom_labels=source.list.labels.map(label=>label.name);
@@ -1433,13 +1448,12 @@ function submission(source=draft) {
   for(const provider of ['pubmed','openalex'])syncKey(provider);
   const form=new FormData(),m=source.monitor;
   for(const [field,key] of Object.entries({name:'name',keyword_expression:'expression',crossref_mailto:'crossrefMailto',pubmed_key_action:'pubmedKeyAction',openalex_key_action:'openalexKeyAction',from_month:'from',to_month:'to',
-    output_dir:'workspace',log_level:'log',transition_delay_seconds:'delay',display_name:'displayName',
+    output_dir:'workspace',log_level:'log',...Object.fromEntries(concurrencyFields.map(([name,key])=>[name,key])),
     institution_name:'institutionName',institution_idp_entity_id:'idp'}))form.set(field,String(m[key]??''));
   for(const id of m.providerOrder)form.append('provider_order',id);
   for(const id of m.enabledProviders)form.append('enabled_providers',id);
   for(const [id,alias] of Object.entries(m.aliases))form.set('provider_alias_'+id,alias);
   form.set('zotero_target',JSON.stringify(m.zoteroTarget || null));
-  form.set('auto_import_after_preparation',m.autoImport?'1':'');
   form.set('institution_use_shibboleth',m.useShibboleth?'1':'');
   for(const [key,value] of Object.entries(source.revisions))form.set(key,value);
   for(const g of source.list.groups)form.append('settings_group',g.name);
@@ -1481,9 +1495,9 @@ function showIssues(data) {
   const texts=[...new Set(all.map(i=>i.message))];
   message([data.message,...texts].filter(Boolean).join(' '),data.saved?'normal':'error');
   const fields={pubmed_api_key:'pubmedKey',openalex_api_key:'openalexKey',name:'name',keyword_expression:'expression',crossref_mailto:'crossrefMailto',pubmed_key_action:'pubmedKeyAction',openalex_key_action:'openalexKeyAction',from_month:'from',to_month:'to',output_dir:'workspace',
-    log_level:'log',transition_delay_seconds:'delay',display_name:'displayName',
+    log_level:'log',...Object.fromEntries(concurrencyFields.map(([name,key])=>[name,key])),
     'institution.name':'institutionName','institution.idp_entity_id':'institutionName',
-    'institution.use_shibboleth':'useShibboleth','institution':'institutionName',kept_workflow:'delay'};
+    'institution.use_shibboleth':'useShibboleth','institution':'institutionName',kept_workflow:'paperGlobalConcurrency'};
   clearValidationIssues();
   let first;
   for(const issue of all){const key=fields[issue.field];if(!key)continue;const input=document.querySelector(`[data-monitor="${key}"]`);input.setAttribute('aria-invalid','true');
@@ -1493,7 +1507,14 @@ function showIssues(data) {
   if(!first && all.some(issue=>/journal|access_service|groups|custom_labels/.test(issue.field || '')))openSettings('journals-page',true);
   if(first){const key=first.dataset.monitor;
     if(['name','expression','from','to','pubmedKey','openalexKey','crossrefMailto'].includes(key)){selectedProvider=key==='pubmedKey'?'pubmed':key==='openalexKey'?'openalex':key==='crossrefMailto'?'crossref':'overview';openSettings('run',true);renderRun();}
-    else if(['displayName','delay','autoImport','institutionName','idp','useShibboleth'].includes(key)){window.workspaceNavigation.go('kept',{instant:true});window.dispatchEvent(new CustomEvent('kept-open-sidebar',{detail:{view:['displayName','delay','autoImport'].includes(key)?'workflow':'access'}}));}
+    else if(['prepareServiceConcurrency','institutionName','idp','useShibboleth'].includes(key)){
+      window.workspaceNavigation.go('login',{instant:true});
+      $('login-page').querySelector(`[data-sidebar-view="${key==='prepareServiceConcurrency'?'workflow':'access'}"]`)?.click();
+    }
+    else if(concurrencyFields.some(([,field])=>field===key)){
+      window.workspaceNavigation.go('kept',{instant:true});
+      window.dispatchEvent(new CustomEvent('kept-open-sidebar',{detail:{view:'workflow'}}));
+    }
     else openSettings('settings',true);first.focus();}
 }
 async function refreshSavedWorkspace() {

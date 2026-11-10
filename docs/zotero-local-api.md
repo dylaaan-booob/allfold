@@ -89,6 +89,21 @@ proves attachment permission.
 [write check](https://github.com/zotero/zotero/blob/536244c2771f590abab9c09a3c27e615e0b318ff/chrome/content/zotero/xpcom/server/server_localAPI.js#L311-L322),
 [file check](https://github.com/zotero/zotero/blob/536244c2771f590abab9c09a3c27e615e0b318ff/chrome/content/zotero/xpcom/server/server_localAPI.js#L2355-L2383))
 
+## Bounded Import
+
+Import fixes the Paper plan, Service scope, authorization and Local API target at
+start. Unprepared Services require explicit skips. Papers without a matching
+Service retain their DOI path. The application admits Paper requests with
+per-Service and total bounds while the native host bounds translation, PDF
+retrieval and writes separately.
+
+Independent Papers can issue Local API POSTs concurrently with distinct object
+keys. Before each POST, the writer checks request and document ownership and
+whether an earlier write became uncertain. Issued requests settle and retain all
+known keys. The guarded Workspace commit records each confirmed parent
+independently of attachment registration. Batch history marks uncertainty for
+manual inspection.
+
 ## Parent creation and precise identity
 
 Generate a fresh eight-character key from

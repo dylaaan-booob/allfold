@@ -462,7 +462,7 @@ class DiscoveryClient:
                 query = params(issns)
                 query['term'] += f' AND ("{lower}"[Date - Publication] : "{upper}"[Date - Publication])'
                 data = self.request('/esearch.fcgi', query).get('esearchresult')
-                if not isinstance(data, dict) or has_entrez_error(data):
+                if not isinstance(data, dict) or has_entrez_error(data, queried_issns=issns):
                     raise DiscoveryError('PubMed: Entrez ESearch application error or invalid result')
                 total = _positive(data.get('count'), 'ESearch count')
                 if total > 9999:

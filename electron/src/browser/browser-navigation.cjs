@@ -213,7 +213,8 @@ async function inspectPage({snapshot,current,authentication,inspectAuthenticatio
     if(error.diagnostic?.code!=='verification_page') {
       if(!authWaiting && !auth.waiting)throw error;
     } else {
-      if(error.diagnostic.imperva_edet!==undefined)return {doc,waiting:true,diagnostic:error.diagnostic};
+      const hcaptcha=/<iframe\b[^>]*\ssrc\s*=\s*["'](?:https:)?\/\/(?:[a-z0-9-]+\.)*hcaptcha\.com(?:[/:]|["'])/i.test(doc.html);
+      if(error.diagnostic.imperva_edet!==undefined || hcaptcha)return {doc,waiting:true,diagnostic:error.diagnostic};
       const key=JSON.stringify([doc.pageId,doc.processId,doc.frameToken]);
       const attempt=solveCloudflare?solverDocuments.get(key):null;
       if(solveCloudflare && (!attempt || attempt.attempts<2 && attempt.retryable)) {

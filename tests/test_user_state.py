@@ -203,18 +203,13 @@ def test_settings_deletion_requires_current_approval_and_corruption_blocks_save(
     assert database.read_bytes() == b"damaged database"
 
 
-def test_prepare_and_covers_use_saved_db_journal_identifiers_without_markdown(tmp_path):
+def test_covers_use_saved_db_journal_identifiers_without_markdown(tmp_path):
     import io
     from PIL import Image
-    from allfold.application.coordinators.preparation_coordinator import read_saved_preparation_services
     from allfold.application.journal_covers import upload_cover, cover_details, CoverError
-    from electron_test_helpers import paper, edit
-    config, legacy, journal, service = current_mapping_document(tmp_path)
+    config, legacy, journal, _ = current_mapping_document(tmp_path)
     load_user_state(config)
-    _, path = paper(tmp_path / "workspace", "kept")
-    edit(path, journal_issns=[journal.key])
     legacy.unlink()
-    assert read_saved_preparation_services(config) == (service,)
     output = io.BytesIO()
     Image.new("RGB", (20, 30), "red").save(output, "PNG")
     upload_cover(legacy, journal.key, output.getvalue(), config_path=config)
@@ -232,20 +227,17 @@ def test_wos_uses_independent_sqlite_service_and_detects_changes(tmp_path, chang
     from types import SimpleNamespace
     from allfold.config import AccessService
     from allfold.application.browser_runtime import BrowserTaskLock
-    from allfold.application.coordinators.preparation_coordinator import PreparationPhase
+    from allfold.application.coordinators.login import PreparedService
     from allfold.application.coordinators.wos_coordinator import WoSCoordinator
     from electron_test_helpers import PendingBridge
 
-    class Preparation:
-        def start(self, config_path, *, service, browser_owner, workflow_id, parent_task_id):
-            assert service.name == "Web of Science"
-            return SimpleNamespace(task_id="fixture", generation=1)
-        def snapshot(self):
-            return SimpleNamespace(authorization_pending=False, phase=PreparationPhase.COMPLETED, results=())
-        def wos_handoff(self, task_id, generation):
-            return "fixture-page"
-        def join(self):
-            pass
+    class Login:
+        def prepared_page(self, saved, service_id):
+            assert any(service.id == service_id and service.name == "Web of Science" for service in saved.services)
+            return 71
+        def prepared_authority(self, saved, service_id):
+            return PreparedService(self.prepared_page(saved, service_id), 'e' * 64)
+
 
     config, legacy, journal, service = current_mapping_document(tmp_path)
     config.write_text(config.read_text() + "\ninstitution:\n  name: Fixture University\n")
@@ -254,12 +246,12 @@ def test_wos_uses_independent_sqlite_service_and_detects_changes(tmp_path, chang
     saved = compare_write_user_state(config, replace(original.state, access_services=(service, wos)), original.revision)
     legacy.unlink()
     bridge = PendingBridge()
-    coordinator = WoSCoordinator(config, Preparation(), threading.Lock(), bridge=bridge, browser_lock=BrowserTaskLock())
+    coordinator = WoSCoordinator(config, Login(), threading.Lock(), bridge=bridge, browser_lock=BrowserTaskLock())
     coordinator.start()
     assert bridge.dispatched.wait(2)
     if change_state:
         compare_write_user_state(config, replace(saved.state, groups=("Statistics", "Added")), saved.revision)
-    bridge.future.set_result({"page_id": "fixture-page", "total": 0, "batch_limit": 100})
+    bridge.future.set_result({"page_id": 71, "total": 0, "batch_limit": 100})
     coordinator.join()
     result = coordinator.state()["snapshot"]["result"]
     if change_state:

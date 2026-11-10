@@ -1,11 +1,20 @@
 """Saved Service identities for one browser invocation, never a second mapping."""
 from dataclasses import dataclass
 import hashlib
+import json
+import os
 from pathlib import Path
 
-from allfold.config import AccessService, JournalConfig, load_config
+from allfold.config import AccessService, InstitutionConfig, JournalConfig, load_config
 from allfold.persistence.safe_write import ContentChangedError, read_text_exact
 from allfold.persistence.user_state import ContentRevision, read_user_state
+
+
+def browser_workspace_identity(path: Path, identity: tuple[int, int]) -> str:
+    """Identify one live Workspace without exposing its local path to Electron."""
+    device, inode = identity
+    return hashlib.sha256(b'\0'.join((os.fsencode(path.resolve()),
+        str(device).encode('ascii'), str(inode).encode('ascii')))).hexdigest()
 
 
 @dataclass(frozen=True)
@@ -15,6 +24,7 @@ class BrowserServiceSnapshot:
     revision: ContentRevision
     journals: tuple[JournalConfig, ...]
     services: tuple[AccessService, ...]
+    institution: InstitutionConfig | None
 
     @classmethod
     def read(cls, config_path: Path):
@@ -25,16 +35,31 @@ class BrowserServiceSnapshot:
         if saved.revision.digest != config.user_state_revision:
             raise ContentChangedError('User state changed while reading browser Services')
         snapshot = cls(config_path, contents, saved.revision,
-                       saved.state.journals, saved.state.access_services)
+                       saved.state.journals, saved.state.access_services, config.institution)
         snapshot.verify()
         return snapshot
 
     @property
+    def scope_id(self):
+        return hashlib.sha256(str(self.config_path).encode()).hexdigest()
+
+    @property
     def scope(self):
         # Paths and configuration contents never cross the browser bridge.
-        return dict(scope_id=hashlib.sha256(str(self.config_path).encode()).hexdigest(),
+        return dict(scope_id=self.scope_id,
                     config_revision=hashlib.sha256(self.config_contents.encode()).hexdigest(),
                     user_state_revision=self.revision.digest)
+
+    def authentication_key(self, credential_epoch: str) -> str:
+        institution = self.institution.model_dump(mode='json') if self.institution else None
+        payload = json.dumps([self.scope_id, credential_epoch, institution], sort_keys=True)
+        return hashlib.sha256(payload.encode()).hexdigest()
+
+    def preparation_key(self, service: AccessService, credential_epoch: str) -> str:
+        # Only the saved access record and authentication policy bind retained pages.
+        payload = json.dumps([self.authentication_key(credential_epoch),
+                              service.model_dump(mode='json')], sort_keys=True)
+        return hashlib.sha256(payload.encode()).hexdigest()
 
     def verify(self):
         if (read_text_exact(self.config_path) != self.config_contents

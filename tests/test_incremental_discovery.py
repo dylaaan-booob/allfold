@@ -21,7 +21,7 @@ def test_native_stage_reuses_parent_slot_and_retains_first_batch_after_later_fai
     from allfold.config import AccessService, load_config
     from allfold.persistence.user_state import load_user_state, compare_write_user_state
     from allfold.application.browser_runtime import BrowserTaskLock
-    from allfold.application.coordinators.preparation_coordinator import PreparationPhase
+    from allfold.application.coordinators.login import PreparedService
     from allfold.application.coordinators.wos_coordinator import WoSCoordinator
     from integrated_run_helpers import run_integrated
     from allfold.application.run_commit import capture_run_workspace
@@ -32,15 +32,14 @@ def test_native_stage_reuses_parent_slot_and_retains_first_batch_after_later_fai
     initial = load_user_state(path)
     compare_write_user_state(path, replace(initial.state, access_services=(*initial.state.access_services,
         AccessService.create('Web of Science', 'https://www.webofscience.com/'))), initial.revision)
-    class Preparation:
-        def start(self, path, **kwargs):
-            assert kwargs['workflow_id'] == kwargs['parent_task_id'] == 'parent-run'
-            return self.snapshot()
-        def snapshot(self):
-            return SimpleNamespace(task_id='prep', generation=1, phase=PreparationPhase.COMPLETED,
-                authorization_pending=False, message='Ready', waiting_for_user=False)
-        def wos_handoff(self, *args): return 71
-        def join(self): pass
+    class Login:
+        def prepared_page(self, saved, service_id):
+            assert any(service.id == service_id and service.name == "Web of Science" for service in saved.services)
+            return 71
+
+        def prepared_authority(self, saved, service_id):
+            return PreparedService(self.prepared_page(saved, service_id), 'd' * 64)
+
     calls = []
     class Bridge:
         connected = True
@@ -62,7 +61,7 @@ def test_native_stage_reuses_parent_slot_and_retains_first_batch_after_later_fai
     slot, browser = threading.Lock(), BrowserTaskLock()
     slot.acquire()
     store = DiagnosticStore(path, root=tmp_path / 'logs')
-    stage = WoSCoordinator(path, Preparation(), slot, bridge=Bridge(), browser_lock=browser, diagnostics=store)
+    stage = WoSCoordinator(path, Login(), slot, bridge=Bridge(), browser_lock=browser, diagnostics=store)
     native_batches=[]
     def execute(snapshot,**kwargs):
         callback=kwargs.pop('records_callback')
@@ -235,7 +234,7 @@ def test_unified_wos_quarantines_conflicting_ut_before_creation(tmp_path,existin
     from allfold.config import AccessService, load_config
     from allfold.persistence.user_state import load_user_state, compare_write_user_state
     from allfold.application.browser_runtime import BrowserTaskLock
-    from allfold.application.coordinators.preparation_coordinator import PreparationPhase
+    from allfold.application.coordinators.login import PreparedService
     from allfold.application.coordinators.wos_coordinator import WoSCoordinator
     from integrated_run_helpers import run_integrated
     from allfold.application.workspace import load_workspace
@@ -256,13 +255,14 @@ def test_unified_wos_quarantines_conflicting_ut_before_creation(tmp_path,existin
         materialize_papers((saved,), workspace)
         original = next((workspace / 'Papers').glob('*.md'))
         original_bytes = original.read_bytes()
-    class Preparation:
-        def start(self, path, **kwargs): return self.snapshot()
-        def snapshot(self):
-            return SimpleNamespace(task_id='prep', generation=1, phase=PreparationPhase.COMPLETED,
-                authorization_pending=False, message='Ready', waiting_for_user=False)
-        def wos_handoff(self, *args): return 71
-        def join(self): pass
+    class Login:
+        def prepared_page(self, saved, service_id):
+            assert any(service.id == service_id and service.name == "Web of Science" for service in saved.services)
+            return 71
+
+        def prepared_authority(self, saved, service_id):
+            return PreparedService(self.prepared_page(saved, service_id), 'd' * 64)
+
     class Bridge:
         connected = True
         def execute(self, action, data, progress=None):
@@ -275,7 +275,7 @@ def test_unified_wos_quarantines_conflicting_ut_before_creation(tmp_path,existin
                 value = dict(filename=data['filename'])
             future.set_result(value)
             return future
-    stage = WoSCoordinator(path, Preparation(), threading.Lock(), bridge=Bridge(), browser_lock=BrowserTaskLock())
+    stage = WoSCoordinator(path, Login(), threading.Lock(), bridge=Bridge(), browser_lock=BrowserTaskLock())
     result = run_integrated(path, wos_stage=stage.execute_stage, workflow_id='parent-run')
     assert result.facts.created_papers == 1
     assert result.facts.details['discovery_status'] == 'partial'
