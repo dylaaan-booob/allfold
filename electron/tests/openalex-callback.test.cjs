@@ -23,3 +23,18 @@ test('OA callback receives only its exact pending Import response and cancellati
  current.controller.abort();assert.deepEqual(await pending,{candidates:[],diagnostic:{code:'canceled'}});
  assert.equal(settleOpenAlexPDF(current,{...sent[0],data:{candidates:['https://oa.example/a.pdf']}}),false);
 });
+
+test('attachment deadline closes the lookup without canceling the parent Import',async()=>{
+ const parent=new AbortController(),attachment=new AbortController(),sent=[];
+ const current={id:'native',action:'import_paper',controller:parent};
+ const target={server_id:'SERVERFIXTUR',library_type:'user',library_id:'0',collection_key:null};
+ const doi='10.5555/fixture',deadline=Date.now()+1000;
+ const pending=requestOpenAlexPDF(current,{doi,target,parent_key:'ABCDEFGH',signal:attachment.signal,deadline},
+  {send:message=>sent.push(message),connected:true,doi,target});
+ assert.equal(sent.length,1);assert.equal(Object.hasOwn(sent[0].data,'signal'),false);
+ assert.equal(sent[0].data.deadline_ms,deadline);
+ attachment.abort();
+ assert.equal(settleOpenAlexPDF(current,{...sent[0],data:{candidates:['https://oa.example/late.pdf']}}),false);
+ const result=await pending;
+ assert.equal(result.diagnostic.code,'canceled');assert.equal(parent.signal.aborted,false);
+});
