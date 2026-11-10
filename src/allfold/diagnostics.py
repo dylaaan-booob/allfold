@@ -24,7 +24,7 @@ from allfold.persistence.user_state import application_data_dir
 # Durable diagnostics are deliberately independent of the Paper/Workspace state.
 # Only coordinators may declare a terminal business outcome.
 
-KINDS = frozenset({'run', 'prepare', 'import', 'kept', 'enrich', 'covers'})
+KINDS = frozenset({'run', 'prepare', 'login', 'import', 'kept', 'enrich', 'covers'})
 PROVIDERS = frozenset({'integrated', 'pubmed', 'openalex', 'crossref', 'europe_pmc', 'arxiv', 'biorxiv', 'medrxiv', 'wos'})
 OUTCOMES = frozenset({'completed', 'partial', 'failed', 'cancelled', 'interrupted', 'uncertain',
                       'needs_attention', 'opened', 'no_effect', 'confirmed'})
@@ -37,9 +37,9 @@ STATISTICS = frozenset({'retrieved', 'created', 'updated', 'total', 'processed',
     'papers', 'services', 'warnings', 'errors', 'excluded', 'duplicates', 'materialized', 'pdf_unverified'})
 REASONS = frozenset({'runtime_interrupted', 'connection_lost', 'cancelled', 'partial', 'failed',
     'needs_attention', 'result_unconfirmed', 'pdf_unverified', 'no_effect', 'configuration_changed',
-    'workspace_changed', 'service_unassigned', 'no_candidates', 'no_kept_papers', 'blocked',
+    'workspace_changed', 'service_unassigned', 'service_unprepared', 'no_candidates', 'no_kept_papers', 'blocked',
     'browser_unavailable', 'invalid_configuration', 'write_failed', 'unknown',
-    'target_opened', 'manual_action_required', 'ambiguous_resource', 'unverified_official_page',
+    'target_opened', 'manual_action_required', 'carsi_login_required', 'ambiguous_resource', 'unverified_official_page',
     'resource_not_found', 'navigation_failed', 'timeout', 'institution_credentials_rejected', 'carsi_session_expired'})
 IDENTIFIER = re.compile(r'[A-Za-z0-9_-]{1,128}\Z')
 SCOPE = re.compile(r'[a-f0-9]{64}\Z')

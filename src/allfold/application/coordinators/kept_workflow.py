@@ -1,293 +1,162 @@
-"""Process-local sequencing of existing Kept executors."""
+"""Process-local ownership and result projection for one fixed Kept Import."""
 from __future__ import annotations
 
-from collections.abc import Callable
 from dataclasses import dataclass, replace
 import secrets
 import threading
-import time
-from typing import TYPE_CHECKING
 
-from allfold.application.batch_import import BatchImportService, BatchPhase, BatchSnapshot
+from allfold.application.batch_import import BatchImportService, BatchPhase
 from allfold.application.history import observe, batch_history
-from allfold.config import ConfigurationError, KeptWorkflowConfig, LoadedConfig
 from allfold.persistence.safe_write import ContentChangedError
-from allfold.application.coordinators.preparation_coordinator import (
-    PreparationCoordinator, PreparationOutcome, PreparationPhase,
-)
-
-if TYPE_CHECKING:
-    from allfold.application.import_target import _ImportTarget
 
 
 @dataclass(frozen=True)
 class WorkflowSnapshot:
     workflow_id: str | None = None
     generation: int = 0
-    mode: str = "full"
     phase: str = "idle"
-    settings: KeptWorkflowConfig = KeptWorkflowConfig()
-    institution_name: str | None = None
-    preparation_task_id: str | None = None
-    preparation_generation: int = 0
-    waiting_for_login: bool = False
-    import_started: bool = False
-    transition_deadline: float | None = None
-    message: str = "Ready to prepare access and import Kept Papers."
+    message: str = "Ready to import Kept Papers."
     navigation: str | None = None
     service_id: str | None = None
-    service_name: str | None = None
     planned_total: int = 0
 
     @property
     def active(self) -> bool:
-        return self.phase in {"preparing", "waiting_for_user", "transition", "importing", "stopping"}
-
-    @property
-    def can_continue(self) -> bool:
-        return self.phase == "waiting_for_user" and not self.waiting_for_login
+        return self.phase in {"importing", "stopping"}
 
     @property
     def can_cancel(self) -> bool:
-        return self.active and self.phase != "stopping"
+        return self.phase == "importing"
 
 
 class KeptWorkflow:
-    def __init__(self, preparation: PreparationCoordinator, batch: BatchImportService,
-                 lock: threading.RLock, *,
-                 begin_import: Callable[[_ImportTarget, str], BatchSnapshot],
-                 has_kept: Callable[[_ImportTarget], bool],
-                 clock: Callable[[], float] = time.monotonic, browser_lock, diagnostics=None):
-        self.diagnostics = diagnostics
-        self._cancel_requested = False
-        self.preparation = preparation
+    def __init__(self, batch: BatchImportService, login, lock, *, browser_lock, diagnostics=None):
         self.batch = batch
-        self._lock = lock
-        self._begin_import = begin_import
-        self._has_kept = has_kept
-        self._clock = clock
+        self.login = login
         self.browser_lock = browser_lock
-        self.browser_owner = None
+        self.diagnostics = diagnostics
+        self._lock = lock
         self._snapshot = WorkflowSnapshot()
-        self._target: _ImportTarget | None = None
-        self._authorization: str | None = None
-        self._due: float | None = None
-        self._stop = threading.Event()
+        self._worker = None
 
     def snapshot(self) -> WorkflowSnapshot:
         with self._lock:
             return self._snapshot
 
-    def paper_plan(self):
-        with self._lock:
-            return getattr(self._target, 'paper_plan', None)
-
-    def _publish(self, **changes) -> None:
-        self._snapshot = replace(self._snapshot, **changes)
-
     def clear_terminal(self) -> None:
         with self._lock:
             if self._snapshot.active or self.batch.running:
                 raise RuntimeError("Cannot clear an active Kept workflow")
-            self._stop.set()
-            self._release_browser()
-            self._target = self._authorization = self._due = None
             self._snapshot = WorkflowSnapshot(generation=self._snapshot.generation + 1)
 
-    def start(self, target: _ImportTarget, config: LoadedConfig, authorization: str,
-              *, mode: str = "full") -> WorkflowSnapshot:
+    def unprepared_services(self, saved, papers, service_id=None):
+        required = {paper.service_id for paper in papers if service_id is None or paper.service_id == service_id}
+        return [dict(id=service.id, name=service.name) for service in saved.services
+                if service.id in required and self.login.prepared_page(saved, service.id) is None]
+
+    def start(self, target, settings, saved, *, skip_unprepared) -> WorkflowSnapshot:
         with self._lock:
-            if self._snapshot.active:
-                return self._snapshot
-            self.browser_owner = self.browser_lock.acquire("kept")
-            if self.browser_owner is None:
-                self._publish(phase="interrupted", message="Browser runtime is busy")
-                return self._snapshot
-            self._stop.set()
-            self._stop = threading.Event()
-            self._target, self._authorization, self._due = target, authorization, None
-            self._snapshot = WorkflowSnapshot(
-                workflow_id=secrets.token_urlsafe(24), generation=self._snapshot.generation + 1,
-                mode=mode, phase="preparing", settings=config.kept_workflow,
-                institution_name=config.institution.name if config.institution else None,
-                service_id=getattr(target, 'service_id', None),
-                planned_total=len(target.paper_plan.papers) if getattr(target, 'paper_plan', None) else 0,
-            )
-            self._cancel_requested = False
-            observe(self.diagnostics, "begin", "kept", self._snapshot.workflow_id,
-                details={'batch_scope':'service' if self._snapshot.service_id else 'all',
-                    'service_id':self._snapshot.service_id, 'config_revision':getattr(target, 'config_digest', None),
-                    'user_state_revision':getattr(target, 'user_state_revision', None)})
+            if self._snapshot.active or self.batch.running:
+                raise ContentChangedError("A fixed Kept batch is already active; selection cannot retarget it.")
+            owner = self.browser_lock.acquire("kept")
+            if owner is None:
+                raise ContentChangedError("Browser runtime is busy; no batch started.")
+            batch_started = False
             try:
-                if not self._has_kept(target):
-                    self._interrupt("No Kept Papers to import.", reason="no_kept_papers")
-                elif mode == "import_only":
-                    self._start_import()
-                else:
-                    from allfold.application.browser_services import BrowserServiceSnapshot
-                    saved = BrowserServiceSnapshot.read(target.config_path)
-                    selected = next((service for service in saved.services if service.id == self._snapshot.service_id), None)
-                    if self._snapshot.service_id and selected is None:
-                        raise ContentChangedError('Selected Service is no longer saved')
-                    self._publish(service_name=selected.name if selected else None)
-                    preparation = self.preparation.start(target.config_path, service=selected, browser_owner=self.browser_owner,
-                        workflow_id=self._snapshot.workflow_id, parent_task_id=self._snapshot.workflow_id)
-                    self._publish(preparation_task_id=preparation.task_id,
-                                  preparation_generation=preparation.generation)
-                    if preparation.phase in {PreparationPhase.BLOCKED, PreparationPhase.STOPPED}:
-                        self._interrupt(preparation.message)
-                    else:
-                        self.advance()
-            except (ConfigurationError, ContentChangedError, OSError, RuntimeError, ValueError) as error:
-                self._interrupt(str(error))
-            if self._snapshot.active:
+                self._start_batch(owner, target, settings, saved, skip_unprepared)
+                batch_started = True
+                self._worker = threading.Thread(target=self._settle, args=(owner,),
+                    daemon=False, name="kept-workflow")
                 try:
-                    threading.Thread(target=self._run,
-                                     args=(self._snapshot.workflow_id, self._snapshot.generation, self._stop),
-                                     daemon=True, name="kept-workflow").start()
+                    self._worker.start()
                 except BaseException:
-                    # This observation cannot release native/Workspace ownership or settle a save.
-                    observe(self.diagnostics, "finish", self._snapshot.workflow_id,
-                        "uncertain" if self._snapshot.import_started else "interrupted",
-                        details={"reason":"result_unconfirmed", "result_known":False,
-                            "mode":self._snapshot.mode})
+                    # Preserve ownership and aggregate actual outcomes even if a
+                    # separate projection thread cannot be started.
+                    self._settle(owner)
                     raise
+            finally:
+                if not batch_started:
+                    self.browser_lock.release(owner)
             return self._snapshot
 
-    def _release_browser(self) -> None:
-        if self.browser_owner is not None:
-            self.browser_lock.release(self.browser_owner)
-            self.browser_owner = None
-
-    def _interrupt(self, message: str, *, reason="failed") -> None:
-        self._release_browser()
-        observe(self.diagnostics, "finish", self._snapshot.workflow_id,
-            "cancelled" if self._cancel_requested else "interrupted",
-            details={"reason":"cancelled" if self._cancel_requested else reason, "mode":self._snapshot.mode,
-                "batch_scope":"service" if self._snapshot.service_id else "all", "service_id":self._snapshot.service_id})
-        self._authorization = None
-        self._publish(phase="interrupted", message=message, transition_deadline=None,
-                      waiting_for_login=False, navigation="kept")
-
-    def _start_import(self) -> None:
-        # All callers share the existing submission lock; only this path consumes the grant.
-        if self._snapshot.import_started or self._authorization is None:
-            return
-        self._publish(import_started=True, phase="importing", transition_deadline=None, waiting_for_login=False,
-                      message="Importing the fixed eligible Kept scope.")
-        authorization, self._authorization = self._authorization, None
+    def _start_batch(self, owner, target, settings, saved, skip_unprepared):
+        plan = target.paper_plan
+        if plan is None or not plan.papers:
+            raise ContentChangedError("No Kept Papers to import.")
+        if target.zotero_target is None:
+            raise ContentChangedError("Choose and authorize a Zotero Library/Collection in Queue before starting.")
+        saved.verify()
+        unprepared = self.unprepared_services(saved, plan.papers)
+        missing = {item["id"] for item in unprepared}
+        if missing != set(skip_unprepared) or len(missing) != len(skip_unprepared):
+            raise ContentChangedError("Review Login results or explicitly confirm the unprepared Services to skip.")
+        zotero_target = target.zotero_target.model_dump()
+        if any(paper.service_id not in missing for paper in plan.papers):
+            checked = self.batch.bridge.execute("zotero_local", {
+                "operation": "validate", "target": zotero_target,
+            }).result()
+            if not checked.get("ok"):
+                raise ContentChangedError("Zotero target is unavailable: " + str(checked.get("error", "api_failure")))
+        workflow_id = secrets.token_urlsafe(24)
+        self._snapshot = WorkflowSnapshot(workflow_id=workflow_id,
+            generation=self._snapshot.generation + 1, phase="importing", service_id=target.service_id,
+            planned_total=len(plan.papers), message="Importing the fixed eligible Kept scope.")
+        observe(self.diagnostics, "begin", "kept", workflow_id,
+            details={"batch_scope": "service" if target.service_id else "all", "service_id": target.service_id,
+                "config_revision": target.config_digest, "user_state_revision": target.user_state_revision})
         try:
-            result = self._begin_import(self._target, authorization,
-                workflow_id=self._snapshot.workflow_id, parent_task_id=self._snapshot.workflow_id)
-            self._finish_import(result)
-        except (ConfigurationError, ContentChangedError, OSError) as error:
-            self._interrupt(str(error))
-            return
+            self.batch.start(target.workspace, browser_owner=owner, validate_target=target.verify,
+                services=saved, workflow_id=workflow_id, parent_task_id=workflow_id,
+                service_id=target.service_id, initial_plan=plan, zotero_target=zotero_target,
+                skip_unprepared=missing, paper_limit=settings.paper_global_concurrency,
+                service_limit=settings.paper_service_concurrency,
+                native_limits={"translator": settings.translator_concurrency, "pdf": settings.pdf_concurrency,
+                    "writer": settings.zotero_writer_concurrency})
+        except BaseException:
+            observe(self.diagnostics, "finish", workflow_id, "interrupted", details={"reason": "failed"})
+            self._snapshot = replace(self._snapshot, phase="interrupted", message="Unable to start Import.")
+            raise
 
-    def _finish_import(self, result: BatchSnapshot) -> None:
-        if result.phase is BatchPhase.RUNNING:
-            if self._snapshot.phase == "importing":
-                self._publish(message=result.message)
-            return
-        outcome, counts, details = batch_history(result)
-        if self._cancel_requested and outcome != "uncertain":
-            outcome = "cancelled"
-            details["reason"] = "cancelled"
-        details["mode"] = self._snapshot.mode
-        observe(self.diagnostics, "finish", self._snapshot.workflow_id,
-            "completed" if outcome == "confirmed" else outcome, statistics=counts, details=details)
-        if result.phase is not BatchPhase.COMPLETED:
-            self._interrupt(result.message)
-            return
-        self._release_browser()
-        self._publish(phase="completed", message=result.message, navigation="kept")
-
-    def advance(self) -> None:
-        """Worker tick; GET/presentation never calls this method."""
+    def _settle(self, owner) -> None:
+        self.batch.join()
         with self._lock:
-            state = self._snapshot
-            try:
-                if state.phase == "stopping" and not state.import_started:
-                    if not self.preparation.snapshot().authorization_pending:
-                        self._interrupt("Workflow canceled; no automatic Import will start.")
-                elif state.phase in {"importing", "stopping"}:
-                    self._finish_import(self.batch.snapshot())
-                elif state.phase == "transition":
-                    if self._clock() >= self._due:
-                        self._start_import()
-                elif state.phase in {"preparing", "waiting_for_user"}:
-                    preparation = self.preparation.snapshot()
-                    if (preparation.task_id, preparation.generation) != (
-                            state.preparation_task_id, state.preparation_generation):
-                        self._interrupt("Preparation task changed; start a new explicit workflow.")
-                    elif preparation.phase in {PreparationPhase.BLOCKED, PreparationPhase.STOPPED}:
-                        self._interrupt(preparation.message)
-                    elif preparation.phase is PreparationPhase.RUNNING:
-                        self._publish(
-                            phase="waiting_for_user" if preparation.waiting_for_user else "preparing",
-                            waiting_for_login=preparation.waiting_for_user,
-                            message="Waiting for institution login in BROWSER." if preparation.waiting_for_user
-                            else preparation.message,
-                        )
-                    elif preparation.phase is PreparationPhase.COMPLETED and (state.phase == "preparing" or state.waiting_for_login):
-                        safe = (not preparation.manual_services and all(
-                            item.outcome is PreparationOutcome.OPENED for item in preparation.results))
-                        if state.settings.auto_import_after_preparation and safe:
-                            delay = state.settings.transition_delay_seconds
-                            self._due = self._clock() + delay
-                            self._publish(phase="transition", waiting_for_login=False, transition_deadline=time.time() + delay,
-                                          message="Preparation finished. Import will start after the transition delay.")
-                        else:
-                            self._publish(phase="waiting_for_user", waiting_for_login=False,
-                                          message="Review Service access and results, then continue to Import.")
-            except (ConfigurationError, ContentChangedError, OSError) as error:
-                self._interrupt(str(error))
+            result = self.batch.snapshot()
+            outcome, counts, details = batch_history(result)
+            if self._snapshot.phase == "stopping" and outcome != "uncertain":
+                outcome = "cancelled"
+                details["reason"] = "cancelled"
+            observe(self.diagnostics, "finish", self._snapshot.workflow_id,
+                "completed" if outcome == "confirmed" else outcome, statistics=counts, details=details)
+            self._snapshot = replace(self._snapshot,
+                phase="completed" if result.phase is BatchPhase.COMPLETED else "interrupted",
+                message=result.message, navigation="kept")
+            self.browser_lock.release(owner)
 
     def _matches(self, workflow_id: str, generation: int) -> bool:
         return (workflow_id, generation) == (self._snapshot.workflow_id, self._snapshot.generation)
-
-    def continue_import(self, workflow_id: str, generation: int) -> bool:
-        with self._lock:
-            if not self._matches(workflow_id, generation) or not self._snapshot.can_continue:
-                return False
-            self._start_import()
-            return True
 
     def cancel(self, workflow_id: str, generation: int) -> bool:
         with self._lock:
             if not self._matches(workflow_id, generation) or not self._snapshot.can_cancel:
                 return False
-            self._cancel_requested = True
-            if self._snapshot.import_started:
-                self.batch.stop()
-                self._publish(phase="stopping", message="Stopping; waiting for the current operation to settle",
-                              transition_deadline=None, navigation="kept")
-                return True
-            if self._snapshot.preparation_task_id:
-                self.preparation.cancel(self._snapshot.preparation_task_id, self._snapshot.preparation_generation)
-                if self.preparation.snapshot().authorization_pending:
-                    self._publish(phase="stopping", waiting_for_login=False,
-                                  message="Stopping; waiting for Preparation to settle", transition_deadline=None)
-                    return True
-            self._interrupt("Workflow canceled; no automatic Import will start.")
-            self._stop.set()
+            if self.batch.snapshot().phase is not BatchPhase.RUNNING:
+                return False
+            self.batch.stop()
+            self._snapshot = replace(self._snapshot, phase="stopping",
+                message="Stopping; waiting for active operations to settle")
             return True
 
     def acknowledge_navigation(self, workflow_id: str, generation: int) -> bool:
         with self._lock:
             if not self._matches(workflow_id, generation):
                 return False
-            self._publish(navigation=None)
+            self._snapshot = replace(self._snapshot, navigation=None)
             return True
-
-    def _run(self, workflow_id: str, generation: int, stop: threading.Event) -> None:
-        while not stop.wait(0.1):
-            with self._lock:
-                if not self._matches(workflow_id, generation) or not self._snapshot.active:
-                    return
-                self.advance()
 
     def shutdown(self) -> None:
         with self._lock:
             self.cancel(self._snapshot.workflow_id, self._snapshot.generation)
-            self._stop.set()
+
+    def join(self) -> None:
+        if self._worker is not None:
+            self._worker.join()

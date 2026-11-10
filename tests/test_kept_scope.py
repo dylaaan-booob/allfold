@@ -6,7 +6,9 @@ import pytest
 
 from allfold.application.batch_import import BatchImportService, BatchPhase
 from allfold.application.browser_runtime import BrowserTaskLock
+from allfold.application.browser_services import BrowserServiceSnapshot
 from allfold.application.import_target import _ImportTarget
+from allfold.persistence.safe_write import workspace_operation_lock
 from allfold.config import AccessService, JournalConfig
 from allfold.persistence.safe_write import ContentChangedError
 from allfold.persistence.user_state import load_user_state, compare_write_user_state
@@ -60,7 +62,7 @@ def test_single_service_dispatch_and_history_use_execution_mapping(tmp_path):
     bridge, lock = Bridge(), BrowserTaskLock()
     batch = BatchImportService(bridge, lock, diagnostics=store)
     batch.start(tmp_path / 'workspace', browser_owner=lock.acquire('kept'),
-                config_path=config, service_id=service.id)
+                services=BrowserServiceSnapshot.read(config), service_id=service.id)
     batch.join()
     assert batch.snapshot().phase is BatchPhase.COMPLETED
     assert [call['paper_id'] for call in bridge.calls] == [str(values[0].id)]
@@ -90,7 +92,7 @@ def test_scope_filter_runs_after_global_duplicate_scan(tmp_path):
     lock = BrowserTaskLock()
     batch = BatchImportService(Bridge(), lock)
     batch.start(tmp_path / 'workspace', browser_owner=lock.acquire('kept'),
-                config_path=config, service_id=service.id)
+                services=BrowserServiceSnapshot.read(config), service_id=service.id)
     batch.join()
     assert batch.snapshot().plan.papers == ()
     assert any('Duplicate normalized DOI' in item.reason for item in batch.snapshot().plan.exclusions)
@@ -112,59 +114,60 @@ def test_queue_qualification_and_scope_tokens_are_authoritative(tmp_path):
         assert queue['import_token'] != all_queue['import_token']
         assert client.get('/api/kept-workflow/queue', params={'service_id': 'unknown'}).status_code == 409
         invalid = client.post('/api/kept-workflow/start', json={'csrf_token': app.state.csrf_token,
-            'import_token': all_queue['import_token'], 'service_id': service.id, 'mode': 'import_only'})
+            'import_token': all_queue['import_token'], 'service_id': service.id})
         assert invalid.status_code == 409
         assert app.state.kept_workflow.snapshot().workflow_id is None
 
 
-def test_prepare_wait_continue_keep_one_scope_and_conflicting_start_cannot_retarget(tmp_path):
+def test_import_requires_explicit_unprepared_skips_and_keeps_the_doi_path(tmp_path):
     from fastapi.testclient import TestClient
     from allfold.web.app import create_app
-    from electron_test_helpers import OfflineBridge
+    from electron_test_helpers import OfflineBridge, state
     config, service, other, values = scoped_workspace(tmp_path)
-    saved = load_user_state(config)
-    compare_write_user_state(config, replace(saved.state, access_services=(
-        service.model_copy(update={'access_method': 'manual'}), other)), saved.revision)
+
     class Bridge(OfflineBridge):
         connected = True
-        calls = []
+        def __init__(self):
+            self.calls = []
+
         def execute(self, action, data, progress=None):
-            if action == 'zotero_local':
-                future = Future(); future.set_result({'ok': True}); return future
-            self.calls.append(data)
+            self.calls.append((action, data))
             future = Future()
-            future.set_result({'settled': True, 'parent': {'outcome': 'no_effect'}})
+            if action == 'zotero_local':
+                future.set_result({'ok': True})
+            else:
+                assert action == 'import_paper'
+                future.set_result({'settled': True, 'parent': {'outcome': 'no_effect'}})
             return future
+
     bridge = Bridge()
     app = create_app(config, electron_bridge=bridge, diagnostics_root=tmp_path / 'logs')
     with TestClient(app, base_url='http://localhost') as client:
-        def start(selected):
-            queue = client.get('/api/kept-workflow/queue', params={'service_id': selected}).json()
-            return client.post('/api/kept-workflow/start', json={'csrf_token': app.state.csrf_token,
-                'import_token': queue['import_token'], 'service_id': selected})
-        result = start(service.id)
-        assert result.status_code == 200
-        state = result.json()
-        assert state['phase'] == 'waiting_for_user'
-        assert state['service_id'] == service.id
-        assert [entry['id'] for entry in state['preparation']['manual_services']] == [service.id]
-        assert start(other.id).status_code == 409
-        assert app.state.kept_workflow.snapshot().service_id == service.id
-        # A display refresh or newly Kept Paper cannot enlarge the explicit batch.
-        _, added = paper(tmp_path / 'workspace', 'added-later')
-        edit(added, journal_issns=['0006-341X'])
         queue = client.get('/api/kept-workflow/queue').json()
-        row = next(row for row in queue['services'] if row['id'] == service.id)
-        assert row['kept'] == 2
-        assert row['planned'] == 1
-        identity = {'csrf_token': app.state.csrf_token, 'workflow_id': state['workflow_id'], 'generation': state['generation']}
-        assert client.post('/api/kept-workflow/continue', json=identity).status_code == 200
+        assert {entry['id'] for entry in queue['unprepared_services']} == {service.id, other.id}
+        body = {'csrf_token': app.state.csrf_token, 'import_token': queue['import_token']}
+        assert client.post('/api/kept-workflow/start', json=body).status_code == 409
+        assert not bridge.calls
+        assert client.post('/api/kept-workflow/start', json={
+            **body, 'skip_unprepared': [service.id]}).status_code == 409
+        started = client.post('/api/kept-workflow/start', json={
+            **body, 'skip_unprepared': [service.id, other.id]})
+        assert started.status_code == 200
         app.state.batch_import.join()
-        app.state.kept_workflow.advance()
-        assert [call['paper_id'] for call in bridge.calls] == [str(values[0].id)]
-        assert client.post('/api/kept-workflow/continue', json=identity).status_code == 409
-        assert len(bridge.calls) == 1
+        app.state.kept_workflow.join()
 
+        imports = [data for action, data in bridge.calls if action == 'import_paper']
+        assert {data['paper_id'] for data in imports} == {str(values[2].id), str(values[3].id)}
+        assert all(data['service_id'] is None for data in imports)
+        response = client.get('/api/kept-workflow/state').json()
+        assert response['phase'] == 'completed'
+        results = {entry['paper_id']: entry for entry in response['batch']['results']}
+        for value, name in zip(values[:2], ['a', 'b'], strict=True):
+            assert results[str(value.id)]['reason_code'] == 'service_unprepared'
+            assert state(tmp_path / 'workspace' / 'Papers' / f'{name}.md').status.value == 'kept'
+        assert client.post('/api/kept-workflow/start', json={
+            **body, 'skip_unprepared': [service.id, other.id]}).status_code == 409
+        assert [action for action, _ in bridge.calls].count('zotero_local') == 1
 
 def test_interrupted_history_retains_execution_scope_and_rejects_unbounded_identity(tmp_path):
     from allfold.diagnostics import DiagnosticStore
@@ -192,18 +195,27 @@ def test_queue_on_a_fresh_workspace_keeps_saved_services_visible_without_writes(
     assert not (tmp_path / 'workspace').exists()
 
 
-def test_last_import_counts_keep_execution_service_deduplicate_and_hide_native_keys(tmp_path):
+def test_import_uses_prepared_service_in_fixed_scope_and_hides_native_keys(tmp_path):
     from fastapi.testclient import TestClient
     from allfold.web.app import create_app
     from electron_test_helpers import OfflineBridge
+    from test_login import opened
+
     config, service, other, values = scoped_workspace(tmp_path)
     class Bridge(OfflineBridge):
         connected = True
+        def __init__(self):
+            self.calls = []
+
         def execute(self, action, data, progress=None):
+            self.calls.append((action, data))
             future = Future()
             if action == 'zotero_local':
                 future.set_result({'ok':True})
+            elif action == 'visit_manual_service':
+                future.set_result(opened(17))
             else:
+                assert action == 'import_paper'
                 future.set_result({'settled':True, 'parent':{'outcome':'confirmed', 'status':200,
                     'protocol':'local-api-v3', 'requested_id':'ABCDEFGH', 'accepted_id':'ABCDEFGH'},
                     'pdf':{'registered':True, 'failures':[{'phase':'initial_fetch', 'code':'http_error', 'status':403}]},
@@ -211,29 +223,93 @@ def test_last_import_counts_keep_execution_service_deduplicate_and_hide_native_k
                     'last_import':{'item_exists':True, 'pdf_attached':True, 'pdf_source':'openalex',
                                    'fallback_used':True, 'query_diagnostic':None}})
             return future
-    app = create_app(config, electron_bridge=Bridge(), diagnostics_root=tmp_path / 'logs')
+
+    bridge = Bridge()
+    app = create_app(config, electron_bridge=bridge, diagnostics_root=tmp_path / 'logs')
     with TestClient(app, base_url='http://localhost') as client:
-        queue = client.get('/api/kept-workflow/queue', params={'service_id':service.id}).json()
+        assert client.post('/api/login/start', json={'csrf_token':app.state.csrf_token, 'service_id':other.id}).status_code == 200
+        app.state.login.join()
+        queue = client.get('/api/kept-workflow/queue', params={'service_id':other.id}).json()
+        assert not queue['unprepared_services']
         response = client.post('/api/kept-workflow/start', json={'csrf_token':app.state.csrf_token,
-            'import_token':queue['import_token'], 'service_id':service.id, 'mode':'import_only'})
+            'import_token':queue['import_token'], 'service_id':other.id})
         assert response.status_code == 200
-        app.state.batch_import.join()
-        app.state.kept_workflow.advance()
+        app.state.kept_workflow.join()
+        assert [action for action, _ in bridge.calls] == ['visit_manual_service', 'zotero_local', 'import_paper']
         observed = client.get('/api/kept-workflow/state').json()['batch']['results'][0]
+        assert observed['paper_id'] == str(values[1].id) and observed['service_id'] == other.id
         assert observed['item_exists'] and observed['pdf_attached'] and observed['fallback_used']
         assert observed['pdf_source'] == 'openalex'
         assert 'ABCDEFGH' not in str(observed) and 'BCDEFGHI' not in str(observed)
         saved = load_user_state(config)
         compare_write_user_state(config, replace(saved.state, journals=tuple(
-            journal.model_copy(update={'access_service_id':other.id}) for journal in saved.state.journals)), saved.revision)
-        batch = app.state.batch_import.snapshot()
-        from allfold.application.kept_queue import kept_queue
-        # Even duplicate transient delivery must count the same Paper once.
-        duplicate = replace(batch, results=(*batch.results, batch.results[0]),
-                            plan=replace(batch.plan, papers=(*batch.plan.papers, batch.plan.papers[0])))
-        current = load_user_state(config).state
-        rows = {row['id']:row for row in kept_queue(tmp_path/'workspace', current.journals,
-            current.access_services, None, duplicate)['services']}
-        assert [rows[service.id][field] for field in ['confirmed','pdf_attached','fallback','issues']] == [1,1,1,0]
-        assert [rows['all'][field] for field in ['confirmed','pdf_attached','fallback','issues']] == [1,1,1,0]
-        assert rows[other.id]['confirmed'] == 0
+            journal.model_copy(update={'access_service_id':service.id}) for journal in saved.state.journals)), saved.revision)
+        retained = client.get('/api/kept-workflow/state').json()['batch']['results'][0]
+        assert retained['service_id'] == other.id
+
+def test_parallel_import_drains_exact_paper_results_after_uncertainty(tmp_path):
+    from queue import Empty, Queue
+    from test_electron_import import confirmed
+    from electron_test_helpers import state
+
+    config, service, other, values = scoped_workspace(tmp_path)
+    workspace = tmp_path / 'workspace'
+    (workspace / 'Papers' / 'ambiguous.md').rename(workspace / 'Papers' / 'z-ambiguous.md')
+    _, later = paper(workspace, 'aa-later')
+    edit(later, journal_issns=['0006-341X'])
+
+    class Bridge:
+        connected = True
+        def __init__(self):
+            self.dispatched = Queue()
+
+        def execute(self, action, data, progress=None):
+            assert action == 'import_paper'
+            future = Future()
+            self.dispatched.put((data, future))
+            return future
+
+        def cancel_current(self):
+            pass
+
+    bridge, lock = Bridge(), BrowserTaskLock()
+    owner = lock.acquire('kept')
+    batch = BatchImportService(bridge, lock)
+    try:
+        batch.start(workspace, browser_owner=owner, services=BrowserServiceSnapshot.read(config),
+            paper_limit=2, service_limit=1, native_limits={'translator': 2, 'pdf': 2, 'writer': 2})
+        first, uncertain = bridge.dispatched.get(timeout=2)
+        second, accepted = bridge.dispatched.get(timeout=2)
+        assert (first['service_id'], second['service_id']) == (service.id, other.id)
+        assert (first['paper_id'], second['paper_id']) == (str(values[0].id), str(values[1].id))
+        assert first['workspace_identity'] == second['workspace_identity']
+        assert first['limits'] == second['limits'] == {'translator': 2, 'pdf': 2, 'writer': 2}
+        uncertain.set_result({'settled': True, 'parent': {'outcome': 'uncertain'},
+            'zotero': {'parent_key': 'ABCD2345'}})
+        with pytest.raises(Empty):
+            bridge.dispatched.get(timeout=.1)
+        assert batch.running and lock.owner is owner
+        with pytest.raises(RuntimeError):
+            with workspace_operation_lock(workspace):
+                pass
+        accepted.set_result({**confirmed(), 'zotero': {'parent_key': 'ABCDEFGH'}})
+        batch.join()
+        result = {item.paper_id: item for item in batch.snapshot().results}
+        assert batch.snapshot().phase is BatchPhase.PAUSED
+        assert result[values[0].id].outcome == 'uncertain'
+        assert result[values[0].id].native_identity == {'parent_key': 'ABCD2345'}
+        assert result[values[1].id].outcome == 'exported'
+        assert result[values[1].id].native_identity == {'parent_key': 'ABCDEFGH'}
+        assert len(result) == 5 and sum(item.outcome == 'skipped' for item in result.values()) == 3
+        assert state(workspace / 'Papers' / 'a.md').status.value == 'kept'
+        assert state(workspace / 'Papers' / 'b.md').status.value == 'exported'
+    finally:
+        batch.stop()
+        while not bridge.dispatched.empty():
+            _, future = bridge.dispatched.get_nowait()
+            future.set_result({'settled': True, 'parent': {'outcome': 'no_effect'}})
+        for future in [locals().get('uncertain'), locals().get('accepted')]:
+            if future is not None and not future.done():
+                future.set_result({'settled': True, 'parent': {'outcome': 'no_effect'}})
+        batch.join()
+        lock.release(owner)
