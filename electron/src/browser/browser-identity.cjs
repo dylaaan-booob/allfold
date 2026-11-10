@@ -5,7 +5,7 @@ const vm = require('node:vm');
 const {THIRD_PARTY_DIR}=require('../shared/paths.cjs');
 const source = path.join(THIRD_PARTY_DIR, 'useragent-switcher/v3');
 
-async function configureBrowserIdentity(partition, preloadDirectory, {cookieAdapter}={}) {
+async function configureBrowserIdentity(partition, preloadDirectory, {cookieAdapter,observeRequest}={}) {
   const userAgent = partition.getUserAgent();
   const context = vm.createContext({location: {protocol: 'chrome-extension:'},
     chrome: {declarativeNetRequest: {ResourceType: []}, storage: {local: {get: async prefs => prefs}}}});
@@ -63,6 +63,7 @@ ${fs.readFileSync(path.join(source, 'data/inject/override.js'), 'utf8')}
   fs.writeFileSync(preloadFile, preload, {mode: 0o600});
   const preloadId = partition.registerPreloadScript({type: 'frame', filePath: preloadFile});
   partition.webRequest.onBeforeSendHeaders({urls: ['http://*/*','https://*/*']}, (details, callback) => {
+    observeRequest?.(details);
     const https=details.url?.startsWith('https:');
     const requestHeaders = Object.fromEntries(Object.entries(details.requestHeaders)
       .filter(([name]) => !https || !names.includes(name.toLowerCase())));

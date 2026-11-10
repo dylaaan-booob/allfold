@@ -10,8 +10,9 @@ const {randomBytes}=require('node:crypto');
 const {log,withLogContext,associationLogContext}=require('../shared/logging.cjs');
 const {institutionAuthPage}=require('../auth/institution-auth.cjs');
 const {casErrorCode}=require('../auth/cas-credentials.cjs');
-const {waitFor,checkCanceled}=require('./browser-task.cjs');
+const {waitFor,checkCanceled,timeoutFailure,TASK_DEADLINE_MS}=require('./browser-task.cjs');
 const {NavigationRecovery,inspectPage,waitForPage}=require('./browser-navigation.cjs');
+const {BrowserCooldown,PAGE_RECOVERY_MS,reportRecovery,recoveryStop,pageRecoveryDetails,origin,loadFailure}=require('./browser-recovery.cjs');
 const {operationAssociation}=require('./page-association.cjs');
 
 function chromiumUserAgent(userAgent, productName) {
@@ -33,19 +34,33 @@ function browserURL(value) {
 }
 const {PartitionedCookieAdapter}=require('./partitioned-cookies.cjs');
 class BrowserRuntime {
-  constructor({hostWindow,solveCloudflare,readCASCredentials,isTaskRunning=()=>false,cdpURL=''} = {}) {
+  constructor({hostWindow,solveCloudflare,readCASCredentials,isTaskRunning=()=>false,cdpURL='',recoveryTiming={}} = {}) {
     this.solveCloudflare=solveCloudflare;
     this.readCASCredentials=readCASCredentials;
     this.isTaskRunning=isTaskRunning;
+    this.recoveryTiming=recoveryTiming;
+    this.cooldown=new BrowserCooldown(recoveryTiming);
     this.partition = configureBrowserSession(session.fromPartition('allfold'));
+    const observeNavigation=details=>{
+      if(details.resourceType==='mainFrame')this.tabs.get(details.webContentsId)?.navigation.observeRequest(details);
+    };
     this.partition.webRequest.onErrorOccurred({urls:['http://*/*','https://*/*']},details=>{
-      if(details.resourceType==='mainFrame')return;
+      if(details.resourceType==='mainFrame'){observeNavigation(details);return;}
       const tab=this.tabs.get(details.webContentsId);
-      if(tab)this.reportPage('debug','page_request_failed',tab,{resource_type:details.resourceType,net_error:String(details.error || '').match(/^(?:net::)?(ERR_[A-Z0-9_]{1,80})$/)?.[1]});
+      const netError=String(details.error || '').match(/^(?:net::)?(ERR_[A-Z0-9_]{1,80})$/)?.[1];
+      if(tab)this.reportPage('debug','page_request_failed',tab,{resource_type:details.resourceType,net_error:netError,
+        net_code:loadFailure(netError,details.errorCode).diagnostic.net_code});
     });
     this.attachmentCaptures=new Set();
     this.domObservations=new Set();
     this.partition.webRequest.onHeadersReceived({urls:['http://*/*','https://*/*']},(details,callback)=>{
+      observeNavigation(details);
+      const tab=this.tabs.get(details.webContentsId);
+      if(tab && !tab.pageAttempt?.retired && details.resourceType==='mainFrame') {
+        const retryAfter=Object.entries(details.responseHeaders || {}).filter(([key])=>key.toLowerCase()==='retry-after')
+          .flatMap(([,values])=>values);
+        this.cooldown.observe(details.url,details.statusCode,retryAfter.length===1?retryAfter[0]:undefined);
+      }
       for(const capture of this.attachmentCaptures) {
         if(!this.documentFrame(capture.doc,capture.owner)
           || details.webContentsId!==capture.tab.id || !['mainFrame','subFrame'].includes(details.resourceType))continue;
@@ -60,6 +75,7 @@ class BrowserRuntime {
     });
     this.tabs = new Map();
     this.paperPages=new Map();
+    this.carsiVisitOrigins=new Map();
     this.documents=new DocumentRuntime(this);
     this.events = new EventEmitter();
     this.selected = null;
@@ -69,7 +85,7 @@ class BrowserRuntime {
     this.destroying = false;
     this.cookieAdapter=new PartitionedCookieAdapter({session:this.partition,cdpURL,
       getPage:id=>this.tabs.get(id)?.view.webContents,documentCurrent:doc=>this.documentCurrent(doc)});
-    this.ready = configureBrowserIdentity(this.partition, app.getPath('sessionData'),{cookieAdapter:this.cookieAdapter}).then(identity => {
+    this.ready = configureBrowserIdentity(this.partition, app.getPath('sessionData'),{cookieAdapter:this.cookieAdapter,observeRequest:observeNavigation}).then(identity => {
       this.identity = identity;
       if (this.destroying) {identity.dispose();throw Error('Browser closed during identity initialization');}
       return identity;
@@ -88,11 +104,13 @@ class BrowserRuntime {
     const owner=opener?.taskOwner;
     const inheriting=owner && this.ownsPage(owner,opener.id);
     const tab = {id:contents.id, view, status:null, error:null, opener,managed:options.managed===true,
+      pageAttempt:inheriting?opener.pageAttempt:options.pageAttempt,
       taskOwner:inheriting?owner:null,taskSignal:inheriting?opener.taskSignal:null,
       authContext:inheriting?opener.authContext:undefined,loadOwner:inheriting?opener.loadOwner:null,
       loadAllowed:inheriting?opener.loadAllowed:false};
     this.tabs.set(tab.id, tab);
     contents.setWindowOpenHandler(({url}) => {
+      if(tab.pageAttempt?.retired)return {action:'deny'};
       if (url !== 'about:blank') {
         try {browserURL(url);} catch (_) {return {action:'deny'};}
       }
@@ -101,15 +119,16 @@ class BrowserRuntime {
         createWindow:options => this.createTab({...options,present:false},tab).view.webContents};
     });
     const guard = (event, url) => {
+      url=event.url ?? url;
       if (url === 'about:blank') return;
       try {browserURL(url);} catch (_) {event.preventDefault();}
     };
     contents.on('will-navigate', guard);
     contents.on('will-redirect', guard);
-    tab.navigation=new NavigationRecovery(tab,{options:()=>this.navigationOptions(tab),
+    tab.navigation=new NavigationRecovery(tab,{...this.recoveryTiming,options:()=>this.navigationOptions(tab),
       changed:()=>this.publish(),report:(level,event,details)=>this.reportPage(level,event,tab,details)});
     contents.on('render-process-gone', (_event, details) => {
-      if(this.destroying)return;
+      if(this.destroying || tab.pageAttempt?.retired)return;
       if(tab.navigation.current)tab.navigation.current.failure=new BrowserFailure('navigation','renderer_gone');
       tab.navigation.finish();
       tab.status=null;tab.paperDocument=null;
@@ -186,7 +205,7 @@ class BrowserRuntime {
       }
       if (this.destroying) return;
       if (this.selected === tab) {
-        this.select([...this.tabs.values()].at(-1));
+        this.select([...this.tabs.values()].filter(page=>!page.pageAttempt?.retired).at(-1));
       }
       this.publish();
     });
@@ -274,7 +293,8 @@ class BrowserRuntime {
       }
       if(!current())return;
       // Reserve before execution: duplicate events cannot replay an action, even if navigation interrupts JS.
-      attempted.add(state.step);context.lastAction=state.step;
+      attempted.add(state.step);context.lastAction=state.step;context.actionDispatched=true;
+      tab.navigation.blockReplay();
       if(state.step==='login')context.loginSubmitted=true;
       const releaseUnsent=()=>{
         attempted.delete(state.step);
@@ -348,7 +368,7 @@ class BrowserRuntime {
     const taskPageIds=[...this.operations].map(owner=>owner.taskTab?.id).filter(id=>id!=null);
     return {selected:this.selected?.id || null,taskPageId:taskPageIds.at(-1) ?? null,taskPageIds,
       taskRunning:this.operations.size>0 || this.isTaskRunning(),
-      tabs:[...this.tabs.values()].map(tab => {
+      tabs:[...this.tabs.values()].filter(tab=>!tab.pageAttempt?.retired).map(tab => {
       const wc=tab.view.webContents;
       return {id:tab.id,title:wc.getTitle() || 'New tab',url:wc.getURL(),loading:wc.isLoadingMainFrame(),
         busy:this.pageBusy(tab),managed:tab.managed,
@@ -372,6 +392,8 @@ class BrowserRuntime {
     await this.ready;
     const tab=this.createTab({present:false});this.select(tab,{focus:true});
     this.presentation.show();
+    await this.waitForCooldown(url,{pageId:tab.id});
+    if(this.tabs.get(tab.id)!==tab)throw new BrowserFailure('navigation','page_closed');
     await tab.navigation.dispatch(()=>tab.view.webContents.loadURL(url),{});
     return tab;
   }
@@ -399,24 +421,52 @@ class BrowserRuntime {
       case 'close':
         if (this.pageBusy(tab)) throw Error('The active task page cannot be closed');
         if(tab){tab.closeReason='user';this.reportPage('info','page_close_requested',tab,{reason:'user'});tab.view.webContents.close();}break;
-      case 'navigate':
-        if (!tab) throw Error('No Browser tab');
+      case 'navigate': {
+        if(!tab)throw Error('No Browser tab');
+        const url=browserURL(command.url);
+        await this.waitForCooldown(url,{pageId:tab.id,validate:()=>this.checkCommandPage(tab,command.action)});
+        this.checkCommandPage(tab,command.action);
         tab.authContext=null;
-        await tab.navigation.dispatch(()=>tab.view.webContents.loadURL(browserURL(command.url)),this.navigationOptions(tab));break;
-      case 'back': if(tab?.view.webContents.navigationHistory.canGoBack())
-        tab.navigation.history(()=>tab.view.webContents.navigationHistory.goBack(),this.navigationOptions(tab));break;
-      case 'forward': if(tab?.view.webContents.navigationHistory.canGoForward())
-        tab.navigation.history(()=>tab.view.webContents.navigationHistory.goForward(),this.navigationOptions(tab));break;
-      case 'reload': if(tab){tab.navigation.begin({...this.navigationOptions(tab),resume:true});tab.navigation.track(()=>tab.view.webContents.reload());}break;
+        await tab.navigation.dispatch(()=>tab.view.webContents.loadURL(url),this.navigationOptions(tab));break;
+      }
+      case 'back':
+      case 'forward': {
+        const history=tab?.view.webContents.navigationHistory,back=command.action==='back';
+        if(!(back?history?.canGoBack():history?.canGoForward()))break;
+        const index=history.getActiveIndex()+(back?-1:1),url=history.getEntryAtIndex(index)?.url;
+        await this.waitForCooldown(url,{pageId:tab.id,validate:()=>this.checkCommandPage(tab,command.action)});
+        this.checkCommandPage(tab,command.action);
+        if(history.getActiveIndex()+(back?-1:1)!==index || history.getEntryAtIndex(index)?.url!==url)
+          throw new BrowserFailure('navigation','document_changed');
+        tab.navigation.history(()=>back?history.goBack():history.goForward(),this.navigationOptions(tab));
+        break;
+      }
+      case 'reload': {
+        if(!tab)break;
+        const wc=tab.view.webContents,url=wc.getURL(),generation=tab.navigation.generation;
+        await this.waitForCooldown(url,{pageId:tab.id,validate:()=>this.checkCommandPage(tab,command.action)});
+        this.checkCommandPage(tab,command.action);
+        if(wc.getURL()!==url || tab.navigation.generation!==generation)
+          throw new BrowserFailure('navigation','document_changed');
+        tab.navigation.begin(this.navigationOptions(tab));tab.navigation.track(()=>wc.reload());break;
+      }
       default: throw Error('Unknown Browser command');
     }
     return this.state();
   }
+  checkCommandPage(tab,action) {
+    if(this.tabs.get(tab.id)!==tab || tab.pageAttempt?.retired || tab.view.webContents.isDestroyed())
+      throw new BrowserFailure('navigation','page_closed');
+    if(tab.managed && (action!=='reload' || this.pageBusy(tab)))
+      throw new BrowserFailure('navigation','navigation_active');
+  }
+  waitForCooldown(url,options={}) {
+    return this.cooldown.wait(url,{report:this.operation?.recordRecovery,...options});
+  }
   reportPage(level,event,tab,details={}) {
     const snapshot=associationLogContext(tab.association,tab.id,tab.navigation?.generation);
     // Native callbacks can run in an old async context: the saved page association is authoritative for diagnostics.
-    withLogContext({},()=>log(level,event,{...snapshot,...details,
-      ...(typeof details.code==='number'?{net_code:details.code,code:undefined}:{})}));
+    withLogContext({},()=>log(level,event,{...snapshot,...details}));
   }
   get operation() {return this.operationContext.getStore();}
   get taskTab() {return this.operation?.taskTab ?? null;}
@@ -433,11 +483,11 @@ class BrowserRuntime {
   }
   ownsPage(owner,id) {
     return !!owner && this.operations.has(owner) && !owner.signal?.aborted
-      && this.tabs.get(id)?.taskOwner===owner;
+      && this.tabs.get(id)?.taskOwner===owner && !this.tabs.get(id).pageAttempt?.retired;
   }
   claimPage(tab,signal) {
     checkCanceled(signal);
-    if(this.destroying || this.tabs.get(tab?.id)!==tab || tab.view.webContents.isDestroyed())
+    if(this.destroying || this.tabs.get(tab?.id)!==tab || tab.pageAttempt?.retired || tab.view.webContents.isDestroyed())
       throw new BrowserFailure('navigation','page_closed');
     const owner=this.operation;
     if(!this.operations.has(owner))throw new BrowserFailure('navigation','canceled');
@@ -460,13 +510,40 @@ class BrowserRuntime {
   }
   pageAssociation(id) {
     const tab=this.tabs.get(id);
-    if(!tab?.association || tab.view.webContents.isDestroyed())return null;
+    if(!tab?.association || tab.pageAttempt?.retired || tab.view.webContents.isDestroyed())return null;
     return Object.freeze({page_id:id,...tab.association,
       active:!!tab.associationOwner?.taskTab && this.ownsPage(tab.associationOwner,id)});
   }
   servicePages(scopeId,serviceId) {
     return [...this.tabs.values()].filter(tab=>tab.association?.service_scope?.scope_id===scopeId
       && tab.association?.service_id===serviceId).map(tab=>this.pageAssociation(tab.id)).filter(Boolean);
+  }
+  pageAttempt(signal) {
+    const owner=this.operation;
+    if(!this.operations.has(owner))throw new BrowserFailure('navigation','canceled');
+    const controller=new AbortController();
+    return {owner,controller,signal:AbortSignal.any([controller.signal,...(signal?[signal]:[])])};
+  }
+  retirePageAttempt(attempt) {
+    const owner=this.operation;
+    if(attempt.owner!==owner || !this.operations.has(owner) || owner.phase!=='loading')
+      throw new BrowserFailure('navigation','document_changed');
+    const pages=[...this.tabs.values()].filter(tab=>tab.pageAttempt===attempt && this.ownsPage(owner,tab.id));
+    attempt.retired=true;
+    for(const tab of pages) {
+      tab.navigation.dispose();
+      tab.authContext=null;
+      tab.paperDocument=null;
+      if(this.paperPages.get(tab.paperKey)===tab)this.paperPages.delete(tab.paperKey);
+      if(owner.taskTab===tab)owner.taskTab=null;
+    }
+    attempt.controller.abort(new BrowserFailure('navigation','document_changed'));
+    for(const tab of pages) {
+      const contents=tab.view.webContents;
+      if(contents.isDestroyed())continue;
+      this.reportPage('info','page_close_requested',tab);
+      contents.close({waitForBeforeUnload:false});
+    }
   }
   bindTaskPage(tab,signal=this.operation?.signal) {
     const owner=this.claimPage(tab,signal);
@@ -478,11 +555,17 @@ class BrowserRuntime {
     return {automatic,owner:automatic?owner:null,
       signal:automatic?(signal || tab.taskSignal || owner?.signal):undefined,
       deadline:automatic?(deadline ?? tab.navigation?.current?.deadline ?? Infinity):Infinity,
-      enabled:!this.destroying && (!automatic || (owner?.phase!=='business' && tab.loadAllowed!==false))};
+      enabled:automatic && !this.destroying && owner.phase!=='business' && tab.loadAllowed!==false,
+      valid:()=>this.ownsPage(owner,tab.id) && owner.phase==='loading' && !tab.authContext?.actionDispatched,
+      beforeRefresh:(url,options)=>this.runInOperation(owner,async()=>{
+        await tab.refreshGuard?.(options);
+        await this.waitForCooldown(url,{...options,pageId:tab.id,step:'page_load',
+          authorize:owner.validateRecovery?()=>owner.validateRecovery({...options,stage:'navigation'}):undefined});
+      }),recoveryReport:owner?.recordRecovery};
   }
-  beginPageLoad(tab,signal,deadline=Infinity,{fresh=false}={}) {
+  beginPageLoad(tab,signal,deadline=Infinity,{fresh=false,replayable}={}) {
     this.bindTaskPage(tab,signal);tab.loadOwner=this.operation;tab.loadAllowed=true;
-    const options=this.navigationOptions(tab,{signal,deadline});
+    const options={...this.navigationOptions(tab,{signal,deadline}),replayable};
     return fresh?tab.navigation.begin(options):tab.navigation.adopt(options);
   }
   finishPageLoad(tab=this.taskTab) {if(tab){tab.loadAllowed=false;tab.navigation.finish();}}
@@ -510,7 +593,11 @@ class BrowserRuntime {
       extraWaiting:doc=>!!extraWaiting?.(doc) || !!(tab.authContext?.active && tab.authContext.institution
         && new URL(doc.url).origin!=='https://ds.carsi.edu.cn'),
       solveCloudflare:this.taskActive && this.ownsPage(this.operation,tab.id)?solveCloudflare:undefined,
-      onSolverFailure:()=>this.reportPage('warn','cloudflare_solver_failed',tab,{code:'solver_failed'})});
+      onSolverFailure:()=>this.reportPage('warn','cloudflare_solver_failed',tab,{code:'solver_failed'})}).then(result=>{
+        if(result.waiting && !result.loading && (result.recheck || result.diagnostic || Number.isInteger(result.doc?.status)))
+          tab.navigation.blockReplay();
+        return result;
+      });
     }catch(error) {
       // A document replaced within the same navigation chain is still loading.
       if(error.diagnostic?.code==='document_changed' && navigationChain && tab.navigation.current?.chain===navigationChain && !signal?.aborted)
@@ -529,36 +616,69 @@ class BrowserRuntime {
     } catch(error){if(tab.navigation.current?.chain===chain)this.finishPageLoad(tab);throw error;}
   }
 
-  async openPaperPage(data,doi,{role,signal,onWaiting}={}) {
+  async openPaperPage(data,doi,{role,signal,onWaiting,deadline=Date.now()+TASK_DEADLINE_MS}={}) {
     const {workspace_identity:workspace,paper_id:paper}=data;
     if(typeof workspace!=='string' || !/^[a-f0-9]{64}$/.test(workspace)
       || typeof paper!=='string' || !/^[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12}$/i.test(paper))
       throw Error('Invalid managed Paper identity');
-    await waitFor(()=>this.ready,signal);
+    await waitFor(()=>this.ready,signal,deadline);
     checkCanceled(signal);
-    const key=workspace+':'+paper.toLowerCase();
-    let tab=this.paperPages.get(key);
-    if(!tab) {
-      tab=this.createTab({present:false,managed:true});
-      tab.paperKey=key;
-      this.paperPages.set(key,tab);
+    const owner=this.operation,key=workspace+':'+paper.toLowerCase();
+    let tab=this.paperPages.get(key),firstFailure,sourcePageId,previousOrigin;
+    const target='https://doi.org/'+encodeURIComponent(doi);
+    const record=(event,error,fields={})=>reportRecovery(owner.recordRecovery,event,pageRecoveryDetails(error,'paper_reopen',{
+      stage:'navigation',source_page_id:sourcePageId,attempt:1,attempt_limit:1,...fields}));
+    for(let index=0;index<2;index++) {
+      const attempt=this.pageAttempt(signal);
+      try {
+        if(index) {
+          const validate=()=>{
+            if(this.paperPages.has(key) || !this.operations.has(owner) || owner.phase!=='loading'
+              || data.workspace_identity!==workspace || data.paper_id!==paper)
+              throw new BrowserFailure('navigation','document_changed');
+            if(Date.now()>=deadline)throw timeoutFailure('navigation','request');
+          };
+          await this.waitForCooldown([target,previousOrigin],{signal:attempt.signal,deadline,validate,
+            pageId:sourcePageId,step:'page_load',authorize:()=>waitFor(()=>owner.validateRecovery?.({
+              signal:attempt.signal,deadline,stage:'navigation'}),attempt.signal,deadline)});
+          validate();
+        }
+        if(!tab) {
+          tab=this.createTab({present:false,managed:true,pageAttempt:attempt});
+          tab.paperKey=key;
+          this.paperPages.set(key,tab);
+        }
+        this.bindTaskPage(tab,attempt.signal);
+        tab.pageAttempt=attempt;
+        this.associatePage(tab,{role,doi});
+        const contents=tab.view.webContents;
+        const matches=doc=>this.documentCurrent(doc) && contents.getURL()===doc.url && !contents.isLoadingMainFrame();
+        const previous=tab.paperDocument;
+        if(previous?.doi===doi && matches(previous.doc) && !tab.navigation.current?.failure) {
+          const doc=await this.waitForPage(tab,{signal:attempt.signal,deadline,
+            onWaiting:(waiting,diagnostic)=>{if(waiting)onWaiting?.(diagnostic);}});
+          if(tab.paperDocument===previous && matches(previous.doc) && doc.url===previous.doc.url)return doc;
+        }
+        tab.paperDocument=null;
+        const doc=await this.navigate(target,{tab,signal:attempt.signal,deadline,onWaiting});
+        if(!matches(doc) || this.paperPages.get(key)!==tab)throw new BrowserFailure('navigation','document_changed');
+        this.finishPageLoad(tab);
+        const {pageId,processId,frameToken,url}=doc;
+        tab.paperDocument={doi,doc:{pageId,processId,frameToken,url}};
+        if(index)record('recovery_succeeded',firstFailure,{page_id:tab.id,dispatch_outcome:'confirmed'});
+        return doc;
+      } catch(error) {
+        if(index)record('recovery_exhausted',error,{page_id:tab?.id,recovery_stop:recoveryStop(error,signal)});
+        if(index || !error.rebuildPage || signal?.aborted || owner.phase!=='loading'
+          || !this.ownsPage(owner,tab?.id) || this.paperPages.get(key)!==tab)throw error;
+        if(Date.now()>=deadline)throw timeoutFailure('navigation','request');
+        deadline=Math.min(deadline,Date.now()+PAGE_RECOVERY_MS);
+        firstFailure=error;sourcePageId=tab.id;previousOrigin=origin(tab.navigation.current?.url);
+        record('recovery_scheduled',error,{page_id:tab.id,dispatch_outcome:'not_dispatched'});
+        this.retirePageAttempt(attempt);
+        tab=null;
+      }
     }
-    this.bindTaskPage(tab,signal);
-    this.associatePage(tab,{role,doi});
-    const contents=tab.view.webContents;
-    const matches=doc=>this.documentCurrent(doc) && contents.getURL()===doc.url && !contents.isLoadingMainFrame();
-    const previous=tab.paperDocument;
-    if(previous?.doi===doi && matches(previous.doc) && !tab.navigation.current?.failure) {
-      const doc=await this.waitForPage(tab,{signal,onWaiting:(waiting,diagnostic)=>{if(waiting)onWaiting?.(diagnostic);}});
-      if(tab.paperDocument===previous && matches(previous.doc) && doc.url===previous.doc.url)return doc;
-    }
-    tab.paperDocument=null;
-    const doc=await this.navigate('https://doi.org/'+encodeURIComponent(doi),{tab,signal,onWaiting});
-    if(!matches(doc))throw new BrowserFailure('navigation','document_changed');
-    this.finishPageLoad(tab);
-    const {pageId,processId,frameToken,url}=doc;
-    tab.paperDocument={doi,doc:{pageId,processId,frameToken,url}};
-    return doc;
   }
 
   async navigate(url,{tab=this.taskTab,signal=this.operation?.signal,deadline=Infinity,onWaiting,solveCloudflare=this.solveCloudflare}={}) {
@@ -571,31 +691,36 @@ class BrowserRuntime {
     if(!tab)throw new BrowserFailure('navigation','page_closed');
     const target=browserURL(url);
     this.bindTaskPage(tab,signal);
-    const controller=new AbortController();
-    const cancel=()=>controller.abort(signal.reason);
-    signal?.addEventListener('abort',cancel,{once:true});
+    const controller=new AbortController(),bounded=AbortSignal.any([controller.signal,...(signal?[signal]:[])]);
     owner.navigationAbort=controller;
-    tab.taskSignal=signal || controller.signal;tab.loadOwner=owner;tab.loadAllowed=true;
+    tab.taskSignal=bounded;tab.loadOwner=owner;tab.loadAllowed=true;
     let chain;
     try {
+      const validate=()=>{
+        if(!this.ownsPage(owner,tab.id))throw new BrowserFailure('navigation','document_changed');
+      };
+      await this.waitForCooldown(target,{signal:bounded,deadline,validate,pageId:tab.id,step:'page_load',
+        authorize:owner.validateRecovery?waited=>waited && owner.validateRecovery({signal:bounded,deadline,stage:'navigation'}):undefined});
+      checkCanceled(bounded);
+      validate();
+      if(Date.now()>=deadline)throw timeoutFailure('navigation','request');
       const loading=tab.navigation.dispatch(()=>tab.view.webContents.loadURL(target),
-        this.navigationOptions(tab,{signal:signal || controller.signal,deadline}));
+        {...this.navigationOptions(tab,{signal:bounded,deadline}),replayable:true,initialURL:target});
       chain=tab.navigation.current.chain;
       const navigation=await (tab.authContext?.active
         ?Promise.race([loading,tab.authContext.fatal]):loading);
-      const doc=await this.waitForPage(tab,{signal:controller.signal,deadline,finish:false,navigationChain:navigation.chain,solveCloudflare,
+      const doc=await this.waitForPage(tab,{signal:bounded,deadline,finish:false,navigationChain:navigation.chain,solveCloudflare,
         onWaiting:(waiting,diagnostic)=>{if(waiting)onWaiting?.(diagnostic);}});
       this.reportPage('info','navigation_ready',tab,{stage:'navigation',code:'page_ready',status:doc.status});
       return doc;
     } catch(error) {
-      if(tab.navigation.current?.chain===chain) {
+      if(chain && tab.navigation.current?.chain===chain) {
         tab.navigation.current.failure ||= error;
         this.finishPageLoad(tab);
         if(!tab.view.webContents.isDestroyed() && tab.view.webContents.isLoadingMainFrame())tab.view.webContents.stop();
       }
       throw error;
     } finally {
-      signal?.removeEventListener('abort',cancel);
       if(owner.navigationAbort===controller)owner.navigationAbort=null;
     }
   }
@@ -661,12 +786,22 @@ class BrowserRuntime {
     timer=setTimeout(()=>finish(new BrowserFailure('attachment','timeout')),Math.max(0,deadline-Date.now()));
     return {url,dispose:capture.dispose};
   }
-  async bypassAttachment(url,doc,{signal,visible=false}={}) {
+  async bypassAttachment(url,doc,{signal,visible=false,deadline:budgetDeadline=Infinity}={}) {
     checkCanceled(signal);
     const owner=this.operation;
     if(!owner || owner.action!=='import_paper' || !this.taskActive || !this.ownsPage(owner,doc.pageId) || !this.documentCurrent(doc))
       throw new BrowserFailure('attachment','document_changed');
-    const source=this.tabs.get(doc.pageId),deadline=Date.now()+(visible?60000:5000);
+    const source=this.tabs.get(doc.pageId),deadline=Math.min(budgetDeadline,Date.now()+(visible?60000:5000));
+    const validate=()=>{
+      if(!this.ownsPage(owner,doc.pageId) || !this.documentCurrent(doc))
+        throw new BrowserFailure('attachment','document_changed');
+    };
+    await this.waitForCooldown(url,{signal,deadline,validate,stage:'attachment',
+      step:visible?'visible_helper':'hidden_iframe',pageId:doc.pageId,
+      authorize:owner.validateRecovery?waited=>waited && owner.validateRecovery({signal,deadline,stage:'attachment'}):undefined});
+    checkCanceled(signal);
+    validate();
+    if(Date.now()>=deadline)throw timeoutFailure('attachment',visible?'visible_helper':'hidden_iframe');
     const tab=visible?this.createTab({present:false}):source,contents=tab.view.webContents;
     if(visible)this.associatePage(tab,{role:'attachment',source,doi:source.association?.doi});
     if(visible)tab.attachmentOwner=owner;
@@ -744,7 +879,7 @@ class BrowserRuntime {
   documentFrame(doc,owner=this.operationContext.getStore()) {
     if(owner && !this.ownsPage(owner,doc.pageId))return null;
     const tab=this.tabs.get(doc.pageId);
-    if (!tab || tab.view.webContents.isDestroyed() || tab.view.webContents.isCrashed()) return null;
+    if (!tab || tab.pageAttempt?.retired || tab.view.webContents.isDestroyed() || tab.view.webContents.isCrashed()) return null;
     const frame=webFrameMain.fromFrameToken(doc.processId,doc.frameToken);
     if (!frame || frame.isDestroyed() || frame.detached) return null;
     const current=tab.view.webContents.mainFrame;
