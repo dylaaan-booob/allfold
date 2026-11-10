@@ -7,7 +7,7 @@ import pytest
 
 from allfold.application.browser_runtime import BrowserTaskLock
 from allfold.application.browser_services import BrowserServiceSnapshot
-from allfold.application.coordinators.login import LoginCoordinator
+from allfold.application.coordinators.login import LoginCoordinator, PreparedService
 from allfold.application.coordinators.wos_coordinator import WoSCoordinator
 from allfold.config import AccessService
 from allfold.persistence.user_state import compare_write_user_state, load_user_state
@@ -111,7 +111,8 @@ def test_login_cancel_drains_active_operations_and_preserves_observed_open(tmp_p
     assert lock.owner is None
 
 
-def test_manual_confirmation_marks_entire_finished_login_batch_available(tmp_path):
+@pytest.mark.parametrize('visit_first', [False, True])
+def test_manual_confirmation_marks_entire_finished_login_batch_available(tmp_path, visit_first):
     from types import SimpleNamespace
     from fastapi.testclient import TestClient
     from allfold.web.app import create_app
@@ -128,7 +129,7 @@ def test_manual_confirmation_marks_entire_finished_login_batch_available(tmp_pat
     with TestClient(app, base_url='http://localhost') as client:
         csrf = {'csrf_token': app.state.csrf_token}
         started = client.post('/api/login/start', json=csrf).json()
-        assert started['can_confirm_all'] is False
+        assert started['confirmation_workflow_id'] is None
         body = {**csrf, 'workflow_id': started['workflow_id']}
         assert client.post('/api/login/confirm', json=body).status_code == 409
 
@@ -140,12 +141,28 @@ def test_manual_confirmation_marks_entire_finished_login_batch_available(tmp_pat
         attempts[wos.id].set_result({'diagnostic': {'stage': 'navigation', 'code': 'load_failed'}})
         attempts[first.id].set_result(opened(100))
         app.state.login.join()
-        assert client.get('/api/login/state').json()['can_confirm_all'] is True
+        assert client.get('/api/login/state').json()['confirmation_workflow_id'] == started['workflow_id']
         assert app.state.login.prepared_authority(saved, wos.id) is None
         papers = [SimpleNamespace(service_id=service.id) for service in services]
         unprepared = app.state.kept_workflow.unprepared_services
         assert {row['id'] for row in unprepared(saved, papers)} == {wos.id, publisher.id, manual.id}
+        if visit_first:
+            visit = client.post('/api/login/start', json={**csrf, 'service_id': manual.id}).json()
+            assert visit['workflow_id'] != started['workflow_id']
+            assert visit['confirmation_workflow_id'] is None
+            action, _, result = native.operations.get(timeout=2)
+            assert action == 'visit_manual_service'
+            result.set_result(opened(199))
+            app.state.login.join()
+            assert client.get('/api/login/state').json()['confirmation_workflow_id'] == started['workflow_id']
         assert client.post('/api/login/confirm', json={**body, 'workflow_id': 'stale'}).status_code == 409
+        original = load_user_state(path)
+        changed = replace(original.state, access_services=tuple(
+            service.model_copy(update={'name': 'Changed Service'}) if service.id == publisher.id else service
+            for service in services))
+        compare_write_user_state(path, changed, original.revision)
+        assert client.post('/api/login/confirm', json=body).status_code == 409
+        compare_write_user_state(path, original.state, load_user_state(path).revision)
 
         owner = app.state.browser_task_lock.acquire('fixture')
         assert owner is not None
@@ -156,11 +173,13 @@ def test_manual_confirmation_marks_entire_finished_login_batch_available(tmp_pat
         result = client.post('/api/login/confirm', json=body)
         assert result.status_code == 200
         state = result.json()
-        assert state['phase'] == 'confirmed' and state['can_confirm_all'] is False
+        assert state['phase'] == 'confirmed' and state['confirmation_workflow_id'] is None
+        assert state['workflow_id'] == started['workflow_id']
         rows = {row['id']: row['preparation'] for row in state['services']}
-        assert all(row['status'] == 'Opened' for row in rows.values())
+        assert all(row['status'] == 'Opened' and row['manually_confirmed'] for row in rows.values())
         assert rows[first.id]['page_id'] == 100 and rows[first.id]['reason'] == 'target_opened'
-        for service in (wos, publisher, manual):
+        assert app.state.login.prepared_page(saved, manual.id) == (199 if visit_first else None)
+        for service in (wos, publisher):
             assert rows[service.id]['reason'] == 'manual_login_confirmed'
             assert app.state.login.prepared_authority(saved, service.id) is not None
             assert app.state.login.prepared_page(saved, service.id) is None
@@ -205,8 +224,8 @@ def test_prepared_pages_survive_unrelated_revisions_and_invalidate_only_changed_
     compare_write_user_state(path, replace(saved.state, journals=()), saved.revision)
     current = BrowserServiceSnapshot.read(path)
     assert before.scope != current.scope
-    assert login.prepared_authority(current, first.id) == (first_page, keys[first.id])
-    assert login.prepared_authority(current, wos.id) == (wos_page, keys[wos.id])
+    assert login.prepared_authority(current, first.id) == PreparedService(first_page, keys[first.id])
+    assert login.prepared_authority(current, wos.id) == PreparedService(wos_page, keys[wos.id])
 
     saved = load_user_state(path)
     changed = first.model_copy(update={'access_url': 'https://changed.example.org/'})

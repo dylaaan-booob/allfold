@@ -34,7 +34,7 @@ const server=http.createServer(async(req,res)=>{
   if(route==='/checkbox-frame'){res.writeHead(200,{'Content-Type':'text/html'});res.end('<input type="checkbox">');return;}
   if(route.startsWith('/api/')||route==='/settings/covers/search'){
     let body='';for await(const chunk of req)body+=chunk;requests.push({route,body:body?JSON.parse(body):null});
-    if(route==='/api/login/start')loginState={...loginState,phase:'completed',can_confirm_all:true,
+    if(route==='/api/login/start')loginState={...loginState,phase:'completed',confirmation_workflow_id:'login-a',
       services:services.map(service=>({...service,preparation:{status:'Needs attention',reason:'manual_action_required'}}))};
     if(route==='/api/kept-workflow/start')keptState={workflow_id:'kept-a',generation:7,planned_total:1,
       batch:{total:1,task_id:'import-a',results:[{paper_id:'paper-1',service_id:serviceId,

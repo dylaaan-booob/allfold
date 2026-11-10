@@ -99,11 +99,15 @@ def config_files(tmp_path):
     return path, venues
 
 
-@pytest.mark.parametrize(('change_after_query', 'prepared_page'), [(False, 71), (True, 71), (False, None)])
-def test_coordinator_preserves_saved_service_scope_and_prepared_page_across_batches(tmp_path, change_after_query, prepared_page):
+@pytest.mark.parametrize(('change_after_query', 'prepared_page', 'manually_confirmed'),
+    [(False, 71, False), (True, 71, False), (False, None, True), (False, 42, True)])
+def test_coordinator_preserves_saved_service_scope_and_prepared_page_across_batches(
+    tmp_path, change_after_query, prepared_page, manually_confirmed,
+):
     from concurrent.futures import Future
     from allfold.application.browser_runtime import BrowserTaskLock
     from allfold.application.browser_services import BrowserServiceSnapshot
+    from allfold.application.coordinators.login import PreparedService
     from allfold.application.coordinators.wos_coordinator import WoSCoordinator
 
     from safety_config_helpers import current_mapping_document
@@ -121,7 +125,7 @@ def test_coordinator_preserves_saved_service_scope_and_prepared_page_across_batc
             assert any(service.id == service_id and service.name == "Web of Science" for service in saved.services)
             return prepared_page
         def prepared_authority(self, saved, service_id):
-            return self.prepared_page(saved, service_id), 'e' * 64
+            return PreparedService(self.prepared_page(saved, service_id), 'e' * 64, manually_confirmed)
 
 
     class Bridge:
@@ -152,7 +156,7 @@ def test_coordinator_preserves_saved_service_scope_and_prepared_page_across_batc
                                                      ['wos_query', 'wos_export', 'wos_export'])
     query = bridge.calls[0][1]
     assert query['page_id'] == prepared_page
-    assert query.get('manually_confirmed', False) is (prepared_page is None)
+    assert query['manually_confirmed'] is manually_confirmed
     assert all(data['page_id'] == 71 for _, data in bridge.calls[1:])
     assert all(data['service_id'] == next(s.id for s in saved.services if s.name == 'Web of Science')
                and data['service_scope'] == saved.scope and data['preparation_key'] == 'e' * 64 for _, data in bridge.calls)

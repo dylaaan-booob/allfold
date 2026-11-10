@@ -34,6 +34,24 @@ function taskPage(browser,data,signal,{exporting=false}={}) {
   browser.bindTaskPage(tab,signal);
   return tab;
 }
+
+async function manualQueryPage(browser,data,signal,progress,deadline) {
+  const scope=requireScope(data);
+  const previous=browser.servicePages(scope.scope_id,data.service_id).find(({page_id})=>{
+    const tab=browser.tabs.get(page_id);
+    return tab?.manualWoSPage && tab.preparationKey===data.preparation_key;
+  });
+  let tab;
+  if(previous) {
+    tab=taskPage(browser,{...data,page_id:previous.page_id},signal);
+  } else {
+    tab=await newTaskPage(browser,signal,{role:'wos-query',managed:true});
+    tab.preparationKey=data.preparation_key;
+    tab.manualWoSPage=true;
+  }
+  await navigate(browser,tab,ADVANCED_SEARCH,signal,progress,deadline);
+  return tab;
+}
 async function page(browser,doc,op,args,signal,deadline=Infinity) {
   const frame=browser.documentFrame(doc);
   if(!frame)throw new BrowserFailure('navigation','document_changed');
@@ -122,15 +140,9 @@ async function wosQuery(browser,data,{signal,progress}) {
     wosQueryWithinDeadline(browser,data,{signal:bounded,progress},deadline));
 }
 async function wosQueryWithinDeadline(browser,data,{signal,progress},deadline) {
-  let tab;
-  if(data.page_id===null && data.manually_confirmed===true) {
-    requireScope(data);
-    tab=await newTaskPage(browser,signal,{role:'wos-query',managed:true});
-    tab.preparationKey=data.preparation_key;
-    await navigate(browser,tab,ADVANCED_SEARCH,signal,progress,deadline);
-  } else {
-    tab=taskPage(browser,data,signal);
-  }
+  const tab=data.manually_confirmed===true && !browser.pageAssociation(data.page_id)
+    ? await manualQueryPage(browser,data,signal,progress,deadline)
+    : taskPage(browser,data,signal);
   browser.beginPageLoad(tab,signal,deadline);
   tab.wosDocument=null;
   tab.wosServiceScope=null;

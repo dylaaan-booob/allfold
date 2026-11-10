@@ -129,6 +129,9 @@ function fixture(t,{attributable=true,hold=false,challenge=false,domError=null,q
     documentCurrent(value){return this.liveToken===value.frameToken;},
     documentFrame(value){return this.documentCurrent(value)?wc:null;}};
   attachBrowserMechanisms(browser);
+  browser.servicePages=(scopeId,serviceId)=>[...browser.tabs.values()]
+    .filter(candidate=>candidate.association?.service_scope?.scope_id===scopeId && candidate.association?.service_id===serviceId)
+    .map(candidate=>({page_id:candidate.id}));
   browser.inspectAuthentication=async()=>authentication?.inspect() || {waiting:false};
   const progress=[];
   const context=vm.createContext({module:{exports:{}},Date,URL,AbortSignal,setTimeout,clearTimeout,
@@ -220,13 +223,15 @@ test('manual confirmation opens a WoS query page and keeps that page for export'
   await assert.rejects(f.runQuery({page_id:null}),/wos_target_lost/);
   assert.deepEqual(f.ops,[]);
 
-  const query=await f.runQuery({page_id:null,manually_confirmed:true});
+  const query=await f.runQuery({page_id:42,manually_confirmed:true});
   assert.equal(query.page_id,71);
   assert.deepEqual(f.ops.slice(0,2),['new page','navigate']);
   const tab=f.browser.tabs.get(query.page_id);
   assert.equal(tab.preparationKey,preparedIdentity.preparation_key);
   assert.equal((await f.run({page_id:query.page_id})).filename,f.filename);
   assert.equal(f.browser.taskTab,tab);
+  assert.equal((await f.runQuery({page_id:null,manually_confirmed:true})).page_id,tab.id);
+  assert.equal(f.ops.filter(op=>op==='new page').length,1);
 });
 test('WoS waits for a result toolbar that mounts after the result count, then opens export once',async t=>{
   const f=fixture(t,{query:true,deferExportMenu:true});

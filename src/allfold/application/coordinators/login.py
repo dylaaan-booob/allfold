@@ -38,6 +38,14 @@ class ServicePreparation:
     reason: str | None = None
     diagnostic: dict | None = None
     waiting_for_user: bool = False
+    manually_confirmed: bool = False
+
+
+@dataclass(frozen=True)
+class PreparedService:
+    page_id: int | None
+    key: str
+    manually_confirmed: bool = False
 
 
 class LoginCoordinator:
@@ -49,7 +57,7 @@ class LoginCoordinator:
         self._auth_key = None
         self._credential_epoch = uuid4().hex
         self._workflow_id = None
-        self._batch = False
+        self._confirmation_batch: tuple[str, dict[str, str]] | None = None
         self._results = {}
         self._keys = {}
         self._phase = 'idle'
@@ -65,7 +73,7 @@ class LoginCoordinator:
             return {
                 'active': self.running, 'workflow_id': self._workflow_id,
                 'phase': self._phase, 'scope': saved.scope, 'carsi': carsi,
-                'can_confirm_all': self._can_confirm_all(saved),
+                'confirmation_workflow_id': self._confirmation_id(saved),
                 'services': [
                     {'id': service.id, 'name': service.name, 'access_method': service.access_method,
                      'access_url': service.access_url, 'preparation': self._service_result(saved, service) or ServicePreparation()}
@@ -83,22 +91,28 @@ class LoginCoordinator:
             service = next((service for service in saved.services if service.id == service_id), None)
             result = self._service_result(saved, service) if service is not None else None
             if result is not None and result.status == 'Opened':
-                return result.page_id, self._keys[service_id]
+                return PreparedService(result.page_id, self._keys[service_id], result.manually_confirmed)
             return None
 
     def prepared_page(self, saved, service_id):
         binding = self.prepared_authority(saved, service_id)
-        return binding[0] if binding is not None else None
+        return binding.page_id if binding is not None else None
 
-    def _can_confirm_all(self, saved):
-        return (self._batch and not self.running and self._phase in {'completed', 'failed'}
-                and {service.id for service in saved.services} == self._results.keys()
-                and all(self._service_result(saved, service) is not None for service in saved.services)
-                and any(result.status in {'Failed', 'Needs attention'} for result in self._results.values()))
+    def _confirmation_id(self, saved):
+        if self._confirmation_batch is None or self.running:
+            return None
+        workflow_id, keys = self._confirmation_batch
+        current_keys = {service.id: saved.preparation_key(service, self._credential_epoch)
+                        for service in saved.services}
+        if (keys == current_keys and all(self._keys.get(service_id) == key for service_id, key in keys.items())
+                and any(self._results[service_id].status != 'Opened' for service_id in keys)):
+            return workflow_id
+        return None
 
     def confirm_all(self, saved, workflow_id):
         with self._mutex:
-            if workflow_id != self._workflow_id or not self._can_confirm_all(saved):
+            expected = self._confirmation_id(saved)
+            if expected is None or workflow_id != expected:
                 raise ValueError('The Login results changed or are unavailable. Refresh Login.')
             if not self.bridge.connected:
                 raise ValueError('Browser runtime unavailable')
@@ -107,10 +121,14 @@ class LoginCoordinator:
                 raise ValueError('Another Browser workflow is active')
             try:
                 saved.verify()
-                for service_id, result in self._results.items():
+                for service in saved.services:
+                    result = self._results[service.id]
                     if result.status != 'Opened':
-                        self._results[service_id] = replace(result, status='Opened', page_id=None,
+                        result = replace(result, status='Opened', page_id=None,
                             reason='manual_login_confirmed', diagnostic=None)
+                    self._results[service.id] = replace(result, manually_confirmed=True)
+                self._confirmation_batch = None
+                self._workflow_id = workflow_id
                 self._phase = 'confirmed'
                 return self.snapshot(saved)
             finally:
@@ -122,6 +140,7 @@ class LoginCoordinator:
             self._credential_epoch = uuid4().hex
             self._results.clear()
             self._keys.clear()
+            self._confirmation_batch = None
             self._carsi = ServicePreparation()
             self._auth_key = None
 
@@ -152,11 +171,11 @@ class LoginCoordinator:
                 raise ValueError('Another Browser workflow is active')
             self._stop = threading.Event()
             self._workflow_id = uuid4().hex
-            self._batch = manual_service_id is None
             auth_key = saved.authentication_key(self._credential_epoch)
             if manual_service_id is None or self._auth_key != auth_key:
                 self._results.clear()
                 self._keys.clear()
+                self._confirmation_batch = None
                 self._carsi = ServicePreparation()
             self._auth_key = auth_key
             self._phase = 'carsi' if needs_carsi else 'preparing'
@@ -275,6 +294,8 @@ class LoginCoordinator:
             with self._mutex:
                 stopped = self._stop.is_set()
                 self._phase = 'canceled' if stopped else phase
+                if manual_service_id is None and self._phase in {'completed', 'failed'}:
+                    self._confirmation_batch = self._workflow_id, self._keys.copy()
                 if self._carsi.status == 'Preparing':
                     self._carsi = replace(self._carsi, status='Canceled' if stopped else 'Failed', waiting_for_user=False)
                 for service in services:

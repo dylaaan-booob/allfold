@@ -21,6 +21,7 @@ def test_native_stage_reuses_parent_slot_and_retains_first_batch_after_later_fai
     from allfold.config import AccessService, load_config
     from allfold.persistence.user_state import load_user_state, compare_write_user_state
     from allfold.application.browser_runtime import BrowserTaskLock
+    from allfold.application.coordinators.login import PreparedService
     from allfold.application.coordinators.wos_coordinator import WoSCoordinator
     from integrated_run_helpers import run_integrated
     from allfold.application.run_commit import capture_run_workspace
@@ -37,7 +38,7 @@ def test_native_stage_reuses_parent_slot_and_retains_first_batch_after_later_fai
             return 71
 
         def prepared_authority(self, saved, service_id):
-            return self.prepared_page(saved, service_id), 'd' * 64
+            return PreparedService(self.prepared_page(saved, service_id), 'd' * 64)
 
     calls = []
     class Bridge:
@@ -233,6 +234,7 @@ def test_unified_wos_quarantines_conflicting_ut_before_creation(tmp_path,existin
     from allfold.config import AccessService, load_config
     from allfold.persistence.user_state import load_user_state, compare_write_user_state
     from allfold.application.browser_runtime import BrowserTaskLock
+    from allfold.application.coordinators.login import PreparedService
     from allfold.application.coordinators.wos_coordinator import WoSCoordinator
     from integrated_run_helpers import run_integrated
     from allfold.application.workspace import load_workspace
@@ -259,7 +261,7 @@ def test_unified_wos_quarantines_conflicting_ut_before_creation(tmp_path,existin
             return 71
 
         def prepared_authority(self, saved, service_id):
-            return self.prepared_page(saved, service_id), 'd' * 64
+            return PreparedService(self.prepared_page(saved, service_id), 'd' * 64)
 
     class Bridge:
         connected = True

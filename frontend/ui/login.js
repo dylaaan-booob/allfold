@@ -34,14 +34,14 @@ function row(name,preparation,{id,manual=false}={}) {
 function render() {
   $('login-start').disabled=!state?.services?.length || busy || recovering || state.active;
   $('login-cancel').hidden=!state?.active;$('login-cancel').disabled=busy || cancelRequested;
-  $('login-confirm').hidden=!state?.can_confirm_all;
+  $('login-confirm').hidden=!state?.confirmation_workflow_id;
   $('login-confirm').disabled=busy || recovering;
   if(!state)return;
   const phase=cancelRequested?'正在取消':({carsi:'机构登录中',preparing:'正在准备 Services',completed:'准备结束',failed:'Login 失败',
     confirmed:'已人工确认',interrupted:'Browser 连接已中断',canceled:'Login 已取消'})[state.phase] || '';
   const opened=state.services.filter(service=>service.preparation?.status==='Opened').length;
   const outcome=state.phase==='confirmed'?'Services available':'Services opened';
-  const hint=state.can_confirm_all?'请在 Browser 中检查各 Service，确认全部可用后再点击按钮。':'';
+  const hint=state.confirmation_workflow_id?'请在 Browser 中检查各 Service，确认全部可用后再点击按钮。':'';
   $('login-status').textContent=state.services.length?[phase,`${opened} / ${state.services.length} ${outcome}`,hint].filter(Boolean).join(' · '):
     '请先在 Journals 的 Access 中保存 Service。';
   const focused=document.activeElement,action=focused?.dataset.loginAction;
@@ -99,7 +99,9 @@ async function mutate(action,body) {
 }
 $('login-start').addEventListener('click',()=>mutate('start',{}));
 $('login-cancel').addEventListener('click',()=>{if(state?.workflow_id)void mutate('cancel',{workflow_id:state.workflow_id});});
-$('login-confirm').addEventListener('click',()=>{if(state?.can_confirm_all)void mutate('confirm',{workflow_id:state.workflow_id});});
+$('login-confirm').addEventListener('click',()=>{
+  if(state?.confirmation_workflow_id)void mutate('confirm',{workflow_id:state.confirmation_workflow_id});
+});
 window.workspaceNavigation.register('login',{
   enter(){
     window.dispatchEvent(new Event('login-settings-mount'));

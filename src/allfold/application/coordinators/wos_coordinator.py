@@ -188,11 +188,11 @@ class WoSCoordinator:
                 if parent_snapshot is None:
                     self.run_slot.release()
                 raise ValueError('Prepare Web of Science in Workflows → Login')
-            page, preparation_key = prepared
+            page = prepared.page_id
             task = dict(id=workflow_id or secrets.token_hex(16), owner=owner, config=config,
                 parent_snapshot=parent_snapshot, progress_callback=progress_callback, records_callback=records_callback, evidence=[],
                 compiled=compiled, service=service, dates=dates,
-                service_scope=saved.scope, preparation_key=preparation_key,
+                service_scope=saved.scope, preparation_key=prepared.key, manually_confirmed=prepared.manually_confirmed,
                 config_text=config_text, state_revision=state_revision,
                 workspace_identity=workspace_identity, status='RUNNING', stage='WoS Query',
                 message='Using prepared WoS page' if page is not None else 'Opening WoS in the shared Browser session',
@@ -392,10 +392,10 @@ class WoSCoordinator:
             task.update(stage='WoS Query', waiting_for_user=False)
             self._publish_progress(task)
             query = self._electron_call(task, 'wos_query', {'page_id': page, 'query': task['query']['text'],
-                **({'manually_confirmed': True} if page is None else {})})
+                'manually_confirmed': task['manually_confirmed']})
             total, result_page = query.get('total'), query.get('page_id')
             if (type(total) is not int or total < 0 or type(result_page) is not int or result_page <= 0
-                    or (page is not None and result_page != page)):
+                    or (not task['manually_confirmed'] and result_page != page)):
                 raise ValueError('Unattributable WoS search result')
             page = result_page
             task['query']['total'] = total

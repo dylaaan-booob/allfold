@@ -355,6 +355,7 @@ def test_selected_native_disconnect_revokes_http_but_waits_native_settlement(tmp
     from allfold.config import AccessService
     from allfold.persistence.user_state import load_user_state, compare_write_user_state
     from allfold.application.browser_runtime import BrowserTaskLock
+    from allfold.application.coordinators.login import PreparedService
     from allfold.application.coordinators.wos_coordinator import WoSCoordinator
     from allfold.providers.integrated import DiscoveryClient
     from allfold.web.electron_bridge import ElectronDisconnected
@@ -369,7 +370,7 @@ def test_selected_native_disconnect_revokes_http_but_waits_native_settlement(tmp
             return 71
 
         def prepared_authority(self, saved, service_id):
-            return self.prepared_page(saved, service_id), 'd' * 64
+            return PreparedService(self.prepared_page(saved, service_id), 'd' * 64)
 
     query_started, disconnected=Event(),Event()
     class Bridge:
@@ -416,6 +417,7 @@ def test_work_guard_settles_native_before_parent_cancel_or_authority_error(tmp_p
     from allfold.config import AccessService
     from allfold.persistence.user_state import load_user_state, compare_write_user_state
     from allfold.application.browser_runtime import BrowserTaskLock
+    from allfold.application.coordinators.login import PreparedService
     from allfold.application.coordinators.wos_coordinator import WoSCoordinator
     from allfold.application.coordinators.run_coordinator import RunCoordinator
     from allfold.providers.integrated import DiscoveryClient
@@ -433,7 +435,7 @@ def test_work_guard_settles_native_before_parent_cancel_or_authority_error(tmp_p
             return 71
 
         def prepared_authority(self, saved, service_id):
-            return self.prepared_page(saved, service_id), 'd' * 64
+            return PreparedService(self.prepared_page(saved, service_id), 'd' * 64)
 
     query_started, revoked, guard_entered = Event(), Event(), Event()
     class Bridge:

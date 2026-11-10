@@ -227,6 +227,7 @@ def test_wos_uses_independent_sqlite_service_and_detects_changes(tmp_path, chang
     from types import SimpleNamespace
     from allfold.config import AccessService
     from allfold.application.browser_runtime import BrowserTaskLock
+    from allfold.application.coordinators.login import PreparedService
     from allfold.application.coordinators.wos_coordinator import WoSCoordinator
     from electron_test_helpers import PendingBridge
 
@@ -235,7 +236,7 @@ def test_wos_uses_independent_sqlite_service_and_detects_changes(tmp_path, chang
             assert any(service.id == service_id and service.name == "Web of Science" for service in saved.services)
             return 71
         def prepared_authority(self, saved, service_id):
-            return self.prepared_page(saved, service_id), 'e' * 64
+            return PreparedService(self.prepared_page(saved, service_id), 'e' * 64)
 
 
     config, legacy, journal, service = current_mapping_document(tmp_path)

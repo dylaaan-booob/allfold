@@ -24,9 +24,9 @@ test('Login starts explicitly and directs the waiting user to the Browser group'
 
 test('Login offers one explicit confirmation for a finished batch',async()=>{
   const services=['one','two'].map(id=>({id,name:id,access_method:'carsi',preparation:{status:'Failed'}}));
-  let state={active:false,phase:'completed',workflow_id:'login-a',can_confirm_all:true,carsi:{},services};
+  let state={active:false,phase:'completed',workflow_id:'visit-a',confirmation_workflow_id:'login-a',carsi:{},services};
   const ui=await taskUI('login.js',{page:'login',request:async route=>{
-    if(route.endsWith('/confirm'))state={...state,phase:'confirmed',can_confirm_all:false,
+    if(route.endsWith('/confirm'))state={...state,phase:'confirmed',confirmation_workflow_id:null,
       services:services.map(service=>({...service,preparation:{status:'Opened',reason:'manual_login_confirmed'}}))};
     return state;
   }});
