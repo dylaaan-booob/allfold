@@ -102,7 +102,7 @@ markup.innerHTML=`<header class="s-header">
 <input id="s-disable-fullscreen" type="checkbox">
 <span class="s-setting-label">禁用全屏运行界面</span>
 </label>
-<p class="s-help">Run 与 Prepare / Import 在各自工作区显示进度。下次新任务生效；重启恢复使用当前设置。此本地偏好立即生效。</p>
+<p class="s-help">Discover 在 Workflows 中显示进度。设置对下次任务生效。</p>
       <details>
 <summary>Zotero Integration</summary>
 <div class="s-diagnostic">
@@ -429,7 +429,7 @@ document.addEventListener('focusout',event=>{if(event.target.matches('#s-provide
 function changed({immediate=false}={}) {revision++;if(autosave && !loading)autosave.edit(ordinaryValues(),{immediate});updateDirty();renderRun();}
 function setOperationPending(value) {
   operationPending=value;root.dataset.busy=String(value);
-  root.querySelector('.s-content').inert=value || loading;for(const id of ['kept-access-settings','kept-workflow-settings'])if($(id))$(id).inert=value || loading;updateDirty();
+  root.querySelector('.s-content').inert=value || loading;for(const id of ['login-access-settings','login-workflow-settings','kept-workflow-settings'])if($(id))$(id).inert=value || loading;updateDirty();
 }
 function casErrorText(code) {
   return ({cas_encryption_unavailable:'系统安全存储不可用，未保存或自动填写凭据。',

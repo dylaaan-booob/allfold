@@ -24,7 +24,7 @@ Main starts one Python process. The HTTP origin remains loopback-only on port 18
 
 | Source | Responsibility |
 | --- | --- |
-| `frontend/ui/` | Workspace, Run, Journals, Kept and Settings UI, source assets and notices |
+| `frontend/ui/` | Workspace, Workflows, Journals and Settings UI, source assets and notices |
 | `src/allfold/application/` | Use cases, guarded operations and process-local workflow coordination |
 | `src/allfold/providers/` | Provider retrieval, queries and source-specific formats |
 | `src/allfold/persistence/` | Paper/Markdown projection, safe file operations, Registry and local state |
@@ -34,11 +34,11 @@ Main starts one Python process. The HTTP origin remains loopback-only on port 18
 | `electron/src/main.cjs` | Application lifecycle, trusted IPC and native dispatch |
 | `electron/src/browser/` | Native pages, main-window presentation, document identity, navigation and shared Session |
 | `electron/src/auth/` | Task-scoped institution authentication and credentials |
-| `electron/src/workflows/` | Prepare, Covers and WoS native page operations |
+| `electron/src/workflows/` | Login, Service preparation, Covers and WoS native page operations |
 | `electron/src/zotero/` | Official translation sandbox, Local API persistence and host document/HTTP adapters |
 | `electron/src/preload/`, `native-ui/` | Restricted capabilities and local native-window UI |
 
-Models, configuration definitions, identifiers and query primitives remain shared Python modules. Application code does not depend on Web adapters; its BrowserGateway describes the existing connected/execute/cancel interface. ElectronBridge adapts it to transport. A pending Future preserves the distinction between cancellation and an already-started save reaching a terminal result.
+Models, configuration definitions, identifiers and query primitives remain shared Python modules. Application code does not depend on Web adapters; its BrowserGateway describes the existing connected/execute/cancel interface. ElectronBridge adapts it to transport. Each Request ID owns its operation context, progress, cancellation, Solver and OpenAlex replies, page claims and terminal result. BrowserTaskLock keeps workflow admission exclusive while a workflow dispatches multiple requests. An issued native save settles before its Future releases a slot. Shutdown cancels pre-save work and drains active saves and guarded Paper commits.
 
 Journal lookup and remote fallback belong to the application layer; persistence only reads the local Registry. WoS export parsing continues to reuse safe file-reading helpers.
 
@@ -48,34 +48,37 @@ FastAPI composes these implementations. ImportTarget belongs to the application 
 
 Python snapshots the saved Journals and Access Services for each invocation. The browser bridge carries an opaque hash of the canonical configuration path, the configuration revision and User State revision alongside the saved Service ID. Import matches saved ISSN/eISSN identifiers with the existing Workspace rules: every matching Journal must select the same nonempty Service; otherwise the Paper remains unassigned. These are invocation snapshots of SQLite state, never a second authoritative mapping. Preparation and subsequent Import dispatches verify the original snapshot, while WoS retains its existing configuration and Workspace checks. Detected changes stop further work without migrating it to a new mapping. Already-dispatched native saves still settle through the existing result protocol.
 
-Kept binds All Services or one saved Service ID to the signed Import target and
-one-time workflow authorization. The complete Workspace identity scan runs before
-filtering the dispatch plan. Prepare, waiting, Continue and Import retain that
-same scope even if the displayed Service filter changes. Queue statistics read
-saved associations, while completed batch results retain execution-time Service
-and Paper identities independently of later Journal mapping edits. Confirmed
-parent saves and attachment-stage diagnostics remain separate from PDF evidence.
+Login runs one CARSI institution flow. Each subsequent CARSI preparation opens its own resource Portal in the same Session. The saved Access Service ID and observed source and target pages establish provenance. Manual Services use explicit visits. Login keeps outcomes and target Page IDs in memory, scoped to the saved configuration and User State revisions. Discover uses the prepared WoS target and validates the scoped Service, document and export path. API discovery remains independent of that prerequisite.
 
-The signed Kept target also captures one Zotero Server ID, Library and optional
-Collection before Prepare. The configuration's default is a preference for the
-next execution, never Desktop's currently selected Collection. Electron stores
-Local API authorization separately with protected storage and checks the pinned
-instance. Native Local API writes have no automatic replay. Each parent and
-attachment has a preallocated native key; per-object create responses and the
-complete file upload protocol determine the known result. Browser Session GETs
-download Translator PDFs first; an on-demand Python OpenAlex lookup supplies
-up to four direct-PDF fallback candidates using existing provider credentials.
-OpenAlex queries use the Python HTTP client; fallback PDF GETs use Browser
-Session without the publisher referrer or any Zotero authorization.
+Import binds All Services or one Service to a fixed Kept Paper plan, one-time
+authorization and a Zotero Server ID, Library and optional Collection. It records
+explicit unprepared-Service skips before translation. A round-robin scheduler
+admits requests subject to per-Service and global limits. Translator windows, PDF
+retrieval, Local API writes and Solver each have independent bounds. Per-Paper
+parent and attachment keys stay with the originating result. An uncertain write
+stops subsequent POSTs and issued requests settle before the batch releases
+authority. Paper commits use the captured identity and exact-content checks.
 
-Last Import belongs to the process-local batch result. Exact-key parent and
-children reads provide Item/PDF/Fallback indicators; PDF success additionally
-requires confirmed upload registration from that execution. Read errors remain
-unknown. Keys and PDF source do not enter Paper frontmatter or a new persistent
-verification store. Service attribution comes from the fixed plan. These checks
-do not request file paths, read saved PDFs or monitor later user deletions.
+Browser Runtime uses one business Session from `session.fromPartition('allfold')`.
+It associates a managed Paper page with an opaque Workspace identity and the Paper
+UUID. Enrich and Import reuse the page with a matching current DOI and document
+or navigate the same page to its DOI. Browser selection is independent of task
+ownership. Managed pages survive settled and cancelled operations, and an idle
+page can be refreshed. Destruction invalidates live ownership. The association is
+process-local.
 
-BrowserRuntime keeps one current association per physical page, including the workflow/task/request, role, optional Paper/DOI and source page. `pageAssociation(pageId)` returns descriptive metadata with an explicit active flag; `servicePages(scopeId, serviceId)` filters existing pages without creating them. Task completion clears live ownership while retaining the page's last association for inspection. Destruction removes its association and live source/opener references; renderer exit invalidates the association. Reviewed diagnostic events capture the last association before invalidation. They do not restore live associations or change Session, page recycling or closure behavior.
+The official Translator executes in isolated sandbox windows. Each sandbox IPC
+request checks its renderer, operation and source document, then uses the business
+Session for scoped HTTP. Solver requests use the originating CDP target and
+document with serialized Pydoll execution. Local API and OpenAlex responses are
+scoped separately. Translator PDFs are downloaded first. An on-demand OpenAlex
+lookup can supply up to four direct PDF candidates, which use the shared Session
+without publisher referrer or Zotero authorization.
+
+Last Import uses exact-key parent and children queries. Confirmed attachment
+registration is required for PDF success. Read failures remain unknown. The
+process-local projection neither reads stored files nor writes Zotero keys into
+Paper frontmatter.
 
 ## History and diagnostics
 
@@ -93,14 +96,12 @@ Logs Reset. Reset coordinates the native writer, preserves existing Workspace
 safety checks and marks surviving history when Workspace is reset. See
 [logging](logging.md) for storage limits, field meanings and evidence boundaries.
 
-Prepare's CARSI Portal is shared and unassigned; resource and observed target pages carry the saved Service, and popups inherit their attributable source. Query and Export validate that the original prepared page still has the expected scoped Service/revisions, in addition to the existing document checks. Import replaces the reused ImportPage's association for each Paper, including an explicit unassigned Service. Covers and Enrich remain temporary auxiliary pages. Generic Manual Service URL opening retains its existing behavior.
-
 `bindTaskPage` and explicit `navigate(..., {tab})` control task targets. `select` presents a page in the main-window Browser pane; task navigation and WoS handoff do not select tabs. Background creation does not select even the first page, open Browser or focus a webpage. New task pages remain available for explicit manual login or inspection through the existing tabs. Service associations confer no document, task or institution-credential authority. Page/frame identity, task signals, navigation recovery and native-save settlement remain separate checks.
 
 ## Configuration editing
 
 One configuration controller owns the saved revisions and ordinary drafts across
-Run, Journals, Kept and Settings. A shared scheduler serializes safe field patches;
+Workflows, Journals and Settings. A shared scheduler serializes safe field patches;
 responses acknowledge the submitted snapshot without replacing later edits.
 Server-side admission coordinates writes with task starts, retaining the existing
 Compare-and-Write and Workspace lock protections. Active tasks continue using
@@ -137,7 +138,7 @@ labels. Unassigned and shared pages use explicit roles and recorded provenance.
 The directory uses the shared layout controller for flyout size, focus and scroll.
 Grouping grants no task, document or authentication authority.
 
-Archive availability and fullscreen task presentation are local UI preferences, outside YAML Save and business SQLite. Archive defaults disabled while its existing resources and layout preference remain available. Legacy Paper links resolve against the current ARRAY candidate/kept collection or report a missing Paper. Run and Kept keep one business coordinator each: polling, workflow identity/generation, Continue/Cancel permissions, terminal acknowledgement, result writes and refresh do not depend on a visual player. The presentation choice is captured at start or restore; changing the preference does not restart work. Inline mode allows safe workspace navigation and does not force a page change at completion.
+Archive availability and fullscreen task presentation are local UI preferences, outside YAML Save and business SQLite. Archive defaults disabled while its existing resources and layout preference remain available. Legacy Paper links resolve against the current ARRAY candidate/kept collection or report a missing Paper. Login, Discover and Import keep independent coordinators. Discover captures its display preference at start. Login and Import retain their progress and controls in Workflows independently of Browser visibility.
 
 ## Resources and third-party code
 
