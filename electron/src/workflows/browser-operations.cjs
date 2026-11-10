@@ -70,8 +70,7 @@ async function searchCARSIInstitution(browser,tab,name,signal,progress,requestDe
 async function loginCARSI(browser,tab,data,signal,progress,deadline) {
   checkCanceled(signal);
   const contents=tab.view.webContents;
-  if(!tab.authContext?.active)browser.beginAuthentication(tab,signal);
-  else tab.authContext.institution=true;
+  browser.beginAuthentication(tab,signal);
   let selectionDocument,issue,reportedIssue;
   if(data.use_shibboleth && data.login_url) {
     try {await navigate(browser,tab,data.login_url,signal,progress,deadline);}
@@ -230,7 +229,7 @@ async function prepareLoggedInService(browser,data,{signal,progress}) {
     const portal=await newTaskPage(browser,bounded,{role:'service-resource',source:entry,managed:true});
     portal.institutionOrigins=new Set(entry.institutionOrigins || []);
     await navigate(browser,portal,CARSI_PORTAL,bounded,progress,deadline);
-    return visitCARSIResource(browser,portal,data,{signal:bounded,progress},deadline,{allowCredentials:false});
+    return visitCARSIResource(browser,portal,data,{signal:bounded,progress},deadline);
   });
 }
 
@@ -244,41 +243,8 @@ async function visitManualService(browser,data,{signal,progress}) {
   });
 }
 
-async function prepareService(browser,data,{signal,progress}) {
-  return withTaskDeadline(signal,'preparation',(bounded,deadline)=>
-    prepareServiceWithinDeadline(browser,data,{signal:bounded,progress},deadline));
-}
-async function prepareServiceWithinDeadline(browser,data,{signal,progress},requestDeadline) {
-  if(!data.institution_name && !(data.use_shibboleth && data.login_url))
-    return {outcome:'Needs attention',reason:'manual_action_required'};
-  // Python constructs this URL exclusively from the saved, validated Institution.
-  if(data.login_url && !official(data.login_url,'/Shibboleth.sso/Login'))throw Error('Invalid CARSI entry');
-  const portal=await ensureCARSIPortal(browser,data,{signal,progress},requestDeadline);
-  return visitCARSIResource(browser,portal,data,{signal,progress},requestDeadline);
-}
-// A runs once per task. The existing cache also prevents re-login after a failed attempt.
-async function ensureCARSIPortal(browser,data,{signal,progress},deadline) {
-  if(browser.carsiPortal?.task===data.task_id) {
-    const portal=browser.tabs.get(browser.carsiPortal.id);
-    if(!portal || portal.view.webContents.isDestroyed())throw new BrowserFailure('navigation','page_closed');
-    browser.associatePage(portal,{role:'carsi-portal',service:false});
-    checkCARSISession([portal],signal);
-    return portal;
-  }
-  browser.carsiPortal={task:data.task_id,id:null};
-  let portal=await newTaskPage(browser,signal,{role:'carsi-portal',service:false});
-  browser.carsiPortal={task:data.task_id,id:portal.id};
-  try {portal=await loginCARSI(browser,portal,data,signal,progress,deadline);}
-  catch(error) {browser.carsiPortal={task:data.task_id,id:null};throw error;}
-  browser.carsiPortal={task:data.task_id,id:portal.id};
-  browser.associatePage(portal,{role:'carsi-portal',service:false});
-  portal.institutionOrigins=new Set(portal.authContext?.origins || []);
-  return portal;
-}
-// B performs one Service operation without re-entering institution initialization.
-async function visitCARSIResource(browser,portal,data,{signal,progress},requestDeadline,{allowCredentials=true}={}) {
-  if(!portal.authContext?.active || portal.authContext.signal!==signal)
-    browser.beginAuthentication(portal,signal,{institution:false,allowCredentials});
+async function visitCARSIResource(browser,portal,data,{signal,progress},requestDeadline) {
+  browser.beginAuthentication(portal,signal,{institution:false});
   portal.taskSignal=signal;
   browser.bindTaskPage(portal,signal);
   let detail,visitDeadline;
@@ -471,5 +437,5 @@ async function searchJournalCover(browser,data,{signal,progress}) {
     await pause(signal);
   }
 }
-module.exports={loginInstitution,prepareLoggedInService,visitManualService,prepareService,searchJournalCover,newTaskPage,navigate,pageAction,pause,checkCanceled,
+module.exports={loginInstitution,prepareLoggedInService,visitManualService,searchJournalCover,newTaskPage,navigate,pageAction,pause,checkCanceled,
   waitFor,withTaskDeadline,timeoutFailure};

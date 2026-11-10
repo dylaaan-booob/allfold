@@ -374,51 +374,6 @@ test('Imperva diagnostics omit ambiguous parameters and accept a displayed incid
     {diagnostic:{...blocked,imperva_incident_id:'123-456'}});
 });
 
-test('Prepare reuses an unassigned Portal across Services and records resource/target popup provenance',async t=>{
-  const {prepareService}=require('../src/workflows/browser-operations.cjs');
-  const {BrowserRuntime}=fixture(t),browser=new BrowserRuntime();
-  t.after(()=>browser.close());await browser.ready;
-  const portal=browser.createTab(),wc=portal.view.webContents;
-  await wc.loadURL('https://ds.carsi.edu.cn/resource/resource.php');
-  browser.carsiPortal={task:'prepare',id:portal.id};
-  wc.runAuth=code=>{
-    const [action]=JSON.parse(code.slice(code.lastIndexOf('(...')+4,-1));
-    if(action==='ready')return {status:'ready',checked:false};
-    if(action==='poll')return {status:'complete',selection:{status:'selected',url:'https://ds.carsi.edu.cn/resource/resourceDetail.php?id=fixture'}};
-    return {status:'pending'};
-  };
-  browser.events.on('tab-created',(_event,tab)=>{
-    const contents=tab.view.webContents,original=contents.executeJavaScriptInIsolatedWorld.bind(contents);
-    contents.executeJavaScriptInIsolatedWorld=async(world,scripts)=>{
-      if(!scripts)return original();
-      const [action]=JSON.parse(scripts[0].code.slice(scripts[0].code.lastIndexOf('(...')+4,-1));
-      if(action==='check')return {status:'ready'};
-      assert.equal(action,'visit');
-      const popup=contents.popup({url:'https://example.org/target'}).createWindow({});
-      await popup.loadURL('https://example.org/target');
-      return {status:'visited_click'};
-    };
-  });
-  for(const [index,id] of [serviceId,'svc_'+'2'.repeat(32)].entries()) {
-    const controller=new AbortController();
-    browser.beginOperation(controller.signal,{request_id:'prepare'+index,task_id:'prepare',service_id:id,service_scope:serviceScope});
-    const result=await prepareService(browser,{task_id:'prepare',service_id:id,name:'Saved Service',institution_name:'Test'},
-      {signal:controller.signal,progress(){}});
-    assert.equal(result.outcome,'Opened');
-    const {source_page_id:detail,target_page_id:target}=result.evidence;
-    assert.equal(browser.pageAssociation(portal.id).service_id,null);
-    assert.equal(browser.pageAssociation(detail).service_id,id);
-    assert.equal(browser.pageAssociation(detail).source_page_id,portal.id);
-    assert.equal(browser.pageAssociation(target).service_id,id);
-    assert.equal(browser.pageAssociation(target).source_page_id,detail);
-    assert.equal(browser.pageAssociation(target).role,'service-target');
-    assert.equal(browser.carsiPortal.id,portal.id);
-    assert.equal(browser.events.listenerCount('tab-created'),1);
-    browser.endTask();
-  }
-  assert.equal(browser.tabs.size,5);
-});
-
 test('Manual URL opening preserves the task; Covers use an auxiliary page without Service authority',async t=>{
   const {searchJournalCover}=require('../src/workflows/browser-operations.cjs');
   const {BrowserRuntime,logs}=fixture(t),browser=new BrowserRuntime();
@@ -448,28 +403,6 @@ test('Manual URL opening preserves the task; Covers use an auxiliary page withou
   browser.close();assert.equal(browser.tabs.size,0);assert.equal(browser.selected,null);
 });
 
-test('closing the shared Portal keeps the Prepare initialization marker and refuses login replay',async t=>{
-  const {prepareService}=require('../src/workflows/browser-operations.cjs');
-  const {BrowserRuntime}=fixture(t),browser=new BrowserRuntime();
-  t.after(()=>browser.close());await browser.ready;
-  const signal=new AbortController().signal;
-  browser.beginOperation(signal,{request_id:'first',task_id:'prepare',service_id:serviceId,service_scope:serviceScope});
-  const portal=browser.createTab(),detail=browser.createTab();
-  browser.carsiPortal={task:'prepare',id:portal.id};
-  browser.bindTaskPage(detail);
-  await browser.command({action:'close',id:portal.id});
-  browser.endTask();
-  browser.beginOperation(signal,{request_id:'second',task_id:'prepare',service_id:serviceId,service_scope:serviceScope});
-  const recreated=()=>{throw Error('Unexpected Portal recreation');};
-  browser.events.once('tab-created',recreated);
-  try {
-    await assert.rejects(prepareService(browser,{task_id:'prepare',name:'Next saved Service',institution_name:'Test'},
-      {signal,progress(){}}),/page_closed/);
-    assert.equal(browser.carsiPortal.task,'prepare');
-    assert.equal(browser.carsiPortal.id,null);
-    assert.equal(browser.tabs.size,1);
-  } finally {browser.events.removeListener('tab-created',recreated);}
-});
 test('remote popups remain hidden managed tabs and unsafe URLs are refused',async t=>{
   const {BrowserRuntime,host}=fixture(t),browser=new BrowserRuntime({hostWindow:host});t.after(()=>browser.close());await browser.show();
   const source=browser.selected.view.webContents;
@@ -925,4 +858,9 @@ test('Login opens one managed CARSI Portal and prepares independent Service page
   assert.ok(serviceModes.includes('institution'));
   assert.equal(reads,1);assert.equal(submissions,1);
   assert.equal(browser.pageAssociation(autoId).source_page_id,auto.evidence.source_page_id);
+  entry.view.webContents.close();
+  const retained=browser.tabs.size;
+  await assert.rejects(prepare(serviceId,'StalePortal'),{diagnostic:{stage:'authentication',code:'carsi_session_expired'}});
+  assert.equal(browser.tabs.size,retained);
+  assert.equal(reads,1);assert.equal(submissions,1);
 });

@@ -180,8 +180,6 @@ class BrowserRuntime {
       this.tabs.delete(tab.id);
       if(this.paperPages.get(tab.paperKey)===tab)this.paperPages.delete(tab.paperKey);
       if (tab.taskOwner?.taskTab === tab)tab.taskOwner.taskTab=null;
-      // Keep the task's initialization marker: closing A must not replay login for B.
-      if (this.carsiPortal?.id === tab.id) this.carsiPortal={task:this.carsiPortal.task,id:null};
       for(const page of this.tabs.values()) {
         if(page.opener===tab)page.opener=null;
         if(page.association?.source_page_id===tab.id)
@@ -204,10 +202,10 @@ class BrowserRuntime {
     this.events.emit('tab-created',null,tab);
     return tab;
   }
-  beginAuthentication(tab,signal,{institution=true,allowCredentials=true}={}) {
+  beginAuthentication(tab,signal,{institution=true}={}) {
     // Only CARSI entry and its attributable WoS handoff call this, never generic navigate().
     const owner=this.claimPage(tab,signal);
-    const context={owner,signal,active:true,institution,allowCredentials,origins:new Set(tab.institutionOrigins || []),
+    const context={owner,signal,active:true,institution,allowCredentials:institution,origins:new Set(tab.institutionOrigins || []),
       loginSubmitted:false,failure:null};
     context.fatal=new Promise((_,reject)=>{context.reject=reject;});
     context.fatal.catch(()=>{});
@@ -337,7 +335,7 @@ class BrowserRuntime {
   authenticationPortal(tab) {
     const context=tab.authContext;
     if(context) {
-      context.institution=false;context.loginSubmitted=false;context.lastAction=null;
+      context.institution=false;context.allowCredentials=false;context.lastAction=null;
       for(const page of this.tabs.values())if(page!==tab && page.authContext===context)page.authContext=null;
     }
   }
@@ -812,7 +810,6 @@ class BrowserRuntime {
     for (const tab of [...this.tabs.values()]) {
       this.reportPage('info','page_close_requested',tab,{reason:'app_exit'});tab.view.webContents.close();
     }
-    this.carsiPortal=null;
     this.presentation.dispose();
     this.selected=null;
     this.partition.webRequest.onErrorOccurred(null);

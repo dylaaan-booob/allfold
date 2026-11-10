@@ -16,7 +16,7 @@ const {failedImport}=require('./workflows/import-errors.cjs');
 const {BrowserFailure,diagnosticFor}=require('./browser/browser-errors.cjs');
 const {log,errorCode,initializeLogging,withLogContext,associationLogContext,diagnosticsReset,diagnosticsStatus,setLogLevel} = require('./shared/logging.cjs');
 const {operationAssociation}=require('./browser/page-association.cjs');
-const {loginInstitution,prepareLoggedInService,visitManualService,prepareService,searchJournalCover}=require('./workflows/browser-operations.cjs');
+const {loginInstitution,prepareLoggedInService,visitManualService,searchJournalCover}=require('./workflows/browser-operations.cjs');
 const {wosQuery,wosExport}=require('./workflows/wos-operations.cjs');
 const {readCASCredentials,casStatus,saveCASCredentials,clearCASCredentials,casErrorCode}=require('./auth/cas-credentials.cjs');
 const {confirmConfigurationExit,confirmBlockedUnload}=require('./shared/configuration-exit.cjs');
@@ -207,8 +207,7 @@ async function executeOperation(message,current) {
           return await loginInstitution(browser,message.data,{signal:controller.signal,progress});
         } else if(message.action === 'prepare_service' || message.action === 'visit_manual_service') {
           stage='preparation';
-          const prepare=message.action==='visit_manual_service'?visitManualService
-            :message.data.portal_page_id!=null?prepareLoggedInService:prepareService;
+          const prepare=message.action==='visit_manual_service'?visitManualService:prepareLoggedInService;
           return await prepare(browser,message.data,{signal:controller.signal,progress});
         } else if(message.action === 'search_journal_cover') {
           return await searchJournalCover(browser,message.data,{signal:controller.signal,progress});
