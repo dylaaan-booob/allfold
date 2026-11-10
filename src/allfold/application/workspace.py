@@ -345,9 +345,9 @@ def plan_workspace_import(lock, journals: Sequence[JournalConfig] = (), *, servi
             if state.status is not WorkflowStatus.KEPT:
                 reasons.append(f"status is {state.status.value if state.status else 'invalid'}, requires kept")
             if not state.external_ids or not state.external_ids.doi:
-                reasons.append("A valid primary DOI is required for Prepare/Import")
+                reasons.append("A valid primary DOI is required for Import")
             if state.publication_type == "preprint":
-                reasons.append("Preprint Prepare/Import is not supported")
+                reasons.append("Preprint Import is not supported")
             eligible = state.automatic_export_eligible
             if reasons or not eligible:
                 non_target = state.status in {WorkflowStatus.CANDIDATE, WorkflowStatus.REJECTED, WorkflowStatus.EXPORTED}

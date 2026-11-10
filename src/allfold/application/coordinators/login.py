@@ -1,16 +1,32 @@
 """Process-local CARSI login and independent saved-Service preparation."""
 from dataclasses import dataclass, replace
 from pathlib import Path
+from urllib.parse import urlencode
 import threading
 from uuid import uuid4
+
+from pydantic import ValidationError
 
 from allfold.application.bounded_dispatch import bounded_dispatch
 from allfold.application.browser_runtime import ElectronDisconnected
 from allfold.application.browser_services import BrowserServiceSnapshot
-from allfold.application.coordinators.preparation_coordinator import institution_login_url
 from allfold.application.history import observe
 from allfold.browser_diagnostics import normalize_browser_diagnostic
-from allfold.config import load_config
+from allfold.config import ConfigurationError, InstitutionConfig, load_config
+
+
+CARSI_LOGIN_URL = "https://ds.carsi.edu.cn/Shibboleth.sso/Login"
+CARSI_PORTAL_URL = "https://ds.carsi.edu.cn/wxds"
+
+def institution_login_url(entity_id: str | None) -> str | None:
+    """Construct the official CARSI entry only from a schema-valid IdP entity ID."""
+    try:
+        validated = InstitutionConfig(idp_entity_id=entity_id).idp_entity_id
+    except (ValidationError, ValueError) as error:
+        raise ConfigurationError("Institution.idp_entity_id is invalid") from error
+    if validated is None:
+        return None
+    return f"{CARSI_LOGIN_URL}?{urlencode({'entityID': validated, 'target': CARSI_PORTAL_URL})}"
 
 
 @dataclass(frozen=True)
@@ -132,10 +148,11 @@ class LoginCoordinator:
         opened = (data.get('outcome') == 'Opened' and evidence.get('visit_action_observed') is True
                   and evidence.get('navigation_observed') is True and type(target) is int and target > 0)
         status = ('Opened' if opened else 'Canceled' if self._stop.is_set() else
-                  'Needs attention' if data.get('outcome') == 'Needs attention' else 'Failed')
+                  'Needs attention' if data.get('outcome') in {'Opened', 'Needs attention'} else 'Failed')
         return replace(current, status=status, waiting_for_user=False, diagnostic=diagnostic,
             page_id=target if opened else current.page_id,
-            reason='target_opened' if opened else diagnostic.get('code') if diagnostic else data.get('reason', 'failed'))
+            reason=('target_opened' if opened else diagnostic.get('code') if diagnostic else
+                    'unverified_official_page' if data.get('outcome') == 'Opened' else data.get('reason', 'failed')))
 
     def _run(self, saved, services, authentication, owner, manual_service_id, concurrency):
         phase, portal_page = 'completed', None

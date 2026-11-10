@@ -67,8 +67,7 @@ from allfold.web.settings_form import (
     settings_form_from_draft,
     settings_form_from_submission,
 )
-from allfold.application.batch_import import BatchImportService, BatchPhase
-from allfold.application.coordinators.preparation_coordinator import PreparationCoordinator, PreparationSnapshot
+from allfold.application.batch_import import BatchImportService
 from allfold.application.coordinators.kept_workflow import KeptWorkflow
 from allfold.application.coordinators.login import LoginCoordinator
 from allfold.web.ui_next import install_ui_next, ui_next_page
@@ -116,34 +115,12 @@ class _PaperAbstractInput(_PaperFieldEdit):
     abstract: str
 
 
-def _preparation_json(snapshot: PreparationSnapshot) -> dict[str, object]:
-    return {
-        "phase": snapshot.phase.value,
-        "task_id": snapshot.task_id,
-        "generation": snapshot.generation,
-        "services": [{"id": s.id, "name": s.name, "access_url": s.access_url, "access_method": s.access_method}
-                     for s in snapshot.services],
-        "manual_services": [{"id": s.id, "name": s.name, "access_url": s.access_url, "access_method": s.access_method}
-                            for s in snapshot.manual_services],
-        "current_service_id": snapshot.current_service_id,
-        "results": [{"service_id": r.service_id, "outcome": r.outcome.value, "reason": r.reason,
-                     **({"diagnostic": r.diagnostic} if r.diagnostic is not None else {})}
-                    for r in snapshot.results],
-        "message": snapshot.message,
-        "authorization_pending": snapshot.authorization_pending,
-        "waiting_for_user": snapshot.waiting_for_user,
-    }
-
-
-class _ImportStartForm(BaseModel):
+class _WorkflowStart(BaseModel):
     model_config = ConfigDict(extra="forbid")
     csrf_token: str | None = None
     import_token: str | None = None
-
-
-class _WorkflowStart(_ImportStartForm):
-    mode: Literal["full", "import_only"] = "full"
     service_id: str | None = None
+    skip_unprepared: list[str] = Field(default_factory=list)
 
 
 class _LoginAction(BaseModel):
@@ -256,10 +233,9 @@ def create_app(config_path: Path, *, electron_bridge: ElectronBridge, diagnostic
             await asyncio.to_thread(application.state.kept_workflow.shutdown)
             for worker in (application.state.preprint_lookup, application.state.paper_enrichment, application.state.journal_cover_search, application.state.wos_coordinator, application.state.login):
                 await asyncio.to_thread(worker.shutdown)
-            for worker in (application.state.run_coordinator, application.state.batch_import, application.state.preparation_coordinator,
+            for worker in (application.state.run_coordinator, application.state.kept_workflow,
                            application.state.preprint_lookup, application.state.paper_enrichment, application.state.journal_cover_search, application.state.wos_coordinator, application.state.login):
                 await asyncio.to_thread(worker.join)
-            await asyncio.to_thread(application.state.kept_workflow.advance)
 
     app = FastAPI(
         lifespan=lifespan,
@@ -303,7 +279,6 @@ def create_app(config_path: Path, *, electron_bridge: ElectronBridge, diagnostic
         diagnostics=app.state.diagnostics, current_workspace=lambda: load_config(resolved_config_path).output_dir)
     app.state.journal_cover_search = JournalCoverSearch(electron_bridge, app.state.browser_task_lock, diagnostics=app.state.diagnostics)
     app.state.batch_import = BatchImportService(electron_bridge, app.state.browser_task_lock, diagnostics=app.state.diagnostics)
-    app.state.preparation_coordinator = PreparationCoordinator(electron_bridge, app.state.browser_task_lock, diagnostics=app.state.diagnostics)
     app.state.login = LoginCoordinator(electron_bridge, app.state.browser_task_lock, diagnostics=app.state.diagnostics)
     app.state.wos_coordinator = WoSCoordinator(resolved_config_path, app.state.login, run_slot,
         bridge=electron_bridge, browser_lock=app.state.browser_task_lock, diagnostics=app.state.diagnostics)
@@ -345,113 +320,41 @@ def create_app(config_path: Path, *, electron_bridge: ElectronBridge, diagnostic
             return JSONResponse({"message": "Login task is no longer active."}, status_code=409)
         return read_login()
 
-    def has_kept(target: _ImportTarget) -> bool:
-        current, config = _ImportTarget.read(target.config_path, service_id=target.service_id)
-        if target.lock_identity is None:
-            current = replace(current, lock_identity=None)
-        if current != target:
-            raise ContentChangedError("Workspace or configuration changed; start a new explicit workflow.")
-        if target.paper_plan is not None:
-            return bool(target.paper_plan.papers)
-        from allfold.persistence.safe_write import workspace_operation_lock
-        from allfold.application.workspace import plan_workspace_import
-        with workspace_operation_lock(target.workspace) as lock:
-            target.verify(lock)
-            plan = plan_workspace_import(lock, config.journals, service_id=target.service_id)
-        return bool(plan.papers)
-
-    def begin_import(target: _ImportTarget, authorization: str, *, workflow_id=None, parent_task_id=None):
-        # The caller holds import_submission_lock, including automatic transitions.
-        current, _ = _ImportTarget.read(resolved_config_path, service_id=target.service_id)
-        if target.lock_identity is None:
-            current = replace(current, lock_identity=None)
-        if authorization != app.state.import_token or current != target:
-            raise ContentChangedError("Workspace changed or import request already submitted/expired. Review the current Workspace before importing.")
-        if not has_kept(target):
-            raise ContentChangedError("No Kept Papers to import.")
-        app.state.import_token = secrets.token_urlsafe(32)
-        return app.state.batch_import.start(target.workspace, validate_target=target.verify,
-            browser_owner=app.state.kept_workflow.browser_owner, config_path=target.config_path,
-            workflow_id=workflow_id, parent_task_id=parent_task_id, service_id=target.service_id, initial_plan=target.paper_plan,
-            zotero_target=target.zotero_target.model_dump() if target.zotero_target else None)
+    from allfold.application.browser_services import BrowserServiceSnapshot
+    from allfold.application.kept_queue import kept_queue
+    from allfold.application.workspace import plan_workspace_import
+    from allfold.persistence.safe_write import workspace_operation_lock
 
     app.state.kept_workflow = KeptWorkflow(
-        app.state.preparation_coordinator, app.state.batch_import, import_submission_lock,
-        begin_import=begin_import, has_kept=has_kept,
+        app.state.batch_import, app.state.login, import_submission_lock,
         browser_lock=app.state.browser_task_lock, diagnostics=app.state.diagnostics,
     )
 
-    def start_workflow(import_token: str | None, mode: str, service_id=None):
-        with import_submission_lock:
-            target, config = _ImportTarget.read(resolved_config_path, service_id=service_id)
-            if not _csrf_valid(import_token, target.form_token(app.state.import_token)):
-                raise ContentChangedError("Workspace changed or import request already submitted/expired. Review the current Workspace before importing.")
-            workflow = app.state.kept_workflow
-            if workflow.snapshot().phase == "importing" and app.state.batch_import.snapshot().phase is not BatchPhase.RUNNING:
-                workflow.advance()
-            if workflow.snapshot().active or app.state.batch_import.running:
-                raise ContentChangedError("A Kept workflow or Import is already active.")
-            from allfold.application.workspace import plan_workspace_import
-            from allfold.persistence.safe_write import workspace_operation_lock
-            with workspace_operation_lock(target.workspace) as lock:
-                target.verify(lock)
-                plan = plan_workspace_import(lock, config.journals, service_id=service_id)
-                target = replace(target, paper_plan=plan)
-            if target.zotero_target is None:
-                raise ContentChangedError('Choose and authorize a Zotero Library/Collection in Queue before starting.')
-            owner = app.state.browser_task_lock.acquire('zotero')
-            if owner is None:
-                raise ContentChangedError('Browser runtime is busy; no batch started.')
-            try:
-                checked = app.state.electron_bridge.execute('zotero_local', {
-                    'operation': 'validate', 'target': target.zotero_target.model_dump()}).result()
-                if not checked.get('ok'):
-                    raise ContentChangedError('Zotero target is unavailable: ' + str(checked.get('error', 'api_failure')))
-            finally:
-                app.state.browser_task_lock.release(owner)
-            # Reserve the signed click for this workflow; rendering never rotates the nonce.
-            app.state.import_token = secrets.token_urlsafe(32)
-            return app.state.kept_workflow.start(target, config, app.state.import_token, mode=mode)
-
     def workflow_json():
-        workflow = app.state.kept_workflow.snapshot()
-        batch = app.state.batch_import.snapshot()
+        with import_submission_lock:
+            workflow = app.state.kept_workflow.snapshot()
+            batch = app.state.batch_import.snapshot()
         return {
-            **jsonable_encoder(workflow), "active": workflow.active,
-            "can_continue": workflow.can_continue, "can_cancel": workflow.can_cancel,
-            "preparation": _preparation_json(app.state.preparation_coordinator.snapshot()),
+            **jsonable_encoder(workflow), "active": workflow.active, "can_cancel": workflow.can_cancel,
             "batch": ({"phase": batch.phase.value, "successful": batch.successful, "task_id": batch.task_id,
                        "total": len(batch.plan.papers) if batch.plan else 0,
-                       "current_paper_id": str(batch.current_paper_id) if batch.current_paper_id else None,
+                       "active_paper_ids": jsonable_encoder(batch.active_paper_ids),
                        "statistics": jsonable_encoder(batch.statistics),
-                       "results": [jsonable_encoder(result, exclude={"native_identity"}) for result in batch.results], "message": batch.message}
-                      if workflow.import_started else None),
+                       "results": [jsonable_encoder(result, exclude={"native_identity"}) for result in batch.results],
+                       "message": batch.message} if workflow.workflow_id else None),
         }
 
     @app.get("/api/kept-workflow/state")
     def workflow_state() -> JSONResponse:
-        return JSONResponse(workflow_json())
+        return JSONResponse(workflow_json(), headers={"Cache-Control": "no-store"})
 
     @app.get("/api/kept-workflow/queue")
     def workflow_queue(service_id: str | None = None):
-        from allfold.application.browser_services import BrowserServiceSnapshot
-        from allfold.application.kept_queue import kept_queue
-        from allfold.application.workspace import plan_workspace_import
-        from allfold.persistence.safe_write import workspace_operation_lock
         try:
-            with app.state.settings_write_lock, import_submission_lock:
-                target, config = _ImportTarget.read(resolved_config_path, service_id=service_id)
+            with import_submission_lock:
+                target, _ = _ImportTarget.read(resolved_config_path, service_id=service_id)
                 saved = BrowserServiceSnapshot.read(resolved_config_path)
                 batch = app.state.batch_import.snapshot()
-                workflow = app.state.kept_workflow.snapshot()
-                fixed_plan = app.state.kept_workflow.paper_plan()
-                if workflow.workflow_id and not workflow.import_started and fixed_plan is not None:
-                    from allfold.application.batch_import import BatchSnapshot, BatchPaperResult
-                    skipped = (() if workflow.active else tuple(BatchPaperResult(paper.paper_id, 'skipped', workflow.message,
-                        reason_code='cancelled' if workflow.phase == 'interrupted' else 'blocked',
-                        service_id=paper.service_id, service_assignment=paper.service_assignment) for paper in fixed_plan.papers))
-                    batch = BatchSnapshot(BatchPhase.IDLE if workflow.active else BatchPhase.STOPPED, fixed_plan, None, skipped, workflow.message,
-                        service_id=workflow.service_id)
                 if app.state.batch_import.running:
                     plan = batch.plan
                 elif target.workspace_identity is None or target.papers_identity is None:
@@ -460,12 +363,18 @@ def create_app(config_path: Path, *, electron_bridge: ElectronBridge, diagnostic
                     with workspace_operation_lock(target.workspace) as lock:
                         target.verify(lock)
                         plan = plan_workspace_import(lock, saved.journals)
+                data = kept_queue(target.workspace, saved.journals, saved.services, plan)
+                current, _ = _ImportTarget.read(resolved_config_path, service_id=service_id)
+                if target.lock_identity is None:
+                    target = replace(target, lock_identity=current.lock_identity)
+                if target != current:
+                    raise ContentChangedError("Workspace or configuration changed; refresh the Import queue.")
                 saved.verify()
-                target, _ = _ImportTarget.read(resolved_config_path, service_id=service_id)
-                data = kept_queue(target.workspace, saved.journals, saved.services, plan, batch)
-                return JSONResponse({**data, 'service_id': service_id,
+                unprepared = app.state.kept_workflow.unprepared_services(
+                    saved, (plan.inventory or plan.papers) if plan else (), service_id)
+                return JSONResponse({**data, 'service_id': service_id, 'unprepared_services': unprepared,
                     'import_token': target.form_token(app.state.import_token),
-                    'qualification_pending': plan is None})
+                    'qualification_pending': plan is None}, headers={"Cache-Control": "no-store"})
         except (ConfigurationError, ContentChangedError, OSError, RuntimeError) as error:
             return JSONResponse({'message': str(error)}, status_code=409)
 
@@ -473,23 +382,30 @@ def create_app(config_path: Path, *, electron_bridge: ElectronBridge, diagnostic
     def workflow_start(body: _WorkflowStart) -> JSONResponse:
         if not _csrf_valid(body.csrf_token, csrf_token):
             return JSONResponse({"message": "Invalid or missing CSRF token."}, status_code=403)
-        with app.state.settings_write_lock, import_submission_lock:
-            if app.state.kept_workflow.snapshot().active:
+        with import_submission_lock:
+            workflow = app.state.kept_workflow
+            if workflow.snapshot().active or app.state.batch_import.running:
                 return JSONResponse({**workflow_json(), 'message': 'A fixed Kept batch is already active; selection cannot retarget it.'}, status_code=409)
             try:
-                start_workflow(body.import_token, body.mode, body.service_id)
+                target, config = _ImportTarget.read(resolved_config_path, service_id=body.service_id)
+                if not _csrf_valid(body.import_token, target.form_token(app.state.import_token)):
+                    raise ContentChangedError("Workspace changed or import request already submitted/expired. Review the current Workspace before importing.")
+                saved = BrowserServiceSnapshot.read(resolved_config_path)
+                with workspace_operation_lock(target.workspace) as lock:
+                    target.verify(lock)
+                    plan = plan_workspace_import(lock, saved.journals, service_id=body.service_id)
+                    target = replace(target, paper_plan=plan)
+                workflow.start(target, config.kept_workflow, saved, skip_unprepared=body.skip_unprepared)
+                app.state.import_token = secrets.token_urlsafe(32)
             except (ConfigurationError, ContentChangedError, OSError, RuntimeError) as error:
                 return JSONResponse({"message": str(error)}, status_code=409)
-            state = workflow_json()
-            return JSONResponse(state, status_code=409 if state["phase"] == "interrupted" else 200)
+            return JSONResponse(workflow_json())
 
     @app.post("/api/kept-workflow/{action}")
-    def workflow_action(action: Literal["continue", "cancel", "acknowledge"],
-                        body: _WorkflowAction) -> JSONResponse:
+    def workflow_action(action: Literal["cancel", "acknowledge"], body: _WorkflowAction) -> JSONResponse:
         if not _csrf_valid(body.csrf_token, csrf_token):
             return JSONResponse({"message": "Invalid or missing CSRF token."}, status_code=403)
-        method = {"continue": app.state.kept_workflow.continue_import,
-                  "cancel": app.state.kept_workflow.cancel,
+        method = {"cancel": app.state.kept_workflow.cancel,
                   "acknowledge": app.state.kept_workflow.acknowledge_navigation}[action]
         accepted = method(body.workflow_id, body.generation)
         return JSONResponse(workflow_json(), status_code=200 if accepted else 409)

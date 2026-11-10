@@ -2,22 +2,15 @@
 from allfold.application.workspace import load_workspace, paper_service_assignment
 
 
-def kept_queue(workspace, journals, services, plan, batch):
+def kept_queue(workspace, journals, services, plan):
     saved = load_workspace(workspace, journals)
     eligible = {paper.paper_id for paper in (plan.inventory or plan.papers)} if plan else set()
     rows = [dict(id='all', name='All Services', access_method=None),
             *(dict(id=service.id, name=service.name, access_method=service.access_method) for service in services),
             dict(id='unassigned', name='Unassigned', access_method=None),
             dict(id='ambiguous', name='Ambiguous', access_method=None)]
-    known = {row['id'] for row in rows}
-    for paper in batch.plan.papers if batch.plan else ():
-        if paper.service_id and paper.service_id not in known:
-            rows.append(dict(id=paper.service_id, name=paper.service_id + ' (batch)', access_method=None))
-            known.add(paper.service_id)
     for row in rows:
-        row.update(kept=0, eligible=0, planned=0, processed=0, confirmed=0,
-                   pending=0, skipped=0, exceptions=0, uncertain=0, no_effect=0, pdf_unverified=0,
-                   pdf_attached=0, fallback=0, issues=0)
+        row.update(kept=0, eligible=0)
     by_id = {row['id']: row for row in rows}
     papers = []
     for paper in saved.kept:
@@ -29,33 +22,9 @@ def kept_queue(workspace, journals, services, plan, batch):
             row['eligible'] += qualified
         papers.append(dict(paper_id=str(paper.paper_id), doi=paper.external_ids.doi,
             title=paper.title, service_id=service_id, assignment=assignment, eligible=qualified,
-            reason=('A valid primary DOI is required for Prepare/Import' if not paper.external_ids.doi else
-                    'Preprint Prepare/Import is not supported' if paper.publication_type == 'preprint' else
+            reason=('A valid primary DOI is required for Import' if not paper.external_ids.doi else
+                    'Preprint Import is not supported' if paper.publication_type == 'preprint' else
                     'Saved Journal mapping agrees' if service_id else
                     'Journal matches disagree; correct the saved mapping' if assignment == 'ambiguous' else
                     'No saved Service assignment') + ('' if qualified else '; excluded by Workspace safety plan')))
-    if batch.plan:
-        outcomes = {result.paper_id: result for result in batch.results}
-        unique_papers = {paper.paper_id: paper for paper in batch.plan.papers}
-        for paper in unique_papers.values():
-            # Historical identity belongs to the plan, never the current mapping.
-            result = outcomes.get(paper.paper_id)
-            for row in (by_id['all'], by_id.get(paper.service_id or paper.service_assignment)):
-                if row is None:
-                    continue
-                row['planned'] += 1
-                row['pending'] += result is None
-                if result:
-                    row['processed'] += result.outcome != 'skipped'
-                    row['confirmed'] += result.parent_outcome == 'confirmed'
-                    row['skipped'] += result.outcome == 'skipped'
-                    row['exceptions'] += result.outcome == 'blocked' or bool(result.diagnostic)
-                    row['uncertain'] += result.parent_outcome == 'uncertain'
-                    row['no_effect'] += result.outcome == 'no_effect'
-                    row['pdf_unverified'] += result.pdf_outcome is not None and result.pdf_outcome.value == 'unverified'
-                    row['pdf_attached'] += result.pdf_attached is True
-                    row['fallback'] += result.fallback_used is True
-                    row['issues'] += bool(result.diagnostic or result.query_diagnostic
-                        or result.outcome in {'blocked', 'uncertain', 'no_effect'}
-                        or result.outcome != 'skipped' and result.pdf_attached is not True)
     return dict(services=rows, papers=papers, issues=[issue.message for issue in saved.issues])

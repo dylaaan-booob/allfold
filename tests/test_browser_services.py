@@ -45,12 +45,11 @@ def test_import_dispatch_uses_saved_mapping_and_keeps_ambiguous_or_missing_unass
     bridge, lock = Bridge(), BrowserTaskLock()
     owner = lock.acquire('kept')
     batch = BatchImportService(bridge, lock)
-    batch.start(workspace, browser_owner=owner, config_path=config)
+    batch.start(workspace, browser_owner=owner, services=BrowserServiceSnapshot.read(config))
     batch.join()
     assert batch.snapshot().phase is BatchPhase.COMPLETED
-    assert [data['service_id'] for _, data in bridge.calls] == [service.id, other.id, None, None,
-        service.id, None, service.id, None]
-    assert [data['paper_id'] for _, data in bridge.calls] == [str(p.id) for p in papers]
+    assert {data['paper_id']: data['service_id'] for _, data in bridge.calls} == dict(zip(
+        (str(p.id) for p in papers), [service.id, other.id, None, None, service.id, None, service.id, None], strict=True))
     assert len({data['task_id'] for _, data in bridge.calls}) == len(papers)
     assert len({data['parent_task_id'] for _, data in bridge.calls}) == 1
     assert all(data['task_id'] != owner.id for _, data in bridge.calls)
@@ -91,7 +90,7 @@ def test_import_revision_change_settles_dispatched_parent_and_stops_next_paper(t
     _, second = paper(workspace, 'b')
     bridge, lock = PendingBridge(), BrowserTaskLock()
     batch = BatchImportService(bridge, lock)
-    batch.start(workspace, browser_owner=lock.acquire('kept'), config_path=config)
+    batch.start(workspace, browser_owner=lock.acquire('kept'), services=BrowserServiceSnapshot.read(config))
     assert bridge.dispatched.wait(2)
     if change == 'config':
         config.write_text(config.read_text() + '\n# changed\n')
@@ -108,43 +107,32 @@ def test_import_revision_change_settles_dispatched_parent_and_stops_next_paper(t
     assert batch.snapshot().phase is (BatchPhase.BLOCKED if outcome == 'confirmed' else BatchPhase.PAUSED)
 
 
-@pytest.mark.parametrize('change', ['config', 'mapping', 'cancel'])
-def test_preparation_keeps_saved_scope_and_stops_queue_after_revision_change(tmp_path, change):
-    from allfold.application.coordinators.preparation_coordinator import PreparationCoordinator, PreparationPhase
+@pytest.mark.parametrize('change', ['config', 'mapping'])
+def test_login_never_admits_preparation_under_stale_saved_scope(tmp_path, change):
+    from allfold.application.coordinators.login import LoginCoordinator
     from allfold.application.browser_runtime import BrowserTaskLock
-    from allfold.config import AccessService, JournalConfig
-    from electron_test_helpers import paper, edit, PendingBridge
+    from electron_test_helpers import PendingBridge
 
     config, _, journal, service = current_mapping_document(tmp_path)
     config.write_text(config.read_text() + 'institution:\n  name: Test University\n')
-    other = AccessService.create('Other', 'https://other.example.org/')
-    saved = load_user_state(config)
-    compare_write_user_state(config, replace(saved.state,
-        journals=(journal, JournalConfig(name='Annals', issn='0090-5364', access_service_id=other.id)),
-        access_services=(service, other)), saved.revision)
-    for index, issn in enumerate(['0006-341X', '0090-5364']):
-        _, path = paper(tmp_path / 'workspace', str(index))
-        edit(path, journal_issns=[issn])
     bridge, lock = PendingBridge(), BrowserTaskLock()
-    preparation = PreparationCoordinator(bridge, lock)
-    started = preparation.start(config)
+    login = LoginCoordinator(bridge, lock)
+    login.start(config)
     assert bridge.dispatched.wait(2)
-    request = bridge.calls[0][1]
-    assert request['service_id'] == service.id
+    action, request = bridge.calls[0]
+    assert action == 'login_carsi'
+    assert request['service_id'] is None
     assert request['service_scope'] == BrowserServiceSnapshot.read(config).scope
     if change == 'config':
         config.write_text(config.read_text() + '\n# changed\n')
-    elif change == 'mapping':
+    else:
         saved = load_user_state(config)
         compare_write_user_state(config, replace(saved.state,
-            journals=(journal.model_copy(update={'access_service_id': other.id}), saved.state.journals[1])), saved.revision)
-    else:
-        assert preparation.cancel(started.task_id, started.generation)
-    bridge.future.set_result({'outcome': 'Opened', 'evidence': {
-        'visit_action_observed': True, 'navigation_observed': True, 'target_page_id': 7}})
-    preparation.join()
-    terminal = preparation.snapshot()
-    assert terminal.phase is (PreparationPhase.STOPPED if change == 'cancel' else PreparationPhase.BLOCKED)
+            journals=(journal.model_copy(update={'access_service_id': None}),)), saved.revision)
+    bridge.future.set_result({'outcome': 'Opened', 'portal_page_id': 7})
+    login.join()
+    saved = BrowserServiceSnapshot.read(config)
+    assert login.snapshot(saved)['phase'] == 'failed'
     assert len(bridge.calls) == 1
-    assert preparation.wos_handoff(terminal.task_id, terminal.generation) is None
+    assert login.prepared_page(saved, service.id) is None
     assert lock.owner is None

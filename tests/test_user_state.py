@@ -203,18 +203,13 @@ def test_settings_deletion_requires_current_approval_and_corruption_blocks_save(
     assert database.read_bytes() == b"damaged database"
 
 
-def test_prepare_and_covers_use_saved_db_journal_identifiers_without_markdown(tmp_path):
+def test_covers_use_saved_db_journal_identifiers_without_markdown(tmp_path):
     import io
     from PIL import Image
-    from allfold.application.coordinators.preparation_coordinator import read_saved_preparation_services
     from allfold.application.journal_covers import upload_cover, cover_details, CoverError
-    from electron_test_helpers import paper, edit
-    config, legacy, journal, service = current_mapping_document(tmp_path)
+    config, legacy, journal, _ = current_mapping_document(tmp_path)
     load_user_state(config)
-    _, path = paper(tmp_path / "workspace", "kept")
-    edit(path, journal_issns=[journal.key])
     legacy.unlink()
-    assert read_saved_preparation_services(config) == (service,)
     output = io.BytesIO()
     Image.new("RGB", (20, 30), "red").save(output, "PNG")
     upload_cover(legacy, journal.key, output.getvalue(), config_path=config)
