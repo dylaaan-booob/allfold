@@ -204,6 +204,45 @@ async function searchCARSIResource(browser,tab,name,signal,requestDeadline) {
     throw failure;
   }
 }
+async function loginInstitution(browser,data,{signal,progress}) {
+  return withTaskDeadline(signal,'authentication',async(bounded,deadline)=>{
+    if(data.login_url && !official(data.login_url,'/Shibboleth.sso/Login'))
+      throw Error('Invalid CARSI entry');
+    const entry=await newTaskPage(browser,bounded,{role:'carsi-portal',service:false});
+    const portal=await loginCARSI(browser,entry,data,bounded,progress,deadline);
+    browser.associatePage(portal,{role:'carsi-portal',service:false});
+    portal.institutionOrigins=new Set(portal.authContext?.origins || []);
+    portal.carsiSessionReady=true;
+    return {outcome:'Opened',portal_page_id:portal.id};
+  });
+}
+
+async function prepareLoggedInService(browser,data,{signal,progress}) {
+  return withTaskDeadline(signal,'preparation',async(bounded,deadline)=>{
+    const entry=browser.tabs.get(data.portal_page_id);
+    const source=browser.pageAssociation(data.portal_page_id);
+    const matchesScope=['scope_id','config_revision','user_state_revision'].every(key=>
+      data.service_scope?.[key] && data.service_scope[key]===source?.service_scope?.[key]);
+    if(!entry?.carsiSessionReady || source?.role!=='carsi-portal' || source.workflow_id!==data.workflow_id
+        || !matchesScope || !official(entry.view.webContents.getURL(),'/resource/resource.php'))
+      throw new BrowserFailure('authentication','carsi_session_expired');
+    const portal=await newTaskPage(browser,bounded,{role:'service-resource',source:entry});
+    portal.institutionOrigins=new Set(entry.institutionOrigins || []);
+    await navigate(browser,portal,CARSI_PORTAL,bounded,progress,deadline);
+    return visitCARSIResource(browser,portal,data,{signal:bounded,progress},deadline,{allowCredentials:false});
+  });
+}
+
+async function visitManualService(browser,data,{signal,progress}) {
+  return withTaskDeadline(signal,'preparation',async(bounded,deadline)=>{
+    const tab=await newTaskPage(browser,bounded,{role:'service-target'});
+    const document=await navigate(browser,tab,data.access_url,bounded,progress,deadline);
+    if(!browser.documentCurrent(document))throw new BrowserFailure('navigation','document_changed');
+    return {outcome:'Opened',reason:'target_opened',evidence:{visit_action_observed:true,
+      navigation_observed:true,target_page_id:tab.id}};
+  });
+}
+
 async function prepareService(browser,data,{signal,progress}) {
   return withTaskDeadline(signal,'preparation',(bounded,deadline)=>
     prepareServiceWithinDeadline(browser,data,{signal:bounded,progress},deadline));
@@ -236,9 +275,10 @@ async function ensureCARSIPortal(browser,data,{signal,progress},deadline) {
   return portal;
 }
 // B performs one Service operation without re-entering institution initialization.
-async function visitCARSIResource(browser,portal,data,{signal,progress},requestDeadline) {
+async function visitCARSIResource(browser,portal,data,{signal,progress},requestDeadline,{allowCredentials=true}={}) {
   if(!portal.authContext?.active || portal.authContext.signal!==signal)
     browser.beginAuthentication(portal,signal,{institution:false});
+  if(!allowCredentials)portal.authContext.loginSubmitted=true;
   portal.taskSignal=signal;
   browser.bindTaskPage(portal,signal);
   let detail,visitDeadline;
@@ -426,5 +466,5 @@ async function searchJournalCover(browser,data,{signal,progress}) {
     await pause(signal);
   }
 }
-module.exports={prepareService,searchJournalCover,newTaskPage,navigate,pageAction,pause,checkCanceled,
+module.exports={loginInstitution,prepareLoggedInService,visitManualService,prepareService,searchJournalCover,newTaskPage,navigate,pageAction,pause,checkCanceled,
   waitFor,withTaskDeadline,timeoutFailure};

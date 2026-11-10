@@ -195,7 +195,7 @@ def install_resource_api(app, config_path, csrf_token):
 AUTOSAVE_FIELDS = frozenset({
     'name', 'keyword_expression', 'from_month', 'to_month', 'log_level',
     'crossref_mailto', 'provider_aliases', 'provider_order', 'enabled_providers',
-    'display_name', 'transition_delay_seconds', 'auto_import_after_preparation', 'zotero_target',
+    'prepare_service_concurrency', 'display_name', 'transition_delay_seconds', 'auto_import_after_preparation', 'zotero_target',
     'institution_name', 'institution_idp_entity_id', 'institution_use_shibboleth',
     'journals', 'access_services', 'groups', 'custom_labels',
 })

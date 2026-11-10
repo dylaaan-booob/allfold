@@ -70,6 +70,7 @@ from allfold.web.settings_form import (
 from allfold.application.batch_import import BatchImportService, BatchPhase
 from allfold.application.coordinators.preparation_coordinator import PreparationCoordinator, PreparationSnapshot
 from allfold.application.coordinators.kept_workflow import KeptWorkflow
+from allfold.application.coordinators.login import LoginCoordinator
 from allfold.web.ui_next import install_ui_next, ui_next_page
 
 _STATIC_DIR = Path(__file__).resolve().parent / "static"
@@ -143,6 +144,18 @@ class _ImportStartForm(BaseModel):
 class _WorkflowStart(_ImportStartForm):
     mode: Literal["full", "import_only"] = "full"
     service_id: str | None = None
+
+
+class _LoginAction(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    csrf_token: str
+    service_id: str | None = None
+
+
+class _LoginCancel(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    csrf_token: str
+    workflow_id: str
 
 
 class _WorkflowAction(BaseModel):
@@ -241,10 +254,10 @@ def create_app(config_path: Path, *, electron_bridge: ElectronBridge, diagnostic
             application.state.run_coordinator.shutdown()
             electron_bridge.finish_disconnected()
             await asyncio.to_thread(application.state.kept_workflow.shutdown)
-            for worker in (application.state.preprint_lookup, application.state.paper_enrichment, application.state.journal_cover_search, application.state.wos_coordinator):
+            for worker in (application.state.preprint_lookup, application.state.paper_enrichment, application.state.journal_cover_search, application.state.wos_coordinator, application.state.login):
                 await asyncio.to_thread(worker.shutdown)
             for worker in (application.state.run_coordinator, application.state.batch_import, application.state.preparation_coordinator,
-                           application.state.preprint_lookup, application.state.paper_enrichment, application.state.journal_cover_search, application.state.wos_coordinator):
+                           application.state.preprint_lookup, application.state.paper_enrichment, application.state.journal_cover_search, application.state.wos_coordinator, application.state.login):
                 await asyncio.to_thread(worker.join)
             await asyncio.to_thread(application.state.kept_workflow.advance)
 
@@ -291,7 +304,8 @@ def create_app(config_path: Path, *, electron_bridge: ElectronBridge, diagnostic
     app.state.journal_cover_search = JournalCoverSearch(electron_bridge, app.state.browser_task_lock, diagnostics=app.state.diagnostics)
     app.state.batch_import = BatchImportService(electron_bridge, app.state.browser_task_lock, diagnostics=app.state.diagnostics)
     app.state.preparation_coordinator = PreparationCoordinator(electron_bridge, app.state.browser_task_lock, diagnostics=app.state.diagnostics)
-    app.state.wos_coordinator = WoSCoordinator(resolved_config_path, app.state.preparation_coordinator, run_slot,
+    app.state.login = LoginCoordinator(electron_bridge, app.state.browser_task_lock, diagnostics=app.state.diagnostics)
+    app.state.wos_coordinator = WoSCoordinator(resolved_config_path, app.state.login, run_slot,
         bridge=electron_bridge, browser_lock=app.state.browser_task_lock, diagnostics=app.state.diagnostics)
     app.state.run_coordinator.wos_stage = app.state.wos_coordinator
     app.state.import_token = secrets.token_urlsafe(32)
@@ -299,6 +313,37 @@ def create_app(config_path: Path, *, electron_bridge: ElectronBridge, diagnostic
     app.state.reset_lock = threading.Lock()
     import_submission_lock = app.state.settings_write_lock
     app.state.import_submission_lock = import_submission_lock
+
+    def login_state():
+        from allfold.application.browser_services import BrowserServiceSnapshot
+        saved = BrowserServiceSnapshot.read(resolved_config_path)
+        return JSONResponse(jsonable_encoder(app.state.login.snapshot(saved)))
+
+    @app.get("/api/login/state")
+    def read_login():
+        try:
+            return login_state()
+        except (ValueError, OSError, RuntimeError) as error:
+            return JSONResponse({"message": str(error)}, status_code=409)
+
+    @app.post("/api/login/start")
+    def start_login(body: _LoginAction):
+        if not _csrf_valid(body.csrf_token, csrf_token):
+            return JSONResponse({"message": "Invalid or missing CSRF token."}, status_code=403)
+        try:
+            with app.state.settings_write_lock:
+                result = app.state.login.start(resolved_config_path, manual_service_id=body.service_id)
+            return JSONResponse(jsonable_encoder(result))
+        except (ValueError, OSError, RuntimeError) as error:
+            return JSONResponse({"message": str(error)}, status_code=409)
+
+    @app.post("/api/login/cancel")
+    def cancel_login(body: _LoginCancel):
+        if not _csrf_valid(body.csrf_token, csrf_token):
+            return JSONResponse({"message": "Invalid or missing CSRF token."}, status_code=403)
+        if not app.state.login.cancel(body.workflow_id):
+            return JSONResponse({"message": "Login task is no longer active."}, status_code=409)
+        return read_login()
 
     def has_kept(target: _ImportTarget) -> bool:
         current, config = _ImportTarget.read(target.config_path, service_id=target.service_id)

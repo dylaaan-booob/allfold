@@ -232,20 +232,13 @@ def test_wos_uses_independent_sqlite_service_and_detects_changes(tmp_path, chang
     from types import SimpleNamespace
     from allfold.config import AccessService
     from allfold.application.browser_runtime import BrowserTaskLock
-    from allfold.application.coordinators.preparation_coordinator import PreparationPhase
     from allfold.application.coordinators.wos_coordinator import WoSCoordinator
     from electron_test_helpers import PendingBridge
 
-    class Preparation:
-        def start(self, config_path, *, service, browser_owner, workflow_id, parent_task_id):
-            assert service.name == "Web of Science"
-            return SimpleNamespace(task_id="fixture", generation=1)
-        def snapshot(self):
-            return SimpleNamespace(authorization_pending=False, phase=PreparationPhase.COMPLETED, results=())
-        def wos_handoff(self, task_id, generation):
-            return "fixture-page"
-        def join(self):
-            pass
+    class Login:
+        def prepared_page(self, saved, service_id):
+            assert any(service.id == service_id and service.name == "Web of Science" for service in saved.services)
+            return 71
 
     config, legacy, journal, service = current_mapping_document(tmp_path)
     config.write_text(config.read_text() + "\ninstitution:\n  name: Fixture University\n")
@@ -254,12 +247,12 @@ def test_wos_uses_independent_sqlite_service_and_detects_changes(tmp_path, chang
     saved = compare_write_user_state(config, replace(original.state, access_services=(service, wos)), original.revision)
     legacy.unlink()
     bridge = PendingBridge()
-    coordinator = WoSCoordinator(config, Preparation(), threading.Lock(), bridge=bridge, browser_lock=BrowserTaskLock())
+    coordinator = WoSCoordinator(config, Login(), threading.Lock(), bridge=bridge, browser_lock=BrowserTaskLock())
     coordinator.start()
     assert bridge.dispatched.wait(2)
     if change_state:
         compare_write_user_state(config, replace(saved.state, groups=("Statistics", "Added")), saved.revision)
-    bridge.future.set_result({"page_id": "fixture-page", "total": 0, "batch_limit": 100})
+    bridge.future.set_result({"page_id": 71, "total": 0, "batch_limit": 100})
     coordinator.join()
     result = coordinator.state()["snapshot"]["result"]
     if change_state:
