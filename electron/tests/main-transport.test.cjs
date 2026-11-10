@@ -24,7 +24,7 @@ test('unexpected Python startup exit persists its safe event before HTTP readine
   const child=new EventEmitter();child.stdout=new EventEmitter();child.stderr=new EventEmitter();child.exitCode=null;
   const logs=[],context=vm.createContext({path,ROOT:'/isolated',fs:{existsSync:()=>true},spawn:()=>child,
     process:{env:{},stderr:{write(){}}},setTimeout,clearTimeout,
-    token:'fixture',exiting:false,base:undefined,activeOperation:null,readyToExit:false,
+    token:'fixture',exiting:false,base:undefined,stopOperations(){},readyToExit:false,
     dialog:{showErrorBox(){throw Error('existing startup error UI must remain deferred');}},
     app:{quit(){throw Error('existing startup quit remains deferred');}},log:(level,event,details)=>logs.push({level,event,...details})});
   vm.runInContext(source.slice(source.indexOf('async function startPython('),source.indexOf('async function connect(')),context);

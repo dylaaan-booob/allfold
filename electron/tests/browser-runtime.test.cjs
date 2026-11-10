@@ -669,7 +669,7 @@ test('ordinary verification controls and explicit QR login still wait for manual
 test('canceled attachment recovery cannot create a helper tab',async t=>{
   const {BrowserRuntime}=fixture(t),browser=new BrowserRuntime();t.after(()=>browser.close());await browser.ready;
   const controller=new AbortController();browser.beginOperation(controller.signal);browser.operation.action='import_paper';
-  const tab=browser.createTab();browser.taskTab=tab;browser.taskActive=true;
+  const tab=browser.createTab();browser.bindTaskPage(tab);
   await tab.view.webContents.loadURL('https://one.test/article');const doc=await browser.snapshot(tab);controller.abort();
   const count=browser.tabs.size;
   await assert.rejects(browser.bypassAttachment('https://one.test/file',doc,{visible:true,signal:controller.signal}));
@@ -680,7 +680,7 @@ test('attachment capture timeout and source replacement cannot leak listeners or
   t.mock.timers.enable({apis:['Date','setTimeout'],now:1000});
   const {BrowserRuntime}=fixture(t),browser=new BrowserRuntime();t.after(()=>browser.close());await browser.ready;
   browser.beginOperation(new AbortController().signal);browser.operation.action='import_paper';
-  const tab=browser.createTab();browser.taskTab=tab;browser.taskActive=true;
+  const tab=browser.createTab();browser.bindTaskPage(tab);
   await tab.view.webContents.loadURL('https://one.test/article');const doc=await browser.snapshot(tab);
   const first=browser.captureAttachment(tab,doc,{deadline:Date.now()+5000});t.mock.timers.tick(5000);
   await assert.rejects(first.url,error=>error.diagnostic?.code==='timeout');assert.equal(browser.attachmentCaptures.size,0);
@@ -703,4 +703,64 @@ test('reused page lifecycle records retain each workflow association before repl
   const replaced=logs.find(e=>e.event==='page_association_replaced');assert.equal(replaced.workflow_id,'workflow_a');assert.equal(replaced.request_id,'request_a');
   const crashed=logs.find(e=>e.event==='page_renderer_gone');assert.equal(crashed.workflow_id,'workflow_b');assert.equal(crashed.service_id,serviceId);
   tab.view.webContents.close();assert.equal(logs.find(e=>e.event==='page_closed').page_id,tab.id);
+});
+
+test('parallel native tasks keep page navigation, credentials and cleanup with their owning request',async t=>{
+  const {BrowserRuntime}=fixture(t),browser=new BrowserRuntime();
+  t.after(()=>browser.close());await browser.ready;
+  const first=browser.createTab({present:false}),second=browser.createTab({present:false});
+  const stopA=new AbortController(),stopB=new AbortController();
+  let settleA,settleB,arrivedA,arrivedB;
+  const aReady=new Promise(resolve=>{arrivedA=resolve;}),bReady=new Promise(resolve=>{arrivedB=resolve;});
+  const aGate=new Promise(resolve=>{settleA=resolve;}),bGate=new Promise(resolve=>{settleB=resolve;});
+  const run=(tab,id,signal,arrived,gate)=>browser.runTask(signal,{request_id:id,workflow_id:'workflow'},async()=>{
+    browser.associatePage(tab,{role:'service-resource'});
+    browser.bindTaskPage(tab,signal);
+    browser.beginAuthentication(tab,signal,{institution:false});
+    const doc=await browser.navigate('https://fixture.example/'+id);
+    arrived(doc);
+    await gate;
+    assert.equal(browser.taskTab,tab);
+    assert.equal(browser.documentCurrent(doc),!signal.aborted);
+  });
+  const a=run(first,'first',stopA.signal,arrivedA,aGate);
+  const b=run(second,'second',stopB.signal,arrivedB,bGate);
+  const results=Promise.all([a,b]);results.catch(()=>{});
+  try {
+    const [aDoc,bDoc]=await Promise.race([Promise.all([aReady,bReady]),results]);
+    assert.equal(aDoc.pageId,first.id);assert.equal(bDoc.pageId,second.id);
+    assert.deepEqual([...browser.state().taskPageIds].sort(),[first.id,second.id]);
+    await browser.runTask(new AbortController().signal,{request_id:'foreign',workflow_id:'workflow'},()=>{
+      assert.equal(browser.documentCurrent(bDoc),false);
+      assert.throws(()=>browser.bindTaskPage(second),/navigation_active/);
+    });
+    await assert.rejects(browser.command({action:'close',id:second.id}),/active task page/);
+    stopA.abort();settleA();await a;
+    assert.equal(browser.pageAssociation(first.id).active,false);
+    assert.equal(browser.pageAssociation(second.id).active,true);
+    assert.equal(first.authContext.active,false);assert.equal(second.authContext.active,true);
+    assert.equal(second.navigation.current.active,true);
+  } finally {settleA();settleB();await results;}
+  assert.equal(browser.pageAssociation(second.id).active,false);
+});
+
+test('supported Cloudflare challenges invoke Solver while hCaptcha remains manual',async t=>{
+  const {BrowserRuntime}=fixture(t),solved=[];
+  const browser=new BrowserRuntime({solveCloudflare:async doc=>{solved.push(doc.pageId);return {outcome:'clicked'};}});
+  t.after(()=>browser.close());await browser.ready;
+  for(const hcaptcha of [false,true]) {
+    const signal=new AbortController().signal;
+    await browser.runTask(signal,{request_id:hcaptcha?'manual':'auto'},async()=>{
+      const tab=browser.createTab({present:false});
+      browser.bindTaskPage(tab);
+      const wc=tab.view.webContents;
+      wc.html=cloudflarePageOptions+cloudflarePageScript+(hcaptcha?'<iframe src="https://newassets.hcaptcha.com/captcha/v1"></iframe>':'');
+      await wc.loadURL('https://example.org/challenge');
+      const result=await browser.inspectPage(tab,{signal});
+      assert.equal(result.waiting,true);
+      if(hcaptcha)assert.equal(result.diagnostic?.code,'verification_page');
+      else assert.deepEqual(solved,[tab.id]);
+      assert.equal(solved.length,1);
+    });
+  }
 });

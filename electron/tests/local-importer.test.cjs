@@ -241,3 +241,39 @@ test('a helper captured private URL never reaches transport or creates a PDF she
  assert.equal(result.pdf.registered,false);assert.equal(downloads,1);assert.equal(f.created.length,1);assert.equal(f.uploaded.length,0);
  assert.equal(result.pdf.failures[0].code,'unsafe_url');
 });
+
+test('parallel Local API writes settle independently and uncertainty stops queued writes',async()=>{
+ const {ImportResources}=require('../src/zotero/import-resources.cjs');
+ const resources=new ImportResources({pdfLimit:1,writerLimit:2});
+ const both=deferred(),fail=deferred(),confirm=deferred(),queued=deferred(),writes=[];
+ const local=new LocalAPI({store:{read:async()=>({server_id:target.server_id,key:'k'.repeat(32)})},
+  transport:async(raw,options)=>{
+   const path=new URL(raw).pathname;
+   const headers={'Zotero-Server-ID':target.server_id,'X-Zotero-Version':'10.0.6'};
+   if(options.method!=='POST')return new Response(path==='/api/'?'Local API':'{}',{headers});
+   const object=JSON.parse(options.body)[0];writes.push(object);
+   if(writes.length===2)both.resolve();
+   if(object.title==='Uncertain'){await fail.promise;throw Error('Lost response');}
+   await confirm.promise;
+   return new Response(JSON.stringify({successful:{0:{key:object.key,version:1}}}),{headers});
+  }});
+ const options={resources,api:local};
+ const f=fixture(),a=f.run({...options,item:{...item,title:'Uncertain'}});
+ const b=f.run({...options,item:{...item,title:'Confirmed'}});
+ await both.promise;
+ const c=f.run({...options,item:{...item,title:'Queued'},api:{
+   validate:async()=>{queued.resolve();return target;},create:(...args)=>local.create(...args),
+ }});
+ await queued.promise;
+ fail.resolve();
+ const uncertain=await a;
+ const untouched=await c;
+ assert.equal(uncertain.parent.outcome,'uncertain');
+ assert.equal(uncertain.zotero.parent_key,writes[0].key);
+ assert.equal(untouched.parent.outcome,'no_effect');
+ assert.deepEqual(writes.map(object=>object.title),['Uncertain','Confirmed']);
+ confirm.resolve();
+ const confirmed=await b;
+ assert.equal(confirmed.parent.outcome,'confirmed');
+ assert.equal(confirmed.zotero.parent_key,writes[1].key);
+});
