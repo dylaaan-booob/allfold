@@ -128,9 +128,11 @@ async function ready(condition){
   throw Error('UI readiness timeout: '+condition+'; native='+JSON.stringify(win.getBounds())+'; DOM='+JSON.stringify(actual));
 }
 async function size(width,height,condition){win.setSize(width,height);await ready(`innerWidth===${width} && (${condition})`);}
-async function navigateInRenderer(view,buttonId=view+'-open') {
+async function navigateInRenderer(view,buttonId=null) {
+  const workflow=!buttonId && ['login','run','kept'].includes(view);
   for(let attempt=0;attempt<150;attempt++){
-    const button=document.getElementById(buttonId);
+    if(workflow && document.getElementById('workflow-nav').hidden)document.getElementById('workflows-open').click();
+    const button=workflow?document.querySelector(`#workflow-nav [data-workflow="${view}"]`):document.getElementById(buttonId || view+'-open');
     if(button && !button.disabled){
       button.click();
       if(window.workspaceNavigation.current()===view)return;

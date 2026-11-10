@@ -320,7 +320,7 @@ $('s-providers').setAttribute('data-flyout-list','');
 const runSidebar=sideShell('run-configuration-sidebar','PROVIDER');
 runSidebar.querySelector('.sidebar-scroll').append(runContext.querySelector('.s-provider-alias'));
 for(const fieldset of runPanel.querySelectorAll('[data-provider-settings]'))runSidebar.querySelector('.sidebar-scroll').append(fieldset);
-const wosAccess=document.createElement('section');wosAccess.dataset.providerSettings='wos';wosAccess.innerHTML='<h3>Institution Access</h3><p id="s-wos-access-status" class="s-help"></p><button id="s-wos-access" class="s-button">Open Kept Access</button>';runSidebar.querySelector('.sidebar-scroll').append(wosAccess);
+const wosAccess=document.createElement('section');wosAccess.dataset.providerSettings='wos';wosAccess.innerHTML='<h3>Institution Access</h3><p id="s-wos-access-status" class="s-help"></p><button id="s-wos-access" class="s-button">Open Login</button>';runSidebar.querySelector('.sidebar-scroll').append(wosAccess);
 const runHistory=document.createElement('section');runHistory.className='s-run-history';runHistory.append(...runContext.childNodes);runContext.remove();runMain.querySelector('.s-run-body').append(runHistory);
 runPanel.prepend(rail('Run navigation',`<button class="rail-button" id="s-run-overview-open" title="Overview" aria-label="Overview">${icon('M4 4h16v16H4zM4 10h16M10 10v10')}</button><button class="rail-button" data-flyout="providers" title="Provider Directory" aria-label="Provider Directory">${icon('M4 5h16M4 12h16M4 19h16')}</button>`));
 runPanel.append(runSidebar,rail('Run tools',`<button class="rail-button" data-sidebar-view="configuration" aria-label="Provider configuration" title="Provider configuration">${icon('M4 6h16M4 12h16M4 18h16M8 3v6M16 9v6M10 15v6')}</button>`,true));
@@ -520,7 +520,6 @@ function openSettings(next='settings',instant=false) {
 }
 for(const page of ['journals','run','settings'])window.workspaceNavigation.register(page,{
   canEnter:configurationAvailable,canLeave:configurationAvailable,
-  search:()=>page==='journals' && !preview?'journals':null,
   leave:()=>{rememberScroll();journalLayoutHost.closeFlyout({restoreFocus:false});runLayoutHost.closeFlyout({restoreFocus:false});stopJournalTitleScroll();closeLabelPicker();transitions.get(view).dispose();closeMenu();},
   enter:({instant})=>{
     const next=page==='journals'?'journals-page':page;
@@ -609,9 +608,18 @@ $('s-files').addEventListener('click',()=>{
 document.addEventListener('pointerdown',event=>{if(!event.target.closest('.s-files'))closeMenu();if(!event.target.closest('.s-label-field'))closeLabelPicker();});
 
 workspaceSearch.register('journals',{
-  label:'SEARCH JOURNALS',value:()=>ui.search,
-  disabled:()=>loading || operationPending || Boolean(preview),
-  input:query=>{ui.search=query;reconcileSelections(true);renderJournalsPage();},
+  label:'Journal',
+  items:()=>saved?.list.journals.map(j=>({
+    id:j.id,name:j.name,detail:identifiers(j).join(' / '),keywords:(j.aliases || []).join(' '),
+  })) || [],
+  select:item=>{
+    if(!journal(item.id) || !openSettings('journals-page',true))return false;
+    if(!entityMembers().some(j=>j.id===item.id))ui.directory[ui.scope]='all';
+    selectJournal(item.id);
+    const row=[...$('s-journals').querySelectorAll('[data-journal]')].find(row=>row.dataset.journal===item.id);
+    row?.focus({preventScroll:true});row?.scrollIntoView({block:'nearest'});
+    return true;
+  },
 });
 function syncMonitor() {
   document.querySelectorAll('[data-monitor]').forEach(input=>{const value=draft.monitor[input.dataset.monitor];if(input.type==='checkbox')input.checked=value;else input.value=value ?? '';});
@@ -748,7 +756,7 @@ function renderRun() {
   $('s-provider-up').disabled=position<=0;$('s-provider-down').disabled=position<0 || position===providerOrder().length-1;
   if(document.activeElement!==$('s-provider-alias'))$('s-provider-alias').value=providerName(selectedProvider) || '';
   $('s-run-overview-open').setAttribute('aria-pressed',String(selectedProvider==='overview'));
-  $('s-wos-access-status').textContent=`${saved?.monitor.institutionName || 'Institution 未配置'} · CARSI ${casSaved.configured?'凭据已配置':'凭据未配置'}`;
+  $('s-wos-access-status').textContent='Web of Science 使用 Login 中已准备的 Service 页面。';
   const overview=selectedProvider==='overview';
   $('s-provider-alias').closest('label').hidden=overview;
   $('s-run-title').textContent=overview?'Overview':providerName(selectedProvider);
@@ -798,7 +806,7 @@ $('s-run-operations').addEventListener('change',event=>{
 });
 $('s-providers').addEventListener('click',event=>{const button=event.target.closest('[data-provider]');if(button){selectedProvider=button.dataset.provider;renderRun();runLayoutHost.closeFlyout();runLayoutHost.openSidebar('configuration');}});
 $('s-run-overview-open').addEventListener('click',()=>{selectedProvider='overview';renderRun();runLayoutHost.closeFlyout();runLayoutHost.closeSidebar();});
-$('s-wos-access').addEventListener('click',()=>{if(window.workspaceNavigation.go('kept',{instant:true}))window.dispatchEvent(new CustomEvent('kept-open-sidebar',{detail:{view:'access'}}));});
+$('s-wos-access').addEventListener('click',()=>window.workspaceNavigation.go('login',{instant:true}));
 $('s-provider-alias').addEventListener('change',()=>{
   const id=selectedProvider;if(id==='overview')return;
   const input=$('s-provider-alias'),value=input.value.trim();
@@ -969,7 +977,7 @@ function renderJournalsPage() {
   stopJournalTitleScroll();
   const info=scopeInfo(),id=ui.directory[ui.scope];
   $('s-journals-title').textContent=$('s-journals-title').title=id==='all'?'All '+sourceName():id==='none'?info.empty:selectedEntity()?.name || 'All '+sourceName();
-  renderJournals();renderEntityDetail();renderJournalDetail();syncLayouts();
+  renderJournals();renderEntityDetail();renderJournalDetail();syncLayouts();workspaceSearch.refresh();
 }
 function assignLabel(j,name,assigned) {
   if(!list().labels.some(label=>label.name===name))return;

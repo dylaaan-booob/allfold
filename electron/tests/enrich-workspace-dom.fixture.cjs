@@ -92,7 +92,7 @@ app.whenReady().then(async()=>{
     await click(win.webContents,'#enrich-task-page');
     await measured('shipped Enrich task handoff');
     assert(browser.presentation.mounted===tab,'Enrich task Browser mounted an unrelated Page');
-    assert(browser.selected===tab&&await host("workspaceNavigation.current()==='workspace'&&document.getElementById('browser-pane').dataset.source==='enrich'"),'Enrich Browser handoff left Workspace or retargeted task');
+    assert(browser.selected===tab&&await host("workspaceNavigation.current()==='workspace'&&!document.getElementById('browser-pane').hidden"),'Enrich Browser handoff left Workspace or retargeted task');
     await capture('enrich-task-handoff');await completeChallenge();await click(win.webContents,'#browser-return');
     assert(await host("document.activeElement.id==='enrich-task-page'&&document.getElementById('cancel-enrich').hidden===false"),'Enrich return lost focus or task controls');
     assert(tab.id===id&&tab.view.webContents.session===session&&await page('fixtureLoad')===load,'Enrich handoff recreated Page, Session or document');

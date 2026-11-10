@@ -30,7 +30,7 @@ taskPageButton.addEventListener('click',async()=>{
   if(!workflow?.workflow_id)return;
   try {
     if(!await window.allfoldWorkbench?.showTaskPage({workflowId:workflow.workflow_id,
-      source:'kept',taskId:workflow.phase==='importing'?workflow.batch?.task_id:workflow.preparation_task_id}))uiNext.notice('当前任务尚无可查看的页面。');
+      taskId:workflow.phase==='importing'?workflow.batch?.task_id:workflow.preparation_task_id}))uiNext.notice('当前任务尚无可查看的页面。');
   }catch(error){uiNext.notice(error.message);}
 });
 function presentInline() {
@@ -210,15 +210,6 @@ function moveIndex(delta) {
   if(!$('array-flyout').hidden){row.focus({preventScroll:true});row.scrollIntoView({block:'nearest',inline:'nearest',behavior:'instant'});}
   saveScroll();return true;
 }
-for(const source of ['candidates','kept'])workspaceSearch.register(source,{
-  label:source==='kept'?'SEARCH KEPT PAPERS':'SEARCH CANDIDATES JOURNALS',
-  emptyMessage:source==='kept'?'没有匹配的论文':'没有匹配的期刊',
-  disabled:switchBusy,
-  items:()=>!data?[]:source==='kept'
-    ? allEntries().map(entry=>({id:entry.paper.id,name:entry.paper.title,detail:entry.journal.name}))
-    : groups(bridge.candidates()).map(group=>({id:group.id,name:group.journal.name,detail:`${group.entries.length} CANDIDATES PAPERS`})),
-  select:item=>{if(selectIndex(item.id))$('view-paper-title').focus({preventScroll:true});},
-});
 function openReader(id) {
   if(!arrayShown())return false;
   const wasReading=ui.reader,previous=ui.bodyPaper;
@@ -255,17 +246,17 @@ function setStatus(next) {
   if(!closeReader())return false;
   status=next;ui=states[status];layoutHost.closeFlyout({restoreFocus:false});render();return true;
 }
-function openPaper(id) {
+function openPaper(id,{readKept=false}={}) {
   if(switchBusy())return false;
   const candidate=bridge.candidates().find(entry=>entry.paper.id===id);
   const entry=candidate || allEntries().find(entry=>entry.paper.id===id);
-  if(entry && !candidate){expandedPaper=id;serviceFilter='all';return openKept();}
+  if(entry && !candidate && !readKept){expandedPaper=id;serviceFilter='all';return openKept();}
   if(!entry || !window.workspaceNavigation.go('workspace') || !setLayout('array'))return false;
   if(!closeReader())return false;
   layoutHost.closeFlyout({restoreFocus:false});
   status=candidate?'candidates':'kept';ui=states[status];
   ui.filter=candidate?key(entry):null;ui.selected=id;ui.missingLinkPaper=false;
-  render();return true;
+  render();if(readKept)$('view-paper-title').focus({preventScroll:true});return true;
 }
 // Recovery selects its existing business context before opening the modal.
 function openKept() {
@@ -273,7 +264,7 @@ function openKept() {
   void refreshQueue();return true;
 }
 window.workspaceArray={
-  workflowBusy,navigationBusy,openPaper,search:()=>status,readerEntries:orderedEntries,
+  workflowBusy,navigationBusy,openPaper,readerEntries:orderedEntries,
   leave(){closeReader();bridge.suspend();layoutHost.closeFlyout({restoreFocus:false});},
   enter(){queueArchivePreference();render();$('array-content').focus({preventScroll:true});},
 };
@@ -342,15 +333,9 @@ window.uiKept={open:openKept,refresh:refreshQueue};
 window.workspaceNavigation.register('kept',{
   canNavigate:()=>!navigationBusy(),canEnter:()=>Boolean(data) && !bridge.busy(),
   enter(){void refreshQueue();queueLayout.sync();window.dispatchEvent(new Event('kept-settings-mount'));$('kept-main').focus({preventScroll:true});},
-  leave(){queueLayout.closeFlyout({restoreFocus:false});window.allfoldWorkbench?.hideKeptBrowser?.();},
+  leave(){queueLayout.closeFlyout({restoreFocus:false});},
 });
 window.addEventListener('kept-open-sidebar',event=>queueLayout.openSidebar(event.detail?.view || 'access'));
-$('kept-browser-open').addEventListener('click',()=>window.allfoldWorkbench?.showKeptBrowser?.({mode:'compact'}));
-window.addEventListener('workbench:browser-state',event=>{
-  const shown=event.detail?.visible && event.detail.source==='kept';
-  $('kept-queue-body').hidden=Boolean(shown);$('kept-browser-host').hidden=!shown;
-  $('kept-workspace').dataset.browserVisible=String(Boolean(shown));
-});
 function publishResults(state) {
   if(!state.import_started && !state.batch){lastRun=null;renderRecord();return;}
   const batch=state.batch;

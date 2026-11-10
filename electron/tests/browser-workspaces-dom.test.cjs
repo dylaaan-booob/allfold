@@ -1,6 +1,6 @@
 'use strict';
 const test=require('node:test'),assert=require('node:assert/strict'),path=require('node:path'),{execFile}=require('node:child_process');
-test('shipped Kept and Run mount the production native task Browser at constrained sizes',{timeout:180000},async()=>{
+test('shipped Workflows, Quick Open and grouped Browser work across workspaces and sizes',{timeout:180000},async()=>{
   for(const scrollbar of ['WhenScrolling','Always']){
     // Cocoa's argument-domain preference changes only this fixture process.
     const output=await new Promise((resolve,reject)=>execFile(require('electron'),[path.join(__dirname,'browser-workspaces-dom.fixture.cjs'),'-AppleShowScrollBars',scrollbar],

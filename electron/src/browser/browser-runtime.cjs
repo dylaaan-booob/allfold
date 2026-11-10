@@ -1,5 +1,5 @@
 'use strict';
-const {app, WebContentsView, session, webFrameMain, Menu, clipboard, dialog} = require('electron');
+const {app, WebContentsView, session, webFrameMain, Menu, clipboard} = require('electron');
 const {BrowserPresentation}=require('./browser-presentation.cjs');
 const {BrowserFailure}=require('./browser-errors.cjs');
 const {configureBrowserIdentity} = require('./browser-identity.cjs');
@@ -37,7 +37,6 @@ class BrowserRuntime {
     this.solveCloudflare=solveCloudflare;
     this.readCASCredentials=readCASCredentials;
     this.isTaskRunning=isTaskRunning;
-    this.cacheSize=null;
     this.partition = configureBrowserSession(session.fromPartition('allfold'));
     this.partition.webRequest.onErrorOccurred({urls:['http://*/*','https://*/*']},details=>{
       if(details.resourceType==='mainFrame')return;
@@ -345,7 +344,7 @@ class BrowserRuntime {
   state() {
     const taskPageIds=[...this.operations].map(owner=>owner.taskTab?.id).filter(id=>id!=null);
     return {selected:this.selected?.id || null,taskPageId:taskPageIds.at(-1) ?? null,taskPageIds,
-      cacheSize:this.cacheSize,taskRunning:this.operations.size>0 || this.isTaskRunning(),
+      taskRunning:this.operations.size>0 || this.isTaskRunning(),
       tabs:[...this.tabs.values()].map(tab => {
       const wc=tab.view.webContents;
       return {id:tab.id,title:wc.getTitle() || 'New tab',url:wc.getURL(),loading:wc.isLoadingMainFrame(),
@@ -373,13 +372,9 @@ class BrowserRuntime {
     await tab.navigation.dispatch(()=>tab.view.webContents.loadURL(url),{});
     return tab;
   }
-  async refreshCacheSize() {
-    this.cacheSize=await this.partition.getCacheSize();
-    this.publish();
-  }
   async command(command) {
     await this.ready;
-    const actions=['state','new','select','close','navigate','back','forward','reload','devtools','cache-size','clear-cache','clear-site-data','open-service'];
+    const actions=['state','new','select','close','navigate','back','forward','reload','open-service'];
     const fields=command?.action==='open-service'?['action','url','service_scope','service_id','workflow_id','task_id']:['action','id','url'];
     if (!command || typeof command!=='object' || Array.isArray(command)
       || Object.keys(command).some(key=>!fields.includes(key))
@@ -422,29 +417,6 @@ class BrowserRuntime {
       case 'forward': if(tab?.view.webContents.navigationHistory.canGoForward())
         tab.navigation.history(()=>tab.view.webContents.navigationHistory.goForward(),this.navigationOptions(tab));break;
       case 'reload': if(tab){tab.navigation.begin({...this.navigationOptions(tab),resume:true});tab.navigation.track(()=>tab.view.webContents.reload());}break;
-      case 'devtools': tab?.view.webContents.openDevTools({mode:'detach'});break;
-      case 'cache-size': await this.refreshCacheSize();break;
-      case 'clear-cache':
-      case 'clear-site-data': {
-        if(this.isTaskRunning())throw Error('Browser task is running');
-        const siteData=command.action==='clear-site-data';
-        if(siteData) {
-          const answer=await dialog.showMessageBox(this.presentation.host,{type:'warning',
-            title:'清除站点数据',message:'清除浏览器中所有站点的数据？',
-            detail:'将清除 Cookie、Local Storage、IndexedDB、缓存和 HTTP 认证状态，可能导致网站退出登录。不会删除下载文件或下载历史。',
-            buttons:['取消','清除站点数据'],defaultId:0,cancelId:0,noLink:true});
-          if(answer.response!==1)break;
-        }
-        if(this.isTaskRunning())throw Error('Browser task is running');
-        await this.partition.clearCache();
-        await this.partition.clearCodeCaches({});
-        if(siteData) {
-          await this.partition.clearStorageData();
-          await this.partition.clearAuthCache();
-        } else await this.partition.clearStorageData({storages:['cachestorage','serviceworkers','shadercache']});
-        await this.refreshCacheSize();
-        break;
-      }
       default: throw Error('Unknown Browser command');
     }
     return this.state();
