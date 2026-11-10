@@ -206,7 +206,8 @@ async function executeOperation(message,current) {
           }
           send({type:'progress',id:message.id,action:message.action,data:{...data,page_id:browser.taskTab?.id}});
         };
-        const recoveryContext={...associationLogContext(browser.operation.association),...context};
+        const {page_id,source_page_id,generation,...associationContext}=associationLogContext(browser.operation.association);
+        const recoveryContext={...associationContext,...context};
         const recordRecovery=(event,details)=>{
           recovery.record(event,{...details,...recoveryContext});
           if(event==='recovery_scheduled' || event==='service_cooldown_started' && details.waiting===true) {
@@ -215,7 +216,6 @@ async function executeOperation(message,current) {
           }
         };
         browser.operation.recordRecovery=recordRecovery;
-        browser.operation.recoveryProgress=progress;
         if(['prepare_service','enrich_paper','import_paper'].includes(message.action))
           browser.operation.validateRecovery=verifyRecovery;
         if(message.action === 'login_carsi') {
@@ -263,7 +263,7 @@ async function executeOperation(message,current) {
           saving=true;
           stage='parent_save';
           return await saveOnce({item,apiItem,proxy,doi,resources,target:message.data.zotero_target,doc:sourceDocument,browser,signal:controller.signal,
-              recordRecovery,recoveryProgress:progress,validateRecovery:verifyRecovery,
+              recordRecovery,validateRecovery:verifyRecovery,
               fallbackPDF:request=>requestOpenAlexPDF(current,request,{send,connected:bridgeReady,doi,target:message.data.zotero_target}),
               logContext:{...context,page_id:doc.pageId,metadata_source:metadataSource}});
         }

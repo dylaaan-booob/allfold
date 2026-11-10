@@ -19,6 +19,8 @@ function fixture() {
   let pageId=0;
   const context = vm.createContext({operations:new Map(),exiting:false,randomBytes,setTimeout,clearTimeout,
     ...require('../src/shared/logging.cjs'),
+    ...require('../src/shared/recovery-summary.cjs'),
+    ...require('../src/workflows/recovery-authority.cjs'),
     operationAssociation:require('../src/browser/page-association.cjs').operationAssociation,
     log:(level,event,details)=>logs.push({level,event,...details}),
     AbortController, ImportResources, ImportFailure, BrowserFailure, diagnosticFor, failedImport, normalizeDOI: value => value,
@@ -211,6 +213,41 @@ test('native final diagnostic keeps stable attachment code separate from its net
   await f.run();const final=f.logs.find(event=>event.event==='task_finished');
   assert.equal(final.stage,'attachment');assert.equal(final.code,'http_error');assert.equal(final.net_error,'ERR_CONNECTION_RESET');
   assert.equal(f.messages.find(m=>m.type==='result').data.parent.outcome,'confirmed');
+});
+
+test('initial page recovery checks original authority and reports one summary before Translator',async()=>{
+  const f=fixture();
+  const send=f.context.send;
+  f.context.send=message=>{
+    send(message);
+    if(message.type==='verify_recovery_authority') {
+      const current=f.context.operations.get(message.id);
+      f.context.settleRecoveryAuthority(current,{...message,check_id:'stale',data:{allowed:false}});
+      f.context.settleRecoveryAuthority(current,{...message,data:{allowed:true}});
+    }
+  };
+  f.context.browser.navigate=async function(url) {
+    const details={stage:'navigation',recovery_action:'paper_reopen',attempt:1,attempt_limit:1};
+    this.operation.recordRecovery('recovery_scheduled',{...details,code:'load_failed',net_code:-100,source_page_id:1});
+    await this.operation.validateRecovery({signal:this.operation.signal});
+    assert.equal(f.calls.translation,0);
+    this.operation.recordRecovery('recovery_succeeded',{...details,source_page_id:1,page_id:2});
+    return {pageId:2,url};
+  };
+  await f.run();
+  assert.equal(f.calls.translation,1);
+  assert.equal(f.calls.save,1);
+  const check=f.messages.find(message=>message.type==='verify_recovery_authority');
+  assert.equal(check.id,'current');
+  assert.deepEqual(check.data,{});
+  assert.equal(f.messages.filter(message=>message.data.recovery_action==='paper_reopen').length,1);
+  const results=f.messages.filter(message=>message.type==='result');
+  assert.equal(results.length,1);
+  assert.deepEqual(results[0].data.recovery,[{
+    recovery_action:'paper_reopen',count:1,outcome:'recovered',
+    first:{stage:'navigation',code:'load_failed',net_code:-100,source_page_id:1},
+    last:{stage:'navigation',source_page_id:1,page_id:2},
+  }]);
 });
 test('Local API discovery and authorization settle outside browser authority without secret diagnostic payloads',async()=>{
  const f=fixture();let prompts=0;
