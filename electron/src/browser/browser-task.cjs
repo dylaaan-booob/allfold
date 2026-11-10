@@ -1,6 +1,8 @@
 'use strict';
 const {setTimeout:delay}=require('node:timers/promises');
 const {BrowserFailure}=require('./browser-errors.cjs');
+const TASK_DEADLINE_MS=600000;
+const PAGE_LOAD_MS=85000;
 
 function checkCanceled(signal) {
   if(signal?.aborted)throw signal.reason instanceof BrowserFailure?signal.reason:new BrowserFailure('navigation','canceled');
@@ -30,7 +32,7 @@ async function waitFor(run,signal,deadline=Infinity,stage='navigation',step='pag
   } finally {clearTimeout(timer);signal?.removeEventListener('abort',abort);}
 }
 async function withTaskDeadline(signal,stage,run) {
-  const controller=new AbortController(),deadline=Date.now()+600000;
+  const controller=new AbortController(),deadline=Date.now()+TASK_DEADLINE_MS;
   const bounded=AbortSignal.any([controller.signal,...(signal?[signal]:[])]);
   const timer=setTimeout(()=>controller.abort(timeoutFailure(stage,'request')),Math.max(0,deadline-Date.now()));
   try {
@@ -43,11 +45,11 @@ async function withTaskDeadline(signal,stage,run) {
   finally {clearTimeout(timer);controller.abort();}
 }
 async function waitForLoad(tab,signal,deadline=Infinity,checkState) {
-  const limit=Math.min(deadline,Date.now()+85000);
+  const limit=Math.min(deadline,Date.now()+PAGE_LOAD_MS);
   while(tab.view.webContents.isLoadingMainFrame()) {
     checkState?.();
     await waitFor(()=>pause(signal),signal,limit);
   }
   checkState?.();
 }
-module.exports={checkCanceled,timeoutFailure,pause,waitFor,withTaskDeadline,waitForLoad};
+module.exports={checkCanceled,timeoutFailure,pause,waitFor,withTaskDeadline,waitForLoad,TASK_DEADLINE_MS,PAGE_LOAD_MS};
