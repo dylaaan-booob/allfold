@@ -898,3 +898,30 @@ test('Login opens one managed CARSI Portal and prepares independent Service page
   assert.equal(browser.tabs.size,retained);
   assert.equal(reads,1);assert.equal(submissions,1);
 });
+
+test('canceling attachment recovery removes its hidden iframe from the original document',{timeout:5000},async t=>{
+  const {BrowserRuntime}=fixture(t),browser=new BrowserRuntime();
+  t.after(()=>browser.close());await browser.ready;
+  const controller=new AbortController(),{signal}=controller;
+  await browser.runTask(signal,{request_id:'attachment-iframe'},async()=>{
+    browser.operation.action='import_paper';
+    const tab=browser.createTab({present:false}),contents=tab.view.webContents;
+    const doc=await browser.navigate('https://one.test/article',{tab,signal});
+    browser.enterBusiness();
+    const installed=Promise.withResolvers(),iframes=new Set();
+    contents.runAuth=code=>{
+      const id=code.match(/"allfold-attachment-[a-f0-9]+"/)?.[0];
+      if(id && code.includes('document.body.appendChild(iframe)')) {
+        iframes.add(id);installed.resolve();
+      }
+      if(id && code.startsWith('document.getElementById('))iframes.delete(id);
+      return {step:'none',waiting:false};
+    };
+    const pending=browser.bypassAttachment('https://one.test/file',doc,{signal});
+    await Promise.race([installed.promise,pending]);
+    assert.equal(iframes.size,1);
+    controller.abort();
+    await assert.rejects(pending,error=>error.diagnostic?.code==='canceled');
+    assert.equal(iframes.size,0);
+  });
+});

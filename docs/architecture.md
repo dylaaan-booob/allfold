@@ -48,7 +48,7 @@ FastAPI composes these implementations. ImportTarget belongs to the application 
 
 Python snapshots the saved Journals and Access Services for each invocation. The browser bridge carries an opaque hash of the canonical configuration path, the configuration revision and User State revision alongside the saved Service ID. Import matches saved ISSN/eISSN identifiers with the existing Workspace rules: every matching Journal must select the same nonempty Service; otherwise the Paper remains unassigned. These are invocation snapshots of SQLite state, never a second authoritative mapping. Preparation and subsequent Import dispatches verify the original snapshot, while WoS retains its existing configuration and Workspace checks. Detected changes stop further work without migrating it to a new mapping. Already-dispatched native saves still settle through the existing result protocol.
 
-Login runs one CARSI institution flow. Each subsequent CARSI preparation opens its own resource Portal in the same Session. The saved Access Service ID and observed source and target pages establish provenance. Manual Services use explicit visits. Login keeps outcomes and target Page IDs in memory, scoped to the saved configuration and User State revisions. Discover uses the prepared WoS target and validates the scoped Service, document and export path. API discovery remains independent of that prerequisite.
+Login runs one CARSI institution flow. Each subsequent CARSI preparation opens its own resource Portal in the same Session. The saved Access Service ID and observed source and target pages establish provenance. Manual Services use explicit visits. Login keeps outcomes and target Page IDs in memory, bound to the saved Service and institution authority. Ordinary settings edits preserve a prepared target while the next task takes a fresh configuration and User State revision. Discover uses the prepared WoS target and validates the scoped Service, document and export path. API discovery remains independent of that prerequisite.
 
 Import binds All Services or one Service to a fixed Kept Paper plan, one-time
 authorization and a Zotero Server ID, Library and optional Collection. It records
@@ -78,7 +78,8 @@ without publisher referrer or Zotero authorization.
 Last Import uses exact-key parent and children queries. Confirmed attachment
 registration is required for PDF success. Read failures remain unknown. The
 process-local projection neither reads stored files nor writes Zotero keys into
-Paper frontmatter.
+Paper frontmatter. Known keys remain visible in local task details and History,
+with keys removed from exported diagnostics.
 
 ## History and diagnostics
 
