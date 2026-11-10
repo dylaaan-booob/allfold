@@ -160,15 +160,27 @@ def test_pubmed_summary_v2_dates_are_independent_and_fetch_is_stronger_capabilit
 
 def test_pubmed_anonymous_and_keyed_pacing_are_optional_and_cancel_stops_dispatch():
     from threading import Event
-    cancel, calls = Event(), []
-    with DiscoveryClient('pubmed',transport=httpx.MockTransport(lambda request:calls.append(request) or httpx.Response(200,json={}))) as anonymous:
-        assert anonymous.interval >= 1/3
-    with DiscoveryClient('pubmed',api_key='synthetic-key',transport=httpx.MockTransport(lambda request:calls.append(request) or httpx.Response(200,json={}))) as keyed:
-        assert 0.1 <= keyed.interval < 1/3
+    from test_provider_resilience import Clock
+
+    for key, expected in ((None, 0.35), ('synthetic-key', 0.11)):
+        calls, clock = [], Clock()
+
+        def respond(request):
+            calls.append(clock.now)
+            return httpx.Response(200, json={})
+
+        with DiscoveryClient('pubmed', api_key=key, transport=httpx.MockTransport(respond),
+                             **clock.options()) as client:
+            client.request('/esearch.fcgi', {})
+            client.request('/esearch.fcgi', {})
+        assert calls == pytest.approx([100, 100 + expected])
+
+    cancel = Event()
     cancel.set()
-    with DiscoveryClient('pubmed',cancel_event=cancel,transport=httpx.MockTransport(lambda request:calls.append(request) or httpx.Response(200,json={}))) as cancelled:
-        result=cancelled.discover(A,parse_keyword_expression('causal'),'2026-10-01','2026-10-31')
-    assert result.status=='cancelled' and not calls
+    with DiscoveryClient('pubmed', cancel_event=cancel, transport=httpx.MockTransport(
+            lambda _: pytest.fail('Canceled lookup dispatched'))) as cancelled:
+        result = cancelled.discover(A, parse_keyword_expression('causal'), '2026-10-01', '2026-10-31')
+    assert result.status == 'cancelled'
 
 
 def test_direct_formal_pmid_survives_merged_work_with_preprint_pmid():

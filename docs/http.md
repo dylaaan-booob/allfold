@@ -94,15 +94,43 @@ across parallel producers and locators. PubMed uses 0.35-second anonymous or
 OpenAlex basic first-page access reports incomplete coverage if further cursor
 paging needs a key.
 
-The normal retry policy covers temporary HTTP errors and 429 with cancellable
-waits and progress. Run's final metadata settlement allows one additional
-network attempt per eligible failed request, with successful responses reused.
-If a redirect chain ends in a transient failure, settlement retries the failed
-target with the redirect's authorization policy already applied. Request counts
-include each dispatched hop.
-Recognized verification pages stop the client. Invalid envelopes, Entrez
-application errors, wrong identities and shortened pages are explicit failures
-or incomplete results. Valid empty exact responses count as no-match.
+Discovery, Completion and standalone OpenAlex reads use one request policy.
+Safe reads include PubMed's existing read-only form POST. Connect, read and
+write timeouts, ordinary connect/read/write transport failures, and HTTP
+429/500/502/503/504 are eligible for up to three regular attempts. TLS,
+permanent DNS, proxy authentication, other protocol/configuration failures,
+and invalid Provider data stop the request. Retry delays are 5 and 10 seconds
+for ordinary transient failures, or 1 and 2 seconds for a 429 without a valid
+Retry-After, plus up to 25% jitter. Waits are cancellable and recheck the
+caller's authority.
+
+The Python application process owns in-memory cooldowns across its Provider
+clients. The actual request origin and authentication context determine scope.
+bioRxiv and medRxiv share their API origin. Discovery/Completion and standalone
+OpenAlex share a cooldown when they use the same origin and credential. The
+scope of a redirect uses the headers HTTPX prepared for that hop. HTTP 429
+and transient server statuses with a valid Retry-After extend only their scope.
+Retry-After accepts delta-seconds and HTTP dates. The deadline can only move
+later while active, even if the sender has exhausted its attempts. Responses
+already in flight settle normally. New dispatches recheck the cooldown after
+waiting. Expired entries are discarded, and process exit clears the in-memory
+state.
+
+The 90-second logical request budget begins with the first attempt and covers
+pacing, backoff, cooldown, redirects and any final Completion check. A shorter
+caller deadline takes precedence. Each dispatch caps its HTTPX timeout at the
+remaining budget. If a cooldown cannot fit, the current operation ends and
+the cooldown remains in force. Final Completion settlement can send the exact
+failed prepared request once, with its original budget, successful cached
+prefixes and the redirect's applied authorization policy. Counts include each
+physical dispatch, including redirects and the final check. Cache hits and
+attempts stopped before dispatch add no requests.
+
+Recognized verification pages stop the client. OpenAlex explicit authorization
+and quota errors stop the standalone client. Ordinary 429 responses remain
+transient. Invalid envelopes, Entrez application errors, wrong identities and
+shortened pages are explicit failures or incomplete results. Valid empty exact
+responses count as no-match.
 
 arXiv uses a three-second interval; bioRxiv and medRxiv share their API host
 pacing. Webpage Enrich continues to

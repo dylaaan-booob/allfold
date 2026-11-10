@@ -180,7 +180,7 @@ def test_one_authenticated_socket_matches_a_single_request():
 def test_openalex_subrequest_is_on_demand_and_bound_to_exact_import():
     calls = []
     target = {"server_id":"SERVERFIXTUR", "library_type":"user", "library_id":"0", "collection_key":None}
-    bridge = ElectronBridge("secret", "testserver", openalex_pdf=lambda doi: calls.append(doi) or {"candidates":["https://oa.example/paper.pdf"]})
+    bridge = ElectronBridge("secret", "testserver", openalex_pdf=lambda doi, **operation_options: calls.append(doi) or {"candidates":["https://oa.example/paper.pdf"]})
     app = FastAPI()
     app.websocket("/ws")(bridge.connect)
     with TestClient(app) as client:
@@ -204,7 +204,7 @@ def test_openalex_rejects_wrong_doi_target_or_parent_without_query(changed):
     from starlette.websockets import WebSocketDisconnect
     calls = []
     target = {"server_id":"SERVERFIXTUR", "library_type":"user", "library_id":"0"}
-    bridge = ElectronBridge("secret", "testserver", openalex_pdf=lambda doi: calls.append(doi) or {})
+    bridge = ElectronBridge("secret", "testserver", openalex_pdf=lambda doi, **operation_options: calls.append(doi) or {})
     app = FastAPI()
     app.websocket("/ws")(bridge.connect)
     with TestClient(app) as client:
@@ -223,9 +223,11 @@ def test_openalex_rejects_wrong_doi_target_or_parent_without_query(changed):
 @pytest.mark.parametrize("disconnect", [False, True])
 def test_openalex_lookup_cannot_deliver_candidates_after_cancel_or_disconnect(disconnect):
     started, release = threading.Event(), threading.Event()
-    def lookup(doi):
+    def lookup(doi, *, cancel_event, recovery_observer):
         started.set()
         assert release.wait(2)
+        if not disconnect:
+            assert cancel_event.is_set()
         return {"candidates":["https://oa.example/private.pdf"]}
     target = {"server_id":"SERVERFIXTUR", "library_type":"user", "library_id":"0", "collection_key":None}
     bridge = ElectronBridge("secret", "testserver", openalex_pdf=lookup)

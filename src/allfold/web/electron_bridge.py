@@ -219,8 +219,13 @@ class ElectronBridge:
     async def _lookup_pdf(self, socket, pending: _Operation, lookup_id: str, doi: str) -> None:
         if pending.stop.is_set():
             return
+        def report_recovery(event, details):
+            observe(self.diagnostics, "event", event,
+                {**{key: pending.context[key] for key in _CONTEXT_FIELDS if key in pending.context}, **details})
+
         try:
-            data = await asyncio.to_thread(self.openalex_pdf, doi)
+            data = await asyncio.to_thread(self.openalex_pdf, doi, cancel_event=pending.stop,
+                                           recovery_observer=report_recovery)
         except Exception:
             data = {"candidates": [], "diagnostic": {"code": "openalex_lookup_failed"}}
         await self._callback(socket, pending, pending.stop, pending.envelope(
