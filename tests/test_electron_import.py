@@ -210,10 +210,18 @@ def test_recovery_authority_is_checked_again_on_the_same_native_request():
         assert result["recovery"][0]["last"] == {"code": "document_changed"}
 
 
-def test_openalex_subrequest_is_on_demand_and_bound_to_exact_import():
+@pytest.mark.parametrize("expired", [False, True])
+def test_openalex_subrequest_is_bound_to_exact_import_and_attachment_deadline(expired):
+    import time
+
     calls = []
     target = {"server_id":"SERVERFIXTUR", "library_type":"user", "library_id":"0", "collection_key":None}
-    bridge = ElectronBridge("secret", "testserver", openalex_pdf=lambda doi: calls.append(doi) or {"candidates":["https://oa.example/paper.pdf"]})
+
+    def lookup(doi, *, deadline, **operation_options):
+        calls.append((doi, deadline - time.monotonic()))
+        return {"candidates": ["https://oa.example/paper.pdf"]}
+
+    bridge = ElectronBridge("secret", "testserver", openalex_pdf=lookup)
     app = FastAPI()
     app.websocket("/ws")(bridge.connect)
     with TestClient(app) as client:
@@ -223,21 +231,30 @@ def test_openalex_subrequest_is_on_demand_and_bound_to_exact_import():
             pending = bridge.execute("import_paper", {"doi":"10.5555/test", "zotero_target":target})
             request = socket.receive_json()
             assert calls == []
+            deadline_ms = int((time.time() + (-1 if expired else 10)) * 1000)
             socket.send_json({"type":"openalex_pdf", "id":request["id"], "action":"import_paper", "lookup_id":"lookup1",
-                              "data":{"doi":"10.5555/test", "target":target, "parent_key":"ABCDEFGH"}})
+                              "data":{"doi":"10.5555/test", "target":target, "parent_key":"ABCDEFGH",
+                                      "deadline_ms":deadline_ms}})
+            result = ({"candidates": [], "diagnostic": {"code": "timeout"}} if expired
+                      else {"candidates": ["https://oa.example/paper.pdf"]})
             assert socket.receive_json() == {"type":"openalex_pdf_result", "id":request["id"], "action":"import_paper",
-                "lookup_id":"lookup1", "data":{"candidates":["https://oa.example/paper.pdf"]}}
+                "lookup_id":"lookup1", "data":result}
             socket.send_json({"type":"result", "id":request["id"], "action":"import_paper", "data":confirmed()})
             pending.result(timeout=2)
-    assert calls == ["10.5555/test"]
+    if expired:
+        assert not calls
+    else:
+        [(doi, remaining)] = calls
+        assert doi == "10.5555/test" and 0 < remaining <= 10
 
 
-@pytest.mark.parametrize("changed", [{"doi":"10.5555/other"}, {"parent_key":"../../file"}, {"target":{}}])
+@pytest.mark.parametrize("changed", [{"doi":"10.5555/other"}, {"parent_key":"../../file"}, {"target":{}},
+                                     {"deadline_ms": True}])
 def test_openalex_rejects_wrong_doi_target_or_parent_without_query(changed):
     from starlette.websockets import WebSocketDisconnect
     calls = []
     target = {"server_id":"SERVERFIXTUR", "library_type":"user", "library_id":"0"}
-    bridge = ElectronBridge("secret", "testserver", openalex_pdf=lambda doi: calls.append(doi) or {})
+    bridge = ElectronBridge("secret", "testserver", openalex_pdf=lambda doi, **operation_options: calls.append(doi) or {})
     app = FastAPI()
     app.websocket("/ws")(bridge.connect)
     with TestClient(app) as client:
@@ -256,9 +273,11 @@ def test_openalex_rejects_wrong_doi_target_or_parent_without_query(changed):
 @pytest.mark.parametrize("disconnect", [False, True])
 def test_openalex_lookup_cannot_deliver_candidates_after_cancel_or_disconnect(disconnect):
     started, release = threading.Event(), threading.Event()
-    def lookup(doi):
+    def lookup(doi, *, cancel_event, recovery_observer, deadline):
         started.set()
         assert release.wait(2)
+        if not disconnect:
+            assert cancel_event.is_set()
         return {"candidates":["https://oa.example/private.pdf"]}
     target = {"server_id":"SERVERFIXTUR", "library_type":"user", "library_id":"0", "collection_key":None}
     bridge = ElectronBridge("secret", "testserver", openalex_pdf=lookup)

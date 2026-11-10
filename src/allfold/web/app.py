@@ -218,7 +218,10 @@ def create_app(config_path: Path, *, electron_bridge: ElectronBridge, diagnostic
         raise ValueError('ElectronBridge is required')
     resolved_config_path = config_path.resolve()
     from allfold.application.import_openalex import lookup_pdf_candidates
-    electron_bridge.openalex_pdf = lambda doi: lookup_pdf_candidates(doi, config_path=resolved_config_path)
+    def openalex_pdf(doi, **operation_options):
+        return lookup_pdf_candidates(doi, config_path=resolved_config_path, **operation_options)
+
+    electron_bridge.openalex_pdf = openalex_pdf
     csrf_token = secrets.token_urlsafe(32)
     deletion_key = secrets.token_bytes(32)
 

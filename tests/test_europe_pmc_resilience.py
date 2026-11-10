@@ -9,6 +9,7 @@ from allfold.keywords import parse_keyword_expression
 from allfold.progress import ActivityKind
 from allfold.providers.integrated import DiscoveryResult, SourceScope
 from allfold.providers.supplemental import SupplementalClient
+from test_provider_resilience import Clock
 
 
 SOURCE = SourceScope('journal', 'Biometrics', issns=('0006-341X',))
@@ -33,7 +34,7 @@ def targeted_association(client):
 
 
 def test_html_service_unavailable_retries_same_scoped_query_then_recovers():
-    calls, waits, events = [], [], []
+    calls, clock, events = [], Clock(), []
     def response(request):
         calls.append(request)
         if len(calls) == 1:
@@ -41,27 +42,29 @@ def test_html_service_unavailable_retries_same_scoped_query_then_recovers():
                                   text='<html><h1>503 Service Unavailable</h1></html>')
         return httpx.Response(200, json=page())
     with SupplementalClient('europe_pmc', transport=httpx.MockTransport(response), interval=0,
-                         sleep=waits.append, progress_callback=events.append) as client:
+                         progress_callback=events.append, **clock.options()) as client:
         result = targeted_association(client)
     assert result.status == 'complete' and len(result.records) == 1
     assert len(calls) == 2 and calls[0].url == calls[1].url
-    assert waits == [7]
+    assert clock.waits == [7]
     retry = [event.activity for event in events if event.activity and event.activity.kind is ActivityKind.RETRYING]
-    assert len(retry) == 1 and '503' in retry[0].label and '7' in retry[0].detail
+    waiting = [event.activity for event in events if event.activity and event.activity.kind is ActivityKind.WAITING]
+    assert len(retry) == 1 and '503' in retry[0].label and 'Retry 2/3' in retry[0].detail
+    assert len(waiting) == 1 and '503' in waiting[0].detail and '7.00 seconds' in waiting[0].detail
 
 
 def test_persistent_503_preserves_first_page_and_stops_after_three_attempts():
-    calls, waits = [], []
+    calls, clock = [], Clock()
     def response(request):
         calls.append(request)
         if len(calls) == 1:
             return httpx.Response(200, json=page(total=2, cursor='next-page'))
         return httpx.Response(503, text='Service Unavailable')
     with SupplementalClient('europe_pmc', transport=httpx.MockTransport(response), interval=0,
-                         sleep=waits.append, page_size=1) as client:
+                         page_size=1, **clock.options()) as client:
         result = targeted_association(client)
     assert result.status == 'partial' and len(result.records) == 1
-    assert len(calls) == 4 and waits == [5, 10]
+    assert len(calls) == 4 and clock.waits == [5.5, 11]
     assert all(request.url.params['cursorMark'] == 'next-page' for request in calls[1:])
     assert any('503' in value and 'unavailable' in value.lower() for value in result.limitations)
 
