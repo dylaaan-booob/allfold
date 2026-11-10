@@ -18,7 +18,7 @@ app.whenReady().then(async()=>{
     const frameURL='https://challenges.cloudflare.com/fixture';
     const pages=['https://fixture.invalid/challenge','https://challenges.cloudflare.com/challenge'];
     browser.partition.protocol.handle('https',request=>{
-      const html=pages.includes(request.url)
+      const html=pages.includes(request.url.split("#",1)[0])
         ?`<!doctype html><iframe width="400" height="240" src="${frameURL}"></iframe>`
         :request.url===frameURL?'<input type="checkbox" style="width:60px;height:60px">':'';
       return new Response(html,{status:html?200:404,headers:{'Content-Type':'text/html'}});
@@ -37,9 +37,10 @@ app.whenReady().then(async()=>{
       'finally: timer.cancel()',
     ].join('\n');
     for(const page of pages) {
-      await Promise.all(tabs.map(tab=>tab.view.webContents.loadURL(page)));
+      const pageURL=page+'#verification';
+      await Promise.all(tabs.map(tab=>tab.view.webContents.loadURL(pageURL)));
       const target=tabs[1].view.webContents.getOrCreateDevToolsTargetId();
-      const {stdout}=await promisify(execFile)(python,['-c',script,'ws://127.0.0.1:'+port+browserPath,page,target],
+      const {stdout}=await promisify(execFile)(python,['-c',script,'ws://127.0.0.1:'+port+browserPath,pageURL,target],
         {timeout:6500,env:{...process.env,PYTHONPATH:path.join(PROJECT_ROOT,'src')}});
       assert.deepEqual(JSON.parse(stdout),{outcome:'clicked',reason:'checkbox_clicked'});
       const checked=await Promise.all(tabs.map(tab=>{

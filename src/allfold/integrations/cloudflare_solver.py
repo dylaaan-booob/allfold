@@ -149,7 +149,7 @@ async def _frame_body(frame, connection, browser, endpoint, resources: AsyncExit
 async def _main_document(connection):
     result = await connection.execute_command({"method": "Page.getFrameTree"})
     frame = result["result"]["frameTree"]["frame"]
-    return frame["id"], frame["loaderId"], frame["url"]
+    return frame["id"], frame["loaderId"], frame["url"] + frame.get("urlFragment", "")
 
 
 async def _click_turnstile(cdp_url: str, page_url: str, stop: Event, *, target_id: str) -> dict[str, str]:
@@ -182,7 +182,11 @@ async def _click_turnstile(cdp_url: str, page_url: str, stop: Event, *, target_i
                   connection_handler=connection)
         loop = asyncio.get_running_loop()
         deadline = loop.time() + 30.0
-        main_document = await _main_document(connection)
+        try:
+            async with asyncio.timeout_at(deadline):
+                main_document = await _main_document(connection)
+        except TimeoutError:
+            return {"outcome": "not_found", "reason": "checkbox_not_found"}
         if main_document[2] != page_url:
             return {"outcome": "not_executed", "reason": "canceled"}
         while loop.time() < deadline:
