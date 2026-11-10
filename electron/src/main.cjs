@@ -58,7 +58,7 @@ function drainDisconnectedPython() {
   // Socket loss may happen after an orderly quit has already sent shutdown.
   // Only request Python teardown once every escaped native save has settled.
   disconnectedDrain ??= waitForOperations().then(()=>{
-    if(python && python.exitCode===null && python.signalCode===null)python.kill('SIGTERM');
+    if(python && python.exitCode===null && python.signalCode===null)python.kill('SIGUSR1');
     else {readyToExit=true;app.quit();}
   });
 }

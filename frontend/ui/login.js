@@ -1,6 +1,6 @@
 const $=id=>document.getElementById(id);
 const layout=window.allfoldLayout.create({root:$('login-page'),workspace:'login',minContentWidth:360});
-let state=null,timer=null,busy=false,cancelRequested=false,revision=0,selectedService=null;
+let state=null,timer=null,busy=false,recovering=false,cancelRequested=false,revision=0,selectedService=null;
 
 function button(label,action,disabled=false) {
   const node=document.createElement('button');
@@ -21,7 +21,7 @@ function row(name,preparation,{id,manual=false}={}) {
     open.dataset.loginAction='page';item.append(open);
   }
   if(manual){
-    const visit=button('Visit',()=>mutate('start',{service_id:id}),busy || Boolean(state?.active));
+    const visit=button('Visit',()=>mutate('start',{service_id:id}),busy || recovering || Boolean(state?.active));
     visit.dataset.loginAction='visit';item.append(visit);
   }
   const diagnostic=preparation?.diagnostic;
@@ -35,7 +35,7 @@ function row(name,preparation,{id,manual=false}={}) {
   return item;
 }
 function render() {
-  $('login-start').disabled=!state?.services?.length || busy || state.active;
+  $('login-start').disabled=!state?.services?.length || busy || recovering || state.active;
   $('login-cancel').hidden=!state?.active;$('login-cancel').disabled=busy || cancelRequested;
   if(!state)return;
   const phase=cancelRequested?'正在取消':({carsi:'机构登录中',preparing:'正在准备 Services',completed:'准备结束',failed:'Login 失败',
@@ -65,12 +65,12 @@ function render() {
 }
 function poll() {
   clearTimeout(timer);
-  if(state?.active)timer=setTimeout(()=>void refresh(),1000);
+  if(recovering || state?.active)timer=setTimeout(()=>void refresh(),1000);
 }
 function accept(next) {
   const changed=state?.active!==next.active || state?.phase!==next.phase || state?.workflow_id!==next.workflow_id;
   if(!next.active || state?.workflow_id!==next.workflow_id)cancelRequested=false;
-  state=next;render();
+  recovering=false;state=next;render();
   if(changed)window.dispatchEvent(new Event('login-state-changed'));
 }
 async function refresh() {
@@ -81,7 +81,7 @@ async function refresh() {
   finally{if(read===revision)poll();}
 }
 async function mutate(action,body) {
-  if(busy || (action==='start' && state?.active) || (action==='cancel' && cancelRequested))return;
+  if(busy || recovering || (action==='start' && state?.active) || (action==='cancel' && cancelRequested))return;
   ++revision;busy=true;clearTimeout(timer);render();
   try {
     if(action==='start' && window.allfoldAutosave && !await window.allfoldAutosave.flush()){
@@ -90,8 +90,11 @@ async function mutate(action,body) {
     const next=await uiNext.request('/api/login/'+action,body);
     if(action==='cancel')cancelRequested=true;
     accept(next);
-  }catch(error){uiNext.notice(error.message);}
-  finally{busy=false;render();poll();}
+  }catch(error){recovering=true;uiNext.notice(error.message);}
+  finally{
+    busy=false;render();
+    if(recovering)await refresh();else poll();
+  }
 }
 $('login-start').addEventListener('click',()=>mutate('start',{}));
 $('login-cancel').addEventListener('click',()=>{if(state?.workflow_id)void mutate('cancel',{workflow_id:state.workflow_id});});

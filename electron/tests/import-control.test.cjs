@@ -333,5 +333,5 @@ test('a lost bridge during orderly quit still drains native saves before stoppin
   let stopped=false;void terminated.promise.then(()=>{stopped=true;});
   await Promise.resolve();assert.equal(stopped,false);
   settle.resolve({parent:{outcome:'confirmed'}});await active;
-  assert.equal(await terminated.promise,'SIGTERM');
+  assert.equal(await terminated.promise,'SIGUSR1');
 });

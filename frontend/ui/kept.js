@@ -1,3 +1,4 @@
+import {zoteroKeyDetails} from './business-results.js';
 const $=id=>document.getElementById(id),bridge=window.inboxKept;
 const exportButton=document.createElement('button');
 exportButton.type='button';exportButton.className='s-button';exportButton.textContent='导出本次诊断';exportButton.hidden=true;
@@ -79,15 +80,19 @@ function importIndicators(result) {
   return `Item ${observation(result.item_exists)} · PDF ${observation(result.pdf_attached)} · Fallback ${observation(result.fallback_used)}`;
 }
 function importDetails(result) {
+  const keys=zoteroKeyDetails(result.zotero_keys);
   return `Paper: ${result.paper_id}\nService: ${result.service_id || result.service_assignment || 'Unassigned'}\n${result.reason}`+
     (result.diagnostic?'\n'+[result.diagnostic.stage,result.diagnostic.step,result.diagnostic.code].filter(Boolean).join(' / '):'')+
-    (result.query_diagnostic?'\n查询：'+result.query_diagnostic.code+(result.query_diagnostic.status?` (HTTP ${result.query_diagnostic.status})`:''):'');
+    (result.query_diagnostic?'\n查询：'+result.query_diagnostic.code+(result.query_diagnostic.status?` (HTTP ${result.query_diagnostic.status})`:''):'')+
+    (keys?'\n'+keys:'');
 }
 const settledResults=batch=>[...new Map((batch?.results || []).map(result=>[result.paper_id,result])).values()];
 function renderRecord() {
-  const batch=workflow?.batch,results=settledResults(batch);
+  const batch=workflow?.batch;
+  const results=settledResults(batch).filter(result=>serviceFilter==='all' ||
+    (result.service_id || result.service_assignment)===serviceFilter);
   exportButton.hidden=!workflow?.workflow_id;
-  $('kept-record-count').textContent=batch?`${results.filter(result=>result.parent_outcome==='confirmed').length} / ${batch.total}`:'—';
+  $('kept-record-count').textContent=batch?`${results.filter(result=>result.parent_outcome==='confirmed').length} / ${serviceFilter==='all'?batch.total:results.length}`:'—';
   $('kept-record-summary').textContent=workflow?.message || '本次尚未导入。';
   const expanded=new Set([...$('kept-record-items').querySelectorAll('details[open]')].map(node=>node.dataset.paperId));
   $('kept-record-items').replaceChildren(...results.map(result=>{
@@ -252,7 +257,7 @@ function renderQueue() {
     button.textContent=`${service.name} · ${service.kept} / ${service.eligible}`;
     button.addEventListener('click',()=>{
       if(submitting || dialog.open)return;
-      serviceFilter=service.id;queueLayout.closeFlyout();renderQueue();refreshActions();void refreshQueue();
+      serviceFilter=service.id;queueLayout.closeFlyout();renderQueue();renderRecord();refreshActions();void refreshQueue();
     });
     return button;
   }));
@@ -269,7 +274,7 @@ async function refreshQueue() {
     if(read!==queueEpoch)return;
     queueData=next;
     if(!queueData.services.some(service=>service.id===serviceFilter))serviceFilter='all';
-    renderQueue();refreshActions();
+    renderQueue();renderRecord();refreshActions();
   }catch(error){if(read===queueEpoch)uiNext.notice(`导入计划读取失败：${error.message}`);}
 }
 window.uiKept={open:openKept,refresh:refreshQueue};
@@ -397,7 +402,7 @@ $('kept-confirm-login').addEventListener('click',()=>{dialog.close();window.work
 dialog.addEventListener('close',()=>{confirmation=null;refreshActions();});
 $('kept-leave').addEventListener('click',cancelImport);
 $('kept-task-page').addEventListener('click',()=>{
-  if(workflow?.workflow_id)void window.allfoldWorkbench.showTaskPage({workflowId:workflow.workflow_id,taskId:workflow.batch?.task_id});
+  if(workflow?.workflow_id)void window.allfoldWorkbench.showTaskPage({workflowId:workflow.workflow_id,parentTaskId:workflow.batch?.task_id});
 });
 window.addEventListener('enrich-state',()=>{if(arrayShown() && !bridge.busy() && readerRefreshPending)render();else refreshActions();});
 window.addEventListener('zotero-target-changed',refreshActions);

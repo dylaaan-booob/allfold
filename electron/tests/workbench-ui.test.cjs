@@ -105,11 +105,13 @@ test('WoS handoff finds a CARSI child task by owning Run workflow and precise Ke
     {id:8,association:{workflow_id:'run-1',task_id:'prepare-2',parent_task_id:'run-1',role:'carsi-portal',active:true}},
     {id:9,association:{workflow_id:'run-other',task_id:'prepare-other',role:'carsi-portal',active:true}},
     {id:10,association:{workflow_id:'kept-1',task_id:'prepare-3',role:'service-resource',active:false}},
-    {id:11,association:{workflow_id:'kept-1',task_id:'import-4',role:'import',active:true}}]});
+    {id:11,association:{workflow_id:'kept-1',task_id:'import-4',parent_task_id:'batch-2',role:'import',active:true}}]});
   assert.equal(await f.window.allfoldWorkbench.showTaskPage({workflowId:'run-1'}),true);
   assert.equal(f.calls.filter(call=>call.action==='select').at(-1).id,8);
   assert.equal(await f.window.allfoldWorkbench.showTaskPage({workflowId:'kept-1',taskId:'prepare-3'}),true);
   assert.equal(f.calls.filter(call=>call.action==='select').at(-1).id,10);
+  assert.equal(await f.window.allfoldWorkbench.showTaskPage({workflowId:'kept-1',parentTaskId:'batch-2'}),true);
+  assert.equal(f.calls.filter(call=>call.action==='select').at(-1).id,11);
   assert.equal(f.calls.some(call=>call.action==='new'),false);
 });
 test('one grouped list preserves Page identities, scope and managed toolbar controls',async()=>{

@@ -52,7 +52,7 @@ test('Import recovers into visible controls and retains task identity through Br
   assert.equal(ui.window.workspaceArray.navigationBusy(),false);
   assert.equal(ui.calls.some(([url])=>url.endsWith('/start')),false);
   await ui.get('kept-task-page').emit('click');
-  assert.deepEqual(JSON.parse(JSON.stringify(ui.presentations)),[{workflowId:'workflow-1',taskId:'batch-1'}]);
+  assert.deepEqual(JSON.parse(JSON.stringify(ui.presentations)),[{workflowId:'workflow-1',parentTaskId:'batch-1'}]);
   await ui.get('kept-leave').emit('click');
   assert.deepEqual(JSON.parse(JSON.stringify(ui.calls.find(([url])=>url.endsWith('/cancel'))[1])),{workflow_id:'workflow-1',generation:7});
   assert.equal(ui.get('kept-leave').disabled,true);

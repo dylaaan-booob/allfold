@@ -62,14 +62,15 @@ window.allfoldWorkbench=(()=>{
     try {render(await desktop.showBrowser());present(true);return true;}
     catch(error){window.uiNext.notice(error.message);return false;}
   }
-  async function showTaskPage({workflowId,taskId,pageId}={}) {
-    if(!desktop || !(workflowId || taskId || pageId))return false;
+  async function showTaskPage({workflowId,taskId,parentTaskId,pageId}={}) {
+    if(!desktop || !(workflowId || taskId || parentTaskId || pageId))return false;
     try {
       const snapshot=await desktop.browserState(),pages=snapshot.tabs.filter(page=>{
         if(pageId && page.id!==pageId)return false;
         const association=page.association;
         return (!workflowId || association?.workflow_id===workflowId)
-          && (!taskId || association?.task_id===taskId);
+          && (!taskId || association?.task_id===taskId)
+          && (!parentTaskId || association?.parent_task_id===parentTaskId);
       });
       const score=page=>(page.association?.active?100:0)+(page.id===snapshot.taskPageId?20:0)
         +({attachment:40,popup:30}[page.association?.role] || 0);

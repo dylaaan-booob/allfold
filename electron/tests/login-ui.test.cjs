@@ -20,3 +20,20 @@ test('Login starts explicitly and opens the Page that belongs to the waiting tas
   await ui.get('login-cancel').emit('click');
   assert.equal(ui.calls.find(([path])=>path==='/api/login/cancel')?.[1].workflow_id,'login-a');
 });
+
+test('Login reads the active task after an ambiguous start response without replaying',async()=>{
+  const idle={active:false,phase:'idle',carsi:{},services:[{id:'service-a',name:'Service A',access_method:'carsi'}]};
+  let state=idle;
+  const ui=await taskUI('login.js',{page:'login',request:async route=>{
+    if(route.endsWith('/start')){
+      state={...idle,active:true,phase:'carsi',workflow_id:'login-a'};
+      throw Error('Response lost');
+    }
+    return state;
+  }});
+  await ui.get('login-start').emit('click');
+  assert.equal(ui.calls.filter(([route])=>route.endsWith('/start')).length,1);
+  assert.equal(ui.calls.filter(([route])=>route.endsWith('/state')).length,2);
+  assert.equal(ui.get('login-start').disabled,true);
+  assert.equal(ui.get('login-cancel').hidden,false);
+});

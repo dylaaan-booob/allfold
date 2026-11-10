@@ -728,8 +728,10 @@ class BrowserRuntime {
         contents.removeListener('did-stop-loading',observe);contents.removeListener('did-navigate-in-page',observe);contents.removeListener('page-title-updated',observe);
         if(this.tabs.get(tab.id)===tab && tab.attachmentOwner===owner && !contents.isDestroyed())
           await new Promise(resolve=>{contents.once('destroyed',resolve);contents.close();});
-      } else if(this.documentCurrent(doc)) {
-        await this.documentFrame(doc).executeJavaScript('document.getElementById('+JSON.stringify(id)+')?.remove();void 0').catch(()=>{});
+      } else {
+        // The originating operation may be canceled while its exact document is still alive.
+        const frame=this.documentFrame(doc,null);
+        if(frame)await frame.executeJavaScript('document.getElementById('+JSON.stringify(id)+')?.remove();void 0').catch(()=>{});
       }
     }
   }

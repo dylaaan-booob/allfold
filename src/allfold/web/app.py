@@ -331,6 +331,8 @@ def create_app(config_path: Path, *, electron_bridge: ElectronBridge, diagnostic
         browser_lock=app.state.browser_task_lock, diagnostics=app.state.diagnostics,
     )
 
+    from allfold.application.history import safe_zotero_keys
+
     def workflow_json():
         with import_submission_lock:
             workflow = app.state.kept_workflow.snapshot()
@@ -341,7 +343,11 @@ def create_app(config_path: Path, *, electron_bridge: ElectronBridge, diagnostic
                        "total": len(batch.plan.papers) if batch.plan else 0,
                        "active_paper_ids": jsonable_encoder(batch.active_paper_ids),
                        "statistics": jsonable_encoder(batch.statistics),
-                       "results": [jsonable_encoder(result, exclude={"native_identity"}) for result in batch.results],
+                       "results": [
+                           {**jsonable_encoder(result, exclude={"native_identity"}),
+                            "zotero_keys": safe_zotero_keys(result.native_identity)}
+                           for result in batch.results
+                       ],
                        "message": batch.message} if workflow.workflow_id else None),
         }
 

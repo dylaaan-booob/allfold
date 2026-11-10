@@ -14,9 +14,11 @@ coordinator finishes a business history record. Login includes each saved Servic
 
 **Last Import** indicators are a separate process-local projection of the
 latest execution. Exact-key object queries and confirmed attachment registration
-provide its Item/PDF/Fallback results. Item and attachment keys, Local API
-authorization, PDF candidate URLs and raw bytes are not new History or diagnostic
-fields. The snapshot does not persist across restarts or inspect saved PDF files.
+provide its Item/PDF/Fallback results. The live batch and local History show
+known parent, attachment and note keys for reconciliation. Exported diagnostics
+omit those keys. Local API authorization, PDF candidate URLs and raw bytes stay
+outside History and diagnostics. Last Import's live verification snapshot ends
+when the app exits.
 
 ## Metadata results
 

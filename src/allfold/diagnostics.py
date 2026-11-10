@@ -16,6 +16,7 @@ import threading
 from uuid import UUID, uuid4
 import zipfile
 
+from allfold.application.history import safe_zotero_keys
 from allfold.browser_diagnostics import normalize_browser_diagnostic
 from allfold.persistence.safe_write import _open_directory_nofollow
 from allfold.persistence.user_state import application_data_dir
@@ -91,8 +92,7 @@ def _details(value):
                          ('completion_status', {'complete','empty','partial','failed','cancelled'}),
                          ('result_status', {'completed', 'completed_with_notices', 'incomplete', 'capture_issues', 'failed', 'cancelled'}),
                          ('coverage_status', {'complete', 'empty', 'partial', 'failed', 'unavailable', 'unknown'}),
-                         ('batch_phase', {'idle', 'running', 'completed', 'stopped', 'paused', 'blocked'}),
-                         ('mode', {'full', 'import_only'})):
+                         ('batch_phase', {'idle', 'running', 'completed', 'stopped', 'paused', 'blocked'})):
         if _enum(value.get(key), allowed):
             result[key] = value[key]
     source_runs = value.get('run_sources')
@@ -157,6 +157,8 @@ def _details(value):
                     'reason': REASONS}[key]
                 if _enum(item.get(key), allowed):
                     safe[key] = item[key]
+            if keys := safe_zotero_keys(item.get('zotero_keys')):
+                safe['zotero_keys'] = keys
             diagnostic = normalize_browser_diagnostic(item.get('diagnostic'))
             if diagnostic:
                 safe['diagnostic'] = diagnostic
@@ -571,6 +573,10 @@ class DiagnosticStore:
             def in_recent_range(value):
                 return range_start <= datetime.fromisoformat(value.replace('Z', '+00:00')) <= export_time
             records = self.history()['records']
+            # Exact Zotero keys are for local reconciliation. History export is shareable.
+            for record in records:
+                for result in record.get('details', {}).get('results', []):
+                    result.pop('zotero_keys', None)
             excluded_history = 0
             if task_id is not None:
                 selected = next((r for r in records if r['task_id'] == task_id), None)

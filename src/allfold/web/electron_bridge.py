@@ -63,6 +63,7 @@ class ElectronBridge:
         self._solver_slot = asyncio.Lock()
         self._send_lock = asyncio.Lock()
         self.closing = False
+        self._native_drained = False
         self.shutdown = None
 
     @property
@@ -176,6 +177,8 @@ class ElectronBridge:
                         observe(self.diagnostics, "native_status", {"available": False, "incomplete": True})
                     if pending.progress:
                         pending.progress({"message": "Electron disconnected; waiting for application shutdown, no replay"})
+                if self._native_drained:
+                    self.finish_disconnected()
             try:
                 await socket.close()
             except _SOCKET_ERRORS:
@@ -236,6 +239,16 @@ class ElectronBridge:
                 "solve_cloudflare_result", challenge_id=challenge_id, data=data))
         finally:
             pending.challenges.pop(challenge_id, None)
+
+    def native_drained(self):
+        """Main's fallback shutdown confirms that no issued native write is still active."""
+        def confirm():
+            self.closing = True
+            self._native_drained = True
+            self.finish_disconnected()
+
+        if self._loop is not None:
+            self._loop.call_soon_threadsafe(confirm)
 
     def finish_disconnected(self):
         """Process teardown calls this after Main has waited for native saves."""

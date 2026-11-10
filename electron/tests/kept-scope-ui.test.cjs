@@ -20,6 +20,10 @@ test('Last Import shows only Item PDF Fallback indicators, deduplicates Papers a
  assert.match(text,/Item Yes.*PDF Yes.*Fallback Yes/s);assert.match(text,/PDF 无法核验.*Fallback 无法核验/s);
  assert.match(text,/查询：connection_lost/);
  assert.ok(!text.includes('PDF unverified'));
+ await f.get('kept-service-list').children.find(row=>row.dataset.serviceId==='svc_b').emit('click');
+ assert.equal(f.get('kept-record-items').children.length,1);
+ assert.match(f.get('kept-record-items').textContent,/Paper: unknown/);
+ assert.doesNotMatch(f.get('kept-record-items').textContent,/Paper: saved/);
 });
 
 test('Kept captures its next saved Service before autosave and display changes cannot retarget it',async()=>{

@@ -115,7 +115,11 @@ async def _frame_body(frame, connection, browser, endpoint, resources: AsyncExit
 
     # Describe the frame element on the bound page. Pydoll's generic iframe
     # resolver can attach unrelated targets while looking for this document.
-    response = await connection.execute_command(DomCommands.describe_node(object_id=frame._object_id))
+    reference = await frame.execute_script("return this", return_by_value=False)
+    object_id = reference["result"]["result"].get("objectId")
+    if object_id is None:
+        return None
+    response = await connection.execute_command(DomCommands.describe_node(object_id=object_id))
     node = response["result"]["node"]
     frame_id = node.get("frameId")
     if not frame_id:

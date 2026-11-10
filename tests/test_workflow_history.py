@@ -426,3 +426,29 @@ def test_attachment_message_describes_problem_and_preserves_pdf_uncertainty(code
     assert '403' in message and 'ERR_ABORTED' in message
     assert '父条目失败' not in message
     assert '重试' not in message
+
+
+def test_known_zotero_keys_survive_local_history_and_stay_out_of_diagnostic_exports(tmp_path):
+    import io
+    import zipfile
+
+    workspace = tmp_path / 'workspace'
+    paper(workspace, 'uncertain')
+    config, logs = tmp_path / 'config.yaml', tmp_path / 'logs'
+    store = DiagnosticStore(config, root=logs)
+    lock, bridge = BrowserTaskLock(), Bridge()
+    batch = BatchImportService(bridge, lock, diagnostics=store)
+    batch.start(workspace, browser_owner=lock.acquire('kept'))
+    assert bridge.dispatched.wait(2)
+    bridge.future.set_result({'settled': True, 'parent': {'outcome': 'uncertain'},
+        'zotero': {'parent_key': 'ABCD2345', 'attachment_keys': ['WXYZ2345', 'invalid'],
+                   'target': {'server_id': 'private-instance'}}})
+    batch.join()
+    recovered = DiagnosticStore(config, root=logs)
+    record = recovered.history()['records'][0]
+    assert record['details']['results'][0]['zotero_keys'] == {
+        'parent_key': 'ABCD2345', 'attachment_keys': ['WXYZ2345']}
+    with zipfile.ZipFile(io.BytesIO(recovered.export(record['task_id']))) as bundle:
+        for name in bundle.namelist():
+            data = bundle.read(name)
+            assert all(private not in data for private in (b'ABCD2345', b'WXYZ2345', b'private-instance'))

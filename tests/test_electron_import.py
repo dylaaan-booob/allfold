@@ -435,7 +435,8 @@ def test_disconnect_holds_all_pending_native_saves_until_teardown():
                 result.result(timeout=2)
 
 
-def test_disconnect_during_drain_releases_websocket_before_teardown_settles_native_futures():
+@pytest.mark.parametrize('signal_before_disconnect', [False, True])
+def test_disconnect_during_drain_settles_only_after_main_confirms_native_drain(signal_before_disconnect):
     import asyncio
     from fastapi import WebSocketDisconnect
 
@@ -476,11 +477,16 @@ def test_disconnect_during_drain_releases_websocket_before_teardown_settles_nati
         assert (await asyncio.wait_for(outgoing.get(), 1))["type"] == "execute"
         await incoming.put({"type": "shutdown"})
         await asyncio.wait_for(draining.wait(), 1)
+        if signal_before_disconnect:
+            bridge.native_drained()
+            await asyncio.sleep(0)
+            assert not result.done()
         await incoming.put(None)
         await asyncio.wait_for(connection, 1)
-        assert not result.done()
-        bridge.finish_disconnected()
+        if not signal_before_disconnect:
+            assert not result.done()
+            bridge.native_drained()
         with pytest.raises(ElectronDisconnected):
-            await asyncio.wrap_future(result)
+            await asyncio.wait_for(asyncio.wrap_future(result), 1)
 
     asyncio.run(scenario())

@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import os
 from pathlib import Path
+import signal
 import socket
 import sys
 import uvicorn
@@ -59,6 +60,13 @@ def main():
         await drain_application(application)
         server.should_exit = True
 
+    def native_drained(_signal, _frame):
+        # This signal comes from Main after the fallback native drain. Resolve
+        # disconnected Futures before Uvicorn waits for blocked HTTP handlers.
+        bridge.native_drained()
+        server.should_exit = True
+
+    signal.signal(signal.SIGUSR1, native_drained)
     bridge.shutdown = drain
     configure_logging(log_level)
     # stdout has exactly one bootstrap message; it carries no credentials.
