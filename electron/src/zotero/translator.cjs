@@ -23,82 +23,179 @@ function workspaceItem(metadata,doi) {
     creators:(Array.isArray(metadata.authors)?metadata.authors:[]).filter(name=>typeof name==='string'&&name.trim())
       .map(name=>({creatorType:'author',lastName:name,fieldMode:1})),attachments:[]};
 }
+const sandboxOperations=new Map();
+let sandboxPartition;
+function translatorPartition() {
+  if(sandboxPartition)return sandboxPartition;
+  const partition=session.fromPartition('allfold-translator');
+  partition.setPermissionRequestHandler((_w,_p,callback)=>callback(false));
+  partition.setPermissionCheckHandler(()=>false);
+  partition.protocol.handle('allfold-zotero',request=>{
+    const url=new URL(request.url);
+    if(url.hostname!=='zotero')return new Response('',{status:403});
+    const adapter=path.join(__dirname,'sandbox-adapter.js');
+    const file=url.pathname==='/sandbox-adapter.js'?adapter:path.resolve(RUNTIME_DIR,'.'+decodeURIComponent(url.pathname));
+    if((file!==adapter&&!file.startsWith(RUNTIME_DIR+path.sep))
+      || !fs.existsSync(file) || !fs.statSync(file).isFile())return new Response('',{status:404});
+    return net.fetch(pathToFileURL(file).href);
+  });
+  ipcMain.handle('translator:request',async(event,spec)=>{
+    const operation=sandboxOperations.get(event.sender),frame=event.senderFrame;
+    if(!operation || spec?.operationId!==operation.id || !frame || frame!==event.sender.mainFrame
+      || frame.url!==operation.url)throw Error('Expired or untrusted Translator operation');
+    const request=inBrowserOperation(operation.browser,operation.owner,()=>operation.request(spec));
+    operation.requests.add(request);
+    try {return await request;}
+    finally {operation.requests.delete(request);}
+  });
+  sandboxPartition=partition;
+  return partition;
+}
+function inBrowserOperation(browser,owner,run) {
+  return browser.runInOperation?browser.runInOperation(owner,run):run();
+}
+function documentCurrent(browser,owner,doc) {
+  if(browser.ownsPage && !browser.ownsPage(owner,doc.pageId))return false;
+  return browser.documentCurrent(doc) && (!browser.documentFrame || browser.documentFrame(doc)?.url===doc.url);
+}
+function newSandboxWindow(partition) {
+  const window=new BrowserWindow({show:false,webPreferences:{session:partition,
+    preload:path.join(PRELOAD_DIR,'sandbox-preload.cjs'),sandbox:true,contextIsolation:true,nodeIntegration:false}});
+  window.webContents.setWindowOpenHandler(()=>({action:'deny'}));
+  window.webContents.on('will-navigate',event=>event.preventDefault());
+  return window;
+}
 class TranslatorSandbox {
+  constructor({maxWorkers=2}={}) {
+    if(!Number.isSafeInteger(maxWorkers) || maxWorkers<1)throw new TypeError('Invalid Translator worker limit');
+    this.maxWorkers=maxWorkers;
+    this.stopped=new AbortController();
+    this.pending=[];
+    this.active=new Set();
+    this.idle=[];
+    this.translations=new Set();
+  }
   async init(browser) {
     this.browser=browser;
-    const partition=session.fromPartition('allfold-translator');
-    partition.setPermissionRequestHandler((_w,_p,callback)=>callback(false));
-    partition.protocol.handle('allfold-zotero',request=>{
-      const url=new URL(request.url);
-      if(url.hostname!=='zotero')return new Response('',{status:403});
-      const base=RUNTIME_DIR;
-      const file=url.pathname==='/sandbox-adapter.js'?path.join(__dirname,'sandbox-adapter.js')
-        :path.resolve(base,'.'+decodeURIComponent(url.pathname));
-      if((file!==path.join(__dirname,'sandbox-adapter.js')&&!file.startsWith(base+path.sep))
-        || !fs.existsSync(file) || !fs.statSync(file).isFile())return new Response('',{status:404});
-      return net.fetch(pathToFileURL(file).href);
-    });
-    this.window=new BrowserWindow({show:false,webPreferences:{session:partition,
-      preload:path.join(PRELOAD_DIR,'sandbox-preload.cjs'),sandbox:true,contextIsolation:true,nodeIntegration:false}});
-    this.window.webContents.setWindowOpenHandler(()=>({action:'deny'}));
-    this.window.webContents.on('will-navigate',event=>event.preventDefault());
-    ipcMain.handle('translator:request',async(event,spec)=>{
-      const operation=this.operation;
-      if(!operation || spec?.operationId!==operation.id || event.sender!==this.window.webContents
-        || event.senderFrame!==event.sender.mainFrame || event.senderFrame.url!==operation.url)
-        throw Error('Expired or untrusted Translator operation');
-      this.current(operation);
-      const {doc,signal,logContext}=operation;
-      if(!['GET','POST','HEAD','OPTIONS'].includes(spec.method))throw Error('Translator method blocked');
-      const headers={};
-      for(const [key,value] of Object.entries(spec.headers || {}))
-        if(!/^(host|connection|proxy-|sec-|x-allfold-http-context$)/i.test(key))headers[key]=String(value);
+    this.partition=translatorPartition();
+  }
+  dispatch() {
+    while(!this.stopped.signal.aborted && this.pending.length && this.active.size<this.maxWorkers) {
+      const operation=this.pending.shift();
+      if(operation.signal.aborted || Date.now()>=operation.deadline)continue;
       try {
-        const response=await requestSessionHTTP(browser.partition,{url:spec.url,method:spec.method,
-          headers,body:spec.body,referrer:spec.referrer,timeout:spec.timeout===undefined?15000:spec.timeout},
-          {doc,signal,kind:'translator',cookieAdapter:browser.cookieAdapter,validateRedirect:validateTranslatorURL});
-        this.current(operation);
-        const safeHeaders=response.headers.filter(([key])=>!/^set-cookie2?$/i.test(key));
-        log('debug','translator_http',{...logContext,stage:'translation',host:new URL(response.url).hostname,
-          status:response.status,content_type:safeHeaders.find(([key])=>key.toLowerCase()==='content-type')?.[1]?.split(';')[0],
-          response_bytes:response.body.length,challenge:safeHeaders.some(([key,value])=>key.toLowerCase()==='cf-mitigated'&&value==='challenge')?'cf-mitigated':undefined});
-        return {ok:true,status:response.status,statusText:response.statusText,url:response.url,headers:safeHeaders,bytes:new Uint8Array(response.body)};
-      }catch(error) {
-        if(!(error instanceof RequestTransportError))throw error;
-        return {ok:false,error:{kind:'transport',code:error.code,...(error.net_error?{net_error:error.net_error}:{})}};
-      }
-    });
-    await this.window.loadURL('about:blank');
+        let window;
+        while(this.idle.length) {
+          window=this.idle.pop();
+          if(window.isDestroyed())window=undefined;
+          else if(window.webContents.isCrashed()){window.destroy();window=undefined;}
+          else break;
+        }
+        operation.window=window ||= newSandboxWindow(this.partition);
+        operation.contents=window.webContents;
+        this.active.add(operation);
+        sandboxOperations.set(operation.contents,operation);
+        operation.ready.resolve();
+      }catch(error){operation.ready.reject(error);}
+    }
   }
   current(operation) {
     checkCanceled(operation.signal);
-    if(this.operation!==operation || !this.browser.documentCurrent(operation.doc))
+    if(!this.active.has(operation) || !documentCurrent(operation.browser,operation.owner,operation.doc))
       throw new ImportFailure('translation','document_changed');
   }
-  async openOperation(doc,{signal,logContext,deadline=Infinity}={}) {
-    if(this.operation)throw Error('Translator operation already active');
-    const controller=new AbortController(),id=randomBytes(16).toString('hex');
-    const operation={id,doc:{...doc},controller,signal:AbortSignal.any([controller.signal,...(signal?[signal]:[])]),logContext,
-      url:'allfold-zotero://zotero/offscreen.html?operation='+id};
-    this.operation=operation;
-    const contents=this.browser.tabs?.get(doc.pageId)?.view.webContents;
-    const changed=()=>{if(!this.browser.documentCurrent(doc))controller.abort(new ImportFailure('translation','document_changed'));};
-    const closed=()=>controller.abort(new ImportFailure('translation','page_closed'));
-    contents?.on('did-frame-navigate',changed);contents?.once('destroyed',closed);contents?.once('render-process-gone',closed);
-    operation.cleanup=()=>{contents?.removeListener('did-frame-navigate',changed);contents?.removeListener('destroyed',closed);contents?.removeListener('render-process-gone',closed);};
+  async request(operation,spec) {
+    this.current(operation);
+    const {browser,doc,signal,logContext}=operation;
+    if(!['GET','POST','HEAD','OPTIONS'].includes(spec.method))throw Error('Translator method blocked');
+    const headers={};
+    for(const [key,value] of Object.entries(spec.headers || {}))
+      if(!/^(host|connection|proxy-|sec-|x-allfold-http-context$)/i.test(key))headers[key]=String(value);
     try {
+      const response=await requestSessionHTTP(browser.partition,{url:spec.url,method:spec.method,
+        headers,body:spec.body,referrer:spec.referrer,timeout:spec.timeout===undefined?15000:spec.timeout},
+        {doc,signal,kind:'translator',cookieAdapter:browser.cookieAdapter,validateRedirect:validateTranslatorURL});
       this.current(operation);
-      await waitFor(()=>this.window.loadURL(operation.url),operation.signal,deadline,'translation','sandbox_load');
-      await waitFor(()=>this.window.webContents.executeJavaScript('window.allfoldTranslatorReady.then(()=>{if(window.allfoldTranslatorError)throw Error("Translator initialization failed");return null;})'),
+      const safeHeaders=response.headers.filter(([key])=>!/^set-cookie2?$/i.test(key));
+      log('debug','translator_http',{...logContext,stage:'translation',host:new URL(response.url).hostname,
+        status:response.status,content_type:safeHeaders.find(([key])=>key.toLowerCase()==='content-type')?.[1]?.split(';')[0],
+        response_bytes:response.body.length,challenge:safeHeaders.some(([key,value])=>key.toLowerCase()==='cf-mitigated'&&value==='challenge')?'cf-mitigated':undefined});
+      return {ok:true,status:response.status,statusText:response.statusText,url:response.url,headers:safeHeaders,bytes:new Uint8Array(response.body)};
+    }catch(error) {
+      this.current(operation);
+      if(!(error instanceof RequestTransportError))throw error;
+      return {ok:false,error:{kind:'transport',code:error.code,...(error.net_error?{net_error:error.net_error}:{})}};
+    }
+  }
+  async openOperation(doc,{signal,logContext,deadline=Infinity}={}) {
+    const browser=this.browser,owner=browser.operation;
+    const controller=new AbortController(),id=randomBytes(16).toString('hex');
+    const operation={id,browser,owner,doc:{...doc},controller,deadline,logContext,ready:Promise.withResolvers(),requests:new Set(),
+      signal:AbortSignal.any([controller.signal,this.stopped.signal,...(signal?[signal]:[])]),
+      url:'allfold-zotero://zotero/offscreen.html?operation='+id};
+    operation.request=spec=>this.request(operation,spec);
+    const contents=browser.tabs?.get(doc.pageId)?.view.webContents;
+    const changed=()=>inBrowserOperation(browser,owner,()=>{
+      if(!documentCurrent(browser,owner,doc))controller.abort(new ImportFailure('translation','document_changed'));
+    });
+    const navigating=event=>{
+      const frame=event.frame;
+      if((event.isMainFrame || (frame && !frame.isDestroyed() && frame.frameToken===doc.frameToken))
+        && !(event.isSameDocument && event.url===(event.isMainFrame?doc.rootURL || doc.url:doc.url)))
+        controller.abort(new ImportFailure('translation','document_changed'));
+    };
+    const closed=()=>controller.abort(new ImportFailure('translation','page_closed'));
+    const workerGone=()=>controller.abort(new ImportFailure('translation','document_operation_failed'));
+    contents?.on('did-start-navigation',navigating);contents?.on('did-frame-navigate',changed);
+    contents?.once('destroyed',closed);contents?.once('render-process-gone',closed);
+    operation.cleanup=()=>{
+      contents?.removeListener('did-start-navigation',navigating);contents?.removeListener('did-frame-navigate',changed);
+      contents?.removeListener('destroyed',closed);contents?.removeListener('render-process-gone',closed);
+      if(operation.contents && !operation.contents.isDestroyed()) {
+        operation.contents.removeListener('destroyed',workerGone);operation.contents.removeListener('render-process-gone',workerGone);
+      }
+    };
+    try {
+      await waitFor(()=>{
+        this.pending.push(operation);this.dispatch();return operation.ready.promise;
+      },operation.signal,deadline,'translation','sandbox_queue');
+      this.current(operation);
+      operation.contents.once('destroyed',workerGone);operation.contents.once('render-process-gone',workerGone);
+      await waitFor(()=>operation.window.loadURL(operation.url),operation.signal,deadline,'translation','sandbox_load');
+      await waitFor(()=>operation.contents.executeJavaScript('window.allfoldTranslatorReady.then(()=>{if(window.allfoldTranslatorError)throw Error("Translator initialization failed");return null;})'),
         operation.signal,deadline,'translation','sandbox_init');
       this.current(operation);return operation;
-    }catch(error){await this.endOperation(operation);throw error;}
+    }catch(error){operation.interrupted=true;await this.endOperation(operation);throw error;}
   }
-  async endOperation(operation) {
-    operation.controller.abort();operation.cleanup?.();
-    if(this.operation!==operation)return;
-    this.operation=null;
-    if(!this.window.isDestroyed())await this.window.loadURL('about:blank').catch(()=>{});
+  endOperation(operation) {
+    return operation.ended ||= this.release(operation);
+  }
+  async release(operation) {
+    const {window,contents}=operation;
+    const reusable=!operation.signal.aborted && !operation.interrupted;
+    operation.controller.abort();operation.cleanup();
+    const index=this.pending.indexOf(operation);
+    if(index!==-1)this.pending.splice(index,1);
+    if(!window)return;
+    // Revoke the renderer's authority before draining its native HTTP requests.
+    sandboxOperations.delete(contents);
+    try {
+      // Electron navigation callbacks can trigger this cleanup. Leave their
+      // native callback scope before destroying the worker window.
+      await new Promise(resolve=>setImmediate(resolve));
+      if(!reusable && !window.isDestroyed())window.destroy();
+      await Promise.allSettled(operation.requests);
+      if(reusable && !window.isDestroyed() && !this.stopped.signal.aborted) {
+        // An empty document removes callbacks and operation tokens before reuse.
+        await waitFor(()=>window.loadURL('about:blank'),this.stopped.signal,Date.now()+5000,'translation','sandbox_reset');
+        this.idle.push(window);
+      }
+    }catch {
+      // Failed reset discards this worker. An unrelated queued request can still run.
+    }finally {
+      if(!this.idle.includes(window) && !window.isDestroyed())window.destroy();
+      this.active.delete(operation);this.dispatch();
+    }
   }
   async run(doc,method,args,options) {
     const operation=await this.openOperation(doc,options);
@@ -107,9 +204,12 @@ class TranslatorSandbox {
     }finally{await this.endOperation(operation);}
   }
   async invoke(operation,method,args,deadline) {
-    const result=await waitFor(()=>this.window.webContents.executeJavaScript(
-      'window.allfoldTranslator.'+method+'('+JSON.stringify(args)+')'),operation.signal,deadline,'translation','translator');
-    this.current(operation);return result;
+    try {
+      this.current(operation);
+      const result=await waitFor(()=>operation.contents.executeJavaScript(
+        'window.allfoldTranslator.'+method+'('+JSON.stringify(args)+')'),operation.signal,deadline,'translation','translator');
+      this.current(operation);return result;
+    }catch(error){operation.interrupted=true;throw error;}
   }
   async completeHistory(source,doi,historyKinds,initial,{signal,deadline,logContext,sourceFrame,translatorID}) {
     const candidates=new Map(initial.map(item=>[item.kind+':'+item.value,item]));
@@ -141,13 +241,21 @@ class TranslatorSandbox {
     sourceFrame();
     return [...candidates.values()];
   }
-  async translate(root,doi,{signal,deadline:taskDeadline=Infinity,forEnrichment=false,historyKinds=[],workspaceMetadata,logContext}={}) {
+  translate(root,doi,options) {
+    const running=this.translateDocument(root,doi,options);
+    this.translations.add(running);
+    return running.finally(()=>this.translations.delete(running));
+  }
+  async translateDocument(root,doi,{signal,deadline:taskDeadline=Infinity,forEnrichment=false,historyKinds=[],workspaceMetadata,logContext}={}) {
     doi=normalizeDOI(doi);
     const browser=this.browser,contents=browser.tabs?.get(root.pageId)?.view.webContents,lifecycle=new AbortController();
     const owner=browser.operation;
-    const activeSignal=AbortSignal.any([lifecycle.signal,...(signal?[signal]:[])]);
-    const current=()=>{checkCanceled(activeSignal);if(!browser.documentCurrent(root))throw new ImportFailure('translation','document_changed');};
-    const changed=()=>{if(!browser.documentCurrent(root))lifecycle.abort(new ImportFailure('translation','document_changed'));};
+    const activeSignal=AbortSignal.any([lifecycle.signal,this.stopped.signal,...(signal?[signal]:[])]);
+    const isCurrent=doc=>documentCurrent(browser,owner,doc);
+    const current=()=>{checkCanceled(activeSignal);if(!isCurrent(root))throw new ImportFailure('translation','document_changed');};
+    const changed=()=>inBrowserOperation(browser,owner,()=>{
+      if(!isCurrent(root))lifecycle.abort(new ImportFailure('translation','document_changed'));
+    });
     const closed=()=>lifecycle.abort(new ImportFailure('translation','page_closed'));
     const navigatedFrames=new Set();
     let historySource;
@@ -158,11 +266,11 @@ class TranslatorSandbox {
       const originalURL=event.isMainFrame?root.url:selected?historySource.url:token?frame.url:null;
       // A site's replaceState with the current URL keeps both the document and the route.
       if(event.isSameDocument && event.url===originalURL)return;
-      if(token)navigatedFrames.add(token);
+      if(token && forEnrichment && historyKinds.length)navigatedFrames.add(token);
       if(event.isMainFrame || selected)
         lifecycle.abort(new ImportFailure('translation','document_changed'));
     };
-    if(forEnrichment && historyKinds.length)contents?.on('did-start-navigation',navigationStarted);
+    contents?.on('did-start-navigation',navigationStarted);
     contents?.on('did-frame-navigate',changed);contents?.once('destroyed',closed);contents?.once('render-process-gone',closed);
     let documents=[root],result,watches=[],frameChanged=false;
     const frameLoaded=()=>{frameChanged=true;};contents?.on('did-frame-finish-load',frameLoaded);
@@ -185,7 +293,7 @@ class TranslatorSandbox {
             log('info','translator_detected',{...logContext,stage:'translation',candidate_count:detected.candidates?.length || 0});
             if(!detected.ok)last=detected;
             for(const candidate of detected.candidates || [])candidates.push({doc,candidate,index});
-          }catch(error){current();checkCanceled(bounded);if(doc.rootFrameToken&&!browser.documentCurrent(doc)){frameChanged=true;continue;}throw error;}
+          }catch(error){current();checkCanceled(bounded);if(doc.rootFrameToken&&!isCurrent(doc)){frameChanged=true;continue;}throw error;}
         }
         candidates.sort((a,b)=>a.candidate.priority-b.candidate.priority
           || Number(!!a.doc.rootFrameToken)-Number(!!b.doc.rootFrameToken) || a.index-b.index);
@@ -199,7 +307,7 @@ class TranslatorSandbox {
             if(!last.ok)log('warn','translation_attempt_failed',{...logContext,stage:'translation',metadata_source:'web',translator:last.translator,translator_id:last.translatorID,code:last.error?.code || 'translator_failed',status:last.error?.status,transport_code:last.error?.code,net_error:last.error?.net_error,
               error_kind:last.error?.error_kind,error_name:last.error?.error_name,api_name:last.error?.api_name});
             if(last.ok)return {...last,sourceDocument:doc,metadataSource:'web',historyDeadline:deadline};
-          }catch(error){current();checkCanceled(bounded);if(doc.rootFrameToken&&!browser.documentCurrent(doc)){frameChanged=true;continue;}throw error;}
+          }catch(error){current();checkCanceled(bounded);if(doc.rootFrameToken&&!isCurrent(doc)){frameChanged=true;continue;}throw error;}
         }
         result=last;
       }while(frameChanged);
@@ -215,11 +323,11 @@ class TranslatorSandbox {
           const signature=watchKey();
           try {
             for(const watch of watches) {
-              if(!browser.documentCurrent(watch.doc))continue;
+              if(!isCurrent(watch.doc))continue;
               try {
                 const observation=await browser.observeDOM(watch.doc,watch.configs,{signal:bounded,deadline});
                 if(observation)observations.push(observation);
-              }catch(error){current();checkCanceled(bounded);if(!browser.documentCurrent(watch.doc))continue;throw error;}
+              }catch(error){current();checkCanceled(bounded);if(!isCurrent(watch.doc))continue;throw error;}
             }
             if(!observations.length)break;
             result=await scan(bounded,deadline);
@@ -237,7 +345,7 @@ class TranslatorSandbox {
       });
       current();
       if(!result.ok) {
-        const source=documents.find(doc=>doc.type==='application/pdf'&&browser.documentCurrent(doc)) || root;
+        const source=documents.find(doc=>doc.type==='application/pdf'&&isCurrent(doc)) || root;
         result=await this.run(source,'searchDOI',{doi,url:source.url,forEnrichment},{signal:activeSignal,deadline:taskDeadline,logContext});
         failed(result);current();
         if(!result.ok)log('warn','translation_attempt_failed',{...logContext,stage:'translation',metadata_source:'doi',code:result.error?.code || 'translator_failed',status:result.error?.status,transport_code:result.error?.code,net_error:result.error?.net_error,
@@ -264,7 +372,7 @@ class TranslatorSandbox {
         historySource=result.sourceDocument;
         const sourceFrame=()=>{
           current();
-          if(browser.operation!==owner || navigatedFrames.has(historySource.frameToken) || !browser.documentCurrent(historySource))
+          if(navigatedFrames.has(historySource.frameToken) || !isCurrent(historySource))
             throw new ImportFailure('translation','document_changed');
           const frame=browser.documentFrame?.(historySource);
           if(frame && frame.url!==historySource.url)throw new ImportFailure('translation','document_changed');
@@ -273,7 +381,7 @@ class TranslatorSandbox {
         dateCandidates=await this.completeHistory(historySource,doi,historyKinds,dateCandidates,
           {signal:activeSignal,deadline:result.historyDeadline,logContext,sourceFrame,translatorID:result.translatorID});
       }
-      log('info','translation_completed',details);this.lastTranslator=result.translator;
+      log('info','translation_completed',details);
       return {item:result.items[0],apiItem:result.apiItem,proxy:result.proxy || null,sourceDocument:result.sourceDocument,metadataSource:result.metadataSource,
         dateCandidates,translator:result.translator,translatorID:result.translatorID};
     }finally {
@@ -282,6 +390,13 @@ class TranslatorSandbox {
       contents?.removeListener('did-start-navigation',navigationStarted);
     }
   }
-  close() {this.operation?.cleanup?.();this.operation?.controller.abort();this.operation=null;ipcMain.removeHandler('translator:request');if(this.window&&!this.window.isDestroyed())this.window.destroy();}
+  close() {
+    if(this.drained)return this.drained;
+    this.stopped.abort(new ImportFailure('translation','canceled'));
+    for(const window of this.idle.splice(0))if(!window.isDestroyed())window.destroy();
+    const operations=[...this.pending,...this.active];
+    this.drained=Promise.allSettled([...operations.map(operation=>this.endOperation(operation)),...this.translations]).then(()=>{});
+    return this.drained;
+  }
 }
 module.exports={TranslatorSandbox,validateTranslatorURL,workspaceItem};

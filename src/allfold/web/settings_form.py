@@ -69,6 +69,7 @@ class SettingsFormValues:
     institution_idp_entity_id: str = ""
     institution_use_shibboleth: bool = False
     institution_issues: tuple[SettingsIssue, ...] = ()
+    prepare_service_concurrency: str = "5"
     auto_import_after_preparation: bool = False
     transition_delay_seconds: str = "3"
     display_name: str = ""
@@ -136,6 +137,7 @@ def settings_form_from_draft(draft: MonitorDraft) -> SettingsFormValues:
         monitor_revision_digest=monitor_digest,
         journal_revision_exists=journal_exists,
         journal_revision_digest=journal_digest,
+        prepare_service_concurrency=str(draft.kept_workflow.prepare_service_concurrency),
         auto_import_after_preparation=draft.kept_workflow.auto_import_after_preparation,
         transition_delay_seconds=str(draft.kept_workflow.transition_delay_seconds),
         display_name=draft.kept_workflow.display_name or "",
@@ -172,7 +174,7 @@ def settings_form_from_submission(form: FormData) -> SettingsFormValues:
     group_names = tuple(str(value) for value in form.getlist("settings_group"))
     institution_fields = {"institution_name", "institution_idp_entity_id", "institution_use_shibboleth"}
     # Enumerate the existing editor/import contract so credential aliases cannot be ignored.
-    workflow_fields = {"auto_import_after_preparation", "transition_delay_seconds", "display_name", "zotero_target"}
+    workflow_fields = {"prepare_service_concurrency", "auto_import_after_preparation", "transition_delay_seconds", "display_name", "zotero_target"}
     supported_fields = institution_fields | workflow_fields | {
         "csrf_token", "name", "keyword_expression", "output_dir", "log_level",
         "from_month", "to_month", "crossref_mailto",
@@ -240,6 +242,7 @@ def settings_form_from_submission(form: FormData) -> SettingsFormValues:
         institution_idp_entity_id=str(form.get("institution_idp_entity_id", "")),
         institution_use_shibboleth=form.get("institution_use_shibboleth") == "1",
         institution_issues=institution_issues,
+        prepare_service_concurrency=str(form.get("prepare_service_concurrency", "5")),
         auto_import_after_preparation=form.get("auto_import_after_preparation") == "1",
         transition_delay_seconds=str(form.get("transition_delay_seconds", "3")),
         display_name=str(form.get("display_name", "")),
@@ -286,6 +289,7 @@ def settings_draft_from_form(
         issues.append(_form_issue("institution." + str(detail["loc"][0]), detail["msg"]))
     try:
         kept_workflow = KeptWorkflowConfig(
+            prepare_service_concurrency=int(str(values.prepare_service_concurrency)),
             auto_import_after_preparation=values.auto_import_after_preparation,
             transition_delay_seconds=float(values.transition_delay_seconds),
             display_name=values.display_name,

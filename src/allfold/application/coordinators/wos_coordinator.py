@@ -24,14 +24,13 @@ from allfold.persistence.user_state import load_user_state, read_user_state
 from allfold.persistence.journal_registry import local_candidates
 from allfold.date_range import resolve_date_range
 from allfold.persistence.safe_write import CompareReadError, ContentChangedError, read_text_exact, workspace_operation_lock, workspace_text_directory
-from allfold.application.coordinators.preparation_coordinator import PreparationPhase
 from allfold.providers.wos import WoSRecords, compile_wos_query, combined_query, match_journal, record_paper, record_evidence, parse_tagged, read_export
 
 
 class WoSCoordinator:
-    def __init__(self, config_path, preparation, run_slot, *, bridge, browser_lock, diagnostics=None):
+    def __init__(self, config_path, login, run_slot, *, bridge, browser_lock, diagnostics=None):
         self.diagnostics = diagnostics
-        self.path, self.preparation, self.run_slot = config_path, preparation, run_slot
+        self.path, self.login, self.run_slot = config_path, login, run_slot
         self.lock = threading.RLock()
         self.task = None
         self.last = None
@@ -55,14 +54,10 @@ class WoSCoordinator:
         if snapshot.revision.digest != config.user_state_revision:
             raise ContentChangedError('User state changed while reading Run WoS configuration')
         services = snapshot.state.access_services
-        matches = [s for s in services if s.name == 'Web of Science' and s.access_method == 'carsi']
+        matches = [service for service in services if service.name == 'Web of Science']
         if len(matches) != 1:
-            raise ValueError('Run WoS requires exactly one saved CARSI Service named Web of Science')
+            raise ValueError('Save one Web of Science Service in ACCESS, then open Workflows → Login')
         service = matches[0]
-        institution = config.institution
-        if not (institution and (institution.name or (institution.use_shibboleth and institution.idp_entity_id))):
-            raise ValueError('Select an Institution first; institution search requires its name, '
-                             'or enable Shibboleth with a Public IdP Entity ID')
         dates = resolve_date_range(config.date_spec)
         return config, compiled, service, dates
 
@@ -94,11 +89,14 @@ class WoSCoordinator:
             task = self.task
             enabled, message = False, ''
             try:
-                self._configuration()
+                _, _, service, _ = self._configuration()
                 enabled = self._browser_available()
                 if not enabled:
                     message = 'Browser runtime unavailable'
-            except (ValueError, OSError) as error:
+                elif self.login.prepared_page(BrowserServiceSnapshot.read(self.path), service.id) is None:
+                    enabled = False
+                    message = 'Prepare Web of Science in Workflows → Login'
+            except (ValueError, OSError, ContentChangedError) as error:
                 message = str(error)
             result = task['result'] if task else None
             snapshot = dict(provider=RunProvider.WOS.value, status=task['status'] if task else 'IDLE', result=result,
@@ -175,6 +173,9 @@ class WoSCoordinator:
             saved = BrowserServiceSnapshot.read(self.path)
             if saved.config_contents != config_text or saved.revision != state_revision:
                 raise ContentChangedError('Configuration changed before Run WoS start')
+            page = self.login.prepared_page(saved, service.id)
+            if page is None:
+                raise ValueError('Prepare Web of Science in Workflows → Login')
             if parent_snapshot is None and not self.run_slot.acquire(blocking=False):
                 raise ValueError('Another Run is already active')
             owner = self.browser_lock.acquire('wos')
@@ -187,13 +188,13 @@ class WoSCoordinator:
                 compiled=compiled, service=service, dates=dates,
                 service_scope=saved.scope,
                 config_text=config_text, state_revision=state_revision,
-                workspace_identity=workspace_identity, status='RUNNING', stage='Access Check', message='Starting CARSI',
+                workspace_identity=workspace_identity, status='RUNNING', stage='WoS Query', message='Using prepared WoS page',
                 started_at=datetime.now(timezone.utc).isoformat(), started_clock=time.monotonic(),
                 cancelled=cancel_event if cancel_event is not None else threading.Event(), records=WoSRecords(), query=dict(text=query, next_first=1, total=None, seen=set(), finished=False),
                 identifiers={identifier: journal for journal in config.journals for identifier in journal.identifiers},
                 not_listed=not_listed, batches={}, download_root=None, waiting_for_user=False, date_warnings=[],
-                issues=[], warnings=warnings, raw_records=0, matched_journal_records=0, unmatched_journal_records=0, no_doi=0,
-                eligible_records=0, journal_counts={}, writes=WoSWrites(), result=None, prep=None)
+                issues=[], warnings=warnings, raw_records=0, page_id=page, matched_journal_records=0, unmatched_journal_records=0, no_doi=0,
+                eligible_records=0, journal_counts={}, writes=WoSWrites(), result=None)
             if parent_snapshot is None:
                 observe(self.diagnostics, "begin", "run", task["id"], provider="wos")
             self.task = task
@@ -223,11 +224,7 @@ class WoSCoordinator:
                 return False
             task['cancelled'].set()
             task['message'] = 'Canceling; waiting for in-flight browser calls to settle'
-            prep = task['prep']
-            if prep and self.preparation.snapshot().authorization_pending:
-                self.preparation.cancel(prep.task_id, prep.generation)
-            else:
-                self.bridge.cancel_current()
+            self.bridge.cancel_current()
             return True
 
     def check_dispatch_authority(self, cancel_event):
@@ -383,30 +380,7 @@ class WoSCoordinator:
                 self._current(task)
                 if task['cancelled'].is_set():
                     raise InterruptedError()
-                prep = self.preparation.start(self.path, service=task['service'], browser_owner=task['owner'],
-                    workflow_id=task['id'], parent_task_id=task['id'])
-                task['prep'] = prep
-            while self.preparation.snapshot().authorization_pending:
-                snapshot = self.preparation.snapshot()
-                task.update(message=snapshot.message, waiting_for_user=snapshot.waiting_for_user)
-                self._publish_progress(task)
-                if task['cancelled'].is_set():
-                    self.preparation.cancel(prep.task_id, prep.generation)
-                time.sleep(.1)
-            if task['cancelled'].is_set():
-                raise InterruptedError()
-            preparation = self.preparation.snapshot()
-            if (preparation.phase is PreparationPhase.BLOCKED and any(
-                    result.reason in {'institution_credentials_rejected', 'carsi_session_expired', 'timeout'}
-                    for result in preparation.results)):
-                raise ValueError(preparation.message)
-            page = self.preparation.wos_handoff(prep.task_id, prep.generation)
-            if page is None:
-                from allfold.browser_diagnostics import format_browser_diagnostic
-                diagnostic = next((result.diagnostic for result in preparation.results if result.diagnostic), None)
-                if diagnostic:
-                    raise ValueError(format_browser_diagnostic(diagnostic))
-                raise ValueError('CARSI did not open an attributable WoS target page')
+            page = task['page_id']
             task.update(stage='WoS Query', waiting_for_user=False)
             self._publish_progress(task)
             query = self._electron_call(task, 'wos_query', {'page_id': page, 'query': task['query']['text']})
@@ -473,7 +447,6 @@ class WoSCoordinator:
             task['issues'].append(str(error) if isinstance(error, (ValueError, OSError, ContentChangedError)) else 'WoS browser execution failed')
         finally:
             try:
-                self.preparation.join()
                 self._complete(task)
             finally:
                 with self.lock:

@@ -15,7 +15,7 @@ const {failedImport}=require('./workflows/import-errors.cjs');
 const {BrowserFailure,diagnosticFor}=require('./browser/browser-errors.cjs');
 const {log,errorCode,initializeLogging,withLogContext,associationLogContext,diagnosticsReset,diagnosticsStatus,setLogLevel} = require('./shared/logging.cjs');
 const {operationAssociation}=require('./browser/page-association.cjs');
-const {prepareService,searchJournalCover}=require('./workflows/browser-operations.cjs');
+const {loginInstitution,prepareLoggedInService,visitManualService,prepareService,searchJournalCover}=require('./workflows/browser-operations.cjs');
 const {wosQuery,wosExport}=require('./workflows/wos-operations.cjs');
 const {readCASCredentials,casStatus,saveCASCredentials,clearCASCredentials,casErrorCode}=require('./auth/cas-credentials.cjs');
 const {confirmConfigurationExit,confirmBlockedUnload}=require('./shared/configuration-exit.cjs');
@@ -174,11 +174,16 @@ async function executeOperation(message,current) {
             waiting=data.waiting_for_user;
             log('info','manual_wait',{...diagnostic,...context,page_id:browser.taskTab?.id,waiting});
           }
-          send({type:'progress',id:message.id,action:message.action,data});
+          send({type:'progress',id:message.id,action:message.action,data:{...data,page_id:browser.taskTab?.id}});
         };
-        if(message.action === 'prepare_service') {
+        if(message.action === 'login_carsi') {
+          stage='authentication';
+          return await loginInstitution(browser,message.data,{signal:controller.signal,progress});
+        } else if(message.action === 'prepare_service' || message.action === 'visit_manual_service') {
           stage='preparation';
-          return await prepareService(browser,message.data,{signal:controller.signal,progress});
+          const prepare=message.action==='visit_manual_service'?visitManualService
+            :message.data.portal_page_id!=null?prepareLoggedInService:prepareService;
+          return await prepare(browser,message.data,{signal:controller.signal,progress});
         } else if(message.action === 'search_journal_cover') {
           return await searchJournalCover(browser,message.data,{signal:controller.signal,progress});
         } else if(message.action === 'wos_query' || message.action === 'wos_export') {

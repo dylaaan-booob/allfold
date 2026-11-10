@@ -53,7 +53,7 @@ test('inline Kept recovers from Archive into visible controls and retains identi
   assert.equal(ui.calls.some(([url])=>url.endsWith('/start') || url.endsWith('/continue')),false);
   const taskPageButton=ui.get('kept-flow-actions').children.find(node=>node.textContent==='查看任务页面');
   assert.equal(taskPageButton.hidden,false);await taskPageButton.emit('click');
-  assert.deepEqual(JSON.parse(JSON.stringify(ui.presentations)),[{workflowId:'workflow-1',source:'kept',taskId:'prepare-1'}]);
+  assert.deepEqual(JSON.parse(JSON.stringify(ui.presentations)),[{workflowId:'workflow-1',taskId:'prepare-1'}]);
   await ui.get('kept-continue').emit('click');
   const continuation=ui.calls.find(([url])=>url.endsWith('/continue'));
   assert.deepEqual(JSON.parse(JSON.stringify(continuation[1])),{workflow_id:'workflow-1',generation:7});
@@ -72,7 +72,7 @@ test('restored inline Run browser stage opens its existing task page and cancels
   assert.equal(ui.get('run-view').open,false);assert.equal(ui.stats().visuals,0);
   const button=ui.get('run-status-area').children.find(node=>node.textContent==='查看任务页面');
   assert.equal(button.hidden,false);await button.emit('click');
-  assert.deepEqual(JSON.parse(JSON.stringify(ui.presentations)),[{workflowId:'run-1',source:'run'}]);
+  assert.deepEqual(JSON.parse(JSON.stringify(ui.presentations)),[{workflowId:'run-1'}]);
   await ui.get('run-wos-cancel').emit('click');
   assert.deepEqual(JSON.parse(JSON.stringify(ui.calls.find(([path])=>path.endsWith('/cancel'))[1])),{});
   assert.equal(ui.calls.filter(([path,body])=>path==='/api/ui-next/run-wos' && body).length,0);

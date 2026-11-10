@@ -12,18 +12,20 @@ function fixture({preferences={},tabs=[],services={scope:{scope_id:'scope-a'},se
     insertBefore(child,next){child.remove();child.parentElement=this;this.children.splice(next?this.children.indexOf(next):this.children.length,0,child);}
     remove(){if(this.parentElement)this.parentElement.children=this.parentElement.children.filter(child=>child!==this);this.parentElement=null;}
     contains(node){return node===this || this.children.some(child=>child.contains(node));}
-    closest(selector){return selector==='[hidden]'?(this.hidden?this:this.parentElement?.closest(selector)):null;}
+    closest(selector){return selector.includes('[hidden]')?(this.hidden?this:this.parentElement?.closest(selector)):null;}
     focus(){document.activeElement=this;}
-    getBoundingClientRect(){return this.id==='browser-body'?{x:0,y:160,left:0,top:160,width:720,height:600}:{x:0,y:0,left:0,top:0,width:1000,height:600};}
+    getBoundingClientRect(){return this.id==='browser-body'?{x:0,y:160,left:0,top:160,width:720,height:600,right:720,bottom:760}:{x:0,y:0,left:0,top:0,width:1000,height:600};}
     querySelectorAll(){return [];}
     scrollIntoView(){}
   }
-  const document={body:new Element('body'),documentElement:new Element('html'),activeElement:null,
+  const document={addEventListener(){},body:new Element('body'),documentElement:new Element('html'),activeElement:null,
     getElementById:id=>{if(!elements.has(id))elements.set(id,new Element(id));return elements.get(id);},
     createElement:()=>new Element(),
     querySelector:selector=>selector==='.masthead'?document.getElementById('masthead'):document.getElementById('footer'),
     querySelectorAll:selector=>selector==='dialog[open]'?[...elements.values()].filter(node=>node.open):[]};
   const window=new EventTarget();window.window=window;window.workspaceNavigation={current:()=>window.workspace || 'workspace'};
+  window.allfoldLayout={create:()=>({sync(){},closeFlyout(){}}),subscribe(){}};
+  window.workspaceSearch={register(){},registerCommand(){},refresh(){}};
   window.uiNext={notice:message=>calls.push({notice:message}),request:async()=>services};
   let state={selected:null,tabs,taskPageId:null};
   window.allfoldDesktop={browserState:async()=>state,showBrowser:async()=>state,
@@ -55,56 +57,22 @@ test('Browser presentation preserves business DOM and suspends native content fo
   assert.equal(reader.scrollTop,230);
   assert.equal(input.value,'unsaved');assert.equal(f.document.activeElement,input);
 });
-test('Kept Compact and Focus share the pane and existing Page; returning restores Queue focus',async()=>{
-  const f=fixture(),host=f.document.getElementById('kept-browser-host'),input=f.document.getElementById('kept-start');
-  f.window.workspace='kept';input.focus();
-  assert.equal(await f.window.allfoldWorkbench.showKeptBrowser({mode:'compact'}),true);f.flush();
-  const pane=f.document.getElementById('browser-pane');
-  assert.equal(pane.parentElement,host);assert.equal(pane.dataset.mode,'compact');
-  assert.equal(f.document.getElementById('allfold-pane').inert,false);
-  f.document.getElementById('browser-focus').dispatchEvent(new Event('click'));f.flush();
-  assert.equal(pane.parentElement,host);assert.equal(pane.dataset.mode,'focus');
-  f.window.allfoldWorkbench.hideKeptBrowser();f.flush();
-  assert.equal(pane.hidden,true);assert.equal(f.document.activeElement,input);
-  assert.equal(f.calls.some(call=>['new','navigate','reload'].includes(call.action)),false);
-});
-test('Focus makes room for its Page while each mode retains its tool expansion and Services preference',async()=>{
-  const f=fixture();f.window.workspace='kept';await f.window.allfoldWorkbench.showKeptBrowser();f.flush();
-  const click=id=>{f.document.getElementById(id).dispatchEvent(new Event('click'));f.flush();};
-  const address=f.document.getElementById('browser-address'),area=f.document.getElementById('browser-work-area');
-  assert.equal(address.hidden,false);assert.equal(area.style['--browser-services-width'],'288px');
-  click('browser-tools-toggle');assert.equal(address.hidden,true);
-  click('browser-focus');assert.equal(address.hidden,true);assert.equal(area.style['--browser-services-width'],'0px');
-  click('browser-tools-toggle');assert.equal(address.hidden,false);
-  click('browser-compact');assert.equal(address.hidden,true);assert.equal(area.style['--browser-services-width'],'288px');
-  click('browser-focus');assert.equal(address.hidden,false);
-  assert.equal(f.storage.has('allfold.browser-services-expanded'),false);
-});
-test('Run task page handoff uses temporary Focus and restores the original Run',async()=>{
+test('Discover task handoff uses shared Focus Browser and restores the source control',async()=>{
   const f=fixture(),input=f.document.getElementById('run-show-task-page');f.window.workspace='run';input.focus();
-  f.setState({selected:3,taskPageId:8,tabs:[{id:8,association:{workflow_id:'run-a',task_id:'prepare-a',active:true,role:'wos-query'}}]});
-  assert.equal(await f.window.allfoldWorkbench.showTaskPage({workflowId:'run-a',source:'run'}),true);f.flush();
-  assert.equal(f.document.getElementById('browser-pane').dataset.mode,'focus');
-  assert.equal(f.document.getElementById('browser-pane').parentElement,f.document.getElementById('workbench-content'));
-  assert.match(f.document.getElementById('browser-return').textContent,/RUN/);
+  f.setState({selected:3,taskPageId:8,tabs:[{id:8,association:{workflow_id:'run-a',task_id:'query-a',active:true,role:'wos-query'}}]});
+  assert.equal(await f.window.allfoldWorkbench.showTaskPage({workflowId:'run-a'}),true);f.flush();
+  assert.equal(f.document.getElementById('browser-pane').hidden,false);
   f.window.allfoldWorkbench.hide();f.flush();assert.equal(f.document.activeElement,input);
   assert.equal(f.window.workspace,'run');assert.equal(f.calls.filter(call=>call.action==='select').at(-1).id,8);
 });
 test('overlapping Flyout and Overlay Sidebar suspend the native Page; hidden and docked panes do not',async()=>{
   const f=fixture();await f.window.allfoldWorkbench.show();f.flush();
-  const overlay=f.document.getElementById('flyout');overlay.getBoundingClientRect=()=>({left:30,top:170,width:280,height:300});
+  const overlay=f.document.getElementById('flyout');overlay.getBoundingClientRect=()=>({left:30,top:170,width:280,height:300,right:310,bottom:470});
   const queries=f.document.querySelectorAll;f.document.querySelectorAll=selector=>selector.startsWith('.navigation-flyout')?[overlay]:queries(selector);
   f.mutate();f.flush();assert.equal(f.calls.at(-1).suspended,true);
   overlay.hidden=true;f.mutate();f.flush();assert.equal(f.calls.at(-1).suspended,false);
   overlay.hidden=false;overlay.getBoundingClientRect=()=>({left:800,top:170,width:200,height:300});
   f.mutate();f.flush();assert.equal(f.calls.at(-1).suspended,false);
-});
-test('leaving the Kept workspace hides its native View without recreating the pane on return',async()=>{
-  const f=fixture();f.window.workspace='kept';await f.window.allfoldWorkbench.showKeptBrowser();f.flush();
-  const pane=f.document.getElementById('browser-pane');f.window.workspace='run';f.window.dispatchEvent(new Event('workspace-navigation-state'));f.flush();
-  assert.equal(f.calls.at(-1).visible,false);assert.equal(f.window.allfoldWorkbench.visible(),false);
-  f.window.workspace='kept';f.window.dispatchEvent(new Event('workspace-navigation-state'));f.flush();
-  assert.equal(f.calls.at(-1).visible,true);assert.equal(f.document.getElementById('browser-pane'),pane);
 });
 test('Browser body resize after host zoom publishes freshly measured CSS bounds',async()=>{
   const f=fixture();await f.window.allfoldWorkbench.show();f.flush();
@@ -144,31 +112,22 @@ test('WoS handoff finds a CARSI child task by owning Run workflow and precise Ke
   assert.equal(f.calls.filter(call=>call.action==='select').at(-1).id,10);
   assert.equal(f.calls.some(call=>call.action==='new'),false);
 });
-test('tabs and Services expose the same Page IDs, isolate scope and update a reused ImportPage',async()=>{
+test('one grouped list preserves Page identities, scope and managed toolbar controls',async()=>{
   const f=fixture({services:{scope:{scope_id:'scope-a'},services:[{id:'service-a',name:'Library',access_method:'manual'}]}});
-  await f.window.allfoldWorkbench.show();
-  const page=(id,scope,service,role)=>({id,title:'Page '+id,url:'https://unrelated.test/',association:
+  await f.window.allfoldWorkbench.show();await Promise.resolve();
+  const page=(id,scope,service,role)=>({id,title:'Page '+id,url:'https://same.test/',back:true,forward:true,association:
     role?{role,service_scope:scope?{scope_id:scope}:null,service_id:service}:null});
-  f.setState({selected:1,tabs:[page(1,'scope-a','service-a','import'),page(2,'scope-b','service-a','popup'),
-    page(3,null,null,'carsi-portal'),page(4,null,null,null)]});
-  const groups=f.document.getElementById('browser-service-pages').children;
+  f.setState({selected:1,tabs:[{...page(1,'scope-a','service-a','import'),managed:true},page(2,'scope-b','service-a','popup'),
+    page(3,null,null,'carsi-portal'),page(4,null,null,null),{...page(5,null,null,'popup'),openerId:3}]});
+  const list=f.document.getElementById('browser-tabs'),groups=list.children;
   assert.equal(groups.length,4);
-  assert.deepEqual(groups.map(group=>group.children[1].children.map(row=>Number(row.dataset.pageId))).flat(),[1,2,3,4]);
-  assert.match(groups[0].children[0].textContent,/Library/);
-  assert.doesNotMatch(groups[1].children[0].textContent,/Library/);
-  f.setState({selected:1,tabs:[page(1,'scope-b','service-a','import')]});
-  assert.equal(f.document.getElementById('browser-tabs').children[0].dataset.pageId,'1');
-  assert.equal(f.document.getElementById('browser-service-pages').children.length,1);
-});
-test('Services preferences validate saved values and temporary shrinking never overwrites desired width',async()=>{
-  const f=fixture({preferences:{'allfold.browser-services-width':'99999','allfold.browser-services-expanded':'wrong'}});
-  f.flush();
-  const area=f.document.getElementById('browser-work-area');
-  assert.equal(area.style['--browser-services-width'],'288px');
-  area.getBoundingClientRect=()=>({width:240});f.resize();f.flush();
-  assert.equal(area.style['--browser-services-width'],'0px');
-  assert.equal(f.storage.get('allfold.browser-services-width'),'99999');
-  f.document.getElementById('browser-services-toggle').dispatchEvent(new Event('click'));
-  assert.equal(f.storage.get('allfold.browser-services-expanded'),'false');
-  assert.equal(f.calls.some(call=>call.action==='new'),false);
+  assert.deepEqual(groups.map(group=>group.children[0].textContent),['CARSI','Library','Service service-a','Other']);
+  assert.deepEqual(groups.map(group=>group.children[1].children.map(row=>Number(row.dataset.pageId))),[[3,5],[1],[2],[4]]);
+  assert.equal(groups[1].children[1].children[0].children[1].hidden,true);
+  assert.equal(f.document.getElementById('browser-url').readOnly,true);
+  assert.equal(f.document.getElementById('browser-back').disabled,true);
+  assert.equal(f.document.getElementById('browser-reload').disabled,false);
+  f.setState({selected:1,tabs:[{...page(1,'scope-b','service-a','import'),managed:true,busy:true}]});
+  assert.equal(list.children.length,1);assert.equal(list.children[0].children[1].children[0].dataset.pageId,'1');
+  assert.equal(f.document.getElementById('browser-reload').disabled,true);
 });

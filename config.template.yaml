@@ -27,6 +27,7 @@ institution:
   idp_entity_id: ''
   use_shibboleth: false
 kept_workflow:
+  prepare_service_concurrency: 5
   auto_import_after_preparation: false
   transition_delay_seconds: 3.0
   display_name: ''

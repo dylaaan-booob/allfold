@@ -146,7 +146,8 @@ test('a committed host document resets layout sequence after a final old-documen
 test('Browser rejects malformed commands and layout rectangles before changing native presentation',async t=>{
   const {BrowserRuntime,host}=fixture(t),browser=new BrowserRuntime({hostWindow:host});t.after(()=>browser.close());await browser.show();
   for(const command of [null,[],{action:'select',id:'1'},{action:'select'},{action:'new',unexpected:true},
-    {action:'navigate',url:7},{action:'reload',url:'https://one.test/'},{action:'close',id:-1},{action:'arbitrary'}])
+    {action:'navigate',url:7},{action:'reload',url:'https://one.test/'},{action:'close',id:-1},{action:'arbitrary'},
+    ...['devtools','cache-size','clear-cache','clear-site-data'].map(action=>({action}))])
     await assert.rejects(browser.command(command),/Invalid Browser command/);
   for(const bounds of [{x:-1,y:0,width:10,height:10},{x:0,y:0,width:Infinity,height:10},
     {x:0,y:0,width:10,height:10,extra:1}])assert.throws(()=>browser.setPresentation({sequence:1,visible:true,suspended:false,bounds}),/Invalid Browser bounds/);

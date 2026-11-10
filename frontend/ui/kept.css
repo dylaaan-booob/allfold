@@ -31,15 +31,6 @@
 #kept-workspace .s-button{border:1px solid var(--ink);padding:5px 10px;font-size:11px}
 #kept-workflow-host{flex:0 0 auto;max-height:32%;overflow:auto}
 #kept-workspace #kept-inline{overflow:auto;margin:0;padding:8px}
-#kept-workspace[data-browser-visible=true] :is(.kept-queue-heading,#kept-zotero-target,#kept-import-actions,#kept-task-page){display:none}
-#kept-workspace[data-browser-visible=true] #kept-scope-status{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-#kept-workspace[data-browser-visible=true] #kept-workflow-host{max-height:82px}
-#kept-workspace[data-browser-visible=true] #kept-phase{margin-bottom:3px;font-size:11px}
-#kept-workspace[data-browser-visible=true] #kept-flow-actions{flex-direction:row;flex-wrap:wrap;gap:6px}
-#kept-workspace[data-browser-visible=true] #kept-flow-gate{width:auto;flex:1;flex-direction:row;gap:6px}
-#kept-workspace[data-browser-visible=true] #kept-gate-message{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:40%}
-#kept-workspace[data-browser-visible=true] #kept-manual-services{width:auto;max-height:32px}
-#kept-workspace[data-browser-visible=true] #kept-continue{padding:5px}
 @container workspace-content (max-width:500px){#kept-main{padding:10px}.kept-queue-heading h1{font-size:20px}}
 #array-index{flex:1;min-height:0;overflow:auto;padding:0;scrollbar-width:thin}
 .kept-center{display:flex;flex-direction:column;min-height:0;min-width:0;padding:20px 24px 12px}

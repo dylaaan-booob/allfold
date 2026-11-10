@@ -102,10 +102,8 @@ def config_files(tmp_path):
 @pytest.mark.parametrize('change_after_query', [False, True])
 def test_coordinator_preserves_saved_service_scope_and_prepared_page_across_batches(tmp_path, change_after_query):
     from concurrent.futures import Future
-    from types import SimpleNamespace
     from allfold.application.browser_runtime import BrowserTaskLock
     from allfold.application.browser_services import BrowserServiceSnapshot
-    from allfold.application.coordinators.preparation_coordinator import PreparationPhase
     from allfold.application.coordinators.wos_coordinator import WoSCoordinator
 
     from safety_config_helpers import current_mapping_document
@@ -118,21 +116,10 @@ def test_coordinator_preserves_saved_service_scope_and_prepared_page_across_batc
         AccessService.create('Web of Science', 'https://www.webofscience.com/'))), initial.revision)
     saved = BrowserServiceSnapshot.read(path)
 
-    class Preparation:
-        def start(self, config_path, *, service, browser_owner, workflow_id, parent_task_id):
-            assert workflow_id == parent_task_id
-            self.workflow_id = workflow_id
-            assert service.name == 'Web of Science'
-            self.service = service
-            return self.snapshot()
-        def snapshot(self):
-            return SimpleNamespace(task_id='preparation', generation=1, phase=PreparationPhase.COMPLETED,
-                authorization_pending=False, message='Prepared', waiting_for_user=False)
-        def wos_handoff(self, task_id, generation):
-            assert (task_id, generation) == ('preparation', 1)
+    class Login:
+        def prepared_page(self, saved, service_id):
+            assert any(service.id == service_id and service.name == "Web of Science" for service in saved.services)
             return 71
-        def join(self):
-            pass
 
     class Bridge:
         connected = True
@@ -152,19 +139,19 @@ def test_coordinator_preserves_saved_service_scope_and_prepared_page_across_batc
             future.set_result(result)
             return future
 
-    bridge, prep, lock = Bridge(), Preparation(), BrowserTaskLock()
+    bridge, login, lock = Bridge(), Login(), BrowserTaskLock()
     from allfold.diagnostics import DiagnosticStore
     store = DiagnosticStore(path, root=tmp_path / "logs")
-    coordinator = WoSCoordinator(path, prep, threading.Lock(), bridge=bridge, browser_lock=lock, diagnostics=store)
-    coordinator.start()
+    coordinator = WoSCoordinator(path, login, threading.Lock(), bridge=bridge, browser_lock=lock, diagnostics=store)
+    start = coordinator.start()
     coordinator.join()
     assert [action for action, _ in bridge.calls] == (['wos_query'] if change_after_query else
                                                      ['wos_query', 'wos_export', 'wos_export'])
-    assert all(data['page_id'] == 71 and data['service_id'] == prep.service.id
+    assert all(data['page_id'] == 71 and data['service_id'] == next(s.id for s in saved.services if s.name == 'Web of Science')
                and data['service_scope'] == saved.scope for _, data in bridge.calls)
     assert len({data['task_id'] for _, data in bridge.calls}) == 1
-    assert all(data['workflow_id'] == prep.workflow_id for _,data in bridge.calls)
-    assert store.history()['records'][0]['task_id'] == prep.workflow_id
+    assert all(data['workflow_id'] == start['snapshot']['task_id'] for _,data in bridge.calls)
+    assert store.history()['records'][0]['task_id'] == start['snapshot']['task_id']
     assert store.history()['records'][0]['outcome'] == ('failed' if change_after_query else 'completed')
     assert coordinator.state()['snapshot']['status'] == 'FINISHED'
     assert lock.owner is None
@@ -186,7 +173,7 @@ def test_coordinator_preserves_saved_service_scope_and_prepared_page_across_batc
             INTEGRATED_RUN_SCHEMA_VERSION, RunProvider.INTEGRATED,
             ResolvedDateRange(date(2026, 1, 1), date(2026, 1, 31)), RecordedRunOutcome.COMPLETED,
             RunFacts.model_validate(value['result']['facts'])))
-        restarted = WoSCoordinator(path, prep, threading.Lock(), bridge=bridge, browser_lock=lock)
+        restarted = WoSCoordinator(path, login, threading.Lock(), bridge=bridge, browser_lock=lock)
         restored = restarted.state()['latest']
         assert restored == value
         summary = build_run_result_summary(restored)

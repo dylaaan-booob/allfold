@@ -1,7 +1,11 @@
 'use strict';
 const {app,session,protocol}=require('electron');
 const assert=require('node:assert/strict'),fs=require('node:fs'),os=require('node:os'),path=require('node:path');
+const {AsyncLocalStorage}=require('node:async_hooks');
 const profile=fs.mkdtempSync(path.join(os.tmpdir(),'allfold-translator-profile-'));app.setPath('userData',profile);
+// Unlike the desktop app, the fixture has no host window to keep it alive
+// when the last offscreen worker is discarded after cancellation.
+app.on('window-all-closed',()=>{});
 protocol.registerSchemesAsPrivileged([{scheme:'allfold-zotero',privileges:{standard:true,secure:true,supportFetchAPI:true}}]);
 const {TranslatorSandbox}=require('../src/zotero/translator.cjs');
 const {BrowserRuntime}=require('../src/browser/browser-runtime.cjs');
@@ -166,11 +170,28 @@ async function browserHistory() {
 }
 app.whenReady().then(async()=>{
   const partition=session.fromPartition('allfold-offline-source'),requests=[];
+  const simultaneous=new Set(),bothArrived=Promise.withResolvers();
+  const canceledHTTP=Promise.withResolvers(),canceledResponse=Promise.withResolvers(),releasedHTTP=new Set();
+  const drainingHTTP=Promise.withResolvers(),drainingResponse=Promise.withResolvers();
   // This synthetic protocol is the only publisher/DOI transport; no Zotero or network endpoint is contacted.
-  await partition.protocol.handle('https',request=>{
+  await partition.protocol.handle('https',async request=>{
     requests.push({url:request.url,method:request.method,accept:request.headers.get('Accept')});
     assert.equal(request.method,'GET');assert.equal(new URL(request.url).hostname,'doi.org');
-    return new Response(JSON.stringify({type:'article-journal',DOI:doi,title:'Offline DOI Translation',
+    const requestDOI=decodeURIComponent(new URL(request.url).pathname.slice(1));
+    if(['10.5555/worker-a','10.5555/worker-b'].includes(requestDOI)) {
+      simultaneous.add(requestDOI);
+      if(simultaneous.size===2)bothArrived.resolve();
+      await bothArrived.promise;
+    }
+    if(requestDOI==='10.5555/cancel-active') {
+      canceledHTTP.resolve();
+      await canceledResponse.promise;
+    }
+    if(requestDOI==='10.5555/drain-worker') {
+      drainingHTTP.resolve();
+      await drainingResponse.promise;
+    }
+    return new Response(JSON.stringify({type:'article-journal',DOI:requestDOI,title:requestDOI===doi?'Offline DOI Translation':requestDOI,
       'container-title':'Offline Journal',author:[{family:'Smith',given:'Alex'}],issued:{'date-parts':[[2026,3,14]]}}),
       {status:200,headers:{'Content-Type':'application/vnd.citationstyles.csl+json'}});
   });
@@ -197,12 +218,77 @@ app.whenReady().then(async()=>{
   browser.translationDocuments=async()=>[{...doc,html:html.replace(doi,'10.5555/other')}];
   const doiOnly=await sandbox.translate(doc,doi,{forEnrichment:true,historyKinds});
   assert.equal(doiOnly.metadataSource,'doi');assert.equal(doiOnly.dateCandidates,undefined);
+  const owners=new AsyncLocalStorage();
+  const concurrentBrowser={partition,tabs:new Map(),get operation(){return owners.getStore();},
+    runInOperation:(owner,run)=>owners.run(owner,run),
+    ownsPage:(owner,pageId)=>owner?.pageId===pageId,
+    documentCurrent:value=>value.frameToken===owners.getStore()?.frameToken,
+    translationDocuments:async value=>[value],
+    cookieAdapter:{register:({doc})=>({release:()=>releasedHTTP.add(doc.frameToken)})}};
+  sandbox.browser=concurrentBrowser;
+  const workSource=(workDOI,pageId)=>({...blank,pageId,frameToken:workDOI,documentId:workDOI});
+  const concurrent=await Promise.all(['10.5555/worker-a','10.5555/worker-b'].map((workDOI,index)=>{
+    const source=workSource(workDOI,index+8);
+    return owners.run(source,()=>sandbox.translate(source,workDOI,{deadline:Date.now()+5000}));
+  }));
+  assert.deepEqual(concurrent.map(result=>[result.metadataSource,result.item.DOI,result.item.title]),[
+    ['doi','10.5555/worker-a','10.5555/worker-a'],['doi','10.5555/worker-b','10.5555/worker-b'],
+  ]);
+  assert.deepEqual(simultaneous,new Set(['10.5555/worker-a','10.5555/worker-b']));
+  const canceledSource=workSource('10.5555/cancel-active',10),otherSource=workSource('10.5555/other-active',11);
+  const queuedSource=workSource('10.5555/cancel-queued',12),activeController=new AbortController();
+  const open=(source,options)=>owners.run(source,()=>sandbox.openOperation(source,{deadline:Date.now()+5000,...options}));
+  const [first,second]=await Promise.all([open(canceledSource,{signal:activeController.signal}),open(otherSource)]);
+  const request=(operation,token)=>operation.window.webContents.executeJavaScript('window.translatorHost.request('+JSON.stringify({
+    operationId:token,method:'GET',url:'https://doi.org/forged',
+  })+')');
+  try {
+    assert.notEqual(first.window.webContents.id,second.window.webContents.id);
+    const countBeforeForgery=requests.length;
+    await assert.rejects(request(second,first.id),/Expired or untrusted Translator operation/);
+    otherSource.frameToken='replaced-document';
+    await assert.rejects(request(second,second.id),/document_changed/);
+    otherSource.frameToken=otherSource.documentId;
+    assert.equal(requests.length,countBeforeForgery);
+    await assert.rejects(open(queuedSource,{deadline:Date.now()+50}),{diagnostic:{stage:'translation',step:'sandbox_queue',code:'timeout'}});
+    const queuedController=new AbortController(),queued=open(queuedSource,{signal:queuedController.signal});
+    queuedController.abort();
+    await assert.rejects(queued,{message:'canceled'});
+    const invoke=(source,operation)=>owners.run(source,()=>sandbox.invoke(operation,'searchDOI',
+      {doi:source.documentId,url:source.url},Date.now()+5000));
+    const canceled=assert.rejects(invoke(canceledSource,first).finally(()=>sandbox.endOperation(first)),{message:'canceled'});
+    await Promise.race([canceledHTTP.promise,canceled]);
+    activeController.abort();
+    await canceled;
+    assert.ok(releasedHTTP.has(canceledSource.frameToken),'canceled renderer transport must settle before its slot is released');
+    const unaffected=await invoke(otherSource,second);
+    assert.equal(unaffected.items[0].DOI,otherSource.documentId);
+    const reused=await open(queuedSource);
+    try {
+      await assert.rejects(request(reused,first.id),/Expired or untrusted Translator operation/);
+    } finally {await sandbox.endOperation(reused);}
+  }finally {
+    canceledResponse.resolve();
+    await Promise.all([sandbox.endOperation(first),sandbox.endOperation(second)]);
+  }
+  sandbox.browser=browser;
   const operation=await sandbox.openOperation(doc);
   try {
-    const capabilities=await sandbox.window.webContents.executeJavaScript('({count:window.allfoldTranslator.count,writer:typeof Zotero.ItemSaver,connector:typeof Zotero.Connector,botBypass:typeof Zotero.BotBypass,virtualSaver:typeof Zotero.Translate.ItemSaver})');
+    const capabilities=await operation.window.webContents.executeJavaScript('({count:window.allfoldTranslator.count,writer:typeof Zotero.ItemSaver,connector:typeof Zotero.Connector,botBypass:typeof Zotero.BotBypass,virtualSaver:typeof Zotero.Translate.ItemSaver})');
     assert.deepEqual(capabilities,{count:752,writer:'undefined',connector:'undefined',botBypass:'undefined',virtualSaver:'function'});
   }finally{await sandbox.endOperation(operation);}
   await browserHistory();
-  console.log('OFFICIAL TRANSLATOR RUNTIME PASS');sandbox.close();app.quit();
-}).catch(error=>{console.error(error);sandbox?.close();app.exit(1);});
+  sandbox.browser=concurrentBrowser;
+  const drainSource=workSource('10.5555/drain-worker',13);
+  const drained=assert.rejects(owners.run(drainSource,()=>sandbox.translate(drainSource,drainSource.documentId,
+    {deadline:Date.now()+5000})),{message:'canceled'});
+  await Promise.race([drainingHTTP.promise,drained]);
+  try {
+    await sandbox.close();
+    assert.ok(releasedHTTP.has(drainSource.frameToken));
+    await drained;
+    await assert.rejects(open(queuedSource),{message:'canceled'});
+  }finally{drainingResponse.resolve();}
+  console.log('OFFICIAL TRANSLATOR RUNTIME PASS');app.quit();
+}).catch(async error=>{console.error(error);await sandbox?.close();app.exit(1);});
 app.on('will-quit',()=>fs.rmSync(profile,{recursive:true,force:true}));

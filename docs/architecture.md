@@ -113,15 +113,16 @@ authenticated native bridge and compare encrypted-store revisions.
 ## Workbench and task presentation
 
 The main Window contains Chrome, a flexible Workbench Content region and Status.
-Its business workspaces are Workspace, Run, Journals, Kept and Settings, with
-History retained separately. Kept's Queue is the default; its Browser host can
-present the same native page in Compact or Focus. Run WoS uses temporary Focus
-and returns to its original Run state. Presentation changes do not restart tasks
-or recreate business pages. Container measurements own available height; the
-Browser toolbar, tabs and Services occupy trusted DOM space outside the native
-webpage rectangle.
+Its business workspaces are Workspace, Workflows, Journals and Settings.
+Workflows keeps Login, Discover and Import to Zotero under one navigation entry.
+Browser, Search and History are shared header tools. Quick Open reads the current
+local Paper, Journal, saved Service and native tab projections, dispatching each
+selection to its owning controller. A `>` prefix searches the command registry.
+Browser fills Workbench Content while the business surface retains its state.
+The address toolbar and left navigation rail occupy trusted DOM space outside
+the native webpage rectangle.
 
-ARRAY, Run, Journals, Kept and Settings share a presentation-only Navigation Rail,
+ARRAY, Workflows, Journals and Settings share a presentation-only Navigation Rail,
 overlay Index/Directory flyout, Content and Functional Sidebar/Tool Rail. Their
 mounted hosts retain expansion and compute docked/overlay geometry from actual
 container bounds; targets and measured widths stay separate. Business Controllers
@@ -130,7 +131,11 @@ for size constraints, preference behavior and acceptance boundaries.
 
 BrowserRuntime owns physical pages, task associations and their shared Session. Browser Presentation owns attaching, showing, hiding, sizing and explicitly focusing a selected WebContentsView on the main window. The trusted renderer reports its measured webpage body in CSS pixels through a restricted, sequenced IPC. Main converts with the host's actual Zoom Factor to Electron logical pixels, independently of display DPR, and validates sender, main frame, command, Page ID and rectangle against the host content bounds. Hiding Browser or suspending it for a trusted dialog does not destroy pages or cancel operations. Fullscreen task surfaces can be suspended for explicit Browser interaction and resumed without restarting their player or changing task state.
 
-Tabs and Services project the same Page IDs. A Service group is keyed by scope ID and saved Service ID; saved names supply labels. Unassigned/shared pages retain their actual roles and source-page relationships. Grouping does not infer institutions from URLs or become another Service mapping. User panel width and collapse preferences are separate from a window-constrained effective width.
+One Tabs flyout groups Page IDs under CARSI, a scoped saved Service, or Other.
+A Service group is keyed by scope ID and saved Service ID; saved names supply
+labels. Unassigned and shared pages use explicit roles and recorded provenance.
+The directory uses the shared layout controller for flyout size, focus and scroll.
+Grouping grants no task, document or authentication authority.
 
 Archive availability and fullscreen task presentation are local UI preferences, outside YAML Save and business SQLite. Archive defaults disabled while its existing resources and layout preference remain available. Legacy Paper links resolve against the current ARRAY candidate/kept collection or report a missing Paper. Run and Kept keep one business coordinator each: polling, workflow identity/generation, Continue/Cancel permissions, terminal acknowledgement, result writes and refresh do not depend on a visual player. The presentation choice is captured at start or restore; changing the preference does not restart work. Inline mode allows safe workspace navigation and does not force a page change at completion.
 

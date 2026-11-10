@@ -219,10 +219,14 @@ class ZoteroTarget(BaseModel):
         return self
 
 
+DEFAULT_PREPARE_SERVICE_CONCURRENCY = 5
+
+
 class KeptWorkflowConfig(BaseModel):
     """Public display and explicit Kept workflow preferences."""
 
     model_config = ConfigDict(extra="forbid", frozen=True)
+    prepare_service_concurrency: int = Field(default=DEFAULT_PREPARE_SERVICE_CONCURRENCY, strict=True, ge=1, le=5)
     auto_import_after_preparation: bool = Field(default=False, strict=True)
     transition_delay_seconds: float = Field(default=3, strict=True, gt=0, allow_inf_nan=False)
     display_name: str | None = None
