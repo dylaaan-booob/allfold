@@ -208,12 +208,15 @@ async function executeOperation(message,current) {
         };
         const {page_id,source_page_id,generation,...associationContext}=associationLogContext(browser.operation.association);
         const recoveryContext={...associationContext,...context};
+        let recoveryAction;
         const recordRecovery=(event,details)=>{
           recovery.record(event,{...details,...recoveryContext});
-          if(event==='recovery_scheduled' || event==='service_cooldown_started' && details.waiting===true) {
-            try {progress({recovery_action:details.recovery_action},details.stage);}
-            catch (_) {}
-          }
+          const started=event==='recovery_scheduled' || event==='service_cooldown_started' && details.waiting===true;
+          const ended=['recovery_succeeded','recovery_exhausted','service_cooldown_ended'].includes(event);
+          if(!started && !(ended && recoveryAction===details.recovery_action))return;
+          recoveryAction=started?details.recovery_action:undefined;
+          try {progress({recovery_action:recoveryAction},details.stage);}
+          catch (_) {}
         };
         browser.operation.recordRecovery=recordRecovery;
         if(['prepare_service','enrich_paper','import_paper'].includes(message.action))
