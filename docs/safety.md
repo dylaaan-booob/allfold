@@ -21,6 +21,24 @@ These invariants apply across modules. Field-level definitions remain in code; t
 
 Use isolated configuration, Workspace and transport fixtures. Offline checks do not prove live authentication, challenge completion, native saving or PDF storage. Inspect actual Zotero state before retrying an uncertain save. Apply the existing manual boundary to CAPTCHA, MFA and ambiguous pages; run supported Cloudflare solving automatically within the originating request and document deadline. hCaptcha waits for manual verification.
 
+A managed refresh is eligible only within the current owned main-frame load and
+before business actions. The Browser filters aborted, obsolete URL and frame
+events, and observes non-GET navigation through the existing Session listeners.
+A stateful authentication action or manual verification blocks replay of that
+attempt. CARSI reentry after Visit requires an acknowledged click and one
+attributable target. Before any Visit, the resource search must have reached a
+verified detail document through the existing read-only controls.
+
+Before reentry or initial Paper replacement, the native operation rechecks its
+authority on the original authenticated bridge request. Python verifies the saved
+configuration, User State and Service preparation key or the exact Paper and
+Workspace. The boolean response is bound to that invocation, with a five-second
+timeout within its original deadline. Native code independently verifies the
+attempt owner and live Page or Document. Internal retirement revokes only the
+failed attempt, including its observers and private pages. The parent task,
+shared CARSI Portal and Session remain in use. Reentry keeps the existing
+authentication record and never grants new credential authority.
+
 Last Import is an in-memory observation of the latest execution. Parent/children
 queries use only the fixed instance, Library and known keys; PDF Yes also requires
 confirmed upload registration. Failed reads and unresolved writes remain unable
