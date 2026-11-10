@@ -55,10 +55,11 @@ function apiParent(item,prepared) {
  if(parent.accessDate==='CURRENT_TIMESTAMP')parent.accessDate=new Date().toISOString();
  delete parent.dateAdded;delete parent.dateModified;return parent;
 }
-async function saveImportOnce({item,apiItem,doi,doc,browser,signal,target,api,requestHTTP=requestSessionHTTP,fallbackPDF,logContext}) {
+async function saveImportOnce({item,apiItem,doi,doc,browser,signal,target,api,requestHTTP=requestSessionHTTP,fallbackPDF,logContext,resources}) {
  if(normalizeDOI(item.DOI)!==normalizeDOI(doi) || typeof item.title!=='string' || !item.title.trim() || typeof item.itemType!=='string' || ['multiple','webpage','attachment','note'].includes(item.itemType))throw Error('Parent does not match target DOI');
  target=validateTarget(target);
  const current=()=>{if(signal?.aborted || !browser.documentCurrent(doc))throw Object.assign(Error('Import canceled or document changed'),{code:signal?.aborted?'canceled':'document_changed'});};
+ const write=operation=>resources?resources.write(signal,current,operation):operation(current);
  const result={parent:{outcome:'no_effect'},pdf:{outcome:'unverified',registered:false,source:null,receipts:[],failures:[]},
    zotero:{target,parent_key:null,attachment_keys:[],note_keys:[]},settled:true};
  const record=(error,phase='initial_fetch')=>{const value={phase,code:error.code || 'failed',...(error.status?{status:error.status}:{})};result.pdf.failures.push(value);log('warn','attachment_failure',{...logContext,stage:'attachment',attachment_phase:phase,...value});return value;};
@@ -68,12 +69,12 @@ async function saveImportOnce({item,apiItem,doi,doc,browser,signal,target,api,re
  if(normalizeDOI(parent.DOI)!==normalizeDOI(doi))throw Error('Prepared metadata does not match target DOI');
  result.zotero.parent_key=parentKey;
  result.parent={outcome:'uncertain',requested_id:parentKey};
- try {const receipt=await api.create(target,parent,{beforeDispatch:current});result.parent={outcome:'confirmed',requested_id:parentKey,accepted_id:parentKey,status:receipt.status,protocol:'local-api-v3'};}
+ try {const receipt=await write(beforeDispatch=>api.create(target,parent,{beforeDispatch}));result.parent={outcome:'confirmed',requested_id:parentKey,accepted_id:parentKey,status:receipt.status,protocol:'local-api-v3'};}
  catch(error){if(error.no_effect)result.parent={...result.parent,outcome:'no_effect'};result.stop_batch=true;result.diagnostic={stage:'parent_save',code:error.code || 'failed',...(error.status?{status:error.status}:{})};result.error='Save failed or is uncertain. Inspect Zotero before retrying.';return result;}
  const createChild=async(value,kind)=>{
    current();const key=objectKey();result.zotero[kind].push(key);
    // Once dispatched, never replay or replace this object after any error.
-   await api.create(target,{...value,key,version:0,parentItem:parentKey,tags:value.tags || [],relations:value.relations || {}},{beforeDispatch:current});return key;
+   await write(beforeDispatch=>api.create(target,{...value,key,version:0,parentItem:parentKey,tags:value.tags || [],relations:value.relations || {}},{beforeDispatch}));return key;
  };
  let attachmentWriteFailed=false;
  for(const note of item.notes || []) {
@@ -119,12 +120,13 @@ async function saveImportOnce({item,apiItem,doi,doc,browser,signal,target,api,re
    throw downloadError;
  };
  const saveAttachment=async(attachment,source)=>{
-   let downloaded;try{downloaded=await fetchAttachment(attachment,source);}catch(error){record(error,source==='translator'?'initial_fetch':'oa_resolver');return false;}
+   const fetch=()=>fetchAttachment(attachment,source);
+   let downloaded;try{downloaded=await (resources?resources.download(signal,fetch):fetch());}catch(error){record(error,source==='translator'?'initial_fetch':'oa_resolver');return false;}
    const {bytes,mime,url}=downloaded,isPDF=mime==='application/pdf',filename=isPDF?'paper.pdf':mime==='application/epub+zip'?'paper.epub':'attachment.bin';
    let key;
    try {
      key=await createChild({itemType:'attachment',linkMode:'imported_url',title:attachment.title || (isPDF?'Full Text PDF':'Attachment'),url:safeAttachmentURL(attachment._allfoldProperURL || url),contentType:mime,filename},'attachment_keys');
-     current();await api.upload(target,key,bytes,{filename,contentType:mime,beforeDispatch:current});
+     current();await write(beforeDispatch=>api.upload(target,key,bytes,{filename,contentType:mime,beforeDispatch}));
      if(isPDF){result.pdf.registered=true;result.pdf.source=source;result.pdf.receipts.push({key,endpoint_completed:true,registered:true,source});}return true;
    }catch(error){attachmentWriteFailed=true;result.stop_batch=true;record(error,key?'attachment_save':'attachment_create');if(isPDF)result.pdf.receipts.push({key:key || result.zotero.attachment_keys.at(-1),endpoint_completed:false,registered:false,source});return false;}
  };
