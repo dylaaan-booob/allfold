@@ -20,8 +20,9 @@ const settings={csrf_token:'fixture',issues:[],covers:{},cover_search,saved_work
 const paper={id:'paper-1',title:'Synthetic kept paper',doi:'10.5555/presentation',publication_date:'2026-10-01',status:'kept',abstract:'Synthetic fixture only',authors:[],enrichPhase:'Idle'};
 const record={key:'0000-0001',...journals[0],labels:[],papers:[]};
 const workspace={csrf_token:'fixture',import_token:'fixture',issues:[],counts:{candidates:0,active_journals:1},subjects:[{name:'Synthetic Group',journals:[record]}],kept:{papers:[{paper,journal:record}],journals:[record],services,settings:{},titles:{'paper-1':paper.title}}};
-const queue={services:[{id:'all',name:'All Services',kept:1,eligible:1},{id:serviceId,name:services[0].name,kept:1,eligible:1},{id:'unassigned',name:'Unassigned',kept:0,eligible:0},{id:'ambiguous',name:'Ambiguous',kept:0,eligible:0}],papers:[{paper_id:'paper-1',title:paper.title,doi:paper.doi,service_id:serviceId,assignment:'assigned',reason:''}],import_token:'fixture'};
-let keptState={active:false,phase:'idle',navigation:null,can_continue:false,can_cancel:false},runActive=false;
+const queue={unprepared_services:[services[0]],services:[{id:'all',name:'All Services',kept:1,eligible:1},{id:serviceId,name:services[0].name,kept:1,eligible:1},{id:'unassigned',name:'Unassigned',kept:0,eligible:0},{id:'ambiguous',name:'Ambiguous',kept:0,eligible:0}],papers:[{paper_id:'paper-1',title:paper.title,doi:paper.doi,service_id:serviceId,assignment:'assigned',reason:''}],import_token:'fixture'};
+let loginState={active:false,phase:'idle',scope,carsi:{status:'Not prepared'},services:services.map(service=>({...service,preparation:{status:'Not prepared'}}))};
+let keptState={active:false,phase:'idle',navigation:null,can_cancel:false},runActive=false;
 const runData=()=>({active:runActive,snapshot:{status:runActive?'RUNNING':'IDLE',provider:'integrated',task_id:'run-a',browser_active:runActive,waiting_for_user:runActive},progress:{stage_label:'Waiting for synthetic challenge',elapsed_text:'2s',announcement_message:'Local fixture only'},providers:Object.fromEntries(['integrated','wos'].map(id=>[id,{enabled:true,message:'',snapshot:{status:id==='wos'&&runActive?'RUNNING':'IDLE'},result_summary:null}]))});
 const requests=[],workspaceReads={started:0,inFlight:0,lastCandidateIds:[]};
 const challenge=`<!doctype html><html><head><meta charset="utf-8"><style>*{box-sizing:border-box}body{margin:0;padding:10px;font:16px/1.4 sans-serif;background:#f2f5fb;color:#192942}h1{font-size:18px;margin:0 0 8px}.box{border:2px solid #4a68a0;background:white;padding:8px}label{display:block;margin:4px 0}input,button{font:inherit;min-height:30px;max-width:100%}#result{font-weight:bold}#long{height:700px;background:linear-gradient(#edf2fa,#c5d3e8)}</style></head><body><h1>Local synthetic challenge</h1><form class="box"><label><input id="human" type="checkbox"> Check square</label><label>Code <input id="code" size="5"></label><button id="verify">Verify code</button><output id="result">Waiting</output></form><div id="long">Scroll to final control</div><button id="bottom">Final control</button><p id="bottom-result"></p><script>window.fixtureLoad=crypto.randomUUID();document.cookie='synthetic_session=preserved; SameSite=Lax';document.querySelector('form').onsubmit=event=>{event.preventDefault();result.textContent=human.checked&&code.value==='42'?'Synthetic challenge complete':'Try code 42'};bottom.onclick=()=>document.getElementById('bottom-result').textContent='Clicked';</script></body></html>`;
@@ -33,10 +34,13 @@ const server=http.createServer(async(req,res)=>{
   if(route==='/checkbox-frame'){res.writeHead(200,{'Content-Type':'text/html'});res.end('<input type="checkbox">');return;}
   if(route.startsWith('/api/')||route==='/settings/covers/search'){
     let body='';for await(const chunk of req)body+=chunk;requests.push({route,body:body?JSON.parse(body):null});
-    if(route==='/api/kept-workflow/start')keptState={workflow_id:'kept-a',generation:7,planned_total:3,batch:{total:3,task_id:'import-a',results:[{paper_id:'previous-1',service_id:serviceId,parent_outcome:'confirmed',outcome:'exported'},{paper_id:'previous-2',service_id:serviceId,parent_outcome:'uncertain',outcome:'stopped'}]},service_id:serviceId,service_name:services[0].name,preparation_task_id:'prepare-a',phase:'waiting_for_user',active:true,can_continue:false,can_cancel:true,waiting_for_login:true,mode:'prepare_import',settings:{display_name:'Synthetic researcher',auto_import_after_preparation:false},preparation:{services,manual_services:[],results:[]},message:'Local synthetic challenge needs manual input'};
-    if(route==='/api/kept-workflow/cancel')keptState={...keptState,phase:'interrupted',active:false,can_cancel:false,waiting_for_login:false,navigation:'kept'};
-    if(route==='/api/kept-workflow/acknowledge')keptState={active:false,phase:'idle',navigation:null,can_continue:false,can_cancel:false};
-    const data=route==='/api/ui-next/workspace'?workspace:route==='/api/ui-next/settings'?settings:route==='/api/kept-workflow/queue'?queue:
+    if(route==='/api/login/start')loginState={...loginState,phase:'completed',
+      services:services.map(service=>({...service,preparation:{status:'Needs attention',reason:'manual_action_required'}}))};
+    if(route==='/api/kept-workflow/start')keptState={workflow_id:'kept-a',generation:7,planned_total:1,
+      batch:{total:1,task_id:'import-a',results:[{paper_id:'paper-1',service_id:serviceId,
+        parent_outcome:'not_saved',outcome:'skipped',reason:'Unprepared Service skipped'}]},
+      phase:'completed',active:false,can_cancel:false,message:'Local synthetic Import settled'};
+    const data=route.startsWith('/api/login/')?loginState:route==='/api/ui-next/workspace'?workspace:route==='/api/ui-next/settings'?settings:route==='/api/kept-workflow/queue'?queue:
       route==='/api/ui-next/browser-services'?{scope,services}:route.startsWith('/api/ui-next/run')&&!route.endsWith('expression')?runData():
       route==='/api/ui-next/run-expression'?{providers:Object.fromEntries([...settings.values.provider_order,'integrated'].map(id=>[id,{expression:'causal',error:null}]))}:
       route==='/api/kept-workflow/state'||route==='/api/kept-workflow/start'||route==='/api/kept-workflow/cancel'||route==='/api/kept-workflow/acknowledge'?keptState:route==='/settings/covers/search'?cover_search:
@@ -86,6 +90,10 @@ app.whenReady().then(async()=>{
     await host("window.addEventListener('workflow-service-selected',event=>window.selectedService=event.detail.serviceId)");
     await search('Synthetic Service A');await key(win.webContents,'Enter');
     await ready(()=>host(`workspaceNavigation.current()==='login'&&window.selectedService===${JSON.stringify(serviceId)}`),'service search opens Login');
+    await ready(()=>host(`document.activeElement.dataset.serviceId===${JSON.stringify(serviceId)}`),'Service result focuses its Login row');
+    await click(win.webContents,'#login-start');
+    await ready(()=>host("document.getElementById('login-services').textContent.includes('Needs attention')"),'Login presents the Service result');
+    assert(requests.filter(request=>request.route==='/api/login/start').length===1,'Login did not submit one explicit task');
     await search('Synthetic kept paper');await key(win.webContents,'Enter');
     await ready(()=>host("workspaceNavigation.current()==='workspace'&&document.getElementById('view-paper-title').textContent==='Synthetic kept paper'"),'paper search opens Reader');
     const background=browser.createTab({present:false});await background.view.webContents.loadURL(origin+'/background-layout');
@@ -127,7 +135,15 @@ app.whenReady().then(async()=>{
     await ready(()=>host("workspaceNavigation.current()==='kept'&&!document.getElementById('kept-workspace').hidden"),'Import Workflows page');
     await click(win.webContents,'#browser-open');await measured('shipped Import Focus');
     await click(win.webContents,'#browser-return');assert(await host("workspaceNavigation.current()==='kept'&&document.activeElement.id==='browser-open'"),'Import page return focus');
-    keptState={active:false,phase:'idle',navigation:null,can_continue:false,can_cancel:false};browser.endTask();runActive=true;browser.beginOperation(new AbortController().signal,{workflow_id:'run-a',task_id:'prepare-wos',request_id:'request-run'});browser.associatePage(tab,{role:'wos-query'});browser.bindTaskPage(tab);await win.reload();
+    await ready(()=>host("!document.getElementById('kept-start').disabled"),'Import is ready');
+    await click(win.webContents,'#kept-start');
+    await ready(()=>host("document.getElementById('kept-confirm').open"),'Import asks about unprepared Services');
+    assert(!requests.some(request=>request.route==='/api/kept-workflow/start'),'Import dispatched before explicit skip');
+    await click(win.webContents,'#kept-continue');
+    await ready(()=>host("document.getElementById('kept-progress').textContent.includes('已跳过 1')"),'Import displays skipped count');
+    const importRequest=requests.find(request=>request.route==='/api/kept-workflow/start')?.body;
+    assert(importRequest?.skip_unprepared?.join()===serviceId&&!Object.hasOwn(importRequest,'mode'),'Import changed the skip decision or sent a legacy mode');
+    keptState={active:false,phase:'idle',navigation:null,can_cancel:false};browser.endTask();runActive=true;browser.beginOperation(new AbortController().signal,{workflow_id:'run-a',task_id:'query-wos',request_id:'request-run'});browser.associatePage(tab,{role:'wos-query'});browser.bindTaskPage(tab);await win.reload();
     await ready(()=>host("document.getElementById('run-view').open&&!document.querySelector('.run-task-page').hidden"),'actual restored Run fullscreen');assert(await host("workspaceNavigation.current()==='run'"),'restored Run fullscreen did not enter Run workspace');await click(win.webContents,'.run-task-page');await measured('shipped Run fullscreen handoff');
     assert(await host("!document.getElementById('browser-pane').hidden"),'actual Run handoff did not request Run Focus host');assert(browser.selected===tab,'Run retargeted unrelated task page');await capture('shipped-run-fullscreen-handoff');
     await click(win.webContents,'#browser-return');assert(await host("document.getElementById('run-view').open&&getComputedStyle(document.getElementById('run-view')).visibility==='visible'&&document.activeElement.classList.contains('run-task-page')&&!document.getElementById('run-wos-cancel').disabled"),'Run fullscreen return rights/focus');

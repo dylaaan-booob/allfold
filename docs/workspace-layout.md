@@ -47,7 +47,7 @@ The Electron window minimum is 600 × 480 logical pixels. The Chromium fixtures 
 | Browser | One grouped Tabs flyout opens from the left rail, with the webpage in Focus. Search and History temporarily suspend the native View. | Rendered fixtures use synthetic pages and check Page identity, overlays, input, focus and host zoom. |
 | Settings | Application/Appearance/Data/Developer use one bounded column; System diagnostics open through the Tool Rail. Container rules adapt fields without globally stacking workspace columns. | File, Reset and credential operations retain their own previews/confirmation. |
 | Archive | No new rails or visual redesign. Canvas retains its existing window geometry, inspection transitions and shared Reader lifecycle. Disable preference and the Index flyout's ARCHIVE entry remain. | DOM tests check restoration mechanics; the full animated Archive experience is not reaccepted by Browser tests. |
-| CSS/build | Window variables remain in shell rules; workspace dimensions stay local. `kept-app.css` remains generated film styling through the existing build. | Generated resources are rebuilt; vendor sources and animation assets remain unchanged. |
+| CSS/build | Window variables remain in shell rules; workspace dimensions stay local. The build bundles the ARRAY and Import controller. | Generated resources are rebuilt; the Discover animation retains its existing assets. |
 
 ## Verification boundaries
 

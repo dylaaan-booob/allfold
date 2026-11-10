@@ -56,10 +56,9 @@
 #configuration-workspace .s-directory-order .s-button{border:0;background:transparent}
 :is(#configuration-workspace,#settings-shell) :is(.s-primary,[data-run-provider]){background:var(--ink);color:var(--paper)}
 :is(#configuration-workspace,#settings-shell) :is(.s-primary,[data-run-provider]):hover:not(:disabled){background:var(--orange);color:var(--ink)}
-.kept-actions>button,.left-review-actions>button{height:auto;min-height:40px;border:1px solid var(--ink);background:var(--paper);padding:0 14px;font:600 11px/38px var(--font);letter-spacing:.1em;text-align:left;max-width:100%;white-space:normal;overflow-wrap:anywhere}
+.left-review-actions>button{height:auto;min-height:40px;border:1px solid var(--ink);background:var(--paper);padding:0 14px;font:600 11px/38px var(--font);letter-spacing:.1em;text-align:left;max-width:100%;white-space:normal;overflow-wrap:anywhere}
 #kept-start,#keep-paper{background:var(--ink);color:var(--paper)}
 #kept-start:hover:not(:disabled),#keep-paper:hover:not(:disabled){color:var(--orange)}
-#kept-import-only{position:relative;outline:1px solid var(--orange);outline-offset:3px}
 #cancel-enrich{height:22px;padding:0 10px;border:1px solid var(--ink);background:var(--paper);font:500 9px/20px var(--font);letter-spacing:.14em}
 /* style.js::cardFrame selection, 4px outer frame and 6px registration marks. */
 :is(.s-journal-card,.s-journal-row):hover{border-color:var(--orange)}
@@ -102,15 +101,12 @@ body:not([data-settings-open]) .header-browse>#s-save{display:none}
 /* archive.js::drawInfo track rows: 24px, 34px number slot. Dates keep their business width. */
 .paper-row{height:24px;padding:0;grid-template-columns:34px minmax(0,1fr) 80px;gap:0}
 .row-number{font-size:12px}
-#kept-import-only{display:flex;align-items:center;justify-content:space-between;gap:24px;color:var(--ink)}
-#kept-import-only svg{width:14px;height:14px;stroke:var(--orange);stroke-width:1.5;fill:none;flex-shrink:0}
 @media(max-width:600px){
   /* Preserve the Archive scene geometry; pan its original control strip locally. */
   .collection-bottom{left:18px;right:12px;max-width:calc(100% - 30px);overflow-x:auto;overflow-y:hidden;padding-bottom:8px;scrollbar-width:thin}
   .collection-bottom>*{flex-shrink:0}
 }
 
-@media(max-width:600px){.kept-actions{flex-direction:column}.kept-actions>button{width:100%}}
 
 
 

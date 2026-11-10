@@ -1,15 +1,15 @@
 'use strict';
 const test=require('node:test'),assert=require('node:assert/strict');
 const {taskUI}=require('./task-ui-fixture.cjs');
-const idle={phase:'idle',active:false,can_continue:false,can_cancel:false};
+const idle={phase:'idle',active:false,can_cancel:false};
 const queue={import_token:'all-token',services:[
   {id:'all',name:'All Services',kept:2,eligible:2},
   {id:'svc_a',name:'Service A',kept:1,eligible:1},
   {id:'svc_b',name:'Service B',kept:1,eligible:1},
   {id:'unassigned',name:'Unassigned',kept:0,eligible:0},
   {id:'ambiguous',name:'Ambiguous',kept:0,eligible:0}],papers:[]};
-const active={workflow_id:'fixed-a',generation:7,service_id:'svc_a',service_name:'Service A',phase:'waiting_for_user',
-  active:true,can_continue:true,can_cancel:true,settings:{},message:'Review Service A',preparation:{manual_services:[],results:[]}};
+const active={workflow_id:'fixed-a',generation:7,service_id:'svc_a',service_name:'Service A',phase:'importing',
+  active:true,can_cancel:true,message:'Importing Service A'};
 
 test('Last Import shows only Item PDF Fallback indicators, deduplicates Papers and keeps query failures unknown',async()=>{
  const results=[{paper_id:'saved',service_id:'svc_a',outcome:'exported',parent_outcome:'confirmed',item_exists:true,pdf_attached:true,pdf_source:'openalex',fallback_used:true,reason:'Registered fallback PDF'},
@@ -18,7 +18,7 @@ test('Last Import shows only Item PDF Fallback indicators, deduplicates Papers a
  assert.equal(f.get('kept-record-items').children.length,2);
  const text=f.get('kept-record-items').textContent;
  assert.match(text,/Item Yes.*PDF Yes.*Fallback Yes/s);assert.match(text,/PDF 无法核验.*Fallback 无法核验/s);
- assert.match(f.get('kept-queue-results').textContent,/查询：connection_lost/);
+ assert.match(text,/查询：connection_lost/);
  assert.ok(!text.includes('PDF unverified'));
 });
 
@@ -32,13 +32,14 @@ test('Kept captures its next saved Service before autosave and display changes c
   let release;
   f.window.allfoldAutosave={flush:()=>new Promise(resolve=>{release=resolve;})};
   await f.get('kept-service-list').children.find(row=>row.dataset.serviceId==='svc_a').emit('click');
-  await f.get('kept-start').emit('click');
+  const started=f.get('kept-start').emit('click');await f.settle();
   assert.equal(starts.length,0);
   await f.get('kept-service-list').children.find(row=>row.dataset.serviceId==='svc_b').emit('click');
-  release(true);await f.settle();
+  release(true);await started;
   assert.equal(starts.length,1);
   assert.equal(starts[0].service_id,'svc_a');assert.equal(starts[0].import_token,'a-token');
-  assert.match(f.get('kept-scope-status').textContent,/当前批次：Service A.*下一批：Service B/);
+  assert.match(f.get('kept-scope-status').textContent,/Service A/);
+  assert.match(f.get('kept-progress').textContent,/Service A/);
   assert.equal(f.get('kept-start').disabled,true);
 });
 
@@ -52,28 +53,35 @@ test('Unassigned and Ambiguous are display groups with no single Service executi
   assert.equal(f.calls.some(call=>call[0].endsWith('/start')),false);
 });
 
-test('Service groups filter batch results and Sidebar diagnostics by their execution assignment',async()=>{
-  const results=['svc_a','unassigned','ambiguous'].flatMap(group=>[1,2].map(index=>({
-    paper_id:`${group}-${index}`,service_id:group==='svc_a'?group:null,
-    service_assignment:group==='svc_a'?'assigned':group,outcome:'no_effect',parent_outcome:'not_saved',
-    reason:`${group} reason ${index}`,diagnostic:{stage:'import',step:group,code:`diagnostic-${index}`},
-  })));
-  // Current Queue mappings cannot change the recorded batch attribution.
+test('Import lists unprepared Services and starts only on explicit confirmation of the exact saved scope',async()=>{
+  const missing=[{id:'svc_a',name:'Service A'}],starts=[];
+  const f=await taskUI('kept.js',{page:'kept',request:async(url,body)=>{
+    if(url.includes('/queue'))return {...queue,unprepared_services:missing};
+    if(url.endsWith('/start')){starts.push(body);return active;}
+    return idle;
+  }});
+  await f.get('kept-start').emit('click');
+  assert.equal(f.get('kept-confirm').open,true);assert.equal(starts.length,0);
+  assert.equal(f.get('kept-confirm-services').textContent,'Service A');
+  await f.get('kept-confirm-login').emit('click');
+  assert.equal(f.page(),'login');assert.equal(starts.length,0);
+  f.setPage('kept');await f.get('kept-start').emit('click');await f.get('kept-continue').emit('click');
+  assert.deepEqual(JSON.parse(JSON.stringify(starts)),[{service_id:null,import_token:'all-token',skip_unprepared:['svc_a']}]);
+  assert.equal(f.calls.some(([url])=>url.endsWith('/continue')),false);
+});
+
+test('Import result details retain skipped Paper reasons and recorded Service attribution',async()=>{
+  const results=[{paper_id:'paper-a',service_id:'svc_a',outcome:'skipped',parent_outcome:'not_saved',
+    reason:'Unprepared Service skipped',diagnostic:{stage:'import',step:'plan',code:'service_not_prepared'}}];
   const f=await taskUI('kept.js',{page:'kept',request:async url=>url.includes('/queue')?
-    {...queue,papers:results.map(result=>({...result,service_id:'svc_b',assignment:'assigned'}))}:
-    {...idle,workflow_id:'all-results',import_started:true,batch:{total:6,results}}});
-  for(const [group,papers] of [['all',results.map(result=>result.paper_id)],
-    ['svc_a',['svc_a-1','svc_a-2']],['unassigned',['unassigned-1','unassigned-2']],['ambiguous',['ambiguous-1','ambiguous-2']]]){
-    await f.get('kept-service-list').children.find(row=>row.dataset.serviceId===group).emit('click');
-    assert.deepEqual(f.get('kept-record-items').children.map(item=>item.children[0].textContent),papers);
-    const main=f.get('kept-queue-results').children[2];
-    assert.equal(main.children.length,papers.length);
-    for(const [index,paper] of papers.entries()){
-      assert.match(main.children[index].textContent,new RegExp(`Paper: ${paper}\\b`));
-      assert.match(main.children[index].textContent,/import \/ (?:svc_a|unassigned|ambiguous) \/ diagnostic-[12]/);
-      assert.match(f.get('kept-record-items').children[index].textContent,new RegExp(paper));
-    }
-  }
+    {...queue,papers:[{paper_id:'paper-a',service_id:'svc_b'}]}:
+    {...idle,phase:'completed',workflow_id:'fixed',batch:{total:1,results}}});
+  const record=f.get('kept-record-items').textContent;
+  assert.match(record,/Paper: paper-a/);
+  assert.match(record,/Service: svc_a/);
+  assert.match(record,/Unprepared Service skipped/);
+  assert.match(record,/service_not_prepared/);
+  assert.match(f.get('kept-progress').textContent,/已跳过 1/);
 });
 
 test('failed autosave prevents Kept task dispatch and preserves the selected scope',async()=>{
@@ -90,15 +98,6 @@ test('Browser task summary retains original batch counts when the display Servic
     {paper_id:'second',outcome:'uncertain',parent_outcome:'uncertain',reason:'Inspect before retry'}]}};
   const f=await taskUI('kept.js',{page:'kept',request:async url=>url.includes('/queue')?queue:state});
   await f.get('kept-service-list').children.find(row=>row.dataset.serviceId==='svc_b').emit('click');
-  const summary=f.get('kept-scope-status').textContent;
-  assert.match(summary,/当前批次：Service A/);
-  assert.match(summary,/计划 3.*已处理 2.*父条目确认 1.*待处理 1/);
-  assert.match(summary,/等待 Continue/);
-});
-test('polling preserves the keyboard reachable batch counter and its reading position',async()=>{
-  const f=await taskUI('kept.js',{page:'kept',request:async url=>url.includes('/queue')?queue:{...active,planned_total:3}});
-  const counter=f.get('kept-scope-status').children[1];counter.scrollLeft=42;
-  await f.tick();
-  assert.equal(f.get('kept-scope-status').children[1],counter);
-  assert.equal(counter.scrollLeft,42);assert.equal(counter.tabIndex,0);
+  assert.match(f.get('kept-scope-status').textContent,/Service B/);
+  assert.match(f.get('kept-progress').textContent,/Service A.*已处理 2 \/ 3.*已确认 1/);
 });

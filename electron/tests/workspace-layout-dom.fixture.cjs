@@ -40,7 +40,7 @@ const workspace={csrf_token:'fixture',import_token:'fixture',issues:[],counts:{c
   kept:{papers:[{paper:paper(10,'kept'),journal:records[0]},{paper:paper(11,'kept'),journal:records[1]}],journals:records,services:[],settings:{},titles:{}}};
 const run={active:false,snapshot:{status:'IDLE',provider:null},providers:Object.fromEntries(['integrated','wos'].map(id=>[id,{enabled:false,message:'Offline fixture',result_summary:null}]))};
 const keptQueue={services:[{id:'all',name:'All Services',kept:2,eligible:2},{id:'unassigned',name:'Unassigned',kept:2,eligible:2}],papers:[],import_token:'fixture'};
-let keptState={active:false,phase:'idle',navigation:null,can_continue:false,can_cancel:false};
+let keptState={active:false,phase:'idle',navigation:null,can_cancel:false};
 const mimes={'.html':'text/html','.js':'text/javascript','.css':'text/css','.json':'application/json','.woff2':'font/woff2','.ttf':'font/ttf','.otf':'font/otf','.png':'image/png','.mp4':'video/mp4'};
 let rejectAutosave=false,holdWorkspaceResponse,resolveInitialCAS,credentialState={ok:false,error:'cas_store_unreadable',configured:false,username:'',revision:'d'.repeat(64)};
 const credentialWrites=[];
@@ -106,7 +106,7 @@ const server=http.createServer((req,res)=>{
   if(route.startsWith('/api/') || route==='/settings/covers/search'){
     const data=route==='/api/ui-next/workspace'?workspace:route==='/api/ui-next/settings'?settings:
       route==='/api/ui-next/run'?run:route==='/api/kept-workflow/queue'?keptQueue:route==='/api/ui-next/run-expression'?{providers:Object.fromEntries([...settings.values.provider_order,'integrated'].map(id=>[id,{expression:'causal',error:null}]))}:route==='/settings/covers/search'?cover_search:
-      route==='/api/kept-workflow/state'?keptState:{active:false,phase:'idle',navigation:null,can_continue:false,can_cancel:false};
+      route==='/api/login/state'?{active:false,phase:'idle',services:[]}:route==='/api/kept-workflow/state'?keptState:{active:false,phase:'idle',navigation:null,can_cancel:false};
     res.writeHead(200,{'Content-Type':'application/json'});res.end(JSON.stringify(data));return;
   }
   const relative=route==='/'?'index.html':decodeURIComponent(route.replace(/^\/static\/ui_next\//,''));
@@ -209,12 +209,12 @@ app.whenReady().then(async()=>{
       if(document.querySelector('[data-zotero-library]').value!=='group:12' || document.querySelector('[data-zotero-collection]').value!=='JKLMNPQR')throw Error('Saved target changed in narrow Queue');
     });
     await capture('zotero-target-600-zoom125');
-    keptState={...keptState,workflow_id:'last-import-fixture',generation:1,phase:'completed',import_started:true,
+    keptState={...keptState,workflow_id:'last-import-fixture',generation:1,phase:'completed',
       message:'Import finished: 3 imported',batch:{total:3,results:[
         {paper_id:'paper-10',service_id:null,service_assignment:'unassigned',outcome:'exported',parent_outcome:'confirmed',reason:'Registered OpenAlex PDF',item_exists:true,pdf_attached:true,pdf_source:'openalex',fallback_used:true},
         {paper_id:'paper-11',service_id:null,service_assignment:'unassigned',outcome:'exported',parent_outcome:'confirmed',reason:'OpenAlex has no direct PDF',item_exists:true,pdf_attached:false,pdf_source:'none',fallback_used:false,diagnostic:{stage:'attachment',step:'oa_resolver',code:'openalex_no_pdf'}},
         {paper_id:'paper-query',service_id:null,service_assignment:'unassigned',outcome:'exported',parent_outcome:'confirmed',reason:'Parent saved',item_exists:true,pdf_attached:null,pdf_source:null,fallback_used:null,query_diagnostic:{code:'connection_lost'}}]}};
-    await js("document.getElementById('run-view').dispatchEvent(new Event('close'))");
+    await navigate('login');await navigate('kept');
     await ready("document.querySelectorAll('#kept-record-items li').length===3");
     await check(()=>{
       document.querySelector('#kept-workspace [data-sidebar-view=results]').click();
@@ -228,8 +228,8 @@ app.whenReady().then(async()=>{
     await check(()=>document.querySelector('#kept-sidebar [data-sidebar-close]').click());
     win.webContents.setZoomFactor(1);await size(1200,800,"window.workspaceNavigation.current()==='kept'");
     await check(async navigate=>{
-      await navigate('kept');
-      document.querySelector('#kept-workspace [data-sidebar-view=access]').click();
+      await navigate('login');
+      document.querySelector('#login-page [data-sidebar-view=access]').click();
       for(const [field,value] of [['username','new-fixture-user'],['password','synthetic-complete-replacement']]){
         const input=document.getElementById('s-cas-'+field);input.value=value;input.dispatchEvent(new Event('input',{bubbles:true}));
       }
@@ -252,7 +252,7 @@ app.whenReady().then(async()=>{
       if(document.getElementById('s-cas-password').value==='synthetic-complete-replacement')throw Error('confirmed credential replacement left plaintext input');
       const raw=localStorage.getItem('allfold.configuration-draft:/fixture/monitor.yaml') || '';
       if(raw.includes('synthetic-complete-replacement') || raw.includes('new-fixture-user'))throw Error('credential input entered ordinary recovery storage');
-      document.querySelector('#kept-sidebar [data-sidebar-close]').click();
+      document.querySelector('#login-sidebar [data-sidebar-close]').click();
       document.getElementById('paper-detail').scrollTop=0;
     });
     await navigate('workspace');
@@ -334,7 +334,7 @@ app.whenReady().then(async()=>{
       $('array-index-toggle').click();$('array-index').scrollTop=200;document.querySelector('#array-flyout [data-flyout-close]').click();
       await navigate('kept','array-kept');assert(window.workspaceNavigation.current()==='kept','legacy Kept entry must open independent Kept');
       assert($('kept-sidebar').hidden,'Kept automatically opened a Sidebar');
-      assert(!$('kept-start').closest('[hidden]') && !$('kept-import-only').closest('[hidden]'),'primary actions hidden with sidebar');
+      assert(!$('kept-start').closest('[hidden]') && !$('kept-import-only'),'primary actions hidden with sidebar');
       await navigate('workspace');$('array-index-toggle').click();assert($('array-index').scrollTop===200,'Candidates Index scroll lost after visiting Kept');document.querySelector('#array-flyout [data-flyout-close]').click();
       window.layoutReader=$('paper-detail');window.layoutParent=layoutReader.parentElement;layoutReader.scrollTop=180;
       document.querySelector('#kept-view [data-sidebar-view]').click();
@@ -547,17 +547,22 @@ app.whenReady().then(async()=>{
     });
     setTimeout(releaseKeptSnapshot,90);
     await navigate('kept');
-    await js("document.querySelector('#kept-workspace [data-sidebar-view=access]').click()");
-    await check(()=>{
+    await navigate('login');
+    await js("document.querySelector('#login-page [data-sidebar-view=access]').click()");
+    await check(async navigate=>{
       const $=id=>document.getElementById(id);
-      if(!$('kept-access-settings').contains($('s-institution')) || !$('kept-workflow-settings').contains($('s-kept-workflow-fields')))throw Error('Kept did not mount the sole existing settings controls');
-      if($('kept-sidebar').hidden || $('kept-workspace').dataset.sidebarMode!=='overlay')throw Error('Kept Access sidebar did not overlay at 600x480');
-      const institution=document.querySelector('#kept-access-settings [data-monitor="institutionName"]');
+      if(!$('login-access-settings').contains($('s-institution')))throw Error('Login did not mount the existing Institution controls');
+      if($('login-sidebar').hidden || $('login-page').dataset.sidebarMode!=='overlay')throw Error('Login Access sidebar did not overlay at 600x480');
+      const institution=document.querySelector('#login-access-settings [data-monitor="institutionName"]');
       if(!institution || institution.getBoundingClientRect().width<120)throw Error('Institution input not operable');
-      document.querySelector('#kept-workspace [data-sidebar-view=workflow]').click();
-      if(document.querySelectorAll('[data-monitor="displayName"]').length!==1 || !document.querySelector('#kept-workflow-settings [data-monitor="delay"]'))throw Error('Workflow controls duplicated or missing');
-      const name=document.querySelector('#kept-workflow-settings [data-monitor="displayName"]');name.focus();name.value='Synthetic display';name.dispatchEvent(new Event('input',{bubbles:true}));
-      if(document.activeElement!==name || name.value!=='Synthetic display')throw Error('Kept mount bridge lost input focus');
+      document.querySelector('#login-page [data-sidebar-view=workflow]').click();
+      if(document.querySelectorAll('#login-workflow-settings [data-monitor="prepareServiceConcurrency"]').length!==1)throw Error('Login concurrency missing');
+      await navigate('kept');document.querySelector('#kept-workspace [data-sidebar-view=workflow]').click();
+      if(document.querySelectorAll('[data-monitor="paperServiceConcurrency"]').length!==1 ||
+         !document.querySelector('#kept-workflow-settings [data-monitor="pdfConcurrency"]'))throw Error('Import concurrency duplicated or missing');
+      const input=document.querySelector('#kept-workflow-settings [data-monitor="paperServiceConcurrency"]');
+      input.focus();input.value='4';input.dispatchEvent(new Event('input',{bubbles:true}));
+      if(document.activeElement!==input || input.value!=='4')throw Error('Import concurrency lost input focus');
     });
     await capture('kept-workflow-small');
 

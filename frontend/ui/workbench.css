@@ -12,7 +12,6 @@ footer{height:auto;min-height:35px;margin-top:0}
 #workflow-nav button{padding:7px 12px;font-size:12px;white-space:nowrap}
 #workflow-nav [aria-current=page]{background:var(--ink);color:var(--paper)}
 #login-page{flex:1 1 0}
-#login-main{overflow:auto;padding:16px 24px}
 
 body[data-workbench=browser] #allfold-pane{visibility:hidden;pointer-events:none}
 body[data-workbench=browser] footer>:not(.message-region,#browser-status,#browser-message){display:none!important}
@@ -31,9 +30,9 @@ body[data-workbench=browser] #app-notice-open{display:block}
 #browser-open[aria-pressed=true]{background:var(--ink);color:var(--paper)}
 .header-utilities button:focus-visible{outline:2px solid var(--orange);outline-offset:-2px}
 /* Non-modal task players remain open during a manual Browser handoff. */
-#run-view,#kept-flow{inset:var(--prototype-header,90px) 0 0;height:calc(100dvh - var(--prototype-header,90px));z-index:9}
-body:has(#run-view[open],#kept-flow[open]) .masthead{background:var(--paper)}
-body[data-workbench=browser] :is(#run-view,#kept-flow){visibility:hidden;pointer-events:none}
+#run-view{inset:var(--prototype-header,90px) 0 0;height:calc(100dvh - var(--prototype-header,90px));z-index:9}
+body:has(#run-view[open]) .masthead{background:var(--paper)}
+body[data-workbench=browser] #run-view{visibility:hidden;pointer-events:none}
 #browser-pane{grid-template-columns:var(--rail-width,48px) minmax(0,1fr);background:var(--paper)}
 .browser-content{display:flex;flex-direction:column}
 .browser-controls{flex:0 0 auto;min-width:0;border-bottom:1px solid var(--rule)}

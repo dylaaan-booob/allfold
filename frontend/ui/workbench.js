@@ -8,7 +8,7 @@ window.allfoldWorkbench=(()=>{
   let savedServices={scope:null,services:[]},serviceRead=0;
 
   function suspended(rect){
-    if([...document.querySelectorAll('dialog[open]')].some(dialog=>!['run-view','kept-flow'].includes(dialog.id)))return true;
+    if([...document.querySelectorAll('dialog[open]')].some(dialog=>dialog.id!=='run-view'))return true;
     return [...document.querySelectorAll('.navigation-flyout:not([hidden]),[data-sidebar-mode="overlay"] .functional-sidebar:not([hidden]),:popover-open')].some(overlay=>{
       if(overlay.closest('[hidden],[inert]'))return false;
       const box=overlay.getBoundingClientRect();
@@ -99,17 +99,6 @@ window.allfoldWorkbench=(()=>{
     if(read===serviceRead){savedServices=snapshot;render(state);}
     return snapshot;
   }
-  async function openService({serviceId,workflowId,taskId}={}) {
-    if(!desktop)return false;
-    const snapshot=await refreshServices(),service=snapshot.services.find(service=>service.id===serviceId);
-    if(!service?.access_url){window.uiNext.notice('此 Service 没有已保存的访问链接，请检查 Settings。');return false;}
-    try {
-      render(await desktop.browserCommand({action:'open-service',url:service.access_url,service_id:service.id,
-        service_scope:snapshot.scope,workflow_id:workflowId || null,task_id:taskId || null}));
-      present(true);return true;
-    }catch(_){window.uiNext.notice('无法打开此 Service，请检查已保存的访问链接。');return false;}
-  }
-
   function syncChildren(parent,children) {
     const wanted=new Set(children);
     for(const child of [...parent.children])if(!wanted.has(child))child.remove();
@@ -234,5 +223,5 @@ window.allfoldWorkbench=(()=>{
     select:item=>selectPage(item.id),
   });
   window.workspaceSearch.registerCommand('browser',{name:'Browser',run:show});
-  return {show,showTaskPage,openService,hide:()=>present(false),visible:()=>visible,presentationChanging:()=>visible || returning};
+  return {show,showTaskPage,hide:()=>present(false),visible:()=>visible,presentationChanging:()=>visible || returning};
 })();

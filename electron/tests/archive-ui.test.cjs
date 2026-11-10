@@ -1,8 +1,8 @@
 'use strict';
 const test=require('node:test'),assert=require('node:assert/strict');
 const {taskUI}=require('./task-ui-fixture.cjs');
-const idle={phase:'idle',active:false,can_continue:false,can_cancel:false};
-const request=async url=>url.includes('/assets/kept/')?{}:idle;
+const idle={phase:'idle',active:false,can_cancel:false};
+const request=async url=>url.includes('/queue')?{services:[]}:idle;
 
 test('Archive disabled starts in Array and cannot be selected until the preference is reversed',async()=>{
   const f=await taskUI('kept.js',{request,archiveDisabled:true,layout:'archive',page:'workspace'});

@@ -147,13 +147,13 @@ function refreshInboxControls() {
   const busy=navigationBusy(),previewOpen=$('s-file-preview')?.hidden===false;
   const settingsBusy=$('configuration-workspace').dataset.busy==='true';
   $('open-journal-more').disabled=!state.ready || state.view!=='selected' || busy || previewOpen || settingsBusy ||
-    !inboxActive() || $('run-view').open || $('kept-flow').open;
+    !inboxActive() || $('run-view').open;
   const debugView=arrayActive()?'array':inboxActive()?(state.view==='journal'?'journal':'selected'):'none';
   const showArchiveDebug=inboxActive() && document.documentElement.classList.contains('developer-mode');
   $('archive-debug').hidden=!showArchiveDebug;
   document.documentElement.classList.toggle('archive-debug-active',showArchiveDebug);
   archiveDebug.setContext(debugView,showArchiveDebug,state.ready && !busy && !previewOpen && !settingsBusy &&
-    !window.workspaceArray?.workflowBusy() && !$('run-view').open && !$('kept-flow').open &&
+    !window.workspaceArray?.workflowBusy() && !$('run-view').open &&
     (debugView!=='journal' || (inspection.target && inspection.time===inspection.duration)));
   renderPaperTools();
 }
@@ -1281,7 +1281,7 @@ function renderPaperTools(reload=false) {
   if(reload || (!paperTools.fields && !paperTools.loading && !paperTools.error))void loadPaperFields(paperId);
   const busy=decisionPending || Boolean(snapshotApplying) || paperToolsBusy() ||
     ['Retrieving','Saving'].includes(enrichment?.phase) || ['Retrieving','Saving'].includes(paper.enrichPhase) ||
-    window.workspaceArray?.workflowBusy() || $('run-view').open || $('kept-flow').open;
+    window.workspaceArray?.workflowBusy() || $('run-view').open;
   const ready=Boolean(paperTools.fields && !paperTools.loading && !busy);
   const checks=[...document.querySelectorAll('[data-paper-reset]')];
   checks.forEach(node=>{node.disabled=!ready;});
@@ -1896,7 +1896,7 @@ window.inboxKept={
 };
 new ResizeObserver(()=>{if(readerContext && arrayActive()) fillAbstractPlaceholder();}).observe($('kept-reader'));
 window.inboxRun={
-  available:()=>state.ready && !decisionPending && !snapshotApplying && !paperToolsBusy() && enrichment?.phase!=='Saving' && !['Retrieving','Saving'].includes(enrichment?.phase) && !$('kept-flow').open && !window.workspaceArray?.workflowBusy() && !window.uiRun?.active() &&
+  available:()=>state.ready && !decisionPending && !snapshotApplying && !paperToolsBusy() && enrichment?.phase!=='Saving' && !['Retrieving','Saving'].includes(enrichment?.phase) && !window.workspaceArray?.workflowBusy() && !window.uiRun?.active() &&
     (inspection.time===0 || inspection.time===inspection.duration),
   selection:()=>({issn:selectedJournal()?.key,scroll:lists.get(selectedJournal()?.key)?.scrollTop || 0}),
   prepare:async(_papers,selection)=>{await refreshWorkspace(selection);},

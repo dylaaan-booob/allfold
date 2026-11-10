@@ -84,8 +84,8 @@ test('Browser body resize after host zoom publishes freshly measured CSS bounds'
   assert.deepEqual({...current.bounds},{x:0,y:120,width:480,height:400});
   assert.equal(current.visible,true);
 });
-test('task handoff selects its existing active Page and leaves fullscreen flow open for return',async()=>{
-  const f=fixture(),flow=f.document.getElementById('kept-flow');flow.open=true;
+test('task handoff selects its existing active Page and leaves fullscreen Discover open for return',async()=>{
+  const f=fixture(),flow=f.document.getElementById('run-view');flow.open=true;
   const association=(workflow_id,task_id,role,active)=>({workflow_id,task_id,role,active});
   f.setState({selected:4,taskPageId:8,tabs:[
     {id:4,association:null},{id:7,association:association('flow-a','prepare','service-resource',false)},

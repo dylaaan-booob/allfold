@@ -141,7 +141,7 @@ async function restore() {
   try {
     const data=await uiNext.request('/api/ui-next/run');
     window.dispatchEvent(new CustomEvent('run-state',{detail:data}));
-    if(data.snapshot.status==='RUNNING' && !$('kept-flow').open)open(data);
+    if(data.snapshot.status==='RUNNING')open(data);
   }catch(error){window.uiRunPage?.report(error.message);}
 }
 window.uiRun={start,retry,active:()=>!!active || starting,
@@ -150,4 +150,3 @@ window.addEventListener('settings-draft-changed',()=>{if(!active && !starting)di
 const availabilityTimer=setInterval(()=>{if(!active && !starting)void restore();},5000);
 if(window.uiWorkspace.ready())void restore();else window.addEventListener('inbox-ready',()=>void restore(),{once:true});
 window.addEventListener('pagehide',()=>{clearInterval(availabilityTimer);if(active){clearTimeout(active.timer);active.visual?.stop();}});
-$('kept-flow').addEventListener('close',()=>{if(!active)void restore();});

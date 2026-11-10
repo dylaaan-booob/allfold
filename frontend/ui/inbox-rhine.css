@@ -105,7 +105,6 @@
 #kept-reader-body .abstract-heading .paper-stepper button{height:28px;padding:0 6px;font-size:16px}
 #kept-reader-body .abstract-heading .paper-stepper strong{font-size:12px;min-width:58px}
 #kept-view #kept-reader{padding-top:16px}
-#kept-view .kept-actions{margin-top:10px}
 #kept-view #kept-record-items strong{display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2;line-clamp:2;overflow:hidden}
 /* Keep the Kept reader on one content measure after the font change. */
 #kept-reader-body .abstract-heading,#kept-reader-body #paper-abstract{max-width:none}

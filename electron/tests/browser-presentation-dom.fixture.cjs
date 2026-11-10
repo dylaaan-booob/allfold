@@ -17,7 +17,7 @@ const shell=`<!doctype html><html><head><meta charset="utf-8"><link rel="stylesh
 <body data-workbench="allfold"><header class="masthead"><b>ALLFOLD</b><button id="browser-open">BROWSER</button><button id="fixture-kept">IMPORT</button><button id="fixture-run">RUN</button><button id="fixture-dialog">DIALOG</button><button id="fixture-popover-open">POPOVER</button></header>
 <div id="workbench-content"><div id="allfold-pane"><section id="kept-workspace"><div id="kept-queue-body"><p>Import to Zotero</p><input id="fixture-import-draft" value="preserved"></div></section>
 <section id="run-page" hidden><h2>Run · Web of Science</h2><input id="fixture-run-draft" value="immutable query"><button id="fixture-task-page">查看任务页面</button><p id="fixture-run-progress">run-a · prepare-a · waiting</p></section></div>${pane}</div>
-<footer><span id="browser-status"></span>${browserMessage}${notice}${debug}</footer>${noticePopover}<div id="fixture-popover" popover="manual" style="position:fixed;inset:190px auto auto 60px;width:280px;height:100px;margin:0;background:var(--paper)">Trusted Popover<button id="fixture-popover-close">Close Popover</button></div><dialog id="fixture-modal"><h2>Trusted dialog</h2><input id="fixture-dialog-input"><button id="fixture-dialog-close">Close</button></dialog><dialog id="run-view"></dialog><dialog id="kept-flow"></dialog>
+<footer><span id="browser-status"></span>${browserMessage}${notice}${debug}</footer>${noticePopover}<div id="fixture-popover" popover="manual" style="position:fixed;inset:190px auto auto 60px;width:280px;height:100px;margin:0;background:var(--paper)">Trusted Popover<button id="fixture-popover-close">Close Popover</button></div><dialog id="fixture-modal"><h2>Trusted dialog</h2><input id="fixture-dialog-input"><button id="fixture-dialog-close">Close</button></dialog><dialog id="run-view"></dialog>
 <script src="/api.js"></script><script>window.workspaceNavigation={current:()=>window.fixtureWorkspace||'kept'};window.workspaceSearch={register(){},registerCommand(){},refresh(){}};uiNext.request=async()=>({scope:{scope_id:'fixture'},services:[{id:'service-a',name:'Service A'}]});</script><script src="/workspace-layout-model.js"></script><script src="/workspace-layout.js"></script><script src="/workbench.js"></script>
 <script>const $=id=>document.getElementById(id);
 $('fixture-task-page').onclick=()=>allfoldWorkbench.showTaskPage({workflowId:'run-a'});
@@ -62,8 +62,6 @@ app.whenReady().then(async()=>{
     browser.beginOperation(new AbortController().signal,{workflow_id:'run-a',task_id:'prepare-a',request_id:'request-a'});browser.associatePage(tab,{role:'wos-query'});browser.bindTaskPage(tab);
     const id=tab.id,session=tab.view.webContents.session,load=await page(tab,'fixtureLoad');
     await click(win.webContents,'#browser-open');const wide=await bounds('wide Focus');
-    await host("$('kept-flow').show()");
-    assert(await host("$('kept-flow').open&&getComputedStyle($('kept-flow')).visibility==='hidden'"),'Import task surface covers task Browser');
     await capture('wide-focus',tab);
     // Mouse and keyboard go through Chromium's input path, never element.click().
     await click(tab.view.webContents,'#human');assert(await page(tab,'human.checked'),'mouse could not check synthetic challenge');
@@ -101,7 +99,6 @@ app.whenReady().then(async()=>{
     await click(win.webContents,'#browser-return');
     assert(await host("document.activeElement.id==='browser-open'&&$('fixture-import-draft').value==='preserved'"),'Import draft and focus return');
     assert(!browser.presentation.mounted,'Import intercepted by native view');
-    assert(await host("$('kept-flow').open&&getComputedStyle($('kept-flow')).visibility==='visible'"),'Import task surface was not restored');await host("$('kept-flow').close()");
     await click(win.webContents,'#fixture-run');await host("(()=>{const dialog=document.getElementById('run-view');dialog.append(document.getElementById('fixture-task-page'));dialog.show()})()");
     await click(win.webContents,'#fixture-task-page');const run=await bounds('Run task Focus');assert(browser.selected===tab,'Run selected unrelated page');
     for(let attempt=0;attempt<3;attempt++){

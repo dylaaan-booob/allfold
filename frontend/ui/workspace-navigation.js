@@ -9,7 +9,7 @@ window.workspaceNavigation = (() => {
   let current='workspace',workflow='login';
   const configuration=page=>['journals','run','settings'].includes(page);
   function allowed(to,options={}) {
-    if(!pages.has(to) || $('run-view').open || $('kept-flow').open)return false;
+    if(!pages.has(to) || $('run-view').open || $('kept-confirm').open)return false;
     const context={from:current,to,...options};
     return [...pages.values()].every(page=>page.canNavigate?.(context)!==false) &&
       pages.get(current)?.canLeave?.(context)!==false && pages.get(to).canEnter?.(context)!==false;
@@ -72,7 +72,7 @@ window.workspaceNavigation = (() => {
     const page=button.dataset.workflow;
     workspaceSearch.registerCommand(page,{name:button.textContent,run:()=>go(page,{instant:true})});
   }
-  for(const id of ['run-view','kept-flow']){
+  for(const id of ['run-view','kept-confirm']){
     const dialog=$(id);
     new MutationObserver(refresh).observe(dialog,{attributes:true,attributeFilter:['open']});
     dialog.addEventListener('close',refresh);
