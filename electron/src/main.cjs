@@ -8,6 +8,7 @@ const {BrowserRuntime} = require('./browser/browser-runtime.cjs');
 const {installBrowserIPC}=require('./browser/browser-ipc.cjs');
 const {TranslatorSandbox} = require('./zotero/translator.cjs');
 const {saveOnce,normalizeDOI} = require('./zotero/local-importer.cjs');
+const {ImportResources}=require('./zotero/import-resources.cjs');
 const {LocalAPI}=require('./zotero/local-api.cjs');
 const {requestOpenAlexPDF,settleOpenAlexPDF}=require('./zotero/openalex-callback.cjs');
 const zoteroLocal=new LocalAPI();
@@ -151,6 +152,22 @@ async function execute(message) {
     if(!control)browser.publish();
   }
 }
+let importBatch;
+function importResources(current,{workflow_id:id,limits}) {
+  if(!id || !limits || !Object.entries({translator:6,pdf:8,writer:4}).every(([key,max])=>
+    Number.isInteger(limits[key]) && limits[key]>=1 && limits[key]<=max))
+    throw Error('Invalid Import batch limits');
+  if(importBatch?.id!==id) {
+    if([...operations.values()].some(operation=>operation.importBatchId && operation.importBatchId!==id))
+      throw Error('Another Import batch is still settling');
+    translator.setLimit(limits.translator);
+    importBatch={id,limits:{...limits},resources:new ImportResources({pdfLimit:limits.pdf,writerLimit:limits.writer})};
+  }
+  if(['translator','pdf','writer'].some(key=>limits[key]!==importBatch.limits[key]))
+    throw Error('Import batch limits changed');
+  current.importBatchId=id;
+  return importBatch.resources;
+}
 async function executeOperation(message,current) {
   const {controller}=current;
   const started=Date.now(),context={request_id:message.id,action:message.action};
@@ -193,6 +210,7 @@ async function executeOperation(message,current) {
           if(!['import_paper','enrich_paper'].includes(message.action)) throw Error('Unsupported Electron operation');
           const doi=normalizeDOI(message.data.doi);
           const forEnrichment=message.action==='enrich_paper';
+          const resources=forEnrichment?null:importResources(current,message.data);
           progress({message:'Opening Paper in Browser'});
           const doc=await browser.openPaperPage(message.data,doi,{signal:controller.signal,role:forEnrichment?'enrich':'import',
             onWaiting:diagnostic=>progress({waiting_for_user:true,message:'Checking verification; open BROWSER for manual verification if needed, or Cancel to stop'},stage,diagnostic)});
@@ -220,7 +238,7 @@ async function executeOperation(message,current) {
           progress({message:'Native Zotero save in progress'},'parent_save');
           saving=true;
           stage='parent_save';
-          return await saveOnce({item,apiItem,proxy,doi,target:message.data.zotero_target,doc:sourceDocument,browser,signal:controller.signal,
+          return await saveOnce({item,apiItem,proxy,doi,resources,target:message.data.zotero_target,doc:sourceDocument,browser,signal:controller.signal,
               fallbackPDF:request=>requestOpenAlexPDF(current,request,{send,connected:bridgeReady,doi,target:message.data.zotero_target}),
               logContext:{...context,page_id:doc.pageId,metadata_source:metadataSource}});
         }

@@ -79,6 +79,13 @@ class TranslatorSandbox {
     this.browser=browser;
     this.partition=translatorPartition();
   }
+  setLimit(maxWorkers) {
+    if(!Number.isSafeInteger(maxWorkers) || maxWorkers<1)throw new TypeError('Invalid Translator worker limit');
+    if(this.translations.size || this.active.size || this.pending.length)
+      throw Error('Cannot change Translator capacity during an operation');
+    this.maxWorkers=maxWorkers;
+    for(const window of this.idle.splice(maxWorkers))if(!window.isDestroyed())window.destroy();
+  }
   dispatch() {
     while(!this.stopped.signal.aborted && this.pending.length && this.active.size<this.maxWorkers) {
       const operation=this.pending.shift();

@@ -8,7 +8,9 @@ const {AsyncLocalStorage}=require('node:async_hooks');
 const {randomBytes}=require('node:crypto');
 const {ImportFailure, failedImport} = require('../src/workflows/import-errors.cjs');
 const {BrowserFailure,diagnosticFor} = require('../src/browser/browser-errors.cjs');
+const {ImportResources}=require('../src/zotero/import-resources.cjs');
 const source = fs.readFileSync(path.join(__dirname, '../src/main.cjs'), 'utf8');
+const limits={translator:2,pdf:2,writer:2};
 const execute = source.slice(source.indexOf('const CONTROL_ACTIONS='), source.indexOf('async function startPython('));
 const deferred = () => {let resolve;const promise = new Promise(r => {resolve = r;});return {promise, resolve};};
 function fixture() {
@@ -19,7 +21,7 @@ function fixture() {
     ...require('../src/shared/logging.cjs'),
     operationAssociation:require('../src/browser/page-association.cjs').operationAssociation,
     log:(level,event,details)=>logs.push({level,event,...details}),
-    AbortController, ImportFailure, BrowserFailure, diagnosticFor, failedImport, normalizeDOI: value => value,
+    AbortController, ImportResources, ImportFailure, BrowserFailure, diagnosticFor, failedImport, normalizeDOI: value => value,
     send(message) {messages.push(JSON.parse(JSON.stringify(message)));},
     browser: {tabs:new Map(),
       async openPaperPage(data,doi,options){
@@ -34,10 +36,10 @@ function fixture() {
       async runTask(signal,association,run){try{return await taskContext.run({signal,association},run);}finally{calls.end++;}},
       associatePage(tab,data){tab.association={...this.operation.association,...data};},
       enterBusiness(){},publish(){}},
-    translator: {async translate(doc) {calls.translation++;return {item:{},sourceDocument:doc,metadataSource:'web'}; }},
+    translator: {setLimit(){},async translate(doc) {calls.translation++;return {item:{},sourceDocument:doc,metadataSource:'web'}; }},
     async saveOnce() {calls.save++;return {parent: {outcome: 'confirmed'}};}});
   vm.runInContext(execute, context);
-  const run = (id='current') => context.execute({id, action: 'import_paper', data: {doi: '10.5555/test'}});
+  const run = (id='current') => context.execute({id, action: 'import_paper', data: {doi: '10.5555/test',workflow_id:'fixture',limits}});
   return {context, messages, logs, calls, run};
 }
 
@@ -138,7 +140,7 @@ test('Import binds an independent page and Paper/Service context for each reques
   };
   for(const [index,service] of ['svc_'+'1'.repeat(32),'svc_'+'2'.repeat(32),null].entries()) {
     await f.context.execute({id:'request'+index,action:'import_paper',data:{doi:'10.5555/'+index,
-      task_id:'batch',paper_id:'paper'+index,service_scope:scope,service_id:service}});
+      workflow_id:'batch',task_id:'batch',limits,paper_id:'paper'+index,service_scope:scope,service_id:service}});
   }
   assert.deepEqual(records.map(value=>value.page),[1,2,3]);
   assert.deepEqual(records.map(value=>value.association.service_id),['svc_'+'1'.repeat(32),'svc_'+'2'.repeat(32),null]);

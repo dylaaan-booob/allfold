@@ -300,7 +300,8 @@ def create_app(config_path: Path, *, electron_bridge: ElectronBridge, diagnostic
     app.state.run_coordinator = RunCoordinator(resolved_config_path, run_slot=run_slot, diagnostics=app.state.diagnostics)
     app.state.preprint_lookup = PreprintLookup(resolved_config_path, app.state.browser_task_lock, run_slot=run_slot)
     app.state.paper_enrichment = PaperEnrichment(electron_bridge, app.state.browser_task_lock,
-        diagnostics=app.state.diagnostics, current_workspace=lambda: load_config(resolved_config_path).output_dir)
+        diagnostics=app.state.diagnostics, current_workspace=lambda: load_config(resolved_config_path).output_dir,
+        config_path=resolved_config_path)
     app.state.journal_cover_search = JournalCoverSearch(electron_bridge, app.state.browser_task_lock, diagnostics=app.state.diagnostics)
     app.state.batch_import = BatchImportService(electron_bridge, app.state.browser_task_lock, diagnostics=app.state.diagnostics)
     app.state.preparation_coordinator = PreparationCoordinator(electron_bridge, app.state.browser_task_lock, diagnostics=app.state.diagnostics)

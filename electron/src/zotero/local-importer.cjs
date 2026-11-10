@@ -59,9 +59,16 @@ async function saveImportOnce({item,apiItem,doi,doc,browser,signal,target,api,re
  if(normalizeDOI(item.DOI)!==normalizeDOI(doi) || typeof item.title!=='string' || !item.title.trim() || typeof item.itemType!=='string' || ['multiple','webpage','attachment','note'].includes(item.itemType))throw Error('Parent does not match target DOI');
  target=validateTarget(target);
  const current=()=>{if(signal?.aborted || !browser.documentCurrent(doc))throw Object.assign(Error('Import canceled or document changed'),{code:signal?.aborted?'canceled':'document_changed'});};
- const write=operation=>resources?resources.write(signal,current,operation):operation(current);
  const result={parent:{outcome:'no_effect'},pdf:{outcome:'unverified',registered:false,source:null,receipts:[],failures:[]},
    zotero:{target,parent_key:null,attachment_keys:[],note_keys:[]},settled:true};
+ const write=async operation=>{
+   if(!resources)return operation(current);
+   try {return await resources.write(signal,current,operation);}
+   catch(error){
+     if(!error.no_effect)result.uncertain_write=true;
+     throw error;
+   }
+ };
  const record=(error,phase='initial_fetch')=>{const value={phase,code:error.code || 'failed',...(error.status?{status:error.status}:{})};result.pdf.failures.push(value);log('warn','attachment_failure',{...logContext,stage:'attachment',attachment_phase:phase,...value});return value;};
  try {current();await api.validate(target);current();}
  catch(error){result.stop_batch=true;result.diagnostic={stage:'parent_save',code:error.code || 'failed',...(error.status?{status:error.status}:{})};return result;}

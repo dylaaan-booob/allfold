@@ -120,7 +120,7 @@ class WorkspaceSnapshot:
         return self.papers_for(WorkflowStatus.EXPORTED)
 
 
-def journals_for_paper(paper: WorkspacePaper, journals: Sequence[JournalConfig]) -> tuple[JournalConfig, ...]:
+def journals_for_paper(paper: WorkspacePaper | PaperMarkdownState, journals: Sequence[JournalConfig]) -> tuple[JournalConfig, ...]:
     """Match only saved identifiers; names never establish journal identity."""
     if paper.journal_attribution_state is not PaperJournalAttributionState.VALID:
         return ()
@@ -133,7 +133,7 @@ def journal_for_paper(paper: WorkspacePaper, journals: Sequence[JournalConfig]) 
     return matches[0] if len(matches) == 1 else None
 
 
-def paper_service_assignment(paper: WorkspacePaper, journals: Sequence[JournalConfig]) -> tuple[str | None, str]:
+def paper_service_assignment(paper: WorkspacePaper | PaperMarkdownState, journals: Sequence[JournalConfig]) -> tuple[str | None, str]:
     """Classify every saved identifier match; display and dispatch share this rule."""
     matches = journals_for_paper(paper, journals)
     choices = {journal.access_service_id for journal in matches}
