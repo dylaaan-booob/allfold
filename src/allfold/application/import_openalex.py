@@ -12,12 +12,14 @@ MAX_PDF_CANDIDATES = 4
 
 
 def lookup_pdf_candidates(doi: str, *, config_path: Path | None = None,
-                          client: OpenAlexClient | None = None) -> dict:
+                          client: OpenAlexClient | None = None, cancel_event=None, recovery_observer=None,
+                          deadline: float | None = None) -> dict:
     """Return bounded direct PDF URLs only, never landing pages or provider secrets."""
     if client is None:
         try:
             key, _ = read_credential(config_path, provider="openalex")
-            with OpenAlexClient(api_key=key) as owned:
+            with OpenAlexClient(api_key=key, cancel_event=cancel_event, recovery_observer=recovery_observer,
+                                deadline=deadline) as owned:
                 return lookup_pdf_candidates(doi, client=owned)
         except (OSError, ValueError):
             return {"candidates": [], "diagnostic": {"code": "openalex_credential_unavailable"}}
@@ -27,7 +29,7 @@ def lookup_pdf_candidates(doi: str, *, config_path: Path | None = None,
         return {"candidates": [], "diagnostic": {"code": "openalex_not_found"}}
     except OpenAlexRequestError as error:
         code = {OpenAlexFailureKind.AUTHORIZATION: "authorization_required",
-                OpenAlexFailureKind.QUOTA: "quota", OpenAlexFailureKind.CIRCUIT_OPEN: "quota"}.get(error.kind, "lookup_failed")
+                OpenAlexFailureKind.QUOTA: "quota"}.get(error.kind, "lookup_failed")
         return {"candidates": [], "diagnostic": {"code": "openalex_" + code}}
     try:
         matches = normalize_doi(work.get("doi")) == normalize_doi(doi)

@@ -83,7 +83,7 @@ test('PDF imports retain the legacy download window and safe redirect chains bey
     response.emit('data',Buffer.from('%PDF-1.7\n'));
     // Advance the transport's real deadline callbacks with an isolated clock.
     for(const timer of [...f.timers.keys()])if(timer.ms<=45000)timer.callback();
-    response.emit('data',Buffer.from('body completed at 45 seconds'));response.emit('end');
+    response.emit('data',Buffer.from('body completed at 45 seconds\n%%EOF\n'));response.emit('end');
     const result=await pending;
     assert.equal(result.pdf.registered,true);assert.equal(result.pdf.source,source);
     assert.equal(f.request.aborted,0);assert.equal(f.request.followed,9);assert.equal(lookups,source==='openalex'?1:0);
@@ -132,6 +132,16 @@ test('bounded attachment responses abort before buffering beyond the cap',async(
  const f=fixture(),pending=f.start({}, {maxBytes:5});
  const response=f.incoming();response.emit('data',Buffer.from('1234'));response.emit('data',Buffer.from('56'));
  await assert.rejects(pending,error=>error.code==='response_too_large');assert.equal(f.request.aborted,1);
+});
+test('attachment response headers can publish cooldown before the body settles',async()=>{
+ const f=fixture(),seen=[];
+ const pending=f.start({}, {kind:'item-saver',onResponse:(url,status,headers)=>seen.push({url,status,headers})});
+ f.request.emit('redirect',302,'GET','https://cdn.example/full.pdf');
+ const response=f.incoming(503,{'retry-after':['120']});
+ assert.deepEqual(JSON.parse(JSON.stringify(seen)),[{url:'https://cdn.example/full.pdf',status:503,headers:[['retry-after','120']]}]);
+ response.emit('data',Buffer.from('incomplete'));response.emit('aborted');response.emit('end');
+ await assert.rejects(pending,error=>error.code==='invalid_response');
+ assert.equal(f.request.aborted,1);
 });
 test('native attachment requests preserve same-origin referrers and strip paths across origins and redirects',{timeout:20000},async t=>{
  const {execFile}=require('node:child_process');

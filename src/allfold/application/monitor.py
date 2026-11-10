@@ -48,8 +48,10 @@ class RunResult:
 
 def run_monitor(config_path: Path, *, provider: RunProvider = RunProvider.INTEGRATED,
                 loaded_config: LoadedConfig | None = None, workspace_snapshot=None,
-                cancel_event=None, progress_callback: ProgressCallback | None = None, wos_stage=None, workflow_id=None) -> RunResult:
+                cancel_event=None, progress_callback: ProgressCallback | None = None, wos_stage=None, workflow_id=None,
+                recovery_observer=None) -> RunResult:
     discovery_provider(provider)
     from allfold.application.integrated_run import run_integrated
     return run_integrated(config_path, loaded_config=loaded_config, workspace_snapshot=workspace_snapshot,
-                          cancel_event=cancel_event, progress_callback=progress_callback, wos_stage=wos_stage, workflow_id=workflow_id)
+                          cancel_event=cancel_event, progress_callback=progress_callback, wos_stage=wos_stage,
+                          workflow_id=workflow_id, recovery_observer=recovery_observer)
