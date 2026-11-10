@@ -16,7 +16,7 @@ from allfold.application.settings import (
     SettingsIssue,
     SettingsIssueSource,
 )
-from allfold.config import AccessService, InstitutionConfig, KeptWorkflowConfig, JournalConfig, LogLevel, DEFAULT_PROVIDER_ORDER, ENABLED_PROVIDERS, validate_provider_order, parse_journal_labels
+from allfold.config import AccessService, InstitutionConfig, KeptWorkflowConfig, JournalConfig, LogLevel, WORKFLOW_CONCURRENCY_FIELDS, DEFAULT_PROVIDER_ORDER, ENABLED_PROVIDERS, validate_provider_order, parse_journal_labels
 from allfold.date_range import DateRangeSpec, DateRangeError, validate_date_range_spec
 from allfold.url_safety import normalize_public_http_url
 
@@ -70,9 +70,11 @@ class SettingsFormValues:
     institution_use_shibboleth: bool = False
     institution_issues: tuple[SettingsIssue, ...] = ()
     prepare_service_concurrency: str = "5"
-    auto_import_after_preparation: bool = False
-    transition_delay_seconds: str = "3"
-    display_name: str = ""
+    paper_service_concurrency: str = "2"
+    paper_global_concurrency: str = "4"
+    translator_concurrency: str = "2"
+    pdf_concurrency: str = "2"
+    zotero_writer_concurrency: str = "2"
     zotero_target: dict | None = None
     provider_aliases: dict[str, str] = field(default_factory=dict)
     provider_order: tuple[str, ...] = DEFAULT_PROVIDER_ORDER
@@ -137,10 +139,7 @@ def settings_form_from_draft(draft: MonitorDraft) -> SettingsFormValues:
         monitor_revision_digest=monitor_digest,
         journal_revision_exists=journal_exists,
         journal_revision_digest=journal_digest,
-        prepare_service_concurrency=str(draft.kept_workflow.prepare_service_concurrency),
-        auto_import_after_preparation=draft.kept_workflow.auto_import_after_preparation,
-        transition_delay_seconds=str(draft.kept_workflow.transition_delay_seconds),
-        display_name=draft.kept_workflow.display_name or "",
+        **{name: str(getattr(draft.kept_workflow, name)) for name in WORKFLOW_CONCURRENCY_FIELDS},
         zotero_target=draft.kept_workflow.zotero_target.model_dump() if draft.kept_workflow.zotero_target else None,
         institution_name=draft.institution.name or "" if draft.institution else "",
         institution_idp_entity_id=draft.institution.idp_entity_id or "" if draft.institution else "",
@@ -174,7 +173,7 @@ def settings_form_from_submission(form: FormData) -> SettingsFormValues:
     group_names = tuple(str(value) for value in form.getlist("settings_group"))
     institution_fields = {"institution_name", "institution_idp_entity_id", "institution_use_shibboleth"}
     # Enumerate the existing editor/import contract so credential aliases cannot be ignored.
-    workflow_fields = {"prepare_service_concurrency", "auto_import_after_preparation", "transition_delay_seconds", "display_name", "zotero_target"}
+    workflow_fields = {*WORKFLOW_CONCURRENCY_FIELDS, "zotero_target"}
     supported_fields = institution_fields | workflow_fields | {
         "csrf_token", "name", "keyword_expression", "output_dir", "log_level",
         "from_month", "to_month", "crossref_mailto",
@@ -198,8 +197,6 @@ def settings_form_from_submission(form: FormData) -> SettingsFormValues:
         (_form_issue("institution", "Unsupported Settings field or duplicate institution identifier. Credentials, sessions and login routes are not settings."),)
         if forbidden or duplicate else ()
     )
-    if form.get("auto_import_after_preparation", "") not in {"", "1"}:
-        institution_issues += (_form_issue("kept_workflow", "Invalid automatic continuation option."),)
     if form.get("institution_use_shibboleth", "") not in {"", "1"}:
         institution_issues += (_form_issue("institution.use_shibboleth", "Invalid Shibboleth login option."),)
     if incomplete_rows:
@@ -242,10 +239,8 @@ def settings_form_from_submission(form: FormData) -> SettingsFormValues:
         institution_idp_entity_id=str(form.get("institution_idp_entity_id", "")),
         institution_use_shibboleth=form.get("institution_use_shibboleth") == "1",
         institution_issues=institution_issues,
-        prepare_service_concurrency=str(form.get("prepare_service_concurrency", "5")),
-        auto_import_after_preparation=form.get("auto_import_after_preparation") == "1",
-        transition_delay_seconds=str(form.get("transition_delay_seconds", "3")),
-        display_name=str(form.get("display_name", "")),
+        **{name: str(form.get(name, KeptWorkflowConfig.model_fields[name].default))
+           for name in WORKFLOW_CONCURRENCY_FIELDS},
         zotero_target=_target_from_submission(form),
     )
 
@@ -289,10 +284,7 @@ def settings_draft_from_form(
         issues.append(_form_issue("institution." + str(detail["loc"][0]), detail["msg"]))
     try:
         kept_workflow = KeptWorkflowConfig(
-            prepare_service_concurrency=int(str(values.prepare_service_concurrency)),
-            auto_import_after_preparation=values.auto_import_after_preparation,
-            transition_delay_seconds=float(values.transition_delay_seconds),
-            display_name=values.display_name,
+            **{name: int(str(getattr(values, name))) for name in WORKFLOW_CONCURRENCY_FIELDS},
             zotero_target=values.zotero_target,
         )
     except (ValueError, TypeError) as error:

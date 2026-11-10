@@ -12,7 +12,7 @@ from allfold.application.journal_covers import cover_details
 from allfold.application.settings import load_settings, _read_journal_snapshot, SettingsIssueSource, SettingsIssue
 from allfold.application.journal_lookup import journal_metadata, search_journals
 from allfold.providers.openalex import OpenAlexError
-from allfold.config import ConfigurationError
+from allfold.config import ConfigurationError, WORKFLOW_CONCURRENCY_FIELDS
 from allfold.web.settings_form import settings_form_from_draft
 
 
@@ -195,7 +195,7 @@ def install_resource_api(app, config_path, csrf_token):
 AUTOSAVE_FIELDS = frozenset({
     'name', 'keyword_expression', 'from_month', 'to_month', 'log_level',
     'crossref_mailto', 'provider_aliases', 'provider_order', 'enabled_providers',
-    'prepare_service_concurrency', 'display_name', 'transition_delay_seconds', 'auto_import_after_preparation', 'zotero_target',
+    *WORKFLOW_CONCURRENCY_FIELDS, 'zotero_target',
     'institution_name', 'institution_idp_entity_id', 'institution_use_shibboleth',
     'journals', 'access_services', 'groups', 'custom_labels',
 })

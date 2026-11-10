@@ -1,11 +1,19 @@
 """Saved Service identities for one browser invocation, never a second mapping."""
 from dataclasses import dataclass
 import hashlib
+import os
 from pathlib import Path
 
 from allfold.config import AccessService, JournalConfig, load_config
 from allfold.persistence.safe_write import ContentChangedError, read_text_exact
 from allfold.persistence.user_state import ContentRevision, read_user_state
+
+
+def browser_workspace_identity(path: Path, identity: tuple[int, int]) -> str:
+    """Identify one live Workspace without exposing its local path to Electron."""
+    device, inode = identity
+    return hashlib.sha256(b'\0'.join((os.fsencode(path.resolve()),
+        str(device).encode('ascii'), str(inode).encode('ascii')))).hexdigest()
 
 
 @dataclass(frozen=True)

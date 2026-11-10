@@ -220,22 +220,32 @@ class ZoteroTarget(BaseModel):
 
 
 DEFAULT_PREPARE_SERVICE_CONCURRENCY = 5
+WORKFLOW_CONCURRENCY_FIELDS = (
+    "prepare_service_concurrency", "paper_service_concurrency", "paper_global_concurrency",
+    "translator_concurrency", "pdf_concurrency", "zotero_writer_concurrency",
+)
 
 
 class KeptWorkflowConfig(BaseModel):
-    """Public display and explicit Kept workflow preferences."""
+    """Saved workflow bounds and the preferred Zotero destination."""
 
     model_config = ConfigDict(extra="forbid", frozen=True)
     prepare_service_concurrency: int = Field(default=DEFAULT_PREPARE_SERVICE_CONCURRENCY, strict=True, ge=1, le=5)
-    auto_import_after_preparation: bool = Field(default=False, strict=True)
-    transition_delay_seconds: float = Field(default=3, strict=True, gt=0, allow_inf_nan=False)
-    display_name: str | None = None
+    paper_service_concurrency: int = Field(default=2, strict=True, ge=1, le=8)
+    paper_global_concurrency: int = Field(default=4, strict=True, ge=1, le=16)
+    translator_concurrency: int = Field(default=2, strict=True, ge=1, le=6)
+    pdf_concurrency: int = Field(default=2, strict=True, ge=1, le=8)
+    zotero_writer_concurrency: int = Field(default=2, strict=True, ge=1, le=4)
     zotero_target: ZoteroTarget | None = None
 
-    @field_validator("display_name", mode="before")
+    @model_validator(mode="before")
     @classmethod
-    def public_display_name(cls, value: Any) -> str | None:
-        return InstitutionConfig.public_name(InstitutionConfig.optional_public_text(value))
+    def read_legacy_settings(cls, value):
+        if isinstance(value, dict):
+            # Existing YAML loads unchanged. The next Settings save drops obsolete launch preferences.
+            return {key: item for key, item in value.items()
+                    if key not in {"auto_import_after_preparation", "transition_delay_seconds", "display_name"}}
+        return value
 
 
 class _Settings(BaseModel):

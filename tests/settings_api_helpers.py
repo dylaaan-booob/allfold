@@ -1,6 +1,9 @@
 """Isolated Registry data and Settings FormData from the UI Next JSON projection."""
+
 from contextlib import closing
 import sqlite3
+
+from allfold.config import WORKFLOW_CONCURRENCY_FIELDS
 
 
 def registry(root, rows=None):
@@ -25,12 +28,11 @@ def form(state):
     data = {key: v[key] for key in (
         "name", "keyword_expression", "openalex_key_revision", "crossref_mailto", "from_month", "to_month", "output_dir", "log_level",
         "monitor_revision_exists", "monitor_revision_digest", "journal_revision_exists",
-        "journal_revision_digest", "transition_delay_seconds", "display_name",
+        "journal_revision_digest", *WORKFLOW_CONCURRENCY_FIELDS,
         "institution_name", "institution_idp_entity_id",
     )}
     data.update({f"provider_alias_{key}": value for key, value in v["provider_aliases"].items()})
     data.update(csrf_token=state["csrf_token"], settings_group=v["groups"], settings_custom_label=v["custom_labels"], provider_order=v["provider_order"], enabled_providers=v["enabled_providers"])
-    data["auto_import_after_preparation"] = "1" if v["auto_import_after_preparation"] else ""
     data["institution_use_shibboleth"] = "1" if v["institution_use_shibboleth"] else ""
     for source, mapping in (
         ("journals", {"journal_name": "name", "journal_issn": "issn", "journal_eissn": "eissn", "journal_group": "group", "journal_labels": "labels",
