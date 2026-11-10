@@ -47,7 +47,7 @@ class BrowserRuntime {
     this.domObservations=new Set();
     this.partition.webRequest.onHeadersReceived({urls:['http://*/*','https://*/*']},(details,callback)=>{
       for(const capture of this.attachmentCaptures) {
-        if(!this.ownsPage(capture.owner,capture.doc.pageId) || !this.documentCurrent(capture.doc)
+        if(!this.documentFrame(capture.doc,capture.owner)
           || details.webContentsId!==capture.tab.id || !['mainFrame','subFrame'].includes(details.resourceType))continue;
         const headers=Object.fromEntries(Object.entries(details.responseHeaders || {}).map(([key,value])=>
           [key.toLowerCase(),[].concat(value).join('; ')]));
@@ -204,10 +204,10 @@ class BrowserRuntime {
     this.events.emit('tab-created',null,tab);
     return tab;
   }
-  beginAuthentication(tab,signal,{institution=true}={}) {
+  beginAuthentication(tab,signal,{institution=true,allowCredentials=true}={}) {
     // Only CARSI entry and its attributable WoS handoff call this, never generic navigate().
     const owner=this.claimPage(tab,signal);
-    const context={owner,signal,active:true,institution,origins:new Set(tab.institutionOrigins || []),
+    const context={owner,signal,active:true,institution,allowCredentials,origins:new Set(tab.institutionOrigins || []),
       loginSubmitted:false,failure:null};
     context.fatal=new Promise((_,reject)=>{context.reject=reject;});
     context.fatal.catch(()=>{});
@@ -270,7 +270,7 @@ class BrowserRuntime {
         || (state.step==='login' && context.loginSubmitted))return;
       let credentials=null;
       if(state.step==='login') {
-        if(!this.readCASCredentials)return;
+        if(!context.allowCredentials || !this.readCASCredentials)return;
         try {credentials=await this.readCASCredentials();}
         catch(error) {this.reportPage('info','institution_auth_skipped',tab,{code:casErrorCode(error)});return;}
         if(!credentials || !current())return;
@@ -502,7 +502,7 @@ class BrowserRuntime {
   }
   navigationOptions(tab,{signal,deadline}={}) {
     const owner=tab.taskOwner;
-    const automatic=this.ownsPage(owner,tab.id) && (owner.taskTab===tab || tab.loadOwner===owner || tab.opener===owner.taskTab);
+    const automatic=this.ownsPage(owner,tab.id) && (owner.taskTab===tab || tab.loadOwner===owner || (!!tab.opener && tab.opener===owner.taskTab));
     return {automatic,owner:automatic?owner:null,
       signal:automatic?(signal || tab.taskSignal || owner?.signal):undefined,
       deadline:automatic?(deadline ?? tab.navigation?.current?.deadline ?? Infinity):Infinity,

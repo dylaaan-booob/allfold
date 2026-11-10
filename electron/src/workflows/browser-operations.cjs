@@ -18,9 +18,9 @@ async function pageAction(browser,tab,fn,args=[],signal,allowNavigation=false,de
   if(!allowNavigation && !browser.documentCurrent(doc))throw new BrowserFailure('navigation','document_changed');
   return result;
 }
-async function newTaskPage(browser,signal,association={role:'auxiliary',service:false}) {
+async function newTaskPage(browser,signal,{managed=false,...association}={role:'auxiliary',service:false}) {
   await waitFor(()=>browser.ready,signal);
-  const tab=browser.createTab({present:false});
+  const tab=browser.createTab({present:false,managed});
   browser.associatePage(tab,association);browser.beginPageLoad(tab,signal);
   return tab;
 }
@@ -208,8 +208,9 @@ async function loginInstitution(browser,data,{signal,progress}) {
   return withTaskDeadline(signal,'authentication',async(bounded,deadline)=>{
     if(data.login_url && !official(data.login_url,'/Shibboleth.sso/Login'))
       throw Error('Invalid CARSI entry');
-    const entry=await newTaskPage(browser,bounded,{role:'carsi-portal',service:false});
+    const entry=await newTaskPage(browser,bounded,{role:'carsi-portal',service:false,managed:true});
     const portal=await loginCARSI(browser,entry,data,bounded,progress,deadline);
+    portal.managed=true;
     browser.associatePage(portal,{role:'carsi-portal',service:false});
     portal.institutionOrigins=new Set(portal.authContext?.origins || []);
     portal.carsiSessionReady=true;
@@ -226,7 +227,7 @@ async function prepareLoggedInService(browser,data,{signal,progress}) {
     if(!entry?.carsiSessionReady || source?.role!=='carsi-portal' || source.workflow_id!==data.workflow_id
         || !matchesScope || !official(entry.view.webContents.getURL(),'/resource/resource.php'))
       throw new BrowserFailure('authentication','carsi_session_expired');
-    const portal=await newTaskPage(browser,bounded,{role:'service-resource',source:entry});
+    const portal=await newTaskPage(browser,bounded,{role:'service-resource',source:entry,managed:true});
     portal.institutionOrigins=new Set(entry.institutionOrigins || []);
     await navigate(browser,portal,CARSI_PORTAL,bounded,progress,deadline);
     return visitCARSIResource(browser,portal,data,{signal:bounded,progress},deadline,{allowCredentials:false});
@@ -235,7 +236,7 @@ async function prepareLoggedInService(browser,data,{signal,progress}) {
 
 async function visitManualService(browser,data,{signal,progress}) {
   return withTaskDeadline(signal,'preparation',async(bounded,deadline)=>{
-    const tab=await newTaskPage(browser,bounded,{role:'service-target'});
+    const tab=await newTaskPage(browser,bounded,{role:'service-target',managed:true});
     const document=await navigate(browser,tab,data.access_url,bounded,progress,deadline);
     if(!browser.documentCurrent(document))throw new BrowserFailure('navigation','document_changed');
     return {outcome:'Opened',reason:'target_opened',evidence:{visit_action_observed:true,
@@ -277,8 +278,7 @@ async function ensureCARSIPortal(browser,data,{signal,progress},deadline) {
 // B performs one Service operation without re-entering institution initialization.
 async function visitCARSIResource(browser,portal,data,{signal,progress},requestDeadline,{allowCredentials=true}={}) {
   if(!portal.authContext?.active || portal.authContext.signal!==signal)
-    browser.beginAuthentication(portal,signal,{institution:false});
-  if(!allowCredentials)portal.authContext.loginSubmitted=true;
+    browser.beginAuthentication(portal,signal,{institution:false,allowCredentials});
   portal.taskSignal=signal;
   browser.bindTaskPage(portal,signal);
   let detail,visitDeadline;
@@ -349,7 +349,7 @@ async function visitCARSIResource(browser,portal,data,{signal,progress},requestD
       diagnostic:{stage:'preparation',step:'resource_search',code:'ambiguous_resource'}};
     if(selected.status!=='selected')throw new BrowserFailure('preparation','unverified_official_page');
     if(!official(selected.url,'/resource/resourceDetail.php'))throw Error('Invalid CARSI resource');
-    detail=await newTaskPage(browser,signal,{role:'service-resource',source:portal});
+    detail=await newTaskPage(browser,signal,{role:'service-resource',source:portal,managed:portal.managed});
     detail.authContext=portal.authContext;
     await navigate(browser,detail,selected.url,signal,progress,requestDeadline);
     checkCARSISession([portal,detail],signal);
@@ -380,34 +380,39 @@ async function visitCARSIResource(browser,portal,data,{signal,progress},requestD
   const wc=detail.view.webContents,owner=browser.operation;
   let target=null,ambiguous=false;
   const observe=tab=>{
+    if(signal.aborted || !browser.ownsPage(owner,tab.id))return;
     if(target) {
       if(target!==tab){ambiguous=true;browser.finishPageLoad(target);}
       return;
     }
+    browser.runInOperation(owner,()=>browser.beginPageLoad(tab,signal,requestDeadline));
     target=tab;
-    browser.runInOperation(owner,()=>browser.beginPageLoad(target,signal,requestDeadline));
   };
-  const ownNav=(_event,_url,inPlace,main)=>{if(main && !inPlace)observe(detail);};
+  const observesTarget=(tab,event,inPlace,main)=>{
+    if((event.isMainFrame ?? main) && !(event.isSameDocument ?? inPlace))observe(tab);
+  };
+  const ownNav=(event,_url,inPlace,main)=>observesTarget(detail,event,inPlace,main);
   const popupListeners=[];
   const popup=(_event,tab)=>{
     if(tab.opener!==detail)return;
-    const listener=(_e,_url,inPlace,main)=>{if(main && !inPlace)observe(tab);};
+    const listener=(event,_url,inPlace,main)=>observesTarget(tab,event,inPlace,main);
     tab.view.webContents.on('did-start-navigation',listener);popupListeners.push([tab.view.webContents,listener]);
   };
   wc.on('did-start-navigation',ownNav);browser.events.on('tab-created',popup);
   try {
     browser.beginPageLoad(detail,signal,requestDeadline,{fresh:true});
-    let clicked;
+    const sourceDocument=await waitFor(()=>browser.snapshot(detail),signal,visitDeadline,'preparation','visit_target');
     try {
-      clicked=await pageAction(browser,detail,detailPageAction,['visit',visitDeadline],signal,true,visitDeadline);
+      const clicked=await pageAction(browser,detail,detailPageAction,['visit',visitDeadline],signal,true,visitDeadline);
+      if(clicked?.status!=='visited_click')return {outcome:'Needs attention',reason:'unverified_official_page'};
     } catch(error) {
       checkCanceled(signal);
-      if(error.diagnostic?.code==='timeout' || !target || ambiguous)throw error;
+      if(error.diagnostic?.code==='timeout' || !target || ambiguous || browser.documentCurrent(sourceDocument))throw error;
       // The one click may destroy its execution context after navigation was already observed.
     }
-    if(!target && clicked?.status!=='visited_click')return {outcome:'Needs attention',reason:'unverified_official_page'};
     while(!target)await waitFor(()=>pause(signal),signal,visitDeadline,'preparation','visit_target');
     if(ambiguous)return {outcome:'Needs attention',reason:'unverified_official_page'};
+    target.managed=true;
     browser.associatePage(target,{role:'service-target',source:target===detail?portal:detail});
     browser.bindTaskPage(target,signal);
     await browser.waitForPage(target,{signal,deadline:requestDeadline,

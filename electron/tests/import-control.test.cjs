@@ -257,3 +257,52 @@ test('shutdown stops new dispatch and waits for every escaped save to settle',as
   assert.equal(f.messages.find(m=>m.type==='result' && m.id==='second').data.parent.accepted_id,'SECOND01');
   assert.equal(quitCalls,1);assert.equal(f.calls.end,2);
 });
+
+test('same-URL challenges use their own CDP target and ignore stale replies after navigation',{timeout:5000},async()=>{
+  const {EventEmitter}=require('node:events');
+  const f=fixture(),sent=deferred(),results=new Map();
+  class Socket extends EventEmitter {
+    constructor(){super();Socket.instance=this;}
+    addEventListener(...args){this.on(...args);}
+    close(){throw Error('unexpected bridge close');}
+  }
+  let challengeCount=0;
+  const send=f.context.send;
+  f.context.send=message=>{
+    send(message);
+    if(message.type==='solve_cloudflare' && ++challengeCount===2)sent.resolve();
+  };
+  Object.assign(f.context,{WebSocket:Socket,bridgeReady:false,base:'http://127.0.0.1:18767',token:'fixture'});
+  vm.runInContext(source.slice(source.indexOf('async function connect('),source.indexOf('async function main(')),f.context);
+  const connected=f.context.connect();
+  const reply=message=>Socket.instance.emit('message',{data:JSON.stringify(message)});
+  reply({type:'ready',log_level:'warn'});
+  await connected;
+
+  f.context.browser.ownsPage=(owner,pageId)=>owner.taskTab.id===pageId;
+  f.context.browser.navigate=async function(url) {
+    const pageId=this.taskTab.id;
+    const contents=new EventEmitter();
+    Object.assign(contents,{getURL:()=>url,isLoadingMainFrame:()=>false,getOrCreateDevToolsTargetId:()=>String(pageId).repeat(32)});
+    this.tabs.set(pageId,{view:{webContents:contents}});
+    const doc={pageId,url,frameToken:'document_'+pageId,processId:42};
+    results.set(pageId,await f.context.solveCloudflare(doc,{signal:this.operation.signal}));
+    return doc;
+  };
+  const first=f.run('first'),second=f.run('second');
+  await sent.promise;
+  const [a,b]=f.messages.filter(message=>message.type==='solve_cloudflare');
+  assert.equal(a.data.url,b.data.url);
+  assert.notEqual(a.data.target_id,b.data.target_id);
+  const response=message=>({...message,type:'solve_cloudflare_result',data:{outcome:'clicked',reason:'checkbox_clicked'}});
+  reply(response({...b,id:a.id}));
+  await Promise.resolve();
+  assert.equal(results.size,0);
+  f.context.browser.tabs.get(1).view.webContents.emit('did-start-navigation',{isMainFrame:true,isSameDocument:false});
+  reply(response(a));reply(response(b));
+  await Promise.all([first,second]);
+  assert.equal(results.get(1).reason,'canceled');
+  assert.equal(results.get(2).outcome,'clicked');
+  assert.ok(f.messages.some(message=>message.type==='cancel_cloudflare' && message.id===a.id));
+  assert.ok(!f.messages.some(message=>message.type==='cancel_cloudflare' && message.id===b.id));
+});

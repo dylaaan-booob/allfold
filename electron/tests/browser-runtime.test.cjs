@@ -47,7 +47,11 @@ function fixture(t) {
     reload(){this.reloads=(this.reloads || 0)+1;this.emit('did-start-navigation',{},this.url || 'https://example.org/',false,true);}
     send(channel,value){this.messages ||= [];this.messages.push({channel,value});}
     focus(){this.focused=(this.focused || 0)+1;}
-    async loadURL(url){this.emit('did-start-navigation',{},url,false,true);this.url=url;this.mainFrame.url=url;this.emit('did-navigate',{},url,200);this.emit('did-frame-navigate',{},url,200);this.emit('did-finish-load');}
+    async loadURL(url){
+      if(this.modernNavigation)this.emit('did-start-navigation',{url,isMainFrame:true,isSameDocument:false});
+      else this.emit('did-start-navigation',{},url,false,true);
+      this.url=url;this.mainFrame.url=url;this.emit('did-navigate',{},url,200);this.emit('did-frame-navigate',{},url,200);this.emit('did-finish-load');
+    }
     async executeJavaScriptInIsolatedWorld(){return {html:this.html || '<title>Article</title>',title:this.title || 'Article',url:this.url,type:'text/html'};}
     close(){this.destroyed=true;this.emit('destroyed');}
   }
@@ -815,4 +819,110 @@ test('Enrich, cancellation and Import retain the same locked Paper tab for its W
     assert.notEqual(opened.pageId,tab.id);
   });
   assert.equal(browser.tabs.size,2);
+});
+
+test('Login opens one managed CARSI Portal and prepares independent Service pages without resubmitting credentials',{timeout:5000},async t=>{
+  const {loginInstitution,prepareLoggedInService}=require('../src/workflows/browser-operations.cjs');
+  const {BrowserRuntime}=fixture(t);
+  const idp='https://idp.example.edu/login',portalURL='https://ds.carsi.edu.cn/resource/resource.php';
+  const targetURL='https://publisher.example/challenge';
+  const manualId='svc_'+'2'.repeat(32),noClickId='svc_'+'3'.repeat(32);
+  let reads=0,submissions=0,releaseSearches,reportManual,manualWaiting=false;
+  const simultaneous=new Promise(resolve=>{releaseSearches=resolve;});
+  const manualReady=new Promise(resolve=>{reportManual=resolve;});
+  const searches=[],solved=[],serviceModes=[];
+  const browser=new BrowserRuntime({
+    readCASCredentials:async()=>{reads++;return {username:'fixture',password:'synthetic'};},
+    solveCloudflare:async doc=>{
+      const owner=browser.operation;
+      assert.equal(browser.ownsPage(owner,doc.pageId),true);
+      assert.equal(browser.documentCurrent(doc),true);
+      solved.push({pageId:doc.pageId,serviceId:owner.association.service_id});
+      const contents=browser.tabs.get(doc.pageId).view.webContents;
+      contents.html='<article>Fixture</article>';contents.title='Fixture';
+      return {outcome:'clicked'};
+    },
+  });
+  t.after(()=>browser.close());await browser.ready;
+  browser.events.on('tab-created',(_event,tab)=>{
+    const wc=tab.view.webContents,load=wc.loadURL.bind(wc);
+    if(tab.opener)wc.modernNavigation=true;
+    wc.loadURL=url=>load(url.startsWith('https://ds.carsi.edu.cn/Shibboleth.sso/Login')?idp:url);
+    wc.runAuth=async code=>{
+      const [action,name,_query,mode]=JSON.parse(code.slice(code.lastIndexOf('(...')+4,-1));
+      if(action==='inspect' && wc.getURL()===idp) {
+        if(tab.association?.service_id)serviceModes.push(mode);
+        return {step:'login',waiting:true};
+      }
+      if(action==='act' && wc.getURL()===idp) {
+        submissions++;await load(portalURL);return {acted:true};
+      }
+      if(action==='ready')return {status:'ready',checked:false};
+      if(action==='search') {
+        searches.push({tabId:tab.id,serviceId:tab.association.service_id,name});
+        if(searches.length===2)releaseSearches();
+        await simultaneous;
+        return {status:'pending'};
+      }
+      if(action==='poll')return {status:'complete',selection:{status:'selected',
+        url:'https://ds.carsi.edu.cn/resource/resourceDetail.php?id='+tab.association.service_id}};
+      return {step:'none',waiting:false};
+    };
+    const execute=wc.executeJavaScriptInIsolatedWorld.bind(wc);
+    wc.executeJavaScriptInIsolatedWorld=async(world,scripts)=>{
+      if(!scripts)return execute();
+      const [action]=JSON.parse(scripts[0].code.slice(scripts[0].code.lastIndexOf('(...')+4,-1));
+      if(action==='check')return {status:'ready'};
+      assert.equal(action,'visit');
+      const popup=wc.popup({url:idp}).createWindow({});
+      await popup.loadURL(idp);
+      await browser.handleAuthentication(browser.tabs.get(popup.id));
+      if(tab.association.service_id===noClickId) {
+        await popup.loadURL('https://publisher.example/unrelated');
+        return {status:'pending'};
+      }
+      popup.title='Just a moment...';
+      popup.html=cloudflarePageOptions+cloudflarePageScript
+        +(tab.association.service_id===manualId?'<iframe src="https://newassets.hcaptcha.com/captcha/v1"></iframe>':'');
+      await popup.loadURL(targetURL);
+      return {status:'visited_click'};
+    };
+  });
+  const signal=new AbortController().signal;
+  const common={workflow_id:'login_workflow',service_scope:serviceScope};
+  const institution={...common,request_id:'login',task_id:'institution',use_shibboleth:true,
+    login_url:'https://ds.carsi.edu.cn/Shibboleth.sso/Login'};
+  const login=await browser.runTask(signal,institution,()=>loginInstitution(browser,institution,{signal,progress(){}}));
+  assert.equal(login.outcome,'Opened');assert.equal(reads,1);assert.equal(submissions,1);
+  const entry=browser.tabs.get(login.portal_page_id);
+  const prepare=(id,name,progress=()=>{})=>{
+    const data={...common,request_id:name,task_id:name,service_id:id,portal_page_id:entry.id,name};
+    return browser.runTask(signal,data,()=>prepareLoggedInService(browser,data,{signal,progress}));
+  };
+  const manual=prepare(manualId,'ManualCaptcha',value=>{
+    if(value.waiting_for_user){manualWaiting=true;reportManual();}
+  });
+  const automatic=prepare(serviceId,'Automatic');
+  await Promise.race([manualReady,manual]);
+  const auto=await automatic;
+  assert.equal(auto.outcome,'Opened');assert.equal(manualWaiting,true);
+  assert.equal(searches.length,2);assert.notEqual(searches[0].tabId,searches[1].tabId);
+  assert.equal(searches.some(search=>search.tabId===entry.id),false);
+  const {target_page_id:autoId}=auto.evidence;
+  assert.deepEqual(solved,[{pageId:autoId,serviceId}]);
+  const manualTarget=browser.servicePages(serviceScope.scope_id,manualId).find(page=>page.role==='service-target');
+  assert.ok(manualTarget);assert.notEqual(manualTarget.page_id,autoId);
+  const manualContents=browser.tabs.get(manualTarget.page_id).view.webContents;
+  manualContents.html='<article>Verified manually</article>';manualContents.title='Publisher';
+  await manualContents.loadURL('https://publisher.example/verified');
+  assert.equal((await manual).outcome,'Opened');
+  assert.equal((await prepare(noClickId,'NoClick')).outcome,'Needs attention');
+  for(const id of [entry.id,autoId,manualTarget.page_id]) {
+    const page=browser.state().tabs.find(tab=>tab.id===id);
+    assert.equal(page.managed,true);
+    await assert.rejects(browser.command({action:'close',id}),/managed page/i);
+  }
+  assert.ok(serviceModes.includes('institution'));
+  assert.equal(reads,1);assert.equal(submissions,1);
+  assert.equal(browser.pageAssociation(autoId).source_page_id,auto.evidence.source_page_id);
 });
