@@ -34,7 +34,7 @@ const server=http.createServer(async(req,res)=>{
   if(route==='/checkbox-frame'){res.writeHead(200,{'Content-Type':'text/html'});res.end('<input type="checkbox">');return;}
   if(route.startsWith('/api/')||route==='/settings/covers/search'){
     let body='';for await(const chunk of req)body+=chunk;requests.push({route,body:body?JSON.parse(body):null});
-    if(route==='/api/login/start')loginState={...loginState,phase:'completed',
+    if(route==='/api/login/start')loginState={...loginState,phase:'completed',can_confirm_all:true,
       services:services.map(service=>({...service,preparation:{status:'Needs attention',reason:'manual_action_required'}}))};
     if(route==='/api/kept-workflow/start')keptState={workflow_id:'kept-a',generation:7,planned_total:1,
       batch:{total:1,task_id:'import-a',results:[{paper_id:'paper-1',service_id:serviceId,
@@ -93,6 +93,7 @@ app.whenReady().then(async()=>{
     await ready(()=>host(`document.activeElement.dataset.serviceId===${JSON.stringify(serviceId)}`),'Service result focuses its Login row');
     await click(win.webContents,'#login-start');
     await ready(()=>host("document.getElementById('login-services').textContent.includes('Needs attention')"),'Login presents the Service result');
+    assert(await host("!document.getElementById('login-confirm').hidden && !document.querySelector('#login-services [data-login-action=page]')"),'Login exposes one batch confirmation');
     assert(requests.filter(request=>request.route==='/api/login/start').length===1,'Login did not submit one explicit task');
     await search('Synthetic kept paper');await key(win.webContents,'Enter');
     await ready(()=>host("workspaceNavigation.current()==='workspace'&&document.getElementById('view-paper-title').textContent==='Synthetic kept paper'"),'paper search opens Reader');

@@ -99,8 +99,8 @@ def config_files(tmp_path):
     return path, venues
 
 
-@pytest.mark.parametrize('change_after_query', [False, True])
-def test_coordinator_preserves_saved_service_scope_and_prepared_page_across_batches(tmp_path, change_after_query):
+@pytest.mark.parametrize(('change_after_query', 'prepared_page'), [(False, 71), (True, 71), (False, None)])
+def test_coordinator_preserves_saved_service_scope_and_prepared_page_across_batches(tmp_path, change_after_query, prepared_page):
     from concurrent.futures import Future
     from allfold.application.browser_runtime import BrowserTaskLock
     from allfold.application.browser_services import BrowserServiceSnapshot
@@ -119,7 +119,7 @@ def test_coordinator_preserves_saved_service_scope_and_prepared_page_across_batc
     class Login:
         def prepared_page(self, saved, service_id):
             assert any(service.id == service_id and service.name == "Web of Science" for service in saved.services)
-            return 71
+            return prepared_page
         def prepared_authority(self, saved, service_id):
             return self.prepared_page(saved, service_id), 'e' * 64
 
@@ -150,7 +150,11 @@ def test_coordinator_preserves_saved_service_scope_and_prepared_page_across_batc
     coordinator.join()
     assert [action for action, _ in bridge.calls] == (['wos_query'] if change_after_query else
                                                      ['wos_query', 'wos_export', 'wos_export'])
-    assert all(data['page_id'] == 71 and data['service_id'] == next(s.id for s in saved.services if s.name == 'Web of Science')
+    query = bridge.calls[0][1]
+    assert query['page_id'] == prepared_page
+    assert query.get('manually_confirmed', False) is (prepared_page is None)
+    assert all(data['page_id'] == 71 for _, data in bridge.calls[1:])
+    assert all(data['service_id'] == next(s.id for s in saved.services if s.name == 'Web of Science')
                and data['service_scope'] == saved.scope and data['preparation_key'] == 'e' * 64 for _, data in bridge.calls)
     assert len({data['task_id'] for _, data in bridge.calls}) == 1
     assert all(data['workflow_id'] == start['snapshot']['task_id'] for _,data in bridge.calls)

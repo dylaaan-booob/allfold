@@ -139,7 +139,16 @@ function fixture(t,{attributable=true,hold=false,challenge=false,domError=null,q
           if(cancelVerification)controller.abort();else authentication.complete();
         }
       },checkCanceled:signal=>{if(signal.aborted)throw Error('canceled');}}:
-      name==='./browser-operations.cjs'?{navigate:async()=>{}}:
+      name==='./browser-operations.cjs'?{
+        async newTaskPage(owner,_signal,{role,managed}) {
+          assert.equal(owner,browser);assert.equal(role,'wos-query');assert.equal(managed,true);
+          assert.equal(browser.tabs.size,0);
+          browser.tabs.set(tab.id,tab);ops.push('new page');return tab;
+        },
+        async navigate(_browser,target,url) {
+          assert.equal(target,tab);assert.equal(url,advanced);
+          doc.url=url;ops.push('navigate');
+        }}:
       name==='./import-errors.cjs'?{ImportFailure,checkPage}:hostRequire(name)});
   vm.runInContext(fs.readFileSync(path.join(__dirname,'../src/workflows/wos-operations.cjs'),'utf8'),context);
   return {browser,controller,item,ops,ready,settle:()=>settle(),
@@ -203,6 +212,21 @@ test('WoS query and consecutive exports keep the prepared page/document while an
   await assert.rejects(f.run(preparedIdentity),/document_changed/);
   assert.equal(f.ops.length,before);
   assert.equal(f.browser.partition.listenerCount('will-download'),0);
+});
+
+test('manual confirmation opens a WoS query page and keeps that page for export',async t=>{
+  const f=fixture(t,{query:true});
+  f.browser.tabs.clear();
+  await assert.rejects(f.runQuery({page_id:null}),/wos_target_lost/);
+  assert.deepEqual(f.ops,[]);
+
+  const query=await f.runQuery({page_id:null,manually_confirmed:true});
+  assert.equal(query.page_id,71);
+  assert.deepEqual(f.ops.slice(0,2),['new page','navigate']);
+  const tab=f.browser.tabs.get(query.page_id);
+  assert.equal(tab.preparationKey,preparedIdentity.preparation_key);
+  assert.equal((await f.run({page_id:query.page_id})).filename,f.filename);
+  assert.equal(f.browser.taskTab,tab);
 });
 test('WoS waits for a result toolbar that mounts after the result count, then opens export once',async t=>{
   const f=fixture(t,{query:true,deferExportMenu:true});

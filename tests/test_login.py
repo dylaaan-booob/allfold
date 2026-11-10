@@ -111,6 +111,64 @@ def test_login_cancel_drains_active_operations_and_preserves_observed_open(tmp_p
     assert lock.owner is None
 
 
+def test_manual_confirmation_marks_entire_finished_login_batch_available(tmp_path):
+    from types import SimpleNamespace
+    from fastapi.testclient import TestClient
+    from allfold.web.app import create_app
+    from electron_test_helpers import OfflineBridge
+
+    class Bridge(Native, OfflineBridge):
+        pass
+
+    path, services = login_fixture(tmp_path, count=3)
+    first, wos, publisher, manual = services
+    native = Bridge()
+    app = create_app(path, electron_bridge=native, diagnostics_root=tmp_path / 'logs')
+    saved = BrowserServiceSnapshot.read(path)
+    with TestClient(app, base_url='http://localhost') as client:
+        csrf = {'csrf_token': app.state.csrf_token}
+        started = client.post('/api/login/start', json=csrf).json()
+        assert started['can_confirm_all'] is False
+        body = {**csrf, 'workflow_id': started['workflow_id']}
+        assert client.post('/api/login/confirm', json=body).status_code == 409
+
+        _, _, carsi = native.operations.get(timeout=2)
+        carsi.set_result({'outcome': 'Opened', 'portal_page_id': 17})
+        attempts = {data['service_id']: result
+                    for _, data, result in (native.operations.get(timeout=2) for _ in range(3))}
+        attempts[publisher.id].set_result({'diagnostic': {'stage': 'navigation', 'code': 'load_failed'}})
+        attempts[wos.id].set_result({'diagnostic': {'stage': 'navigation', 'code': 'load_failed'}})
+        attempts[first.id].set_result(opened(100))
+        app.state.login.join()
+        assert client.get('/api/login/state').json()['can_confirm_all'] is True
+        assert app.state.login.prepared_authority(saved, wos.id) is None
+        papers = [SimpleNamespace(service_id=service.id) for service in services]
+        unprepared = app.state.kept_workflow.unprepared_services
+        assert {row['id'] for row in unprepared(saved, papers)} == {wos.id, publisher.id, manual.id}
+        assert client.post('/api/login/confirm', json={**body, 'workflow_id': 'stale'}).status_code == 409
+
+        owner = app.state.browser_task_lock.acquire('fixture')
+        assert owner is not None
+        assert client.post('/api/login/confirm', json=body).status_code == 409
+        app.state.browser_task_lock.release(owner)
+        assert client.post('/api/login/confirm', json={**body, 'csrf_token': 'bad'}).status_code == 403
+
+        result = client.post('/api/login/confirm', json=body)
+        assert result.status_code == 200
+        state = result.json()
+        assert state['phase'] == 'confirmed' and state['can_confirm_all'] is False
+        rows = {row['id']: row['preparation'] for row in state['services']}
+        assert all(row['status'] == 'Opened' for row in rows.values())
+        assert rows[first.id]['page_id'] == 100 and rows[first.id]['reason'] == 'target_opened'
+        for service in (wos, publisher, manual):
+            assert rows[service.id]['reason'] == 'manual_login_confirmed'
+            assert app.state.login.prepared_authority(saved, service.id) is not None
+            assert app.state.login.prepared_page(saved, service.id) is None
+        assert unprepared(saved, papers) == []
+        assert native.operations.empty()
+        assert client.post('/api/login/confirm', json=body).status_code == 409
+
+
 def test_discover_asks_for_login_without_preparing_or_taking_browser_owner(tmp_path):
     path, _ = login_fixture(tmp_path)
     native, lock = Native(), BrowserTaskLock()

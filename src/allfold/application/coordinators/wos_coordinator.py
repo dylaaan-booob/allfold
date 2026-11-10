@@ -93,7 +93,7 @@ class WoSCoordinator:
                 enabled = self._browser_available()
                 if not enabled:
                     message = 'Browser runtime unavailable'
-                elif self.login.prepared_page(BrowserServiceSnapshot.read(self.path), service.id) is None:
+                elif self.login.prepared_authority(BrowserServiceSnapshot.read(self.path), service.id) is None:
                     enabled = False
                     message = 'Prepare Web of Science in Workflows → Login'
             except (ValueError, OSError, ContentChangedError) as error:
@@ -194,7 +194,8 @@ class WoSCoordinator:
                 compiled=compiled, service=service, dates=dates,
                 service_scope=saved.scope, preparation_key=preparation_key,
                 config_text=config_text, state_revision=state_revision,
-                workspace_identity=workspace_identity, status='RUNNING', stage='WoS Query', message='Using prepared WoS page',
+                workspace_identity=workspace_identity, status='RUNNING', stage='WoS Query',
+                message='Using prepared WoS page' if page is not None else 'Opening WoS in the shared Browser session',
                 started_at=datetime.now(timezone.utc).isoformat(), started_clock=time.monotonic(),
                 cancelled=cancel_event if cancel_event is not None else threading.Event(), records=WoSRecords(), query=dict(text=query, next_first=1, total=None, seen=set(), finished=False),
                 identifiers={identifier: journal for journal in config.journals for identifier in journal.identifiers},
@@ -390,10 +391,13 @@ class WoSCoordinator:
             page = task['page_id']
             task.update(stage='WoS Query', waiting_for_user=False)
             self._publish_progress(task)
-            query = self._electron_call(task, 'wos_query', {'page_id': page, 'query': task['query']['text']})
-            total = query.get('total')
-            if type(total) is not int or total < 0 or query.get('page_id') != page:
+            query = self._electron_call(task, 'wos_query', {'page_id': page, 'query': task['query']['text'],
+                **({'manually_confirmed': True} if page is None else {})})
+            total, result_page = query.get('total'), query.get('page_id')
+            if (type(total) is not int or total < 0 or type(result_page) is not int or result_page <= 0
+                    or (page is not None and result_page != page)):
                 raise ValueError('Unattributable WoS search result')
+            page = result_page
             task['query']['total'] = total
             task['query']['finished'] = total == 0
             limit = query.get('batch_limit')

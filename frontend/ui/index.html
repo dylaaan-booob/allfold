@@ -67,7 +67,11 @@
     <aside class="navigation-flyout" hidden><button type="button" data-flyout-close aria-label="Close directory">×</button></aside>
     <div id="login-main" class="workspace-content" tabindex="-1">
       <header class="workflow-heading"><h1>Login</h1>
-        <div class="workflow-actions"><button id="login-start" type="button" class="s-button" disabled>Login</button><button id="login-cancel" type="button" class="s-button" hidden>Cancel</button></div>
+        <div class="workflow-actions">
+          <button id="login-start" type="button" class="s-button" disabled>Login</button>
+          <button id="login-cancel" type="button" class="s-button" hidden>Cancel</button>
+          <button id="login-confirm" type="button" class="s-button" hidden>Manual confirmation of login</button>
+        </div>
       </header>
       <p id="login-status" role="status" aria-live="polite">正在读取已保存的 Services…</p>
       <div id="login-carsi"></div>

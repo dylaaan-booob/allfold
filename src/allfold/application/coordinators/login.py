@@ -49,6 +49,7 @@ class LoginCoordinator:
         self._auth_key = None
         self._credential_epoch = uuid4().hex
         self._workflow_id = None
+        self._batch = False
         self._results = {}
         self._keys = {}
         self._phase = 'idle'
@@ -64,6 +65,7 @@ class LoginCoordinator:
             return {
                 'active': self.running, 'workflow_id': self._workflow_id,
                 'phase': self._phase, 'scope': saved.scope, 'carsi': carsi,
+                'can_confirm_all': self._can_confirm_all(saved),
                 'services': [
                     {'id': service.id, 'name': service.name, 'access_method': service.access_method,
                      'access_url': service.access_url, 'preparation': self._service_result(saved, service) or ServicePreparation()}
@@ -87,6 +89,32 @@ class LoginCoordinator:
     def prepared_page(self, saved, service_id):
         binding = self.prepared_authority(saved, service_id)
         return binding[0] if binding is not None else None
+
+    def _can_confirm_all(self, saved):
+        return (self._batch and not self.running and self._phase in {'completed', 'failed'}
+                and {service.id for service in saved.services} == self._results.keys()
+                and all(self._service_result(saved, service) is not None for service in saved.services)
+                and any(result.status in {'Failed', 'Needs attention'} for result in self._results.values()))
+
+    def confirm_all(self, saved, workflow_id):
+        with self._mutex:
+            if workflow_id != self._workflow_id or not self._can_confirm_all(saved):
+                raise ValueError('The Login results changed or are unavailable. Refresh Login.')
+            if not self.bridge.connected:
+                raise ValueError('Browser runtime unavailable')
+            owner = self.browser_lock.acquire('login')
+            if owner is None:
+                raise ValueError('Another Browser workflow is active')
+            try:
+                saved.verify()
+                for service_id, result in self._results.items():
+                    if result.status != 'Opened':
+                        self._results[service_id] = replace(result, status='Opened', page_id=None,
+                            reason='manual_login_confirmed', diagnostic=None)
+                self._phase = 'confirmed'
+                return self.snapshot(saved)
+            finally:
+                self.browser_lock.release(owner)
 
     def invalidate_credentials(self):
         """Called under Browser admission after a confirmed native credential change."""
@@ -124,6 +152,7 @@ class LoginCoordinator:
                 raise ValueError('Another Browser workflow is active')
             self._stop = threading.Event()
             self._workflow_id = uuid4().hex
+            self._batch = manual_service_id is None
             auth_key = saved.authentication_key(self._credential_epoch)
             if manual_service_id is None or self._auth_key != auth_key:
                 self._results.clear()

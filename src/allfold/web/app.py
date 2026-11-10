@@ -129,7 +129,7 @@ class _LoginAction(BaseModel):
     service_id: str | None = None
 
 
-class _LoginCancel(BaseModel):
+class _LoginWorkflowAction(BaseModel):
     model_config = ConfigDict(extra="forbid")
     csrf_token: str
     workflow_id: str
@@ -314,12 +314,24 @@ def create_app(config_path: Path, *, electron_bridge: ElectronBridge, diagnostic
             return JSONResponse({"message": str(error)}, status_code=409)
 
     @app.post("/api/login/cancel")
-    def cancel_login(body: _LoginCancel):
+    def cancel_login(body: _LoginWorkflowAction):
         if not _csrf_valid(body.csrf_token, csrf_token):
             return JSONResponse({"message": "Invalid or missing CSRF token."}, status_code=403)
         if not app.state.login.cancel(body.workflow_id):
             return JSONResponse({"message": "Login task is no longer active."}, status_code=409)
         return read_login()
+
+    @app.post("/api/login/confirm")
+    def confirm_login(body: _LoginWorkflowAction):
+        if not _csrf_valid(body.csrf_token, csrf_token):
+            return JSONResponse({"message": "Invalid or missing CSRF token."}, status_code=403)
+        try:
+            with app.state.settings_write_lock:
+                saved = BrowserServiceSnapshot.read(resolved_config_path)
+                result = app.state.login.confirm_all(saved, body.workflow_id)
+            return JSONResponse(jsonable_encoder(result))
+        except (ValueError, OSError, RuntimeError) as error:
+            return JSONResponse({"message": str(error)}, status_code=409)
 
     from allfold.application.browser_services import BrowserServiceSnapshot
     from allfold.application.kept_queue import kept_queue

@@ -52,7 +52,7 @@ class KeptWorkflow:
     def unprepared_services(self, saved, papers, service_id=None):
         required = {paper.service_id for paper in papers if service_id is None or paper.service_id == service_id}
         return [dict(id=service.id, name=service.name) for service in saved.services
-                if service.id in required and self.login.prepared_page(saved, service.id) is None]
+                if service.id in required and self.login.prepared_authority(saved, service.id) is None]
 
     def start(self, target, settings, saved, *, skip_unprepared) -> WorkflowSnapshot:
         with self._lock:
