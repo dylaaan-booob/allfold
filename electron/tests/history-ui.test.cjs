@@ -20,8 +20,10 @@ test('history reuses Run status wording and distinguishes opened evidence from a
     statistics:{created:2},details:{result_status:'incomplete'}});
   assert.match(run,/Crossref/);assert.match(run,/检索或补全不完整/);
   const prep=renderHistoryRecord({kind:'prepare',task_id:'prep_1',outcome:'opened',statistics:{opened:1},
-    details:{results:[{service_id:'svc_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',outcome:'opened',reason:'target_opened'}]}});
+    details:{results:[{service_id:'svc_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',outcome:'opened',reason:'target_opened',
+      recovery:[{recovery_action:'resource_reentry',count:1,outcome:'recovered'}]}]}});
   assert.match(prep,/已打开/);assert.match(prep,/不代表订阅或下载已验证/);
+  assert.match(prep,/重新访问 CARSI 资源 ×1 已恢复/);
 });
 
 test('history escapes record identity and only renders reviewed business fields',async()=>{

@@ -1,5 +1,5 @@
 import {completionLabel,resultLabel} from './run-results.js';
-import {importOutcomeMessage,preparationReason,providerNames,zoteroKeyDetails} from './business-results.js';
+import {importOutcomeMessage,preparationReason,providerNames,recoveryLabel,zoteroKeyDetails} from './business-results.js';
 const esc=value=>String(value??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const kinds={run:'Discover',login:'Login',prepare:'Service Preparation',import:'Batch Import',kept:'Import to Zotero',enrich:'网页 Enrich',covers:'Cover Search'};
 const outcomes={running:'进行中',completed:'完成',partial:'部分完成',failed:'失败',cancelled:'已取消',
@@ -29,6 +29,12 @@ function resultText(result){
     return [...new Set([importOutcomeMessage(result.parent_outcome || result.outcome,result.pdf_outcome),reasonText(result.reason)].filter(Boolean))].join(' ');
   return [outcomes[result.outcome] || '需要检查',reasonText(result.reason)].filter(Boolean).join(' · ');
 }
+function recoveryText(summary) {
+  const labels={recovered:'已恢复',exhausted:'未恢复',stopped:'已结束'};
+  return (summary || []).map(({recovery_action,count,outcome})=>
+    [recoveryLabel(recovery_action),count>0?`×${count}`:'',labels[outcome]].filter(Boolean).join(' ')
+  ).join(' · ');
+}
 export function historyIntegrityMessage(integrity={}) {
   if(integrity.write_failed || integrity.metadata_missing || integrity.rotated_files || integrity.omitted_events ||
     integrity.evicted_history || integrity.invalid_records || integrity.native?.incomplete || integrity.native?.available===false)
@@ -50,7 +56,11 @@ export function renderHistoryRecord(record) {
   if(details.sync_warning)messages.push('业务写入已完成，但文件系统同步未确认，请保留备份。');
   const saved=(details.saved_fields || []).filter(field=>fieldNames[field]).map(field=>fieldNames[field]);
   const requested=(details.requested_fields || []).filter(field=>fieldNames[field]).map(field=>fieldNames[field]);
-  const rows=(details.results || []).map((item,index)=>`<li><span>${esc(item.paper_id?`Paper ${index+1}`:item.service_id?`Service ${index+1}`:`结果 ${index+1}`)}</span> · ${esc(resultText(item))}<p class="s-help">${esc(item.paper_id || '')}${item.service_id || item.service_assignment?` · ${esc(item.service_id || item.service_assignment)}`:''}</p>${item.diagnostic_message?`<p>${esc(item.diagnostic_message)}</p>`:''}${item.zotero_keys?`<p>${esc(zoteroKeyDetails(item.zotero_keys))}</p>`:''}</li>`).join('');
+  const recovery=recoveryText(details.recovery);
+  const rows=(details.results || []).map((item,index)=>{
+    const recovery=recoveryText(item.recovery);
+    return `<li><span>${esc(item.paper_id?`Paper ${index+1}`:item.service_id?`Service ${index+1}`:`结果 ${index+1}`)}</span> · ${esc(resultText(item))}<p class="s-help">${esc(item.paper_id || '')}${item.service_id || item.service_assignment?` · ${esc(item.service_id || item.service_assignment)}`:''}</p>${item.diagnostic_message?`<p>${esc(item.diagnostic_message)}</p>`:''}${recovery?`<p>${esc(recovery)}</p>`:''}${item.zotero_keys?`<p>${esc(zoteroKeyDetails(item.zotero_keys))}</p>`:''}</li>`;
+  }).join('');
   const serviceCounts=(details.service_statistics || []).map(service=>`<p>${esc(service.service_id || service.service_assignment)} · ${Object.entries(service).filter(([key,value])=>metrics[key] && Number.isInteger(value)).map(([key,value])=>`${esc(metrics[key])} ${value}`).join(' · ')}</p>`).join('');
   const sourceRows=(details.run_sources || []).map(source=>`<li>${esc(providerNames[source.provider] || source.provider)} · ${esc(resultLabel(source.status))} · ${esc(source.candidates ?? '—')} candidates · ${esc(source.created ?? '—')} new / ${esc(source.existing ?? '—')} existing${source.problems?` · ${esc(source.problems)} 来源提示`:''}</li>`).join('');
   const checks=details.wos_checks || {};
@@ -64,6 +74,7 @@ export function renderHistoryRecord(record) {
       ${requested.length?`<p>请求补充：${requested.map(esc).join('、')}</p>`:''}
       ${saved.length?`<p>已补充：${saved.map(esc).join('、')}</p>`:''}
       ${record.diagnostic_message?`<p>${esc(record.diagnostic_message)}</p>`:''}
+      ${recovery?`<p>${esc(recovery)}</p>`:''}
       ${record.kind==='run' && details.completion_status?`<p>Discovery · ${esc(resultLabel(details.discovery_status || 'unknown'))} / Run metadata completion · ${esc(completionLabel(details.completion_status,stats.completion_targets))}</p>`:''}
       ${sourceRows?`<ul>${sourceRows}</ul>`:''}${wosChecks}
       ${serviceCounts}${details.omitted_services?'<p>更多 Service 汇总已省略。</p>':''}

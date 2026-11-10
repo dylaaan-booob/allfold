@@ -231,7 +231,7 @@ else:
  class Bridge:
   connected=True
   def __init__(self):self.future=Future();self.dispatched=Event()
-  def execute(self,*args):self.dispatched.set();return self.future
+  def execute(self,*args,**kwargs):self.dispatched.set();return self.future
  bridge=Bridge();lock=BrowserTaskLock()
  batch=BatchImportService(bridge,lock);batch.start(workspace,browser_owner=lock.acquire('kept'))
  assert bridge.dispatched.wait(2)

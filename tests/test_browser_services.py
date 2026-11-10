@@ -36,7 +36,7 @@ def test_import_dispatch_uses_saved_mapping_and_keeps_ambiguous_or_missing_unass
     class Bridge:
         connected = True
         calls = []
-        def execute(self, action, data, progress=None):
+        def execute(self, action, data, progress=None, *, verify_recovery=None):
             self.calls.append((action, data))
             future = Future()
             future.set_result({'settled': True, 'parent': {'outcome': 'no_effect'}})
