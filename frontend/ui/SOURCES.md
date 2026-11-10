@@ -1,13 +1,13 @@
 # UI sources and notices
 
-These are the editable UI sources and local assets. The build copies delivery resources and bundles Kept into Python's static tree. Sources and license files stay with their assets.
+These are the editable UI sources and local assets. The build copies delivery resources into Python's static tree. Sources and license files stay with their assets.
 
 ## Adapted code and artwork
 
 | Source | Fixed revision | Use and notice |
 | --- | --- | --- |
 | RhinE | `aa92ac9aa8fd8c611f5121583ae7c2a406b52607`, `7ebb9dbbcc0dacf89fb9a8f49a6b523aefe063ce` | Archive sprites, inspection frames, layout and control adaptations. MIT, Copyright (c) 2026 the Audio Archive authors. [Notice](licenses/RhinE-MIT.txt) |
-| Blog Theme | `6f1e5b0c9a7e9b253db8b8a9b93a397c07d7ba93` | Transitions, decryption, Discover video. MIT, Copyright (c) 2026 LBEILC. [Notice](licenses/Blog-Theme-MIT.txt) |
+| Blog Theme | `6f1e5b0c9a7e9b253db8b8a9b93a397c07d7ba93` | Transitions, decryption, Discover video and retained Kept scene inputs. MIT, Copyright (c) 2026 LBEILC. [Notice](licenses/Blog-Theme-MIT.txt) |
 | RhineLabUI | `12cc5e4013acb9408f753ff71de6b8492299b7c8` | Settings form and controls. MIT, Copyright (c) 2026 LBEILC. [Notice](licenses/RhineLabUI-MIT.txt) |
 | [Justice](https://github.com/kitlangton/justice) | `@kitlangton/justice` 0.3.1, `0930a34b1fb0421e859cb66db4ce2ae9b6778f90` | Local `justice.js` engine. MIT, Copyright (c) 2026 Kit Langton. [Notice](licenses/Justice-MIT.txt) |
 | [Cropper.js](https://github.com/fengyuanchen/cropperjs/tree/v1.7.0) | 1.7.0 | Unmodified JS/CSS in `assets/vendor/cropperjs-1.7.0/`. MIT, Chen Fengyuan. [Notice](licenses/Cropperjs-MIT.txt) |

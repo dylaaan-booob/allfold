@@ -142,7 +142,7 @@ Archive availability and fullscreen task presentation are local UI preferences, 
 
 ## Resources and third-party code
 
-The UI build copies sources and generates Kept bundles into Python's ignored static delivery tree. Runtime URLs and API endpoints do not depend on the editable source directory.
+The UI build copies sources into Python's ignored static delivery tree. Runtime URLs and API endpoints do not depend on the editable source directory.
 
 Electron package metadata and scripts remain at the package root. `src/shared/paths.cjs` resolves project, native UI, Preload, vendor-notice and Runtime locations. Official Zotero checkouts stay pristine in ignored vendor directories; the Runtime assembler is their only production assembly path. Project adaptations stay in host sources. See [third-party sources](third-party.md).
 

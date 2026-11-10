@@ -35,7 +35,7 @@ Editable UI files are in [frontend/ui](../frontend/ui/). Build the complete deli
 node tools/build-ui-next.mjs
 ```
 
-This copies static assets and bundles Kept JS/CSS into ignored `src/allfold/web/static/ui_next/`. The served URL remains `/static/ui_next/`. Edit sources, not generated files; the application reports missing UI resources instead of using an old source location.
+This copies static assets into ignored `src/allfold/web/static/ui_next/`. The served URL remains `/static/ui_next/`. Edit sources, not generated files; the application reports missing UI resources instead of using an old source location.
 
 With existing pristine vendor sources, rebuild the translation Runtime using:
 
@@ -55,7 +55,7 @@ uv run --locked pytest
 npm --prefix electron test
 ```
 
-`check` discovers project-owned JS/CJS/MJS in Electron sources and scripts, the UI and tools. It excludes dependencies, third-party assets and generated output; tests parse their own files, and esbuild handles Kept TypeScript.
+`check` discovers project-owned JS/CJS/MJS in Electron sources and scripts, the UI and tools. It excludes dependencies, third-party assets and generated output; tests parse their own files.
 
 The real-source Runtime checks assemble all 752 Translators at the locked revision and verify deterministic manifests, selective native submodule initialization, preserved legacy extra checkouts, trusted PR #26 migration and refusal of unsafe inputs. A hidden Electron fixture runs official Web translation, DOI Content Negotiation with dynamically loaded CSL JSON and read-only Enrich against synthetic HTTP. It verifies that only the virtual JSON saver remains and exercises article history parsing, delayed snapshots, the 30-second budget, cancellation and source replacement.
 
