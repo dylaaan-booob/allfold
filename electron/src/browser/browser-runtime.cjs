@@ -378,15 +378,15 @@ class BrowserRuntime {
   }
   async command(command) {
     await this.ready;
-    const actions=['state','new','select','close','navigate','back','forward','reload','open-service'];
-    const fields=command?.action==='open-service'?['action','url','service_scope','service_id','workflow_id','task_id']:['action','id','url'];
+    const actions=['state','new','select','close','navigate','back','forward','reload'];
+    const fields=['action','id','url'];
     if (!command || typeof command!=='object' || Array.isArray(command)
       || Object.keys(command).some(key=>!fields.includes(key))
       || !actions.includes(command.action)
       || (command.id!==undefined && (!Number.isSafeInteger(command.id) || command.id<=0))
       || (command.action==='select' && command.id===undefined)
-      || (['navigate','open-service'].includes(command.action) && (typeof command.url!=='string' || command.url.length>8192))
-      || (command.url!==undefined && !['navigate','open-service'].includes(command.action))) throw Error('Invalid Browser command');
+      || (command.action==='navigate' && (typeof command.url!=='string' || command.url.length>8192))
+      || (command.url!==undefined && command.action!=='navigate')) throw Error('Invalid Browser command');
     const tab = command.id == null ? this.selected : this.tabs.get(command.id);
     if (command.id != null && !tab && !['state','new'].includes(command.action)) throw Error('Unknown tab');
     if(tab?.managed && ['close','navigate','back','forward'].includes(command.action))
@@ -395,22 +395,6 @@ class BrowserRuntime {
       throw Error('The active task page cannot be refreshed');
     switch (command.action) {
       case 'state': break;
-      case 'open-service': {
-        const url=browserURL(command.url),association=operationAssociation(command);
-        if(!association.service_scope || !association.service_id)throw Error('Invalid browser Service identity');
-        let page=[...this.tabs.values()].find(page=>page.association?.role==='manual-service'
-          && page.association.service_scope?.scope_id===association.service_scope.scope_id
-          && page.association.service_id===association.service_id);
-        const fresh=!page;
-        if(fresh)page=this.createTab({present:false});
-        if(page.taskOwner)throw Error('The active task page cannot be reassigned');
-        if(page.association)this.reportPage('info','page_association_replaced',page);
-        page.association=Object.freeze({...association,role:'manual-service',doi:null,source_page_id:null});
-        page.associationOwner=null;this.reportPage('info','page_associated',page);
-        this.select(page,{focus:true});this.presentation.show();
-        if(fresh)await page.navigation.dispatch(()=>page.view.webContents.loadURL(url),{});
-        break;
-      }
       case 'new': this.select(this.createTab({present:false}),{focus:true});break;
       case 'select': if (!this.tabs.has(command.id)) throw Error('Unknown tab');this.select(tab,{focus:true});break;
       case 'close':

@@ -425,21 +425,22 @@ test('remote popups remain hidden managed tabs and unsafe URLs are refused',asyn
   browser.setPresentation({sequence:1,visible:false,suspended:false,bounds:null});
   assert.equal(host.children.size,0);assert.equal(browser.tabs.size,2);
 });
-test('explicit saved Service opening retains descriptive identity without task or credential authority',async t=>{
-  const {BrowserRuntime}=fixture(t),browser=new BrowserRuntime();t.after(()=>browser.close());await browser.ready;
-  const command={action:'open-service',url:'https://library.example.org/',service_scope:serviceScope,
-    service_id:serviceId,workflow_id:'kept_a',task_id:'prepare_a'};
-  await browser.command(command);
-  const page=browser.selected;
-  assert.equal(browser.pageAssociation(page.id).role,'manual-service');
-  assert.equal(browser.pageAssociation(page.id).service_id,serviceId);
-  assert.equal(browser.pageAssociation(page.id).active,false);
-  assert.equal(page.authContext,undefined);assert.equal(browser.taskTab,null);
-  await browser.command({...command,workflow_id:'kept_b',task_id:'prepare_b'});
-  assert.equal(browser.tabs.size,1);assert.equal(browser.selected,page);
-  assert.equal(browser.pageAssociation(page.id).workflow_id,'kept_b');
-  assert.equal(browser.pageAssociation(page.id).task_id,'prepare_b');
-  await assert.rejects(browser.command({...command,service_id:'invalid'}),/Invalid browser Service/);
+test('explicit Manual Service Visit retains a scoped target without CARSI credential authority',async t=>{
+  const {visitManualService}=require('../src/workflows/browser-operations.cjs');
+  const {BrowserRuntime}=fixture(t);
+  let reads=0;
+  const browser=new BrowserRuntime({readCASCredentials:async()=>{reads++;}});
+  t.after(()=>browser.close());await browser.ready;
+  const data={access_url:'https://library.example.org/',service_scope:serviceScope,
+    service_id:serviceId,workflow_id:'login_manual',task_id:'visit_manual'};
+  const signal=new AbortController().signal;
+  const result=await browser.runTask(signal,data,()=>visitManualService(browser,data,{signal,progress(){}}));
+  assert.equal(result.outcome,'Opened');
+  const page=browser.tabs.get(result.evidence.target_page_id),association=browser.pageAssociation(page.id);
+  assert.equal(page.view.webContents.getURL(),data.access_url);
+  assert.equal(association.role,'service-target');assert.equal(association.service_id,serviceId);
+  assert.equal(association.active,false);assert.equal(page.managed,true);assert.equal(page.authContext,undefined);
+  assert.equal(browser.selected,null);assert.equal(browser.tabs.size,1);assert.equal(reads,0);
 });
 const cloudflarePageOptions='<script>window._cf_chl_opt = {cType:"managed"};</script>';
 const cloudflarePageScript='<script src="/cdn-cgi/challenge-platform/h/g/orchestrate/chl_page/v1"></script>';
