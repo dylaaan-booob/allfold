@@ -337,7 +337,7 @@ async function visitCARSIResource(browser,portal,data,{signal,progress},requestD
     throw error;
   }
   // Bind the native click and its first attributable main-frame navigation.
-  const wc=detail.view.webContents;
+  const wc=detail.view.webContents,owner=browser.operation;
   let target=null,ambiguous=false;
   const observe=tab=>{
     if(target) {
@@ -345,7 +345,7 @@ async function visitCARSIResource(browser,portal,data,{signal,progress},requestD
       return;
     }
     target=tab;
-    browser.beginPageLoad(target,signal,requestDeadline);
+    browser.runInOperation(owner,()=>browser.beginPageLoad(target,signal,requestDeadline));
   };
   const ownNav=(_event,_url,inPlace,main)=>{if(main && !inPlace)observe(detail);};
   const popupListeners=[];

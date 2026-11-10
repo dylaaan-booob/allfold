@@ -119,8 +119,8 @@ function fixture(t,{attributable=true,hold=false,challenge=false,domError=null,q
     }
     return op==='links'?{urls:attributable?item.getURLChain():['https://other.example/download']}:{ok:true};
   }};
-  const tab={id:71,view:{webContents:wc}};
-  const browser={tabs:new Map([[71,tab]]),partition,wosDocument:doc,
+  const tab={id:71,view:{webContents:wc},wosDocument:doc};
+  const browser={tabs:new Map([[71,tab]]),partition,
     liveToken:doc.frameToken,select(){},async checkAuthentication(){return authentication?.inspect().waiting || false;},async snapshot(){return {...doc,url:wc.getURL()};},
     documentCurrent(value){return this.liveToken===value.frameToken;},
     documentFrame(value){return this.documentCurrent(value)?wc:null;}};
@@ -183,12 +183,12 @@ test('WoS query and consecutive exports keep the prepared page/document while an
   f.browser.select=()=>{throw Error('Task must not change presentation');};
   const query=await f.runQuery(identity);
   assert.equal(query.page_id,71);assert.equal(query.total,94);
-  const document=f.browser.wosDocument;
+  const document=f.browser.tabs.get(71).wosDocument;
   await f.run(identity);
   f.browser.taskTab=null;
   await f.run({...identity,first:2,last:2});
   assert.equal(f.browser.taskTab,tab);
-  assert.equal(f.browser.wosDocument,document);
+  assert.equal(f.browser.tabs.get(71).wosDocument,document);
   assert.equal(f.browser.selected.id,99);
   assert.deepEqual(f.ops.filter(op=>op?.exportRange).map(op=>op.exportRange),[
     {first:1,last:1,customVerified:true},{first:2,last:2,customVerified:true}]);
