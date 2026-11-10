@@ -28,7 +28,7 @@ class Bridge:
         self.dispatched = threading.Event()
         self.calls = []
         self.cancels = 0
-    def execute(self, action, data, progress=None):
+    def execute(self, action, data, progress=None, *, verify_recovery=None):
         self.calls.append((action, data))
         self.dispatched.set()
         return self.future
@@ -177,6 +177,39 @@ def test_one_authenticated_socket_matches_a_single_request():
             assert pending.result(timeout=2) == confirmed()
 
 
+def test_recovery_authority_is_checked_again_on_the_same_native_request():
+    allowed = threading.Event()
+    allowed.set()
+
+    def verify():
+        if not allowed.is_set():
+            raise ValueError("PRIVATE_SENTINEL")
+
+    bridge = ElectronBridge("secret", "testserver")
+    app = FastAPI()
+    app.websocket("/ws")(bridge.connect)
+    with TestClient(app) as client, client.websocket_connect("/ws") as socket:
+        socket.send_json({"token": "secret"})
+        assert socket.receive_json()["type"] == "ready"
+        pending = bridge.execute("prepare_service", {"workflow_id": "login"}, verify_recovery=verify)
+        request = socket.receive_json()
+        context = {"id": request["id"], "action": request["action"]}
+        for check_id, expected in (("a" * 32, True), ("b" * 32, False)):
+            socket.send_json({**context, "type": "verify_recovery_authority", "check_id": check_id, "data": {}})
+            assert socket.receive_json() == {**context, "type": "verify_recovery_authority_result",
+                "check_id": check_id, "data": {"allowed": expected}}
+            assert not pending.done()
+            allowed.clear()
+        socket.send_json({**context, "type": "result", "data": {
+            "diagnostic": {"stage": "preparation", "code": "document_changed"},
+            "recovery": [{"recovery_action": "resource_reentry", "count": 1, "outcome": "exhausted",
+                          "first": {"stage": "navigation", "code": "load_failed", "net_code": -100},
+                          "last": {"code": "document_changed", "body": "PRIVATE_SENTINEL"}}],
+        }})
+        result = pending.result(timeout=2)
+        assert result["recovery"][0]["last"] == {"code": "document_changed"}
+
+
 def test_openalex_subrequest_is_on_demand_and_bound_to_exact_import():
     calls = []
     target = {"server_id":"SERVERFIXTUR", "library_type":"user", "library_id":"0", "collection_key":None}
@@ -320,7 +353,7 @@ def test_batch_continues_only_after_known_no_effect(tmp_path, first, expected_ca
     class ImmediateBridge:
         connected = True
         calls = 0
-        def execute(self, *args):
+        def execute(self, *args, **kwargs):
             self.calls += 1
             result = Future()
             result.set_result(first if self.calls == 1 else confirmed())

@@ -37,7 +37,7 @@ def test_field_api_is_available_offline_and_respects_csrf_revision_and_workflow(
                      '    library_type: user\n    library_id: "0"\n')
 
     class Bridge(PendingBridge):
-        def execute(self, action, data, progress=None):
+        def execute(self, action, data, progress=None, *, verify_recovery=None):
             if action == 'zotero_local':
                 future = Future()
                 future.set_result({'ok': True})

@@ -13,6 +13,8 @@ const {LocalAPI}=require('./zotero/local-api.cjs');
 const {requestOpenAlexPDF,settleOpenAlexPDF}=require('./zotero/openalex-callback.cjs');
 const zoteroLocal=new LocalAPI();
 const {failedImport}=require('./workflows/import-errors.cjs');
+const {validateRecovery,settleRecoveryAuthority}=require('./workflows/recovery-authority.cjs');
+const {invocationRecovery}=require('./shared/recovery-summary.cjs');
 const {BrowserFailure,diagnosticFor}=require('./browser/browser-errors.cjs');
 const {log,errorCode,initializeLogging,withLogContext,associationLogContext,diagnosticsReset,diagnosticsStatus,setLogLevel} = require('./shared/logging.cjs');
 const {operationAssociation}=require('./browser/page-association.cjs');
@@ -184,6 +186,8 @@ async function executeOperation(message,current) {
   let saving=false;
   let stage='navigation';
   let data,resultPageId;
+  const recovery=invocationRecovery();
+  const verifyRecovery=options=>validateRecovery(current,send,options);
   try {
     data=await browser.runTask(controller.signal,{...message.data,request_id:message.id},async()=>{
       browser.operation.action=message.action;
@@ -191,7 +195,7 @@ async function executeOperation(message,current) {
         if(controller.signal.aborted)throw new BrowserFailure('navigation','canceled');
         let lastProgress,waiting=false;
         const progress=(data,progressStage=stage,diagnostic)=>{
-          const signature=JSON.stringify([progressStage,data.message,data.waiting_for_user]);
+          const signature=JSON.stringify([progressStage,data.message,data.waiting_for_user,data.recovery_action]);
           if(signature!==lastProgress) {
             lastProgress=signature;
             log('debug','task_progress',{...context,page_id:browser.taskTab?.id,stage:progressStage});
@@ -202,6 +206,18 @@ async function executeOperation(message,current) {
           }
           send({type:'progress',id:message.id,action:message.action,data:{...data,page_id:browser.taskTab?.id}});
         };
+        const recoveryContext={...associationLogContext(browser.operation.association),...context};
+        const recordRecovery=(event,details)=>{
+          recovery.record(event,{...details,...recoveryContext});
+          if(event==='recovery_scheduled' || event==='service_cooldown_started' && details.waiting===true) {
+            try {progress({recovery_action:details.recovery_action},details.stage);}
+            catch (_) {}
+          }
+        };
+        browser.operation.recordRecovery=recordRecovery;
+        browser.operation.recoveryProgress=progress;
+        if(['prepare_service','enrich_paper','import_paper'].includes(message.action))
+          browser.operation.validateRecovery=verifyRecovery;
         if(message.action === 'login_carsi') {
           stage='authentication';
           return await loginInstitution(browser,message.data,{signal:controller.signal,progress});
@@ -247,6 +263,7 @@ async function executeOperation(message,current) {
           saving=true;
           stage='parent_save';
           return await saveOnce({item,apiItem,proxy,doi,resources,target:message.data.zotero_target,doc:sourceDocument,browser,signal:controller.signal,
+              recordRecovery,recoveryProgress:progress,validateRecovery:verifyRecovery,
               fallbackPDF:request=>requestOpenAlexPDF(current,request,{send,connected:bridgeReady,doi,target:message.data.zotero_target}),
               logContext:{...context,page_id:doc.pageId,metadata_source:metadataSource}});
         }
@@ -268,9 +285,10 @@ async function executeOperation(message,current) {
   log(canceled?'info':failed?'warn':'info','task_finished',{...context,page_id:resultPageId,
     duration_ms:Date.now()-started,outcome:canceled?'canceled':outcome,
     parent:data.parent?.outcome,pdf:data.pdf?.outcome,stage:diagnostic.stage || stage,
-    step:diagnostic.step,code:diagnostic.code || data.reason,net_error:diagnostic.net_error,status:diagnostic.status,
+    step:diagnostic.step,code:diagnostic.code || data.reason,net_error:diagnostic.net_error,net_code:diagnostic.net_code,status:diagnostic.status,
     imperva_edet:diagnostic.imperva_edet,imperva_incident_id:diagnostic.imperva_incident_id});
-  send({type:'result',id:message.id,action:message.action,data:{...data,diagnostics_status:diagnosticsStatus()}});
+  const summary=recovery.summary();
+  send({type:'result',id:message.id,action:message.action,data:{...data,...(summary.length?{recovery:summary}:{}),diagnostics_status:diagnosticsStatus()}});
 }
 async function startPython(config,cdpURL) {
   if(!fs.existsSync(path.join(ROOT,'.venv/bin/python'))) throw Error('Run uv sync --locked --group dev in the project copy first');
@@ -330,6 +348,7 @@ async function connect() {
           challenge.resolve(message.data);
         }
         else if(message.type === 'openalex_pdf_result')settleOpenAlexPDF(pendingOperation(message),message);
+        else if(message.type === 'verify_recovery_authority_result')settleRecoveryAuthority(pendingOperation(message),message);
         else if(message.type === 'shutdown_ready') {
           // Python has processed the final result and can now exit gracefully.
           pythonShutdownReady=true;

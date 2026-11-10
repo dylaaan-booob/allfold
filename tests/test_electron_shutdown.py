@@ -22,7 +22,7 @@ def test_shutdown_receives_native_result_while_settings_operation_owns_admission
             self.result = Future()
             self.dispatched = threading.Event()
 
-        def execute(self, action, data, progress=None):
+        def execute(self, action, data, progress=None, *, verify_recovery=None):
             self.dispatched.set()
             return self.result
 

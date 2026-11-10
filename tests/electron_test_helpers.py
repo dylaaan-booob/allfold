@@ -12,7 +12,7 @@ class OfflineBridge:
     closing = False
     async def connect(self, socket):
         await socket.close(code=1008)
-    def execute(self, *args):
+    def execute(self, *args, **kwargs):
         raise AssertionError('Offline fixture must not dispatch browser work')
     def cancel_current(self):
         pass
@@ -28,7 +28,7 @@ class PendingBridge:
         self.calls = []
         self.progress = None
         self.cancels = 0
-    def execute(self, action, data, progress=None):
+    def execute(self, action, data, progress=None, *, verify_recovery=None):
         self.future = Future()
         self.calls.append((action, data))
         self.progress = progress

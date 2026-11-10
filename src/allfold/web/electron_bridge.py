@@ -18,11 +18,13 @@ from fastapi import WebSocket, WebSocketDisconnect
 from allfold.application.browser_runtime import ElectronDisconnected
 from allfold.application.history import observe
 from allfold.browser_diagnostics import normalize_browser_diagnostic
+from allfold.recovery_diagnostics import normalize_recovery, normalize_recovery_action
 from allfold.identifiers import valid_doi
 from allfold.integrations.cloudflare_solver import solve_cloudflare
 
 
 _CONTROL_ACTIONS = {"diagnostics_reset", "cas_credentials", "zotero_local"}
+_RECOVERY_ACTIONS = {"prepare_service", "enrich_paper", "import_paper"}
 _CONTEXT_FIELDS = ("workflow_id", "task_id", "parent_task_id", "service_id", "paper_id")
 _SOCKET_ERRORS = (WebSocketDisconnect, OSError, RuntimeError)
 _RECEIVE_ERRORS = (*_SOCKET_ERRORS, ValueError, TimeoutError)
@@ -36,9 +38,11 @@ class _Operation:
     progress: Callable | None
     context: dict
     import_identity: dict | None
+    verify_recovery: Callable[[], None] | None
     stop: threading.Event = field(default_factory=threading.Event)
     challenges: dict[str, threading.Event] = field(default_factory=dict)
     lookup_requested: bool = False
+    recovery_check: asyncio.Task | None = None
 
     def stop_callbacks(self) -> None:
         self.stop.set()
@@ -88,6 +92,7 @@ class ElectronBridge:
             task = asyncio.create_task(coroutine)
             workers.add(task)
             task.add_done_callback(workers.discard)
+            return task
 
         try:
             hello = await asyncio.wait_for(socket.receive_json(), timeout=5)
@@ -153,10 +158,25 @@ class ElectronBridge:
                     if not pending.stop.is_set():
                         stop = pending.challenges[challenge_id] = threading.Event()
                         start_worker(self._solve_cloudflare(socket, pending, challenge_id, url, target_id, stop))
+                elif kind == "verify_recovery_authority":
+                    check_id = message.get("check_id")
+                    if (pending.action not in _RECOVERY_ACTIONS or data
+                            or not isinstance(check_id, str) or not re.fullmatch(r"[a-f0-9]{32}", check_id)):
+                        raise ValueError("Invalid recovery authority request")
+                    if not pending.stop.is_set():
+                        if pending.recovery_check and not pending.recovery_check.done():
+                            await self._callback(socket, pending, pending.stop, pending.envelope(
+                                "verify_recovery_authority_result", check_id=check_id, data={"allowed": False}))
+                        else:
+                            pending.recovery_check = start_worker(self._verify_recovery(socket, pending, check_id))
                 elif kind == "progress":
                     if pending.progress:
+                        if "recovery_action" in data:
+                            data = {**data, "recovery_action": normalize_recovery_action(data["recovery_action"])}
                         pending.progress(data)
                 elif kind == "result":
+                    if "recovery" in data:
+                        data = {**data, "recovery": normalize_recovery(data["recovery"])}
                     self._observe_result(pending, data)
                     pending.stop_callbacks()
                     pending.result.set_result(data)
@@ -231,6 +251,18 @@ class ElectronBridge:
         await self._callback(socket, pending, pending.stop, pending.envelope(
             "openalex_pdf_result", lookup_id=lookup_id, data=data))
 
+    async def _verify_recovery(self, socket, pending: _Operation, check_id: str) -> None:
+        allowed = False
+        try:
+            if pending.verify_recovery is not None and not pending.stop.is_set():
+                await asyncio.to_thread(pending.verify_recovery)
+                allowed = True
+        except Exception:
+            pass
+        pending.recovery_check = None
+        await self._callback(socket, pending, pending.stop, pending.envelope(
+            "verify_recovery_authority_result", check_id=check_id, data={"allowed": allowed}))
+
     async def _solve_cloudflare(self, socket, pending: _Operation, challenge_id: str,
                                 url: str, target_id: str, stop: threading.Event) -> None:
         try:
@@ -271,7 +303,7 @@ class ElectronBridge:
         except _SOCKET_ERRORS:
             pass
 
-    async def _execute(self, action: str, data: dict, progress: Callable | None) -> dict:
+    async def _execute(self, action: str, data: dict, progress: Callable | None, verify_recovery: Callable | None) -> dict:
         socket = self._socket
         if socket is None or self.closing:
             raise ElectronDisconnected("Electron runtime is unavailable")
@@ -286,7 +318,7 @@ class ElectronBridge:
         if isinstance(scope, dict):
             context.update({key: scope[key] for key in ("config_revision", "user_state_revision") if key in scope})
         context.update(request_id=request_id, action=action)
-        pending = self._pending[request_id] = _Operation(request_id, action, result, progress, context, import_identity)
+        pending = self._pending[request_id] = _Operation(request_id, action, result, progress, context, import_identity, verify_recovery)
         if action not in _CONTROL_ACTIONS:
             data = {**data, "log_level": getattr(self.diagnostics, "level", "info")}
             observe(self.diagnostics, "event", "task_started", context)
@@ -303,13 +335,17 @@ class ElectronBridge:
             return await result
         finally:
             pending.stop_callbacks()
+            if pending.recovery_check is not None:
+                # Its read may still use the Coordinator's held Workspace descriptor.
+                await pending.recovery_check
             self._pending.pop(request_id, None)
 
-    def execute(self, action: str, data: dict, progress: Callable | None = None) -> Future[dict]:
+    def execute(self, action: str, data: dict, progress: Callable | None = None, *,
+                verify_recovery: Callable[[], None] | None = None) -> Future[dict]:
         """Register from a business worker; await the result outside its stop mutex."""
         if self._loop is None:
             raise ElectronDisconnected("Electron has not connected")
-        return asyncio.run_coroutine_threadsafe(self._execute(action, data, progress), self._loop)
+        return asyncio.run_coroutine_threadsafe(self._execute(action, data, progress, verify_recovery), self._loop)
 
     async def _cancel(self, workflow_id: str | None, task_id: str | None) -> bool:
         pending = [operation for operation in self._pending.values() if not operation.result.done()

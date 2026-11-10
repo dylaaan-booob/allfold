@@ -12,7 +12,7 @@ _STEPS = frozenset({'request', 'page_load', 'resource_ready', 'resource_filter',
                     'openContent', 'customReady', 'configureCustom', 'verifyCustom', 'saveCustom',
                     'selectContent', 'export', 'arm', 'links', 'download', 'sandbox_load', 'sandbox_init',
                     'translator', 'document_operation', 'dom_observer', 'hidden_iframe', 'oa_resolver',
-                    'note_save', 'attachment_create', 'attachment_save'})
+                    'note_save', 'attachment_create', 'attachment_save', 'recovery_authority'})
 _CODES = frozenset({'failed', 'canceled', 'timeout', 'site_restricted', 'verification_page',
     'content_access_blocked', 'http_error', 'load_failed', 'renderer_gone', 'page_closed',
     'document_changed', 'navigation_active', 'document_operation_failed', 'doi_mismatch',
@@ -28,7 +28,8 @@ _CODES = frozenset({'failed', 'canceled', 'timeout', 'site_restricted', 'verific
     'authorization_required', 'authorization_denied', 'always_allow_required', 'access_denied', 'server_id_mismatch', 'missing_server_id', 'unsupported_version', 'target_missing', 'target_list_incomplete', 'precondition_required', 'rate_limited', 'connection_lost', 'invalid_target', 'invalid_response', 'invalid_upload_destination', 'upload_failed', 'registration_failed', 'response_too_large', 'unsafe_url', 'object_rejected', 'unattributable_response', 'api_failure', 'key_store_unreadable', 'key_store_write_failed', 'encryption_unavailable', 'conflict', 'invalid_attachment', 'invalid_local_path',
     'openalex_no_pdf', 'openalex_not_found', 'openalex_lookup_failed', 'openalex_authorization_required',
     'openalex_quota', 'openalex_credential_unavailable',
-    'no_resolver', 'mime_mismatch', 'empty_response', 'network_error', 'redirect_rejected', 'attachment_rejected'})
+    'no_resolver', 'mime_mismatch', 'empty_response', 'network_error', 'redirect_rejected', 'attachment_rejected',
+    'cooldown_budget'})
 
 
 def normalize_browser_diagnostic(value: object) -> dict[str, object] | None:
@@ -45,6 +46,9 @@ def normalize_browser_diagnostic(value: object) -> dict[str, object] | None:
     net_error = value.get('net_error')
     if isinstance(net_error, str) and re.fullmatch(r'ERR_[A-Z0-9_]{1,80}', net_error):
         result['net_error'] = net_error
+    net_code = value.get('net_code')
+    if type(net_code) is int and -99999 <= net_code < 0:
+        result['net_code'] = net_code
     if result.get('stage') == 'navigation' and result.get('code') == 'site_restricted':
         edet = value.get('imperva_edet')
         if type(edet) is int and 0 <= edet <= 999:
@@ -129,6 +133,7 @@ def format_browser_diagnostic(value: object, *, include_pdf_uncertainty: bool = 
               'site_restricted': 'site restricted access', 'verification_page': 'site verification page',
               'content_access_blocked': 'ScienceDirect content access blocked (CPE00001)',
               'http_error': 'HTTP request failed', 'load_failed': 'page load failed',
+              'cooldown_budget': 'server cooldown exceeds remaining operation time',
               'document_changed': 'source page changed',
               'doi_mismatch': 'parent DOI did not match',
               'authorization_required': 'Zotero authorization required; choose Always Allow',
@@ -145,4 +150,6 @@ def format_browser_diagnostic(value: object, *, include_pdf_uncertainty: bool = 
     suffix = f" (HTTP {diagnostic['status']})" if 'status' in diagnostic else ''
     if 'net_error' in diagnostic:
         suffix += f" ({diagnostic['net_error']})"
+    elif 'net_code' in diagnostic:
+        suffix += f" ({diagnostic['net_code']})"
     return f'{stage}{step}: {reason}{code}{suffix}.'
