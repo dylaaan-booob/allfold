@@ -12,6 +12,11 @@ const {institutionAuthPage}=require('../src/auth/institution-auth.cjs');
 const chromiumVersion='123.4.5.6';
 const serviceScope={scope_id:'a'.repeat(64),config_revision:'b'.repeat(64),user_state_revision:'c'.repeat(64)};
 const serviceId='svc_'+'1'.repeat(32);
+function networkFailure(partition,contents,{id,url,method='GET'}) {
+  const request={id,url,method,webContentsId:contents.id,resourceType:'mainFrame'};
+  partition.requestHook(request,details=>assert.deepEqual(Object.keys(details),[]));
+  partition.errorHook({...request,error:'net::ERR_CONNECTION_CLOSED'});
+}
 function fixture(t) {
   const profile=fs.mkdtempSync(path.join(os.tmpdir(),'allfold-browser-runtime-test-'));
   t.after(()=>fs.rmSync(profile,{recursive:true,force:true}));
@@ -21,6 +26,7 @@ function fixture(t) {
   const logs=[],menus=[];
   const partition={ua:`Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 allfold-desktop/1.0.0 Chrome/${chromiumVersion} Electron/1.0.0 Safari/537.36`,
     webRequest:{onBeforeSendHeaders(filter,fn){partition.headerHook=fn;},
+      onBeforeRequest(filter,fn){partition.requestHook=fn;},
       onErrorOccurred(filter,fn){partition.errorHook=fn;},onHeadersReceived(filter,fn){partition.responseHook=fn;}},
     registerPreloadScript(script){this.preload=script;return 'identity';},unregisterPreloadScript(){this.preload=null;},
     async getCacheSize(){return 0;},
@@ -927,12 +933,13 @@ test('canceling attachment recovery removes its hidden iframe from the original 
 });
 
 test('initial Paper loading allows two delayed refreshes before replacing only the failed page',async t=>{
-  const {BrowserRuntime}=fixture(t);
+  const {BrowserRuntime,partition}=fixture(t);
   const waits=[],recovery=[];
   const browser=new BrowserRuntime({recoveryTiming:{random:()=>0.5,pause:async(_signal,ms)=>{waits.push(ms);}}});
   t.after(()=>browser.close());await browser.ready;
   const selected=browser.createTab();
   const pages=[];
+  let requestId=0;
   const data={workspace_identity:'a'.repeat(64),paper_id:'fd8460a2-7cf1-4f02-b346-cbcbd2fe6e45',request_id:'paper-reopen'};
   browser.events.on('tab-created',(_event,tab)=>{
     pages.push(tab);
@@ -940,7 +947,7 @@ test('initial Paper loading allows two delayed refreshes before replacing only t
     if(pages.length!==1)return;
     const fail=()=>{
       wc.emit('did-start-navigation',{},wc.url,false,true);
-      wc.emit('did-fail-load',{},-100,'ERR_CONNECTION_CLOSED',wc.url,true,wc.mainFrame.processId,wc.mainFrame.routingId);
+      networkFailure(partition,wc,{id:++requestId,url:wc.url});
     };
     wc.loadURL=async url=>{wc.url=url;fail();throw Error('ERR_CONNECTION_CLOSED');};
     wc.reload=()=>fail();
@@ -971,7 +978,7 @@ for(const mode of ['same-tab','popup','timeout','unknown','ambiguous','unsafe-me
     const portalURL='https://ds.carsi.edu.cn/resource/resource.php';
     const detailURL='https://ds.carsi.edu.cn/resource/resourceDetail.php?id=synthetic';
     const targetURL='https://publisher.example/target';
-    let visits=0,refreshes=0,authorities=0,oldTarget;
+    let visits=0,refreshes=0,authorities=0,requestId=0,oldTarget;
     const recovery=[],created=[];
     browser.events.on('tab-created',(_event,tab)=>{
       created.push(tab);
@@ -1000,11 +1007,7 @@ for(const mode of ['same-tab','popup','timeout','unknown','ambiguous','unsafe-me
               setImmediate(()=>t.mock.timers.setTime(86000));
               return;
             }
-            if(mode==='unsafe-method')partition.errorHook({
-              webContentsId:target.id,url:targetURL,method:'POST',resourceType:'mainFrame',
-            });
-            target.emit('did-fail-load',{},-100,'ERR_CONNECTION_CLOSED',targetURL,true,
-              target.mainFrame.processId,target.mainFrame.routingId);
+            networkFailure(partition,target,{id:++requestId,url:targetURL,method:mode==='unsafe-method'?'POST':'GET'});
           };
           target.reload=()=>{refreshes++;fail();};
           fail();
@@ -1183,11 +1186,12 @@ test('managed refresh ignores obsolete frame and URL failures and reopens the pr
     ['url_mismatch','load_failed',-100,'ERR_CONNECTION_CLOSED'],
     ['stale_frame','load_failed',-100,'ERR_CONNECTION_CLOSED'],
     ['current','load_failed',-100,'ERR_CONNECTION_CLOSED'],
+    ['load_promise_rejected','load_failed',-100,'ERR_CONNECTION_CLOSED'],
   ]);
 });
 
 test('cancel during managed refresh backoff preserves the failed page and dispatches no further action',async t=>{
-  const {BrowserRuntime}=fixture(t);
+  const {BrowserRuntime,partition}=fixture(t);
   let sleeping;
   const waiting=new Promise(resolve=>{sleeping=resolve;});
   const browser=new BrowserRuntime({recoveryTiming:{pause:signal=>new Promise((_,reject)=>{
@@ -1203,7 +1207,7 @@ test('cancel during managed refresh backoff preserves the failed page and dispat
     wc.loadURL=async url=>{
       wc.url=url;
       wc.emit('did-start-navigation',{},url,false,true);
-      wc.emit('did-fail-load',{},-100,'ERR_CONNECTION_CLOSED',url,true,wc.mainFrame.processId,wc.mainFrame.routingId);
+      networkFailure(partition,wc,{id:1,url});
       throw Error('ERR_CONNECTION_CLOSED');
     };
   });
@@ -1215,4 +1219,41 @@ test('cancel during managed refresh backoff preserves the failed page and dispat
   assert.equal(pages.length,1);
   assert.equal(pages[0].view.webContents.reloads,undefined);
   assert.equal(pages[0].view.webContents.isDestroyed(),false);
+});
+
+test('a stale failure from the same URL and frame cannot consume a newer refresh budget',async t=>{
+  const {BrowserRuntime,partition}=fixture(t);
+  const waits=[],recovery=[];
+  const browser=new BrowserRuntime({recoveryTiming:{random:()=>0.5,pause:async(_signal,ms)=>{waits.push(ms);}}});
+  t.after(()=>browser.close());await browser.ready;
+  const tab=browser.createTab({managed:true}),wc=tab.view.webContents,load=wc.loadURL.bind(wc);
+  const url='https://publisher.example/article';
+  const request=id=>({id,url,method:'GET',resourceType:'mainFrame',webContentsId:tab.id,frame:wc.mainFrame});
+  const error=id=>partition.errorHook({...request(id),error:'net::ERR_CONNECTION_CLOSED'});
+  const rawError=()=>wc.emit('did-fail-load',{},-100,'ERR_CONNECTION_CLOSED',url,true,wc.mainFrame.processId,wc.mainFrame.routingId);
+  let refreshes=0;
+  wc.loadURL=async value=>{
+    wc.url=value;
+    wc.emit('did-start-navigation',{},value,false,true);
+    partition.requestHook(request(1),()=>{});
+    error(1);rawError();
+    throw Error('ERR_CONNECTION_CLOSED');
+  };
+  wc.reload=()=>{
+    refreshes++;
+    wc.emit('did-start-navigation',{},url,false,true);
+    partition.requestHook(request(refreshes+1),()=>{});
+    error(1);rawError();
+    if(refreshes===1)error(2);
+    else void load(url);
+  };
+  const signal=new AbortController().signal;
+  const doc=await browser.runTask(signal,{request_id:'stale-connection'},()=>{
+    browser.operation.recordRecovery=(event,details)=>recovery.push({event,...details});
+    return browser.navigate(url,{tab,signal});
+  });
+  assert.equal(doc.pageId,tab.id);
+  assert.equal(refreshes,2);
+  assert.deepEqual(waits,[350,700]);
+  assert.equal(recovery.at(-1).event,'recovery_succeeded');
 });

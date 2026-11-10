@@ -22,8 +22,10 @@ These invariants apply across modules. Field-level definitions remain in code; t
 Use isolated configuration, Workspace and transport fixtures. Offline checks do not prove live authentication, challenge completion, native saving or PDF storage. Inspect actual Zotero state before retrying an uncertain save. Apply the existing manual boundary to CAPTCHA, MFA and ambiguous pages; run supported Cloudflare solving automatically within the originating request and document deadline. hCaptcha waits for manual verification.
 
 A managed refresh is eligible only within the current owned main-frame load and
-before business actions. The Browser filters aborted, obsolete URL and frame
-events, and observes non-GET navigation through the existing Session listeners.
+before business actions. The Browser binds each main-frame network request ID to
+its navigation generation and checks the exact promise of an explicit load.
+Native failure events retain URL and frame evidence. The Session request observer
+also identifies non-GET navigation.
 A stateful authentication action or manual verification blocks replay of that
 attempt. CARSI reentry after Visit requires an acknowledged click and one
 attributable target. Before any Visit, the resource search must have reached a

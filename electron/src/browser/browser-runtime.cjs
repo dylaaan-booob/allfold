@@ -41,20 +41,22 @@ class BrowserRuntime {
     this.recoveryTiming=recoveryTiming;
     this.cooldown=new BrowserCooldown(recoveryTiming);
     this.partition = configureBrowserSession(session.fromPartition('allfold'));
-    const observeNavigation=details=>{
-      if(details.resourceType==='mainFrame')this.tabs.get(details.webContentsId)?.navigation.observeRequest(details);
-    };
-    this.partition.webRequest.onErrorOccurred({urls:['http://*/*','https://*/*']},details=>{
-      if(details.resourceType==='mainFrame'){observeNavigation(details);return;}
+    const filter={urls:['http://*/*','https://*/*']};
+    this.partition.webRequest.onBeforeRequest(filter,(details,callback)=>{
       const tab=this.tabs.get(details.webContentsId);
+      if(details.resourceType==='mainFrame')tab?.navigation.observeRequestStart(details);
+      callback({});
+    });
+    this.partition.webRequest.onErrorOccurred(filter,details=>{
+      const tab=this.tabs.get(details.webContentsId);
+      if(details.resourceType==='mainFrame'){tab?.navigation.observeRequestFailure(details);return;}
       const netError=String(details.error || '').match(/^(?:net::)?(ERR_[A-Z0-9_]{1,80})$/)?.[1];
       if(tab)this.reportPage('debug','page_request_failed',tab,{resource_type:details.resourceType,net_error:netError,
         net_code:loadFailure(netError,details.errorCode).diagnostic.net_code});
     });
     this.attachmentCaptures=new Set();
     this.domObservations=new Set();
-    this.partition.webRequest.onHeadersReceived({urls:['http://*/*','https://*/*']},(details,callback)=>{
-      observeNavigation(details);
+    this.partition.webRequest.onHeadersReceived(filter,(details,callback)=>{
       const tab=this.tabs.get(details.webContentsId);
       if(tab && !tab.pageAttempt?.retired && details.resourceType==='mainFrame') {
         const retryAfter=Object.entries(details.responseHeaders || {}).filter(([key])=>key.toLowerCase()==='retry-after')
@@ -85,7 +87,7 @@ class BrowserRuntime {
     this.destroying = false;
     this.cookieAdapter=new PartitionedCookieAdapter({session:this.partition,cdpURL,
       getPage:id=>this.tabs.get(id)?.view.webContents,documentCurrent:doc=>this.documentCurrent(doc)});
-    this.ready = configureBrowserIdentity(this.partition, app.getPath('sessionData'),{cookieAdapter:this.cookieAdapter,observeRequest:observeNavigation}).then(identity => {
+    this.ready = configureBrowserIdentity(this.partition, app.getPath('sessionData'),{cookieAdapter:this.cookieAdapter}).then(identity => {
       this.identity = identity;
       if (this.destroying) {identity.dispose();throw Error('Browser closed during identity initialization');}
       return identity;
@@ -916,6 +918,7 @@ class BrowserRuntime {
     }
     this.presentation.dispose();
     this.selected=null;
+    this.partition.webRequest.onBeforeRequest(null);
     this.partition.webRequest.onErrorOccurred(null);
     this.partition.webRequest.onHeadersReceived(null);
     for(const capture of this.attachmentCaptures)capture.dispose();

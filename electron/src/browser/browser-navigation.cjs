@@ -83,7 +83,9 @@ class NavigationRecovery {
       // Observation must not depend on whether the event can change the current navigation.
       const failure=loadFailure(description,code);
       this.report('warn','page_load_failed',{page_id:tab.id,...failure.diagnostic,generation:nav?.generation,reason});
-      if(reason!=='current')return;
+      // This event cannot identify its request, including across same-URL refreshes.
+      // Managed failures use a Chromium request ID or the exact loadURL promise.
+      if(reason!=='current' || nav.automatic)return;
       this.handleFailure(nav,failure);
     });
     on('destroyed',()=>{
@@ -172,6 +174,7 @@ class NavigationRecovery {
         check();
         nav.refresh=null;
         nav.generation=++this.generation;
+        nav.requestId=undefined;
         nav.pendingStart=true;nav.started=false;nav.committed=false;
         // A provisional cross-site failure can leave the previous document committed.
         const url=nav.url;
@@ -187,12 +190,31 @@ class NavigationRecovery {
     failure.rebuildPage=this.allowed(nav);
     return failure;
   }
-  observeRequest({url,method}) {
+  loadingRequest(nav,url) {
+    return nav?.active && nav.started && !nav.pendingStart && !nav.loaded && !nav.refresh
+      && nav.url?.split('#')[0]===url;
+  }
+  observeRequestStart({id,url,method}) {
     const nav=this.current;
-    if(nav?.active && nav.started && !nav.pendingStart && nav.url?.split('#')[0]===url && method && method!=='GET') {
+    if(!nav?.automatic || !Number.isSafeInteger(id) || !this.loadingRequest(nav,url))return;
+    if(nav.requestId!==id) {
+      if(nav.requestId!==undefined || nav.chain.requestIds.has(id))return;
+      nav.requestId=id;
+      nav.chain.requestIds.add(id);
+    }
+    if(method!=='GET') {
       nav.chain.unsafeRequest=true;
       this.blockReplay();
     }
+  }
+  observeRequestFailure({id,url,error}) {
+    const nav=this.current;
+    if(!Number.isSafeInteger(id) || nav?.requestId!==id || !this.loadingRequest(nav,url)
+      || /^(?:net::)?ERR_ABORTED$/.test(error))return;
+    const failure=loadFailure(error);
+    this.report('warn','page_load_failed',{page_id:this.tab.id,...failure.diagnostic,
+      generation:nav.generation,reason:'current'});
+    this.handleFailure(nav,failure);
   }
   blockReplay() {
     const nav=this.current;
@@ -203,7 +225,7 @@ class NavigationRecovery {
     const previous=this.current;
     const sameOwner=owner && previous?.owner===owner;
     this.finish({preserve:resume});
-    const chain=resume && previous?.owner===owner?previous.chain:{reloads:0,lastFailure:null};
+    const chain=resume && previous?.owner===owner?previous.chain:{reloads:0,lastFailure:null,requestIds:new Set()};
     const nav=this.current={generation:++this.generation,chain,get reloads(){return chain.reloads;},automatic,owner,signal,enabled,
       replayable,valid,beforeRefresh,recoveryReport,deadline:sameOwner?Math.min(deadline,previous.deadline):deadline,
       loadDeadline:sameOwner && resume?previous.loadDeadline:null,active:true,pendingStart:true,started:false,
