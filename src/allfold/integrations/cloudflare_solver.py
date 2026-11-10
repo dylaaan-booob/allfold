@@ -65,7 +65,7 @@ async def _checkbox_is_interactable(checkbox) -> bool:
     return bool(response.get('result', {}).get('result', {}).get('value', False))
 
 
-def solve_cloudflare(cdp_url: str, page_url: str, stop: Event) -> dict[str, str]:
+def solve_cloudflare(cdp_url: str, page_url: str, stop: Event, *, target_id: str) -> dict[str, str]:
     if stop.is_set():
         return {"outcome": "not_executed", "reason": "canceled"}
     if not cdp_url:
@@ -77,7 +77,7 @@ def solve_cloudflare(cdp_url: str, page_url: str, stop: Event) -> dict[str, str]
         for logger in quiet_loggers:
             logger.handlers = [logging.NullHandler()]
             logger.propagate = False
-        return asyncio.run(_solve_until_canceled(cdp_url, page_url, stop))
+        return asyncio.run(_solve_until_canceled(cdp_url, page_url, stop, target_id=target_id))
     except Exception:
         return {"outcome": "failed", "reason": "solver_failed"}
     finally:
@@ -86,8 +86,8 @@ def solve_cloudflare(cdp_url: str, page_url: str, stop: Event) -> dict[str, str]
             logger.propagate = propagate
 
 
-async def _solve_until_canceled(cdp_url: str, page_url: str, stop: Event) -> dict[str, str]:
-    task = asyncio.create_task(_click_turnstile(cdp_url, page_url, stop))
+async def _solve_until_canceled(cdp_url: str, page_url: str, stop: Event, *, target_id: str) -> dict[str, str]:
+    task = asyncio.create_task(_click_turnstile(cdp_url, page_url, stop, target_id=target_id))
     while not task.done():
         if stop.is_set():
             task.cancel()
@@ -101,7 +101,7 @@ async def _solve_until_canceled(cdp_url: str, page_url: str, stop: Event) -> dic
         return {"outcome": "not_executed", "reason": "canceled"}
 
 
-async def _click_turnstile(cdp_url: str, page_url: str, stop: Event) -> dict[str, str]:
+async def _click_turnstile(cdp_url: str, page_url: str, stop: Event, *, target_id: str) -> dict[str, str]:
     from pydoll import Chrome
     from pydoll.browser.tab import Tab
     from pydoll.connection.connection_handler import ConnectionHandler
@@ -118,11 +118,11 @@ async def _click_turnstile(cdp_url: str, page_url: str, stop: Event) -> dict[str
         except Exception:
             return {"outcome": "not_executed", "reason": "cdp_unavailable"}
         targets = [target for target in await browser.get_targets()
-                   if target.get("type") == "page" and target.get("url") == page_url]
+                   if target.get("targetId") == target_id
+                   and target.get("type") == "page" and target.get("url") == page_url]
         if len(targets) != 1:
             return {"outcome": "not_executed", "reason": "page_not_unique"}
 
-        target_id = targets[0]["targetId"]
         endpoint = urlsplit(cdp_url)
         page_endpoint = urlunsplit(endpoint._replace(path=f"/devtools/page/{target_id}"))
         connection = ConnectionHandler(ws_address=page_endpoint)

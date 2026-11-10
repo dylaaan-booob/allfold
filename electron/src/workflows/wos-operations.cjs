@@ -41,7 +41,7 @@ async function step(browser,tab,op,args,signal,progress,timeout=10000,requestDea
     if(started>=requestDeadline)throw timeoutFailure('wos_dom',op);
     const observed=await browser.inspectPage(tab,{signal,deadline:requestDeadline,automaticDeadline:deadline,
       stage:'wos_dom',step:op,onWaiting:waiting=>progress({waiting_for_user:waiting}),extraWaiting:doc=>op==='verification' && !new URL(doc.url).pathname.startsWith('/wos/')});
-    if(browser.wosDocument && !browser.documentCurrent(browser.wosDocument))
+    if(tab.wosDocument && !browser.documentCurrent(tab.wosDocument))
       throw new BrowserFailure('navigation','document_changed');
     if(observed.loading) {
       await waitFor(()=>pause(signal),signal,deadline,'wos_dom',op);
@@ -49,14 +49,14 @@ async function step(browser,tab,op,args,signal,progress,timeout=10000,requestDea
     }
     const doc=observed.doc,url=new URL(doc.url);
     checkCanceled(signal);
-    if(browser.wosDocument && (url.origin!=='https://www.webofscience.com'
+    if(tab.wosDocument && (url.origin!=='https://www.webofscience.com'
       || !url.pathname.startsWith('/wos/woscc/summary/')))
       throw new BrowserFailure('navigation','unverified_results_page');
     let waiting=observed.waiting;
     if(!waiting && url.origin==='https://www.webofscience.com' && !tab.view.webContents.isLoadingMainFrame()) {
       const value=await page(browser,doc,op,args,signal,deadline);
       checkCanceled(signal);
-      if(browser.wosDocument && !browser.documentCurrent(browser.wosDocument))
+      if(tab.wosDocument && !browser.documentCurrent(tab.wosDocument))
         throw new BrowserFailure('navigation','document_changed');
       if(value.error==='verification_required' || (op==='verification' && value.ready===false))waiting=true;
       else if(value.error) {
@@ -111,7 +111,8 @@ async function wosQuery(browser,data,{signal,progress}) {
 async function wosQueryWithinDeadline(browser,data,{signal,progress},deadline) {
   const tab=taskPage(browser,data,signal);
   browser.beginPageLoad(tab,signal,deadline);
-  browser.wosDocument=null;
+  tab.wosDocument=null;
+  tab.wosWorkflowId=browser.operation?.association.workflow_id;
   const run=(op,args={},timeout=10000)=>step(browser,tab,op,args,signal,progress,timeout,deadline);
   // Let CARSI/SSO finish in the existing page before starting another navigation.
   await run('verification',{},85000);
@@ -133,14 +134,15 @@ async function wosQueryWithinDeadline(browser,data,{signal,progress},deadline) {
     await run('dialog');
     batchLimit=(await configureCustom(run)).limit;
   }
-  browser.wosDocument=await waitFor(()=>browser.snapshot(tab),signal,deadline,'wos_dom','result');
-  if(!browser.documentCurrent(browser.wosDocument))throw new BrowserFailure('navigation','document_changed');
+  tab.wosDocument=await waitFor(()=>browser.snapshot(tab),signal,deadline,'wos_dom','result');
+  if(!browser.documentCurrent(tab.wosDocument))throw new BrowserFailure('navigation','document_changed');
   return {total:result.total,batch_limit:batchLimit,page_id:tab.id};
 }
 async function wosExport(browser,data,{signal,progress}) {
-  const tab=taskPage(browser,data,signal),doc=browser.wosDocument;
+  const tab=taskPage(browser,data,signal),doc=tab.wosDocument;
   browser.enterBusiness();
-  if(!doc || doc.pageId!==data.page_id || !browser.documentCurrent(doc))
+  if(tab.wosWorkflowId!==browser.operation?.association.workflow_id
+    || !doc || doc.pageId!==data.page_id || !browser.documentCurrent(doc))
     throw new BrowserFailure('navigation','document_changed');
   if(!Number.isSafeInteger(data.first) || !Number.isSafeInteger(data.last) || data.first<1
     || data.last<data.first)throw Error('invalid_export_range');
