@@ -10,8 +10,9 @@ import secrets
 from allfold.application.bounded_dispatch import bounded_dispatch
 from allfold.application.history import observe, batch_history
 from allfold.browser_diagnostics import normalize_browser_diagnostic, first_attachment_diagnostic, format_browser_diagnostic
+from allfold.recovery_diagnostics import normalize_recovery, recovery_progress_message
 from allfold.application.export_attempts import (
-    PdfOutcome, _reserve_export_attempt_locked, complete_electron_import, ExportCompletionOutcome,
+    PdfOutcome, _reserve_export_attempt_locked, validate_export_reservation, complete_electron_import, ExportCompletionOutcome,
 )
 from allfold.application.workspace import WorkspaceImportPlan, plan_workspace_import
 from allfold.persistence.safe_write import workspace_operation_lock
@@ -47,6 +48,7 @@ class BatchPaperResult:
     query_diagnostic: dict | None = None
     uncertain_write: bool = False
     native_identity: dict | None = field(default=None, repr=False)
+    recovery: list | None = None
 
 @dataclass(frozen=True)
 class BatchStatistics:
@@ -214,6 +216,14 @@ class BatchImportService:
                             return _settled_skip(paper, 'blocked', str(error))
                         reservations[paper.paper_id] = reservation
                         self._publish(active_paper_ids=tuple(reservations), message="Translating and saving")
+
+                        def verify_recovery():
+                            if self._stop.is_set():
+                                raise InterruptedError()
+                            self.browser_lock.require(owner)
+                            verify()
+                            validate_export_reservation(reservation, operation_lock=lock)
+
                         return self.bridge.execute("import_paper", {
                             "doi": paper.doi, "metadata": _import_metadata(paper),
                             "zotero_target": zotero_target, "task_id": reservation.attempt.attempt_id,
@@ -222,7 +232,8 @@ class BatchImportService:
                             "paper_id": str(paper.paper_id), "workspace_identity": workspace_identity,
                             "service_id": paper.service_id, "service_scope": services.scope if services else None,
                             "limits": native_limits,
-                        }, lambda progress: self._publish(message=str(progress.get("message", "Import running"))))
+                        }, lambda progress: self._publish(message=recovery_progress_message(progress.get('recovery_action'))
+                            or str(progress.get("message", "Import running"))), verify_recovery=verify_recovery)
 
                 eligible = []
                 for paper in plan.papers:
@@ -330,4 +341,5 @@ def _settle_paper(paper, reservation, result, lock):
         reason_code="write_failed" if outcome == "blocked" else "result_unconfirmed" if outcome == "uncertain" or uncertain_write else "no_effect" if outcome == "no_effect" else "pdf_unverified",
         diagnostic=normalize_browser_diagnostic(result.get("diagnostic")) or attachment_diagnostic,
         **observations, pdf_source=source if source in {"translator", "openalex", "none"} else None,
-        query_diagnostic=query, native_identity=result.get("zotero"))
+        query_diagnostic=query, native_identity=result.get("zotero"),
+        recovery=normalize_recovery(result.get("recovery")) or None)

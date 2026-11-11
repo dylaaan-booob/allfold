@@ -12,6 +12,11 @@ const {institutionAuthPage}=require('../src/auth/institution-auth.cjs');
 const chromiumVersion='123.4.5.6';
 const serviceScope={scope_id:'a'.repeat(64),config_revision:'b'.repeat(64),user_state_revision:'c'.repeat(64)};
 const serviceId='svc_'+'1'.repeat(32);
+function networkFailure(partition,contents,{id,url,method='GET'}) {
+  const request={id,url,method,webContentsId:contents.id,resourceType:'mainFrame'};
+  partition.requestHook(request,details=>assert.deepEqual(Object.keys(details),[]));
+  partition.errorHook({...request,error:'net::ERR_CONNECTION_CLOSED'});
+}
 function fixture(t) {
   const profile=fs.mkdtempSync(path.join(os.tmpdir(),'allfold-browser-runtime-test-'));
   t.after(()=>fs.rmSync(profile,{recursive:true,force:true}));
@@ -21,6 +26,7 @@ function fixture(t) {
   const logs=[],menus=[];
   const partition={ua:`Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 allfold-desktop/1.0.0 Chrome/${chromiumVersion} Electron/1.0.0 Safari/537.36`,
     webRequest:{onBeforeSendHeaders(filter,fn){partition.headerHook=fn;},
+      onBeforeRequest(filter,fn){partition.requestHook=fn;},
       onErrorOccurred(filter,fn){partition.errorHook=fn;},onHeadersReceived(filter,fn){partition.responseHook=fn;}},
     registerPreloadScript(script){this.preload=script;return 'identity';},unregisterPreloadScript(){this.preload=null;},
     async getCacheSize(){return 0;},
@@ -924,4 +930,358 @@ test('canceling attachment recovery removes its hidden iframe from the original 
     await assert.rejects(pending,error=>error.diagnostic?.code==='canceled');
     assert.equal(iframes.size,0);
   });
+});
+
+test('initial Paper loading allows two delayed refreshes before replacing only the failed page',async t=>{
+  const {BrowserRuntime,partition}=fixture(t);
+  const waits=[],recovery=[];
+  const browser=new BrowserRuntime({recoveryTiming:{random:()=>0.5,pause:async(_signal,ms)=>{waits.push(ms);}}});
+  t.after(()=>browser.close());await browser.ready;
+  const selected=browser.createTab();
+  const pages=[];
+  let requestId=0;
+  const data={workspace_identity:'a'.repeat(64),paper_id:'fd8460a2-7cf1-4f02-b346-cbcbd2fe6e45',request_id:'paper-reopen'};
+  browser.events.on('tab-created',(_event,tab)=>{
+    pages.push(tab);
+    const wc=tab.view.webContents;
+    if(pages.length!==1)return;
+    const fail=()=>{
+      wc.emit('did-start-navigation',{},wc.url,false,true);
+      networkFailure(partition,wc,{id:++requestId,url:wc.url});
+    };
+    wc.loadURL=async url=>{wc.url=url;fail();throw Error('ERR_CONNECTION_CLOSED');};
+    wc.reload=()=>fail();
+  });
+  const signal=new AbortController().signal;
+  const doc=await browser.runTask(signal,data,async()=>{
+    browser.operation.recordRecovery=(event,details)=>recovery.push({event,...details});
+    return browser.openPaperPage(data,'10.5555/fixture',{role:'enrich',signal});
+  });
+  assert.deepEqual(waits,[350,700]);
+  assert.equal(pages.length,2);
+  assert.equal(pages[0].view.webContents.isDestroyed(),true);
+  assert.equal(doc.pageId,pages[1].id);
+  assert.equal(browser.state().selected,selected.id);
+  assert.equal(browser.documentCurrent(doc),true);
+  assert.deepEqual(recovery.filter(event=>event.event==='recovery_scheduled').map(event=>[event.recovery_action,event.net_code]),[
+    ['page_refresh',-100],['page_refresh',-100],['paper_reopen',-100]]);
+  assert.equal(recovery.at(-1).source_page_id,pages[0].id);
+});
+
+for(const mode of ['same-tab','popup','follow-up','follow-up-post','after-limit-get','after-limit-post',
+  'timeout','unknown','ambiguous','unsafe-method','authority','double-fail']) {
+  test('CARSI Visit recovery preserves authority for '+mode,async t=>{
+    if(mode==='timeout')t.mock.timers.enable({apis:['Date'],now:1000});
+    const {loginInstitution,prepareLoggedInService}=require('../src/workflows/browser-operations.cjs');
+    const {BrowserRuntime,partition}=fixture(t);
+    const browser=new BrowserRuntime({recoveryTiming:{random:()=>0.5,pause:async()=>{}}});
+    t.after(()=>browser.close());await browser.ready;
+    const portalURL='https://ds.carsi.edu.cn/resource/resource.php';
+    const detailURL='https://ds.carsi.edu.cn/resource/resourceDetail.php?id=synthetic';
+    const targetURL='https://publisher.example/target';
+    const afterRefreshURL='https://publisher.example/after-refresh';
+    const afterLimitMethod={'after-limit-get':'GET','after-limit-post':'POST'}[mode];
+    const followUp=mode==='follow-up' || mode==='follow-up-post';
+    const method=mode==='unsafe-method' || mode==='follow-up-post'?'POST':'GET';
+    let visits=0,refreshes=0,authorities=0,requestId=0,oldTarget;
+    const recovery=[],created=[];
+    browser.events.on('tab-created',(_event,tab)=>{
+      created.push(tab);
+      const wc=tab.view.webContents,load=wc.loadURL.bind(wc),snapshot=wc.executeJavaScriptInIsolatedWorld.bind(wc);
+      wc.loadURL=url=>{
+        assert.notEqual(url,afterRefreshURL,'resource reentry must not load the failed request URL');
+        return load(url.includes('/Shibboleth.sso/')?portalURL:url);
+      };
+      wc.runAuth=async code=>{
+        const [action]=JSON.parse(code.slice(code.lastIndexOf('(...')+4,-1));
+        if(action==='ready')return {status:'ready',checked:false};
+        if(action==='search')return {status:'pending'};
+        if(action==='poll')return {status:'complete',selection:{status:'selected',url:detailURL}};
+        return {step:'none',waiting:false};
+      };
+      wc.executeJavaScriptInIsolatedWorld=async(_world,scripts)=>{
+        if(!scripts)return snapshot();
+        const [action]=JSON.parse(scripts[0].code.slice(scripts[0].code.lastIndexOf('(...')+4,-1));
+        if(action==='check')return {status:'ready'};
+        const target=['popup','unknown','ambiguous'].includes(mode)?wc.popup({url:targetURL}).createWindow({}):wc;
+        visits++;
+        if(visits===1 || mode==='double-fail') {
+          oldTarget ||= target;
+          let failedURL=followUp?'https://publisher.example/landing':targetURL;
+          const fail=(requestMethod=method)=>{
+            target.url=failedURL;
+            target.emit('did-start-navigation',{},failedURL,false,true);
+            if(mode==='timeout' && refreshes===1) {
+              target.loading=true;
+              setImmediate(()=>t.mock.timers.setTime(86000));
+              return;
+            }
+            networkFailure(partition,target,{id:++requestId,url:failedURL,method:requestMethod});
+          };
+          target.reload=()=>{
+            refreshes++;
+            if(afterLimitMethod && refreshes===2) {
+              void target.loadURL(failedURL);
+              failedURL=afterRefreshURL;
+              target.emit('will-navigate',{},failedURL);
+              fail(afterLimitMethod);
+              return;
+            }
+            if(mode==='follow-up' && refreshes===1) {
+              void target.loadURL(failedURL);
+              failedURL='https://publisher.example/final';
+              target.emit('will-navigate',{},failedURL);
+            }
+            fail();
+          };
+          if(followUp) {
+            await target.loadURL(targetURL);
+            target.emit('will-navigate',{},failedURL);
+          }
+          fail();
+          if(mode==='unknown')return {status:'pending'};
+          if(mode==='ambiguous')wc.popup({url:'about:blank'}).createWindow({});
+        } else {
+          oldTarget.emit('did-fail-load',{},-100,'ERR_CONNECTION_CLOSED',targetURL,true,
+            oldTarget.mainFrame.processId,oldTarget.mainFrame.routingId);
+          await target.loadURL(targetURL);
+        }
+        return {status:'visited_click'};
+      };
+    });
+    const signal=new AbortController().signal;
+    const institution={workflow_id:'login_reentry',request_id:'login',task_id:'login',service_scope:serviceScope,
+      use_shibboleth:true,login_url:'https://ds.carsi.edu.cn/Shibboleth.sso/Login'};
+    const login=await browser.runTask(signal,institution,()=>loginInstitution(browser,institution,{signal,progress(){}}));
+    const userPage=browser.createTab();
+    const data={...institution,request_id:'prepare',task_id:'prepare',service_id:serviceId,name:'Example',
+      portal_page_id:login.portal_page_id,preparation_key:'a'.repeat(64)};
+    const preparation=browser.runTask(signal,data,()=>{
+      browser.operation.recordRecovery=(event,details)=>recovery.push({event,...details});
+      if(mode==='authority')browser.operation.validateRecovery=async()=>{
+        if(++authorities===3)throw Error('document_changed');
+      };
+      const {request_id,...payload}=data;
+      return prepareLoggedInService(browser,payload,{signal,progress(){}});
+    });
+    const isLoadFailure=error=>error.diagnostic?.code==='load_failed' && error.diagnostic?.net_code===-100;
+    if(mode==='double-fail') {
+      await assert.rejects(preparation,isLoadFailure);
+      assert.equal(visits,2);
+      assert.equal(refreshes,4);
+      assert.equal(oldTarget.isDestroyed(),true);
+      assert.equal(recovery.at(-1).recovery_action,'resource_reentry');
+      assert.equal(recovery.at(-1).event,'recovery_exhausted');
+      assert.equal(recovery.at(-1).source_page_id,oldTarget.id);
+      return;
+    }
+    if(method==='POST' || ['unknown','ambiguous','authority'].includes(mode)) {
+      if(method==='POST')await assert.rejects(preparation,isLoadFailure);
+      else if(mode==='authority')await assert.rejects(preparation,/document_changed/);
+      else assert.equal((await preparation).outcome,'Needs attention');
+      assert.equal(visits,1);
+      assert.equal(refreshes,mode==='authority'?2:0);
+      assert.equal(browser.tabs.has(login.portal_page_id),true);
+      assert.equal(recovery.some(event=>event.recovery_action==='resource_reentry' && event.event==='recovery_succeeded'),false);
+      return;
+    }
+    const result=await preparation;
+    assert.equal(visits,2);
+    assert.equal(refreshes,mode==='timeout'?1:2);
+    assert.equal(result.outcome,'Opened');
+    assert.equal(result.evidence.target_page_id,created.at(-1).id);
+    assert.equal(oldTarget.isDestroyed(),true);
+    assert.equal(created.filter(tab=>tab.view.webContents.isDestroyed()).length,mode==='popup'?3:2);
+    assert.equal(browser.tabs.has(login.portal_page_id),true);
+    assert.equal(browser.state().selected,userPage.id);
+    assert.equal(recovery.filter(event=>event.recovery_action==='resource_reentry').length,2);
+    assert.equal(recovery.at(-1).source_page_id,oldTarget.id);
+    assert.equal(recovery.at(-1).page_id,result.evidence.target_page_id);
+  });
+}
+
+test('Paper page-load timeout replaces the provisional page without renewing the original deadline',async t=>{
+  t.mock.timers.enable({apis:['Date'],now:1000});
+  const {BrowserRuntime}=fixture(t),browser=new BrowserRuntime();
+  t.after(()=>browser.close());await browser.ready;
+  const data={workspace_identity:'a'.repeat(64),paper_id:'fd8460a2-7cf1-4f02-b346-cbcbd2fe6e45',request_id:'paper-timeout'};
+  const pages=[],recovery=[];
+  let authorities=0,firstDispatched;
+  const started=new Promise(resolve=>{firstDispatched=resolve;});
+  browser.events.on('tab-created',(_event,tab)=>{
+    pages.push(tab);
+    const wc=tab.view.webContents;
+    wc.loadURL=url=>{
+      wc.loading=true;
+      wc.emit('did-start-navigation',{},url,false,true);
+      if(pages.length===1)firstDispatched();
+      else t.mock.timers.setTime(91000);
+      return new Promise(()=>{});
+    };
+  });
+  const signal=new AbortController().signal;
+  const opened=browser.runTask(signal,data,()=>{
+    browser.operation.recordRecovery=(event,details)=>recovery.push({event,...details});
+    browser.operation.validateRecovery=async()=>{authorities++;};
+    return browser.openPaperPage(data,'10.5555/fixture',{role:'import',signal,deadline:91000});
+  });
+  await started;
+  t.mock.timers.setTime(86000);
+  await assert.rejects(opened,{diagnostic:{stage:'navigation',code:'timeout',step:'request'}});
+  assert.equal(authorities,1);
+  assert.equal(pages.length,2);
+  assert.equal(pages[0].view.webContents.isDestroyed(),true);
+  assert.equal(pages[1].view.webContents.isDestroyed(),false);
+  assert.equal(recovery[0].recovery_action,'paper_reopen');
+  assert.equal(recovery[0].step,'page_load');
+  assert.equal(recovery.at(-1).step,'request');
+  assert.equal(recovery.at(-1).recovery_stop,'budget');
+});
+
+test('the existing Session hook gates only matching entry origins and retains an extension after waiter cancellation',async t=>{
+  const {BrowserRuntime,partition}=fixture(t);
+  let now=Date.parse('Tue, 10 Nov 2026 09:00:00 GMT');
+  const sleepers=[];
+  const browser=new BrowserRuntime({recoveryTiming:{now:()=>now,pause:(signal,ms)=>new Promise((resolve,reject)=>{
+    const abort=()=>reject(signal.reason);
+    signal.addEventListener('abort',abort,{once:true});
+    sleepers.push({ms,release(){signal.removeEventListener('abort',abort);resolve();}});
+  })}});
+  t.after(()=>browser.close());await browser.ready;
+  const from=browser.createTab(),same=browser.createTab(),canceled=browser.createTab(),other=browser.createTab();
+  const url='https://publisher.example/limited';
+  const headers=(resourceType,statusCode,retryAfter)=>partition.responseHook({
+    webContentsId:from.id,resourceType,statusCode,url,
+    responseHeaders:retryAfter?{'Retry-After':[retryAfter]}:{},
+  },response=>assert.equal(response.cancel,undefined));
+  const run=(id,tab,target,signal=new AbortController().signal)=>browser.runTask(signal,{request_id:id},()=>
+    browser.navigate(target,{tab,signal}));
+  const tick=()=>new Promise(resolve=>setImmediate(resolve));
+  headers('subFrame',429,'3600');
+  await run('ignore-subframe',from,url);
+  headers('mainFrame',429,'2');
+  const stop=new AbortController();
+  const pending=run('match',same,url),aborted=run('cancel',canceled,url,stop.signal);
+  const rejected=assert.rejects(aborted,{diagnostic:{stage:'navigation',code:'canceled'}});
+  await tick();
+  assert.deepEqual(sleepers.map(({ms})=>ms),[2000,2000]);
+  assert.equal(same.view.webContents.getURL(),'');
+  assert.equal((await run('other',other,'https://other.example/')).pageId,other.id);
+  headers('mainFrame',503,'Tue, 10 Nov 2026 09:00:05 GMT');
+  headers('mainFrame',200);
+  stop.abort();await rejected;
+  now+=2000;sleepers[0].release();await tick();
+  assert.deepEqual(sleepers.map(({ms})=>ms),[2000,2000,3000]);
+  assert.equal(same.view.webContents.getURL(),'');
+  now+=3000;sleepers[2].release();
+  assert.equal((await pending).pageId,same.id);
+  headers('mainFrame',429,'3600');
+  await assert.rejects(run('budget',from,url),{diagnostic:{stage:'navigation',step:'page_load',code:'http_error',status:429}});
+  assert.equal(sleepers.length,3);
+});
+
+test('managed refresh ignores obsolete frame and URL failures and reopens the provisional destination',async t=>{
+  const {BrowserRuntime,logs}=fixture(t);
+  const waits=[],urls=[];
+  const browser=new BrowserRuntime({recoveryTiming:{random:()=>0.5,pause:async(_signal,ms)=>{waits.push(ms);}}});
+  t.after(()=>browser.close());await browser.ready;
+  const tab=browser.createTab({managed:true}),wc=tab.view.webContents,load=wc.loadURL.bind(wc);
+  await load('https://previous.example/');
+  const original='https://entry.example/start',target='https://publisher.example/provisional';
+  wc.loadURL=async url=>{
+    urls.push(url);
+    if(url===target)return load(url);
+    const {processId,routingId}=wc.mainFrame;
+    wc.emit('did-start-navigation',{},url,false,true);
+    wc.emit('will-redirect',{},target,false,true,processId+1,routingId+1);
+    wc.emit('will-redirect',{},'https://unrelated-subframe.example/',false,false);
+    wc.emit('did-fail-load',{},-100,'ERR_CONNECTION_CLOSED',url,true,processId,routingId);
+    wc.emit('did-fail-load',{},-100,'ERR_CONNECTION_CLOSED',target,true,processId,routingId-1);
+    wc.emit('did-fail-load',{},-100,'ERR_CONNECTION_CLOSED',target,false,processId,routingId);
+    wc.emit('did-fail-load',{},-3,'ERR_ABORTED',target,true,processId,routingId);
+    assert.deepEqual(waits,[]);
+    wc.emit('did-fail-load',{},-100,'ERR_CONNECTION_CLOSED',target,true,processId+1,routingId+1);
+    throw Error('ERR_CONNECTION_CLOSED');
+  };
+  const signal=new AbortController().signal;
+  const doc=await browser.runTask(signal,{request_id:'provisional'},()=>browser.navigate(original,{tab,signal}));
+  assert.equal(doc.url,target);
+  assert.deepEqual(urls,[original,target]);
+  assert.deepEqual(waits,[350]);
+  assert.equal(wc.reloads,undefined);
+  assert.deepEqual(logs.filter(entry=>entry.event==='page_load_failed')
+    .map(entry=>[entry.reason,entry.code,entry.net_code,entry.net_error]),[
+    ['url_mismatch','load_failed',-100,'ERR_CONNECTION_CLOSED'],
+    ['stale_frame','load_failed',-100,'ERR_CONNECTION_CLOSED'],
+    ['current','load_failed',-100,'ERR_CONNECTION_CLOSED'],
+    ['load_promise_rejected','load_failed',-100,'ERR_CONNECTION_CLOSED'],
+  ]);
+});
+
+test('cancel during managed refresh backoff preserves the failed page and dispatches no further action',async t=>{
+  const {BrowserRuntime,partition}=fixture(t);
+  let sleeping;
+  const waiting=new Promise(resolve=>{sleeping=resolve;});
+  const browser=new BrowserRuntime({recoveryTiming:{pause:signal=>new Promise((_,reject)=>{
+    signal.addEventListener('abort',()=>reject(signal.reason),{once:true});
+    sleeping();
+  })}});
+  t.after(()=>browser.close());await browser.ready;
+  const data={workspace_identity:'a'.repeat(64),paper_id:'fd8460a2-7cf1-4f02-b346-cbcbd2fe6e45',request_id:'paper-cancel'};
+  const pages=[];
+  browser.events.on('tab-created',(_event,tab)=>{
+    pages.push(tab);
+    const wc=tab.view.webContents;
+    wc.loadURL=async url=>{
+      wc.url=url;
+      wc.emit('did-start-navigation',{},url,false,true);
+      networkFailure(partition,wc,{id:1,url});
+      throw Error('ERR_CONNECTION_CLOSED');
+    };
+  });
+  const stop=new AbortController(),{signal}=stop;
+  const pending=browser.runTask(signal,data,()=>browser.openPaperPage(data,'10.5555/fixture',{role:'enrich',signal}));
+  await waiting;
+  stop.abort();
+  await assert.rejects(pending,{diagnostic:{stage:'navigation',code:'canceled'}});
+  assert.equal(pages.length,1);
+  assert.equal(pages[0].view.webContents.reloads,undefined);
+  assert.equal(pages[0].view.webContents.isDestroyed(),false);
+});
+
+test('a stale failure from the same URL and frame cannot consume a newer refresh budget',async t=>{
+  const {BrowserRuntime,partition}=fixture(t);
+  const waits=[],recovery=[];
+  const browser=new BrowserRuntime({recoveryTiming:{random:()=>0.5,pause:async(_signal,ms)=>{waits.push(ms);}}});
+  t.after(()=>browser.close());await browser.ready;
+  const tab=browser.createTab({managed:true}),wc=tab.view.webContents,load=wc.loadURL.bind(wc);
+  const url='https://publisher.example/article';
+  const request=id=>({id,url,method:'GET',resourceType:'mainFrame',webContentsId:tab.id,frame:wc.mainFrame});
+  const error=id=>partition.errorHook({...request(id),error:'net::ERR_CONNECTION_CLOSED'});
+  const rawError=()=>wc.emit('did-fail-load',{},-100,'ERR_CONNECTION_CLOSED',url,true,wc.mainFrame.processId,wc.mainFrame.routingId);
+  let refreshes=0;
+  wc.loadURL=async value=>{
+    wc.url=value;
+    wc.emit('did-start-navigation',{},value,false,true);
+    partition.requestHook(request(1),()=>{});
+    error(1);rawError();
+    throw Error('ERR_CONNECTION_CLOSED');
+  };
+  wc.reload=()=>{
+    refreshes++;
+    wc.emit('did-start-navigation',{},url,false,true);
+    partition.requestHook(request(refreshes+1),()=>{});
+    error(1);rawError();
+    if(refreshes===1)error(2);
+    else void load(url);
+  };
+  const signal=new AbortController().signal;
+  const doc=await browser.runTask(signal,{request_id:'stale-connection'},()=>{
+    browser.operation.recordRecovery=(event,details)=>recovery.push({event,...details});
+    return browser.navigate(url,{tab,signal});
+  });
+  assert.equal(doc.pageId,tab.id);
+  assert.equal(refreshes,2);
+  assert.deepEqual(waits,[350,700]);
+  assert.equal(recovery.at(-1).event,'recovery_succeeded');
 });

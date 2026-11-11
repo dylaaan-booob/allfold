@@ -19,9 +19,15 @@ function normalizeReferrer(value) {
 async function requestSessionHTTP(session,{method,url,headers={},body,referrer,referrerPolicy,timeout},context={}) {
   if(!session)throw Error('HTTP request requires a Session');
   const {net}=require('electron');
+  const redirectFailure=error=>error?.diagnostic?.stage==='attachment'
+    ?error:new RequestTransportError('redirect_rejected',error);
   let initialURL;
-  try {initialURL=new URL(url);const checked=context.validateRedirect?.(initialURL.href);if(checked?.then)await checked;}
-  catch(error){throw new RequestTransportError('redirect_rejected',error);}
+  try {
+    initialURL=new URL(url);
+    const checked=(context.validateInitialURL || context.validateRedirect)?.(initialURL.href);
+    if(checked?.then)await checked;
+  } catch(error){throw redirectFailure(error);}
+  context.beforeDispatch?.();
   const requestHeaders={...headers};let candidateCookieHeader,authorization;
   // Helpers run in an offscreen document; its origin is never a site Referer.
   referrer=normalizeReferrer(referrer);let headerReferrer;
@@ -59,21 +65,32 @@ async function requestSessionHTTP(session,{method,url,headers={},body,referrer,r
       request.on('redirect',(_status,_method,target)=>{
         if(finished)return;
         try {
-          const follow=()=>{if(finished)return;registration?.redirect(target);request.followRedirect();responseURL=target;};
+          const follow=()=>{
+            if(finished)return;
+            context.beforeDispatch?.();
+            registration?.redirect(target);responseURL=target;request.followRedirect();
+          };
           const checked=context.validateRedirect?.(target);
-          if(checked?.then)Promise.resolve(checked).then(follow).catch(error=>fail(new RequestTransportError('redirect_rejected',error)));
+          if(checked?.then)Promise.resolve(checked).then(follow).catch(error=>fail(redirectFailure(error)));
           else follow();
-        } catch(error){fail(new RequestTransportError('redirect_rejected',error));}
+        } catch(error){fail(redirectFailure(error));}
       });
       request.on('response',incoming=>{
+        if(finished)return;
+        const headers=Object.entries(incoming.headers).map(([key,value])=>[key,Array.isArray(value)?value.join(', '):value]);
+        try {context.onResponse?.(responseURL,incoming.statusCode,headers);}catch{}
         const chunks=[];let size=0;
         incoming.on('data',chunk=>{if(finished)return;size+=chunk.length;
           if(context.maxBytes && size>context.maxBytes){fail(new RequestTransportError('response_too_large'));return;}chunks.push(chunk);});
-        incoming.once('error',networkFailure);incoming.once('aborted',networkFailure);
+        incoming.once('error',networkFailure);
+        incoming.once('aborted',()=>{
+          if(context.kind==='item-saver')fail(new RequestTransportError('invalid_response'));
+          else networkFailure();
+        });
         incoming.once('end',()=>{
           if(finished)return;finished=true;
           resolve({status:incoming.statusCode,statusText:incoming.statusMessage || '',url:responseURL,body:Buffer.concat(chunks),
-            headers:Object.entries(incoming.headers).map(([key,value])=>[key,Array.isArray(value)?value.join(', '):value])});
+            headers});
         });
       });
       abort=()=>fail(new RequestTransportError('canceled'));

@@ -2,30 +2,25 @@
 from __future__ import annotations
 
 from contextlib import contextmanager
-from dataclasses import dataclass, replace
-from datetime import date, datetime, timezone, timedelta
-from email.utils import parsedate_to_datetime
-import math
+from dataclasses import dataclass
+from datetime import date, timedelta
 import re
-import ssl
-import time
 from threading import Event, RLock, local
 from urllib.parse import quote, urlencode
 
-import httpx
-
-from allfold.http_client import create_http_client
 from allfold.identifiers import normalize_doi, normalize_external_id, valid_doi
 from allfold.progress import ProgressEvent, ActivityUpdate, ActivityKind
 from allfold.keywords import And, Or, Prefix, Phrase, Proximity
 from allfold.models import ProviderWorkEvidence
+from allfold.providers.provider_http import (
+    Cancelled, DiscoveryError, ProviderFailure, ProviderHTTPError, ProviderReadClient, object_json,
+)
 
 DISCOVERY_PROVIDERS = ('pubmed', 'openalex')
 RUN_PROVIDERS = ('wos', *DISCOVERY_PROVIDERS)
 SUPPLEMENT_PROVIDERS = ('europe_pmc', 'crossref', 'arxiv', 'biorxiv', 'medrxiv')
 PROVIDERS = DISCOVERY_PROVIDERS + SUPPLEMENT_PROVIDERS
 BASE_URLS = {'pubmed':'https://eutils.ncbi.nlm.nih.gov/entrez/eutils', 'openalex':'https://api.openalex.org', 'europe_pmc':'https://www.ebi.ac.uk/europepmc/webservices/rest', 'crossref':'https://api.crossref.org', 'arxiv':'https://export.arxiv.org', 'biorxiv':'https://api.biorxiv.org', 'medrxiv':'https://api.biorxiv.org'}
-TRANSIENT_HTTP = {500:'Internal Server Error', 502:'Bad Gateway', 503:'Service Unavailable', 504:'Gateway Timeout'}
 
 
 @dataclass(frozen=True)
@@ -55,33 +50,11 @@ class DiscoveryResult:
                     retained=len({(record.provenance.provider, record.provenance.record_id) for record in self.records}), total=self.total, limitations=list(self.limitations), created=self.created, existing=self.existing)
 
 
-class DiscoveryError(ValueError):
-    pass
-
-
 class IdentityMismatch(DiscoveryError):
     pass
 
 
-class ProviderTimeoutError(DiscoveryError):
-    pass
-
-
-class ProviderConnectionError(DiscoveryError):
-    pass
-
-
-class ProviderHTTPError(DiscoveryError):
-    def __init__(self, provider, status, *, detail=None):
-        super().__init__(f'{provider}: HTTP {status}' + (f' ({detail})' if detail else ''))
-        self.status = status
-
-
 class UnsupportedSource(DiscoveryError):
-    pass
-
-
-class Cancelled(DiscoveryError):
     pass
 
 
@@ -124,8 +97,8 @@ def _positive(value, name):
 
 class DiscoveryClient:
     """One provider/host owns rate limits, bounded retry and cancellation checks."""
-    def __init__(self, provider, *, api_key=None, transport=None, cancel_event=None,
-                 interval=None, sleep=time.sleep, page_size=100, pacing_state=None, progress_callback=None):
+    def __init__(self, provider, *, api_key=None, cancel_event=None, interval=None,
+                 page_size=100, progress_callback=None, **http_options):
         if provider not in PROVIDERS:
             raise ValueError('Unknown Discovery Provider')
         self.progress = progress_callback
@@ -133,40 +106,44 @@ class DiscoveryClient:
         self._request_trace = local()
         self._completion_responses = {}
         self._exact_batch_plans = {}
-        self._settlement_requests = None
-        self._settlement_targets = {}
+        self._settlement_operations = {}
+        self._settling = False
         self._progress_requests = {}
-        self.request_count = 0
         self.provider = provider
         self.api_key = api_key
-        self.cancel = cancel_event or Event()
-        self.interval = (0.11 if provider == 'pubmed' and api_key else 0.35) if interval is None else interval
-        self.sleep = sleep
-        self._access_restriction = None
+        self.cancel = cancel_event if cancel_event is not None else Event()
+        self.request_guard = None
+        if interval is None:
+            interval = 0.11 if provider == 'pubmed' and api_key else 0.35
+        self._reader = ProviderReadClient(provider, api_key=api_key, interval=interval,
+            cancel_event=self.cancel, guard=lambda: self.request_guard and self.request_guard(), **http_options)
         self.page_size = max(1, min(page_size, 1000))
         self.cache = {}
         self._cache_lock = RLock()
         self._lookup_lock = RLock()
         self._openalex_full_raw = {}
         self._openalex_full_pending = {}
-        self.http = create_http_client(transport=transport, timeout=30, follow_redirects=True,
-            event_hooks={'request': [self._before_http_request]})
-        self.pacing_state = pacing_state if pacing_state is not None else {}
-        self.host = httpx.URL(BASE_URLS[provider]).host
-        self._host_lock = self.pacing_state.setdefault(('lock', self.host), RLock())
+
+    @property
+    def request_count(self):
+        return self._reader.request_count
+
+    @property
+    def recovery_observer(self):
+        return self._reader.recovery_observer
+
+    @recovery_observer.setter
+    def recovery_observer(self, observer):
+        self._reader.recovery_observer = observer
 
     def __enter__(self):
         return self
 
     def __exit__(self, *args):
-        self.http.close()
+        self._reader.http.close()
 
     def check_cancel(self):
-        if self.cancel.is_set():
-            raise Cancelled('Run cancelled')
-        guard = getattr(self, 'request_guard', None)
-        if guard is not None:
-            guard()
+        self._reader.check_authority()
 
     def begin_completion(self):
         """Discovery/Work has settled; subsequent HTTP belongs to Completion."""
@@ -184,202 +161,96 @@ class DiscoveryClient:
     def begin_settlement(self):
         """Permit one extra dispatch for each failed completion HTTP request."""
         with self._cache_lock:
-            self._settlement_requests = {key for key, value in self._completion_responses.items()
-                if self._transient_failure(value)}
-            failures = {id(self._completion_responses[key]) for key in self._settlement_requests}
+            self._settling = True
+            failures = {id(self._completion_responses[key]) for key in self._settlement_operations}
             for cache in (self.cache, self._openalex_full_raw):
                 for key in [key for key, value in cache.items() if id(value) in failures]:
                     del cache[key]
 
-    @staticmethod
-    def _transient_failure(error):
-        return (isinstance(error, (ProviderTimeoutError, ProviderConnectionError))
-            or isinstance(error, ProviderHTTPError) and error.status in TRANSIENT_HTTP)
-
-    def _completion_activity(self, url, params):
-        if not self._completing:
+    def _request_activity(self, path, params):
+        if not self.progress:
             return None
-        native = (self.provider == 'arxiv' or self.provider in {'biorxiv', 'medrxiv'} and '/details/' in url
+        native = (self.provider == 'arxiv' or self.provider in {'biorxiv', 'medrxiv'} and '/details/' in path
             or self.provider == 'europe_pmc' and str(params.get('query', '')).startswith('SRC:PPR'))
-        return ('native-version', 'Native version verification') if native else ('base-api', 'Base API completion')
+        phase = ('native-version', 'Native version verification') if native else ('base-api', 'Base API completion')
+        operation, phase_label = phase if self._completing else ('http', None)
+        index = None
 
-    def _wait(self, seconds):
-        self.check_cancel()
-        if self.sleep is time.sleep:
-            if self.cancel.wait(seconds):
-                raise Cancelled('Run cancelled')
-        else:
-            self.sleep(seconds)
-        self.check_cancel()
-
-    def _before_http_request(self, request):
-        # HTTPX runs this hook before every physical dispatch, including redirects.
-        self.check_cancel()
-        self.request_count += 1
-        trace = self._request_trace
-        if trace.sent_request:
-            trace.redirect_target = request
-        trace.sent_request = True
-
-    def _get(self, url, params, headers, *, follow_redirects=True, redirect_target=None):
-        activity = None
-        while not self._host_lock.acquire(timeout=0.1):
-            self.check_cancel()
-        try:
-            self.check_cancel()
-            delay = self.interval - (time.monotonic() - self.pacing_state.get(self.host, 0.0))
-            if delay > 0:
-                self._wait(delay)
-            self.pacing_state[self.host] = time.monotonic()
-            try:
-                if self.progress and (phase := self._completion_activity(url, params)):
-                    operation, label = phase
-                    self._progress_requests[operation] = self._progress_requests.get(operation, 0) + 1
-                    activity = ActivityUpdate(kind=ActivityKind.WORKING, source=self.provider,
-                        operation=operation, label=label, detail='Request dispatched',
-                        current=self._progress_requests[operation], unit='request')
-                    self.progress(ProgressEvent(activity=activity))
-                    self.check_cancel()
-                self._request_trace.sent_request = False
-                self._request_trace.redirect_target = None
-                if redirect_target is not None:
-                    response = self.http.send(redirect_target, follow_redirects=False)
-                elif self.provider == 'pubmed' and self.api_key:
-                    # NCBI accepts form POST. Keep its optional secret out of
-                    # request URLs (including standard HTTP client log lines).
-                    response = self.http.post(url, data=params, headers=headers, follow_redirects=False)
-                else:
-                    response = self.http.get(url, params=params, headers=headers, follow_redirects=follow_redirects)
-            except httpx.TimeoutException as error:
-                raise ProviderTimeoutError(f'{self.provider}: network request failed ({type(error).__name__})') from None
-            except httpx.HTTPError as error:
-                failure = DiscoveryError
-                if isinstance(error, (httpx.ConnectError, httpx.ReadError, httpx.WriteError, httpx.RemoteProtocolError)):
-                    cause = error
-                    while cause is not None and not isinstance(cause, ssl.SSLCertVerificationError):
-                        cause = cause.__cause__
-                    if cause is None:
-                        failure = ProviderConnectionError
-                raise failure(f'{self.provider}: network request failed ({type(error).__name__})') from None
-            self.check_cancel()
-            if activity is not None:
-                self.progress(ProgressEvent(activity=replace(activity, detail='Response received')))
-        finally:
-            self._host_lock.release()
-        return response
-
-    def _retry_wait(self, attempt, delay, message, path, params):
-        self.check_cancel()
-        if self.progress:
-            phase = self._completion_activity(BASE_URLS[self.provider] + path, params)
+        def report(kind, label, detail):
+            nonlocal index
+            if kind is ActivityKind.WORKING:
+                if phase_label is None:
+                    return
+                if detail == 'Request dispatched':
+                    with self._cache_lock:
+                        index = self._progress_requests[operation] = self._progress_requests.get(operation, 0) + 1
+                name = operation
+            elif kind is ActivityKind.RETRYING:
+                name = operation + '-retry' if phase_label else 'http_retry'
+            else:
+                name = operation + '-cooldown'
             self.progress(ProgressEvent(activity=ActivityUpdate(
-                kind=ActivityKind.RETRYING, source=self.provider, operation=phase[0] + '-retry' if phase else 'http_retry',
-                label=(phase[1] + ': ' if phase else '') + message + f' · Retry {attempt + 2}/3',
-                detail=f'Retry {attempt + 2}/3 in {max(0, delay):g} seconds',
+                kind=kind, source=self.provider, operation=name,
+                label=phase_label if kind is ActivityKind.WORKING else label,
+                detail=detail, current=index if kind is ActivityKind.WORKING else None, unit='request',
             )))
-        self._wait(max(0, delay))
+
+        return report
 
     def request(self, path, params, *, response_format="json"):
         self.check_cancel()
         failures = getattr(self._request_trace, 'failures', None)
-        if failures is None and self._settlement_requests is None:
-            return self._request(path, params, response_format, attempts=3)
-        # Replay uses parsed HTTP responses, including successful pagination
-        # prefixes, and sends only the failed request with its exact parameters.
+        if failures is None and not self._settling:
+            return self._request(path, params, response_format, self._reader.operation(self._request_activity(path, params)))
+        # Settlement reuses parsed responses, including successful pagination
+        # prefixes, and replays only the failed prepared HTTP request.
         key = path, tuple(sorted(params.items())), response_format
         with self._cache_lock:
-            cached = self._completion_responses.get(key)
-            retry = self._settlement_requests is not None and key in self._settlement_requests
-            if retry:
-                self._settlement_requests.remove(key)
-            redirect_target = self._settlement_targets.pop(key, None) if retry else None
-        if cached is not None and not retry:
-            value = cached
-        else:
+            value = self._completion_responses.get(key)
+            final = self._settlement_operations.pop(key, None) if self._settling else None
+        if value is None or final is not None:
+            operation = final or self._reader.operation(self._request_activity(path, params))
             try:
-                value = self._request(path, params, response_format, attempts=1 if retry else 3,
-                    follow_redirects=not retry, redirect_target=redirect_target)
+                value = self._request(path, params, response_format, operation, final=final is not None)
             except DiscoveryError as error:
                 value = error
             with self._cache_lock:
                 self._completion_responses[key] = value
-                if failures is not None and self._transient_failure(value):
-                    target = self._request_trace.redirect_target
-                    if target is not None:
-                        # Replay the prepared request with HTTPX's redirect header
-                        # policy already applied. Keep it in memory for this operation.
-                        self._settlement_targets[key] = target
+                if failures is not None and value is operation.failure and operation.can_recheck:
+                    self._settlement_operations[key] = operation
         if isinstance(value, Exception):
-            if failures is not None and self._transient_failure(value):
-                failures.append(key)
+            if failures is not None:
+                with self._cache_lock:
+                    if key in self._settlement_operations:
+                        failures.append(key)
             raise value
         return value
 
-    def _request(self, path, params, response_format, *, attempts, follow_redirects=True, redirect_target=None):
-        if self._access_restriction:
-            raise DiscoveryError(self._access_restriction)
-        params = dict(params)
-        if self.provider == 'pubmed' and self.api_key:
-            params['api_key'] = self.api_key
-        headers = {"Authorization":"Bearer " + self.api_key} if self.provider == "openalex" and self.api_key else {}
-        for attempt in range(attempts):
-            try:
-                response = self._get(BASE_URLS[self.provider] + path, params, headers,
-                    follow_redirects=follow_redirects, redirect_target=redirect_target)
-            except ProviderTimeoutError:
-                if attempt == attempts - 1:
-                    raise
-                self._retry_wait(attempt, 5 * (2 ** attempt), f'{self.provider}: request timed out', path, params)
-                continue
-            temporary_error = TRANSIENT_HTTP.get(response.status_code)
-            html = ('text/html' in response.headers.get('content-type','').lower()
-                    or response.text.lstrip().lower().startswith(('<!doctype html','<html')))
-            # HTML is also used for ordinary gateway/service errors. A known
-            # challenge is an access restriction, regardless of its HTTP status.
-            challenge = html and any(marker in response.text.lower() for marker in (
-                'anubis', 'captcha', 'cf-chl-', 'challenge-platform',
-                'verify you are human', 'checking your browser',
-            ))
-            if challenge or (html and response.status_code == 202):
-                kind = 'Anubis verification' if 'anubis' in response.text.lower() else 'an HTML verification page'
-                self._access_restriction = (f'{self.provider}: access limited by {kind} (HTTP {response.status_code}); '
-                                            'further automatic requests to this provider are stopped for this Run')
-                raise DiscoveryError(self._access_restriction)
-            if (response.status_code == 429 or temporary_error) and attempt < attempts - 1:
-                default_delay = 5 * (2 ** attempt) if temporary_error else 1
-                retry = response.headers.get('retry-after', str(default_delay))
-                try:
-                    delay = float(retry)
-                except ValueError:
-                    try:
-                        delay = (parsedate_to_datetime(retry) - datetime.now(timezone.utc)).total_seconds()
-                    except (ValueError, TypeError):
-                        delay = default_delay
-                if not math.isfinite(delay):
-                    delay = default_delay
-                self._retry_wait(attempt, delay,
-                    f'{self.provider}: HTTP {response.status_code} {temporary_error or "Too Many Requests"}', path, params)
-                continue
-            if temporary_error:
-                raise ProviderHTTPError(self.provider, response.status_code, detail=f'{temporary_error} after {attempts} attempts' if attempts > 1 else temporary_error)
-            if response.status_code != 200:
-                raise ProviderHTTPError(self.provider, response.status_code)
-            if html:
-                raise DiscoveryError(f'{self.provider}: unexpected HTML response instead of API metadata')
+    def _request(self, path, params, response_format, operation, *, final=False):
+        keyed_pubmed = self.provider == 'pubmed' and self.api_key
+        headers = {"Authorization": "Bearer " + self.api_key} if self.provider == 'openalex' and self.api_key else {}
+        url = BASE_URLS[self.provider] + path
+
+        def prepare():
+            # NCBI accepts form POST for these reads. Keep its optional secret
+            # out of request URLs and disallow redirects for keyed form data.
+            if keyed_pubmed:
+                return self._reader.http.build_request('POST', url, data=dict(params, api_key=self.api_key))
+            return self._reader.http.build_request('GET', url, params=params, headers=headers)
+
+        def decode(response):
             if response_format == "xml":
                 return response.text
-            try:
-                data = response.json()
-                if not isinstance(data, dict):
-                    raise ValueError
-            except ValueError:
-                raise DiscoveryError(f'{self.provider}: invalid JSON response') from None
+            data = object_json(self.provider, response)
             if self.provider == 'pubmed':
                 from allfold.providers.pubmed import has_entrez_error
                 if has_entrez_error(data):
-                    raise DiscoveryError('PubMed: Entrez application error')
+                    raise ProviderFailure('PubMed: Entrez application error', kind='protocol',
+                                          code='http_error', outcome='responded')
             return data
-        raise DiscoveryError(f'{self.provider}: rate limited')
+
+        return self._reader.read(prepare, operation, decode=decode,
+                                 follow_redirects=not keyed_pubmed and not final, final=final)
 
     def discover(self, source, ast, from_date, to_date):
         """Single-scope convenience seam; Discovery always keeps complete evidence."""
@@ -440,7 +311,7 @@ class DiscoveryClient:
 
     def _exact_batches(self, namespace, identities, capability, params, *, limit=100):
         key = namespace, tuple(identities), capability
-        if self._settlement_requests is not None and key in self._exact_batch_plans:
+        if self._settling and key in self._exact_batch_plans:
             return self._exact_batch_plans[key]
         missing = [value for value in identities if self.cached_lookup(namespace, value, capability) is None]
         groups = tuple(self._groups(missing, params, limit=limit))

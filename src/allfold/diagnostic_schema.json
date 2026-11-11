@@ -126,7 +126,12 @@
         "workflow_interrupted",
         "workflow_started",
         "workspace_reset",
-        "zotero_request_failed"
+        "zotero_request_failed",
+        "recovery_scheduled",
+        "recovery_succeeded",
+        "recovery_exhausted",
+        "service_cooldown_started",
+        "service_cooldown_ended"
       ]
     },
     "action": {
@@ -181,7 +186,8 @@
         "service-resource",
         "service-target",
         "wos-export",
-        "wos-query"
+        "wos-query",
+        "enrich"
       ]
     },
     "stage": {
@@ -194,7 +200,8 @@
         "preparation",
         "translation",
         "wos_dom",
-        "wos_download"
+        "wos_download",
+        "provider"
       ]
     },
     "step": {
@@ -248,7 +255,8 @@
         "translator",
         "verification",
         "verifyCustom",
-        "visit_target"
+        "visit_target",
+        "recovery_authority"
       ]
     },
     "code": {
@@ -370,7 +378,8 @@
         "unverified_results_page",
         "upload_failed",
         "verification_page",
-        "write_stopped"
+        "write_stopped",
+        "cooldown_budget"
       ]
     },
     "transport_code": {
@@ -650,6 +659,76 @@
     "user_state_revision": {
       "type": "string",
       "pattern": "^[a-f0-9]{64}$"
+    },
+    "recovery_action": {
+      "type": "string",
+      "enum": [
+        "page_refresh",
+        "resource_reentry",
+        "paper_reopen",
+        "pdf_get",
+        "provider_retry",
+        "completion_recheck",
+        "cooldown_wait"
+      ]
+    },
+    "recovery_stop": {
+      "type": "string",
+      "enum": [
+        "budget",
+        "limit",
+        "authority",
+        "manual",
+        "failed",
+        "canceled"
+      ]
+    },
+    "failure_kind": {
+      "type": "string",
+      "enum": [
+        "transport",
+        "remote_service",
+        "access",
+        "protocol",
+        "runtime",
+        "integrity"
+      ]
+    },
+    "dispatch_outcome": {
+      "type": "string",
+      "enum": [
+        "unknown",
+        "confirmed",
+        "not_dispatched"
+      ]
+    },
+    "transport_error": {
+      "type": "string",
+      "enum": [
+        "ReadTimeout",
+        "ConnectTimeout",
+        "WriteTimeout",
+        "ConnectError",
+        "ReadError",
+        "WriteError",
+        "PoolTimeout",
+        "RemoteProtocolError"
+      ]
+    },
+    "attempt_limit": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 4
+    },
+    "wait_ms": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 2147483647
+    },
+    "remaining_ms": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 2147483647
     }
   },
   "optional_detail_events": [
@@ -676,6 +755,41 @@
     ],
     "page_renderer_gone": [
       "page_id"
+    ],
+    "recovery_scheduled": [
+      "recovery_action",
+      "stage"
+    ],
+    "recovery_succeeded": [
+      "recovery_action",
+      "stage"
+    ],
+    "recovery_exhausted": [
+      "recovery_action",
+      "stage",
+      "recovery_stop"
+    ],
+    "service_cooldown_started": [
+      "recovery_action",
+      "stage"
+    ],
+    "service_cooldown_ended": [
+      "recovery_action",
+      "stage"
     ]
-  }
+  },
+  "recovery_evidence_fields": [
+    "stage",
+    "step",
+    "code",
+    "status",
+    "net_code",
+    "net_error",
+    "failure_kind",
+    "transport_error",
+    "dispatch_outcome",
+    "recovery_stop",
+    "page_id",
+    "source_page_id"
+  ]
 }

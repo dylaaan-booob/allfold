@@ -482,7 +482,7 @@ def test_provider_requests_keep_proxy_query_and_retry_semantics(monkeypatch, pro
                 used_proxies.append(options["proxy"].url.host)
                 return handle(request)
             return httpx.MockTransport(route)
-        monkeypatch.setattr(httpx, "HTTPTransport", transport)
+        monkeypatch.setattr(httpx, "AsyncHTTPTransport", transport)
         options = {}
 
     if provider == "crossref":
@@ -524,20 +524,45 @@ def test_provider_redirect_policies_are_preserved():
     assert requests[-1].url.path == "/destination"
 
 
-def test_openalex_authorization_error_remains_terminal():
-    from allfold.providers.openalex import OpenAlexClient, OpenAlexFailureKind, OpenAlexRequestError
+@pytest.mark.parametrize('status, expected', [(403, 'authorization'), (402, 'quota')])
+def test_openalex_explicit_authorization_and_quota_errors_remain_terminal(status, expected):
+    from allfold.providers.openalex import OpenAlexClient, OpenAlexRequestError
 
     requests = []
 
     def handle(request):
         requests.append(request)
-        return httpx.Response(403)
+        return httpx.Response(status)
 
     with OpenAlexClient(transport=httpx.MockTransport(handle)) as client:
         with pytest.raises(OpenAlexRequestError) as denied:
             client.search_sources("statistics")
-        assert denied.value.kind == OpenAlexFailureKind.AUTHORIZATION
-        with pytest.raises(OpenAlexRequestError) as circuit:
+        assert denied.value.kind.value == expected
+        with pytest.raises(OpenAlexRequestError) as refused:
             client.search_sources("statistics")
-        assert circuit.value.kind == OpenAlexFailureKind.CIRCUIT_OPEN
+        assert refused.value.kind.value == expected
     assert len(requests) == 1
+
+
+def test_openalex_429_exhaustion_does_not_latch_authorization_or_quota():
+    from allfold.providers.openalex import OpenAlexClient, OpenAlexRequestError, OpenAlexFailureKind
+
+    now = 10.0
+    calls = []
+
+    def wait(seconds):
+        nonlocal now
+        now += seconds
+
+    def handle(request):
+        calls.append(now)
+        if len(calls) <= 3:
+            return httpx.Response(429, headers={'Retry-After': '3'})
+        return httpx.Response(200, json={'results': []})
+
+    with OpenAlexClient(transport=httpx.MockTransport(handle), sleep=wait, monotonic=lambda: now) as client:
+        with pytest.raises(OpenAlexRequestError) as failure:
+            client.search_sources("statistics")
+        assert failure.value.kind == OpenAlexFailureKind.RECOVERABLE
+        assert client.search_sources("probability") == {'results': []}
+        assert calls == [10, 13, 16, 19]

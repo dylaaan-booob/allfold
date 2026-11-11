@@ -1,5 +1,10 @@
 // Shared business wording for live results and retained history.
 export const providerNames={pubmed:'PubMed',openalex:'OpenAlex',europe_pmc:'Europe PMC',crossref:'Crossref',arxiv:'arXiv',biorxiv:'bioRxiv',medrxiv:'medRxiv',wos:'Web of Science'};
+const recoveryLabels=new Map(Object.entries({
+  page_refresh:'刷新页面',resource_reentry:'重新访问 CARSI 资源',paper_reopen:'重新打开 Paper',
+  pdf_get:'重试 PDF 下载',cooldown_wait:'等待服务冷却',provider_retry:'重试 Provider 请求',completion_recheck:'最终补查',
+}));
+export function recoveryLabel(action) {return recoveryLabels.get(action) || '';}
 export function importOutcomeMessage(outcome,pdf='unverified') {
   if(['exported','confirmed'].includes(outcome))return pdf==='verified failure'
     ? '父条目已导入，PDF 未保存，请在 Zotero 中检查。'

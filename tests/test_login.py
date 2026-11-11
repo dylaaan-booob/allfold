@@ -11,6 +11,7 @@ from allfold.application.coordinators.login import LoginCoordinator, PreparedSer
 from allfold.application.coordinators.wos_coordinator import WoSCoordinator
 from allfold.config import AccessService
 from allfold.persistence.user_state import compare_write_user_state, load_user_state
+from allfold.persistence.safe_write import ContentChangedError
 from safety_config_helpers import current_mapping_document
 
 
@@ -31,9 +32,12 @@ class Native:
     def __init__(self):
         self.operations = Queue()
         self.cancellations = 0
+        self.authority = {}
 
-    def execute(self, action, data, progress):
+    def execute(self, action, data, progress, *, verify_recovery=None):
         result = Future()
+        if verify_recovery:
+            self.authority[data['task_id']] = verify_recovery
         self.operations.put((action, data, result))
         return result
 
@@ -108,6 +112,30 @@ def test_login_cancel_drains_active_operations_and_preserves_observed_open(tmp_p
     assert state['phase'] == 'canceled' and native.operations.empty()
     assert state['services'][0]['preparation'].status == 'Opened'
     assert state['services'][5]['preparation'].status == 'Canceled'
+    assert lock.owner is None
+
+
+def test_prepare_recovery_refuses_a_changed_service_revision(tmp_path):
+    path, services = login_fixture(tmp_path, count=2)
+    native, lock = Native(), BrowserTaskLock()
+    login = LoginCoordinator(native, lock)
+    login.start(path)
+    _, _, ready = native.operations.get(timeout=2)
+    ready.set_result({'outcome': 'Opened', 'portal_page_id': 17})
+    first, second = [native.operations.get(timeout=2) for _ in range(2)]
+    try:
+        assert first[0] == second[0] == 'prepare_service'
+        verify = native.authority[first[1]['task_id']]
+        verify()
+        state = load_user_state(path)
+        changed = services[0].model_copy(update={'access_url': 'https://changed.example.org/'})
+        compare_write_user_state(path, replace(state.state, access_services=(changed, *services[1:])), state.revision)
+        with pytest.raises(ContentChangedError):
+            verify()
+    finally:
+        for _, _, result in (first, second):
+            result.set_result({'diagnostic': {'stage': 'navigation', 'code': 'document_changed'}})
+        login.join()
     assert lock.owner is None
 
 
@@ -252,7 +280,7 @@ def test_credential_mutation_invalidates_prepared_page_only_after_confirmed_succ
         connected = True
         updated = False
 
-        def execute(self, action, data, progress=None):
+        def execute(self, action, data, progress=None, *, verify_recovery=None):
             future = Future()
             if action == 'visit_manual_service':
                 future.set_result(opened(17))

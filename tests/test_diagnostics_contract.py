@@ -133,3 +133,60 @@ other.log('error','task_finished',{workflow_id:'workflow_1',task_id:'batch_1',
         encoded = b'\n'.join(bundle.read(name) for name in bundle.namelist())
         for excluded in (b'unrelated_request', b'other_scope_request', b'PRIVATE_SENTINEL', b'private.invalid'):
             assert excluded not in encoded
+
+
+def test_recovery_events_and_summary_survive_cross_runtime_export(tmp_path):
+    from allfold.recovery_diagnostics import normalize_recovery
+
+    config = tmp_path / 'fixture.yaml'
+    config.write_text('keyword_expression: fixture\n')
+    root = tmp_path / 'logs'
+    store = DiagnosticStore(config, root=root, runtime_id='fixture')
+    store.begin('login', 'workflow')
+    module = Path(__file__).resolve().parents[1] / 'electron/src/shared'
+    script = r'''
+const {initializeLogging,log,withLogContext}=require(process.argv[1]+'/logging.cjs');
+const {invocationRecovery}=require(process.argv[1]+'/recovery-summary.cjs');
+initializeLogging({root:process.argv[2],scopeId:process.argv[3],runtimeId:'fixture',level:'error',stderr(){}});
+const recovery=invocationRecovery();
+withLogContext({workflow_id:'workflow',task_id:'prepare',request_id:'native',action:'prepare_service'},()=>{
+  log('info','page_load_recovery',{page_id:7,attempt:1,generation:1});
+  const details={recovery_action:'resource_reentry',stage:'preparation',attempt:1,attempt_limit:1};
+  recovery.record('recovery_scheduled',{...details,code:'load_failed',net_code:-100,
+    net_error:'ERR_CONNECTION_CLOSED',source_page_id:7,failure_kind:'transport',dispatch_outcome:'confirmed',
+    wait_ms:300,remaining_ms:4000,url:'https://PRIVATE_SENTINEL'});
+  recovery.record('recovery_succeeded',{...details,source_page_id:7,page_id:9});
+  log('info','recovery_scheduled',{...details,recovery_action:'PRIVATE_SENTINEL'});
+});
+process.stdout.write(JSON.stringify(recovery.summary()));
+'''
+    native = subprocess.check_output(['node', '-e', script, str(module), str(root), store.scope_id])
+    recovery = normalize_recovery(json.loads(native))
+    assert recovery == [{
+        'recovery_action': 'resource_reentry', 'count': 1, 'outcome': 'recovered',
+        'first': {'stage': 'preparation', 'code': 'load_failed', 'net_code': -100,
+                  'net_error': 'ERR_CONNECTION_CLOSED', 'source_page_id': 7,
+                  'failure_kind': 'transport', 'dispatch_outcome': 'confirmed'},
+        'last': {'stage': 'preparation', 'source_page_id': 7, 'page_id': 9},
+    }]
+    assert store.finish('workflow', 'opened', details={'results': [{
+        'service_id': 'svc_' + 'a' * 32, 'outcome': 'opened', 'recovery': recovery,
+    }]})
+    assert not store.finish('workflow', 'failed')
+    reopened = DiagnosticStore(config, root=root, runtime_id='reopened')
+    assert reopened.history()['records'][0]['details']['results'][0]['recovery'] == recovery
+    with zipfile.ZipFile(io.BytesIO(reopened.export('workflow'))) as bundle:
+        events = [json.loads(line) for line in bundle.read('events.jsonl').splitlines()]
+        native_events = [event for event in events if event.get('request_id') == 'native']
+        assert [event['event'] for event in native_events] == [
+            'page_load_recovery', 'recovery_scheduled', 'recovery_succeeded',
+        ]
+        assert native_events[1]['wait_ms'] == 300
+        assert native_events[2]['page_id'] == 9
+        assert json.loads(bundle.read('manifest.json'))['integrity']['invalid_records'] == 0
+        assert b'PRIVATE_SENTINEL' not in bundle.read('events.jsonl')
+
+    from allfold.diagnostics import validate_event
+    assert validate_event({**native_events[1], 'recovery_action': {'url': 'https://PRIVATE_SENTINEL'}}) is None
+    assert validate_event({**native_events[1], 'event': 'recovery_exhausted'}) is None
+    assert 'wait_ms' not in validate_event({**native_events[1], 'wait_ms': True, 'body': 'PRIVATE_SENTINEL'})

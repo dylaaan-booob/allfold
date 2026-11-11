@@ -16,10 +16,10 @@ def test_timeout_retries_native_request_and_reports_progress(timeout):
             raise timeout('synthetic-secret', request=request)
         return httpx.Response(200, text='<feed/>')
     with DiscoveryClient('arxiv', transport=httpx.MockTransport(response), interval=0,
-            sleep=waits.append, progress_callback=events.append) as client:
+            sleep=waits.append, jitter=lambda: 0.4, progress_callback=events.append) as client:
         client.begin_completion()
         assert client.request('/api/query', {'id_list':'2505.01146'}, response_format='xml') == '<feed/>'
-    assert len(calls)==2 and waits==[5]
+    assert len(calls) == 2 and waits == [5.5]
     retries=[event.activity for event in events if event.activity and event.activity.kind.value=='RETRYING']
     assert len(retries)==1 and retries[0].operation=='native-version-retry'
     assert 'Retry 2/3' in retries[0].label and 'Retry 2/3' in retries[0].detail
@@ -39,24 +39,43 @@ def test_timeout_retry_is_bounded_and_cancellable(cancelled):
         waits.append(seconds)
         if cancelled=='backoff':signal.set()
     with DiscoveryClient('arxiv', transport=httpx.MockTransport(response), interval=0,
-            sleep=wait, cancel_event=signal) as client:
+            sleep=wait, jitter=lambda: 0.4, cancel_event=signal) as client:
         with pytest.raises(Cancelled if cancelled else DiscoveryError) as error:
             client.request('/api/query', {'id_list':'2505.01146'}, response_format='xml')
     assert len(calls)==(1 if cancelled else 3)
-    assert waits==([] if cancelled=='response' else [5] if cancelled else [5,10])
+    assert waits == ([] if cancelled == 'response' else [5.5] if cancelled else [5.5, 11])
     assert 'synthetic-secret' not in str(error.value)
 
 
-def test_non_timeout_network_error_is_not_automatically_replayed():
+@pytest.mark.parametrize('scenario', ['disconnect', 'remote-eof', 'certificate', 'proxy', 'protocol'])
+def test_network_recovery_distinguishes_safe_disconnects_from_stopping_failures(scenario):
+    import ssl
     from allfold.providers.integrated import DiscoveryClient, DiscoveryError
-    calls, waits = [], []
+    calls, waits, events = [], [], []
     def response(request):
         calls.append(request)
-        raise httpx.ConnectError('synthetic-secret', request=request)
-    with DiscoveryClient('arxiv', transport=httpx.MockTransport(response), interval=0, sleep=waits.append) as client:
-        with pytest.raises(DiscoveryError) as error:
-            client.request('/api/query', {'id_list':'2505.01146'})
-    assert len(calls)==1 and not waits and 'synthetic-secret' not in str(error.value)
+        if scenario == 'certificate':
+            raise httpx.ConnectError('synthetic-secret') from ssl.SSLError('secret certificate evidence')
+        if scenario == 'proxy':
+            raise httpx.ProxyError('synthetic-secret')
+        if scenario == 'protocol':
+            raise httpx.RemoteProtocolError('synthetic-secret')
+        if len(calls) < 3:
+            if scenario == 'remote-eof':
+                raise httpx.RemoteProtocolError('Server disconnected without sending a response.')
+            raise httpx.ConnectError('synthetic-secret', request=request)
+        return httpx.Response(200, json={'result': 'recovered'})
+    with DiscoveryClient('arxiv', transport=httpx.MockTransport(response), interval=0,
+                         sleep=waits.append, jitter=lambda: 0.4, progress_callback=events.append) as client:
+        if scenario in {'disconnect', 'remote-eof'}:
+            assert client.request('/api/query', {'id_list':'2505.01146'}) == {'result': 'recovered'}
+            assert len(calls) == 3
+            assert len(waits) == 2 and 5 <= waits[0] <= 6.25 and 10 <= waits[1] <= 12.5
+        else:
+            with pytest.raises(DiscoveryError) as error:
+                client.request('/api/query', {'id_list':'2505.01146'})
+            assert len(calls) == 1 and not waits and 'synthetic-secret' not in str(error.value)
+    assert 'synthetic-secret' not in repr(events)
 
 
 def test_openalex_null_source_completion_keeps_other_providers_hit():
@@ -239,10 +258,12 @@ def test_europe_pmc_relation_aliases_identify_each_target_without_joining_distin
     assert paper.metadata.first_public_at == expected
 
 
-@pytest.mark.parametrize('failure', ['http', 'timeout'])
+@pytest.mark.parametrize('failure', ['http', 'timeout', 'retry_after'])
 def test_final_settlement_retries_only_the_failed_redirect_target(failure):
     from allfold.providers.integrated import DiscoveryClient, DiscoveryError
 
+    from test_provider_resilience import Clock
+    clock = Clock()
     calls = []
     def respond(request):
         calls.append((request.url.host, request.url.path))
@@ -253,11 +274,11 @@ def test_final_settlement_retries_only_the_failed_redirect_target(failure):
         if calls.count(('fixture.invalid', '/target')) < 4:
             if failure == 'timeout':
                 raise httpx.ReadTimeout('fixture timeout')
-            return httpx.Response(503)
+            return httpx.Response(503, headers={'Retry-After': '3'} if failure == 'retry_after' else {})
         return httpx.Response(200, json={'results': []})
 
     with DiscoveryClient('openalex', api_key='synthetic-key', transport=httpx.MockTransport(respond),
-            interval=0, sleep=lambda _: None) as client:
+            interval=0, **clock.options()) as client:
         with client.capture_transient_failures() as failures:
             with pytest.raises(DiscoveryError):
                 client.request('/works', {})
@@ -268,6 +289,7 @@ def test_final_settlement_retries_only_the_failed_redirect_target(failure):
         assert client.request_count == len(calls) == 7
     assert calls == [('api.openalex.org', '/works'), ('fixture.invalid', '/target')] * 3 + [
         ('fixture.invalid', '/target')]
+    assert clock.waits == ([3, 3, 3] if failure == 'retry_after' else [5.5, 11])
 
 
 def test_cancellation_before_redirect_stops_dispatch_and_does_not_count_it():

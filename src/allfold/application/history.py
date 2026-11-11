@@ -48,7 +48,7 @@ def batch_history(snapshot):
         outcome='uncertain' if r.uncertain_write else {'exported':'confirmed', 'blocked':'needs_attention',
         'skipped':'no_effect'}.get(r.outcome, r.outcome), parent_outcome=r.parent_outcome,
         pdf_outcome='unverified', reason=r.reason_code, diagnostic=r.diagnostic,
-        zotero_keys=safe_zotero_keys(r.native_identity)) for r in snapshot.results]
+        zotero_keys=safe_zotero_keys(r.native_identity), recovery=r.recovery) for r in snapshot.results]
     service_statistics = {}
     completed = {result.paper_id: result for result in snapshot.results}
     for paper in snapshot.plan.papers if snapshot.plan else ():
@@ -73,7 +73,7 @@ def batch_history(snapshot):
             'cancelled' if phase == 'stopped' else 'partial' if snapshot.results else 'no_candidates')
 
 
-def finish_run(store, task_id, result, *, provider=None, diagnostic=None, interrupted=False):
+def finish_run(store, task_id, result, *, provider=None, diagnostic=None, interrupted=False, recovery=None):
     if store is None:
         return
     from allfold.application.run_summary import build_run_result_summary
@@ -83,7 +83,7 @@ def finish_run(store, task_id, result, *, provider=None, diagnostic=None, interr
         print("Allfold diagnostics: Run summary unavailable.", file=sys.stderr)
         return
     if summary is None:
-        observe(store, 'finish', task_id, 'failed', details={'reason':'failed'})
+        observe(store, 'finish', task_id, 'failed', details={'reason':'failed', 'recovery':recovery})
         return
     status = summary['status']
     outcome = ('interrupted' if interrupted else 'partial' if status in {'incomplete', 'capture_issues'} else
@@ -121,7 +121,7 @@ def finish_run(store, task_id, result, *, provider=None, diagnostic=None, interr
                 'pmid_resolution_failed','pmid_resolution_cancelled',
                 'completion_requests','completion_date_facts_added','first_public_recorded','first_public_no_association',
                 'first_public_known_unresolved','first_public_conflict','first_public_failed','first_public_cancelled'}}},
-        diagnostic=diagnostic, details={'result_status':status, 'coverage_status':summary['coverage_status'],
+        diagnostic=diagnostic, details={'result_status':status, 'coverage_status':summary['coverage_status'], 'recovery':recovery,
             'run_sources':list(sources.values()), 'wos_checks':checks,
             'discovery_status':summary['details'].get('discovery_status'),
             'completion_status':summary['details'].get('completion_status'),

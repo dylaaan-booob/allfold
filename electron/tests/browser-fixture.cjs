@@ -1,5 +1,6 @@
 'use strict';
-// Exercise shared verification against workflow fixtures without creating native windows.
+// These workflow-only fixtures expose verification and business-stage transitions.
+// NavigationRecovery and Session hooks are exercised through BrowserRuntime.runTask.
 const {inspectPage,waitForPage}=require('../src/browser/browser-navigation.cjs');
 function attachBrowserMechanisms(browser) {
   const solverDocuments=new Map();

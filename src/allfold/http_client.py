@@ -15,6 +15,7 @@ from typing import Literal
 import urllib.request
 
 import httpx
+from allfold.http_deadline import DeadlineTransport
 
 
 class ProxyConfigurationError(httpx.InvalidURL):
@@ -149,7 +150,7 @@ def _proxy(value: str, scheme: str) -> httpx.Proxy:
 
 
 class _EnvironmentProxyTransport(httpx.BaseTransport):
-    def __init__(self, **options):
+    def __init__(self, make_transport, **options):
         settings = urllib.request.getproxies()
         proxies = {scheme: _proxy(settings[scheme], scheme) for scheme in ("http", "https", "all")
                    if settings.get(scheme)}
@@ -160,12 +161,12 @@ class _EnvironmentProxyTransport(httpx.BaseTransport):
                              if (rule := _bypass_rule(value)) is not None)
         self._resources = ExitStack()
         try:
-            self._direct = httpx.HTTPTransport(**options)
+            self._direct = make_transport(**options)
             self._resources.callback(self._direct.close)
             self._proxies = {}
             for scheme, proxy in proxies.items():
                 try:
-                    transport = httpx.HTTPTransport(proxy=proxy, **options)
+                    transport = make_transport(proxy=proxy, **options)
                 except ImportError:
                     raise ProxyConfigurationError(
                         f"{scheme.upper()}_PROXY requires HTTPX's optional SOCKS dependency (socksio)"
@@ -189,13 +190,15 @@ class _EnvironmentProxyTransport(httpx.BaseTransport):
 
 
 def create_http_client(*, proxy_policy: Literal["environment", "direct"] = "environment",
-                       transport: httpx.BaseTransport | None = None, **options) -> httpx.Client:
+                       transport: httpx.BaseTransport | None = None,
+                       deadline_reads: bool = False, **options) -> httpx.Client:
     """Create an owned HTTPX client; callers close it normally or use ``with``.
 
     ``environment`` snapshots stdlib getproxies() per client (lowercase wins,
     macOS system fallback). ``direct`` never reads proxy settings. ``trust_env``
     still controls HTTPX's TLS environment handling; False also disables proxies.
     An injected transport is used unchanged, without reading any proxy settings.
+    Provider reads opt in to cancellable I/O and set the deadline in a request hook.
     Normal Client options are forwarded, except proxy/mounts: choose a policy or
     supply a transport instead of combining competing routing mechanisms.
     """
@@ -205,12 +208,13 @@ def create_http_client(*, proxy_policy: Literal["environment", "direct"] = "envi
         raise ValueError("Use proxy_policy or transport to configure HTTP routing")
     if transport is not None:
         return httpx.Client(transport=transport, **options)
+    make_transport = DeadlineTransport if deadline_reads else httpx.HTTPTransport
     transport_options = {key: options[key] for key in ("verify", "cert", "trust_env", "http1", "http2", "limits")
                          if key in options}
     if proxy_policy == "environment" and options.get("trust_env", True):
-        owned = _EnvironmentProxyTransport(**transport_options)
+        owned = _EnvironmentProxyTransport(make_transport, **transport_options)
     else:
-        owned = httpx.HTTPTransport(**transport_options)
+        owned = make_transport(**transport_options)
     try:
         # An explicit transport prevents HTTPX 0.28 from constructing its broken
         # NO_PROXY URLPattern map, while leaving TLS trust_env enabled as before.

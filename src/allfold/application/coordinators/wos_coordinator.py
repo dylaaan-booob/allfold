@@ -11,6 +11,7 @@ from pathlib import Path
 
 from allfold.application.wos import WoSWrites, persist_wos
 from allfold.application.history import observe, finish_run
+from allfold.recovery_diagnostics import merge_recovery, normalize_recovery_action, recovery_progress_message
 from allfold.application.browser_runtime import ElectronDisconnected
 from allfold.browser_diagnostics import normalize_browser_diagnostic
 from allfold.application.run_state import (
@@ -340,6 +341,8 @@ class WoSCoordinator:
                 'preparation_key': task['preparation_key']},
                 lambda value: self._electron_progress(task, value))
         result = pending.result()
+        if result.get('recovery'):
+            task['recovery'] = merge_recovery(task.get('recovery'), result['recovery'])
         self._current(task)
         if task['cancelled'].is_set():
             raise InterruptedError()
@@ -370,14 +373,19 @@ class WoSCoordinator:
             self.check_dispatch_authority(task['cancelled'])
             if not task['cancelled'].is_set():
                 task['waiting_for_user'] = value.get('waiting_for_user') is True
-                task['message'] = 'Complete login or verification in BROWSER' if task['waiting_for_user'] else task['stage']
+                task['recovery_action'] = normalize_recovery_action(value.get('recovery_action'))
+                task['message'] = ('Complete login or verification in BROWSER' if task['waiting_for_user'] else
+                    recovery_progress_message(task['recovery_action']) or task['stage'])
                 self._publish_progress(task)
 
     def _publish_progress(self, task):
         callback = task.get('progress_callback')
         if callback:
             from allfold.progress import ProgressEvent, ActivityUpdate, ActivityKind
-            callback(ProgressEvent(activity=ActivityUpdate(kind=ActivityKind.WAITING if task.get('waiting_for_user') else ActivityKind.WORKING,
+            recovery = task.get('recovery_action')
+            kind = (ActivityKind.WAITING if task.get('waiting_for_user') or recovery == 'cooldown_wait' else
+                    ActivityKind.RETRYING if recovery else ActivityKind.WORKING)
+            callback(ProgressEvent(activity=ActivityUpdate(kind=kind,
                 operation='wos', source='wos', label=task['stage'], detail=task['message'])))
 
     def _run(self, task):
@@ -465,7 +473,9 @@ class WoSCoordinator:
                     self._release_owner(task['owner'])
                     if task.get('parent_snapshot') is None:
                         self.run_slot.release()
-                        finish_run(self.diagnostics, task['id'], {'provider':'wos','result':task['result']}, provider='wos', diagnostic=task.get('diagnostic'), interrupted=task.get('history_interrupted', False))
+                        finish_run(self.diagnostics, task['id'], {'provider':'wos','result':task['result']}, provider='wos',
+                                   diagnostic=task.get('diagnostic'), interrupted=task.get('history_interrupted', False),
+                                   recovery=task.get('recovery'))
 
     def shutdown(self):
         if self.task:

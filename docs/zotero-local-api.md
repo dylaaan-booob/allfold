@@ -257,17 +257,44 @@ binary attachments. HTML snapshots remain disabled. Translator tags are retained
 as automatic tags; the Local API does not expose Zotero's `automaticTags`
 preference, so Allfold cannot mirror that Desktop setting.
 
-PDF downloads retain task-bound Session requests and hidden/visible Browser
-helpers and the previous Connector's 60-second total request timeout, including
-redirects and response-body reading. Expiry means the request did not complete
-within that window; it does not establish a subscription denial.
-The host preserves the locked BotBypass domain policy for
-`sciencedirect.com`, `pdf.sciencedirectassets.com` and `ncbi.nlm.nih.gov`, including
-attributed proxy-normalized URLs: failed content validation can enter the bounded
-helper flow, while HTTP 404 cannot. This does not enable general HTML crawling or
-require the old BotBypass runtime. The old ItemSaver-specific Amazon CAPTCHA
-adapter is removed with its writer VM. Amazon-specific attachment challenges are
-consequently an unverified compatibility difference, not a claimed equivalent replacement.
+PDF downloads use the originating Document and the Browser Session after the
+parent is confirmed. A normalized PDF candidate URL gets at most three GETs,
+including the initial request. This limit also applies when both Browser
+helpers capture the same URL. All attachment reads share a 240-second window
+beginning with the first download or OpenAlex lookup, limited by any earlier
+caller deadline. The window also covers the OpenAlex lookup and up to four
+unique OpenAlex candidates. A challenged candidate can use one hidden helper
+(up to five seconds) and one visible helper (up to 60 seconds). Both helpers
+begin at the original challenge URL.
+
+Each GET has up to 60 seconds for redirects and body reading, limited by the
+remaining attachment budget. Temporary connection errors, timeouts and HTTP
+408, 429, 500, 502, 503 or 504 can retry. Backoff starts at 500 ms and doubles
+on the second wait, with up to 249 ms of added jitter. The Browser Session's
+origin-scoped gate honors `Retry-After` for 429 and 503 before new dispatches,
+including validated redirect targets. The operation stops waiting if the gate
+extends beyond its wait budget, while the shared gate remains in effect.
+Backoff and cooldown before dispatch leave the download permit available to
+other requests. Issued requests hold their permit through settlement.
+
+URL, DNS and redirect checks apply on every attempt. Requests preserve the
+existing Session Cookie and referrer policy. Empty, partial and oversized
+responses fail verification. When an identity-encoded length is supplied it
+must match the received bytes. PDF verification requires an accepted MIME
+type, a PDF header and an end-of-file marker. Content validation failures skip
+GET retry. An explicit challenge or content mismatch on the locked BotBypass
+domains (`sciencedirect.com`, `pdf.sciencedirectassets.com` and
+`ncbi.nlm.nih.gov`, including attributed proxy-normalized URLs) can enter the
+bounded helper flow. HTTP 404 skips the helpers. The old ItemSaver-specific
+Amazon CAPTCHA adapter was removed with its writer VM and remains unverified.
+
+Cancellation and original Document and Import authority checks guard download
+dispatch and subsequent writes. DNS checks precede the final download authority
+check. Attachment writes recheck Import authority after acquiring the write
+permit and reading credentials, before each new POST. A confirmed parent and its known keys survive
+an attachment failure. Download recovery never replays child creation, upload
+or registration. Diagnostics record fixed failure evidence and attempt counts
+without URLs, headers, Zotero keys or response data.
 
 Real 10.0.6+ authorization, group permission changes, parent/PDF creation,
 OpenAlex fallback and native UI acceptance remain separately authorized manual

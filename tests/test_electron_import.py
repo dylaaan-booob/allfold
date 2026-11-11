@@ -28,7 +28,7 @@ class Bridge:
         self.dispatched = threading.Event()
         self.calls = []
         self.cancels = 0
-    def execute(self, action, data, progress=None):
+    def execute(self, action, data, progress=None, *, verify_recovery=None):
         self.calls.append((action, data))
         self.dispatched.set()
         return self.future
@@ -177,10 +177,54 @@ def test_one_authenticated_socket_matches_a_single_request():
             assert pending.result(timeout=2) == confirmed()
 
 
-def test_openalex_subrequest_is_on_demand_and_bound_to_exact_import():
+def test_recovery_authority_is_checked_again_on_the_same_native_request():
+    allowed = threading.Event()
+    allowed.set()
+
+    def verify():
+        if not allowed.is_set():
+            raise ValueError("PRIVATE_SENTINEL")
+
+    bridge = ElectronBridge("secret", "testserver")
+    app = FastAPI()
+    app.websocket("/ws")(bridge.connect)
+    with TestClient(app) as client, client.websocket_connect("/ws") as socket:
+        socket.send_json({"token": "secret"})
+        assert socket.receive_json()["type"] == "ready"
+        pending = bridge.execute("prepare_service", {"workflow_id": "login"}, verify_recovery=verify)
+        request = socket.receive_json()
+        context = {"id": request["id"], "action": request["action"]}
+        for check_id, expected in (("a" * 32, True), ("b" * 32, False)):
+            socket.send_json({**context, "type": "verify_recovery_authority", "check_id": check_id, "data": {}})
+            assert socket.receive_json() == {**context, "type": "verify_recovery_authority_result",
+                "check_id": check_id, "data": {"allowed": expected}}
+            assert not pending.done()
+            allowed.clear()
+        socket.send_json({**context, "type": "result", "data": {
+            "diagnostic": {"stage": "preparation", "code": "document_changed"},
+            "recovery": [{"recovery_action": "resource_reentry", "count": 1, "outcome": "exhausted",
+                          "first": {"stage": "navigation", "code": "load_failed", "net_code": -100},
+                          "last": {"code": "document_changed", "body": "PRIVATE_SENTINEL"}}],
+        }})
+        result = pending.result(timeout=2)
+        assert result["recovery"][0]["last"] == {"code": "document_changed"}
+
+
+@pytest.mark.parametrize("expired", [False, True])
+def test_openalex_subrequest_is_bound_to_exact_import_and_attachment_deadline(expired):
+    import time
+
     calls = []
     target = {"server_id":"SERVERFIXTUR", "library_type":"user", "library_id":"0", "collection_key":None}
-    bridge = ElectronBridge("secret", "testserver", openalex_pdf=lambda doi: calls.append(doi) or {"candidates":["https://oa.example/paper.pdf"]})
+
+    def lookup(doi, *, deadline, recovery_observer, **operation_options):
+        calls.append((doi, deadline - time.monotonic()))
+        evidence = {'stage': 'provider', 'recovery_action': 'provider_retry', 'code': 'network_error'}
+        recovery_observer('recovery_scheduled', evidence)
+        recovery_observer('recovery_succeeded', evidence)
+        return {"candidates": ["https://oa.example/paper.pdf"]}
+
+    bridge = ElectronBridge("secret", "testserver", openalex_pdf=lookup)
     app = FastAPI()
     app.websocket("/ws")(bridge.connect)
     with TestClient(app) as client:
@@ -190,21 +234,34 @@ def test_openalex_subrequest_is_on_demand_and_bound_to_exact_import():
             pending = bridge.execute("import_paper", {"doi":"10.5555/test", "zotero_target":target})
             request = socket.receive_json()
             assert calls == []
+            deadline_ms = int((time.time() + (-1 if expired else 10)) * 1000)
             socket.send_json({"type":"openalex_pdf", "id":request["id"], "action":"import_paper", "lookup_id":"lookup1",
-                              "data":{"doi":"10.5555/test", "target":target, "parent_key":"ABCDEFGH"}})
+                              "data":{"doi":"10.5555/test", "target":target, "parent_key":"ABCDEFGH",
+                                      "deadline_ms":deadline_ms}})
+            result = ({"candidates": [], "diagnostic": {"code": "timeout"}} if expired
+                      else {"candidates": ["https://oa.example/paper.pdf"]})
             assert socket.receive_json() == {"type":"openalex_pdf_result", "id":request["id"], "action":"import_paper",
-                "lookup_id":"lookup1", "data":{"candidates":["https://oa.example/paper.pdf"]}}
+                "lookup_id":"lookup1", "data":result}
             socket.send_json({"type":"result", "id":request["id"], "action":"import_paper", "data":confirmed()})
-            pending.result(timeout=2)
-    assert calls == ["10.5555/test"]
+            settled = pending.result(timeout=2)
+    if expired:
+        assert not calls
+        assert 'recovery' not in settled
+    else:
+        [(doi, remaining)] = calls
+        assert doi == "10.5555/test" and 0 < remaining <= 10
+        [summary] = settled['recovery']
+        assert (summary['recovery_action'], summary['count'], summary['outcome']) == ('provider_retry', 1, 'recovered')
+        assert summary['first'] == {'stage': 'provider', 'code': 'network_error'}
 
 
-@pytest.mark.parametrize("changed", [{"doi":"10.5555/other"}, {"parent_key":"../../file"}, {"target":{}}])
+@pytest.mark.parametrize("changed", [{"doi":"10.5555/other"}, {"parent_key":"../../file"}, {"target":{}},
+                                     {"deadline_ms": True}])
 def test_openalex_rejects_wrong_doi_target_or_parent_without_query(changed):
     from starlette.websockets import WebSocketDisconnect
     calls = []
     target = {"server_id":"SERVERFIXTUR", "library_type":"user", "library_id":"0"}
-    bridge = ElectronBridge("secret", "testserver", openalex_pdf=lambda doi: calls.append(doi) or {})
+    bridge = ElectronBridge("secret", "testserver", openalex_pdf=lambda doi, **operation_options: calls.append(doi) or {})
     app = FastAPI()
     app.websocket("/ws")(bridge.connect)
     with TestClient(app) as client:
@@ -223,9 +280,11 @@ def test_openalex_rejects_wrong_doi_target_or_parent_without_query(changed):
 @pytest.mark.parametrize("disconnect", [False, True])
 def test_openalex_lookup_cannot_deliver_candidates_after_cancel_or_disconnect(disconnect):
     started, release = threading.Event(), threading.Event()
-    def lookup(doi):
+    def lookup(doi, *, cancel_event, recovery_observer, deadline):
         started.set()
         assert release.wait(2)
+        if not disconnect:
+            assert cancel_event.is_set()
         return {"candidates":["https://oa.example/private.pdf"]}
     target = {"server_id":"SERVERFIXTUR", "library_type":"user", "library_id":"0", "collection_key":None}
     bridge = ElectronBridge("secret", "testserver", openalex_pdf=lookup)
@@ -318,7 +377,7 @@ def test_batch_continues_only_after_known_no_effect(tmp_path, first, expected_ca
     class ImmediateBridge:
         connected = True
         calls = 0
-        def execute(self, *args):
+        def execute(self, *args, **kwargs):
             self.calls += 1
             result = Future()
             result.set_result(first if self.calls == 1 else confirmed())

@@ -680,6 +680,7 @@ def test_run_retries_only_the_failed_completion_page_and_keeps_partial_evidence(
     one, two = '10.5555/one', '10.5555/two'
     rows = (record('wos', one), record('wos', two))
     calls = Counter()
+    recovery = []
     cancel = Event()
 
     def handler(request):
@@ -714,11 +715,21 @@ def test_run_retries_only_the_failed_completion_page_and_keeps_partial_evidence(
         return IntegratedDiscovery(rows, (DiscoveryResult('wos', SourceScope('journal', 'Test'),
             'complete', rows, candidates=len(rows)),), 'complete')
 
-    run = run_integrated(path, wos_stage=wos, completion_factory=factory, cancel_event=cancel)
+    run = run_integrated(path, wos_stage=wos, completion_factory=factory, cancel_event=cancel,
+        recovery_observer=lambda event, details: recovery.append((event, details)))
     papers = {paper.external_ids.doi: paper for paper in load_workspace(tmp_path / 'workspace').papers}
     assert calls[f'doi:{one},doi:{two}', '*'] == 1
     assert calls[f'doi:{one},doi:{two}', 'second'] == {'certificate': 1, 'disconnect': 2}.get(scenario, 4)
     assert run.facts.statistics['completion_requests'] == sum(calls.values())
+    scheduled = [(entry['recovery_action'], entry['attempt'], entry['attempt_limit'])
+                 for event, entry in recovery if event == 'recovery_scheduled']
+    regular = [('provider_retry', 2, 3), ('provider_retry', 3, 3)]
+    expected = {'certificate': [], 'disconnect': regular[:1]}.get(
+        scenario, [*regular, ('completion_recheck', 4, 4)])
+    assert scheduled == expected
+    successes = [entry['recovery_action'] for event, entry in recovery if event == 'recovery_succeeded']
+    assert successes == {'disconnect': ['provider_retry'], 'recovery': ['completion_recheck']}.get(scenario, [])
+    assert all('request_id' not in entry and 'synthetic' not in repr(entry) for _, entry in recovery)
     if scenario == 'cancelled':
         assert run.facts.created_papers == 0 and not papers and run.outcome.value == 'CANCELLED'
     else:

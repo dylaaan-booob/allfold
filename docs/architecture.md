@@ -63,9 +63,30 @@ Browser Runtime uses one business Session from `session.fromPartition('allfold')
 It associates a managed Paper page with an opaque Workspace identity and the Paper
 UUID. Enrich and Import reuse the page with a matching current DOI and document
 or navigate the same page to its DOI. Browser selection is independent of task
-ownership. Managed pages survive settled and cancelled operations, and an idle
-page can be refreshed. Destruction invalidates live ownership. The association is
-process-local.
+ownership. An eligible initial loading failure can retire the failed attempt and
+open the same DOI once in a new managed page before translation. Other settled
+and cancelled pages remain available for inspection, and an idle page can be
+refreshed. Destruction invalidates live ownership. The association is process-local.
+
+A managed main-frame load has an 85-second window and at most two refreshes.
+The refresh delays are 350 and 700 ms, each multiplied by a random factor from
+0.75 to 1.25. During CARSI Prepare, the target page shares that refresh budget
+across redirects and subsequent main-frame GET navigations. A transient target
+load failure after two refreshes can start one new Visit from the CARSI resource,
+even if the second refresh completed and a later navigation failed. This path
+does not resend the failed request. An eligible page-load timeout can also
+trigger reentry. An eligible initial Paper load can similarly replace its page
+once. The new page gets its own loading
+window within the original 10-minute native loading or Prepare deadline and a
+three-minute cap from the start of business recovery.
+
+The Browser Session shares active cooldowns by HTTP origin. The existing
+WebRequest listeners observe main-frame 429 responses and 503 responses with a
+valid Retry-After. The default for a 429 without usable Retry-After is one second.
+An active cooldown can only extend. Allfold-initiated navigations and refreshes
+wait up to 30 seconds within their operation budget. Visit also checks the
+publisher origin when it is known from the saved entry or a prior attributable
+Visit. Chromium continues its redirects, authentication chain and page requests.
 
 The official Translator executes in isolated sandbox windows. Each sandbox IPC
 request checks its renderer, operation and source document, then uses the business
@@ -158,6 +179,11 @@ Both databases live outside Workspace. Within the application project, configura
 [Safety](safety.md) states the cross-module invariants. Types, parsers and validators in code define fields and interfaces; [development](development.md) defines preparation and verification. Historical plans and investigations are not current implementation authority.
 
 ## Discovery and completion boundaries
+
+The Python application process owns Provider cooldowns across clients, keyed by
+actual HTTP origin and authentication context. Short-lived clients retain active
+cooldowns until they expire or the process exits. Operation-local caches and
+pacing remain separate.
 
 Provider adapters emit operation-local `ProviderWorkEvidence`; canonicalization groups
 explicit strong identities and selects missing metadata in a fixed order.

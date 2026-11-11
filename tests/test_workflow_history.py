@@ -189,13 +189,19 @@ def test_login_history_requires_observed_target_evidence(tmp_path, observed, exp
     future.set_result({'outcome': 'Opened', 'portal_page_id': 9})
     action, request, future = bridge.operations.get(timeout=2)
     assert action == 'prepare_service' and request['workflow_id'] == started['workflow_id']
+    recovery = [{'recovery_action': 'resource_reentry', 'count': 1, 'outcome': 'recovered',
+        'first': {'code': 'load_failed', 'net_code': -100, 'source_page_id': 11},
+        'last': {'page_id': 17}}]
     future.set_result({'outcome':'Opened',
-        'evidence':{'visit_action_observed':observed, 'navigation_observed':True, 'target_page_id':17}})
+        'evidence':{'visit_action_observed':observed, 'navigation_observed':True, 'target_page_id':17},
+        'recovery': recovery})
     login.join()
+    assert len(store.history()['records']) == 1
     record = store.history()['records'][0]
     assert record['task_id'] == started['workflow_id']
     assert record['outcome'] == expected
     assert record['details']['results'][0]['outcome'] == expected
+    assert record['details']['results'][0]['recovery'] == recovery
 
 def test_cover_history_does_not_confirm_invalid_native_image(tmp_path):
     from safety_config_helpers import current_mapping_document
@@ -350,7 +356,7 @@ def test_app_composition_keeps_workflow_ids_through_import_and_http_export(tmp_p
 
     config, _, _, _ = scoped_workspace(tmp_path)
     class Transport(PendingBridge):
-        def execute(self, action, data, progress=None):
+        def execute(self, action, data, progress=None, *, verify_recovery=None):
             if action == 'zotero_local':
                 from concurrent.futures import Future
                 future = Future()

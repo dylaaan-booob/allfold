@@ -1,3 +1,4 @@
+import {recoveryLabel} from './business-results.js';
 const $=id=>document.getElementById(id);
 const layout=window.allfoldLayout.create({root:$('login-page'),workspace:'login',minContentWidth:360});
 let state=null,timer=null,busy=false,recovering=false,cancelRequested=false,revision=0,selectedService=null;
@@ -15,7 +16,8 @@ function row(name,preparation,{id,manual=false}={}) {
   title.textContent=name;
   status.textContent=preparation?.waiting_for_user
     ? '请在 Browser 的对应分组完成验证'
-    : preparation?.reason==='manual_login_confirmed' ? 'Manually confirmed' : preparation?.status || 'Not prepared';
+    : recoveryLabel(preparation?.recovery_action) ||
+      (preparation?.reason==='manual_login_confirmed' ? 'Manually confirmed' : preparation?.status || 'Not prepared');
   item.append(title,status);
   if(manual){
     const visit=button('Visit',()=>mutate('start',{service_id:id}),busy || recovering || Boolean(state?.active));

@@ -202,7 +202,7 @@ def _bind_pubmed_identities(prepared, doi_targets, matches, groups, saved_index)
 
 def run_integrated(config_path, *, loaded_config=None, workspace_snapshot=None, cancel_event=None,
                    progress_callback=None, client_factory=DiscoveryClient, completion_factory=None,
-                   wos_stage=None, workflow_id=None):
+                   wos_stage=None, workflow_id=None, recovery_observer=None):
     from allfold.application.run_commit import capture_run_workspace, commit_run_workspace
     from allfold.application.monitor import RunResult, RunOutcome, MonitorIssue, MonitorIssueSeverity, MonitorIssueComponent
     from allfold.application.run_state import RunProvider, RunFacts, RunIssueFact, LastRunSnapshot, RecordedRunOutcome, INTEGRATED_RUN_SCHEMA_VERSION, LastRunSnapshotWriteError, write_last_run_snapshot
@@ -255,6 +255,8 @@ def run_integrated(config_path, *, loaded_config=None, workspace_snapshot=None, 
                     kwargs['mailto'] = config.crossref_mailto
                 client = factory(provider,**kwargs)
                 client.request_guard = guard
+                if isinstance(client, DiscoveryClient) and recovery_observer is not None:
+                    client.recovery_observer = recovery_observer
                 clients[provider] = stack.enter_context(client)
             except (ValueError,OSError) as error:
                 clients[provider] = UnavailableClient(provider,str(error))

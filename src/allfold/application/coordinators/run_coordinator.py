@@ -6,6 +6,7 @@ import logging
 import threading
 import secrets
 from allfold.application.history import observe, finish_run
+from allfold.recovery_diagnostics import RecoverySummary, merge_recovery
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from enum import Enum
@@ -245,11 +246,19 @@ class RunCoordinator:
     def _run_worker(self) -> None:
         result: RunResult | None = None
         unexpected_error: UnexpectedRunError | None = None
+        recovery = RecoverySummary()
+        task_id = self._task_id
+
+        def observe_recovery(event, details):
+            recovery.record(event, details)
+            observe(self.diagnostics, 'event', event, {**details, 'task_id': task_id, 'workflow_id': task_id})
+
         try:
             result = run_monitor(self._config_path, provider=self._provider,
                 progress_callback=self._update_progress, loaded_config=self._config_snapshot,
                 workspace_snapshot=self._workspace_snapshot, cancel_event=self._cancel_event,
-                wos_stage=self.wos_stage.execute_stage if self.wos_stage else None, workflow_id=self._task_id)
+                wos_stage=self.wos_stage.execute_stage if self.wos_stage else None, workflow_id=task_id,
+                recovery_observer=observe_recovery)
         except BaseException as error:
             LOGGER.exception("Unexpected exception during monitor run")
             unexpected_error = UnexpectedRunError(
@@ -267,5 +276,7 @@ class RunCoordinator:
                 self._status = CoordinatorStatus.FINISHED
                 self._release_slot()
                 native = self.wos_stage.task if self.wos_stage is not None else None
-                diagnostic = native.get('diagnostic') if native and native['id'] == self._task_id else None
-                finish_run(self.diagnostics, self._task_id, self._result, provider=self._provider.value, diagnostic=diagnostic)
+                native = native if native and native['id'] == task_id else {}
+                finish_run(self.diagnostics, task_id, self._result, provider=self._provider.value,
+                           diagnostic=native.get('diagnostic'),
+                           recovery=merge_recovery(recovery.snapshot(), native.get('recovery')))
