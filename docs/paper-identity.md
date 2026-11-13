@@ -1,9 +1,16 @@
 # Paper identity and creation metadata
 
-Paper Markdown is the only persisted literature object. A Paper's internal
+Paper Markdown remains the production literature store. A Paper's internal
 identity is its UUID. `external_ids.doi` and top-level `doi` contain the same
 normalized primary DOI, or both are null. Direct reliable namespaces include
 OpenAlex Work ID, WoS UT, Europe PMC `SOURCE:ID`, PMID, PMCID and arXiv ID. Unknown namespaces remain descriptive and do not establish a match.
+
+This document describes the active Markdown path. WF01's independent
+[SQLite kernel](paper-library.md) reuses these direct-ID normalizers while
+separating stable identities from deletable metadata and using its own ordinary
+date set. It is not connected to production. The single-value identity and
+event-date rules below remain valid for current callers until WF02's unified
+switch; they are not restrictions on the new library's retained identity rows.
 
 Canonicalization groups records only through common direct reliable identifiers.
 It reuses an explicitly returned OpenAlex Work ID, without rebuilding OpenAlex's

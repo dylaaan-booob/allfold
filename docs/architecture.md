@@ -27,7 +27,7 @@ Main starts one Python process. The HTTP origin remains loopback-only on port 18
 | `frontend/ui/` | Workspace, Workflows, Journals and Settings UI, source assets and notices |
 | `src/allfold/application/` | Use cases, guarded operations and process-local workflow coordination |
 | `src/allfold/providers/` | Provider retrieval, queries and source-specific formats |
-| `src/allfold/persistence/` | Paper/Markdown projection, safe file operations, Registry and local state |
+| `src/allfold/persistence/` | Production Paper/Markdown projection, independent SQLite Paper kernel, safe file operations, Registry and local state |
 | `src/allfold/integrations/` | Python-side Zotero, credential and Pydoll adapters |
 | `src/allfold/web/` | HTTP projection, validation, composition and Electron WebSocket transport |
 | `src/allfold/http_client.py` | Shared synchronous Python HTTP client, proxy parsing, bypass rules and per-request transport routing; independent of Chromium Session |
@@ -170,11 +170,19 @@ Electron package metadata and scripts remain at the package root. `src/shared/pa
 
 ## Data ownership
 
-Local YAML owns monitor settings. The private `.allfold/user-data.sqlite` owns Journals, Groups, Labels, direct Access Services and default Service assignments, isolated by the canonical configuration path. Existing valid `list.md` files seed each configuration once; subsequent Markdown edits do not change saved user state. Migration validates the complete managed data, records its source and digest, and leaves the original file intact. Paper Markdown owns UUID, primary DOI and direct reliable namespaced identifiers, workflow status and human content. [Paper identity](paper-identity.md) defines the create-only canonicalization, source/version metadata and partial date evidence contract.
+Local YAML owns monitor settings. The private `.allfold/user-data.sqlite` owns Journals, Groups, Labels, direct Access Services and default Service assignments, isolated by the canonical configuration path. Existing valid `list.md` files seed each configuration once; subsequent Markdown edits do not change saved user state. Migration validates the complete managed data, records its source and digest, and leaves the original file intact. Production Paper Markdown owns UUID, primary DOI and direct reliable namespaced identifiers, workflow status and human content. [Paper identity](paper-identity.md) defines the current create-only canonicalization, source/version metadata and partial date evidence contract.
+
+WF01 adds an independent Python [SQLite Paper kernel](paper-library.md) at an
+explicitly selected `Workspace/papers.sqlite`. Its repository separates stable
+UUID/direct identities, deletable metadata and one optional body association.
+Short transactions enforce identity uniqueness and scoped write generations.
+No application entry point opens it; there is no shadow store, dual write or
+migration. WF02 owns adoption by every production Paper reader/writer, as recorded
+in [workflow refactor tasks](workflow-refactor-tasks.md). Electron gains no writer.
 
 The private `.allfold/resources.sqlite` shares complete GOKB snapshots and the CARSI official Catalog across configurations. It holds external evidence, not users' Service preferences. Refresh commits only validated, complete data and retains the previous cache on failure. The Journal Resolver follows Journal → GOKB Platform → CARSI Resource, retaining multiple identities and products. Only a unique, reliable candidate can fill an empty default; saved user choices take precedence. Ordinary Run never requires GOKB.
 
-Both databases live outside Workspace. Within the application project, configurations in subdirectories use the same application data directory; their canonical paths still identify separate user scopes. Registry remains read-only during normal use and retains source-specific evidence. Browser tasks and coordinators are transient, while Zotero owns its Library and attachments. Generated UI and Runtime are rebuildable resources, not user data.
+The two application-level databases live outside Workspace; the independent Paper library belongs to its Workspace. Within the application project, configurations in subdirectories use the same application data directory; their canonical paths still identify separate user scopes. Registry remains read-only during normal use and retains source-specific evidence. Browser tasks and coordinators are transient, while Zotero owns its Library and attachments. Generated UI and Runtime are rebuildable resources, not user data.
 
 [Safety](safety.md) states the cross-module invariants. Types, parsers and validators in code define fields and interfaces; [development](development.md) defines preparation and verification. Historical plans and investigations are not current implementation authority.
 
@@ -193,9 +201,9 @@ After Discovery and Work lookup settle, Run deduplicates and excludes saved Pape
 Native publication-date filters determine its range; subsequent evidence never
 rejudges inclusion. Commit rechecks captured configuration, source revision,
 Workspace/Papers identity and the complete identity index before atomic creates.
-Existing Paper matches remain byte-identical. Paper Markdown is the only persisted
-literature object; standalone Evidence, aliases and version relationships have no
-persistent store. Only direct reliable identifiers group Run records and establish
+Existing Paper matches remain byte-identical. Paper Markdown remains the production
+literature store; standalone Evidence, aliases and version relationships have no
+production persistent store. Only direct reliable identifiers group Run records and establish
 saved ownership. Old Paper identity fields explicitly block safe indexing/writes;
 old files are preserved until a user chooses a backed-up Workspace Reset.
 

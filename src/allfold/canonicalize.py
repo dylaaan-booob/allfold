@@ -151,7 +151,8 @@ class _AbstractText(HTMLParser):
         self.parts.append(data)
 
 
-def _normalize_abstract(value: str) -> str:
+def normalize_abstract(value: str) -> str:
+    """Normalize abstract text for existing canonicalization and library candidates."""
     parser = _AbstractText(value)
     parser.feed(value)
     parser.close()
@@ -338,7 +339,7 @@ def _snapshot_issues(
 
     for field in ("title", "journal", "abstract"):
         values = [getattr(record, field) for record in current]
-        normalizer = _normalize_abstract if field == "abstract" else _normalize_text
+        normalizer = normalize_abstract if field == "abstract" else _normalize_text
         if _nonempty_conflicts(values, normalizer):
             issues.append(
                 CanonicalizationIssue(
@@ -488,7 +489,7 @@ def _doi_evidence_issues(
         for field in ("title", "journal", "abstract"):
             values = [getattr(record, field) for record in provider_records]
             normalizer = (
-                _normalize_abstract if field == "abstract" else _normalize_text
+                normalize_abstract if field == "abstract" else _normalize_text
             )
             if _nonempty_conflicts(values, normalizer):
                 issues.append(
@@ -651,7 +652,7 @@ def _build_paper(
     doi = next((_record_doi(record) for record in ordered if _record_doi(record)
                 and (not primary_is_formal or not _is_preprint(record))), None)
     abstract = next((record.abstract for record in ordered
-                     if record.abstract and _normalize_abstract(record.abstract)), None)
+                     if record.abstract and normalize_abstract(record.abstract)), None)
     if doi:
         issues.extend(_doi_evidence_issues(doi, evidence))
     dates, date_evidence = _finalize_dates(ordered)
