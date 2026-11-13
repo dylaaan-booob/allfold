@@ -112,7 +112,7 @@ const operations={
     };
     const parse=(text,whole=false)=>{
       text=normalize(text);
-      const urls=[...text.matchAll(/(?:\b[a-z][a-z\d+.-]*:)?\/\/[^\s<>"']+|\bwww\.[^\s<>"']+/gi)];
+      const identityTokens=[...text.matchAll(/(?:\b[a-z][a-z\d+.-]*:)?\/\/[^\s<>"']+|\bwww\.[^\s<>"']+|\b10\.\d{4,9}\/\S+/gi)];
       const candidates=[];
       for(const [regex,kind] of formats) {
         regex.lastIndex=0;
@@ -123,7 +123,7 @@ const operations={
       for(const item of candidates) {
         if(item.start<end)continue;
         end=item.end; // Even an invalid full date suppresses its month substring.
-        if(urls.some(url=>item.start<url.index+url[0].length && item.end>url.index))continue;
+        if(identityTokens.some(token=>item.start<token.index+token[0].length && item.end>token.index))continue;
         const before=text[item.start-1] || '',after=text[item.end] || '';
         if(/[\p{L}\p{N}_/.-]/u.test(before) || /[\p{L}\p{N}_/-]/u.test(after) || after==='.' && /\w/.test(text[item.end+1] || ''))continue;
         if(whole && (item.start!==0 || item.end!==text.length))continue;

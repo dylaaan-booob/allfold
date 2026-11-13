@@ -278,8 +278,9 @@ validation checks leap years and month/day ranges. Invalid full candidates never
 degrade to month-only results. Ambiguous `04/02/2020` is refused; `13/02/2020` and
 `02/13/2020` have one valid order. Token boundaries reject URL/DOI/identifier
 substrings, suffixes such as `2020-04junk`, and manuscript/page ranges such as
-`SS-2025-0362`/`1023-1042`. Complete URL tokens, including query and fragment
-values, cannot contribute dates. Missing range endpoints are not filled. ISO
+`SS-2025-0362`/`1023-1042`. Complete URL and supported raw DOI tokens, including
+query and fragment suffixes, cannot contribute dates. Missing range endpoints
+are not filled. ISO
 `T`/`Z` markers are case-insensitive and all variants receive the same full time
 validation, retaining their written calendar day without a timezone conversion.
 

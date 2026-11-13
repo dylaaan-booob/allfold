@@ -49,6 +49,9 @@ app.whenReady().then(async()=>{
       '<p>See https://publisher.example/search?date=2020-04-02 for data.</p><p>https://publisher.example/article#2020-05-02</p>'+
       '<p>//publisher.example/search?date=2020-06-02</p><p>www.publisher.example/?date=2020-07-02</p>'+
       '<p>https://publisher.example/search?date=2020-08-02 Published: 2021-03-04.</p>', ['2021-03-04']);
+    await dates('complete raw DOI query and fragment tokens never contribute dates',
+      '<p>Reference 10.1234/foo?date=2020-05-02</p><p>doi:10.12345/bar#2020-06-03</p>'+
+      '<p>10.123456/baz?published=2020-07-04 Published: 2021-03-04.</p>', ['2021-03-04']);
     await dates('invalid ISO time remains invalid across letter case',
       '<p>2020-05-02t99:99:99z</p><p>2020-06-02T99:99:99Z</p><p>2020-02-30t12:30:00z</p>', []);
     await dates('valid ISO lowercase markers keep their written day',
