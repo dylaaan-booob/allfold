@@ -18,6 +18,7 @@ from allfold.paper_dates import (
     preprint_identity, preprint_query_refs,
 )
 from allfold.persistence.library_models import MetadataDelta
+from allfold.pdf_facts import PdfDiscoveryFacts, discovery_facts_from_records
 from allfold.providers.integrated import Cancelled, DiscoveryError, IdentityMismatch
 
 
@@ -236,7 +237,7 @@ def _formal_conflicts(records, root_ids, *, formal_root=True):
     return tuple(accepted), tuple(rejected)
 
 
-def _increment(records, root_ids):
+def _increment(records, root_ids, *, preprint_root=False):
     formal = formal_records(records, root_ids)
     abstracts = {}
     for item in formal:
@@ -247,6 +248,7 @@ def _increment(records, root_ids):
     proof = tuple(item for item in collect_dates(records) if item.kind == EvidenceDateKind.PREPRINT)
     relations = tuple(dict.fromkeys(ref for item in records for ref in item.related_ids))
     delta = MetadataDelta(ordinary_dates=dates, abstract=next(iter(abstracts.values())) if len(abstracts) == 1 else None,
+        discovery_facts=discovery_facts_from_records(records, root_ids, preprint_root=preprint_root),
         preprint_evidence=proof, preprint_relations=relations,
         sources=tuple(dict.fromkeys(item.provenance for item in records if item.provenance.provider != 'workspace')))
     identities = defaultdict(set)
@@ -277,7 +279,7 @@ def collect_necessary_metadata(context, *, records=(), facts=(), required=(), pr
     required = set(required)
     sequence = 0
 
-    def absorb(request, values):
+    def absorb(request, values, *, complete=True):
         nonlocal sequence
         error = values if isinstance(values, Exception) else None
         candidates = tuple(getattr(error, 'records', ())) if error else tuple(values)
@@ -296,7 +298,7 @@ def collect_necessary_metadata(context, *, records=(), facts=(), required=(), pr
             lookups.append(CompletionLookup(request.provider, request.namespace, request.identifier, status, request.capability))
             attempted.add(request)
             if status in {'evidence', 'no_match'}:
-                completed.append(VerifiedResponse(request, tuple(accepted)))
+                completed.append(VerifiedResponse(request, tuple(accepted), complete=complete))
         elif conflicts or rejected:
             raise IdentityMismatch('Verified handoff does not bind to this Paper')
         new = []
@@ -306,8 +308,23 @@ def collect_necessary_metadata(context, *, records=(), facts=(), required=(), pr
                 seen.add(key)
                 output.append(item)
                 new.append(item)
-        if new:
-            delta, direct_ids = _increment(tuple(new), root_ids)
+        empty_snapshot = ()
+        if (request is not None and not accepted and not isinstance(error, Cancelled)
+                and request.provider in {'crossref', 'openalex'} and request.capability in {'exact', 'work'}
+                and (request.namespace, request.identifier) in root_ids):
+            failed = bool(error or conflicts or rejected)
+            empty_snapshot = (PdfDiscoveryFacts(source=request.provider,
+                capability='crossref-links' if request.provider == 'crossref' else 'openalex-locations',
+                status='failed' if failed else 'complete' if complete else 'partial',
+                observed_at=datetime.now(timezone.utc),
+                target_doi=request.identifier if request.namespace == 'doi' else None,
+                target_openalex=request.identifier if request.namespace == 'openalex' else None,
+                diagnostics=('parse-failed',) if failed else ('incomplete-response',) if not complete else ()),)
+        if new or empty_snapshot:
+            delta, direct_ids = _increment(tuple(new), root_ids,
+                preprint_root=paper.metadata.publication_type == 'preprint')
+            if empty_snapshot:
+                delta = delta.model_copy(update={'discovery_facts': empty_snapshot})
             sequence += 1
             context.emit(delta, sequence=sequence, direct_ids=direct_ids)
             root_ids.update((identity.namespace, identity.value) for identity in context.read_paper().identities)
@@ -325,7 +342,7 @@ def collect_necessary_metadata(context, *, records=(), facts=(), required=(), pr
             raise IdentityMismatch('Verified capability does not belong to this Paper')
         for fact in ready:
             pending.remove(fact)
-            absorb(fact.request, fact.records)
+            absorb(fact.request, fact.records, complete=fact.complete)
             if not fact.complete:
                 completed[:] = [item for item in completed if item.request != fact.request]
                 attempted.discard(fact.request)

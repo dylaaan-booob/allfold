@@ -18,6 +18,7 @@ from allfold.persistence.library_models import (
     BodyReference, CollectionAdmission, CollectionBranch, CollectionRecord, CollectionToken,
     CreationResult, DirectIdentity, MetadataDelta, PaperMetadata, PaperRecord, PreprintResult, WriteToken,
 )
+from allfold.pdf_facts import discovery_target_matches, merge_discovery_facts
 
 
 class IdentityConflict(LibraryError):
@@ -218,6 +219,7 @@ class PaperRepository:
         owner = self._match(connection, identities)
         if owner is not None:
             return CreationResult(self._read(connection, owner), False)
+        self._require_discovery_targets(metadata.discovery_facts, identities)
         paper_id = uuid4()
         connection.execute("INSERT INTO paper_core (paper_id) VALUES (?)", (str(paper_id),))
         self._add_identities(connection, paper_id, identities)
@@ -435,12 +437,14 @@ class PaperRepository:
             return self._read(connection, paper.id)
 
     def _merge_metadata(self, connection, paper, token, delta, identities):
+        self._require_discovery_targets(delta.discovery_facts, (*paper.identities, *identities))
         if identities:
             self._add_identities(connection, paper.id, identities)
         changes = {
                 "ordinary_dates": paper.metadata.ordinary_dates + delta.ordinary_dates,
                 "preprints": paper.metadata.preprints + delta.preprints,
                 "sources": tuple(dict.fromkeys(paper.metadata.sources + delta.sources)),
+                "discovery_facts": merge_discovery_facts(paper.metadata.discovery_facts, delta.discovery_facts),
                 "preprint_evidence": tuple(dict.fromkeys(paper.metadata.preprint_evidence + delta.preprint_evidence)),
                 "preprint_relations": tuple(dict.fromkeys(paper.metadata.preprint_relations + delta.preprint_relations)),
                 "first_public_at": paper.metadata.first_public_at or delta.first_public_at,
@@ -451,6 +455,12 @@ class PaperRepository:
         metadata = PaperMetadata.model_validate(paper.metadata.model_dump() | changes)
         connection.execute("UPDATE paper_metadata SET payload = ? WHERE paper_id = ?",
                            (metadata.model_dump_json(), str(paper.id)))
+
+    @staticmethod
+    def _require_discovery_targets(facts, identities):
+        keys = {(identity.namespace, identity.value) for identity in identities}
+        if any(not discovery_target_matches(item, keys) for item in facts):
+            raise IdentityConflict("PDF discovery facts do not belong to this Paper's direct identities")
 
     def edit_metadata(self, token: WriteToken, changes: dict) -> PaperRecord:
         """Apply explicitly named local edits to the latest payload, including in the recycle bin."""
@@ -531,6 +541,7 @@ class PaperRepository:
             raise InvalidPaperState("Rebuild requires cleared metadata and released exclusion")
         if self._match(connection, identities) != paper.id:
             raise IdentityConflict("New Run result must directly identify this placeholder")
+        self._require_discovery_targets(metadata.discovery_facts, (*paper.identities, *identities))
         self._add_identities(connection, paper.id, identities)
         connection.execute("INSERT INTO paper_metadata (paper_id, payload) VALUES (?, ?)",
                            (str(paper.id), metadata.model_dump_json()))
