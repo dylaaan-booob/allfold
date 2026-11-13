@@ -171,9 +171,6 @@ def test_manual_confirmation_marks_entire_finished_login_batch_available(tmp_pat
         app.state.login.join()
         assert client.get('/api/login/state').json()['confirmation_workflow_id'] == started['workflow_id']
         assert app.state.login.prepared_authority(saved, wos.id) is None
-        papers = [SimpleNamespace(service_id=service.id) for service in services]
-        unprepared = app.state.kept_workflow.unprepared_services
-        assert {row['id'] for row in unprepared(saved, papers)} == {wos.id, publisher.id, manual.id}
         if visit_first:
             visit = client.post('/api/login/start', json={**csrf, 'service_id': manual.id}).json()
             assert visit['workflow_id'] != started['workflow_id']
@@ -211,7 +208,6 @@ def test_manual_confirmation_marks_entire_finished_login_batch_available(tmp_pat
             assert rows[service.id]['reason'] == 'manual_login_confirmed'
             assert app.state.login.prepared_authority(saved, service.id) is not None
             assert app.state.login.prepared_page(saved, service.id) is None
-        assert unprepared(saved, papers) == []
         assert native.operations.empty()
         assert client.post('/api/login/confirm', json=body).status_code == 409
 

@@ -203,40 +203,21 @@ class InstitutionConfig(BaseModel):
         return value
 
 
-class ZoteroTarget(BaseModel):
-    """Public native instance/Library/Collection identity, never an API key."""
-
-    model_config = ConfigDict(extra="forbid", frozen=True)
-    server_id: str = Field(pattern=r"^[A-Za-z0-9]{1,128}$", strict=True)
-    library_type: Literal["user", "group"]
-    library_id: str = Field(pattern=r"^[0-9]{1,20}$", strict=True)
-    collection_key: str | None = Field(default=None, pattern=r"^[23456789ABCDEFGHIJKLMNPQRSTUVWXYZ]{8}$")
-
-    @model_validator(mode="after")
-    def personal_library_id(self):
-        if self.library_type == "user" and self.library_id != "0":
-            raise ValueError("Personal Library must use user 0")
-        return self
-
-
 DEFAULT_PREPARE_SERVICE_CONCURRENCY = 5
 WORKFLOW_CONCURRENCY_FIELDS = (
     "prepare_service_concurrency", "paper_service_concurrency", "paper_global_concurrency",
-    "translator_concurrency", "pdf_concurrency", "zotero_writer_concurrency",
+    "pdf_concurrency",
 )
 
 
-class KeptWorkflowConfig(BaseModel):
-    """Saved workflow bounds and the preferred Zotero destination."""
+class WorkflowConfig(BaseModel):
+    """Neutral Prepare, Paper and PDF bounds retained for their owning workflows."""
 
     model_config = ConfigDict(extra="forbid", frozen=True)
     prepare_service_concurrency: int = Field(default=DEFAULT_PREPARE_SERVICE_CONCURRENCY, strict=True, ge=1, le=5)
     paper_service_concurrency: int = Field(default=2, strict=True, ge=1, le=8)
     paper_global_concurrency: int = Field(default=4, strict=True, ge=1, le=16)
-    translator_concurrency: int = Field(default=2, strict=True, ge=1, le=6)
     pdf_concurrency: int = Field(default=2, strict=True, ge=1, le=8)
-    zotero_writer_concurrency: int = Field(default=2, strict=True, ge=1, le=4)
-    zotero_target: ZoteroTarget | None = None
 
     @model_validator(mode="before")
     @classmethod
@@ -244,7 +225,8 @@ class KeptWorkflowConfig(BaseModel):
         if isinstance(value, dict):
             # Existing YAML loads unchanged. The next Settings save drops obsolete launch preferences.
             return {key: item for key, item in value.items()
-                    if key not in {"auto_import_after_preparation", "transition_delay_seconds", "display_name"}}
+                    if key not in {"auto_import_after_preparation", "transition_delay_seconds", "display_name",
+                                   "translator_concurrency", "zotero_writer_concurrency", "zotero_target"}}
         return value
 
 
@@ -259,11 +241,20 @@ class _Settings(BaseModel):
     to_month: str
     log_level: LogLevel = LogLevel.INFO
     institution: InstitutionConfig | None = None
-    kept_workflow: KeptWorkflowConfig = KeptWorkflowConfig()
+    workflow: WorkflowConfig = WorkflowConfig()
     enabled_providers: tuple[str, ...] = ENABLED_PROVIDERS
     provider_aliases: dict[str, str] = Field(default_factory=dict)
     provider_order: tuple[str, ...] = DEFAULT_PROVIDER_ORDER
     crossref_mailto: str = ""
+
+    @model_validator(mode='before')
+    @classmethod
+    def retire_import_configuration(cls, value):
+        if isinstance(value, dict) and 'kept_workflow' in value:
+            value = dict(value)
+            legacy = value.pop('kept_workflow')
+            value.setdefault('workflow', legacy)
+        return value
 
     @field_validator("enabled_providers", mode="before")
     @classmethod
@@ -331,7 +322,7 @@ class LoadedConfig:
     log_level: LogLevel
     journals: tuple[JournalConfig, ...]
     institution: InstitutionConfig | None = None
-    kept_workflow: KeptWorkflowConfig = KeptWorkflowConfig()
+    workflow: WorkflowConfig = WorkflowConfig()
     enabled_providers: tuple[str, ...] = ENABLED_PROVIDERS
     provider_aliases: dict[str, str] = field(default_factory=dict)
     provider_order: tuple[str, ...] = DEFAULT_PROVIDER_ORDER
@@ -351,7 +342,7 @@ class MonitorDefinition:
     date_spec: DateRangeSpec
     log_level: LogLevel
     institution: InstitutionConfig | None = None
-    kept_workflow: KeptWorkflowConfig = KeptWorkflowConfig()
+    workflow: WorkflowConfig = WorkflowConfig()
     enabled_providers: tuple[str, ...] = ENABLED_PROVIDERS
     provider_aliases: dict[str, str] = field(default_factory=dict)
     provider_order: tuple[str, ...] = DEFAULT_PROVIDER_ORDER
@@ -676,7 +667,7 @@ def parse_monitor_definition(path: Path, raw: Any) -> MonitorDefinition:
         date_spec=date_spec,
         log_level=settings.log_level,
         institution=settings.institution,
-        kept_workflow=settings.kept_workflow,
+        workflow=settings.workflow,
         enabled_providers=settings.enabled_providers,
         provider_order=settings.provider_order, provider_aliases=settings.provider_aliases, crossref_mailto=settings.crossref_mailto,
     )
@@ -705,7 +696,7 @@ def build_loaded_config(
         log_level=definition.log_level,
         journals=normalized_journals,
         institution=definition.institution,
-        kept_workflow=definition.kept_workflow,
+        workflow=definition.workflow,
         enabled_providers=definition.enabled_providers,
         provider_order=definition.provider_order, provider_aliases=definition.provider_aliases, crossref_mailto=definition.crossref_mailto,
     )

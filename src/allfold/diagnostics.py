@@ -16,7 +16,6 @@ import threading
 from uuid import UUID, uuid4
 import zipfile
 
-from allfold.application.history import safe_zotero_keys
 from allfold.browser_diagnostics import normalize_browser_diagnostic
 from allfold.recovery_diagnostics import SCHEMA as _SCHEMA, field_valid, normalize_recovery
 from allfold.persistence.safe_write import _open_directory_nofollow
@@ -26,7 +25,7 @@ from allfold.persistence.user_state import application_data_dir
 # Durable diagnostics are deliberately independent of the Paper/Workspace state.
 # Only coordinators may declare a terminal business outcome.
 
-KINDS = frozenset({'run', 'prepare', 'login', 'import', 'kept', 'enrich', 'covers'})
+KINDS = frozenset({'run', 'prepare', 'login', 'covers'})
 PROVIDERS = frozenset({'integrated', 'pubmed', 'openalex', 'crossref', 'europe_pmc', 'arxiv', 'biorxiv', 'medrxiv', 'wos'})
 OUTCOMES = frozenset({'completed', 'partial', 'failed', 'cancelled', 'interrupted', 'uncertain',
                       'needs_attention', 'opened', 'no_effect', 'confirmed'})
@@ -159,8 +158,6 @@ def _details(value):
                     'reason': REASONS}[key]
                 if _enum(item.get(key), allowed):
                     safe[key] = item[key]
-            if keys := safe_zotero_keys(item.get('zotero_keys')):
-                safe['zotero_keys'] = keys
             diagnostic = normalize_browser_diagnostic(item.get('diagnostic'))
             if diagnostic:
                 safe['diagnostic'] = diagnostic
@@ -420,7 +417,7 @@ class DiagnosticStore:
                     self._integrity['invalid_records'] += 1
                     continue
                 if record['outcome'] == 'running' and record['runtime_id'] != self.runtime_id:
-                    record['outcome'] = 'uncertain' if record['kind'] in {'import', 'kept'} else 'interrupted'
+                    record['outcome'] = 'interrupted'
                     record['recovered_at'] = _now()
                     record['details'] = {**record['details'], 'reason': 'runtime_interrupted', 'result_known': False}
                     self._integrity['history_recovered'] = True
@@ -564,9 +561,7 @@ class DiagnosticStore:
             records = self.history()['records']
             # Exact Zotero keys are for local reconciliation. History export is shareable.
             for record in records:
-                for result in record.get('details', {}).get('results', []):
-                    result.pop('zotero_keys', None)
-            excluded_history = 0
+                excluded_history = 0
             if task_id is not None:
                 selected = next((r for r in records if r['task_id'] == task_id), None)
                 if selected is None:

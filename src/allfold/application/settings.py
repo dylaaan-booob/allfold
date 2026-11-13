@@ -28,7 +28,7 @@ from allfold.config import (
     validate_access_mapping,
     ConfigurationError,
     InstitutionConfig,
-    KeptWorkflowConfig,
+    WorkflowConfig,
     JournalConfig,
     render_settings_list_text,
     LoadedConfig,
@@ -95,7 +95,7 @@ class MonitorDraft:
     groups: tuple[str, ...] = ()
     custom_labels: tuple[str, ...] = ()
     institution: InstitutionConfig | None = None
-    kept_workflow: KeptWorkflowConfig = KeptWorkflowConfig()
+    workflow: WorkflowConfig = WorkflowConfig()
     provider_aliases: dict[str, str] = field(default_factory=dict)
     provider_order: tuple[str, ...] = DEFAULT_PROVIDER_ORDER
     enabled_providers: tuple[str, ...] = ENABLED_PROVIDERS
@@ -215,7 +215,7 @@ class _DraftFields:
     date_spec: DateRangeSpec
     log_level: LogLevel | str
     institution: InstitutionConfig | None = None
-    kept_workflow: KeptWorkflowConfig = KeptWorkflowConfig()
+    workflow: WorkflowConfig = WorkflowConfig()
     provider_aliases: dict[str, str] = field(default_factory=dict)
     provider_order: tuple[str, ...] = DEFAULT_PROVIDER_ORDER
     enabled_providers: tuple[str, ...] = ENABLED_PROVIDERS
@@ -301,9 +301,9 @@ def _recovery_fields(config_path: Path, raw: Any) -> _DraftFields:
         institution = None  # Never project invalid or sensitive institution data.
 
     try:
-        kept_workflow = KeptWorkflowConfig.model_validate(raw.get("kept_workflow", {}))
+        workflow = WorkflowConfig.model_validate(raw.get("workflow", raw.get("kept_workflow", {})))
     except ValueError:
-        kept_workflow = defaults.kept_workflow
+        workflow = defaults.workflow
 
     recovered_name = name.strip() if isinstance(name, str) else defaults.name
     recovered_keyword = (
@@ -336,7 +336,7 @@ def _recovery_fields(config_path: Path, raw: Any) -> _DraftFields:
         date_spec=recovered_date,
         log_level=recovered_log,
         institution=institution,
-        kept_workflow=kept_workflow,
+        workflow=workflow,
         provider_order=raw.get("provider_order", defaults.provider_order),
         enabled_providers=raw.get("enabled_providers", defaults.enabled_providers),
         provider_aliases=raw.get("provider_aliases", {}) if isinstance(raw.get("provider_aliases", {}), dict) else {},
@@ -392,7 +392,7 @@ def _monitor_fields(
             date_spec=definition.date_spec,
             log_level=definition.log_level,
             institution=definition.institution,
-            kept_workflow=definition.kept_workflow,
+            workflow=definition.workflow,
             enabled_providers=definition.enabled_providers,
             provider_order=definition.provider_order, provider_aliases=definition.provider_aliases, crossref_mailto=definition.crossref_mailto,
         ),
@@ -521,7 +521,7 @@ def load_settings(config_path: Path) -> SettingsLoadResult:
         monitor_revision=monitor_snapshot.revision,
         journal_revision=journal_snapshot.revision,
         institution=fields.institution,
-        kept_workflow=fields.kept_workflow,
+        workflow=fields.workflow,
         enabled_providers=fields.enabled_providers,
         provider_order=fields.provider_order, provider_aliases=fields.provider_aliases, crossref_mailto=fields.crossref_mailto,
     )
@@ -572,7 +572,7 @@ def _draft_monitor_mapping(
     raw["from_month"] = draft.date_spec.from_month
     raw["to_month"] = draft.date_spec.to_month
     raw["institution"] = draft.institution
-    raw["kept_workflow"] = draft.kept_workflow
+    raw["workflow"] = draft.workflow
     return raw
 
 
@@ -697,7 +697,7 @@ def _render_monitor_yaml(
     )
     if draft.institution is not None and (draft.institution.name or draft.institution.idp_entity_id or draft.institution.use_shibboleth):
         values["institution"] = draft.institution.model_dump(exclude_none=True)
-    values["kept_workflow"] = draft.kept_workflow.model_dump(exclude_none=True)
+    values["workflow"] = draft.workflow.model_dump(exclude_none=True)
     return yaml.safe_dump(values, sort_keys=False, allow_unicode=True)
 
 
@@ -925,7 +925,7 @@ def _save_settings(
             raise ConfigurationError("; ".join(i.message for i in validation.issues))
         if validation.config is not None:
             draft = replace(draft, institution=validation.config.institution,
-                            kept_workflow=validation.config.kept_workflow)
+                            workflow=validation.config.workflow)
     except (ConfigurationError, OpenAlexError, ValueError) as error:
         return _result_from_state(
             outcome=SettingsSaveOutcome.INVALID_DRAFT, validation=validation,

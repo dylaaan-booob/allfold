@@ -16,7 +16,7 @@ from allfold.application.settings import (
     SettingsIssue,
     SettingsIssueSource,
 )
-from allfold.config import AccessService, InstitutionConfig, KeptWorkflowConfig, JournalConfig, LogLevel, WORKFLOW_CONCURRENCY_FIELDS, DEFAULT_PROVIDER_ORDER, ENABLED_PROVIDERS, validate_provider_order, parse_journal_labels
+from allfold.config import AccessService, InstitutionConfig, WorkflowConfig, JournalConfig, LogLevel, WORKFLOW_CONCURRENCY_FIELDS, DEFAULT_PROVIDER_ORDER, ENABLED_PROVIDERS, validate_provider_order, parse_journal_labels
 from allfold.date_range import DateRangeSpec, DateRangeError, validate_date_range_spec
 from allfold.url_safety import normalize_public_http_url
 
@@ -72,10 +72,7 @@ class SettingsFormValues:
     prepare_service_concurrency: str = "5"
     paper_service_concurrency: str = "2"
     paper_global_concurrency: str = "4"
-    translator_concurrency: str = "2"
     pdf_concurrency: str = "2"
-    zotero_writer_concurrency: str = "2"
-    zotero_target: dict | None = None
     provider_aliases: dict[str, str] = field(default_factory=dict)
     provider_order: tuple[str, ...] = DEFAULT_PROVIDER_ORDER
     enabled_providers: tuple[str, ...] = ENABLED_PROVIDERS
@@ -139,8 +136,7 @@ def settings_form_from_draft(draft: MonitorDraft) -> SettingsFormValues:
         monitor_revision_digest=monitor_digest,
         journal_revision_exists=journal_exists,
         journal_revision_digest=journal_digest,
-        **{name: str(getattr(draft.kept_workflow, name)) for name in WORKFLOW_CONCURRENCY_FIELDS},
-        zotero_target=draft.kept_workflow.zotero_target.model_dump() if draft.kept_workflow.zotero_target else None,
+        **{name: str(getattr(draft.workflow, name)) for name in WORKFLOW_CONCURRENCY_FIELDS},
         institution_name=draft.institution.name or "" if draft.institution else "",
         institution_idp_entity_id=draft.institution.idp_entity_id or "" if draft.institution else "",
         institution_use_shibboleth=draft.institution.use_shibboleth if draft.institution else False,
@@ -173,7 +169,7 @@ def settings_form_from_submission(form: FormData) -> SettingsFormValues:
     group_names = tuple(str(value) for value in form.getlist("settings_group"))
     institution_fields = {"institution_name", "institution_idp_entity_id", "institution_use_shibboleth"}
     # Enumerate the existing editor/import contract so credential aliases cannot be ignored.
-    workflow_fields = {*WORKFLOW_CONCURRENCY_FIELDS, "zotero_target"}
+    workflow_fields = {*WORKFLOW_CONCURRENCY_FIELDS}
     supported_fields = institution_fields | workflow_fields | {
         "csrf_token", "name", "keyword_expression", "output_dir", "log_level",
         "from_month", "to_month", "crossref_mailto",
@@ -239,9 +235,8 @@ def settings_form_from_submission(form: FormData) -> SettingsFormValues:
         institution_idp_entity_id=str(form.get("institution_idp_entity_id", "")),
         institution_use_shibboleth=form.get("institution_use_shibboleth") == "1",
         institution_issues=institution_issues,
-        **{name: str(form.get(name, KeptWorkflowConfig.model_fields[name].default))
+        **{name: str(form.get(name, WorkflowConfig.model_fields[name].default))
            for name in WORKFLOW_CONCURRENCY_FIELDS},
-        zotero_target=_target_from_submission(form),
     )
 
 
@@ -283,12 +278,11 @@ def settings_draft_from_form(
         detail = error.errors()[0]
         issues.append(_form_issue("institution." + str(detail["loc"][0]), detail["msg"]))
     try:
-        kept_workflow = KeptWorkflowConfig(
+        workflow = WorkflowConfig(
             **{name: int(str(getattr(values, name))) for name in WORKFLOW_CONCURRENCY_FIELDS},
-            zotero_target=values.zotero_target,
         )
     except (ValueError, TypeError) as error:
-        issues.append(_form_issue("kept_workflow", str(error)))
+        issues.append(_form_issue("workflow", str(error)))
     date_spec = DateRangeSpec(values.from_month, values.to_month)
     try:
         validate_date_range_spec(date_spec)
@@ -353,14 +347,9 @@ def settings_draft_from_form(
             monitor_revision=monitor_revision,
             journal_revision=journal_revision,
             institution=institution,
-            kept_workflow=kept_workflow,
+            workflow=workflow,
         ),
         (),
     )
 
 
-def _target_from_submission(form):
-    try:
-        return json.loads(str(form.get("zotero_target", "null")))
-    except (ValueError, TypeError):
-        return {"invalid": True}

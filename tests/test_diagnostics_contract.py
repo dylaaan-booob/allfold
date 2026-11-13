@@ -86,7 +86,7 @@ def test_native_evidence_survives_restart_and_export_filters_exact_scope_and_wor
     config.write_text('keyword_expression: synthetic\n')
     root = tmp_path / 'logs'
     store = DiagnosticStore(config, root=root, runtime_id='runtime_original')
-    store.begin('import', 'batch_1', workflow_id='workflow_1')
+    store.begin('prepare', 'batch_1', workflow_id='workflow_1')
     store.finish('batch_1', 'uncertain', statistics={'uncertain': 1},
                  details={'parent_outcome': 'uncertain', 'pdf_outcome': 'unverified'})
     script = r'''
@@ -94,18 +94,18 @@ const {createLogger}=require(process.argv[1]);
 const root=process.argv[2],scopeId=process.argv[3];
 const logger=createLogger({root,scopeId,runtimeId:'runtime_original',level:'error',stderr(){}});
 logger.log('info','task_finished',{workflow_id:'workflow_1',task_id:'batch_1',
-  request_id:'native_1',action:'import_paper',page_id:7,source_page_id:3,
+  request_id:'native_1',action:'prepare_service',page_id:7,source_page_id:3,
   service_id:'svc_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',stage:'attachment',step:'hidden_iframe',
   code:'load_failed',net_error:'ERR_CONNECTION_RESET',status:503,parent:'uncertain',pdf:'unverified',
   host:'private.invalid',body:'PRIVATE_SENTINEL',url:'https://private.invalid/?token=PRIVATE_SENTINEL'});
 logger.log('warn','task_finished',{workflow_id:'workflow_1',task_id:'batch_1',
-  request_id:'imperva_request',action:'import_paper',stage:'navigation',
+  request_id:'imperva_request',action:'prepare_service',stage:'navigation',
   code:'site_restricted',status:200,imperva_edet:15,imperva_incident_id:'123-456'});
 logger.log('error','task_finished',{workflow_id:'workflow_2',task_id:'batch_2',
-  request_id:'unrelated_request',action:'import_paper',parent:'confirmed'});
+  request_id:'unrelated_request',action:'prepare_service',parent:'confirmed'});
 const other=createLogger({root,scopeId:'b'.repeat(64),runtimeId:'other_runtime',stderr(){}});
 other.log('error','task_finished',{workflow_id:'workflow_1',task_id:'batch_1',
-  request_id:'other_scope_request',action:'import_paper',parent:'confirmed'});
+  request_id:'other_scope_request',action:'prepare_service',parent:'confirmed'});
 '''
     module = Path(__file__).resolve().parents[1] / 'electron/src/shared/logging.cjs'
     subprocess.run(['node', '-e', script, str(module), str(root), store.scope_id], check=True)
