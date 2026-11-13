@@ -1,22 +1,23 @@
+"""Existing native Preprint proof and cancellation through real SQLite application paths."""
 from threading import Event
 from uuid import uuid4
-
 import httpx
 import pytest
+from fastapi.testclient import TestClient
 
+from allfold.providers.supplemental import SupplementalClient
 from allfold.application.browser_runtime import BrowserTaskLock
 from allfold.application.coordinators.preprint_lookup import PreprintLookup
-from allfold.application.decisions import reject_paper
-from allfold.models import WorkflowStatus
-from allfold.providers.supplemental import SupplementalClient
-from test_application_decisions import document_parts, replace_frontmatter, write_paper
-from test_paper_enrichment import missing
-from test_web_app import write_valid_config
+from allfold.application.decisions import apply_paper_action
+from allfold.application.paper_fields import edit_paper_fields, read_paper_fields
+from allfold.models import EvidenceDate
+from allfold.persistence.library_models import MetadataDelta
+from allfold.persistence.paper_repository import InvalidPaperState, PaperRepository
+from allfold.web.app import create_app
+from electron_test_helpers import OfflineBridge
+from library_application_helpers import create_paper, read_paper, FORMAL
 
-
-FORMAL = '10.5555/decision'
 PREPRINT = '10.1101/2022.02.01.123456'
-
 
 def collection(*rows, status='ok'):
     return httpx.Response(200, json={'messages': [{'status': status}], 'collection': list(rows)})
@@ -58,85 +59,44 @@ def lookup(service, paper_id):
 
 @pytest.mark.parametrize('provider', ['biorxiv', 'medrxiv'])
 @pytest.mark.parametrize('existing_first', [None, '2020-01'])
-def test_only_selected_formal_paper_gets_native_version_evidence(tmp_path, provider, existing_first):
-    config, workspace = write_valid_config(tmp_path)
-    paper_id, path = missing(workspace, status=WorkflowStatus.KEPT)
-    replace_frontmatter(path, first_public_at=existing_first)
-    path.write_text(path.read_text().replace('status:', '# Preserve YAML comment\nstatus:', 1))
-    unrelated = write_paper(workspace, uuid4(), filename='other.md')
-    replace_frontmatter(unrelated, doi='10.5555/other', external_ids={'doi': '10.5555/other'})
-    original, body = document_parts(path)
-    unrelated_bytes = unrelated.read_bytes()
-    calls = []
-    native = native_fixture(provider, version(provider), version(provider, '2', '2022-08-03'))
-
-    def respond(request):
-        calls.append(request.url.path)
-        assert request.url.host == 'api.biorxiv.org'
-        return native(request)
-
-    service = PreprintLookup(config, BrowserTaskLock(), client_factory=factory(respond))
-    result = lookup(service, paper_id)
+def test_native_versions_save_proof_on_selected_sqlite_paper(tmp_path, provider, existing_first):
+    config, workspace, paper = create_paper(tmp_path, first_public_at=existing_first, abstract='Formal abstract')
+    service = PreprintLookup(config, BrowserTaskLock(), client_factory=factory(
+        native_fixture(provider, version(provider), version(provider, '2', '2022-08-03'))))
+    result = lookup(service, paper.id)
     assert result['phase'] == 'Completed'
-    assert set(calls) == {f'/pubs/biorxiv/{FORMAL}/na/json', f'/pubs/medrxiv/{FORMAL}/na/json',
-                         f'/details/{provider}/{PREPRINT}/na/json'}
-    assert len(calls) == 3 and unrelated.read_bytes() == unrelated_bytes
-    actual, actual_body = document_parts(path)
-    assert actual_body == body
-    assert actual['first_public_at'] == (existing_first or '2022-02-03')
-    assert {item['kind'] for item in actual['date_evidence']} == {'preprint'}
-    assert [(item['version'], item['day'], item['first_version']) for item in actual['date_evidence']] == [
-        ('1', 3, True), ('2', 3, False)]
-    assert {source['record_id'] for source in actual['sources'] if source['provider'] == provider} == {
+    actual = read_paper(workspace, paper.id).metadata
+    assert actual.abstract == 'Formal abstract'
+    assert actual.first_public_at == (existing_first or '2022-02-03')
+    assert [(date.version, date.day, date.first_version) for date in actual.preprint_evidence] == [('1', 3, True), ('2', 3, False)]
+    assert {source.record_id for source in actual.sources if source.provider == provider} == {
         PREPRINT + ':publication', PREPRINT + ':1', PREPRINT + ':2'}
-    assert {key: value for key, value in actual.items() if key not in {'sources', 'date_evidence', 'first_public_at'}} == {
-        key: value for key, value in original.items() if key not in {'sources', 'date_evidence', 'first_public_at'}}
-    assert '# Preserve YAML comment' in path.read_text()
-    first = path.read_bytes()
-    assert lookup(service, paper_id)['saved_fields'] == []
-    assert path.read_bytes() == first
+    assert not lookup(service, paper.id)['saved_fields']
 
 
-@pytest.mark.parametrize('versions', [
-    None,
-    (),
-    (version('biorxiv', '2'),),
+@pytest.mark.parametrize('versions', [None, (), (version('biorxiv', '2'),),
     (version('biorxiv', date='2022-02'),),
     (version('biorxiv'), version('biorxiv', date='2022-02-04')),
-    (version('biorxiv'), version('biorxiv', '2', '2021-12-01')),
-])
-def test_unresolved_first_public_saves_verified_relationship_without_inference(tmp_path, versions):
-    config, workspace = write_valid_config(tmp_path)
-    paper_id, path = missing(workspace)
+    (version('biorxiv'), version('biorxiv', '2', '2021-12-01'))])
+def test_unresolved_first_version_retains_relationship_without_inference(tmp_path, versions):
+    config, workspace, paper = create_paper(tmp_path)
     native = native_fixture('biorxiv', *(versions or ()))
-
     def respond(request):
-        if versions is None and request.url.path.startswith('/details/'):
-            return httpx.Response(404)
-        return native(request)
-
-    service = PreprintLookup(config, BrowserTaskLock(), client_factory=factory(respond))
-    result = lookup(service, paper_id)
-    assert result['phase'] == 'Completed' and 'first_public_at' not in result['saved_fields']
-    actual, _ = document_parts(path)
-    assert actual.get('first_public_at') is None
-    assert any(source['record_id'] == PREPRINT + ':publication' for source in actual['sources'])
-    assert len(actual.get('date_evidence', [])) == len(versions or ())
+        return httpx.Response(404) if versions is None and request.url.path.startswith('/details/') else native(request)
+    result = lookup(PreprintLookup(config, BrowserTaskLock(), client_factory=factory(respond)), paper.id)
+    actual = read_paper(workspace, paper.id).metadata
+    assert result['phase'] == 'Completed' and actual.first_public_at is None
+    assert any(source.record_id == PREPRINT + ':publication' for source in actual.sources)
+    assert len(actual.preprint_evidence) == len(versions or ())
 
 
 @pytest.mark.parametrize('outcome', ['no_match', 'no_match_404', 'verification_404', 'http_failure',
-                                    'truncated_status', 'wrong_formal', 'wrong_preprint',
-                                    'wrong_platform', 'wrong_details_publication', 'self_relation',
-                                    'second_provider_failed', 'conflicting_alias', 'invalid_envelope'])
-def test_no_match_and_failed_binding_do_not_write_paper(tmp_path, outcome):
-    config, workspace = write_valid_config(tmp_path)
-    paper_id, path = missing(workspace)
-    before = path.read_bytes()
-    calls = []
-
+    'truncated_status', 'wrong_formal', 'wrong_preprint', 'wrong_platform', 'wrong_details_publication',
+    'self_relation', 'second_provider_failed', 'conflicting_alias', 'invalid_envelope'])
+def test_no_match_and_failed_binding_do_not_change_saved_paper(tmp_path, outcome):
+    config, workspace, paper = create_paper(tmp_path)
     def respond(request):
         route = request.url.path
-        calls.append(route)
         if outcome == 'no_match_404':
             return httpx.Response(404)
         if outcome == 'verification_404':
@@ -152,261 +112,234 @@ def test_no_match_and_failed_binding_do_not_write_paper(tmp_path, outcome):
         if outcome == 'no_match' or '/medrxiv/' in route:
             return collection(status=f'Preprint for DOI {FORMAL} not found')
         if '/pubs/' in route:
-            row = publication('biorxiv')
-            if outcome == 'wrong_formal':
-                row['published_doi'] = '10.5555/unrelated'
-            if outcome == 'wrong_platform':
-                row['preprint_platform'] = 'medrxiv'
-            if outcome == 'self_relation':
-                row['preprint_doi'] = FORMAL
-            if outcome == 'conflicting_alias':
-                row['biorxiv_doi'] = '10.1101/unrelated'
-            return collection(row)
-        row = version('biorxiv')
-        if outcome == 'wrong_preprint':
-            row['doi'] = '10.1101/123'
-        if outcome == 'wrong_details_publication':
-            row['published'] = '10.5555/unrelated'
-        return collection(row)
+            changes = {'wrong_formal': {'published_doi': '10.5555/unrelated'},
+                'wrong_platform': {'preprint_platform': 'medrxiv'}, 'self_relation': {'preprint_doi': FORMAL},
+                'conflicting_alias': {'biorxiv_doi': '10.1101/unrelated'}}
+            return collection(publication('biorxiv', **changes.get(outcome, {})))
+        changes = {'wrong_preprint': {'doi': '10.1101/123'},
+                   'wrong_details_publication': {'published': '10.5555/unrelated'}}
+        return collection(version('biorxiv', **changes.get(outcome, {})))
+    result = lookup(PreprintLookup(config, BrowserTaskLock(), client_factory=factory(respond)), paper.id)
+    assert result['phase'] == ('NoMatch' if outcome in {'no_match', 'no_match_404'} else 'Failed')
+    assert read_paper(workspace, paper.id) == paper
 
-    service = PreprintLookup(config, BrowserTaskLock(), client_factory=factory(respond))
-    result = lookup(service, paper_id)
-    if outcome in {'no_match', 'no_match_404'}:
-        assert result['phase'] == 'NoMatch'
-        assert calls == [f'/pubs/{provider}/{FORMAL}/na/json' for provider in ('biorxiv', 'medrxiv')]
+
+@pytest.mark.parametrize('existing_evidence', ['independent_version', 'relation_without_versions', 'conflicting_v1'])
+def test_native_v1_does_not_resolve_unproven_or_conflicting_family(tmp_path, existing_evidence):
+    metadata = {}
+    if existing_evidence == 'independent_version':
+        metadata['preprint_evidence'] = (EvidenceDate(kind='preprint', year=2019, month=1, provider='arxiv',
+            record_id='1901.12345', version='v2', publication_type='preprint', version_family='arxiv:1901.12345'),)
+    elif existing_evidence == 'relation_without_versions':
+        from allfold.models import ProviderRecordRef
+        metadata['preprint_relations'] = (ProviderRecordRef(provider='medrxiv', record_id='10.1101/other', relation='preprint'),)
     else:
-        assert result['phase'] == 'Failed'
-    assert result['message'] and not result['saved_fields']
-    assert path.read_bytes() == before
+        metadata['preprint_evidence'] = (EvidenceDate(kind='preprint', year=2022, month=2, day=4,
+            provider='biorxiv', record_id=PREPRINT + ':1', version='1', first_version=True, publication_type='preprint'),)
+    config, workspace, paper = create_paper(tmp_path, **metadata)
+    service = PreprintLookup(config, BrowserTaskLock(), client_factory=factory(native_fixture('biorxiv', version('biorxiv'))))
+    assert lookup(service, paper.id)['phase'] == 'Completed'
+    assert read_paper(workspace, paper.id).metadata.first_public_at is None
 
 
-@pytest.mark.parametrize('change', ['reject', 'content', 'directory', 'file', 'workspace', 'configuration', 'authority', 'cancel'])
-def test_revoked_or_changed_paper_cannot_reach_later_request_or_commit(tmp_path, change):
-    config, workspace = write_valid_config(tmp_path)
-    paper_id, path = missing(workspace)
-    waiting, release = Event(), Event()
-    calls = []
-
-    def respond(request):
-        calls.append(request.url.path)
-        waiting.set()
-        assert release.wait(5)
-        return collection(publication('biorxiv'))
-
-    task_lock = BrowserTaskLock()
-    service = PreprintLookup(config, task_lock, client_factory=factory(respond))
-    task = service.start(paper_id)
+def test_reject_commits_before_precise_cancel_and_cleanup_blocks_clear(tmp_path):
+    config, workspace, paper = create_paper(tmp_path, abstract='Existing formal abstract')
+    entered, release, cleaning, finish = Event(), Event(), Event(), Event()
+    from allfold.models import ExternalIds, MetadataSource, ProviderWorkEvidence
+    from allfold.persistence.library_models import PaperMetadata
+    from datetime import datetime, timezone
+    with PaperRepository.open(workspace) as repository:
+        other = repository.create_or_match(repository.workspace_id, direct_ids=ExternalIds(doi='10.5555/unrelated'),
+            metadata=PaperMetadata(title='Unaffected article')).paper
+    late_evidence = ProviderWorkEvidence(provenance=MetadataSource(provider='biorxiv', record_id=PREPRINT + ':1',
+        retrieved_at=datetime.now(timezone.utc)), dates=(EvidenceDate(kind='preprint', year=2022, month=2, day=3,
+        provider='biorxiv', record_id=PREPRINT + ':1', version='1', first_version=True, publication_type='preprint'),))
+    class PausedClient:
+        def __init__(self, *args, **kwargs): pass
+        def __enter__(self): return self
+        def lookup_published_preprints(self, doi):
+            self.request_guard()
+            entered.set()
+            assert release.wait(5)
+            return [late_evidence]
+        def __exit__(self, *args):
+            cleaning.set()
+            assert finish.wait(5)
+    service = PreprintLookup(config, BrowserTaskLock(), client_factory=PausedClient)
+    service.start(paper.id, paper.workspace_id)
     try:
-        assert waiting.wait(5)
-        if change == 'reject':
-            reject_paper(workspace, paper_id, WorkflowStatus.CANDIDATE)
-        elif change == 'content':
-            path.write_text(path.read_text() + 'Human edit\n')
-        elif change in {'directory', 'workspace'}:
-            original = path.parent if change == 'directory' else workspace
-            old = original.with_name(original.name + '-old')
-            original.rename(old)
-            path.parent.mkdir(parents=True)
-            path.write_bytes((old / path.relative_to(original)).read_bytes())
-        elif change == 'file':
-            old = path.with_suffix('.old')
-            path.rename(old)
-            path.write_bytes(old.read_bytes())
-        elif change == 'configuration':
-            config.write_text(config.read_text() + '\n# changed configuration\n')
-        elif change == 'authority':
-            task_lock.release(task_lock.owner)
-            replacement_owner = task_lock.acquire('replacement')
+        assert entered.wait(5)
+        result = apply_paper_action(workspace, paper.workspace_id, paper.id, 'reject', preprint_lookup=service)
+        assert result.paper.excluded
+        assert service.state(paper.id)['phase'] == 'Cancelling'
+        apply_paper_action(workspace, paper.workspace_id, paper.id, 'restore', preprint_lookup=service)
+        with pytest.raises(ValueError, match='active|cleaning'):
+            service.start(paper.id, paper.workspace_id)
+        apply_paper_action(workspace, paper.workspace_id, paper.id, 'reject', preprint_lookup=service)
+        with pytest.raises(Exception, match='cleaning'):
+            apply_paper_action(workspace, paper.workspace_id, paper.id, 'clear-metadata', preprint_lookup=service)
+        release.set()
+        assert cleaning.wait(5) and service.cleaning_up(paper.id, paper.workspace_id)
+    finally:
+        release.set(); finish.set(); service.join()
+    assert service.state(paper.id)['phase'] == 'Cancelled'
+    assert read_paper(workspace, paper.id).metadata.abstract == 'Existing formal abstract'
+    assert not read_paper(workspace, paper.id).metadata.preprint_evidence
+    assert read_paper(workspace, other.id) == other
+    apply_paper_action(workspace, paper.workspace_id, paper.id, 'clear-metadata', preprint_lookup=service)
+    assert read_paper(workspace, paper.id).metadata is None
+
+
+def test_local_abstract_edit_during_preprint_keeps_other_valid_proof(tmp_path):
+    config, workspace, paper = create_paper(tmp_path)
+    entered, release = Event(), Event()
+    native = native_fixture('biorxiv', version('biorxiv'))
+    def respond(request):
+        if '/pubs/biorxiv/' in request.url.path:
+            entered.set()
+            assert release.wait(5)
+        return native(request)
+    service = PreprintLookup(config, BrowserTaskLock(), client_factory=factory(respond))
+    service.start(paper.id, paper.workspace_id)
+    try:
+        assert entered.wait(5)
+        fields = read_paper_fields(workspace, paper.id, workspace_id=paper.workspace_id)
+        edit_paper_fields(workspace, paper.workspace_id, paper.id, fields['revision'], abstract='Human chosen abstract')
+    finally:
+        release.set(); service.join()
+    actual = read_paper(workspace, paper.id)
+    assert service.state(paper.id)['phase'] == 'Completed'
+    assert actual.metadata.abstract == 'Human chosen abstract' and actual.metadata.first_public_at == '2022-02-03'
+    with PaperRepository.open(workspace) as repository:
+        actual = repository.merge_metadata(paper.token, MetadataDelta(abstract='Old automatic candidate', ordinary_dates=('2030-04',)))
+    assert actual.metadata.abstract == 'Human chosen abstract' and actual.metadata.ordinary_dates == ('2030-04',)
+
+
+@pytest.mark.parametrize('phase', ['Completed', 'NoMatch', 'Failed'])
+@pytest.mark.parametrize('action', ['cancel', 'reject'])
+def test_terminal_preprint_phase_survives_cancel_during_final_resource_release(tmp_path, phase, action):
+    from threading import Lock
+    config, workspace, paper = create_paper(tmp_path)
+    releasing, finish = Event(), Event()
+    class PausedSlot:
+        def __init__(self): self.lock = Lock()
+        def acquire(self, **kwargs): return self.lock.acquire(**kwargs)
+        def release(self):
+            releasing.set()
+            assert finish.wait(5)
+            self.lock.release()
+    native = native_fixture('biorxiv', version('biorxiv'))
+    def respond(request):
+        if phase == 'Completed': return native(request)
+        return collection(status=f'Preprint for DOI {FORMAL} not found' if phase == 'NoMatch' else 'service unavailable')
+    service = PreprintLookup(config, BrowserTaskLock(), run_slot=PausedSlot(), client_factory=factory(respond))
+    started = service.start(paper.id, paper.workspace_id)
+    try:
+        assert releasing.wait(5)
+        assert service.state(paper.id)['phase'] == phase
+        if action == 'cancel':
+            assert not service.cancel(paper.id, started['request_id'], paper.workspace_id)
         else:
-            assert not service.cancel(uuid4(), task['request_id'])
-            assert service.cancel(paper_id, task['request_id'])
-        before = path.read_bytes()
+            assert apply_paper_action(workspace, paper.workspace_id, paper.id, 'reject', preprint_lookup=service).paper.excluded
+            with pytest.raises(InvalidPaperState, match='cleaning'):
+                apply_paper_action(workspace, paper.workspace_id, paper.id, 'clear-metadata', preprint_lookup=service)
+        state = service.state(paper.id)
+        assert state['phase'] == phase and state['cleaning_up']
+        with pytest.raises(ValueError, match='active|cleaning'):
+            service.start(paper.id, paper.workspace_id)
+    finally:
+        finish.set(); service.join()
+    state = service.state(paper.id)
+    assert state['phase'] == phase and not state['cleaning_up']
+
+
+def test_web_routes_use_workspace_identity_and_retire_business_endpoints(tmp_path):
+    config, workspace, paper = create_paper(tmp_path)
+    app = create_app(config, electron_bridge=OfflineBridge(), diagnostics_root=tmp_path / 'logs')
+    with TestClient(app, base_url='http://localhost') as client:
+        snapshot = client.get('/api/ui-next/workspace').json()
+        assert snapshot['workspace_id'] == str(paper.workspace_id)
+        item = snapshot['subjects'][0]['journals'][0]['papers'][0]
+        assert item['id'] == str(paper.id) and item['metadata_present']
+        assert item['collection_status'] == 'not_started'
+        csrf = snapshot['csrf_token']
+        endpoint = f'/api/ui-next/papers/{paper.id}/reject'
+        body = {'csrf_token': csrf, 'workspace_id': str(paper.workspace_id)}
+        assert client.post(endpoint, json={**body, 'csrf_token': 'bad'}).status_code == 403
+        assert client.post(endpoint, json={**body, 'workspace_id': str(uuid4())}).status_code == 409
+        rejected = client.post(endpoint, json=body)
+        assert rejected.status_code == 200 and rejected.json()['paper']['status'] == 'trash'
+        assert client.get('/api/ui-next/workspace').json()['counts']['trash'] == 1
+        for retired in ('/api/kept-workflow/state', f'/api/papers/{paper.id}/enrichment/state', '/api/ui-next/zotero'):
+            assert client.get(retired).status_code == 404
+
+
+def test_preprint_can_use_known_metadata_with_unknown_legacy_discovery_time(tmp_path):
+    import json
+    import sqlite3
+    config, workspace, paper = create_paper(tmp_path)
+    # Valid legacy metadata never had this field; its unknown value must stay
+    # unknown while transient proof provenance uses this operation's evidence.
+    with sqlite3.connect(workspace / 'papers.sqlite') as connection:
+        payload = paper.metadata.model_dump(mode='json')
+        payload.pop('discovered_at')
+        connection.execute('UPDATE paper_metadata SET payload = ? WHERE paper_id = ?', (json.dumps(payload), str(paper.id)))
+    assert read_paper(workspace, paper.id).metadata.discovered_at is None
+    service = PreprintLookup(config, BrowserTaskLock(), client_factory=factory(native_fixture('biorxiv', version('biorxiv'))))
+    assert lookup(service, paper.id)['phase'] == 'Completed'
+    metadata = read_paper(workspace, paper.id).metadata
+    assert metadata.first_public_at == '2022-02-03' and metadata.discovered_at is None
+
+
+@pytest.mark.parametrize('stop_kind', ['reject', 'exclude', 'cancel'])
+def test_preprint_status_reports_current_same_library_revision_after_terminal_cleanup(tmp_path, stop_kind):
+    config, workspace, paper = create_paper(tmp_path, abstract='Original')
+    entered, release = Event(), Event()
+    def respond(request):
+        entered.set()
+        assert release.wait(5)
+        return collection(status=f'Preprint for DOI {FORMAL} not found')
+    service = PreprintLookup(config, BrowserTaskLock(), client_factory=factory(respond))
+    task = service.start(paper.id, paper.workspace_id)
+    try:
+        assert entered.wait(5)
+        if stop_kind == 'reject':
+            action = apply_paper_action(workspace, paper.workspace_id, paper.id, 'reject', preprint_lookup=service)
+            expected_revision = action.revision
+        elif stop_kind == 'exclude':
+            with PaperRepository.open(workspace) as repository:
+                repository.exclude(paper.token)
+                expected_revision = repository.revision
+        else:
+            fields = read_paper_fields(workspace, paper.id, workspace_id=paper.workspace_id)
+            _, expected_revision, _ = edit_paper_fields(workspace, paper.workspace_id, paper.id,
+                fields['revision'], abstract='Local edit while stopping')
+            assert service.cancel(paper.id, task['request_id'], paper.workspace_id)
     finally:
         release.set()
         service.join()
-    assert calls == [f'/pubs/biorxiv/{FORMAL}/na/json']
-    assert path.read_bytes() == before
-    assert service.state(paper_id)['phase'] == ('Cancelled' if change == 'cancel' else 'Failed')
-    if change == 'authority':
-        assert task_lock.owner is replacement_owner
-
-
-def test_saved_conflicting_v1_without_family_blocks_filling_first_public(tmp_path):
-    config, workspace = write_valid_config(tmp_path)
-    paper_id, path = missing(workspace)
-    replace_frontmatter(path, date_evidence=[dict(kind='preprint', year=2022, month=2, day=4,
-        provider='biorxiv', record_id=PREPRINT + ':1', version='1', first_version=True, publication_type='preprint')])
-    service = PreprintLookup(config, BrowserTaskLock(), client_factory=factory(native_fixture('biorxiv', version('biorxiv'))))
-    result = lookup(service, paper_id)
-    paper, _ = document_parts(path)
-    assert result['phase'] == 'Completed'
-    assert not paper.get('first_public_at')
-    assert {fact['day'] for fact in paper['date_evidence']} == {3, 4}
-
-
-@pytest.mark.parametrize('change', ['no_doi', 'preprint', 'unknown_type', 'rejected', 'missing_workspace'])
-def test_ineligible_paper_or_missing_workspace_never_dispatches(tmp_path, change):
-    config, workspace = write_valid_config(tmp_path)
-    paper_id = uuid4()
-    if change != 'missing_workspace':
-        path = write_paper(workspace, paper_id)
-        if change == 'no_doi':
-            replace_frontmatter(path, doi=None, external_ids={'pmid': '12345678'})
-        elif change == 'preprint':
-            replace_frontmatter(path, publication_type='preprint')
-        elif change == 'unknown_type':
-            replace_frontmatter(path, publication_type=None, journal=None, conference=None)
-        elif change == 'rejected':
-            reject_paper(workspace, paper_id, WorkflowStatus.CANDIDATE)
-        before = path.read_bytes()
-
-    def unexpected_request(_):
-        pytest.fail('Ineligible Paper must not dispatch a request')
-
-    service = PreprintLookup(config, BrowserTaskLock(), client_factory=factory(unexpected_request))
-    with pytest.raises((ValueError, OSError)):
-        service.start(paper_id)
-    assert service.state(paper_id)['phase'] == 'Idle'
-    if change == 'missing_workspace':
-        assert not (workspace / 'Papers').exists()
-    else:
-        assert path.read_bytes() == before
-
-
-def test_formal_lookup_does_not_guess_endpoint_from_doi_prefix(tmp_path):
-    config, workspace = write_valid_config(tmp_path)
-    paper_id, path = missing(workspace)
-    formal = '10.1101/formal'
-    replace_frontmatter(path, doi=formal, external_ids={'doi': formal}, publication_type='journal')
-    calls = []
-
-    def respond(request):
-        calls.append(request.url.path)
-        return collection(status=f'Preprint for DOI {formal} not found')
-
-    service = PreprintLookup(config, BrowserTaskLock(), client_factory=factory(respond))
-    assert lookup(service, paper_id)['phase'] == 'NoMatch'
-    assert calls == [f'/pubs/{provider}/{formal}/na/json' for provider in ('biorxiv', 'medrxiv')]
-
-
-def test_lookup_reports_committed_fields_when_directory_sync_fails(tmp_path, monkeypatch):
-    import os
-    import stat
-
-    config, workspace = write_valid_config(tmp_path)
-    paper_id, path = missing(workspace)
-    fsync, failures = os.fsync, []
-
-    def fail_committed_directory_sync(descriptor):
-        if not failures and stat.S_ISDIR(os.fstat(descriptor).st_mode) and PREPRINT + ':publication' in path.read_text():
-            failures.append(True)
-            raise OSError('Synthetic directory sync failure')
-        return fsync(descriptor)
-
-    monkeypatch.setattr(os, 'fsync', fail_committed_directory_sync)
-    service = PreprintLookup(config, BrowserTaskLock(), client_factory=factory(native_fixture('biorxiv', version('biorxiv'))))
-    result = lookup(service, paper_id)
-    assert failures and result['phase'] == 'Completed'
-    assert 'filesystem sync failed' in result['message']
-    assert set(result['saved_fields']) == {'date_evidence', 'first_public_at', 'sources'}
-    assert document_parts(path)[0]['first_public_at'] == '2022-02-03'
-
-
-def test_lookup_routes_require_csrf_and_hold_run_settings_reset_and_enrich_admission(tmp_path):
-    from fastapi.testclient import TestClient
-    from electron_test_helpers import OfflineBridge
-    from allfold.web.app import create_app
-    from allfold.web.settings_guard import settings_task_active
-
-    config, workspace = write_valid_config(tmp_path)
-    paper_id, path = missing(workspace)
-    app = create_app(config, electron_bridge=OfflineBridge())
-    waiting, release = Event(), Event()
-
-    def respond(_):
-        waiting.set()
-        assert release.wait(5)
-        return collection(status=f'Preprint for DOI {FORMAL} not found')
-
-    service = app.state.preprint_lookup
-    service.client_factory = factory(respond)
-    with TestClient(app, base_url='http://localhost') as client:
-        endpoint = f'/api/papers/{paper_id}/preprint-lookup'
-        assert client.post(endpoint + '/start', json={'csrf_token': 'bad'}).status_code == 403
-        assert client.post('/api/papers/api-completion/start', json={}).status_code == 404
-        settings = client.get('/api/ui-next/settings').json()
-        csrf = settings['csrf_token']
-        assert client.post(endpoint + '/start', json={'csrf_token': csrf, 'paper_ids': [str(paper_id)]}).status_code == 422
-        service.run_slot.acquire()
-        try:
-            refused = client.post(endpoint + '/start', json={'csrf_token': csrf})
-            assert refused.status_code == 409 and 'Run is active' in refused.json()['error']
-        finally:
-            service.run_slot.release()
-        try:
-            start = client.post(endpoint + '/start', json={'csrf_token': csrf})
-            assert start.status_code == 200 and waiting.wait(5)
-            request_id = start.json()['request_id']
-            assert client.get(endpoint + '/state').json()['phase'] == 'Running'
-            assert client.get(endpoint + '/state?request_id=stale').json()['phase'] == 'Idle'
-            assert client.get(f'/api/papers/{uuid4()}/preprint-lookup/state').json()['phase'] == 'Idle'
-            assert settings_task_active(app) and not service.run_slot.acquire(blocking=False)
-            assert app.state.browser_task_lock.acquire('enrichment') is None
-            assert client.post(endpoint + '/start', json={'csrf_token': csrf}).status_code == 409
-            base = {key: settings['values'][key] for key in ('monitor_revision_exists', 'monitor_revision_digest',
-                    'journal_revision_exists', 'journal_revision_digest')}
-            saved = client.post('/api/ui-next/settings/autosave', json={
-                'csrf_token': csrf, 'base': base, 'changes': {'name': 'Another Monitor'}}).json()
-            assert saved['outcome'] == 'TASK_ACTIVE'
-            preview = client.get('/api/ui-next/settings/reset-preview').json()
-            reset = client.post('/settings/workspace-reset', data={'csrf_token': csrf, 'reset_token': preview['reset_token']})
-            assert reset.status_code == 409 and path.exists()
-            assert client.post(endpoint + '/cancel', json={'csrf_token': csrf, 'request_id': 'stale'}).status_code == 409
-            assert client.post(endpoint + '/cancel', json={'csrf_token': csrf, 'request_id': request_id}).status_code == 200
-        finally:
-            release.set()
-            service.join()
-        assert client.get(endpoint + '/state').json()['phase'] == 'Cancelled'
-        assert not settings_task_active(app)
-
-
-@pytest.mark.parametrize('existing_evidence', ['independent_version', 'relation_without_versions'])
-def test_native_v1_does_not_resolve_an_independent_preprint_family(tmp_path, existing_evidence):
-    config, workspace = write_valid_config(tmp_path)
-    paper_id, path = missing(workspace)
-    if existing_evidence == 'independent_version':
-        replace_frontmatter(path, date_evidence=[dict(kind='preprint', year=2019, month=1, provider='arxiv',
-            record_id='1901.12345', version='v2', publication_type='preprint', version_family='arxiv:1901.12345')])
-    else:
-        original, _ = document_parts(path)
-        replace_frontmatter(path, sources=[*original['sources'], dict(provider='medrxiv', record_id='10.1101/other:publication',
-            retrieved_at='2026-10-12T00:00:00Z', role='supplement',
-            url=f'https://api.biorxiv.org/pubs/medrxiv/{FORMAL}/na/json')])
-    service = PreprintLookup(config, BrowserTaskLock(), client_factory=factory(native_fixture('biorxiv', version('biorxiv'))))
-    result = lookup(service, paper_id)
-    paper, _ = document_parts(path)
-    assert result['phase'] == 'Completed'
-    assert not paper.get('first_public_at')
-    assert any(fact['provider'] == 'biorxiv' and fact['first_version'] for fact in paper['date_evidence'])
-
-
-def test_failed_worker_start_does_not_leave_running_state_or_hold_admission(tmp_path, monkeypatch):
-    from threading import Lock, Thread
-
-    config, workspace = write_valid_config(tmp_path)
-    paper_id, _ = missing(workspace)
-    task_lock, run_slot = BrowserTaskLock(), Lock()
-    service = PreprintLookup(config, task_lock, run_slot=run_slot,
-        client_factory=factory(lambda _: collection(status='no results found')))
-
-    def cannot_start(_):
-        raise RuntimeError('Cannot start thread')
-
-    with monkeypatch.context() as context:
-        context.setattr(Thread, 'start', cannot_start)
-        with pytest.raises(RuntimeError, match='Cannot start thread'):
-            service.start(paper_id)
-    assert not service.running and service.state(paper_id)['phase'] == 'Idle'
-    assert task_lock.owner is None and not run_slot.locked()
-    service.join()
-    assert lookup(service, paper_id)['phase'] == 'NoMatch'
+    status = service.state(paper.id, task['request_id'])
+    assert status['phase'] == ('Failed' if stop_kind == 'exclude' else 'Cancelled')
+    assert status['workspace_id'] == str(paper.workspace_id) and status['request_id'] == task['request_id']
+    assert status['revision'] == expected_revision > task['revision']
+    assert not status['cleaning_up'] and not read_paper(workspace, paper.id).metadata.preprint_evidence
+    if stop_kind != 'cancel':
+        from allfold.persistence.paper_repository import StaleWriteError
+        with PaperRepository.open(workspace) as repository:
+            with pytest.raises(StaleWriteError):
+                repository.merge_metadata(paper.token, MetadataDelta(ordinary_dates=('2030-01',)))
+    # A later library is not allowed to re-scope this old task's status envelope.
+    other_workspace = tmp_path / 'other-workspace'
+    other_workspace.mkdir()
+    with PaperRepository.create(other_workspace) as repository:
+        assert repository.workspace_id != paper.workspace_id
+        from allfold.models import ExternalIds
+        from allfold.persistence.library_models import PaperMetadata
+        other = repository.create_or_match(repository.workspace_id, direct_ids=ExternalIds(doi='10.5555/other'),
+            metadata=PaperMetadata(title='Other library')).paper
+        repository.exclude(other.token)
+        foreign_revision = repository.revision
+    config.write_text(config.read_text().replace('output_dir: workspace', 'output_dir: other-workspace'))
+    stale_status = service.state(paper.id, task['request_id'])
+    assert stale_status['workspace_id'] == str(paper.workspace_id)
+    assert stale_status['revision'] == task['revision'] < foreign_revision

@@ -9,7 +9,6 @@ import json
 import secrets
 import threading
 from contextlib import asynccontextmanager
-from dataclasses import replace
 from pathlib import Path
 from typing import Literal
 from uuid import UUID
@@ -18,7 +17,7 @@ from fastapi import FastAPI, Request, WebSocket
 from fastapi.encoders import jsonable_encoder
 from fastapi.responses import JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
-from pydantic import BaseModel, ConfigDict, Field, StrictBool
+from pydantic import BaseModel, ConfigDict, Field
 from starlette.middleware.trustedhost import TrustedHostMiddleware
 from starlette.datastructures import UploadFile
 from starlette.concurrency import run_in_threadpool
@@ -54,9 +53,6 @@ from allfold.application.coordinators.journal_covers import JournalCoverSearch
 from allfold.providers.openalex import OpenAlexError
 from allfold.persistence.safe_write import CompareReadError
 from allfold.persistence.safe_write import ContentChangedError, WorkspaceOperationLock, TextWriteCommittedError
-from allfold.models import WorkflowStatus
-from allfold.integrations.zotero_local import ZoteroLocalClient
-from allfold.application.coordinators.paper_enrichment import PaperEnrichment
 from allfold.application.coordinators.preprint_lookup import PreprintLookup
 from allfold.application.coordinators.wos_coordinator import WoSCoordinator
 from allfold.application.coordinators.run_coordinator import CoordinatorStatus, RunCoordinator
@@ -67,8 +63,6 @@ from allfold.web.settings_form import (
     settings_form_from_draft,
     settings_form_from_submission,
 )
-from allfold.application.batch_import import BatchImportService
-from allfold.application.coordinators.kept_workflow import KeptWorkflow
 from allfold.application.coordinators.login import LoginCoordinator
 from allfold.web.ui_next import install_ui_next, ui_next_page
 
@@ -85,25 +79,23 @@ class _UIStaticFiles(StaticFiles):
         return response
 
 
-from allfold.application.import_target import _ImportTarget
-
-
-class _EnrichmentAction(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-    csrf_token: str
-    request_id: str | None = None
-    developer_retry: StrictBool = False
+from allfold.application.paper_fields import read_paper_fields, edit_paper_fields
+from allfold.application.workspace import WorkspacePaper
+from allfold.persistence.paper_repository import LibraryError
+from allfold.web.ui_next import paper_payload
 
 
 class _PreprintLookupAction(BaseModel):
     model_config = ConfigDict(extra='forbid')
     csrf_token: str
+    workspace_id: UUID
     request_id: str | None = None
 
 
 class _PaperFieldEdit(BaseModel):
     model_config = ConfigDict(extra="forbid")
     csrf_token: str
+    workspace_id: UUID
     revision: str = Field(pattern=r'^[0-9a-f]{64}$')
 
 
@@ -113,14 +105,6 @@ class _PaperFieldReset(_PaperFieldEdit):
 
 class _PaperAbstractInput(_PaperFieldEdit):
     abstract: str
-
-
-class _WorkflowStart(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-    csrf_token: str | None = None
-    import_token: str | None = None
-    service_id: str | None = None
-    skip_unprepared: list[str] = Field(default_factory=list)
 
 
 class _LoginAction(BaseModel):
@@ -135,13 +119,6 @@ class _LoginWorkflowAction(BaseModel):
     workflow_id: str
 
 
-class _WorkflowAction(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-    csrf_token: str | None = None
-    workflow_id: str
-    generation: int
-
-
 def _csrf_valid(submitted_csrf: str | None, csrf_token: str) -> bool:
     submitted = (submitted_csrf or "").encode("utf-8")
     return secrets.compare_digest(submitted, csrf_token.encode("ascii"))
@@ -152,24 +129,14 @@ def _workspace_state(
 ) -> tuple[WorkspaceSnapshot | None, str | None]:
     try:
         config = load_config(config_path)
-    except ConfigurationError as error:
+        return load_workspace(config.output_dir, journals=config.journals), None
+    except (ConfigurationError, LibraryError, OSError) as error:
         return None, str(error)
-
-    return load_workspace(config.output_dir, journals=config.journals), None
 
 
 def _workspace_health_context(config_path: Path) -> dict[str, object]:
     workspace, config_error = _workspace_state(config_path)
     return {"health_workspace": workspace, "health_config_error": config_error}
-
-
-def _zotero_integration_state(electron_bridge: ElectronBridge) -> dict[str, object]:
-    with ZoteroLocalClient() as local:
-        instance = local.current_instance()
-    return {
-        "zotero_instance": instance,
-        "electron_connected": electron_bridge.connected,
-    }
 
 
 def _settings_result_context(
@@ -217,11 +184,6 @@ def create_app(config_path: Path, *, electron_bridge: ElectronBridge, diagnostic
     if electron_bridge is None:
         raise ValueError('ElectronBridge is required')
     resolved_config_path = config_path.resolve()
-    from allfold.application.import_openalex import lookup_pdf_candidates
-    def openalex_pdf(doi, **operation_options):
-        return lookup_pdf_candidates(doi, config_path=resolved_config_path, **operation_options)
-
-    electron_bridge.openalex_pdf = openalex_pdf
     csrf_token = secrets.token_urlsafe(32)
     deletion_key = secrets.token_bytes(32)
 
@@ -230,15 +192,9 @@ def create_app(config_path: Path, *, electron_bridge: ElectronBridge, diagnostic
         try:
             yield
         finally:
-            import asyncio
-            application.state.run_coordinator.shutdown()
+            from allfold.web.electron_server import drain_application
             electron_bridge.finish_disconnected()
-            await asyncio.to_thread(application.state.kept_workflow.shutdown)
-            for worker in (application.state.preprint_lookup, application.state.paper_enrichment, application.state.journal_cover_search, application.state.wos_coordinator, application.state.login):
-                await asyncio.to_thread(worker.shutdown)
-            for worker in (application.state.run_coordinator, application.state.kept_workflow,
-                           application.state.preprint_lookup, application.state.paper_enrichment, application.state.journal_cover_search, application.state.wos_coordinator, application.state.login):
-                await asyncio.to_thread(worker.join)
+            await drain_application(application)
 
     app = FastAPI(
         lifespan=lifespan,
@@ -247,6 +203,7 @@ def create_app(config_path: Path, *, electron_bridge: ElectronBridge, diagnostic
         redoc_url=None,
         openapi_url=None,
     )
+    app.state.stopping = False
     app.state.config_path = resolved_config_path
     app.state.csrf_token = csrf_token
     from allfold.diagnostics import DiagnosticStore
@@ -271,27 +228,21 @@ def create_app(config_path: Path, *, electron_bridge: ElectronBridge, diagnostic
 
     @app.middleware("http")
     async def electron_shutdown_guard(request: Request, call_next):
-        if electron_bridge.closing and request.method != "GET":
+        if (electron_bridge.closing or app.state.stopping) and request.method != "GET":
             return JSONResponse({"message": "Application is shutting down"}, status_code=409)
         return await call_next(request)
 
     run_slot = threading.Lock()
     app.state.run_coordinator = RunCoordinator(resolved_config_path, run_slot=run_slot, diagnostics=app.state.diagnostics)
     app.state.preprint_lookup = PreprintLookup(resolved_config_path, app.state.browser_task_lock, run_slot=run_slot)
-    app.state.paper_enrichment = PaperEnrichment(electron_bridge, app.state.browser_task_lock,
-        diagnostics=app.state.diagnostics, current_workspace=lambda: load_config(resolved_config_path).output_dir,
-        config_path=resolved_config_path)
     app.state.journal_cover_search = JournalCoverSearch(electron_bridge, app.state.browser_task_lock, diagnostics=app.state.diagnostics)
-    app.state.batch_import = BatchImportService(electron_bridge, app.state.browser_task_lock, diagnostics=app.state.diagnostics)
     app.state.login = LoginCoordinator(electron_bridge, app.state.browser_task_lock, diagnostics=app.state.diagnostics)
     app.state.wos_coordinator = WoSCoordinator(resolved_config_path, app.state.login, run_slot,
         bridge=electron_bridge, browser_lock=app.state.browser_task_lock, diagnostics=app.state.diagnostics)
     app.state.run_coordinator.wos_stage = app.state.wos_coordinator
-    app.state.import_token = secrets.token_urlsafe(32)
     app.state.reset_confirmation = None
     app.state.reset_lock = threading.Lock()
-    import_submission_lock = app.state.settings_write_lock
-    app.state.import_submission_lock = import_submission_lock
+    admission_lock = app.state.settings_write_lock
 
     def login_state():
         from allfold.application.browser_services import BrowserServiceSnapshot
@@ -337,111 +288,12 @@ def create_app(config_path: Path, *, electron_bridge: ElectronBridge, diagnostic
             return JSONResponse({"message": str(error)}, status_code=409)
 
     from allfold.application.browser_services import BrowserServiceSnapshot
-    from allfold.application.kept_queue import kept_queue
-    from allfold.application.workspace import plan_workspace_import
-    from allfold.persistence.safe_write import workspace_operation_lock
-
-    app.state.kept_workflow = KeptWorkflow(
-        app.state.batch_import, app.state.login, import_submission_lock,
-        browser_lock=app.state.browser_task_lock, diagnostics=app.state.diagnostics,
-    )
-
-    from allfold.application.history import safe_zotero_keys
-
-    def workflow_json():
-        with import_submission_lock:
-            workflow = app.state.kept_workflow.snapshot()
-            batch = app.state.batch_import.snapshot()
-        return {
-            **jsonable_encoder(workflow), "active": workflow.active, "can_cancel": workflow.can_cancel,
-            "batch": ({"phase": batch.phase.value, "successful": batch.successful, "task_id": batch.task_id,
-                       "total": len(batch.plan.papers) if batch.plan else 0,
-                       "active_paper_ids": jsonable_encoder(batch.active_paper_ids),
-                       "statistics": jsonable_encoder(batch.statistics),
-                       "results": [
-                           {**jsonable_encoder(result, exclude={"native_identity"}),
-                            "zotero_keys": safe_zotero_keys(result.native_identity)}
-                           for result in batch.results
-                       ],
-                       "message": batch.message} if workflow.workflow_id else None),
-        }
-
-    @app.get("/api/kept-workflow/state")
-    def workflow_state() -> JSONResponse:
-        return JSONResponse(workflow_json(), headers={"Cache-Control": "no-store"})
-
-    @app.get("/api/kept-workflow/queue")
-    def workflow_queue(service_id: str | None = None):
-        try:
-            with import_submission_lock:
-                target, _ = _ImportTarget.read(resolved_config_path, service_id=service_id)
-                saved = BrowserServiceSnapshot.read(resolved_config_path)
-                batch = app.state.batch_import.snapshot()
-                if app.state.batch_import.running:
-                    plan = batch.plan
-                elif target.workspace_identity is None or target.papers_identity is None:
-                    plan = None
-                else:
-                    with workspace_operation_lock(target.workspace) as lock:
-                        target.verify(lock)
-                        plan = plan_workspace_import(lock, saved.journals)
-                data = kept_queue(target.workspace, saved.journals, saved.services, plan)
-                current, _ = _ImportTarget.read(resolved_config_path, service_id=service_id)
-                if target.lock_identity is None:
-                    target = replace(target, lock_identity=current.lock_identity)
-                if target != current:
-                    raise ContentChangedError("Workspace or configuration changed; refresh the Import queue.")
-                saved.verify()
-                unprepared = app.state.kept_workflow.unprepared_services(
-                    saved, (plan.inventory or plan.papers) if plan else (), service_id)
-                return JSONResponse({**data, 'service_id': service_id, 'unprepared_services': unprepared,
-                    'import_token': target.form_token(app.state.import_token),
-                    'qualification_pending': plan is None}, headers={"Cache-Control": "no-store"})
-        except (ConfigurationError, ContentChangedError, OSError, RuntimeError) as error:
-            return JSONResponse({'message': str(error)}, status_code=409)
-
-    @app.post("/api/kept-workflow/start")
-    def workflow_start(body: _WorkflowStart) -> JSONResponse:
-        if not _csrf_valid(body.csrf_token, csrf_token):
-            return JSONResponse({"message": "Invalid or missing CSRF token."}, status_code=403)
-        with import_submission_lock:
-            workflow = app.state.kept_workflow
-            if workflow.snapshot().active or app.state.batch_import.running:
-                return JSONResponse({**workflow_json(), 'message': 'A fixed Kept batch is already active; selection cannot retarget it.'}, status_code=409)
-            try:
-                target, config = _ImportTarget.read(resolved_config_path, service_id=body.service_id)
-                if not _csrf_valid(body.import_token, target.form_token(app.state.import_token)):
-                    raise ContentChangedError("Workspace changed or import request already submitted/expired. Review the current Workspace before importing.")
-                saved = BrowserServiceSnapshot.read(resolved_config_path)
-                with workspace_operation_lock(target.workspace) as lock:
-                    target.verify(lock)
-                    plan = plan_workspace_import(lock, saved.journals, service_id=body.service_id)
-                    target = replace(target, paper_plan=plan)
-                workflow.start(target, config.kept_workflow, saved, skip_unprepared=body.skip_unprepared)
-                app.state.import_token = secrets.token_urlsafe(32)
-            except (ConfigurationError, ContentChangedError, OSError, RuntimeError) as error:
-                return JSONResponse({"message": str(error)}, status_code=409)
-            return JSONResponse(workflow_json())
-
-    @app.post("/api/kept-workflow/{action}")
-    def workflow_action(action: Literal["cancel", "acknowledge"], body: _WorkflowAction) -> JSONResponse:
-        if not _csrf_valid(body.csrf_token, csrf_token):
-            return JSONResponse({"message": "Invalid or missing CSRF token."}, status_code=403)
-        method = {"cancel": app.state.kept_workflow.cancel,
-                  "acknowledge": app.state.kept_workflow.acknowledge_navigation}[action]
-        accepted = method(body.workflow_id, body.generation)
-        return JSONResponse(workflow_json(), status_code=200 if accepted else 409)
-
     app.add_middleware(
         TrustedHostMiddleware,
         allowed_hosts=_ALLOWED_HOSTS,
     )
     app.mount("/static", _UIStaticFiles(directory=_STATIC_DIR), name="static")
 
-
-    @app.get("/api/papers/{paper_id}/enrichment/state")
-    def enrichment_state(paper_id: UUID, request_id: str | None = None):
-        return JSONResponse(app.state.paper_enrichment.state(paper_id, request_id))
 
     @app.get('/api/papers/{paper_id}/preprint-lookup/state')
     def preprint_lookup_state(paper_id: UUID, request_id: str | None = None):
@@ -454,64 +306,38 @@ def create_app(config_path: Path, *, electron_bridge: ElectronBridge, diagnostic
             return JSONResponse({'error': 'Invalid CSRF token'}, status_code=403)
         try:
             with app.state.settings_write_lock, app.state.reset_lock:
-                return JSONResponse(app.state.preprint_lookup.start(paper_id))
-        except (ConfigurationError, ValueError, OSError, ContentChangedError, CompareReadError) as error:
+                return JSONResponse(app.state.preprint_lookup.start(paper_id, body.workspace_id))
+        except (ConfigurationError, LibraryError, ValueError, OSError, ContentChangedError, CompareReadError) as error:
             return JSONResponse({'error': str(error)}, status_code=409)
 
     @app.post('/api/papers/{paper_id}/preprint-lookup/cancel')
     def preprint_lookup_cancel(paper_id: UUID, body: _PreprintLookupAction):
         if not _csrf_valid(body.csrf_token, csrf_token):
             return JSONResponse({'error': 'Invalid CSRF token'}, status_code=403)
-        accepted = app.state.preprint_lookup.cancel(paper_id, body.request_id)
+        accepted = app.state.preprint_lookup.cancel(paper_id, body.request_id, body.workspace_id)
         return JSONResponse({'accepted': True} if accepted else {'error': 'Preprint lookup is no longer active'},
                             status_code=200 if accepted else 409)
 
-    @app.post("/api/papers/{paper_id}/enrichment/{action}")
-    def enrichment_action(paper_id: UUID, action: str, body: _EnrichmentAction):
-        if not _csrf_valid(body.csrf_token, csrf_token):
-            return JSONResponse({'error': 'Invalid CSRF token'}, status_code=403)
-        service = app.state.paper_enrichment
-        try:
-            if action == 'cancel':
-                accepted = service.cancel(paper_id, body.request_id)
-                return JSONResponse({'accepted': accepted}, status_code=200 if accepted else 409)
-            if action != 'start':
-                return JSONResponse({'error': 'Unknown action'}, status_code=404)
-            with app.state.settings_write_lock:
-                workspace = load_config(resolved_config_path).output_dir
-                state = service.start(workspace, paper_id)
-            return JSONResponse(state)
-        except (ConfigurationError, ValueError, OSError, ContentChangedError, CompareReadError) as exc:
-            return JSONResponse({'error': str(exc)}, status_code=409)
-
     @app.get('/api/papers/{paper_id}/fields')
-    def paper_field_snapshot(paper_id: UUID):
+    def paper_field_snapshot(paper_id: UUID, workspace_id: UUID | None = None):
         try:
             workspace = load_config(resolved_config_path).output_dir
-            return JSONResponse(app.state.paper_enrichment.fields(workspace, paper_id),
+            return JSONResponse(read_paper_fields(workspace, paper_id, workspace_id=workspace_id),
                                 headers={'Cache-Control': 'no-store'})
-        except (ConfigurationError, ValueError, OSError, ContentChangedError, CompareReadError) as exc:
-            return JSONResponse({'error': str(exc)}, status_code=409)
+        except (ConfigurationError, LibraryError, ValueError, OSError, ContentChangedError) as error:
+            return JSONResponse({'error': str(error)}, status_code=409)
 
     def write_paper_fields(paper_id, body, **changes):
         if not _csrf_valid(body.csrf_token, csrf_token):
             return JSONResponse({'error': 'Invalid CSRF token'}, status_code=403)
-        # Use the existing Reset mutex and browser exclusion; no separate local
-        # editing queue or persistent task is needed for this immediate write.
-        with app.state.reset_lock:
-            try:
-                if (app.state.run_coordinator.snapshot().status is CoordinatorStatus.RUNNING
-                        or app.state.preprint_lookup.running
-                        or app.state.wos_coordinator.running or app.state.batch_import.running
-                        or app.state.kept_workflow.snapshot().active):
-                    raise ValueError('Another workflow is active; field edit refused')
+        try:
+            with app.state.reset_lock:
                 workspace = load_config(resolved_config_path).output_dir
-                app.state.paper_enrichment.edit_fields(workspace, paper_id, body.revision, **changes)
-                return JSONResponse({'saved': True})
-            except TextWriteCommittedError:
-                return JSONResponse({'saved': True, 'warning': 'Fields saved; filesystem sync failed'})
-            except (ConfigurationError, ValueError, OSError, ContentChangedError, CompareReadError) as exc:
-                return JSONResponse({'error': str(exc)}, status_code=409)
+                paper, revision, fields = edit_paper_fields(workspace, body.workspace_id, paper_id, body.revision, **changes)
+            return JSONResponse(jsonable_encoder(dict(saved=True, workspace_id=paper.workspace_id,
+                revision=revision, paper=paper_payload(WorkspacePaper(paper), preprint_lookup=app.state.preprint_lookup), fields=fields)))
+        except (ConfigurationError, LibraryError, ValueError, OSError, ContentChangedError) as error:
+            return JSONResponse({'error': str(error)}, status_code=409)
 
     @app.post('/api/papers/{paper_id}/fields/reset')
     def reset_paper_fields(paper_id: UUID, body: _PaperFieldReset):
@@ -553,7 +379,7 @@ def create_app(config_path: Path, *, electron_bridge: ElectronBridge, diagnostic
         if not _csrf_valid(str(csrf) if csrf is not None else None, csrf_token):
             return settings_error("Invalid or missing CSRF token.")
         reset_result = None
-        with import_submission_lock, app.state.reset_lock:
+        with admission_lock, app.state.reset_lock:
             saved = app.state.reset_confirmation
             token = form.get("reset_token")
             if (saved is None or len(saved) < 3 or saved[2] != 'workspace' or not isinstance(token, str)
@@ -567,12 +393,6 @@ def create_app(config_path: Path, *, electron_bridge: ElectronBridge, diagnostic
             elif app.state.wos_coordinator.running:
                 app.state.reset_confirmation = None
                 result_message, status = "Run WoS is active; Reset refused.", 409
-            elif app.state.batch_import.running:
-                app.state.reset_confirmation = None
-                result_message, status = "A batch Import is active; Reset refused.", 409
-            elif app.state.kept_workflow.snapshot().active:
-                app.state.reset_confirmation = None
-                result_message, status = "A Kept workflow is active; Reset refused.", 409
             elif app.state.browser_task_lock.owner is not None:
                 app.state.reset_confirmation = None
                 result_message, status = "A browser workflow is active; Reset refused.", 409
@@ -589,10 +409,6 @@ def create_app(config_path: Path, *, electron_bridge: ElectronBridge, diagnostic
                         status = 200 if result.success else 409
                         if result.success or result.workspace_invalidated:
                             app.state.diagnostics.workspace_reset()
-                        if result.success:
-                            app.state.batch_import.clear_terminal()
-                            app.state.kept_workflow.clear_terminal()
-                            app.state.import_token = secrets.token_urlsafe(32)
                     finally:
                         app.state.browser_task_lock.release(reset_owner)
         return JSONResponse(jsonable_encoder({
@@ -811,7 +627,7 @@ def create_app(config_path: Path, *, electron_bridge: ElectronBridge, diagnostic
         values, draft, issues, disk, dirty = submitted_settings(form)
         if form.get("reload_step") != "confirm" or form.get("reload_word") != "RELOAD":
             return markdown_reply(request, values,
-                message="Reload discards unsaved Journals, Groups, Mapping, Monitor, Institution and Kept Workflow edits. Confirm explicitly.",
+                message="Reload discards unsaved Journals, Groups, Mapping, Monitor, Institution and workflow edits. Confirm explicitly.",
                 reload_guard=True)
         saved = load_settings(resolved_config_path)
         response = markdown_reply(request, settings_form_from_draft(saved.draft),
@@ -928,7 +744,6 @@ def create_app(config_path: Path, *, electron_bridge: ElectronBridge, diagnostic
 
     install_settings_api(app, resolved_config_path, csrf_token,
                          workspace_health=_workspace_health_context,
-                         zotero_integration=_zotero_integration_state,
                          reset_preview=reset_preview_context)
-    install_ui_next(app, resolved_config_path, csrf_token, read_target=_ImportTarget.read)
+    install_ui_next(app, resolved_config_path, csrf_token)
     return app

@@ -13,16 +13,17 @@ from fastapi.encoders import jsonable_encoder
 from fastapi.responses import FileResponse, JSONResponse
 from pydantic import BaseModel, ConfigDict, Field
 
-from allfold.application.decisions import DecisionOutcome, keep_paper, reject_paper
+from allfold.application.decisions import apply_paper_action
 from allfold.application.journal_covers import cover_details
-from allfold.application.paper_enrichment import missing_history
 from allfold.application.preprint_lookup import formal_lookup_doi
 from allfold.application.run_state import RunProvider, read_last_run_snapshot
-from allfold.application.workspace import journal_for_paper, load_workspace
+from allfold.application.workspace import PaperStatus, WorkspacePaper, journal_for_paper, load_workspace
 from allfold.application.journal_lookup import journal_metadata
 from allfold.persistence.user_state import load_user_state, read_user_state
 from allfold.config import ConfigurationError, load_config
-from allfold.models import EvidenceDate, WorkflowStatus
+from allfold.paper_dates import date_value
+from allfold.models import EvidenceDate
+from allfold.persistence.paper_repository import LibraryError
 from allfold.url_safety import normalize_public_http_url
 from allfold.keywords import parse_keyword_expression
 from allfold.persistence.safe_write import ContentChangedError
@@ -59,7 +60,8 @@ class _Action(BaseModel):
 
 
 class _Decision(_Action):
-    expected_status: WorkflowStatus
+    workspace_id: UUID
+    expected_status: PaperStatus | None = None
 
 
 class _RunStart(_Action):
@@ -93,7 +95,38 @@ class _WoSCancel(_Action):
     task_id: str
 
 
-def install_ui_next(app: FastAPI, config_path: Path, csrf_token: str, *, read_target) -> None:
+def paper_payload(paper: WorkspacePaper, *, preprint_lookup=None) -> dict:
+    metadata = paper.record.metadata
+    doi = paper.external_ids.doi
+    proof_keys = {(item.provider, item.version, date_value(item)) for item in paper.preprint_evidence}
+    preprints = [item.model_dump(mode='json', exclude_none=True) for item in paper.preprints
+                 if (item.provider, item.version, item.date) not in proof_keys]
+    preprints.extend(dict(_date_evidence_payload(item), date=date_value(item)) for item in paper.preprint_evidence)
+    return dict(id=str(paper.paper_id), workspace_id=str(paper.record.workspace_id),
+        revision=paper.record.revision, metadata_present=paper.metadata_present,
+        excluded=paper.record.excluded, status=paper.status.value if paper.status else None,
+        title=paper.title, identity_label=paper.identity_label,
+        identities=[dict(namespace=identity.namespace, value=identity.value) for identity in paper.record.identities],
+        primary_identity=(dict(namespace=paper.record.primary_identity.namespace,
+                               value=paper.record.primary_identity.value) if paper.record.primary_identity else None),
+        publication_date=paper.publication_date, abstract=paper.abstract, journal=paper.journal,
+        conference=paper.conference, publication_type=paper.publication_type,
+        first_public_at=paper.first_public_at, ordinary_dates=list(paper.ordinary_dates), preprints=preprints,
+        preprint_relations=[ref.model_dump(mode='json', exclude_none=True) for ref in paper.preprint_relations],
+        indexed_terms=[term.model_dump(mode='json', exclude_none=True) for term in paper.indexed_terms],
+        author_keywords=list(paper.author_keywords), authors=list(paper.authors),
+        external_ids=paper.external_ids.model_dump(exclude_none=True), doi=doi,
+        sources=[source.model_dump(mode='json', exclude_none=True) for source in paper.sources],
+        journal_issns=list(paper.journal_issns),
+        discovered_at=paper.discovered_at.isoformat() if paper.discovered_at else None,
+        notes=metadata.notes if metadata else None, collection_status='not_started',
+        body_present=paper.record.body is not None,
+        preprint_lookup_available=bool(metadata is not None and not paper.record.excluded and formal_lookup_doi(
+            doi, paper.publication_type, paper.journal, paper.conference)),
+        cleanup_pending=bool(preprint_lookup and preprint_lookup.cleaning_up(paper.paper_id, paper.record.workspace_id)))
+
+
+def install_ui_next(app: FastAPI, config_path: Path, csrf_token: str) -> None:
     def valid(body: _Action) -> bool:
         return secrets.compare_digest((body.csrf_token or "").encode(), csrf_token.encode())
 
@@ -106,111 +139,83 @@ def install_ui_next(app: FastAPI, config_path: Path, csrf_token: str, *, read_ta
     def page():
         return ui_next_page()
 
-    @app.get("/api/ui-next/workspace")
+    @app.get('/api/ui-next/workspace')
     def workspace_data():
         try:
-            target, config = read_target(config_path)
+            configuration = config_path.read_bytes()
+            config = load_config(config_path)
             state_snapshot = load_user_state(config_path, config.venue_whitelist)
             settings_list = state_snapshot.state
             journals, services = settings_list.journals, settings_list.access_services
-            workspace = load_workspace(target.workspace, journals=journals)
-            current, _ = read_target(config_path)
-            if current != target or read_user_state(config_path).revision != state_snapshot.revision:
-                raise ContentChangedError("Workspace/configuration changed; refresh before continuing")
-            with app.state.import_submission_lock:
-                import_token = target.form_token(app.state.import_token)
+            workspace = load_workspace(config.output_dir, journals=journals)
+            if config_path.read_bytes() != configuration or read_user_state(config_path).revision != state_snapshot.revision:
+                raise ContentChangedError('Workspace/configuration changed; refresh before continuing')
             registry_issues = []
             try:
                 metadata = journal_metadata(config.venue_whitelist, journals)
             except ConfigurationError as error:
                 metadata = {}
                 registry_issues.append(str(error))
-            service_by_id = {s.id: s for s in services}
-            records = {}
-            subjects = defaultdict(list)
+            service_by_id = {service.id: service for service in services}
+            records, subjects = {}, defaultdict(list)
             for name in settings_list.groups:
                 subjects[(name, False)] = []
             for journal in journals:
                 info = metadata.get(journal.key, {})
                 service = service_by_id.get(journal.access_service_id)
-                record = dict(key=journal.key, source_type="journal", issn=journal.issn, eissn=journal.eissn, name=journal.name,
-                              group=journal.group, labels=list(journal.labels),
-                              publisher=info.get("publisher"), sources=info.get("sources", []),
-                              service=service.name if service else None,
-                              service_id=service.id if service else None,
-                              cover=f"/settings/covers/{journal.key}/image",
-                              cover_detail=cover_details(config.venue_whitelist, journal.key), papers=[])
-                records[journal.key] = record
-                subjects[(journal.group, False)].append(record)
-            kept = []
-            for paper in (*workspace.inbox, *workspace.kept):
+                entry = dict(key=journal.key, source_type='journal', issn=journal.issn, eissn=journal.eissn,
+                    name=journal.name, group=journal.group, labels=list(journal.labels), publisher=info.get('publisher'),
+                    sources=info.get('sources', []), service=service.name if service else None,
+                    service_id=service.id if service else None, cover=f'/settings/covers/{journal.key}/image',
+                    cover_detail=cover_details(config.venue_whitelist, journal.key), papers=[])
+                records[journal.key] = entry
+                subjects[(journal.group, False)].append(entry)
+            downloaded, trash = [], []
+            for paper in workspace.papers:
+                if paper.status is None:
+                    continue
                 journal = journal_for_paper(paper, journals)
-                source_name = paper.conference or paper.journal or "Unknown source"
-                key = journal.key if journal else f"unmapped:{source_name}"
+                source_name = paper.conference or paper.journal or 'Unassigned'
+                key = journal.key if journal else f'unmapped:{source_name}'
                 if key not in records:
-                    records[key] = dict(key=key, issn=None, eissn=None, name=source_name,
-                                        source_type="journal" if journal else "unmapped",
-                                        group=None, labels=[], publisher=None, service=None,
-                                        service_id=None, cover=None, papers=[])
+                    records[key] = dict(key=key, issn=None, eissn=None, name=source_name, source_type='unmapped',
+                        group=None, labels=[], publisher=None, service=None, service_id=None, cover=None, papers=[])
                     subjects[(None, True)].append(records[key])
-                record = records[key]
-                enrichment = app.state.paper_enrichment.state(paper.paper_id)
-                history_missing = missing_history(paper)
-                item = dict(id=str(paper.paper_id), title=paper.title,
-                            publication_date=paper.publication_date, abstract=paper.abstract,
-                            conference=paper.conference,
-                            journal=paper.journal, publication_type=paper.publication_type,
-                            first_public_at=paper.first_public_at,
-                            date_evidence=[_date_evidence_payload(event) for event in paper.date_evidence],
-                            indexed_terms=[item.model_dump(mode="json", exclude_none=True) for item in paper.indexed_terms],
-                            external_ids=paper.external_ids.model_dump(exclude_none=True),
-                            sources=[source.model_dump(mode="json", exclude_none=True) for source in paper.sources],
-                            authors=list(paper.authors), doi=paper.external_ids.doi,
-                            preprint_lookup_available=bool(formal_lookup_doi(
-                                paper.external_ids.doi, paper.publication_type, paper.journal, paper.conference)),
-                            discovered_at=paper.discovered_at.isoformat(), status=paper.status.value,
-                            history_missing=list(history_missing),
-                            enriched=bool(paper.abstract and paper.abstract.strip() and paper.authors
-                                and paper.publication_date and len(paper.publication_date) != 7 and not history_missing),
-                            enrichPhase=enrichment["phase"], enrichMessage=enrichment["message"],
-                            enrichment_request_id=enrichment["request_id"],
-                            syncWarning="sync failed" in enrichment["message"])
-                if paper.status is WorkflowStatus.CANDIDATE:
-                    record["papers"].append(item)
+                entry = records[key]
+                item = paper_payload(paper, preprint_lookup=app.state.preprint_lookup)
+                if paper.status is PaperStatus.CANDIDATE:
+                    entry['papers'].append(item)
                 else:
-                    kept.append(dict(paper=item, journal={k: record[k] for k in ("key", "issn", "eissn", "name", "source_type")}))
-            groups = []
-            for (group_name, unmapped), entries in subjects.items():
-                name = "Unmapped sources" if unmapped else group_name if group_name is not None else "Ungrouped / virtual"
-                active = [entry for entry in entries if entry["papers"]]
-                for entry in active:
-                    entry["papers"].sort(key=lambda p: p["id"])
-                    entry["papers"].sort(key=lambda p: p["discovered_at"], reverse=True)
-                    entry["papers"].sort(key=lambda p: p["first_public_at"] or p["publication_date"] or "", reverse=True)
-                if active:
-                    groups.append(dict(name=name, journals=active))
-            return response(dict(
-                subjects=groups, csrf_token=csrf_token, import_token=import_token,
-                counts=dict(candidates=len(workspace.inbox), active_journals=sum(len(g["journals"]) for g in groups)),
-                kept=dict(papers=kept, journals=[{k: r[k] for k in ("key", "issn", "eissn", "name", "source_type", "service_id")} for r in records.values()],
-                          services=[s.model_dump() for s in services], settings=config.kept_workflow,
-                          titles={str(p.paper_id): p.title for p in workspace.papers}),
-                issues=[*registry_issues, *(issue.message for issue in workspace.issues)],
-            ))
-        except (ConfigurationError, ContentChangedError, OSError) as error:
-            return response({"message": str(error)}, 409)
+                    target = trash if paper.status is PaperStatus.TRASH else downloaded
+                    target.append(dict(paper=item, journal={name: value for name, value in entry.items() if name != 'papers'}))
+            groups = [dict(name='Unmapped sources' if unmapped else name if name is not None else 'Ungrouped / virtual',
+                           journals=[entry for entry in entries if entry['papers']])
+                      for (name, unmapped), entries in subjects.items() if any(entry['papers'] for entry in entries)]
+            catalog = [{name: value for name, value in entry.items() if name != 'papers'}
+                       for entry in records.values()]
+            return response(dict(workspace_id=workspace.workspace_id, revision=workspace.revision,
+                initialized=workspace.initialized, subjects=groups, csrf_token=csrf_token,
+                counts=dict(candidates=len(workspace.inbox), downloaded=len(downloaded), trash=len(trash),
+                            active_journals=sum(len(group['journals']) for group in groups)),
+                downloaded=dict(papers=downloaded, journals=catalog, services=[service.model_dump() for service in services],
+                                titles={str(paper.paper_id): paper.title or paper.identity_label for paper in workspace.papers}),
+                trash=dict(papers=trash), issues=registry_issues))
+        except (ConfigurationError, ContentChangedError, LibraryError, OSError) as error:
+            return response({'message': str(error)}, 409)
 
-    @app.post("/api/ui-next/papers/{paper_id}/{action}")
-    def decision(paper_id: UUID, action: Literal["keep", "reject"], body: _Decision):
+    @app.post('/api/ui-next/papers/{paper_id}/{action}')
+    def decision(paper_id: UUID, action: Literal['reject', 'restore', 'clear-metadata', 'unexclude'], body: _Decision):
         if not valid(body):
-            return response({"message": "Invalid or missing CSRF token; refresh the page."}, 403)
+            return response({'message': 'Invalid or missing CSRF token; refresh the page.'}, 403)
         try:
-            config = load_config(config_path)
-            result = {"keep": keep_paper, "reject": reject_paper}[action](
-                config.output_dir, paper_id, body.expected_status)
-            return response(result, 200 if result.outcome is DecisionOutcome.UPDATED else 409)
-        except (ConfigurationError, OSError) as error:
-            return response({"message": str(error)}, 409)
+            with app.state.reset_lock:
+                config = load_config(config_path)
+                result = apply_paper_action(config.output_dir, body.workspace_id, paper_id, action,
+                    expected_status=body.expected_status, preprint_lookup=app.state.preprint_lookup)
+            return response(dict(workspace_id=result.paper.workspace_id, revision=result.revision,
+                                 paper=paper_payload(WorkspacePaper(result.paper), preprint_lookup=app.state.preprint_lookup)))
+        except (ConfigurationError, ContentChangedError, LibraryError, ValueError, OSError) as error:
+            return response({'message': str(error)}, 409)
 
     def run_data(start=None):
         snapshot = app.state.run_coordinator.snapshot()

@@ -10,6 +10,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from allfold.application.wos import WoSWrites, persist_wos
+from allfold.application.run_commit import capture_run_workspace, commit_run_workspace
 from allfold.application.history import observe, finish_run
 from allfold.recovery_diagnostics import merge_recovery, normalize_recovery_action, recovery_progress_message
 from allfold.application.browser_runtime import ElectronDisconnected
@@ -189,9 +190,18 @@ class WoSCoordinator:
                 if parent_snapshot is None:
                     self.run_slot.release()
                 raise ValueError('Prepare Web of Science in Workflows → Login')
+            try:
+                own_snapshot = capture_run_workspace(self.path, config) if parent_snapshot is None else None
+            except BaseException:
+                self._release_owner(owner)
+                if parent_snapshot is None:
+                    self.run_slot.release()
+                raise
+            if own_snapshot is not None:
+                workspace_identity = own_snapshot.workspace_identity
             page = prepared.page_id
             task = dict(id=workflow_id or secrets.token_hex(16), owner=owner, config=config,
-                parent_snapshot=parent_snapshot, progress_callback=progress_callback, records_callback=records_callback, evidence=[],
+                parent_snapshot=parent_snapshot, own_snapshot=own_snapshot, progress_callback=progress_callback, records_callback=records_callback, evidence=[],
                 compiled=compiled, service=service, dates=dates,
                 service_scope=saved.scope, preparation_key=prepared.key, manually_confirmed=prepared.manually_confirmed,
                 config_text=config_text, state_revision=state_revision,
@@ -217,6 +227,8 @@ class WoSCoordinator:
                 self._release_owner(owner)
                 self.run_slot.release()
                 task['status'] = 'FINISHED'
+                if own_snapshot is not None:
+                    own_snapshot.close()
                 observe(self.diagnostics, 'finish', task['id'], 'failed', details={'reason':'failed'})
                 raise
             if worker is not None:
@@ -243,18 +255,17 @@ class WoSCoordinator:
             task['history_interrupted'] = True
             cancel_event.set()
 
-    def _current(self, task):
+    def _current(self, task, *, workspace_checked=False):
         try:
-            self._assert_current(task)
+            self._assert_current(task, workspace_checked=workspace_checked)
         except ContentChangedError:
             if task.get('parent_snapshot') is not None:
                 task['cancelled'].set()
             raise
 
-    def _assert_current(self, task):
-        if task.get('parent_snapshot') is not None:
-            from allfold.application.run_commit import commit_run_workspace
-            with commit_run_workspace(task['parent_snapshot'], cancel_event=task['cancelled']):
+    def _assert_current(self, task, *, workspace_checked=False):
+        if not workspace_checked and (snapshot := task.get('parent_snapshot') or task.get('own_snapshot')):
+            with commit_run_workspace(snapshot, cancel_event=task['cancelled']):
                 pass
         if read_text_exact(self.path) != task['config_text'] or read_user_state(self.path).revision != task['state_revision']:
             raise ContentChangedError('Saved configuration changed during Run WoS')
@@ -453,12 +464,10 @@ class WoSCoordinator:
                 raise InterruptedError()
             if papers and task.get('parent_snapshot') is None:
                 task['stage'] = 'Create New Papers'
-                with workspace_operation_lock(config.output_dir, create=True) as lock:
-                    if task['workspace_identity'] is None:
-                        task['workspace_identity'] = lock.identity
-                    self._current(task)
-                    persist_wos(papers, lock, check_current=lambda: self._current(task),
-                                cancelled=task['cancelled'].is_set, result=task['writes'])
+                with commit_run_workspace(task['own_snapshot'], cancel_event=task['cancelled']) as lock:
+                    persist_wos(papers, lock, check_current=lambda: self._current(task, workspace_checked=True),
+                        cancelled=task['cancelled'].is_set, result=task['writes'], workspace_snapshot=task['own_snapshot'])
+
         except InterruptedError:
             task['cancelled'].set()
         except Exception as error:
@@ -472,6 +481,7 @@ class WoSCoordinator:
                     task.update(status='FINISHED', waiting_for_user=False)
                     self._release_owner(task['owner'])
                     if task.get('parent_snapshot') is None:
+                        task['own_snapshot'].close()
                         self.run_slot.release()
                         finish_run(self.diagnostics, task['id'], {'provider':'wos','result':task['result']}, provider='wos',
                                    diagnostic=task.get('diagnostic'), interrupted=task.get('history_interrupted', False),
@@ -521,7 +531,7 @@ class WoSCoordinator:
                           if not m.startswith('{') and not (not_listed and m.startswith('未列入当前本地 WoS 来源清单（'))]),
             details=dict(search_total=result['search_total'], query_finished=task['query']['finished'],
                 batches=[{k: b[k] for k in ('first', 'last', 'expected', 'exported', 'eligible', 'complete', 'issues')}
-                         for b in task['batches'].values()], date_warnings=task['date_warnings']))
+                         for b in task['batches'].values()], date_warnings=task['date_warnings'], paper_ids=writes.written_paper_ids))
         result['facts'] = facts.model_dump(mode='json')
         snapshot = dict(schema_version=WOS_RUN_SCHEMA_VERSION, provider=RunProvider.WOS.value, started_at=task['started_at'], finished_at=finished_at.isoformat(),
             mode='topic', input=task['config'].keyword_expression, compiled=task['compiled'],
@@ -535,10 +545,7 @@ class WoSCoordinator:
             return
         try:
             self._current(task)
-            with workspace_operation_lock(task['config'].output_dir, create=True) as lock:
-                if task['workspace_identity'] is None:
-                    task['workspace_identity'] = lock.identity
-                self._current(task)
+            with commit_run_workspace(task['own_snapshot']) as lock:
                 metadata_directory(lock.path, create=True)
                 with workspace_text_directory(lock, '.allfold') as directory:
                     target = directory.path / 'last-wos-run.json'

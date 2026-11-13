@@ -106,7 +106,7 @@ def install_diagnostics_api(app, *, run_slot):
     def reset_logs(form):
         result = None
         status = 409
-        with app.state.import_submission_lock, app.state.reset_lock:
+        with app.state.settings_write_lock, app.state.reset_lock:
             saved = app.state.reset_confirmation
             app.state.reset_confirmation = None  # Every submitted attempt consumes the authorization.
             token = form.get('reset_token')
@@ -115,8 +115,7 @@ def install_diagnostics_api(app, *, run_slot):
                     or not secrets.compare_digest(token, saved[0])):
                 message = 'Logs confirmation is stale or already used. Reopen Reset.'
             elif (app.state.run_coordinator.snapshot().status is CoordinatorStatus.RUNNING
-                    or app.state.wos_coordinator.running or app.state.batch_import.running
-                    or app.state.kept_workflow.snapshot().active
+                    or app.state.wos_coordinator.running
                     or app.state.browser_task_lock.owner is not None):
                 message = 'A workflow is active; Logs Reset refused.'
             elif not run_slot.acquire(blocking=False):

@@ -16,7 +16,7 @@ const dp = value => Math.round(value * (devicePixelRatio || 1)) / (devicePixelRa
 const initialParams = new URLSearchParams(location.search);
 const initialView = initialParams.get('view') ?? 'inbox';
 const initialPaper = initialParams.get('paper');
-const initialLinkValid = ['inbox','kept'].includes(initialView) &&
+const initialLinkValid = ['inbox','kept','candidates','downloaded','trash'].includes(initialView) &&
   [...initialParams.keys()].every(key=>['view','paper'].includes(key)) &&
   initialParams.getAll('view').length <= 1 && initialParams.getAll('paper').length <= 1 &&
   (!initialParams.has('paper') || (initialParams.has('view') &&
@@ -121,15 +121,13 @@ const paragraphLayout = window.ParagraphLayout?.create($('paper-abstract'), {
 });
 const filePanel = document.querySelector('.file-panel');
 const completionSurface = new SurfaceTransition($('empty-inbox'), undefined, archiveDebug.values.liftEndMs, 180);
-let enrichment = null;
-const reviewedPapers = new Map();
-const keptPapers = new Map();
-let keptSnapshot;
+const downloadedPapers = new Map(),trashPapers=new Map();
+let librarySnapshot;
 let readerContext=null;
 const reviewPanel=document.querySelector('.review-right');
 const paperNavigation=reviewPanel.querySelector('.paper-navigation');
 const paperTitle=$('view-paper-title'),paperMetadata=$('paper-metadata-details');
-const decisionButtons=[$('keep-paper'),$('reject-paper')];
+const decisionButtons=[$('reject-paper'),$('restore-paper'),$('clear-paper-metadata')];
 const decisionHost=decisionButtons[0].parentElement;
 let decisionPending=false, snapshotApplying=false, settingsRefreshPending=false;
 const paperTools={paperId:null,fields:null,loading:false,error:'',generation:0,pending:false,focus:null,kind:null,diagnosticGeneration:0};
@@ -137,10 +135,10 @@ const paperToolsBusy=()=>paperTools.pending || $('paper-tools-dialog').open;
 const currentPaper = () => readerContext ? readerContext.entries.find(e=>e.paper.id===state.pendingPaper)?.paper : selectedJournal()?.papers.find(p => p.id === state.pendingPaper);
 const reviewPapers = () => readerContext ? readerContext.entries.map(e=>e.paper) : (selectedJournal()?.papers || []);
 const reviewJournal = () => readerContext ? readerContext.entries.find(e=>e.paper.id===state.pendingPaper)?.journal : selectedJournal();
-const configurationActive=()=>['journals','login','run','kept','settings'].includes(window.workspaceNavigation.current());
+const configurationActive=()=>['journals','login','run','settings'].includes(window.workspaceNavigation.current());
 const inboxActive=()=>window.workspaceNavigation.current()==='workspace' && $('selected-view').dataset.workspaceLayout==='archive';
 const arrayActive=()=>window.workspaceNavigation.current()==='workspace' && $('selected-view').dataset.workspaceLayout==='array';
-const navigationBusy=()=>decisionPending || Boolean(snapshotApplying) || paperToolsBusy() || enrichment?.phase==='Saving' ||
+const navigationBusy=()=>decisionPending || Boolean(snapshotApplying) || paperToolsBusy() ||
   (inspection.target ? inspection.time!==inspection.duration : inspection.time!==0);
 function syncNavigation() {window.workspaceNavigation.refresh();}
 function refreshInboxControls() {
@@ -495,7 +493,7 @@ function tick(now) {
   }
   const revealing = decryption.active;
   decryption.update(now / 1000, { clarity: 1 }, REDUCE_MOTION);
-  if (revealing && !decryption.active && (state.view === 'journal' || readerContext)) renderEnrich();
+  if (revealing && !decryption.active && (state.view === 'journal' || readerContext)) renderReadingControls();
   more = decryption.active || more;
   draw();
   if (more) requestAnimationFrame(tick);
@@ -955,7 +953,7 @@ function stepInspection(dt) {
   // Give the completion fade the whole lift phase, even when a frame crosses its boundary.
   inspection.time = !REDUCE_MOTION && !inspection.target && inspection.completionPending && inspection.time > lift && nextTime <= lift ? lift : nextTime;
   if (!inspection.target && inspection.time <= lift) revealCompletionSurface(inspection.time === 0);
-  if (inspection.time === inspection.duration) { $('mode-label').textContent = 'ARCHIVE / JOURNAL'; renderEnrich(); }
+  if (inspection.time === inspection.duration) { $('mode-label').textContent = 'ARCHIVE / JOURNAL'; renderReadingControls(); }
   if (inspection.time === 0) finishReturn();
   return inspection.time !== target;
 }
@@ -964,7 +962,7 @@ function openView(paperId = null, source = canvas) {
     if(paperId)window.workspaceArray?.openPaper(paperId);
     return;
   }
-  if (state.view !== 'selected' || !shelves.length || decisionPending || snapshotApplying || enrichment?.phase==='Saving' || inspection.time) return;
+  if (state.view !== 'selected' || !shelves.length || decisionPending || snapshotApplying || inspection.time) return;
   $('paper-metadata-details').open=false;
   const journal = selectedJournal();
   cancelRulerDrag(); AR.hoverTick = AR.focusTick = -1; hideTickLabel();
@@ -984,8 +982,8 @@ function openView(paperId = null, source = canvas) {
   fillAbstractPlaceholder(); wake();
 }
 function back() {
-  if (state.view !== 'journal' || !inspection.target || decisionPending || snapshotApplying || paperToolsBusy() || enrichment?.phase==='Saving') return;
-  cancelRetrieval(); decryption.reset(null, true);
+  if (state.view !== 'journal' || !inspection.target || decisionPending || snapshotApplying || paperToolsBusy()) return;
+   decryption.reset(null, true);
   inspection.target = 0;
   $('journal-view').inert = true;
   const selection = returnSelection();
@@ -999,7 +997,7 @@ function back() {
     inspection.completionPending = true;
   }
   if (inspection.time <= liftDuration()) revealCompletionSurface(true);
-  renderEnrich();
+  renderReadingControls();
   $('mode-label').textContent = 'ARCHIVE / RETURN';
   if (inspection.time === 0) finishReturn();
   else if (REDUCE_MOTION) stepInspection(0);
@@ -1118,8 +1116,8 @@ function directoryHit(event) {
   return point && directoryAreas.find(a => point.x >= a.x && point.x <= a.x+a.width && point.y >= a.y && point.y <= a.y+a.height);
 }
 function selectPaper(id, immediateDirectory = false) {
-  if (decisionPending || snapshotApplying || paperToolsBusy() || inspection.removeAfter || id === state.pendingPaper || enrichment?.phase==='Saving') return;
-  cancelRetrieval(); state.pendingPaper = id;
+  if (decisionPending || snapshotApplying || paperToolsBusy() || inspection.removeAfter || id === state.pendingPaper) return;
+   state.pendingPaper = id;
   renderPaper();
   if(readerContext) window.dispatchEvent(new CustomEvent('array-paper-selected',{detail:id}));
   else resetDirectory(immediateDirectory);
@@ -1131,20 +1129,11 @@ function movePaper(delta) {
   const index=papers.findIndex(p => p.id === state.pendingPaper),next=index+delta;
   selectPaper(papers[(next + papers.length) % papers.length].id,next < 0 || next >= papers.length);
 }
-function missingFields(paper) {
-  const fields=[];
-  if (!paper.abstract?.trim()) fields.push('abstract');
-  if (!paper.authors.length) fields.push('authors');
-  if (!paper.publication_date || paper.publication_date.length === 7) fields.push('publication_date');
-  fields.push(...(paper.history_missing || []));
-  return fields;
-}
 function renderField(id, text, missing, bars=1) {
   const root=$(id); root.classList.remove('enrich-new','reveal-pending'); root.replaceChildren();
   if (!missing) { root.textContent=text; return; }
-  const placeholder=document.createElement('button'); placeholder.type='button';placeholder.className='missing-field';
-  placeholder.dataset.enrich='';placeholder.disabled=true;
-  placeholder.title='点击补全缺失信息';placeholder.setAttribute('aria-label','补全缺失信息');
+  const placeholder=document.createElement('span');placeholder.className='missing-field';
+  placeholder.setAttribute('aria-label','暂无内容');
   for (let i=0;i<bars;i++) { const bar=document.createElement('span'); bar.className='missing-ink'; placeholder.append(bar); }
   root.append(placeholder);
 }
@@ -1155,10 +1144,10 @@ function renderPaper() {
   if(changed) {paperMetadata.open=false;paragraphLayout?.clear();}
   if(readerContext)paperMetadata.open=true;
   const papers=reviewPapers(), index=papers.indexOf(paper);
-  $('view-paper-title').textContent=paper.title; $('view-paper-id').textContent=paper.id;
+  $('view-paper-title').textContent=paper.title || paper.identity_label; $('view-paper-id').textContent=paper.id;
   $('paper-position').textContent=`${pad(index+1)} / ${pad(papers.length)}`;
   if (!readerContext) $('directory-position').textContent=`${pad(index+1)} / ${pad(papers.length)} PAPERS`;
-  for (const id of ['previous-paper','next-paper']) $(id).disabled=papers.length===1 || enrichment?.phase==='Saving';
+  for (const id of ['previous-paper','next-paper']) $(id).disabled=papers.length===1;
   renderPaperFields(paper, ['abstract','authors','publication_date']);
   window.allfoldPaperDates.render(paper,$('paper-dates'),$('paper-date-evidence'));
   $('paper-source').textContent=paper.conference || paper.journal || reviewJournal()?.name || '—';
@@ -1172,7 +1161,7 @@ function renderPaper() {
   detail.classList.toggle('abstract-locked', !paper.abstract?.trim());
   if (changed) detail.scrollTop=0;
   renderPaperTools(true);
-  renderEnrich();
+  renderReadingControls();
 }
 function renderPaperFields(paper, fields) {
   if (fields.includes('authors')) {
@@ -1186,12 +1175,7 @@ function renderPaperFields(paper, fields) {
   }
   if (fields.includes('publication_date')) {
     renderField('paper-date',paper.publication_date,!paper.publication_date);
-    if (paper.publication_date?.length===7) {
-      const precision=document.createElement('span'); precision.className='date-precision';
-      const question=document.createElement('button');question.type='button';question.dataset.enrich='';question.textContent='?';question.disabled=true;
-      question.title='点击补全缺失信息';question.setAttribute('aria-label','补全缺失日期等信息');
-      precision.append(document.createTextNode('-'),question);$('paper-date').append(precision);
-    }
+
   }
   if (fields.includes('abstract')) {
     if(paragraphLayout && paper.abstract?.trim()) {
@@ -1222,54 +1206,27 @@ function fillAbstractPlaceholder() {
     return bar;
   }));
 }
-function updateEnrichedFields(fields) {
-  const paper=currentPaper(), detail=$('paper-detail');
-  decryption.reset(null,true);
-  renderPaperFields(paper,fields);
-  if (fields.includes('date_evidence')) window.allfoldPaperDates.render(paper,$('paper-dates'),$('paper-date-evidence'));
-  detail.classList.toggle('abstract-locked',!paper.abstract?.trim());
+function renderReadingControls() {
+  syncNavigation();window.dispatchEvent(new Event('paper-reading-state'));
+  const paper=currentPaper();if(!paper)return;
+  const busy=decisionPending || Boolean(snapshotApplying) || paperToolsBusy();
+  for(const id of ['previous-paper','next-paper'])$(id).disabled=busy || reviewPapers().length===1;
+  const reading=readerContext ? arrayActive() : inspection.time===inspection.duration && inspection.target;
+  $('reject-paper').hidden=paper.excluded;
+  $('reject-paper').disabled=busy || !reading;
+  $('restore-paper').hidden=!paper.excluded;
+  $('restore-paper').disabled=busy || !reading;
+  $('restore-paper').textContent=paper.metadata_present?'Restore':'解除排除';
+  $('clear-paper-metadata').hidden=!paper.excluded || !paper.metadata_present;
+  $('clear-paper-metadata').disabled=busy || !reading || paper.cleanup_pending===true;
+  $('back').disabled=busy || !inspection.target;
   fillAbstractPlaceholder();
-  const targets={abstract:'paper-abstract',authors:'paper-authors',publication_date:'paper-date'};
-  fields=fields.filter(field=>Object.hasOwn(targets,field));
-  fields.forEach(field => $(targets[field]).classList.add('enrich-new','reveal-pending'));
-  if (!REDUCE_MOTION) decryption.reset(readerContext ? $('kept-view') : detail,false);
-  fields.forEach(field => $(targets[field]).classList.remove('reveal-pending'));
-  renderEnrich(); wake();
-}
-function renderEnrich() {
-  syncNavigation();window.dispatchEvent(new Event('enrich-state'));
-  const paper=currentPaper(); if (!paper) return;
-  const operation=enrichment?.paperId===paper.id ? enrichment : null;
-  const phase=operation?.phase || paper.enrichPhase || 'Idle';
-  const active=phase==='Retrieving' || phase==='Saving';
-  const waiting=phase==='Retrieving' && operation?.waitingForUser===true;
-  for(const id of ['previous-paper','next-paper']) $(id).disabled=decisionPending || Boolean(snapshotApplying) || paperToolsBusy() || phase==='Saving' || reviewPapers().length===1;
-  document.querySelectorAll('#paper-detail [data-enrich], #paper-metadata-details [data-enrich]').forEach(node=>{
-    node.disabled=!canEnrich(paper);
-    node.title=node.disabled ? (!paper.doi?'需要有效的主要 DOI；仍可编辑本地字段':active?'正在补全缺失信息':'当前暂不可补全') : '点击补全缺失信息';
-  });
-  $('cancel-enrich').hidden=phase!=='Retrieving';
-  $('enrich-task-page').hidden=!waiting;
-  const candidateReader=readerContext?.status==='candidates' && arrayActive();
-  $('keep-paper').disabled=$('reject-paper').disabled=decisionPending || Boolean(snapshotApplying) || paperToolsBusy() || phase==='Saving' || window.workspaceArray?.workflowBusy() ||
-    (readerContext ? !candidateReader : inspection.time!==inspection.duration || !inspection.target);
-  $('back').disabled=decisionPending || Boolean(snapshotApplying) || paperToolsBusy() || phase==='Saving' || !inspection.target;
-  const status=$('enrich-status'); status.dataset.phase=phase; status.dataset.warning=String(paper.syncWarning || false);
-  status.textContent=waiting?'等待网页验证':paper.enrichMessage || '';
-  status.parentElement.hidden=!status.textContent && phase!=='Retrieving';
-  document.querySelectorAll('#paper-detail .missing-field, #paper-metadata-details .missing-field, #paper-metadata-details .date-precision').forEach(n=>n.classList.toggle('scanning',phase==='Retrieving'));
-  fillAbstractPlaceholder();
-}
-function canEnrich(paper=currentPaper()) {
-  const reading=readerContext ? arrayActive() : state.view==='journal' && inspection.target && inspection.time===inspection.duration && !inspection.removeAfter;
-  return Boolean(reading && paper?.status==='candidate' && paper.doi && !paper.enriched && missingFields(paper).length && !decisionPending && !snapshotApplying && !paperToolsBusy() && !window.workspaceArray?.workflowBusy() &&
-    !['Retrieving','Saving'].includes(paper.enrichPhase) && !['Retrieving','Saving'].includes(enrichment?.phase));
 }
 
 function renderPaperTools(reload=false) {
   const paper=currentPaper(), reading=readerContext ? arrayActive() : inboxActive() && state.view==='journal' &&
     inspection.target && inspection.time===inspection.duration && !inspection.removeAfter;
-  const visible=Boolean(state.ready && reading && paper && document.documentElement.classList.contains('developer-mode'));
+  const visible=Boolean(state.ready && reading && paper?.metadata_present && !paper.excluded && document.documentElement.classList.contains('developer-mode'));
   $('paper-dev-tools').hidden=!visible;
   document.documentElement.classList.toggle('paper-tools-active',visible);
   const paperId=visible?paper.id:null;
@@ -1279,23 +1236,19 @@ function renderPaperTools(reload=false) {
   }
   if(!visible)return;
   if(reload || (!paperTools.fields && !paperTools.loading && !paperTools.error))void loadPaperFields(paperId);
-  const busy=decisionPending || Boolean(snapshotApplying) || paperToolsBusy() ||
-    ['Retrieving','Saving'].includes(enrichment?.phase) || ['Retrieving','Saving'].includes(paper.enrichPhase) ||
-    window.workspaceArray?.workflowBusy() || $('run-view').open;
+  const busy=decisionPending || Boolean(snapshotApplying) || paperToolsBusy();
   const ready=Boolean(paperTools.fields && !paperTools.loading && !busy);
   const checks=[...document.querySelectorAll('[data-paper-reset]')];
   checks.forEach(node=>{node.disabled=!ready;});
   $('paper-reset-fields').disabled=!ready || !checks.some(node=>node.checked);
-  $('paper-dev-enrich').disabled=!ready || !canEnrich(paper);
   $('paper-abstract-input').disabled=!ready || Boolean(paperTools.fields.abstract?.trim());
-  $('paper-diagnostics').disabled=paperToolsBusy() || decisionPending || Boolean(snapshotApplying);
   $('paper-tools-status').textContent=paperTools.pending?'正在保存…':paperTools.loading?'正在读取字段…':paperTools.error;
 }
 async function loadPaperFields(paperId) {
   const generation=++paperTools.generation;
   paperTools.loading=true;paperTools.fields=null;paperTools.error='';
   try {
-    const fields=await uiNext.request(`/api/papers/${paperId}/fields`);
+    const fields=await uiNext.request(`/api/papers/${paperId}/fields?workspace_id=${encodeURIComponent(uiNext.libraryIdentity || '')}`);
     if(generation===paperTools.generation && paperTools.paperId===paperId)paperTools.fields=fields;
   }catch(error){if(generation===paperTools.generation)paperTools.error=error.message;}
   finally {if(generation===paperTools.generation){paperTools.loading=false;renderPaperTools();}}
@@ -1306,34 +1259,14 @@ function openPaperDialog(kind) {
   if(kind==='input' && $('paper-abstract-input').disabled)return;
   paperTools.kind=kind;paperTools.focus=document.activeElement;
   paperTools.inputRevision=paperTools.fields?.revision;
-  $('paper-tools-title').textContent=kind==='input'?'Input Abstract':'Enrich diagnostics';
+  $('paper-tools-title').textContent='Input Abstract';
   $('paper-tools-paper').textContent=paper.title;
-  $('paper-input-label').hidden=kind!=='input';$('paper-diagnostic-text').hidden=kind!=='diagnostics';
-  $('paper-dialog-save').hidden=kind!=='input';$('paper-dialog-copy').hidden=kind!=='diagnostics';
-  $('paper-dialog-export').hidden=kind!=='diagnostics';$('paper-dialog-export').disabled=true;
-  $('paper-dialog-cancel').textContent=kind==='input'?'Cancel':'Close';
+  $('paper-input-label').hidden=false;$('paper-dialog-save').hidden=false;
+  $('paper-dialog-cancel').textContent='Cancel';
   $('paper-dialog-error').textContent='';$('paper-input-text').value='';$('paper-dialog-save').disabled=true;
-  $('paper-tools-dialog').showModal();renderEnrich();
-  if(kind==='input')$('paper-input-text').focus();else void loadPaperDiagnostics();
+  $('paper-tools-dialog').showModal();renderReadingControls();$('paper-input-text').focus();
 }
-async function loadPaperDiagnostics() {
-  const paperId=paperTools.paperId, generation=++paperTools.diagnosticGeneration;
-  $('paper-dialog-copy').disabled=true;
-  $('paper-diagnostic-text').textContent='正在读取诊断…';
-  try {
-    const state=await uiNext.request(`/api/papers/${paperId}/enrichment/state`);
-    if(!$('paper-tools-dialog').open || paperTools.kind!=='diagnostics' || paperTools.paperId!==paperId || generation!==paperTools.diagnosticGeneration)return;
-    renderPaperDiagnostics(state.diagnostic);
-  }catch(error){if(paperTools.paperId===paperId && paperTools.kind==='diagnostics' && generation===paperTools.diagnosticGeneration)$('paper-dialog-error').textContent=error.message;}
-}
-function renderPaperDiagnostics(diagnostic) {
-  $('paper-diagnostic-text').textContent=diagnostic
-    ? `${['Retrieving','Saving'].includes(diagnostic.phase)?'任务运行中，尝试详情在结果返回后显示。\n\n':''}${JSON.stringify(diagnostic,null,2)}${diagnostic.finished_at && !diagnostic.attempts.length?'\n\n本次未收到 Translator 尝试详情。':''}`
-    : '当前 Paper 暂无 Enrich 诊断。服务重启后记录会清空。';
-  $('paper-dialog-copy').disabled=!diagnostic;
-  $('paper-dialog-export').dataset.taskId=diagnostic?.request_id || '';
-  $('paper-dialog-export').disabled=!diagnostic?.request_id;
-}
+
 async function submitPaperEdit(kind) {
   const paper=currentPaper();
   if(!paper || paperTools.pending || !paperTools.fields)return;
@@ -1342,7 +1275,7 @@ async function submitPaperEdit(kind) {
   const body=input?{revision:paperTools.inputRevision,abstract:$('paper-input-text').value}
     :{revision:paperTools.fields.revision,fields};
   paperTools.pending=true;$('paper-dialog-save').disabled=true;$('paper-dialog-cancel').disabled=true;
-  $('paper-dialog-error').textContent='';renderEnrich();
+  $('paper-dialog-error').textContent='';renderReadingControls();
   let saved=false;
   try {
     const result=await uiNext.request(`/api/papers/${paper.id}/${input?'abstract/input':'fields/reset'}`,body);
@@ -1350,6 +1283,7 @@ async function submitPaperEdit(kind) {
     if(input)$('paper-tools-dialog').close();
     else document.querySelectorAll('[data-paper-reset]').forEach(node=>{node.checked=false;});
     paperTools.fields=null;
+    await applyPaperResponse(result);
     uiNext.notice(result.warning || (input?'摘要已保存。':'所选字段已清空。'));
     await refreshWorkspace();
     if(!readerContext && inboxActive())paintDirectory();
@@ -1359,148 +1293,63 @@ async function submitPaperEdit(kind) {
     else {paperTools.error=error.message;uiNext.notice(error.message);}
   }finally{
     paperTools.pending=false;$('paper-dialog-cancel').disabled=false;
-    $('paper-dialog-save').disabled=!$('paper-input-text').value.trim();renderEnrich();
-    if(input && !$('paper-tools-dialog').open)$('paper-diagnostics').focus();
+    $('paper-dialog-save').disabled=!$('paper-input-text').value.trim();renderReadingControls();
+    if(input && !$('paper-tools-dialog').open)$('paper-abstract-input').focus();
   }
 }
 $('paper-dev-tools').addEventListener('change',()=>renderPaperTools());
 $('paper-reset-fields').addEventListener('click',()=>void submitPaperEdit('reset'));
-$('paper-dev-enrich').addEventListener('click',()=>void startEnrich());
 $('paper-abstract-input').addEventListener('click',()=>openPaperDialog('input'));
-$('paper-diagnostics').addEventListener('click',()=>openPaperDialog('diagnostics'));
 $('paper-input-text').addEventListener('input',()=>{$('paper-dialog-save').disabled=paperTools.pending || !$('paper-input-text').value.trim();});
 $('paper-dialog-save').addEventListener('click',()=>void submitPaperEdit('input'));
 $('paper-dialog-cancel').addEventListener('click',()=>{if(!paperTools.pending)$('paper-tools-dialog').close();});
 $('paper-tools-dialog').addEventListener('cancel',event=>{if(paperTools.pending)event.preventDefault();});
 $('paper-tools-dialog').addEventListener('close',()=>{
   paperTools.kind=null;
-  renderEnrich();
+  renderReadingControls();
   if(!paperTools.pending && paperTools.focus?.isConnected)paperTools.focus.focus();
 });
-$('paper-dialog-copy').addEventListener('click',async()=>{
-  try{await navigator.clipboard.writeText($('paper-diagnostic-text').textContent);$('paper-dialog-error').textContent='诊断已复制。';}
-  catch{$('paper-dialog-error').textContent='无法复制，请选中诊断文本后手动复制。';}
-});
-$('paper-dialog-export').addEventListener('click',async()=>{
-  const button=$('paper-dialog-export');if(!button.dataset.taskId)return;
-  button.disabled=true;
-  try {await window.allfoldHistory.exportTask(button.dataset.taskId);$('paper-dialog-error').textContent='诊断包已在本地生成，未上传。';}
-  catch(error){$('paper-dialog-error').textContent=error.message;}
-  finally {button.disabled=!button.dataset.taskId;}
-});
-
-function enrichmentURL(operation) {return `/api/papers/${operation.paperId}/enrichment`;}
-function cancelRetrieval() {
-  const operation=enrichment;
-  if(operation?.phase!=='Retrieving') return;
-  operation.cancelled=true; clearTimeout(operation.timer); enrichment=null;
-  operation.paper.enrichPhase='Cancelled';operation.paper.enrichMessage='正在取消检索…';
-  // A decision waits for its cancellation, including an in-flight start response.
-  if(operation.requestID)return cancelOperation(operation);
-  return operation.startTask?.then(result=>{operation.requestID=result.request_id;return cancelOperation(operation);},error=>uiNext.notice(error.message));
-}
-async function cancelOperation(operation) {
-  try {
-    const result=await uiNext.request(`${enrichmentURL(operation)}/cancel`,{request_id:operation.requestID},{keepalive:true});
-    operation.paper.enrichMessage=result.accepted?'已取消检索。':'检索已结束，正在刷新实际结果。';
-    if(!result.accepted)await refreshWorkspace();
-  } catch(error) {uiNext.notice(error.message);}
-}
-async function pollEnrich(operation) {
-  if(enrichment!==operation || operation.cancelled) return;
-  try {
-    const result=await uiNext.request(`${enrichmentURL(operation)}/state?request_id=${encodeURIComponent(operation.requestID)}`);
-    operation.phase=result.phase;operation.paper.enrichPhase=result.phase;operation.paper.enrichMessage=result.message;
-    operation.waitingForUser=result.waiting_for_user===true;
-    if($('paper-tools-dialog').open && paperTools.kind==='diagnostics' && paperTools.paperId===operation.paperId){
-      paperTools.diagnosticGeneration++;renderPaperDiagnostics(result.diagnostic);
+async function applyPaperResponse(result) {
+  if(!result.paper || !uiNext.data || !uiNext.isCurrentEnvelope(result))return;
+  const snapshot=structuredClone(uiNext.data),paper=result.paper;
+  let journal;
+  for(const group of snapshot.subjects)for(const source of group.journals){
+    if(source.papers.some(item=>item.id===paper.id))journal=source;
+    source.papers=source.papers.filter(item=>item.id!==paper.id);
+  }
+  for(const status of ['downloaded','trash']){
+    journal ||= snapshot[status].papers.find(entry=>entry.paper.id===paper.id)?.journal;
+    snapshot[status].papers=snapshot[status].papers.filter(entry=>entry.paper.id!==paper.id);
+  }
+  if(!paper.metadata_present || !journal)journal={key:'unmapped:Unassigned',name:'Unassigned',issn:null,eissn:null,source_type:'unmapped',group:null,papers:[]};
+  if(paper.status==='candidate'){
+    let target=snapshot.subjects.flatMap(group=>group.journals).find(source=>source.key===journal.key);
+    if(!target){
+      target={...journal,papers:[]};
+      const unmapped=journal.source_type==='unmapped',name=unmapped?'Unmapped sources':journal.group ?? 'Ungrouped / virtual';
+      let group=snapshot.subjects.find(group=>group.name===name && group.journals.some(source=>
+        source.group===journal.group && (source.source_type==='unmapped')===unmapped));
+      if(!group)snapshot.subjects.push(group={name,journals:[]});
+      group.journals.push(target);
     }
-    if(result.phase==='Completed') {
-      const fields=Object.keys(result.saved || {});
-      operation.paper.syncWarning=result.message.includes('sync failed');
-      await refreshWorkspace();
-      if(currentPaper()?.id===operation.paperId) {updateEnrichedFields(fields);if(!readerContext && inboxActive())paintDirectory();}
-      return;
-    }
-    if(result.phase==='Failed' || result.phase==='Idle') {
-      if(currentPaper()?.id===operation.paperId)renderEnrich();
-      if(result.phase==='Idle')await refreshWorkspace();
-      return;
-    }
-  } catch(error) {operation.paper.enrichMessage=error.message;}
-  if(currentPaper()?.id===operation.paperId)renderEnrich();
-  if(enrichment===operation && !operation.cancelled)operation.timer=setTimeout(()=>void pollEnrich(operation),1000);
+    target.papers.push(paper);
+  }else if(['downloaded','trash'].includes(paper.status))snapshot[paper.status].papers.push({paper,journal});
+  snapshot.subjects=snapshot.subjects.map(group=>({...group,journals:group.journals.filter(source=>source.papers.length)})).filter(group=>group.journals.length);
+  snapshot.revision=result.revision;
+  uiNext.acceptEnvelope(snapshot,uiNext.workspaceEpoch,result.__allfoldResponseOrder);
+  uiNext.data=snapshot;
+  await applySnapshot(snapshot);
 }
-async function startEnrich() {
+async function paperAction(action) {
   const paper=currentPaper();
-  if(!canEnrich(paper) || reviewPanel.closest('[inert]'))return;
-  const operation=enrichment={paperId:paper.id,paper,phase:'Retrieving',requestID:null,cancelled:false};
-  paper.enrichMessage='Retrieving missing fields…';renderEnrich();
+  if(!paper || decisionPending || snapshotApplying || paperToolsBusy())return;
+  const paperId=paper.id,workspaceId=uiNext.libraryIdentity;
+  decisionPending=true;renderReadingControls();
   try {
-    operation.startTask=uiNext.request(`${enrichmentURL(operation)}/start`,{});
-    const result=await operation.startTask;
-    operation.requestID=result.request_id;
-    if(operation.cancelled)return;
-    operation.phase=result.phase;paper.enrichPhase=result.phase;paper.enrichMessage=result.message;
-    operation.waitingForUser=result.waiting_for_user===true;
-    void pollEnrich(operation);
-  } catch(error) {operation.phase='Failed';paper.enrichPhase='Failed';paper.enrichMessage=error.message;}
-  if(currentPaper()?.id===paper.id)renderEnrich();
-}
-$('enrich-task-page').addEventListener('click',async()=>{
-  const operation=enrichment;
-  if(operation?.phase!=='Retrieving' || !operation.waitingForUser || !operation.requestID)return;
-  try {
-    if(!await window.allfoldWorkbench?.showTaskPage({workflowId:operation.requestID,taskId:operation.requestID}))
-      uiNext.notice('当前验证页面尚未就绪，请稍后重试。');
-  }catch(error){uiNext.notice(error.message);}
-});
-async function reviewPaper(status) {
-  const arrayCandidate=readerContext?.status==='candidates' && arrayActive();
-  if (decisionPending || snapshotApplying || paperToolsBusy() || enrichment?.phase==='Saving' || window.workspaceArray?.workflowBusy() ||
-      (readerContext ? !arrayCandidate : state.view!=='journal' || inspection.time!==inspection.duration || inspection.removeAfter)) return;
-  const paperId=state.pendingPaper;
-  decisionPending=true;renderEnrich();
-  await cancelRetrieval();decryption.reset(null,true);
-  const journal=reviewJournal(), index=journal?.papers.findIndex(p => p.id===paperId), paper=journal?.papers[index];
-  if(!paper || state.pendingPaper!==paperId || (arrayCandidate && readerContext?.status!=='candidates')){
-    decisionPending=false;renderEnrich();uiNext.notice('文献已改变，请刷新后继续。');return;
-  }
-  try {
-    const result=await uiNext.request(`/api/ui-next/papers/${paper.id}/${status==='kept'?'keep':'reject'}`,{expected_status:paper.status});
-    if(result.outcome!=='UPDATED')throw new Error(result.message);
-    paper.status=result.resulting_status;
-    if(result.message)uiNext.notice(result.message);
-  } catch(error) {
-    decisionPending=false;renderEnrich();uiNext.notice(error.message);return;
-  }
-  decisionPending=false;
-  reviewedPapers.set(paper.id,status); journal.papers.splice(index,1);
-  if (status==='kept') keptPapers.set(paper.id,{paper,journal:{key:journal.key,issn:journal.issn,eissn:journal.eissn,name:journal.name}});
-  const list=lists.get(journal.key);
-  list?.querySelector(`[data-paper-id="${paper.id}"]`)?.remove();
-  [...(list?.children || [])].forEach((node,i) => node.querySelector('.row-number').textContent=pad(i+1));
-  if(arrayCandidate){
-    readerContext.entries=readerContext.entries.filter(entry=>entry.paper.id!==paper.id);
-    if(!journal.papers.length){
-      removeFinishedJournal(journal.key);
-      closeArrayReader();
-      window.dispatchEvent(new Event('array-reader-empty'));
-      state.view=shelves.length?'selected':'empty';
-    }else{
-      state.pendingPaper=journal.papers[index % journal.papers.length].id;
-      renderPaper();
-      window.dispatchEvent(new CustomEvent('array-paper-selected',{detail:state.pendingPaper}));
-    }
-    updateSnapshotCount();
-    window.dispatchEvent(new Event('workspace-data-changed'));
-    wake();return;
-  }
-  updateSnapshotCount();
-  window.dispatchEvent(new Event('workspace-data-changed'));
-  if (!journal.papers.length) { inspection.removeAfter=true; back(); return; }
-  state.pendingPaper=journal.papers[index % journal.papers.length].id;
-  resetDirectory(); renderPaper(); wake();
+    const result=await uiNext.request(`/api/ui-next/papers/${paperId}/${action}`,{workspace_id:workspaceId,expected_status:paper.status});
+    await applyPaperResponse(result);
+  } catch(error) {if(!error.stale)uiNext.notice(error.message);}
+  finally {decisionPending=false;renderReadingControls();}
 }
 function removeFinishedJournal(key=selectedJournal()?.key) {
   const groupIndex=shelves.findIndex(group=>group.journals.some(journal=>journal.key===key));
@@ -1536,21 +1385,17 @@ function removeFinishedJournal(key=selectedJournal()?.key) {
 function updateSnapshotCount() {
   const journals=shelves.flatMap(g => g.journals.filter(Boolean)), count=journals.reduce((n,j) => n+j.papers.length,0);
   $('snapshot-label').textContent=`${journals.length} JOURNALS / ${count} CANDIDATES / WORKSPACE`;
-  $('kept-count').textContent=pad(keptPapers.size);
+  $('downloaded-count').textContent=pad(downloadedPapers.size);$('trash-count').textContent=pad(trashPapers.size);
 }
 $('previous-paper').addEventListener('click',() => movePaper(-1));
 $('next-paper').addEventListener('click',() => movePaper(1));
-$('keep-paper').addEventListener('click',() => reviewPaper('kept'));
-$('reject-paper').addEventListener('click',() => reviewPaper('rejected'));
-$('paper-detail').addEventListener('click',event=>{if(event.target.closest('[data-enrich]'))void startEnrich();});
-$('paper-metadata-details').addEventListener('click',event=>{
-  if(!$('paper-detail').contains(event.currentTarget) && event.target.closest('[data-enrich]'))void startEnrich();
-});
+$('reject-paper').addEventListener('click',()=>void paperAction('reject'));
+$('restore-paper').addEventListener('click',()=>void paperAction(currentPaper()?.metadata_present?'restore':'unexclude'));
+$('clear-paper-metadata').addEventListener('click',()=>void paperAction('clear-metadata'));
 $('paper-metadata-details').addEventListener('toggle',()=>{
   fillAbstractPlaceholder();
   if(decryption.active) decryption.refresh();
 });
-$('cancel-enrich').addEventListener('click',() => { cancelRetrieval(); renderEnrich(); });
 
 $('back').addEventListener('click', back);
 $('previous-journal').addEventListener('click', () => moveJournal(-1));
@@ -1563,7 +1408,7 @@ document.addEventListener('keydown', event => {
   if (event.key === 'Escape' && state.view === 'journal') { back(); event.preventDefault(); }
   else if (state.view === 'journal' && ['ArrowUp','ArrowDown'].includes(event.key)) {
     if (event.shiftKey || !inspection.target || inspection.time !== inspection.duration || inspection.removeAfter ||
-        decisionPending || snapshotApplying || enrichment?.phase === 'Saving' || document.querySelector('dialog[open]') ||
+        decisionPending || snapshotApplying || document.querySelector('dialog[open]') ||
         event.target.isContentEditable || event.target.closest('input,textarea,select,[contenteditable],.archive-widget-handle,#debug-split,#debug-bottom')) return;
     movePaper(event.key === 'ArrowUp' ? -1 : 1); event.preventDefault();
   }
@@ -1678,7 +1523,7 @@ window.addEventListener('journal-cover-changed',event=>{
   if(journal)void cacheCover(journal);
 });
 function paperObjects() {
-  return new Map([...shelves.flatMap(g=>g.journals.flatMap(j=>j.papers)),...keptPapers.values()].map(item=>{const p=item.paper || item;return [p.id,p];}));
+  return new Map([...shelves.flatMap(g=>g.journals.flatMap(j=>j.papers)),...downloadedPapers.values(),...trashPapers.values()].map(item=>{const p=item.paper || item;return [p.id,p];}));
 }
 function rebuildShelves(selection={issn:selectedJournal()?.key}) {
   const selectedKeys=new Set(shelves.map((shelf,i)=>shelf.journals[rows[i]?.sel]?.key));
@@ -1707,27 +1552,28 @@ async function applySnapshot(data,selection=window.inboxRun?.selection(),coverVe
   const scrolls=new Map([...lists].map(([key,list])=>[key,list.scrollTop]));
   const merge=paper=>{const existing=objects.get(paper.id);if(existing){Object.assign(existing,paper);return existing;}return paper;};
   for(const group of data.subjects)for(const journal of group.journals){
-    journal.papers=journal.papers.map(merge);
     const change=coverChanges.get(journal.key);
     if(change?.sequence>coverVersion)journal.cover_detail=change.cover;
     await cacheCover(journal);
   }
-  if(epoch!==uiNext.workspaceEpoch)return;
+  if(epoch!==uiNext.workspaceEpoch || !uiNext.isCurrentEnvelope(data))return;
+  for(const group of data.subjects)for(const journal of group.journals)journal.papers=journal.papers.map(merge);
   logicalGroups=data.subjects.map((group,id)=>{
     for(const journal of group.journals){journal.logicalGroupId=id;journal.logicalGroupName=group.name;}
     return {...group,id};
   });
   shelfCapacity=archiveDebug.values.shelfCapacity;
-  rebuildShelves(selection);keptSnapshot=data.kept;
+  rebuildShelves(selection);librarySnapshot={...data.downloaded,trash:data.trash};
   if(wasArray)state.view=shelves.length?'selected':'empty';
-  keptPapers.clear();for(const entry of data.kept.papers){entry.paper=merge(entry.paper);keptPapers.set(entry.paper.id,entry);}
+  downloadedPapers.clear();for(const entry of data.downloaded.papers){entry.paper=merge(entry.paper);downloadedPapers.set(entry.paper.id,entry);}
+  trashPapers.clear();for(const entry of data.trash.papers){entry.paper=merge(entry.paper);trashPapers.set(entry.paper.id,entry);}
   for(const [key,list] of lists)if(!shelves.some(g=>g.journals.some(j=>j.key===key))){list.remove();lists.delete(key);}
   createLists();for(const [key,scroll]of scrolls)if(lists.has(key))lists.get(key).scrollTop=scroll;
   document.querySelector('.collection').hidden=!shelves.length;
   $('empty-inbox').hidden=shelves.length>0;
   if(readerContext){
-    const current=readerContext.status==='candidates'?candidateEntries():[...keptPapers.values()];
-    const entries=window.workspaceArray.readerEntries(current,data.kept.journals);
+    const current=readerContext.status==='candidates'?candidateEntries():readerContext.status==='trash'?[...trashPapers.values()]:[...downloadedPapers.values()];
+    const entries=window.workspaceArray.readerEntries(current,data.downloaded.journals);
     if(entries.some(entry=>entry.paper.id===selected))readerContext.entries=entries;
     else {
       closeArrayReader(true);
@@ -1755,7 +1601,6 @@ function refreshSavedSettings() {
   if(settingsRefreshPending && window.inboxRun.available())void refreshWorkspace().catch(error=>uiNext.notice(error.message));
 }
 async function refreshWorkspace(selection) {
-  if(snapshotApplying)return snapshotApplying;
   settingsRefreshPending=false;
   const epoch=uiNext.workspaceEpoch;
   const work=(async()=>{
@@ -1763,30 +1608,30 @@ async function refreshWorkspace(selection) {
       const version=coverSequence,data=await uiNext.workspace();
       if(epoch!==uiNext.workspaceEpoch)return;
       await applySnapshot(data,selection,version,epoch);return data;
-    } catch(error) {if(epoch===uiNext.workspaceEpoch)throw error;}
+    } catch(error) {if(epoch===uiNext.workspaceEpoch && !error.stale)throw error;}
   })();
   snapshotApplying=work;
-  renderEnrich();
-  try{return await work;}finally{if(snapshotApplying===work){snapshotApplying=false;renderEnrich();refreshSavedSettings();}}
+  renderReadingControls();
+  try{return await work;}finally{if(snapshotApplying===work){snapshotApplying=false;renderReadingControls();refreshSavedSettings();}}
 }
 window.addEventListener('workspace-reset',()=>{
-  uiNext.workspaceEpoch++;uiNext.data=null;snapshotApplying=false;
+  uiNext.resetWorkspace();snapshotApplying=false;
   closeArrayReader(true);clearInspectionPanel();
-  paragraphLayout?.clear();cancelRetrieval();decryption.reset(null,true);paperMetadata.open=false;
+  paragraphLayout?.clear();decryption.reset(null,true);paperMetadata.open=false;
   for(const id of ['view-paper-title','view-paper-id','paper-position','paper-authors','paper-date','paper-source','paper-identifiers','paper-indexed-terms','paper-providers','paper-doi','paper-abstract'])$(id).replaceChildren();
   window.allfoldPaperDates.render(null,$('paper-dates'),$('paper-date-evidence'));
   $('paper-doi').removeAttribute('href');delete $('paper-detail').dataset.paperId;
   $('paper-metadata-summary').textContent='Infos';
   Object.assign(paperTools,{paperId:null,fields:null,loading:false,error:'',
     generation:paperTools.generation+1,diagnosticGeneration:paperTools.diagnosticGeneration+1});
-  keptPapers.clear();reviewedPapers.clear();
-  keptSnapshot={...keptSnapshot,papers:[],titles:{}};
+  downloadedPapers.clear();trashPapers.clear();
+  librarySnapshot={...librarySnapshot,papers:[],titles:{}};
   logicalGroups=[];shelves=[];rows=[];
   inspection.time=inspection.target=0;inspection.completionPending=false;state.pendingPaper=null;state.view='empty';
   for(const list of lists.values())list.remove();lists.clear();
-  $('kept-count').textContent=pad(0);$('journal-view').hidden=true;$('journal-view').inert=true;
+  $('downloaded-count').textContent=$('trash-count').textContent=pad(0);$('journal-view').hidden=true;$('journal-view').inert=true;
   $('selected-view').classList.remove('inspecting');
-  renderEnrich();
+  renderReadingControls();
 });
 async function load() {
   const coverVersion=coverSequence;
@@ -1803,24 +1648,22 @@ async function load() {
     await applySnapshot(data,undefined,coverVersion);state.ready=true;
     if(window.allfoldUIPreferences.archiveDisabled())window.inboxKept.setLayout('array');
     $('load-status').hidden=true;resize();wake();
-    const pending=[...paperObjects().values()].find(p=>['Retrieving','Saving'].includes(p.enrichPhase) && p.enrichment_request_id);
-    if(pending){enrichment={paperId:pending.id,paper:pending,phase:pending.enrichPhase,requestID:pending.enrichment_request_id,cancelled:false};void pollEnrich(enrichment);}
     window.dispatchEvent(new Event('inbox-ready'));
   }catch(error){$('load-status').textContent=`读取失败：${error.message}`;uiNext.notice(error.message);}
 }
 let inboxScrollPosition=0;
 function leaveInboxReview() {
   if(state.view!=='journal') return;
-  cancelRetrieval();decryption.reset(null,true);
+  decryption.reset(null,true);
   inspection.target=inspection.time=0;finishReturn();
 }
 function candidateEntries() {
   return logicalGroups.flatMap(group=>group.journals.flatMap(journal=>journal.papers.map(paper=>({paper,journal}))));
 }
 function closeArrayReader(snapshot=false) {
-  if(!snapshot && (decisionPending || snapshotApplying || paperToolsBusy() || enrichment?.phase==='Saving'))return false;
+  if(!snapshot && (decisionPending || snapshotApplying || paperToolsBusy()))return false;
   if(readerContext){
-    paragraphLayout?.clear();cancelRetrieval();decryption.reset(null,true);
+    paragraphLayout?.clear();decryption.reset(null,true);
     readerContext=null;state.pendingPaper=null;
     window.allfoldPreprintLookup.select(null);
     window.allfoldPaperDates.render(null,$('paper-dates'),$('paper-date-evidence'));
@@ -1837,11 +1680,11 @@ function closeArrayReader(snapshot=false) {
 }
 window.allfoldRefreshWorkspace=refreshWorkspace;
 window.inboxKept={
-  available:()=>state.ready && !decisionPending && !snapshotApplying && !paperToolsBusy() && enrichment?.phase!=='Saving' && !$('run-view').open &&
+  available:()=>state.ready && !decisionPending && !snapshotApplying && !paperToolsBusy() && !$('run-view').open &&
     (['selected','empty'].includes(state.view) || (state.view==='journal' && inspection.time===inspection.duration && inspection.target)),
-  busy:()=>decisionPending || Boolean(snapshotApplying) || paperToolsBusy() || enrichment?.phase==='Saving',
-  data:()=>keptSnapshot,
-  papers:()=>[...keptPapers.values()],
+  busy:()=>decisionPending || Boolean(snapshotApplying) || paperToolsBusy(),
+  data:()=>librarySnapshot,
+  entries:status=>[...(status==='trash'?trashPapers:downloadedPapers).values()],
   candidates:candidateEntries,
   setLayout(layout) {
     if(!['archive','array'].includes(layout) || (layout==='archive' && window.allfoldUIPreferences.archiveDisabled()) || !this.available())return false;
@@ -1863,10 +1706,10 @@ window.inboxKept={
     }
     syncNavigation();return true;
   },
-  suspend() {cancelRetrieval();renderEnrich();},
+  suspend() {renderReadingControls();},
   openReader(entries,id,status,filter) {
     if(this.busy() || !arrayActive() || !entries.some(entry=>entry.paper.id===id)) return false;
-    cancelRetrieval();decryption.reset(null,true);
+    decryption.reset(null,true);
     clearInspectionPanel();
     if(!readerContext)paperMetadata.open=false;
     readerContext={entries,status,filter};state.pendingPaper=id;
@@ -1874,10 +1717,9 @@ window.inboxKept={
     $('array-paper-heading').append(paperTitle);
     $(status==='candidates'?'array-candidate-infos':'array-kept-infos').append(paperMetadata);
     $('paper-abstract-heading').append(paperNavigation);
-    paperNavigation.hidden=status!=='candidates';
-    $('array-decision-tools').hidden=status!=='candidates';
-    if(status==='candidates')$('array-decision-tools').append(...decisionButtons);
-    else decisionHost.append(...decisionButtons);
+    paperNavigation.hidden=false;
+    $('array-decision-tools').hidden=false;
+    $('array-decision-tools').append(...decisionButtons);
     renderPaper();wake();return true;
   },
   closeReader:closeArrayReader,
@@ -1889,22 +1731,19 @@ window.inboxKept={
     const journal=shelves[group].journals.findIndex(journal=>journal.papers.some(paper=>paper.id===id));
     selectJournal(group,journal);openView(id);return true;
   },
-  exported(ids) {
-    for(const id of ids) {keptPapers.delete(id);reviewedPapers.set(id,'exported');}
-    $('kept-count').textContent=pad(keptPapers.size);
-  },
+
 };
 new ResizeObserver(()=>{if(readerContext && arrayActive()) fillAbstractPlaceholder();}).observe($('kept-reader'));
 window.inboxRun={
-  available:()=>state.ready && !decisionPending && !snapshotApplying && !paperToolsBusy() && enrichment?.phase!=='Saving' && !['Retrieving','Saving'].includes(enrichment?.phase) && !window.workspaceArray?.workflowBusy() && !window.uiRun?.active() &&
+  available:()=>state.ready && !decisionPending && !snapshotApplying && !paperToolsBusy() && !window.workspaceArray?.workflowBusy() && !window.uiRun?.active() &&
     (inspection.time===0 || inspection.time===inspection.duration),
   selection:()=>({issn:selectedJournal()?.key,scroll:lists.get(selectedJournal()?.key)?.scrollTop || 0}),
   prepare:async(_papers,selection)=>{await refreshWorkspace(selection);},
 };
 workspaceSearch.register('papers',{
   label:'Paper',
-  items:()=>[...candidateEntries(),...keptPapers.values()].map(({paper,journal})=>({
-    id:paper.id,name:paper.title,detail:journal.name,keywords:paper.doi,
+  items:()=>[...candidateEntries(),...downloadedPapers.values(),...trashPapers.values()].map(({paper,journal})=>({
+    id:paper.id,name:paper.title || paper.identity_label,detail:journal.name,keywords:paper.doi,
   })),
   select:item=>window.workspaceArray?.openPaper(item.id,{readKept:true}),
 });
@@ -1916,15 +1755,15 @@ window.uiWorkspace={
   },
   ready:()=>state.ready,
 };
-window.addEventListener('focus',()=>{if(!window.allfoldWorkbench?.presentationChanging?.() && !configurationActive() && state.ready && !decisionPending && !paperToolsBusy() && !['Retrieving','Saving'].includes(enrichment?.phase))void refreshWorkspace().catch(error=>uiNext.notice(error.message));});
+window.addEventListener('focus',()=>{if(!window.allfoldWorkbench?.presentationChanging?.() && !configurationActive() && state.ready && !decisionPending && !paperToolsBusy())void refreshWorkspace().catch(error=>uiNext.notice(error.message));});
 window.addEventListener('settings-saved',()=>{settingsRefreshPending=true;refreshSavedSettings();});
-window.addEventListener('pagehide',event=>{cancelRetrieval();if(!event.persisted)paragraphLayout?.destroy();});
+window.addEventListener('pagehide',event=>{if(!event.persisted)paragraphLayout?.destroy();});
 window.workspaceNavigation.register('workspace',{
-  canNavigate:({to,workflowRecovery})=>!navigationBusy() && (!(window.workspaceArray?.navigationBusy?.() ?? window.workspaceArray?.workflowBusy()) || (workflowRecovery===true && to==='kept')),
+  canNavigate:()=>!navigationBusy() && !window.workspaceArray?.navigationBusy?.(),
   canEnter:()=>state.ready,
   leave:()=>{
     window.workspaceArray?.leave();
-    cancelRetrieval();renderEnrich();
+    renderReadingControls();
     inboxScrollPosition=lists.get(selectedJournal()?.key)?.scrollTop || 0;
   },
   enter:()=>{

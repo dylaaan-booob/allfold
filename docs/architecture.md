@@ -12,9 +12,7 @@ flowchart LR
     BRIDGE <-->|authenticated WebSocket| MAIN[Electron Main]
     UI -->|restricted Preload| MAIN
     MAIN --> BROWSER[Native browser and Session]
-    MAIN --> TRANSLATE[Official Translator and Translate]
-    MAIN --> ZOTERO[Zotero Local API]
-    APP --> DATA[Paper and configuration files]
+    APP --> DATA[SQLite Paper library and configuration]
     APP --> PROVIDERS[Provider adapters]
 ```
 
@@ -27,46 +25,44 @@ Main starts one Python process. The HTTP origin remains loopback-only on port 18
 | `frontend/ui/` | Workspace, Workflows, Journals and Settings UI, source assets and notices |
 | `src/allfold/application/` | Use cases, guarded operations and process-local workflow coordination |
 | `src/allfold/providers/` | Provider retrieval, queries and source-specific formats |
-| `src/allfold/persistence/` | Production Paper/Markdown projection, independent SQLite Paper kernel, safe file operations, Registry and local state |
-| `src/allfold/integrations/` | Python-side Zotero, credential and Pydoll adapters |
+| `src/allfold/persistence/` | Production SQLite Paper library and projections, safe file operations, Registry and local state |
+| `src/allfold/integrations/` | Credential and Pydoll adapters |
 | `src/allfold/web/` | HTTP projection, validation, composition and Electron WebSocket transport |
 | `src/allfold/http_client.py` | Shared synchronous Python HTTP client, proxy parsing, bypass rules and per-request transport routing; independent of Chromium Session |
 | `electron/src/main.cjs` | Application lifecycle, trusted IPC and native dispatch |
 | `electron/src/browser/` | Native pages, main-window presentation, document identity, navigation and shared Session |
 | `electron/src/auth/` | Task-scoped institution authentication and credentials |
 | `electron/src/workflows/` | Login, Service preparation, Covers and WoS native page operations |
-| `electron/src/zotero/` | Official translation sandbox, Local API persistence and host document/HTTP adapters |
 | `electron/src/preload/`, `native-ui/` | Restricted capabilities and local native-window UI |
 
-Models, configuration definitions, identifiers and query primitives remain shared Python modules. Application code does not depend on Web adapters; its BrowserGateway describes the existing connected/execute/cancel interface. ElectronBridge adapts it to transport. Each Request ID owns its operation context, progress, cancellation, Solver and OpenAlex replies, page claims and terminal result. BrowserTaskLock keeps workflow admission exclusive while a workflow dispatches multiple requests. An issued native save settles before its Future releases a slot. Shutdown cancels pre-save work and drains active saves and guarded Paper commits.
+Models, configuration definitions, identifiers and query primitives remain shared Python modules. Application code does not depend on Web adapters; its BrowserGateway describes the existing connected/execute/cancel interface. ElectronBridge adapts it to transport. Each Request ID owns its operation context, progress, cancellation and Solver replies, page claims and terminal result. BrowserTaskLock keeps workflow admission exclusive while a workflow dispatches multiple requests. Native operations settle before their Futures release ownership. Shutdown stops admission and drains Run, Preprint, WoS, Login and Covers before database teardown.
 
 Journal lookup and remote fallback belong to the application layer; persistence only reads the local Registry. WoS export parsing continues to reuse safe file-reading helpers.
 
-FastAPI composes these implementations. ImportTarget belongs to the application so workflow identity checks do not depend on HTTP forms. Provider normalization uses shared identifiers rather than application workflow helpers.
+FastAPI composes these implementations. Workspace UUIDs and captured Paper eligibility belong to the application; HTTP accepts UUIDs and Workspace identity rather than arbitrary paths. Provider normalization uses shared identifiers rather than application workflow helpers.
 
 ## Browser Service associations
 
-Python snapshots the saved Journals and Access Services for each invocation. The browser bridge carries an opaque hash of the canonical configuration path, the configuration revision and User State revision alongside the saved Service ID. Import matches saved ISSN/eISSN identifiers with the existing Workspace rules: every matching Journal must select the same nonempty Service; otherwise the Paper remains unassigned. These are invocation snapshots of SQLite state, never a second authoritative mapping. Preparation and subsequent Import dispatches verify the original snapshot, while WoS retains its existing configuration and Workspace checks. Detected changes stop further work without migrating it to a new mapping. Already-dispatched native saves still settle through the existing result protocol.
+Python snapshots saved Journals and Access Services for each invocation. The bridge
+carries canonical configuration scope, configuration revision and User State
+revision alongside the saved Service ID. ISSN/eISSN matching assigns complete
+Papers to Journals and Services; source names do not confer membership. These
+snapshots are descriptive, not a second mapping authority. Prepare and WoS verify
+the original snapshot before further dispatch.
 
 Login runs one CARSI institution flow. Each subsequent CARSI preparation opens its own resource Portal in the same Session. The saved Access Service ID and observed source and target pages establish provenance. Manual Services use explicit visits. Login keeps outcomes and target Page IDs in memory, bound to the saved Service and institution authority. After a settled batch with Services that need attention, one user confirmation marks the batch's unchanged saved Services available. Existing prepared targets are retained. Ordinary settings edits preserve a prepared target while the next task takes a fresh configuration and User State revision. Discover uses the prepared WoS target or opens the official query page in the shared Session after manual confirmation. Query and Export still validate the scoped Service, document and export path. API discovery remains independent of that prerequisite.
 
-Import binds All Services or one Service to a fixed Kept Paper plan, one-time
-authorization and a Zotero Server ID, Library and optional Collection. It records
-explicit unprepared-Service skips before translation. A round-robin scheduler
-admits requests subject to per-Service and global limits. Translator windows, PDF
-retrieval, Local API writes and Solver each have independent bounds. Per-Paper
-parent and attachment keys stay with the originating result. An uncertain write
-stops subsequent POSTs and issued requests settle before the batch releases
-authority. Paper commits use the captured identity and exact-content checks.
-
 Browser Runtime uses one business Session from `session.fromPartition('allfold')`.
-It associates a managed Paper page with an opaque Workspace identity and the Paper
-UUID. Enrich and Import reuse the page with a matching current DOI and document
-or navigate the same page to its DOI. Browser selection is independent of task
-ownership. An eligible initial loading failure can retire the failed attempt and
-open the same DOI once in a new managed page before translation. Other settled
-and cancelled pages remain available for inspection, and an idle page can be
-refreshed. Destruction invalidates live ownership. The association is process-local.
+Selection and presentation are separate from task ownership. Prepare, WoS, Login
+and Covers retain their scoped Page/Document checks, cancellation and manual
+verification. DocumentRuntime and its isolated preload still supply identity and
+page inspection; the Cloudflare adapter remains request/CDP-target scoped.
+
+Keep/Import/Enrich have no product HTTP/IPC or native dispatch path. Dedicated
+Zotero Local API, attachment writes and full Translator assembly are removed;
+Setup no longer downloads or assembles translation-only sources. Existing ignored
+vendor checkouts are untouched. [Third-party notices](third-party.md) retain
+attribution for remaining adapted Document/Browser sources.
 
 A managed main-frame load has an 85-second window and at most two refreshes.
 The refresh delays are 350 and 700 ms, each multiplied by a random factor from
@@ -87,20 +83,6 @@ An active cooldown can only extend. Allfold-initiated navigations and refreshes
 wait up to 30 seconds within their operation budget. Visit also checks the
 publisher origin when it is known from the saved entry or a prior attributable
 Visit. Chromium continues its redirects, authentication chain and page requests.
-
-The official Translator executes in isolated sandbox windows. Each sandbox IPC
-request checks its renderer, operation and source document, then uses the business
-Session for scoped HTTP. Solver requests use the originating CDP target and
-document with serialized Pydoll execution. Local API and OpenAlex responses are
-scoped separately. Translator PDFs are downloaded first. An on-demand OpenAlex
-lookup can supply up to four direct PDF candidates, which use the shared Session
-without publisher referrer or Zotero authorization.
-
-Last Import uses exact-key parent and children queries. Confirmed attachment
-registration is required for PDF success. Read failures remain unknown. The
-process-local projection neither reads stored files nor writes Zotero keys into
-Paper frontmatter. Known keys remain visible in local task details and History,
-with keys removed from exported diagnostics.
 
 ## History and diagnostics
 
@@ -137,7 +119,7 @@ authenticated native bridge and compare encrypted-store revisions.
 
 The main Window contains Chrome, a flexible Workbench Content region and Status.
 Its business workspaces are Workspace, Workflows, Journals and Settings.
-Workflows keeps Login, Discover and Import to Zotero under one navigation entry.
+Workflows keeps Login and Discover under one navigation entry.
 Browser, Search and History are shared header tools. Quick Open reads the current
 local Paper, Journal, saved Service and native tab projections, dispatching each
 selection to its owning controller. A `>` prefix searches the command registry.
@@ -160,29 +142,34 @@ labels. Unassigned and shared pages use explicit roles and recorded provenance.
 The directory uses the shared layout controller for flyout size, focus and scroll.
 Grouping grants no task, document or authentication authority.
 
-Archive availability and fullscreen task presentation are local UI preferences, outside YAML Save and business SQLite. Archive defaults disabled while its existing resources and layout preference remain available. Legacy Paper links resolve against the current ARRAY candidate/kept collection or report a missing Paper. Login, Discover and Import keep independent coordinators. Discover captures its display preference at start. Login and Import retain their progress and controls in Workflows independently of Browser visibility.
+Archive availability and fullscreen task presentation are local UI preferences, outside YAML Save and business SQLite. Archive defaults disabled while its existing resources and layout preference remain available. Legacy Paper links resolve against the current ARRAY Candidate/Downloaded/Trash projection or report a missing Paper. Login, Discover and Preprint keep their existing coordinators. Discover captures its display preference at start. Login retains their progress and controls in Workflows independently of Browser visibility.
 
 ## Resources and third-party code
 
-The UI build copies sources into Python's ignored static delivery tree. Runtime URLs and API endpoints do not depend on the editable source directory.
+The UI build copies sources into Python's ignored static delivery tree. Served UI URLs and API endpoints do not depend on the editable source directory.
 
-Electron package metadata and scripts remain at the package root. `src/shared/paths.cjs` resolves project, native UI, Preload, vendor-notice and Runtime locations. Official Zotero checkouts stay pristine in ignored vendor directories; the Runtime assembler is their only production assembly path. Project adaptations stay in host sources. See [third-party sources](third-party.md).
+Electron package metadata and scripts remain at the package root. `src/shared/paths.cjs` resolves project, native UI, Preload and native UI locations. Existing official vendor checkouts stay pristine in ignored directories. They are
+not setup/build inputs after translation-only Runtime retirement. See
+[third-party sources](third-party.md).
 
 ## Data ownership
 
-Local YAML owns monitor settings. The private `.allfold/user-data.sqlite` owns Journals, Groups, Labels, direct Access Services and default Service assignments, isolated by the canonical configuration path. Existing valid `list.md` files seed each configuration once; subsequent Markdown edits do not change saved user state. Migration validates the complete managed data, records its source and digest, and leaves the original file intact. Production Paper Markdown owns UUID, primary DOI and direct reliable namespaced identifiers, workflow status and human content. [Paper identity](paper-identity.md) defines the current create-only canonicalization, source/version metadata and partial date evidence contract.
+Local YAML owns monitor settings. The private `.allfold/user-data.sqlite` owns Journals, Groups, Labels, direct Access Services and default Service assignments, isolated by the canonical configuration path. Existing valid `list.md` files seed each configuration once; subsequent Markdown edits do not change saved user state. Migration validates the complete managed data, records its source and digest, and leaves the original file intact. The production [SQLite Paper library](paper-library.md) owns stable UUID/direct
+identities, explicit primary identity, metadata, exclusions and one optional body
+association at `Workspace/papers.sqlite`. HTTP handlers and workers open separate
+thread-confined connections. Read-only uninitialized views create nothing; Run
+performs explicit initialization. Known v1 upgrades preserve data; corruption and
+unknown schemas fail without replacement. No Markdown shadow/fallback exists.
 
-WF01 adds an independent Python [SQLite Paper kernel](paper-library.md) at an
-explicitly selected `Workspace/papers.sqlite`. Its repository separates stable
-UUID/direct identities, deletable metadata and one optional body association.
-Short transactions enforce identity uniqueness and scoped write generations.
-No application entry point opens it; there is no shadow store, dual write or
-migration. WF02 owns adoption by every production Paper reader/writer, as recorded
-in [workflow refactor tasks](workflow-refactor-tasks.md). Electron gains no writer.
+Workspace UI uses separate library revisions for response order. WriteToken
+remains captured asynchronous eligibility, with separate abstract generation.
+Reject persists exclusion before exact-Paper cancellation outside write locks;
+restoration cannot revive old work. Clearing metadata waits for actual cleanup.
+See [identity](paper-identity.md) and [task boundaries](workflow-refactor-tasks.md).
 
 The private `.allfold/resources.sqlite` shares complete GOKB snapshots and the CARSI official Catalog across configurations. It holds external evidence, not users' Service preferences. Refresh commits only validated, complete data and retains the previous cache on failure. The Journal Resolver follows Journal → GOKB Platform → CARSI Resource, retaining multiple identities and products. Only a unique, reliable candidate can fill an empty default; saved user choices take precedence. Ordinary Run never requires GOKB.
 
-The two application-level databases live outside Workspace; the independent Paper library belongs to its Workspace. Within the application project, configurations in subdirectories use the same application data directory; their canonical paths still identify separate user scopes. Registry remains read-only during normal use and retains source-specific evidence. Browser tasks and coordinators are transient, while Zotero owns its Library and attachments. Generated UI and Runtime are rebuildable resources, not user data.
+The two application-level databases live outside Workspace; the independent Paper library belongs to its Workspace. Within the application project, configurations in subdirectories use the same application data directory; their canonical paths still identify separate user scopes. Registry remains read-only during normal use and retains source-specific evidence. Browser tasks and coordinators remain transient. Generated UI is rebuildable, not user data.
 
 [Safety](safety.md) states the cross-module invariants. Types, parsers and validators in code define fields and interfaces; [development](development.md) defines preparation and verification. Historical plans and investigations are not current implementation authority.
 
@@ -200,33 +187,26 @@ One Integrated Run overlaps selected PubMed/WoS/OpenAlex journal Discovery under
 After Discovery and Work lookup settle, Run deduplicates and excludes saved Papers including Rejected. Batched PubMed article-ID lookup resolves missing direct formal PMIDs. The shared completion engine adds metadata, date and relationship evidence, follows known native preprint targets and gives exhausted transient requests one additional attempt in final settlement. Bound versions contribute date evidence and provenance. Direct formal records supply ordinary metadata and persisted identity. Run uses fixed PubMed, OpenAlex, Europe PMC, Crossref, arXiv, bioRxiv and medRxiv helpers independently of the selected Discovery sources. Only then does one protected create chain run.
 Native publication-date filters determine its range; subsequent evidence never
 rejudges inclusion. Commit rechecks captured configuration, source revision,
-Workspace/Papers identity and the complete identity index before atomic creates.
-Existing Paper matches remain byte-identical. Paper Markdown remains the production
-literature store; standalone Evidence, aliases and version relationships have no
-production persistent store. Only direct reliable identifiers group Run records and establish
-saved ownership. Old Paper identity fields explicitly block safe indexing/writes;
-old files are preserved until a user chooses a backed-up Workspace Reset.
+Workspace/database identity and the complete identity index before atomic creates.
+Existing full matches remain unchanged. Excluded matches stop avoidable follow-up
+work; a cleared unexcluded placeholder can be rebuilt only from a real Run hit,
+using its existing UUID. Final short transactions recheck identity conflicts and
+captured Workspace/database eligibility. Run snapshots/logs use repository UUIDs,
+not temporary Provider IDs or Markdown paths. Current Completion stays until WF08;
+Run does not register background collection completion.
 
 The Info preprint lookup coordinator binds to one saved Paper and verifies both
 native bioRxiv/medRxiv publication and version responses. It shares Run/workflow
 admission without browser authority. Network work holds no Workspace write
-lock. The guarded commit checks the exact Paper, configuration, Workspace and
+lock. The guarded commit checks the captured Paper generations, configuration, Workspace and
 cancellation before appending verified preprint dates and sources and filling an
 empty First public. The lookup keeps its result and request cache within the
 operation.
 
-First public requires established earliest linked preprint evidence. Typed
-journal events remain a separate date collection. Webpage Enrich can fill a
-missing Received or Accepted for a journal Candidate independently of Abstract,
-Authors and publication date. The month-to-day publication date upgrade still
-applies. After a matching official Web Translator returns a journal article,
-the Allfold Adapter reads the same source document's manuscript history into
-separate date candidates. Missing events can trigger up to 30 seconds of
-cancellable snapshots of that same document, bounded by the Browser task.
-Each native candidate carries its event kind, ISO date at source precision,
-original label, document URL and target DOI. Python verifies the candidate
-against the response source before converting it to journal `EvidenceDate`.
-DOI Content Negotiation can supply ordinary metadata. Each event can be saved
-on its own, and a response without new evidence leaves the Paper unchanged.
-The DOI, document, revision and cancellation checks apply before saving.
-WoS retains its independent browser lifecycle while sharing the Paper model.
+Ordinary dates are independent normalized month/day sets. Bibliographic
+publication date retains its explicit source. Preprint evidence preserves version
+families, verified first-version proof and unresolved relations; it never becomes
+a formal direct identity or an ordinary date solely through association. Reader
+and Info display these new library projections without old event/source columns
+or active Enrich buttons. Background scheduling, webpage Date/Abstract extraction
+and Download/PDF actions belong to later tasks.

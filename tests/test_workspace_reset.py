@@ -15,12 +15,9 @@ from fastapi.testclient import TestClient
 
 import allfold.application.workspace_reset as reset
 from allfold.application.workspace_reset import ResetRefused, execute_reset, preview_reset
-from allfold.persistence.inbox import render_default_inbox_base
-from allfold.persistence.materialize import materialize_papers
-from allfold.models import (
-    Author, CanonicalMetadata, CanonicalPaper, ExternalIds,
-    MetadataSource, Workflow, WorkflowStatus,
-)
+from allfold.models import ExternalIds
+from allfold.persistence.paper_repository import PaperRepository
+from allfold.persistence.library_models import PaperMetadata
 from allfold.web.app import create_app
 
 
@@ -35,19 +32,11 @@ def dedicated(tmp_path: Path):
         '# Venues\n\n## Journals\n\n| Journal | ISSN | eISSN | Access Service ID | Group | Labels |\n| --- | --- | --- | --- | --- | --- |\n| Biometrics | 0006-341X |  |  |  |  |\n\n## Groups\n\n| Group |\n| --- |\n\n## Custom Labels\n\n| Label |\n| --- |\n\n## Access Services\n\n| Service ID | Service | Access URL | Access Method |\n| --- | --- | --- | --- |\n', encoding="utf-8",
     )
     workspace = tmp_path / "workspace"
-    source = CanonicalPaper(
-        id=UUID("12345678-aaaa-4aaa-8aaa-aaaaaaaaaaaa"),
-        metadata=CanonicalMetadata(title="Synthetic Research", journal="Biometrics",
-                                   publication_date=date(2026, 9, 20), abstract="Abstract"),
-        external_ids=ExternalIds(doi="10.5555/synthetic"),
-        authors=(Author(name="Synthetic Author"),),
-        sources=(MetadataSource(provider="crossref", record_id="10.5555/synthetic",
-                                retrieved_at=datetime(2026, 9, 21, tzinfo=timezone.utc)),),
-        workflow=Workflow(status=WorkflowStatus.KEPT,
-                          discovered_at=datetime(2026, 9, 21, tzinfo=timezone.utc)),
-    )
-    result = materialize_papers((source,), workspace)
-    assert not result.has_errors
+    workspace.mkdir()
+    with PaperRepository.create(workspace) as repository:
+        paper = repository.create_or_match(repository.workspace_id, direct_ids=ExternalIds(doi='10.5555/synthetic'),
+            metadata=PaperMetadata(title='Synthetic Research', abstract='Abstract')).paper
+        repository.exclude(paper.token)
     (workspace / ".obsidian").mkdir()
     (workspace / ".obsidian" / "app.json").write_text('{"personal":true}', encoding="utf-8")
     (workspace / "monitor.yaml").write_text("protected local configuration", encoding="utf-8")
@@ -60,6 +49,63 @@ def test_dangerous_target_refuses_before_delete(tmp_path, name):
     config = tmp_path / 'monitor.yaml'
     config.write_text(f'keyword_expression: causal\noutput_dir: {name}\n')
     with pytest.raises(ResetRefused): preview_reset(config)
+
+
+def _configured_project_workspace(dedicated, monkeypatch, relative):
+    config, original = dedicated
+    project = config.parent
+    monkeypatch.setattr(reset, '__file__', str(project / 'src/allfold/application/workspace_reset.py'))
+    workspace = project / relative
+    if workspace != original:
+        held = project / 'fixture-workspace'
+        original.rename(held)
+        workspace.parent.mkdir(parents=True, exist_ok=True)
+        held.rename(workspace)
+        config.write_text(config.read_text().replace('output_dir: workspace', f'output_dir: {relative}'))
+    return config, workspace
+
+
+@pytest.mark.parametrize('relative', ['workspace', 'workspace/biology', 'Workspace-A', 'tmp/acceptance/Workspace-A', 'libraries/biology'])
+def test_custom_configured_workspace_inside_project_can_reset(dedicated, monkeypatch, relative):
+    config, workspace = _configured_project_workspace(dedicated, monkeypatch, relative)
+    original_config = config.read_bytes()
+    original_seed = (config.parent / 'list.md').read_bytes()
+    neighbor = config.parent / 'other-library'
+    neighbor.mkdir()
+    (neighbor / 'keep.txt').write_text('unrelated data')
+
+    plan = preview_reset(config)
+    assert plan.workspace == workspace
+    assert execute_reset(config, plan).success
+    assert not workspace.exists()
+    assert config.read_bytes() == original_config
+    assert (config.parent / 'list.md').read_bytes() == original_seed
+    assert (neighbor / 'keep.txt').read_text() == 'unrelated data'
+
+
+@pytest.mark.parametrize('relative', [
+    'src', 'src/nested', 'tests', 'electron', 'frontend', 'docs', 'tools',
+    '.allfold', 'journal-lists', 'journal-assets', '.github', '.work', '.venv',
+    'node_modules', 'SRC/nested', 'JOURNAL-ASSETS/nested', '.ALLFOLD/nested',
+])
+def test_project_source_and_shared_data_are_not_reset_targets(dedicated, monkeypatch, relative):
+    config, workspace = _configured_project_workspace(dedicated, monkeypatch, relative)
+    with pytest.raises(ResetRefused):
+        preview_reset(config)
+    assert (workspace / 'papers.sqlite').is_file()
+
+
+@pytest.mark.parametrize('relative', ['custom', 'custom/journal-assets', 'custom/journal-lists'])
+def test_active_journal_inputs_and_assets_are_not_reset_targets(dedicated, monkeypatch, relative):
+    config, workspace = _configured_project_workspace(dedicated, monkeypatch, relative)
+    journal = config.parent / 'custom/list.md'
+    journal.parent.mkdir(exist_ok=True)
+    journal.write_bytes((config.parent / 'list.md').read_bytes())
+    config.write_text(config.read_text().replace('venue_whitelist: list.md', 'venue_whitelist: custom/list.md'))
+    with pytest.raises(ResetRefused):
+        preview_reset(config)
+    assert (workspace / 'papers.sqlite').is_file()
+    assert journal.is_file()
 
 
 def test_public_root_replaced_immediately_before_rmtree_is_preserved(dedicated, monkeypatch):
@@ -75,12 +121,12 @@ def test_public_root_replaced_immediately_before_rmtree_is_preserved(dedicated, 
         return original(*args, **kwargs)
     replace.avoids_symlink_attacks = True
     monkeypatch.setattr(reset.shutil, 'rmtree', replace)
-    with next((workspace / 'Papers').iterdir()).open('rb') as confirmed_paper:
+    with (workspace / 'papers.sqlite').open('rb') as confirmed_paper:
         result = execute_reset(config, plan)
         assert os.fstat(confirmed_paper.fileno()).st_nlink == 0
     assert (workspace / 'private.txt').read_text() == 'replacement user directory'
     assert not result.success
-    if held.exists(): assert (held / 'Papers').exists()
+    if held.exists(): assert (held / 'papers.sqlite').exists()
 
 
 @pytest.mark.parametrize('linked', ['workspace', 'ancestor'])
@@ -144,7 +190,7 @@ def test_partial_delete_error_is_failure_without_retry(dedicated, monkeypatch):
     assert not result.success and calls == ['workspace']
     assert result.workspace_invalidated
     captured = next(config.parent.glob('.allfold-reset-*/workspace'))
-    assert not (captured / 'remove-me').exists() and (captured / 'Papers').exists()
+    assert not (captured / 'remove-me').exists() and (captured / 'papers.sqlite').exists()
     assert not workspace.exists() and str(captured.parent) in result.message
     assert 'permanently deleted' in result.message and 'no recovery or automatic retry' in result.message
 
@@ -157,7 +203,7 @@ def test_unsafe_external_lock_reports_failure_without_deletion(dedicated, monkey
     monkeypatch.setattr(reset, 'workspace_path_lock', refuse)
     result = execute_reset(config, preview_reset(config))
     assert not result.success and 'Workspace path lock' in result.message
-    assert (workspace / 'Papers').exists()
+    assert (workspace / 'papers.sqlite').exists()
 
 
 def reset_data(client):
@@ -170,8 +216,6 @@ def reset_data(client):
 def test_external_lock_remains_exclusive_after_workspace_is_deleted(dedicated):
     from allfold.application.monitor import run_monitor
     from allfold.application.settings import load_settings, save_settings, SettingsSaveOutcome
-    from allfold.application.export_attempts import reserve_export_attempt
-    from allfold.application.batch_import import BatchPhase
     from allfold.persistence.safe_write import ContentChangedError
     from allfold.application.coordinators.run_coordinator import RunCoordinator, StartOutcome
     config, workspace = dedicated
@@ -196,13 +240,6 @@ print(reset.execute_reset(config,plan).success, flush=True)
         with pytest.raises(ContentChangedError): run_monitor(config, provider="integrated")
         assert RunCoordinator(config).start(RunProvider.INTEGRATED).outcome is StartOutcome.START_FAILED
         assert save_settings(config, load_settings(config).draft).outcome is SettingsSaveOutcome.WRITE_FAILED
-        from electron_test_helpers import PendingBridge
-        from allfold.application.batch_import import BatchImportService, BatchPhase
-        from allfold.application.browser_runtime import BrowserTaskLock
-        lock=BrowserTaskLock();batch=BatchImportService(PendingBridge(), lock)
-        batch.start(workspace,browser_owner=lock.acquire('kept'));batch.join()
-        assert batch.snapshot().phase is BatchPhase.BLOCKED
-        with pytest.raises(ContentChangedError): reserve_export_attempt(workspace, UUID('12345678-aaaa-4aaa-8aaa-aaaaaaaaaaaa'))
         assert not execute_reset(config, preview_reset(config)).success
         assert not workspace.exists()
     finally:
@@ -210,8 +247,8 @@ print(reset.execute_reset(config,plan).success, flush=True)
     assert child.returncode==0 and out.strip()=='True'
 
 
-@pytest.mark.parametrize('owner', ['commit', 'batch'])
-def test_other_process_commit_or_batch_blocks_reset(dedicated, owner):
+@pytest.mark.parametrize('owner', ['commit'])
+def test_other_process_commit_blocks_reset(dedicated, owner):
     config, workspace = dedicated
     program = """from pathlib import Path
 import sys
@@ -223,27 +260,13 @@ if sys.argv[3]=='commit':
  with capture_run_workspace(config) as snapshot:
   with commit_run_workspace(snapshot):
    print('OWNED',flush=True);sys.stdin.readline()
-else:
- from allfold.application.batch_import import BatchImportService
- from allfold.application.browser_runtime import BrowserTaskLock
- from concurrent.futures import Future
- from threading import Event
- class Bridge:
-  connected=True
-  def __init__(self):self.future=Future();self.dispatched=Event()
-  def execute(self,*args,**kwargs):self.dispatched.set();return self.future
- bridge=Bridge();lock=BrowserTaskLock()
- batch=BatchImportService(bridge,lock);batch.start(workspace,browser_owner=lock.acquire('kept'))
- assert bridge.dispatched.wait(2)
- print('OWNED',flush=True);sys.stdin.readline()
- bridge.future.set_result({'settled':True,'parent':{'outcome':'no_effect'}});batch.join()
 """
     child=subprocess.Popen([sys.executable,'-c',program,str(config),str(workspace),owner],
                            stdin=subprocess.PIPE,stdout=subprocess.PIPE,text=True)
     try:
         assert child.stdout.readline().strip()=='OWNED'
         assert not execute_reset(config,preview_reset(config)).success
-        assert (workspace/'Papers').exists()
+        assert (workspace/'papers.sqlite').exists()
     finally:
         child.communicate(input='\n',timeout=10)
     assert child.returncode==0

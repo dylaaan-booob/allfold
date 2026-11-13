@@ -1,6 +1,7 @@
 from datetime import date
 import httpx
 import pytest
+from library_helpers import capture_papers, read_papers, read_paper
 
 from allfold.keywords import parse_keyword_expression
 from allfold.providers.integrated import DiscoveryClient, SourceScope
@@ -133,16 +134,14 @@ def test_direct_identifiers_matching_two_saved_owners_are_reported_and_skipped(t
             evidence(doi=f'10.5555/{n}',pmid=str(n)) for n in (1,2))
     factory=client_for(rows)
     assert run_integrated(path, client_factory=factory).facts.created_papers == 2
-    files = list((tmp_path/'workspace'/'Papers').glob('*.md'))
-    before = {p: p.read_bytes() for p in files}
+    before = read_papers(tmp_path/'workspace')
     ambiguous = True
     result = run_integrated(path, client_factory=factory)
     assert result.facts.created_papers == result.facts.existing_papers == 0
-    assert any('Ambiguous' in issue.message for issue in result.errors)
+    assert any('different Papers' in issue.message for issue in result.errors)
     assert result.facts.statistics['conflicts'] == 1
-    from allfold.persistence.markdown_state import parse_paper_state
-    assert all(str(parse_paper_state(p, p.read_text()).paper_id) in result.errors[0].message for p in files)
-    assert {p: p.read_bytes() for p in files} == before
+    assert all(str(p.id) in result.errors[0].message for p in before)
+    assert read_papers(tmp_path/'workspace') == before
 
 
 def test_unified_history_retains_sanitized_source_and_native_hints(tmp_path):
@@ -238,7 +237,6 @@ def test_unified_wos_quarantines_conflicting_ut_before_creation(tmp_path,existin
     from allfold.application.coordinators.wos_coordinator import WoSCoordinator
     from integrated_run_helpers import run_integrated
     from allfold.application.workspace import load_workspace
-    from allfold.persistence.materialize import materialize_papers
     from allfold.providers.wos import record_paper
     from test_wos import tagged, record
     path, _, _, _ = current_mapping_document(tmp_path)
@@ -252,9 +250,8 @@ def test_unified_wos_quarantines_conflicting_ut_before_creation(tmp_path,existin
             record(doi='10.5555/safe', ut='WOS:2')]
     if existing_owner:
         saved = record_paper(rows[0], settings.journals[0])
-        materialize_papers((saved,), workspace)
-        original = next((workspace / 'Papers').glob('*.md'))
-        original_bytes = original.read_bytes()
+        original, = capture_papers((saved,), workspace)
+        original_record = original
     class Login:
         def prepared_page(self, saved, service_id):
             assert any(service.id == service_id and service.name == "Web of Science" for service in saved.services)
@@ -286,4 +283,4 @@ def test_unified_wos_quarantines_conflicting_ut_before_creation(tmp_path,existin
     assert safe.external_ids.wos == 'WOS:2'
     assert not (workspace / 'Evidence').exists()
     if existing_owner:
-        assert original.read_bytes() == original_bytes
+        assert read_paper(workspace, original.id) == original_record

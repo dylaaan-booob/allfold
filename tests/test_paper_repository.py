@@ -198,7 +198,7 @@ def test_existing_abstract_and_user_fields_survive_all_automatic_candidates(libr
     paper = library.create_or_match(library.workspace_id, direct_ids=ExternalIds(pmid="123"), metadata=metadata).paper
     for candidate in (None, "", " \n", "New automatic abstract"):
         result = library.merge_metadata(paper.token, MetadataDelta(abstract=candidate))
-        assert result.metadata == metadata
+        assert result.metadata == paper.metadata
         assert result.metadata.abstract == original_abstract
 
 
@@ -397,3 +397,37 @@ def test_body_slot_survives_metadata_clear_and_can_be_obtained_again(library, tm
     assert library.complete_body(without_body.token, body).body == body
     with PaperRepository.open(tmp_path / "Workspace") as reopened:
         assert reopened.get(paper.id).body == body
+
+
+def test_library_snapshot_revision_covers_local_edits_and_identity_primary_is_stable(library):
+    from datetime import datetime, timezone
+    from allfold.persistence.paper_repository import DirectIdentity
+
+    discovered = datetime(2026, 1, 2, 3, 4, tzinfo=timezone.utc)
+    first_revision, papers = library.snapshot()
+    assert first_revision == 0 and papers == ()
+    created = library.create_or_match(library.workspace_id,
+        direct_ids=ExternalIds(doi='10.1234/primary', pmid='123'),
+        metadata=PaperMetadata(title='Original title', discovered_at=discovered)).paper
+    assert created.primary_identity == DirectIdentity('doi', '10.1234/primary')
+    before, _ = library.snapshot()
+    edited = library.edit_metadata(created.token, {'title': 'Human title'})
+    merged = library.merge_metadata(created.token, MetadataDelta(), direct_ids=ExternalIds(doi='10.1234/alias'))
+    revision, papers = library.snapshot()
+    assert revision > before > first_revision
+    assert papers == (merged,)
+    assert merged.revision > edited.revision > created.revision
+    assert merged.primary_identity == created.primary_identity
+    assert merged.metadata.discovered_at == discovered
+
+
+def test_primary_identity_and_all_formal_ids_survive_multi_identity_capture(library):
+    from allfold.persistence.paper_repository import DirectIdentity
+    identities = (DirectIdentity('doi', '10.1234/another'), DirectIdentity('openalex', 'W123'))
+    paper = library.create_or_match(library.workspace_id, direct_ids=ExternalIds(doi='10.1234/primary'),
+        additional_identities=identities, metadata=PaperMetadata(title='Article')).paper
+    assert paper.primary_identity == DirectIdentity('doi', '10.1234/primary')
+    assert library.match(ExternalIds(doi='10.1234/another')).id == paper.id
+    cleared = library.clear_metadata(library.exclude(paper.token).token)
+    assert cleared.primary_identity == paper.primary_identity
+    assert set(cleared.identities) == {DirectIdentity('doi', '10.1234/primary'), *identities}

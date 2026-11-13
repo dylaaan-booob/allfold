@@ -7,6 +7,7 @@ from allfold.config import load_config, JournalConfig, render_settings_list_text
 from allfold.models import ExternalIds, MetadataSource, ProviderWorkEvidence
 from allfold.providers.integrated import DiscoveryResult
 from integrated_run_helpers import EmptyCompletion, run_integrated
+from library_helpers import read_papers, read_paper
 
 
 def config(tmp_path, enabled=('pubmed','openalex')):
@@ -41,15 +42,16 @@ def test_run_preserves_paper_without_persisting_rediscovery(tmp_path):
     rows=(evidence(),)
     factory=client_for(lambda:rows)
     assert run_integrated(path,client_factory=factory).facts.created_papers==1
-    saved,=(tmp_path/'workspace'/'Papers').glob('*.md')
-    saved.write_text(saved.read_text().replace('status: candidate','status: rejected'))
-    original=saved.read_bytes()
+    from allfold.persistence.paper_repository import PaperRepository
+    saved, = read_papers(tmp_path/'workspace')
+    with PaperRepository.open(tmp_path/'workspace') as repository:
+        original = repository.exclude(saved.token)
     retired=tmp_path/'workspace'/'Evidence';retired.write_text('Unmanaged legacy content')
     rows=(evidence(title='Rediscovery title'),)
     result=run_integrated(path,client_factory=factory)
-    assert result.facts.existing_papers==1 and result.facts.statistics['completion_targets']==0
-    assert saved.read_bytes()==original and retired.read_text()=='Unmanaged legacy content'
-    assert b'identity_aliases:' not in original and b'related_dois:' not in original
+    assert result.facts.existing_papers==0 and result.facts.statistics['completion_targets']==0
+    assert read_paper(tmp_path/'workspace', saved.id) == original
+    assert retired.read_text() == 'Unmanaged legacy content'
 
 
 def test_only_selected_discovery_providers_run_and_one_failure_preserves_hits(tmp_path):
@@ -81,9 +83,9 @@ def test_production_integrated_run_creates_doi_free_native_hit_and_preserves_sav
     first=run_integrated(path,client_factory=factory)
     assert first.facts.created_papers==1 and first.facts.existing_papers==0
     assert build_run_result_summary(first)['coverage_status']=='complete'
-    saved,=(tmp_path/'workspace'/'Papers').glob('*.md');original=saved.read_bytes()
+    saved, = read_papers(tmp_path/'workspace'); original=saved
     calls.clear();second=run_integrated(path,client_factory=factory)
-    assert second.facts.existing_papers==1 and saved.read_bytes()==original and len(calls)==2
+    assert second.facts.existing_papers==1 and read_paper(tmp_path/'workspace', saved.id)==original and len(calls)==2
     latest=read_last_run_snapshot(tmp_path/'workspace',RunProvider.INTEGRATED)
     assert latest.snapshot.schema_version==6
     assert build_run_result_summary(latest)==build_run_result_summary(second)
@@ -122,10 +124,10 @@ def test_repeated_run_creates_separate_doi_with_only_a_version_relation(tmp_path
     formal=evidence().model_copy(update={'related_dois':('10.5555/preprint',)})
     rows=(formal,);factory=client_for(lambda:rows)
     assert run_integrated(path,client_factory=factory).facts.created_papers==1
-    saved,=(tmp_path/'workspace'/'Papers').glob('*.md');before=saved.read_bytes()
+    saved, = read_papers(tmp_path/'workspace'); before=saved
     rows=(formal,evidence(doi='10.5555/preprint',pmid='43'))
     result=run_integrated(path,client_factory=factory)
-    assert result.facts.created_papers==1 and result.facts.existing_papers==1 and saved.read_bytes()==before
+    assert result.facts.created_papers==1 and result.facts.existing_papers==1 and read_paper(tmp_path/'workspace', saved.id)==before
 
 
 def test_provider_response_after_cancel_never_materializes(tmp_path):
@@ -134,7 +136,7 @@ def test_provider_response_after_cancel_never_materializes(tmp_path):
     cancel=Event()
     def rows(): cancel.set();return (evidence(),)
     result=run_integrated(path,client_factory=client_for(rows),cancel_event=cancel)
-    assert result.outcome.value=='CANCELLED' and not list((tmp_path/'workspace'/'Papers').glob('*.md'))
+    assert result.outcome.value=='CANCELLED' and not read_papers(tmp_path/'workspace')
 
 
 def test_saved_provider_selection_reaches_request_coordinator_and_retired_entries_reject(tmp_path,monkeypatch):

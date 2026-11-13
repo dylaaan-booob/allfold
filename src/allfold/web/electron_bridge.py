@@ -8,7 +8,6 @@ import asyncio
 import hmac
 import re
 import threading
-import time
 from collections.abc import Callable
 from concurrent.futures import Future
 from dataclasses import dataclass, field
@@ -19,14 +18,13 @@ from fastapi import WebSocket, WebSocketDisconnect
 from allfold.application.browser_runtime import ElectronDisconnected
 from allfold.application.history import observe
 from allfold.browser_diagnostics import normalize_browser_diagnostic
-from allfold.recovery_diagnostics import RecoverySummary, merge_recovery, normalize_recovery, normalize_recovery_action
-from allfold.identifiers import valid_doi
+from allfold.recovery_diagnostics import normalize_recovery, normalize_recovery_action
 from allfold.integrations.cloudflare_solver import solve_cloudflare
 
 
-_CONTROL_ACTIONS = {"diagnostics_reset", "cas_credentials", "zotero_local"}
-_RECOVERY_ACTIONS = {"prepare_service", "enrich_paper", "import_paper"}
-_MAX_ATTACHMENT_LOOKUP_SECONDS = 240
+_CONTROL_ACTIONS = {"diagnostics_reset", "cas_credentials"}
+_BUSINESS_ACTIONS = {"login_carsi", "prepare_service", "visit_manual_service", "search_journal_cover", "wos_query", "wos_export"}
+_RECOVERY_ACTIONS = {"prepare_service"}
 _CONTEXT_FIELDS = ("workflow_id", "task_id", "parent_task_id", "service_id", "paper_id")
 _SOCKET_ERRORS = (WebSocketDisconnect, OSError, RuntimeError)
 _RECEIVE_ERRORS = (*_SOCKET_ERRORS, ValueError, TimeoutError)
@@ -39,12 +37,9 @@ class _Operation:
     result: asyncio.Future[dict]
     progress: Callable | None
     context: dict
-    import_identity: dict | None
     verify_recovery: Callable[[], None] | None
     stop: threading.Event = field(default_factory=threading.Event)
     challenges: dict[str, threading.Event] = field(default_factory=dict)
-    lookup_requested: bool = False
-    lookup_recovery: RecoverySummary | None = None
     recovery_check: asyncio.Task | None = None
 
     def stop_callbacks(self) -> None:
@@ -57,9 +52,8 @@ class _Operation:
 
 
 class ElectronBridge:
-    def __init__(self, token: str, authority: str, *, cdp_url: str = "", diagnostics=None, openalex_pdf=None):
+    def __init__(self, token: str, authority: str, *, cdp_url: str = "", diagnostics=None):
         self.diagnostics = diagnostics
-        self.openalex_pdf = openalex_pdf
         self._token = token
         self._authority = authority
         self._cdp_url = cdp_url
@@ -136,24 +130,7 @@ class ElectronBridge:
                 data = message.get("data")
                 if not isinstance(data, dict):
                     raise ValueError("Invalid Electron data")
-                if kind == "openalex_pdf":
-                    expected = pending.import_identity
-                    lookup_id = message.get("lookup_id")
-                    deadline_ms = data.get("deadline_ms")
-                    if (self.openalex_pdf is None or expected is None or pending.lookup_requested
-                            or not isinstance(lookup_id, str) or not re.fullmatch(r"[A-Za-z0-9]{1,64}", lookup_id)
-                            or valid_doi(data.get("doi")) != expected["doi"]
-                            or data.get("target") != expected["target"]
-                            or ("deadline_ms" in data and (type(deadline_ms) is not int or not 0 <= deadline_ms < 2**53))
-                            or not isinstance(data.get("parent_key"), str)
-                            or not re.fullmatch(r"[23456789ABCDEFGHIJKLMNPQRSTUVWXYZ]{8}", data["parent_key"])):
-                        raise ValueError("Invalid OpenAlex Import request")
-                    if not pending.stop.is_set():
-                        pending.lookup_requested = True
-                        deadline = (time.monotonic() + min(_MAX_ATTACHMENT_LOOKUP_SECONDS, deadline_ms / 1000 - time.time())
-                                    if deadline_ms is not None else None)
-                        start_worker(self._lookup_pdf(socket, pending, lookup_id, expected["doi"], deadline))
-                elif kind == "solve_cloudflare":
+                if kind == "solve_cloudflare":
                     challenge_id = message.get("challenge_id")
                     url = data.get("url")
                     target_id = data.get("target_id")
@@ -182,12 +159,8 @@ class ElectronBridge:
                             data = {**data, "recovery_action": normalize_recovery_action(data["recovery_action"])}
                         pending.progress(data)
                 elif kind == "result":
-                    if pending.lookup_recovery is not None:
-                        recovery = merge_recovery(data.get("recovery"), pending.lookup_recovery.snapshot())
-                        if recovery or "recovery" in data:
-                            data = {**data, "recovery": recovery}
-                    elif "recovery" in data:
-                        data = {**data, "recovery": normalize_recovery(data["recovery"])}
+                    if 'recovery' in data:
+                        data = {**data, 'recovery': normalize_recovery(data['recovery'])}
                     self._observe_result(pending, data)
                     pending.stop_callbacks()
                     pending.result.set_result(data)
@@ -247,27 +220,6 @@ class ElectronBridge:
         except _SOCKET_ERRORS:
             pass
 
-    async def _lookup_pdf(self, socket, pending: _Operation, lookup_id: str, doi: str, deadline: float | None) -> None:
-        if pending.stop.is_set():
-            return
-        recovery = pending.lookup_recovery = RecoverySummary()
-
-        def report_recovery(event, details):
-            recovery.record(event, details)
-            observe(self.diagnostics, "event", event,
-                {**{key: pending.context[key] for key in _CONTEXT_FIELDS if key in pending.context}, **details})
-
-        try:
-            if deadline is not None and time.monotonic() >= deadline:
-                data = {"candidates": [], "diagnostic": {"code": "timeout"}}
-            else:
-                data = await asyncio.to_thread(self.openalex_pdf, doi, cancel_event=pending.stop,
-                    recovery_observer=report_recovery, deadline=deadline)
-        except Exception:
-            data = {"candidates": [], "diagnostic": {"code": "openalex_lookup_failed"}}
-        await self._callback(socket, pending, pending.stop, pending.envelope(
-            "openalex_pdf_result", lookup_id=lookup_id, data=data))
-
     async def _verify_recovery(self, socket, pending: _Operation, check_id: str) -> None:
         allowed = False
         try:
@@ -310,7 +262,7 @@ class ElectronBridge:
             for pending in self._pending.values():
                 if not pending.result.done():
                     pending.result.set_exception(ElectronDisconnected(
-                        "Electron disconnected; inspect Zotero before retry"))
+                        "Electron disconnected; operation result is unconfirmed"))
 
     async def _drain(self, socket: WebSocket):
         if self.shutdown:
@@ -321,21 +273,19 @@ class ElectronBridge:
             pass
 
     async def _execute(self, action: str, data: dict, progress: Callable | None, verify_recovery: Callable | None) -> dict:
+        if action not in _CONTROL_ACTIONS | _BUSINESS_ACTIONS:
+            raise ValueError('Unsupported native operation')
         socket = self._socket
         if socket is None or self.closing:
             raise ElectronDisconnected("Electron runtime is unavailable")
         request_id = uuid4().hex
         result = asyncio.get_running_loop().create_future()
-        target = data.get("zotero_target")
-        import_identity = ({"doi": valid_doi(data.get("doi")), "target": {
-            key: target.get(key) for key in ("server_id", "library_type", "library_id", "collection_key")}}
-            if action == "import_paper" and isinstance(target, dict) else None)
         context = {key: data[key] for key in _CONTEXT_FIELDS if key in data}
         scope = data.get("service_scope")
         if isinstance(scope, dict):
             context.update({key: scope[key] for key in ("config_revision", "user_state_revision") if key in scope})
         context.update(request_id=request_id, action=action)
-        pending = self._pending[request_id] = _Operation(request_id, action, result, progress, context, import_identity, verify_recovery)
+        pending = self._pending[request_id] = _Operation(request_id, action, result, progress, context, verify_recovery)
         if action not in _CONTROL_ACTIONS:
             data = {**data, "log_level": getattr(self.diagnostics, "level", "info")}
             observe(self.diagnostics, "event", "task_started", context)
