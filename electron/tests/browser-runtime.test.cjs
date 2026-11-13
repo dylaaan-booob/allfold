@@ -7,7 +7,7 @@ const vm=require('node:vm');
 const hostRequire=require('node:module').createRequire(require.resolve('../src/browser/browser-runtime.cjs'));
 const {EventEmitter}=require('node:events');
 const os=require('node:os');
-const {BrowserFailure:ImportFailure,checkPage}=require('../src/browser/browser-errors.cjs');
+const {BrowserFailure,checkPage}=require('../src/browser/browser-errors.cjs');
 const {institutionAuthPage}=require('../src/auth/institution-auth.cjs');
 const chromiumVersion='123.4.5.6';
 const serviceScope={scope_id:'a'.repeat(64),config_revision:'b'.repeat(64),user_state_revision:'c'.repeat(64)};
@@ -58,7 +58,7 @@ function fixture(t) {
       else this.emit('did-start-navigation',{},url,false,true);
       this.url=url;this.mainFrame.url=url;this.emit('did-navigate',{},url,200);this.emit('did-frame-navigate',{},url,200);this.emit('did-finish-load');
     }
-    async executeJavaScriptInIsolatedWorld(){return {html:this.html || '<title>Article</title>',title:this.title || 'Article',url:this.url,type:'text/html'};}
+    async executeJavaScriptInIsolatedWorld(){return this.access || {markers:{},imperva:null,limited:false};}
     close(){this.destroyed=true;this.emit('destroyed');}
   }
   class Window extends EventEmitter {
@@ -79,7 +79,11 @@ function fixture(t) {
   const context=vm.createContext({module:{exports:{}},__dirname:path.dirname(require.resolve('../src/browser/browser-runtime.cjs')),URL,Buffer,Date,AbortController,AbortSignal,setTimeout,clearTimeout,
     require:name=>name==='electron'?electron:name==='./document-runtime.cjs'?{DocumentRuntime:class {
       constructor(browser){this.browser=browser;}
-      async call(doc,action){if(action==='snapshot')return this.browser.tabs.get(doc.pageId).view.webContents.executeJavaScriptInIsolatedWorld();return '';}
+      async call(doc,action){
+        const wc=this.browser.tabs.get(doc.pageId).view.webContents;
+        const access=await wc.executeJavaScriptInIsolatedWorld();
+        return {documentId:'fixture-'+doc.frameToken,...(action==='access'?access:action==='article'?{access,article:wc.article || {values:['10.5555/fixture'],multiple:false,limited:false}}:{type:'text/html'})};
+      }
       dispose(){}
     }}:name==='../shared/logging.cjs'?{...require('../src/shared/logging.cjs'),
       log:(level,event,details)=>logs.push({level,event,...details})}:hostRequire(name)});
@@ -219,8 +223,9 @@ test('Main chooses institution mode only for a live authorized authentication co
     await browser.inspectAuthentication(tab);
     auth.origins.add('https://idp.example.edu');
     await browser.inspectAuthentication(tab);
-    controller.abort();await browser.inspectAuthentication(tab);
+    controller.abort();await assert.rejects(browser.inspectAuthentication(tab),/document_changed|canceled/);
   });
+  await browser.inspectAuthentication(tab);
   assert.deepEqual(modes,['page','institution','page','institution','page']);
 });
 test('selecting another tab does not retarget the document, but reload/navigation invalidates it',async t=>{
@@ -251,7 +256,7 @@ test('Service queries isolate configurations without pages and task navigation p
     assert.equal(browser.servicePages(serviceScope.scope_id,serviceId).length,0);
     assert.equal(browser.tabs.size,1);
     tab=browser.createTab({present:false});
-    browser.associatePage(tab,{role:'import',doi:'10.5555/first'});
+    browser.associatePage(tab,{role:'article',doi:'10.5555/first'});
     const doc=await browser.navigate('https://example.org/first',{tab});
     assert.equal(browser.selected,visible);
     assert.equal(doc.pageId,tab.id);
@@ -261,7 +266,7 @@ test('Service queries isolate configurations without pages and task navigation p
   assert.equal(browser.taskTab,null);
   assert.equal(browser.pageAssociation(tab.id).active,false);
   await browser.runTask(signal,{request_id:'second',task_id:'batch',service_scope:otherScope,service_id:serviceId},async()=>{
-    browser.associatePage(tab,{role:'import',doi:'10.5555/second'});
+    browser.associatePage(tab,{role:'article',doi:'10.5555/second'});
     await browser.navigate('https://example.org/second',{tab});
     assert.equal(browser.servicePages(serviceScope.scope_id,serviceId).length,0);
     assert.equal(browser.servicePages(otherScope.scope_id,serviceId).length,1);
@@ -269,7 +274,7 @@ test('Service queries isolate configurations without pages and task navigation p
     assert.equal(browser.selected,visible);
   });
   await browser.runTask(signal,{request_id:'third',task_id:'batch',service_scope:otherScope},()=>{
-    browser.associatePage(tab,{role:'import',doi:'10.5555/unmatched'});
+    browser.associatePage(tab,{role:'article',doi:'10.5555/unmatched'});
     browser.bindTaskPage(tab);
     assert.equal(browser.pageAssociation(tab.id).service_id,null);
     assert.equal(browser.servicePages(otherScope.scope_id,serviceId).length,0);
@@ -310,7 +315,7 @@ test('popup provenance is descriptive, disappears on destruction, and never auth
   assert.equal(browser.servicePages(serviceScope.scope_id,serviceId).length,0);
 });
 
-test('a failed/canceled ImportPage can be explicitly reused, and a delayed old navigation cannot bind a new task',async t=>{
+test('a failed/canceled task Page can be explicitly reused, and a delayed old navigation cannot bind a new task',async t=>{
   const {BrowserRuntime}=fixture(t),browser=new BrowserRuntime();
   t.after(()=>browser.close());await browser.ready;
   const first=new AbortController(),tab=browser.createTab();
@@ -347,13 +352,11 @@ test('Browser refuses an HTTP 200 Imperva block before handing the document to t
   const signal=new AbortController().signal;
   const url='https://projecteuclid.org/journals/example/10.5555/article.full';
   const contents=tab.view.webContents;
-  const block='<iframe src="/_Incapsula_Resource?incident_id=123456-987654&amp;edet=15&amp;opaque=private">'
-    +'Request unsuccessful. Incapsula incident ID: 123456-987654</iframe>';
-  contents.html='<body><iframe src="/_Incapsula_Resource?fixture=helper" hidden></iframe>'+block+'</body>';
+  contents.access={markers:{},imperva:{edet:15,incident:'123456-987654'}};
   await assert.rejects(browser.runTask(signal,{request_id:'blocked'},()=>browser.navigate(url,{tab,signal})),{diagnostic:{stage:'navigation',code:'site_restricted',status:200,
     imperva_edet:15,imperva_incident_id:'123456-987654'}});
   assert.equal(solverCalls,0);
-  contents.html='<body><article>Example article</article>'+block+'</body>';
+  contents.access={markers:{},imperva:null};
   await browser.runTask(signal,{request_id:'article'},async()=>{
     assert.equal((await browser.navigate(url,{tab,signal})).status,200);
   });
@@ -367,8 +370,7 @@ test('Imperva CAPTCHA waits for the same page to finish verification without cal
   const tab=browser.createTab({present:false});
   const signal=new AbortController().signal;
   const contents=tab.view.webContents;
-  contents.html='<body><iframe src="/_Incapsula_Resource?edet=12&amp;incident_id=123-456">'
-    +'Request unsuccessful. Incapsula incident ID: 123-456</iframe></body>';
+  contents.access={markers:{},imperva:{edet:12,incident:'123-456'}};
   const url='https://projecteuclid.org/journals/example/10.5555/article.full';
   let reportWaiting;
   const waiting=new Promise(resolve=>{reportWaiting=resolve;});
@@ -380,23 +382,12 @@ test('Imperva CAPTCHA waits for the same page to finish verification without cal
   assert.equal(browser.state().taskPageId,tab.id);
   assert.equal(solverCalls,0);
 
-  contents.html='<body><article>Example article after verification</article></body>';
+  contents.access={markers:{},imperva:null};
   await contents.loadURL(url);
   const doc=await navigation;
   assert.equal(doc.pageId,tab.id);
-  assert.match(doc.html,/Example article after verification/);
+  assert.equal(doc.imperva,null);
   assert.equal(solverCalls,0);
-});
-
-test('Imperva diagnostics omit ambiguous parameters and accept a displayed incident ID',()=>{
-  const {checkPage}=require('../src/browser/browser-errors.cjs');
-  const page=(query,id)=>'<body><iframe src="/_Incapsula_Resource?'+query
-    +'">Request unsuccessful. Incapsula incident ID: '+id+'</iframe></body>';
-  const blocked={stage:'navigation',code:'site_restricted',status:200};
-  assert.throws(()=>checkPage(200,'',page('edet=15&amp;edet=16&amp;incident_id=111-222','333-444')),
-    {diagnostic:blocked});
-  assert.throws(()=>checkPage(200,'',page('edet=16%20private','123-456')),
-    {diagnostic:{...blocked,imperva_incident_id:'123-456'}});
 });
 
 test('Manual URL opening preserves the task; Covers use an auxiliary page without Service authority',async t=>{
@@ -405,8 +396,8 @@ test('Manual URL opening preserves the task; Covers use an auxiliary page withou
   t.after(()=>browser.close());await browser.ready;
   const signal=new AbortController().signal;
   let manual,cover;
-  await browser.runTask(signal,{request_id:'import',service_scope:serviceScope,service_id:serviceId},async()=>{
-    const task=browser.createTab();browser.associatePage(task,{role:'import'});browser.bindTaskPage(task);
+  await browser.runTask(signal,{request_id:'article',service_scope:serviceScope,service_id:serviceId},async()=>{
+    const task=browser.createTab();browser.associatePage(task,{role:'article'});browser.bindTaskPage(task);
     manual=await browser.openURL('https://manual.example.org/');
     assert.equal(browser.taskTab,task);assert.equal(browser.selected,manual);
     assert.equal(browser.pageAssociation(manual.id),null);
@@ -470,8 +461,7 @@ test('explicit Manual Service Visit retains a scoped target without CARSI creden
   assert.equal(association.active,false);assert.equal(page.managed,true);assert.equal(page.authContext,undefined);
   assert.equal(browser.selected,null);assert.equal(browser.tabs.size,1);assert.equal(reads,0);
 });
-const cloudflarePageOptions='<script>window._cf_chl_opt = {cType:"managed"};</script>';
-const cloudflarePageScript='<script src="/cdn-cgi/challenge-platform/h/g/orchestrate/chl_page/v1"></script>';
+
 function turnstileHitFixture(modes=[]) {
   const calls=[],roots=[];
   const root=(name,extra={})=>({name,...extra,elementFromPoint(x,y){
@@ -633,46 +623,15 @@ test('ordinary verification controls and explicit QR login still wait for manual
 
 
 
-test('canceled attachment recovery cannot create a helper tab',async t=>{
-  const {BrowserRuntime}=fixture(t),browser=new BrowserRuntime();t.after(()=>browser.close());await browser.ready;
-  const controller=new AbortController();
-  await browser.runTask(controller.signal,{request_id:'canceled-attachment'},async()=>{
-    browser.operation.action='import_paper';
-    const tab=browser.createTab();browser.bindTaskPage(tab);
-    await tab.view.webContents.loadURL('https://one.test/article');const doc=await browser.snapshot(tab);controller.abort();
-    const count=browser.tabs.size;
-    await assert.rejects(browser.bypassAttachment('https://one.test/file',doc,{visible:true,signal:controller.signal}));
-    assert.equal(browser.tabs.size,count);
-  });
-});
-
-
-test('attachment capture timeout and source replacement cannot leak listeners or accept late responses',async t=>{
-  t.mock.timers.enable({apis:['Date','setTimeout'],now:1000});
-  const {BrowserRuntime}=fixture(t),browser=new BrowserRuntime();t.after(()=>browser.close());await browser.ready;
-  await browser.runTask(new AbortController().signal,{request_id:'attachment-capture'},async()=>{
-    browser.operation.action='import_paper';
-    const tab=browser.createTab();browser.bindTaskPage(tab);
-    await tab.view.webContents.loadURL('https://one.test/article');const doc=await browser.snapshot(tab);
-    const first=browser.captureAttachment(tab,doc,{deadline:Date.now()+5000});t.mock.timers.tick(5000);
-    await assert.rejects(first.url,error=>error.diagnostic?.code==='timeout');assert.equal(browser.attachmentCaptures.size,0);
-    const second=browser.captureAttachment(tab,doc);
-    await tab.view.webContents.loadURL('https://one.test/replacement');
-    await assert.rejects(second.url,error=>error.diagnostic?.code==='document_changed');assert.equal(browser.attachmentCaptures.size,0);
-    browser.operation.action='enrich_paper';
-    assert.throws(()=>browser.captureAttachment(tab,doc));
-  });
-});
-
 test('reused page lifecycle records retain each workflow association before replacement and renderer invalidation',async t=>{
   const {BrowserRuntime,logs}=fixture(t),browser=new BrowserRuntime();t.after(()=>browser.close());await browser.ready;
   const controller=new AbortController(),tab=browser.createTab();
   await browser.runTask(controller.signal,{request_id:'request_a',task_id:'task_a',workflow_id:'workflow_a',service_scope:serviceScope,service_id:serviceId},()=>{
-    browser.associatePage(tab,{role:'import'});browser.bindTaskPage(tab,controller.signal);
+    browser.associatePage(tab,{role:'article'});browser.bindTaskPage(tab,controller.signal);
   });
   assert.equal(browser.pageAssociation(tab.id).workflow_id,'workflow_a');
   await browser.runTask(controller.signal,{request_id:'request_b',task_id:'task_b',workflow_id:'workflow_b',service_scope:serviceScope,service_id:serviceId},()=>{
-    browser.associatePage(tab,{role:'import'});browser.bindTaskPage(tab,controller.signal);
+    browser.associatePage(tab,{role:'article'});browser.bindTaskPage(tab,controller.signal);
     tab.view.webContents.emit('render-process-gone',{}, {reason:'crashed',exitCode:1});
   });
   assert.equal(browser.pageAssociation(tab.id),null);
@@ -730,7 +689,7 @@ test('supported Cloudflare challenges invoke Solver while hCaptcha remains manua
       const tab=browser.createTab({present:false});
       browser.bindTaskPage(tab);
       const wc=tab.view.webContents;
-      wc.html=cloudflarePageOptions+cloudflarePageScript+(hcaptcha?'<iframe src="https://newassets.hcaptcha.com/captcha/v1"></iframe>':'');
+      wc.access={markers:{cloudflareOptions:true,cloudflareOrchestrator:true,hcaptcha}};
       await wc.loadURL('https://example.org/challenge');
       const result=await browser.inspectPage(tab,{signal});
       assert.equal(result.waiting,true);
@@ -741,14 +700,14 @@ test('supported Cloudflare challenges invoke Solver while hCaptcha remains manua
   }
 });
 
-test('Enrich, cancellation and Import retain the same locked Paper tab for its Workspace',async t=>{
+test('Article access, cancellation and reuse retain the same locked Paper tab for its Workspace',async t=>{
   const {BrowserRuntime}=fixture(t),browser=new BrowserRuntime();
   t.after(()=>browser.close());await browser.ready;
   const data={workspace_identity:'a'.repeat(64),paper_id:'fd8460a2-7cf1-4f02-b346-cbcbd2fe6e45'};
   const doi='10.5555/fixture',stop=new AbortController();
   let first;
-  await browser.runTask(stop.signal,{...data,request_id:'enrich'},async()=>{
-    first=await browser.openPaperPage(data,doi,{role:'enrich',signal:stop.signal});
+  await browser.runTask(stop.signal,{...data,request_id:'article'},async()=>{
+    first=await browser.openPaperPage(data,doi,{role:'article',signal:stop.signal});
     const page=browser.state().tabs.find(tab=>tab.id===first.pageId);
     assert.equal(page.managed,true);assert.equal(page.busy,true);
     await assert.rejects(browser.command({action:'reload',id:page.id}),/active task page/i);
@@ -761,32 +720,33 @@ test('Enrich, cancellation and Import retain the same locked Paper tab for its W
     await assert.rejects(browser.command(command),/managed page/i);
   }
   const signal=new AbortController().signal;
-  await browser.runTask(signal,{...data,request_id:'import'},async()=>{
-    const imported=await browser.openPaperPage(data,doi,{role:'import',signal});
+  await browser.runTask(signal,{...data,request_id:'article'},async()=>{
+    const imported=await browser.openPaperPage(data,doi,{role:'article',signal});
     assert.equal(imported.pageId,first.pageId);
     assert.equal(imported.frameToken,first.frameToken);
-    assert.equal(browser.pageAssociation(tab.id).role,'import');
+    assert.equal(browser.pageAssociation(tab.id).role,'article');
   });
   await browser.command({action:'reload',id:tab.id});
   assert.equal(tab.view.webContents.reloads,1);
   await tab.view.webContents.loadURL('https://publisher.example/site-navigation');
   await browser.runTask(signal,{...data,request_id:'retry'},async()=>{
-    const restored=await browser.openPaperPage(data,doi,{role:'import',signal});
+    const restored=await browser.openPaperPage(data,doi,{role:'article',signal});
     assert.equal(restored.pageId,tab.id);
     assert.equal(restored.url,'https://doi.org/10.5555%2Ffixture');
     assert.notEqual(restored.frameToken,first.frameToken);
   });
   await assert.rejects(browser.runTask(signal,{...data,request_id:'changed'},async()=>{
-    const changed=await browser.openPaperPage(data,'10.5555/corrected',{role:'enrich',signal});
+    tab.view.webContents.article={values:['10.5555/corrected'],limited:false,multiple:false};
+    const changed=await browser.openPaperPage(data,'10.5555/corrected',{role:'article',signal});
     assert.equal(changed.pageId,tab.id);
     assert.equal(changed.url,'https://doi.org/10.5555%2Fcorrected');
-    throw Error('fixture translation failure');
-  }),/fixture translation failure/);
+    throw Error('fixture article failure');
+  }),/fixture article failure/);
   assert.ok(browser.tabs.has(tab.id));
   assert.equal(browser.pageAssociation(tab.id).active,false);
   const other={...data,workspace_identity:'b'.repeat(64)};
   await browser.runTask(signal,{...other,request_id:'other'},async()=>{
-    const opened=await browser.openPaperPage(other,doi,{role:'import',signal});
+    const opened=await browser.openPaperPage(other,doi,{role:'article',signal});
     assert.notEqual(opened.pageId,tab.id);
   });
   assert.equal(browser.tabs.size,2);
@@ -810,7 +770,7 @@ test('Login opens one managed CARSI Portal and prepares independent Service page
       assert.equal(browser.documentCurrent(doc),true);
       solved.push({pageId:doc.pageId,serviceId:owner.association.service_id});
       const contents=browser.tabs.get(doc.pageId).view.webContents;
-      contents.html='<article>Fixture</article>';contents.title='Fixture';
+      contents.access={markers:{}};
       return {outcome:'clicked'};
     },
   });
@@ -852,9 +812,7 @@ test('Login opens one managed CARSI Portal and prepares independent Service page
         await popup.loadURL('https://publisher.example/unrelated');
         return {status:'pending'};
       }
-      popup.title='Just a moment...';
-      popup.html=cloudflarePageOptions+cloudflarePageScript
-        +(tab.association.service_id===manualId?'<iframe src="https://newassets.hcaptcha.com/captcha/v1"></iframe>':'');
+      popup.access={markers:{cloudflareTitle:true,cloudflareOptions:true,cloudflareOrchestrator:true,hcaptcha:tab.association.service_id===manualId}};
       await popup.loadURL(targetURL);
       return {status:'visited_click'};
     };
@@ -886,7 +844,7 @@ test('Login opens one managed CARSI Portal and prepares independent Service page
   const manualTarget=browser.servicePages(serviceScope.scope_id,manualId).find(page=>page.role==='service-target');
   assert.ok(manualTarget);assert.notEqual(manualTarget.page_id,autoId);
   const manualContents=browser.tabs.get(manualTarget.page_id).view.webContents;
-  manualContents.html='<article>Verified manually</article>';manualContents.title='Publisher';
+  manualContents.access={markers:{}};
   await manualContents.loadURL('https://publisher.example/verified');
   assert.equal((await manual).outcome,'Opened');
   assert.equal((await prepare(noClickId,'NoClick')).outcome,'Needs attention');
@@ -903,33 +861,6 @@ test('Login opens one managed CARSI Portal and prepares independent Service page
   await assert.rejects(prepare(serviceId,'StalePortal'),{diagnostic:{stage:'authentication',code:'carsi_session_expired'}});
   assert.equal(browser.tabs.size,retained);
   assert.equal(reads,1);assert.equal(submissions,1);
-});
-
-test('canceling attachment recovery removes its hidden iframe from the original document',{timeout:5000},async t=>{
-  const {BrowserRuntime}=fixture(t),browser=new BrowserRuntime();
-  t.after(()=>browser.close());await browser.ready;
-  const controller=new AbortController(),{signal}=controller;
-  await browser.runTask(signal,{request_id:'attachment-iframe'},async()=>{
-    browser.operation.action='import_paper';
-    const tab=browser.createTab({present:false}),contents=tab.view.webContents;
-    const doc=await browser.navigate('https://one.test/article',{tab,signal});
-    browser.enterBusiness();
-    const installed=Promise.withResolvers(),iframes=new Set();
-    contents.runAuth=code=>{
-      const id=code.match(/"allfold-attachment-[a-f0-9]+"/)?.[0];
-      if(id && code.includes('document.body.appendChild(iframe)')) {
-        iframes.add(id);installed.resolve();
-      }
-      if(id && code.startsWith('document.getElementById('))iframes.delete(id);
-      return {step:'none',waiting:false};
-    };
-    const pending=browser.bypassAttachment('https://one.test/file',doc,{signal});
-    await Promise.race([installed.promise,pending]);
-    assert.equal(iframes.size,1);
-    controller.abort();
-    await assert.rejects(pending,error=>error.diagnostic?.code==='canceled');
-    assert.equal(iframes.size,0);
-  });
 });
 
 test('initial Paper loading allows two delayed refreshes before replacing only the failed page',async t=>{
@@ -955,7 +886,7 @@ test('initial Paper loading allows two delayed refreshes before replacing only t
   const signal=new AbortController().signal;
   const doc=await browser.runTask(signal,data,async()=>{
     browser.operation.recordRecovery=(event,details)=>recovery.push({event,...details});
-    return browser.openPaperPage(data,'10.5555/fixture',{role:'enrich',signal});
+    return browser.openPaperPage(data,'10.5555/fixture',{role:'article',signal});
   });
   assert.deepEqual(waits,[350,700]);
   assert.equal(pages.length,2);
@@ -987,7 +918,7 @@ for(const mode of ['same-tab','popup','follow-up','follow-up-post','after-limit-
     const recovery=[],created=[];
     browser.events.on('tab-created',(_event,tab)=>{
       created.push(tab);
-      const wc=tab.view.webContents,load=wc.loadURL.bind(wc),snapshot=wc.executeJavaScriptInIsolatedWorld.bind(wc);
+      const wc=tab.view.webContents,load=wc.loadURL.bind(wc),access=wc.executeJavaScriptInIsolatedWorld.bind(wc);
       wc.loadURL=url=>{
         assert.notEqual(url,afterRefreshURL,'resource reentry must not load the failed request URL');
         return load(url.includes('/Shibboleth.sso/')?portalURL:url);
@@ -1000,7 +931,7 @@ for(const mode of ['same-tab','popup','follow-up','follow-up-post','after-limit-
         return {step:'none',waiting:false};
       };
       wc.executeJavaScriptInIsolatedWorld=async(_world,scripts)=>{
-        if(!scripts)return snapshot();
+        if(!scripts)return access();
         const [action]=JSON.parse(scripts[0].code.slice(scripts[0].code.lastIndexOf('(...')+4,-1));
         if(action==='check')return {status:'ready'};
         const target=['popup','unknown','ambiguous'].includes(mode)?wc.popup({url:targetURL}).createWindow({}):wc;
@@ -1123,7 +1054,7 @@ test('Paper page-load timeout replaces the provisional page without renewing the
   const opened=browser.runTask(signal,data,()=>{
     browser.operation.recordRecovery=(event,details)=>recovery.push({event,...details});
     browser.operation.validateRecovery=async()=>{authorities++;};
-    return browser.openPaperPage(data,'10.5555/fixture',{role:'import',signal,deadline:91000});
+    return browser.openPaperPage(data,'10.5555/fixture',{role:'article',signal,deadline:91000});
   });
   await started;
   t.mock.timers.setTime(86000);
@@ -1240,7 +1171,7 @@ test('cancel during managed refresh backoff preserves the failed page and dispat
     };
   });
   const stop=new AbortController(),{signal}=stop;
-  const pending=browser.runTask(signal,data,()=>browser.openPaperPage(data,'10.5555/fixture',{role:'enrich',signal}));
+  const pending=browser.runTask(signal,data,()=>browser.openPaperPage(data,'10.5555/fixture',{role:'article',signal}));
   await waiting;
   stop.abort();
   await assert.rejects(pending,{diagnostic:{stage:'navigation',code:'canceled'}});
@@ -1284,4 +1215,38 @@ test('a stale failure from the same URL and frame cannot consume a newer refresh
   assert.equal(refreshes,2);
   assert.deepEqual(waits,[350,700]);
   assert.equal(recovery.at(-1).event,'recovery_succeeded');
+});
+
+test('Covers manual waiting cannot renew the absolute parent deadline',async t=>{
+  t.mock.timers.enable({apis:['Date','setTimeout'],now:1000});
+  const {searchJournalCover}=require('../src/workflows/browser-operations.cjs');
+  const {BrowserRuntime}=fixture(t),browser=new BrowserRuntime();await browser.ready;t.after(()=>browser.close());
+  browser.events.once('tab-created',(_event,tab)=>{tab.view.webContents.access={markers:{hcaptcha:true}};});
+  const signal=new AbortController().signal;
+  const pending=browser.runTask(signal,{request_id:'cover-expiry'},()=>searchJournalCover(browser,{name:'Fixture'},
+    {signal,progress(){t.mock.timers.tick(600000);}}));
+  await assert.rejects(pending,error=>error.diagnostic?.code==='timeout');
+  assert.equal(browser.operations.size,0);
+});
+
+for(const outcome of ['not_found','clicked','failed'])test(`solver ${outcome} shares the Document attempt ledger across repeated waits`,async t=>{
+  const {BrowserRuntime}=fixture(t);let calls=0;
+  const browser=new BrowserRuntime({solveCloudflare:async()=>{calls++;return {outcome};}});
+  await browser.ready;t.after(()=>browser.close());
+  const signal=new AbortController().signal,tab=browser.createTab({present:false});
+  tab.view.webContents.access={markers:{cloudflareOptions:true,cloudflareOrchestrator:true}};
+  await tab.view.webContents.loadURL('https://fixture.invalid/challenge');
+  const expected=outcome==='not_found'?2:1;
+  await browser.runTask(signal,{request_id:'attempt-budget'},async()=>{
+    browser.bindTaskPage(tab,signal);
+    for(let index=0;index<4;index++)assert.equal((await browser.inspectPage(tab,{signal})).waiting,true);
+    await assert.rejects(browser.waitForPage(tab,{signal,deadline:Date.now()+20}),/timeout/);
+    assert.equal((await browser.inspectPage(tab,{signal})).waiting,true);
+    assert.equal(calls,expected);
+    await tab.view.webContents.loadURL('https://fixture.invalid/replacement');
+    await browser.inspectPage(tab,{signal});assert.equal(calls,expected+1);
+  });
+  await browser.runTask(signal,{request_id:'independent-operation'},async()=>{
+    browser.bindTaskPage(tab,signal);await browser.inspectPage(tab,{signal});assert.equal(calls,expected+2);
+  });
 });

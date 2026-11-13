@@ -15,9 +15,10 @@ function fixture(){
  const taskContext=new AsyncLocalStorage();let pageId=0;
  const context=vm.createContext({operations:new Map(),exiting:false,bridgeReady:true,randomBytes,setTimeout,clearTimeout,
   ...require('../src/shared/logging.cjs'),...require('../src/shared/recovery-summary.cjs'),...require('../src/workflows/recovery-authority.cjs'),
+  require:require('node:module').createRequire(require.resolve('../src/main.cjs')),
   operationAssociation:require('../src/browser/page-association.cjs').operationAssociation,
   log:(level,event,details)=>logs.push({level,event,...details}),AbortController,BrowserFailure,diagnosticFor,
-  send:message=>messages.push(JSON.parse(JSON.stringify(message))),
+  send:message=>{messages.push(JSON.parse(JSON.stringify(message)));context.onSend?.(message);},
   browser:{tabs:new Map(),documentCurrent:()=>true,publish(){},
    get operation(){return taskContext.getStore();},get taskTab(){return this.operation?.taskTab;},
    async runTask(signal,association,run){try{return await taskContext.run({signal,association,taskTab:{id:++pageId}},run);}finally{calls.end++;}},
@@ -82,7 +83,7 @@ test('quit confirmation occurs before aborting an active task and cancelling lea
   assert.equal(controller.signal.aborted,false);assert.equal(quitCalls,0);
 });
 
-test('same-URL challenges use their own CDP target and ignore stale replies after navigation',{timeout:5000},async()=>{
+for(const sameDocument of [false,true])test(`same-URL challenges ignore stale replies after ${sameDocument?'same-document':'full'} navigation`,{timeout:5000},async()=>{
   const {EventEmitter}=require('node:events');
   const f=fixture(),sent=deferred(),results=new Map();
   class Socket extends EventEmitter {
@@ -91,9 +92,7 @@ test('same-URL challenges use their own CDP target and ignore stale replies afte
     close(){throw Error('unexpected bridge close');}
   }
   let challengeCount=0;
-  const send=f.context.send;
-  f.context.send=message=>{
-    send(message);
+  f.context.onSend=message=>{
     if(message.type==='solve_cloudflare' && ++challengeCount===2)sent.resolve();
   };
   Object.assign(f.context,{WebSocket:Socket,bridgeReady:false,base:'http://127.0.0.1:18767',token:'fixture'});
@@ -122,7 +121,7 @@ test('same-URL challenges use their own CDP target and ignore stale replies afte
   reply(response({...b,id:a.id}));
   await Promise.resolve();
   assert.equal(results.size,0);
-  f.context.browser.tabs.get(1).view.webContents.emit('did-start-navigation',{isMainFrame:true,isSameDocument:false});
+  f.context.browser.tabs.get(1).view.webContents.emit('did-start-navigation',{isMainFrame:true,isSameDocument:sameDocument});
   reply(response(a));reply(response(b));
   await Promise.all([first,second]);
   assert.equal(results.get(1).reason,'canceled');

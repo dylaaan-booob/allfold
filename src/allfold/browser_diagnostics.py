@@ -15,6 +15,7 @@ _STEPS = frozenset({'request', 'page_load', 'resource_ready', 'resource_filter',
                     'note_save', 'attachment_create', 'attachment_save', 'recovery_authority'})
 _CODES = frozenset({'failed', 'canceled', 'timeout', 'site_restricted', 'verification_page',
     'content_access_blocked', 'http_error', 'load_failed', 'renderer_gone', 'page_closed',
+    'page_probe_unconfirmed', 'article_identity_unconfirmed', 'article_identity_conflict',
     'document_changed', 'navigation_active', 'document_operation_failed', 'doi_mismatch',
     'translator_no_items', 'translator_multiple_items', 'translator_doi_missing', 'translator_invalid_item',
     'institution_credentials_rejected', 'carsi_session_expired', 'resource_not_found',
@@ -116,6 +117,9 @@ def format_browser_diagnostic(value: object, *, include_pdf_uncertainty: bool = 
         'translator_multiple_items': '官方 Translator 返回多个条目，无法确认唯一父条目。',
         'translator_doi_missing': '官方 Translator 返回的条目缺少有效 DOI。',
         'translator_invalid_item': '元数据缺少有效标题或条目类型。',
+        'page_probe_unconfirmed': '网页检查证据不完整，请检查 BROWSER 后重试。',
+        'article_identity_unconfirmed': '无法确认当前网页对应目标文章。',
+        'article_identity_conflict': '当前网页的文章身份与目标冲突。',
         'document_operation_failed': '无法读取当前网页文档，请检查 BROWSER 后重试。',
     }
     if diagnostic.get('stage') == 'translation' and diagnostic.get('code') in translation_reasons:

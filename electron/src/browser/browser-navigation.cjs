@@ -341,24 +341,24 @@ class NavigationRecovery {
 }
 
 // One observation shared by all task waits; business controls stay with their workflows.
-async function inspectPage({snapshot,current,authentication,inspectAuthentication,solveCloudflare,solverDocuments,
+async function inspectPage({probe,current,authentication,inspectAuthentication,solveCloudflare,solverDocuments,
   signal,deadline=Infinity,automaticDeadline=deadline,stage='navigation',step='verification',extraWaiting=()=>false,onWaiting=()=>{},onSolverFailure=()=>{}}) {
   const call=(run,limit=automaticDeadline)=>waitFor(run,signal,limit,stage,step);
   const authWaiting=await call(authentication);
   const auth=await call(inspectAuthentication,authWaiting?deadline:automaticDeadline);
-  const doc=await call(snapshot,authWaiting || auth.waiting?deadline:automaticDeadline);
+  const doc=await call(probe,authWaiting || auth.waiting?deadline:automaticDeadline);
   if(!current(doc) || (auth.binding && (auth.binding.processId!==doc.processId || auth.binding.frameToken!==doc.frameToken)))
     return {doc,loading:true,waiting:false};
   const waiting=authWaiting || auth.waiting || extraWaiting(doc);
   try {
-    checkPage(doc.status,doc.title,doc.html);
+    checkPage(doc.status,doc);
   } catch(error) {
     if(error.diagnostic?.code!=='verification_page') {
       if(!authWaiting && !auth.waiting)throw error;
     } else {
-      const hcaptcha=/<iframe\b[^>]*\ssrc\s*=\s*["'](?:https:)?\/\/(?:[a-z0-9-]+\.)*hcaptcha\.com(?:[/:]|["'])/i.test(doc.html);
-      if(error.diagnostic.imperva_edet!==undefined || hcaptcha)return {doc,waiting:true,diagnostic:error.diagnostic};
-      const key=JSON.stringify([doc.pageId,doc.processId,doc.frameToken]);
+      const hcaptcha=doc.markers.hcaptcha;
+      if(doc.imperva || hcaptcha || doc.markers.robot)return {doc,waiting:true,diagnostic:error.diagnostic};
+      const key=JSON.stringify([doc.pageId,doc.processId,doc.frameToken,doc.documentId]);
       const attempt=solveCloudflare?solverDocuments.get(key):null;
       if(solveCloudflare && (!attempt || attempt.attempts<2 && attempt.retryable)) {
         onWaiting(true);
@@ -375,7 +375,7 @@ async function inspectPage({snapshot,current,authentication,inspectAuthenticatio
       return {doc,waiting:true};
     }
   }
-  return {doc,waiting:!!waiting || !Number.isInteger(doc.status)};
+  return {doc,waiting:!!waiting || doc.markers.login || !Number.isInteger(doc.status)};
 }
 async function waitForPage(observe,{signal,deadline=Infinity,onWaiting,stage='navigation',step='verification'}={}) {
   while(true) {

@@ -22,7 +22,12 @@ current ending-range control's accessible description. The input's `max`
 attribute is not a substitute, and an unknown limit is an error. The download
 still requires the native event on the bound page, its observed URL chain and
 the server-issued staging path; cancellation and document replacement retain
-their existing refusal behavior.
+their existing refusal behavior. Results capture a lightweight native Document
+binding; polling uses the bounded access probe rather than HTML. Export shares
+one absolute request deadline across dialogs, verification and download polling.
+Cancellation/expiry cancels the original DownloadItem and awaits its actual
+terminal before releasing ownership; cleanup remains scoped to the captured
+Document. The eight fields and URL-chain attribution above are unchanged.
 
 ## Selector evidence
 

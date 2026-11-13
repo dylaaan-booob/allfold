@@ -8,7 +8,7 @@ const vm=require('node:vm');
 const hostRequire=require('node:module').createRequire(require.resolve('../src/workflows/wos-operations.cjs'));
 const {EventEmitter}=require('node:events');
 const {attachBrowserMechanisms}=require('./browser-fixture.cjs');
-const {BrowserFailure:ImportFailure,checkPage}=require('../src/browser/browser-errors.cjs');
+const {BrowserFailure,checkPage}=require('../src/browser/browser-errors.cjs');
 const {pageStep,SELECTORS}=require('../src/workflows/page-actions.cjs');
 const {institutionAuthPage}=require('../src/auth/institution-auth.cjs');
 function exportAuthentication() {
@@ -54,11 +54,11 @@ function queryFixture(stages,{cancel=false,authError=false,advance=()=>{}}={}) {
     }};
   const tab={id:71,view:{webContents:wc},association:preparedIdentity,
     preparationKey:preparedIdentity.preparation_key,recoveryActive:false,reloads:1};
-  const browser={tabs:new Map([[71,tab]]),select(){},async checkAuthentication(){if(authError)throw new ImportFailure('authentication','institution_credentials_rejected');return false;},
-    async snapshot(){return {pageId:71,url:current.url,status:200,title:'Fixture',html:'Fixture'};},
+  const browser={tabs:new Map([[71,tab]]),select(){},async checkAuthentication(){if(authError)throw new BrowserFailure('authentication','institution_credentials_rejected');return false;},
+    async documentBinding(){return {pageId:71,url:current.url,status:200,};},
     documentCurrent:()=>true,documentFrame:()=>wc};
   attachBrowserMechanisms(browser);
-  const checkCanceled=signal=>{if(signal.aborted)throw new ImportFailure('navigation','canceled');};
+  const checkCanceled=signal=>{if(signal.aborted)throw new BrowserFailure('navigation','canceled');};
   const context=vm.createContext({module:{exports:{}},Date,URL,setTimeout,clearTimeout,
     require:name=>name==='./page-actions.cjs'?{pageStep:function(){},SELECTORS:{}}:
       name==='../browser/browser-task.cjs'?{...require('../src/browser/browser-task.cjs'),checkCanceled,
@@ -75,7 +75,7 @@ function queryFixture(stages,{cancel=false,authError=false,advance=()=>{}}={}) {
           assert.equal(current.loading,undefined);assert.notEqual(current.challenge,true);
           current={url};
         }}:
-      name==='./import-errors.cjs'?{ImportFailure,checkPage}:hostRequire(name)});
+      hostRequire(name)});
   vm.runInContext(fs.readFileSync(path.join(__dirname,'../src/workflows/wos-operations.cjs'),'utf8'),context);
   return {events,progress,controller,tab,entryWindows,
     run:()=>context.module.exports.wosQuery(browser,{...preparedIdentity,page_id:71,query:'fixture query'},
@@ -88,7 +88,7 @@ function fixture(t,{attributable=true,hold=false,challenge=false,domError=null,q
   const filename=path.join(root,'allfold-wos','a'.repeat(32),'b'.repeat(32)+'.txt');
   fs.mkdirSync(path.dirname(filename),{recursive:true});
   const partition=new EventEmitter(),controller=new AbortController(),ops=[];
-  const doc={pageId:71,processId:1,frameToken:'native-frame',url:'https://www.webofscience.com/wos/woscc/summary/test',status:200,title:'Results',html:'Results'};
+  const doc={pageId:71,processId:1,frameToken:'native-frame',url:'https://www.webofscience.com/wos/woscc/summary/test',status:200,};
   const authentication=query?exportAuthentication():null;
   if(query)doc.url='https://www.webofscience.com/wos/woscc/advanced-search';
   let settle,exported;
@@ -125,7 +125,7 @@ function fixture(t,{attributable=true,hold=false,challenge=false,domError=null,q
   const tab={id:71,view:{webContents:wc},association:preparedIdentity,
     preparationKey:preparedIdentity.preparation_key,wosServiceScope:preparedIdentity.service_scope,wosDocument:doc};
   const browser={tabs:new Map([[71,tab]]),partition,
-    liveToken:doc.frameToken,select(){},async checkAuthentication(){return authentication?.inspect().waiting || false;},async snapshot(){return {...doc,url:wc.getURL()};},
+    liveToken:doc.frameToken,select(){},async checkAuthentication(){return authentication?.inspect().waiting || false;},async documentBinding(){return {...doc,url:wc.getURL()};},
     documentCurrent(value){return this.liveToken===value.frameToken;},
     documentFrame(value){return this.documentCurrent(value)?wc:null;}};
   attachBrowserMechanisms(browser);
@@ -152,7 +152,7 @@ function fixture(t,{attributable=true,hold=false,challenge=false,domError=null,q
           assert.equal(target,tab);assert.equal(url,advanced);
           doc.url=url;ops.push('navigate');
         }}:
-      name==='./import-errors.cjs'?{ImportFailure,checkPage}:hostRequire(name)});
+      hostRequire(name)});
   vm.runInContext(fs.readFileSync(path.join(__dirname,'../src/workflows/wos-operations.cjs'),'utf8'),context);
   return {browser,controller,item,ops,ready,settle:()=>settle(),
     runQuery:(data={})=>context.module.exports.wosQuery(browser,{...preparedIdentity,page_id:71,query:'fixture query',...data},
@@ -164,7 +164,8 @@ function fixture(t,{attributable=true,hold=false,challenge=false,domError=null,q
 }
 test('WoS accepts only an observed native export URL into its issued file',async t=>{
   const f=fixture(t);assert.equal((await f.run()).filename,f.filename);
-  assert.equal(f.browser.taskTab.taskSignal,f.controller.signal);
+  assert.equal(f.controller.signal.aborted,false);
+  assert.equal(f.browser.taskTab.taskSignal.aborted,true,'the completed bounded request releases its signal');
   assert.equal(f.item.filename,f.filename);assert.equal(f.ops.filter(op=>op==='export').length,1);
   assert.equal(f.browser.partition.listenerCount('will-download'),0);assert.equal(f.ops.at(-1),'cleanup');
 });
@@ -274,3 +275,16 @@ test('a download completed after native document replacement cannot be accepted'
   assert.equal(f.ops.includes('links'),false);assert.equal(f.ops.includes('cleanup'),false);
 });
 
+
+test('WoS Export expiry cancels native save but retains ownership until actual terminal',async t=>{
+  t.mock.timers.enable({apis:['Date','setTimeout'],now:1000});
+  const f=fixture(t,{hold:true});
+  let settled=false;
+  const pending=f.run().finally(()=>{settled=true;});
+  const rejected=assert.rejects(pending,error=>error.diagnostic?.code==='timeout');
+  await f.ready;
+  t.mock.timers.tick(600000);
+  assert.equal(f.item.cancelled,true);assert.equal(settled,false);
+  f.settle();await rejected;
+  assert.equal(f.browser.partition.listenerCount('will-download'),0);
+});

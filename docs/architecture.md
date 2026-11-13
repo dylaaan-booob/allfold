@@ -55,8 +55,12 @@ Login runs one CARSI institution flow. Each subsequent CARSI preparation opens i
 Browser Runtime uses one business Session from `session.fromPartition('allfold')`.
 Selection and presentation are separate from task ownership. Prepare, WoS, Login
 and Covers retain their scoped Page/Document checks, cancellation and manual
-verification. DocumentRuntime and its isolated preload still supply identity and
-page inspection; the Cloudflare adapter remains request/CDP-target scoped.
+verification. DocumentRuntime and its isolated preload supply bounded binding/access/article
+observations, never full HTML. Native Document binding, independent Paper identity
+and task/Service authority are separate. The internal Paper entry checks access
+before current article identity; it remains unconnected to background collection.
+The Cloudflare adapter remains request/CDP-target scoped. See
+[controlled Documents](browser-documents.md) for the runtime contract.
 
 Keep/Import/Enrich have no product HTTP/IPC or native dispatch path. Dedicated
 Zotero Local API, attachment writes and full Translator assembly are removed;

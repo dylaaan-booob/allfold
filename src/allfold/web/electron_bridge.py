@@ -8,6 +8,7 @@ import asyncio
 import hmac
 import re
 import threading
+import time
 from collections.abc import Callable
 from concurrent.futures import Future
 from dataclasses import dataclass, field
@@ -113,7 +114,7 @@ class ElectronBridge:
                         self.closing = True
                         for pending in self._pending.values():
                             pending.stop_callbacks()
-                        drain = asyncio.create_task(self._drain(socket))
+                        drain = asyncio.create_task(self._drain(socket, workers))
                     continue
                 request_id = message.get("id")
                 pending = self._pending.get(request_id) if isinstance(request_id, str) else None
@@ -134,14 +135,16 @@ class ElectronBridge:
                     challenge_id = message.get("challenge_id")
                     url = data.get("url")
                     target_id = data.get("target_id")
+                    deadline_ms = data.get("deadline_ms")
                     if (not isinstance(challenge_id, str) or not re.fullmatch(r"[a-f0-9]{32}", challenge_id)
                             or not isinstance(url, str) or not url.startswith(("https://", "http://"))
                             or not isinstance(target_id, str) or not re.fullmatch(r"[A-Fa-f0-9]{32}", target_id)
+                            or type(deadline_ms) is not int or deadline_ms <= 0
                             or challenge_id in pending.challenges or pending.action in _CONTROL_ACTIONS):
                         raise ValueError("Invalid challenge request")
-                    if not pending.stop.is_set():
+                    if not self.closing and not pending.stop.is_set():
                         stop = pending.challenges[challenge_id] = threading.Event()
-                        start_worker(self._solve_cloudflare(socket, pending, challenge_id, url, target_id, stop))
+                        start_worker(self._solve_cloudflare(socket, pending, challenge_id, url, target_id, stop, deadline_ms))
                 elif kind == "verify_recovery_authority":
                     check_id = message.get("check_id")
                     if (pending.action not in _RECOVERY_ACTIONS or data
@@ -233,17 +236,25 @@ class ElectronBridge:
             "verify_recovery_authority_result", check_id=check_id, data={"allowed": allowed}))
 
     async def _solve_cloudflare(self, socket, pending: _Operation, challenge_id: str,
-                                url: str, target_id: str, stop: threading.Event) -> None:
+                                url: str, target_id: str, stop: threading.Event, deadline_ms: int) -> None:
+        timer = asyncio.get_running_loop().call_later(max(0, deadline_ms / 1000 - time.time()), stop.set)
         try:
             # Wait off the receive loop. Holding the slot until the worker returns
             # prevents cleanup or logger restoration from crossing another solve.
             async with self._solver_slot:
-                if stop.is_set():
+                if stop.is_set() or pending.stop.is_set() or time.time() * 1000 >= deadline_ms:
                     return
-                data = await asyncio.to_thread(solve_cloudflare, self._cdp_url, url, stop, target_id=target_id)
+                worker = asyncio.create_task(asyncio.to_thread(solve_cloudflare, self._cdp_url, url, stop, target_id=target_id))
+                try:
+                    data = await asyncio.shield(worker)
+                except asyncio.CancelledError:
+                    stop.set()
+                    await worker  # The application slot belongs to the actual thread until cleanup ends.
+                    raise
             await self._callback(socket, pending, stop, pending.envelope(
                 "solve_cloudflare_result", challenge_id=challenge_id, data=data))
         finally:
+            timer.cancel()
             pending.challenges.pop(challenge_id, None)
 
     def native_drained(self):
@@ -264,9 +275,11 @@ class ElectronBridge:
                     pending.result.set_exception(ElectronDisconnected(
                         "Electron disconnected; operation result is unconfirmed"))
 
-    async def _drain(self, socket: WebSocket):
+    async def _drain(self, socket: WebSocket, workers: set[asyncio.Task]):
         if self.shutdown:
             await self.shutdown()
+        if workers:
+            await asyncio.gather(*workers)
         try:
             await self._send(socket, {"type": "shutdown_ready"})
         except _SOCKET_ERRORS:
