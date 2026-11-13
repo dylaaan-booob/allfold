@@ -57,10 +57,13 @@ Login runs one CARSI institution flow. Each subsequent CARSI preparation opens i
 Browser Runtime uses one business Session from `session.fromPartition('allfold')`.
 Selection and presentation are separate from task ownership. Prepare, WoS, Login
 and Covers retain their scoped Page/Document checks, cancellation and manual
-verification. DocumentRuntime and its isolated preload supply bounded binding/access/article
-observations, never full HTML. Native Document binding, independent Paper identity
-and task/Service authority are separate. The internal Paper entry checks access
-before current article identity; it remains unconnected to background collection.
+verification. DocumentRuntime and its isolated preload supply bounded
+binding/access/article/extract observations, never full HTML. Native Document
+binding, independent Paper identity and task/Service authority are separate.
+The internal Paper extraction operation checks access and current article identity,
+reads Date/Abstract together, then rechecks the same live Document before normal
+page cleanup. Its small verified result can be committed after that cleanup;
+Python rechecks the captured Workspace/Paper/attempt, not the closed page.
 The Cloudflare adapter remains request/CDP-target scoped. See
 [controlled Documents](browser-documents.md) for the runtime contract.
 
@@ -236,9 +239,10 @@ publication date retains its explicit source. Preprint evidence preserves versio
 families, verified first-version proof and unresolved relations; it never becomes
 a formal direct identity or an ordinary date solely through association. Reader
 and Info display these new library projections without old event/source columns
-or active Enrich buttons. WF05 provides internal background scheduling; production
-registration, webpage Date/Abstract extraction and Download/PDF actions belong to
-later tasks.
+or active Enrich buttons. WF05 provides internal background scheduling. WF06 adds
+internal Date/Abstract and purpose-driven API/Preprint services through those task
+interfaces. Production registration and branch parallelism belong to WF08;
+PDF sources, transport, files and public actions remain later work.
 
 ## Workspace collection runtime
 
