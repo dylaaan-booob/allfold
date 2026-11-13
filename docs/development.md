@@ -183,6 +183,13 @@ DocumentRuntime and its isolated preload in Electron 45 with local HTTP and a
 temporary profile. It covers the complete fixed Date/Abstract algorithms,
 strict parameters/DTOs, legal empty results, bounded local diagnostics, live
 Document/body validation, captured Service binding and actual cleanup.
+The rendered Workspace fixture also consumes a fresh real Main extraction DTO
+through `tests/document_metadata_pipeline.py`: captured API/DOM task services,
+independent SQLite connection/client races, disk reopen and the actual Workspace
+HTTP projection feed the built Reader. It checks structured text, exact copied
+selection, incremental date refresh and retained reading position. This is
+isolated component evidence; production Run and same-Paper branch orchestration
+are not switched by the fixture.
 
 In a separate worktree, ensure Python imports resolve to that worktree's `src`
 before relying on test evidence. A shared editable environment can still point
