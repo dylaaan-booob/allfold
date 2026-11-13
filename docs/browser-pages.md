@@ -153,6 +153,11 @@ Session WebContents counts at global 4/Service 3, real popup transfer surviving
 opener destruction, six temporary batches returning to Portal/target baseline,
 queued cancellation without creation, original slow-download source retention to
 actual `done`, user limit 16, and final close to zero before Session disposal.
+WF05 extends this fixture with two simultaneous same-Service Paper owners,
+independent navigated work pages and a shared Portal pin at the same minimum
+capacity. Actual cleanup destroys A's page while B remains live, then returns to
+the retained baseline. This is native component evidence; production Run still
+does not register collection.
 It also calls production `prepareLoggedInService` using the same real Portal with
 changed unrelated revisions/workflow and unchanged access keys; controlled resource
 search terminates explicitly while preserving that Portal.
