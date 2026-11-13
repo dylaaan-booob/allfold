@@ -166,3 +166,31 @@ def test_access_close_events_and_shared_limits_use_the_authenticated_bridge():
         sent = socket.receive_json()
         socket.send_json({**{key: sent[key] for key in ('id', 'action')}, 'type': 'result', 'data': {'ok': True}})
         assert request.result(2) == {'ok': True} and closed == [17, 29]
+
+
+def test_internal_extraction_contract_and_scoped_recovery_preserve_empty_success():
+    bridge = ElectronBridge('secret', 'testserver')
+    verified = threading.Event()
+    with TestClient(application(bridge)) as client, client.websocket_connect('/ws') as socket:
+        socket.send_json({'token': 'secret'}); socket.receive_json()
+        for invalid in ({'wantAbstract': 'false', 'deadline_ms': int(time.time() * 1000) + 5000},
+                        {'wantAbstract': False, 'deadline_ms': True}):
+            with pytest.raises(ValueError, match='extraction'):
+                bridge.execute('extract_paper_metadata', invalid).result(2)
+        future = bridge.execute('extract_paper_metadata', {
+            'workflow_id': 'collection', 'task_id': 'captured', 'wantAbstract': False,
+            'deadline_ms': int(time.time() * 1000) + 5000,
+        }, verify_recovery=verified.set)
+        request = socket.receive_json()
+        assert request['action'] == 'extract_paper_metadata'
+        assert request['data']['wantAbstract'] is False
+        socket.send_json({key: request[key] for key in ('id', 'action')} | {
+            'type': 'verify_recovery_authority', 'check_id': 'a' * 32, 'data': {}})
+        response = socket.receive_json()
+        assert response['data'] == {'allowed': True}
+        assert verified.is_set()
+        socket.send_json({key: request[key] for key in ('id', 'action')} | {
+            'type': 'result', 'data': {'outcome': 'retrieved',
+                                     'metadata': {'dates': [], 'abstract': None},
+                                     'extraction_diagnostics': []}})
+        assert future.result(2)['metadata'] == {'dates': [], 'abstract': None}
