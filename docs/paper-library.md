@@ -216,3 +216,9 @@ enable download/retry UI. Application/API fixtures exercise
 production adoption, fields, Preprint and recycling; Electron fixtures exercise
 projections, response ordering and the existing layout. None establishes real
 provider, institution, user-library or actual-PDF acceptance.
+
+`touch_projection(paper_id)` advances only the Paper/library response revisions
+for a runtime reservation change. It grants no metadata/operation/abstract/body
+qualification. The application holds the same Paper gate and captured reservation
+identity through that commit and runtime ownership change; failed persistence
+cannot silently release the reservation.
