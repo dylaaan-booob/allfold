@@ -38,7 +38,11 @@ before the action; it does not install or remove a per-export native Session
 listener. The original item receives the already-issued staging path inside the
 synchronous event callback. Native source/frame and initiator facts precede WoS's
 business URL-chain validation. A missing frame or ambiguous source is refused,
-and a dispatched attempt without an item keeps bounded late-event protection.
+and a dispatched attempt without an item makes that physical source unsafe for
+new attempts until its actual destruction. Operation cleanup invalidates and
+closes the retained source; a subsequent explicit retry needs a fresh page.
+Successful item completion and verified pre-click DOM refusals leave the source
+reusable for consecutive exports or retries.
 The Session entry remains installed for independent work after export cleanup.
 
 ## Selector evidence

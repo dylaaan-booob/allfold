@@ -201,6 +201,7 @@ async function wosExport(browser,data,{signal,progress}) {
 }
 async function wosExportWithinDeadline(browser,data,{signal,progress},deadline) {
   const tab=taskPage(browser,data,signal,{exporting:true});
+  if(browser.sessionEvents.downloadSourceUnsafe(tab.view.webContents))throw new BrowserFailure('wos_download','download_not_attributable');
   let doc=tab.wosDocument;
   browser.enterBusiness();
   if(tab.wosWorkflowId!==browser.operation?.association.workflow_id
@@ -257,7 +258,7 @@ async function wosExportWithinDeadline(browser,data,{signal,progress},deadline) 
     try {await step(browser,tab,'export',{first:data.first,last:data.last,customVerified:true},signal,progress,10000,deadline);}
     catch(error) {
       // A verified pre-click DOM refusal cannot issue a late download. Other
-      // failures retain a bounded source guard until the old attempt is resolved.
+      // failures make this physical source unsafe until operation cleanup closes it.
       if(error.diagnostic?.stage==='wos_dom' && !['timeout','canceled'].includes(error.diagnostic.code))dispatched=false;
       throw error;
     }

@@ -321,3 +321,12 @@ test('a failed export after opening its overlay cleans its own armed observer',a
   await assert.rejects(f.run(),/control_disabled/,'retry reaches the control, not a leaked download observer');
   assert.equal(f.armedTokens.size,0);
 });
+
+test('an unresolved prior download refuses a new export before arming or clicking its source',async t=>{
+  const f=fixture(t),tab=f.browser.tabs.get(71),doc=tab.wosDocument;
+  const prior=f.browser.sessionEvents.registerDownload({owner:f.browser.operation,attemptId:'unresolved',
+    contents:tab.view.webContents,frame:doc,document:doc,filename:'/tmp/unused',deadline:Date.now()+1000,validate:()=>true});
+  prior.dispose({dispatched:true});
+  await assert.rejects(f.run(),error=>error.diagnostic?.code==='download_not_attributable');
+  assert.deepEqual(f.ops,[]);assert.equal(f.armedTokens.size,0);
+});

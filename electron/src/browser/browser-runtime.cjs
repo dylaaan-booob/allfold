@@ -957,7 +957,11 @@ class BrowserRuntime {
         if(tab.navigation.current?.owner===owner)tab.navigation.finish();
         if(tab.authContext?.owner===owner)tab.authContext.active=false;
         if(tab.associationOwner===owner) {this.reportPage('info','page_association_released',tab);tab.associationOwner=null;}
-        if(tab.resourceOwner===owner)temporary.push(tab);
+        const unsafeSource=tab.taskOwner===owner && this.sessionEvents.downloadSourceUnsafe(tab.view.webContents);
+        if(tab.resourceOwner===owner || unsafeSource) {
+          if(unsafeSource && tab.resourceOwner?.kind==='access'){tab.resourceOwner.valid=false;tab.resourceOwner.loan=null;}
+          temporary.push(tab);
+        }
         else if(tab.taskOwner===owner){tab.downloadScope?.dispose();tab.downloadScope=null;tab.downloadScopeOwner=null;tab.taskOwner=null;tab.taskSignal=null;}
         if(tab.loadOwner===owner){tab.loadOwner=null;tab.loadAllowed=false;}
       }

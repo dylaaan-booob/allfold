@@ -56,3 +56,40 @@ def test_cancel_cover_uses_its_captured_identity_and_retains_admission_until_nat
     search.join()
     assert bridge.cancelled_tasks == [(current['request_id'], current['request_id'])]
     assert search.state()['phase'] == 'Cancelled' and lock.owner is None
+
+
+@pytest.mark.parametrize('during_search', ['missing', 'restored', 'replaced', 'symlink'])
+def test_cover_search_repairs_a_missing_saved_image_only_while_it_remains_missing(tmp_path, during_search):
+    config, path, journal, _ = current_mapping_document(tmp_path)
+    upload_cover(path, journal.key, image_data('blue'), config_path=config)
+    asset, = (tmp_path / 'journal-assets' / 'covers').iterdir()
+    original = asset.read_bytes()
+    asset.unlink()
+    assert cover_details(path, journal.key)['state'] == 'Generated'
+    bridge, lock = PendingBridge(), BrowserTaskLock()
+    search = JournalCoverSearch(bridge, lock)
+    search.start(path, (journal,), journal.key, config_path=config)
+    assert bridge.dispatched.wait(2)
+    if during_search == 'restored':
+        asset.write_bytes(original)
+    elif during_search == 'replaced':
+        asset.write_bytes(image_data('green'))
+    elif during_search == 'symlink':
+        other = tmp_path / 'unrelated-image.jpg'
+        other.write_bytes(original)
+        asset.symlink_to(other)
+    bridge.future.set_result({'source_url': 'https://publisher.example/cover.png',
+        'image_base64': base64.b64encode(image_data()).decode()})
+    search.join()
+    assert not lock.owners
+    if during_search == 'missing':
+        assert search.state()['phase'] == 'Completed'
+        assert cover_details(path, journal.key)['state'] == 'Downloaded'
+    else:
+        assert search.state()['phase'] == 'Failed'
+        if during_search == 'restored':
+            assert asset.read_bytes() == original
+        elif during_search == 'replaced':
+            assert asset.read_bytes() == image_data('green')
+        else:
+            assert asset.is_symlink() and other.read_bytes() == original

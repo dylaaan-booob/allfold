@@ -64,10 +64,13 @@ WoS reports the interruption after that actual terminal. `waitForDownloads`
 waits for all tracked items, or only one source WebContents, and is not shortened
 by a task's aborted signal. Source pages remain retained through that wait.
 
-Disposing a dispatched attempt that never received an item retains a source/frame
-guard until the original deadline or at least 30 seconds after disposal, whichever
-is later; physical source destruction removes it sooner. This bounds late-event
-protection while refusing an indistinguishable newer attempt on that source.
+Disposing a dispatched attempt that never received an item makes its physical
+source unsafe until actual WebContents destruction. Elapsed time cannot establish
+that the old action ended. The router keeps one owner-free guard per such source,
+rejects new registrations before their actions and cancels that source's late
+items. Operation cleanup invalidates and closes a guarded retained access page,
+waiting for tracked items and actual destruction; an explicit retry can then use
+a fresh page. Guards therefore remain bounded by the physical page ledger.
 Verified pre-click WoS DOM failures do not create this guard and may retry.
 No cancelled response is replaced by a GET, HEAD or `downloadURL` call.
 
@@ -84,7 +87,7 @@ the normal Electron test entry. It fixes the runtime assertion at 45.0.0.
 | iframe inline form POST | Source WebContents and the originating child frame matched; original item completed once |
 | Popup inline form POST | Popup WebContents/frame matched independently of its opener; original item completed once |
 | Two source pages, identical URL | Two independent items/paths/terminal states; two original POSTs, no FIFO or URL assignment |
-| No item by expiry, then a late native item | Bounded old-source guard cancelled it; a newer registration could not claim it |
+| No item by expiry, then a late native item | New registration on that source was refused before dispatch; the guard cancelled the late item and survived until actual destruction; a fresh source completed independently |
 | Multiple registrations on one source/frame | Item cancelled as ambiguous; neither callback received ownership |
 | Source-less `Session.downloadURL` | Native source and frame were null; the router left the unrelated item alone. A fixture-only listener supplied its path |
 | Slow POST, source destroyed before headers/handoff | One original request; no item within the bounded observation window |

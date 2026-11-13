@@ -78,7 +78,7 @@ test('download routing keeps same-URL owners separate, waits for actual done and
   const late=register(lateOwner,lateFrame,'/tmp/late',()=>{throw Error('retired callback');});late.dispose({dispatched:true});
   const lateItem=make();session.emit('will-download',{},lateItem,lateOwner,lateFrame);assert.equal(lateItem.canceled,true);
   const wrongFrame=make();session.emit('will-download',{},wrongFrame,lateOwner,{processId:4,frameToken:'other'});
-  assert.equal(wrongFrame.canceled,undefined);events.dispose();
+  assert.equal(wrongFrame.canceled,true,'the unresolved managed physical source is no longer reusable');events.dispose();
 });
 test('a missing frame cannot renew an attempt and unexpected downloads are denied only for an explicitly owned task page',async()=>{
   const {session,events}=fixture(),contents=new EventEmitter(),other=new EventEmitter();let accepted=0,rejected=0;
@@ -93,4 +93,26 @@ test('a missing frame cannot renew an attempt and unexpected downloads are denie
   const unexpected=item(),unrelated=item();session.emit('will-download',{},unexpected,contents,frame);session.emit('will-download',{},unrelated,other,frame);
   assert.equal(unexpected.canceled,true);assert.equal(unrelated.canceled,undefined);
   scope.dispose();events.dispose();
+});
+test('an unresolved dispatched source stays unsafe past timeouts and a fresh physical source remains independent',t=>{
+  t.mock.timers.enable({apis:['Date','setTimeout'],now:1000});
+  const {session,events}=fixture(),contents=new EventEmitter(),fresh=new EventEmitter();
+  const frame={processId:1,frameToken:'frame'},document={...frame,documentId:'doc'};
+  let accepted=0;
+  const register=(source,attemptId)=>events.registerDownload({owner:{task_id:attemptId},attemptId,contents:source,frame,document,
+    filename:'/tmp/'+attemptId,deadline:Date.now()+1000,validate:()=>true,onItem:()=>{accepted++;}});
+  const old=register(contents,'old'),parallel=register(contents,'parallel');
+  old.dispose({dispatched:true});parallel.dispose({dispatched:true});
+  assert.equal(contents.listenerCount('destroyed'),1,'unresolved attempts coalesce by physical source');
+  t.mock.timers.tick(600000);
+  assert.throws(()=>register(contents,'new'),/download_not_attributable/);
+  const item=()=>{const value=new EventEmitter();value.setSavePath=path=>{value.filename=path;};
+    value.cancel=()=>{value.canceled=true;value.emit('done',{},'cancelled');};return value;};
+  const late=item();session.emit('will-download',{},late,contents,frame);
+  assert.equal(late.canceled,true);assert.equal(late.filename,undefined);assert.equal(accepted,0);
+  const independent=register(fresh,'independent'),current=item();
+  session.emit('will-download',{},current,fresh,frame);
+  assert.equal(current.filename,'/tmp/independent');assert.equal(accepted,1);
+  current.emit('done',{},'completed');independent.dispose({dispatched:true});
+  contents.emit('destroyed');events.dispose();
 });

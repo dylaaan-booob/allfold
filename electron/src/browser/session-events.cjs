@@ -2,6 +2,7 @@
 const {BrowserCooldown}=require('./browser-recovery.cjs');
 const {randomBytes}=require('node:crypto');
 const {checkCanceled,timeoutFailure}=require('./browser-task.cjs');
+const {BrowserFailure}=require('./browser-errors.cjs');
 
 const sessions=new WeakMap();
 const FILTER={urls:['<all_urls>']};
@@ -17,7 +18,7 @@ class SharedSessionEvents {
   constructor(session,timing) {
     this.session=session;this.cooldown=new BrowserCooldown(timing);this.handlers=new Map();this.closed=false;
     this.requests=new Map();this.fetches=new Map();
-    this.downloads=new Set();this.downloadGuards=new Set();this.items=new Set();this.taskPages=new Set();
+    this.downloads=new Set();this.downloadGuards=new Map();this.items=new Set();this.taskPages=new Set();
     this.installed=[];
     for(const [native,event,callback] of [['onBeforeRequest','beforeRequest',true],
       ['onBeforeSendHeaders','beforeSendHeaders',true],['onHeadersReceived','headersReceived',true],
@@ -126,6 +127,7 @@ class SharedSessionEvents {
     if(this.closed || !options.owner || !options.attemptId || !options.contents || !options.document || !options.filename
       || !Number.isFinite(options.deadline))
       throw Error('Managed download context required');
+    if(this.downloadSourceUnsafe(options.contents))throw new BrowserFailure('wos_download','download_not_attributable');
     const registration={...options,active:true,item:null};this.downloads.add(registration);
     const retire=()=>{registration.active=false;registration.item?.cancel();};
     const timer=setTimeout(retire,Math.max(1,options.deadline-Date.now()));timer.unref?.();
@@ -158,14 +160,14 @@ class SharedSessionEvents {
   guardDownload(registration) {
     // A dispatched action without an item can still produce one after cancellation.
     // Its source must not be handed to a newer attempt while attribution is ambiguous.
-    if(registration.contents.isDestroyed?.())return;
-    const guard={contents:registration.contents,frame:registration.frame,document:registration.document,
-      until:Math.max(Date.now()+30000,registration.deadline)};
-    this.downloadGuards.add(guard);
-    const remove=()=>{this.downloadGuards.delete(guard);clearTimeout(guard.timer);guard.contents.removeListener?.('destroyed',remove);};
-    guard.timer=setTimeout(remove,Math.max(1,guard.until-Date.now()));guard.timer.unref?.();
-    guard.contents.once?.('destroyed',remove);guard.remove=remove;
+    const contents=registration.contents;
+    if(contents.isDestroyed?.() || this.downloadGuards.has(contents))return;
+    // Chromium provides no request identity proving that a no-item action has
+    // ended. One owner-free tombstone per physical source survives all timers.
+    const remove=()=>{this.downloadGuards.delete(contents);contents.removeListener?.('destroyed',remove);};
+    this.downloadGuards.set(contents,{remove});contents.once?.('destroyed',remove);
   }
+  downloadSourceUnsafe(contents) {return this.downloadGuards.has(contents);}
   matchesDownload(registration,contents,frame) {
     if(!contents || registration.contents!==contents)return false;
     if(!frame)return false;
@@ -191,8 +193,7 @@ class SharedSessionEvents {
   routeDownload(event,item,contents,frame) {
     const candidates=[...this.downloads].filter(entry=>this.matchesDownload(entry,contents,frame));
     const sourceScopes=[...this.downloads].filter(entry=>contents && entry.contents===contents);
-    const guarded=[...this.downloadGuards].some(entry=>contents && entry.contents===contents
-      && (!frame || this.matchesDownload(entry,contents,frame)));
+    const guarded=this.downloadSourceUnsafe(contents);
     if(!frame && sourceScopes.length) {
       const tracked=this.trackItem(item,contents);
       for(const scope of sourceScopes)try{scope.onRejected?.({...tracked,reason:'download_not_attributable'});}catch(_){}
@@ -241,7 +242,7 @@ class SharedSessionEvents {
     if(this.closed)return;this.closed=true;
     for(const name of this.installed)this.session.webRequest[name](null);
     this.session.removeListener?.('will-download',this.downloadListener);
-    for(const guard of [...this.downloadGuards])guard.remove();
+    for(const guard of this.downloadGuards.values())guard.remove();
     for(const registration of [...this.downloads]){registration.item?.cancel();registration.dispose();}
     this.taskPages.clear();
     this.handlers.clear();this.requests.clear();this.fetches.clear();sessions.delete(this.session);

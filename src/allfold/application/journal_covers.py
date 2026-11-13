@@ -59,12 +59,19 @@ def _parent_identity(list_path):
 def _record_identity(root, record):
     if record is None:
         return None, None
-    if _read_image(root, record) is None:
-        raise CoverConflict('Saved cover is missing or damaged')
-    covers = os.open('covers', os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW, dir_fd=root)
+    captured = json.dumps(record, sort_keys=True)
     try:
-        image = os.stat(record['filename'].split('/')[1], dir_fd=covers, follow_symlinks=False)
-        return json.dumps(record, sort_keys=True), _identity(image)
+        covers = os.open('covers', os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW, dir_fd=root)
+    except FileNotFoundError:
+        return captured, None
+    try:
+        try:
+            image = os.stat(record['filename'].split('/')[1], dir_fd=covers, follow_symlinks=False)
+        except FileNotFoundError:
+            return captured, None
+        if _read_image(root, record) is None:
+            raise CoverConflict('Saved cover is damaged or unsafe')
+        return captured, _identity(image)
     finally:
         os.close(covers)
 

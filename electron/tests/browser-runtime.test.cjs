@@ -1373,6 +1373,42 @@ test('WoS result workflow loan survives native-operation gaps and stale release 
   assert.equal(target.view.webContents.isDestroyed(),true);assert.equal(browser.tabs.size,0);
 });
 
+test('an unresolved download closes its retained source at operation cleanup before a fresh context is reused',async t=>{
+  const {BrowserRuntime}=fixture(t),browser=new BrowserRuntime();t.after(()=>browser.close());await browser.ready;
+  const signal=new AbortController().signal,data={request_id:'query',workflow_id:'run_a',task_id:'run_a',service_scope:serviceScope,
+    service_id:serviceId,preparation_key:'c'.repeat(64)};
+  const closed=[];browser.events.on('access-pages-closed',ids=>closed.push(...ids));
+  let target;
+  await browser.runTask(signal,data,async()=>{
+    target=await browser.newTaskPage({signal});await target.view.webContents.loadURL('https://www.webofscience.com/wos/woscc/summary/test');
+    browser.retainAccessPage(target,data);browser.loanWorkflowPage(target,await browser.documentBinding(target));
+  });
+  const contents=target.view.webContents;contents.deferClose=true;
+  let settled=false;
+  const cleanup=browser.runTask(signal,{...data,request_id:'export'},async()=>{
+    browser.bindTaskPage(target,signal);
+    const registration=browser.sessionEvents.registerDownload({owner:browser.operation,attemptId:'missing',contents,
+      frame:contents.mainFrame,document:await browser.documentBinding(target),filename:'/tmp/unused',
+      deadline:Date.now()+1000,validate:()=>true});
+    registration.dispose({dispatched:true});
+  }).then(()=>{settled=true;});
+  try {
+    await new Promise(setImmediate);
+    assert.equal(contents.closeRequested,true);assert.equal(settled,false);
+    assert.equal(browser.tabs.has(target.id),true);assert.deepEqual(closed,[]);
+  } finally {contents.destroy();await cleanup;}
+  assert.deepEqual(closed,[target.id]);assert.equal(browser.tabs.has(target.id),false);
+  assert.equal(browser.releaseWorkflowPages({workflow_id:'run_a',task_id:'run_a'}).released,false);
+  await browser.runTask(signal,{...data,request_id:'retry',workflow_id:'run_b',task_id:'run_b'},async()=>{
+    const fresh=await browser.newTaskPage({signal});
+    const registration=browser.sessionEvents.registerDownload({owner:browser.operation,attemptId:'fresh',contents:fresh.view.webContents,
+      frame:fresh.view.webContents.mainFrame,document:await browser.documentBinding(fresh),filename:'/tmp/fresh',
+      deadline:Date.now()+1000,validate:()=>true});
+    registration.dispose();
+  });
+  assert.equal(browser.tabs.size,0);
+});
+
 
 test('creation failure returns its reservation and Session shutdown waits actual destroyed',async t=>{
   const {BrowserRuntime,failNextCreation}=fixture(t),browser=new BrowserRuntime({pageLimits:{global_limit:4,service_limit:3}});

@@ -367,6 +367,34 @@ def test_page_closed_before_login_result_cannot_be_accepted_as_prepared(tmp_path
     assert login.prepared_authority(BrowserServiceSnapshot.read(path), services[-1].id) is None
 
 
+def test_closed_settled_page_keeps_login_batch_and_admission_until_other_native_result(tmp_path):
+    path, services = login_fixture(tmp_path, count=2)
+    path.write_text(path.read_text() + '\nworkflow:\n  prepare_service_concurrency: 1\n')
+    native, lock = Native(), BrowserTaskLock()
+    login = LoginCoordinator(native, lock)
+    saved = BrowserServiceSnapshot.read(path)
+    login.start(path)
+    _, _, ready = native.operations.get(timeout=2)
+    ready.set_result({'outcome': 'Opened', 'portal_page_id': 17})
+    first = native.operations.get(timeout=2)
+    first[2].set_result(opened(100))
+    # The next dispatch is admitted only after the first result was accepted.
+    second = native.operations.get(timeout=2)
+    try:
+        assert login.prepared_page(saved, first[1]['service_id']) == 100
+        login.invalidate_pages([100])
+        assert login.prepared_authority(saved, first[1]['service_id']) is None
+        assert lock.owners and login.running
+    finally:
+        second[2].set_result(opened(101))
+        login.join()
+    rows = {row['id']: row['preparation'] for row in login.snapshot(saved)['services']}
+    assert rows[first[1]['service_id']].status == 'Needs attention'
+    assert rows[first[1]['service_id']].page_id is None
+    assert login.prepared_page(saved, second[1]['service_id']) == 101
+    assert not lock.owners
+
+
 @pytest.mark.parametrize('manual', [False, True])
 def test_terminal_failed_login_drops_the_temporary_progress_page(tmp_path, manual):
     class ProgressNative(Native):
