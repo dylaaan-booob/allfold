@@ -2,8 +2,10 @@
 from __future__ import annotations
 
 from contextlib import nullcontext
-from dataclasses import dataclass
+from dataclasses import dataclass, field
+from functools import partial
 from pathlib import Path
+from typing import Callable
 from uuid import UUID
 
 from allfold.application.workspace import PaperStatus, WorkspacePaper
@@ -15,6 +17,11 @@ from allfold.persistence.safe_write import workspace_operation_lock
 class DecisionResult:
     paper: PaperRecord
     revision: int
+    cancel_targets: tuple[Callable[[], None], ...] = field(default=(), repr=False, compare=False)
+
+    def signal_cancellation(self):
+        for signal in self.cancel_targets:
+            signal()
 
 
 def apply_paper_action(workspace: Path, workspace_id: UUID, paper_id: UUID, action: str, *,
@@ -22,8 +29,8 @@ def apply_paper_action(workspace: Path, workspace_id: UUID, paper_id: UUID, acti
                        workspace_registry=None, cancel=True) -> DecisionResult:
     if action == 'clear-metadata' and preprint_lookup is not None and preprint_lookup.cleaning_up(paper_id, workspace_id):
         raise InvalidPaperState('Paper work is still cleaning up; wait before clearing metadata')
-    # This lock and every SQLite transaction end before cancellation acquires any
-    # coordinator lock. Reject never waits for a network request to return.
+    # Capture/revoke inside the Paper gate; callbacks and coordinator/native locks
+    # remain outside every write lock. Never reselect an owner after Reject.
     with workspace_registry.paper_gate() if workspace_registry else nullcontext():
         if action == 'clear-metadata' and workspace_registry and workspace_registry.busy(paper_id, workspace_id):
             raise InvalidPaperState('Paper work is still cleaning up; wait before clearing metadata')
@@ -44,12 +51,18 @@ def apply_paper_action(workspace: Path, workspace_id: UUID, paper_id: UUID, acti
                     paper = repository.clear_metadata(paper.token)
                 else:
                     raise ValueError('Unknown Paper action')
-                result = DecisionResult(paper, repository.revision)
-    if action == 'reject' and cancel:
-        if workspace_registry is not None:
-            workspace_registry.cancel_paper(paper_id, workspace_id)
-        if preprint_lookup is not None:
-            preprint_lookup.cancel_paper(paper_id, workspace_id)
+                cancel_targets = []
+                if action == 'reject':
+                    if workspace_registry is not None:
+                        targets = workspace_registry.prepare_cancel_paper(paper_id, workspace_id)
+                        cancel_targets.append(partial(workspace_registry.signal_cancel_targets, targets))
+                    if preprint_lookup is not None:
+                        target = preprint_lookup.prepare_cancel_paper(paper_id, workspace_id)
+                        if target is not None:
+                            cancel_targets.append(partial(preprint_lookup.signal_cancel_target, target))
+                result = DecisionResult(paper, repository.revision, tuple(cancel_targets))
+    if cancel:
+        result.signal_cancellation()
     return result
 
 

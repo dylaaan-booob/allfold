@@ -713,14 +713,18 @@ class WorkspaceRegistry:
         self.signal_cancel_targets((target,))
         return True
 
-    def cancel_paper(self, paper_id, workspace_id=None):
+    def prepare_cancel_paper(self, paper_id, workspace_id=None):
+        """Capture and revoke only the owner present in this Paper transaction."""
         if workspace_id is not None and UUID(str(workspace_id)) != self.workspace_id:
-            return False
+            return ()
         with self._gate:
             target = self._tasks.get(UUID(str(paper_id))) or self._reservations.get(UUID(str(paper_id)))
-            if target is None:
-                return False
-        return self._cancel_target(target)
+            return (target,) if target is not None and self._prepare_cancel_target(target) else ()
+
+    def cancel_paper(self, paper_id, workspace_id=None):
+        targets = self.prepare_cancel_paper(paper_id, workspace_id)
+        self.signal_cancel_targets(targets)
+        return bool(targets)
 
     def prepare_cancel_services(self, service_ids, *, all_access=False, providers=()):
         selected = frozenset(service_ids)

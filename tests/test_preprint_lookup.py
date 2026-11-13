@@ -1,5 +1,7 @@
 """Existing native Preprint proof and cancellation through real SQLite application paths."""
-from threading import Event
+from concurrent.futures import ThreadPoolExecutor
+from contextlib import contextmanager
+from threading import Event, current_thread
 from uuid import uuid4
 import httpx
 import pytest
@@ -188,6 +190,81 @@ def test_reject_commits_before_precise_cancel_and_cleanup_blocks_clear(tmp_path)
     assert read_paper(workspace, other.id) == other
     apply_paper_action(workspace, paper.workspace_id, paper.id, 'clear-metadata', preprint_lookup=service)
     assert read_paper(workspace, paper.id).metadata is None
+
+
+@pytest.mark.parametrize('hosted', [False, True])
+@pytest.mark.parametrize('previous_lookup', [False, True])
+def test_delayed_reject_cannot_cancel_replacement_preprint_lookup(tmp_path, monkeypatch, hosted, previous_lookup):
+    import allfold.application.decisions as decisions
+    from allfold.application.workspace_tasks import WorkspaceTaskHost
+
+    config, workspace, paper = create_paper(tmp_path)
+    host = WorkspaceTaskHost(config) if hosted else None
+    registry = host.current() if host else None
+    rejected, resume_reject, old_entered, finish_old = (Event() for _ in range(4))
+    replacement_entered, finish_replacement = Event(), Event()
+    lookup_events = []
+    native = native_fixture('biorxiv', version('biorxiv'))
+
+    def client_factory(provider, **kwargs):
+        if provider == 'biorxiv':
+            lookup_events.append(kwargs['cancel_event'])
+        is_old = previous_lookup and len(lookup_events) == 1
+
+        def respond(request):
+            if request.url.path == f'/pubs/biorxiv/{FORMAL}/na/json':
+                entered, finish = (old_entered, finish_old) if is_old else (replacement_entered, finish_replacement)
+                entered.set()
+                assert finish.wait(5)
+            return native(request)
+
+        return SupplementalClient(provider, interval=0, transport=httpx.MockTransport(respond), **kwargs)
+
+    service = PreprintLookup(config, BrowserTaskLock(), client_factory=client_factory, workspace_tasks=host)
+    operation_lock = registry.paper_gate if registry else decisions.workspace_operation_lock
+
+    @contextmanager
+    def pause_after_unlock(*args, **kwargs):
+        with operation_lock(*args, **kwargs):
+            yield
+        if current_thread().name.startswith('delayed-reject'):
+            rejected.set()
+            assert resume_reject.wait(5)
+
+    if registry:
+        monkeypatch.setattr(registry, 'paper_gate', pause_after_unlock)
+    else:
+        monkeypatch.setattr(decisions, 'workspace_operation_lock', pause_after_unlock)
+    try:
+        if previous_lookup:
+            service.start(paper.id, paper.workspace_id)
+            assert old_entered.wait(2)
+        with ThreadPoolExecutor(max_workers=1, thread_name_prefix='delayed-reject') as pool:
+            delayed = pool.submit(apply_paper_action, workspace, paper.workspace_id, paper.id, 'reject',
+                preprint_lookup=service, workspace_registry=registry)
+            try:
+                assert rejected.wait(2) and read_paper(workspace, paper.id).excluded
+                finish_old.set()
+                service.join()
+                apply_paper_action(workspace, paper.workspace_id, paper.id, 'restore',
+                    preprint_lookup=service, workspace_registry=registry)
+                started = service.start(paper.id, paper.workspace_id)
+                assert replacement_entered.wait(2)
+                replacement_event = lookup_events[-1]
+                resume_reject.set()
+                assert delayed.result(3).paper.excluded
+                assert not replacement_event.is_set()
+                assert service.state(paper.id, started['request_id'])['phase'] == 'Running'
+            finally:
+                resume_reject.set(); finish_replacement.set()
+        service.join()
+        assert service.state(paper.id, started['request_id'])['phase'] == 'Completed'
+        assert read_paper(workspace, paper.id).metadata.first_public_at == '2022-02-03'
+    finally:
+        finish_old.set(); finish_replacement.set(); resume_reject.set()
+        service.shutdown(); service.join()
+        if host:
+            host.shutdown(); host.join()
 
 
 def test_local_abstract_edit_during_preprint_keeps_other_valid_proof(tmp_path):

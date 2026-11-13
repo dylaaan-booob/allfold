@@ -21,6 +21,9 @@ automatic abstract candidates; legal date/source increments remain eligible.
 Library revision and response ordering separately prevent stale UI snapshots.
 
 Reject persists exclusion and invalidates tokens before exact-Paper cancellation.
+The same Paper gate captures and locally revokes the current attempt/reservation
+and legacy request Event. Deferred signals retain those exact targets. If none
+exists at Reject, they cannot cancel a later owner after Restore.
 The transaction and Workspace write lock are released before cancellation or
 worker join. Shared Run requests keep serving other Papers. Restore is local and
 may precede cleanup, but old tokens stay invalid and new mutually exclusive work

@@ -219,12 +219,10 @@ def install_ui_next(app: FastAPI, config_path: Path, csrf_token: str) -> None:
             with app.state.settings_write_lock, app.state.reset_lock:
                 config = load_config(config_path)
                 registry = app.state.workspace_tasks.current()
-                apply_paper_action(config.output_dir, body.workspace_id, paper_id, action,
+                result = apply_paper_action(config.output_dir, body.workspace_id, paper_id, action,
                     expected_status=body.expected_status, preprint_lookup=app.state.preprint_lookup,
                     workspace_registry=registry, cancel=False)
-            if action == 'reject':
-                registry.cancel_paper(paper_id, body.workspace_id)
-                app.state.preprint_lookup.cancel_paper(paper_id, body.workspace_id)
+            result.signal_cancellation()
             with registry.paper_gate():
                 from allfold.persistence.paper_repository import PaperRepository
                 with PaperRepository.open(config.output_dir, expected_workspace_id=body.workspace_id) as repository:
