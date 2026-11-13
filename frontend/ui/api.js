@@ -17,7 +17,7 @@ window.uiNext={
     return value?.workspace_id===this.libraryIdentity && revision===this.libraryRevision &&
       (!value.__allfoldResponseOrder || value.__allfoldResponseOrder>=this.acceptedOrder);
   },
-  acceptEnvelope(value,epoch,order) {
+  acceptEnvelope(value,epoch,order,projectsPapers=true) {
     if(epoch!==this.workspaceEpoch)throw this.staleResponse();
     const revision=Number.isInteger(value?.revision)?value.revision:value?.snapshot_revision;
     if(!Object.hasOwn(value || {},'workspace_id') || !Number.isInteger(revision))return;
@@ -25,7 +25,10 @@ window.uiNext={
     if(this.libraryIdentity!==undefined && this.libraryIdentity!==null && identity!==this.libraryIdentity)
       throw this.staleResponse();
     if(revision<this.libraryRevision || (revision===this.libraryRevision && order<this.acceptedOrder))throw this.staleResponse();
-    this.libraryIdentity=identity;this.libraryRevision=revision;this.acceptedOrder=order;
+    this.libraryIdentity=identity;
+    // Status and field reads carry a revision but do not apply Paper content.
+    // Only a snapshot or Paper projection can supersede another projection.
+    if(projectsPapers){this.libraryRevision=revision;this.acceptedOrder=order;}
     Object.defineProperty(value,'__allfoldResponseOrder',{value:order});
   },
   layout() {
@@ -46,7 +49,7 @@ window.uiNext={
     let data;
     try{data=await response.json();}catch{throw new Error(`服务响应异常 (${response.status})，请确认 Web 服务仍在运行。`);}
     if(!response.ok){const error=new Error(data.message || data.error || `请求失败 (${response.status})`);error.state=data;throw error;}
-    this.acceptEnvelope(data,epoch,order);
+    this.acceptEnvelope(data,epoch,order,path==='/api/ui-next/workspace' || Object.hasOwn(data || {},'paper'));
     return data;
   },
   async workspace(){

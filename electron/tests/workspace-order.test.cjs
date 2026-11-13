@@ -27,3 +27,34 @@ test('response ordering rejects same-revision older replies and previous Workspa
   requests[2]({workspace_id:'library-a',revision:99});await assert.rejects(old,error=>error.stale===true);
   assert.equal(api.data.workspace_id,'library-b');
 });
+for(const [name,path,payload] of [
+  ['Preprint status','/api/papers/paper/preprint-lookup/state',{revision:4,phase:'Cancelling'}],
+  ['field read','/api/papers/paper/fields',{revision:'field-digest',snapshot_revision:4,abstract:'Saved'}],
+])test(`a later ${name} response cannot supersede the persisted Reject projection`,async()=>{
+  const {api,requests}=fixture();
+  const initial=api.workspace();requests.shift()({workspace_id:'library-a',revision:3});await initial;
+  const action=api.request('/api/ui-next/papers/paper/reject',{}),read=api.request(path);
+  requests[1]({workspace_id:'library-a',...payload});await read;
+  requests[0]({workspace_id:'library-a',revision:4,paper:{id:'paper',status:'trash'}});
+  const rejected=await action;
+  assert.equal(api.isCurrentEnvelope(rejected),true);
+  assert.equal(rejected.paper.status,'trash');
+});
+test('status polling after Reject preserves its projection and cannot admit an older snapshot',async()=>{
+  const {api,requests}=fixture();
+  const initial=api.workspace();requests.shift()({workspace_id:'library-a',revision:3});await initial;
+  const old=api.workspace(),action=api.request('/api/ui-next/papers/paper/reject',{}),poll=api.request('/api/papers/paper/preprint-lookup/state');
+  requests[1]({workspace_id:'library-a',revision:4,paper:{id:'paper',status:'trash'}});const rejected=await action;
+  requests[2]({workspace_id:'library-a',revision:4,phase:'Cancelling'});await poll;
+  assert.equal(api.isCurrentEnvelope(rejected),true);
+  requests[0]({workspace_id:'library-a',revision:3});await assert.rejects(old,error=>error.stale===true);
+});
+for(const revision of [4,5])test(`an applied revision ${revision} snapshot still supersedes an older Reject response`,async()=>{
+  const {api,requests}=fixture();
+  const initial=api.workspace();requests.shift()({workspace_id:'library-a',revision:3});await initial;
+  const action=api.request('/api/ui-next/papers/paper/reject',{}),snapshot=api.workspace();
+  requests[1]({workspace_id:'library-a',revision});await snapshot;
+  requests[0]({workspace_id:'library-a',revision:4,paper:{id:'paper',status:'trash'}});
+  await assert.rejects(action,error=>error.stale===true);
+  assert.equal(api.data.revision,revision);
+});
