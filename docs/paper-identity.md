@@ -73,3 +73,9 @@ their PDF/landing/XML categories. Generic bibliography sources cannot prove a
 complete PDF lookup. Clearing metadata removes the entire discovery payload while
 keeping identities and any independent body association. See the
 [adopted discovery rules](pdf-source-discovery.md).
+
+The read-only discovery task captures the saved Paper's complete immutable
+direct-identity closure into `PdfTarget.direct_identities` and rechecks it before
+execution. A DOI-free exact Work cache can supply P5 without an article page or
+new lookup; related/unbound Work facts cannot. The explicit primary DOI still
+controls new exact queries and DOI-qualified facts; an alias does not replace it.

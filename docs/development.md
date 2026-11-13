@@ -182,6 +182,10 @@ and applicability rather than only catalogue counts. The temporary-profile
 `pdf-clues` Electron fixture uses production Main/Browser/Document/preload for
 same-page composition, PDF-only reads, known reader access, relative final URLs,
 Referer, bounded state fields and final Document/subject rejection. Controlled
+fixtures also cover ambiguous LWW ANs, platform-selector exclusions, aggregate
+PDF budgets through the actual Python validator, independent scanner failure,
+and the own-preparation OCE capability and fixed viewer carrier (including non-OCE,
+revoked and closed contexts). Controlled
 downstream outcomes verify the coordinator's lazy stop/fallback protocol; they
 are not actual PDF transfer/file acceptance. Existing native DownloadItem and
 WoS fixtures remain active. Full rules and the original evidence strength are

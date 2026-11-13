@@ -265,7 +265,14 @@ caller-supplied selector/evaluator. It reads Meta in citation-then-fulltext orde
 qualified platform selectors and unambiguous article PDF entrances, with explicit
 supplement/reference/recommendation exclusions. Known ScienceDirect/LWW state
 uses fixed bounded read-only fields; it does not assume isolated world 999 sees
-main-world variables. Overflow is a diagnostic, never truncated success. No PDF
+main-world variables. Explicit platform selectors retain the same supplement,
+whole-issue and conflicting article-DOI exclusions as generic entrances. LWW AN
+is taken only from the current article outside peripheral regions and must be
+unique; an ambiguous stored AN set cannot select a reader. Candidate count and
+aggregate size are checked before adding each field, reserving space for the
+final landing URL and typed persistable-fact projection. Overflow is a diagnostic,
+never truncated success. A local PDF operation/DTO failure keeps independently
+valid Date/Abstract only after the same final live binding/subject/identity check. No PDF
 candidate is fetched, probed, clicked or submitted during article precollection.
 
 `extract_paper_pdf_clues` and Python `read_document_pdf_clues()` provide an
@@ -278,6 +285,21 @@ is absent. This does not weaken `openPaperPage`/`confirmArticlePage` for article
 Challenges still use the shared access/solver boundary. Actions and one-time
 responses remain typed refresh facts; actual action execution/transfer is WF10.
 See the [complete adopted rules](pdf-source-discovery.md).
+
+The same internal `extract_paper_pdf_clues` action accepts the fixed
+`reader_access_only: true` mode instead of a reader. It returns
+`{outcome:"retrieved", reader_access:{oce:boolean}}`, without opening a page,
+reading content or exporting a URL, handle or secret. The bit describes only the
+captured Service/key/retained target's actual `oce.ovid.com` Host; a CARSI entry
+URL or Service name is not the decision. It is operation-local and grants no
+authority by itself. An OCE read subsequently requires that same live prepared
+target again, the original Paper binding and a qualified AN. Only the fixed
+`https://oce.ovid.com/article/{AN}/HTML` and its known
+`/pdfviewer/web/viewer.html?file=...` carrier are accepted; the file value must
+point to `assets.ovid.com` and retains its complete signature. An empty LWW
+viewer can reach this conditional alternative, keeping its original discovery
+phase and recording a fallback. Missing OCE access skips it. No OCE bootstrap,
+per-rule native listener, action submission or PDF-byte receive is added.
 
 ### Shared extraction scope
 

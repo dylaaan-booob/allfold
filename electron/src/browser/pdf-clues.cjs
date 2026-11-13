@@ -50,6 +50,9 @@ function qualifyReader(reader,identity) {
   if(reader.rule_id==='R060'&&reader.platform==='lww'&&url.hostname==='journals.lww.com'&&source.hostname===url.hostname
     && /^\d{8}-\d{9}-\d{5}$/.test(id)&&/^\/[^/]+\/_layouts\/15\/oaks.journals\/downloadpdf.aspx$/i.test(url.pathname)
     && url.searchParams.get('an')===id&&source.pathname.split('/')[1]===url.pathname.split('/')[1])kind='lww';
+  if(reader.rule_id==='R060'&&reader.platform==='oce'&&url.hostname==='oce.ovid.com'&&source.hostname===url.hostname
+    && /^\d{8}-\d{9}-\d{5}$/.test(id)&&source.pathname==='/article/'+id+'/HTML'
+    && (url.pathname===source.pathname || url.pathname==='/pdfviewer/web/viewer.html'))kind='oce';
   if(!kind || !identity || !(validDOI(identity.doi)||articleURL(identity.confirmed_article_url)))invalid();
   return kind;
 }

@@ -39,6 +39,39 @@ def target(paper):
         content_type='journal-article')
 
 
+def test_doi_free_saved_work_complete_cache_uses_real_task_without_native_or_lookup(tmp_path):
+    from allfold.persistence.run_library import metadata_from_run
+    from allfold.canonicalize import canonicalize_records
+    from allfold.providers.discovery_evidence import normalize_openalex
+    from allfold.providers.integrated import SourceScope
+    from test_pdf_source_facts import openalex_raw
+    bridge = NativeBridge()
+    requests = []
+    def handler(request):
+        requests.append(str(request.url))
+        assert request.url.host == 'repository.example'
+        return httpx.Response(200, headers={'Content-Type': 'application/pdf'})
+    host, workspace, _, options = setup_host(tmp_path, handler, bridge=bridge)
+    try:
+        record = normalize_openalex(openalex_raw() | {'doi': None}, SourceScope('journal', 'Journal', issns=('0006-341X',)))
+        canonical, = canonicalize_records((record,)).papers
+        with PaperRepository.open(workspace) as repository:
+            paper = repository.create_or_match(repository.workspace_id, direct_ids=ExternalIds(openalex='W123'),
+                metadata=metadata_from_run(canonical, records=(record,))).paper
+        with pytest.raises(ValueError, match='direct identities'):
+            submit_pdf_discovery(host, paper, target=PdfTarget(str(paper.id), direct_identities=(('openalex', 'W999'),)), http_options=options)
+        task = submit_pdf_discovery(host, paper, target=PdfTarget(str(paper.id)), http_options=options,
+            transfer=lambda *_: CandidateResult.pdf(transfer_complete=True))
+        result = task.future.result(3)
+        assert (result.status, result.pdf_source, result.fallback_used) == ('transferred', 'P5', False)
+        assert requests == ['https://repository.example/Best.PDF?version=2'] and bridge.calls == []
+        with PaperRepository.open(workspace) as repository:
+            after = repository.get(paper.id)
+        assert (after.metadata, after.token, after.collection, after.body) == (paper.metadata, paper.token, paper.collection, None)
+    finally:
+        bridge.finish(); host.shutdown(); host.join()
+
+
 @pytest.mark.parametrize('content_type', ['book', 'chapter', 'supplement'])
 def test_task_rejects_explicit_unsupported_target_before_reservation_or_http(tmp_path, content_type):
     host, workspace, paper, options = setup_host(tmp_path, lambda _: pytest.fail('Unsupported target sent HTTP'))
@@ -143,6 +176,75 @@ class NativeBridge:
             self.operation.set_result(native_envelope())
         if not self.cleanup.done():
             self.cleanup.set_result({'released': True})
+
+
+@pytest.mark.parametrize('oce_access', [False, True])
+def test_lww_empty_viewer_uses_only_independent_captured_oce_preparation(tmp_path, oce_access):
+    from allfold.application.coordinators.login import LoginCoordinator
+    from allfold.application.browser_services import BrowserServiceSnapshot
+    from allfold.persistence.user_state import load_user_state, compare_write_user_state
+    from allfold.pdf_facts import PdfDiscoveryFacts, PdfIdentifier, openalex_discovery_facts
+    from datetime import datetime, timezone
+    from test_login import Native, opened
+    from test_document_metadata import envelope, pdf_clues
+    class OceBridge:
+        calls = []
+        def execute(self, action, data, *args, **kwargs):
+            self.calls.append((action, data))
+            future = Future()
+            if action == 'release_workflow_pages':
+                value = {'released': True}
+            elif data.get('reader_access_only'):
+                value = {'outcome': 'retrieved', 'reader_access': {'oce': oce_access}}
+            else:
+                platform = data['reader']['platform']
+                value = envelope() | {'pdf_clues': pdf_clues(platform=platform, landing_url=data['reader']['url'],
+                    candidates=[] if platform == 'lww' else [{'stage': 'P4', 'rule_id': 'R060',
+                        'url': 'https://assets.ovid.com/Body.PDF?Signature=A%2FB&key=Keep'}])}
+            future.set_result(value)
+            return future
+        def cancel_task(self, *_):
+            pass
+    seen = []
+    def handler(request):
+        seen.append(str(request.url))
+        if request.url.host == 'journals.lww.com':
+            return httpx.Response(200, headers={'Content-Type': 'text/html'}, content=b'<body>Empty viewer</body>')
+        assert request.url.host == 'assets.ovid.com'
+        return httpx.Response(200, headers={'Content-Type': 'application/pdf'})
+    native, bridge, lock = Native(), OceBridge(), BrowserTaskLock()
+    login = LoginCoordinator(native, lock)
+    host, workspace, paper, options = setup_host(tmp_path, handler, bridge=bridge, login=login, browser_lock=lock)
+    # A CARSI entry URL/name supplies no OCE permission. Only the bounded
+    # native capability of this captured prepared target can supply it.
+    saved = load_user_state(host.config_path)
+    compare_write_user_state(host.config_path, replace(saved.state, access_services=tuple(
+        s.model_copy(update={'access_method': 'manual', 'access_url': 'https://ds.carsi.edu.cn/resource/entry'})
+        for s in saved.state.access_services)), saved.revision)
+    service_id = BrowserServiceSnapshot.read(host.config_path).services[0].id
+    login.start(host.config_path, manual_service_id=service_id)
+    _, _, ready = native.operations.get(timeout=2);ready.set_result(opened(17));login.join()
+    try:
+        article_url = 'https://journals.lww.com/journal/fulltext/2026/paper.aspx'
+        facts = PdfDiscoveryFacts(source='document', capability='document-pdf', status='complete',
+            observed_at=datetime.now(timezone.utc), target_doi='10.5555/task', landing_url=article_url,
+            platform='lww', identifiers=(PdfIdentifier(kind='an', value='22222222-222222222-22222', rule_id='R060'),))
+        with PaperRepository.open(workspace) as repository:
+            empty = openalex_discovery_facts({'doi': '10.5555/task', 'best_oa_location': None, 'locations': []}, datetime.now(timezone.utc))
+            paper = repository.merge_metadata(paper.token, MetadataDelta(discovery_facts=(facts, empty)))
+        task = submit_pdf_discovery(host, paper, target=PdfTarget(str(paper.id), doi='10.5555/task', article_url=article_url),
+            service_id=service_id, http_options=options, transfer=lambda *_: CandidateResult.pdf(transfer_complete=True))
+        result = task.future.result(3)
+        readers = [data['reader']['platform'] for _, data in bridge.calls if 'reader' in data]
+        assert readers == (['lww', 'oce'] if oce_access else ['lww'])
+        assert sum(data.get('reader_access_only', False) for _, data in bridge.calls) == 1
+        assert len(seen) == (2 if oce_access else 1)
+        assert (result.status, result.pdf_source, result.fallback_used) == (
+            ('transferred', 'P4', True) if oce_access else ('exhausted', None, False))
+        assert all(data['service_id'] == service_id and data['target_page_id'] == 17
+            for action, data in bridge.calls if action != 'release_workflow_pages')
+    finally:
+        host.shutdown();host.join()
 
 
 def native_target(paper):

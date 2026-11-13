@@ -190,3 +190,6 @@ its owning task and source chain, rather than a new unowned page or per-platform
 network listener. Identifying a form/reader does not add main-frame POST or
 one-time-response transfer support. See [Document contracts](browser-documents.md)
 and the [complete discovery specification](pdf-source-discovery.md).
+The fixed OCE access-capability mode opens no page. Its later reader uses the
+same captured retained preparation, normal work-page quotas and exact cleanup;
+it never bootstraps a second institutional Service from LWW authority.

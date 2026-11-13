@@ -808,11 +808,23 @@ class BrowserRuntime {
     if(typeof data?.wantAbstract!=='boolean')throw new BrowserFailure('navigation','document_operation_failed');
     return this.extractPaperDocument(data,{...options,metadata:true});
   }
-  extractPaperPdfClues(data,options={}) {if(Object.hasOwn(data,'wantAbstract'))throw new BrowserFailure('navigation','document_operation_failed');return this.extractPaperDocument(data,{...options,metadata:false});}
+  extractPaperPdfClues(data,options={}) {
+    if(Object.hasOwn(data,'wantAbstract') || Object.hasOwn(data,'reader_access_only') && data.reader_access_only!==true)throw new BrowserFailure('navigation','document_operation_failed');
+    if(data.reader_access_only) {
+      if(data.reader || !/^[a-f0-9]{64}$/.test(data.workspace_identity)||!/^[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12}$/i.test(data.paper_id)
+        || !Number.isSafeInteger(data.deadline_ms))throw new BrowserFailure('navigation','document_operation_failed');
+      checkCanceled(options.signal);if(Date.now()>=data.deadline_ms)throw timeoutFailure('navigation','document_operation');
+      this.pinPreparedPaperAccess(data)();
+      const context=data.service_id && Number.isSafeInteger(data.target_page_id)?this.accessContexts.get(this.accessKey(data)):null;
+      const oce=!!context && new URL(context.tab.view.webContents.getURL()).hostname==='oce.ovid.com';
+      return {outcome:'retrieved',reader_access:{oce}};
+    }
+    return this.extractPaperDocument(data,{...options,metadata:false});
+  }
   async extractPaperDocument(data,{signal,deadline=Date.now()+TASK_DEADLINE_MS,onWaiting,metadata}={}) {
-    if(metadata && data.reader)throw new BrowserFailure('navigation','document_operation_failed');
+    if(metadata && (data.reader || Object.hasOwn(data,'reader_access_only')))throw new BrowserFailure('navigation','document_operation_failed');
     const readerKind=data.reader?qualifyReader(data.reader,data.identity):null;
-    const verifyAccess=this.pinPreparedPaperAccess(data),owner=this.operation,validateRecovery=owner.validateRecovery;
+    const verifyAccess=this.pinPreparedPaperAccess(data,readerKind==='oce'?'oce.ovid.com':null),owner=this.operation,validateRecovery=owner.validateRecovery;
     owner.validateRecovery=async options=>{verifyAccess();await validateRecovery?.(options);verifyAccess();};
     let requestGuard,readerFailure;
     try {
@@ -839,7 +851,17 @@ class BrowserRuntime {
       if(metadata)try {result=await this.readDocument(tab,'extract',{signal,deadline,args:{wantAbstract:data.wantAbstract}});
         if(result.diagnostics.some(code=>['abstract_candidate_failed','abstract_budget_exceeded'].includes(code)))metadata_status='partial';}
       catch(error){if(error.diagnostic?.code!=='document_operation_failed')throw error;metadata_status='failed';}
-      const pdf=await this.readDocument(tab,'pdf',{signal,deadline,args:{readerKind}});
+      let pdf;
+      try {pdf=await this.readDocument(tab,'pdf',{signal,deadline,args:{readerKind}});}
+      catch(error) {
+        if(error.diagnostic?.code!=='document_operation_failed')throw error;
+        // A local PDF scanner/DTO failure does not discard independent content.
+        // The original live Document, subject and identity are still checked
+        // below; this empty failure envelope cannot authorize a changed page.
+        pdf={documentId:doc.documentId,subject,clues:{status:'failed',landing_url:doc.url,
+          observed_at:new Date().toISOString(),platform:readerKind || 'generic',content_type:'unknown',
+          identifiers:[],candidates:[],diagnostics:['pdf_parse_failed']}};
+      }
       checkCanceled(signal);
       if(!this.documentCurrent(doc)||pdf.documentId!==doc.documentId||pdf.subject!==subject
         ||result&&(result.documentId!==doc.documentId||result.subject!==subject))throw new BrowserFailure('navigation','document_changed');
@@ -856,9 +878,9 @@ class BrowserRuntime {
     } catch(error){throw readerFailure || error;}
     finally {requestGuard?.dispose();owner.validateRecovery=validateRecovery;}
   }
-  pinPreparedPaperAccess(data) {
+  pinPreparedPaperAccess(data,requiredHost=null) {
     const owner=this.operation;
-    if(!data.service_id)return ()=>{};
+    if(!data.service_id){if(requiredHost)throw new BrowserFailure('preparation','document_changed');return ()=>{};}
     const key=this.accessKey(data),preparation=data.preparation_key,scope=data.service_scope.scope_id,
       service=data.service_id,page=data.target_page_id,manual=data.manually_confirmed;
     const context=page==null?null:this.accessContexts.get(key);
@@ -875,6 +897,7 @@ class BrowserRuntime {
         || this.accessContexts.get(key)!==context || context.preparationKey!==preparation
         || context.tab.id!==page || this.tabs.get(page)!==context.tab || context.tab.closing || context.tab.view.webContents.isDestroyed())
         throw new BrowserFailure('preparation','document_changed');
+      if(requiredHost && (!context || new URL(context.tab.view.webContents.getURL()).hostname!==requiredHost))throw new BrowserFailure('preparation','document_changed');
     };
     verify();
     if(context){context.pins.add(owner);context.lastUsed=Date.now();}

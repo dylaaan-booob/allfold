@@ -104,6 +104,57 @@ def test_missing_pii_queries_handle_only_and_keeps_original_target_binding():
     assert (result.pdf_source, result.fallback_used) == ('P2', False)
 
 
+@pytest.mark.parametrize('landing,expected', [
+    ('https://www.sciencedirect.com/science/article/pii/S1234567812345678',
+     'https://www.sciencedirect.com/science/article/pii/S1234567812345678/pdfft'),
+    ('https://ieeexplore.ieee.org/document/12345',
+     'https://ieeexplore.ieee.org/stampPDF/getPDF.jsp?tp=&arnumber=12345&ref='),
+])
+def test_existing_crossref_resource_supplies_missing_internal_id_before_queries(landing, expected):
+    from allfold.providers.crossref import normalize_crossref_discovered_work
+    from datetime import datetime, timezone
+    paper = target(httpx.URL(landing).host)
+    record, _ = normalize_crossref_discovered_work({'DOI': paper.doi, 'type': 'journal-article',
+        'title': ['Paper'], 'resource': {'primary': {'URL': landing}}}, datetime.now(timezone.utc))
+    seen = []
+    with client(lambda _: pytest.fail('Existing exact-work resource must be reused')) as http:
+        result = PdfDiscovery(paper, facts=record.discovery_facts, io=PdfDiscoveryIO(http)).run(
+            lambda c: seen.append(c) or CandidateResult.pdf(transfer_complete=True))
+    assert seen[0].url == expected and seen[0].target is paper
+    assert (result.pdf_source, result.fallback_used) == ('P2', False)
+
+
+def test_existing_crossref_resource_cannot_override_actual_new_content_host():
+    from allfold.pdf_facts import crossref_discovery_facts
+    from datetime import datetime, timezone
+    paper = target('www.sciencedirect.com', article_url='https://onlinelibrary.wiley.com/doi/10.1234/AbC')
+    facts = crossref_discovery_facts({'DOI': paper.doi, 'resource': {'primary': {
+        'URL': 'https://www.sciencedirect.com/science/article/pii/S1234567812345678'}}}, datetime.now(timezone.utc))
+    seen = []
+    result = PdfDiscovery(paper, facts=(facts,)).run(lambda c: seen.append(c) or CandidateResult.pdf(transfer_complete=True))
+    assert seen[0].rule_id == 'R002' and result.pdf_source == 'P1'
+
+
+def test_failed_optional_existing_source_does_not_block_still_missing_web_identifier():
+    seen = []
+    paper = target()
+    inputs = PdfRuleInputs(paper, credentials=frozenset({'elsevier'}),
+        conditions=frozenset({'elsevier_pdf_access'}))
+    def handle(request):
+        seen.append(str(request.url))
+        if request.url.host == 'api.elsevier.com':
+            return httpx.Response(403)
+        if request.url.host == 'doi.org':
+            return httpx.Response(200, json={'values': [{'type': 'URL', 'data': {
+                'value': 'https://www.sciencedirect.com/science/article/pii/S1234567812345678'}}]})
+        return httpx.Response(200, headers={'Content-Type': 'application/pdf'})
+    with client(handle, credentials=(('elsevier', 'fixture-key'),)) as http:
+        result = PdfDiscovery(paper, inputs=inputs, io=PdfDiscoveryIO(http)).run(lambda c: http.consume(c,
+            transfer=lambda *_: CandidateResult.pdf(transfer_complete=True)))
+    assert [httpx.URL(url).host for url in seen] == ['api.elsevier.com', 'doi.org', 'www.sciencedirect.com']
+    assert (result.status, result.pdf_source, result.fallback_used) == ('transferred', 'P2', True)
+
+
 def test_current_crossref_signed_pdf_field_is_not_lost_to_durable_projection():
     seen = []
     def handle(request):
@@ -274,3 +325,18 @@ def test_supported_current_silverchair_response_uses_explicit_selector_without_r
             transfer=lambda *_: CandidateResult.pdf(transfer_complete=True)))
     assert seen == ['https://pubs.acs.org/current', 'https://pubs.acs.org/journal/article-pdf/Body.PDF?Signature=Keep']
     assert (result.pdf_source, result.fallback_used) == ('P2', False)
+
+
+@pytest.mark.parametrize('link', [
+    '<a class="article-pdfLink" href="/Supplements.pdf">Supplementary information PDF</a>',
+    '<a class="article-pdfLink" href="/issue.pdf">Whole issue PDF</a>',
+    '<a class="article-pdfLink" href="/doi/pdf/10.1234/other">PDF</a>',
+    '<a class="article-pdfLink" data-doi="10.1234/other" href="/other.pdf">PDF</a>',
+])
+def test_current_platform_selector_rejects_non_target_body_entries(link):
+    from allfold.pdf_responses import parse_current_response
+    paper = target('pubs.acs.org')
+    candidate = PdfCandidate(paper, 'P2', 'API02', 'acs', 'https://pubs.acs.org/current')
+    response = CurrentResponse(candidate.url, 'text/html',
+        ('<head><meta name="citation_doi" content="10.1234/AbC"></head>'+link).encode())
+    assert parse_current_response(candidate, response) == ()
