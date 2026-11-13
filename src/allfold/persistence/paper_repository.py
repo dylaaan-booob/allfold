@@ -52,6 +52,18 @@ def _identities(direct_ids: ExternalIds) -> tuple[DirectIdentity, ...]:
     return identities
 
 
+def _extra_identities(values):
+    identities = set()
+    for identity in values:
+        if not isinstance(identity, DirectIdentity):
+            raise ValueError("Additional direct identities must be DirectIdentity values")
+        value = normalize_external_id(identity.namespace, identity.value)
+        if value is None:
+            raise ValueError("Invalid reliable additional direct identity")
+        identities.add(DirectIdentity(identity.namespace, value))
+    return tuple(sorted(identities))
+
+
 class PaperRepository:
     def __init__(self, database: LibraryDatabase):
         self._database = database
@@ -167,8 +179,8 @@ class PaperRepository:
                                [(identity.namespace, identity.value, str(paper_id)) for identity in identities])
 
     def create_or_match(self, workspace_id: UUID, *, direct_ids: ExternalIds,
-                        metadata: PaperMetadata) -> CreationResult:
-        identities = _identities(direct_ids)
+                        metadata: PaperMetadata, additional_identities: tuple[DirectIdentity, ...] = ()) -> CreationResult:
+        identities = tuple(sorted(set(_identities(direct_ids) + _extra_identities(additional_identities))))
         metadata = self._new_metadata(PaperMetadata.model_validate(metadata))
         with self._database.transaction(write=True) as connection:
             if workspace_id != self.workspace_id:
@@ -287,9 +299,9 @@ class PaperRepository:
             return self._read(connection, paper.id)
 
     def rebuild_from_run(self, token: WriteToken, *, direct_ids: ExternalIds,
-                         metadata: PaperMetadata) -> PaperRecord:
+                         metadata: PaperMetadata, additional_identities: tuple[DirectIdentity, ...] = ()) -> PaperRecord:
         """Rebuild only a released placeholder from a caller-verified, new Run result."""
-        identities = _identities(direct_ids)
+        identities = tuple(sorted(set(_identities(direct_ids) + _extra_identities(additional_identities))))
         metadata = self._new_metadata(PaperMetadata.model_validate(metadata))
         with self._database.transaction(write=True) as connection:
             paper = self._require_token(connection, token)

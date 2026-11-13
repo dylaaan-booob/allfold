@@ -2,11 +2,9 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from uuid import UUID
 
-from allfold.identifiers import evidence_identifiers, strong_identifiers
-from allfold.models import EvidenceDateKind, ExternalIds, ProviderRecordRef
-from allfold.paper_dates import date_value, preprint_query_refs
+from allfold.models import EvidenceDateKind, ProviderRecordRef
+from allfold.paper_dates import date_value, known_preprint_families, preprint_query_refs
 from allfold.persistence.library_models import PaperMetadata, PaperRecord, PreprintResult
 
 
@@ -41,10 +39,13 @@ def metadata_from_run(paper, *, records=()):
         and item.month is not None and item.provider != 'workspace')
     preprint_evidence = tuple(item for item in paper.date_evidence if item.kind == EvidenceDateKind.PREPRINT)
     relations = set(preprint_query_refs(preprint_evidence))
-    for record in records:
-        relations.update(ref for ref in record.related_ids if ref.relation in {'preprint', 'version'})
-        relations.update(ProviderRecordRef(provider='doi', record_id=doi, relation='preprint')
-            for doi in record.related_dois)
+    # Preserve only families established by the existing relation algorithm.
+    # A preprint's link back to its formal article must not become another
+    # unresolved Preprint family on the saved formal Paper.
+    for identity, family in known_preprint_families(records).items():
+        namespace, _, identifier = identity.partition(':')
+        relations.add(ProviderRecordRef(provider=namespace, record_id=identifier,
+            relation='preprint', version_family=family))
     preprints = []
     for item in preprint_evidence:
         if item.provider not in {'arxiv', 'biorxiv', 'medrxiv', 'europe_pmc', 'crossref'} or not item.record_id:
@@ -66,13 +67,3 @@ def metadata_from_run(paper, *, records=()):
         preprint_evidence=preprint_evidence,
         preprint_relations=tuple(sorted(relations, key=lambda ref: ref.model_dump_json())),
         first_public_at=paper.metadata.first_public_at)
-
-
-def direct_ids_from_keys(keys):
-    """Canonicalization owns same-namespace adjudication before this boundary."""
-    result = {}
-    for namespace, value in sorted(keys):
-        if namespace in result and result[namespace] != value:
-            raise ValueError(f'Multiple direct {namespace} identities require explicit canonical adjudication')
-        result[namespace] = value
-    return ExternalIds(**result)
