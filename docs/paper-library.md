@@ -27,12 +27,14 @@ transaction callbacks: network, page and file work finishes before repository
 calls. No lock spans those operations.
 
 The application ID identifies an Allfold library, `PRAGMA user_version` records
-schema version 2, and `library_info` stores the Workspace UUID. Opening checks
+schema version 3, and `library_info` stores the Workspace UUID. Opening checks
 the version, expected table/index definitions, integrity and references. Missing,
 corrupt, unsafe and unsupported-schema libraries raise distinct errors. Existing
-content is never overwritten, downgraded or rebuilt. `upgrade_schema` in `library_database.py` recognizes only the exact known v1
-schema and upgrades it transactionally. UUIDs, metadata, identities, exclusion and
-body associations remain intact. Unknown structures are refused. Failed initialization preserves its
+content is never overwritten, downgraded or rebuilt. `upgrade_schema` in `library_database.py` recognizes the exact known v1/v2
+schemas and upgrades them transactionally. UUIDs, metadata, identities, exclusion,
+body associations, existing revisions and generations remain intact. Old Papers
+have no collection record and project `not_started`, regardless of stored abstract,
+dates, body or old Run results. Unknown structures are refused. Failed initialization preserves its
 exclusively created file for inspection rather than deleting it.
 
 | Table | Responsibility |
@@ -43,12 +45,19 @@ exclusively created file for inspection rather than deleting it.
 | `paper_identities` | Unique `(namespace, normalized_value)` ownership, referencing the core |
 | `paper_metadata` | Deletable complete payload and manual-abstract generation |
 | `paper_body` | One current relative PDF association, source URL and optional byte count |
+| `paper_collection` | Current metadata lifetime's attempt, captured generations/lifecycle, state, cancellation and bounded reason |
+| `paper_collection_branch` | At most 16 current branch facts and last committed result sequence |
 
 There is no kept/exported state, Zotero parent item, Markdown authority path,
-download queue, attempt ledger or durable candidate cache. Clearing metadata
+download queue, unbounded attempt history or durable candidate cache. Collection
+facts contain no queue order, client, page handles or replay instructions. Clearing metadata
 deletes its row and all contained bibliography, notes, dates, sources and Preprint
 results. Core, direct identities, exclusion and an existing body association
 remain. This is logical deletion, not a forensic file-erasure guarantee.
+
+Collection facts are deleted when metadata is cleared, after the current owner
+settles. A verified new Run hit may rebuild the same UUID into a new metadata
+lifetime and admit collection; existing body associations remain intact.
 
 ## Public API and conditional writes
 
@@ -71,11 +80,47 @@ and connection safety. These helpers are not alternate application writers.
 | `rebuild_from_run(token, direct_ids=..., metadata=...)` | Only a cleared, unexcluded placeholder accepts a new caller-verified Run result directly identifying it; retain UUID and establish new generations |
 | `complete_body(token, body)` | Associate a newly completed body only with complete, unexcluded metadata and unchanged body authority |
 | `clear_body(token)` | Local unlink, also allowed when excluded or without metadata; revoke pending results even when no body is associated |
+| `admit_collection(workspace_id, lifecycle_id=..., branches=..., direct_ids=..., metadata=...)` | Atomically create/match or rebuild a released placeholder and establish queued authority; return `CollectionAdmission(paper, token, admitted, created)` |
+| `require_collection(token)`, `mark_collection_running(token)` | Recheck captured attempt/lifecycle and uncancelled execution authority; optionally mark dispatch |
+| `commit_collection_branch(token, branch, sequence=..., delta=..., outcome=..., reason=..., direct_ids=...)` | Atomically merge an increment and its branch fact; duplicate/older sequences never reapply content |
+| `request_collection_cancel(token, reason=...)` | Revoke writes immediately; preserve active occupancy through actual cleanup |
+| `finish_collection(token, reason=..., failed=False)` | Aggregate settled branches after actual cleanup; optional cleanup failure prevents completion |
+| `retry_collection(write_token, lifecycle_id=..., branches=...)` | Explicit retry of settled failed/cancelled full, unexcluded Papers; preserve successful/skipped branch facts |
+| `interrupt_collections(lifecycle_id)` | Explicit lifecycle initialization; fail other lifecycles' queued/running work as interrupted, without replay |
 
 Returned records include `.token`. `WriteToken` binds Workspace UUID, Paper UUID,
 metadata lifetime and operation generation. Exclusion, restoration, clearing and
 rebuilding cannot resurrect old authority. Even a current-generation token cannot
 authorize automatic metadata or a new body while excluded or without metadata.
+
+`CollectionToken` wraps the original `WriteToken`, integer attempt and Workspace
+lifecycle UUID. Persisting the original write token prevents repeated admission
+from renewing old authority after Reject/Restore or a manual abstract edit.
+`PaperRecord.collection` is optional; `.collection_status` supplies `not_started`
+when absent. Task facts advance the same library/record revisions as metadata.
+Existing full completed, failed and cancelled records are reused without automatic
+collection; queued/running returns the same attempt. Explicit retry increments it.
+
+Branches use bounded names and `queued/running/completed/skipped/failed/cancelled`
+facts. Each attempt's positive monotonic sequence deduplicates callbacks without
+an event ledger. Empty success is completed; skipped requires an applicability
+reason. Only all settled successful/skipped branches can complete. Branch, write
+or cleanup failure makes the group failed; requested cancellation makes it
+cancelled. `finish_collection` is called only after the runtime has joined actual
+resources. Repository transactions contain no cleanup wait.
+
+Cancellation, exclusion and replaced attempts block content. Captured failure or
+cancellation-only branch settlement and group finish remain possible for the same
+attempt after Reject/Restore, without renewing execution authority. These cannot
+write content or touch a later attempt/lifetime. Successful facts and committed
+fields survive failure, cancellation and explicit retry. Metadata clearing and
+body completion reject active collection in their own transaction. The application
+also serializes download/legacy-query occupation and admission under one Paper gate.
+
+`open()` never interrupts tasks. The Workspace lifecycle owner explicitly calls
+`interrupt_collections` before first admission; ordinary worker/reader connections
+cannot mistake current-process work for a restart. Interruption preserves committed
+fields and successful branch facts, starts no network/pages and never retries.
 
 Manual abstract edits have a separate generation. Editing or clearing revokes
 older automatic abstract candidates, while their date/source increments can still
@@ -162,9 +207,12 @@ cancellation outside database/Workspace write locks. Restore may happen during
 cleanup; old tokens remain invalid. Clearing metadata waits for that Paper's real
 cleanup to finish. Shared Run discovery remains available to other Papers.
 
-`test_paper_repository.py` and `test_paper_repository_safety.py` use real temporary
+`test_paper_repository.py`, `test_collection_repository.py` and `test_paper_repository_safety.py` use real temporary
 SQLite databases for reopening, contention, identity conflicts, dates, generations,
-rollback, paths and known-v1 upgrade behavior. Application/API fixtures exercise
+rollback, paths, v1/v2 upgrades, concurrent admission, captured branch writes,
+cancellation, retry and explicit interruption. Production Run retains its existing
+creation/completion calls; WF05 does not automatically register collection or
+enable download/retry UI. Application/API fixtures exercise
 production adoption, fields, Preprint and recycling; Electron fixtures exercise
 projections, response ordering and the existing layout. None establishes real
 provider, institution, user-library or actual-PDF acceptance.
