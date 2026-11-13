@@ -454,9 +454,22 @@ const operations={
         if(platform==='elife')for(const node of document.querySelectorAll('.article-download-list a[href]'))if(/\bpdf\b/i.test(node.textContent+' '+node.getAttribute('title')))add(node.getAttribute('href'));
         if(platform==='microbiology')explicit('.download-pdf form.ft-download-content__form--pdf[action]','action',{action:'refresh_form'});
         if(['atypon','siam'].includes(platform))for(const node of document.querySelectorAll('a[href]')){const target=url(node.getAttribute('href'));if(target && new URL(target).hostname===host && /\/doi\/(?:pdf|epdf|pdfplus)\//.test(new URL(target).pathname) && targetDoi && sameArticle(target) && !excluded(node))add(target);}
-        if(['acs','oup'].includes(platform))for(const node of document.querySelectorAll('a[href*="/Citation/Download"]')){const target=new URL(node.getAttribute('href'),landing_url);if(target.hostname===host){addId('resource_id',target.searchParams.get('resourceId'));addId('resource_type',target.searchParams.get('resourceType'));}}
+        if(['acs','oup'].includes(platform)) {
+          const resourceIds=new Set();
+          for(const node of main?.querySelectorAll('a[href*="/Citation/Download"]') || []) {
+            guard();if(excluded(node))continue;const resolved=url(node.getAttribute('href'));if(!resolved)continue;
+            const target=new URL(resolved),ids=target.searchParams.getAll('resourceId'),types=target.searchParams.getAll('resourceType');
+            if(target.hostname===host && /^\/Citation\/Download\/?$/.test(target.pathname) && types.length===1 && types[0]==='3'
+              && ids.length===1 && /^[0-9]{1,16}$/.test(ids[0]))resourceIds.add(ids[0]);
+          }
+          if(resourceIds.size===1){addId('resource_id',[...resourceIds][0]);addId('resource_type','3');}
+        }
         if(platform==='sciencedirect'){const pii=path.match(/\/pii\/([SB][0-9]{7}[0-9X][0-9]{7}[0-9X])(?:\/|$)/i)?.[1];if(pii)addId('pii',pii);}
-        if(platform==='ieee')addId('article_number',new URL(landing_url).searchParams.get('arnumber') || path.match(/\/document\/(\d+)/)?.[1]);
+        if(platform==='ieee') {
+          const pathId=path.match(/^\/document\/([0-9]{1,16})\/?$/)?.[1],queryIds=new URL(landing_url).searchParams.getAll('arnumber');
+          if(queryIds.length===0)addId('article_number',pathId);
+          else if(queryIds.length===1 && /^[0-9]{1,16}$/.test(queryIds[0]) && (!pathId || pathId===queryIds[0]))addId('article_number',queryIds[0]);
+        }
         if(platform==='lww')for(const node of document.querySelectorAll('[onclick*="PDFDownloadInit"]')){const match=node.getAttribute('onclick').match(/PDFDownloadInit\(\s*['"]([0-9]{8}-[0-9]{9}-[0-9]{5})['"]/);if(match)addId('an',match[1]);}
         // Generic entrances need the current article region and a single decidable main PDF.
         const generic=[];

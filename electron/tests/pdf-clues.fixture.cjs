@@ -3,7 +3,7 @@ const {app,BrowserWindow}=require('electron');
 const assert=require('node:assert/strict'),http=require('node:http'),fs=require('node:fs'),path=require('node:path'),vm=require('node:vm');
 const {randomUUID}=require('node:crypto');
 app.commandLine.appendSwitch('no-proxy-server');
-const fixtureHosts=['www.nature.com','journals.lww.com','www.sciencedirect.com','opg.optica.org','ieeexplore.ieee.org','x.biomedcentral.com','pubs.rsc.org','journals.plos.org','www.mdpi.com','x.copernicus.org','pubs.acs.org','pubs.aip.org','jamanetwork.com','rupress.org','ashpublications.org','iovs.arvojournals.org','pubs.geoscienceworld.org','www.cambridge.org','www.bmj.com','www.degruyterbrill.com','www.emerald.com','brill.com','elifesciences.org','www.thieme-connect.com','www.microbiologyresearch.org','epubs.siam.org','onlinelibrary.wiley.com','hindawi.com'];
+const fixtureHosts=['www.nature.com','journals.lww.com','www.sciencedirect.com','opg.optica.org','ieeexplore.ieee.org','x.biomedcentral.com','pubs.rsc.org','journals.plos.org','www.mdpi.com','x.copernicus.org','pubs.acs.org','academic.oup.com','pubs.aip.org','jamanetwork.com','rupress.org','ashpublications.org','iovs.arvojournals.org','pubs.geoscienceworld.org','www.cambridge.org','www.bmj.com','www.degruyterbrill.com','www.emerald.com','brill.com','elifesciences.org','www.thieme-connect.com','www.microbiologyresearch.org','epubs.siam.org','onlinelibrary.wiley.com','hindawi.com'];
 app.commandLine.appendSwitch('host-resolver-rules',fixtureHosts.map(host=>'MAP '+host+' 127.0.0.1').join(', '));
 const profile=process.argv[2];app.setPath('userData',profile);app.setPath('sessionData',profile);
 require('../src/shared/logging.cjs').initializeLogging({stderr(){}});
@@ -69,9 +69,18 @@ app.whenReady().then(async()=>{
     const history=await forHost('hindawi.com','','<meta name="citation_pdf_url" content="https://cdn.example/current.pdf">');assert.equal(history.pdf_clues.candidates[0].rule_id,'GENERIC','historical disabled conversions do not block independent Meta');
     const negative=await forHost('www.nature.com','<div class="related"><a type="application/pdf" href="/related.pdf">PDF</a></div><section id="references"><a type="application/pdf" href="/ref.pdf">PDF</a></section><a type="application/pdf" href="/supplement.pdf">PDF</a><a type="application/pdf" href="/other.pdf">Other article</a>');assert.deepEqual(negative.pdf_clues.candidates,[]);
     const acs=await forHost('pubs.acs.org','<a href="/Citation/Download?resourceId=12345&amp;resourceType=3">Cite</a>');assert.deepEqual(acs.pdf_clues.identifiers.map(item=>[item.kind,item.value]),[['resource_id','12345'],['resource_type','3']]);
+    for(const host of ['pubs.acs.org','academic.oup.com']) {
+      const citation='<div class="related"><a href="/Citation/Download?resourceId=99991&amp;resourceType=3">Related cite</a></div><section id="references"><a href="/Citation/Download?resourceId=99992&amp;resourceType=3">Reference cite</a></section><a href="/Citation/Download?resourceId=99993&amp;resourceType=2">Book cite</a><a href="/Citation/Download?resourceId=12345&amp;resourceType=3">Article cite</a>';
+      const scoped=await forHost(host,citation);assert.deepEqual(scoped.pdf_clues.identifiers.map(item=>[item.kind,item.value]),[['resource_id','12345'],['resource_type','3']],host+' uses only current article type-3 citation');
+      const nonArticle=await forHost(host,'<a href="/Citation/Download?resourceId=99993&amp;resourceType=2">Book cite</a><a href="/Citation/Download?resourceId=12345">Unknown type</a>');assert.deepEqual(nonArticle.pdf_clues.identifiers,[]);
+    }
     const sd=await forHost('www.sciencedirect.com','<script>var article={pdfDownload:{urlMetadata:"https://cdn.example/sd.PDF"}};</script>','','/science/article/pii/S1234567812345678');assert.equal(sd.pdf_clues.identifiers[0].kind,'pii');assert.equal(sd.pdf_clues.candidates[0].reader_kind,'sciencedirect');
     const overflow=await forHost('www.sciencedirect.com','<script>var article={pdfDownload:{urlMetadata:"'+('x'.repeat(4097))+'"}};</script>');assert.equal(overflow.pdf_clues.status,'failed');assert.deepEqual(overflow.pdf_clues.diagnostics,['pdf_budget_exceeded']);
     const ieee=await forHost('ieeexplore.ieee.org','','','/document/12345');assert.deepEqual(ieee.pdf_clues.identifiers.map(item=>[item.kind,item.value]),[['article_number','12345']]);
+    for(const route of ['/document/12345wrong','/document/12345/other','/article?arnumber=not-a-number','/article?arnumber=12345wrong','/article?arnumber=12345&arnumber=67890']) {
+      const invalidId=await forHost('ieeexplore.ieee.org','','',route);assert.deepEqual(invalidId.pdf_clues.identifiers,[],route);
+    }
+    const numericQuery=await forHost('ieeexplore.ieee.org','','','/article?arnumber=67890');assert.deepEqual(numericQuery.pdf_clues.identifiers.map(item=>[item.kind,item.value]),[['article_number','67890']]);
     page='<!doctype html><body><script>var pdfDownloadDetails={pdfUrl:"http://www.nature.com:'+port+'/Actual.PDF?signature=A%2FB&key=2"};</script></body>';
     const readerURL='http://journals.lww.com:'+port+'/journal/_layouts/15/oaks.journals/downloadpdf.aspx?an=12345678-123456789-12345';
     const reader={rule_id:'R060',platform:'lww',url:readerURL,identifier:'12345678-123456789-12345',target:data.identity,source_url:'https://journals.lww.com/journal/fulltext/2026/one.aspx',stage:'P4'};
