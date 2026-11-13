@@ -251,11 +251,22 @@ const operations={
         }
         return false;
       };
+      const abstractExcluded=(node,allowOwnControl=false)=>{
+        if(peripheral(node))return true;
+        for(let el=node;el;el=el.parentElement) {
+          if(el.matches('button,[role="button"],figcaption,caption,figure,.keywords,.keyword-list,[role="doc-noteref"]')
+            && !(allowOwnControl && el===node && el.matches('button,[role="button"]')))return true;
+          if(el===root)break;
+        }
+        return false;
+      };
       const preview=node=>{
         const elements=[...(node.nodeType===1?[node]:[]),...node.querySelectorAll('[class]')];
-        if(elements.some(el=>!peripheral(el) && [...el.classList].some(token=>/(?:^|[-_])(?:preview|teaser|truncated)(?:$|[-_])/i.test(token))))return true;
+        if(elements.some(el=>!abstractExcluded(el) && [...el.classList].some(token=>/(?:^|[-_])(?:preview|teaser|truncated)(?:$|[-_])/i.test(token))))return true;
         for(const action of node.querySelectorAll('button,a,[role="button"]'))
-          if(!peripheral(action) && /^(?:read|show|view)\s+(?:more|full(?:\s+abstract)?)[\s.…]*$/i.test(normalize(action.textContent)))return true;
+          // A direct Read more control signals a fragment; controls inside an
+          // excluded abstract subtree do not describe the candidate's content.
+          if(!abstractExcluded(action,true) && /^(?:read|show|view)\s+(?:more|full(?:\s+abstract)?)[\s.…]*$/i.test(normalize(action.textContent)))return true;
         return false;
       };
       const eligibleText=value=>{
@@ -264,13 +275,14 @@ const operations={
           || /^(?:no abstract(?: available)?|abstract (?:unavailable|not available)|please (?:log|sign) in(?: to (?:view|read) (?:the )?abstract)?)[.!]?$/i.test(text)
           || /^(?:read|show|view)\s+(?:more|full(?:\s+abstract)?)[\s.…]*$/i.test(text)?null:value;
       };
-      const textFrom=nodes=>{
+      const textFrom=(nodes,ignored=new Set())=>{
         const chunks=[];let size=0;
         const push=text=>{size+=text.length;if(size>131072)throw Error('abstract_budget_exceeded');chunks.push(text);};
         const walk=node=>{
           guard();
+          if(ignored.has(node))return;
           if(node.nodeType===3){push(node.nodeValue);return;}
-          if(node.nodeType!==1 || peripheral(node) || node.matches('button,[role="button"],figcaption,caption,figure,.keywords,.keyword-list,[role="doc-noteref"]'))return;
+          if(node.nodeType!==1 || abstractExcluded(node))return;
           const label=headingLabel(node);
           if((isHeading(node) || node.localName==='p') && /^(abstract|summary)$/.test(label))return;
           if(node.localName==='a' && /^(download(?:\s+\w+)*|copy|share|read more|show more|view full abstract)$/i.test(normalize(node.textContent)))return;
@@ -296,19 +308,41 @@ const operations={
         return matches.length===1 && root.contains(matches[0]) && legal(matches[0]) && isHeading(matches[0]) && normalize(matches[0].textContent).toLowerCase()==='abstract';
       };
       const containers=[root,...root.querySelectorAll('[id],[class],section[aria-label],section[aria-labelledby],[role="region"]')]
-        .filter(node=>marked(node) && !peripheral(node) && !node.matches('button,a') && !isHeading(node))
+        .filter(node=>marked(node) && !abstractExcluded(node) && !node.matches('button,a') && !isHeading(node))
         .filter(node=>{
           const title=node.querySelector(headingSelector);
           if(!/^(graphical abstract|video abstract|lay summary|author summary|plain language summary)$/i.test(headingLabel(title)))return true;
           const prefix=document.createRange();prefix.setStart(node,0);prefix.setEndBefore(title);
           return !!normalize(prefix.toString());
         });
-      // Nested markers belong to the same explicit semantic owner. Read that
-      // owner's content once, including paragraphs around a marked child.
-      // Independent equal copies collapse; conflicting owners never pick first.
+      // Only whole, explicitly marked candidate copies can deduplicate. Keep
+      // unmarked parent paragraphs and ordinary repeated scientific text.
+      const readOwner=node=>{
+        const descendants=containers.filter(other=>other!==node && node.contains(other));
+        const children=descendants.filter(child=>!descendants.some(other=>other!==child && other.contains(child)));
+        const ignored=new Set(),seen=new Set(),choices=[];
+        if(!children.length)return {value:textFrom([node]),conflict:false,ignored};
+        for(const child of children) {
+          const result=readOwner(child);
+          if(result.conflict)return result;
+          for(const duplicate of result.ignored)ignored.add(duplicate);
+          if(result.value) {
+            choices.push(result.value);
+            if(seen.has(result.value))ignored.add(child);
+            seen.add(result.value);
+          }
+        }
+        // Without content outside the marked children, different complete
+        // copies remain competing candidates rather than one concatenation.
+        const outside=textFrom([node],new Set([...ignored,...children]));
+        const conflict=!outside && uniqueText(choices).conflict;
+        return {value:conflict?null:textFrom([node],ignored),conflict,ignored};
+      };
       const owners=containers.filter(node=>!containers.some(other=>other!==node && other.contains(node)));
-      const a1=uniqueText(owners.map(node=>safe(()=>preview(node)?null:textFrom([node]))));
-      abstract=a1.value;
+      const owned=owners.map(node=>safe(()=>preview(node)?null:readOwner(node)));
+      const a1=uniqueText(owned.map(result=>result?.value));
+      a1.conflict ||= owned.some(result=>result?.conflict);
+      abstract=a1.conflict?null:a1.value;
       if(!abstract && !a1.conflict) {
         const headings=[...root.querySelectorAll(headingSelector)].filter(node=>!peripheral(node));
         const hasAbstract=headings.some(node=>headingLabel(node)==='abstract');

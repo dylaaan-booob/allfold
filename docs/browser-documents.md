@@ -304,8 +304,10 @@ The fixed preference is **A1 → A2 → B → C**, with no API-versus-DOM write 
   `abstract`/`abstract-content`/`abstractInFull`, or a section/region with a unique
   strict Abstract aria label/title association. Substrings are insufficient.
   Nested markers share one explicit semantic owner, whose full content is read
-  once, including paragraphs around marked children; independent identical
-  copies merge. Graphical/Video/Lay or author summaries, navigation, recommendations,
+  once, including paragraphs around marked children. Identical complete marked
+  candidate copies merge, including nested copies; ordinary repeated paragraphs
+  remain intact and conflicting complete copies fall through. Graphical/Video/Lay
+  or author summaries, navigation, recommendations,
   footer/hidden areas and title/button-only regions are refused.
 - **A2:** strict Abstract h2–h6 or explicit section-heading labels, normalizing
   surrounding whitespace, trailing colon and decorative punctuation. Summary is
@@ -332,7 +334,8 @@ Explicit previews, unexpanded Read more/Show more fragments, ellipsis-only text
 and empty notices are refused without a click in DOM, Meta and JSON-LD alike;
 invalid structured peers do not create a conflict with a valid candidate.
 Notice matching collapses whitespace without changing accepted paragraph text.
-Hidden/peripheral preview markers and controls do not disqualify visible content.
+Preview scanning shares the abstract-subtree exclusions: hidden/peripheral UI,
+figures and keyword lists do not disqualify visible content or narrow Date scope.
 Different valid same-level DOM
 candidates fall through to independent structured sources; no first/longest
 choice, source concatenation, generation, translation or Title fallback exists.
