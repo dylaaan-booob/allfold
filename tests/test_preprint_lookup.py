@@ -251,3 +251,57 @@ def test_preprint_can_use_known_metadata_with_unknown_legacy_discovery_time(tmp_
     assert lookup(service, paper.id)['phase'] == 'Completed'
     metadata = read_paper(workspace, paper.id).metadata
     assert metadata.first_public_at == '2022-02-03' and metadata.discovered_at is None
+
+
+@pytest.mark.parametrize('stop_kind', ['reject', 'exclude', 'cancel'])
+def test_preprint_status_reports_current_same_library_revision_after_terminal_cleanup(tmp_path, stop_kind):
+    config, workspace, paper = create_paper(tmp_path, abstract='Original')
+    entered, release = Event(), Event()
+    def respond(request):
+        entered.set()
+        assert release.wait(5)
+        return collection(status=f'Preprint for DOI {FORMAL} not found')
+    service = PreprintLookup(config, BrowserTaskLock(), client_factory=factory(respond))
+    task = service.start(paper.id, paper.workspace_id)
+    try:
+        assert entered.wait(5)
+        if stop_kind == 'reject':
+            action = apply_paper_action(workspace, paper.workspace_id, paper.id, 'reject', preprint_lookup=service)
+            expected_revision = action.revision
+        elif stop_kind == 'exclude':
+            with PaperRepository.open(workspace) as repository:
+                repository.exclude(paper.token)
+                expected_revision = repository.revision
+        else:
+            fields = read_paper_fields(workspace, paper.id, workspace_id=paper.workspace_id)
+            _, expected_revision, _ = edit_paper_fields(workspace, paper.workspace_id, paper.id,
+                fields['revision'], abstract='Local edit while stopping')
+            assert service.cancel(paper.id, task['request_id'], paper.workspace_id)
+    finally:
+        release.set()
+        service.join()
+    status = service.state(paper.id, task['request_id'])
+    assert status['phase'] == ('Failed' if stop_kind == 'exclude' else 'Cancelled')
+    assert status['workspace_id'] == str(paper.workspace_id) and status['request_id'] == task['request_id']
+    assert status['revision'] == expected_revision > task['revision']
+    assert not status['cleaning_up'] and not read_paper(workspace, paper.id).metadata.preprint_evidence
+    if stop_kind != 'cancel':
+        from allfold.persistence.paper_repository import StaleWriteError
+        with PaperRepository.open(workspace) as repository:
+            with pytest.raises(StaleWriteError):
+                repository.merge_metadata(paper.token, MetadataDelta(ordinary_dates=('2030-01',)))
+    # A later library is not allowed to re-scope this old task's status envelope.
+    other_workspace = tmp_path / 'other-workspace'
+    other_workspace.mkdir()
+    with PaperRepository.create(other_workspace) as repository:
+        assert repository.workspace_id != paper.workspace_id
+        from allfold.models import ExternalIds
+        from allfold.persistence.library_models import PaperMetadata
+        other = repository.create_or_match(repository.workspace_id, direct_ids=ExternalIds(doi='10.5555/other'),
+            metadata=PaperMetadata(title='Other library')).paper
+        repository.exclude(other.token)
+        foreign_revision = repository.revision
+    config.write_text(config.read_text().replace('output_dir: workspace', 'output_dir: other-workspace'))
+    stale_status = service.state(paper.id, task['request_id'])
+    assert stale_status['workspace_id'] == str(paper.workspace_id)
+    assert stale_status['revision'] == task['revision'] < foreign_revision
