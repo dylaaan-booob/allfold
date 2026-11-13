@@ -27,7 +27,7 @@ def test_ordinary_gaps_do_not_schedule_requests_after_necessary_capabilities_set
             providers=('crossref', 'openalex', 'pubmed')) == ()
 
 
-def execute(tmp_path, branch, *, transport, metadata=None, on_task=None, direct_ids=None):
+def execute(tmp_path, branch, *, transport, metadata=None, on_task=None, direct_ids=None, wait_timeout=5):
     from contextlib import contextmanager
     from allfold.application.collection_runtime import WorkspaceRegistry
     from allfold.application.metadata_completion import completion_client
@@ -57,7 +57,7 @@ def execute(tmp_path, branch, *, transport, metadata=None, on_task=None, direct_
             branches=(branch,))
         if on_task:
             on_task(registry, task)
-        return task.future.result(5), clients
+        return task.future.result(wait_timeout), clients
     finally:
         registry.shutdown()
         registry.join()
@@ -221,7 +221,10 @@ def test_native_batch_drains_every_arxiv_group_through_actual_registry(tmp_path)
     branch = necessary_metadata_branch(providers=('arxiv',), records=(record(related_ids=tuple(
         ProviderRecordRef(provider='arxiv', record_id=f'2201.{number:05d}', relation='preprint')
         for number in range(201))),))
-    paper, _ = execute(tmp_path, branch, transport=response)
+    # This case persists 201 distinct native records through real short SQLite
+    # transactions. Hosted macOS can exceed the small single-Paper fixture wait;
+    # retain a finite integration wait without changing the task's own deadline.
+    paper, _ = execute(tmp_path, branch, transport=response, wait_timeout=30)
     assert paper.collection_status == 'completed'
     assert [len(ids) for ids in queries] == [200, 1]
     assert paper.metadata.first_public_at == '2022-01-02'
