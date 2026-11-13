@@ -196,3 +196,21 @@ scoped admission. `release_workflow_pages` takes captured workflow/task IDs and
 idempotently releases only that results-page loan. Actual retained-page destruction
 reports bounded exact Page IDs through `access_pages_closed`. Keys are authority
 inputs, never diagnostic fields. See [resource limits and rollback](browser-pages.md).
+
+## Internal WF05 collection boundary
+
+No collection start/retry/download HTTP route or new Paper button is added.
+Internal `WorkspaceRegistry.admit` commits the complete Paper/queued decision;
+`register` rechecks captured lifecycle, attempt and narrow access before dispatch.
+`submit` combines them for application callers. Each branch declares its actual
+Providers; `IndependentClientFactory.open(providers=...)` creates only that owned
+credential/client scope and keeps a fresh cache. The application shares pacing
+with current Run and old manual Preprint without sharing their snapshots/clients.
+
+Workspace Paper responses project durable `collection_status` and runtime
+`cleanup_pending`, with library revisions ordering collection and occupancy
+changes. Exclusion persists before precise cancellation; Restore cannot revive
+old work. Existing foreground Run timing/slot and public Preprint algorithm remain.
+During normal exit, authenticated `invalidate_access` and
+`release_workflow_pages` may still settle captured resources after execution
+admission closes. They grant no new navigation or credential authority.

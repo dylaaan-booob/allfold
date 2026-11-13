@@ -35,7 +35,7 @@ Main starts one Python process. The HTTP origin remains loopback-only on port 18
 | `electron/src/workflows/` | Login, Service preparation, Covers and WoS native page operations |
 | `electron/src/preload/`, `native-ui/` | Restricted capabilities and local native-window UI |
 
-Models, configuration definitions, identifiers and query primitives remain shared Python modules. Application code does not depend on Web adapters; its BrowserGateway exposes connected/execute and exact cancel_workflow/cancel_task interfaces. ElectronBridge adapts it to transport. Each Request ID owns its operation context, progress, cancellation and Solver replies, page claims and terminal result. BrowserTaskLock admits independent workflow owners together, refusing overlapping saved-Service scopes and exclusive credential/Reset controls. Login, Covers and WoS each retain one active coordinator state; shared admission does not create a task registry. Native operations settle before their Futures release ownership. WoS keeps its captured workflow/task loan across Query→Export gaps; a finally-issued release_workflow_pages maintenance request releases that same loan only after native settlement, including cancellation and input loss. Shutdown stops admission and drains Run, Preprint, WoS, Login and Covers before database teardown.
+Models, configuration definitions, identifiers and query primitives remain shared Python modules. Application code does not depend on Web adapters; its BrowserGateway exposes connected/execute and exact cancel_workflow/cancel_task interfaces. ElectronBridge adapts it to transport. Each Request ID owns its operation context, progress, cancellation and Solver replies, page claims and terminal result. BrowserTaskLock admits explicit shared saved-Service data use while keeping overlapping controls and exact physical Page claims exclusive. Login, Covers and WoS each retain one active coordinator state; Browser admission is separate from the Workspace collection registry. Native operations settle before their Futures release ownership. WoS keeps its captured workflow/task loan across Query→Export gaps; a finally-issued release_workflow_pages maintenance request releases that same loan only after native settlement, including cancellation and input loss. Shutdown stops admission and drains Run, Preprint, WoS, Login and Covers before database teardown.
 
 Journal lookup and remote fallback belong to the application layer; persistence only reads the local Registry. WoS export parsing continues to reuse safe file-reading helpers.
 
@@ -185,7 +185,8 @@ identities, explicit primary identity, metadata, exclusions and one optional bod
 association at `Workspace/papers.sqlite`. HTTP handlers and workers open separate
 thread-confined connections. Read-only uninitialized views create nothing; Run
 performs explicit initialization. Known v1 upgrades preserve data; corruption and
-unknown schemas fail without replacement. No Markdown shadow/fallback exists.
+unknown schemas fail without replacement. Schema v3 adds bounded current-attempt
+and branch facts while preserving v1/v2 records. No Markdown shadow/fallback exists.
 
 Workspace UI uses separate library revisions for response order. WriteToken
 remains captured asynchronous eligibility, with separate abstract generation.
@@ -195,7 +196,7 @@ See [identity](paper-identity.md) and [task boundaries](workflow-refactor-tasks.
 
 The private `.allfold/resources.sqlite` shares complete GOKB snapshots and the CARSI official Catalog across configurations. It holds external evidence, not users' Service preferences. Refresh commits only validated, complete data and retains the previous cache on failure. The Journal Resolver follows Journal → GOKB Platform → CARSI Resource, retaining multiple identities and products. Only a unique, reliable candidate can fill an empty default; saved user choices take precedence. Ordinary Run never requires GOKB.
 
-The two application-level databases live outside Workspace; the independent Paper library belongs to its Workspace. Within the application project, configurations in subdirectories use the same application data directory; their canonical paths still identify separate user scopes. Registry remains read-only during normal use and retains source-specific evidence. Browser tasks and coordinators remain transient. Generated UI is rebuildable, not user data.
+The two application-level databases live outside Workspace; the independent Paper library belongs to its Workspace. Within the application project, configurations in subdirectories use the same application data directory; their canonical paths still identify separate user scopes. Registry remains read-only during normal use and retains source-specific evidence. Browser handles and scheduler queues remain transient; current collection qualification and branch completion belong to Paper SQLite. Generated UI is rebuildable, not user data.
 
 [Safety](safety.md) states the cross-module invariants. Types, parsers and validators in code define fields and interfaces; [development](development.md) defines preparation and verification. Historical plans and investigations are not current implementation authority.
 
@@ -203,8 +204,9 @@ The two application-level databases live outside Workspace; the independent Pape
 
 The Python application process owns Provider cooldowns across clients, keyed by
 actual HTTP origin and authentication context. Short-lived clients retain active
-cooldowns until they expire or the process exits. Operation-local caches and
-pacing remain separate.
+cooldowns until they expire or the process exits. Application-owned pacing is
+injected into current Run, manual Preprint and independent attempt clients;
+request/response caches and mutable client state remain operation-local.
 
 Provider adapters emit operation-local `ProviderWorkEvidence`; canonicalization groups
 explicit strong identities and selects missing metadata in a fixed order.
@@ -236,6 +238,32 @@ a formal direct identity or an ordinary date solely through association. Reader
 and Info display these new library projections without old event/source columns
 or active Enrich buttons. Background scheduling, webpage Date/Abstract extraction
 and Download/PDF actions belong to later tasks.
+
+## Workspace collection runtime
+
+WF05 adds a Workspace-owned `WorkspaceRegistry`, with an immutable Workspace UUID,
+path/inode identity and lifecycle ID. Reliable identity create/match/rebuild and
+queued collection admission commit together before registration. Its dynamic
+round-robin scheduler admits later Papers and Services and survives idle periods.
+The internal defaults bound executing Paper jobs to four globally and two per
+trusted Service; API/public work uses one `None` group. These task counts include
+client/native/write cleanup and are separate from physical page capacity.
+
+One Paper gate arbitrates collection, controlled download reservations, old manual
+Preprint reservations and metadata clearing. Durable queued/running eligibility
+also blocks Download during the admit/register window. Branch increments use the
+original WriteToken, lifecycle, attempt, branch and sequence; duplicate delivery
+cannot reapply a cleared abstract. Completion follows actual worker/client/native
+settlement. Explicit retry preserves same-generation successful branch facts.
+Terminal persistence/cleanup faults retain conservative runtime occupancy.
+
+Each worker opens its own repository and independent client context. Declared
+Providers scope credentials and mutable clients/caches; shared pacing outlives
+those contexts. Narrow access authority captures the actual saved Service,
+Prepare binding and selected credentials. Source Run IDs are diagnostic only.
+Lifecycle initialization marks prior queued/running work interrupted/failed once,
+without queue replay or network. Current production Run does not register this
+work, and Download/Retry remain internal contracts until later tasks.
 
 ## Physical Browser resource lifetime
 
