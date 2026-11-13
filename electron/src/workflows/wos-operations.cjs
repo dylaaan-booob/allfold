@@ -234,22 +234,31 @@ async function wosExportWithinDeadline(browser,data,{signal,progress},deadline) 
   const token=randomBytes(16).toString('hex');
   await step(browser,tab,'arm',{token},signal,progress,10000,deadline);
   doc=tab.wosDocument;
-  let item=null,terminal=null,ambiguous=false,finished=false;
+  let item=null,terminal=null,ambiguous=false,finished=false,dispatched=false,routingFailure=false,downloadObservation;
   const done=new Promise(resolve=>terminal=resolve);
-  const listener=(_event,download,source)=>{
-    if(source!==tab.view.webContents)return;
-    if(item){ambiguous=true;download.cancel();item.cancel();return;}
-    item=download;
-    // Untrusted native filenames are ignored. The file is only staging until URL attribution succeeds.
-    item.setSavePath(filename);
-    item.once('done',(_e,state)=>{finished=true;terminal(state);});
-    if(signal.aborted)item.cancel();
-  };
+  const owner=browser.operation;
+  const registration=browser.sessionEvents.registerDownload({owner,attemptId:token,
+    contents:tab.view.webContents,frame:doc,document:doc,filename,signal,deadline,
+    validate:()=>{
+      const current={...doc,url:tab.view.webContents.getURL(),navigationGeneration:tab.documentGeneration ?? doc.navigationGeneration};
+      return tab.wosWorkflowId===owner?.association.workflow_id && !tab.pageAttempt?.retired
+        && sameResultsDocument(doc,current) && browser.documentCurrent(current);
+    },
+    onAmbiguous:()=>{ambiguous=true;},
+    onRejected:download=>{routingFailure=download.reason || 'document_changed';item=download.item;download.terminal.then(state=>{finished=true;terminal(state);});},
+    onItem:download=>{item=download.item;downloadObservation=download.observation;download.terminal.then(state=>{finished=true;terminal(state);});}});
   const cancel=()=>item?.cancel();
-  browser.partition.on('will-download',listener);signal.addEventListener('abort',cancel,{once:true});
+  signal.addEventListener('abort',cancel,{once:true});
   let timer;
   try {
-    await step(browser,tab,'export',{first:data.first,last:data.last,customVerified:true},signal,progress,10000,deadline);
+    dispatched=true;
+    try {await step(browser,tab,'export',{first:data.first,last:data.last,customVerified:true},signal,progress,10000,deadline);}
+    catch(error) {
+      // A verified pre-click DOM refusal cannot issue a late download. Other
+      // failures retain a bounded source guard until the old attempt is resolved.
+      if(error.diagnostic?.stage==='wos_dom' && !['timeout','canceled'].includes(error.diagnostic.code))dispatched=false;
+      throw error;
+    }
     doc=tab.wosDocument;
     let state,waiting=false;
     while(true) {
@@ -270,6 +279,8 @@ async function wosExportWithinDeadline(browser,data,{signal,progress},deadline) 
       if(needsHuman!==waiting){waiting=needsHuman;progress({waiting_for_user:waiting});}
     }
     checkCanceled(signal);
+    if(routingFailure)throw new BrowserFailure('navigation',routingFailure);
+    if(downloadObservation?.interrupted)throw new BrowserFailure('wos_download','download_interrupted');
     if(state!=='completed') {
       const code={interrupted:'download_interrupted',cancelled:'download_cancelled'}[state] || 'download_failed';
       throw new BrowserFailure('wos_download',code);
@@ -280,8 +291,10 @@ async function wosExportWithinDeadline(browser,data,{signal,progress},deadline) 
     if(!item.getURLChain().some(url=>observed.urls.includes(url)))throw new BrowserFailure('wos_download','download_not_attributable');
     return {filename};
   } finally {
-    clearTimeout(timer);signal.removeEventListener('abort',cancel);browser.partition.removeListener('will-download',listener);
+    clearTimeout(timer);signal.removeEventListener('abort',cancel);
     if(item && !finished){item.cancel();await done;}
+    registration.dispose({dispatched});
+    await browser.sessionEvents.waitForDownloads(tab.view.webContents);
     // Cleanup is scoped to the same document; never mutate a replacement page.
     const cleanupDocument=tab.wosDocument;
     if(sameResultsDocument(doc,cleanupDocument) && browser.documentCurrent(cleanupDocument) && !tab.view.webContents.isLoadingMainFrame())

@@ -505,8 +505,11 @@ async function searchJournalCoverWithinDeadline(browser,data,{signal,progress},r
         || /^(localhost|127\.|0\.|10\.|192\.168\.|169\.254\.|\[)/i.test(source.hostname)
         || /\.(local|localhost)$/i.test(source.hostname))throw Error('Unsafe image target');
       // Reuse Chromium and its identity; public cover downloads omit credentials as before.
-      const response=await browser.partition.fetch(source.href,{redirect:'follow',credentials:'omit',
-        signal:AbortSignal.any([signal,AbortSignal.timeout(20000)])});
+      const {response}=await browser.sessionEvents.fetch(source.href,{redirect:'follow',credentials:'omit'},
+        {owner:browser.operation,attemptId:randomBytes(16).toString('hex'),document:doc,signal,
+          deadline:Math.min(requestDeadline,Date.now()+20000),validate:()=>{
+            if(!browser.documentCurrent(doc))throw new BrowserFailure('navigation','document_changed');
+          }});
       if(!response.ok)throw Error('Image download failed');
       checkCanceled(signal);
       const reader=response.body.getReader();let size=0;const chunks=[];
