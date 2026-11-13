@@ -57,10 +57,13 @@ Login runs one CARSI institution flow. Each subsequent CARSI preparation opens i
 Browser Runtime uses one business Session from `session.fromPartition('allfold')`.
 Selection and presentation are separate from task ownership. Prepare, WoS, Login
 and Covers retain their scoped Page/Document checks, cancellation and manual
-verification. DocumentRuntime and its isolated preload supply bounded binding/access/article
-observations, never full HTML. Native Document binding, independent Paper identity
-and task/Service authority are separate. The internal Paper entry checks access
-before current article identity; it remains unconnected to background collection.
+verification. DocumentRuntime and its isolated preload supply bounded
+binding/access/article/extract observations, never full HTML. Native Document
+binding, independent Paper identity and task/Service authority are separate.
+The internal Paper extraction operation checks access and current article identity,
+reads Date/Abstract together, then rechecks the same live Document before normal
+page cleanup. Its small verified result can be committed after that cleanup;
+Python rechecks the captured Workspace/Paper/attempt, not the closed page.
 The Cloudflare adapter remains request/CDP-target scoped. See
 [controlled Documents](browser-documents.md) for the runtime contract.
 
@@ -223,6 +226,14 @@ captured Workspace/database eligibility. Run snapshots/logs use repository UUIDs
 not temporary Provider IDs or Markdown paths. Current Completion stays until WF08;
 Run does not register background collection completion.
 
+WF06's internal necessary-query service has a separate request planner. Ordinary
+abstract, author and event-date gaps do not create requests. It consumes verified
+capability-labelled facts, resolves explicit identity/Preprint relationships and
+queries known native version families with execution-owned clients. Formal
+increments and independent Preprint proof are separate; a new `first_public_at`
+is offered only after all applicable relationship/native work and every known
+family settle successfully. It does not wrap the current Completion pipeline.
+
 The Info preprint lookup coordinator binds to one saved Paper and verifies both
 native bioRxiv/medRxiv publication and version responses. It shares Run/workflow
 admission without browser authority. Network work holds no Workspace write
@@ -236,9 +247,10 @@ publication date retains its explicit source. Preprint evidence preserves versio
 families, verified first-version proof and unresolved relations; it never becomes
 a formal direct identity or an ordinary date solely through association. Reader
 and Info display these new library projections without old event/source columns
-or active Enrich buttons. WF05 provides internal background scheduling; production
-registration, webpage Date/Abstract extraction and Download/PDF actions belong to
-later tasks.
+or active Enrich buttons. WF05 provides internal background scheduling. WF06 adds
+internal Date/Abstract and purpose-driven API/Preprint services through those task
+interfaces. Production registration and branch parallelism belong to WF08;
+PDF sources, transport, files and public actions remain later work.
 
 ## Workspace collection runtime
 

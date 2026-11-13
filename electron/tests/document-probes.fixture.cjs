@@ -26,7 +26,7 @@ app.whenReady().then(async()=>{
       const route=routes.get(request.url.split('#')[0]);
       return new Response(route?.body || article(),{status:route?.status || 200,headers:{'content-type':'text/html'}});
     });
-    // No author/date/abstract or extraction runtime exists on these article pages.
+    // Identity confirmation is independent of Date/Abstract extraction on these pages.
     for(const key of ['citation_doi','bepress_citation_doi','prism.doi','dc.identifier','dc.identifier.doi','dcterms.identifier']) {
       const doc=await open(article(meta(' DOI: 10.5555/TARGET ',key)));
       assert.equal(doc.identity.outcome,'confirmed');assert.equal(doc.identity.doi,'10.5555/target');

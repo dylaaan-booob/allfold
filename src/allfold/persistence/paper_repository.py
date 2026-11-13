@@ -7,7 +7,7 @@ from datetime import datetime, timezone
 import re
 from uuid import UUID, uuid4
 
-from allfold.canonicalize import normalize_abstract
+from allfold.abstract_text import normalize_abstract_text
 from allfold.identifiers import normalize_external_id, strong_identifiers
 from allfold.models import ExternalIds
 from allfold.persistence.library_database import (
@@ -447,7 +447,7 @@ class PaperRepository:
         }
         if (delta.abstract and not paper.metadata.abstract
                 and paper.abstract_generation == token.abstract_generation):
-            changes["abstract"] = normalize_abstract(delta.abstract)
+            changes["abstract"] = normalize_abstract_text(delta.abstract)
         metadata = PaperMetadata.model_validate(paper.metadata.model_dump() | changes)
         connection.execute("UPDATE paper_metadata SET payload = ? WHERE paper_id = ?",
                            (metadata.model_dump_json(), str(paper.id)))

@@ -192,14 +192,41 @@ def test_invalid_or_year_only_ordinary_date_is_rejected_without_guessing(library
     assert library.get(paper.id) == paper
 
 
-def test_existing_abstract_and_user_fields_survive_all_automatic_candidates(library):
-    original_abstract = "Methods: Results: Existing formal abstract"
+@pytest.mark.parametrize('original_abstract', ['Methods: Results: Existing formal abstract', 'Abstract', 'No abstract available.', '…', '  Literal <T> &lt; notation\n\nMethods  '])
+def test_existing_abstract_and_user_fields_survive_all_automatic_candidates(library, original_abstract):
     metadata = PaperMetadata(title="  Title  ", abstract=original_abstract, notes="  Keep\nnotes\n ")
     paper = library.create_or_match(library.workspace_id, direct_ids=ExternalIds(pmid="123"), metadata=metadata).paper
     for candidate in (None, "", " \n", "New automatic abstract"):
         result = library.merge_metadata(paper.token, MetadataDelta(abstract=candidate))
         assert result.metadata == paper.metadata
         assert result.metadata.abstract == original_abstract
+
+
+@pytest.mark.parametrize("candidate, expected", [
+    ("We estimate <T> and x < y.", "We estimate <T> and x < y."),
+    ("We refer to <p> and estimate <T>.", "We refer to <p> and estimate <T>."),
+    ("<p>First line.<br/>Second line with &lt;T&gt;.</p>", "First line.\nSecond line with <T>."),
+    ("<p>Scientific <T>notation</T> and <X/>.</p>", "Scientific <T>notation</T> and <X/>."),
+    ("<h2>Abstract</h2><h3>Background</h3><p>α &lt; β; P &lt; 0.05.</p><h3>Methods</h3><p>First line.<br>Second line.</p><h3>Results</h3><p>n &gt; 2.</p>",
+     "Background\nα < β; P < 0.05.\nMethods\nFirst line.\nSecond line.\nResults\nn > 2."),
+    ("Abstract:\nBackground: α < β.\nMethods: n < 5.\nResults: x ≥ 2.",
+     "Background: α < β.\nMethods: n < 5.\nResults: x ≥ 2."),
+])
+def test_new_abstract_preserves_internal_headings_science_and_paragraphs(library, candidate, expected):
+    paper = create(library)
+    result = library.merge_metadata(paper.token, MetadataDelta(abstract=candidate))
+    assert result.metadata.abstract == expected
+    result = library.edit_metadata(result.token, {"notes": "Human notes"})
+    assert library.merge_metadata(result.token, MetadataDelta(ordinary_dates=("2026-11",))).metadata.abstract == expected
+
+
+@pytest.mark.parametrize("candidate", ["Abstract", "Summary:", "<h2>Abstract</h2>", "<h3>Methods</h3>", "<script>unsafe()</script>", "<!-- no abstract -->", '<img alt="No text"/>',
+    'No abstract available', 'No abstract available.', 'No abstract\navailable.', '<p>Abstract unavailable.</p>', 'Please sign in to read the abstract.', 'Read more', '…', '...'])
+def test_ineligible_abstract_does_not_claim_first_candidate(library, candidate):
+    paper = create(library)
+    empty = library.merge_metadata(paper.token, MetadataDelta(abstract=candidate))
+    assert empty.metadata.abstract is None
+    assert library.merge_metadata(paper.token, MetadataDelta(abstract="Short complete result.")).metadata.abstract == "Short complete result."
 
 
 def test_empty_abstract_does_not_claim_first_candidate_and_unrelated_edits_preserve_authority(library):

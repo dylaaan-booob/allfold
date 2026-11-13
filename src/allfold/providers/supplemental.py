@@ -331,7 +331,7 @@ class SupplementalClient(DiscoveryClient):
                         version=version.group(0) if version else None),
                     external_ids=ExternalIds(arxiv=identifier), related_dois=(doi,) if doi else (),
                     title=" ".join(entry.findtext("a:title", "", ns).split()) or None,
-                    abstract=" ".join(entry.findtext("a:summary", "", ns).split()) or None,
+                    abstract=entry.findtext("a:summary", "", ns).strip() or None,
                     authors=tuple(Author(name=name) for item in entry.findall("a:author", ns)
                                   if (name := item.findtext("a:name", "", ns).strip())),
                     publication_type="preprint", publication_date=_date_string(published) if published else None,

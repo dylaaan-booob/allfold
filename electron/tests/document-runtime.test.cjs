@@ -54,3 +54,28 @@ test('unbounded evidence, replaced URLs and unsupported operations fail closed',
   await assert.rejects(f.runtime.call(f.doc,'execute',{code:'arbitrary'}),/document_operation_failed/);
   assert.equal(f.messages.length,2);
 });
+test('fixed extraction forwards only boolean qualification and accepts legal empty metadata',async t=>{
+  const f=fixture(t);
+  await assert.rejects(f.runtime.call(f.doc,'extract',{wantAbstract:'false'}),/document_operation_failed/);
+  await assert.rejects(f.runtime.call(f.doc,'extract',{wantAbstract:false,code:'arbitrary'}),/document_operation_failed/);
+  assert.equal(f.messages.length,0);
+  const pending=f.runtime.call(f.doc,'extract',{wantAbstract:false});
+  assert.deepEqual(JSON.parse(JSON.stringify(f.messages.at(-1).args)),{wantAbstract:false});
+  f.reply({metadata:{dates:[],abstract:null},diagnostics:[],subject:'1:2:3'});
+  assert.deepEqual(JSON.parse(JSON.stringify(await pending)),{metadata:{dates:[],abstract:null},diagnostics:[],subject:'1:2:3',documentId:'1-2-3-4'});
+});
+test('extraction refuses malformed calendar, precision, ordering, size and unwanted abstract',async t=>{
+  for(const metadata of [
+    {dates:[{value:'2020-02-30',precision:'day'}],abstract:null},
+    {dates:[{value:'2020-02',precision:'day'}],abstract:null},
+    {dates:[{value:'2020-02',precision:'month'},{value:'2020-02-02',precision:'day'}],abstract:null},
+    {dates:[{value:'2020-03',precision:'month'},{value:'2020-02',precision:'month'}],abstract:null},
+    {dates:[{value:'2020-02',precision:'month',source:'page'}],abstract:null},
+    {dates:[],abstract:'x'.repeat(65537)},
+    {dates:[],abstract:'must remain null'},
+  ]) {
+    const f=fixture(t),pending=f.runtime.call(f.doc,'extract',{wantAbstract:false});
+    f.reply({metadata,diagnostics:[],subject:'1:2:3'});
+    await assert.rejects(pending,/page_probe_unconfirmed/);assert.equal(f.runtime.pending.size,0);
+  }
+});

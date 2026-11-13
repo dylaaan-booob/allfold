@@ -138,6 +138,7 @@
       "type": "string",
       "enum": [
         "diagnostics_reset",
+        "extract_paper_metadata",
         "invalidate_access",
         "login_carsi",
         "prepare_service",

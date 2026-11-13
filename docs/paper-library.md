@@ -165,11 +165,42 @@ including an equal date independently supplied by the formal article. Neither
 collection derives `publication_date` or Preprint results. Run keeps its existing query and first-version algorithms. Event facts remain
 operation-local inputs; the library ordinary date set has no event/source columns.
 
-Existing nonempty abstract text is retained exactly. Empty/markup-only candidates
-do not occupy the first-candidate opportunity. The existing abstract normalizer
-is reused when accepting a new automatic candidate in the transaction observing
-the latest empty value and manual generation. The repository performs no
-extraction/API queries and does not judge source eligibility.
+Existing nonempty abstract text is retained exactly. Empty/markup-only candidates,
+standalone wrapper/heading-only candidates, pure ellipses and explicit unavailable,
+sign-in or Read more notices do not occupy the first-valid
+opportunity. New automatic candidates use `abstract_text.normalize_abstract_text`,
+separate from legacy Run's `canonicalize.normalize_abstract`. It removes explicit
+markup and standalone Abstract/Summary wrappers, retaining internal scientific
+headings, ordered newline-separated paragraphs, Unicode and inequalities/angle
+notation. `MetadataDelta` qualifies candidates without rewriting their input;
+the short transaction normalizes an accepted new value once. `PaperMetadata`
+preserves existing nonempty strings exactly, including their whitespace, when
+reopening or merging unrelated dates/notes. The first eligible candidate fills
+the latest empty value only if its captured abstract generation still agrees;
+later or longer candidates do not replace it. No schema or bulk rewrite is needed.
+The repository performs no extraction/API queries and does not judge source eligibility.
+
+`BranchContext.read_paper()` is a guarded current projection, never a new token.
+The internal `document_metadata_branch` and `necessary_metadata_branch` emit
+explicit sequences through the original attempt; wrappers return no second delta.
+The native adapter distinguishes empty success, whole failure and an explicitly
+partial abstract result. Candidate/budget failures retain qualified dates and a
+failed branch, with fixed diagnostics in the operation-local service report;
+JSON-LD-only warnings can complete. Document/recovery/diagnostic annotations do
+not enter persistent metadata. Final native live verification precedes normal
+owned-page cleanup; repository commit then rechecks captured task authority
+without revisiting the closed Document.
+
+The current registry still executes same-Paper branches serially. The Reader
+pipeline fixture separately runs actual API/parser and native-DTO services in
+independent threads, each constructing its own `BranchContext`, repository and
+`AttemptClients` scope for one captured attempt. Its component-only registry
+removes the Python Paper commit gate so real independent SQLite transactions
+arbitrate API-first, DOM-first and simultaneous submissions. It covers first-valid
+abstracts, empty candidates, base text, manual edits/clear, notes, duplicate
+sequences, identity rollback and Reject/Restore. Clients/threads end before
+terminal branch/group settlement. This evidence does not enable production
+parallel scheduling, collection registration or a PDF branch.
 
 ## Paths and actual files
 

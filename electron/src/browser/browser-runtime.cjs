@@ -766,6 +766,7 @@ class BrowserRuntime {
     }
   }
   async readDocument(tab=this.taskTab,action='binding',options={}) {
+    checkCanceled(options.signal);
     if(!tab || !this.tabs.has(tab.id))throw new BrowserFailure('navigation','page_closed');
     tab.navigation.check();
     const frame=tab.view.webContents.mainFrame;
@@ -774,7 +775,8 @@ class BrowserRuntime {
       url:frame.url,navigationGeneration:tab.documentGeneration};
     const known=tab.documentIds.get(frame.frameToken);
     if(known)binding.documentId=known;
-    const result=await this.documents.call(binding,action,{},options);
+    const result=await this.documents.call(binding,action,options.args || {},options);
+    checkCanceled(options.signal);
     tab.navigation.check();
     if(!this.documentCurrent(binding))throw new BrowserFailure('navigation','document_changed');
     tab.documentIds.set(frame.frameToken,result.documentId);
@@ -783,6 +785,7 @@ class BrowserRuntime {
   documentBinding(tab=this.taskTab,options={}) {return this.readDocument(tab,'binding',options);}
   accessState(tab=this.taskTab,options={}) {return this.readDocument(tab,'access',options);}
   async confirmArticlePage(target,doc,{signal,deadline=Infinity}={}) {
+    checkCanceled(signal);
     const tab=this.tabs.get(doc.pageId);
     if(!this.documentCurrent(doc))throw new BrowserFailure('navigation','document_changed');
     // No cached DOI or earlier navigation authorizes this use boundary.
@@ -799,6 +802,54 @@ class BrowserRuntime {
     }
     checkCanceled(signal);
     return {...evidence,identity};
+  }
+  async extractPaperMetadata(data,{signal,deadline=Date.now()+TASK_DEADLINE_MS,onWaiting}={}) {
+    if(typeof data?.wantAbstract!=='boolean')throw new BrowserFailure('navigation','document_operation_failed');
+    const verifyAccess=this.pinPreparedPaperAccess(data),owner=this.operation,validateRecovery=owner.validateRecovery;
+    owner.validateRecovery=async options=>{verifyAccess();await validateRecovery?.(options);verifyAccess();};
+    try {
+      const doc=await this.openPaperPage(data,data.identity,{role:'article',signal,deadline,onWaiting});
+      const tab=this.tabs.get(doc.pageId);
+      if(!doc.article.subject)throw new BrowserFailure('navigation','page_probe_unconfirmed');
+      const result=await this.readDocument(tab,'extract',{signal,deadline,args:{wantAbstract:data.wantAbstract}});
+      checkCanceled(signal);
+      if(!this.documentCurrent(doc) || result.documentId!==doc.documentId || result.subject!==doc.article.subject)
+        throw new BrowserFailure('navigation','document_changed');
+      // Final live use boundary precedes runTask's actual page cleanup. A later normal
+      // owner close does not revoke this already verified small result.
+      const verified=await this.confirmArticlePage(data.identity,doc,{signal,deadline});
+      if(verified.article.subject!==result.subject)throw new BrowserFailure('navigation','document_changed');
+      checkCanceled(signal);verifyAccess();
+      if(Date.now()>=deadline)throw timeoutFailure('navigation','document_operation');
+      return {outcome:'retrieved',metadata:result.metadata,extraction_diagnostics:result.diagnostics,
+        document:{pageId:doc.pageId,processId:doc.processId,frameToken:doc.frameToken,
+          documentId:doc.documentId,navigationGeneration:doc.navigationGeneration}};
+    } finally {owner.validateRecovery=validateRecovery;}
+  }
+  pinPreparedPaperAccess(data) {
+    const owner=this.operation;
+    if(!data.service_id)return ()=>{};
+    const key=this.accessKey(data),preparation=data.preparation_key,scope=data.service_scope.scope_id,
+      service=data.service_id,page=data.target_page_id,manual=data.manually_confirmed;
+    const context=page==null?null:this.accessContexts.get(key);
+    const verify=()=>{
+      checkCanceled(owner.signal);
+      if(!this.operations.has(owner) || owner.association.service_id!==service || owner.association.service_scope?.scope_id!==scope
+        || data.service_id!==service || data.service_scope.scope_id!==scope || data.preparation_key!==preparation || data.target_page_id!==page)
+        throw new BrowserFailure('preparation','document_changed');
+      if(page==null) {
+        // This explicit host-captured manual policy has no retained target to pin;
+        // its saved authority is still checked by the task and recovery callback.
+        if(manual!==true || data.manually_confirmed!==true)throw new BrowserFailure('preparation','document_changed');
+      } else if(!Number.isSafeInteger(page) || !context?.valid || context.accessKind!=='target'
+        || this.accessContexts.get(key)!==context || context.preparationKey!==preparation
+        || context.tab.id!==page || this.tabs.get(page)!==context.tab || context.tab.closing || context.tab.view.webContents.isDestroyed())
+        throw new BrowserFailure('preparation','document_changed');
+    };
+    verify();
+    if(context){context.pins.add(owner);context.lastUsed=Date.now();}
+    // releaseOperation retains this pin through actual temporary-page destruction.
+    return verify;
   }
   documentFrame(doc,owner=this.operationContext.getStore()) {
     if(owner && !this.ownsPage(owner,doc.pageId))return null;
