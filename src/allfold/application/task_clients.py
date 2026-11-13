@@ -120,11 +120,12 @@ class IndependentClientFactory:
             key = read_credential(self.config_path, provider='openalex')[0]
             request_guard()
             options = dict(http_options or {})
-            resolver = options.pop('resolver', None)
+            # These capabilities belong to the PDF reader, not ProviderReadClient.
+            pdf_options = {name: options.pop(name) for name in ('resolver', 'credentials', 'max_redirects')
+                           if name in options}
             with ExitStack() as resources:
                 http = resources.enter_context(PdfHttpClient(guard=request_guard, cancel_event=cancel_event,
-                    deadline=deadline, pacing_state=self.pacing_state,
-                    **({'resolver': resolver} if resolver is not None else {}), **options))
+                    deadline=deadline, pacing_state=self.pacing_state, **pdf_options, **options))
                 openalex = resources.enter_context(OpenAlexClient(api_key=key, guard=request_guard,
                     cancel_event=cancel_event, deadline=deadline, pacing_state=self.pacing_state,
                     request_url_guard=http.openalex_request_guard, **options))
