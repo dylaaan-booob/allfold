@@ -179,6 +179,50 @@ class WriteToken:
     body_generation: int
 
 
+CollectionStatus = Literal["queued", "running", "completed", "failed", "cancelled"]
+CollectionBranchState = Literal["queued", "running", "completed", "skipped", "failed", "cancelled"]
+
+
+@dataclass(frozen=True)
+class CollectionBranch:
+    name: str
+    state: CollectionBranchState
+    last_sequence: int = 0
+    reason: str | None = None
+
+
+@dataclass(frozen=True)
+class CollectionRecord:
+    metadata_generation: int
+    attempt: int
+    lifecycle_id: UUID
+    status: CollectionStatus
+    cancel_requested: bool
+    reason: str | None
+    branches: tuple[CollectionBranch, ...]
+    write: WriteToken
+
+    @property
+    def active(self) -> bool:
+        """Includes cancellation/cleanup until the owner confirms actual settlement."""
+        return self.status in {"queued", "running"}
+
+
+@dataclass(frozen=True)
+class CollectionToken:
+    write: WriteToken
+    attempt: int
+    lifecycle_id: UUID
+
+    @property
+    def workspace_id(self) -> UUID:
+        return self.write.workspace_id
+
+    @property
+    def paper_id(self) -> UUID:
+        return self.write.paper_id
+
+
 @dataclass(frozen=True)
 class PaperRecord:
     workspace_id: UUID
@@ -193,6 +237,11 @@ class PaperRecord:
     body: BodyReference | None
     primary_identity: DirectIdentity | None = None
     revision: int = 0
+    collection: CollectionRecord | None = None
+
+    @property
+    def collection_status(self) -> str:
+        return self.collection.status if self.collection is not None else "not_started"
 
     @property
     def token(self) -> WriteToken:
@@ -204,3 +253,11 @@ class PaperRecord:
 class CreationResult:
     paper: PaperRecord
     created: bool
+
+
+@dataclass(frozen=True)
+class CollectionAdmission:
+    paper: PaperRecord
+    token: CollectionToken | None
+    admitted: bool
+    created: bool = False
