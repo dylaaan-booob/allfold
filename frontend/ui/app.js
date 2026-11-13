@@ -1321,10 +1321,17 @@ async function applyPaperResponse(result) {
     journal ||= snapshot[status].papers.find(entry=>entry.paper.id===paper.id)?.journal;
     snapshot[status].papers=snapshot[status].papers.filter(entry=>entry.paper.id!==paper.id);
   }
-  if(!paper.metadata_present || !journal)journal={key:'unmapped:Unassigned',name:'Unassigned',issn:null,eissn:null,source_type:'unmapped',papers:[]};
+  if(!paper.metadata_present || !journal)journal={key:'unmapped:Unassigned',name:'Unassigned',issn:null,eissn:null,source_type:'unmapped',group:null,papers:[]};
   if(paper.status==='candidate'){
     let target=snapshot.subjects.flatMap(group=>group.journals).find(source=>source.key===journal.key);
-    if(!target){target={...journal,papers:[]};snapshot.subjects.push({name:'Unmapped sources',journals:[target]});}
+    if(!target){
+      target={...journal,papers:[]};
+      const unmapped=journal.source_type==='unmapped',name=unmapped?'Unmapped sources':journal.group ?? 'Ungrouped / virtual';
+      let group=snapshot.subjects.find(group=>group.name===name && group.journals.some(source=>
+        source.group===journal.group && (source.source_type==='unmapped')===unmapped));
+      if(!group)snapshot.subjects.push(group={name,journals:[]});
+      group.journals.push(target);
+    }
     target.papers.push(paper);
   }else if(['downloaded','trash'].includes(paper.status))snapshot[paper.status].papers.push({paper,journal});
   snapshot.subjects=snapshot.subjects.map(group=>({...group,journals:group.journals.filter(source=>source.papers.length)})).filter(group=>group.journals.length);

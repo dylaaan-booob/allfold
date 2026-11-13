@@ -187,11 +187,11 @@ def install_ui_next(app: FastAPI, config_path: Path, csrf_token: str) -> None:
                     entry['papers'].append(item)
                 else:
                     target = trash if paper.status is PaperStatus.TRASH else downloaded
-                    target.append(dict(paper=item, journal={name: entry[name] for name in ('key', 'issn', 'eissn', 'name', 'source_type')}))
+                    target.append(dict(paper=item, journal={name: value for name, value in entry.items() if name != 'papers'}))
             groups = [dict(name='Unmapped sources' if unmapped else name if name is not None else 'Ungrouped / virtual',
                            journals=[entry for entry in entries if entry['papers']])
                       for (name, unmapped), entries in subjects.items() if any(entry['papers'] for entry in entries)]
-            catalog = [{name: entry[name] for name in ('key', 'issn', 'eissn', 'name', 'source_type', 'service_id')}
+            catalog = [{name: value for name, value in entry.items() if name != 'papers'}
                        for entry in records.values()]
             return response(dict(workspace_id=workspace.workspace_id, revision=workspace.revision,
                 initialized=workspace.initialized, subjects=groups, csrf_token=csrf_token,

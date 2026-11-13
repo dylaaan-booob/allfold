@@ -38,6 +38,8 @@ const records=journals.map((j,i)=>({key:j.issn,issn:j.issn,name:j.name,group:j.g
 Object.assign(records[0],{name:'Synthetic Conference',source_type:'unmapped',issn:null,group:'Old scope'});
 const workspace={workspace_id:'fixture-library',revision:0,initialized:true,csrf_token:'fixture',issues:[],counts:{candidates:48,active_journals:24},subjects:[{name:'Group 0',journals:records}],
   trash:{papers:[]},downloaded:{papers:[{paper:paper(100,'downloaded'),journal:records[0]},{paper:paper(101,'downloaded'),journal:records[1]}],journals:records,services:[],settings:{},titles:{}}};
+const workspaceSnapshot=()=>({...workspace,subjects:workspace.subjects.map(group=>({...group,
+  journals:group.journals.filter(journal=>journal.papers.length)})).filter(group=>group.journals.length)});
 const run={active:false,snapshot:{status:'IDLE',provider:null},providers:Object.fromEntries(['integrated','wos'].map(id=>[id,{enabled:false,message:'Offline fixture',result_summary:null}]))};
 const mimes={'.html':'text/html','.js':'text/javascript','.css':'text/css','.json':'application/json','.woff2':'font/woff2','.ttf':'font/ttf','.otf':'font/otf','.png':'image/png','.mp4':'video/mp4'};
 let rejectAutosave=false,holdWorkspaceResponse,holdPaperActionResponse,resolveInitialCAS,credentialState={ok:false,error:'cas_store_unreadable',configured:false,username:'',revision:'d'.repeat(64)};
@@ -104,11 +106,11 @@ const server=http.createServer((req,res)=>{
     let text='';req.on('data',chunk=>{text+=chunk;});req.on('end',()=>{const patch=JSON.parse(text);if(rejectAutosave){res.writeHead(200,{'Content-Type':'application/json'});res.end(JSON.stringify({...settings,saved:false,outcome:'WRITE_FAILED',message:'Synthetic offline write'}));return;}if(patch.changes.keyword_expression==='lea*'){res.writeHead(200,{'Content-Type':'application/json'});res.end(JSON.stringify({...settings,saved:false,outcome:'INVALID_DRAFT',validation:{issues:[{field:'keyword_expression',message:'Prefix needs at least four characters'}]}}));return;}Object.assign(settings.values,patch.changes);settings.values.monitor_revision_digest+='x';setTimeout(()=>{res.writeHead(200,{'Content-Type':'application/json'});res.end(JSON.stringify({...settings,saved:true,outcome:'SAVED'}));},90);});return;
   }
   if(route==='/api/ui-next/workspace' && holdWorkspaceResponse){
-    const body=JSON.stringify(workspace),release=holdWorkspaceResponse;holdWorkspaceResponse=null;
+    const body=JSON.stringify(workspaceSnapshot()),release=holdWorkspaceResponse;holdWorkspaceResponse=null;
     release(()=>{res.writeHead(200,{'Content-Type':'application/json'});res.end(body);});return;
   }
   if(route.startsWith('/api/') || route==='/settings/covers/search'){
-    const data=route==='/api/ui-next/workspace'?workspace:route==='/api/ui-next/settings'?settings:
+    const data=route==='/api/ui-next/workspace'?workspaceSnapshot():route==='/api/ui-next/settings'?settings:
       route==='/api/ui-next/run'?run:route==='/api/ui-next/run-expression'?{providers:Object.fromEntries([...settings.values.provider_order,'integrated'].map(id=>[id,{expression:'causal',error:null}]))}:route==='/settings/covers/search'?cover_search:
       route==='/api/login/state'?{active:false,phase:'idle',services:[]}:{active:false,phase:'idle',navigation:null,can_cancel:false};
     res.writeHead(200,{'Content-Type':'application/json'});res.end(JSON.stringify(data));return;
@@ -623,6 +625,38 @@ $('s-run-overview-open').click();
     await ready("document.getElementById('view-paper-title').textContent==='openalex: W123' && document.getElementById('paper-preprint-lookup').hidden && document.getElementById('paper-dev-tools').hidden");
     await check(()=>{
       if(document.getElementById('paper-date-evidence').children.length || [...document.querySelectorAll('#paper-dates dd')].some(node=>node.textContent!=='—'))throw Error('Cleared metadata reappeared');
+    });
+    for(const id of ['paper-8','paper-9']){
+      await js(`document.getElementById('array-candidates').click(),window.workspaceArray.openPaper('${id}')`);
+      await ready(`document.getElementById('paper-detail').dataset.paperId==='${id}' && !document.getElementById('reject-paper').disabled`);
+      await js("document.getElementById('reject-paper').click()");
+      await ready(`window.inboxKept.entries('trash').some(entry=>entry.paper.id==='${id}')`);
+    }
+    await check(()=>{
+      if(uiNext.data.subjects.some(group=>group.journals.some(journal=>journal.key==='0004-0000')))throw Error('Last Candidate Journal remained in subjects');
+    });
+    await js("window.allfoldRefreshWorkspace()");
+    await js("document.getElementById('array-trash').click(),window.workspaceArray.openPaper('paper-9')");
+    await ready("document.getElementById('paper-detail').dataset.paperId==='paper-9' && !document.getElementById('restore-paper').disabled");
+    await js("document.getElementById('restore-paper').click()");
+    await ready("window.inboxKept.candidates().some(entry=>entry.paper.id==='paper-9')");
+    await check(()=>{
+      const group=uiNext.data.subjects.find(group=>group.journals.some(journal=>journal.papers.some(paper=>paper.id==='paper-9')));
+      const journal=window.inboxKept.candidates().find(entry=>entry.paper.id==='paper-9').journal;
+      if(group?.name!=='Group 0' || journal.key!=='0004-0000' || journal.group!=='Group 0' || journal.logicalGroupName!=='Group 0')throw Error('Restore lost the saved Journal/Group projection');
+      document.getElementById('array-candidates').click();window.workspaceArray.openPaper('paper-9');
+      if(document.getElementById('array-journal-subject').textContent!=='Group 0')throw Error('ARRAY restored the wrong group label');
+    });
+    await ready("!document.getElementById('reject-paper').disabled");
+    await js("document.getElementById('reject-paper').click()");
+    await ready("window.inboxKept.entries('trash').some(entry=>entry.paper.id==='paper-9')");
+    await js("document.getElementById('array-trash').click(),window.workspaceArray.openPaper('paper-9')");
+    await ready("!document.getElementById('clear-paper-metadata').disabled");
+    await js("document.getElementById('clear-paper-metadata').click()");
+    await ready("!window.inboxKept.entries('trash').find(entry=>entry.paper.id==='paper-9').paper.metadata_present");
+    await check(()=>{
+      const journal=window.inboxKept.entries('trash').find(entry=>entry.paper.id==='paper-9').journal;
+      if(journal.source_type!=='unmapped' || journal.issn!==null || journal.group!==null)throw Error('Cleared Paper retained its former Journal grouping');
     });
     console.log('LAYOUT DOM PASS');
   }catch(error){console.error(error.stack);process.exitCode=1;}

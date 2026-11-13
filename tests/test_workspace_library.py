@@ -187,3 +187,37 @@ def test_legacy_import_settings_preserve_only_neutral_workflow_values(tmp_path):
     raw = config.read_text()
     assert 'workflow:' in raw and 'paper_global_concurrency: 6' in raw
     assert all(retired not in raw for retired in ('kept_workflow', 'zotero_', 'translator_concurrency'))
+
+
+def test_trash_retains_authoritative_journal_group_until_metadata_is_cleared(tmp_path):
+    from fastapi.testclient import TestClient
+    from allfold.config import JournalConfig, render_settings_list_text
+    from allfold.web.app import create_app
+    from electron_test_helpers import OfflineBridge
+    from library_application_helpers import create_paper
+
+    config, _, paper = create_paper(tmp_path)
+    journals = tmp_path / 'list.md'
+    journals.write_text(render_settings_list_text(None,
+        (JournalConfig(name='Biometrics', issn='0006-341X', group='Statistics'),),
+        path=journals, groups=('Statistics',), custom_labels=(), access_services=()))
+    with TestClient(create_app(config, electron_bridge=OfflineBridge()), base_url='http://localhost') as client:
+        initial = client.get('/api/ui-next/workspace').json()
+        assert initial['subjects'][0]['name'] == 'Statistics'
+        body = {'csrf_token': initial['csrf_token'], 'workspace_id': initial['workspace_id']}
+        endpoint = f'/api/ui-next/papers/{paper.id}'
+        assert client.post(f'{endpoint}/reject', json=body).status_code == 200
+        snapshot = client.get('/api/ui-next/workspace').json()
+        assert not snapshot['subjects']
+        journal = snapshot['trash']['papers'][0]['journal']
+        assert journal['key'] == '0006-341X' and journal['source_type'] == 'journal'
+        assert journal['group'] == 'Statistics'
+        assert snapshot['downloaded']['journals'][0]['group'] == 'Statistics'
+        assert client.post(f'{endpoint}/restore', json=body).status_code == 200
+        assert client.get('/api/ui-next/workspace').json()['subjects'][0]['name'] == 'Statistics'
+        assert client.post(f'{endpoint}/reject', json=body).status_code == 200
+        assert client.post(f'{endpoint}/clear-metadata', json=body).status_code == 200
+        cleared = client.get('/api/ui-next/workspace').json()['trash']['papers'][0]
+        assert not cleared['paper']['metadata_present'] and not cleared['paper']['journal_issns']
+        assert cleared['journal']['source_type'] == 'unmapped' and cleared['journal']['group'] is None
+        assert cleared['journal']['issn'] is None
