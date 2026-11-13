@@ -11,7 +11,7 @@ from uuid import UUID, uuid4
 
 
 DATABASE_NAME = "papers.sqlite"
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2
 APPLICATION_ID = 0x41464C44  # AFLD; unrelated to configuration-level UserState.
 
 
@@ -43,7 +43,7 @@ class LibraryBusyError(LibraryError):
     pass
 
 
-SCHEMA = (
+V1_SCHEMA = (
     "CREATE TABLE library_info (singleton INTEGER PRIMARY KEY CHECK (singleton = 1), workspace_id TEXT NOT NULL UNIQUE)",
     """CREATE TABLE paper_core (
         paper_id TEXT PRIMARY KEY NOT NULL,
@@ -65,6 +65,26 @@ SCHEMA = (
         relative_path TEXT NOT NULL, source_url TEXT,
         size_bytes INTEGER CHECK (size_bytes IS NULL OR size_bytes >= 0))""",
 )
+
+
+PROJECTION_SCHEMA = (
+    "CREATE TABLE library_state (singleton INTEGER PRIMARY KEY CHECK (singleton = 1), revision INTEGER NOT NULL DEFAULT 0 CHECK (revision >= 0))",
+    """CREATE TABLE paper_projection (
+        paper_id TEXT PRIMARY KEY NOT NULL REFERENCES paper_core(paper_id) ON DELETE RESTRICT,
+        primary_namespace TEXT, primary_value TEXT,
+        revision INTEGER NOT NULL DEFAULT 1 CHECK (revision > 0),
+        CHECK ((primary_namespace IS NULL) = (primary_value IS NULL)))""",
+)
+SCHEMA = V1_SCHEMA + PROJECTION_SCHEMA
+
+
+def _schema_definitions(connection):
+    return {row["name"]: " ".join(row["sql"].split()) for row in connection.execute(
+        "SELECT name, sql FROM sqlite_schema WHERE type IN ('table', 'index') AND sql IS NOT NULL")}
+
+
+def _expected_schema(statements):
+    return {statement.split()[2]: " ".join(statement.split()) for statement in statements}
 
 
 def _validate_paths(workspace: Path) -> Path:
@@ -93,11 +113,32 @@ def _sqlite_error(error: sqlite3.Error) -> LibraryError:
 
 
 def upgrade_schema(connection: sqlite3.Connection, version: int) -> None:
-    """The explicit upgrade entry point; add only known, transactional migrations here."""
-    if version > SCHEMA_VERSION:
-        raise UnsupportedLibrarySchema(f"Library schema {version} is newer than supported {SCHEMA_VERSION}")
-    if version < SCHEMA_VERSION:
-        raise UnsupportedLibrarySchema(f"No upgrade is defined from library schema {version}")
+    """Upgrade only the exact known v1 schema, atomically and without losing payloads."""
+    if version not in {1, SCHEMA_VERSION}:
+        raise UnsupportedLibrarySchema(f"Unsupported library schema {version}; supported version is {SCHEMA_VERSION}")
+    if version == SCHEMA_VERSION:
+        return
+    if _schema_definitions(connection) != _expected_schema(V1_SCHEMA):
+        raise LibraryCorruptError("Library v1 schema does not match its recorded version")
+    if connection.execute("PRAGMA quick_check").fetchone()[0] != "ok" or connection.execute("PRAGMA foreign_key_check").fetchone():
+        raise LibraryCorruptError("Library v1 integrity check failed")
+    # Validate saved content before making the first schema change. Missing v1
+    # discovery/primary values remain explicitly unknown, never invented on read.
+    from allfold.persistence.library_models import PaperMetadata
+    for row in connection.execute("SELECT payload FROM paper_metadata"):
+        try:
+            PaperMetadata.model_validate_json(row[0])
+        except ValueError as error:
+            raise LibraryCorruptError("Invalid saved v1 Paper metadata") from error
+    for statement in PROJECTION_SCHEMA:
+        connection.execute(statement)
+    connection.execute("INSERT INTO library_state VALUES (1, 0)")
+    for row in connection.execute("SELECT paper_id FROM paper_core"):
+        identities = connection.execute("SELECT namespace, normalized_value FROM paper_identities WHERE paper_id = ?", (row[0],)).fetchall()
+        dois = [identity for identity in identities if identity[0] == "doi"]
+        primary = dois[0] if len(dois) == 1 else identities[0] if len(identities) == 1 else (None, None)
+        connection.execute("INSERT INTO paper_projection VALUES (?, ?, ?, 1)", (row[0], *primary))
+    connection.execute(f"PRAGMA user_version = {SCHEMA_VERSION}")
 
 
 class LibraryDatabase:
@@ -135,9 +176,10 @@ class LibraryDatabase:
                     for statement in SCHEMA:
                         connection.execute(statement)
                     connection.execute("INSERT INTO library_info VALUES (1, ?)", (str(uuid4()),))
+                    connection.execute("INSERT INTO library_state VALUES (1, 0)")
                     connection.execute(f"PRAGMA application_id = {APPLICATION_ID}")
                     connection.execute(f"PRAGMA user_version = {SCHEMA_VERSION}")
-            with self.transaction() as connection:
+            with self.transaction(write=True) as connection:
                 self.workspace_id = self._validate_schema(connection)
         except BaseException as error:
             self.close()
@@ -152,10 +194,7 @@ class LibraryDatabase:
         if connection.execute("PRAGMA application_id").fetchone()[0] != APPLICATION_ID:
             raise LibraryCorruptError("Not an Allfold Paper library")
         upgrade_schema(connection, connection.execute("PRAGMA user_version").fetchone()[0])
-        expected_schema = {statement.split()[2]: " ".join(statement.split()) for statement in SCHEMA}
-        actual_schema = {row["name"]: " ".join(row["sql"].split()) for row in connection.execute(
-            "SELECT name, sql FROM sqlite_schema WHERE type IN ('table', 'index') AND sql IS NOT NULL")}
-        if actual_schema != expected_schema:
+        if _schema_definitions(connection) != _expected_schema(SCHEMA):
             raise LibraryCorruptError("Library schema does not match its recorded version")
         if connection.execute("PRAGMA quick_check").fetchall()[0][0] != "ok":
             raise LibraryCorruptError("Library integrity check failed")

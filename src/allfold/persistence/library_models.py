@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from datetime import datetime
 from typing import Any, Literal
 from uuid import UUID
 
@@ -11,7 +12,8 @@ from pydantic import ConfigDict, Field, field_validator
 from allfold.canonicalize import normalize_abstract
 from allfold.identifiers import normalize_external_id
 from allfold.models import (
-    Author, DomainModel, MetadataSource, NonEmptyStr, ProviderTopic, parse_publication_date,
+    Author, DomainModel, EvidenceDate, EvidenceDateKind, MetadataSource, NonEmptyStr,
+    ProviderRecordRef, ProviderTopic, parse_publication_date,
 )
 
 
@@ -30,16 +32,19 @@ class PreprintResult(DomainModel):
 
     model_config = ConfigDict(revalidate_instances="always")
 
-    provider: Literal["arxiv", "biorxiv", "medrxiv"]
+    provider: Literal["arxiv", "biorxiv", "medrxiv", "europe_pmc", "crossref"]
     identifier: NonEmptyStr
     date: str | None = None
     version: NonEmptyStr | None = None
     url: NonEmptyStr | None = None
+    version_family: NonEmptyStr | None = None
+    first_version: bool = False
 
     @field_validator("identifier")
     @classmethod
     def validate_identifier(cls, value, info):
-        normalized = normalize_external_id(info.data.get("provider"), value)
+        provider = info.data.get("provider")
+        normalized = normalize_external_id("doi" if provider == "crossref" else provider, value)
         if normalized is None:
             raise ValueError("Invalid supported Preprint identifier")
         return normalized
@@ -54,6 +59,7 @@ class PaperMetadata(DomainModel):
     model_config = ConfigDict(revalidate_instances="always", str_strip_whitespace=False)
 
     title: NonEmptyStr
+    discovered_at: datetime | None = None
     journal: NonEmptyStr | None = None
     conference: NonEmptyStr | None = None
     publication_type: Literal["journal", "conference", "preprint"] | None = None
@@ -66,9 +72,26 @@ class PaperMetadata(DomainModel):
     sources: tuple[MetadataSource, ...] = ()
     ordinary_dates: tuple[str, ...] = ()
     preprints: tuple[PreprintResult, ...] = ()
+    preprint_evidence: tuple[EvidenceDate, ...] = ()
+    preprint_relations: tuple[ProviderRecordRef, ...] = ()
+    first_public_at: str | None = None
     notes: str = ""
 
-    @field_validator("publication_date", mode="before")
+    @field_validator("discovered_at")
+    @classmethod
+    def validate_discovered_at(cls, value):
+        if value is not None and value.utcoffset() is None:
+            raise ValueError("discovered_at must include a timezone")
+        return value
+
+    @field_validator("preprint_evidence")
+    @classmethod
+    def validate_preprint_evidence(cls, values):
+        if any(item.kind != EvidenceDateKind.PREPRINT for item in values):
+            raise ValueError("Only independent Preprint proof belongs in preprint_evidence")
+        return tuple(sorted(set(values), key=lambda item: item.model_dump_json()))
+
+    @field_validator("publication_date", "first_public_at", mode="before")
     @classmethod
     def validate_publication_date(cls, value: Any) -> str | None:
         return parse_publication_date(value)
@@ -97,6 +120,19 @@ class MetadataDelta(DomainModel):
     ordinary_dates: tuple[str, ...] = ()
     preprints: tuple[PreprintResult, ...] = ()
     sources: tuple[MetadataSource, ...] = ()
+    preprint_evidence: tuple[EvidenceDate, ...] = ()
+    preprint_relations: tuple[ProviderRecordRef, ...] = ()
+    first_public_at: str | None = None
+
+    @field_validator("preprint_evidence")
+    @classmethod
+    def validate_preprint_evidence(cls, values):
+        return PaperMetadata.validate_preprint_evidence(values)
+
+    @field_validator("first_public_at", mode="before")
+    @classmethod
+    def validate_first_public(cls, value):
+        return parse_publication_date(value)
 
     @field_validator("abstract")
     @classmethod
@@ -155,6 +191,8 @@ class PaperRecord:
     identities: tuple[DirectIdentity, ...]
     metadata: PaperMetadata | None
     body: BodyReference | None
+    primary_identity: DirectIdentity | None = None
+    revision: int = 0
 
     @property
     def token(self) -> WriteToken:

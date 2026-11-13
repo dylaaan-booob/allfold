@@ -213,3 +213,48 @@ def test_replaced_open_database_is_rejected(tmp_path):
         with pytest.raises(UnsafeLibraryPath):
             library.list_papers()
         assert path.read_bytes() == b"replacement"
+
+
+def test_known_v1_upgrade_preserves_library_and_metadata_without_inventing_discovery(tmp_path):
+    from uuid import uuid4
+    from allfold.persistence.library_database import APPLICATION_ID, V1_SCHEMA
+
+    workspace_id, paper_id = uuid4(), uuid4()
+    original = PaperMetadata(title='Existing v1 title', notes='Existing notes').model_dump_json(exclude={'discovered_at'})
+    with sqlite3.connect(tmp_path / DATABASE_NAME) as connection:
+        for statement in V1_SCHEMA:
+            connection.execute(statement)
+        connection.execute('INSERT INTO library_info VALUES (1, ?)', (str(workspace_id),))
+        connection.execute('INSERT INTO paper_core (paper_id, excluded) VALUES (?, 1)', (str(paper_id),))
+        connection.execute('INSERT INTO paper_identities VALUES (?, ?, ?)', ('doi', '10.1234/main', str(paper_id)))
+        connection.execute('INSERT INTO paper_metadata (paper_id, payload) VALUES (?, ?)', (str(paper_id), original))
+        connection.execute('INSERT INTO paper_body VALUES (?, ?, NULL, NULL)', (str(paper_id), 'Documents/existing.pdf'))
+        connection.execute(f'PRAGMA application_id = {APPLICATION_ID}')
+        connection.execute('PRAGMA user_version = 1')
+    with PaperRepository.open(tmp_path, expected_workspace_id=workspace_id) as repository:
+        paper = repository.get(paper_id)
+        assert paper.excluded and paper.metadata.notes == 'Existing notes'
+        assert paper.metadata.discovered_at is None
+        assert paper.primary_identity.value == '10.1234/main'
+        assert paper.body.relative_path == 'Documents/existing.pdf'
+    with PaperRepository.open(tmp_path) as reopened:
+        assert reopened.get(paper_id) == paper
+
+
+def test_invalid_v1_payload_fails_upgrade_without_partial_schema(tmp_path):
+    from uuid import uuid4
+    from allfold.persistence.library_database import APPLICATION_ID, V1_SCHEMA
+
+    paper_id = str(uuid4())
+    with sqlite3.connect(tmp_path / DATABASE_NAME) as connection:
+        for statement in V1_SCHEMA:
+            connection.execute(statement)
+        connection.execute('INSERT INTO library_info VALUES (1, ?)', (str(uuid4()),))
+        connection.execute('INSERT INTO paper_core (paper_id) VALUES (?)', (paper_id,))
+        connection.execute('INSERT INTO paper_metadata (paper_id, payload) VALUES (?, ?)', (paper_id, '{"title":""}'))
+        connection.execute(f'PRAGMA application_id = {APPLICATION_ID}')
+        connection.execute('PRAGMA user_version = 1')
+    before = (tmp_path / DATABASE_NAME).read_bytes()
+    with pytest.raises(LibraryCorruptError):
+        PaperRepository.open(tmp_path)
+    assert (tmp_path / DATABASE_NAME).read_bytes() == before
