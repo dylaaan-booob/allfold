@@ -59,7 +59,8 @@ function fixture(t) {
       this.url=url;this.mainFrame.url=url;this.emit('did-navigate',{},url,200);this.emit('did-frame-navigate',{},url,200);this.emit('did-finish-load');
     }
     async executeJavaScriptInIsolatedWorld(){return this.access || {markers:{},imperva:null,limited:false};}
-    close(){this.destroyed=true;this.emit('destroyed');}
+    close(){this.closeRequested=true;if(!this.deferClose)this.destroy();}
+    destroy(){if(this.destroyed)return;this.destroyed=true;this.emit('destroyed');}
   }
   class Window extends EventEmitter {
     constructor(options){super();this.options=options;this.webContents=new Contents();this.children=new Set();this.contentView={
@@ -818,7 +819,7 @@ test('Login opens one managed CARSI Portal and prepares independent Service page
     };
   });
   const signal=new AbortController().signal;
-  const common={workflow_id:'login_workflow',service_scope:serviceScope};
+  const common={workflow_id:'login_workflow',service_scope:serviceScope,authentication_key:'e'.repeat(64)};
   const institution={...common,request_id:'login',task_id:'institution',use_shibboleth:true,
     login_url:'https://ds.carsi.edu.cn/Shibboleth.sso/Login'};
   const login=await browser.runTask(signal,institution,()=>loginInstitution(browser,institution,{signal,progress(){}}));
@@ -981,7 +982,7 @@ for(const mode of ['same-tab','popup','follow-up','follow-up-post','after-limit-
       };
     });
     const signal=new AbortController().signal;
-    const institution={workflow_id:'login_reentry',request_id:'login',task_id:'login',service_scope:serviceScope,
+    const institution={workflow_id:'login_reentry',request_id:'login',task_id:'login',service_scope:serviceScope,authentication_key:'e'.repeat(64),
       use_shibboleth:true,login_url:'https://ds.carsi.edu.cn/Shibboleth.sso/Login'};
     const login=await browser.runTask(signal,institution,()=>loginInstitution(browser,institution,{signal,progress(){}}));
     const userPage=browser.createTab();
@@ -1270,4 +1271,86 @@ test('authentication binding replaced during an owned redirect returns loading i
     assert.equal(browser.documentCurrent(current.binding),true);
     controller.abort();await assert.rejects(browser.inspectAuthentication(tab),/canceled|document_changed/);
   });
+});
+
+
+test('shared Service admission waits for actual destruction and task completion cleans every temporary page',{timeout:5000},async t=>{
+  const {BrowserRuntime}=fixture(t),browser=new BrowserRuntime({pageLimits:{global_limit:4,service_limit:3}});
+  t.after(()=>browser.close());await browser.ready;
+  const signal=new AbortController().signal,pages=[];let finish,ready;
+  const started=new Promise(resolve=>{ready=resolve;});
+  const first=browser.runTask(signal,{request_id:'physical_a',service_scope:serviceScope,service_id:serviceId},async()=>{
+    for(let i=0;i<3;i++){const tab=await browser.newTaskPage({signal,deadline:Date.now()+2000});tab.view.webContents.deferClose=true;pages.push(tab);}
+    ready();await new Promise(resolve=>{finish=resolve;});
+  });
+  await started;finish();await new Promise(setImmediate);
+  assert.equal(pages.every(tab=>tab.view.webContents.closeRequested),true);
+  assert.equal(browser.tabs.size,3);
+  let admitted=false;
+  const next=browser.runTask(signal,{request_id:'physical_b',service_scope:serviceScope,service_id:serviceId},async()=>{
+    const tab=await browser.newTaskPage({signal,deadline:Date.now()+2000});admitted=true;
+    assert.notEqual(tab.id,pages[0].id);
+  });
+  await new Promise(setImmediate);assert.equal(admitted,false);assert.equal(browser.tabs.size,3);
+  pages[0].view.webContents.destroy();await next;
+  assert.equal(admitted,true);assert.equal(browser.tabs.size,2);
+  pages[1].view.webContents.destroy();pages[2].view.webContents.destroy();await first;
+  assert.equal(browser.tabs.size,0);
+});
+
+test('Manual Prepare transfers its target to one bounded access context and replaces the previous physical target',async t=>{
+  const {BrowserRuntime}=fixture(t),browser=new BrowserRuntime({pageLimits:{global_limit:4,service_limit:3}});
+  const {visitManualService}=require('../src/workflows/browser-operations.cjs');
+  t.after(()=>browser.close());await browser.ready;
+  const signal=new AbortController().signal,data={request_id:'prepare_one',task_id:'prepare_one',workflow_id:'login',
+    service_scope:serviceScope,service_id:serviceId,preparation_key:'d'.repeat(64),access_url:'https://manual.example/'};
+  const prepare=()=>browser.runTask(signal,data,()=>visitManualService(browser,data,{signal,progress(){}}));
+  const first=await prepare(),old=browser.tabs.get(first.evidence.target_page_id);
+  assert.ok(old);assert.equal(browser.tabs.size,1);
+  const second=await prepare(),current=browser.tabs.get(second.evidence.target_page_id);
+  assert.ok(current);assert.notEqual(current.id,old.id);assert.equal(old.view.webContents.isDestroyed(),true);assert.equal(browser.tabs.size,1);
+  await browser.runTask(signal,{...data,request_id:'borrow'},()=>browser.bindTaskPage(current,signal));
+  assert.equal(browser.tabs.get(current.id),current);assert.equal(current.taskOwner,null);
+});
+
+test('managed popup consumes reserved capacity and retained target survives temporary opener cleanup',async t=>{
+  const {BrowserRuntime}=fixture(t),browser=new BrowserRuntime({pageLimits:{global_limit:4,service_limit:3}});
+  t.after(()=>browser.close());await browser.ready;
+  const signal=new AbortController().signal,data={request_id:'popup',workflow_id:'login',service_scope:serviceScope,
+    service_id:serviceId,preparation_key:'d'.repeat(64)};
+  let parent,child;
+  await browser.runTask(signal,data,async()=>{
+    await browser.reserveTaskPages(3,{signal,deadline:Date.now()+2000});
+    parent=await browser.newTaskPage({signal});browser.associatePage(parent,{role:'service-resource'});
+    const response=parent.view.webContents.popup({url:'https://target.example/'});
+    assert.equal(response.action,'allow');assert.equal(response.outlivesOpener,true);
+    const contents=response.createWindow({});child=browser.tabs.get(contents.id);
+    assert.equal(child.resourceOwner,parent.resourceOwner);assert.equal(browser.tabs.size,2);
+    browser.retainAccessPage(child,data);
+  });
+  assert.equal(parent.view.webContents.isDestroyed(),true);assert.equal(child.view.webContents.isDestroyed(),false);
+  assert.equal(browser.tabs.size,1);assert.equal(parent.view.webContents.popup({url:'https://late.example/'}).action,'deny');
+});
+
+test('saved lower limits revoke unused popup reservations and queued cancellation never creates a page',async t=>{
+  const {BrowserRuntime}=fixture(t),browser=new BrowserRuntime({pageLimits:{global_limit:8,service_limit:6}});
+  t.after(()=>browser.close());await browser.ready;
+  const signal=new AbortController().signal,data={request_id:'limits',service_scope:serviceScope,service_id:serviceId};
+  let parent;
+  await assert.rejects(browser.runTask(signal,data,async()=>{
+    await browser.reserveTaskPages(5,{signal,deadline:Date.now()+1000});
+    parent=await browser.newTaskPage({signal});
+    browser.updatePageLimits({global_limit:4,service_limit:3});
+    assert.equal(parent.view.webContents.popup({url:'https://unreserved.example/'}).action,'deny');
+    assert.equal(browser.tabs.size,1);
+  }),/page_capacity/);
+  assert.equal(parent.view.webContents.isDestroyed(),true);assert.equal(browser.tabs.size,0);
+  let ready,finish;const started=new Promise(resolve=>{ready=resolve;});
+  const first=browser.runTask(signal,{...data,request_id:'fill'},async()=>{
+    for(let i=0;i<3;i++)await browser.newTaskPage({signal});ready();await new Promise(resolve=>{finish=resolve;});
+  });
+  await started;const abort=new AbortController();let admitted=false;
+  const waiting=browser.runTask(abort.signal,{...data,request_id:'queued'},async()=>{await browser.newTaskPage({signal:abort.signal,deadline:Date.now()+1000});admitted=true;});
+  await new Promise(setImmediate);abort.abort();await assert.rejects(waiting,/canceled/);
+  assert.equal(admitted,false);assert.equal(browser.tabs.size,3);finish();await first;assert.equal(browser.tabs.size,0);
 });
