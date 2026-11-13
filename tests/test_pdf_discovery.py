@@ -266,7 +266,7 @@ def test_t19_only_unambiguous_main_article_pdf_is_used():
         seen.append(c)
         if len(seen) == 1:
             return CandidateResult.current(CurrentResponse(c.url, 'text/html', b'''
-                <meta name="citation_doi" content="10.1234/AbC"><article>
+                <head><meta name="citation_doi" content="10.1234/AbC"></head><article>
                 <a href="supplement.pdf" type="application/pdf">Supporting Information PDF</a>
                 <a href="issue.pdf">Entire issue PDF</a><a href="Body.PDF">PDF</a></article>
                 <section class="related"><a href="other.pdf">PDF</a></section>'''))
@@ -463,3 +463,94 @@ def test_global_operation_and_known_chain_hop_budgets_are_finite():
     assert len(seen) <= 4 and result.status == 'exhausted'
     with pytest.raises(ProviderBudgetExceeded):
         PdfDiscovery(paper, max_operations=1).run(consume)
+
+
+def test_cached_p5_stable_best_stops_before_later_signed_locator_requires_refresh():
+    from allfold.pdf_facts import openalex_discovery_facts
+    paper = target('unknown.example.org')
+    facts = openalex_discovery_facts({'doi': paper.doi, 'best_oa_location': {'pdf_url': 'https://repository.example.org/Best.PDF'},
+        'locations': [{'pdf_url': 'https://cdn.example.org/Body.PDF?token=Expired'}]}, datetime.now(timezone.utc))
+    class IO:
+        def openalex(self, _):
+            pytest.fail('First stable candidate succeeded before refresh was needed')
+    result = PdfDiscovery(paper, facts=(facts,), io=IO()).run(lambda _: CandidateResult.pdf(transfer_complete=True))
+    assert result.pdf_source == 'P5'
+
+
+def test_distinct_response_candidates_count_fallback_after_first_path_failure():
+    paper = target('unknown.example.org')
+    inputs = PdfRuleInputs(paper, known_pdf_urls=(KnownPdfUrl('https://unknown.example.org/download', 'API02', 'link'),))
+    seen = []
+    def consume(c):
+        seen.append(c)
+        if len(seen) == 1:
+            return CandidateResult.current(CurrentResponse(c.url, 'text/html', b'<head><meta name="citation_doi" content="10.1234/AbC">'
+                b'<meta name="citation_pdf_url" content="First.PDF"><meta name="fulltext_pdf_url" content="Second.PDF"></head>'))
+        if len(seen) == 2:
+            return CandidateResult.failed()
+        return CandidateResult.pdf(transfer_complete=True)
+    result = PdfDiscovery(paper, inputs=inputs).run(consume)
+    assert [c.url for c in seen] == ['https://unknown.example.org/download', 'https://unknown.example.org/First.PDF',
+        'https://unknown.example.org/Second.PDF']
+    assert result.fallback_used and result.pdf_source == 'P2'
+
+
+def test_local_transfer_consumer_error_is_terminal_without_new_source():
+    seen = []
+    def consume(c):
+        seen.append(c)
+        raise PermissionError('Controlled local writer refusal')
+    with pytest.raises(PermissionError):
+        PdfDiscovery(target()).run(consume)
+    assert len(seen) == 1
+
+
+def test_partial_document_known_p3_can_finish_before_missing_fields_are_refreshed():
+    paper = target('www.mdpi.com')
+    facts = document(paper, [PdfCandidateFact(stage='P3', rule_id='R042',
+        url='https://cdn.example.org/Body.PDF', field='citation_pdf_url')], status='partial')
+    class IO:
+        def document(self, _):
+            pytest.fail('Existing P3 candidate already finished')
+    result = PdfDiscovery(paper, facts=(facts,), io=IO()).run(lambda _: CandidateResult.pdf(transfer_complete=True))
+    assert (result.pdf_source, result.fallback_used) == ('P3', False)
+
+
+def test_oup_qualified_citation_response_eprint_uses_current_url_in_original_stage():
+    paper = target('academic.oup.com', article_url='https://academic.oup.com/journal/article/1/2/3/123')
+    seen = []
+    def consume(c):
+        seen.append(c)
+        if len(seen) == 1:
+            return CandidateResult.current(CurrentResponse(c.url, 'application/x-bibtex',
+                b'@article{x, eprint={https://academic.oup.com/journal/article-pdf/Body.PDF?sig=Keep}}'))
+        return CandidateResult.pdf(transfer_complete=True)
+    result = PdfDiscovery(paper).run(consume)
+    assert [c.url for c in seen][1:] == ['https://academic.oup.com/journal/article-pdf/Body.PDF?sig=Keep']
+    assert (result.pdf_source, result.fallback_used) == ('P2', False)
+
+
+def test_optica_known_reader_skips_first_frame_and_preserves_meta_source():
+    paper = target('opg.optica.org', article_url='https://opg.optica.org/abstract.cfm?uri=ol-1-2-3')
+    facts = document(paper, [PdfCandidateFact(stage='P3', rule_id='R053',
+        url='https://opg.optica.org/viewmedia.cfm?uri=ol-1-2-3', field='citation_pdf_url')])
+    seen = []
+    def consume(c):
+        seen.append(c)
+        if len(seen) == 1:
+            return CandidateResult.current(CurrentResponse(c.url, 'text/html',
+                b'<frameset><frame src="menu.html"><frame src="Files/Body.PDF?sig=Keep"></frameset>'))
+        return CandidateResult.pdf(transfer_complete=True)
+    result = PdfDiscovery(paper, facts=(facts,)).run(consume)
+    assert [c.url for c in seen] == ['https://opg.optica.org/viewmedia.cfm?uri=ol-1-2-3',
+        'https://opg.optica.org/Files/Body.PDF?sig=Keep']
+    assert (result.pdf_source, result.fallback_used) == ('P3', False)
+
+
+def test_sd_cdn_md5_pid_pair_is_refresh_fact_without_rewriting_current_url():
+    from allfold.pdf_facts import persistent_pdf_candidate
+    url = 'https://pdf.sciencedirectassets.com/Body.PDF?md5=AbC&pid=Keep'
+    fact = persistent_pdf_candidate(stage='P4', rule_id='R024', url=url,
+        refresh_kind='document-pdf', landing_url='https://www.sciencedirect.com/science/article/pii/S014067362400123X')
+    assert fact.url is None and fact.refresh.kind == 'document-pdf'
+    assert url == 'https://pdf.sciencedirectassets.com/Body.PDF?md5=AbC&pid=Keep'
