@@ -30,15 +30,15 @@ PROVIDERS = frozenset({'integrated', 'pubmed', 'openalex', 'crossref', 'europe_p
 OUTCOMES = frozenset({'completed', 'partial', 'failed', 'cancelled', 'interrupted', 'uncertain',
                       'needs_attention', 'opened', 'no_effect', 'confirmed'})
 STATISTICS = frozenset({'retrieved', 'created', 'updated', 'total', 'processed', 'failed', 'skipped',
-    'confirmed', 'exported', 'no_effect', 'uncertain', 'cancelled', 'completed', 'opened',
-    'needs_attention', 'eligible', 'matched', 'downloaded', 'enriched', 'unchanged', 'candidates',
+    'confirmed', 'no_effect', 'uncertain', 'cancelled', 'completed', 'opened',
+    'needs_attention', 'eligible', 'matched', 'downloaded', 'unchanged', 'candidates',
     'completion_targets', 'completion_requests', 'completion_date_facts_added', 'integrated_candidates', 'integrated_deduplicated', 'work_location_targets',
     'pmid_resolution_matched', 'pmid_resolution_no_match', 'pmid_resolution_conflicts', 'pmid_resolution_failed', 'pmid_resolution_cancelled',
     'first_public_recorded', 'first_public_no_association', 'first_public_known_unresolved', 'first_public_conflict', 'first_public_failed', 'first_public_cancelled',
-    'papers', 'services', 'warnings', 'errors', 'excluded', 'duplicates', 'materialized', 'pdf_unverified'})
+    'papers', 'services', 'warnings', 'errors', 'excluded', 'duplicates', 'materialized'})
 REASONS = frozenset({'runtime_interrupted', 'connection_lost', 'cancelled', 'partial', 'failed',
     'needs_attention', 'result_unconfirmed', 'pdf_unverified', 'no_effect', 'configuration_changed',
-    'workspace_changed', 'service_unassigned', 'service_unprepared', 'no_candidates', 'no_kept_papers', 'blocked',
+    'workspace_changed', 'service_unassigned', 'service_unprepared', 'no_candidates', 'blocked',
     'browser_unavailable', 'invalid_configuration', 'write_failed', 'unknown',
     'target_opened', 'manual_action_required', 'carsi_login_required', 'ambiguous_resource', 'unverified_official_page',
     'resource_not_found', 'navigation_failed', 'timeout', 'institution_credentials_rejected', 'carsi_session_expired'})
@@ -72,28 +72,21 @@ def _details(value):
     result = {}
     if recovery := normalize_recovery(value.get('recovery')):
         result['recovery'] = recovery
-    if _enum(value.get('batch_scope'), {'all', 'service'}):
-        result['batch_scope'] = value['batch_scope']
     service = value.get('service_id')
     if isinstance(service, str) and re.fullmatch(r'svc_[a-f0-9]{32}', service):
         result['service_id'] = service
     for key in ('config_revision', 'user_state_revision'):
         if isinstance(value.get(key), str) and re.fullmatch(r'[a-f0-9]{64}', value[key]):
             result[key] = value[key]
-    for key in ('submitted', 'result_known', 'pdf_verified', 'requires_attention', 'blocked', 'sync_warning'):
+    for key in ('result_known', 'blocked'):
         if type(value.get(key)) is bool:
             result[key] = value[key]
     if _enum(value.get('reason'), REASONS):
         result['reason'] = value['reason']
-    if _enum(value.get('parent_outcome'), {'confirmed', 'no_effect', 'uncertain'}):
-        result['parent_outcome'] = value['parent_outcome']
-    if _enum(value.get('pdf_outcome'), {'confirmed', 'failed', 'unverified', 'not_requested', 'uncertain'}):
-        result['pdf_outcome'] = value['pdf_outcome']
     for key, allowed in (('discovery_status', {'complete','empty','partial','failed','cancelled'}),
                          ('completion_status', {'complete','empty','partial','failed','cancelled'}),
                          ('result_status', {'completed', 'completed_with_notices', 'incomplete', 'capture_issues', 'failed', 'cancelled'}),
-                         ('coverage_status', {'complete', 'empty', 'partial', 'failed', 'unavailable', 'unknown'}),
-                         ('batch_phase', {'idle', 'running', 'completed', 'stopped', 'paused', 'blocked'})):
+                         ('coverage_status', {'complete', 'empty', 'partial', 'failed', 'unavailable', 'unknown'})):
         if _enum(value.get(key), allowed):
             result[key] = value[key]
     source_runs = value.get('run_sources')
@@ -114,29 +107,6 @@ def _details(value):
     if isinstance(checks, dict):
         result['wos_checks'] = {key:checks[key] for key in ('batches','completed_batches','journal_hints','date_hints','unmatched_records')
             if type(checks.get(key)) is int and 0 <= checks[key] <= 1_000_000_000}
-    for key in ('saved_fields', 'requested_fields'):
-        fields = value.get(key)
-        if isinstance(fields, list):
-            result[key] = sorted({field for field in fields if _enum(field, {
-                'abstract', 'authors', 'publication_date', 'date_evidence', 'received', 'accepted'})})
-    service_statistics = value.get('service_statistics')
-    if isinstance(service_statistics, list):
-        summaries = []
-        for item in service_statistics[:100]:
-            if not isinstance(item, dict):
-                continue
-            service = item.get('service_id')
-            if isinstance(service, str) and re.fullmatch(r'svc_[a-f0-9]{32}', service):
-                safe = {'service_id': service}
-            elif _enum(item.get('service_assignment'), {'unassigned', 'ambiguous'}):
-                safe = {'service_assignment': item['service_assignment']}
-            else:
-                continue
-            summaries.append({**safe, **_counts(item)})
-        result['service_statistics'] = summaries
-        omitted = value.get('omitted_services', 0)
-        omitted = omitted if type(omitted) is int and 0 <= omitted <= 1_000_000_000 else 0
-        result['omitted_services'] = min(1_000_000_000, omitted + max(0, len(service_statistics) - 100))
     items = value.get('results')
     if isinstance(items, list):
         results = []
@@ -152,12 +122,8 @@ def _details(value):
             paper = item.get('paper_id')
             if isinstance(paper, str) and re.fullmatch(r'[a-fA-F0-9]{8}(?:-[a-fA-F0-9]{4}){3}-[a-fA-F0-9]{12}', paper):
                 safe['paper_id'] = paper.lower()
-            for key in ('parent_outcome', 'pdf_outcome', 'reason'):
-                allowed = {'parent_outcome': {'confirmed', 'no_effect', 'uncertain'},
-                    'pdf_outcome': {'confirmed', 'failed', 'unverified', 'not_requested', 'uncertain'},
-                    'reason': REASONS}[key]
-                if _enum(item.get(key), allowed):
-                    safe[key] = item[key]
+            if _enum(item.get('reason'), REASONS):
+                safe['reason'] = item['reason']
             diagnostic = normalize_browser_diagnostic(item.get('diagnostic'))
             if diagnostic:
                 safe['diagnostic'] = diagnostic
@@ -559,9 +525,7 @@ class DiagnosticStore:
             def in_recent_range(value):
                 return range_start <= datetime.fromisoformat(value.replace('Z', '+00:00')) <= export_time
             records = self.history()['records']
-            # Exact Zotero keys are for local reconciliation. History export is shareable.
-            for record in records:
-                excluded_history = 0
+            excluded_history = 0
             if task_id is not None:
                 selected = next((r for r in records if r['task_id'] == task_id), None)
                 if selected is None:
@@ -668,7 +632,6 @@ class DiagnosticStore:
                     'Contains only validated structured events and lightweight task history for the named scope. '
                     'No Workspace, credentials, page bodies, raw exceptions or complete URLs are collected. '
                     'Missing, rotated or failed records are evidence limits, not proof of success or safe retry. '
-                    'A confirmed parent item does not prove attachment persistence. '
                     'This file is generated locally and is never uploaded automatically.\n\n'
                     'Fields: schema_version versions the validated event vocabulary; time is UTC. '
                     'runtime_id identifies an application start; workflow_id groups the complete business workflow; '
@@ -678,7 +641,6 @@ class DiagnosticStore:
                     'source distinguishes Python/Electron; event, stage, step, code, status and net_error are fixed technical facts. '
                     'imperva_edet and imperva_incident_id identify a recognized Imperva response when present. '
                     'History outcome is coordinator-confirmed business state; a native event outcome describes only that operation. '
-                    'parent and pdf distinguish parent-item evidence from unverified attachment persistence. '
                     'recent_scope includes only the last seven UTC days across startups, using one export time. '
                     'History uses its latest recorded start, finish or recovery time. '
                     'collection_range is the intentional collection window; time_range is the included event range. '

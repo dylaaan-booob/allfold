@@ -150,7 +150,8 @@ def test_bounded_history_rotation_and_native_failure_remain_visible_after_restar
     current = store.history()
     assert len(current['records']) == 3
     assert current['integrity']['native']['incomplete']
-    assert current['records'][0]['details']['results'][0]['pdf_outcome'] == 'unverified'
+    assert current['records'][0]['details']['results'][0]['outcome'] == 'confirmed'
+    assert 'pdf_outcome' not in current['records'][0]['details']['results'][0]
     restarted = DiagnosticStore(tmp_path / 'config.yaml', root=tmp_path / 'logs', runtime_id='second',
                                 max_file_bytes=1024, max_files=2, max_history=3)
     data = bundle(restarted)

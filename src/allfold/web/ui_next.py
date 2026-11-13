@@ -21,6 +21,7 @@ from allfold.application.workspace import PaperStatus, WorkspacePaper, journal_f
 from allfold.application.journal_lookup import journal_metadata
 from allfold.persistence.user_state import load_user_state, read_user_state
 from allfold.config import ConfigurationError, load_config
+from allfold.paper_dates import date_value
 from allfold.models import EvidenceDate
 from allfold.persistence.paper_repository import LibraryError
 from allfold.url_safety import normalize_public_http_url
@@ -97,8 +98,10 @@ class _WoSCancel(_Action):
 def paper_payload(paper: WorkspacePaper, *, preprint_lookup=None) -> dict:
     metadata = paper.record.metadata
     doi = paper.external_ids.doi
-    preprints = [item.model_dump(mode='json', exclude_none=True) for item in paper.preprints]
-    preprints.extend(_date_evidence_payload(item) for item in paper.preprint_evidence)
+    proof_keys = {(item.provider, item.version, date_value(item)) for item in paper.preprint_evidence}
+    preprints = [item.model_dump(mode='json', exclude_none=True) for item in paper.preprints
+                 if (item.provider, item.version, item.date) not in proof_keys]
+    preprints.extend(dict(_date_evidence_payload(item), date=date_value(item)) for item in paper.preprint_evidence)
     return dict(id=str(paper.paper_id), workspace_id=str(paper.record.workspace_id),
         revision=paper.record.revision, metadata_present=paper.metadata_present,
         excluded=paper.record.excluded, status=paper.status.value if paper.status else None,

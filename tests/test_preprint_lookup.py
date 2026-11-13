@@ -145,6 +145,15 @@ def test_native_v1_does_not_resolve_unproven_or_conflicting_family(tmp_path, exi
 def test_reject_commits_before_precise_cancel_and_cleanup_blocks_clear(tmp_path):
     config, workspace, paper = create_paper(tmp_path, abstract='Existing formal abstract')
     entered, release, cleaning, finish = Event(), Event(), Event(), Event()
+    from allfold.models import ExternalIds, MetadataSource, ProviderWorkEvidence
+    from allfold.persistence.library_models import PaperMetadata
+    from datetime import datetime, timezone
+    with PaperRepository.open(workspace) as repository:
+        other = repository.create_or_match(repository.workspace_id, direct_ids=ExternalIds(doi='10.5555/unrelated'),
+            metadata=PaperMetadata(title='Unaffected article')).paper
+    late_evidence = ProviderWorkEvidence(provenance=MetadataSource(provider='biorxiv', record_id=PREPRINT + ':1',
+        retrieved_at=datetime.now(timezone.utc)), dates=(EvidenceDate(kind='preprint', year=2022, month=2, day=3,
+        provider='biorxiv', record_id=PREPRINT + ':1', version='1', first_version=True, publication_type='preprint'),))
     class PausedClient:
         def __init__(self, *args, **kwargs): pass
         def __enter__(self): return self
@@ -152,7 +161,7 @@ def test_reject_commits_before_precise_cancel_and_cleanup_blocks_clear(tmp_path)
             self.request_guard()
             entered.set()
             assert release.wait(5)
-            return []
+            return [late_evidence]
         def __exit__(self, *args):
             cleaning.set()
             assert finish.wait(5)
@@ -175,6 +184,8 @@ def test_reject_commits_before_precise_cancel_and_cleanup_blocks_clear(tmp_path)
         release.set(); finish.set(); service.join()
     assert service.state(paper.id)['phase'] == 'Cancelled'
     assert read_paper(workspace, paper.id).metadata.abstract == 'Existing formal abstract'
+    assert not read_paper(workspace, paper.id).metadata.preprint_evidence
+    assert read_paper(workspace, other.id) == other
     apply_paper_action(workspace, paper.workspace_id, paper.id, 'clear-metadata', preprint_lookup=service)
     assert read_paper(workspace, paper.id).metadata is None
 
@@ -223,3 +234,20 @@ def test_web_routes_use_workspace_identity_and_retire_business_endpoints(tmp_pat
         assert client.get('/api/ui-next/workspace').json()['counts']['trash'] == 1
         for retired in ('/api/kept-workflow/state', f'/api/papers/{paper.id}/enrichment/state', '/api/ui-next/zotero'):
             assert client.get(retired).status_code == 404
+
+
+def test_preprint_can_use_known_metadata_with_unknown_legacy_discovery_time(tmp_path):
+    import json
+    import sqlite3
+    config, workspace, paper = create_paper(tmp_path)
+    # Valid legacy metadata never had this field; its unknown value must stay
+    # unknown while transient proof provenance uses this operation's evidence.
+    with sqlite3.connect(workspace / 'papers.sqlite') as connection:
+        payload = paper.metadata.model_dump(mode='json')
+        payload.pop('discovered_at')
+        connection.execute('UPDATE paper_metadata SET payload = ? WHERE paper_id = ?', (json.dumps(payload), str(paper.id)))
+    assert read_paper(workspace, paper.id).metadata.discovered_at is None
+    service = PreprintLookup(config, BrowserTaskLock(), client_factory=factory(native_fixture('biorxiv', version('biorxiv'))))
+    assert lookup(service, paper.id)['phase'] == 'Completed'
+    metadata = read_paper(workspace, paper.id).metadata
+    assert metadata.first_public_at == '2022-02-03' and metadata.discovered_at is None
