@@ -162,7 +162,7 @@ class PdfDiscoveryFacts(_Fact):
             raise ValueError('Positive failed-read facts require partial status')
         if self.source == 'openalex' and len(self.candidates) > 4:
             raise ValueError('OpenAlex discovery is bounded to four PDF candidates')
-        if len(self.model_dump_json()) > 65536:
+        if len(self.model_dump_json().encode('utf-8')) > 65536:
             raise ValueError('Discovery snapshot exceeds payload budget')
         return self
 
