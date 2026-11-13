@@ -79,6 +79,22 @@ def test_captured_branch_increments_and_completion_are_idempotent_and_persist(tm
         assert admit(reopened, uuid4()).paper.collection_status == "completed"
 
 
+def test_cleanup_projection_revision_does_not_renew_or_revoke_captured_content_authority(tmp_path):
+    with PaperRepository.create(tmp_path) as repository:
+        admission = admit(repository, uuid4(), branches=('api',))
+        refreshed = repository.touch_projection(admission.paper.id)
+        assert refreshed.revision == admission.paper.revision + 1
+        assert refreshed.token == admission.paper.token
+        assert refreshed.collection == admission.paper.collection
+        saved = repository.commit_collection_branch(admission.token, 'api', sequence=1,
+            delta=MetadataDelta(abstract='Captured result'), outcome='completed')
+        rejected = repository.exclude(saved.token)
+        projected = repository.touch_projection(saved.id)
+        assert projected.excluded and projected.token == rejected.token
+        with pytest.raises(StaleWriteError):
+            repository.require_collection(admission.token)
+
+
 def test_cancel_waits_for_settlement_then_retry_preserves_success_and_refuses_old_results(tmp_path):
     with PaperRepository.create(tmp_path) as repository:
         first = admit(repository, uuid4())
