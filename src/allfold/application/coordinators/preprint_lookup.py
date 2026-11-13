@@ -139,7 +139,7 @@ class PreprintLookup:
         with self._lock:
             if (paper_id != self._paper_id or request_id != self._state.get('request_id')
                     or workspace_id is not None and workspace_id != self._workspace_id
-                    or not self.running):
+                    or not self.running or self._state.get('phase') not in {'Running', 'Cancelling'}):
                 return False
             self._stop.set()
             self._state.update(phase='Cancelling', message='Stopping preprint lookup…')

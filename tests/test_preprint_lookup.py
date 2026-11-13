@@ -12,7 +12,7 @@ from allfold.application.decisions import apply_paper_action
 from allfold.application.paper_fields import edit_paper_fields, read_paper_fields
 from allfold.models import EvidenceDate
 from allfold.persistence.library_models import MetadataDelta
-from allfold.persistence.paper_repository import PaperRepository
+from allfold.persistence.paper_repository import InvalidPaperState, PaperRepository
 from allfold.web.app import create_app
 from electron_test_helpers import OfflineBridge
 from library_application_helpers import create_paper, read_paper, FORMAL
@@ -213,6 +213,44 @@ def test_local_abstract_edit_during_preprint_keeps_other_valid_proof(tmp_path):
     with PaperRepository.open(workspace) as repository:
         actual = repository.merge_metadata(paper.token, MetadataDelta(abstract='Old automatic candidate', ordinary_dates=('2030-04',)))
     assert actual.metadata.abstract == 'Human chosen abstract' and actual.metadata.ordinary_dates == ('2030-04',)
+
+
+@pytest.mark.parametrize('phase', ['Completed', 'NoMatch', 'Failed'])
+@pytest.mark.parametrize('action', ['cancel', 'reject'])
+def test_terminal_preprint_phase_survives_cancel_during_final_resource_release(tmp_path, phase, action):
+    from threading import Lock
+    config, workspace, paper = create_paper(tmp_path)
+    releasing, finish = Event(), Event()
+    class PausedSlot:
+        def __init__(self): self.lock = Lock()
+        def acquire(self, **kwargs): return self.lock.acquire(**kwargs)
+        def release(self):
+            releasing.set()
+            assert finish.wait(5)
+            self.lock.release()
+    native = native_fixture('biorxiv', version('biorxiv'))
+    def respond(request):
+        if phase == 'Completed': return native(request)
+        return collection(status=f'Preprint for DOI {FORMAL} not found' if phase == 'NoMatch' else 'service unavailable')
+    service = PreprintLookup(config, BrowserTaskLock(), run_slot=PausedSlot(), client_factory=factory(respond))
+    started = service.start(paper.id, paper.workspace_id)
+    try:
+        assert releasing.wait(5)
+        assert service.state(paper.id)['phase'] == phase
+        if action == 'cancel':
+            assert not service.cancel(paper.id, started['request_id'], paper.workspace_id)
+        else:
+            assert apply_paper_action(workspace, paper.workspace_id, paper.id, 'reject', preprint_lookup=service).paper.excluded
+            with pytest.raises(InvalidPaperState, match='cleaning'):
+                apply_paper_action(workspace, paper.workspace_id, paper.id, 'clear-metadata', preprint_lookup=service)
+        state = service.state(paper.id)
+        assert state['phase'] == phase and state['cleaning_up']
+        with pytest.raises(ValueError, match='active|cleaning'):
+            service.start(paper.id, paper.workspace_id)
+    finally:
+        finish.set(); service.join()
+    state = service.state(paper.id)
+    assert state['phase'] == phase and not state['cleaning_up']
 
 
 def test_web_routes_use_workspace_identity_and_retire_business_endpoints(tmp_path):
