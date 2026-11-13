@@ -13,6 +13,8 @@ class BrowserOwner:
     id: str
     scopes: frozenset[str] = frozenset()
     exclusive: bool = False
+    shared: bool = False
+    pages: frozenset[int] = frozenset()
 
 
 class BrowserTaskLock:
@@ -33,16 +35,20 @@ class BrowserTaskLock:
         with self._mutex:
             return next(iter(self._owners.values()), None)
 
-    def acquire(self, kind: str, *, scopes=()) -> BrowserOwner | None:
+    def acquire(self, kind: str, *, scopes=(), shared=False, pages=()) -> BrowserOwner | None:
         # Only admission waits behind a configuration write. Completion and
         # require() must never wait on writers holding another coordinator lock.
         with self._admission, self._mutex:
             exclusive = kind in {'credentials', 'workspace-reset', 'logs-reset'}
             scopes = frozenset(scopes)
-            if self._closed or any(exclusive or current.exclusive or scopes & current.scopes
+            pages = frozenset(pages)
+            if shared and kind in {'login', 'access-cleanup', 'credentials', 'workspace-reset', 'logs-reset'}:
+                raise ValueError('Browser controls require exclusive admission')
+            if self._closed or any(exclusive or current.exclusive or pages & current.pages
+                                   or scopes & current.scopes and not (shared and current.shared)
                                    for current in self._owners.values()):
                 return None
-            owner = BrowserOwner(kind, uuid4().hex, scopes, exclusive)
+            owner = BrowserOwner(kind, uuid4().hex, scopes, exclusive, shared, pages)
             self._owners[owner.id] = owner
             return owner
 
