@@ -302,5 +302,3 @@ def install_credential_api(app, csrf_token):
                 or len(body['expected_revision']) > 128):
             return settings_error('Invalid credential operation', 400)
         return await run_in_threadpool(commit, body)
-
-

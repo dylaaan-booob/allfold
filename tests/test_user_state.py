@@ -221,14 +221,14 @@ def test_covers_use_saved_db_journal_identifiers_without_markdown(tmp_path):
         upload_cover(legacy, journal.key, output.getvalue(), config_path=config)
 
 
-@pytest.mark.parametrize("change_state", [False, True])
+@pytest.mark.parametrize("change_state", [None, "groups", "journals", "access_services"])
 def test_wos_uses_independent_sqlite_service_and_detects_changes(tmp_path, change_state):
     import threading
-    from types import SimpleNamespace
     from allfold.config import AccessService
     from allfold.application.browser_runtime import BrowserTaskLock
     from allfold.application.coordinators.login import PreparedService
     from allfold.application.coordinators.wos_coordinator import WoSCoordinator
+    from allfold.persistence.paper_repository import PaperRepository
     from electron_test_helpers import PendingBridge
 
     class Login:
@@ -246,18 +246,29 @@ def test_wos_uses_independent_sqlite_service_and_detects_changes(tmp_path, chang
     saved = compare_write_user_state(config, replace(original.state, access_services=(service, wos)), original.revision)
     legacy.unlink()
     bridge = PendingBridge()
-    coordinator = WoSCoordinator(config, Login(), threading.Lock(), bridge=bridge, browser_lock=BrowserTaskLock())
+    slot, browser_lock = threading.Lock(), BrowserTaskLock()
+    coordinator = WoSCoordinator(config, Login(), slot, bridge=bridge, browser_lock=browser_lock)
     coordinator.start()
     assert bridge.dispatched.wait(2)
     if change_state:
-        compare_write_user_state(config, replace(saved.state, groups=("Statistics", "Added")), saved.revision)
+        changes = {
+            "groups": ("Statistics", "Added"),
+            "journals": (journal.model_copy(update={"name": "Updated journal"}),),
+            "access_services": (service, wos.model_copy(update={"access_url": "https://www.webofscience.com/"})),
+        }
+        compare_write_user_state(config, replace(saved.state, **{change_state: changes[change_state]}), saved.revision)
     bridge.future.set_result({"page_id": 71, "total": 0, "batch_limit": 100})
     coordinator.join()
     result = coordinator.state()["snapshot"]["result"]
     if change_state:
-        assert any("configuration changed" in text for text in result["issues"])
+        assert any("configuration changed" in text for text in result["issues"]), result["issues"]
+        assert result["outcome"] == "Failed"
     else:
         assert result["outcome"] == "Completed"
+    assert [action for action, _ in bridge.calls] == ["wos_query"]
+    assert not slot.locked() and browser_lock.owner is None
+    with PaperRepository.open(tmp_path / "workspace") as repository:
+        assert repository.list_papers() == ()
 
 
 def test_load_config_rejects_symlink_legacy_source_before_migration(tmp_path):

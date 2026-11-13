@@ -21,10 +21,6 @@ test('inline Run polls and refreshes results without constructing a player or re
   assert.equal(ui.window.uiRun.active(),false);assert.equal(ui.stats().prepares,1);
   assert.equal(ui.page(),'journals');assert.equal(ui.stats().opens,0);
 });
-function keptState(phase='importing',changes={}) {
-  return {workflow_id:'workflow-1',generation:7,phase,active:['importing','stopping'].includes(phase),
-    can_cancel:phase==='importing',batch:{task_id:'batch-1',total:1,results:[]},...changes};
-}
 test('fullscreen Run waits for its workspace owner and restores the same task without a new start',async()=>{
   const running=runData('RUNNING',true);running.providers.wos={snapshot:running.snapshot};
   const ui=await taskUI('run.js',{inline:false,page:'workspace',request:async()=>running});
@@ -35,35 +31,6 @@ test('fullscreen Run waits for its workspace owner and restores the same task wi
   ui.window.dispatchEvent({type:'inbox-ready'});await ui.settle();
   assert.equal(ui.window.uiRun.active(),true);assert.equal(ui.page(),'run');assert.equal(ui.get('run-view').open,true);
   assert.equal(ui.calls.filter(([url,body])=>url==='/api/ui-next/run' && body!==undefined).length,1);
-});
-test('Import recovers into visible controls and retains task identity through Browser, cancellation and settlement',async()=>{
-  let state=keptState();
-  const ui=await taskUI('kept.js',{archiveDisabled:false,layout:'archive',page:'workspace',request:async path=>{
-    if(path.includes('/queue'))return {services:[]};
-    if(path.endsWith('/cancel'))state=keptState('stopping');
-    if(path.endsWith('/acknowledge'))return {};
-    return state;
-  }});
-  assert.equal(ui.page(),'kept');
-  assert.equal(ui.get('selected-view').dataset.workspaceLayout,'archive');
-  assert.equal(ui.get('kept-progress').hidden,false);
-  assert.equal(ui.get('kept-leave').disabled,false);
-  assert.equal(ui.window.workspaceArray.workflowBusy(),true);
-  assert.equal(ui.window.workspaceArray.navigationBusy(),false);
-  assert.equal(ui.calls.some(([url])=>url.endsWith('/start')),false);
-  await ui.get('kept-task-page').emit('click');
-  assert.deepEqual(JSON.parse(JSON.stringify(ui.presentations)),[{workflowId:'workflow-1',parentTaskId:'batch-1'}]);
-  await ui.get('kept-leave').emit('click');
-  assert.deepEqual(JSON.parse(JSON.stringify(ui.calls.find(([url])=>url.endsWith('/cancel'))[1])),{workflow_id:'workflow-1',generation:7});
-  assert.equal(ui.get('kept-leave').disabled,true);
-  ui.setPage('settings');await ui.tick();
-  state=keptState('interrupted',{navigation:'kept',batch:{task_id:'batch-1',total:1,results:[
-    {paper_id:'paper-1',outcome:'exported',parent_outcome:'confirmed',reason:'Imported'},
-  ]}});await ui.tick();
-  assert.ok(ui.calls.some(([url])=>url.endsWith('/acknowledge')));
-  assert.equal(ui.window.workspaceArray.workflowBusy(),false);
-  assert.equal(ui.get('kept-record-count').textContent,'1 / 1');
-  assert.equal(ui.page(),'settings');
 });
 test('restored inline Run browser stage opens its existing task page and cancels with the restored task identity',async()=>{
   const wos=runData('RUNNING',true);

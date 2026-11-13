@@ -214,5 +214,3 @@ def test_attachment_message_describes_problem_and_preserves_pdf_uncertainty(code
     assert '403' in message and 'ERR_ABORTED' in message
     assert '父条目失败' not in message
     assert '重试' not in message
-
-

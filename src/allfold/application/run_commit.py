@@ -89,7 +89,7 @@ def _verify_snapshot(snapshot: RunWorkspaceSnapshot, lock: WorkspaceOperationLoc
         raise ContentChangedError("Run Workspace was reset or replaced")
     if (snapshot.config_path.read_bytes() != snapshot.configuration
             or load_config(snapshot.config_path) != snapshot.config):
-        raise ContentChangedError("Run configuration or source scope changed")
+        raise ContentChangedError("Run configuration changed (including source scope)")
     # Verify rather than create: a missing/replaced database cannot revive the Run.
     descriptor = os.open(DATABASE_NAME, os.O_RDONLY | os.O_NOFOLLOW, dir_fd=lock.directory)
     try:
