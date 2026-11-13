@@ -41,6 +41,8 @@ app.whenReady().then(async()=>{
       [article(meta('10.5555/target').repeat(33)),'article_identity_unconfirmed'],
       [article(),'article_identity_unconfirmed'],
       [html('<p>CPE00001</p><p>There was a problem providing the content you requested</p>',meta('10.5555/target')),'content_access_blocked'],
+      [html('<div><span>CPE00001</span><div>There was a problem providing the content you requested</div></div>',meta('10.5555/target')),'content_access_blocked'],
+      [html('<p>'+('x'.repeat(3000))+' CPE00001 There was a problem providing the content you requested</p>',meta('10.5555/target')),'content_access_blocked'],
     ])await assert.rejects(open(body),error=>error.diagnostic?.code===code);
     for(const body of [html('<input type="password">',meta('10.5555/target')),html('<h1>Are you a robot?</h1><p>Please confirm you are a human by completing the captcha challenge</p>',meta('10.5555/target'))])
       await assert.rejects(open(body,'10.5555/target',{deadline:Date.now()+200}),error=>error.diagnostic?.code==='timeout');
@@ -49,15 +51,18 @@ app.whenReady().then(async()=>{
     for(const [url,body] of [
       ['https://projecteuclid.org/journals/example/10.5555/target.full',article()],
       ['https://www.scielo.br/j/example/a/fixture',html('<article><a class="_doi" href="https://doi.org/10.5555/target">DOI</a></article>')],
-      ['https://article.invalid/entry?doi=10.5555%2Ftarget',article()],
+      ['https://journals.plos.org/plosone/article?doi=10.5555%2Ftarget',article()],
     ]) {
       destination=url;routes.set(url,{body});
       const located=await task(()=>browser.openPaperPage({workspace_identity:'a'.repeat(64),paper_id:randomUUID()},'10.5555/target',{signal}));
       assert.equal(located.identity.outcome,'confirmed');
     }
     for(const [url,body,code] of [
-      ['https://article.invalid/?doi=10.5555%2Ftarget&id=10.5555%2Fother',article(),'article_identity_conflict'],
+      ['https://article.invalid/article?doi=10.5555%2Ftarget&id=10.5555%2Fother',article(),'article_identity_conflict'],
       ['https://article.invalid/?doi=10.5555%2Ftarget',html('<p>Generic redirect</p>'),'article_identity_unconfirmed'],
+      ['https://article.invalid/search?doi=10.5555%2Ftarget',html('<main><h1>Search results</h1></main>'),'article_identity_unconfirmed'],
+      ['https://article.invalid/search?doi=10.5555%2Ftarget',html('<main><article>Recommended target</article></main>'),'article_identity_unconfirmed'],
+      ['https://article.invalid/10.5555/other',html('<div>Article</div>',meta('10.5555/target')),'article_identity_conflict'],
       ['https://article.invalid/native',html('<a class="_doi" href="https://doi.org/10.5555/target">DOI</a>'),'article_identity_unconfirmed'],
     ]) {
       destination=url;routes.set(url,{body});
@@ -100,6 +105,8 @@ app.whenReady().then(async()=>{
     const challenge=html('<script>window._cf_chl_opt = {};</script><script src="/cdn-cgi/challenge-platform/h/g/orchestrate/chl_page/v1"></script>',meta('10.5555/target'));
     for(const [body,status,code,diagnostic] of [
       [challenge,200,'verification_page'],
+      [html('<script>'+('/* unrelated */'.repeat(2000))+'window._cf_chl_opt = {};</script><script src="/cdn-cgi/challenge-platform/h/g/orchestrate/chl_page/v1"></script>'),200,'verification_page'],
+      [html(('<iframe loading="lazy" src="about:blank"></iframe>'.repeat(256))+'<iframe src="https://newassets.hcaptcha.com/captcha/v1"></iframe>'),200,'verification_page'],
       [html('','<title>Just a moment...</title>'),503,'verification_page'],
       [html('','<title>Unusual Traffic Detected (Error 418)</title>'),200,'site_restricted'],
       [article(meta('10.5555/target')),418,'site_restricted'],

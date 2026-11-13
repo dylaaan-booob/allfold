@@ -22,7 +22,7 @@ function boundedResult(action,value) {
       limited:article.limited,multiple:article.multiple,article:article.article}};
   }
   const names=['unusualTraffic','cloudflareTitle','cloudflareOptions','cloudflareOrchestrator','robot','contentDenied','hcaptcha','login'];
-  if(!value.markers || !names.every(key=>typeof value.markers[key]==='boolean') || typeof value.limited!=='boolean')invalid();
+  if(!value.markers || !names.every(key=>typeof value.markers[key]==='boolean'))invalid();
   const markers=Object.fromEntries(names.map(key=>[key,value.markers[key]]));
   let imperva=null;
   if(value.imperva) {
@@ -30,7 +30,7 @@ function boundedResult(action,value) {
     if(Number.isInteger(value.imperva.edet) && value.imperva.edet>=0 && value.imperva.edet<=999)imperva.edet=value.imperva.edet;
     if(typeof value.imperva.incident==='string' && /^[0-9]{1,32}-[0-9]{1,32}$/.test(value.imperva.incident))imperva.incident=value.imperva.incident;
   }
-  return {markers,imperva,limited:value.limited};
+  return {markers,imperva};
 }
 class DocumentRuntime {
   constructor(browser) {

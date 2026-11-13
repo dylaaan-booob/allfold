@@ -5,42 +5,38 @@ const documentId=Array.from(crypto.getRandomValues(new Uint32Array(4))).join('-'
 const operations={
   binding() {return {type:document.contentType};},
   access() {
-    const title=document.title.slice(0,512);
+    const title=document.title;
     const markers={unusualTraffic:/Unusual Traffic Detected\s*\(Error 418\)/i.test(title),
       cloudflareTitle:/^(Just a moment|Attention Required)/i.test(title),
       cloudflareOptions:false,cloudflareOrchestrator:false,robot:false,contentDenied:false,hcaptcha:false,login:false};
-    let limited=false;
-    const scripts=document.querySelectorAll('script');
-    if(scripts.length>256)limited=true;
-    for(let i=0;i<Math.min(256,scripts.length);i++) {
-      const script=scripts[i],src=script.getAttribute('src') || '';
+    // Compute predicates locally; no script/text/URL or proportional collection crosses IPC.
+    for(const script of document.querySelectorAll('script')) {
+      const src=script.getAttribute('src') || '';
       if(/\/cdn-cgi\/challenge-platform\/[^\s"'<>]*orchestrate\/chl_page\//i.test(src))markers.cloudflareOrchestrator=true;
-      const text=script.textContent || '';
-      if(/\b_cf_chl_opt\s*=\s*\{/.test(text.slice(0,16384)))markers.cloudflareOptions=true;
+      if(/\b_cf_chl_opt\s*=\s*\{/.test(script.textContent || ''))markers.cloudflareOptions=true;
     }
-    const nodes=[...document.querySelectorAll('h1,h2,p,[id="error"],[class="error"]'),
-      ...[...(document.body?.childNodes || [])].filter(node=>node.nodeType===3)];
     let robot=false,human=false,cpe=false,denied=false;
-    if(nodes.length>256)limited=true;
-    for(let i=0;i<Math.min(256,nodes.length);i++) {
-      const text=(nodes[i].textContent || '').slice(0,2048);
+    const walker=document.createTreeWalker(document.body || document,NodeFilter.SHOW_TEXT,{
+      acceptNode:node=>node.parentElement?.closest('script,style,template,noscript')?NodeFilter.FILTER_REJECT:NodeFilter.FILTER_ACCEPT,
+    });
+    while(walker.nextNode()) {
+      const text=walker.currentNode.nodeValue || '';
       robot ||= /Are you a robot\?/.test(text);
       human ||= /Please confirm you are a human by completing the captcha challenge/i.test(text);
       cpe ||= /\bCPE00001\b/.test(text);
       denied ||= /There was a problem providing the content you requested/i.test(text);
     }
     markers.robot=robot && human;markers.contentDenied=cpe && denied;
-    const frames=document.querySelectorAll('iframe[src]');
     // Resource presence alone never identifies a Cloudflare main challenge.
-    for(let i=0;i<Math.min(256,frames.length);i++) {
-      try {const url=new URL(frames[i].getAttribute('src'),location.href);
+    for(const frame of document.querySelectorAll('iframe[src]')) {
+      try {const url=new URL(frame.getAttribute('src'),location.href);
         if(/(^|\.)hcaptcha\.com$/i.test(url.hostname))markers.hcaptcha=true;
       } catch { /* No URL evidence. */ }
     }
     markers.login=[...document.querySelectorAll('input[type="password"],input[autocomplete="one-time-code"]')].some(node=>node.getClientRects().length>0);
     let imperva=null;
     const children=document.body?.children;
-    const shell=children?.length>0 && children.length<=32 && [...children].every(node=>node.localName==='iframe')
+    const shell=children?.length>0 && [...children].every(node=>node.localName==='iframe')
       && [...document.body.childNodes].every(node=>node.nodeType!==3 || !node.nodeValue.trim());
     if(shell)for(const frame of children) {
       const fallback=frame.textContent || '';
@@ -55,7 +51,7 @@ const operations={
       if(ids.length<=1 && /^[0-9]{1,32}-[0-9]{1,32}$/.test(incident) && (!displayed || displayed===incident))imperva.incident=incident;
       break;
     }
-    return {markers,imperva,limited};
+    return {markers,imperva};
   },
   article() {
     const keys=new Set(['citation_doi','bepress_citation_doi','prism.doi','dc.identifier','dc.identifier.doi','dcterms.identifier']);
@@ -75,7 +71,7 @@ const operations={
     if(/(^|\.)scielo\.(?:br|org|cl|sa\.cr|org\.mx|org\.za)$/i.test(location.hostname))
       for(const node of document.querySelectorAll('article a._doi[href],.article a._doi[href]'))
         if(!node.closest(peripheral))add(node.getAttribute('href'));
-    return {values,limited,multiple,article:articles.length===1 || !!document.querySelector('main,[role="main"]')};
+    return {values,limited,multiple,article:articles.length===1};
   },
 };
 ipcRenderer.on('document:operation',async(_event,{id,action,expectedDocumentId,expectedURL})=>{

@@ -16,7 +16,8 @@ function articleURL(value) {
 }
 function locationDOIs(value) {
   const url=articleURL(value);if(!url || /^(?:dx\.)?doi\.org$/i.test(url.hostname))return [];
-  const values=[...url.searchParams.getAll('doi'),...url.searchParams.getAll('id')];
+  // A query DOI belongs to a supported article endpoint, never an arbitrary search/redirect URL.
+  const values=/\/article\/?$/i.test(url.pathname)?[...url.searchParams.getAll('doi'),...url.searchParams.getAll('id')]:[];
   try {
     let path=decodeURIComponent(url.pathname);
     if(url.hostname==='projecteuclid.org' && path.startsWith('/journals/') && path.endsWith('.full'))path=path.slice(0,-5);
@@ -29,7 +30,7 @@ function articleIdentity(target,doc,probe) {
   if(probe?.multiple)return {outcome:'unconfirmed',reason:'multiple_articles'};
   if(!Array.isArray(probe?.values) || probe.values.length>32 || probe.values.some(value=>typeof value!=='string' || value.length>1024))
     return {outcome:'unconfirmed',reason:'evidence_limit'};
-  const values=new Set([...probe.values.map(validDOI).filter(Boolean),...(probe.article?locationDOIs(doc.url):[])]);
+  const values=new Set([...probe.values.map(validDOI).filter(Boolean),...(probe.article || probe.values.some(value=>validDOI(value))?locationDOIs(doc.url):[])]);
   if(values.size>1)return {outcome:'conflict',reason:'multiple_dois'};
   const doi=validDOI(target.doi);
   if(doi) {

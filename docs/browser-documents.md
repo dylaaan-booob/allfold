@@ -20,8 +20,8 @@ boundary. There is no permanent DOM observer or cached input-DOI proof.
 - `binding`: content type, Document ID and host-captured Page/process/frame/URL/
   navigation facts. pageAction, CARSI selection/search/Visit and WoS results use
   this operation without an article DOI requirement.
-- `access`: fixed title/challenge/content-denial/login booleans, an explicit
-  observation-limit flag and strictly validated Imperva `edet`/incident fields.
+- `access`: fixed title/challenge/content-denial/login booleans and
+  strictly validated Imperva `edet`/incident fields.
   HTTP status comes from the actual native main-frame navigation. No title,
   HTML, script, iframe URL, query, form value or page text is returned.
 - `article`: access markers and limited main-article evidence from one synchronous
@@ -29,9 +29,10 @@ boundary. There is no permanent DOM observer or cached input-DOI proof.
   keys and the scoped SciELO article DOI link locator. Multiple main articles or
   evidence overflow is unconfirmed; a matching subset never defeats a conflict.
 
-URL bindings are limited to 4,096 characters. Access observations bound script,
-iframe and diagnostic-node work; incomplete relevant observation is refused with
-`page_probe_unconfirmed`. Ordinary Cloudflare assets/embedded Turnstile resources,
+URL bindings are limited to 4,096 characters. Access predicates inspect script
+markers, individual DOM text nodes and iframe locations locally without truncation,
+serializing or retaining page content. The host deadline bounds the native call;
+invalid/incomplete DTOs are refused with `page_probe_unconfirmed`. Ordinary Cloudflare assets/embedded Turnstile resources,
 or a bare 403/503, do not identify an automatic main challenge. Existing title
 rules and localized page-options plus challenge-page orchestrator combinations
 remain. HTTP errors, 418, CPE00001 and Imperva denial remain failures; hCaptcha,
@@ -55,8 +56,10 @@ DOM authority. No authors, dates, abstract, Item, Translator detect or body
 extraction are required.
 
 DOIs use the shared prefix/validity rules, reliable head Meta and applicable
-current-article DOI `id`/`doi` parameters or DOI-suffix paths. URL evidence requires
-article/main structure; resolver URLs do not count. Euclid journal `.full` and
+current-article DOI `id`/`doi` parameters at an `/article` endpoint or DOI-suffix
+paths. URL-only evidence requires a single article object; scholarly DOI Meta
+also permits checking conflicting article URL facts. Generic main/search layouts
+do not prove an article; resolver URLs do not count. Euclid journal `.full` and
 SciELO article DOI links are scoped by host/structure, not Translator ID. References,
 recommendations, arbitrary body text and unrelated frames supply no DOI evidence.
 Conflicting main DOIs return `article_identity_conflict`. Missing/overflow/multiple

@@ -9,7 +9,7 @@ class BrowserFailure extends Error {
 }
 function checkPage(status, access) {
   const markers=access?.markers;
-  if(!markers || access.limited)throw new BrowserFailure('navigation','page_probe_unconfirmed',status);
+  if(!markers)throw new BrowserFailure('navigation','page_probe_unconfirmed',status);
   if(status===418 || markers.unusualTraffic)throw new BrowserFailure('navigation','site_restricted',418);
   if(markers.contentDenied)throw new BrowserFailure('navigation','content_access_blocked',status);
   if(status===200 && access.imperva) {
