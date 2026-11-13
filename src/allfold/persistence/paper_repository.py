@@ -3,10 +3,11 @@
 from __future__ import annotations
 
 from pathlib import Path
+from datetime import datetime, timezone
 from uuid import UUID, uuid4
 
 from allfold.canonicalize import normalize_abstract
-from allfold.identifiers import strong_identifiers
+from allfold.identifiers import normalize_external_id, strong_identifiers
 from allfold.models import ExternalIds
 from allfold.persistence.library_database import (
     LibraryBusyError, LibraryCorruptError, LibraryDatabase, LibraryError, LibraryExistsError,
@@ -90,13 +91,19 @@ class PaperRepository:
                                       (str(paper_id),)).fetchone()
         body = connection.execute("SELECT relative_path, source_url, size_bytes FROM paper_body WHERE paper_id = ?",
                                   (str(paper_id),)).fetchone()
+        projection = connection.execute("SELECT primary_namespace, primary_value, revision FROM paper_projection WHERE paper_id = ?",
+                                        (str(paper_id),)).fetchone()
+        if projection is None:
+            raise LibraryCorruptError("Paper projection is missing")
         try:
             return PaperRecord(self.workspace_id, UUID(row["paper_id"]), bool(row["excluded"]),
                                row["metadata_generation"], row["operation_generation"],
                                metadata["abstract_generation"] if metadata else None,
                                row["body_generation"], identities,
                                PaperMetadata.model_validate_json(metadata["payload"]) if metadata else None,
-                               BodyReference.model_validate(dict(body)) if body else None)
+                               BodyReference.model_validate(dict(body)) if body else None,
+                               DirectIdentity(projection[0], projection[1]) if projection[0] else None,
+                               projection["revision"])
         except ValueError as error:
             raise LibraryCorruptError("Invalid saved Paper") from error
 
@@ -104,10 +111,39 @@ class PaperRepository:
         with self._database.transaction() as connection:
             return self._read(connection, paper_id)
 
-    def list_papers(self) -> tuple[PaperRecord, ...]:
+    @property
+    def revision(self) -> int:
         with self._database.transaction() as connection:
-            return tuple(self._read(connection, UUID(row[0])) for row in connection.execute(
-                "SELECT paper_id FROM paper_core ORDER BY paper_id"))
+            return connection.execute("SELECT revision FROM library_state WHERE singleton = 1").fetchone()[0]
+
+    def snapshot(self) -> tuple[int, tuple[PaperRecord, ...]]:
+        """One coherent UI snapshot; qualification tokens are not revisions."""
+        with self._database.transaction() as connection:
+            revision = connection.execute("SELECT revision FROM library_state WHERE singleton = 1").fetchone()[0]
+            papers = tuple(self._read(connection, UUID(row[0])) for row in connection.execute(
+                "SELECT paper_id FROM paper_core ORDER BY rowid"))
+            return revision, papers
+
+    def list_papers(self) -> tuple[PaperRecord, ...]:
+        return self.snapshot()[1]
+
+    def _changed(self, connection, paper_id):
+        connection.execute("UPDATE library_state SET revision = revision + 1 WHERE singleton = 1")
+        connection.execute("UPDATE paper_projection SET revision = revision + 1 WHERE paper_id = ?", (str(paper_id),))
+
+    @staticmethod
+    def _new_metadata(metadata):
+        if metadata.discovered_at is None:
+            return metadata.model_copy(update={"discovered_at": datetime.now(timezone.utc)})
+        return metadata
+
+    @staticmethod
+    def _primary(direct_ids, identities):
+        doi = normalize_external_id("doi", direct_ids.model_dump(exclude_none=True).get("doi"))
+        if doi:
+            return DirectIdentity("doi", doi)
+        priority = ("pmid", "pmcid", "wos", "openalex", "europe_pmc", "arxiv", "biorxiv", "medrxiv")
+        return min(identities, key=lambda item: (priority.index(item.namespace), item.value))
 
     def _match(self, connection, identities):
         owners = {row[0] for identity in identities for row in connection.execute(
@@ -133,7 +169,7 @@ class PaperRepository:
     def create_or_match(self, workspace_id: UUID, *, direct_ids: ExternalIds,
                         metadata: PaperMetadata) -> CreationResult:
         identities = _identities(direct_ids)
-        metadata = PaperMetadata.model_validate(metadata)
+        metadata = self._new_metadata(PaperMetadata.model_validate(metadata))
         with self._database.transaction(write=True) as connection:
             if workspace_id != self.workspace_id:
                 raise StaleWriteError("Different Workspace identity")
@@ -143,6 +179,10 @@ class PaperRepository:
             paper_id = uuid4()
             connection.execute("INSERT INTO paper_core (paper_id) VALUES (?)", (str(paper_id),))
             self._add_identities(connection, paper_id, identities)
+            primary = self._primary(direct_ids, identities)
+            connection.execute("INSERT INTO paper_projection VALUES (?, ?, ?, 1)",
+                               (str(paper_id), primary.namespace, primary.value))
+            connection.execute("UPDATE library_state SET revision = revision + 1 WHERE singleton = 1")
             connection.execute("INSERT INTO paper_metadata (paper_id, payload) VALUES (?, ?)",
                                (str(paper_id), metadata.model_dump_json()))
             return CreationResult(self._read(connection, paper_id), True)
@@ -170,6 +210,9 @@ class PaperRepository:
                 "ordinary_dates": paper.metadata.ordinary_dates + delta.ordinary_dates,
                 "preprints": paper.metadata.preprints + delta.preprints,
                 "sources": tuple(dict.fromkeys(paper.metadata.sources + delta.sources)),
+                "preprint_evidence": tuple(dict.fromkeys(paper.metadata.preprint_evidence + delta.preprint_evidence)),
+                "preprint_relations": tuple(dict.fromkeys(paper.metadata.preprint_relations + delta.preprint_relations)),
+                "first_public_at": paper.metadata.first_public_at or delta.first_public_at,
             }
             if (delta.abstract and not paper.metadata.abstract
                     and paper.abstract_generation == token.abstract_generation):
@@ -177,6 +220,7 @@ class PaperRepository:
             metadata = PaperMetadata.model_validate(paper.metadata.model_dump() | changes)
             connection.execute("UPDATE paper_metadata SET payload = ? WHERE paper_id = ?",
                                (metadata.model_dump_json(), str(paper.id)))
+            self._changed(connection, paper.id)
             return self._read(connection, paper.id)
 
     def edit_metadata(self, token: WriteToken, changes: dict) -> PaperRecord:
@@ -194,6 +238,7 @@ class PaperRepository:
             metadata = PaperMetadata.model_validate(paper.metadata.model_dump() | changes)
             connection.execute("UPDATE paper_metadata SET payload = ?, abstract_generation = abstract_generation + ? WHERE paper_id = ?",
                                (metadata.model_dump_json(), int("abstract" in changes), str(paper.id)))
+            self._changed(connection, paper.id)
             return self._read(connection, paper.id)
 
     def exclude(self, token: WriteToken) -> PaperRecord:
@@ -202,6 +247,7 @@ class PaperRepository:
             if not paper.excluded:
                 connection.execute("UPDATE paper_core SET excluded = 1, operation_generation = operation_generation + 1 WHERE paper_id = ?",
                                    (str(paper.id),))
+            self._changed(connection, paper.id)
             return self._read(connection, paper.id)
 
     def restore(self, token: WriteToken) -> PaperRecord:
@@ -213,6 +259,7 @@ class PaperRepository:
             if paper.excluded:
                 connection.execute("UPDATE paper_core SET excluded = 0, operation_generation = operation_generation + 1 WHERE paper_id = ?",
                                    (str(paper.id),))
+            self._changed(connection, paper.id)
             return self._read(connection, paper.id)
 
     def clear_metadata(self, token: WriteToken) -> PaperRecord:
@@ -224,6 +271,7 @@ class PaperRepository:
                 connection.execute("DELETE FROM paper_metadata WHERE paper_id = ?", (str(paper.id),))
                 connection.execute("UPDATE paper_core SET metadata_generation = metadata_generation + 1, operation_generation = operation_generation + 1 WHERE paper_id = ?",
                                    (str(paper.id),))
+            self._changed(connection, paper.id)
             return self._read(connection, paper.id)
 
     def unexclude(self, token: WriteToken) -> PaperRecord:
@@ -235,13 +283,14 @@ class PaperRepository:
             if paper.excluded:
                 connection.execute("UPDATE paper_core SET excluded = 0, operation_generation = operation_generation + 1 WHERE paper_id = ?",
                                    (str(paper.id),))
+            self._changed(connection, paper.id)
             return self._read(connection, paper.id)
 
     def rebuild_from_run(self, token: WriteToken, *, direct_ids: ExternalIds,
                          metadata: PaperMetadata) -> PaperRecord:
         """Rebuild only a released placeholder from a caller-verified, new Run result."""
         identities = _identities(direct_ids)
-        metadata = PaperMetadata.model_validate(metadata)
+        metadata = self._new_metadata(PaperMetadata.model_validate(metadata))
         with self._database.transaction(write=True) as connection:
             paper = self._require_token(connection, token)
             if paper.excluded or paper.metadata is not None:
@@ -253,6 +302,7 @@ class PaperRepository:
                                (str(paper.id), metadata.model_dump_json()))
             connection.execute("UPDATE paper_core SET metadata_generation = metadata_generation + 1, operation_generation = operation_generation + 1 WHERE paper_id = ?",
                                (str(paper.id),))
+            self._changed(connection, paper.id)
             return self._read(connection, paper.id)
 
     def complete_body(self, token: WriteToken, body: BodyReference) -> PaperRecord:
@@ -268,6 +318,7 @@ class PaperRepository:
                                (str(paper.id), body.relative_path, body.source_url, body.size_bytes))
             connection.execute("UPDATE paper_core SET body_generation = body_generation + 1 WHERE paper_id = ?",
                                (str(paper.id),))
+            self._changed(connection, paper.id)
             return self._read(connection, paper.id)
 
     def clear_body(self, token: WriteToken) -> PaperRecord:
@@ -280,4 +331,5 @@ class PaperRepository:
             # Also revoke a pending result when there is currently no body.
             connection.execute("UPDATE paper_core SET body_generation = body_generation + 1 WHERE paper_id = ?",
                                (str(paper.id),))
+            self._changed(connection, paper.id)
             return self._read(connection, paper.id)
