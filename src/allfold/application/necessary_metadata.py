@@ -18,6 +18,7 @@ from allfold.paper_dates import (
     preprint_identity, preprint_query_refs,
 )
 from allfold.persistence.library_models import MetadataDelta
+from allfold.pdf_facts import discovery_facts_from_records
 from allfold.providers.integrated import Cancelled, DiscoveryError, IdentityMismatch
 
 
@@ -247,6 +248,7 @@ def _increment(records, root_ids):
     proof = tuple(item for item in collect_dates(records) if item.kind == EvidenceDateKind.PREPRINT)
     relations = tuple(dict.fromkeys(ref for item in records for ref in item.related_ids))
     delta = MetadataDelta(ordinary_dates=dates, abstract=next(iter(abstracts.values())) if len(abstracts) == 1 else None,
+        discovery_facts=discovery_facts_from_records(records, root_ids),
         preprint_evidence=proof, preprint_relations=relations,
         sources=tuple(dict.fromkeys(item.provenance for item in records if item.provenance.provider != 'workspace')))
     identities = defaultdict(set)
