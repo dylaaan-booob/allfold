@@ -17,12 +17,11 @@ const settings={csrf_token:'fixture',issues:[],covers:{},cover_search,saved_work
   zotero_target:{server_id:'SyntheticServer',library_type:'user',library_id:'0',collection_key:null},
   provider_aliases:{},provider_order:['pubmed','openalex','europe_pmc','crossref','arxiv','biorxiv','medrxiv','wos'],enabled_providers:['pubmed','openalex'],groups:['Synthetic Group'],custom_labels:[],journals,access_services:services,
 }};
-const paper={id:'paper-1',title:'Synthetic kept paper',doi:'10.5555/presentation',publication_date:'2026-10-01',status:'kept',abstract:'Synthetic fixture only',authors:[],enrichPhase:'Idle'};
+const paper={id:'paper-1',title:'Synthetic downloaded paper',doi:'10.5555/presentation',publication_date:'2026-10-01',status:'downloaded',metadata_present:true,excluded:false,identities:[],ordinary_dates:[],preprints:[],abstract:'Synthetic fixture only',authors:[]};
 const record={key:'0000-0001',...journals[0],labels:[],papers:[]};
-const workspace={csrf_token:'fixture',import_token:'fixture',issues:[],counts:{candidates:0,active_journals:1},subjects:[{name:'Synthetic Group',journals:[record]}],kept:{papers:[{paper,journal:record}],journals:[record],services,settings:{},titles:{'paper-1':paper.title}}};
-const queue={unprepared_services:[services[0]],services:[{id:'all',name:'All Services',kept:1,eligible:1},{id:serviceId,name:services[0].name,kept:1,eligible:1},{id:'unassigned',name:'Unassigned',kept:0,eligible:0},{id:'ambiguous',name:'Ambiguous',kept:0,eligible:0}],papers:[{paper_id:'paper-1',title:paper.title,doi:paper.doi,service_id:serviceId,assignment:'assigned',reason:''}],import_token:'fixture'};
+const workspace={workspace_id:'fixture-library',revision:0,initialized:true,csrf_token:'fixture',issues:[],counts:{candidates:0,active_journals:1},subjects:[{name:'Synthetic Group',journals:[record]}],trash:{papers:[]},downloaded:{papers:[{paper,journal:record}],journals:[record],services,settings:{},titles:{'paper-1':paper.title}}};
 let loginState={active:false,phase:'idle',scope,carsi:{status:'Not prepared'},services:services.map(service=>({...service,preparation:{status:'Not prepared'}}))};
-let keptState={active:false,phase:'idle',navigation:null,can_cancel:false},runActive=false;
+let runActive=false;
 const runData=()=>({active:runActive,snapshot:{status:runActive?'RUNNING':'IDLE',provider:'integrated',task_id:'run-a',browser_active:runActive,waiting_for_user:runActive},progress:{stage_label:'Waiting for synthetic challenge',elapsed_text:'2s',announcement_message:'Local fixture only'},providers:Object.fromEntries(['integrated','wos'].map(id=>[id,{enabled:true,message:'',snapshot:{status:id==='wos'&&runActive?'RUNNING':'IDLE'},result_summary:null}]))});
 const requests=[],workspaceReads={started:0,inFlight:0,lastCandidateIds:[]};
 const challenge=`<!doctype html><html><head><meta charset="utf-8"><style>*{box-sizing:border-box}body{margin:0;padding:10px;font:16px/1.4 sans-serif;background:#f2f5fb;color:#192942}h1{font-size:18px;margin:0 0 8px}.box{border:2px solid #4a68a0;background:white;padding:8px}label{display:block;margin:4px 0}input,button{font:inherit;min-height:30px;max-width:100%}#result{font-weight:bold}#long{height:700px;background:linear-gradient(#edf2fa,#c5d3e8)}</style></head><body><h1>Local synthetic challenge</h1><form class="box"><label><input id="human" type="checkbox"> Check square</label><label>Code <input id="code" size="5"></label><button id="verify">Verify code</button><output id="result">Waiting</output></form><div id="long">Scroll to final control</div><button id="bottom">Final control</button><p id="bottom-result"></p><script>window.fixtureLoad=crypto.randomUUID();document.cookie='synthetic_session=preserved; SameSite=Lax';document.querySelector('form').onsubmit=event=>{event.preventDefault();result.textContent=human.checked&&code.value==='42'?'Synthetic challenge complete':'Try code 42'};bottom.onclick=()=>document.getElementById('bottom-result').textContent='Clicked';</script></body></html>`;
@@ -36,14 +35,10 @@ const server=http.createServer(async(req,res)=>{
     let body='';for await(const chunk of req)body+=chunk;requests.push({route,body:body?JSON.parse(body):null});
     if(route==='/api/login/start')loginState={...loginState,phase:'completed',confirmation_workflow_id:'login-a',
       services:services.map(service=>({...service,preparation:{status:'Needs attention',reason:'manual_action_required'}}))};
-    if(route==='/api/kept-workflow/start')keptState={workflow_id:'kept-a',generation:7,planned_total:1,
-      batch:{total:1,task_id:'import-a',results:[{paper_id:'paper-1',service_id:serviceId,
-        parent_outcome:'not_saved',outcome:'skipped',reason:'Unprepared Service skipped'}]},
-      phase:'completed',active:false,can_cancel:false,message:'Local synthetic Import settled'};
-    const data=route.startsWith('/api/login/')?loginState:route==='/api/ui-next/workspace'?workspace:route==='/api/ui-next/settings'?settings:route==='/api/kept-workflow/queue'?queue:
+    const data=route.startsWith('/api/login/')?loginState:route==='/api/ui-next/workspace'?workspace:route==='/api/ui-next/settings'?settings:
       route==='/api/ui-next/browser-services'?{scope,services}:route.startsWith('/api/ui-next/run')&&!route.endsWith('expression')?runData():
       route==='/api/ui-next/run-expression'?{providers:Object.fromEntries([...settings.values.provider_order,'integrated'].map(id=>[id,{expression:'causal',error:null}]))}:
-      route==='/api/kept-workflow/state'||route==='/api/kept-workflow/start'||route==='/api/kept-workflow/cancel'||route==='/api/kept-workflow/acknowledge'?keptState:route==='/settings/covers/search'?cover_search:
+route==='/settings/covers/search'?cover_search:
       route.includes('/history')?{records:[]}:route.includes('/institutions')?{institutions:[]}:{};
     if(route==='/api/ui-next/workspace'){workspaceReads.started++;workspaceReads.inFlight++;workspaceReads.lastCandidateIds=record.papers.map(paper=>paper.id);res.once('finish',()=>{workspaceReads.inFlight--;});}
     res.writeHead(200,{'Content-Type':'application/json'});res.end(JSON.stringify(data));return;
@@ -68,7 +63,7 @@ app.whenReady().then(async()=>{
   try{
     await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));origin=`http://127.0.0.1:${server.address().port}`;
     win=new BrowserWindow({width:1200,height:800,show:false,webPreferences:{sandbox:true,contextIsolation:true,backgroundThrottling:false,partition:'browser-workspaces-host',preload:path.join(__dirname,'../src/preload/preload.cjs')}});
-    browser=new BrowserRuntime({hostWindow:win,isTaskRunning:()=>keptState.active||runActive});await browser.ready;const update=browser.setPresentation.bind(browser);browser.setPresentation=value=>{nativeUpdates.push({...value});return update(value)};
+    browser=new BrowserRuntime({hostWindow:win,isTaskRunning:()=>loginState.active||runActive});await browser.ready;const update=browser.setPresentation.bind(browser);browser.setPresentation=value=>{nativeUpdates.push({...value});return update(value)};
     for(const partition of [win.webContents.session,browser.partition])partition.webRequest.onBeforeRequest({urls:['http://*/*','https://*/*']},(details,callback)=>callback({cancel:new URL(details.url).origin!==origin}));
     ipcMain.handle('cas:status',()=>({available:false,configured:false,revision:'fixture'}));disposeIPC=installBrowserIPC({ipcMain,hostWindow:win,origin,browser});await win.loadURL(origin+'/');win.show();app.focus({steal:true});win.focus();await ready(()=>Promise.resolve(win.isFocused()),'fixture Window focus');
     await ready(()=>host("window.uiWorkspace?.ready()&&!document.getElementById('settings-open').disabled&&document.querySelectorAll('#s-journals [data-journal]').length===1"),'shipped UI ready');
@@ -95,8 +90,8 @@ app.whenReady().then(async()=>{
     await ready(()=>host("document.getElementById('login-services').textContent.includes('Needs attention')"),'Login presents the Service result');
     assert(await host("!document.getElementById('login-confirm').hidden && !document.querySelector('#login-services [data-login-action=page]')"),'Login exposes one batch confirmation');
     assert(requests.filter(request=>request.route==='/api/login/start').length===1,'Login did not submit one explicit task');
-    await search('Synthetic kept paper');await key(win.webContents,'Enter');
-    await ready(()=>host("workspaceNavigation.current()==='workspace'&&document.getElementById('view-paper-title').textContent==='Synthetic kept paper'"),'paper search opens Reader');
+    await search('Synthetic downloaded paper');await key(win.webContents,'Enter');
+    await ready(()=>host("workspaceNavigation.current()==='workspace'&&document.getElementById('view-paper-title').textContent==='Synthetic downloaded paper'"),'paper search opens Reader');
     const background=browser.createTab({present:false});await background.view.webContents.loadURL(origin+'/background-layout');
     assert(await background.view.webContents.executeJavaScript('(()=>{const frame=document.querySelector("iframe"),box=frame.contentDocument.querySelector("input"),rect=box.getBoundingClientRect();return innerWidth>0&&innerHeight>0&&frame.contentDocument.elementFromPoint(rect.x+rect.width/2,rect.y+rect.height/2)===box;})()'),'background responsive checkbox has no usable viewport');
     assert(browser.selected===null&&!browser.presentation.mounted,'background layout selected or presented a Page');await browser.command({action:'close',id:background.id});
@@ -130,21 +125,13 @@ app.whenReady().then(async()=>{
     win.webContents.setZoomFactor(1.25);await size(600,480);rect=await measured('shipped 600x480 Zoom 1.25 Focus');
     assert(rect.height>=180&&rect.width>=300,'zoomed Focus viewport unusable '+JSON.stringify(rect));
     await page("code.value='' ");await completeChallenge();await page('scrollTo(0,0)');await capture('shipped-600x480-zoom125-complete');
-    await click(win.webContents,'#browser-return');await ready(()=>host("workspaceNavigation.current()==='workspace'&&document.getElementById('view-paper-title').textContent==='Synthetic kept paper'"),'Browser returns to the same Paper');
+    await click(win.webContents,'#browser-return');await ready(()=>host("workspaceNavigation.current()==='workspace'&&document.getElementById('view-paper-title').textContent==='Synthetic downloaded paper'"),'Browser returns to the same Paper');
     win.webContents.setZoomFactor(1);await size(1200,800);
-    await click(win.webContents,'#workflows-open');await click(win.webContents,'#workflow-nav [data-workflow="kept"]');
-    await ready(()=>host("workspaceNavigation.current()==='kept'&&!document.getElementById('kept-workspace').hidden"),'Import Workflows page');
-    await click(win.webContents,'#browser-open');await measured('shipped Import Focus');
-    await click(win.webContents,'#browser-return');assert(await host("workspaceNavigation.current()==='kept'&&document.activeElement.id==='browser-open'"),'Import page return focus');
-    await ready(()=>host("!document.getElementById('kept-start').disabled"),'Import is ready');
-    await click(win.webContents,'#kept-start');
-    await ready(()=>host("document.getElementById('kept-confirm').open"),'Import asks about unprepared Services');
-    assert(!requests.some(request=>request.route==='/api/kept-workflow/start'),'Import dispatched before explicit skip');
-    await click(win.webContents,'#kept-continue');
-    await ready(()=>host("document.getElementById('kept-progress').textContent.includes('已跳过 1')"),'Import displays skipped count');
-    const importRequest=requests.find(request=>request.route==='/api/kept-workflow/start')?.body;
-    assert(importRequest?.skip_unprepared?.join()===serviceId&&!Object.hasOwn(importRequest,'mode'),'Import changed the skip decision or sent a legacy mode');
-    keptState={active:false,phase:'idle',navigation:null,can_cancel:false};runActive=true;
+    await click(win.webContents,'#workflows-open');await click(win.webContents,'#workflow-nav [data-workflow="login"]');
+    await click(win.webContents,'#browser-open');await measured('shipped Login Focus');
+    await click(win.webContents,'#browser-return');assert(await host("workspaceNavigation.current()==='login'&&document.activeElement.id==='browser-open'"),'Login page return focus');
+    assert(!requests.some(request=>request.route.includes('kept-workflow')||request.route.includes('enrichment')),'Retired workflow initialized polling');
+    runActive=true;
     await browser.runTask(new AbortController().signal,{workflow_id:'run-a',task_id:'query-wos',request_id:'request-run'},async()=>{
       browser.associatePage(tab,{role:'wos-query'});browser.bindTaskPage(tab);await win.reload();
       await ready(()=>host("document.getElementById('run-view').open&&!document.querySelector('.run-task-page').hidden"),'actual restored Run fullscreen');assert(await host("workspaceNavigation.current()==='run'"),'restored Run fullscreen did not enter Run workspace');await click(win.webContents,'.run-task-page');await measured('shipped Run fullscreen handoff');

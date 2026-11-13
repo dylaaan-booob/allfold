@@ -45,8 +45,8 @@ they never become broader bypass rules. CIDRs use `ipaddress` with host bits
 normalized, and do not accept port suffixes. Even `NO_PROXY=*` does not hide an
 invalid proxy-server configuration.
 
-`proxy_policy="direct"` skips proxy discovery. Zotero Local API explicitly uses
-this policy and retains `trust_env=False`, no redirects and Server-ID validation.
+`proxy_policy="direct"` skips proxy discovery. The retired Zotero Local API no
+longer creates a client or exposes a business endpoint.
 Other clients retain HTTPX TLS defaults, including `SSL_CERT_FILE`, `SSL_CERT_DIR`
 and explicit SSL contexts. `trust_env=False` disables both environmental proxy
 discovery and environmental CA handling as in HTTPX. An explicit `transport=`
@@ -137,6 +137,7 @@ shortened pages are explicit failures or incomplete results. Valid empty exact
 responses count as no-match.
 
 arXiv uses a three-second interval; bioRxiv and medRxiv share their API host
-pacing. Webpage Enrich continues to
-use the separate existing Chromium Session/Translator mechanism.
+pacing. Browser/Prepare continue to use their separate Chromium Session. Active
+webpage Enrich and its Translator transport are retired; Provider HTTP remains
+independent of Browser authentication.
 See [Provider contracts and limits](providers.md).

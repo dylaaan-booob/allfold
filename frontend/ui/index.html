@@ -61,7 +61,6 @@
   <nav id="workflow-nav" aria-label="Workflows" hidden>
     <button type="button" data-workflow="login">Login</button>
     <button type="button" data-workflow="run">Discover</button>
-    <button type="button" data-workflow="kept">Import to Zotero</button>
   </nav>
   <section id="login-page" class="workbench-layout" hidden inert aria-label="Login">
     <aside class="navigation-flyout" hidden><button type="button" data-flyout-close aria-label="Close directory">×</button></aside>
@@ -115,17 +114,15 @@
       <div class="review-left">
         <div class="inspection-heading" data-journal-widget="inspectionHeading"><i class="archive-widget-handle" data-widget="inspectionHeading" role="button" tabindex="0" aria-label="移动 INSPECTION 与论文计数" title="拖动此手柄移动控件；方向键微调">⠿</i><div class="inspection-info"><span>INSPECTION</span><span id="directory-position"></span></div></div>
         <div class="review-back" data-journal-widget="inspectionBack"><i class="archive-widget-handle" data-widget="inspectionBack" role="button" tabindex="0" aria-label="移动 RETURN 按钮" title="拖动此手柄移动控件；方向键微调">⠿</i><button id="back">← RETURN TO ARCHIVE / ESC</button></div>
-        <div class="left-review-actions" data-journal-widget="inspectionActions"><i class="archive-widget-handle" data-widget="inspectionActions" role="button" tabindex="0" aria-label="移动 Keep 与 Reject 按钮组" title="拖动此手柄移动控件；方向键微调">⠿</i><button id="keep-paper">Keep</button><button id="reject-paper">Reject</button></div>
+        <div class="left-review-actions" data-journal-widget="inspectionActions"><i class="archive-widget-handle" data-widget="inspectionActions" role="button" tabindex="0" aria-label="移动 Paper 操作按钮组" title="拖动此手柄移动控件；方向键微调">⠿</i><button id="reject-paper">Reject</button><button id="restore-paper" hidden>Restore</button><button id="clear-paper-metadata" hidden>清除 metadata</button></div>
       </div>
       <div class="review-right">
       <div class="paper-navigation"><div class="paper-stepper"><button id="previous-paper" aria-label="上一篇 Paper">←</button><strong id="paper-position"></strong><button id="next-paper" aria-label="下一篇 Paper">→</button></div></div>
       <article id="paper-detail" tabindex="-1">
         <h1 id="view-paper-title" tabindex="-1"></h1>
         <dl id="paper-dates" class="paper-metadata paper-dates">
-          <div><dt>First public</dt><dd id="paper-first-public" data-date-kind="first-public"></dd></div>
-          <div><dt>Received</dt><dd data-date-kind="received"></dd></div>
-          <div><dt>Accepted</dt><dd data-date-kind="accepted"></dd></div>
-          <div><dt>Published</dt><dd data-date-kind="published"></dd></div>
+          <div><dt>Dates</dt><dd data-date-set="ordinary"></dd></div>
+          <div><dt>Preprint</dt><dd data-date-set="preprint"></dd></div>
         </dl>
         <details id="paper-metadata-details">
         <summary id="paper-metadata-summary">Infos</summary>
@@ -137,10 +134,9 @@
           <div><dt>Identifiers</dt><dd id="paper-identifiers"></dd></div>
           <div><dt>Indexed terms</dt><dd id="paper-indexed-terms"></dd></div>
           <div><dt>Providers</dt><dd id="paper-providers"></dd></div>
-          <div><dt>Date evidence</dt><dd><ol id="paper-date-evidence" class="paper-date-evidence"></ol></dd></div>
+          <div><dt>Preprint details</dt><dd><ol id="paper-date-evidence" class="paper-date-evidence"></ol></dd></div>
         </dl>
         </details>
-        <div class="review-controls" hidden><p id="enrich-status" role="status" aria-live="polite"></p><button id="enrich-task-page" hidden>打开 Browser 验证</button><button id="cancel-enrich" hidden>Cancel</button></div>
         <div id="paper-abstract-heading" class="abstract-heading"><h2>Abstract</h2></div>
         <div id="paper-abstract"></div>
         <p id="view-paper-id" class="paper-uuid"></p>
@@ -155,14 +151,15 @@
       <div class="rail-group"><button id="array-index-toggle" class="rail-button" data-flyout="index" title="INDEX" aria-label="Index"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 6h13M8 12h13M8 18h13M3 6h1M3 12h1M3 18h1"/></svg></button></div>
       <div id="array-status" class="rail-group" role="group" aria-label="Array status" hidden>
         <button id="array-candidates" class="rail-button" title="CANDIDATES" aria-label="Candidates" aria-pressed="true" disabled><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 4h16v16H4zM8 8h8M8 12h8M8 16h4"/></svg></button>
-        <button id="array-kept" class="rail-button" title="KEPT" aria-label="Kept" aria-pressed="false" disabled><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 3h12v18l-6-4-6 4z"/></svg><span id="kept-count" class="rail-badge">00</span></button>
+        <button id="array-downloaded" class="rail-button" title="DOWNLOADED" aria-label="Downloaded" aria-pressed="false" disabled><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 3h12v18l-6-4-6 4z"/></svg><span id="downloaded-count" class="rail-badge">00</span></button>
+        <button id="array-trash" class="rail-button" title="TRASH" aria-label="Trash" aria-pressed="false" disabled><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 6h16M9 6V3h6v3M6 6l1 15h10l1-15M10 10v7M14 10v7"/></svg><span id="trash-count" class="rail-badge">00</span></button>
       </div>
     </nav>
     <aside id="array-flyout" class="navigation-flyout" aria-label="Index" tabindex="-1" hidden><div class="flyout-heading"><span>INDEX</span><button data-flyout-close aria-label="Close Index">×</button></div><div id="array-layout-controls"></div><div id="array-index" data-flyout-list tabindex="-1" aria-label="Candidate Journals"></div></aside>
     <div id="array-content" class="kept-center workspace-content" tabindex="-1">
       <div id="array-primary-actions"><div id="kept-reading-tools" hidden><span id="array-decision-tools" class="left-review-actions" hidden></span></div></div>
       <header id="array-paper-heading"></header>
-      <p id="kept-empty" hidden>尚无保留文献。审阅时点击 Keep，论文会出现在这里。</p>
+      <p id="kept-empty" hidden>当前视图没有 Paper。</p>
       <div id="kept-reader" hidden><div id="kept-reader-body"></div></div>
     </div>
     <aside id="array-sidebar" class="functional-sidebar" aria-label="Info" hidden>
@@ -171,7 +168,7 @@
       <div class="array-context-scroll sidebar-scroll" data-functional-view="info">
       <section id="array-journal-profile"><h2 id="array-journal-name"></h2><dl class="array-profile"><div><dt>ISSN</dt><dd id="array-journal-issn"></dd></div><div><dt>eISSN</dt><dd id="array-journal-eissn"></dd></div><div><dt>SUBJECT</dt><dd id="array-journal-subject"></dd></div><div><dt>LABEL</dt><dd id="array-journal-labels"></dd></div></dl></section>
       <div id="paper-preprint-lookup" hidden>
-        <button id="preprint-lookup-start" class="s-button" type="button" aria-describedby="preprint-lookup-status">查询 bioRxiv / medRxiv 预印本</button>
+        <button id="preprint-lookup-start" class="s-button" type="button" aria-describedby="preprint-lookup-status">查询关联预印本</button>
         <button id="preprint-lookup-cancel" class="s-button" type="button" hidden>取消查询</button>
         <p id="preprint-lookup-status" role="status" aria-live="polite" hidden></p>
       </div>
@@ -183,33 +180,6 @@
     <nav class="tool-rail" aria-label="ARRAY tools"><button class="rail-button" data-sidebar-view="info" aria-controls="array-sidebar" title="INFO" aria-label="Info"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 11v6M12 7v1"/></svg></button></nav>
   </section>
   </main>
-  <section id="kept-workspace" class="workbench-layout" hidden inert aria-label="Import to Zotero">
-    <nav class="navigation-rail" aria-label="Import navigation"><button id="kept-directory-toggle" class="rail-button" data-flyout="services" aria-label="Service Directory" title="SERVICE DIRECTORY"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5h16M4 12h16M4 19h16"/></svg></button></nav>
-    <aside id="kept-directory" class="navigation-flyout" aria-label="Service Directory" tabindex="-1" hidden><div class="flyout-heading"><span>SERVICE DIRECTORY</span><button data-flyout-close aria-label="Close Service Directory">×</button></div><div id="kept-service-list" data-flyout-list></div></aside>
-    <div id="kept-main" class="workspace-content" tabindex="-1">
-      <header class="workflow-heading"><h1>Import to Zotero</h1></header>
-      <div id="kept-zotero-target" class="kept-zotero-target" aria-label="Zotero target">
-        <label>Library <select data-zotero-library aria-label="Zotero Library"></select></label>
-        <label>Collection <select data-zotero-collection aria-label="Zotero Collection"></select></label>
-        <button type="button" data-zotero-refresh class="s-button">Refresh</button><button type="button" data-zotero-authorize class="s-button">Authorize</button>
-        <span data-zotero-status role="status"></span>
-      </div>
-      <p id="kept-scope-status" role="status">All Services</p>
-      <div id="kept-import-actions" class="workflow-actions">
-        <button id="kept-start" type="button" class="s-button" disabled>Import</button>
-        <button id="kept-task-page" type="button" class="s-button" hidden>查看任务页面</button>
-        <button id="kept-leave" type="button" class="s-button" hidden>Cancel</button>
-      </div>
-      <p id="kept-progress" role="status" aria-live="polite" hidden></p>
-    </div>
-    <aside id="kept-sidebar" class="functional-sidebar" aria-label="Import tools" hidden>
-      <div class="sidebar-resize" role="separator" tabindex="0" aria-label="Resize Import tools" aria-orientation="vertical"></div>
-      <div class="sidebar-heading"><span>IMPORT</span><button data-sidebar-close aria-label="Close Import tools">×</button></div>
-      <div class="sidebar-scroll" data-functional-view="workflow"><div id="kept-workflow-settings"></div></div>
-      <div class="sidebar-scroll" data-functional-view="results"><section id="array-import-profile"><div class="kept-record-heading"><span>IMPORT / LATEST</span><span id="kept-record-count">—</span></div><p id="kept-record-summary" role="status">本次尚未导入。</p><ol id="kept-record-items"></ol></section></div>
-    </aside>
-    <nav class="tool-rail" aria-label="Import tools"><button class="rail-button" data-sidebar-view="workflow" aria-label="Workflow" title="WORKFLOW">W</button><button class="rail-button" data-sidebar-view="results" aria-label="Results and Diagnostics" title="RESULTS / DIAGNOSTICS">R</button></nav>
-  </section>
   <section id="configuration-workspace" hidden class="configuration-ui" aria-label="Workspace configuration">
     <div class="s-content">
       <section id="journals-view" hidden class="configuration-page" aria-label="Journals"></section>
@@ -287,9 +257,7 @@
       <label><input type="checkbox" data-paper-reset="authors"> Authors</label>
       <label><input type="checkbox" data-paper-reset="publication_date"> Date</label>
       <button id="paper-reset-fields" type="button" disabled>REST</button>
-      <button id="paper-dev-enrich" type="button" disabled>ENRICH</button>
       <button id="paper-abstract-input" type="button" disabled>INPUT</button>
-      <button id="paper-diagnostics" type="button">DIAGNOSTICS</button>
       <span id="paper-tools-status" role="status" aria-live="polite"></span>
     </div>
     <span id="snapshot-label">WORKSPACE</span></footer>
@@ -318,24 +286,11 @@
     <div class="s-dialog-body">
       <p id="paper-tools-paper"></p>
       <label id="paper-input-label" hidden>Abstract<textarea id="paper-input-text" rows="12"></textarea></label>
-      <pre id="paper-diagnostic-text" hidden tabindex="0"></pre>
       <p id="paper-dialog-error" class="s-field-error" role="status" aria-live="polite"></p>
     </div>
     <div class="s-actions">
       <button id="paper-dialog-cancel" class="s-button" type="button">Cancel</button>
-      <button id="paper-dialog-copy" class="s-button" type="button" hidden>Copy diagnostics</button>
-      <button id="paper-dialog-export" class="s-button" type="button" hidden>导出本次诊断</button>
       <button id="paper-dialog-save" class="s-button s-primary" type="button" hidden>Save</button>
-    </div>
-  </dialog>
-  <dialog id="kept-confirm" aria-labelledby="kept-confirm-title">
-    <h2 id="kept-confirm-title">Services 未准备</h2>
-    <p>跳过以下 Services 的 Paper。它们仍保留在 Kept。</p>
-    <ul id="kept-confirm-services"></ul>
-    <div class="workflow-actions">
-      <button id="kept-confirm-close" class="s-button" type="button">返回</button>
-      <button id="kept-confirm-login" class="s-button" type="button">Open Login</button>
-      <button id="kept-continue" class="s-button" type="button">Skip and Continue</button>
     </div>
   </dialog>
   <dialog id="run-view" aria-labelledby="run-title">
@@ -355,6 +310,5 @@
     </div>
     <div id="run-wash" hidden aria-hidden="true"></div>
   </dialog>
-<script type="module" src="/static/ui_next/zotero-target.js"></script>
 </body>
 </html>

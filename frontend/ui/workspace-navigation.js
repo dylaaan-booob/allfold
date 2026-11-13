@@ -2,14 +2,14 @@
 // Owns top-level presentation only; page controllers retain their business state.
 window.workspaceNavigation = (() => {
   const $=id=>document.getElementById(id);
-  const roots={workspace:$('selected-view'),login:$('login-page'),run:$('run-page'),journals:$('journals-view'),kept:$('kept-workspace'),settings:$('settings-view')};
+  const roots={workspace:$('selected-view'),login:$('login-page'),run:$('run-page'),journals:$('journals-view'),settings:$('settings-view')};
   const pages=new Map([['login',{}]]),nav=document.querySelector('.view-nav'),workflowNav=$('workflow-nav');
-  const isWorkflow=page=>['login','run','kept'].includes(page);
+  const isWorkflow=page=>['login','run'].includes(page);
   const primary=page=>isWorkflow(page)?'workflows':page;
   let current='workspace',workflow='login';
   const configuration=page=>['journals','run','settings'].includes(page);
   function allowed(to,options={}) {
-    if(!pages.has(to) || $('run-view').open || $('kept-confirm').open)return false;
+    if(!pages.has(to) || $('run-view').open)return false;
     const context={from:current,to,...options};
     return [...pages.values()].every(page=>page.canNavigate?.(context)!==false) &&
       pages.get(current)?.canLeave?.(context)!==false && pages.get(to).canEnter?.(context)!==false;
@@ -29,7 +29,7 @@ window.workspaceNavigation = (() => {
     workflowNav.hidden=!isWorkflow(current);
     const footer=document.querySelector('footer');
     footer.inert=footer.hidden=false;
-    if(config || isWorkflow(current))$('mode-label').textContent=({run:'DISCOVER',kept:'IMPORT TO ZOTERO'})[current] || current.toUpperCase();
+    if(config || isWorkflow(current))$('mode-label').textContent=({run:'DISCOVER'})[current] || current.toUpperCase();
     if(config)document.body.dataset.settingsOpen='true';else delete document.body.dataset.settingsOpen;
   }
   function refresh() {
@@ -72,7 +72,7 @@ window.workspaceNavigation = (() => {
     const page=button.dataset.workflow;
     workspaceSearch.registerCommand(page,{name:button.textContent,run:()=>go(page,{instant:true})});
   }
-  for(const id of ['run-view','kept-confirm']){
+  for(const id of ['run-view']){
     const dialog=$(id);
     new MutationObserver(refresh).observe(dialog,{attributes:true,attributeFilter:['open']});
     dialog.addEventListener('close',refresh);

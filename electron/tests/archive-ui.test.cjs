@@ -27,7 +27,7 @@ test('disabling Archive waits for a busy reader and preserves the Workspace pare
   assert.equal(f.get('selected-view').dataset.workspaceLayout,'archive');
   assert.equal(f.get('workspace-archive').hidden,true);
   busy=false;
-  await f.window.emit('enrich-state');
+  await f.window.emit('paper-reading-state');
   assert.equal(f.get('selected-view').dataset.workspaceLayout,'array');
   assert.equal(f.get('selected-view').hidden,false);
   assert.equal(f.get('kept-view').hidden,false);
@@ -44,18 +44,18 @@ test('disabled Archive waits outside Workspace and applies on returning to Works
   assert.equal(f.get('selected-view').dataset.workspaceLayout,'array');
 });
 
-test('legacy Paper navigation locates the current Candidate or Kept entry and rejects missing Papers',async()=>{
+test('legacy Paper navigation locates the current Candidate, Downloaded or Trash entry and rejects missing Papers',async()=>{
   const f=await taskUI('kept.js',{request,archiveDisabled:true,page:'workspace'});
   const journal={key:'journal-1',name:'Test Journal'};
   f.window.inboxKept.candidates=()=>[{paper:{id:'candidate-1',title:'Candidate'},journal}];
-  f.window.inboxKept.papers=()=>[{paper:{id:'kept-1',title:'Kept'},journal}];
+  f.window.inboxKept.entries=status=>[{paper:{id:status+'-1',title:status},journal}];
   assert.equal(f.window.workspaceArray.openPaper('candidate-1'),true);
   assert.equal(f.get('kept-view').dataset.status,'candidates');
   assert.equal(f.get('array-index').children[0].getAttribute('aria-current'),'true');
-  assert.equal(f.window.workspaceArray.openPaper('kept-1'),true);
-  assert.equal(f.page(),'kept');
-  assert.equal(f.get('kept-view').dataset.status,'candidates');
-  assert.equal(f.get('array-index').children[0].dataset.indexId,'journal-1');
+  assert.equal(f.window.workspaceArray.openPaper('downloaded-1'),true);
+  assert.equal(f.page(),'workspace');
+  assert.equal(f.get('kept-view').dataset.status,'downloaded');
+  assert.equal(f.get('array-index').children[0].dataset.indexId,'downloaded-1');
   assert.equal(f.window.workspaceArray.openPaper('missing-1'),false);
   assert.equal(f.get('selected-view').dataset.workspaceLayout,'array');
   assert.equal(f.get('kept-view').hidden,false);

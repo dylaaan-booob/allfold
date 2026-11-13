@@ -28,19 +28,17 @@ const journalDates=[
 const paper=(i,status='candidate')=>({
   id:'paper-'+i,title:'Synthetic Paper '+i,publication_date:'2026-10',
   ...(i===1?{journal:'Synthetic Journal',publication_type:'journal'}:{conference:'Synthetic Conference',publication_type:'conference'}),
-  first_public_at:i===0?'2022-04':null,date_evidence:i===0?conferenceDates:i===1?journalDates:[],
+  first_public_at:i===0?'2022-04':null,ordinary_dates:i===1?['2025-12-31','2026-02','2026-03-13']:['2026-10'],preprint_evidence:i===0?[conferenceDates[1]]:[],metadata_present:true,excluded:status==='trash',identities:[{namespace:'openalex',value:'W123'}],identity_label:'openalex: W123',
   external_ids:{openalex:'W123'},indexed_terms:[{value:'statistics',kind:'topic',source:'openalex'}],
   sources:[{provider:'openalex',record_id:'W123',role:'discovery'}],
   abstract:('An isolated synthetic paragraph for reader scroll verification. '.repeat(12)+'\n\n').repeat(24),
-  authors:['Synthetic Author'],doi:i===0?null:'10.5555/layout-'+i,preprint_lookup_available:i!==0,discovered_at:'2026-10-01T00:00:00Z',status,enrichPhase:'Idle',
+  authors:['Synthetic Author'],doi:i===0?null:'10.5555/layout-'+i,preprint_lookup_available:i!==0,discovered_at:'2026-10-01T00:00:00Z',status,
 });
 const records=journals.map((j,i)=>({key:j.issn,issn:j.issn,name:j.name,group:j.group,labels:[],cover:null,papers:[paper(i*2),paper(i*2+1)]}));
 Object.assign(records[0],{name:'Synthetic Conference',source_type:'unmapped',issn:null,group:'Old scope'});
-const workspace={csrf_token:'fixture',import_token:'fixture',issues:[],counts:{candidates:48,active_journals:24},subjects:[{name:'Group 0',journals:records}],
-  kept:{papers:[{paper:paper(10,'kept'),journal:records[0]},{paper:paper(11,'kept'),journal:records[1]}],journals:records,services:[],settings:{},titles:{}}};
+const workspace={workspace_id:'fixture-library',revision:0,initialized:true,csrf_token:'fixture',issues:[],counts:{candidates:48,active_journals:24},subjects:[{name:'Group 0',journals:records}],
+  trash:{papers:[]},downloaded:{papers:[{paper:paper(100,'downloaded'),journal:records[0]},{paper:paper(101,'downloaded'),journal:records[1]}],journals:records,services:[],settings:{},titles:{}}};
 const run={active:false,snapshot:{status:'IDLE',provider:null},providers:Object.fromEntries(['integrated','wos'].map(id=>[id,{enabled:false,message:'Offline fixture',result_summary:null}]))};
-const keptQueue={services:[{id:'all',name:'All Services',kept:2,eligible:2},{id:'unassigned',name:'Unassigned',kept:2,eligible:2}],papers:[],import_token:'fixture'};
-let keptState={active:false,phase:'idle',navigation:null,can_cancel:false};
 const mimes={'.html':'text/html','.js':'text/javascript','.css':'text/css','.json':'application/json','.woff2':'font/woff2','.ttf':'font/ttf','.otf':'font/otf','.png':'image/png','.mp4':'video/mp4'};
 let rejectAutosave=false,holdWorkspaceResponse,resolveInitialCAS,credentialState={ok:false,error:'cas_store_unreadable',configured:false,username:'',revision:'d'.repeat(64)};
 const credentialWrites=[];
@@ -48,15 +46,24 @@ const preprintStarts=[];
 let preprintState={phase:'Idle',saved_fields:[]};
 const server=http.createServer((req,res)=>{
   const route=new URL(req.url,'http://fixture').pathname;
-  if(route==='/api/ui-next/papers/paper-1/keep'){
-    const kept=records[0].papers.find(paper=>paper.id==='paper-1');
-    records[0].papers=records[0].papers.filter(paper=>paper.id!=='paper-1');
-    workspace.kept.papers.push({paper:{...kept,status:'kept'},journal:records[0]});
-    res.writeHead(200,{'Content-Type':'application/json'});res.end(JSON.stringify({outcome:'UPDATED',resulting_status:'kept'}));return;
-  }
-  if(route==='/api/ui-next/papers/paper-0/reject'){
-    records[0].papers=records[0].papers.filter(paper=>paper.id!=='paper-0');
-    res.writeHead(200,{'Content-Type':'application/json'});res.end(JSON.stringify({outcome:'UPDATED',resulting_status:'rejected'}));return;
+  const action=route.match(/^\/api\/ui-next\/papers\/([^/]+)\/(reject|restore|unexclude|clear-metadata)$/);
+  if(action){
+    const [,id,kind]=action;
+    const candidate=records.flatMap(journal=>journal.papers.map(paper=>({paper,journal}))).find(entry=>entry.paper.id===id);
+    const entry=candidate || workspace.downloaded.papers.find(entry=>entry.paper.id===id) || workspace.trash.papers.find(entry=>entry.paper.id===id);
+    if(!entry){res.writeHead(404);res.end('{}');return;}
+    if(kind==='reject'){
+      entry.journal.papers=entry.journal.papers.filter(paper=>paper.id!==id);
+      workspace.downloaded.papers=workspace.downloaded.papers.filter(item=>item.paper.id!==id);
+      entry.paper.excluded=true;entry.paper.status='trash';workspace.trash.papers.push(entry);
+    }else if(kind==='clear-metadata'){
+      Object.assign(entry.paper,{title:null,metadata_present:false,abstract:null,authors:[],ordinary_dates:[],preprints:[],preprint_evidence:[],first_public_at:null,sources:[],indexed_terms:[],publication_date:null,preprint_lookup_available:false});
+    }else {
+      workspace.trash.papers=workspace.trash.papers.filter(item=>item.paper.id!==id);
+      entry.paper.excluded=false;entry.paper.status='candidate';if(entry.paper.metadata_present)entry.journal.papers.push(entry.paper);
+    }
+    workspace.revision++;
+    res.writeHead(200,{'Content-Type':'application/json'});res.end(JSON.stringify({workspace_id:workspace.workspace_id,revision:workspace.revision,paper:entry.paper}));return;
   }
   const preprint=route.match(/^\/api\/papers\/([^/]+)\/preprint-lookup\/(state|start|cancel)$/);
   if(preprint){
@@ -81,13 +88,6 @@ const server=http.createServer((req,res)=>{
       }else send({error:'Unexpected preprint target'},409);
     });return;
   }
-  if(route==='/api/ui-next/zotero'){
-    const data={ok:true,server_id:'SERVERFIXTUR',version:'10.0.6',authorized:true,libraries:[
-      {type:'user',id:'0',name:'My Library',editable:true,files_editable:true,collections:[]},
-      {type:'group',id:'12',name:'Synthetic Group',editable:null,files_editable:null,collections:[
-        {key:'ABCDEFGH',path:'Parent',name:'Parent'}, {key:'JKLMNPQR',path:'Parent / Child',name:'Child',parent_key:'ABCDEFGH'}]}]};
-    res.writeHead(200,{'Content-Type':'application/json'});res.end(JSON.stringify(data));return;
-  }
   if(route==='/api/ui-next/settings/credentials'){
     let text='';req.on('data',chunk=>{text+=chunk;});req.on('end',()=>{
       const value=JSON.parse(text);credentialWrites.push(value);
@@ -105,8 +105,8 @@ const server=http.createServer((req,res)=>{
   }
   if(route.startsWith('/api/') || route==='/settings/covers/search'){
     const data=route==='/api/ui-next/workspace'?workspace:route==='/api/ui-next/settings'?settings:
-      route==='/api/ui-next/run'?run:route==='/api/kept-workflow/queue'?keptQueue:route==='/api/ui-next/run-expression'?{providers:Object.fromEntries([...settings.values.provider_order,'integrated'].map(id=>[id,{expression:'causal',error:null}]))}:route==='/settings/covers/search'?cover_search:
-      route==='/api/login/state'?{active:false,phase:'idle',services:[]}:route==='/api/kept-workflow/state'?keptState:{active:false,phase:'idle',navigation:null,can_cancel:false};
+      route==='/api/ui-next/run'?run:route==='/api/ui-next/run-expression'?{providers:Object.fromEntries([...settings.values.provider_order,'integrated'].map(id=>[id,{expression:'causal',error:null}]))}:route==='/settings/covers/search'?cover_search:
+      route==='/api/login/state'?{active:false,phase:'idle',services:[]}:{active:false,phase:'idle',navigation:null,can_cancel:false};
     res.writeHead(200,{'Content-Type':'application/json'});res.end(JSON.stringify(data));return;
   }
   const relative=route==='/'?'index.html':decodeURIComponent(route.replace(/^\/static\/ui_next\//,''));
@@ -186,47 +186,6 @@ app.whenReady().then(async()=>{
     await check(()=>{
       if(document.querySelector('.s-validation-error') || document.querySelector('[data-monitor="expression"]').getAttribute('aria-invalid')==='true' || document.getElementById('s-message').textContent.includes('Prefix needs'))throw Error('Saved expression retains obsolete validation errors');
     });
-    await navigate('kept');
-    await check(()=>{
-      document.querySelector('[data-zotero-refresh]').click();
-    });
-    await ready("!document.querySelector('[data-zotero-library]').disabled");
-    await check(()=>{
-      const library=document.querySelector('[data-zotero-library]');library.value='group:12';library.dispatchEvent(new Event('change'));
-    });
-    await ready("window.allfoldZoteroPreference.value?.library_id==='12' && !document.querySelector('[data-zotero-collection]').disabled && window.allfoldAutosave.status==='Saved'");
-    await check(()=>{
-      const collection=document.querySelector('[data-zotero-collection]');
-      if(![...collection.options].some(row=>row.textContent==='Parent / Child'))throw Error('Nested Collection path missing');
-      collection.value='JKLMNPQR';collection.dispatchEvent(new Event('change'));
-    });
-    await ready("window.allfoldZoteroPreference.value?.collection_key==='JKLMNPQR' && window.allfoldAutosave.status==='Saved'");
-    await size(600,480,"window.workspaceNavigation.current()==='kept'");
-    win.webContents.setZoomFactor(1.25);await wait(100);
-    await check(()=>{
-      const host=document.getElementById('kept-zotero-target'),rect=host.getBoundingClientRect();
-      for(const node of host.querySelectorAll('select,button')){const box=node.getBoundingClientRect();if(box.left<rect.left-1 || box.right>rect.right+1)throw Error('Zotero target control overflows narrow Queue');}
-      if(document.querySelector('[data-zotero-library]').value!=='group:12' || document.querySelector('[data-zotero-collection]').value!=='JKLMNPQR')throw Error('Saved target changed in narrow Queue');
-    });
-    await capture('zotero-target-600-zoom125');
-    keptState={...keptState,workflow_id:'last-import-fixture',generation:1,phase:'completed',
-      message:'Import finished: 3 imported',batch:{total:3,results:[
-        {paper_id:'paper-10',service_id:null,service_assignment:'unassigned',outcome:'exported',parent_outcome:'confirmed',reason:'Registered OpenAlex PDF',item_exists:true,pdf_attached:true,pdf_source:'openalex',fallback_used:true},
-        {paper_id:'paper-11',service_id:null,service_assignment:'unassigned',outcome:'exported',parent_outcome:'confirmed',reason:'OpenAlex has no direct PDF',item_exists:true,pdf_attached:false,pdf_source:'none',fallback_used:false,diagnostic:{stage:'attachment',step:'oa_resolver',code:'openalex_no_pdf'}},
-        {paper_id:'paper-query',service_id:null,service_assignment:'unassigned',outcome:'exported',parent_outcome:'confirmed',reason:'Parent saved',item_exists:true,pdf_attached:null,pdf_source:null,fallback_used:null,query_diagnostic:{code:'connection_lost'}}]}};
-    await navigate('login');await navigate('kept');
-    await ready("document.querySelectorAll('#kept-record-items li').length===3");
-    await check(()=>{
-      document.querySelector('#kept-workspace [data-sidebar-view=results]').click();
-      const results=document.getElementById('kept-record-items');
-      if(!results.textContent.includes('Item Yes · PDF Yes · Fallback Yes') || !results.textContent.includes('PDF 无法核验 · Fallback 无法核验'))throw Error('Last Import indicators lost their evidence');
-      if(results.scrollWidth>results.clientWidth+1)throw Error('Last Import overflows narrow Results Sidebar');
-      const details=results.querySelector('li:last-child details');details.open=true;
-      details.scrollIntoView({block:'nearest'});
-    });
-    await capture('last-import-600-zoom125');
-    await check(()=>document.querySelector('#kept-sidebar [data-sidebar-close]').click());
-    win.webContents.setZoomFactor(1);await size(1200,800,"window.workspaceNavigation.current()==='kept'");
     await check(async navigate=>{
       await navigate('login');
       document.querySelector('#login-page [data-sidebar-view=access]').click();
@@ -277,7 +236,7 @@ app.whenReady().then(async()=>{
       document.getElementById('preprint-lookup-cancel').click();
     });
     await ready("document.getElementById('preprint-lookup-status').textContent==='Preprint lookup cancelled'");
-    if(preprintStarts.length!==1 || preprintStarts[0].id!=='paper-1' || Object.keys(preprintStarts[0].body).join()!=='csrf_token')throw Error('Lookup dispatch was not limited to the selected Paper');
+    if(preprintStarts.length!==1 || preprintStarts[0].id!=='paper-1' || preprintStarts[0].body.workspace_id!==workspace.workspace_id)throw Error('Lookup dispatch was not limited to the selected Paper');
     await check(()=>{
       window.workspaceArray.openPaper('paper-2');
       document.getElementById('preprint-lookup-start').click();
@@ -291,10 +250,10 @@ app.whenReady().then(async()=>{
     await ready("window.inboxRun.available()");
     await check(async navigate=>{
       const $=id=>document.getElementById(id),assert=(ok,message)=>{if(!ok)throw Error(message);},sleep=ms=>new Promise(r=>setTimeout(r,ms));
-      assert([...$('paper-dates').querySelectorAll('dt')].map(node=>node.textContent).join('|')==='First public|Received|Accepted|Published','Reader date labels differ');
-      assert([...$('paper-dates').querySelectorAll('dd')].map(node=>node.textContent).join('|')==='2022-04|||','conference date entered the journal dates or First public was lost');
+      assert([...$('paper-dates').querySelectorAll('dt')].map(node=>node.textContent).join('|')==='Dates|Preprint','Reader date labels differ');
+      assert([...$('paper-dates').querySelectorAll('dd')].map(node=>node.textContent).join('|')==='2026-10|2022-04','conference date entered the journal dates or First public was lost');
       const evidence=$('paper-date-evidence');
-      assert(evidence.closest('#array-sidebar') && evidence.children[0].textContent.includes('2022-04 · preprint'),'raw evidence is absent from Info or out of order');
+      assert(evidence.closest('#array-sidebar') && evidence.children[0].textContent.includes('2022-04 · arxiv'),'raw evidence is absent from Info or out of order');
       assert(evidence.querySelector('a').href==='https://arxiv.org/abs/2204.12345' && evidence.textContent.includes('Family arxiv:2204.12345'),'First public source link or version facts missing');
       assert($('paper-source').textContent==='Synthetic Conference','conference source was lost');
       assert($('paper-identifiers').textContent==='openalex: W123','Paper direct identity was changed');
@@ -332,10 +291,8 @@ app.whenReady().then(async()=>{
       assert($('array-journal-name').textContent==='Synthetic Journal 1','metadata did not follow selection');
       document.querySelector('#kept-view [data-sidebar-view]').click();
       $('array-index-toggle').click();$('array-index').scrollTop=200;document.querySelector('#array-flyout [data-flyout-close]').click();
-      await navigate('kept','array-kept');assert(window.workspaceNavigation.current()==='kept','legacy Kept entry must open independent Kept');
-      assert($('kept-sidebar').hidden,'Kept automatically opened a Sidebar');
-      assert(!$('kept-start').closest('[hidden]') && !$('kept-import-only'),'primary actions hidden with sidebar');
-      await navigate('workspace');$('array-index-toggle').click();assert($('array-index').scrollTop===200,'Candidates Index scroll lost after visiting Kept');document.querySelector('#array-flyout [data-flyout-close]').click();
+      $('array-downloaded').click();assert($('kept-view').dataset.status==='downloaded','Downloaded entry did not switch the ARRAY classification');
+      $('array-candidates').click();$('array-index-toggle').click();assert($('array-index').scrollTop===200,'Candidate Index scroll lost after visiting Downloaded');document.querySelector('#array-flyout [data-flyout-close]').click();
       window.layoutReader=$('paper-detail');window.layoutParent=layoutReader.parentElement;layoutReader.scrollTop=180;
       document.querySelector('#kept-view [data-sidebar-view]').click();
     });
@@ -408,7 +365,7 @@ app.whenReady().then(async()=>{
       const $=id=>document.getElementById(id),root=$('kept-view'),tools=root.querySelector('.tool-rail'),main=$('array-content');
       if(root.dataset.sidebarMode!=='overlay')throw Error('600px Array must overlay');
       if(tools.getBoundingClientRect().right>root.getBoundingClientRect().right+1 || main.clientWidth<360)throw Error('rails/content overflow');
-      if($('keep-paper').getBoundingClientRect().bottom>main.getBoundingClientRect().bottom)throw Error('low-height primary decision unreachable');
+      if($('reject-paper').getBoundingClientRect().bottom>main.getBoundingClientRect().bottom)throw Error('low-height primary decision unreachable');
       if(document.querySelector('.masthead').getBoundingClientRect().bottom>root.getBoundingClientRect().top+1 || document.querySelector('footer').getBoundingClientRect().top<root.getBoundingClientRect().bottom-1)throw Error('Chrome or Status overlaps content');
       await navigate('journals');
     });
@@ -539,14 +496,11 @@ app.whenReady().then(async()=>{
     await navigate('settings');
     await capture('settings-small');
     await ready("window.inboxRun.available()");
-    const pendingKeptSnapshot=new Promise(resolve=>{holdWorkspaceResponse=resolve;});
+    const pendingLibrarySnapshot=new Promise(resolve=>{holdWorkspaceResponse=resolve;});
     await js("void window.allfoldRefreshWorkspace()");
-    const releaseKeptSnapshot=await pendingKeptSnapshot;
-    await check(()=>{
-      if(window.workspaceNavigation.go('kept',{instant:true}))throw Error('Pending Workspace snapshot did not guard navigation');
-    });
-    setTimeout(releaseKeptSnapshot,90);
-    await navigate('kept');
+    const releaseLibrarySnapshot=await pendingLibrarySnapshot;
+    await check(()=>{if(window.workspaceNavigation.go('journals',{instant:true}))throw Error('Pending Workspace snapshot did not guard navigation');});
+    setTimeout(releaseLibrarySnapshot,90);
     await navigate('login');
     await js("document.querySelector('#login-page [data-sidebar-view=access]').click()");
     await check(async navigate=>{
@@ -557,14 +511,8 @@ app.whenReady().then(async()=>{
       if(!institution || institution.getBoundingClientRect().width<120)throw Error('Institution input not operable');
       document.querySelector('#login-page [data-sidebar-view=workflow]').click();
       if(document.querySelectorAll('#login-workflow-settings [data-monitor="prepareServiceConcurrency"]').length!==1)throw Error('Login concurrency missing');
-      await navigate('kept');document.querySelector('#kept-workspace [data-sidebar-view=workflow]').click();
-      if(document.querySelectorAll('[data-monitor="paperServiceConcurrency"]').length!==1 ||
-         !document.querySelector('#kept-workflow-settings [data-monitor="pdfConcurrency"]'))throw Error('Import concurrency duplicated or missing');
-      const input=document.querySelector('#kept-workflow-settings [data-monitor="paperServiceConcurrency"]');
-      input.focus();input.value='4';input.dispatchEvent(new Event('input',{bubbles:true}));
-      if(document.activeElement!==input || input.value!=='4')throw Error('Import concurrency lost input focus');
     });
-    await capture('kept-workflow-small');
+    await capture('login-workflow-small');
 
     await check(async navigate=>{
       const $=id=>document.getElementById(id),assert=(ok,message)=>{if(!ok)throw Error(message);};
@@ -645,43 +593,28 @@ $('s-run-overview-open').click();
     await navigate('workspace');
     await js("window.workspaceArray.openPaper('paper-1')");
     await ready("document.getElementById('paper-detail').dataset.paperId==='paper-1'");
-    const paperOneFacts=() => js("JSON.stringify(window.inboxKept.candidates().find(entry=>entry.paper.id==='paper-1').paper.date_evidence)");
     await check(()=>{
       const dates=[...document.querySelectorAll('#paper-dates dd')].map(node=>node.textContent).join('|');
-      if(dates!=='|2025-12-31|2026-02|2026-03')throw Error('Reader dates did not follow the journal Paper: '+dates);
-      const evidence=document.getElementById('paper-date-evidence');
-      const chronological=[...evidence.children].map(row=>row.firstElementChild.textContent).join('|');
-      if(chronological!=='2025-12-31 · received|2026-02 · accepted|2026-03 · published-online|2026-03-13 · published')throw Error('Info lost or reordered raw journal facts: '+chronological);
-      if(!evidence.textContent.includes('wos · WOS:fixture · EA') || evidence.textContent.includes('2204.12345'))throw Error('Info retained provenance for a different Paper');
-    });
-    if(await paperOneFacts()!==JSON.stringify(journalDates))throw Error('Rendering dates changed the source date evidence');
-    await navigate('journals');
-    await check(()=>{
-      if(document.querySelector('#paper-date-evidence li') || [...document.querySelectorAll('#paper-dates dd')].some(node=>node.textContent))throw Error('Closing the Reader retained date data');
-    });
-    await navigate('workspace');
-    await js("window.workspaceArray.openPaper('paper-1')");
-    const journalPaper=records[0].papers.find(paper=>paper.id==='paper-1');
-    journalPaper.date_evidence=[...journalDates,{...journalDates[2],month:1,provider:'pubmed',record_id:'12345'}];
-    await js("window.uiWorkspace.refresh()");
-    await ready("document.querySelector('#paper-dates [data-date-kind=accepted]').textContent==='2026-01'");
-    if(await paperOneFacts()!==JSON.stringify(journalPaper.date_evidence))throw Error('Refresh changed the source date evidence');
-    await check(()=>{
-      const evidence=document.getElementById('paper-date-evidence');
-      if(evidence.children.length!==5 || !evidence.children[1].textContent.includes('2026-01 · accepted'))throw Error('Info did not follow refreshed dates');
-    });
-    await ready("!document.getElementById('keep-paper').disabled");
-    await js("document.getElementById('keep-paper').click()");
-    await ready("!window.inboxKept.candidates().some(entry=>entry.paper.id==='paper-1') && document.getElementById('paper-detail').dataset.paperId==='paper-0'");
-    await check(()=>{
-      const dates=[...document.querySelectorAll('#paper-dates dd')].map(node=>node.textContent).join('|');
-      if(dates!=='2022-04|||' || document.getElementById('paper-date-evidence').textContent.includes('WOS:fixture'))throw Error('Keep left stale dates or evidence');
+      if(dates!=='2025-12-31 · 2026-02 · 2026-03-13|—')throw Error('Reader ordinary dates differ: '+dates);
+      if(document.querySelector('[data-enrich]') || document.getElementById('keep-paper') || document.querySelector('[data-workflow="kept"]'))throw Error('Retired business action remains executable');
     });
     await ready("!document.getElementById('reject-paper').disabled");
     await js("document.getElementById('reject-paper').click()");
-    await ready("!window.inboxKept.candidates().some(entry=>entry.paper.id==='paper-0')");
+    await ready("!window.inboxKept.candidates().some(entry=>entry.paper.id==='paper-1') && window.inboxKept.entries('trash').some(entry=>entry.paper.id==='paper-1')");
+    await js("document.getElementById('array-trash').click()");
+    await ready("document.getElementById('paper-detail').dataset.paperId==='paper-1' && !document.getElementById('restore-paper').disabled");
+    await js("document.getElementById('restore-paper').click()");
+    await ready("window.inboxKept.candidates().some(entry=>entry.paper.id==='paper-1') && !window.inboxKept.entries('trash').some(entry=>entry.paper.id==='paper-1')");
+    await js("document.getElementById('array-candidates').click(),window.workspaceArray.openPaper('paper-0')");
+    await ready("document.getElementById('paper-detail').dataset.paperId==='paper-0' && !document.getElementById('reject-paper').disabled");
+    await js("document.getElementById('reject-paper').click()");
+    await ready("window.inboxKept.entries('trash').some(entry=>entry.paper.id==='paper-0')");
+    await js("document.getElementById('array-trash').click(),window.workspaceArray.openPaper('paper-0')");
+    await ready("!document.getElementById('clear-paper-metadata').disabled");
+    await js("document.getElementById('clear-paper-metadata').click()");
+    await ready("document.getElementById('view-paper-title').textContent==='openalex: W123' && document.getElementById('paper-preprint-lookup').hidden && document.getElementById('paper-dev-tools').hidden");
     await check(()=>{
-      if(document.getElementById('paper-date-evidence').textContent.includes('2204.12345') || document.getElementById('paper-first-public').textContent==='2022-04')throw Error('Reject left stale dates or evidence');
+      if(document.getElementById('paper-date-evidence').children.length || [...document.querySelectorAll('#paper-dates dd')].some(node=>node.textContent!=='—'))throw Error('Cleared metadata reappeared');
     });
     console.log('LAYOUT DOM PASS');
   }catch(error){console.error(error.stack);process.exitCode=1;}

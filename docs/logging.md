@@ -2,15 +2,14 @@
 
 Allfold keeps two bounded local projections. **History** shows coordinator-confirmed
 business tasks and results. Structured **diagnostics** explain the native and Python
-operations behind those tasks. Neither store restores Workspace data, confirms a
-Zotero save, nor authorizes an Import retry.
+operations behind those tasks. Neither store restores Workspace data or grants operation authority.
 
-Discover, Login, Import, webpage Enrich and Cover Search share explicit
+Discover, Login, Preprint lookup and Cover Search share explicit
 workflow/task identities. Native requests have their own request IDs. Service and
 page metadata come from the existing invocation snapshots and page associations;
 logging does not grant browser or institution-credential authority. Native
 completion can precede Python validation and guarded writes, so only the owning
-coordinator finishes a business history record. Login includes each saved Service outcome. Import retains explicit skips and separates parent confirmation from attachment uncertainty.
+coordinator finishes a business history record. Login includes each saved Service outcome. Retired Import/Enrich product kinds are no longer projected or accepted as new task results.
 
 Recovery uses the same workflow, task and Native request IDs. Provider attempts
 carry workflow and task IDs when available and retain their separate physical
@@ -25,26 +24,18 @@ and passes it through the final result. Log rotation or a failed event write
 cannot remove the summary from a settled result. Manual Browser activity after
 settlement cannot change that result.
 
-**Last Import** indicators are a separate process-local projection of the
-latest execution. Exact-key object queries and confirmed attachment registration
-provide its Item/PDF/Fallback results. The live batch and local History show
-known parent, attachment and note keys for reconciliation. Exported diagnostics
-omit those keys. Local API authorization, PDF candidate URLs and raw bytes stay
-outside History and diagnostics. Last Import's live verification snapshot ends
-when the app exits.
-
 ## Metadata results
 
-The single-Paper preprint lookup reports completion, no match, failure and
-cancellation in ARRAY Info. Run metadata completion is part of the parent Run
-result.
+The single-Paper Preprint lookup reports completion, no match, failure and
+cancellation in ARRAY Info. Run metadata completion stays part of the parent Run.
+Run results, statistics and links reference repository-returned Paper UUIDs.
+Last Run remains an independent execution summary. Last Import and its Item/PDF/
+Fallback, keys and attachment verification projection are retired.
 
-Webpage Enrich records eligible Abstract, Authors, publication date, Received
-and Accepted gaps as requested fields. Saving a journal event records
-`date_evidence` as an actual update. A completed response without new evidence
-records no saved fields. Diagnostic observations include reviewed counts
-and field names. Paper text, raw provider responses, credentials and sensitive URLs
-stay outside diagnostics.
+No active Enrich task or event-date UI remains. Ordinary dates and separate
+Preprint proof come from SQLite. Paper text, raw Provider responses, credentials
+and sensitive URLs stay outside diagnostics. Existing log files are not migrated
+or deleted by the cutover; retired business shapes are not revived as current UI.
 
 ## Storage and limits
 
@@ -70,10 +61,10 @@ managed files `0600`. Writers reject unexpected ownership, links and replaced
 targets, and do not retain an open event-file handle across Reset.
 
 Recording failure leaves stderr available and marks evidence incomplete. It cannot
-change a decided business result or replay a native save. Normal writes are local;
+change a decided business result or replay a business action. Normal writes are local;
 there is no automatic upload. Abrupt process or power loss can lose events that
 were not written. An unfinished task from an earlier runtime is presented as
-interrupted, or uncertain for Import, and never inferred successful.
+interrupted, never inferred successful.
 
 ## Event schema and privacy
 
@@ -144,17 +135,16 @@ a replacement preview, a consumed confirmation, or an application restart
 requires a new preview. Waiting alone does not invalidate it. A partial deletion
 is reported as partial and does not authorize a business retry.
 
-- **Workspace** retains its existing deletion boundary, including its latest Run
-  snapshots. Independent logs survive. Earlier history is marked as historical
+- **Workspace** retains its existing deletion boundary, including SQLite, all exclusion identities, Documents and latest Run snapshots. Independent logs survive. Earlier history is marked as historical
   after a successful Reset or after the confirmed directory is verified as moved
   into deletion custody, even if later deletion fails. Such a partial Reset still
   reports failure and does not authorize a retry. Terminal task snapshots and
-  Import confirmation tokens are cleared only after full success. Refusals before
+  retained coordinator snapshots are cleared only after full success. Refusals before
   that verified move do not advance history.
 - **Logs** removes only the current configuration's verified managed history and
   diagnostic files. It coordinates the active native writer and rejects active
   tasks or unconfirmed writer ownership. Other configuration scopes, Workspace,
-  settings, Journals/Services, Zotero, browser sessions/Cookie and downloaded
+  settings, Journals/Services, browser sessions/Cookie and downloaded
   diagnostic packages are outside its deletion targets. New events can be recorded
   after a successful Reset. Coordinator activity and Run/browser dispatch exclusion
   are checked before taking the diagnostic writer lock; writer exclusion then
@@ -162,7 +152,7 @@ is reported as partial and does not authorize a business retry.
 
 Offline tests cover isolated persistence, privacy, correlation, rotation and Reset.
 They do not establish real Electron dialog/download behavior or CARSI, WoS,
-publisher and Zotero/PDF acceptance; those require explicit manual validation.
+publisher and actual-PDF acceptance; those require explicit manual validation.
 
 Integrated Run retains one parent History/result and latest snapshot. Discovery
 `provider_runs`/`run_sources` contain only selected PubMed, WoS and OpenAlex sources;

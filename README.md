@@ -1,8 +1,8 @@
 # Allfold
 
-A local-first desktop application for monitoring journals, reviewing reliably identified papers and importing selected papers into Zotero.
+A local-first desktop application for monitoring journals, reviewing reliably identified papers in a local SQLite library.
 
-Version **0.1.0** is a pre-release source version. The current development and verification platform is **macOS**. Website access, institutional authentication and Zotero attachments depend on the actual environment; offline checks do not establish compatibility with every site.
+Version **0.1.0** is a pre-release source version. The current development and verification platform is **macOS**. Website access, institutional authentication  depend on the actual environment; offline checks do not establish compatibility with every site.
 
 ## Download app
 
@@ -17,23 +17,40 @@ npm --prefix electron run setup
 npm --prefix electron start
 ```
 
-Setup installs locked dependencies, obtains fixed Zotero sources, builds the UI and assembles Runtime. It creates a missing local configuration from `config.template.yaml`; existing configuration and API keys are preserved. A fresh setup requires access to GitHub and dependency registries. See the [development guide](docs/development.md) for configuration arguments, rebuilding and troubleshooting.
+Setup installs locked dependencies and builds the UI. It creates a missing local configuration from `config.template.yaml`; existing configuration and API keys are preserved. A fresh setup requires access to dependency registries. See the [development guide](docs/development.md) for configuration arguments, rebuilding and troubleshooting.
 
 ## Basic workflow
 
 1. In **Journals**, manage followed Journals, Groups, Labels and Access Services. Each configuration has its own saved scope. Import a Markdown research scope through Preview / Confirm, or export **User Data** to share it.
 2. In **Workflows → Login**, authenticate CARSI once and prepare every saved Access Service. Manual Services offer a Visit action. Check each outcome in Login and use the corresponding Browser group to complete any verification. If the batch ends with Services that still need attention, check them in Browser and select **Manual confirmation of login** when all Services are available.
 3. In **Workflows → Discover**, set keywords and publication months, then select PubMed, Web of Science and OpenAlex as needed. WoS uses its prepared Service page when available. After manual confirmation without a prepared page, Discover opens the official WoS query page in the shared Browser session. API discovery continues if WoS needs Login. Shared Work lookup and creation-time metadata completion preserve existing Papers. See [Provider roles and query limits](docs/providers.md).
-4. Review candidates in **Workspace / ARRAY**. Keep or Reject Papers, check linked preprints in **Info**, and fill eligible missing fields with Enrich. Kept Papers retain any managed page already opened by Enrich.
-5. In **Workflows → Import to Zotero**, choose a saved Service scope and pin a Library and optional Collection. Zotero 10.0.6 or later needs Local API enabled and Allfold authorization with **Always Allow**. Review and explicitly skip any unprepared Services before starting. Skipped Papers stay Kept. Unassigned Papers can import by DOI in Other. Progress and per-Paper results remain available in Workflows and History.
+4. Review **Candidate**, **Downloaded** and **Trash** in **Workspace / ARRAY**. Reject persists exclusion and moves the Paper to Trash. Restore keeps its UUID and existing content. In Trash, clearing metadata removes bibliography, dates, abstract, sources and notes while retaining reliable identities, exclusion and any body association. An identity-only entry can be unexcluded locally; only a later actual Run hit rebuilds its metadata.
+5. In **Info**, query linked preprints for a complete, unexcluded formal article. Reader displays the ordinary date set and independent verified Preprint date; Info keeps version-family proof. Developer Mode retains local field clearing and empty-abstract input.
 
-Paper Markdown remains the production literature store. Papers carry a primary DOI and directly saved reliable provider IDs, including DOI-free identities. First public requires an established earliest linked preprint date. The reader displays First public, Received, Accepted and Published at their verified precision. Info shows the underlying date events and sources, including separate online and print evidence. Temporary version relations and request caches end with the operation. The manual preprint lookup appends only verified preprint evidence and can fill an empty First public. Webpage Enrich fills eligible missing Abstract, Authors or publication date and retains the month-to-day upgrade. For a journal Candidate with a primary DOI, a missing Received or Accepted can independently start Enrich from its date row. The Reader keeps the precision and source of each verified event and continues to offer Enrich while an eligible field is missing. When the webpage yields no new evidence, the Paper stays unchanged. While verification is pending, **打开 Browser 验证** opens that task's page. Returning to the Reader preserves the same Enrich task. Covers Search targets one saved Journal. Upload and Crop use local assets.
+`Workspace/papers.sqlite` is the sole production Paper store. Run/WoS, Reader,
+search, local edits, Preprint and Trash share the same repository. An unopened,
+uninitialized Workspace reads as empty without silently creating a library; the
+first Run initializes it explicitly. Corrupt or unsupported libraries report an
+error. Existing WF01 v1 libraries receive the known preserving schema upgrade.
+Paper Markdown is no longer created, scanned or read back; old Workspace data is
+not migrated or deleted automatically. Repeat Run hits preserve complete saved
+records. Stable direct identities also support DOI-free Papers.
+
+Keep, Import to Zotero, Last Import and active webpage Enrich are retired.
+Background collection and public Download/PDF actions are not connected in WF02.
+An existing body association only classifies a Paper as Downloaded; there is no
+PDF download, physical delete, open or locate action. Current Run timing and
+creation-time Completion remain; collection stays `not_started`.
 
 **Browser**, **Search** and **History** are available from the header in Workspace, Workflows, Journals and Settings. Search opens local Papers, Journals, saved Services and existing Browser tabs. Enter `>` to find a command. Browser fills the main content area and groups existing pages under CARSI, a saved Service or Other. The Tabs rail opens the grouped directory. Task controls offer **查看任务页面** to open the associated page for inspection or manual verification. Returning keeps the business view, navigation history, shared Session and active task.
 
-Settings' **禁用全屏运行界面** keeps Discover progress inline. Login and Import show progress directly in Workflows. Concurrency controls in the Login and Import toolbars apply when the next task starts. Managed Paper pages are reused and remain available for inspection. During initial loading, a recoverable failure can replace the failed page once before the Translator starts. Login can also reenter a CARSI resource once when its preparation evidence still holds. Toolbar navigation and close are locked on managed pages. Idle managed pages allow refresh.
+Settings' **禁用全屏运行界面** keeps Discover progress inline. Login retains its
+own progress and Service preparation concurrency. Login can reenter a CARSI
+resource once when its captured preparation evidence remains valid. Browser
+pages remain available for inspection; managed pages keep their navigation and
+close protections, and idle pages allow refresh.
 
-ARRAY and Journals keep icon rails on both sides. Hover, focus or click Index/Directory to browse without shifting the content; choose a right-hand tool to open or collapse Info/Details. Journal selection opens Details; Directory filtering closes it. Resize the Sidebar from its left edge; narrow windows use an overlay and restore the preferred width when space returns. ARRAY's Keep/Reject and Import controls remain in Workflows. Developer Mode adds a horizontally scrolling Layout strip with independent SAVE/RESET/ORIGIN targets; Journals GRID columns always adapt to the available content width.
+ARRAY and Journals keep icon rails on both sides. Hover, focus or click Index/Directory to browse without shifting the content; choose a right-hand tool to open or collapse Info/Details. Journal selection opens Details; Directory filtering closes it. Resize the Sidebar from its left edge; narrow windows use an overlay and restore the preferred width when space returns. ARRAY's Reject/Restore and Trash metadata actions stay beside the Reader. Developer Mode adds a horizontally scrolling Layout strip with independent SAVE/RESET/ORIGIN targets; Journals GRID columns always adapt to the available content width.
 
 **HISTORY** shows recent task results across restarts and offers **导出本次诊断**.
 Settings also offers **导出最近诊断** for startup or connection problems, limited to
@@ -42,7 +59,8 @@ evidence for that workflow. Diagnostic packages are local downloads; sharing the
 is your choice. See [local history and
 diagnostics](docs/logging.md) for retention, privacy and evidence limits.
 
-Parent acceptance and PDF evidence are separate. Import tries Translator PDFs first, then OpenAlex's direct public PDF locations when needed. **Last Import** shows Item, PDF and Fallback results for the latest execution, using read-only queries for the exact newly created items. A query failure shows unable to verify. a PDF attachment shell does not count as an uploaded file. Results can be filtered by their execution-time Service and are not restored after restart. Allfold does not inspect saved PDF paths or files. An uncertain write stops new Zotero dispatch while issued writes settle. Inspect the affected Zotero entries before retrying. Supported Cloudflare challenges invoke the Solver automatically. hCaptcha and MFA require manual verification.
+Supported Cloudflare challenges invoke the existing Solver within their owning
+Browser operation. hCaptcha and MFA require manual verification.
 
 ## Local data and privacy
 
@@ -54,17 +72,15 @@ Parent acceptance and PDF evidence are separate. Import tries Translator PDFs fi
 | `.allfold/user-data.sqlite` | Journals, Groups, Labels and Services, isolated by configuration | No |
 | `.allfold/resources.sqlite` | Shared GOKB and official CARSI resource cache | No |
 | `journal-lists/journal-registry.sqlite` | Read-only Journal Registry | Yes |
-| `workspace/` | Paper Markdown, review status and Run snapshots | No |
+| `workspace/papers.sqlite` | Paper identity, metadata, dates, exclusions and body associations | No |
+| `workspace/Documents/`, Run snapshots | Managed body associations and Last Run results | No |
 | `journal-assets/` | Journal covers | No |
 | Electron application logs directory | Bounded configuration-scoped run history and structured diagnostics | No |
-| Electron application user-data directory, `zotero-local-key.bin` | Protected, Server-ID-bound Zotero authorization | No |
 | `*.openalex-secrets.json`, `*.pubmed-secrets.json` | Optional API keys beside the configuration | No |
 
-Submit API key replacement or clearing explicitly from the corresponding Run Provider Sidebar. PubMed and OpenAlex keys are optional. Anonymous OpenAlex queries retain first-page evidence and explicitly report incomplete coverage when cursor paging needs a key. Run settings select Discovery sources. Run uses its fixed API helpers for creation-time identity, date and relationship evidence. Optional institution credentials use Electron safeStorage separately from YAML, through the Login Access toolbar. Ordinary configuration changes save automatically; Pending, failure and conflict states retain the draft. Changes that would invalidate an active task wait until it releases configuration ownership, then recheck saved revisions. Sensitive credential changes and destructive operations keep separate explicit submission and confirmation. Discovery and page workflows contact the selected external providers and sites. The application is not a Zotero Library mirror.
+Submit API key replacement or clearing explicitly from the corresponding Run Provider Sidebar. PubMed and OpenAlex keys are optional. Anonymous OpenAlex queries retain first-page evidence and explicitly report incomplete coverage when cursor paging needs a key. Run settings select Discovery sources. Run uses its fixed API helpers for creation-time identity, date and relationship evidence. Optional institution credentials use Electron safeStorage separately from YAML, through the Login Access toolbar. Ordinary configuration changes save automatically; Pending, failure and conflict states retain the draft. Changes that would invalidate an active task wait until it releases configuration ownership, then recheck saved revisions. Sensitive credential changes and destructive operations keep separate explicit submission and confirmation. Discovery and page workflows contact the selected external providers and sites.
 
-Zotero authorization keys also use Electron protected storage, associated with the Local API's Server ID. A one-use **Allow** key can expire during a multi-request import; **Always Allow** supports the complete operation. Reauthorization never replays an uncertain write. Group metadata does not establish item or file write permission: Zotero checks these separately when saving. Deleted targets, permission failures and a changed Zotero instance do not redirect imports to another Library or Collection. See the [Local API protocol and compatibility notes](docs/zotero-local-api.md) for metadata and attachment boundaries.
-
-Configuration, legacy journal seed and Workspace paths must stay inside the project directory. On first use, each configuration validates and copies its legacy managed Markdown data into SQLite without changing the source file; later changes use SQLite. Include `.allfold/` in local backups. Use **Export User Data** to transfer a research scope to another configuration or application location, since canonical configuration paths identify saved scopes. Export contains no provider credentials, resource caches, Workspace papers or Zotero data. Legacy Markdown is a first-migration or explicit exchange source, not the live store.
+Configuration, legacy journal seed and Workspace paths must stay inside the project directory. On first use, each configuration validates and copies its legacy managed Markdown data into SQLite without changing the source file; later changes use SQLite. Include `.allfold/` in local backups. Use **Export User Data** to transfer a research scope to another configuration or application location, since canonical configuration paths identify saved scopes. Export contains no provider credentials, resource caches, Workspace papers . Legacy Markdown is a first-migration or explicit exchange source, not the live store.
 
 Settings Reset selects one scope without requiring a typed word. **Workspace**
 permanently deletes the confirmed Workspace, including its latest Run snapshots;
@@ -72,10 +88,16 @@ independent history and diagnostics survive and earlier history is marked as
 pre-reset, including when the confirmed Workspace has moved out of its original
 path but deletion then fails. A partial deletion remains a reported failure.
 **Logs** clears only the current configuration's managed history and
-diagnostics. Both preserve configuration, Journals/Services, covers, Zotero,
-browser authentication and already downloaded diagnostic packages. Rebuilding an old configuration requires explicitly backing up/replacing its YAML from the new template; Workspace Reset and rerunning Setup do not overwrite that YAML or delete user-state SQLite. Follow the [configuration reinitialization steps](docs/providers.md#old-data-and-manual-acceptance). The unified Run snapshot-only v6 upgrade requires a new Run; it does not require Workspace Reset or configuration reconstruction. Older snapshots are preserved and unsupported Integrated snapshots show a rerun prompt. Legacy WoS files are not converted into unified results. Paper identity fields `identity_aliases` and `related_dois` are unsupported, even when empty: affected old Papers explicitly block safe indexing and writes. No old Workspace is automatically migrated, deleted or rewritten; obsolete Evidence directories are unused and preserved. Back up important data before explicitly rebuilding through Settings → Reset → Workspace. This does not require configuration reconstruction. Keep independent
-backups of important local data before upgrading a pre-release version. See
-[research scope exchange](docs/research-scope.md) for Markdown and Service resolution.
+diagnostics. Both preserve configuration, Journals/Services, covers,
+browser authentication and already downloaded diagnostic packages. Workspace
+Reset includes the SQLite library, all permanent exclusions, Documents and Run
+snapshots; it is a whole-Workspace destructive operation with preview/confirmation,
+path-replacement checks and task draining. It is separate from Trash actions.
+Logs Reset never deletes the library, configuration or Session. Neither Reset nor
+Setup overwrites existing YAML. Research Scope Markdown exchange remains
+available and separate from retired per-Paper Markdown. Preserve independent
+backups before upgrading a pre-release version. See [library](docs/paper-library.md)
+and [research scope exchange](docs/research-scope.md).
 
 ## Development and source
 
@@ -86,4 +108,4 @@ backups of important local data before upgrading a pre-release version. See
 - [Release preparation](docs/release.md): source checks and distribution requirements.
 - [AGENTS](AGENTS.md): instructions for repository work.
 
-Python project code is MIT licensed under [LICENSE](LICENSE). Electron host adapters and the Zotero integration have separate AGPL-3.0-or-later licensing; see [Electron notices](electron/NOTICE.md) and [COPYING](electron/COPYING). Frontend assets retain their [individual sources and notices](frontend/ui/SOURCES.md).
+Python project code is MIT licensed under [LICENSE](LICENSE). Electron host adapters have separate AGPL-3.0-or-later licensing; see [Electron notices](electron/NOTICE.md) and [COPYING](electron/COPYING). Frontend assets retain their [individual sources and notices](frontend/ui/SOURCES.md).
