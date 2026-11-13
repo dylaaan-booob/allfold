@@ -131,3 +131,191 @@ def test_openalex_capability_empty_partial_and_best_first_four_candidate_boundar
     assert merged.candidates[0].url == 'https://repository.example/NewBest.PDF'
     retained, = merge_discovery_facts((first,), (empty, partial))
     assert retained.status == 'complete' and retained.candidates == first.candidates
+
+
+def test_independent_connections_preserve_fields_sequences_and_revoke_facts_after_restore_and_clear(tmp_path):
+    from uuid import uuid4
+    from allfold.pdf_facts import PdfCandidateFact, PdfDiscoveryFacts
+    from allfold.persistence.paper_repository import BodyReference, MetadataDelta, PaperMetadata, StaleWriteError
+
+    facts = PdfDiscoveryFacts(source='document', capability='document-pdf', status='complete', observed_at=NOW,
+        target_doi='10.5555/formal', landing_url='https://publisher.example/article',
+        candidates=(PdfCandidateFact(stage='P3', rule_id='META', url='https://publisher.example/Article.PDF'),))
+    with PaperRepository.create(tmp_path) as owner:
+        original = owner.create_or_match(owner.workspace_id, direct_ids=ExternalIds(doi='10.5555/formal'),
+            metadata=PaperMetadata(title='Article', notes='Human note')).paper
+        original = owner.complete_body(original.token, BodyReference(relative_path='Documents/existing.pdf'))
+        admission = owner.admit_collection(owner.workspace_id, lifecycle_id=uuid4(), branches=('api', 'document'),
+            direct_ids=ExternalIds(doi='10.5555/formal'), metadata=PaperMetadata(title='Unused'))
+        token = admission.token
+        owner.mark_collection_running(token)
+        with PaperRepository.open(tmp_path) as independent:
+            current = independent.get(original.id)
+            current = independent.edit_metadata(current.token, {'abstract': 'Human abstract'})
+            independent.commit_collection_branch(token, 'api', sequence=1, outcome='completed',
+                delta=MetadataDelta(ordinary_dates=('2026-01-02',), abstract='Late API abstract'))
+        saved = owner.commit_collection_branch(token, 'document', sequence=1, outcome='completed',
+            delta=MetadataDelta(discovery_facts=(facts,)))
+        repeated = owner.commit_collection_branch(token, 'document', sequence=1, outcome='completed',
+            delta=MetadataDelta(discovery_facts=(facts.model_copy(update={'status': 'partial'}),)))
+        assert repeated == saved
+        finished = owner.finish_collection(token)
+        assert finished.metadata.abstract == 'Human abstract'
+        assert finished.metadata.notes == 'Human note' and finished.metadata.ordinary_dates == ('2026-01-02',)
+        assert finished.metadata.discovery_facts == (facts,) and finished.body == original.body
+        with PaperRepository.open(tmp_path) as independent:
+            restored = independent.restore(independent.exclude(finished.token).token)
+        with pytest.raises(StaleWriteError):
+            owner.commit_collection_branch(token, 'document', sequence=2, delta=MetadataDelta(discovery_facts=(facts,)))
+        assert owner.get(original.id).metadata.discovery_facts == (facts,)
+        cleared = owner.clear_metadata(owner.exclude(restored.token).token)
+        assert cleared.metadata is None and cleared.body == original.body
+        assert cleared.identities == original.identities
+        with pytest.raises(StaleWriteError):
+            owner.merge_metadata(restored.token, MetadataDelta(discovery_facts=(facts,)))
+    with PaperRepository.open(tmp_path) as reopened:
+        assert reopened.get(original.id) == cleared
+
+
+def test_source_facts_cancellation_refuses_a_late_sequence_and_explicit_retry_keeps_good_facts(tmp_path):
+    from uuid import uuid4
+    from allfold.pdf_facts import PdfDiscoveryFacts
+    from allfold.persistence.paper_repository import MetadataDelta, PaperMetadata, StaleWriteError
+
+    good = PdfDiscoveryFacts(source='document', capability='document-pdf', status='complete', observed_at=NOW,
+        target_doi='10.5555/formal')
+    with PaperRepository.create(tmp_path) as owner:
+        admitted = owner.admit_collection(owner.workspace_id, lifecycle_id=uuid4(), branches=('document', 'api'),
+            direct_ids=ExternalIds(doi='10.5555/formal'), metadata=PaperMetadata(title='Article'))
+        owner.commit_collection_branch(admitted.token, 'document', sequence=1, outcome='completed',
+            delta=MetadataDelta(discovery_facts=(good,)))
+        with PaperRepository.open(tmp_path) as independent:
+            independent.request_collection_cancel(admitted.token)
+        with pytest.raises(StaleWriteError):
+            owner.commit_collection_branch(admitted.token, 'api', sequence=1,
+                delta=MetadataDelta(discovery_facts=(good.model_copy(update={'status': 'partial'}),)))
+        owner.commit_collection_branch(admitted.token, 'api', sequence=1, outcome='cancelled')
+        cancelled = owner.finish_collection(admitted.token)
+        retry = owner.retry_collection(cancelled.token, lifecycle_id=uuid4(), branches=('document', 'api'))
+        assert retry.paper.metadata.discovery_facts == (good,) and retry.token.attempt == 2
+        with pytest.raises(StaleWriteError):
+            owner.commit_collection_branch(admitted.token, 'api', sequence=2, delta=MetadataDelta(discovery_facts=(good,)))
+
+
+def test_legacy_payload_is_unknown_and_unknown_facts_version_is_explicitly_refused(tmp_path):
+    import json
+    import sqlite3
+    from uuid import uuid4
+    from allfold.persistence.library_database import APPLICATION_ID, DATABASE_NAME, V1_SCHEMA
+    from allfold.persistence.paper_repository import LibraryCorruptError, MetadataDelta
+    from allfold.pdf_facts import PdfDiscoveryFacts
+
+    workspace_id, paper_id = uuid4(), uuid4()
+    with sqlite3.connect(tmp_path / DATABASE_NAME) as connection:
+        for statement in V1_SCHEMA:
+            connection.execute(statement)
+        connection.execute('INSERT INTO library_info VALUES (1, ?)', (str(workspace_id),))
+        connection.execute('INSERT INTO paper_core (paper_id) VALUES (?)', (str(paper_id),))
+        connection.execute('INSERT INTO paper_identities VALUES (?, ?, ?)', ('doi', '10.5555/formal', str(paper_id)))
+        connection.execute('INSERT INTO paper_metadata (paper_id, payload) VALUES (?, ?)',
+            (str(paper_id), '{"title":"Legacy title","notes":"Preserved note"}'))
+        connection.execute(f'PRAGMA application_id = {APPLICATION_ID}')
+        connection.execute('PRAGMA user_version = 1')
+    with PaperRepository.open(tmp_path, expected_workspace_id=workspace_id) as repository:
+        legacy = repository.get(paper_id)
+        assert legacy.metadata.discovery_facts == () and legacy.metadata.notes == 'Preserved note'
+        facts = PdfDiscoveryFacts(source='document', capability='document-pdf', status='complete', observed_at=NOW)
+        saved = repository.merge_metadata(legacy.token, MetadataDelta(discovery_facts=(facts,)))
+    with sqlite3.connect(tmp_path / DATABASE_NAME) as connection:
+        payload = saved.metadata.model_dump(mode='json')
+        payload['discovery_facts'][0]['version'] = 2
+        connection.execute('UPDATE paper_metadata SET payload=? WHERE paper_id=?', (json.dumps(payload), str(paper_id)))
+    with PaperRepository.open(tmp_path) as repository:
+        with pytest.raises(LibraryCorruptError, match='Invalid saved Paper'):
+            repository.get(paper_id)
+
+
+@pytest.mark.parametrize(('failed', 'expected_status'), [(False, 'complete'), (True, 'failed')])
+def test_necessary_exact_response_without_records_persists_complete_empty_or_failure(tmp_path, failed, expected_status):
+    import httpx
+    from allfold.application.necessary_metadata import NecessaryRequest, necessary_metadata_branch
+    from test_necessary_metadata import execute
+
+    requests = []
+    def response(request):
+        requests.append(request)
+        return (httpx.Response(400) if failed else
+            httpx.Response(200, json={'message': {'total-results': 0, 'items': []}}))
+    paper, _ = execute(tmp_path, necessary_metadata_branch(providers=('crossref',), discover_relations=False,
+        required=(NecessaryRequest('crossref', 'doi', '10.5555/formal', 'exact'),)), transport=response)
+    with PaperRepository.open(tmp_path / 'workspace') as repository:
+        facts, = repository.get(paper.id).metadata.discovery_facts
+        assert facts.status == expected_status and facts.candidates == ()
+        assert facts.target_doi == '10.5555/formal'
+        assert facts.diagnostics == (('parse-failed',) if failed else ())
+    assert len(requests) == 1
+
+
+def test_signed_source_links_become_refresh_facts_and_never_enter_workspace_projection(tmp_path):
+    from fastapi.testclient import TestClient
+    from allfold.models import MetadataSource
+    from allfold.persistence.paper_repository import MetadataDelta
+    from allfold.web.app import create_app
+    from electron_test_helpers import OfflineBridge
+
+    raw = openalex_raw()
+    signed = 'https://repository.example/Case.PDF?X-Amz-Signature=secret123&version=2'
+    raw['best_oa_location'] = {'pdf_url': signed, 'landing_page_url': 'https://repository.example/article/123'}
+    raw['locations'] = [{'pdf_url': signed, 'landing_page_url': 'https://repository.example/article/123'}]
+    raw['locations_count'] = 1
+    normalized = normalize_openalex(raw, SourceScope('journal', 'Journal'))
+    path, _ = config(tmp_path)
+    path.write_text(path.read_text() + 'enabled_providers: [pubmed]\n')
+    result = run_integrated(path, client_factory=client_for((normalized,)))
+    assert result.facts.created_papers == 1
+    with PaperRepository.open(tmp_path / 'workspace') as repository:
+        saved = repository.match(ExternalIds(doi='10.5555/formal'))
+        facts, = saved.metadata.discovery_facts
+        candidate, = facts.candidates
+        assert candidate.url is None and candidate.refresh.kind == 'openalex-work'
+        assert candidate.refresh.landing_url == 'https://repository.example/article/123'
+        assert signed == raw['best_oa_location']['pdf_url']
+        assert 'secret123' not in saved.metadata.model_dump_json()
+        # A prior binary may already have persisted signed generic locations.
+        # Projection must not expose them; reading does not rewrite real data.
+        legacy_source = MetadataSource(provider='openalex', record_id='legacy', retrieved_at=NOW, url=signed)
+        legacy_url_id = legacy_source.model_copy(update={'record_id': signed})
+        repository.merge_metadata(saved.token, MetadataDelta(sources=(legacy_source, legacy_url_id)))
+        assert saved.body is None
+    with TestClient(create_app(path, electron_bridge=OfflineBridge(), diagnostics_root=tmp_path / 'logs'),
+            base_url='http://localhost') as client:
+        response = client.get('/api/ui-next/workspace')
+        assert response.status_code == 200
+        assert 'secret123' not in response.text and 'discovery_facts' not in response.text
+
+
+def test_two_branch_connections_merge_source_facts_with_dates_without_losing_either(tmp_path):
+    from concurrent.futures import ThreadPoolExecutor
+    from threading import Barrier
+    from uuid import uuid4
+    from allfold.pdf_facts import PdfDiscoveryFacts
+    from allfold.persistence.paper_repository import MetadataDelta, PaperMetadata
+
+    with PaperRepository.create(tmp_path) as repository:
+        admitted = repository.admit_collection(repository.workspace_id, lifecycle_id=uuid4(), branches=('api', 'document'),
+            direct_ids=ExternalIds(doi='10.5555/formal'), metadata=PaperMetadata(title='Article', notes='User note'))
+    barrier = Barrier(2)
+    def commit(branch):
+        with PaperRepository.open(tmp_path) as repository:
+            barrier.wait(timeout=3)
+            delta = (MetadataDelta(ordinary_dates=('2026-01-02',), abstract='API abstract') if branch == 'api' else
+                MetadataDelta(discovery_facts=(PdfDiscoveryFacts(source='document', capability='document-pdf',
+                    status='complete', observed_at=NOW, target_doi='10.5555/formal'),)))
+            repository.commit_collection_branch(admitted.token, branch, sequence=1, outcome='completed', delta=delta)
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        tuple(pool.map(commit, ('api', 'document')))
+    with PaperRepository.open(tmp_path) as repository:
+        paper = repository.finish_collection(admitted.token)
+        assert len(paper.metadata.discovery_facts) == 1
+        assert paper.metadata.ordinary_dates == ('2026-01-02',) and paper.metadata.abstract == 'API abstract'
+        assert paper.metadata.notes == 'User note' and paper.body is None
