@@ -104,13 +104,6 @@ markup.innerHTML=`<header class="s-header">
 </label>
 <p class="s-help">Discover 在 Workflows 中显示进度。设置对下次任务生效。</p>
       <details>
-<summary>Zotero Integration</summary>
-<div class="s-diagnostic">
-<p id="s-zotero-result">Not checked. Electron 与 Desktop 状态未检查。</p>
-<button data-diagnostic="zotero" class="s-button">Refresh</button>
-</div>
-</details>
-      <details>
 <summary>Workspace Health</summary>
 <div class="s-diagnostic">
 <p id="s-health-result">Not checked. 使用已保存路径。</p>
@@ -313,14 +306,12 @@ const runHistory=document.createElement('section');runHistory.className='s-run-h
 runPanel.prepend(rail('Run navigation',`<button class="rail-button" id="s-run-overview-open" title="Overview" aria-label="Overview">${icon('M4 4h16v16H4zM4 10h16M10 10v10')}</button><button class="rail-button" data-flyout="providers" title="Provider Directory" aria-label="Provider Directory">${icon('M4 5h16M4 12h16M4 19h16')}</button>`));
 runPanel.append(runSidebar,rail('Run tools',`<button class="rail-button" data-sidebar-view="configuration" aria-label="Provider configuration" title="Provider configuration">${icon('M4 6h16M4 12h16M4 18h16M8 3v6M16 9v6M10 15v6')}</button>`,true));
 const monitorName=settingsPage.querySelector('[data-field="name"]');$('s-run-overview').querySelector('fieldset').prepend(monitorName);
-const keptSettings=document.createElement('div');keptSettings.id='s-kept-configuration-bridge';keptSettings.hidden=true;document.body.append(keptSettings);
+const workflowSettings=document.createElement('div');workflowSettings.id='s-workflow-configuration-bridge';workflowSettings.hidden=true;document.body.append(workflowSettings);
 const concurrencyFields=[
   ['prepare_service_concurrency','prepareServiceConcurrency','Service preparation',5],
   ['paper_service_concurrency','paperServiceConcurrency','Papers per Service',8],
   ['paper_global_concurrency','paperGlobalConcurrency','Total Papers',16],
-  ['translator_concurrency','translatorConcurrency','Translator workers',6],
   ['pdf_concurrency','pdfConcurrency','PDF downloads',8],
-  ['zotero_writer_concurrency','zoteroWriterConcurrency','Zotero writers',4],
 ];
 function concurrencyGroup(fields) {
   const group=document.createElement('fieldset');
@@ -330,8 +321,8 @@ function concurrencyGroup(fields) {
       <input type="number" data-monitor="${key}" min="1" max="${max}" step="1"></label>`).join('');
   return group;
 }
-const loginLimits=concurrencyGroup(concurrencyFields.slice(0,1)),workflowFields=concurrencyGroup(concurrencyFields.slice(1));
-keptSettings.append(loginLimits,workflowFields,$('s-institution'),$('s-institution-auth'));
+const loginLimits=concurrencyGroup(concurrencyFields.slice(0,1));
+workflowSettings.append(loginLimits,$('s-institution'),$('s-institution-auth'));
 settingsPage.querySelector('.s-settings-main').querySelector('fieldset').remove();
 const applicationGroup=settingsPage.querySelector('.s-settings-main fieldset');applicationGroup.querySelector('legend').textContent='Application';applicationGroup.dataset.settingsSection='application';
 const workspaceApply=document.createElement('button');workspaceApply.id='s-workspace-apply';workspaceApply.className='s-button';workspaceApply.textContent='Review Workspace change';applicationGroup.append(workspaceApply);
@@ -350,15 +341,14 @@ settingsPage.prepend(rail('Settings navigation',settingsButtons));
 const settingsFlyout=document.createElement('aside');settingsFlyout.className='navigation-flyout';settingsFlyout.hidden=true;settingsFlyout.innerHTML='<button data-flyout-close aria-label="Close Settings directory">×</button>';settingsPage.append(settingsFlyout,settingsSidebar,rail('Settings tools',`<button class="rail-button" data-sidebar-view="system" title="System / Diagnostics" aria-label="System / Diagnostics">${icon('M4 4h16v16H4zM12 10v7M12 7v1')}</button>`,true));
 for(const button of settingsPage.querySelectorAll('[data-settings-open]'))button.addEventListener('click',()=>{for(const node of settingsPage.querySelectorAll('[data-settings-section]'))node.hidden=node.dataset.settingsSection!==button.dataset.settingsOpen;for(const entry of settingsPage.querySelectorAll('[data-settings-open]'))entry.setAttribute('aria-pressed',String(entry===button));});
 settingsPage.querySelector('[data-settings-open="application"]').setAttribute('aria-pressed','true');
-for(const host of [runMain.querySelector('.s-run-body'),settingsMain,loginLimits,workflowFields,$('s-institution')]){const status=document.createElement('p');status.className='s-help s-domain-save-status';status.dataset.autosaveStatus='';host.append(status);}
+for(const host of [runMain.querySelector('.s-run-body'),settingsMain,loginLimits,$('s-institution')]){const status=document.createElement('p');status.className='s-help s-domain-save-status';status.dataset.autosaveStatus='';host.append(status);}
 function mountWorkflowSettings() {
-  const access=$('login-access-settings') || $('kept-access-settings');
-  const login=$('login-workflow-settings'),workflow=$('kept-workflow-settings');
+  const access=$('login-access-settings');
+  const login=$('login-workflow-settings');
   if(access)for(const node of [$('s-institution'),$('s-institution-auth')])if(node.parentElement!==access)access.append(node);
   if(login && loginLimits.parentElement!==login)login.append(loginLimits);
-  if(workflow && workflowFields.parentElement!==workflow)workflow.append(workflowFields);
 }
-for(const name of ['login-settings-mount','kept-settings-mount','workspace-navigation-state'])
+for(const name of ['login-settings-mount','workspace-navigation-state'])
   window.addEventListener(name,mountWorkflowSettings);
 mountWorkflowSettings();
 const esc=value=>String(value??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -429,7 +419,7 @@ document.addEventListener('focusout',event=>{if(event.target.matches('#s-provide
 function changed({immediate=false}={}) {revision++;if(autosave && !loading)autosave.edit(ordinaryValues(),{immediate});updateDirty();renderRun();}
 function setOperationPending(value) {
   operationPending=value;root.dataset.busy=String(value);
-  root.querySelector('.s-content').inert=value || loading;for(const id of ['login-access-settings','login-workflow-settings','kept-workflow-settings'])if($(id))$(id).inert=value || loading;updateDirty();
+  root.querySelector('.s-content').inert=value || loading;for(const id of ['login-access-settings','login-workflow-settings'])if($(id))$(id).inert=value || loading;updateDirty();
 }
 function casErrorText(code) {
   return ({cas_encryption_unavailable:'系统安全存储不可用，未保存或自动填写凭据。',
@@ -839,7 +829,7 @@ window.uiRunPage={
 };
 window.addEventListener('settings-draft-changed',updateRunButtons);
 // refreshWorkspace releases snapshotApplying before renderEnrich emits this event.
-window.addEventListener('enrich-state',updateRunButtons);
+window.addEventListener('paper-reading-state',updateRunButtons);
 window.addEventListener('run-state',event=>{runState=event.detail;renderRun();});
 
 function entityName(value,labels=false) {
@@ -1294,7 +1284,7 @@ function project(data) {
   if(!Array.isArray(order) || order.length!==Object.keys(providerDefaults).length || new Set(order).size!==order.length || order.some(id=>!Object.hasOwn(providerDefaults,id)))throw new Error('provider_order 必须完整且不重复地列出所有支持的 Provider；请修正 YAML 后 Reload。');
   return {monitor:{name:v.name,expression:v.keyword_expression,enabledProviders:[...(v.enabled_providers || [])],aliases:{...(v.provider_aliases || {})},providerOrder:[...order],crossrefMailto:v.crossref_mailto || "",pubmedKeyAction:"keep",pubmedKey:v.pubmed_key_configured?keyMask:"",openalexKeyAction:"keep",openalexKey:v.openalex_key_configured?keyMask:"",from:v.from_month,to:v.to_month,
     workspace:v.output_dir,log:v.log_level,
-    ...Object.fromEntries(concurrencyFields.map(([name,key])=>[key,v[name]])),zoteroTarget:v.zotero_target || null,institutionName:v.institution_name,
+    ...Object.fromEntries(concurrencyFields.map(([name,key])=>[key,v[name]])),institutionName:v.institution_name,
     idp:v.institution_idp_entity_id,useShibboleth:v.institution_use_shibboleth ?? false},
     revisions:{pubmed_key_revision:v.pubmed_key_revision || "missing",openalex_key_revision:v.openalex_key_revision || "missing",monitor_revision_exists:v.monitor_revision_exists,monitor_revision_digest:v.monitor_revision_digest,
       journal_revision_exists:v.journal_revision_exists,journal_revision_digest:v.journal_revision_digest},
@@ -1315,7 +1305,7 @@ function applyCoverDetails(data) {
   for(const [id,detail] of Object.entries(data.covers || {}))setCoverDetail(id,detail);
   for(const id of covers.keys())if(!Object.hasOwn(data.covers || {},id))covers.delete(id);
 }
-const ordinaryMonitorFields={zotero_target:'zoteroTarget',name:'name',keyword_expression:'expression',from_month:'from',to_month:'to',log_level:'log',enabled_providers:'enabledProviders',crossref_mailto:'crossrefMailto',provider_aliases:'aliases',provider_order:'providerOrder',...Object.fromEntries(concurrencyFields.map(([name,key])=>[name,key])),institution_name:'institutionName',institution_idp_entity_id:'idp',institution_use_shibboleth:'useShibboleth'};
+const ordinaryMonitorFields={name:'name',keyword_expression:'expression',from_month:'from',to_month:'to',log_level:'log',enabled_providers:'enabledProviders',crossref_mailto:'crossrefMailto',provider_aliases:'aliases',provider_order:'providerOrder',...Object.fromEntries(concurrencyFields.map(([name,key])=>[name,key])),institution_name:'institutionName',institution_idp_entity_id:'idp',institution_use_shibboleth:'useShibboleth'};
 function ordinaryValues(source=draft) {
   const values=Object.fromEntries(Object.entries(ordinaryMonitorFields).map(([field,key])=>[field,copy(source.monitor[key])]));
   values.groups=source.list.groups.map(group=>group.name);values.custom_labels=source.list.labels.map(label=>label.name);
@@ -1356,8 +1346,6 @@ function initializeAutosave(data,{restore=false}={}) {
       onRestore:values=>{applyOrdinaryValues(values);},
       onState:state=>{autosaveStatus=state;updateDirty();updateRunButtons();},
     });
-    window.allfoldZoteroPreference={get value(){return draft?.monitor.zoteroTarget || null;},
-      async set(value){if(loading || operationPending)return false;draft.monitor.zoteroTarget=copy(value);changed({immediate:true});return await autosave.flush();}};
     window.allfoldAutosave={flush:async()=>{
       if(loading || operationPending || explicitDirty())return false;
       return await autosave.flush();
@@ -1377,6 +1365,7 @@ async function applyExplicit(source,approval={}, {skipFlush=false}={}) {
   }
   if(!data.saved){showIssues(data);if(['PARTIAL_SAVE','REVISION_CONFLICT'].includes(data.save?.outcome))reconcileRequired=true;return false;}
   serverState=data;saved=project(data);draft=copy(saved);
+  if(previous.workspace!==saved.monitor.workspace)window.dispatchEvent(new Event('workspace-reset'));
   for(const key of ['workspace','pubmedKey','pubmedKeyAction','openalexKey','openalexKeyAction'])
     if(!same(retained[key],source.monitor[key]) || same(source.monitor[key],previous[key]))draft.monitor[key]=retained[key];
   initializeAutosave(data);syncMonitor();renderJournalsPage();updateDirty();showIssues(data);await refreshRun();await refreshSavedWorkspace();return true;
@@ -1439,8 +1428,9 @@ window.addEventListener('beforeunload',event=>{if(dirty() || autosave?.busy){eve
 function adoptState(data) {
   closeLabelPicker();
   const resetChanged=serverState && serverState.values.monitor_revision_digest!==data.values.monitor_revision_digest;
-  const firstLoad=!serverState;clearAssignmentUndo();serverState=data;uiNext.csrf_token=data.csrf_token;saved=project(data);draft=copy(saved);revision++;
+  const firstLoad=!serverState,workspaceChanged=Boolean(serverState && serverState.saved_workspace!==data.saved_workspace);clearAssignmentUndo();serverState=data;uiNext.csrf_token=data.csrf_token;saved=project(data);draft=copy(saved);revision++;
   loading=false;reconcileRequired=false;initializeAutosave(data,{restore:firstLoad});applyCoverDetails(data);reconcileSelections();syncMonitor();renderJournalsPage();updateDirty();
+  if(workspaceChanged)window.dispatchEvent(new Event('workspace-reset'));
   if(resetChanged){clearReset();if($('s-reset-section').open)void refreshResetPreview();}
 }
 function submission(source=draft) {
@@ -1453,7 +1443,6 @@ function submission(source=draft) {
   for(const id of m.providerOrder)form.append('provider_order',id);
   for(const id of m.enabledProviders)form.append('enabled_providers',id);
   for(const [id,alias] of Object.entries(m.aliases))form.set('provider_alias_'+id,alias);
-  form.set('zotero_target',JSON.stringify(m.zoteroTarget || null));
   form.set('institution_use_shibboleth',m.useShibboleth?'1':'');
   for(const [key,value] of Object.entries(source.revisions))form.set(key,value);
   for(const g of source.list.groups)form.append('settings_group',g.name);
@@ -1497,7 +1486,7 @@ function showIssues(data) {
   const fields={pubmed_api_key:'pubmedKey',openalex_api_key:'openalexKey',name:'name',keyword_expression:'expression',crossref_mailto:'crossrefMailto',pubmed_key_action:'pubmedKeyAction',openalex_key_action:'openalexKeyAction',from_month:'from',to_month:'to',output_dir:'workspace',
     log_level:'log',...Object.fromEntries(concurrencyFields.map(([name,key])=>[name,key])),
     'institution.name':'institutionName','institution.idp_entity_id':'institutionName',
-    'institution.use_shibboleth':'useShibboleth','institution':'institutionName',kept_workflow:'paperGlobalConcurrency'};
+    'institution.use_shibboleth':'useShibboleth','institution':'institutionName',workflow:'paperGlobalConcurrency'};
   clearValidationIssues();
   let first;
   for(const issue of all){const key=fields[issue.field];if(!key)continue;const input=document.querySelector(`[data-monitor="${key}"]`);input.setAttribute('aria-invalid','true');
@@ -1512,8 +1501,7 @@ function showIssues(data) {
       $('login-page').querySelector(`[data-sidebar-view="${key==='prepareServiceConcurrency'?'workflow':'access'}"]`)?.click();
     }
     else if(concurrencyFields.some(([,field])=>field===key)){
-      window.workspaceNavigation.go('kept',{instant:true});
-      window.dispatchEvent(new CustomEvent('kept-open-sidebar',{detail:{view:'workflow'}}));
+      window.workspaceNavigation.go('settings',{instant:true});
     }
     else openSettings('settings',true);first.focus();}
 }
@@ -1536,7 +1524,7 @@ async function refreshDiagnostic(kind) {
   const button=root.querySelector(`[data-diagnostic="${kind}"]`);button.disabled=true;
   try {
     const data=await uiNext.request('/api/ui-next/settings/diagnostics/'+kind);
-    const summary=kind==='zotero'?`Electron: ${data.electron_connected?'connected':'disconnected'} · Desktop: ${data.zotero_instance?.message || data.zotero_instance?.outcome || 'See details'}`:data.health_config_error || `${data.health_workspace?.issues?.length || 0} Workspace issues`;
+    const summary=data.health_config_error || `${data.health_workspace?.issues?.length || 0} Workspace issues`;
     $('s-'+kind+'-summary').textContent=summary;$('s-'+kind+'-result').textContent=JSON.stringify(data,null,2);
   } catch(error){$('s-'+kind+'-summary').textContent='Unavailable';$('s-'+kind+'-result').textContent=error.message;}
   finally {button.disabled=false;}

@@ -1,10 +1,11 @@
-# Independent SQLite Paper library (WF01)
+# SQLite Paper library
 
-The Python library kernel is implemented and tested with temporary, real SQLite
-databases. **Production Paper reads and writes still use Markdown.** Nothing in
-startup, Run, HTTP/IPC, Workspace UI, Enrich, Import or downloads opens this library.
-There is no migration, dual write, mixed read, fallback or user switch. WF02 owns
-the unified production adoption; see [task boundaries](workflow-refactor-tasks.md).
+`Workspace/papers.sqlite` is the only production Paper store. Current Run/WoS,
+Workspace/Reader/search, local fields, Preprint and Trash share `PaperRepository`.
+Uninitialized read-only Workspace views remain empty without creating a database;
+the first Run explicitly initializes one. Corruption, unsafe paths, unsupported
+schemas and database failures are errors, never an empty or recreated library.
+No Paper Markdown migration, dual write, mixed read or backend switch exists.
 
 ## Files, connections and schema
 
@@ -26,18 +27,19 @@ transaction callbacks: network, page and file work finishes before repository
 calls. No lock spans those operations.
 
 The application ID identifies an Allfold library, `PRAGMA user_version` records
-schema version 1, and `library_info` stores the Workspace UUID. Opening checks
+schema version 2, and `library_info` stores the Workspace UUID. Opening checks
 the version, expected table/index definitions, integrity and references. Missing,
 corrupt, unsafe and unsupported-schema libraries raise distinct errors. Existing
-content is never overwritten, downgraded or rebuilt. `upgrade_schema` in
-`library_database.py` is the explicit entry for future known transactional
-upgrades; no older migration is defined. Failed initialization preserves its
+content is never overwritten, downgraded or rebuilt. `upgrade_schema` in `library_database.py` recognizes only the exact known v1
+schema and upgrades it transactionally. UUIDs, metadata, identities, exclusion and
+body associations remain intact. Unknown structures are refused. Failed initialization preserves its
 exclusively created file for inspection rather than deleting it.
 
 | Table | Responsibility |
 | --- | --- |
 | `library_info` | Stable Workspace identity |
 | `paper_core` | Paper UUID, exclusion and metadata/operation/body generations |
+| `library_state`, `paper_projection` | Persisted library and record revisions for current projections |
 | `paper_identities` | Unique `(namespace, normalized_value)` ownership, referencing the core |
 | `paper_metadata` | Deletable complete payload and manual-abstract generation |
 | `paper_body` | One current relative PDF association, source URL and optional byte count |
@@ -115,8 +117,8 @@ deterministically. Year-only ordinary dates are refused; a year-only bibliograph
 field never manufactures a month/day. Legal future dates remain; the repository
 has no Run range filter. Preprint results never add or subtract ordinary nodes,
 including an equal date independently supplied by the formal article. Neither
-collection derives `publication_date` or Preprint results. Production
-`paper_dates.py` event semantics are unchanged.
+collection derives `publication_date` or Preprint results. Run keeps its existing query and first-version algorithms. Event facts remain
+operation-local inputs; the library ordinary date set has no event/source columns.
 
 Existing nonempty abstract text is retained exactly. Empty/markup-only candidates
 do not occupy the first-candidate opportunity. The existing abstract normalizer
@@ -137,20 +139,32 @@ source URL and nonnegative byte count. Absolute/drive paths, traversal, empty/do
 components, backslashes and control characters are refused. This lexical contract
 does not assert file existence or grant permission to follow filesystem links.
 WF09's file service must validate the live managed directory when landing files.
-WF01 never creates Documents, reads/writes PDF bytes, downloads, opens, locates or
-deletes actual PDFs.
+WF02 does not read/write PDF bytes, download, open, locate or delete actual PDFs.
+A body association classifies an unexcluded record as Downloaded. It confers no
+physical file-operation authority; those services belong to WF09/WF10.
 
-## Test and contract disposition
+## Production lifecycle and projections
 
-| Disposition | Evidence and scope |
-| --- | --- |
-| Added | `test_paper_repository.py` and `test_paper_repository_safety.py`: real reopen, identity/abstract/body contention, conflicts, dates, manual invalidation, lifecycle/rebuild, unsafe paths, foreign keys, bounded busy waits and trigger-injected rollback |
-| Retained as valid | Existing identity, materialization, Markdown/safe-write, decisions, Import, preprint, enrichment, Run and UserState tests; production callers still rely on them |
-| Shared symbol changed, behavior retained | Abstract normalizer is now public as `normalize_abstract`; existing callers and assertions retain their semantics |
-| Documentation corrected | Architecture, Paper identity, Workspace layout, safety, development and README scope production Markdown separately from this kernel |
-| Removed as uncalled | None; WF01 retires no production consumer or event-date assertion. WF02 owns cleanup with its replacement |
+HTTP handlers and Run/Preprint workers open, use and close repositories in their
+own execution thread. Network/browser waits never occur in a database transaction.
+Workspace/database identities and short commit eligibility prevent results from
+writing after Reset, path replacement or output-directory switching. Shutdown
+stops new work and waits for real worker/bridge settlement before final teardown.
 
-The path precondition test forbids connecting to unsafe targets; it does not mock
-the store. Other fixtures use real SQLite connections, including concurrent
-writers and injected statement failures. This is component acceptance, not
-workflow/UI, real-site, Zotero, actual PDF or production-cutover acceptance.
+Unexcluded full records are Candidate unless associated with a body, when they
+are Downloaded. Excluded records are Trash regardless of metadata/body presence.
+A cleared, unexcluded record with a body is an identity-only Downloaded entry;
+without a body it is a hidden identity placeholder awaiting an actual Run hit.
+Local restore never sends a request to recover metadata or notes.
+
+Reject commits exclusion and invalidates tokens before invoking exact-Paper
+cancellation outside database/Workspace write locks. Restore may happen during
+cleanup; old tokens remain invalid. Clearing metadata waits for that Paper's real
+cleanup to finish. Shared Run discovery remains available to other Papers.
+
+`test_paper_repository.py` and `test_paper_repository_safety.py` use real temporary
+SQLite databases for reopening, contention, identity conflicts, dates, generations,
+rollback, paths and known-v1 upgrade behavior. Application/API fixtures exercise
+production adoption, fields, Preprint and recycling; Electron fixtures exercise
+projections, response ordering and the existing layout. None establishes real
+provider, institution, user-library or actual-PDF acceptance.

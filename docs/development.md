@@ -8,26 +8,25 @@ The supported source-development platform is macOS, with Git, Node.js 24, Python
 npm --prefix electron run setup
 ```
 
-Setup checks tools, creates `config.example.yaml` only if absent, installs locked Python/Electron/build dependencies, explicitly installs the Electron binary, fetches exact official Zotero revisions, builds the UI and assembles Runtime. Existing modified or incorrect required vendor checkouts are rejected; setup does not reset or clean them. Only the named `src/translate`, `src/utilities` and `src/zotero-schema` submodules are initialized, without recursion. Unused Desktop and Google Docs checkouts may remain absent or retain local changes without being touched. The production revisions are in [upstream.lock](../electron/upstream.lock).
+Setup checks tools, creates `config.example.yaml` only if absent, installs locked Python/Electron/build dependencies, explicitly installs the Electron binary and builds the UI. Existing ignored vendor/Runtime directories are untouched. Translation-only assembly and Local API saving are retired; remaining Browser/Document/Prepare/Cloudflare helpers have no generated Runtime dependency.
 
-Configure keywords, months and Provider settings in Discover. The Login toolbar owns Institution and Service preparation concurrency. Import exposes the Paper, Translator, PDF and Zotero writer limits. Application settings remain in Settings. Ordinary edits autosave, while credential replacement/clearing and high-impact operations require explicit submission. The public template is separate from local configuration; setup does not create or copy credentials.
+Configure keywords, months and Provider settings in Discover. The Login toolbar owns Institution and Service preparation concurrency. Neutral Paper/PDF workflow values remain in configuration for existing contracts; no Download or retired Import controls are exposed. Application settings remain in Settings. Ordinary edits autosave, while credential replacement/clearing and high-impact operations require explicit submission. The public template is separate from local configuration; setup does not create or copy credentials.
 
 Journal state is stored in `.allfold/user-data.sqlite`, isolated by canonical configuration path. The YAML `venue_whitelist` remains the first-migration source, not the live data store. The Journal Registry rebuilds offline from the existing five source lists with `uv run --locked python tools/build_journal_registry.py`; its shipped rows and indexes are checked against an isolated rebuild. Shared GOKB/CARSI data lives in `.allfold/resources.sqlite`; neither database belongs in a source candidate. Use temporary project/configuration directories and injected HTTP transports for migration, exchange and Resolver tests. Do not launch tests against personal YAML, Workspace, covers or Zotero.
 
-WF01's independent [Paper library](paper-library.md) uses Python's standard
-`sqlite3`, explicitly creates `papers.sqlite` within a selected Workspace and
-has no startup/production wiring. WF02 will switch current Markdown readers
-and writers together. Do not initialize a library in a personal Workspace for
-WF01 testing; fixtures create disposable directories and actual databases.
-Focused checks use:
+The production [Paper library](paper-library.md) uses standard-library `sqlite3`.
+Read-only uninitialized views do not create it; the first Run initializes
+`Workspace/papers.sqlite`. Use disposable directories, actual SQLite connections
+and local HTTP/DOM fixtures. Existing v1 libraries receive a preserving known
+schema upgrade. Missing, corrupt and unsupported databases have distinct results.
 
 ```sh
-uv run --locked pytest tests/test_paper_repository.py tests/test_paper_repository_safety.py
+uv run --locked pytest tests/test_paper_repository.py tests/test_paper_repository_safety.py tests/test_run_commit.py tests/test_preprint_lookup.py
 ```
 
-Existing Markdown, Import, preprint and event-date regressions remain active.
-[Task tracking](workflow-refactor-tasks.md) records cleanup ownership; no new
-dependency or build is needed.
+Paper MD/Inbox authority, Keep/Import, active Enrich and their dedicated tests have
+been replaced or removed. [Task tracking](workflow-refactor-tasks.md) records the
+current adoption and later responsibility; no dependency upgrade is involved.
 
 ## Start and stop
 
@@ -40,7 +39,7 @@ The local origin is `http://127.0.0.1:18767`. An occupied port is an error; clos
 
 Pass an absolute `--config` path. The example expands `$PWD` from the project root before npm runs the Electron package script from `electron/`; a relative configuration argument would otherwise resolve under that directory.
 
-Normal exit stops further dispatch and waits for an already-started native save and guarded Paper result write. If the process was externally killed or the save result is uncertain, inspect Zotero and remaining processes before restarting or saving again.
+Normal exit stops further dispatch and waits for native operations and Run/Preprint workers to truly settle before closing their owned database connections. Externally killed processes require inspection before restarting.
 
 ## Build resources
 
@@ -52,15 +51,13 @@ node tools/build-ui-next.mjs
 
 This copies static assets into ignored `src/allfold/web/static/ui_next/`. The served URL remains `/static/ui_next/`. Edit sources, not generated files; the application reports missing UI resources instead of using an old source location.
 
-With existing pristine vendor sources, rebuild the translation Runtime using:
-
-```sh
-npm --prefix electron run prepare-runtime
-```
-
-The assembler validates fixed revisions, HEAD/index gitlinks and consumed bytes against tracked pinned Git blobs, including hidden `assume-unchanged` edits. Runtime ownership requires the exact current generated inventory and hashes, or the bounded PR #26 manifest profile during migration. That profile permits removal of the exact old ItemSaver/BotBypass files and old entry HTML. Unknown, incomplete or modified Runtime trees are rejected; unverifiable pre-manifest trees are preserved and require manual inspection. Building resources does not package an application; [release preparation](release.md) describes the distribution boundary.
-
-The main repositories retain fixed-commit shallow acquisition. Sparse/partial checkout is not added: sparse index membership can describe absent worktree inputs, submodules still need separate initialization, and converting old full checkouts would remove files. Partial clones add promisor/lazy-fetch states without reducing checked-out input requirements. Native named submodule selection provides the needed download reduction while preserving existing full checkouts.
+The full Translator Runtime has no current production caller and is not assembled.
+Setup and CI no longer fetch vendor sources or assert that retired inventory.
+DocumentRuntime, the isolated Document preload, Browser identity, Prepare and
+Cloudflare are still used by the native application. Do not remove those helpers
+because a similarly named translation fixture was retired. Existing vendor trees
+and historical source pins remain untouched. Building UI does not package an
+application; see [release preparation](release.md).
 
 ## Checks
 
@@ -72,13 +69,16 @@ npm --prefix electron test
 
 `check` discovers project-owned JS/CJS/MJS in Electron sources and scripts, the UI and tools. It excludes dependencies, third-party assets and generated output; tests parse their own files.
 
-The real-source Runtime checks assemble all 752 Translators at the locked revision and verify deterministic manifests, selective native submodule initialization, preserved legacy extra checkouts, trusted PR #26 migration and refusal of unsafe inputs. A hidden Electron fixture runs official Web translation, DOI Content Negotiation with dynamically loaded CSL JSON and read-only Enrich against synthetic HTTP. It verifies that only the virtual JSON saver remains and exercises article history parsing, delayed snapshots, the 30-second budget, cancellation and source replacement.
+Repository/API checks exercise real temporary libraries, thread ownership,
+Run/WoS commits, local fields, Preprint proof and exact-Paper cancellation.
+Rendered Electron fixtures use local HTTP and temporary profiles for
+Candidate/Downloaded/Trash, identity-only Reader, ordinary/Preprint dates,
+Reject/Restore/metadata clearing, late response guards and retained layout.
+They contact no personal library, account, institution or PDF.
 
-For live Enrich checks, use a disposable Electron profile and public articles. Use the existing Browser navigation and Solver flow and record the article response after verification. A Solver result describes an attempt on a recognized verification page. A generic HTTP 403 or persistent challenge can still block access to the article. Compare the extracted events with the actual Translator source document and distinguish access, translation, capture and parsing failures from a source without dates.
+The retained suite covers data preservation, path/identity safety, authority, cancellation, concurrent settlement and uncertainty, configuration and source ownership. Tests use isolated fixtures and transport doubles. UI build and module dependency checks cover the directory layout. Use [package scripts](../electron/package.json), the [UI build tool](../tools/build-ui-next.mjs) and [CI](../.github/workflows/ci.yml) as the executable command definitions.
 
-The retained suite covers data preservation, path/identity safety, authority, cancellation, concurrent settlement and uncertainty, fixed-source ownership and source preparation. Tests use isolated fixtures and transport doubles. UI build and module dependency checks cover the directory layout. Use [package scripts](../electron/package.json), the [UI build tool](../tools/build-ui-next.mjs) and [CI](../.github/workflows/ci.yml) as the executable command definitions.
-
-CI starts from a fresh checkout without Vendor caches, runs full Setup and asserts the selective source/runtime inventory before offline checks on macOS. It does not publish or use real credentials. A local pass does not prove that GitHub Actions ran, that the UI is visually correct or that real institutional access and Zotero/PDF saving work. Changes to those paths need relevant manual acceptance with explicit browser authorization.
+CI starts from a fresh checkout without Vendor caches, runs Setup and the offline checks on macOS. It does not publish or use real credentials. A local pass does not prove that GitHub Actions ran, that the UI is visually correct or that real institutional access work. Changes to those paths need relevant manual acceptance with explicit browser authorization.
 
 The Electron test command runs files serially. Its native input fixtures briefly
 show their own windows, and Electron's
@@ -86,12 +86,10 @@ show their own windows, and Electron's
 requires the containing window to have focus. Concurrent fixture processes can
 otherwise steal that focus and invalidate mouse/keyboard acceptance.
 
-Shipped Workflows and Enrich Browser acceptance use separate fixtures. Enrich's target
-Paper is part of its initial Workspace, and its readiness check verifies that Paper
-and enabled controls. It does not replace synthetic Workspace data after finishing
-Run. Both fixtures keep their task/page assertions and report Workspace reads,
-candidate IDs and renderer/native state on failure. The normal `npm test` glob
-includes both; no CI skip or workflow-specific opt-in is needed.
+The shipped Browser fixture retains Login/Discover handoff, task/Page identity,
+focus and Session assertions. The Library/layout fixture checks the built Reader
+and Trash projection independently of a Run. Dedicated Import/Enrich fixtures
+are removed; their former product operations cannot be dispatched.
 
 ### Workbench manual acceptance reference
 
@@ -99,7 +97,7 @@ ARRAY/Journals rails, Sidebar allocation, the isolated rendered DOM test and rem
 
 Select checks from this matrix according to the changed behavior and gaps in automated coverage; the full matrix is not a prerequisite for every PR. In particular, result-contract cleanup does not require unrelated real WoS, CARSI, Zotero, PDF or complete Browser workflows.
 
-Use a disposable configuration and Workspace. Browser control, external accounts and Zotero operations require task-specific authorization beyond isolated test fixtures. Offline tests do not establish the following real-workflow results:
+Use a disposable configuration and Workspace. Browser control, external accounts and real data operations require task-specific authorization beyond isolated test fixtures. Offline tests do not establish the following real-workflow results:
 
 1. From each business workspace, open Browser and return. Verify Paper/Journal selection, reading scroll and unsaved Settings drafts; resize the window, vary Header/Footer content and change the main UI zoom. Confirm no overlap between native webpages, trusted controls and scroll regions, and that Browser keyboard navigation leaves the hidden business selection unchanged.
 2. Create/select/close ordinary pages; use URL entry, back/forward/reload, many tabs and loading/error states. Hide/show Browser and verify the same Page IDs, history and Session. Check CARSI, scoped Services with identical names, and Other, including popups and reused Paper pages.
@@ -108,14 +106,9 @@ Use a disposable configuration and Workspace. Browser control, external accounts
 5. Open Search and History while Browser is visible; verify the native view is hidden while needed and restores the same page. During a Discover or Login manual handoff, Browser remains usable and returning restores the workflow controls.
 6. Test Archive disabled on fresh preferences, legacy Paper links, missing Papers, Workspace refresh and busy guards. Re-enable Archive and verify its existing layout/resources and ARRAY's shared reader remain usable.
 7. Run WoS-only, API-only and mixed selected-source Runs in both presentation modes, including cancellation and interrupted polling recovery. Verify inline mode allows safe navigation, records completion/history and refreshes results without forcing a workspace change.
-8. With authorized CARSI and Manual Services, check one login, independent preparation pages, partial results and the exact manual verification page. Test managed Paper page reuse and a fixed Import into an isolated Zotero target. Check explicit skips, cancellation and uncertain write settlement. Inspect actual parent-item and PDF results separately; never retry an uncertain save solely because presentation changed.
-
-For layered recovery, sample EBSCO, WoS and Cambridge Prepare with the authorized
-Session. Observe the normal tab ownership and the workflow status during any
-actual refresh or CARSI reentry. Synthetic load and timeout tests cover recovery
-branches when the site does not reproduce a failure. In a separately authorized
-Zotero target, confirm the parent and saved PDF separately and inspect the UI
-wording for any uncertain result.
+8. With authorized CARSI and Manual Services, check one login, independent
+preparation pages, partial results and the exact manual verification page.
+Synthetic fixtures cover recovery paths when real services do not reproduce them.
 
 Python HTTPX callers share the [HTTP client and proxy layer](http.md). Its focused
 tests cover isolated request routing, TLS, transport lifecycle and cache failures;
@@ -123,8 +116,7 @@ Chromium authentication remains a separate manual acceptance boundary.
 
 ## Troubleshooting
 
-- Missing `.venv`, UI, vendor or Runtime: complete setup and inspect the failing step.
-- Modified vendor or Runtime: inspect the reported path. Preserve unknown files; do not use reset/clean to make verification pass.
+- Missing `.venv` or UI: complete setup and inspect the failing step.
 - Download failure: correct connectivity to the named registry or GitHub before rerunning setup. Dependency pins remain unchanged.
 - Need application diagnostics: use HISTORY's task export or Settings' recent
   diagnostic export. Both runtimes persist bounded, validated JSONL alongside
@@ -145,21 +137,12 @@ the Info preprint lookup and change-scoped acceptance. HTTP fixtures and rendere
 Electron tests use synthetic data and isolated configurations. Real Provider
 compatibility and Zotero acceptance require separate verification.
 
-Focused regressions use `tests/test_integrated_run.py`, `tests/test_two_stage_run.py`,
-`tests/test_preprint_lookup.py`, `tests/test_metadata_completion.py` and
-`tests/test_paper_enrichment.py`. They exercise create-only rediscovery,
-batched PubMed identity validation, HTTP settlement, exact Paper and Workspace
-authority, cancellation, deduplication and event-only Enrich saves. The
-Electron workspace fixture renders the four date values, full Info evidence,
-and the one-Paper lookup with isolated API responses.
-Snapshot regressions in `tests/test_run_state.py`, `tests/test_run_commit.py` and
-`tests/test_wos.py` cover unified Integrated v6, unsupported Integrated v4/v5, preserved legacy WoS v4,
-invalid/I/O cases, bound atomic writes and truthful write-failure counts.
-Synthetic Chromium Run results cover source failures, status/count rendering and
-WoS batches/date hints. Rare Accepted/event-only Translator responses and unusual
-version/date conflicts belong in synthetic automated tests; real samples are
-supplementary when available. These checks do not establish real-site,
-real-Workspace or Zotero acceptance.
+Focused application regressions use the Run, Run commit, Paper repository,
+Preprint lookup, local-field and Workspace API suites. They verify actual SQLite
+reopen/classification, stable UUIDs, bounded short commits, cancellation and
+captured generations. The Electron fixture renders ordinary dates and separate
+Preprint proof and checks local recycling without file operations. Source/build,
+rendered fixture, live-service and latest PR CI outcomes remain distinct evidence.
 
 `tests/test_two_stage_run.py` uses controlled Events/Futures to prove overlapping
 PubMed/WoS/OpenAlex producers, Work lookup before producer completion, deduplication
@@ -195,6 +178,5 @@ model or migrate Paper identities.
 Retain the reported backup until acceptance. To recover, stop Allfold and use
 SQLite's backup API from that backup into the original database; preserve the
 original and any sidecars until recovery is verified. Never copy over a database
-while the application is running. Paper data is untouched; retired Paper identity
-fields require a separately chosen, backed-up Workspace Reset as described in
-[Paper identity](paper-identity.md).
+while the application is running. Paper data is untouched. Per-Paper Markdown is no longer read or migrated; the
+SQLite library and explicit Workspace Reset follow [Paper identity](paper-identity.md).

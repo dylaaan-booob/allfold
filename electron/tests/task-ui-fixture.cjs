@@ -44,7 +44,7 @@ async function taskUI(script,{inline=true,request,ready=false,reduced=false,arch
   window.allfoldUIPreferences={fullscreenDisabled:()=>inline,archiveDisabled:()=>archiveDisabled};window.uiWorkspace={ready:()=>ready,refresh:async()=>{refreshes++;}};
   window.uiRunPage={selectedProviders:()=>['openalex'],providerName:id=>id,open:()=>{opens++;currentPage='run';return true;},report:(...args)=>calls.push(['report',...args]),canRun:()=>true,updateButtons(){},refresh:async()=>{refreshes++;}};
   window.inboxRun={available:()=>true,selection:()=>({}),prepare:async()=>{prepares++;}};
-  window.uiNextInitialLink=initialLink;window.inboxKept={available:()=>bridgeReady,busy:()=>false,papers:()=>entries,candidates:()=>entries,data:()=>data,openReader:()=>true,closeReader:()=>true,openArchivePaper:id=>window.workspaceArray?.openPaper(id)||false,setLayout:value=>{get('selected-view').dataset.workspaceLayout=value;get('kept-view').hidden=get('kept-view').inert=value!=='array';return true;},suspend(){},exported(){}};
+  window.uiNextInitialLink=initialLink;window.inboxKept={available:()=>bridgeReady,busy:()=>false,entries:()=>entries,candidates:()=>entries,data:()=>data,openReader:()=>true,closeReader:()=>true,openArchivePaper:id=>window.workspaceArray?.openPaper(id)||false,setLayout:value=>{get('selected-view').dataset.workspaceLayout=value;get('kept-view').hidden=get('kept-view').inert=value!=='array';return true;},suspend(){},exported(){}};
   window.workspaceNavigation={current:()=>currentPage,go:page=>{currentPage=page;return true;},register(){},refresh(){}};
   window.allfoldWorkbench={showTaskPage:async identity=>{presentations.push(identity);return true;}};
   window.allfoldLayoutModel={minOperationalSize:{array:360}};

@@ -71,11 +71,6 @@ function errorCode(error) {
     || (error?.name==='AbortError'?'canceled':/timed out|timeout/i.test(error?.message || '')?'timeout':'failed');
 }
 function hostname(url) {try{return new URL(url).hostname;}catch{return undefined;}}
-function attachmentCounts(items=[]) {
-  const attachments=items.flatMap(item=>Array.isArray(item?.attachments)?item.attachments:[]);
-  return {attachment_count:attachments.length,pdf_attachment_count:attachments.filter(attachment=>
-    typeof attachment?.mimeType==='string' && attachment.mimeType.split(';')[0].trim().toLowerCase()==='application/pdf').length};
-}
 module.exports={log:(...args)=>logger.log(...args),initializeLogging,createLogger,withLogContext,associationLogContext,
   diagnosticsStatus:()=>logger.status(),diagnosticsReset:data=>logger.reset(data),setLogLevel:level=>logger.setLevel(level),
-  sanitize,errorCode,hostname,attachmentCounts,recoveryEvidence};
+  sanitize,errorCode,hostname,recoveryEvidence};

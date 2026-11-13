@@ -8,7 +8,7 @@ const vm=require('node:vm');
 const hostRequire=require('node:module').createRequire(require.resolve('../src/workflows/wos-operations.cjs'));
 const {EventEmitter}=require('node:events');
 const {attachBrowserMechanisms}=require('./browser-fixture.cjs');
-const {ImportFailure,checkPage}=require('../src/workflows/import-errors.cjs');
+const {BrowserFailure:ImportFailure,checkPage}=require('../src/browser/browser-errors.cjs');
 const {pageStep,SELECTORS}=require('../src/workflows/page-actions.cjs');
 const {institutionAuthPage}=require('../src/auth/institution-auth.cjs');
 function exportAuthentication() {
