@@ -39,6 +39,19 @@ def target(paper):
         content_type='journal-article')
 
 
+@pytest.mark.parametrize('content_type', ['book', 'chapter', 'supplement'])
+def test_task_rejects_explicit_unsupported_target_before_reservation_or_http(tmp_path, content_type):
+    host, workspace, paper, options = setup_host(tmp_path, lambda _: pytest.fail('Unsupported target sent HTTP'))
+    try:
+        with pytest.raises(ValueError, match='content type'):
+            submit_pdf_discovery(host, paper, target=replace(target(paper), content_type=content_type), http_options=options)
+        assert not host.active
+        with PaperRepository.open(workspace) as repository:
+            assert repository.get(paper.id) == paper
+    finally:
+        host.shutdown(); host.join()
+
+
 def test_completed_collection_uses_real_discovery_without_changing_collection_or_content(tmp_path):
     requests, received, threads = [], [], []
     def handler(request):

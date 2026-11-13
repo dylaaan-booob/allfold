@@ -12,7 +12,7 @@ import time
 
 from allfold.application.browser_services import browser_workspace_identity
 from allfold.application.dynamic_dispatch import SettledFuture
-from allfold.pdf_discovery import DiscoveryResult, PdfDiscovery
+from allfold.pdf_discovery import DiscoveryResult, PdfDiscovery, SUPPORTED_PDF_TARGET_TYPES
 from allfold.pdf_http import PdfDiscoveryIO
 from allfold.pdf_rules import PdfRuleInputs, PdfTarget
 from allfold.persistence.paper_repository import InvalidPaperState, StaleWriteError
@@ -182,6 +182,8 @@ def submit_pdf_discovery(host, paper, *, target, service_id=None, deadline=None,
     """
     if not isinstance(target, PdfTarget) or target.paper_id != str(paper.id):
         raise ValueError('PDF target must belong to the original saved Paper')
+    if target.content_type not in SUPPORTED_PDF_TARGET_TYPES:
+        raise ValueError('PDF discovery target has an unsupported content type')
     primary = paper.primary_identity
     doi = primary.value if primary is not None and primary.namespace == 'doi' else None
     if target.identity_doi != doi:
