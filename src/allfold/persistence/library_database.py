@@ -219,6 +219,11 @@ class LibraryDatabase:
             self.connection.execute("BEGIN IMMEDIATE" if write else "BEGIN")
             try:
                 yield self.connection
+                # A replacement during the short operation must roll back the
+                # original handle rather than committing into a retired library.
+                _validate_paths(self.workspace)
+                if self._identity() != self._file_identity:
+                    raise UnsafeLibraryPath("Workspace or database was replaced during operation")
                 self.connection.commit()
             except BaseException:
                 self.connection.rollback()

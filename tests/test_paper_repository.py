@@ -419,3 +419,15 @@ def test_library_snapshot_revision_covers_local_edits_and_identity_primary_is_st
     assert merged.revision > edited.revision > created.revision
     assert merged.primary_identity == created.primary_identity
     assert merged.metadata.discovered_at == discovered
+
+
+def test_primary_identity_and_all_formal_ids_survive_multi_identity_capture(library):
+    from allfold.persistence.paper_repository import DirectIdentity
+    identities = (DirectIdentity('doi', '10.1234/another'), DirectIdentity('openalex', 'W123'))
+    paper = library.create_or_match(library.workspace_id, direct_ids=ExternalIds(doi='10.1234/primary'),
+        additional_identities=identities, metadata=PaperMetadata(title='Article')).paper
+    assert paper.primary_identity == DirectIdentity('doi', '10.1234/primary')
+    assert library.match(ExternalIds(doi='10.1234/another')).id == paper.id
+    cleared = library.clear_metadata(library.exclude(paper.token).token)
+    assert cleared.primary_identity == paper.primary_identity
+    assert set(cleared.identities) == {DirectIdentity('doi', '10.1234/primary'), *identities}

@@ -78,3 +78,43 @@ def test_reject_restore_during_completion_cannot_renew_placeholder_authority(tmp
     assert changed
     with PaperRepository.open(workspace) as repository:
         assert repository.get(placeholder.id).metadata is None
+
+
+def test_run_preserves_formal_fields_future_dates_and_full_preprint_family_proof(tmp_path):
+    from allfold.models import Author, EvidenceDate, EvidenceDateKind, MetadataSource, ProviderRecordRef, ProviderTopic, ProviderWorkEvidence
+    from allfold.canonicalize import completion_metadata
+    from allfold.persistence.run_library import metadata_from_run
+
+    formal = evidence().model_copy(update={
+        'abstract': 'Formal abstract', 'authors': (Author(name='Formal Author'),),
+        'author_keywords': ('causality',), 'journal_issns': ('0006-341X',),
+        'publication_date': '2027', 'indexed_terms': (ProviderTopic(value='Statistics', source='openalex'),),
+        'related_ids': (ProviderRecordRef(provider='europe_pmc', record_id='PPR:123', relation='preprint'),
+            ProviderRecordRef(provider='doi', record_id='10.5555/unresolved-preprint', relation='preprint')),
+        'dates': (EvidenceDate(kind=EvidenceDateKind.PUBLISHED, year=2027, month=2),
+            EvidenceDate(kind=EvidenceDateKind.PUBLISHED_ONLINE, year=2027, month=2, day=3),
+            EvidenceDate(kind=EvidenceDateKind.ACCEPTED, year=2027, month=2, day=4)),
+    })
+    native = ProviderWorkEvidence(provenance=MetadataSource(provider='europe_pmc', record_id='PPR:123',
+        retrieved_at=datetime(2026, 1, 1, tzinfo=timezone.utc)), publication_type='preprint',
+        external_ids=ExternalIds(europe_pmc='PPR:123'), related_dois=('10.5555/formal',),
+        dates=(EvidenceDate(kind=EvidenceDateKind.PREPRINT, year=2025, month=1, day=2,
+            first_version=True, publication_type='preprint'),))
+    rows = (formal, native)
+    metadata = metadata_from_run(completion_metadata(rows), records=rows)
+    assert metadata.abstract == 'Formal abstract' and metadata.authors[0].name == 'Formal Author'
+    assert metadata.author_keywords == ('causality',) and metadata.indexed_terms[0].value == 'Statistics'
+    assert metadata.publication_date == '2027'
+    assert metadata.ordinary_dates == ('2027-02-03', '2027-02-04')
+    assert metadata.first_public_at is None  # another known preprint family remains unresolved
+    assert metadata.preprint_evidence[0].first_version
+    assert metadata.preprint_evidence[0].version_family == 'europe_pmc:PPR:123'
+    assert any(ref.record_id == '10.5555/unresolved-preprint' for ref in metadata.preprint_relations)
+    assert not any(ref.record_id == '10.5555/formal' for ref in metadata.preprint_relations)
+    workspace = tmp_path / 'proof'
+    workspace.mkdir()
+    with PaperRepository.create(workspace) as repository:
+        saved = repository.create_or_match(repository.workspace_id, direct_ids=formal.external_ids, metadata=metadata).paper
+    with PaperRepository.open(workspace) as repository:
+        assert repository.get(saved.id) == saved
+        assert repository.match(ExternalIds(europe_pmc='PPR:123')) is None
