@@ -9,6 +9,7 @@ from allfold.models import ExternalIds, MetadataSource, ProviderWorkEvidence
 from allfold.providers.integrated import DiscoveryResult, SourceScope
 from test_integrated_run import config
 from integrated_run_helpers import EmptyCompletion
+from library_helpers import capture_papers, read_papers, read_paper
 
 
 def record(provider, doi, **fields):
@@ -114,9 +115,8 @@ def test_completion_folds_related_version_dates_without_identity_or_ordinary_lea
         provenance=MetadataSource(provider='arxiv',record_id='2201.12345',retrieved_at=datetime.now(timezone.utc),note='Native version'),
         dates=(EvidenceDate(kind=EvidenceDateKind.PREPRINT,year=2022,month=1,day=4,first_version=True,publication_type='preprint'),))
     from allfold.canonicalize import canonicalize_records
-    from allfold.persistence.materialize import materialize_papers
-    materialize_papers(canonicalize_records((preprint,)).papers,tmp_path/'workspace')
-    saved,=(tmp_path/'workspace'/'Papers').glob('*.md');before=saved.read_bytes()
+    saved, = capture_papers(canonicalize_records((preprint,)).papers,tmp_path/'workspace')
+    before=saved
     calls=[]
     class Completion(EmptyCompletion):
         def lookup_many(self,namespace,ids,**kwargs):
@@ -125,7 +125,7 @@ def test_completion_folds_related_version_dates_without_identity_or_ordinary_lea
     result=run_integrated(path,client_factory=client_for((formal,)),completion_factory=Completion)
     papers=load_workspace(tmp_path/'workspace').papers
     created=next(paper for paper in papers if paper.external_ids.doi=='10.1093/nar/gkag979')
-    assert len(papers)==2 and result.facts.created_papers==1 and saved.read_bytes()==before
+    assert len(papers)==2 and result.facts.created_papers==1 and read_paper(tmp_path/'workspace', saved.id)==before
     assert created.external_ids.pmid=='42908400' and created.external_ids.arxiv is None
     assert created.title=='Native hit' and created.abstract=='Formal abstract'
     assert list(created.authors)==['Formal Author']
@@ -343,7 +343,7 @@ def test_config_revocation_stops_all_later_helper_dispatch(tmp_path):
             return super().lookup_many(namespace,ids,**kwargs)
     with pytest.raises(ContentChangedError):
         run_integrated(path,client_factory=client_for((evidence(),)),completion_factory=Helper)
-    assert dispatched==['openalex'] and not list((tmp_path/'workspace'/'Papers').glob('*.md'))
+    assert dispatched==['openalex'] and not read_papers(tmp_path/'workspace')
 
 
 def test_selected_native_disconnect_revokes_http_but_waits_native_settlement(tmp_path):
@@ -510,7 +510,7 @@ def test_work_guard_settles_native_before_parent_cancel_or_authority_error(tmp_p
         assert settled.result is None and settled.unexpected_error.category == 'ContentChangedError'
     history = store.history()['records']
     assert len(history) == 1 and history[0]['outcome'] == ('cancelled' if revocation == 'disconnect' else 'failed')
-    assert not list((tmp_path / 'workspace' / 'Papers').glob('*.md'))
+    assert not read_papers(tmp_path / 'workspace')
     assert not (tmp_path / 'workspace' / '.allfold' / 'last-integrated-run.json').exists()
     assert not (tmp_path / 'workspace' / '.allfold' / 'last-wos-run.json').exists()
 
@@ -630,7 +630,7 @@ def test_run_resolves_formal_dois_once_and_persists_pubmed_history(tmp_path, fai
     def handler(request):
         calls.append(request)
         if failed_path and request.url.path.endswith(failed_path):
-            assert not list((tmp_path / 'workspace' / 'Papers').glob('*.md'))
+            assert not read_papers(tmp_path / 'workspace')
             if sum(call.url.path.endswith(failed_path) for call in calls) <= 3:
                 raise httpx.ReadTimeout('fixture timeout')
         if request.url.path.endswith('esearch.fcgi'):
@@ -655,7 +655,7 @@ def test_run_resolves_formal_dois_once_and_persists_pubmed_history(tmp_path, fai
     papers = {paper.external_ids.doi: paper for paper in load_workspace(tmp_path / 'workspace').papers}
     assert run.facts.created_papers == 2 and set(papers) == {found, unmatched}
     assert papers[found].external_ids.pmid == '42925410'
-    assert [(d.kind.value, d.day) for d in papers[found].date_evidence] == [('received', 6)]
+    assert papers[found].ordinary_dates == ('2026-01-06',)
     assert papers[unmatched].external_ids.model_dump().get('pmid') is None
     assert len(calls) == run.facts.statistics['completion_requests'] == (5 if failed_path else 2)
     assert run.facts.statistics['pmid_resolution_no_match'] == 1
@@ -687,7 +687,7 @@ def test_run_retries_only_the_failed_completion_page_and_keeps_partial_evidence(
         filter_value = request.url.params['filter']
         cursor = request.url.params['cursor']
         calls[filter_value, cursor] += 1
-        assert not list((tmp_path / 'workspace' / 'Papers').glob('*.md'))
+        assert not read_papers(tmp_path / 'workspace')
         if filter_value.startswith('relation.type:'):
             return httpx.Response(200, json={'message': {'total-results': 0, 'items': []}})
         if cursor == 'second':
@@ -734,8 +734,8 @@ def test_run_retries_only_the_failed_completion_page_and_keeps_partial_evidence(
         assert run.facts.created_papers == 0 and not papers and run.outcome.value == 'CANCELLED'
     else:
         recovers = scenario in {'recovery', 'disconnect'}
-        assert run.facts.created_papers == 2 and papers[one].date_evidence
-        assert bool(papers[two].date_evidence) == recovers
+        assert run.facts.created_papers == 2 and papers[one].ordinary_dates
+        assert bool(papers[two].ordinary_dates) == recovers
         assert run.facts.details['completion_status'] == ('complete' if recovers else 'partial')
 
 
@@ -757,7 +757,7 @@ def test_run_recovers_native_preprint_details_before_create(tmp_path):
     def handler(request):
         assert request.url.path == f'/details/biorxiv/{preprint}/na/json'
         calls.append(request)
-        assert not list((tmp_path / 'workspace' / 'Papers').glob('*.md'))
+        assert not read_papers(tmp_path / 'workspace')
         if len(calls) <= 3:
             return httpx.Response(503)
         return httpx.Response(200, json={'messages': [{'status': 'ok'}], 'collection': [
@@ -785,16 +785,14 @@ def test_resolved_pmid_counts_existing_doi_free_paper_for_discovery_source(tmp_p
     import httpx
 
     from allfold.canonicalize import canonicalize_records
-    from allfold.persistence.materialize import materialize_papers
     from allfold.providers.integrated import DiscoveryClient
     from test_integrated_run import evidence
 
     path, _ = config(tmp_path)
     path.write_text(path.read_text() + 'enabled_providers: [wos]\n')
     workspace = tmp_path / 'workspace'
-    saved = materialize_papers(canonicalize_records((evidence(doi=None, pmid='42'),)).papers, workspace)
-    saved_path, = saved.created_papers
-    original = saved_path.read_bytes()
+    saved, = capture_papers(canonicalize_records((evidence(doi=None, pmid='42'),)).papers, workspace)
+    original = saved
     formal = record('wos', '10.5555/formal')
 
     def handler(request):
@@ -815,7 +813,7 @@ def test_resolved_pmid_counts_existing_doi_free_paper_for_discovery_source(tmp_p
 
     run = run_integrated(path, wos_stage=wos, completion_factory=factory)
     assert run.facts.created_papers == 0 and run.facts.existing_papers == 1
-    assert saved_path.read_bytes() == original
+    assert read_paper(workspace, saved.id) == original
     assert run.facts.details['provider_runs'][0]['existing'] == 1
     assert run.facts.details['provider_totals'][0]['existing'] == 1
 
@@ -875,7 +873,7 @@ def test_europe_pmc_conflicting_formal_doi_cannot_enrich_pmid_owner(tmp_path, kn
     assert run.facts.created_papers == 1
     assert paper.external_ids.doi == doi and paper.external_ids.pmid == pmid
     assert paper.first_public_at is None
-    assert [(item.kind.value, item.day) for item in paper.date_evidence] == [('received', 6)]
+    assert paper.ordinary_dates == ('2026-03-06',)
     assert not any(source.provider == 'europe_pmc' for source in paper.sources)
     assert not any('SRC:PPR' in request.url.params.get('query', '') for request in calls)
     assert any('Europe PMC response conflicts with direct formal identity' in issue.message for issue in run.warnings)
@@ -888,7 +886,6 @@ def test_wos_reported_pmid_needs_exact_pubmed_confirmation_for_a_formal_doi(tmp_
 
     from allfold.application.workspace import load_workspace
     from allfold.canonicalize import canonicalize_records
-    from allfold.persistence.materialize import materialize_papers
     from allfold.providers.integrated import DiscoveryClient
     from allfold.providers.supplemental import SupplementalClient
     from test_integrated_run import evidence
@@ -898,7 +895,7 @@ def test_wos_reported_pmid_needs_exact_pubmed_confirmation_for_a_formal_doi(tmp_
     path.write_text(path.read_text() + 'enabled_providers: [wos]\n')
     formal = record('wos', doi).model_copy(update={'external_ids': ExternalIds(doi=doi, pmid=reported_pmid)})
     if resolution == 'saved_doi_free':
-        materialize_papers(canonicalize_records((evidence(doi=None, pmid=reported_pmid),)).papers, tmp_path / 'workspace')
+        capture_papers(canonicalize_records((evidence(doi=None, pmid=reported_pmid),)).papers, tmp_path / 'workspace')
     calls = []
 
     def handler(request):
@@ -1005,5 +1002,5 @@ def test_efetch_conflict_revokes_provisional_pmid_and_its_evidence(tmp_path, con
     assert not run.facts.statistics.get('pmid_resolution_matched')
     assert paper.external_ids.doi == doi and paper.external_ids.model_dump().get('pmid') is None
     assert paper.first_public_at is None
-    assert [(item.kind.value, item.day) for item in paper.date_evidence] == [('accepted', 3)]
+    assert paper.ordinary_dates == ('2026-02-03',)
     assert {source.provider for source in paper.sources} == {'wos', 'crossref'}
