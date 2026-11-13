@@ -15,11 +15,11 @@ class _SmallHTML(HTMLParser):
         self.nodes, self.stack = [], []
 
     def handle_starttag(self, tag, attrs):
-        if len(self.nodes) >= 4096 or any(len(value or '') > 8192 for _, value in attrs):
+        if len(self.nodes) >= 4096 or len(self.stack) >= 64 or any(len(value or '') > 8192 for _, value in attrs):
             raise ValueError('Response parse budget exceeded')
         node = {'tag': tag, 'attrs': dict(attrs), 'text': '', 'parents': tuple(self.stack)}
         self.nodes.append(node)
-        if tag not in {'meta', 'link', 'img', 'br', 'hr', 'input', 'embed', 'source', 'base', 'area', 'wbr', 'param', 'col'}:
+        if tag not in {'meta', 'link', 'img', 'br', 'hr', 'input', 'embed', 'source', 'base', 'area', 'wbr', 'param', 'col', 'frame'}:
             self.stack.append(node)
 
     def handle_endtag(self, tag):
@@ -71,7 +71,13 @@ def reader_context(candidate, actual=None):
     identifier = (re.search(r'/pii/([^/]+)/', url.path)[1] if kind == 'sciencedirect' else
         query['arnumber' if kind == 'ieee' else 'uri' if kind == 'optica' else 'an'][0])
     source = candidate.target.article_url or candidate.url
-    if urlsplit(source).hostname != url.hostname:
+    source_parsed = urlsplit(source)
+    source_query = parse_qs(source_parsed.query)
+    if (source_parsed.hostname != url.hostname
+            or kind == 'sciencedirect' and '/pii/' + identifier not in source_parsed.path
+            or kind == 'ieee' and source_parsed.path != '/document/' + identifier and source_query.get('arnumber') != [identifier]
+            or kind == 'optica' and source_query.get('uri') != [identifier]
+            or kind == 'lww' and source_parsed.path.split('/')[1] != url.path.split('/')[1]):
         source = actual  # The current response's verified HTTP redirect chain.
     return dict(rule_id={'sciencedirect': 'R024', 'ieee': 'R025', 'optica': 'R053', 'lww': 'R060'}[kind],
         platform=kind, url=actual, identifier=identifier,
@@ -96,13 +102,14 @@ def _safe_next(candidate, base, value, **extra):
         parsed = urlsplit(url)
         if parsed.hostname == 'journals.plos.org' and 'manuscript' in parse_qs(parsed.query).get('type', ()):
             return None
-        return replace(candidate, url=url, reader_kind=None, credential=None, accept=None, **extra)
+        return replace(candidate, **({'url': url, 'reader_kind': None, 'credential': None, 'accept': None} | extra))
     except ValueError:
         return None
 
 
 def _excluded(node):
     return any(p['tag'] in {'nav', 'footer'} or p['attrs'].get('role') in {'doc-bibliography', 'doc-endnotes'}
+        or 'hidden' in p['attrs'] or p['attrs'].get('aria-hidden') == 'true'
         or re.search(r'references|related|recommend|supplement', p['attrs'].get('id', '') + ' ' + p['attrs'].get('class', ''), re.I)
         for p in (*node['parents'], node))
 
@@ -132,9 +139,9 @@ def parse_current_response(candidate, response):
         except (ValueError, AttributeError, TypeError):
             return ()
     # This citation behavior belongs exclusively to Oxford's qualified endpoint.
-    if (candidate.rule_id == 'R020' and candidate.reader_kind == 'oup_citation'
-            and actual.hostname == 'academic.oup.com' and actual.path == '/Citation/Download'
-            and parse_qs(actual.query).get('resourceType') == ['3']):
+    if (actual.hostname == 'academic.oup.com' and actual.path == '/Citation/Download'
+            and parse_qs(actual.query).get('resourceType') == ['3']
+            and re.fullmatch(r'[0-9]{1,16}', next(iter(parse_qs(actual.query).get('resourceId', ())), ''))):
         match = re.search(r'\beprint\s*=\s*(?:\{([^{}]+)\}|"([^"]+)")', text, re.I)
         value = (match[1] or match[2]).strip() if match else None
         # Explicit eprint must be a PDF entry, not the citation's article URL.
@@ -170,7 +177,9 @@ def parse_current_response(candidate, response):
                     add(attrs.get('data'))
             if kind == 'ieee' and tag in {'frame', 'iframe'}:
                 add(attrs.get('src'))
-            if kind == 'optica' and tag == 'frame' and frames.index(node) > 0:
+            if kind == 'optica' and tag == 'frame' and any(
+                    (old['parents'][-1] if old['parents'] else None) is (node['parents'][-1] if node['parents'] else None)
+                    for old in frames[:frames.index(node)]):
                 add(attrs.get('src'))
             if kind in {'sciencedirect', 'lww'} and tag == 'script' and attrs.get('type') == 'application/json':
                 try:
@@ -190,13 +199,48 @@ def parse_current_response(candidate, response):
     # this response. Native article reads retain their stronger live binding.
     dois = {valid_doi(node['attrs'].get('content')) for node in parser.nodes
         if node['tag'] == 'meta' and (node['attrs'].get('name') or node['attrs'].get('property', '')).lower()
-        in {'citation_doi', 'prism.doi', 'dc.identifier.doi'} and not _excluded(node)}
+        in {'citation_doi', 'prism.doi', 'dc.identifier.doi'} and any(p['tag'] == 'head' for p in node['parents'])}
     if dois != {candidate.target.identity_doi} or not candidate.target.identity_doi:
         return ()
     for name in ('citation_pdf_url', 'fulltext_pdf_url'):
         for node in parser.nodes:
-            if node['tag'] == 'meta' and (node['attrs'].get('name') or node['attrs'].get('property', '')).lower() == name:
+            if (node['tag'] == 'meta' and any(p['tag'] == 'head' for p in node['parents'])
+                    and (node['attrs'].get('name') or node['attrs'].get('property', '')).lower() == name):
                 add(node['attrs'].get('content'))
+    host = actual.hostname or ''
+    silverchair = host in {'pubs.acs.org', 'pubs.aip.org', 'jamanetwork.com',
+        'pubs.geoscienceworld.org', 'academic.oup.com'} or any(host == root or host.endswith('.' + root)
+            for root in ('rupress.org', 'ashpublications.org', 'arvojournals.org'))
+    atypon = host in {'onlinelibrary.wiley.com', 'journals.sagepub.com', 'www.tandfonline.com',
+        'www.annualreviews.org', 'pubs.aiaa.org', 'www.liebertpub.com', 'www.worldscientific.com', 'epubs.siam.org'}
+    for node in parser.nodes:
+        tag, attrs = node['tag'], node['attrs']
+        label = node['text'] + ' ' + attrs.get('title', '') + ' ' + attrs.get('href', '')
+        if _excluded(node) or re.search(r'supplement|supporting|appendix|whole issue|entire issue|other article', label, re.I):
+            continue
+        classes = attrs.get('class', '').split()
+        if tag == 'a':
+            selected = (silverchair and 'article-pdfLink' in classes
+                or (host == 'nature.com' or host.endswith('.nature.com')) and attrs.get('data-track-action') == 'download pdf'
+                or host in {'degruyterbrill.com', 'www.degruyterbrill.com'} and 'downloadPdf' in classes
+                or host in {'emerald.com', 'www.emerald.com'} and 'intent_pdf_link' in classes
+                or host in {'opg.optica.org', 'osapublishing.org', 'www.osapublishing.org'} and attrs.get('id') == 'link-pdf'
+                or (host == 'elifesciences.org' or host.endswith('.elifesciences.org'))
+                    and any('article-download-list' in p['attrs'].get('class', '').split() for p in node['parents'])
+                    and re.search(r'\bpdf\b', label, re.I))
+            if selected:
+                add(attrs.get('href'))
+            if host == 'jamanetwork.com' and attrs.get('id') == 'pdf-link':
+                add(attrs.get('data-article-url'))
+            if atypon and isinstance(attrs.get('href'), str):
+                linked = urlsplit(urljoin(response.url, attrs['href']))
+                matched = re.fullmatch(r'/doi/(?:pdf|epdf|pdfplus)/(10\.[0-9]{4,9}/.+)', linked.path)
+                if matched and linked.hostname == host and valid_doi(matched[1]) == candidate.target.identity_doi:
+                    add(attrs['href'])
+        if (tag == 'form' and (host == 'microbiologyresearch.org' or host.endswith('.microbiologyresearch.org'))
+                and 'ft-download-content__form--pdf' in classes
+                and any('download-pdf' in p['attrs'].get('class', '').split() for p in node['parents'])):
+            add(attrs.get('action'), action='refresh_form')
     # Only one unambiguous main-article PDF entrance. Other article/issue and
     # supplement links are excluded before deciding ambiguity.
     generic = []

@@ -31,12 +31,15 @@ class _Fact(BaseModel):
 
 def ephemeral_pdf_url(value: str) -> bool:
     """Recognize common signature/session credential carriers without rewriting them."""
-    for key, _ in parse_qsl(urlsplit(value).query, keep_blank_values=True):
+    pairs = parse_qsl(urlsplit(value).query, keep_blank_values=True)
+    names = {re.sub(r'[^a-z0-9]', '', key.casefold()) for key, _ in pairs}
+    for key, _ in pairs:
         name = re.sub(r'[^a-z0-9]', '', key.casefold())
         if (name in {'token', 'accesstoken', 'authtoken', 'auth', 'authorization', 'signature',
                 'sig', 'expires', 'expiry', 'apikey', 'key', 'credential', 'policy', 'keypairid',
                 'session', 'sessionid', 'jsessionid', 'jwt', 'hmac', 'securitytoken'}
-                or name == 'md5' and (urlsplit(value).hostname or '').lower() in {'www.sciencedirect.com', 'sciencedirect.com'}
+                or name == 'md5' and ('pid' in names or (urlsplit(value).hostname or '').lower()
+                    in {'www.sciencedirect.com', 'sciencedirect.com'})
                 or name.startswith(('xamz', 'xgoog'))):
             return True
     return bool(re.search(r';(?:jsessionid|sessionid)=', urlsplit(value).path, re.I))
