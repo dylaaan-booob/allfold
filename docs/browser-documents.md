@@ -278,8 +278,10 @@ validation checks leap years and month/day ranges. Invalid full candidates never
 degrade to month-only results. Ambiguous `04/02/2020` is refused; `13/02/2020` and
 `02/13/2020` have one valid order. Token boundaries reject URL/DOI/identifier
 substrings, suffixes such as `2020-04junk`, and manuscript/page ranges such as
-`SS-2025-0362`/`1023-1042`. Missing range endpoints are not filled. ISO values keep
-their written calendar day without a timezone conversion.
+`SS-2025-0362`/`1023-1042`. Complete URL tokens, including query and fragment
+values, cannot contribute dates. Missing range endpoints are not filled. ISO
+`T`/`Z` markers are case-insensitive and all variants receive the same full time
+validation, retaining their written calendar day without a timezone conversion.
 
 `time[datetime]` and displayed text are parsed independently, sharing their whole
 record's 150-point limit; a short attribute has no exemption. Pure times and
@@ -300,8 +302,9 @@ The fixed preference is **A1 → A2 → B → C**, with no API-versus-DOM write 
 - **A1:** exact case-insensitive IDs `abstract`/`abstracts`, class tokens
   `abstract`/`abstract-content`/`abstractInFull`, or a section/region with a unique
   strict Abstract aria label/title association. Substrings are insufficient.
-  Nested marked containers reduce to their smallest owner; identical copies
-  merge. Graphical/Video/Lay or author summaries, navigation, recommendations,
+  Nested markers share one explicit semantic owner, whose full content is read
+  once, including paragraphs around marked children; independent identical
+  copies merge. Graphical/Video/Lay or author summaries, navigation, recommendations,
   footer/hidden areas and title/button-only regions are refused.
 - **A2:** strict Abstract h2–h6 or explicit section-heading labels, normalizing
   surrounding whitespace, trailing colon and decorative punctuation. Summary is
@@ -319,11 +322,17 @@ The fixed preference is **A1 → A2 → B → C**, with no API-versus-DOM write 
   text. JSON-LD `description`, ordinary/OG/Twitter/DC description never fill it.
 
 Text keeps original paragraph order and newline-separated independent blocks,
-internal scientific headings and inline scientific content. Only standalone
+internal scientific headings and inline scientific content. Structured text
+interprets only known markup in an inert template, preserving literal `<T>`,
+`E<T>` and `x<y` notation. Only standalone
 Abstract/Summary wrapper headings and explicit buttons/action links,
 figure/table labels and keyword UI are removed. Short complete texts are valid.
 Explicit previews, unexpanded Read more/Show more fragments, ellipsis-only text
-and empty notices are refused without a click. Different valid same-level DOM
+and empty notices are refused without a click in DOM, Meta and JSON-LD alike;
+invalid structured peers do not create a conflict with a valid candidate.
+Notice matching collapses whitespace without changing accepted paragraph text.
+Hidden/peripheral preview markers and controls do not disqualify visible content.
+Different valid same-level DOM
 candidates fall through to independent structured sources; no first/longest
 choice, source concatenation, generation, translation or Title fallback exists.
 `wantAbstract=false` skips the abstract scanner entirely and still extracts
