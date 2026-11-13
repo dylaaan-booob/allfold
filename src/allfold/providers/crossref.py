@@ -118,17 +118,20 @@ class _AbstractTextParser(HTMLParser):
         self, tag: str, attrs: list[tuple[str, str | None]]
     ) -> None:
         if self._local_name(tag) in self._BLOCK_TAGS:
-            self.parts.append(" ")
+            self.parts.append("\n")
 
     def handle_endtag(self, tag: str) -> None:
         if self._local_name(tag) in self._BLOCK_TAGS:
-            self.parts.append(" ")
+            self.parts.append("\n")
 
     def handle_data(self, data: str) -> None:
         self.parts.append(data)
 
     def text(self) -> str:
-        return " ".join("".join(self.parts).split())
+        # Preserve structural paragraphs/headings in Provider facts. Legacy Run
+        # comparison/canonicalization still owns its separate normalized form.
+        return "\n".join(text for line in "".join(self.parts).splitlines()
+                         if (text := " ".join(line.split())))
 
 
 def _first_optional_string(

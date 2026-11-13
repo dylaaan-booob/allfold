@@ -65,9 +65,11 @@ diagnostics](docs/logging.md) for retention, privacy and evidence limits.
 
 Supported Cloudflare challenges invoke the existing Solver within their owning
 Browser operation. hCaptcha, Imperva CAPTCHA and MFA require manual verification. Controlled page
-checks return bounded observations rather than full HTML. The internal article
-access capability now confirms current-Document identity independently; background
-article collection remains disabled. See [Document access](docs/browser-documents.md).
+checks return bounded observations rather than full HTML. Internal article access
+and Date/Abstract operations confirm current-Document identity independently.
+Necessary API/Preprint services use captured collection attempts; production Run
+still uses its current Completion and does not register background collection.
+See [Document access](docs/browser-documents.md).
 
 ## Local data and privacy
 
