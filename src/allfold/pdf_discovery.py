@@ -309,7 +309,7 @@ class PdfDiscovery:
         yield from self._rules('P1')
         existing = tuple(self._rules('P2'))
         yield from existing
-        if ((needs_p2_query(self._route, replace(self.inputs, target=self._route)) or crossref_pdf_refresh_required(self.facts))
+        if (needs_p2_query(self._route, replace(self.inputs, target=self._route), known_refresh=crossref_pdf_refresh_required(self.facts))
                 and self.io is not None and callable(getattr(type(self.io), 'query_missing', None))):
             # IO is an iterator: no second interface is requested until the
             # first response has been considered, and sufficient IDs stop it.
@@ -334,7 +334,10 @@ class PdfDiscovery:
                 if updated.target != query_target:
                     raise ValueError('Query result changed original PDF target')
                 self.inputs = replace(updated, target=self.target)
-                candidates = tuple(self._rules('P2'))
+                candidates = tuple(c for c in self._rules('P2') if (urldefrag(c.url)[0], c.action) not in self._seen)
+                # A newly applicable template is an attempt, not a complete
+                # input answer that suppresses an already configured API.
+                sufficient_inputs = bool(candidates)
                 if self._route != previous_route:
                     # A newly resolved content Host may have a DOI template
                     # whose inputs were unavailable earlier. Continue this P2
@@ -342,7 +345,7 @@ class PdfDiscovery:
                     candidates += tuple(replace(c, stage='P2') for c in self._rules('P1'))
                 candidates = tuple(c for c in candidates if (urldefrag(c.url)[0], c.action) not in self._seen)
                 yield from candidates
-                if candidates:
+                if sufficient_inputs:
                     break
         # An already qualified P3 clue can finish before refreshing missing
         # fields or a later dynamic P4 entrance in a partial snapshot.

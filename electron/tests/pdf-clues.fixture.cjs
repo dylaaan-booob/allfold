@@ -106,6 +106,14 @@ app.whenReady().then(async()=>{
     }
     const ownAn=await forHost('journals.lww.com','<button data-doi="10.5555/target" onclick="PDFDownloadInit(\''+an+'\')">PDF</button>','<meta name="citation_doi" content="10.5555/target">','/journal/fulltext/2026/paper.aspx');
     assert.deepEqual(ownAn.pdf_clues.identifiers.map(item=>item.value),[an]);
+    for(const key of ['bepress_citation_doi','dc.identifier','dcterms.identifier']) {
+      const head='<meta name="'+key+'" content="https://doi.org/10.5555/TARGET"><meta name="'+key+'" content="10.5555/target">';
+      const body='<button data-doi="10.5555/target" onclick="PDFDownloadInit(\''+an+'\')">PDF</button>';
+      const aliasAn=await forHost('journals.lww.com',body,head,'/journal/fulltext/2026/paper.aspx');
+      assert.deepEqual(aliasAn.pdf_clues.identifiers.map(item=>item.value),[an],key+' accepted by article identity also binds its own AN');
+      const foreignAn=await forHost('journals.lww.com',body.replace('data-doi="10.5555/target"','data-doi="10.5555/other"'),head,'/journal/fulltext/2026/paper.aspx');
+      assert.deepEqual(foreignAn.pdf_clues.identifiers,[],key+' still rejects a foreign AN control');
+    }
     const peripheralAn=await forHost('journals.lww.com','<section id="relatedContent"><button onclick="PDFDownloadInit(\''+otherAn+'\')">PDF</button></section><section id="supplementary-files"><button onclick="PDFDownloadInit(\''+otherAn+'\')">PDF</button></section><button onclick="PDFDownloadInit(\''+an+'\')">PDF</button>','','/journal/fulltext/2026/paper.aspx');
     assert.deepEqual(peripheralAn.pdf_clues.identifiers.map(item=>item.value),[an]);
     const ambiguousAn=await forHost('journals.lww.com','<button onclick="PDFDownloadInit(\''+otherAn+'\')">PDF</button><button onclick="PDFDownloadInit(\''+an+'\')">PDF</button>','','/journal/fulltext/2026/paper.aspx');

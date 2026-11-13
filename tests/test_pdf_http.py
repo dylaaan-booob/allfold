@@ -201,6 +201,28 @@ def test_missing_id_query_routes_to_new_host_template_in_its_original_phase(prio
     assert (result.status, result.pdf_source, result.fallback_used) == ('transferred', 'P2', prior_optional_failure)
 
 
+def test_new_host_template_failure_still_reaches_its_configured_metadata_api():
+    seen = []
+    paper = target('www.sciencedirect.com')
+    def handle(request):
+        seen.append(str(request.url))
+        if request.url.host == 'doi.org':
+            return httpx.Response(200, json={'values': [{'type': 'URL', 'data': {
+                'value': 'https://link.springer.com/article/10.1234/AbC'}}]})
+        if request.url.host == 'link.springer.com':
+            return httpx.Response(404)
+        if request.url.host == 'api.springernature.com':
+            assert request.url.params['api_key'] == 'fixture-key'
+            return httpx.Response(200, json={'records': [{'doi': paper.doi, 'url': [
+                {'format': 'pdf', 'value': 'https://cdn.example.org/Body.PDF'}]}]})
+        return httpx.Response(200, headers={'Content-Type': 'application/pdf'})
+    with client(handle, credentials=(('springer_metadata', 'fixture-key'),)) as http:
+        result = PdfDiscovery(paper, io=PdfDiscoveryIO(http)).run(lambda c: http.consume(c,
+            transfer=lambda *_: CandidateResult.pdf(transfer_complete=True)))
+    assert [httpx.URL(url).host for url in seen] == ['doi.org', 'link.springer.com', 'api.springernature.com', 'cdn.example.org']
+    assert (result.status, result.pdf_source, result.fallback_used) == ('transferred', 'P2', True)
+
+
 @pytest.mark.parametrize('landing,expected', [
     ('https://www.sciencedirect.com/science/article/pii/S1234567812345678',
      'https://www.sciencedirect.com/science/article/pii/S1234567812345678/pdfft'),
@@ -329,6 +351,29 @@ def test_complete_empty_crossref_capability_does_not_trigger_refresh_after_templ
         result = PdfDiscovery(paper, facts=(facts,), io=PdfDiscoveryIO(http)).run(http.consume)
     assert result.status == 'exhausted' and result.pdf_source is None and not result.fallback_used
     assert len(seen) == 1
+
+
+def test_unknown_content_type_skips_p2_refresh_and_uses_qualified_p3():
+    from datetime import datetime, timezone
+    from allfold.pdf_facts import PdfDiscoveryFacts, PdfCandidateFact, crossref_discovery_facts
+    paper = replace(target('pubs.acs.org'), content_type='unknown')
+    crossref = crossref_discovery_facts({'DOI': paper.doi, 'link': [{
+        'URL': 'https://cdn.example.org/Old.PDF?Signature=Old', 'content-type': 'application/pdf'}]}, datetime.now(timezone.utc))
+    article = PdfDiscoveryFacts(source='document', capability='document-pdf', status='complete',
+        observed_at=datetime.now(timezone.utc), target_doi=paper.identity_doi,
+        candidates=(PdfCandidateFact(stage='P3', rule_id='GENERIC', field='citation_pdf_url', url='https://cdn.example.org/Body.PDF'),))
+    seen = []
+    def handle(request):
+        seen.append(str(request.url))
+        if request.url.host == 'api.crossref.org':
+            return httpx.Response(200, json={'message': {'DOI': paper.doi, 'link': [{
+                'URL': 'https://cdn.example.org/Unused.PDF?Signature=New', 'content-type': 'application/pdf'}]}})
+        return httpx.Response(200, headers={'Content-Type': 'application/pdf'})
+    with client(handle) as http:
+        result = PdfDiscovery(paper, facts=(crossref, article), io=PdfDiscoveryIO(http)).run(lambda c: http.consume(c,
+            transfer=lambda *_: CandidateResult.pdf(transfer_complete=True)))
+    assert seen == ['https://cdn.example.org/Body.PDF']
+    assert (result.status, result.pdf_source, result.fallback_used) == ('transferred', 'P3', False)
 
 
 @pytest.mark.parametrize('known_pii', [False, True])

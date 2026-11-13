@@ -356,10 +356,12 @@ def _jstor_stable(target: PdfTarget, inputs: PdfRuleInputs | None) -> str | None
     return None
 
 
-def needs_p2_query(target: PdfTarget, inputs: PdfRuleInputs) -> bool:
-    """Missing routable fields, independently of failed optional PDF sources."""
+def needs_p2_query(target: PdfTarget, inputs: PdfRuleInputs, *, known_refresh=False) -> bool:
+    """One DOI/type gate for missing routable fields or a known PDF refresh."""
     if not target.identity_doi or target.content_type not in ARTICLE_TYPES:
         return False
+    if known_refresh:
+        return True
     platform = content_platform(target)
     required = {'sciencedirect': _pii, 'cell': _cell_pii, 'ieee': _ieee_number,
         'oup': _oup_resource, 'jstor': _jstor_stable}

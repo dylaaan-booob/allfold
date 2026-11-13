@@ -251,7 +251,7 @@ class PdfDiscoveryIO:
 
     def query_missing(self, target, inputs, facts):
         doi, route = target.identity_doi, target
-        if not doi:
+        if not needs_p2_query(target, inputs, known_refresh=crossref_pdf_refresh_required(facts)):
             return
         # DOI registration is useful when the content target or a routable ID is
         # missing; a confirmed platform does not force resolver traffic.

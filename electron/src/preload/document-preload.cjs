@@ -403,7 +403,7 @@ const operations={
     guard();
     return {metadata:{dates,abstract},diagnostics:[...diagnostics]};
   },
-  pdf(readerKind,knownState) {
+  pdf(readerKind,knownState,articleProbe) {
     const diagnostics=new Set(),candidates=[],identifiers=[],seen=new Set(),landing_url=location.href;
     // Reserve space within the 64 KiB fact DTO for the final landing URL,
     // exact target and Python's typed/default candidate fields as well.
@@ -425,7 +425,9 @@ const operations={
     ];
     const [platform,rule_id]=entries.find(item=>item[2].test(host)) || ['generic','GENERIC'];
     const normalizeDoi=value=>{if(typeof value!=='string')return null;const doi=value.trim().replace(/^(?:https?:\/\/(?:dx\.)?doi\.org\/|doi:\s*)/i,'').trim().toLowerCase();return /^10\.\d{4,9}\/[^\s]+$/.test(doi)?doi:null;};
-    const doiValues=[...new Set([...document.head?.querySelectorAll('meta[content]') || []].filter(node=>/^(?:citation_doi|prism.doi|dc.identifier.doi)$/i.test(node.getAttribute('name') || node.getAttribute('property') || '')).map(node=>normalizeDoi(node.getAttribute('content'))).filter(Boolean))];
+    // The fixed article probe owns the scholarly DOI sources; PDF qualification
+    // reuses its bounded values instead of maintaining another alias list.
+    const doiValues=[...new Set((articleProbe?.values || []).map(normalizeDoi).filter(Boolean))];
     const decode=value=>{try{return decodeURI(value);}catch{return value;}};
     const pathDoi=decode(path).match(/\/doi\/(?:abs\/|full\/)?(10\.\d{4,9}\/[^\s]+)$/)?.[1]?.toLowerCase();
     const targetDoi=doiValues.length===1?doiValues[0]:doiValues.length?null:pathDoi;
@@ -567,7 +569,7 @@ ipcRenderer.on('document:operation',async(_event,{id,action,expectedDocumentId,e
     const source=name=>'('+operations[name].toString().replace(/^\w+\(/,'function(')+')()';
     // Access and article facts are observed in one synchronous DOM turn.
     const code=action==='article'?'({access:'+source('access')+',article:{...'+source('article')+',subject:'+subject+'}})'
-      :action==='extract'?'({...('+operations.extract.toString().replace(/^\w+\(/,'function(')+')('+JSON.stringify(args.wantAbstract)+'),subject:'+subject+'})':action==='pdf'?'({clues:('+operations.pdf.toString().replace(/^\w+\(/,'function(')+')('+JSON.stringify(args.readerKind)+','+JSON.stringify(knownState)+'),subject:'+subject+'})':source(action);
+      :action==='extract'?'({...('+operations.extract.toString().replace(/^\w+\(/,'function(')+')('+JSON.stringify(args.wantAbstract)+'),subject:'+subject+'})':action==='pdf'?'({clues:('+operations.pdf.toString().replace(/^\w+\(/,'function(')+')('+JSON.stringify(args.readerKind)+','+JSON.stringify(knownState)+','+source('article')+'),subject:'+subject+'})':source(action);
     const result=await webFrame.executeJavaScriptInIsolatedWorld(999,[{code}]);
     if(location.href!==url)throw Error('document_changed');
     ipcRenderer.send('document:result',{id,result,documentId,url});
