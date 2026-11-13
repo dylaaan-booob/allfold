@@ -79,7 +79,7 @@ async function execute(message) {
     send({type:'result',id:message.id,action:message.action,data:{diagnostic:{stage:'navigation',code:'unsupported_operation'}}});return;
   }
   const control=CONTROL_ACTIONS.has(message.action);
-  if(exiting) {
+  if(exiting && !RESOURCE_ACTIONS.has(message.action)) {
     // A request sent just before Python sees shutdown still needs a terminal response.
     const error=new BrowserFailure('navigation','canceled');
     const data=control?{ok:false,error:'canceled'}:{diagnostic:error.diagnostic};

@@ -55,6 +55,23 @@ test('native diagnostics reset bypasses browser task and document authority and 
   await assert.rejects(f.context.execute({id:'reset_busy',action:'diagnostics_reset',data:{operation:'preview'}}),/active/);
 });
 
+test('normal exit still settles captured resource cleanup without starting business work',{timeout:2000},async()=>{
+  const f=fixture(),entered=deferred(),settled=deferred();
+  f.context.exiting=true;
+  f.context.browser.runTask=()=>{throw Error('exit must not create business work');};
+  f.context.browser.invalidateAccess=async data=>{assert.equal(data.scope_id,'captured');entered.resolve();await settled.promise;return {closed:1};};
+  const pending=f.context.execute({id:'cleanup',action:'invalidate_access',data:{scope_id:'captured'}});
+  await entered.promise;
+  assert.equal(f.messages.length,0);assert.equal(f.context.operations.size,1);
+  await f.run('late-work');
+  assert.equal(f.messages[0].data.diagnostic.code,'canceled');
+  settled.resolve();await pending;
+  assert.equal(f.messages[1].data.closed,1);assert.equal(f.context.operations.size,0);
+  f.context.browser.releaseWorkflowPages=data=>({released:data.workflow_id==='old'});
+  await f.context.execute({id:'release',action:'release_workflow_pages',data:{workflow_id:'old',task_id:'old'}});
+  assert.equal(f.messages[2].data.released,true);
+});
+
 test('explicit credential writes settle through bridge ownership without browser dispatch or diagnostic payloads',{timeout:5000},async()=>{
   const f=fixture(),started=deferred(),settled=deferred();
   f.context.saveCASCredentials=async value=>{assert.equal(value.expected_revision,'missing');started.resolve();return settled.promise;};
