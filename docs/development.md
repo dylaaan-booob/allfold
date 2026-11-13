@@ -167,6 +167,13 @@ WebContents. Internal fixture work does not enable production cross-Run collecti
 or public Download/Retry. Existing bounded dispatcher and foreground Run tests
 remain applicable.
 
+The current registry executes one Paper's branches sequentially within its worker,
+connection and client scope. Tests of API/Document arrival races must instead use
+the same captured attempt with a separate repository connection and client scope
+in each thread. Sharing a `BranchContext`, SQLite connection or `AttemptClients`
+across threads is not supported. Such transaction-level race evidence does not
+enable production same-Paper branch concurrency; that orchestration belongs to WF08.
+
 `test_workspace_tasks.py` exercises the actual application host, HTTP projection,
 legacy query reaper, signal/join/factory shutdown order, selective credential and
 Service invalidation, accepted switch/Reset, partial save and same-path rebind,
