@@ -1250,3 +1250,24 @@ for(const outcome of ['not_found','clicked','failed'])test(`solver ${outcome} sh
     browser.bindTaskPage(tab,signal);await browser.inspectPage(tab,{signal});assert.equal(calls,expected+2);
   });
 });
+
+test('authentication binding replaced during an owned redirect returns loading instead of ending Login',async t=>{
+  const {BrowserRuntime}=fixture(t),browser=new BrowserRuntime();await browser.ready;t.after(()=>browser.close());
+  const controller=new AbortController(),tab=browser.createTab({present:false});
+  await tab.view.webContents.loadURL('https://idp.example.edu/login');
+  await browser.runTask(controller.signal,{request_id:'auth-binding-redirect'},async()=>{
+    browser.bindTaskPage(tab,controller.signal);browser.beginAuthentication(tab,controller.signal);
+    const original=browser.documents.call.bind(browser.documents);let changed=false;
+    browser.documents.call=async(...args)=>{
+      const result=await original(...args);
+      if(!changed && args[1]==='binding'){changed=true;await tab.view.webContents.loadURL('https://idp.example.edu/verification');}
+      return result;
+    };
+    const waiting=await browser.inspectAuthentication(tab);
+    assert.equal(waiting.step,'loading');assert.equal(waiting.waiting,true);assert.equal(waiting.binding,undefined);
+    const current=await browser.inspectAuthentication(tab);
+    assert.equal(current.binding.url,'https://idp.example.edu/verification');
+    assert.equal(browser.documentCurrent(current.binding),true);
+    controller.abort();await assert.rejects(browser.inspectAuthentication(tab),/canceled|document_changed/);
+  });
+});

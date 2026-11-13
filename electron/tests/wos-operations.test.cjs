@@ -82,15 +82,17 @@ function queryFixture(stages,{cancel=false,authError=false,advance=()=>{}}={}) {
       {signal:controller.signal,progress:value=>progress.push(value)})};
 }
 const advanced='https://www.webofscience.com/wos/woscc/advanced-search';
-function fixture(t,{attributable=true,hold=false,challenge=false,domError=null,query=false,verification=false,cancelVerification=false,deferExportMenu=false,dialogInitiallyClosed=false,batchLimit=1000,customFields=SELECTORS.customFields}={}) {
+function fixture(t,{attributable=true,hold=false,challenge=false,domError=null,query=false,verification=false,cancelVerification=false,deferExportMenu=false,dialogInitiallyClosed=false,batchLimit=1000,customFields=SELECTORS.customFields,overlayRouting=false,replaceAfterExport=false,otherResultsAfterExport=false}={}) {
   const root=fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(),'allfold-wos-test-')));
   t.after(()=>fs.rmSync(root,{force:true,recursive:true}));
   const filename=path.join(root,'allfold-wos','a'.repeat(32),'b'.repeat(32)+'.txt');
   fs.mkdirSync(path.dirname(filename),{recursive:true});
   const partition=new EventEmitter(),controller=new AbortController(),ops=[];
-  const doc={pageId:71,processId:1,frameToken:'native-frame',url:'https://www.webofscience.com/wos/woscc/summary/test',status:200,};
+  const doc={pageId:71,processId:1,frameToken:'native-frame',documentId:'native-document',navigationGeneration:0,url:'https://www.webofscience.com/wos/woscc/summary/test',status:200,};
   const authentication=query?exportAuthentication():null;
   if(query)doc.url='https://www.webofscience.com/wos/woscc/advanced-search';
+  if(overlayRouting && !dialogInitiallyClosed)doc.url+='(overlay:export/exp)';
+  let currentURL=doc.url,generation=0,documentId=doc.documentId;
   let settle,exported;
   const ready=new Promise(resolve=>exported=resolve);
   const item=new EventEmitter();item.setSavePath=value=>item.filename=value;
@@ -99,21 +101,25 @@ function fixture(t,{attributable=true,hold=false,challenge=false,domError=null,q
   let challengeActive=challenge;
   let exportMenuReady=!deferExportMenu;
   let dialogOpen=!dialogInitiallyClosed;
-  const wc={getURL:()=>doc.url,isLoadingMainFrame:()=>false,async executeJavaScript(code){
+  const wc={getURL:()=>currentURL,isLoadingMainFrame:()=>false,async executeJavaScript(code){
     const [op,args]=JSON.parse(code.slice(code.lastIndexOf('(...')+4,-1));ops.push(op);
-    if(op==='search')doc.url='https://www.webofscience.com/wos/woscc/summary/test';
+    if(op==='search'){currentURL='https://www.webofscience.com/wos/woscc/summary/test';generation++;}
     if(op==='result')return {total:94};
     if(op==='controlReady' && args.control==='exportMenu') {
       if(!exportMenuReady){exportMenuReady=true;return {ready:false};}
       return {ready:true};
     }
     if(op==='exportMenu' && !exportMenuReady)return {error:'control_not_unique'};
-    if(op==='plainText'){dialogOpen=true;authentication?.open(verification);}
+    if(op==='plainText'){dialogOpen=true;authentication?.open(verification);if(overlayRouting){currentURL='https://www.webofscience.com/wos/woscc/summary/test(overlay:export/exp)';generation++;}}
     if(op==='verification')return {ready:!challengeActive};
     if(op==='export' && domError)return {error:domError};
     if(op==='dialog')return {ready:dialogOpen,limit:batchLimit};
     if(op==='verifyCustom')return {verified:true,fields:customFields};
     if(op==='export') {
+      if(overlayRouting || replaceAfterExport || otherResultsAfterExport) {
+        currentURL='https://www.webofscience.com/wos/woscc/summary/'+(otherResultsAfterExport?'other':'test');generation++;
+        if(replaceAfterExport)documentId='replacement-document';
+      }
       ops.push({exportRange:args});
       partition.emit('will-download',{}, {cancel(){throw Error('unrelated download intercepted');}}, {});
       partition.emit('will-download',{},item,wc);
@@ -125,8 +131,8 @@ function fixture(t,{attributable=true,hold=false,challenge=false,domError=null,q
   const tab={id:71,view:{webContents:wc},association:preparedIdentity,
     preparationKey:preparedIdentity.preparation_key,wosServiceScope:preparedIdentity.service_scope,wosDocument:doc};
   const browser={tabs:new Map([[71,tab]]),partition,
-    liveToken:doc.frameToken,select(){},async checkAuthentication(){return authentication?.inspect().waiting || false;},async documentBinding(){return {...doc,url:wc.getURL()};},
-    documentCurrent(value){return this.liveToken===value.frameToken;},
+    liveToken:doc.frameToken,select(){},async checkAuthentication(){return authentication?.inspect().waiting || false;},async documentBinding(){return {...doc,url:wc.getURL(),navigationGeneration:generation,documentId};},
+    documentCurrent(value){return this.liveToken===value.frameToken && value.documentId===documentId && value.navigationGeneration===generation && value.url===currentURL;},
     documentFrame(value){return this.documentCurrent(value)?wc:null;}};
   attachBrowserMechanisms(browser);
   browser.servicePages=(scopeId,serviceId)=>[...browser.tabs.values()]
@@ -150,7 +156,7 @@ function fixture(t,{attributable=true,hold=false,challenge=false,domError=null,q
         },
         async navigate(_browser,target,url) {
           assert.equal(target,tab);assert.equal(url,advanced);
-          doc.url=url;ops.push('navigate');
+          currentURL=url;generation++;ops.push('navigate');
         }}:
       hostRequire(name)});
   vm.runInContext(fs.readFileSync(path.join(__dirname,'../src/workflows/wos-operations.cjs'),'utf8'),context);
@@ -286,5 +292,17 @@ test('WoS Export expiry cancels native save but retains ownership until actual t
   t.mock.timers.tick(600000);
   assert.equal(f.item.cancelled,true);assert.equal(settled,false);
   f.settle();await rejected;
+  assert.equal(f.browser.partition.listenerCount('will-download'),0);
+});
+
+for(const dialogInitiallyClosed of [false,true])test(`WoS export retains the native results Document through known overlay routing (${dialogInitiallyClosed?'reopened':'already open'})`,async t=>{
+  const f=fixture(t,{overlayRouting:true,dialogInitiallyClosed});
+  assert.equal((await f.run()).filename,f.filename);
+  assert.equal(f.ops.filter(op=>op==='export').length,1);
+  assert.equal(f.browser.partition.listenerCount('will-download'),0);
+});
+for(const change of ['replaceAfterExport','otherResultsAfterExport'])test(`WoS export still rejects ${change} after its own click`,async t=>{
+  const f=fixture(t,{overlayRouting:true,[change]:true});
+  await assert.rejects(f.run(),/document_changed/);
   assert.equal(f.browser.partition.listenerCount('will-download'),0);
 });

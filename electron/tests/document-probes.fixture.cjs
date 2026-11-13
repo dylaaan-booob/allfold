@@ -92,6 +92,8 @@ app.whenReady().then(async()=>{
     await wc.executeJavaScript('history.pushState({},"","/changed")');
     assert.equal(browser.documentCurrent(doc),false);
     const before=await browser.documentBinding(tab);
+    assert.equal(before.documentId,doc.documentId,'same-document routes retain native Document identity');
+    assert.notEqual(before.navigationGeneration,doc.navigationGeneration,'URL facts still invalidate the prior binding');
     await wc.loadURL('https://article.invalid/replacement');assert.equal(browser.documentCurrent(before),false);
     const doomed=await browser.documentBinding(duplicate);
     const crashed=new Promise(resolve=>duplicate.view.webContents.once('render-process-gone',resolve));

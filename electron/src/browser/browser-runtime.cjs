@@ -230,7 +230,16 @@ class BrowserRuntime {
     const wc=tab.view.webContents;
     if(wc.isDestroyed())throw new BrowserFailure('navigation','page_closed');
     if(wc.isLoadingMainFrame())return {step:'loading',waiting:true};
-    const binding=await this.documentBinding(tab,{signal:tab.taskSignal,deadline:tab.navigation.current?.deadline});
+    let binding;
+    try {binding=await this.documentBinding(tab,{signal:tab.taskSignal,deadline:tab.navigation.current?.deadline});}
+    catch(error) {
+      checkCanceled(tab.taskSignal);
+      const context=tab.authContext;
+      if(error.diagnostic?.code==='document_changed' && context?.active && !context.failure && this.operation===context.owner
+        && this.ownsPage(context.owner,tab.id) && !wc.isDestroyed() && !wc.isCrashed() && !tab.navigation.current?.failure)
+        return {step:'loading',waiting:true};
+      throw error;
+    }
     const frame=this.documentFrame(binding);
     if(!frame)return {step:'loading',waiting:true};
     let state;

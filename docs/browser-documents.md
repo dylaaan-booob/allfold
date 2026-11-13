@@ -7,7 +7,10 @@ generic IPC, arbitrary evaluator, cookies or Node capability. Main validates the
 reply sender, native process/frame, current navigation generation, exact URL and
 preload-generated Document ID before accepting a bounded DTO. Pending calls end
 on cancellation, navigation, destruction, crash or the remaining deadline; their
-listeners and references are removed. Same-URL Pages do not share identity.
+listeners and references are removed. Same-URL Pages do not share identity. An owned authentication read superseded
+by an in-flight redirect returns loading and discards the old observation; it
+does not end Login or replay any credential/selection action. Cancellation,
+renderer failure and lost ownership remain terminal.
 
 A native binding proves which Document produced facts. Article identity proves
 whether that Document corresponds to a target Paper. Neither grants task, Service,
@@ -19,7 +22,10 @@ boundary. There is no permanent DOM observer or cached input-DOI proof.
 
 - `binding`: content type, Document ID and host-captured Page/process/frame/URL/
   navigation facts. pageAction, CARSI selection/search/Visit and WoS results use
-  this operation without an article DOI requirement.
+  this operation without an article DOI requirement. WoS alone can rebind its known
+  `(overlay:export/exp)` route within the same original native Document and exact
+  summary result route/query. New Documents, different result sets and unknown
+  overlay routes remain refused; the export click is never replayed.
 - `access`: fixed title/challenge/content-denial/login booleans and
   strictly validated Imperva `edet`/incident fields.
   HTTP status comes from the actual native main-frame navigation. No title,
