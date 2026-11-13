@@ -19,6 +19,13 @@ even between different Services; native Page/Document navigation and workflow
 loans retain their exact checks. Shared Service admission never grants concurrent
 navigation of a single physical page.
 
+Accepted maintenance can reserve affected admission before draining existing
+owners. The reservation blocks replacement work without granting execution or
+page authority; normal control admission still waits for captured users to settle.
+Cancellation and joins occur outside configuration admission, and cleanup releases
+only its captured reservation. Global reservations also protect Workspace/Logs
+controls; scoped access replacement leaves unrelated Service users independent.
+
 The task scheduler counts executing tasks, while this native ledger counts
 physical WebContents and reservations. These are independent bounds. Shared
 Python admission creates no pages or registry-private page pool, and never

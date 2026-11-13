@@ -84,6 +84,53 @@ def test_independent_browser_owners_share_admission_but_service_and_controls_rem
         lock.require(login)
 
 
+def test_control_reservation_blocks_new_use_while_old_owners_settle_outside_admission():
+    import threading
+    from concurrent.futures import ThreadPoolExecutor
+    from allfold.application.browser_runtime import BrowserTaskLock
+
+    admission = threading.RLock()
+    lock = BrowserTaskLock(admission_lock=admission)
+    scope = {'service:fixture:publisher'}
+    old = lock.acquire('collection', scopes=scope, shared=True)
+    with admission:
+        control = lock.reserve_control('access-cleanup', scopes=scope)
+    assert control is not None
+    assert lock.acquire('collection', scopes=scope, shared=True) is None
+    unrelated = lock.acquire('collection', scopes={'service:fixture:other'}, shared=True)
+    assert unrelated is not None
+    assert lock.acquire('access-cleanup', scopes=scope, control=control) is None
+    with ThreadPoolExecutor(max_workers=1) as worker:
+        with admission:
+            worker.submit(lock.release, old).result(timeout=1)
+    cleanup = lock.acquire('access-cleanup', scopes=scope, control=control)
+    assert cleanup is not None
+    lock.release(cleanup)
+    lock.release_control(control)
+    fresh = lock.acquire('collection', scopes=scope, shared=True)
+    assert fresh is not None
+    lock.release(fresh)
+    lock.release(unrelated)
+
+
+def test_global_maintenance_reservation_has_exact_ownership_and_blocks_other_controls():
+    from allfold.application.browser_runtime import BrowserTaskLock
+    lock = BrowserTaskLock()
+    reservation = lock.reserve_control('workspace-reset')
+    assert reservation is not None
+    assert lock.reserve_control('logs-reset') is None
+    assert lock.acquire('covers') is None
+    other = BrowserTaskLock()
+    with pytest.raises(RuntimeError):
+        other.acquire('workspace-reset', control=reservation)
+    owner = lock.acquire('workspace-reset', control=reservation)
+    assert owner is not None
+    lock.release(owner)
+    lock.release_control(reservation)
+    lock.release_control(reservation)  # own cleanup is idempotent
+    assert lock.acquire('covers') is not None
+
+
 def test_service_data_owners_share_authority_but_keep_control_and_page_exclusivity():
     from concurrent.futures import ThreadPoolExecutor
     from threading import Barrier
