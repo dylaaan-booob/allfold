@@ -632,10 +632,14 @@ class WorkspaceRegistry:
         try:
             with self._gate, self._repository() as repository:
                 paper = repository.finish_collection(handle.token, failed=failed)
+            # Logs Reset must not observe this job idle while its final event
+            # is still waiting on the shared diagnostic writer.
+            self._observe(handle, paper.collection_status, 'workflow_finished')
+            with self._gate, self._repository() as repository:
                 if self._tasks.get(handle.paper_id) is handle:
+                    paper = repository.touch_projection(handle.paper_id)
                     del self._tasks[handle.paper_id]
                     self._settled_condition.notify_all()
-            self._observe(handle, paper.collection_status, 'workflow_finished')
             if not handle.future.done():
                 handle.future.set_result(paper)
         except BaseException as error:

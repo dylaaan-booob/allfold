@@ -103,6 +103,40 @@ def test_native_branch_failure_remains_retryable_after_callback_returns(tmp_path
         registry.join()
 
 
+def test_final_diagnostic_write_retains_paper_and_logs_occupancy(tmp_path):
+    from allfold.diagnostics import DiagnosticStore
+    writing, finish_write = Event(), Event()
+
+    class Store(DiagnosticStore):
+        def event(self, event, details=None, *, level='info'):
+            if event == 'workflow_finished':
+                writing.set()
+                assert finish_write.wait(3)
+            return super().event(event, details, level=level)
+
+    path = workspace(tmp_path)
+    store = Store(tmp_path / 'config.yaml', root=tmp_path / 'logs')
+    registry = WorkspaceRegistry(path, factory=IndependentClientFactory(tmp_path / 'config.yaml'), diagnostics=store)
+    try:
+        task = submit(registry, 'diagnostic-cleanup', [BranchSpec('empty', lambda _: None)])
+        assert writing.wait(2)
+        with PaperRepository.open(path) as repository:
+            assert repository.get(task.paper_id).collection_status == 'completed'
+        assert registry.active and registry.cleanup_pending(task.paper_id, registry.workspace_id)
+        assert not task.future.done()
+        with pytest.raises(InvalidPaperState):
+            registry.reserve(task.paper_id)
+        finish_write.set()
+        completed = task.future.result(3)
+        with PaperRepository.open(path) as repository:
+            assert completed.revision == repository.get(task.paper_id).revision
+        assert not registry.active
+    finally:
+        finish_write.set()
+        registry.shutdown()
+        registry.join()
+
+
 def test_incremental_results_and_empty_completion_persist_without_automatic_replay(tmp_path):
     path = workspace(tmp_path)
     factory = IndependentClientFactory(tmp_path / 'config.yaml')
