@@ -170,6 +170,8 @@ class BranchContext:
         if outcome in {'completed', 'skipped'}:
             self.guard()
         with self._registry.paper_gate():
+            if outcome in {'completed', 'skipped'}:
+                self._registry._require_live(self._handle)
             return self._repository.commit_collection_branch(self.token, self._branch.name,
                 sequence=self._sequence, delta=delta, outcome=outcome, reason=reason)
 
