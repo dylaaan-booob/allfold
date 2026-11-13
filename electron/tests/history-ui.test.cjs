@@ -1,17 +1,10 @@
 'use strict';
 const test=require('node:test'),assert=require('node:assert/strict');
 
-test('history keeps uncertainty and PDF evidence visible without raw technical payloads',async()=>{
-  const {renderHistoryRecord}=await import('../../frontend/ui/history-view.js');
-  const html=renderHistoryRecord({kind:'import',task_id:'task_1',workflow_id:'workflow_1',
-    started_at:'2026-11-03T07:00:00Z',ended_at:'2026-11-03T07:01:00Z',outcome:'uncertain',
-    before_workspace_reset:true,statistics:{confirmed:1,uncertain:1,total:2},
-    details:{reason:'result_unconfirmed',pdf_outcome:'unverified'},
-    diagnostic:{stage:'attachment',code:'timeout',net_error:'ERR_TIMED_OUT'},
-    raw:{Cookie:'PRIVATE_SENTINEL'}});
-  assert.match(html,/结果未确认/);assert.match(html,/PDF 未验证/);assert.match(html,/先检查 Zotero/);
-  assert.match(html,/重置前/);assert.match(html,/data-history-export="task_1"/);
-  assert.doesNotMatch(html,/PRIVATE_SENTINEL|ERR_TIMED_OUT|"diagnostic"|Cookie/);
+test('History does not restore retired Import or active Enrich projections',async()=>{
+ const {renderHistoryRecord,filterHistoryRecords}=await import('../../frontend/ui/history-view.js');
+ const retired=['import','kept','enrich'].map(kind=>({kind,task_id:kind,details:{zotero_keys:{parent_key:'PRIVATE'}}}));
+ assert.deepEqual(retired.map(renderHistoryRecord),['','','']);assert.deepEqual(filterHistoryRecords(retired,''),[]);
 });
 
 test('history reuses Run status wording and distinguishes opened evidence from access confirmation',async()=>{
@@ -28,22 +21,17 @@ test('history reuses Run status wording and distinguishes opened evidence from a
 
 test('history escapes record identity and only renders reviewed business fields',async()=>{
   const {renderHistoryRecord,historyIntegrityMessage}=await import('../../frontend/ui/history-view.js');
-  const html=renderHistoryRecord({kind:'enrich',task_id:'<script>bad</script>',outcome:'completed',
+  const html=renderHistoryRecord({kind:'preprint',task_id:'<script>bad</script>',outcome:'completed',
     details:{saved_fields:['abstract','authors'],message:'PRIVATE_SENTINEL'},statistics:{arbitrary_secret:77}});
   assert.doesNotMatch(html,/<script>|PRIVATE_SENTINEL|arbitrary_secret/);
   assert.match(html,/摘要/);assert.match(html,/作者/);
   assert.match(historyIntegrityMessage({rotated_files:1,native:{status_known:true,incomplete:false}}),/不完整/);
 });
 
-test('interruption takes priority over a Run snapshot and accepted parents do not hide Paper write failure',async()=>{
-  const {renderHistoryRecord}=await import('../../frontend/ui/history-view.js');
-  const run=renderHistoryRecord({kind:'run',provider:'wos',task_id:'wos_1',outcome:'interrupted',
-    details:{result_status:'failed',reason:'connection_lost'}});
-  assert.match(run,/已中断/);assert.match(run,/连接中断/);
-  const batch=renderHistoryRecord({kind:'import',task_id:'batch_1',outcome:'uncertain',
-    details:{results:[{paper_id:'12345678-aaaa-4aaa-8aaa-aaaaaaaaaaaa',outcome:'uncertain',
-      parent_outcome:'confirmed',pdf_outcome:'unverified',reason:'write_failed'}]}});
-  assert.match(batch,/Zotero 已接受父条目/);assert.match(batch,/Paper 状态写入失败/);assert.match(batch,/勿直接重试/);
+test('interruption takes priority over a Run snapshot',async()=>{
+ const {renderHistoryRecord}=await import('../../frontend/ui/history-view.js');
+ const run=renderHistoryRecord({kind:'run',provider:'wos',task_id:'wos_1',outcome:'interrupted',details:{result_status:'failed',reason:'connection_lost'}});
+ assert.match(run,/已中断/);assert.match(run,/连接中断/);
 });
 
 test('diagnostic download carries CSRF and does not turn JSON errors into ZIP downloads',async()=>{
@@ -69,16 +57,16 @@ test('reset scope descriptions have separate deletion boundaries',async()=>{
 
 test('history filters by execution Service and exposes stable Paper identities and bounded Service totals',async()=>{
   const {filterHistoryRecords,renderHistoryRecord}=await import('../../frontend/ui/history-view.js');
-  const a={kind:'import',task_id:'a',outcome:'partial',details:{batch_scope:'all',service_statistics:[
-    {service_id:'svc_a',total:105,confirmed:100,pdf_unverified:100}],results:[
+  const a={kind:'run',task_id:'a',outcome:'partial',details:{batch_scope:'all',service_statistics:[
+    {service_id:'svc_a',total:105,created:100}],results:[
     {paper_id:'paper-a',service_id:'svc_a',parent_outcome:'confirmed',pdf_outcome:'unverified',outcome:'confirmed'}]}};
-  const b={kind:'kept',task_id:'b',details:{batch_scope:'service',service_id:'svc_b'}};
+  const b={kind:'prepare',task_id:'b',details:{batch_scope:'service',service_id:'svc_b'}};
   assert.deepEqual(filterHistoryRecords([a,b],'svc_a'),[a]);
   assert.deepEqual(filterHistoryRecords([a,b],'svc_b'),[b]);
   assert.equal(filterHistoryRecords([a,b],'').length,2);
   const html=renderHistoryRecord(a);
   assert.match(html,/All Services/);assert.match(html,/svc_a/);assert.match(html,/paper-a/);
-  assert.match(html,/105/);assert.match(html,/PDF unverified/);
+  assert.match(html,/105/);assert.match(html,/新增 Paper 100/);
 });
 
 test('unified Run history presents selected sources and native batch hints',async()=>{

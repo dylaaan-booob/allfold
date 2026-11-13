@@ -6,15 +6,15 @@ function keydown(document,target,key) {
   const event={type:'keydown',target,key,defaultPrevented:false,preventDefault(){this.defaultPrevented=true;}};
   document.dispatchEvent(event);return event;
 }
-for(const status of ['candidates','kept'])test(`Browser controls leave the hidden ${status} selection and keyboard defaults unchanged`,async()=>{
+for(const status of ['candidates','downloaded','trash'])test(`Browser controls leave the hidden ${status} selection and keyboard defaults unchanged`,async()=>{
   const f=await taskUI('kept.js',{page:'workspace',request:async url=>url.includes('/queue')?{services:[]}:idle});
   const journal={key:'journal-2',name:'Second Journal'};
   f.entries.push({paper:{id:'paper-2',title:'Second paper'},journal});
   f.window.inboxKept.data().journals.push(journal);
   await f.window.emit('workspace-data-changed');
-  if(status==='kept')await f.get('array-kept').emit('click');
+  if(status!=='candidates')await f.get('array-'+status).emit('click');
   const selected=()=>f.get('array-index').children.find(row=>row.getAttribute('aria-current')==='true')?.dataset.indexId;
-  const first='journal-1',second='journal-2';
+  const first=status==='candidates'?'journal-1':'paper-1',second=status==='candidates'?'journal-2':'paper-2';
   assert.equal(selected(),first);
 
   // Workbench makes the Allfold ancestor inert while trusted Browser controls remain active.
@@ -27,6 +27,6 @@ for(const status of ['candidates','kept'])test(`Browser controls leave the hidde
 
   f.get('allfold-pane').inert=false;
   const event=keydown(f.document,f.get('array-index'),'ArrowDown');
-  assert.equal(selected(),status==='candidates'?second:first);
-  assert.equal(event.defaultPrevented,status==='candidates');
+  assert.equal(selected(),second);
+  assert.equal(event.defaultPrevented,true);
 });

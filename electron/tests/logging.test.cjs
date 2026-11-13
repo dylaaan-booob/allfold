@@ -1,7 +1,7 @@
 'use strict';
 const test=require('node:test'),assert=require('node:assert/strict');
 const fs=require('node:fs'),path=require('node:path'),os=require('node:os');
-const {createLogger,attachmentCounts}=require('../src/shared/logging.cjs');
+const {createLogger}=require('../src/shared/logging.cjs');
 function fixture(t,options={}) {
   const root=fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(),'allfold-logs-test-')));
   t.after(()=>fs.rmSync(root,{recursive:true,force:true}));
@@ -10,18 +10,17 @@ function fixture(t,options={}) {
 }
 test('persistent events strictly validate safe fields and retain important states at every detail level',t=>{
   const {logger,output}=fixture(t,{level:'error'});
-  logger.log('info','task_finished',{request_id:'request_1',action:'import_paper',workflow_id:'workflow_1',stage:'attachment',code:'http_error',status:403,parent:'uncertain',pdf:'unverified',
+  logger.log('info','task_finished',{request_id:'request_1',action:'prepare_service',workflow_id:'workflow_1',stage:'navigation',code:'http_error',status:403,outcome:'failed',
     host:'secret.example',reason:'password=SECRET',translator:'SECRET',translator_id:'SECRET',first_doi:'10.5555/SECRET',body:'SECRET',headers:{Authorization:'SECRET'},net_error:'ERR_FAILED SECRET'});
   const events=logger.readEvents();assert.equal(events.length,1);assert.equal(output.length,1);
   assert.equal(events[0].schema_version,1);assert.equal(events[0].source,'electron');assert.equal(events[0].scope_id,'a'.repeat(64));
-  assert.equal(events[0].parent,'uncertain');assert.equal(events[0].stage,'attachment');assert.equal(events[0].workflow_id,'workflow_1');
+  assert.equal(events[0].outcome,'failed');assert.equal(events[0].stage,'navigation');assert.equal(events[0].workflow_id,'workflow_1');
   assert.doesNotMatch(JSON.stringify(events),/SECRET|secret.example|Authorization|first_doi|translator/);
-  assert.equal(attachmentCounts([{attachments:[{mimeType:'application/pdf'},{mimeType:'text/html'}]}]).pdf_attachment_count,1);
 });
 test('async request contexts stay distinct and strict event schemas drop unsupported events',async t=>{
   const {logger}=fixture(t);const {withLogContext}=require('../src/shared/logging.cjs');
-  await Promise.all(['alpha','beta'].map(id=>withLogContext({request_id:id,workflow_id:'workflow_'+id,action:'import_paper'},async()=>{
-    await new Promise(resolve=>setTimeout(resolve,id==='alpha'?5:0));logger.log('info','task_finished',{outcome:'uncertain'});
+  await Promise.all(['alpha','beta'].map(id=>withLogContext({request_id:id,workflow_id:'workflow_'+id,action:'prepare_service'},async()=>{
+    await new Promise(resolve=>setTimeout(resolve,id==='alpha'?5:0));logger.log('info','task_finished',{outcome:'failed'});
   })));
   logger.log('error','SECRET',{code:'failed'});
   assert.deepEqual(logger.readEvents().map(e=>[e.request_id,e.workflow_id]),[['beta','workflow_beta'],['alpha','workflow_alpha']]);
@@ -82,6 +81,6 @@ test('partial reset reports retained files and a restart does not claim complete
 test('saved Python level vocabulary controls optional details without dropping native final results',t=>{
   const {logger}=fixture(t);logger.setLevel('WARNING');
   logger.log('info','task_progress',{request_id:'one',stage:'navigation'});
-  logger.log('info','task_finished',{request_id:'one',action:'import_paper',outcome:'uncertain'});
+  logger.log('info','task_finished',{request_id:'one',action:'prepare_service',outcome:'failed'});
   assert.equal(logger.readEvents().length,1);assert.equal(logger.readEvents()[0].event,'task_finished');assert.equal(logger.status().incomplete,false);
 });

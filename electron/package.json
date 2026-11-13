@@ -4,7 +4,6 @@
   "main": "src/main.cjs",
   "scripts": {
     "start": "electron .",
-    "prepare-runtime": "node scripts/prepare-runtime.cjs",
     "check": "node scripts/check-js.cjs",
     "test": "node --test --test-concurrency=1 tests/*.test.cjs",
     "setup": "node scripts/setup.cjs"

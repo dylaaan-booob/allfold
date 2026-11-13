@@ -7,11 +7,11 @@
   const status=document.getElementById('preprint-lookup-status');
   let paper=null, task=null, timer=null;
   const endpoint=id=>`/api/papers/${encodeURIComponent(id)}/preprint-lookup`;
-  const active=()=>['Starting','Running','Cancelling'].includes(task?.phase);
+  const active=()=>['Starting','Running','Cancelling'].includes(task?.phase) || task?.cleaning_up===true;
 
   function render(){
     const current=task?.paperId===paper?.id ? task : null;
-    root.hidden=!paper;
+    root.hidden=!paper?.metadata_present || paper.excluded;
     start.disabled=!paper?.preprint_lookup_available || active();
     cancel.hidden=!current || !['Running','Cancelling'].includes(current.phase);
     cancel.disabled=current?.phase==='Cancelling';
@@ -28,19 +28,19 @@
       Object.assign(operation,result);
       if(result.phase==='Failed')operation.message=`查询失败：${result.message}`;
       render();
-      if(result.phase==='Completed' && result.saved_fields.length){
+      if(!active()){
         await window.allfoldRefreshWorkspace();
       }
     }catch(error){
       if(task!==operation)return;
-      operation.message=error.message;render();
+      if(!error.stale)operation.message=error.message;render();
     }
     if(task===operation && active())timer=setTimeout(()=>void poll(operation),700);
   }
 
   start.addEventListener('click',async()=>{
     if(start.disabled)return;
-    const operation=task={paperId:paper.id,phase:'Starting',message:'正在准备查询…'};
+    const operation=task={paperId:paper.id,workspace_id:uiNext.libraryIdentity,phase:'Starting',message:'正在准备查询…'};
     render();
     try{
       if(window.allfoldAutosave && !await window.allfoldAutosave.flush())throw new Error('请先保存配置再查询。');
@@ -48,7 +48,7 @@
       if(paper?.id!==operation.paperId){
         task=null;render();return;
       }
-      const result=await uiNext.request(`${endpoint(operation.paperId)}/start`,{});
+      const result=await uiNext.request(`${endpoint(operation.paperId)}/start`,{workspace_id:operation.workspace_id});
       if(task!==operation)return;
       Object.assign(operation,result);render();void poll(operation);
     }catch(error){
@@ -62,7 +62,7 @@
     if(operation?.paperId!==paper?.id || operation.phase!=='Running')return;
     operation.phase='Cancelling';render();
     try{
-      await uiNext.request(`${endpoint(operation.paperId)}/cancel`,{request_id:operation.request_id});
+      await uiNext.request(`${endpoint(operation.paperId)}/cancel`,{request_id:operation.request_id,workspace_id:operation.workspace_id});
     }catch(error){
       if(task===operation && operation.phase==='Cancelling'){
         operation.phase='Running';operation.message=error.message;render();
@@ -74,7 +74,7 @@
     try{
       const result=await uiNext.request(`${endpoint(id)}/state`);
       if(paper?.id!==id || active() || task?.paperId===id || !['Running','Cancelling'].includes(result.phase))return;
-      task={paperId:id,...result};render();void poll(task);
+      task={paperId:id,workspace_id:uiNext.libraryIdentity,...result};render();void poll(task);
     }catch{} // The next explicit Start reports service errors.
   }
 

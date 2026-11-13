@@ -1,6 +1,6 @@
 # Journal discovery and metadata completion
 
-**Run** discovers journal Papers, completes their metadata and creates a reviewable snapshot. **ARRAY Info** offers a manual bioRxiv/medRxiv preprint lookup for the current Paper. **网页 Enrich** retains its independent Translator workflow.
+**Run** discovers journal Papers, completes their metadata and creates a reviewable snapshot. **ARRAY Info** offers a manual bioRxiv/medRxiv preprint lookup for the current Paper. Active webpage Enrich and Import are retired; Run keeps its current creation-time Completion.
 
 ## Provider roles
 
@@ -30,7 +30,7 @@ OpenAlex uses `search.title_abstract_keywords` (the `.exact` variant for prefixe
 
 Selected PubMed, WoS and OpenAlex Discovery overlap within one parent Run, slot, workflow, cancellation signal and captured configuration/Workspace. WoS retains CARSI, Browser ownership and the [native export contract](wos-export.md). Verified PubMed/HTTP pages and WoS batches feed formal DOIs into a shared bounded Work-location queue while discovery continues. Exact DOI/Work batches map returned identities independently of response order, cache confirmed full evidence/no-match/failure and drain the final short batch. Discovery and locator share OpenAlex full details, in-flight exact requests and host pacing. Shortened authorships/locations require a verified exact Work singleton; unresolved caps and failed pages remain limitations. Work lookup only adds evidence for discovered candidates. Work-level PMID/PMCID values on formal records remain related identifiers and cannot overwrite a directly confirmed formal PMID.
 
-Before creation, all saved Papers including Rejected participate in direct-identity conflict checks. Run completes only new candidates and preserves existing Paper bytes. Ordinary fields use fixed source priority with formal WoS bibliography first; author lists remain whole. Completion responses and version relationships never become extra Discovery candidates. Only reliable direct identifiers establish ownership; conflicting saved owners are skipped and reported. Counts derive from distinct candidates, completion activity and actual protected creates.
+Before creation, all saved Papers including Rejected participate in direct-identity conflict checks. Run completes only new candidates and preserves existing Paper metadata. Ordinary fields use fixed source priority with formal WoS bibliography first; author lists remain whole. Completion responses and version relationships never become extra Discovery candidates. Only reliable direct identifiers establish ownership; conflicting saved owners are skipped and reported. Counts derive from distinct candidates, completion activity and actual protected creates.
 
 Run batches unique new formal DOIs missing a directly confirmed PMID. PubMed ESearch uses quoted `[aid]` clauses without the Discovery date, ISSN or keyword filters. Each result set is checked for completeness, and ESummary or EFetch verifies the returned direct DOI for each PMID. A complete empty lookup is normal. An incomplete response or ambiguous binding reports a limitation. A confirmed formal PMID is available to subsequent helpers and persists in the new Paper. If a later EFetch directly contradicts the binding, Run drops the disputed PMID and facts reached solely through it. [PubMed Article Identifier](https://pubmed.ncbi.nlm.nih.gov/help/#aid), [NCBI E-utilities](https://www.ncbi.nlm.nih.gov/books/NBK25499/).
 
@@ -75,14 +75,15 @@ actual counts. History remains independent of Workspace snapshots.
 
 ## Creation-time evidence
 
-Paper Markdown is the only persisted literature object. Run creates new Papers
-and never updates existing Papers or independent Evidence files. Provider records
+The SQLite Paper library is the only persisted literature object. Run creates
+new Papers, preserves existing full records and can rebuild only an unexcluded
+identity-only record hit by the current Run. No standalone Evidence file is written. Provider records
 are temporary normalization/query/date inputs; there is no cross-operation Evidence
 handoff, permanent relation graph, request cache, background sync or response archive.
-Run snapshots, configuration, Registry, History/Diagnostics and Zotero state retain
+Run snapshots, configuration, Registry and History/Diagnostics retain
 their separate business storage.
 
-Received, Accepted, Published online and Published are independent request goals. The reader combines the two publication kinds into one Published display value. The engine also follows verified preprint associations and fills actual title, authors, source and abstract gaps. Optional keywords, indexed terms and affiliations do not create requests.
+Received, Accepted and publication events remain current operation-local request goals. Persistence extracts qualified formal-article month/day values into the ordinary date set; Reader no longer exposes old event/source columns. The engine also follows verified preprint associations and fills actual title, authors, source and abstract gaps. Optional keywords, indexed terms and affiliations do not create requests.
 
 The shared completion engine collects exact identifier sets across Papers. Confirmed formal PMIDs use PubMed ESummary v2 for dates/relations, or selective EFetch when full bibliography is missing; complete EFetch evidence satisfies summary capability. Europe PMC uses `SRC:MED AND HAS_PREPRINT:Y` with batched PMID clauses, plus direct known PPR IDs/DOIs. It does not read every PMID core record for ordinary metadata. Crossref exact DOI batches and reverse `relation.type:is-preprint-of` / repeated `relation.object` batches run alongside the other necessary base APIs. Exact target relations bind reverse results to each formal DOI, independently of response order; cursors exhaust every group and failed pages retain verified earlier facts with partial status. Crossref Received/Accepted assertions require explicit history semantics and valid ISO or English dates, preserving source labels and precision. Deposit, registration and indexing times never become manuscript history.
 
@@ -96,39 +97,45 @@ Run reports complete, partial, failed, cancelled and empty coverage. First publi
 
 Open **Info** in ARRAY and start a lookup for the current Paper's formal DOI. Each server is queried through `/pubs/{server}/{published_doi}/na/json`. Exact publication-to-preprint matches lead to `/details/{server}/{preprint_doi}/na/json` for native version dates. The relation and server-specific response establish the platform.
 
-A successful lookup appends deduplicated preprint evidence to the selected Paper. Verified first-version evidence can fill an empty First public. A later version can be saved as evidence while First public stays empty. Existing First public, primary identifiers, bibliography, notes and workflow state are protected. No match, failure and cancellation each have their own outcome and leave the Paper untouched. The commit rechecks exact content, configuration, Workspace identity and cancellation. See [Safety](safety.md).
+A successful lookup appends deduplicated preprint evidence to the selected Paper. Verified first-version evidence can fill an empty First public. A later version can be saved as evidence while First public stays empty. Existing First public, primary identifiers, bibliography, notes and workflow state are protected. No match, failure and cancellation each have their own outcome and leave the Paper untouched. The commit rechecks captured Paper generations, configuration, Workspace/database identity and cancellation. No Enrich or Markdown helper owns this write. See [Safety](safety.md).
 
-## HTTP and independent webpage Enrich
+## HTTP and Browser boundary
 
 Run, Info preprint lookup and standalone OpenAlex share the [Provider HTTP policy](http.md#journal-run-and-native-preprint-apis). Recoverable connection failures and temporary HTTP responses can show **Retrying**. An active dependency cooldown can show **Waiting**. Retry-After is enforced across clients for the same origin and authentication context. A request whose remaining budget is shorter ends while the cooldown stays active. Recognized verification pages stop that Provider client. Unexpected HTML and invalid envelopes report failures. A known-ID HTTP 404 or valid empty response can report no match. arXiv uses three-second pacing, and bioRxiv and medRxiv share their API host pacing.
 
-Webpage Enrich uses the read-only Translator and retains the managed Paper page for later Import. It can fill a missing Abstract, Authors or publication date, including upgrading a valid month to a day. A missing Received or Accepted independently qualifies a journal Candidate with a primary DOI. The Allfold Adapter returns manuscript history separately from the Zotero Item after a matching official Web Translator succeeds. It polls the same verified document for missing events for up to 30 seconds. Each event retains its actual article URL, source label and date precision. Identical events from the same source are deduplicated, and the Reader still shows the earliest sourced journal date for each event. First public is resolved through preprint evidence. DOI/document binding, cancellation, disconnection and exact-revision guards cover the Paper write.
-
-Background native pages receive a nonzero layout viewport without selecting, revealing or focusing them. Enrich exposes **打开 Browser 验证** while waiting for verification; it shows the existing task-bound page without leaving Workspace or cancelling the task. Solver targeting, interactability checks and retry limits remain unchanged.
+Keep/Import and active Enrich have no UI, HTTP or native dispatch path. Their
+Local API, attachment communication, Translator sandbox and generated Runtime
+assembly are retired. Prepare, WoS, Login, Browser/Document identity and
+Cloudflare remain in production. Native background pages retain a nonzero layout
+viewport without selecting or focusing them. This cutover does not implement the
+future webpage Date/Abstract collector or new source/download paths.
 
 An Imperva response with the Incapsula incident marker and a single CAPTCHA code (`edet=12`) waits for the user to complete verification in Browser. The existing task resumes when the article loads in the same tab. The Cloudflare Solver is skipped for this challenge. Other recognized Imperva denials are reported as restricted access, including when they return HTTP 200.
 
 ## Old data and manual acceptance
 
-Old Paper `identity_aliases`/`related_dois` fields are explicitly incompatible, even when empty: safe identity scanning and writes are blocked. No migration or automatic cleanup is performed. Obsolete Evidence files are ignored and preserved. Old dates, Provider lists and Run formats are not migrated. If a local YAML contains the retired `completion_providers` key, back up the YAML and remove that entry before loading it. The tracked template has the current fields. Workspace Reset removes only the confirmed Workspace, including Papers, obsolete Evidence files if present, and Run snapshots. It does **not** remove YAML, `.allfold/user-data.sqlite`, resource caches, covers or credentials. Normal startup, read, autosave or a configuration error never deletes these objects.
+Old per-Paper Markdown and obsolete Evidence directories are no longer read,
+created or migrated. Existing files are preserved. An uninitialized Workspace
+returns an explicit empty view; the first Run initializes SQLite. Known WF01 v1
+libraries upgrade without losing UUIDs, metadata, identities, exclusion or bodies.
+Corrupt and unknown libraries report errors and are never cleared automatically.
+Workspace Reset is an explicit whole-directory deletion, including SQLite,
+exclusions and Documents; Logs Reset keeps all of them. Configuration, UserState,
+resources, covers and credentials remain separate. Research Scope Markdown
+exchange continues to work.
 
-To adopt the new configuration explicitly:
+Current Run still settles discovery, identity confirmation and ordinary
+Completion before final commits. Excluded known identities are filtered before
+avoidable helpers and adjudicated again in the transaction. Complete matches
+remain unchanged; unexcluded cleared identities may reach the rebuild branch.
+No cross-Run scheduler, durable completion queue or collection `completed` fact
+is added. Preprint version proof/query coverage remains unchanged.
 
-1. Back up important Papers/configuration; optionally export User Data to preserve a transferable Research Scope. In the current application, preview and confirm **Settings → Reset → Workspace** only if you intend to discard that Workspace.
-2. Close Allfold. Back up the selected YAML, then replace its contents with `config.template.yaml` and explicitly set the desired paths, keywords/months and source selections. Setup creates a missing default YAML but never overwrites an existing YAML; merely rerunning Setup does not rebuild an old configuration.
-3. Reuse the same canonical YAML path to retain its existing Journals/Services scope in user-state SQLite. A different YAML path owns a new scope; use the existing Research Scope import/first initialization for that scope. There is no need to delete SQLite or use a factory reset. PubMed and OpenAlex secret files remain beside their configuration.
-4. Restart with the rebuilt configuration and run a small journal range. No old Accepted approximation or First public fallback is converted into a new event.
-
-Use the following as a change-scoped manual reference, not a checklist required for every PR. This cleanup primarily uses automated tests and synthetic Electron/Chromium results. Select manual checks only for affected behavior not covered by those tests, using disposable configuration/data:
-
-- Run with PubMed, WoS and OpenAlex individually and in combinations; inspect native date filtering, paging/partial results, source failure and cancellation. Repeat a Run and verify existing Paper bytes and the absence of standalone Evidence writes.
-- For a disposable Paper with a known bioRxiv or medRxiv link, open Info and check the manual lookup, repeated results, cancellation, and no-match behavior.
-- For changed date or Reader behavior, inspect the four reader dates and chronological Info evidence with available samples. Synthetic responses cover earliest/later-only versions, multiple version families, date conflicts and precision; a formal-only Paper has empty First public.
-- For changed webpage Enrich behavior, check an eligible ordinary request, month upgrade and a date-only request. Synthetic Runtime cases cover delayed and partial histories, guarded writeback and no new evidence. Use isolated public-page tests for changed publisher templates. Check DOI-free actions and Journal/Research Scope management when those functions change.
-
-Existing [PR #40](https://github.com/dylaaan-booob/allfold/pull/40) acceptance includes real OpenAlex/Europe PMC Runs, linked preprint dates and OUP Enrich in isolated profiles, including task-page entry/return. Real Accepted/event-only samples were waived in favor of isolated regressions; no Zotero save was performed. These are scoped historical results, not proof of every site or this checkout.
-
-Synthetic HTTP, rendered Electron fixtures, builds and CI establish only their tested layers. Real OpenAlex/Europe PMC responses, native preprint APIs, authenticated sites and Zotero outcomes require separately scoped acceptance.
+Use isolated HTTP/SQLite and rendered Electron fixtures for the cutover. Their
+coverage includes native-version proof, unresolved/no-match/failure cases, dates,
+identity conflicts, cancellation and safe commits. Real Provider, WoS, CARSI and
+other authenticated service behavior requires separately scoped acceptance; old
+PR acceptance does not establish this checkout's live compatibility.
 
 Interface references: [NCBI E-utilities](https://www.ncbi.nlm.nih.gov/books/NBK25499/), [PubMed history events](https://dtd.nlm.nih.gov/ncbi/pubmed/doc/out/250101/att-PubStatus-c.html), [OpenAlex scoped search](https://help.openalex.org/api/searching/), [OpenAlex filtering](https://help.openalex.org/api/filtering/), [OpenAlex authentication](https://help.openalex.org/api/authentication/), [OpenAlex locations](https://help.openalex.org/data/locations/), [Europe PMC REST](https://dev.europepmc.org/RestfulWebService), [Europe PMC version fields](https://europepmc.org/docs/EBI_Europe_PMC_Web_Service_Reference.pdf), [Crossref metadata](https://github.com/CrossRef/rest-api-doc/blob/master/api_format.md), [arXiv API](https://info.arxiv.org/help/api/user-manual.html), [bioRxiv/medRxiv APIs](https://api.biorxiv.org/).
 
