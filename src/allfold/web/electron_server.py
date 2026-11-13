@@ -16,6 +16,12 @@ from allfold.web.electron_bridge import ElectronBridge
 async def drain_application(application):
     """Stop dispatch and settle workers while the authenticated bridge stays open."""
     application.state.stopping = True
+    def close_admission():
+        # A short write may already be preparing its native cleanup owner.
+        # Close admission after that registration, without blocking bridge I/O.
+        with application.state.settings_write_lock:
+            application.state.browser_task_lock.close_admission()
+    await asyncio.to_thread(close_admission)
     workers = (application.state.run_coordinator, application.state.preprint_lookup,
                application.state.journal_cover_search, application.state.wos_coordinator, application.state.login)
     # Requests can still deliver bridge results while shutdown and joins run off
@@ -25,13 +31,9 @@ async def drain_application(application):
     for worker in workers:
         await asyncio.to_thread(worker.join)
 
-    def settle_admission():
-        # Credential mutations can own admission while waiting for a bridge
-        # Future. Keep the receive loop alive until that owner releases it.
-        with application.state.settings_write_lock:
-            pass
-
-    await asyncio.to_thread(settle_admission)
+    # Credential and scoped-access cleanup Futures keep their captured owner
+    # until real native settlement. They wait without holding configuration locks.
+    await asyncio.to_thread(application.state.browser_task_lock.wait_for_idle)
 
 
 def main():

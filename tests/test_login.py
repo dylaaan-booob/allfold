@@ -9,7 +9,7 @@ from allfold.application.browser_runtime import BrowserTaskLock
 from allfold.application.browser_services import BrowserServiceSnapshot
 from allfold.application.coordinators.login import LoginCoordinator, PreparedService
 from allfold.application.coordinators.wos_coordinator import WoSCoordinator
-from allfold.config import AccessService
+from allfold.config import AccessService, load_config
 from allfold.persistence.user_state import compare_write_user_state, load_user_state
 from allfold.persistence.safe_write import ContentChangedError
 from safety_config_helpers import current_mapping_document
@@ -32,6 +32,8 @@ class Native:
     def __init__(self):
         self.operations = Queue()
         self.cancellations = 0
+        self.cancelled_workflows = []
+        self.cancelled_tasks = []
         self.authority = {}
 
     def execute(self, action, data, progress, *, verify_recovery=None):
@@ -41,8 +43,12 @@ class Native:
         self.operations.put((action, data, result))
         return result
 
-    def cancel_current(self):
+    def cancel_workflow(self, workflow_id):
         self.cancellations += 1
+        self.cancelled_workflows.append(workflow_id)
+
+    def cancel_task(self, workflow_id, task_id):
+        self.cancelled_tasks.append((workflow_id, task_id))
 
 
 def opened(page_id):
@@ -103,7 +109,7 @@ def test_login_cancel_drains_active_operations_and_preserves_observed_open(tmp_p
     ready.set_result({'outcome': 'Opened', 'portal_page_id': 17})
     pending = [native.operations.get(timeout=2)[2] for _ in range(5)]
     assert login.cancel(workflow_id)
-    assert lock.owner is not None and native.cancellations == 1
+    assert lock.owner is not None and native.cancelled_workflows == [workflow_id]
     pending[0].set_result(opened(29))
     for result in pending[1:]:
         result.set_result({})
@@ -189,7 +195,7 @@ def test_manual_confirmation_marks_entire_finished_login_batch_available(tmp_pat
         assert client.post('/api/login/confirm', json=body).status_code == 409
         compare_write_user_state(path, original.state, load_user_state(path).revision)
 
-        owner = app.state.browser_task_lock.acquire('fixture')
+        owner = app.state.browser_task_lock.acquire('wos', scopes={saved.service_scope(wos.id)})
         assert owner is not None
         assert client.post('/api/login/confirm', json=body).status_code == 409
         app.state.browser_task_lock.release(owner)
@@ -242,8 +248,7 @@ def test_prepared_pages_survive_unrelated_revisions_and_invalidate_only_changed_
     wos_page = login.prepared_page(before, wos.id)
     assert first_page and wos_page and first_page != wos_page
 
-    path.write_text(path.read_text() + '\nkept_workflow:\n  zotero_target:\n'
-        '    server_id: SERVERFIXTUR\n    library_type: user\n    library_id: "0"\n')
+    path.write_text(path.read_text().replace('keyword_expression: causal', 'keyword_expression: Bayesian'))
     saved = load_user_state(path)
     compare_write_user_state(path, replace(saved.state, journals=()), saved.revision)
     current = BrowserServiceSnapshot.read(path)
@@ -301,3 +306,62 @@ def test_credential_mutation_invalidates_prepared_page_only_after_confirmed_succ
         bridge.updated = True
         assert client.post('/api/ui-next/settings/credentials', json=body).json()['ok'] is True
         assert app.state.login.prepared_page(saved, manual.id) is None
+
+
+def test_login_and_cover_share_session_and_cancellation_keeps_other_owner_active(tmp_path):
+    from allfold.application.coordinators.journal_covers import JournalCoverSearch
+    path, services = login_fixture(tmp_path, count=2)
+    saved = BrowserServiceSnapshot.read(path)
+    config = load_config(path)
+    native, lock = Native(), BrowserTaskLock()
+    login, covers = LoginCoordinator(native, lock), JournalCoverSearch(native, lock)
+    workflow = login.start(path, manual_service_id=services[-1].id)['workflow_id']
+    visit = native.operations.get(timeout=2)
+    cover = covers.start(config.venue_whitelist, saved.journals, saved.journals[0].key, config_path=path)
+    search = native.operations.get(timeout=2)
+    try:
+        assert len(lock.owners) == 2
+        with pytest.raises(ValueError, match='already active'):
+            login.start(path, manual_service_id=services[-1].id)
+        with pytest.raises(ValueError, match='busy'):
+            covers.start(config.venue_whitelist, saved.journals, saved.journals[0].key, config_path=path)
+        assert not login.cancel('old')
+        assert covers.cancel(cover['request_id'])
+        assert native.cancelled_tasks == [(cover['request_id'], cover['request_id'])]
+        assert not native.cancelled_workflows and login.snapshot(saved)['workflow_id'] == workflow
+    finally:
+        search[2].set_result({})
+        covers.join()
+        visit[2].set_result(opened(99))
+        login.join()
+    assert covers.state()['phase'] == 'Cancelled'
+    assert login.prepared_page(saved, services[-1].id) == 99 and not lock.owners
+
+
+def test_closed_prepared_page_invalidates_only_its_exact_context(tmp_path):
+    path, services = login_fixture(tmp_path, count=2)
+    native, lock = Native(), BrowserTaskLock()
+    login = LoginCoordinator(native, lock)
+    manual = services[-1]
+    saved = BrowserServiceSnapshot.read(path)
+    for page in (17, 29):
+        login.start(path, manual_service_id=manual.id)
+        _, _, pending = native.operations.get(timeout=2)
+        pending.set_result(opened(page))
+        login.join()
+    login.invalidate_pages([17])
+    assert login.prepared_page(saved, manual.id) == 29
+    login.invalidate_pages([29])
+    assert login.prepared_authority(saved, manual.id) is None
+
+
+def test_page_closed_before_login_result_cannot_be_accepted_as_prepared(tmp_path):
+    path, services = login_fixture(tmp_path, count=2)
+    native, lock = Native(), BrowserTaskLock()
+    login = LoginCoordinator(native, lock)
+    login.start(path, manual_service_id=services[-1].id)
+    _, _, pending = native.operations.get(timeout=2)
+    login.invalidate_pages([17])
+    pending.set_result(opened(17))
+    login.join()
+    assert login.prepared_authority(BrowserServiceSnapshot.read(path), services[-1].id) is None

@@ -11,6 +11,7 @@ import os
 import re
 import stat
 from contextlib import contextmanager
+from dataclasses import dataclass
 from pathlib import Path
 from uuid import uuid4
 
@@ -32,6 +33,52 @@ class CoverError(ValueError):
 
 class CoverConflict(CoverError):
     """The selected cover changed or another cover operation owns the assets."""
+
+
+@dataclass(frozen=True)
+class CoverWriteAuthority:
+    journal: JournalConfig
+    parent_identity: tuple[int, int]
+    root_identity: tuple[int, int] | None
+    record: str | None
+    image_identity: tuple[int, int] | None
+
+
+def _identity(info):
+    return info.st_dev, info.st_ino
+
+
+def _parent_identity(list_path):
+    directory = _open_directory_nofollow(list_path.absolute().parent)
+    try:
+        return _identity(os.fstat(directory))
+    finally:
+        os.close(directory)
+
+
+def _record_identity(root, record):
+    if record is None:
+        return None, None
+    if _read_image(root, record) is None:
+        raise CoverConflict('Saved cover is missing or damaged')
+    covers = os.open('covers', os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW, dir_fd=root)
+    try:
+        image = os.stat(record['filename'].split('/')[1], dir_fd=covers, follow_symlinks=False)
+        return json.dumps(record, sort_keys=True), _identity(image)
+    finally:
+        os.close(covers)
+
+
+def capture_cover_authority(list_path, journal, *, config_path):
+    if _saved_journal(list_path, journal.key, config_path=config_path) != journal:
+        raise CoverConflict('Saved Journal changed before Cover Search')
+    parent = _parent_identity(list_path)
+    try:
+        with _assets(list_path) as root, _manifest_lock(root):
+            record, image = _record_identity(root, _manifest(root).get(journal.key))
+            return CoverWriteAuthority(journal, parent, _identity(os.fstat(root)), record, image)
+    except FileNotFoundError:
+        return CoverWriteAuthority(journal, parent, None, None, None)
 
 
 def _validate_crop(crop: dict, width: int, height: int) -> None:
@@ -298,14 +345,22 @@ def save_crop(list_path: Path, journal_key: str, sha256: str, crop: dict, *, con
 
 
 def _save_cover(list_path: Path, journal_key: str, data: bytes, *, source_type: str,
-                source_url: str = "", config_path: Path) -> str:
+                source_url: str = "", config_path: Path,
+                authority: CoverWriteAuthority | None = None) -> str:
     normalized, image_format, width, height = _normalize_image(data)
     digest = hashlib.sha256(normalized).hexdigest()
     extension = "png" if image_format == "PNG" else "jpg"
     filename = f"covers/{journal_key}-{digest[:16]}.{extension}"
+    if authority is not None and _parent_identity(list_path) != authority.parent_identity:
+        raise CoverConflict('Journal asset directory changed')
     with _assets(list_path, create=True) as root, _manifest_lock(root):
         records = _manifest(root)
-        _saved_journal(list_path, journal_key, config_path=config_path)
+        journal = _saved_journal(list_path, journal_key, config_path=config_path)
+        if authority is not None:
+            record, image = _record_identity(root, records.get(journal_key))
+            if (journal != authority.journal or record != authority.record or image != authority.image_identity
+                    or authority.root_identity is not None and _identity(os.fstat(root)) != authority.root_identity):
+                raise CoverConflict('Saved Journal or cover assets changed')
         try:
             os.mkdir("covers", mode=0o700, dir_fd=root)
         except FileExistsError:
