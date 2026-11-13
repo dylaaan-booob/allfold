@@ -289,8 +289,17 @@ class WorkspaceRegistry:
         if self._stopped:
             raise InvalidPaperState('Workspace task admission is closed')
 
+    @staticmethod
+    def _check_admission(authority):
+        # Host epoch/latch checks are process-local and must perform no I/O or
+        # acquire configuration/Login locks while the Paper gate is held.
+        check = getattr(authority, 'admission_check', None)
+        if check is not None:
+            check()
+
     def _require_live(self, handle):
         self._require_open()
+        self._check_admission(handle.authority)
         if (self._tasks.get(handle.paper_id) is not handle or handle.lifecycle_id != self.lifecycle_id
                 or handle.cancel_event.is_set()):
             raise StaleWriteError('Captured collection owner is no longer valid')
@@ -349,6 +358,7 @@ class WorkspaceRegistry:
                 reusable = self._reuse(repository, direct_ids)
                 if reusable is not None:
                     return reusable
+                self._check_admission(authority)
                 admission = repository.admit_collection(self.workspace_id, lifecycle_id=self.lifecycle_id,
                     branches=tuple(branch.name for branch in plan), direct_ids=direct_ids, metadata=metadata)
                 if not admission.admitted:
@@ -420,6 +430,7 @@ class WorkspaceRegistry:
         authority = self._authority(service_id, pending)
         with self._gate:
             self._require_open()
+            self._check_admission(authority)
             if paper_id in self._tasks or paper_id in self._reservations:
                 raise InvalidPaperState('Previous Paper resources have not settled')
             with self._repository() as repository:

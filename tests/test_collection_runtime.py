@@ -28,6 +28,41 @@ def submit(registry, suffix, branches, **kwargs):
         metadata=PaperMetadata(title=f'Paper {suffix}'), branches=branches, **kwargs)
 
 
+def test_revoked_capture_cannot_admit_between_access_verification_and_paper_gate(tmp_path):
+    verified, finish_verification, revoked = Event(), Event(), Event()
+
+    class Authority:
+        service_id = service_scope = None
+
+        def verify(self):
+            verified.set()
+            assert finish_verification.wait(3)
+
+        def admission_check(self):
+            if revoked.is_set():
+                raise InvalidPaperState('Captured scope was revoked')
+
+    path = workspace(tmp_path)
+    registry = WorkspaceRegistry(path, factory=IndependentClientFactory(tmp_path / 'config.yaml'),
+        authority_capture=lambda *_: Authority())
+    try:
+        with ThreadPoolExecutor(max_workers=1) as pool:
+            accepting = pool.submit(registry.admit, direct_ids=ExternalIds(doi='10.1234/late-admit'),
+                metadata=PaperMetadata(title='Late hit'), branches=[BranchSpec('empty', lambda _: None)])
+            assert verified.wait(2)
+            revoked.set()
+            finish_verification.set()
+            with pytest.raises(InvalidPaperState, match='revoked'):
+                accepting.result(3)
+        with PaperRepository.open(path) as repository:
+            assert repository.list_papers() == ()
+        assert not registry.active
+    finally:
+        finish_verification.set()
+        registry.shutdown()
+        registry.join()
+
+
 def test_incremental_results_and_empty_completion_persist_without_automatic_replay(tmp_path):
     path = workspace(tmp_path)
     factory = IndependentClientFactory(tmp_path / 'config.yaml')
