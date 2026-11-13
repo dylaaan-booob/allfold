@@ -173,3 +173,10 @@ Cached evidence/per-Paper lookup projections do not increment physical requests.
 Source created/existing counts overlap and must not be summed as global Paper
 counts. No request URL, response body, API key, relation identifier or arbitrary
 Provider error payload is added to persistent History diagnostics.
+
+WF03 page checks add the fixed `page_probe_unconfirmed`,
+`article_identity_unconfirmed` and `article_identity_conflict` codes. Probe limits,
+missing evidence and identity conflicts remain distinct from HTTP/access failure.
+Internal evidence values, HTML, scripts and URL query parameters are not diagnostic
+fields. Imperva continues to emit only strictly validated `imperva_edet` and
+`imperva_incident_id`; see [controlled Documents](browser-documents.md).

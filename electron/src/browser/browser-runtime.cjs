@@ -1,8 +1,9 @@
 'use strict';
 const {app, WebContentsView, session, webFrameMain, Menu, clipboard} = require('electron');
 const {BrowserPresentation}=require('./browser-presentation.cjs');
-const {BrowserFailure}=require('./browser-errors.cjs');
+const {BrowserFailure,checkPage}=require('./browser-errors.cjs');
 const {configureBrowserIdentity} = require('./browser-identity.cjs');
+const {validDOI,articleURL,articleIdentity}=require('./article-identity.cjs');
 const {DocumentRuntime}=require('./document-runtime.cjs');
 const {EventEmitter}=require('node:events');
 const {AsyncLocalStorage}=require('node:async_hooks');
@@ -54,24 +55,12 @@ class BrowserRuntime {
       if(tab)this.reportPage('debug','page_request_failed',tab,{resource_type:details.resourceType,net_error:netError,
         net_code:loadFailure(netError,details.errorCode).diagnostic.net_code});
     });
-    this.attachmentCaptures=new Set();
-    this.domObservations=new Set();
     this.partition.webRequest.onHeadersReceived(filter,(details,callback)=>{
       const tab=this.tabs.get(details.webContentsId);
       if(tab && !tab.pageAttempt?.retired && details.resourceType==='mainFrame') {
         const retryAfter=Object.entries(details.responseHeaders || {}).filter(([key])=>key.toLowerCase()==='retry-after')
           .flatMap(([,values])=>values);
         this.cooldown.observe(details.url,details.statusCode,retryAfter.length===1?retryAfter[0]:undefined);
-      }
-      for(const capture of this.attachmentCaptures) {
-        if(!this.documentFrame(capture.doc,capture.owner)
-          || details.webContentsId!==capture.tab.id || !['mainFrame','subFrame'].includes(details.resourceType))continue;
-        const headers=Object.fromEntries(Object.entries(details.responseHeaders || {}).map(([key,value])=>
-          [key.toLowerCase(),[].concat(value).join('; ')]));
-        if(/attachment/i.test(headers['content-disposition'] || '')
-          || /^(application\/pdf|application\/epub\+zip)(?:;|$)/i.test(headers['content-type'] || '')) {
-          capture.resolve(details.url);callback({cancel:true});return;
-        }
       }
       callback({});
     });
@@ -106,7 +95,7 @@ class BrowserRuntime {
     const owner=opener?.taskOwner;
     const inheriting=owner && this.ownsPage(owner,opener.id);
     const tab = {id:contents.id, view, status:null, error:null, opener,managed:options.managed===true,
-      pageAttempt:inheriting?opener.pageAttempt:options.pageAttempt,
+      pageAttempt:inheriting?opener.pageAttempt:options.pageAttempt,documentGeneration:0,documentIds:new Map(),
       taskOwner:inheriting?owner:null,taskSignal:inheriting?opener.taskSignal:null,
       authContext:inheriting?opener.authContext:undefined,loadOwner:inheriting?opener.loadOwner:null,
       loadAllowed:inheriting?opener.loadAllowed:false};
@@ -133,7 +122,7 @@ class BrowserRuntime {
       if(this.destroying || tab.pageAttempt?.retired)return;
       if(tab.navigation.current)tab.navigation.current.failure=new BrowserFailure('navigation','renderer_gone');
       tab.navigation.finish();
-      tab.status=null;tab.paperDocument=null;
+      tab.status=null;tab.paperDocument=null;tab.documentGeneration++;tab.documentIds.clear();
       tab.error={kind:'renderer',reason:details.reason,exitCode:details.exitCode};
       this.reportPage('warn','page_renderer_gone',tab,{reason:details.reason,exit_code:details.exitCode});
       tab.association=null;tab.associationOwner=null;
@@ -185,8 +174,8 @@ class BrowserRuntime {
       mainFrameLoading=loading;this.publish();
     };
     contents.on('did-start-navigation',(event,url,inPlace,main)=>{
-      if((event.isMainFrame ?? main) && !(event.isSameDocument ?? inPlace)) {
-        tab.paperDocument=null;
+      if(event.isMainFrame ?? main) {
+        tab.documentGeneration++;tab.documentIds.clear();tab.paperDocument=null;
         publishLoading();
       }
     });
@@ -241,10 +230,20 @@ class BrowserRuntime {
     const wc=tab.view.webContents;
     if(wc.isDestroyed())throw new BrowserFailure('navigation','page_closed');
     if(wc.isLoadingMainFrame())return {step:'loading',waiting:true};
-    const frame=wc.mainFrame;
-    const binding={pageId:tab.id,processId:frame.processId,frameToken:frame.frameToken};
+    let binding;
+    try {binding=await this.documentBinding(tab,{signal:tab.taskSignal,deadline:tab.navigation.current?.deadline});}
+    catch(error) {
+      checkCanceled(tab.taskSignal);
+      const context=tab.authContext;
+      if(error.diagnostic?.code==='document_changed' && context?.active && !context.failure && this.operation===context.owner
+        && this.ownsPage(context.owner,tab.id) && !wc.isDestroyed() && !wc.isCrashed() && !tab.navigation.current?.failure)
+        return {step:'loading',waiting:true};
+      throw error;
+    }
+    const frame=this.documentFrame(binding);
+    if(!frame)return {step:'loading',waiting:true};
     let state;
-    const url=new URL(wc.getURL());
+    const url=new URL(binding.url);
     const carsiPage=url.origin==='https://ds.carsi.edu.cn' && ['/login/index.html','/wxds',
       '/resource/resource.php','/resource/resourceDetail.php'].includes(url.pathname);
     const context=tab.authContext;
@@ -281,7 +280,8 @@ class BrowserRuntime {
       if(!['account','login','terms','release'].includes(state.step))return;
       context.origins.add(origin);
       if(!tab.authDocument || tab.authDocument.context!==context || tab.authDocument.processId!==state.binding.processId
-        || tab.authDocument.frameToken!==state.binding.frameToken)
+        || tab.authDocument.frameToken!==state.binding.frameToken || tab.authDocument.documentId!==state.binding.documentId
+        || tab.authDocument.navigationGeneration!==state.binding.navigationGeneration)
         tab.authDocument={...state.binding,context,attempted:new Set()};
       const attempted=tab.authDocument.attempted;
       if(attempted.has(state.step) || state.step===context.lastAction
@@ -586,7 +586,7 @@ class BrowserRuntime {
       return {doc:null,waiting:false,loading:true};
     try {return await inspectPage({signal,deadline,automaticDeadline,stage,step,solverDocuments,onWaiting,
       authentication:()=>this.checkAuthentication(tab),inspectAuthentication:()=>this.inspectAuthentication(tab),
-      snapshot:()=>this.snapshot(tab),current:doc=>{
+      probe:()=>this.accessState(tab,{signal,deadline}),current:doc=>{
         tab.navigation.check();
         if(navigationChain && tab.navigation.current?.chain!==navigationChain)throw new BrowserFailure('navigation','document_changed');
         return this.documentCurrent(doc) && !tab.view.webContents.isLoadingMainFrame()
@@ -618,7 +618,7 @@ class BrowserRuntime {
     } catch(error){if(tab.navigation.current?.chain===chain)this.finishPageLoad(tab);throw error;}
   }
 
-  async openPaperPage(data,doi,{role,signal,onWaiting,deadline=Date.now()+TASK_DEADLINE_MS}={}) {
+  async openPaperPage(data,identity,{role,signal,onWaiting,deadline=Date.now()+TASK_DEADLINE_MS}={}) {
     const {workspace_identity:workspace,paper_id:paper}=data;
     if(typeof workspace!=='string' || !/^[a-f0-9]{64}$/.test(workspace)
       || typeof paper!=='string' || !/^[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12}$/i.test(paper))
@@ -627,7 +627,11 @@ class BrowserRuntime {
     checkCanceled(signal);
     const owner=this.operation,key=workspace+':'+paper.toLowerCase();
     let tab=this.paperPages.get(key),firstFailure,sourcePageId,previousOrigin;
-    const target='https://doi.org/'+encodeURIComponent(doi);
+    const paperIdentity=typeof identity==='string'?{doi:identity}:{doi:identity?.doi,confirmed_article_url:identity?.confirmed_article_url};
+    const doi=validDOI(paperIdentity.doi),established=articleURL(paperIdentity.confirmed_article_url);
+    if(paperIdentity.doi && !doi || !doi && !established)throw new BrowserFailure('navigation','article_identity_unconfirmed');
+    const target=doi?'https://doi.org/'+encodeURIComponent(doi):established.href;
+    const identityKey=JSON.stringify([doi,established?.href]);
     const record=(event,error,fields={})=>reportRecovery(owner.recordRecovery,event,pageRecoveryDetails(error,'paper_reopen',{
       stage:'navigation',source_page_id:sourcePageId,attempt:1,attempt_limit:1,...fields}));
     for(let index=0;index<2;index++) {
@@ -656,19 +660,20 @@ class BrowserRuntime {
         const contents=tab.view.webContents;
         const matches=doc=>this.documentCurrent(doc) && contents.getURL()===doc.url && !contents.isLoadingMainFrame();
         const previous=tab.paperDocument;
-        if(previous?.doi===doi && matches(previous.doc) && !tab.navigation.current?.failure) {
+        if(previous?.identityKey===identityKey && matches(previous.doc) && !tab.navigation.current?.failure) {
           const doc=await this.waitForPage(tab,{signal:attempt.signal,deadline,
             onWaiting:(waiting,diagnostic)=>{if(waiting)onWaiting?.(diagnostic);}});
-          if(tab.paperDocument===previous && matches(previous.doc) && doc.url===previous.doc.url)return doc;
+          if(tab.paperDocument===previous && matches(previous.doc) && doc.url===previous.doc.url)
+            return this.confirmArticlePage(paperIdentity,doc,{signal:attempt.signal,deadline});
         }
         tab.paperDocument=null;
         const doc=await this.navigate(target,{tab,signal:attempt.signal,deadline,onWaiting});
         if(!matches(doc) || this.paperPages.get(key)!==tab)throw new BrowserFailure('navigation','document_changed');
         this.finishPageLoad(tab);
-        const {pageId,processId,frameToken,url}=doc;
-        tab.paperDocument={doi,doc:{pageId,processId,frameToken,url}};
+        const confirmed=await this.confirmArticlePage(paperIdentity,doc,{signal:attempt.signal,deadline});
+        tab.paperDocument={identityKey,doc:confirmed};
         if(index)record('recovery_succeeded',firstFailure,{page_id:tab.id,dispatch_outcome:'confirmed'});
-        return doc;
+        return confirmed;
       } catch(error) {
         if(index)record('recovery_exhausted',error,{page_id:tab?.id,recovery_stop:recoveryStop(error,signal)});
         if(index || !error.rebuildPage || signal?.aborted || owner.phase!=='loading'
@@ -726,164 +731,50 @@ class BrowserRuntime {
       if(owner.navigationAbort===controller)owner.navigationAbort=null;
     }
   }
-  async snapshot(tab=this.taskTab,frame=tab?.view.webContents.mainFrame,options={}) {
+  async readDocument(tab=this.taskTab,action='binding',options={}) {
     if(!tab || !this.tabs.has(tab.id))throw new BrowserFailure('navigation','page_closed');
     tab.navigation.check();
-    const root=tab.view.webContents.mainFrame;
-    const binding={pageId:tab.id,processId:frame.processId,frameToken:frame.frameToken};
-    if(frame.processId!==root.processId || frame.frameToken!==root.frameToken)
-      Object.assign(binding,{rootProcessId:root.processId,rootFrameToken:root.frameToken});
-    const doc=await this.documents.call(binding,'snapshot',{},options);
+    const frame=tab.view.webContents.mainFrame;
+    if(frame.url.length>4096)throw new BrowserFailure('navigation','page_probe_unconfirmed');
+    const binding={pageId:tab.id,processId:frame.processId,frameToken:frame.frameToken,
+      url:frame.url,navigationGeneration:tab.documentGeneration};
+    const known=tab.documentIds.get(frame.frameToken);
+    if(known)binding.documentId=known;
+    const result=await this.documents.call(binding,action,{},options);
     tab.navigation.check();
-    if(!this.documentCurrent(binding))throw new BrowserFailure('translation','document_changed');
-    return {...doc,...binding,rootURL:root.url,status:binding.rootFrameToken?undefined:tab.status};
+    if(!this.documentCurrent(binding))throw new BrowserFailure('navigation','document_changed');
+    tab.documentIds.set(frame.frameToken,result.documentId);
+    return {...binding,...result,status:tab.status};
   }
-  async translationDocuments(root,options={}) {
-    if(!this.documentCurrent(root))throw new BrowserFailure('translation','document_changed');
-    const tab=this.tabs.get(root.pageId),documents=[];
-    for(const frame of tab.view.webContents.mainFrame.framesInSubtree) {
-      checkCanceled(options.signal);
-      if(!/^https?:/.test(frame.url) || frame.detached || frame.isDestroyed())continue;
-      try {
-        const document=await this.snapshot(tab,frame,options);
-        browserURL(document.url);documents.push(document);
-      }
-      catch(error) {
-        if(!this.documentCurrent(root))throw new BrowserFailure('translation','document_changed');
-        checkCanceled(options.signal);
-        if(frame.processId===root.processId && frame.frameToken===root.frameToken)throw error;
-        if(options.deadline && Date.now()>=options.deadline)throw error;
-        log('debug','translation_frame_skipped',{page_id:root.pageId,stage:'translation',code:error.diagnostic?.code || 'document_operation_failed'});
-      }
+  documentBinding(tab=this.taskTab,options={}) {return this.readDocument(tab,'binding',options);}
+  accessState(tab=this.taskTab,options={}) {return this.readDocument(tab,'access',options);}
+  async confirmArticlePage(target,doc,{signal,deadline=Infinity}={}) {
+    const tab=this.tabs.get(doc.pageId);
+    if(!this.documentCurrent(doc))throw new BrowserFailure('navigation','document_changed');
+    // No cached DOI or earlier navigation authorizes this use boundary.
+    const access=await this.waitForPage(tab,{signal,deadline});
+    if(!this.documentCurrent(doc) || access.documentId!==doc.documentId)throw new BrowserFailure('navigation','document_changed');
+    const evidence=await this.readDocument(tab,'article',{signal,deadline});
+    if(!this.documentCurrent(doc))throw new BrowserFailure('navigation','document_changed');
+    checkPage(evidence.status,evidence.access);
+    if(evidence.access.markers.login)throw new BrowserFailure('navigation','article_identity_unconfirmed');
+    const identity=articleIdentity(target,evidence,evidence.article);
+    if(identity.outcome!=='confirmed') {
+      const error=new BrowserFailure('navigation',identity.outcome==='conflict'?'article_identity_conflict':'article_identity_unconfirmed');
+      error.identity=identity;throw error;
     }
-    if(!this.documentCurrent(root))throw new BrowserFailure('translation','document_changed');
-    return documents.length?documents:[root];
-  }
-  async pageCookie(doc,options={}) {
-    return this.documents.call(doc,'cookie',{},options);
-  }
-  captureAttachment(tab,doc,{signal,deadline=Date.now()+60000}={}) {
     checkCanceled(signal);
-    if(!this.operation || this.operation.action!=='import_paper' || !this.taskActive
-      || !this.ownsPage(this.operation,doc.pageId) || !this.ownsPage(this.operation,tab.id) || !this.documentCurrent(doc))
-      throw new BrowserFailure('attachment','document_changed');
-    const owner=this.operation,source=this.tabs.get(doc.pageId).view.webContents,contents=tab.view.webContents;
-    let resolve,reject,settled=false,timer;
-    const url=new Promise((yes,no)=>{resolve=yes;reject=no;});url.catch(()=>{});
-    const capture={tab,doc,owner,resolve:value=>finish(null,value),dispose:()=>finish(new BrowserFailure('attachment','canceled'))};
-    const changed=()=>{if(!this.documentCurrent(doc))finish(new BrowserFailure('attachment','document_changed'));};
-    const closed=()=>finish(new BrowserFailure('attachment','page_closed'));
-    const canceled=()=>finish(new BrowserFailure('attachment','canceled'));
-    const finish=(error,value)=>{
-      if(settled)return;settled=true;clearTimeout(timer);this.attachmentCaptures.delete(capture);
-      signal?.removeEventListener('abort',canceled);source.removeListener('did-frame-navigate',changed);
-      source.removeListener('render-process-gone',closed);source.removeListener('destroyed',closed);
-      contents.removeListener('destroyed',closed);
-      if(error)reject(error);else resolve(value);
-    };
-    this.attachmentCaptures.add(capture);
-    source.on('did-frame-navigate',changed);source.once('render-process-gone',closed);source.once('destroyed',closed);
-    if(source!==contents)contents.once('destroyed',closed);
-    signal?.addEventListener('abort',canceled,{once:true});
-    timer=setTimeout(()=>finish(new BrowserFailure('attachment','timeout')),Math.max(0,deadline-Date.now()));
-    return {url,dispose:capture.dispose};
-  }
-  async bypassAttachment(url,doc,{signal,visible=false,deadline:budgetDeadline=Infinity}={}) {
-    checkCanceled(signal);
-    const owner=this.operation;
-    if(!owner || owner.action!=='import_paper' || !this.taskActive || !this.ownsPage(owner,doc.pageId) || !this.documentCurrent(doc))
-      throw new BrowserFailure('attachment','document_changed');
-    const source=this.tabs.get(doc.pageId),deadline=Math.min(budgetDeadline,Date.now()+(visible?60000:5000));
-    const validate=()=>{
-      if(!this.ownsPage(owner,doc.pageId) || !this.documentCurrent(doc))
-        throw new BrowserFailure('attachment','document_changed');
-    };
-    await this.waitForCooldown(url,{signal,deadline,validate,stage:'attachment',
-      step:visible?'visible_helper':'hidden_iframe',pageId:doc.pageId,
-      authorize:owner.validateRecovery?waited=>waited && owner.validateRecovery({signal,deadline,stage:'attachment'}):undefined});
-    checkCanceled(signal);
-    validate();
-    if(Date.now()>=deadline)throw timeoutFailure('attachment',visible?'visible_helper':'hidden_iframe');
-    const tab=visible?this.createTab({present:false}):source,contents=tab.view.webContents;
-    if(visible)this.associatePage(tab,{role:'attachment',source,doi:source.association?.doi});
-    if(visible)tab.attachmentOwner=owner;
-    const id='allfold-attachment-'+randomBytes(12).toString('hex');
-    let capture,observing=false,again=false,solverController;
-    const controller=new AbortController();
-    const bounded=AbortSignal.any([controller.signal,...(signal?[signal]:[])]);
-    const helperNavigated=()=>{solverController?.abort();again=true;};
-    const observe=async()=>{
-      if(observing){again=true;return;}
-      observing=true;
-      try {
-        do {
-          again=false;
-          if(bounded.aborted || !this.ownsPage(owner,tab.id) || tab.attachmentOwner!==owner)break;
-          solverController=new AbortController();
-          await this.runInOperation(owner,()=>this.inspectPage(tab,{signal:AbortSignal.any([bounded,solverController.signal]),deadline,stage:'attachment',
-            solveCloudflare:async(helperDoc,options)=>{
-              if(!this.ownsPage(owner,tab.id) || tab.attachmentOwner!==owner
-                || !this.documentCurrent(doc))return;
-              return this.solveCloudflare?.(helperDoc,options);
-            }}));
-        }while(again);
-      }catch(_) { /* Capture, deadline and manual interaction own attachment completion. */ }
-      finally{observing=false;if(again && !bounded.aborted)void observe();}
-    };
-    try {
-      capture=this.captureAttachment(tab,doc,{signal:bounded,deadline});
-      if(visible) {
-        tab.attachmentOwner=owner;tab.loadOwner=owner;tab.taskSignal=bounded;
-        contents.on('did-navigate',helperNavigated);
-        contents.on('did-stop-loading',observe);contents.on('did-navigate-in-page',observe);contents.on('page-title-updated',observe);
-        void contents.loadURL(url).then(observe,()=>{});
-      } else {
-        const frame=this.documentFrame(doc);
-        await waitFor(()=>frame.executeJavaScript('('+((target,id)=>{
-          const iframe=document.createElement('iframe');iframe.id=id;iframe.style.display='none';iframe.src=target;
-          document.body.appendChild(iframe);
-        }).toString()+')('+JSON.stringify(url)+','+JSON.stringify(id)+')'),bounded,deadline,'attachment','hidden_iframe');
-      }
-      return await capture.url;
-    } finally {
-      controller.abort();solverController?.abort();capture?.dispose();
-      if(visible) {
-        contents.removeListener('did-navigate',helperNavigated);
-        contents.removeListener('did-stop-loading',observe);contents.removeListener('did-navigate-in-page',observe);contents.removeListener('page-title-updated',observe);
-        if(this.tabs.get(tab.id)===tab && tab.attachmentOwner===owner && !contents.isDestroyed())
-          await new Promise(resolve=>{contents.once('destroyed',resolve);contents.close();});
-      } else {
-        // The originating operation may be canceled while its exact document is still alive.
-        const frame=this.documentFrame(doc,null);
-        if(frame)await frame.executeJavaScript('document.getElementById('+JSON.stringify(id)+')?.remove();void 0').catch(()=>{});
-      }
-    }
-  }
-  async observeDOM(doc,observers,{signal,deadline=Infinity}={}) {
-    checkCanceled(signal);
-    if(!this.documentCurrent(doc))throw new BrowserFailure('translation','document_changed');
-    const id=randomBytes(16).toString('hex'),contents=this.tabs.get(doc.pageId).view.webContents;
-    const cleanup=async()=>{
-      if(this.documentFrame(doc,null))await this.runInOperation(null,()=>this.documents.call(doc,'dispose',{id})).catch(()=>{});
-    };
-    let installed;
-    try {installed=await this.documents.call(doc,'observe',{id,configs:observers},{signal,deadline});}
-    catch(error){await cleanup();throw error;}
-    if(!installed)return null;
-    const controller=new AbortController(),bounded=AbortSignal.any([controller.signal,...(signal?[signal]:[])]);
-    const observation={owner:this.operation,dispose:async()=>{
-      controller.abort();this.domObservations.delete(observation);await cleanup();
-    }};
-    observation.changed=this.documents.call(doc,'wait',{id},{signal:bounded,deadline});
-    observation.changed.catch(()=>{});this.domObservations.add(observation);
-    return observation;
+    return {...evidence,identity};
   }
   documentFrame(doc,owner=this.operationContext.getStore()) {
     if(owner && !this.ownsPage(owner,doc.pageId))return null;
     const tab=this.tabs.get(doc.pageId);
     if (!tab || tab.pageAttempt?.retired || tab.view.webContents.isDestroyed() || tab.view.webContents.isCrashed()) return null;
+    if(doc.navigationGeneration!==undefined && doc.navigationGeneration!==tab.documentGeneration)return null;
+    if(doc.documentId && tab.documentIds.get(doc.frameToken)!==doc.documentId)return null;
     const frame=webFrameMain.fromFrameToken(doc.processId,doc.frameToken);
     if (!frame || frame.isDestroyed() || frame.detached) return null;
+    if(doc.url!==undefined && frame.url!==doc.url)return null;
     const current=tab.view.webContents.mainFrame;
     if(doc.rootFrameToken) {
       if(current.processId!==doc.rootProcessId || current.frameToken!==doc.rootFrameToken)return null;
@@ -896,8 +787,6 @@ class BrowserRuntime {
   releaseOperation(owner) {
     if(!this.operations.delete(owner))return;
     owner.navigationAbort?.abort();
-    for(const capture of this.attachmentCaptures)if(capture.owner===owner)capture.dispose();
-    for(const observation of this.domObservations)if(observation.owner===owner)void observation.dispose();
     for(const tab of this.tabs.values()) {
       if(tab.navigation.current?.owner===owner)tab.navigation.finish();
       if(tab.authContext?.owner===owner)tab.authContext.active=false;
@@ -921,8 +810,6 @@ class BrowserRuntime {
     this.partition.webRequest.onBeforeRequest(null);
     this.partition.webRequest.onErrorOccurred(null);
     this.partition.webRequest.onHeadersReceived(null);
-    for(const capture of this.attachmentCaptures)capture.dispose();
-    for(const observation of this.domObservations)void observation.dispose();
     this.documents.dispose();
     this.cookieAdapter.dispose();
     this.identity?.dispose();

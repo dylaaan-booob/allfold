@@ -63,7 +63,15 @@ manual verification and Session behavior. Cloudflare uses the owning CDP target;
 hCaptcha/MFA keep their manual boundary. CARSI credential authority applies only
 to the saved institution and attributable authentication chain. Remote pages have
 no Node or host IPC capabilities. Trusted UI IPC, main-frame sender checks and
-isolated Document preload stay active. Dedicated Keep/Import/Enrich/Local API
+isolated Document preload stay active. Fixed binding/access/article probes return
+bounded DTOs, never HTML/full text/scripts/forms/iframe URLs. Sender/frame, random
+Document ID, navigation generation and current URL are checked across async calls.
+Paper identity is rechecked independently at use boundaries after access checks;
+it grants no task or institutional authority. Overflow, absent and conflicting
+evidence cannot confirm a Paper. Solver attempts remain operation/Document scoped,
+and queue cancellation/shutdown joins actual workers. Covers/Export share absolute
+parent deadlines; original DownloadItem ownership outlives cancellation until
+actual terminal. See [controlled Documents](browser-documents.md). Dedicated Keep/Import/Enrich/Local API
 business paths are retired; no native fallback can dispatch them.
 
 Diagnostics use strict allowlists and bounded local storage. Credentials,

@@ -10,7 +10,7 @@ async function pageAction(browser,tab,fn,args=[],signal,allowNavigation=false,de
   if(signal)tab.taskSignal=signal;
   if(Number.isFinite(deadline))await waitForLoad(tab,signal,deadline);
   else while(tab.view.webContents.isLoadingMainFrame())await pause(signal);
-  const doc=await waitFor(()=>browser.snapshot(tab),signal,deadline);
+  const doc=await waitFor(()=>browser.documentBinding(tab,{signal,deadline}),signal,deadline);
   checkCanceled(signal);
   if(!browser.documentCurrent(doc))throw new BrowserFailure('navigation','document_changed');
   const result=await waitFor(()=>{
@@ -96,7 +96,7 @@ async function loginCARSI(browser,tab,data,signal,progress,deadline) {
     if(official(url,'/wxds')){await navigate(browser,tab,CARSI_PORTAL,signal,progress,deadline);continue;}
     const selection=official(url,'/login/index.html');
     if(selection) {
-      const doc=await waitFor(()=>browser.snapshot(tab),signal,deadline);
+      const doc=await waitFor(()=>browser.documentBinding(tab,{signal,deadline}),signal,deadline);
       const key=JSON.stringify([doc.pageId,doc.processId,doc.frameToken]);
       if(browser.documentCurrent(doc) && selectionDocument!==key) {
         // Reserve the native document before a selection can submit or destroy its context.
@@ -172,7 +172,7 @@ async function searchCARSIResource(browser,tab,name,signal,requestDeadline) {
   try {
     const deadline=operationDeadline;
     await waitForLoad(tab,signal,deadline,()=>{checkCARSISession([tab],signal);checkNavigation();});
-    doc=await waitFor(()=>browser.snapshot(tab),signal,deadline,'preparation',step);
+    doc=await waitFor(()=>browser.documentBinding(tab,{signal,deadline}),signal,deadline,'preparation',step);
     let state;
     while(Date.now()<deadline) {
       state=await act('ready',undefined,deadline);
@@ -376,7 +376,7 @@ async function visitCARSIResource(browser,portal,data,{signal,progress,attempt,p
   }
   // Bind the click to its exact detail document and to one main-frame target.
   const wc=detail.view.webContents,owner=browser.operation;
-  const sourceDocument=await waitFor(()=>browser.snapshot(detail),signal,visitDeadline,'preparation','visit_target');
+  const sourceDocument=await waitFor(()=>browser.documentBinding(detail,{signal,deadline:visitDeadline}),signal,visitDeadline,'preparation','visit_target');
   const verifySource=()=>{
     checkCARSISession([portal,detail],signal);
     if(!browser.documentCurrent(sourceDocument) || wc.isLoadingMainFrame())
@@ -476,25 +476,28 @@ async function visitCARSIResource(browser,portal,data,{signal,progress,attempt,p
 }
 
 async function searchJournalCover(browser,data,{signal,progress}) {
+  return withTaskDeadline(signal,'navigation',(bounded,deadline)=>searchJournalCoverWithinDeadline(browser,data,{signal:bounded,progress},deadline));
+}
+async function searchJournalCoverWithinDeadline(browser,data,{signal,progress},requestDeadline) {
   if(typeof data.name!=='string' || !data.name.trim())throw Error('Saved Journal name required');
-  const tab=await newTaskPage(browser,signal);
-  await navigate(browser,tab,'https://www.google.com/search?udm=2&q='+encodeURIComponent(data.name+' journal'),signal,progress);
+  const tab=await newTaskPage(browser,signal,{role:'auxiliary',service:false,deadline:requestDeadline});
+  await navigate(browser,tab,'https://www.google.com/search?udm=2&q='+encodeURIComponent(data.name+' journal'),signal,progress,requestDeadline);
   let deadline=Date.now()+30000;
   while(true) {
     checkCanceled(signal);
-    const observed=await browser.inspectPage(tab,{signal,onWaiting:waiting=>progress({waiting_for_user:waiting}),extraWaiting:doc=>new URL(doc.url).pathname.startsWith('/sorry')});
-    if(observed.loading){await pause(signal);continue;}
+    const observed=await browser.inspectPage(tab,{signal,deadline:requestDeadline,onWaiting:waiting=>progress({waiting_for_user:waiting}),extraWaiting:doc=>new URL(doc.url).pathname.startsWith('/sorry')});
+    if(observed.loading){await waitFor(()=>pause(signal),signal,requestDeadline);continue;}
     const doc=observed.doc,url=new URL(doc.url);
     if(!/^(?:[a-z0-9-]+\.)*google\.(?:[a-z]{2,3}|(?:com|co)\.[a-z]{2})$/.test(url.hostname))
       throw Error('Cover search left Google');
     const waiting=observed.waiting;
     if(waiting) {
-      progress({waiting_for_user:true});deadline=Date.now()+30000;await pause(signal);continue;
+      progress({waiting_for_user:true});deadline=Math.min(requestDeadline,Date.now()+30000);await waitFor(()=>pause(signal),signal,requestDeadline);continue;
     }
     progress({waiting_for_user:false});
     if(url.pathname!=='/search' && url.pathname!=='/imgres')throw Error('Unverified image search');
     browser.enterBusiness();
-    const result=await pageAction(browser,tab,imagePageAction,[],signal);
+    const result=await pageAction(browser,tab,imagePageAction,[],signal,false,Math.min(deadline,requestDeadline));
     if(result.ready) {
       if(!result.source_url)return {source_url:null};
       const source=new URL(result.source_url);
@@ -512,7 +515,7 @@ async function searchJournalCover(browser,data,{signal,progress}) {
       finally {await reader.cancel();}
       return {source_url:source.href,image_base64:Buffer.concat(chunks).toString('base64')};
     }
-    if(Date.now()>deadline)throw new BrowserFailure('navigation','timeout');
+    if(Date.now()>=Math.min(deadline,requestDeadline))throw new BrowserFailure('navigation','timeout');
     await pause(signal);
   }
 }

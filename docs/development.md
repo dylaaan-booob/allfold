@@ -91,6 +91,13 @@ focus and Session assertions. The Library/layout fixture checks the built Reader
 and Trash projection independently of a Run. Dedicated Import/Enrich fixtures
 are removed; their former product operations cannot be dispatched.
 
+WF03 adds `document-probes.test.cjs` (real BrowserRuntime/DocumentRuntime/preload
+and internal Paper entry), bounded sender/Document tests, neutral Bridge queue
+regressions and production-dispatch/Bridge/Pydoll/CDP recheck in the existing
+Cloudflare native fixture. Covers and WoS Export expiry tests retain real-terminal
+ownership. See [controlled Documents](browser-documents.md) for payload limits,
+identity evidence and fixture/live-service boundaries.
+
 ### Workbench manual acceptance reference
 
 ARRAY/Journals rails, Sidebar allocation, the isolated rendered DOM test and remaining pointer/touch/low-height checks are documented in [workspace layout](workspace-layout.md). The full Electron test command includes its hidden-window fixture after UI build; it uses synthetic HTTP responses and a temporary profile.

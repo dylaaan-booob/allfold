@@ -8,7 +8,7 @@ other third-party dependencies retain their upstream licenses and notices.
 Official source pins:
 
 - Zotero Connectors, the three required pinned Translate/Utilities/Schema submodules and complete Translators: [upstream.lock](upstream.lock).
-  This lock is the production source authority.
+  This lock records historical source attribution for retained adaptations.
 - Browser identity: UserAgent-Switcher v3 commit
   `ebef999b5996778c0d5a25ced1c45501ceae9437`, retained unmodified under
   [third-party/useragent-switcher](third-party/useragent-switcher/SOURCE.md).
@@ -21,7 +21,7 @@ WF02 retires the dedicated Local API, attachment communication, active Enrich,
 Translator sandbox and full generated Runtime assembly. Setup/CI no longer fetch
 or assemble those exclusive sources. Existing ignored vendor checkouts are not
 changed. The historical upstream lock remains source attribution for retained
-adaptations, including Document snapshot serialization. Browser identity uses the
+adaptations, after WF03 removes the remoteTranslate-derived full-page serializer. Browser identity uses the
 existing UserAgent-Switcher adapter, and partitioned Cookie/CDP state stays Main-only.
 No source/license obligation for remaining adapted code is removed.
 
@@ -49,7 +49,7 @@ No additional Chromium binary is downloaded or distributed by this integration.
 
 ## Retained host adapters
 
-Document identity, isolated snapshot/preload operations, Browser/Session, Prepare,
+Document binding, isolated bounded preload probes, Browser/Session, Prepare,
 WoS and Cloudflare remain in production. Their project-owned adaptations retain
 AGPL notices. UserAgent-Switcher, UAParser and Pydoll retain their terms above.
 The retired generated Translator Runtime is not an installation dependency.

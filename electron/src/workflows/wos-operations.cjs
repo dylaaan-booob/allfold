@@ -5,7 +5,7 @@ const {randomBytes}=require('node:crypto');
 const {pageStep,SELECTORS}=require('./page-actions.cjs');
 const {navigate,newTaskPage}=require('./browser-operations.cjs');
 const {pause,checkCanceled,waitFor,withTaskDeadline,timeoutFailure}=require('../browser/browser-task.cjs');
-const {BrowserFailure,checkPage}=require('../browser/browser-errors.cjs');
+const {BrowserFailure}=require('../browser/browser-errors.cjs');
 
 const ADVANCED_SEARCH='https://www.webofscience.com/wos/woscc/advanced-search';
 const SCOPE_FIELDS=['scope_id','config_revision','user_state_revision'];
@@ -52,14 +52,36 @@ async function manualQueryPage(browser,data,signal,progress,deadline) {
   await navigate(browser,tab,ADVANCED_SEARCH,signal,progress,deadline);
   return tab;
 }
+function resultsRoute(value) {
+  const url=new URL(value);
+  if(url.origin!=='https://www.webofscience.com' || !url.pathname.startsWith('/wos/woscc/summary/'))return null;
+  const pathname=url.pathname.replace(/\(overlay:export\/exp\)$/,'');
+  if(pathname.includes('('))return null;
+  return pathname+url.search+url.hash;
+}
+function sameResultsDocument(before,after) {
+  return typeof before?.documentId==='string' && ['pageId','processId','frameToken','documentId'].every(key=>before[key]===after?.[key])
+    && resultsRoute(before.url)!==null && resultsRoute(before.url)===resultsRoute(after.url);
+}
+async function refreshResultsBinding(browser,tab,doc,{signal,deadline,observed}={}) {
+  const current=observed || await browser.documentBinding(tab,{signal,deadline});
+  if(!browser.documentCurrent(current) || !sameResultsDocument(doc,current)
+    || tab.wosDocument && !sameResultsDocument(tab.wosDocument,current))
+    throw new BrowserFailure('navigation','document_changed');
+  // Only WoS's supported export overlay can change URL facts within the same native Document.
+  if(tab.wosDocument && !browser.documentCurrent(tab.wosDocument))tab.wosDocument=current;
+  return current;
+}
 async function page(browser,doc,op,args,signal,deadline=Infinity) {
+  const tab=browser.tabs.get(doc.pageId);
+  if(!browser.documentCurrent(doc))doc=await refreshResultsBinding(browser,tab,doc,{signal,deadline});
   const frame=browser.documentFrame(doc);
   if(!frame)throw new BrowserFailure('navigation','document_changed');
   const code='('+pageStep.toString()+')(...'+JSON.stringify([op,args,SELECTORS,Math.min(deadline,Date.now()+3000)])+')';
   // Execute against the captured native frame, never a replacement WebContents document.
   const result=await waitFor(()=>frame.executeJavaScript(code),signal,deadline,'wos_dom',op);
   if(op!=='search' && !browser.documentCurrent(doc))
-    throw new BrowserFailure('navigation','document_changed');
+    await refreshResultsBinding(browser,tab,doc,{signal,deadline});
   if(result.error==='server_unexpected_error')
     throw new BrowserFailure('wos_dom','server_unexpected_error');
   return result;
@@ -72,13 +94,12 @@ async function step(browser,tab,op,args,signal,progress,timeout=10000,requestDea
     if(started>=requestDeadline)throw timeoutFailure('wos_dom',op);
     const observed=await browser.inspectPage(tab,{signal,deadline:requestDeadline,automaticDeadline:deadline,
       stage:'wos_dom',step:op,onWaiting:waiting=>progress({waiting_for_user:waiting}),extraWaiting:doc=>op==='verification' && !new URL(doc.url).pathname.startsWith('/wos/')});
-    if(tab.wosDocument && !browser.documentCurrent(tab.wosDocument))
-      throw new BrowserFailure('navigation','document_changed');
     if(observed.loading) {
       await waitFor(()=>pause(signal),signal,deadline,'wos_dom',op);
       remaining-=Date.now()-started;continue;
     }
     const doc=observed.doc,url=new URL(doc.url);
+    if(tab.wosDocument)await refreshResultsBinding(browser,tab,tab.wosDocument,{signal,deadline,observed:doc});
     checkCanceled(signal);
     if(tab.wosDocument && (url.origin!=='https://www.webofscience.com'
       || !url.pathname.startsWith('/wos/woscc/summary/')))
@@ -88,7 +109,7 @@ async function step(browser,tab,op,args,signal,progress,timeout=10000,requestDea
       const value=await page(browser,doc,op,args,signal,deadline);
       checkCanceled(signal);
       if(tab.wosDocument && !browser.documentCurrent(tab.wosDocument))
-        throw new BrowserFailure('navigation','document_changed');
+        await refreshResultsBinding(browser,tab,tab.wosDocument,{signal,deadline});
       if(value.error==='verification_required' || (op==='verification' && value.ready===false))waiting=true;
       else if(value.error) {
         const codes=new Set(['control_not_unique','control_disabled','input_value_mismatch',
@@ -168,17 +189,22 @@ async function wosQueryWithinDeadline(browser,data,{signal,progress},deadline) {
     await run('dialog');
     batchLimit=(await configureCustom(run)).limit;
   }
-  tab.wosDocument=await waitFor(()=>browser.snapshot(tab),signal,deadline,'wos_dom','result');
+  tab.wosDocument=await waitFor(()=>browser.documentBinding(tab,{signal,deadline}),signal,deadline,'wos_dom','result');
   if(!browser.documentCurrent(tab.wosDocument))throw new BrowserFailure('navigation','document_changed');
   tab.wosServiceScope=Object.freeze({...data.service_scope});
   return {total:result.total,batch_limit:batchLimit,page_id:tab.id};
 }
 async function wosExport(browser,data,{signal,progress}) {
-  const tab=taskPage(browser,data,signal,{exporting:true}),doc=tab.wosDocument;
+  return withTaskDeadline(signal,'wos_download',(bounded,deadline)=>wosExportWithinDeadline(browser,data,{signal:bounded,progress},deadline));
+}
+async function wosExportWithinDeadline(browser,data,{signal,progress},deadline) {
+  const tab=taskPage(browser,data,signal,{exporting:true});
+  let doc=tab.wosDocument;
   browser.enterBusiness();
   if(tab.wosWorkflowId!==browser.operation?.association.workflow_id
-    || !doc || doc.pageId!==data.page_id || !browser.documentCurrent(doc))
+    || !doc || doc.pageId!==data.page_id)
     throw new BrowserFailure('navigation','document_changed');
+  if(!browser.documentCurrent(doc))doc=await refreshResultsBinding(browser,tab,doc,{signal,deadline});
   if(!Number.isSafeInteger(data.first) || !Number.isSafeInteger(data.last) || data.first<1
     || data.last<data.first)throw Error('invalid_export_range');
   const root=path.resolve(data.download_root),filename=path.resolve(data.filename);
@@ -190,23 +216,24 @@ async function wosExport(browser,data,{signal,progress}) {
     if(current===root)break;
   }
   if(fs.existsSync(filename))throw Error('export_already_exists');
-  while(tab.view.webContents.isLoadingMainFrame())await pause(signal);
+  while(tab.view.webContents.isLoadingMainFrame())await waitFor(()=>pause(signal),signal,deadline);
   checkCanceled(signal);
-  let dialog=await page(browser,doc,'dialog',{});
+  let dialog=await page(browser,doc,'dialog',{},signal,deadline);
   if(!dialog.ready) {
-    await step(browser,tab,'controlReady',{control:'exportMenu'},signal,progress);
-    await step(browser,tab,'exportMenu',{},signal,progress);
-    await step(browser,tab,'controlReady',{control:'plainText'},signal,progress);
-    await step(browser,tab,'plainText',{},signal,progress);
-    dialog=await step(browser,tab,'dialog',{},signal,progress);
+    await step(browser,tab,'controlReady',{control:'exportMenu'},signal,progress,10000,deadline);
+    await step(browser,tab,'exportMenu',{},signal,progress,10000,deadline);
+    await step(browser,tab,'controlReady',{control:'plainText'},signal,progress,10000,deadline);
+    await step(browser,tab,'plainText',{},signal,progress,10000,deadline);
+    dialog=await step(browser,tab,'dialog',{},signal,progress,10000,deadline);
   }
-  const run=(op,args={})=>step(browser,tab,op,args,signal,progress);
+  const run=(op,args={})=>step(browser,tab,op,args,signal,progress,10000,deadline);
   dialog=await configureCustom(run);
   if(!Number.isSafeInteger(dialog.limit) || dialog.limit<=0
     || data.last-data.first+1>dialog.limit)throw Error('export_range_exceeds_limit');
-  await step(browser,tab,'configure',{first:data.first,last:data.last},signal,progress);
+  await step(browser,tab,'configure',{first:data.first,last:data.last},signal,progress,10000,deadline);
   const token=randomBytes(16).toString('hex');
-  await step(browser,tab,'arm',{token},signal,progress);
+  await step(browser,tab,'arm',{token},signal,progress,10000,deadline);
+  doc=tab.wosDocument;
   let item=null,terminal=null,ambiguous=false,finished=false;
   const done=new Promise(resolve=>terminal=resolve);
   const listener=(_event,download,source)=>{
@@ -222,23 +249,23 @@ async function wosExport(browser,data,{signal,progress}) {
   browser.partition.on('will-download',listener);signal.addEventListener('abort',cancel,{once:true});
   let timer;
   try {
-    await step(browser,tab,'export',{first:data.first,last:data.last,customVerified:true},signal,progress);
+    await step(browser,tab,'export',{first:data.first,last:data.last,customVerified:true},signal,progress,10000,deadline);
+    doc=tab.wosDocument;
     let state,waiting=false;
     while(true) {
       // Without a DownloadItem, cancellation ends the wait immediately.
       if(!item)checkCanceled(signal);
-      await browser.checkAuthentication(tab);
+      if(!signal.aborted)await waitFor(()=>browser.checkAuthentication(tab),signal,deadline,'wos_download','verification');
       state=await Promise.race([done,new Promise(resolve=>{timer=setTimeout(()=>resolve('poll'),500);})]);
       clearTimeout(timer);
       if(state!=='poll')break;
       let needsHuman=false;
       if(!signal.aborted && !tab.view.webContents.isLoadingMainFrame()) {
-        if(!browser.documentCurrent(doc))throw new BrowserFailure('navigation','document_changed');
-        const current=await browser.snapshot(tab);
-        try {checkPage(current.status,current.title,current.html);}
-        catch(error){if(error.diagnostic?.code!=='verification_page')throw error;needsHuman=true;}
+        if(!browser.documentCurrent(doc))doc=await refreshResultsBinding(browser,tab,doc,{signal,deadline});
+        const observed=await browser.inspectPage(tab,{signal,deadline,stage:'wos_download'});
+        needsHuman=observed.waiting;
         if(!needsHuman && !tab.view.webContents.isLoadingMainFrame())
-          needsHuman=(await page(browser,doc,'verification',{})).ready===false;
+          needsHuman=(await page(browser,doc,'verification',{},signal,deadline)).ready===false;
       }
       if(needsHuman!==waiting){waiting=needsHuman;progress({waiting_for_user:waiting});}
     }
@@ -248,16 +275,17 @@ async function wosExport(browser,data,{signal,progress}) {
       throw new BrowserFailure('wos_download',code);
     }
     if(ambiguous)throw new BrowserFailure('wos_download','download_ambiguous');
-    if(!browser.documentCurrent(doc))throw new BrowserFailure('navigation','document_changed');
-    const observed=await step(browser,tab,'links',{token},signal,progress);
+    if(!browser.documentCurrent(doc))doc=await refreshResultsBinding(browser,tab,doc,{signal,deadline});
+    const observed=await step(browser,tab,'links',{token},signal,progress,10000,deadline);
     if(!item.getURLChain().some(url=>observed.urls.includes(url)))throw new BrowserFailure('wos_download','download_not_attributable');
     return {filename};
   } finally {
     clearTimeout(timer);signal.removeEventListener('abort',cancel);browser.partition.removeListener('will-download',listener);
     if(item && !finished){item.cancel();await done;}
     // Cleanup is scoped to the same document; never mutate a replacement page.
-    if(browser.documentCurrent(doc) && !tab.view.webContents.isLoadingMainFrame())
-      await page(browser,doc,'cleanup',{token}).catch(()=>{});
+    const cleanupDocument=tab.wosDocument;
+    if(sameResultsDocument(doc,cleanupDocument) && browser.documentCurrent(cleanupDocument) && !tab.view.webContents.isLoadingMainFrame())
+      await page(browser,cleanupDocument,'cleanup',{token},undefined,Date.now()+3000).catch(()=>{});
   }
 }
 module.exports={wosQuery,wosExport};

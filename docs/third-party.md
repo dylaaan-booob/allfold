@@ -30,3 +30,10 @@ source where required, including retained host adaptations and necessary build
 instructions. A lock/notice alone does not replace corresponding-source delivery
 obligations. Python's package excludes Electron/vendor trees; see
 [release preparation](release.md) before distributing combined artifacts.
+
+WF03 removes the remaining remoteTranslate-derived full-page serializer and
+translation-only frame/cookie/observer helpers. No Translator source/build input
+is restored. Bounded probes replace serialization; retained Browser/Document and
+project-owned DOM action adaptations continue under the Electron AGPL notice.
+The historical lock/other component notices remain applicable; official vendor
+files and dependency pins are unchanged.

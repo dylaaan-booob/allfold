@@ -16,7 +16,7 @@ function attachBrowserMechanisms(browser) {
   browser.inspectPage=async(tab,options={})=>{
     if(tab.view.webContents.isLoadingMainFrame())return {loading:true};
     return inspectPage({...options,solverDocuments,
-      snapshot:()=>browser.snapshot(tab),current:doc=>browser.documentCurrent(doc),
+      probe:async()=>({...await browser.documentBinding(tab),markers:{},...await browser.accessState?.(tab)}),current:doc=>browser.documentCurrent(doc),
       authentication:()=>browser.checkAuthentication?.(tab) || false,
       inspectAuthentication:()=>browser.inspectAuthentication?.(tab) || {waiting:false},
       solveCloudflare:browser.solveCloudflare});
