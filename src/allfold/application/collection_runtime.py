@@ -126,6 +126,13 @@ class BranchContext:
         self.guard()
         return self._clients.provider(name)
 
+    def read_paper(self):
+        """Read the current projection without renewing captured field eligibility."""
+        self.guard()
+        with self._registry.paper_gate():
+            self._registry._require_live(self._handle)
+            return self._repository.require_collection(self.token)
+
     def emit(self, delta, *, sequence, direct_ids=None):
         self.guard()
         with self._registry.paper_gate():

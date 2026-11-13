@@ -11,6 +11,7 @@ from allfold.config import ConfigurationError, resolve_runtime_date, validate_ru
 from allfold.integrations.openalex_credentials import read_credential
 from allfold.progress import ProgressEvent, ProgressStage, ActivityUpdate, ActivityKind
 from allfold.application.metadata_completion import formal_records
+from allfold.application.necessary_metadata import confirm_formal_dois
 from allfold.identifiers import evidence_identifiers, strong_identifiers
 from allfold.models import ExternalIds
 from allfold.providers.integrated import (
@@ -423,7 +424,7 @@ def run_integrated(config_path, *, loaded_config=None, workspace_snapshot=None, 
                     pubmed.begin_completion()
                 def lookup():
                     try:
-                        return pubmed.resolve_pubmed_dois(sorted(doi_targets))
+                        return confirm_formal_dois(pubmed, sorted(doi_targets))
                     except ContentChangedError:
                         if guard_errors or not cancel.is_set():
                             raise

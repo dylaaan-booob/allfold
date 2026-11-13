@@ -78,8 +78,10 @@ actual counts. History remains independent of Workspace snapshots.
 The SQLite Paper library is the only persisted literature object. Run creates
 new Papers, preserves existing full records and can rebuild only an unexcluded
 identity-only record hit by the current Run. No standalone Evidence file is written. Provider records
-are temporary normalization/query/date inputs; there is no cross-operation Evidence
-handoff, permanent relation graph, request cache, background sync or response archive.
+are temporary normalization/query/date inputs. WF06 can hand off explicitly
+verified immutable capability facts to an internal task; it never transfers a
+Run client, mutable cache, snapshot or replay callback. There is no permanent
+response archive or background sync.
 Run snapshots, configuration, Registry and History/Diagnostics retain
 their separate business storage.
 
@@ -92,6 +94,69 @@ Operation-local caches distinguish PubMed summary/fetch, Crossref exact/reverse 
 Every known family needs first-version proof. Native arXiv Atom `published`, never `updated`, establishes its first public date. Europe PMC explicit PPR version facts can establish v1; native platform details supply missing proof. Crossref `posted`, version text or a DOI suffix alone do not establish native v1. OpenAlex `related_works`, `acceptedVersion`, `is_accepted` and repository locations cannot prove First public. Only explicit validated DOI/arXiv/official-URI relations are followed; there is no title similarity matching. Europe PMC keeps `Preprint in`/`Preprint of`, version identities and native relation notes, including automatic title/first-author matching notes, in source provenance. Missing history, conflicting dates or future preprint dates remain unresolved. Cancellation and configuration/Workspace checks guard every subsequent request and batch.
 
 Run reports complete, partial, failed, cancelled and empty coverage. First public coverage independently distinguishes recorded, no association, known unresolved, conflicting evidence, service failure and cancellation. Valid evidence survives a source failure and remains eligible for the protected create chain.
+
+## Internal necessary Provider services (WF06)
+
+`application.necessary_metadata` supplies `necessary_metadata_branch()` through
+the existing `BranchSpec`/`WorkspaceRegistry` interface. Production Run still
+uses the creation-time Completion described above, and Info keeps its public
+Preprint gate. These components do not register production background work or
+change Run creation, completion or its single slot.
+
+`necessary_requests()` plans unfinished relationship and native-proof work.
+Missing abstract, authors or Received/Accepted/Published online/Published values
+never create a request. Formal DOI forward and reverse Crossref capabilities,
+direct formal PMID PubMed summary and Europe PMC `HAS_PREPRINT:Y` capabilities
+remain independent. Explicit known relations lead to PPR ID/DOI, linked Preprint
+PMID EFetch, arXiv or an evidenced bioRxiv/medRxiv platform. A DOI prefix does not
+choose between the two native servers. Proven native families do not get queried
+again to fill ordinary fields.
+
+Exact OpenAlex Work/DOI location and native `/pubs → /details` reverse lookup
+require explicit necessary purposes; there is no per-Paper Work or dual-server
+probe for field gaps. The shared `confirm_formal_dois()` service retains quoted
+`[aid]` ESearch, direct DOI ESummary verification and the necessary missing-direct-
+DOI EFetch fallback before Run creates a base Paper. It does not rebuild a
+background Paper UUID. Existing-Paper writes retain repository identity-owner
+conflict checks. A Work's related PMID or a related Preprint DOI/PMID never gains
+direct formal ownership.
+
+`VerifiedResponse` carries an immutable tuple of parsed evidence with provider,
+namespace, normalized target and explicit capability. Complete fetch can satisfy
+summary; summary cannot satisfy fetch, and Crossref exact cannot satisfy reverse.
+Incomplete handoffs retain positive facts but cannot suppress the missing work.
+Facts bind through the target's verified identity/relations independently of
+arrival order. Caches and failures remain local to the captured invocation.
+Batch sizes (arXiv 200; Crossref/Europe PMC 100) limit each request group, not the
+total number of targets. Existing pagination checks retain verified earlier
+pages when a later page fails. Only an adapter-confirmed exact empty result is
+no-match; a raw service 404, malformed envelope, truncated DOI error or identity
+conflict is not silently converted to empty success.
+
+The service reads the current Paper through guarded `BranchContext.read_paper()`
+without renewing the captured token or abstract generation, uses only declared
+`context.provider()` clients and emits positive branch-local sequences.
+Same-formal month/day dates and an eligible abstract may arrive incrementally;
+related Preprint bibliography and dates stay outside the ordinary date set.
+Year-only dates gain no invented precision, and database maintenance timestamps
+gain no publication eligibility. Crossref JATS structure and arXiv summary
+paragraphs remain intact in raw Provider candidates; legacy Run normalization
+continues to own its existing canonical comparison behavior.
+
+Preprint relations and version proof may also persist incrementally, but a new
+`first_public_at` is emitted only after all applicable relationship discovery and
+native requests settle successfully and every known family has consistent,
+nonfuture native first-version proof. A known family can remain unresolved after
+a valid no-match. Partial/error responses prevent a new first-public commit even
+when an already-known family is proved; a later response may reveal an earlier
+family. Existing `first_public_at` remains protected. Updated/posted/version text,
+repository locations and PubMed publication dates do not substitute for native
+v1. Partial or failed work retains verified increments and terminates the branch
+as failed; cancellation and actual client cleanup remain task-owned.
+
+The current registry executes one Paper's branches serially in one worker/client
+scope. Cross-thread component races use separate owned contexts/connections;
+these checks do not enable production per-Paper parallel collection.
 
 ## Info preprint lookup
 
@@ -107,8 +172,8 @@ Keep/Import and active Enrich have no UI, HTTP or native dispatch path. Their
 Local API, attachment communication, Translator sandbox and generated Runtime
 assembly are retired. Prepare, WoS, Login, Browser/Document identity and
 Cloudflare remain in production. Native background pages retain a nonzero layout
-viewport without selecting or focusing them. This cutover does not implement the
-future webpage Date/Abstract collector or new source/download paths.
+viewport without selecting or focusing them. WF06 supplies internal Date/Abstract
+components; production collection and new download paths remain disabled.
 
 An Imperva response with the Incapsula incident marker and a single CAPTCHA code (`edet=12`) waits for the user to complete verification in Browser. The existing task resumes when the article loads in the same tab. The Cloudflare Solver is skipped for this challenge. Other recognized Imperva denials are reported as restricted access, including when they return HTTP 200.
 
@@ -128,8 +193,11 @@ Current Run still settles discovery, identity confirmation and ordinary
 Completion before final commits. Excluded known identities are filtered before
 avoidable helpers and adjudicated again in the transaction. Complete matches
 remain unchanged; unexcluded cleared identities may reach the rebuild branch.
-No cross-Run scheduler, durable completion queue or collection `completed` fact
-is added. Preprint version proof/query coverage remains unchanged.
+WF05 provides durable internal attempt/branch facts and the Workspace task host.
+WF06 adds callable extraction/necessary-API components without installing a
+production cross-Run plan, PDF work or public Retry. Only a bounded fixture's
+explicit complete component plan may finish its own collection attempt; Date/
+Abstract-only work does not claim all production collection groups are complete.
 
 Use isolated HTTP/SQLite and rendered Electron fixtures for the cutover. Their
 coverage includes native-version proof, unresolved/no-match/failure cases, dates,
