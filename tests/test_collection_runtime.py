@@ -63,6 +63,46 @@ def test_revoked_capture_cannot_admit_between_access_verification_and_paper_gate
         registry.join()
 
 
+def test_native_branch_failure_remains_retryable_after_callback_returns(tmp_path):
+    class Bridge:
+        def __init__(self):
+            self.started, self.operation = Event(), Future()
+
+        def execute(self, action, data, *args, **kwargs):
+            if action == 'release_workflow_pages':
+                released = Future()
+                released.set_result({'released': True})
+                return released
+            self.started.set()
+            return self.operation
+
+        def cancel_task(self, *_):
+            pass
+
+    path, bridge = workspace(tmp_path), Bridge()
+    registry = WorkspaceRegistry(path, factory=IndependentClientFactory(tmp_path / 'config.yaml'), bridge=bridge)
+    try:
+        def collect(context):
+            context.execute_native('controlled-probe', {})
+
+        task = submit(registry, 'native-retry', [BranchSpec('native', collect)])
+        assert bridge.started.wait(2)
+        with PaperRepository.open(path) as repository:
+            assert repository.get(task.paper_id).collection.branches[0].state != 'completed'
+        bridge.operation.set_exception(RuntimeError('Controlled native failure'))
+        failed = task.future.result(3)
+        assert failed.collection_status == 'failed'
+        assert failed.collection.branches[0].state == 'failed'
+        retried = registry.retry(task.paper_id, branches=[BranchSpec('native', lambda _: MetadataDelta(
+            ordinary_dates=('2026-11-13',)))])
+        assert retried.future.result(3).metadata.ordinary_dates == ('2026-11-13',)
+    finally:
+        if not bridge.operation.done():
+            bridge.operation.set_result({})
+        registry.shutdown()
+        registry.join()
+
+
 def test_incremental_results_and_empty_completion_persist_without_automatic_replay(tmp_path):
     path = workspace(tmp_path)
     factory = IndependentClientFactory(tmp_path / 'config.yaml')

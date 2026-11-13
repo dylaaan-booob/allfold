@@ -110,6 +110,7 @@ class BranchContext:
     def __init__(self, registry, handle, repository, clients, branch, native):
         self._registry, self._handle, self._repository = registry, handle, repository
         self._clients, self._branch, self._native = clients, branch, native
+        self._branch_native = []
         self._sequence = 0
         self.cancel_event, self.deadline = handle.cancel_event, handle.deadline
         self.token = handle.token
@@ -137,6 +138,7 @@ class BranchContext:
         if not isinstance(future, Future):
             raise TypeError('Native operations require a real Future')
         self._native.append(future)
+        self._branch_native.append(future)
         protected = SettledFuture()
 
         def terminal(actual):
@@ -168,6 +170,10 @@ class BranchContext:
         # Reject/authority invalidation; no metadata is written on that path.
         self._sequence += 1
         if outcome in {'completed', 'skipped'}:
+            for future in self._branch_native:
+                if future.cancelled():
+                    raise _CleanupUnconfirmed('Native Future cancellation is not branch settlement')
+                future.result()
             self.guard()
         with self._registry.paper_gate():
             if outcome in {'completed', 'skipped'}:
