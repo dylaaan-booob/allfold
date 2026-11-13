@@ -66,3 +66,29 @@ def test_unprepared_or_unsaved_service_is_not_background_authority(tmp_path):
         TaskAuthority.capture(config, login, services[-1].id, ())
     with pytest.raises(ValueError, match='saved'):
         TaskAuthority.capture(config, login, 'svc_' + '0' * 32, ())
+
+
+def test_native_projection_uses_original_prepared_scope_and_never_loads_public_config(tmp_path):
+    # API/public work has no unrelated saved-Service configuration requirement.
+    public = TaskAuthority.capture(tmp_path / 'missing.yaml', None, None, ())
+    assert public.native_access().payload() == {}
+    config, services = login_fixture(tmp_path, count=2)
+    native, lock = Native(), BrowserTaskLock()
+    login = LoginCoordinator(native, lock)
+    service = services[-1]
+    login.start(config, manual_service_id=service.id)
+    _, _, ready = native.operations.get(timeout=2)
+    ready.set_result(opened(17))
+    login.join()
+    authority = TaskAuthority.capture(config, login, service.id, ())
+    payload = authority.native_access().payload()
+    assert payload['service_id'] == service.id
+    assert payload['target_page_id'] == 17
+    assert len(payload['preparation_key']) == 64
+    assert set(payload['service_scope']) == {'scope_id', 'config_revision', 'user_state_revision'}
+    payload['service_scope']['scope_id'] = 'changed'
+    assert authority.native_access().payload()['service_scope']['scope_id'] != 'changed'
+    login.invalidate_pages([17])
+    with pytest.raises(ContentChangedError):
+        authority.verify()
+    assert authority.native_access().payload()['target_page_id'] == 17

@@ -17,6 +17,8 @@ from uuid import UUID, uuid4
 
 from allfold.application.dynamic_dispatch import DynamicScheduler, SettledFuture
 from allfold.application.history import observe
+from allfold.application.browser_services import browser_workspace_identity
+from allfold.application.task_authority import NativeAccessBinding
 from allfold.persistence.library_database import DATABASE_NAME
 from allfold.persistence.paper_repository import (
     CollectionToken, InvalidPaperState, MetadataDelta, PaperRepository, StaleWriteError,
@@ -95,6 +97,9 @@ class _LocalAuthority:
     def verify(self):
         pass
 
+    def native_access(self):
+        return NativeAccessBinding()
+
 
 class _CleanupUnconfirmed(RuntimeError):
     """Execution stopped, but real resource disposal could not be established."""
@@ -132,6 +137,17 @@ class BranchContext:
         with self._registry.paper_gate():
             self._registry._require_live(self._handle)
             return self._repository.require_collection(self.token)
+
+    def native_payload(self):
+        """Project captured access/Workspace identity within the remaining parent budget."""
+        self.guard()
+        access = self._handle.authority.native_access()
+        remaining = self.deadline - time.monotonic()
+        if remaining <= 0:
+            raise TimeoutError('Collection parent deadline expired')
+        return access.payload() | dict(
+            workspace_identity=browser_workspace_identity(self._registry.workspace, self._registry._identity[0]),
+            paper_id=str(self.token.paper_id), deadline_ms=int((time.time() + remaining) * 1000))
 
     def emit(self, delta, *, sequence, direct_ids=None):
         self.guard()
