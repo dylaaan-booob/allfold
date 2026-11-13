@@ -167,6 +167,13 @@ WebContents. Internal fixture work does not enable production cross-Run collecti
 or public Download/Retry. Existing bounded dispatcher and foreground Run tests
 remain applicable.
 
+`test_workspace_tasks.py` exercises the actual application host, HTTP projection,
+legacy query reaper, signal/join/factory shutdown order, selective credential and
+Service invalidation, accepted switch/Reset, partial save and same-path rebind,
+refusal before drain and Logs protection with real disposable libraries. The
+`page-resources` Electron fixture separately verifies parallel same-Service
+physical work pages; it does not enable production collection.
+
 `tests/test_two_stage_run.py` uses controlled Events/Futures to prove overlapping
 PubMed/WoS/OpenAlex producers, Work lookup before producer completion, deduplication
 and tail drain, fixed helper roles, unknown-only completion, relation-only date

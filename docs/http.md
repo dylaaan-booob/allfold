@@ -173,9 +173,11 @@ own internal drain and does not use an identity-free public cancellation action.
 Login and Covers continue to require their captured workflow/request identities.
 
 Ordinary settings autosave preserves revision checks and retained drafts. An
-independent Browser owner no longer blocks unrelated patches. Overlapping access
-changes and foreground Run/WoS/Preprint snapshot writers return `TASK_ACTIVE` until
-the affected work settles. Saved access changes clean only captured old native
+independent Browser owner no longer blocks unrelated patches. Foreground
+Run/WoS/Preprint snapshot writers and conflicting controls return `TASK_ACTIVE`.
+An accepted registry-only access change reserves its affected scope, revokes old
+attempt authority and drains those captured tasks outside configuration locks
+before revalidating and saving; unrelated tasks continue. Saved access changes clean only captured old native
 keys; the HTTP worker awaits cleanup outside configuration/database locks.
 Authenticated native `access_pages_closed` notifications revoke exact retained
 Page authority. Internal `release_workflow_pages` carries the completed WoS
@@ -211,6 +213,12 @@ Workspace Paper responses project durable `collection_status` and runtime
 `cleanup_pending`, with library revisions ordering collection and occupancy
 changes. Exclusion persists before precise cancellation; Restore cannot revive
 old work. Existing foreground Run timing/slot and public Preprint algorithm remain.
+Workspace switching and confirmed Workspace Reset stop and drain the old
+lifecycle before save/deletion, then bind only the actually saved path. Invalid
+drafts, unapproved deletion previews and stale Reset confirmations do not drain
+work. Logs Reset refuses active registry work, including API-only and queued
+attempts; native Reset waits hold no configuration/reset lock. Legacy Preprint
+cleanup uncertainty retains Paper occupancy and reports a bounded fault.
 During normal exit, authenticated `invalidate_access` and
 `release_workflow_pages` may still settle captured resources after execution
 admission closes. They grant no new navigation or credential authority.
