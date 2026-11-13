@@ -26,23 +26,26 @@ class AttemptClients:
     """
 
     def __init__(self, factory, *, cancel_event, request_guard, deadline,
-                 mailto, progress_callback, recovery_observer):
+                 mailto, progress_callback, recovery_observer, providers):
         self.cancel_event, self.deadline = cancel_event, deadline
         self.request_cache = {}
         self._factory, self._guard = factory, request_guard
         self._mailto, self._progress, self._observer = mailto, progress_callback, recovery_observer
         self._stack, self._clients = ExitStack(), {}
         self._closed = False
+        self._providers = frozenset(PROVIDERS if providers is None else providers)
+        if not self._providers <= set(PROVIDERS):
+            raise ValueError('Unknown declared Provider')
         request_guard()
         self._credentials = {name: read_credential(factory.config_path, provider=name)[0]
-                             for name in DISCOVERY_PROVIDERS}
+                             for name in self._providers if name in DISCOVERY_PROVIDERS}
         request_guard()
 
     def provider(self, name):
         if self._closed:
             raise RuntimeError('Attempt clients are closed')
-        if name not in PROVIDERS:
-            raise ValueError('Unknown Provider')
+        if name not in self._providers:
+            raise ValueError('Provider was not declared for this attempt')
         self._guard()
         if name not in self._clients:
             client = self._factory.client_factory(name,
@@ -74,7 +77,7 @@ class IndependentClientFactory:
 
     @contextmanager
     def open(self, *, cancel_event, request_guard, deadline, mailto='',
-             progress_callback=None, recovery_observer=None):
+             progress_callback=None, recovery_observer=None, providers=None):
         with self._condition:
             if self._closed:
                 raise RuntimeError('Independent client factory is closed')
@@ -82,7 +85,7 @@ class IndependentClientFactory:
         try:
             clients = AttemptClients(self, cancel_event=cancel_event, request_guard=request_guard,
                 deadline=deadline, mailto=mailto, progress_callback=progress_callback,
-                recovery_observer=recovery_observer)
+                recovery_observer=recovery_observer, providers=providers)
             try:
                 yield clients
             finally:

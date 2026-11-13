@@ -11,6 +11,25 @@ from allfold.providers import integrated
 from http_test_helpers import http_server, isolate_proxy_environment
 
 
+def test_declared_provider_context_does_not_read_unrelated_credentials(tmp_path, monkeypatch):
+    isolate_proxy_environment(monkeypatch)
+    config = tmp_path / 'config.yaml'
+    # An unrelated corrupt key must not prevent a public Crossref-only branch.
+    config.with_suffix('.pubmed-secrets.json').write_text('invalid unrelated key store')
+    with http_server(lambda _: (200, {}, b'{"ok": true}')) as origin:
+        monkeypatch.setitem(integrated.BASE_URLS, 'crossref', origin.url)
+        factory = IndependentClientFactory(config)
+        try:
+            with factory.open(cancel_event=Event(), request_guard=lambda: None,
+                              deadline=time.monotonic() + 5, providers=('crossref',)) as attempt:
+                assert attempt.provider('crossref').request('/public', {}) == {'ok': True}
+                with pytest.raises(ValueError, match='declared'):
+                    attempt.provider('pubmed')
+        finally:
+            factory.close()
+        assert [request.path for request in origin.requests] == ['/public']
+
+
 def test_attempts_have_fresh_clients_cache_and_cancellation_and_close_owned_transport(tmp_path, monkeypatch):
     isolate_proxy_environment(monkeypatch)
     first_cancel, second_cancel = Event(), Event()
