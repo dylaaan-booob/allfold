@@ -154,7 +154,8 @@
         "covers",
         "prepare",
         "login",
-        "run"
+        "run",
+        "collection"
       ]
     },
     "provider": {
@@ -196,7 +197,8 @@
         "translation",
         "wos_dom",
         "wos_download",
-        "provider"
+        "provider",
+        "collection"
       ]
     },
     "step": {
@@ -737,6 +739,21 @@
       "type": "integer",
       "minimum": 0,
       "maximum": 2147483647
+    },
+    "workspace_id": {
+      "type": "string",
+      "pattern": "^[a-fA-F0-9]{8}-[a-fA-F0-9]{4}-[a-fA-F0-9]{4}-[a-fA-F0-9]{4}-[a-fA-F0-9]{12}$"
+    },
+    "collection_status": {
+      "type": "string",
+      "enum": [
+        "not_started",
+        "queued",
+        "running",
+        "completed",
+        "failed",
+        "cancelled"
+      ]
     }
   },
   "optional_detail_events": [

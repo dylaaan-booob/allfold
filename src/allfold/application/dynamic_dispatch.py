@@ -68,9 +68,13 @@ class DynamicScheduler:
         self._pool.shutdown(wait=True)
 
     @staticmethod
-    def _settle(item, reason=None):
+    def _invoke(item, reason=None):
+        return item.discarded(reason) if reason and item.discarded else None if reason else item.run()
+
+    @classmethod
+    def _settle(cls, item, reason=None):
         try:
-            result = item.discarded(reason) if reason and item.discarded else None if reason else item.run()
+            result = cls._invoke(item, reason)
         except BaseException as error:
             item.future.set_exception(error)
         else:
@@ -83,6 +87,18 @@ class DynamicScheduler:
             if not self._running[item.group]:
                 del self._running[item.group]
             self._condition.notify_all()
+
+    def _completed(self, item, actual):
+        # The callable has really returned, including every context-manager exit.
+        # Public completion callbacks may now settle durable state/resources.
+        try:
+            result = actual.result()
+        except BaseException as error:
+            item.future.set_exception(error)
+        else:
+            item.future.set_result(result)
+        finally:
+            self._returned(item)
 
     def _dispatch(self):
         while True:
@@ -132,13 +148,13 @@ class DynamicScheduler:
                 self._settle(item, reason)
             for item in ready:
                 try:
-                    actual = self._pool.submit(self._settle, item)
-                except BaseException as error:
+                    actual = self._pool.submit(self._invoke, item)
+                except BaseException:
                     # A failed worker submission still has an owned qualification
                     # to settle. Its callback receives a fixed, non-sensitive code.
                     self._settle(item, 'submission_failed')
                     self._returned(item)
                 else:
-                    actual.add_done_callback(lambda _, item=item: self._returned(item))
+                    actual.add_done_callback(lambda actual, item=item: self._completed(item, actual))
             if done:
                 return
