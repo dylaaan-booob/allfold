@@ -274,7 +274,7 @@ class LoginCoordinator:
                   'Needs attention' if data.get('outcome') in {'Opened', 'Needs attention'} else 'Failed')
         return replace(current, status=status, waiting_for_user=False, diagnostic=diagnostic,
             recovery_action=None, recovery=normalize_recovery(data.get('recovery')) or None,
-            page_id=target if opened else current.page_id,
+            page_id=target if opened else None,
             reason=('target_opened' if opened else diagnostic.get('code') if diagnostic else
                     'unverified_official_page' if data.get('outcome') == 'Opened' else data.get('reason', 'failed')))
 
@@ -297,7 +297,7 @@ class LoginCoordinator:
                                and portal_page not in self._closed_pages)
                     self._carsi = replace(self._carsi, status='Opened' if success else
                         'Canceled' if self._stop.is_set() else 'Failed', waiting_for_user=False,
-                        page_id=portal_page if success else self._carsi.page_id,
+                        page_id=portal_page if success else None,
                         diagnostic=normalize_browser_diagnostic(result.get('diagnostic')), recovery_action=None,
                         recovery=normalize_recovery(result.get('recovery')) or None)
                 if not success:

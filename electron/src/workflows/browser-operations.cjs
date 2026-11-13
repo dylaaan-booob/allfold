@@ -6,7 +6,7 @@ const {PAGE_RECOVERY_MS,origin,reportRecovery,recoveryStop,pageRecoveryDetails}=
 const {institutionPageAction,resourcePageAction,detailPageAction,imagePageAction}=require('./page-actions.cjs');
 
 async function pageAction(browser,tab,fn,args=[],signal,allowNavigation=false,deadline=Infinity,beforeDispatch) {
-  checkCanceled(signal);
+  checkCanceled(signal);browser.checkTaskResources();
   if(signal)tab.taskSignal=signal;
   if(Number.isFinite(deadline))await waitForLoad(tab,signal,deadline);
   else while(tab.view.webContents.isLoadingMainFrame())await pause(signal);
@@ -18,7 +18,7 @@ async function pageAction(browser,tab,fn,args=[],signal,allowNavigation=false,de
     return tab.view.webContents.executeJavaScriptInIsolatedWorld(999,[{
       code:'('+fn.toString()+')(...'+JSON.stringify(args)+')'}]);
   },signal,deadline);
-  checkCanceled(signal);
+  checkCanceled(signal);browser.checkTaskResources();
   if(!allowNavigation && !browser.documentCurrent(doc))throw new BrowserFailure('navigation','document_changed');
   return result;
 }

@@ -210,3 +210,15 @@ Workspace/diagnostic Reset, Preprint and shutdown checks retain their protection
 The autosave and task-presentation Node fixtures verify draft acknowledgement and
 UI-captured parent Run cancellation. These tests do not use real accounts or
 establish native/live Service acceptance.
+
+WF04 adds `page-resources.test.cjs` to the normal serial Electron test command.
+It checks real WebContents at minimum capacities, native popup/opener lifetime,
+multiple temporary batches, retained Portal reuse across unrelated revisions,
+queued cancellation, original native-item source retention and user-page bounds.
+The existing Document fixture keeps independent cases within separate task
+lifetimes and closes dependent-case pages promptly. Delayed-destroy and quota
+update checks use BrowserRuntime; configuration/API tests use temporary YAML and
+UserState. The rendered layout fixture verifies the visible page-limit controls
+and keeps inactive PDF controls absent. [Browser pages](browser-pages.md) records
+counts, live effect timing, configuration rollback and the Runtime form-POST
+limitation; [Session evidence](browser-session.md) has its separate capability scope.

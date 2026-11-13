@@ -142,5 +142,5 @@ app.whenReady().then(async()=>{
     });
     if(process.env.ALLFOLD_BROWSER_WORKSPACES_SCREENSHOTS)fs.writeFileSync(path.join(process.env.ALLFOLD_BROWSER_WORKSPACES_SCREENSHOTS,'measurements.json'),JSON.stringify(measurements,null,2)+'\n');console.log(JSON.stringify(measurements));console.log('BROWSER WORKSPACES DOM PASS');
   }catch(error){failed=true;console.error(error.stack);console.error('RECENT NATIVE UPDATES',JSON.stringify(nativeUpdates.slice(-12)));console.error('FIXTURE DIAGNOSTICS',JSON.stringify(await diagnostics()));await capture('shipped-failure');}
-  finally{ipcMain.removeHandler('cas:status');disposeIPC?.();browser?.close();win?.destroy();await new Promise(resolve=>server.close(resolve));fs.rmSync(temp,{recursive:true,force:true});app.exit(failed?1:0);}
+  finally{ipcMain.removeHandler('cas:status');disposeIPC?.();await browser?.close();win?.destroy();await new Promise(resolve=>server.close(resolve));fs.rmSync(temp,{recursive:true,force:true});app.exit(failed?1:0);}
 });

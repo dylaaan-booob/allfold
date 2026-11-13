@@ -188,3 +188,11 @@ access. Workflow/task/request IDs remain captured operation identities. Exact
 cancellation and access-context cleanup preserve unrelated owners and their
 records. Authentication/preparation keys and native Page-close events are private
 authority transport, not additional diagnostic export fields.
+
+WF04 retains fixed `invalidate_access`/`release_workflow_pages` action names and
+`page_capacity`/`page_capacity_changed` failure codes. `page_admission`/`child_page`
+identify bounded capacity waits or refusals. Page-close reasons distinguish normal
+task completion, retired attempts, context replacement/eviction/invalidation and
+credential cleanup. Authentication/preparation keys, private headers and page
+contents are never diagnostic fields. Closed-page history does not imply that a
+live task or prepared context still owns that Page.

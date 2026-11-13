@@ -35,10 +35,10 @@ class PageBudget {
       if(ticket.revoked || !ticket.remaining || this.closed)throw new BrowserFailure('navigation','page_capacity_changed');
       ticket.remaining--;if(!ticket.remaining)this.reservations.delete(ticket);
       const claim={owner,bucket,user};this.claims.add(claim);
-      claim.release=()=>{if(this.claims.delete(claim))this.drain();};
+      claim.release=()=>{if(this.claims.delete(claim)){this.drain();this.onBlocked?.();}};
       return claim;
     };
-    ticket.release=()=>{ticket.remaining=0;ticket.revoked=true;this.reservations.delete(ticket);this.drain();};
+    ticket.release=()=>{ticket.remaining=0;ticket.revoked=true;this.reservations.delete(ticket);this.drain();this.onBlocked?.();};
     this.reservations.add(ticket);return ticket;
   }
   acquire(owner,bucket,{count=1,user=false,signal,deadline=Infinity,validate=()=>{}}={}) {
@@ -51,7 +51,7 @@ class PageBudget {
       entry.finish=(error,ticket)=>{remove();error?reject(error):resolve(ticket);};
       entry.abort=()=>{try{checkCanceled(signal);}catch(error){entry.finish(error);}};
       if(Number.isFinite(deadline))entry.timer=setTimeout(()=>entry.finish(timeoutFailure('navigation','page_admission')),Math.max(1,deadline-Date.now()));
-      signal?.addEventListener('abort',entry.abort,{once:true});this.queue.push(entry);
+      signal?.addEventListener('abort',entry.abort,{once:true});this.queue.push(entry);this.onBlocked?.();
       if(signal?.aborted)entry.abort();
     });
   }

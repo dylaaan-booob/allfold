@@ -308,17 +308,17 @@ runPanel.append(runSidebar,rail('Run tools',`<button class="rail-button" data-si
 const monitorName=settingsPage.querySelector('[data-field="name"]');$('s-run-overview').querySelector('fieldset').prepend(monitorName);
 const workflowSettings=document.createElement('div');workflowSettings.id='s-workflow-configuration-bridge';workflowSettings.hidden=true;document.body.append(workflowSettings);
 const concurrencyFields=[
-  ['prepare_service_concurrency','prepareServiceConcurrency','Service preparation',5],
-  ['paper_service_concurrency','paperServiceConcurrency','Papers per Service',8],
-  ['paper_global_concurrency','paperGlobalConcurrency','Total Papers',16],
-  ['pdf_concurrency','pdfConcurrency','PDF downloads',8],
+  ['prepare_service_concurrency','prepareServiceConcurrency','Service preparation',5,1],
+  ['managed_page_service_limit','managedPageServiceLimit','Pages per Service',16,3],
+  ['managed_page_global_limit','managedPageGlobalLimit','Managed pages total',64,4],
+  ['pdf_concurrency','pdfConcurrency','PDF downloads',8,1],
 ];
-function concurrencyGroup(fields) {
+function concurrencyGroup(fields,legend='Concurrency') {
   const group=document.createElement('fieldset');
   group.className='s-setting-group';
-  group.innerHTML='<legend>Concurrency</legend>'+fields.map(([,key,label,max])=>
+  group.innerHTML=`<legend>${legend}</legend>`+fields.map(([,key,label,max,min])=>
     `<label class="s-setting-row" data-field="${key}"><span class="s-setting-label">${label}</span>
-      <input type="number" data-monitor="${key}" min="1" max="${max}" step="1"></label>`).join('');
+      <input type="number" data-monitor="${key}" min="${min}" max="${max}" step="1"></label>`).join('');
   return group;
 }
 const loginLimits=concurrencyGroup(concurrencyFields.slice(0,1));
@@ -326,6 +326,7 @@ workflowSettings.append(loginLimits,$('s-institution'),$('s-institution-auth'));
 settingsPage.querySelector('.s-settings-main').querySelector('fieldset').remove();
 const applicationGroup=settingsPage.querySelector('.s-settings-main fieldset');applicationGroup.querySelector('legend').textContent='Application';applicationGroup.dataset.settingsSection='application';
 const workspaceApply=document.createElement('button');workspaceApply.id='s-workspace-apply';workspaceApply.className='s-button';workspaceApply.textContent='Review Workspace change';applicationGroup.append(workspaceApply);
+const pageLimitsGroup=concurrencyGroup(concurrencyFields.slice(1,3),'Browser pages');pageLimitsGroup.dataset.settingsSection='application';settingsPage.querySelector('.s-settings-main').append(pageLimitsGroup);
 const appearanceGroup=document.createElement('fieldset');appearanceGroup.className='s-setting-group';appearanceGroup.dataset.settingsSection='appearance';appearanceGroup.innerHTML='<legend>Appearance</legend>';
 const developerGroup=document.createElement('fieldset');developerGroup.className='s-setting-group';developerGroup.dataset.settingsSection='developer';developerGroup.innerHTML='<legend>Developer</legend>';
 for(const [id,group] of [['s-disable-archive',appearanceGroup],['s-disable-fullscreen',appearanceGroup],['s-developer-mode',developerGroup]]){const label=$(id).closest('label'),help=label.nextElementSibling;group.append(label);if(help?.matches('.s-help'))group.append(help);}
@@ -1486,7 +1487,7 @@ function showIssues(data) {
   const fields={pubmed_api_key:'pubmedKey',openalex_api_key:'openalexKey',name:'name',keyword_expression:'expression',crossref_mailto:'crossrefMailto',pubmed_key_action:'pubmedKeyAction',openalex_key_action:'openalexKeyAction',from_month:'from',to_month:'to',output_dir:'workspace',
     log_level:'log',...Object.fromEntries(concurrencyFields.map(([name,key])=>[name,key])),
     'institution.name':'institutionName','institution.idp_entity_id':'institutionName',
-    'institution.use_shibboleth':'useShibboleth','institution':'institutionName',workflow:'paperGlobalConcurrency'};
+    'institution.use_shibboleth':'useShibboleth','institution':'institutionName',workflow:'managedPageGlobalLimit'};
   clearValidationIssues();
   let first;
   for(const issue of all){const key=fields[issue.field];if(!key)continue;const input=document.querySelector(`[data-monitor="${key}"]`);input.setAttribute('aria-invalid','true');

@@ -12,7 +12,7 @@ _STEPS = frozenset({'request', 'page_load', 'resource_ready', 'resource_filter',
                     'openContent', 'customReady', 'configureCustom', 'verifyCustom', 'saveCustom',
                     'selectContent', 'export', 'arm', 'links', 'download', 'sandbox_load', 'sandbox_init',
                     'translator', 'document_operation', 'dom_observer', 'hidden_iframe', 'oa_resolver',
-                    'note_save', 'attachment_create', 'attachment_save', 'recovery_authority'})
+                    'note_save', 'attachment_create', 'attachment_save', 'recovery_authority', 'page_admission', 'child_page'})
 _CODES = frozenset({'failed', 'canceled', 'timeout', 'site_restricted', 'verification_page',
     'content_access_blocked', 'http_error', 'load_failed', 'renderer_gone', 'page_closed',
     'page_probe_unconfirmed', 'article_identity_unconfirmed', 'article_identity_conflict',
@@ -30,7 +30,7 @@ _CODES = frozenset({'failed', 'canceled', 'timeout', 'site_restricted', 'verific
     'openalex_no_pdf', 'openalex_not_found', 'openalex_lookup_failed', 'openalex_authorization_required',
     'openalex_quota', 'openalex_credential_unavailable',
     'no_resolver', 'mime_mismatch', 'empty_response', 'network_error', 'redirect_rejected', 'attachment_rejected',
-    'cooldown_budget'})
+    'cooldown_budget', 'page_capacity', 'page_capacity_changed'})
 
 
 def normalize_browser_diagnostic(value: object) -> dict[str, object] | None:
@@ -138,6 +138,8 @@ def format_browser_diagnostic(value: object, *, include_pdf_uncertainty: bool = 
               'content_access_blocked': 'ScienceDirect content access blocked (CPE00001)',
               'http_error': 'HTTP request failed', 'load_failed': 'page load failed',
               'cooldown_budget': 'server cooldown exceeds remaining operation time',
+              'page_capacity': 'managed page capacity is unavailable',
+              'page_capacity_changed': 'managed page limits changed before creation',
               'document_changed': 'source page changed',
               'doi_mismatch': 'parent DOI did not match',
               'authorization_required': 'Zotero authorization required; choose Always Allow',

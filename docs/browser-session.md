@@ -113,3 +113,16 @@ The interruption fixture also checks native stderr for Chromium assertion
 failures. Electron 45's DownloadItem observer list rejects reentrant cancellation
 inside `updated`; the router defers that cancel to the next event-loop turn and
 continues retaining the item until real `done`.
+
+## BrowserRuntime entry limitation
+
+The separate `page-resources.fixture.cjs` uses the production Runtime and its WF03
+Document generation checks. A main-frame form POST download invalidates its
+captured navigation generation; current-Document validation therefore refuses
+that registration and cancels the original item to actual terminal. The local
+server observes exactly one POST, no extra GET, and no managed file. This entry
+is not supported by BrowserRuntime. Its slow source-lifetime case uses one
+same-Document `<a download>` GET, held through real `done`. These results and the
+Session-level original-POST success above have different seams; neither grants
+permission to weaken Document authority. [Browser pages](browser-pages.md) records
+physical counts and retention.

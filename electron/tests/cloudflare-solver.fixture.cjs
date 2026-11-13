@@ -97,5 +97,5 @@ app.whenReady().then(async()=>{
     try {send({token:'fixture-only'});await completion;await exited;}
     finally {lines.close();if(worker.exitCode===null)worker.kill();}
     console.log('CLOUDFLARE TARGET ISOLATION PASS');
-  } finally {browser.close();host.destroy();}
+  } finally {await browser.close();host.destroy();}
 }).then(()=>app.exit(0),error=>{console.error(error);app.exit(1);});

@@ -20,7 +20,7 @@ function networkFailure(partition,contents,{id,url,method='GET'}) {
 function fixture(t) {
   const profile=fs.mkdtempSync(path.join(os.tmpdir(),'allfold-browser-runtime-test-'));
   t.after(()=>fs.rmSync(profile,{recursive:true,force:true}));
-  let sequence=0,frameSequence=0;
+  let sequence=0,frameSequence=0,failCreation=false;
   const frames=new Map();
   const handlers=new Map();
   const logs=[],menus=[];
@@ -72,7 +72,7 @@ function fixture(t) {
     hide(){this.visible=false;}
     destroy(){this.destroyed=true;}
   }
-  class View {constructor(options){this.options=options;this.webContents=options.webContents || new Contents();}setBounds(bounds){this.bounds=bounds;}setVisible(value){this.visible=value;}}
+  class View {constructor(options){if(failCreation){failCreation=false;throw Error('fixture creation failed');}this.options=options;this.webContents=options.webContents || new Contents();}setBounds(bounds){this.bounds=bounds;}setVisible(value){this.visible=value;}}
   const electron={app:{getName:()=> 'allfold-desktop',getPath:()=>profile},session:{fromPartition:()=>partition},
     webFrameMain:{fromFrameToken:(_process,token)=>frames.get(token) || null},
     BrowserWindow:Window,WebContentsView:View,Menu:{buildFromTemplate:items=>({popup(){menus.push(items);}})},
@@ -89,7 +89,7 @@ function fixture(t) {
     }}:name==='../shared/logging.cjs'?{...require('../src/shared/logging.cjs'),
       log:(level,event,details)=>logs.push({level,event,...details})}:hostRequire(name)});
   vm.runInContext(fs.readFileSync(path.join(__dirname,'../src/browser/browser-runtime.cjs'),'utf8'),context);
-  return {...context.module.exports,partition,handlers,logs,menus,host:new Window()};
+  return {...context.module.exports,partition,handlers,logs,menus,host:new Window(),failNextCreation(){failCreation=true;},nativeContents:()=>new Contents()};
 }
 test('a first background page never selects, presents or focuses the Browser',async t=>{
   const {BrowserRuntime,host}=fixture(t),browser=new BrowserRuntime({hostWindow:host});
@@ -179,6 +179,7 @@ test('institution auth is task-scoped and a popup cannot submit after cancellati
   await browser.handleAuthentication(ordinary);assert.equal(reads,0);
   assert.throws(()=>browser.beginAuthentication(ordinary,controller.signal),/canceled/);
   await browser.runTask(controller.signal,{request_id:'login'},async()=>{
+    await browser.reserveTaskPages(1,{signal:controller.signal,deadline:Date.now()+1000});
     browser.beginAuthentication(ordinary,controller.signal);
     const wc=ordinary.view.webContents.popup({url:'about:blank'}).createWindow({});
     const popup=browser.tabs.get(wc.id);await wc.loadURL('https://idp.example.edu/login');
@@ -265,16 +266,18 @@ test('Service queries isolate configurations without pages and task navigation p
   });
   const otherScope={...serviceScope,scope_id:'d'.repeat(64)};
   assert.equal(browser.taskTab,null);
-  assert.equal(browser.pageAssociation(tab.id).active,false);
+  assert.equal(browser.pageAssociation(tab.id),null);
+  assert.equal(tab.view.webContents.isDestroyed(),true);
   await browser.runTask(signal,{request_id:'second',task_id:'batch',service_scope:otherScope,service_id:serviceId},async()=>{
-    browser.associatePage(tab,{role:'article',doi:'10.5555/second'});
+    tab=await browser.newTaskPage({signal});browser.associatePage(tab,{role:'article',doi:'10.5555/second'});
     await browser.navigate('https://example.org/second',{tab});
     assert.equal(browser.servicePages(serviceScope.scope_id,serviceId).length,0);
     assert.equal(browser.servicePages(otherScope.scope_id,serviceId).length,1);
     assert.equal(browser.tabs.size,2);
     assert.equal(browser.selected,visible);
   });
-  await browser.runTask(signal,{request_id:'third',task_id:'batch',service_scope:otherScope},()=>{
+  await browser.runTask(signal,{request_id:'third',task_id:'batch',service_scope:otherScope},async()=>{
+    tab=await browser.newTaskPage({signal});
     browser.associatePage(tab,{role:'article',doi:'10.5555/unmatched'});
     browser.bindTaskPage(tab);
     assert.equal(browser.pageAssociation(tab.id).service_id,null);
@@ -288,6 +291,7 @@ test('popup provenance is descriptive, disappears on destruction, and never auth
   const controller=new AbortController();
   let wc,popup;
   await browser.runTask(controller.signal,{request_id:'first',service_scope:serviceScope,service_id:serviceId},async()=>{
+    await browser.reserveTaskPages(2,{signal:controller.signal,deadline:Date.now()+1000});
     const source=browser.createTab();browser.associatePage(source,{role:'service-resource'});
     browser.bindTaskPage(source);
     wc=source.view.webContents.popup({url:'https://idp.example.edu/login'}).createWindow({});
@@ -306,7 +310,7 @@ test('popup provenance is descriptive, disappears on destruction, and never auth
     assert.equal(browser.tabs.size,1);
     controller.abort();assert.equal(browser.pageAssociation(popup.id).active,false);
   });
-  assert.equal(browser.tabs.size,1);
+  assert.equal(browser.tabs.size,0);
   await browser.runTask(new AbortController().signal,{request_id:'second'},async()=>{
     assert.equal(browser.taskTab,null);
     await assert.rejects(browser.navigate('https://example.org/new'),/page_closed/);
@@ -414,12 +418,12 @@ test('Manual URL opening preserves the task; Covers use an auxiliary page withou
     assert.equal(browser.pageAssociation(cover.id).service_id,null);
     assert.equal(browser.selected,manual);
   });
-  assert.equal(browser.tabs.size,3);
+  assert.equal(browser.tabs.size,1);assert.equal(cover.view.webContents.isDestroyed(),true);
   assert.doesNotMatch(JSON.stringify(browser.pageAssociation(cover.id)),/PRIVATE|secret/);
   assert.doesNotMatch(JSON.stringify(logs),/PRIVATE|secret/);
   assert.equal(logs.find(event=>event.event==='page_associated').scope_id,serviceScope.scope_id);
   await assert.rejects(browser.runTask(signal,{service_id:serviceId},()=>{}),/Invalid browser Service identity/);
-  browser.close();assert.equal(browser.tabs.size,0);assert.equal(browser.selected,null);
+  await browser.close();assert.equal(browser.tabs.size,0);assert.equal(browser.selected,null);
 });
 
 test('remote popups remain hidden managed tabs and unsafe URLs are refused',async t=>{
@@ -701,56 +705,28 @@ test('supported Cloudflare challenges invoke Solver while hCaptcha remains manua
   }
 });
 
-test('Article access, cancellation and reuse retain the same locked Paper tab for its Workspace',async t=>{
-  const {BrowserRuntime}=fixture(t),browser=new BrowserRuntime();
-  t.after(()=>browser.close());await browser.ready;
-  const data={workspace_identity:'a'.repeat(64),paper_id:'fd8460a2-7cf1-4f02-b346-cbcbd2fe6e45'};
-  const doi='10.5555/fixture',stop=new AbortController();
-  let first;
+test('Article pages are reused only within their active operation and close on cancellation failure and completion',async t=>{
+  const {BrowserRuntime}=fixture(t),browser=new BrowserRuntime();t.after(()=>browser.close());await browser.ready;
+  const data={workspace_identity:'a'.repeat(64),paper_id:'fd8460a2-7cf1-4f02-b346-cbcbd2fe6e45'},doi='10.5555/fixture';
+  const stop=new AbortController();let first;
   await browser.runTask(stop.signal,{...data,request_id:'article'},async()=>{
     first=await browser.openPaperPage(data,doi,{role:'article',signal:stop.signal});
-    const page=browser.state().tabs.find(tab=>tab.id===first.pageId);
-    assert.equal(page.managed,true);assert.equal(page.busy,true);
-    await assert.rejects(browser.command({action:'reload',id:page.id}),/active task page/i);
-    stop.abort();
+    const page=browser.state().tabs.find(tab=>tab.id===first.pageId);assert.equal(page.managed,true);assert.equal(page.busy,true);
+    await assert.rejects(browser.command({action:'reload',id:page.id}),/active task page/i);stop.abort();
   });
-  const tab=browser.tabs.get(first.pageId);
-  assert.ok(tab);assert.equal(browser.pageAssociation(tab.id).active,false);
-  for(const action of ['close','navigate','back','forward']) {
-    const command={action,id:tab.id,...(action==='navigate'?{url:'https://unrelated.example/'}:{})};
-    await assert.rejects(browser.command(command),/managed page/i);
-  }
+  assert.equal(browser.tabs.has(first.pageId),false);assert.equal(browser.paperPages.size,0);
   const signal=new AbortController().signal;
-  await browser.runTask(signal,{...data,request_id:'article'},async()=>{
-    const imported=await browser.openPaperPage(data,doi,{role:'article',signal});
-    assert.equal(imported.pageId,first.pageId);
-    assert.equal(imported.frameToken,first.frameToken);
-    assert.equal(browser.pageAssociation(tab.id).role,'article');
-  });
-  await browser.command({action:'reload',id:tab.id});
-  assert.equal(tab.view.webContents.reloads,1);
-  await tab.view.webContents.loadURL('https://publisher.example/site-navigation');
   await browser.runTask(signal,{...data,request_id:'retry'},async()=>{
-    const restored=await browser.openPaperPage(data,doi,{role:'article',signal});
-    assert.equal(restored.pageId,tab.id);
-    assert.equal(restored.url,'https://doi.org/10.5555%2Ffixture');
-    assert.notEqual(restored.frameToken,first.frameToken);
+    const opened=await browser.openPaperPage(data,doi,{role:'article',signal});assert.notEqual(opened.pageId,first.pageId);
+    const same=await browser.openPaperPage(data,doi,{role:'article',signal});assert.equal(same.pageId,opened.pageId);
+    const other=await browser.openPaperPage({...data,workspace_identity:'b'.repeat(64)},doi,{role:'article',signal});
+    assert.notEqual(other.pageId,opened.pageId);
   });
-  await assert.rejects(browser.runTask(signal,{...data,request_id:'changed'},async()=>{
-    tab.view.webContents.article={values:['10.5555/corrected'],limited:false,multiple:false};
-    const changed=await browser.openPaperPage(data,'10.5555/corrected',{role:'article',signal});
-    assert.equal(changed.pageId,tab.id);
-    assert.equal(changed.url,'https://doi.org/10.5555%2Fcorrected');
-    throw Error('fixture article failure');
+  assert.equal(browser.tabs.size,0);assert.equal(browser.paperPages.size,0);
+  await assert.rejects(browser.runTask(signal,{...data,request_id:'failed'},async()=>{
+    await browser.openPaperPage(data,doi,{role:'article',signal});throw Error('fixture article failure');
   }),/fixture article failure/);
-  assert.ok(browser.tabs.has(tab.id));
-  assert.equal(browser.pageAssociation(tab.id).active,false);
-  const other={...data,workspace_identity:'b'.repeat(64)};
-  await browser.runTask(signal,{...other,request_id:'other'},async()=>{
-    const opened=await browser.openPaperPage(other,doi,{role:'article',signal});
-    assert.notEqual(opened.pageId,tab.id);
-  });
-  assert.equal(browser.tabs.size,2);
+  assert.equal(browser.tabs.size,0);assert.equal(browser.paperPages.size,0);
 });
 
 test('Login opens one managed CARSI Portal and prepares independent Service pages without resubmitting credentials',{timeout:5000},async t=>{
@@ -856,7 +832,8 @@ test('Login opens one managed CARSI Portal and prepares independent Service page
   }
   assert.ok(serviceModes.includes('institution'));
   assert.equal(reads,1);assert.equal(submissions,1);
-  assert.equal(browser.pageAssociation(autoId).source_page_id,auto.evidence.source_page_id);
+  assert.equal(browser.pageAssociation(autoId).source_page_id,null);
+  assert.equal(browser.tabs.has(auto.evidence.source_page_id),false);
   entry.view.webContents.close();
   const retained=browser.tabs.size;
   await assert.rejects(prepare(serviceId,'StalePortal'),{diagnostic:{stage:'authentication',code:'carsi_session_expired'}});
@@ -894,7 +871,7 @@ test('initial Paper loading allows two delayed refreshes before replacing only t
   assert.equal(pages[0].view.webContents.isDestroyed(),true);
   assert.equal(doc.pageId,pages[1].id);
   assert.equal(browser.state().selected,selected.id);
-  assert.equal(browser.documentCurrent(doc),true);
+  assert.equal(browser.documentCurrent(doc),false);assert.equal(pages[1].view.webContents.isDestroyed(),true);
   assert.deepEqual(recovery.filter(event=>event.event==='recovery_scheduled').map(event=>[event.recovery_action,event.net_code]),[
     ['page_refresh',-100],['page_refresh',-100],['paper_reopen',-100]]);
   assert.equal(recovery.at(-1).source_page_id,pages[0].id);
@@ -972,7 +949,7 @@ for(const mode of ['same-tab','popup','follow-up','follow-up-post','after-limit-
           }
           fail();
           if(mode==='unknown')return {status:'pending'};
-          if(mode==='ambiguous')wc.popup({url:'about:blank'}).createWindow({});
+          if(mode==='ambiguous'){const admission=wc.popup({url:'about:blank'});if(admission.action==='allow')admission.createWindow({});}
         } else {
           oldTarget.emit('did-fail-load',{},-100,'ERR_CONNECTION_CLOSED',targetURL,true,
             oldTarget.mainFrame.processId,oldTarget.mainFrame.routingId);
@@ -1010,6 +987,7 @@ for(const mode of ['same-tab','popup','follow-up','follow-up-post','after-limit-
     if(method==='POST' || ['unknown','ambiguous','authority'].includes(mode)) {
       if(method==='POST')await assert.rejects(preparation,isLoadFailure);
       else if(mode==='authority')await assert.rejects(preparation,/document_changed/);
+      else if(mode==='ambiguous')await assert.rejects(preparation,/page_capacity/);
       else assert.equal((await preparation).outcome,'Needs attention');
       assert.equal(visits,1);
       assert.equal(refreshes,mode==='authority'?2:0);
@@ -1023,7 +1001,8 @@ for(const mode of ['same-tab','popup','follow-up','follow-up-post','after-limit-
     assert.equal(result.outcome,'Opened');
     assert.equal(result.evidence.target_page_id,created.at(-1).id);
     assert.equal(oldTarget.isDestroyed(),true);
-    assert.equal(created.filter(tab=>tab.view.webContents.isDestroyed()).length,mode==='popup'?3:2);
+    assert.deepEqual(created.filter(tab=>!tab.view.webContents.isDestroyed()).map(tab=>tab.id).sort((a,b)=>a-b),
+      [userPage.id,login.portal_page_id,result.evidence.target_page_id].sort((a,b)=>a-b));
     assert.equal(browser.tabs.has(login.portal_page_id),true);
     assert.equal(browser.state().selected,userPage.id);
     assert.equal(recovery.filter(event=>event.recovery_action==='resource_reentry').length,2);
@@ -1063,7 +1042,7 @@ test('Paper page-load timeout replaces the provisional page without renewing the
   assert.equal(authorities,1);
   assert.equal(pages.length,2);
   assert.equal(pages[0].view.webContents.isDestroyed(),true);
-  assert.equal(pages[1].view.webContents.isDestroyed(),false);
+  assert.equal(pages[1].view.webContents.isDestroyed(),true);
   assert.equal(recovery[0].recovery_action,'paper_reopen');
   assert.equal(recovery[0].step,'page_load');
   assert.equal(recovery.at(-1).step,'request');
@@ -1150,7 +1129,7 @@ test('managed refresh ignores obsolete frame and URL failures and reopens the pr
   ]);
 });
 
-test('cancel during managed refresh backoff preserves the failed page and dispatches no further action',async t=>{
+test('cancel during managed refresh backoff destroys the failed temporary page and dispatches no further action',async t=>{
   const {BrowserRuntime,partition}=fixture(t);
   let sleeping;
   const waiting=new Promise(resolve=>{sleeping=resolve;});
@@ -1178,7 +1157,7 @@ test('cancel during managed refresh backoff preserves the failed page and dispat
   await assert.rejects(pending,{diagnostic:{stage:'navigation',code:'canceled'}});
   assert.equal(pages.length,1);
   assert.equal(pages[0].view.webContents.reloads,undefined);
-  assert.equal(pages[0].view.webContents.isDestroyed(),false);
+  assert.equal(pages[0].view.webContents.isDestroyed(),true);
 });
 
 test('a stale failure from the same URL and frame cannot consume a newer refresh budget',async t=>{
@@ -1353,4 +1332,99 @@ test('saved lower limits revoke unused popup reservations and queued cancellatio
   const waiting=browser.runTask(abort.signal,{...data,request_id:'queued'},async()=>{await browser.newTaskPage({signal:abort.signal,deadline:Date.now()+1000});admitted=true;});
   await new Promise(setImmediate);abort.abort();await assert.rejects(waiting,/canceled/);
   assert.equal(admitted,false);assert.equal(browser.tabs.size,3);finish();await first;assert.equal(browser.tabs.size,0);
+});
+
+test('late access invalidation closes only the captured old key and reports actual retained Page destruction',async t=>{
+  const {BrowserRuntime}=fixture(t),browser=new BrowserRuntime();t.after(()=>browser.close());await browser.ready;
+  const signal=new AbortController().signal,data={service_scope:serviceScope,service_id:serviceId,preparation_key:'a'.repeat(64)};
+  const closed=[];browser.events.on('access-pages-closed',ids=>closed.push(...ids));
+  const prepare=async(key)=>browser.runTask(signal,{...data,request_id:key},async()=>{
+    await browser.replaceAccess({...data,preparation_key:key});const tab=await browser.newTaskPage({signal});
+    browser.retainAccessPage(tab,{...data,preparation_key:key});return tab;
+  });
+  const old=await prepare('a'.repeat(64)),current=await prepare('b'.repeat(64));
+  await browser.invalidateAccess({scope_id:serviceScope.scope_id,preparation_keys:{[serviceId]:'a'.repeat(64)},authentication_key:null});
+  assert.equal(browser.tabs.get(current.id),current);assert.deepEqual(closed,[old.id]);
+  current.view.webContents.deferClose=true;
+  let settled=false;const cleanup=browser.invalidateAccess({scope_id:serviceScope.scope_id,
+    preparation_keys:{[serviceId]:'b'.repeat(64)},authentication_key:null}).then(()=>{settled=true;});
+  await new Promise(setImmediate);assert.equal(settled,false);assert.equal(browser.tabs.has(current.id),true);
+  current.view.webContents.destroy();await cleanup;assert.deepEqual(closed,[old.id,current.id]);assert.equal(browser.tabs.size,0);
+});
+
+test('WoS result workflow loan survives native-operation gaps and stale release cannot free another loan',async t=>{
+  const {BrowserRuntime}=fixture(t),browser=new BrowserRuntime({pageLimits:{global_limit:4,service_limit:4}});t.after(()=>browser.close());await browser.ready;
+  const signal=new AbortController().signal,data={request_id:'query',workflow_id:'run_a',task_id:'run_a',service_scope:serviceScope,
+    service_id:serviceId,preparation_key:'c'.repeat(64)};
+  let target;
+  await browser.runTask(signal,data,async()=>{
+    target=await browser.newTaskPage({signal});await target.view.webContents.loadURL('https://www.webofscience.com/wos/woscc/summary/test');
+    browser.retainAccessPage(target,data);browser.loanWorkflowPage(target,await browser.documentBinding(target));
+  });
+  assert.equal(browser.releaseWorkflowPages({workflow_id:'old_run',task_id:'old_run'}).released,false);
+  await assert.rejects(browser.runTask(signal,{request_id:'other',service_scope:serviceScope,service_id:'svc_'+'2'.repeat(32)},
+    ()=>browser.reserveTaskPages(4,{signal,deadline:Date.now()+20})),/timeout/);
+  assert.equal(browser.tabs.get(target.id),target);
+  assert.equal(browser.releaseWorkflowPages({workflow_id:'run_a',task_id:'run_a'}).released,true);
+  assert.equal(browser.releaseWorkflowPages({workflow_id:'run_a',task_id:'run_a'}).released,false);
+  await browser.runTask(signal,{request_id:'after',service_scope:serviceScope,service_id:'svc_'+'2'.repeat(32)},async()=>{
+    await browser.reserveTaskPages(4,{signal,deadline:Date.now()+1000});await browser.newTaskPage({signal});
+  });
+  assert.equal(target.view.webContents.isDestroyed(),true);assert.equal(browser.tabs.size,0);
+});
+
+
+test('creation failure returns its reservation and Session shutdown waits actual destroyed',async t=>{
+  const {BrowserRuntime,failNextCreation}=fixture(t),browser=new BrowserRuntime({pageLimits:{global_limit:4,service_limit:3}});
+  t.after(()=>browser.close());await browser.ready;const signal=new AbortController().signal;
+  await browser.runTask(signal,{request_id:'creation',service_scope:serviceScope,service_id:serviceId},async()=>{
+    await browser.reserveTaskPages(3,{signal,deadline:Date.now()+1000});failNextCreation();
+    await assert.rejects(browser.newTaskPage({signal}),/fixture creation failed/);
+    for(let i=0;i<3;i++)await browser.newTaskPage({signal,deadline:Date.now()+1000});
+    assert.equal(browser.tabs.size,3);
+  });
+  assert.equal(browser.tabs.size,0);const tab=browser.createTab({user:true}),contents=tab.view.webContents;contents.deferClose=true;
+  const closing=browser.close();assert.equal(browser.close(),closing);await new Promise(setImmediate);
+  assert.equal(contents.closeRequested,true);assert.equal(browser.sessionEvents.closed,false);assert.equal(browser.closed,undefined);
+  assert.throws(()=>browser.createTab({user:true}),/not ready/);
+  try {await assert.rejects(browser.runTask(signal,{request_id:'late'},()=>{throw Error('late task executed');}),/canceled/);}
+  finally {contents.destroy();await closing;}
+  assert.equal(browser.sessionEvents.closed,true);assert.equal(browser.closed,true);assert.equal(browser.tabs.size,0);
+});
+
+test('minimum global capacity evicts an idle completed target so the next queued Prepare tree can finish',{timeout:3000},async t=>{
+  const {BrowserRuntime}=fixture(t),browser=new BrowserRuntime({pageLimits:{global_limit:4,service_limit:3}});t.after(()=>browser.close());await browser.ready;
+  const signal=new AbortController().signal,saved={request_id:'portal',service_scope:serviceScope,authentication_key:'f'.repeat(64)};let portal,old;
+  await browser.runTask(signal,saved,async()=>{portal=await browser.newTaskPage({signal});browser.retainAccessPage(portal,saved,'portal');});
+  const firstData={...saved,request_id:'first',service_id:serviceId,preparation_key:'d'.repeat(64)};
+  let ready,finish;const started=new Promise(resolve=>{ready=resolve;});
+  const first=browser.runTask(signal,firstData,async()=>{
+    browser.pinAccessPage(portal,firstData);await browser.reserveTaskPages(3,{signal,deadline:Date.now()+1000});
+    await browser.newTaskPage({signal});await browser.newTaskPage({signal});old=await browser.newTaskPage({signal});
+    browser.retainAccessPage(old,firstData);ready();await new Promise(resolve=>{finish=resolve;});
+  });
+  await started;let admitted=false;
+  const second=browser.runTask(signal,{...saved,request_id:'second',service_id:'svc_'+'2'.repeat(32)},async()=>{
+    browser.pinAccessPage(portal,saved);await browser.reserveTaskPages(3,{signal,deadline:Date.now()+1000});
+    admitted=true;for(let i=0;i<3;i++)await browser.newTaskPage({signal});
+  });
+  await new Promise(setImmediate);assert.equal(admitted,false);finish();await first;await second;
+  assert.equal(admitted,true);assert.equal(old.view.webContents.isDestroyed(),true);assert.equal(browser.tabs.size,1);assert.equal(browser.tabs.get(portal.id),portal);
+});
+
+
+test('failed native WebContents adoption retains its slot and cleanup until actual destruction',{timeout:3000},async t=>{
+  const {BrowserRuntime,failNextCreation,nativeContents}=fixture(t),browser=new BrowserRuntime({pageLimits:{global_limit:4,service_limit:3}});
+  t.after(()=>browser.close());await browser.ready;const signal=new AbortController().signal,contents=nativeContents();contents.deferClose=true;
+  let ended=false,failed;
+  const result=browser.runTask(signal,{request_id:'adoption',service_scope:serviceScope,service_id:serviceId},async()=>{
+    failNextCreation();try{browser.createTab({webContents:contents,present:false});}catch(error){failed=error;}
+  }).then(()=>{ended=true;});
+  await new Promise(setImmediate);
+  try {assert.match(failed.message,/fixture creation failed/);assert.equal(contents.closeRequested,true);assert.equal(ended,false);}
+  finally {contents.destroy();await result;}
+  let admitted=false;await browser.runTask(signal,{request_id:'after_adoption',service_scope:serviceScope,service_id:serviceId},async()=>{
+    await browser.reserveTaskPages(3,{signal,deadline:Date.now()+1000});for(let i=0;i<3;i++)await browser.newTaskPage({signal});admitted=true;
+  });
+  assert.equal(admitted,true);assert.equal(browser.tabs.size,0);
 });
