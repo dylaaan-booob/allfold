@@ -26,3 +26,13 @@ test('fragment article routes and complete DOI suffixes remain distinct identity
   assert.equal(articleIdentity({doi:'10.1214/aos/1176342506'},doc,probe).outcome,'confirmed');
   assert.equal(articleIdentity({doi:'10.5555/target'},doc,{...probe,values:['10.5555/target']}).outcome,'conflict');
 });
+
+test('known IOP view routes do not become extra DOI suffix segments',()=>{
+  const doi='10.1088/0022-3727/34/10/311';
+  for(const ending of ['/meta','/meta/','/pdf','/']) {
+    const doc={url:'https://iopscience.iop.org/article/'+doi+ending};
+    const probe={values:[doi],limited:false,multiple:false,article:true};
+    assert.equal(articleIdentity({doi},doc,probe).outcome,'confirmed');
+    assert.equal(articleIdentity({doi:'10.5555/target'},doc,{...probe,values:['10.5555/target']}).outcome,'conflict');
+  }
+});

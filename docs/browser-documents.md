@@ -63,7 +63,9 @@ current-article DOI `id`/`doi` parameters at an `/article` endpoint or DOI-suffi
 paths, including multi-segment DOI suffixes. URL-only evidence requires a single article object; scholarly DOI Meta
 also permits checking conflicting article URL facts. Generic main/search layouts
 do not prove an article; resolver URLs do not count. Euclid journal `.full` and
-SciELO article DOI links are scoped by host/structure, not Translator ID. References,
+SciELO article DOI links are scoped by host/structure, not Translator ID. IOP's
+known `/article/DOI/meta` and `/pdf` views (and trailing route slash) are separated
+from its multi-segment DOI by the explicit IOP host/route rule. References,
 recommendations, arbitrary body text and unrelated frames supply no DOI evidence.
 Conflicting main DOIs return `article_identity_conflict`. Missing/overflow/multiple
 object evidence returns `article_identity_unconfirmed`, with a fixed internal

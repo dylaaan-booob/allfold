@@ -49,6 +49,10 @@ app.whenReady().then(async()=>{
     destination='https://article.invalid/doi/10.1214/aos/1176342506';routes.set(destination,{body:article()});
     const multiDOI=await task(()=>browser.openPaperPage({workspace_identity:'a'.repeat(64),paper_id:randomUUID()},'10.1214/aos/1176342506',{signal}));
     assert.equal(multiDOI.identity.outcome,'confirmed');
+    destination='https://iopscience.iop.org/article/10.1088/0022-3727/34/10/311/meta';
+    routes.set(destination,{body:article(meta('10.1088/0022-3727/34/10/311'))});
+    const iop=await task(()=>browser.openPaperPage({workspace_identity:'a'.repeat(64),paper_id:randomUUID()},'10.1088/0022-3727/34/10/311',{signal}));
+    assert.equal(iop.identity.outcome,'confirmed');
     // A resolver URL (the requested DOI) never proves the redirected article.
     destination='https://article.invalid/path/10.5555/target';routes.set(destination,{body:article()});
     for(const [url,body] of [

@@ -20,6 +20,8 @@ function locationDOIs(value) {
   const values=/\/article\/?$/i.test(url.pathname)?[...url.searchParams.getAll('doi'),...url.searchParams.getAll('id')]:[];
   try {
     let path=decodeURIComponent(url.pathname);
+    // IOP's retained article fixtures distinguish DOI segments from the /meta and /pdf views.
+    if(url.hostname==='iopscience.iop.org' && path.startsWith('/article/'))path=path.replace(/\/(?:meta|pdf)\/?$/,'').replace(/\/$/,'');
     if(url.hostname==='projecteuclid.org' && path.startsWith('/journals/') && path.endsWith('.full'))path=path.slice(0,-5);
     values.push(path.match(/(?:^|\/)(10\.\d{4,9}\/[^\s]+)$/)?.[1]);
   }catch { /* Malformed escapes cannot prove an article. */ }
