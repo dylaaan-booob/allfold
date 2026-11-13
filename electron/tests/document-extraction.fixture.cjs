@@ -49,6 +49,9 @@ app.whenReady().then(async()=>{
       '<p>See https://publisher.example/search?date=2020-04-02 for data.</p><p>https://publisher.example/article#2020-05-02</p>'+
       '<p>//publisher.example/search?date=2020-06-02</p><p>www.publisher.example/?date=2020-07-02</p>'+
       '<p>https://publisher.example/search?date=2020-08-02 Published: 2021-03-04.</p>', ['2021-03-04']);
+    await dates('complete raw DOI query and fragment tokens never contribute dates',
+      '<p>Reference 10.1234/foo?date=2020-05-02</p><p>doi:10.12345/bar#2020-06-03</p>'+
+      '<p>10.123456/baz?published=2020-07-04 Published: 2021-03-04.</p>', ['2021-03-04']);
     await dates('invalid ISO time remains invalid across letter case',
       '<p>2020-05-02t99:99:99z</p><p>2020-06-02T99:99:99Z</p><p>2020-02-30t12:30:00z</p>', []);
     await dates('valid ISO lowercase markers keep their written day',
@@ -106,11 +109,21 @@ app.whenReady().then(async()=>{
     for(const attrs of ['id="ABSTRACT"','id="Abstracts"','class="other abstract"','class="abstract-content"','class="abstractInFull"','aria-label="Abstract"','aria-labelledby="abs-title"'])
       await summary('A1 '+attrs,'<section '+attrs+'><h2 id="abs-title">Abstract</h2>'+structured+'</section>',structuredText);
     await summary('A1 nested duplicate containers','<div class="abstract"><section id="abstract"><h2>Abstract</h2><p>One complete result.</p></section></div>','One complete result.');
+    await summary('A1 identical nested candidate copies merge','<div class="abstract"><div class="abstract-content">Same result.</div><div class="abstract-content">Same result.</div></div>','Same result.');
+    await summary('A1 nested copies keep surrounding parent paragraphs','<div class="abstract"><p>First paragraph.</p><div class="abstract-content">Same result.</div><div class="abstract-content">Same result.</div><p>Last paragraph.</p></div>',
+      'First paragraph.\nSame result.\nLast paragraph.');
+    await summary('A1 ordinary repeated paragraphs stay intact','<div class="abstract"><p>Repeated scientific measurement.</p><p>Repeated scientific measurement.</p></div>',
+      'Repeated scientific measurement.\nRepeated scientific measurement.');
+    await summary('A1 conflicting nested complete copies fall through','<div class="abstract"><div class="abstract-content">First candidate.</div><div class="abstract-content">Second candidate.</div></div>',
+      'Meta resolved.','<meta name="citation_abstract" content="Meta resolved.">');
     await summary('A1 nested owner keeps paragraphs around a marked child','<section id="abstract"><h2>Abstract</h2><p>First legitimate paragraph.</p><div class="abstract-content"><h3>Methods</h3><p>Middle legitimate paragraph.</p></div><p>Last legitimate paragraph.</p><div class="keywords">Excluded keyword UI.</div></section>',
       'First legitimate paragraph.\nMethods\nMiddle legitimate paragraph.\nLast legitimate paragraph.');
     await summary('A1 hidden and peripheral previews cannot reject visible abstract',
       '<section id="abstract"><p>Complete visible abstract.</p><div hidden class="preview">Hidden fragment.</div><aside class="preview">Peripheral fragment.<button>Read more</button></aside></section>',
       'Complete visible abstract.');
+    const abstractOnlyUI='<p>Complete result.</p><figure class="preview"><p>Image 2020-05-02</p><button>Read more</button></figure><ul class="keywords"><li class="preview">Keyword UI.<button>Read more</button></li></ul>';
+    const ignoredPreview=await summary('A1 figure and keywords previews do not reject content','<section id="abstract">'+abstractOnlyUI+'</section>','Complete result.');
+    assert.deepEqual(ignoredPreview.metadata.dates,[{value:'2020-05-02',precision:'day'}],'abstract-only exclusions do not narrow Date scope');
     await summary('exact tokens only','<div id="abstract-title">Wrong title.</div><div class="abstract-link">Wrong link.</div><div class="abstractish">Wrong content.</div>',null);
     await summary('explicit unwanted candidates','<section class="abstract"><h2>Graphical Abstract</h2><p>Wrong image summary.</p></section><aside class="recommended-articles"><section id="abstract"><p>Wrong recommendation.</p></section></aside><button class="abstract">Abstract</button>',null);
     await summary('only title and button not abstract','<section id="abstract"><h2>Abstract</h2><button>Download</button></section>',null);
@@ -138,6 +151,8 @@ app.whenReady().then(async()=>{
     await summary('C actual markup preserves literal scientific angles','','Methods\n'+scientific+'\nH2O remains.',
       ld({...scholarly,abstract:'<h3>Methods</h3><p>'+scientific+'</p><p>H<sub>2</sub>O remains.</p><script>Wrong executable text.</script>'}));
     const abstractMeta=(name,value)=>'<meta name="'+name+'" content="'+value.replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;')+'">';
+    await summary('B figure and keywords previews ignored','','Complete result.',abstractMeta('citation_abstract','<div>'+abstractOnlyUI+'</div>'));
+    await summary('C figure and keywords previews ignored','','Complete result.',ld({...scholarly,abstract:'<div>'+abstractOnlyUI+'</div>'}));
     const hiddenPreview='<div><p>Complete visible structured abstract.</p><div hidden class="preview">Hidden fragment.</div><aside class="preview">Peripheral fragment.<button>Read more</button></aside></div>';
     await summary('B hidden and peripheral previews ignored','','Complete visible structured abstract.',abstractMeta('citation_abstract',hiddenPreview));
     await summary('C hidden and peripheral previews ignored','','Complete visible structured abstract.',ld({...scholarly,abstract:hiddenPreview}));

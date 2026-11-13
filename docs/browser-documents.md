@@ -278,8 +278,9 @@ validation checks leap years and month/day ranges. Invalid full candidates never
 degrade to month-only results. Ambiguous `04/02/2020` is refused; `13/02/2020` and
 `02/13/2020` have one valid order. Token boundaries reject URL/DOI/identifier
 substrings, suffixes such as `2020-04junk`, and manuscript/page ranges such as
-`SS-2025-0362`/`1023-1042`. Complete URL tokens, including query and fragment
-values, cannot contribute dates. Missing range endpoints are not filled. ISO
+`SS-2025-0362`/`1023-1042`. Complete URL and supported raw DOI tokens, including
+query and fragment suffixes, cannot contribute dates. Missing range endpoints
+are not filled. ISO
 `T`/`Z` markers are case-insensitive and all variants receive the same full time
 validation, retaining their written calendar day without a timezone conversion.
 
@@ -303,8 +304,10 @@ The fixed preference is **A1 → A2 → B → C**, with no API-versus-DOM write 
   `abstract`/`abstract-content`/`abstractInFull`, or a section/region with a unique
   strict Abstract aria label/title association. Substrings are insufficient.
   Nested markers share one explicit semantic owner, whose full content is read
-  once, including paragraphs around marked children; independent identical
-  copies merge. Graphical/Video/Lay or author summaries, navigation, recommendations,
+  once, including paragraphs around marked children. Identical complete marked
+  candidate copies merge, including nested copies; ordinary repeated paragraphs
+  remain intact and conflicting complete copies fall through. Graphical/Video/Lay
+  or author summaries, navigation, recommendations,
   footer/hidden areas and title/button-only regions are refused.
 - **A2:** strict Abstract h2–h6 or explicit section-heading labels, normalizing
   surrounding whitespace, trailing colon and decorative punctuation. Summary is
@@ -331,7 +334,8 @@ Explicit previews, unexpanded Read more/Show more fragments, ellipsis-only text
 and empty notices are refused without a click in DOM, Meta and JSON-LD alike;
 invalid structured peers do not create a conflict with a valid candidate.
 Notice matching collapses whitespace without changing accepted paragraph text.
-Hidden/peripheral preview markers and controls do not disqualify visible content.
+Preview scanning shares the abstract-subtree exclusions: hidden/peripheral UI,
+figures and keyword lists do not disqualify visible content or narrow Date scope.
 Different valid same-level DOM
 candidates fall through to independent structured sources; no first/longest
 choice, source concatenation, generation, translation or Title fallback exists.
