@@ -40,7 +40,12 @@ class WorkspacePaper:
 
     @property
     def external_ids(self):
-        return ExternalIds(**{identity.namespace: identity.value for identity in self.record.identities})
+        values = {}
+        for identity in self.record.identities:
+            values.setdefault(identity.namespace, identity.value)
+        if primary := self.record.primary_identity:
+            values[primary.namespace] = primary.value
+        return ExternalIds(**values)
 
     @property
     def identity_label(self):

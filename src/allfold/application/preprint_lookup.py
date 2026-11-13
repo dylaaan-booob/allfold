@@ -41,7 +41,7 @@ def _first_public(state, records, native_dates):
             if doi := normalize_external_id('doi', source.record_id.removesuffix(':publication')):
                 refs.append(ProviderRecordRef(provider=source.provider, record_id=doi, relation='preprint'))
     existing = ProviderWorkEvidence(provenance=MetadataSource(
-        provider='workspace', record_id='saved-preprint-proof', retrieved_at=state.discovered_at),
+        provider='workspace', record_id='saved-preprint-proof', retrieved_at=records[0].provenance.retrieved_at),
         related_ids=tuple(refs), dates=state.preprint_evidence)
     all_records = (existing, *records)
     families = known_preprint_families(all_records)

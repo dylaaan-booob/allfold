@@ -129,10 +129,9 @@ def _workspace_state(
 ) -> tuple[WorkspaceSnapshot | None, str | None]:
     try:
         config = load_config(config_path)
-    except ConfigurationError as error:
+        return load_workspace(config.output_dir, journals=config.journals), None
+    except (ConfigurationError, LibraryError, OSError) as error:
         return None, str(error)
-
-    return load_workspace(config.output_dir, journals=config.journals), None
 
 
 def _workspace_health_context(config_path: Path) -> dict[str, object]:
