@@ -80,8 +80,12 @@ locked AnyIO [shared blocking portal](https://anyio.readthedocs.io/en/stable/thr
 
 ## Journal Run and native preprint APIs
 
-Run and the Info preprint lookup use operation-local clients over the shared
-HTTP policy and host pacing. Network requests hold no Workspace write lock.
+Run, the Info preprint lookup and independent collection attempts use owned
+clients over the shared HTTP policy and application-owned pacing. The application
+injects the same pacing state into each creation path; another Run, client or
+attempt does not reset the actual-origin spacing. Request and adapter caches stay
+within their owning operation/attempt, rather than becoming global caches.
+Network requests hold no Workspace write lock.
 Run reuses verified DOI/Work evidence across Discovery and metadata completion.
 It batches quoted PubMed article identifiers after saved-Paper exclusion,
 checking each returned PMID against its direct DOI and reusing fetched records.
@@ -141,6 +145,21 @@ pacing. Browser/Prepare continue to use their separate Chromium Session. Active
 webpage Enrich and its Translator transport are retired; Provider HTTP remains
 independent of Browser authentication.
 See [Provider contracts and limits](providers.md).
+
+`IndependentClientFactory.open` creates one worker-owned context with its own
+clients, request cache, captured cancellation/authority and absolute deadline.
+The runtime owns the corresponding thread-confined repository connections and
+Workspace/Paper/attempt checks; the HTTP factory never borrows a returned Run's
+snapshot, connection, cancellation event or `ExitStack`. Provider credentials are
+captured when the context opens, and the supplied guard runs before client use
+and every physical request. Existing adapter selection, request budgets,
+Retry-After, redirects and cooldown authentication scopes remain unchanged.
+Injected transports keep their existing isolated cooldown state unless a test
+explicitly shares it. Factory close stops new contexts and waits for existing
+contexts to close after runtime cancellation/drain. It does not treat a cancelled
+Future or a returned business result as resource settlement. This internal
+factory does not register production Run Papers or execute the full ordinary
+metadata-completion workflow; WF06 supplies the collection branches.
 
 
 ## Local task cancellation and configuration writes

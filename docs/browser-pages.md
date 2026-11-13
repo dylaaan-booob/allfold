@@ -8,6 +8,22 @@ and its tracked native download cleanup has finished, exactly once.
 
 ## Counts and admission
 
+Python workflow admission distinguishes shared data use from exclusive controls.
+Every data owner keeps its trusted saved-Service scope and explicitly requests
+shared admission. Multiple Papers may use the same valid Prepare authority within
+the task scheduler's global/Service limits. Login/Prepare, confirmation and captured
+access cleanup exclude overlapping data owners through their real cleanup;
+credential and Workspace/Logs Reset controls remain globally exclusive. Unrelated
+Services can continue independently. Known physical Page claims remain exclusive,
+even between different Services; native Page/Document navigation and workflow
+loans retain their exact checks. Shared Service admission never grants concurrent
+navigation of a single physical page.
+
+The task scheduler counts executing tasks, while this native ledger counts
+physical WebContents and reservations. These are independent bounds. Shared
+Python admission creates no pages or registry-private page pool, and never
+removes the native limits below.
+
 | Resource | Ownership and counting | End of use |
 | --- | --- | --- |
 | Task page | Work pages, helpers, popups, intermediate pages and retained download sources count against both managed limits | The captured task resource owner closes them on success, failure and cancellation |

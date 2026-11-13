@@ -84,6 +84,38 @@ def test_independent_browser_owners_share_admission_but_service_and_controls_rem
         lock.require(login)
 
 
+def test_service_data_owners_share_authority_but_keep_control_and_page_exclusivity():
+    from concurrent.futures import ThreadPoolExecutor
+    from threading import Barrier
+    from allfold.application.browser_runtime import BrowserTaskLock
+
+    lock, ready = BrowserTaskLock(), Barrier(2)
+    scope = {'service:scope:publisher'}
+
+    def claim(page):
+        ready.wait(timeout=2)
+        return lock.acquire('collection', scopes=scope, shared=True, pages={page})
+
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        first, second = tuple(pool.map(claim, (101, 102)))
+    assert first and second
+    assert lock.acquire('login', scopes=scope) is None
+    assert lock.acquire('access-cleanup', scopes=scope) is None
+    assert lock.acquire('credentials') is None
+    assert lock.acquire('collection', scopes={'service:scope:other'}, shared=True, pages={101}) is None
+    assert lock.conflicts(scope)
+    lock.release(first)
+    assert lock.acquire('login', scopes=scope) is None
+    lock.require(second)
+    lock.release(second)
+    control = lock.acquire('login', scopes=scope)
+    assert control and lock.acquire('collection', scopes=scope, shared=True) is None
+    unrelated = lock.acquire('collection', scopes={'service:scope:other'}, shared=True)
+    assert unrelated
+    lock.release(unrelated)
+    lock.release(control)
+
+
 def test_access_verification_preserves_unrelated_inputs_and_service_edits(tmp_path):
     from allfold.config import AccessService
     config, _, journal, service = current_mapping_document(tmp_path)

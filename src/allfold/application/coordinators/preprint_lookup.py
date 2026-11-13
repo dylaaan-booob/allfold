@@ -10,10 +10,12 @@ from allfold.providers.supplemental import SupplementalClient
 
 
 class PreprintLookup:
-    def __init__(self, config_path, task_lock, *, run_slot=None, client_factory=SupplementalClient):
+    def __init__(self, config_path, task_lock, *, run_slot=None, client_factory=SupplementalClient,
+                 pacing_state=None):
         self.config_path, self.task_lock = config_path, task_lock
         self.run_slot = run_slot or threading.Lock()
         self.client_factory = client_factory
+        self.pacing_state = pacing_state if pacing_state is not None else {}
         self._lock = threading.RLock()
         self._worker = None
         self._paper_id = None
@@ -108,7 +110,7 @@ class PreprintLookup:
 
         try:
             with snapshot:
-                records, pacing = [], {}
+                records, pacing = [], self.pacing_state
                 for provider in PREPRINT_SERVERS:
                     with self.client_factory(provider, cancel_event=self._stop, pacing_state=pacing) as client:
                         client.request_guard = request_guard
