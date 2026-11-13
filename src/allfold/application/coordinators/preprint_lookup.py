@@ -132,8 +132,7 @@ class PreprintLookup:
                     message='Preprint lookup cancelled' if self._stop.is_set() else str(error) or 'Preprint lookup failed')
         finally:
             self.run_slot.release()
-            if self.task_lock.owner is owner:
-                self.task_lock.release(owner)
+            self.task_lock.release(owner)
 
     def cancel(self, paper_id, request_id, workspace_id=None):
         with self._lock:

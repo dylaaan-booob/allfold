@@ -377,6 +377,8 @@ def test_selected_native_disconnect_revokes_http_but_waits_native_settlement(tmp
         connected=True
         pending=Future()
         def execute(self,action,data,progress=None):
+            if action == 'release_workflow_pages':
+                done = Future(); done.set_result({'ok': True}); return done
             assert action=='wos_query'
             self.progress=progress
             query_started.set()
@@ -442,6 +444,8 @@ def test_work_guard_settles_native_before_parent_cancel_or_authority_error(tmp_p
         connected = True
         pending = Future()
         def execute(self, action, data, progress=None):
+            if action == 'release_workflow_pages':
+                done = Future(); done.set_result({'ok': True}); return done
             assert action == 'wos_query'
             query_started.set()
             return self.pending

@@ -171,9 +171,9 @@ def install_resource_api(app, config_path, csrf_token):
             if issues or disk.issues or submitted != disk.draft:
                 raise ContentChangedError('Save or Reload unsaved/stale Settings before choosing a Service')
             def commit_choice():
-                from allfold.web.settings_guard import settings_task_active
+                from allfold.web.settings_guard import settings_input_active
                 with app.state.settings_write_lock:
-                    if settings_task_active(app):
+                    if settings_input_active(app):
                         raise ContentChangedError('Active task owns the saved Service mapping; the selection is pending')
                     choose_journal_service(config_path, key,
                         method=str(form.get('selection_method', '')), name=str(form.get('selection_name', '')),
@@ -205,17 +205,14 @@ def install_autosave_api(app, config_path, csrf_token):
     from starlette.concurrency import run_in_threadpool
     from allfold.application.settings import save_settings, SettingsSaveOutcome
     from allfold.web.settings_form import settings_draft_from_form, SettingsJournalRow, SettingsAccessServiceRow
-    from allfold.web.settings_guard import settings_task_active
 
-    def apply_patch(body):
+    def apply_patch(body, effects):
         with app.state.settings_write_lock:
             disk = load_settings(config_path)
             state = settings_state(config_path, csrf_token, disk=disk)
             state['logging'] = logging_state(app)
             def refusal(outcome, message, issues=()):
                 return json_response(dict(state, saved=False, outcome=outcome, message=message, issues=issues))
-            if settings_task_active(app):
-                return refusal('TASK_ACTIVE', 'Pending: configuration will be revalidated after the active task releases ownership.')
             changes, base = body.get('changes'), body.get('base')
             if (not isinstance(changes, dict) or not set(changes) <= AUTOSAVE_FIELDS
                     or not isinstance(base, dict) or set(base) != set(REVISION_FIELDS)):
@@ -237,7 +234,13 @@ def install_autosave_api(app, config_path, csrf_token):
                 return refusal('INVALID_DRAFT', 'Configuration patch has invalid field values.')
             if draft is None or issues:
                 return refusal('INVALID_DRAFT', 'Configuration validation failed; the draft is retained.', issues)
+            from allfold.web.settings_guard import settings_write_context
+            blocked, invalidation = settings_write_context(app, disk.draft, draft)
+            if blocked:
+                return refusal('TASK_ACTIVE', 'Pending: affected work is still active or cleaning up.')
             result = save_settings(config_path, draft)
+            from allfold.web.settings_guard import record_settings_effects
+            record_settings_effects(app, effects, invalidation, disk.draft, result.state.draft)
             state = settings_state(config_path, csrf_token, disk=result.state)
             state['logging'] = logging_state(app)
             return json_response(dict(state, saved=result.outcome is SettingsSaveOutcome.SAVED,
@@ -253,7 +256,13 @@ def install_autosave_api(app, config_path, csrf_token):
             return settings_error('Invalid configuration patch', 400)
         if not isinstance(body, dict) or not hmac.compare_digest(str(body.get('csrf_token', '')), csrf_token):
             return settings_error('Invalid CSRF token')
-        return await run_in_threadpool(apply_patch, body)
+        def commit():
+            from allfold.web.settings_guard import settle_settings_effects
+            effects = {}
+            reply = apply_patch(body, effects)
+            settle_settings_effects(app, effects)
+            return reply
+        return await run_in_threadpool(commit)
 
 
 def install_credential_api(app, csrf_token):
@@ -271,22 +280,22 @@ def install_credential_api(app, csrf_token):
             owner = app.state.browser_task_lock.acquire('credentials')
             if owner is None:
                 return json_response({'ok': False, 'error': 'cas_task_active'}, 409)
-            try:
-                if not app.state.electron_bridge.connected:
-                    raise ElectronDisconnected()
-                result = app.state.electron_bridge.execute('cas_credentials', {
-                    key: body[key] for key in ('operation', 'username', 'password', 'expected_revision')
-                }).result()
-                if result.get('ok') is True:
-                    app.state.login.invalidate_credentials()
-                # Native returns a bounded status only, never password/plaintext.
-                return json_response({key: result[key] for key in
-                    ('ok', 'error', 'configured', 'username', 'revision') if key in result})
-            except (ElectronDisconnected, RuntimeError, OSError):
-                return json_response({'ok': False, 'error': 'cas_store_unavailable',
-                    'message': 'Credential result could not be confirmed. Re-read status before retrying.'}, 409)
-            finally:
-                app.state.browser_task_lock.release(owner)
+        try:
+            if not app.state.electron_bridge.connected:
+                raise ElectronDisconnected()
+            result = app.state.electron_bridge.execute('cas_credentials', {
+                key: body[key] for key in ('operation', 'username', 'password', 'expected_revision')
+            }).result()
+            if result.get('ok') is True:
+                app.state.login.invalidate_credentials()
+            # Native returns a bounded status only, never password/plaintext.
+            return json_response({key: result[key] for key in
+                ('ok', 'error', 'configured', 'username', 'revision') if key in result})
+        except (ElectronDisconnected, RuntimeError, OSError):
+            return json_response({'ok': False, 'error': 'cas_store_unavailable',
+                'message': 'Credential result could not be confirmed. Re-read status before retrying.'}, 409)
+        finally:
+            app.state.browser_task_lock.release(owner)
 
     @app.post('/api/ui-next/settings/credentials')
     async def credentials(request: Request):

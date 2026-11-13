@@ -17,6 +17,10 @@ def browser_workspace_identity(path: Path, identity: tuple[int, int]) -> str:
         str(device).encode('ascii'), str(inode).encode('ascii')))).hexdigest()
 
 
+def browser_scope_id(config_path: Path) -> str:
+    return hashlib.sha256(str(config_path.resolve()).encode()).hexdigest()
+
+
 @dataclass(frozen=True)
 class BrowserServiceSnapshot:
     config_path: Path
@@ -36,12 +40,12 @@ class BrowserServiceSnapshot:
             raise ContentChangedError('User state changed while reading browser Services')
         snapshot = cls(config_path, contents, saved.revision,
                        saved.state.journals, saved.state.access_services, config.institution)
-        snapshot.verify()
+        snapshot.verify_snapshot()
         return snapshot
 
     @property
     def scope_id(self):
-        return hashlib.sha256(str(self.config_path).encode()).hexdigest()
+        return browser_scope_id(self.config_path)
 
     @property
     def scope(self):
@@ -61,7 +65,22 @@ class BrowserServiceSnapshot:
                               service.model_dump(mode='json')], sort_keys=True)
         return hashlib.sha256(payload.encode()).hexdigest()
 
-    def verify(self):
+    def service_scope(self, service_id: str) -> str:
+        return f'service:{self.scope_id}:{service_id}'
+
+    def verify(self, service_ids=None):
+        """Validate captured access facts, independent of ordinary input revisions."""
+        config = load_config(self.config_path)
+        current = read_user_state(self.config_path)
+        if current.revision.digest != config.user_state_revision:
+            raise ContentChangedError('User State changed while reading Browser authority')
+        selected = {service.id for service in self.services} if service_ids is None else set(service_ids)
+        before = {service.id: service for service in self.services if service.id in selected}
+        after = {service.id: service for service in current.state.access_services if service.id in selected}
+        if config.institution != self.institution or before != after or set(before) != selected:
+            raise ContentChangedError('Saved Browser access authority changed')
+
+    def verify_snapshot(self):
         if (read_text_exact(self.config_path) != self.config_contents
                 or read_user_state(self.config_path).revision != self.revision):
             raise ContentChangedError('Saved configuration or User State changed during browser workflow')

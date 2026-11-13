@@ -10,9 +10,8 @@ from allfold.recovery_diagnostics import normalize_recovery, recovery_progress_m
 from allfold.application.history import observe
 from allfold.application.browser_runtime import ElectronDisconnected
 from allfold.application.journal_covers import (
-    MAX_IMAGE_BYTES, CoverConflict, _save_cover, cover_details, save_crop, upload_cover,
+    MAX_IMAGE_BYTES, CoverConflict, _save_cover, capture_cover_authority, cover_details, save_crop, upload_cover,
 )
-from allfold.persistence.user_state import load_user_state, read_user_state
 from allfold.url_safety import normalize_public_http_url
 
 MAX_IMAGE_BASE64 = 4 * ((MAX_IMAGE_BYTES + 2) // 3)
@@ -20,11 +19,12 @@ FAILED_MESSAGE = "未获取到图片"
 
 
 class JournalCoverSearch:
-    def __init__(self, bridge=None, browser_lock=None, *, diagnostics=None):
+    def __init__(self, bridge=None, browser_lock=None, *, diagnostics=None, settings_lock=None):
         self.bridge, self.browser_lock = bridge, browser_lock
         self.diagnostics = diagnostics
         self._lock = threading.RLock()
         self._asset_lock = threading.Lock()
+        self._settings_lock = settings_lock or threading.RLock()
         self._uploading = False
         self._task = None
         self._worker = None
@@ -61,7 +61,7 @@ class JournalCoverSearch:
                 task = dict(request_id=secrets.token_hex(16), journal_key=journal.key, result=None,
                     phase='Running', message='Searching this Journal', waiting_for_user=False, settled=False,
                     stop=threading.Event(), owner=owner, list_path=list_path,
-                    config_path=config_path, state_revision=load_user_state(config_path, list_path).revision)
+                    config_path=config_path, authority=capture_cover_authority(list_path, journal, config_path=config_path))
                 observe(self.diagnostics, "begin", "covers", task["request_id"])
                 self._task = task
                 self._worker = threading.Thread(target=self._run, args=(task, journal),
@@ -103,12 +103,11 @@ class JournalCoverSearch:
                 data = base64.b64decode(image, validate=True)
                 if len(data) > MAX_IMAGE_BYTES:
                     raise ValueError('Image too large')
-                with self._lock:
+                with self._settings_lock, self._lock:
                     if task['stop'].is_set():
                         raise InterruptedError()
-                    if read_user_state(task['config_path']).revision != task['state_revision']:
-                        raise ValueError('Saved Journal configuration changed')
-                    _save_cover(task['list_path'], journal.key, data, source_type='downloaded', source_url=source, config_path=task['config_path'])
+                    _save_cover(task['list_path'], journal.key, data, source_type='downloaded', source_url=source,
+                        config_path=task['config_path'], authority=task['authority'])
                     task.update(phase='Completed', message='Saved', result=cover_details(task['list_path'], journal.key))
         except InterruptedError:
             task.update(phase='Cancelled', message='Cancelled')
@@ -141,7 +140,7 @@ class JournalCoverSearch:
             if not self.running or not task or task['phase'] != 'Running' or task['request_id'] != request_id:
                 return False
             task['stop'].set()
-            self.bridge.cancel_current()
+            self.bridge.cancel_task(task['request_id'], task['request_id'])
             task['message'] = 'Stopping; waiting for the browser request to settle'
             return True
 

@@ -58,6 +58,7 @@ class LoginCoordinator:
         self._worker = None
         self._stop = threading.Event()
         self._auth_key = None
+        self._scope_id = None
         self._credential_epoch = uuid4().hex
         self._workflow_id = None
         self._confirmation_batch: tuple[str, dict[str, str]] | None = None
@@ -65,6 +66,7 @@ class LoginCoordinator:
         self._keys = {}
         self._phase = 'idle'
         self._carsi = ServicePreparation()
+        self._closed_pages = set()
 
     @property
     def running(self):
@@ -119,7 +121,7 @@ class LoginCoordinator:
                 raise ValueError('The Login results changed or are unavailable. Refresh Login.')
             if not self.bridge.connected:
                 raise ValueError('Browser runtime unavailable')
-            owner = self.browser_lock.acquire('login')
+            owner = self.browser_lock.acquire('login', scopes={saved.service_scope(service.id) for service in saved.services})
             if owner is None:
                 raise ValueError('Another Browser workflow is active')
             try:
@@ -136,6 +138,27 @@ class LoginCoordinator:
                 return self.snapshot(saved)
             finally:
                 self.browser_lock.release(owner)
+
+    def access_invalidation(self, scope_id, service_ids, authentication_changed=False):
+        with self._mutex:
+            if self._scope_id != scope_id:
+                return None
+            keys = {service_id: key for service_id, key in self._keys.items() if service_id in service_ids}
+            authentication = self._auth_key if authentication_changed else None
+            return {'scope_id': scope_id, 'preparation_keys': keys, 'authentication_key': authentication} if keys or authentication else None
+
+    def invalidate_pages(self, page_ids):
+        with self._mutex:
+            closed = set(page_ids)
+            if self.running:
+                self._closed_pages.update(closed)
+            if self._carsi.page_id in closed:
+                self._carsi = ServicePreparation()
+            for service_id, result in tuple(self._results.items()):
+                if result.page_id in closed:
+                    self._results.pop(service_id, None)
+                    self._keys.pop(service_id, None)
+            self._confirmation_batch = None
 
     def invalidate_credentials(self):
         """Called under Browser admission after a confirmed native credential change."""
@@ -169,10 +192,11 @@ class LoginCoordinator:
         with self._mutex:
             if self.running:
                 raise ValueError('Login is already active')
-            owner = self.browser_lock.acquire('login')
+            owner = self.browser_lock.acquire('login', scopes={saved.service_scope(service.id) for service in services})
             if owner is None:
                 raise ValueError('Another Browser workflow is active')
             self._stop = threading.Event()
+            self._closed_pages.clear()
             self._workflow_id = uuid4().hex
             auth_key = saved.authentication_key(self._credential_epoch)
             if manual_service_id is None or self._auth_key != auth_key:
@@ -181,6 +205,7 @@ class LoginCoordinator:
                 self._confirmation_batch = None
                 self._carsi = ServicePreparation()
             self._auth_key = auth_key
+            self._scope_id = saved.scope_id
             self._phase = 'carsi' if needs_carsi else 'preparing'
             for service in services:
                 self._keys[service.id] = saved.preparation_key(service, self._credential_epoch)
@@ -214,7 +239,9 @@ class LoginCoordinator:
 
     def _dispatch(self, owner, saved, action, data, service_id=None):
         self.browser_lock.require(owner)
-        saved.verify()
+        saved.verify((service_id,) if service_id is not None else ())
+        if data.get('portal_page_id') in self._closed_pages:
+            raise InterruptedError('Preparation Portal closed')
         recovery = {}
         if action == 'prepare_service':
             workflow = self._workflow_id
@@ -223,7 +250,7 @@ class LoginCoordinator:
 
             def verify_recovery():
                 self.browser_lock.require(owner)
-                saved.verify()
+                saved.verify((service_id,))
                 with self._mutex:
                     if (self._stop.is_set() or self._workflow_id != workflow or self._credential_epoch != epoch
                             or self._keys.get(service_id) != key):
@@ -232,6 +259,7 @@ class LoginCoordinator:
             recovery['verify_recovery'] = verify_recovery
         return self.bridge.execute(action, {
             **data, 'workflow_id': self._workflow_id, 'service_scope': saved.scope,
+            'authentication_key': self._auth_key,
             'service_id': service_id,
         }, lambda progress: self._progress(service_id, progress), **recovery)
 
@@ -240,7 +268,8 @@ class LoginCoordinator:
         diagnostic = normalize_browser_diagnostic(data.get('diagnostic'))
         target = evidence.get('target_page_id')
         opened = (data.get('outcome') == 'Opened' and evidence.get('visit_action_observed') is True
-                  and evidence.get('navigation_observed') is True and type(target) is int and target > 0)
+                  and evidence.get('navigation_observed') is True and type(target) is int and target > 0
+                  and target not in self._closed_pages)
         status = ('Opened' if opened else 'Canceled' if self._stop.is_set() else
                   'Needs attention' if data.get('outcome') in {'Opened', 'Needs attention'} else 'Failed')
         return replace(current, status=status, waiting_for_user=False, diagnostic=diagnostic,
@@ -261,10 +290,11 @@ class LoginCoordinator:
                         **authentication, 'task_id': self._carsi.task_id,
                     })
                 result = pending.result()
-                saved.verify()
+                saved.verify(())
                 portal_page = result.get('portal_page_id')
-                success = type(portal_page) is int and portal_page > 0 and result.get('outcome') == 'Opened'
                 with self._mutex:
+                    success = (type(portal_page) is int and portal_page > 0 and result.get('outcome') == 'Opened'
+                               and portal_page not in self._closed_pages)
                     self._carsi = replace(self._carsi, status='Opened' if success else
                         'Canceled' if self._stop.is_set() else 'Failed', waiting_for_user=False,
                         page_id=portal_page if success else self._carsi.page_id,
@@ -294,7 +324,7 @@ class LoginCoordinator:
 
             eligible = (service for service in services if service.access_method == 'carsi' or manual_service_id is not None)
             for service, future in bounded_dispatch(eligible, key=lambda service: service.id, start=start,
-                    limit=concurrency, group_limit=1, stopped=lambda: self._stop.is_set() or phase == 'failed'):
+                    limit=concurrency, group_limit=1, stopped=lambda: self._stop.is_set()):
                 try:
                     data = future.result()
                 except ElectronDisconnected:
@@ -302,10 +332,9 @@ class LoginCoordinator:
                 except (OSError, RuntimeError, ValueError):
                     data = {'reason': 'failed'}
                 try:
-                    saved.verify()
+                    saved.verify((service.id,))
                 except (OSError, RuntimeError, ValueError):
                     phase = 'failed'
-                if phase == 'failed':
                     data = {'reason': 'configuration_changed', 'recovery': data.get('recovery')}
                 with self._mutex:
                     self._results[service.id] = self._settle_service(self._results[service.id], data)
@@ -346,7 +375,7 @@ class LoginCoordinator:
             if not self.running or self._workflow_id != workflow_id:
                 return False
             self._stop.set()
-            self.bridge.cancel_current()
+            self.bridge.cancel_workflow(workflow_id)
             return True
 
     def shutdown(self):
