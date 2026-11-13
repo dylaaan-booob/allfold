@@ -115,7 +115,12 @@ fixtures with temporary profiles and controlled local responses, public Bridge
 queue/cancel tests, and the real Pydoll/CDP target fixture. The latter also connects
 the production Main dispatcher to the real Python Bridge through a fixture-only
 framed transport; WebSocket multiplex/settlement has separate Bridge tests.
-These prove isolated mechanisms, not live Cloudflare/CARSI/WoS compatibility.
+These fixtures prove isolated mechanisms. Scoped live acceptance additionally
+completed fresh CARSI Login with user QR authentication, Oxford/WoS preparation,
+one 28-record native WoS export, one Cover Search and cancellation/restart in a
+test copy. This is sample-specific compatibility evidence. No live Cloudflare,
+hCaptcha or Imperva challenge, or separate MFA step, was observed; their live completion remains
+unverified. See [WF03 status](workflow-refactor-tasks.md#wf03-document-access).
 
 WF03 removes full-page/remoteTranslate-derived serialization, translation-only
 frame enumeration, cookie/observer operations and unused Import-only attachment

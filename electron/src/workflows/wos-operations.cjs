@@ -233,6 +233,7 @@ async function wosExportWithinDeadline(browser,data,{signal,progress},deadline) 
   await step(browser,tab,'configure',{first:data.first,last:data.last},signal,progress,10000,deadline);
   const token=randomBytes(16).toString('hex');
   await step(browser,tab,'arm',{token},signal,progress,10000,deadline);
+  doc=tab.wosDocument;
   let item=null,terminal=null,ambiguous=false,finished=false;
   const done=new Promise(resolve=>terminal=resolve);
   const listener=(_event,download,source)=>{
@@ -282,8 +283,9 @@ async function wosExportWithinDeadline(browser,data,{signal,progress},deadline) 
     clearTimeout(timer);signal.removeEventListener('abort',cancel);browser.partition.removeListener('will-download',listener);
     if(item && !finished){item.cancel();await done;}
     // Cleanup is scoped to the same document; never mutate a replacement page.
-    if(browser.documentCurrent(doc) && !tab.view.webContents.isLoadingMainFrame())
-      await page(browser,doc,'cleanup',{token},undefined,Date.now()+3000).catch(()=>{});
+    const cleanupDocument=tab.wosDocument;
+    if(sameResultsDocument(doc,cleanupDocument) && browser.documentCurrent(cleanupDocument) && !tab.view.webContents.isLoadingMainFrame())
+      await page(browser,cleanupDocument,'cleanup',{token},undefined,Date.now()+3000).catch(()=>{});
   }
 }
 module.exports={wosQuery,wosExport};

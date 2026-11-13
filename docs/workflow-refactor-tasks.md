@@ -8,7 +8,7 @@ it does not authorize later tasks.
 | --- | --- | --- | --- |
 | WF01 | SQLite Paper repository, reliable identity, short transactional increments | New schema/identity/increment contracts; retain active old-path tests | Merged in PR #77 at `70bcefd69850eeb1de22ebc0fb6e00bfd653a41c`; production adoption is WF02 |
 | WF02 | Switch all production Paper readers/writers to SQLite; local recycle bin; retire Keep/Import and active Enrich | Paper MD/Inbox.base, Keep/Import and active Enrich interfaces, tests/docs | Merged in PR #83 at `90cf98e50aba0b8fc333fd84f8409cb5d8a8e47c` |
-| WF03 | Independent Document identity, lightweight page checks, Cloudflare main path | Translator identity coupling, full-snapshot assumptions, page-access docs | Implemented on the WF03 feature branch; isolated fixture evidence below; not merged |
+| WF03 | Independent Document identity, lightweight page checks, Cloudflare main path | Translator identity coupling, full-snapshot assumptions, page-access docs | Implemented in PR #85; scoped live acceptance and fixture evidence below; not merged |
 | WF04 | Shared Session, page limits, precise cancellation, authorization generations | Global owner, indiscriminate cancellation, duplicate listeners, broad invalidation assertions | Not started |
 | WF05 | Workspace background registry, dynamic scheduling, branch state, independent resource ownership | One-shot queues, early release, collection terminal states/retries | Not started |
 | WF06 | Date/Abstract extraction and retained API/Preprint capabilities | Old date columns, abstract overwrite, author/ordinary-completion assertions/docs | Not started |
@@ -93,8 +93,25 @@ and Pydoll/CDP exact targets. Public Bridge tests cover multiplexing, queue expi
 precise cancellation, actual cleanup/slot release and shutdown/disconnect. Covers
 and WoS Export share request deadlines, preserving native DownloadItem terminal
 ownership and the eight-field export contract. Latest PR checks/review determine
-final validation; this branch is not merged. Real CARSI/Cloudflare/WoS acceptance
-remains manual and unverified; no account, real Workspace or Zotero data is used.
+final validation; PR #85 is not merged.
+
+Scoped live acceptance on 2026-11-13 used a separate application copy, test
+configuration, isolated Workspace/cover directory and a fresh browser profile.
+The same initial CARSI Login completed after the user's QR authentication;
+Oxford and WoS preparation both opened. One WoS batch returned/exported/accepted
+28 of 28 records and the Run completed with 28 new test Papers. Cover Search
+saved one cover. Cancellation during a real WoS wait ended the task and a later
+Run started successfully. Manual Service was not configured and was skipped.
+No Cloudflare/hCaptcha/Imperva challenge or separate MFA step was observed in those accepted paths;
+real challenge completion remains unverified. Production Workspace, Zotero and
+existing configuration/scopes were preserved.
+
+Acceptance exposed an auth observation superseded by a redirect and a WoS export
+overlay mistaken for Document replacement. The fixes discard stale auth facts and
+refresh only the known WoS overlay binding within the same native Document and
+result identity. Negative/cancellation/terminal regressions remain. A native
+review also found stale-binding observer cleanup after a pre-dispatch export
+failure; focused regression now covers cleanup and a subsequent retry.
 
 Full serialization/translation-only enumeration and unused Import-only attachment
 capture/bypass/response-cancel helpers are removed locally. WF04 retains shared

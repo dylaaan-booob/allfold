@@ -87,7 +87,7 @@ function fixture(t,{attributable=true,hold=false,challenge=false,domError=null,q
   t.after(()=>fs.rmSync(root,{force:true,recursive:true}));
   const filename=path.join(root,'allfold-wos','a'.repeat(32),'b'.repeat(32)+'.txt');
   fs.mkdirSync(path.dirname(filename),{recursive:true});
-  const partition=new EventEmitter(),controller=new AbortController(),ops=[];
+  const partition=new EventEmitter(),controller=new AbortController(),ops=[],armedTokens=new Set();
   const doc={pageId:71,processId:1,frameToken:'native-frame',documentId:'native-document',navigationGeneration:0,url:'https://www.webofscience.com/wos/woscc/summary/test',status:200,};
   const authentication=query?exportAuthentication():null;
   if(query)doc.url='https://www.webofscience.com/wos/woscc/advanced-search';
@@ -112,6 +112,8 @@ function fixture(t,{attributable=true,hold=false,challenge=false,domError=null,q
     if(op==='exportMenu' && !exportMenuReady)return {error:'control_not_unique'};
     if(op==='plainText'){dialogOpen=true;authentication?.open(verification);if(overlayRouting){currentURL='https://www.webofscience.com/wos/woscc/summary/test(overlay:export/exp)';generation++;}}
     if(op==='verification')return {ready:!challengeActive};
+    if(op==='arm'){if(armedTokens.size)return {error:'download_observer_busy'};armedTokens.add(args.token);}
+    if(op==='cleanup')armedTokens.delete(args.token);
     if(op==='export' && domError)return {error:domError};
     if(op==='dialog')return {ready:dialogOpen,limit:batchLimit};
     if(op==='verifyCustom')return {verified:true,fields:customFields};
@@ -160,7 +162,7 @@ function fixture(t,{attributable=true,hold=false,challenge=false,domError=null,q
         }}:
       hostRequire(name)});
   vm.runInContext(fs.readFileSync(path.join(__dirname,'../src/workflows/wos-operations.cjs'),'utf8'),context);
-  return {browser,controller,item,ops,ready,settle:()=>settle(),
+  return {browser,controller,item,ops,armedTokens,ready,settle:()=>settle(),
     runQuery:(data={})=>context.module.exports.wosQuery(browser,{...preparedIdentity,page_id:71,query:'fixture query',...data},
       {signal:controller.signal,progress:value=>progress.push(value)}),
     progress,run:(data={})=>context.module.exports.wosExport(browser,{...preparedIdentity,page_id:71,download_root:root,filename,first:1,last:1,...data},
@@ -305,4 +307,14 @@ for(const change of ['replaceAfterExport','otherResultsAfterExport'])test(`WoS e
   const f=fixture(t,{overlayRouting:true,[change]:true});
   await assert.rejects(f.run(),/document_changed/);
   assert.equal(f.browser.partition.listenerCount('will-download'),0);
+});
+
+test('a failed export after opening its overlay cleans its own armed observer',async t=>{
+  const f=fixture(t,{overlayRouting:true,dialogInitiallyClosed:true,domError:'control_disabled'});
+  await assert.rejects(f.run(),/control_disabled/);
+  assert.equal(f.ops.includes('arm'),true);
+  assert.equal(f.armedTokens.size,0);
+  assert.equal(f.browser.partition.listenerCount('will-download'),0);
+  await assert.rejects(f.run(),/control_disabled/,'retry reaches the control, not a leaked download observer');
+  assert.equal(f.armedTokens.size,0);
 });
