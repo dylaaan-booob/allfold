@@ -226,6 +226,14 @@ captured Workspace/database eligibility. Run snapshots/logs use repository UUIDs
 not temporary Provider IDs or Markdown paths. Current Completion stays until WF08;
 Run does not register background collection completion.
 
+WF06's internal necessary-query service has a separate request planner. Ordinary
+abstract, author and event-date gaps do not create requests. It consumes verified
+capability-labelled facts, resolves explicit identity/Preprint relationships and
+queries known native version families with execution-owned clients. Formal
+increments and independent Preprint proof are separate; a new `first_public_at`
+is offered only after all applicable relationship/native work and every known
+family settle successfully. It does not wrap the current Completion pipeline.
+
 The Info preprint lookup coordinator binds to one saved Paper and verifies both
 native bioRxiv/medRxiv publication and version responses. It shares Run/workflow
 admission without browser authority. Network work holds no Workspace write
