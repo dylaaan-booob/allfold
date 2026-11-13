@@ -403,6 +403,81 @@ const operations={
     guard();
     return {metadata:{dates,abstract},diagnostics:[...diagnostics]};
   },
+  pdf(readerKind,knownState) {
+    const diagnostics=new Set(),candidates=[],identifiers=[],seen=new Set(),landing_url=location.href;
+    const host=location.hostname.toLowerCase(),path=location.pathname,end=Date.now()+2000;
+    const entries=[
+      ['nature','R037',/(^|\.)nature\.com$/],['bmc','R038',/(^|\.)biomedcentral\.com$/],['rsc','R040',/^pubs\.rsc\.org$/],
+      ['plos','R041',/^journals\.plos\.org$/],['mdpi','R042',/(^|\.)mdpi\.com$/],['copernicus','R043',/(^|\.)copernicus\.org$/],
+      ['acs','R044',/^pubs\.acs\.org$/],['aip','R045',/^pubs\.aip\.org$/],['jama','R046',/^jamanetwork\.com$/],
+      ['rup','R047',/(^|\.)rupress\.org$/],['ash','R048',/(^|\.)ashpublications\.org$/],['arvo','R049',/(^|\.)arvojournals\.org$/],
+      ['geoscienceworld','R050',/^pubs\.geoscienceworld\.org$/],['cambridge','R051',/(^|\.)cambridge\.org$/],['highwire','R052',/(^|\.)bmj\.com$/],
+      ['optica','R053',/^(?:opg\.optica\.org|(?:www\.)?osapublishing\.org)$/],['degruyter','R054',/^(?:www\.)?degruyterbrill\.com$/],
+      ['emerald','R055',/^(?:www\.)?emerald\.com$/],['brill','R056',/(^|\.)brill\.com$/],['elife','R057',/(^|\.)elifesciences\.org$/],
+      ['thieme','R058',/(^|\.)thieme-connect\.(?:com|de)$/],['microbiology','R059',/(^|\.)microbiologyresearch\.org$/],
+      ['lww','R060',/^(?:pdfs\.)?journals\.lww\.com$/],['siam','R061',/^epubs\.siam\.org$/],
+      ['sciencedirect','R024',/^(?:www\.)?sciencedirect\.com$/],['ieee','R025',/^ieeexplore\.ieee\.org$/],
+      ['oup','R020',/^academic\.oup\.com$/],['atypon','R039',/^(?:onlinelibrary\.wiley\.com|journals\.sagepub\.com|www\.tandfonline\.com|www\.annualreviews\.org|pubs\.aiaa\.org|www\.liebertpub\.com|www\.worldscientific\.com)$/],
+    ];
+    const [platform,rule_id]=entries.find(item=>item[2].test(host)) || ['generic','GENERIC'];
+    const doiValues=[...document.head?.querySelectorAll('meta[content]') || []].filter(node=>/^(?:citation_doi|prism.doi|dc.identifier.doi)$/i.test(node.getAttribute('name') || node.getAttribute('property') || '')).map(node=>node.getAttribute('content').replace(/^(?:https?:\/\/(?:dx\.)?doi\.org\/|doi:\s*)/i,'').toLowerCase());
+    const decode=value=>{try{return decodeURI(value);}catch{return value;}};
+    const pathDoi=decode(path).match(/\/doi\/(?:abs\/|full\/)?(10\.\d{4,9}\/[^\s]+)$/)?.[1]?.toLowerCase();
+    const targetDoi=doiValues.length===1?doiValues[0]:pathDoi;
+    const sameArticle=value=>{const link=url(value);if(!link)return false;const doi=decode(new URL(link).pathname).match(/\/doi\/(?:pdf|epdf|pdfplus)\/(10\.\d{4,9}\/[^\s]+)$/)?.[1]?.toLowerCase();return !doi || !!targetDoi && doi===targetDoi;};
+    const type=[...document.head?.querySelectorAll('meta[content]') || []].filter(node=>/^(?:citation_type|dc.type)$/i.test(node.getAttribute('name') || node.getAttribute('property') || '')).map(node=>node.getAttribute('content').toLowerCase()).join(' ');
+    const unsupported=/book|chapter|supplement/i.test(type) || /\/(?:chapter|chapter-abstract|books|book)\//i.test(path);
+    const content_type=unsupported?'unknown':/conference|proceeding/i.test(type)?'conference-paper':/journal|article/i.test(type)?'journal-article':'unknown';
+    const guard=()=>{if(Date.now()>end)throw Error('pdf_budget_exceeded');};
+    const url=value=>{if(typeof value!=='string'||!value.trim())return null;if(value.length>4096)throw Error('pdf_budget_exceeded');
+      try{if(/[\s\x00-\x1f\x7f\\]/.test(value))return null;const out=new URL(value,landing_url),hostname=out.hostname.toLowerCase().replace(/\.$/,'');
+        if(!['http:','https:'].includes(out.protocol)||out.username||out.password||!hostname.includes('.')||/(?:^|\.)(?:localhost|local|internal|invalid|test|corp|lan|home|intranet)$/.test(hostname))return null;
+        if(/^\d+\.\d+\.\d+\.\d+$/.test(hostname)||hostname.includes(':'))return null;return out.href;}catch{return null;}};
+    const add=(value,stage='P4',extra={})=>{guard();const resolved=url(value);if(!resolved||seen.has(resolved))return;
+      if(candidates.length>=32)throw Error('pdf_budget_exceeded');seen.add(resolved);candidates.push({stage,rule_id,url:resolved,...extra});};
+    const excluded=node=>!!node.closest('nav,footer,#references,.references,[role="doc-bibliography"],.related-articles,.recommended-articles,.related,.recommendations,[role="doc-endnotes"],[data-related],[hidden],[aria-hidden="true"]');
+    const main=document.querySelector('article') || document.body;
+    const explicit=(selector,attribute='href',extra={})=>{for(const node of document.querySelectorAll(selector)){guard();if(!excluded(node))add(node.getAttribute(attribute),'P4',extra);}};
+    const addId=(kind,value)=>{if(typeof value==='string' && /^[A-Za-z0-9_.:/-]{1,256}$/.test(value) && !identifiers.some(item=>item.kind===kind&&item.value===value))identifiers.push({kind,value,rule_id});};
+    let status='complete';
+    try {
+      if(knownState==='__allfold_pdf_overflow__')throw Error('pdf_budget_exceeded');
+      if(!readerKind && !unsupported) {
+        for(const name of ['citation_pdf_url','fulltext_pdf_url'])for(const meta of document.head?.querySelectorAll('meta[content]') || [])
+          if((meta.getAttribute('name') || meta.getAttribute('property') || '').toLowerCase()===name)add(meta.getAttribute('content'),'P3',{field:name});
+        if(['acs','aip','jama','rup','ash','arvo','geoscienceworld','oup'].includes(platform))explicit('a.article-pdfLink[href]');
+        if(platform==='jama')explicit('a#pdf-link[data-article-url]','data-article-url');
+        if(platform==='nature')explicit('a[data-track-action="download pdf"][href]');
+        if(platform==='degruyter')explicit('a.downloadPdf[href]');
+        if(platform==='emerald'){explicit('a.intent_pdf_link[href]');if(/\/full\/pdf$/.test(path))add(landing_url);}
+        if(platform==='optica')explicit('a#link-pdf[href]');
+        if(platform==='elife')for(const node of document.querySelectorAll('.article-download-list a[href]'))if(/\bpdf\b/i.test(node.textContent+' '+node.getAttribute('title')))add(node.getAttribute('href'));
+        if(platform==='microbiology')explicit('.download-pdf form.ft-download-content__form--pdf[action]','action',{action:'refresh_form'});
+        if(['atypon','siam'].includes(platform))for(const node of document.querySelectorAll('a[href]')){const target=url(node.getAttribute('href'));if(target && new URL(target).hostname===host && /\/doi\/(?:pdf|epdf|pdfplus)\//.test(new URL(target).pathname) && targetDoi && sameArticle(target) && !excluded(node))add(target);}
+        if(['acs','oup'].includes(platform))for(const node of document.querySelectorAll('a[href*="/Citation/Download"]')){const target=new URL(node.getAttribute('href'),landing_url);if(target.hostname===host){addId('resource_id',target.searchParams.get('resourceId'));addId('resource_type',target.searchParams.get('resourceType'));}}
+        if(platform==='sciencedirect'){const pii=path.match(/\/pii\/([SB][0-9]{7}[0-9X][0-9]{7}[0-9X])(?:\/|$)/i)?.[1];if(pii)addId('pii',pii);}
+        if(platform==='ieee')addId('article_number',new URL(landing_url).searchParams.get('arnumber') || path.match(/\/document\/(\d+)/)?.[1]);
+        if(platform==='lww')for(const node of document.querySelectorAll('[onclick*="PDFDownloadInit"]')){const match=node.getAttribute('onclick').match(/PDFDownloadInit\(\s*['"]([0-9]{8}-[0-9]{9}-[0-9]{5})['"]/);if(match)addId('an',match[1]);}
+        // Generic entrances need the current article region and a single decidable main PDF.
+        const generic=[];
+        for(const node of main?.querySelectorAll('a[href]') || []) {guard();if(excluded(node))continue;const text=(node.textContent+' '+(node.getAttribute('title') || '')).replace(/\s+/g,' ').trim();
+          if(/supplement|supporting|appendix|whole issue|entire issue|issue pdf|other article/i.test(text+' '+node.getAttribute('href')) || !sameArticle(node.getAttribute('href')))continue;
+          if((/^(?:download\s+)?(?:full[ -]?text\s+|article\s+)?pdf(?:\s+download)?$/i.test(text)||node.getAttribute('type')==='application/pdf') && url(node.getAttribute('href')))generic.push(node.getAttribute('href'));}
+        const unique=[...new Set(generic.map(url))];if(unique.length===1)add(unique[0],'P4',{rule_id:'GENERIC'});
+      }
+      if(!unsupported && platform==='sciencedirect' && typeof knownState==='string')add(knownState,'P4',{reader_kind:'sciencedirect'});
+      if(!unsupported && platform==='lww' && typeof knownState==='string')add(knownState,'P4',{reader_kind:'lww',referer:landing_url});
+      if(readerKind==='sciencedirect') {
+        explicit('#redirect-message a[href]');explicit('.PdfEmbed > object[data]','data');
+        for(const meta of document.head?.querySelectorAll('meta[http-equiv][content]') || [])if(meta.getAttribute('http-equiv').toLowerCase()==='refresh')add(meta.getAttribute('content').match(/^\s*\d+(?:\.\d+)?\s*;\s*url\s*=\s*["']?([^"']+)["']?\s*$/i)?.[1]);
+      }
+      if(readerKind==='ieee') {explicit('frame[src],iframe[src]','src',{reader_kind:'ieee'});for(const meta of document.head?.querySelectorAll('meta[http-equiv][content]') || [])if(meta.getAttribute('http-equiv').toLowerCase()==='refresh')add(meta.getAttribute('content').match(/;\s*url\s*=\s*["']?([^"']+)/i)?.[1]);}
+      if(readerKind==='optica'){explicit('frame:not(:first-of-type)[src]','src');add(new URL(landing_url).searchParams.get('gotourl'));}
+      if(knownState===false)throw Error('pdf_parse_failed');
+      if(JSON.stringify({identifiers,candidates}).length>60000){candidates.length=0;identifiers.length=0;throw Error('pdf_budget_exceeded');}
+    }catch(error){status=candidates.length||identifiers.length?'partial':'failed';diagnostics.add(error.message==='pdf_budget_exceeded'?'pdf_budget_exceeded':'pdf_parse_failed');}
+    return {status,landing_url,observed_at:new Date().toISOString(),platform,content_type,identifiers,candidates,diagnostics:[...diagnostics]};
+  },
   article() {
     const keys=new Set(['citation_doi','bepress_citation_doi','prism.doi','dc.identifier','dc.identifier.doi','dcterms.identifier']);
     const values=[];let limited=false;
@@ -426,7 +501,7 @@ const operations={
 };
 ipcRenderer.on('document:operation',async(_event,{id,action,expectedDocumentId,expectedURL,args})=>{
   if(!Object.hasOwn(operations,action) || !args || typeof args!=='object' || Array.isArray(args)
-    || (action==='extract'?Object.keys(args).length!==1 || typeof args.wantAbstract!=='boolean':Object.keys(args).length!==0)) {
+    || (action==='extract'?Object.keys(args).length!==1 || typeof args.wantAbstract!=='boolean':action==='pdf'?Object.keys(args).length!==1 || ![null,'sciencedirect','ieee','optica','lww'].includes(args.readerKind):Object.keys(args).length!==0)) {
     ipcRenderer.send('document:result',{id,error:'document_operation_failed'});return;
   }
   const url=location.href;
@@ -434,11 +509,17 @@ ipcRenderer.on('document:operation',async(_event,{id,action,expectedDocumentId,e
     ipcRenderer.send('document:result',{id,error:'document_changed'});return;
   }
   try {
+    let knownState=null;
+    if(action==='pdf') {
+      const host=location.hostname;
+      const code=/^(?:www\.)?sciencedirect\.com$/.test(host)?'(()=>{try{const v=typeof article!=="undefined"?article?.pdfDownload?.urlMetadata:null;return typeof v==="string"?(v.length<=4096?v:"__allfold_pdf_overflow__"):null;}catch{return false;}})()':/^(?:pdfs\.)?journals\.lww\.com$/.test(host)?'(()=>{try{const v=typeof pdfDownloadDetails!=="undefined"?pdfDownloadDetails?.pdfUrl:null;return typeof v==="string"?(v.length<=4096?v:"__allfold_pdf_overflow__"):null;}catch{return false;}})()':null;
+      if(code)try{knownState=await webFrame.executeJavaScript(code);}catch{knownState=false;}
+    }
     const subject='('+documentSubject.toString()+')()';
     const source=name=>'('+operations[name].toString().replace(/^\w+\(/,'function(')+')()';
     // Access and article facts are observed in one synchronous DOM turn.
     const code=action==='article'?'({access:'+source('access')+',article:{...'+source('article')+',subject:'+subject+'}})'
-      :action==='extract'?'({...('+operations.extract.toString().replace(/^\w+\(/,'function(')+')('+JSON.stringify(args.wantAbstract)+'),subject:'+subject+'})':source(action);
+      :action==='extract'?'({...('+operations.extract.toString().replace(/^\w+\(/,'function(')+')('+JSON.stringify(args.wantAbstract)+'),subject:'+subject+'})':action==='pdf'?'({clues:('+operations.pdf.toString().replace(/^\w+\(/,'function(')+')('+JSON.stringify(args.readerKind)+','+JSON.stringify(knownState)+'),subject:'+subject+'})':source(action);
     const result=await webFrame.executeJavaScriptInIsolatedWorld(999,[{code}]);
     if(location.href!==url)throw Error('document_changed');
     ipcRenderer.send('document:result',{id,result,documentId,url});

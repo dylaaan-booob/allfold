@@ -205,7 +205,9 @@ app.whenReady().then(async()=>{
     assert.deepEqual(noAbstractFault.metadata,{dates:[{value:'2020-05-02',precision:'day'}],abstract:null});
     assert.deepEqual(noAbstractFault.extraction_diagnostics,[],'false avoids even the failing abstract scanner');
     await assert.rejects(changedRead('article',tab=>tab.view.webContents.executeJavaScriptInIsolatedWorld(999,[{code:'Document.prototype.querySelectorAll=()=>{throw Error("whole read fixture fault")};undefined'}])),/document_operation_failed/);
-    await assert.rejects(changedRead('article',tab=>tab.view.webContents.executeJavaScriptInIsolatedWorld(999,[{code:'Date.now=(()=>{let n=0;return ()=>n++?6000:0;})();undefined'}])),/document_operation_failed/,'whole scan budget exhaustion is not empty success');
+    const scanFailure=await changedRead('article',tab=>tab.view.webContents.executeJavaScriptInIsolatedWorld(999,[{code:'Date.now=(()=>{let n=0;return ()=>n++?6000:0;})();undefined'}]));
+    assert.equal(scanFailure.metadata,null);assert.equal(scanFailure.metadata_status,'failed');
+    assert.deepEqual(scanFailure.extraction_diagnostics,['metadata_extraction_failed']);assert.equal(scanFailure.pdf_clues.status,'complete','independent PDF read survives a failed Date/Abstract scanner');
     const empty=await extract(article(''),false);assert.deepEqual(empty.metadata,{dates:[],abstract:null});
     const publicPage=browser.createTab({present:false,user:true});await publicPage.view.webContents.loadURL(url);
     await extract(article('<p>2020-01-02</p>'),false);

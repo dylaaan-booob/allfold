@@ -12,8 +12,13 @@ from allfold.models import ExternalIds
 from allfold.persistence.paper_repository import PaperMetadata, PaperRepository
 
 
+def pdf_clues(**changes):
+    return dict(status='complete', landing_url='https://www.nature.com/articles/one',
+        observed_at='2026-11-13T01:02:03.000Z', platform='nature', content_type='journal-article',
+        identifiers=[], candidates=[], diagnostics=[]) | changes
+
 def envelope(*, abstract='Background\nA short result.', dates=None, diagnostics=()):
-    return {'outcome': 'retrieved', 'metadata': {'dates': dates if dates is not None else [
+    return {'outcome': 'retrieved', 'metadata_status': 'partial' if set(diagnostics) & {'abstract_candidate_failed', 'abstract_budget_exceeded'} else 'complete', 'pdf_clues': pdf_clues(), 'metadata': {'dates': dates if dates is not None else [
         {'value': '2020-05-02', 'precision': 'day'}], 'abstract': abstract},
         'extraction_diagnostics': list(diagnostics),
         'document': {'pageId': 2, 'processId': 5, 'frameToken': 'native-token',
@@ -176,7 +181,8 @@ def test_service_report_retains_bounded_native_annotations_and_partial_diagnosti
     report = validate_document_metadata(value)
     assert report.partial and report.diagnostics == ('abstract_budget_exceeded',)
     assert report.recovery == value['recovery'] and report.diagnostics_status == value['diagnostics_status']
-    assert report.delta.model_dump(exclude_defaults=True) == {'ordinary_dates': ('2020-05-02',)}
+    assert report.delta.ordinary_dates == ('2020-05-02',)
+    assert report.delta.discovery_facts[0].status == 'complete'
 
 
 @pytest.mark.parametrize('confirmed', [None, 'https://article.example/paper#route'])
@@ -260,3 +266,104 @@ def test_host_forwards_captured_service_binding_and_revokes_original_access(tmp_
             bridge.cleanup.set_result({'released': True})
         host.shutdown()
         host.join()
+
+
+def test_composite_document_saves_bounded_pdf_facts_once_under_original_attempt(tmp_path):
+    bridge = Bridge()
+    path, registry, task = start(tmp_path, bridge)
+    try:
+        assert bridge.started.wait(2)
+        value = envelope()
+        value['pdf_clues'] = pdf_clues(candidates=[{'stage': 'P3', 'rule_id': 'R037',
+            'field': 'citation_pdf_url', 'url': 'https://cdn.example/Paper.PDF?signature=temporary'}])
+        bridge.operation.set_result(value)
+        bridge.cleanup.set_result({'released': True})
+        paper = task.future.result(3)
+        assert paper.collection_status == 'completed'
+        facts, = paper.metadata.discovery_facts
+        assert facts.target_doi == '10.5555/formal'
+        assert facts.status == 'complete' and facts.landing_url == 'https://www.nature.com/articles/one'
+        assert facts.candidates[0].url is None
+        assert facts.candidates[0].refresh.landing_url == facts.landing_url
+        assert paper.collection.branches[0].last_sequence == 2
+    finally:
+        settle(registry, bridge)
+
+
+@pytest.mark.parametrize('failed', ['metadata', 'pdf'])
+def test_independent_document_failure_preserves_other_success(tmp_path, failed):
+    bridge = Bridge()
+    path, registry, task = start(tmp_path, bridge)
+    try:
+        assert bridge.started.wait(2)
+        value = envelope()
+        if failed == 'metadata':
+            value.update(metadata=None, metadata_status='failed', extraction_diagnostics=['metadata_extraction_failed'])
+            value['pdf_clues'] = pdf_clues(candidates=[{'stage': 'P4', 'rule_id': 'R037', 'url': 'https://cdn.example/main.pdf'}])
+        else:
+            value['pdf_clues'] = pdf_clues(status='failed', diagnostics=['pdf_parse_failed'])
+        bridge.operation.set_result(value)
+        bridge.cleanup.set_result({'released': True})
+        paper = task.future.result(3)
+        assert paper.collection_status == 'failed'
+        if failed == 'metadata':
+            assert paper.metadata.abstract is None and not paper.metadata.ordinary_dates
+            assert paper.metadata.discovery_facts[0].candidates[0].url == 'https://cdn.example/main.pdf'
+        else:
+            assert paper.metadata.abstract == 'Background\nA short result.'
+            assert paper.metadata.discovery_facts[0].status == 'failed'
+    finally:
+        settle(registry, bridge)
+
+
+def test_pdf_only_validator_keeps_transient_current_candidate_and_durable_refresh_separate():
+    from allfold.application.document_metadata import validate_document_pdf_clues
+    value = envelope()
+    del value['metadata']
+    del value['metadata_status']
+    del value['extraction_diagnostics']
+    value['pdf_clues'] = pdf_clues(candidates=[{'stage': 'P2', 'rule_id': 'R060',
+        'url': 'https://cdn.example/Case.PDF?signature=A%2FB&key=2', 'reader_kind': 'lww',
+        'referer': 'https://journals.lww.com/journal/_layouts/15/oaks.journals/downloadpdf.aspx?an=12345678-123456789-12345'}])
+    result = validate_document_pdf_clues(value, target_doi='10.5555/formal')
+    assert result.current_candidates[0].url == 'https://cdn.example/Case.PDF?signature=A%2FB&key=2'
+    assert result.current_candidates[0].referer.endswith('?an=12345678-123456789-12345')
+    assert result.facts.candidates[0].url is None
+    assert result.facts.candidates[0].refresh.kind == 'document-pdf'
+
+
+def test_form_is_persisted_as_refresh_action_without_mechanical_get_url():
+    from allfold.application.document_metadata import validate_document_pdf_clues
+    value = envelope()
+    value['pdf_clues'] = pdf_clues(candidates=[{'stage': 'P4', 'rule_id': 'R059',
+        'url': 'https://www.microbiologyresearch.org/content/one/pdf', 'action': 'refresh_form'}])
+    result = validate_document_pdf_clues(value)
+    candidate, = result.facts.candidates
+    assert candidate.url is None and candidate.action == 'refresh_form'
+    assert candidate.refresh.kind == 'document-pdf'
+    assert result.current_candidates[0].url == 'https://www.microbiologyresearch.org/content/one/pdf'
+
+
+@pytest.mark.parametrize('change', [
+    {'candidates': [{'stage': 'P4', 'rule_id': 'R037', 'url': 'http://127.0.0.1/private.pdf'}]},
+    {'candidates': [{'stage': 'P4', 'rule_id': 'R037', 'url': 'https://user:password@cdn.example/private.pdf'}]},
+    {'candidates': [{'stage': 'P4', 'rule_id': 'R037', 'url': 'https://cdn.example/main.pdf', 'body': 'secret'}]},
+    {'identifiers': [{'kind': 'pii', 'value': 'secret', 'rule_id': 'R024', 'cookie': 'secret'}]},
+    {'status': 'failed'},
+    {'status': 'complete', 'diagnostics': ['pdf_parse_failed']},
+    {'diagnostics': ['raw page error']},
+])
+def test_invalid_pdf_contract_invalidates_composite_before_any_emit(tmp_path, change):
+    bridge = Bridge()
+    path, registry, task = start(tmp_path, bridge)
+    try:
+        assert bridge.started.wait(2)
+        value = envelope()
+        value['pdf_clues'] = pdf_clues(**change)
+        bridge.operation.set_result(value)
+        bridge.cleanup.set_result({'released': True})
+        paper = task.future.result(3)
+        assert paper.collection_status == 'failed'
+        assert paper.metadata.abstract is None and not paper.metadata.discovery_facts
+    finally:
+        settle(registry, bridge)
