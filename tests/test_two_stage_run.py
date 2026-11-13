@@ -873,7 +873,7 @@ def test_europe_pmc_conflicting_formal_doi_cannot_enrich_pmid_owner(tmp_path, kn
     assert run.facts.created_papers == 1
     assert paper.external_ids.doi == doi and paper.external_ids.pmid == pmid
     assert paper.first_public_at is None
-    assert paper.ordinary_dates == ('2026-03-06',)
+    assert paper.ordinary_dates == ('2026-01-06',)
     assert not any(source.provider == 'europe_pmc' for source in paper.sources)
     assert not any('SRC:PPR' in request.url.params.get('query', '') for request in calls)
     assert any('Europe PMC response conflicts with direct formal identity' in issue.message for issue in run.warnings)

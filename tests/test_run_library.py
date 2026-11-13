@@ -118,3 +118,29 @@ def test_run_preserves_formal_fields_future_dates_and_full_preprint_family_proof
     with PaperRepository.open(workspace) as repository:
         assert repository.get(saved.id) == saved
         assert repository.match(ExternalIds(europe_pmc='PPR:123')) is None
+
+
+def test_library_open_failure_releases_run_admission_and_valid_retry_works(tmp_path, monkeypatch):
+    import threading
+    from allfold.application.coordinators.run_coordinator import RunCoordinator, StartOutcome
+    from allfold.application.integrated_run import run_integrated as production_run
+
+    path = configured(tmp_path)
+    workspace = tmp_path / 'workspace'
+    workspace.mkdir()
+    (workspace / 'papers.sqlite').write_bytes(b'corrupt isolated database')
+    slot = threading.Lock()
+    coordinator = RunCoordinator(path, run_slot=slot)
+    assert coordinator.start().outcome is StartOutcome.START_FAILED
+    assert not slot.locked()
+    assert coordinator.snapshot().unexpected_error.category == 'LibraryCorruptError'
+    (workspace / 'papers.sqlite').rename(workspace / 'corrupt.fixture')
+    with PaperRepository.create(workspace):
+        pass
+    def isolated_run(config_path, **kwargs):
+        kwargs.pop('provider')
+        return production_run(config_path, client_factory=client_for(()), completion_factory=EmptyCompletion, **kwargs)
+    monkeypatch.setattr('allfold.application.coordinators.run_coordinator.run_monitor', isolated_run)
+    assert coordinator.start().outcome is StartOutcome.STARTED
+    coordinator.join()
+    assert not slot.locked() and coordinator.snapshot().unexpected_error is None
