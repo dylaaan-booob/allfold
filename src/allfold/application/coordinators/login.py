@@ -1,5 +1,6 @@
 """Process-local CARSI login and independent saved-Service preparation."""
 from dataclasses import dataclass, replace
+from contextlib import closing
 from pathlib import Path
 from urllib.parse import urlencode
 import threading
@@ -58,6 +59,7 @@ class LoginCoordinator:
         self._worker = None
         self._stop = threading.Event()
         self._auth_key = None
+        self._scope_id = None
         self._credential_epoch = uuid4().hex
         self._workflow_id = None
         self._confirmation_batch: tuple[str, dict[str, str]] | None = None
@@ -65,6 +67,7 @@ class LoginCoordinator:
         self._keys = {}
         self._phase = 'idle'
         self._carsi = ServicePreparation()
+        self._closed_pages = set()
 
     @property
     def running(self):
@@ -119,7 +122,7 @@ class LoginCoordinator:
                 raise ValueError('The Login results changed or are unavailable. Refresh Login.')
             if not self.bridge.connected:
                 raise ValueError('Browser runtime unavailable')
-            owner = self.browser_lock.acquire('login')
+            owner = self.browser_lock.acquire('login', scopes={saved.service_scope(service.id) for service in saved.services})
             if owner is None:
                 raise ValueError('Another Browser workflow is active')
             try:
@@ -136,6 +139,28 @@ class LoginCoordinator:
                 return self.snapshot(saved)
             finally:
                 self.browser_lock.release(owner)
+
+    def access_invalidation(self, scope_id, service_ids, authentication_changed=False):
+        with self._mutex:
+            if self._scope_id != scope_id:
+                return None
+            keys = {service_id: key for service_id, key in self._keys.items() if service_id in service_ids}
+            authentication = self._auth_key if authentication_changed else None
+            return {'scope_id': scope_id, 'preparation_keys': keys, 'authentication_key': authentication} if keys or authentication else None
+
+    def invalidate_pages(self, page_ids):
+        with self._mutex:
+            closed = set(page_ids)
+            if self.running:
+                self._closed_pages.update(closed)
+            if self._carsi.page_id in closed:
+                self._carsi = ServicePreparation()
+            for service_id, result in tuple(self._results.items()):
+                if result.page_id in closed:
+                    self._results[service_id] = replace(result, status='Needs attention', page_id=None,
+                        reason='target_closed', waiting_for_user=False, recovery_action=None,
+                        manually_confirmed=False)
+            self._confirmation_batch = None
 
     def invalidate_credentials(self):
         """Called under Browser admission after a confirmed native credential change."""
@@ -169,10 +194,11 @@ class LoginCoordinator:
         with self._mutex:
             if self.running:
                 raise ValueError('Login is already active')
-            owner = self.browser_lock.acquire('login')
+            owner = self.browser_lock.acquire('login', scopes={saved.service_scope(service.id) for service in services})
             if owner is None:
                 raise ValueError('Another Browser workflow is active')
             self._stop = threading.Event()
+            self._closed_pages.clear()
             self._workflow_id = uuid4().hex
             auth_key = saved.authentication_key(self._credential_epoch)
             if manual_service_id is None or self._auth_key != auth_key:
@@ -181,6 +207,7 @@ class LoginCoordinator:
                 self._confirmation_batch = None
                 self._carsi = ServicePreparation()
             self._auth_key = auth_key
+            self._scope_id = saved.scope_id
             self._phase = 'carsi' if needs_carsi else 'preparing'
             for service in services:
                 self._keys[service.id] = saved.preparation_key(service, self._credential_epoch)
@@ -204,6 +231,8 @@ class LoginCoordinator:
             if self._stop.is_set():
                 return
             page = data.get('page_id')
+            if type(page) is int and page in self._closed_pages:
+                return
             updated = replace(current, waiting_for_user=data.get('waiting_for_user') is True,
                 recovery_action=normalize_recovery_action(data.get('recovery_action')),
                 page_id=page if type(page) is int and page > 0 else current.page_id)
@@ -214,7 +243,9 @@ class LoginCoordinator:
 
     def _dispatch(self, owner, saved, action, data, service_id=None):
         self.browser_lock.require(owner)
-        saved.verify()
+        saved.verify((service_id,) if service_id is not None else ())
+        if data.get('portal_page_id') in self._closed_pages:
+            raise InterruptedError('Preparation Portal closed')
         recovery = {}
         if action == 'prepare_service':
             workflow = self._workflow_id
@@ -223,7 +254,7 @@ class LoginCoordinator:
 
             def verify_recovery():
                 self.browser_lock.require(owner)
-                saved.verify()
+                saved.verify((service_id,))
                 with self._mutex:
                     if (self._stop.is_set() or self._workflow_id != workflow or self._credential_epoch != epoch
                             or self._keys.get(service_id) != key):
@@ -232,6 +263,7 @@ class LoginCoordinator:
             recovery['verify_recovery'] = verify_recovery
         return self.bridge.execute(action, {
             **data, 'workflow_id': self._workflow_id, 'service_scope': saved.scope,
+            'authentication_key': self._auth_key,
             'service_id': service_id,
         }, lambda progress: self._progress(service_id, progress), **recovery)
 
@@ -239,14 +271,17 @@ class LoginCoordinator:
         evidence = data.get('evidence') or {}
         diagnostic = normalize_browser_diagnostic(data.get('diagnostic'))
         target = evidence.get('target_page_id')
+        target_closed = type(target) is int and target in self._closed_pages
         opened = (data.get('outcome') == 'Opened' and evidence.get('visit_action_observed') is True
-                  and evidence.get('navigation_observed') is True and type(target) is int and target > 0)
+                  and evidence.get('navigation_observed') is True and type(target) is int and target > 0
+                  and not target_closed)
         status = ('Opened' if opened else 'Canceled' if self._stop.is_set() else
                   'Needs attention' if data.get('outcome') in {'Opened', 'Needs attention'} else 'Failed')
         return replace(current, status=status, waiting_for_user=False, diagnostic=diagnostic,
             recovery_action=None, recovery=normalize_recovery(data.get('recovery')) or None,
-            page_id=target if opened else current.page_id,
+            page_id=target if opened else None,
             reason=('target_opened' if opened else diagnostic.get('code') if diagnostic else
+                    'target_closed' if data.get('outcome') == 'Opened' and target_closed else
                     'unverified_official_page' if data.get('outcome') == 'Opened' else data.get('reason', 'failed')))
 
     def _run(self, saved, services, authentication, owner, manual_service_id, concurrency):
@@ -261,13 +296,14 @@ class LoginCoordinator:
                         **authentication, 'task_id': self._carsi.task_id,
                     })
                 result = pending.result()
-                saved.verify()
+                saved.verify(())
                 portal_page = result.get('portal_page_id')
-                success = type(portal_page) is int and portal_page > 0 and result.get('outcome') == 'Opened'
                 with self._mutex:
+                    success = (type(portal_page) is int and portal_page > 0 and result.get('outcome') == 'Opened'
+                               and portal_page not in self._closed_pages)
                     self._carsi = replace(self._carsi, status='Opened' if success else
                         'Canceled' if self._stop.is_set() else 'Failed', waiting_for_user=False,
-                        page_id=portal_page if success else self._carsi.page_id,
+                        page_id=portal_page if success else None,
                         diagnostic=normalize_browser_diagnostic(result.get('diagnostic')), recovery_action=None,
                         recovery=normalize_recovery(result.get('recovery')) or None)
                 if not success:
@@ -293,52 +329,54 @@ class LoginCoordinator:
                     }, service.id)
 
             eligible = (service for service in services if service.access_method == 'carsi' or manual_service_id is not None)
-            for service, future in bounded_dispatch(eligible, key=lambda service: service.id, start=start,
-                    limit=concurrency, group_limit=1, stopped=lambda: self._stop.is_set() or phase == 'failed'):
-                try:
-                    data = future.result()
-                except ElectronDisconnected:
-                    data = {'reason': 'connection_lost'}
-                except (OSError, RuntimeError, ValueError):
-                    data = {'reason': 'failed'}
-                try:
-                    saved.verify()
-                except (OSError, RuntimeError, ValueError):
-                    phase = 'failed'
-                if phase == 'failed':
-                    data = {'reason': 'configuration_changed', 'recovery': data.get('recovery')}
-                with self._mutex:
-                    self._results[service.id] = self._settle_service(self._results[service.id], data)
+            with closing(bounded_dispatch(eligible, key=lambda service: service.id, start=start,
+                    limit=concurrency, group_limit=1, stopped=lambda: self._stop.is_set())) as results:
+                for service, future in results:
+                    try:
+                        data = future.result()
+                    except ElectronDisconnected:
+                        data = {'reason': 'connection_lost'}
+                    except (OSError, RuntimeError, ValueError):
+                        data = {'reason': 'failed'}
+                    try:
+                        saved.verify((service.id,))
+                    except (OSError, RuntimeError, ValueError):
+                        phase = 'failed'
+                        data = {'reason': 'configuration_changed', 'recovery': data.get('recovery')}
+                    with self._mutex:
+                        self._results[service.id] = self._settle_service(self._results[service.id], data)
         except ElectronDisconnected:
             phase = 'interrupted'
         except (OSError, RuntimeError, ValueError):
             phase = 'failed'
         finally:
-            with self._mutex:
-                stopped = self._stop.is_set()
-                self._phase = 'canceled' if stopped else phase
-                if manual_service_id is None and self._phase in {'completed', 'failed'}:
-                    self._confirmation_batch = self._workflow_id, self._keys.copy()
-                if self._carsi.status == 'Preparing':
-                    self._carsi = replace(self._carsi, status='Canceled' if stopped else 'Failed', waiting_for_user=False)
-                for service in services:
-                    current = self._results[service.id]
-                    if current.status in {'Not prepared', 'Preparing'}:
-                        self._results[service.id] = replace(current, status='Canceled' if stopped else 'Needs attention',
-                            reason='cancelled' if stopped else 'carsi_login_required', waiting_for_user=False, recovery_action=None)
-                counts = {status: sum(self._results[s.id].status == label for s in services)
-                          for status, label in [('opened','Opened'), ('needs_attention','Needs attention'), ('failed','Failed')]}
-                outcome = ('cancelled' if stopped else phase if phase != 'completed' else
-                    'partial' if counts['opened'] and (counts['failed'] or counts['needs_attention']) else
-                    'failed' if counts['failed'] else 'needs_attention' if counts['needs_attention'] else
-                    'opened' if counts['opened'] else 'no_effect')
-                observe(self.diagnostics, 'finish', self._workflow_id, outcome,
-                    statistics={'services': len(services), **counts},
-                    details={'recovery': self._carsi.recovery, 'results': [{'service_id': s.id,
-                        'outcome': self._results[s.id].status.lower().replace(' ', '_').replace('canceled', 'cancelled'),
-                        'reason': self._results[s.id].reason, 'diagnostic': self._results[s.id].diagnostic,
-                        'recovery': self._results[s.id].recovery}
-                        for s in services]})
+            try:
+                with self._mutex:
+                    stopped = self._stop.is_set()
+                    self._phase = 'canceled' if stopped else phase
+                    if manual_service_id is None and self._phase in {'completed', 'failed'}:
+                        self._confirmation_batch = self._workflow_id, self._keys.copy()
+                    if self._carsi.status == 'Preparing':
+                        self._carsi = replace(self._carsi, status='Canceled' if stopped else 'Failed', waiting_for_user=False)
+                    for service in services:
+                        current = self._results[service.id]
+                        if current.status in {'Not prepared', 'Preparing'}:
+                            self._results[service.id] = replace(current, status='Canceled' if stopped else 'Needs attention',
+                                reason='cancelled' if stopped else 'carsi_login_required', waiting_for_user=False, recovery_action=None)
+                    counts = {status: sum(self._results[s.id].status == label for s in services)
+                              for status, label in [('opened','Opened'), ('needs_attention','Needs attention'), ('failed','Failed')]}
+                    outcome = ('cancelled' if stopped else phase if phase != 'completed' else
+                        'partial' if counts['opened'] and (counts['failed'] or counts['needs_attention']) else
+                        'failed' if counts['failed'] else 'needs_attention' if counts['needs_attention'] else
+                        'opened' if counts['opened'] else 'no_effect')
+                    observe(self.diagnostics, 'finish', self._workflow_id, outcome,
+                        statistics={'services': len(services), **counts},
+                        details={'recovery': self._carsi.recovery, 'results': [{'service_id': s.id,
+                            'outcome': self._results[s.id].status.lower().replace(' ', '_').replace('canceled', 'cancelled'),
+                            'reason': self._results[s.id].reason, 'diagnostic': self._results[s.id].diagnostic,
+                            'recovery': self._results[s.id].recovery}
+                            for s in services]})
+            finally:
                 self.browser_lock.release(owner)
 
     def cancel(self, workflow_id):
@@ -346,7 +384,7 @@ class LoginCoordinator:
             if not self.running or self._workflow_id != workflow_id:
                 return False
             self._stop.set()
-            self.bridge.cancel_current()
+            self.bridge.cancel_workflow(workflow_id)
             return True
 
     def shutdown(self):

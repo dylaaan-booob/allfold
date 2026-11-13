@@ -48,7 +48,8 @@ def test_native_stage_reuses_parent_slot_and_retains_first_batch_after_later_fai
             calls.append(action)
             assert data['task_id'] == data['workflow_id'] == 'parent-run'
             future = Future()
-            if action == 'wos_query': value = dict(page_id=71,total=3 if invalid_batch=='duplicate_ut' else 2,batch_limit=2 if invalid_batch=='duplicate_ut' else 1)
+            if action == 'release_workflow_pages': value = {'ok': True}
+            elif action == 'wos_query': value = dict(page_id=71,total=3 if invalid_batch=='duplicate_ut' else 2,batch_limit=2 if invalid_batch=='duplicate_ut' else 1)
             elif data['first'] == 1:
                 rows=[record(doi='10.5555/safe',ut='WOS:1')]
                 if invalid_batch in {'count','duplicate_ut'}: rows.append(record(doi='10.5555/other',ut='WOS:1'))
@@ -264,7 +265,9 @@ def test_unified_wos_quarantines_conflicting_ut_before_creation(tmp_path,existin
         connected = True
         def execute(self, action, data, progress=None):
             future = Future()
-            if action == 'wos_query':
+            if action == 'release_workflow_pages':
+                value = {'ok': True}
+            elif action == 'wos_query':
                 value = dict(page_id=71,total=3,batch_limit=1 if split_batches else 500)
             else:
                 exports=([rows[2],rows[0],rows[1]][data['first']-1:data['last']] if split_batches else rows)

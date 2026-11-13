@@ -35,7 +35,7 @@ Main starts one Python process. The HTTP origin remains loopback-only on port 18
 | `electron/src/workflows/` | Login, Service preparation, Covers and WoS native page operations |
 | `electron/src/preload/`, `native-ui/` | Restricted capabilities and local native-window UI |
 
-Models, configuration definitions, identifiers and query primitives remain shared Python modules. Application code does not depend on Web adapters; its BrowserGateway describes the existing connected/execute/cancel interface. ElectronBridge adapts it to transport. Each Request ID owns its operation context, progress, cancellation and Solver replies, page claims and terminal result. BrowserTaskLock keeps workflow admission exclusive while a workflow dispatches multiple requests. Native operations settle before their Futures release ownership. Shutdown stops admission and drains Run, Preprint, WoS, Login and Covers before database teardown.
+Models, configuration definitions, identifiers and query primitives remain shared Python modules. Application code does not depend on Web adapters; its BrowserGateway exposes connected/execute and exact cancel_workflow/cancel_task interfaces. ElectronBridge adapts it to transport. Each Request ID owns its operation context, progress, cancellation and Solver replies, page claims and terminal result. BrowserTaskLock admits independent workflow owners together, refusing overlapping saved-Service scopes and exclusive credential/Reset controls. Login, Covers and WoS each retain one active coordinator state; shared admission does not create a task registry. Native operations settle before their Futures release ownership. WoS keeps its captured workflow/task loan across Query→Export gaps; a finally-issued release_workflow_pages maintenance request releases that same loan only after native settlement, including cancellation and input loss. Shutdown stops admission and drains Run, Preprint, WoS, Login and Covers before database teardown.
 
 Journal lookup and remote fallback belong to the application layer; persistence only reads the local Registry. WoS export parsing continues to reuse safe file-reading helpers.
 
@@ -47,8 +47,10 @@ Python snapshots saved Journals and Access Services for each invocation. The bri
 carries canonical configuration scope, configuration revision and User State
 revision alongside the saved Service ID. ISSN/eISSN matching assigns complete
 Papers to Journals and Services; source names do not confer membership. These
-snapshots are descriptive, not a second mapping authority. Prepare and WoS verify
-the original snapshot before further dispatch.
+snapshots are descriptive, not a second mapping authority. Prepare verifies the
+captured institution, credential epoch and selected saved Service records; unrelated
+configuration/User State revisions do not renew or revoke that authority. WoS
+retains its stricter foreground Run input snapshot and Query→Export binding.
 
 Login runs one CARSI institution flow. Each subsequent CARSI preparation opens its own resource Portal in the same Session. The saved Access Service ID and observed source and target pages establish provenance. Manual Services use explicit visits. Login keeps outcomes and target Page IDs in memory, bound to the saved Service and institution authority. After a settled batch with Services that need attention, one user confirmation marks the batch's unchanged saved Services available. Existing prepared targets are retained. Ordinary settings edits preserve a prepared target while the next task takes a fresh configuration and User State revision. Discover uses the prepared WoS target or opens the official query page in the shared Session after manual confirmation. Query and Export still validate the scoped Service, document and export path. API discovery remains independent of that prerequisite.
 
@@ -81,12 +83,20 @@ window within the original 10-minute native loading or Prepare deadline and a
 three-minute cap from the start of business recovery.
 
 The Browser Session shares active cooldowns by HTTP origin. The existing
-WebRequest listeners observe main-frame 429 responses and 503 responses with a
+WebRequest listeners observe main-frame and explicitly associated request 429 responses and 503 responses with a
 valid Retry-After. The default for a 429 without usable Retry-After is one second.
 An active cooldown can only extend. Allfold-initiated navigations and refreshes
 wait up to 30 seconds within their operation budget. Visit also checks the
 publisher origin when it is known from the saved entry or a prior attributable
 Visit. Chromium continues its redirects, authentication chain and page requests.
+
+[One Session event owner](browser-session.md) now installs the native hooks for
+BrowserRuntime, identity and WoS. Scoped handlers compose synchronously; task
+cleanup leaves the common entry and cooldown live. Controlled cover fetches use
+request-ID association, stripped private markers and the same origin gate.
+Downloads retain native source/frame/Document ownership and actual terminal
+promises rather than replaying captured URLs. Fixed Electron 45 fixtures record
+the supported original-response entries and source-lifetime limits there.
 
 ## History and diagnostics
 
@@ -104,7 +114,7 @@ Logs Reset. Reset coordinates the native writer, preserves existing Workspace
 safety checks and marks surviving history when Workspace is reset. See
 [logging](logging.md) for storage limits, field meanings and evidence boundaries.
 
-`bindTaskPage` and explicit `navigate(..., {tab})` control task targets. `select` presents a page in the main-window Browser pane; task navigation and WoS handoff do not select tabs. Background creation does not select even the first page, open Browser or focus a webpage. New task pages remain available for explicit manual login or inspection through the existing tabs. Service associations confer no document, task or institution-credential authority. Page/frame identity, task signals, navigation recovery and native-save settlement remain separate checks.
+`bindTaskPage` and explicit `navigate(..., {tab})` control task targets. `select` presents a page in the main-window Browser pane; task navigation and WoS handoff do not select tabs. Background creation does not select even the first page, open Browser or focus a webpage. Task pages remain available for explicit manual login or inspection until their owner finishes; only explicit bounded access contexts survive completion. Service associations confer no document, task or institution-credential authority. Page/frame identity, task signals, navigation recovery and native-save settlement remain separate checks.
 
 ## Configuration editing
 
@@ -113,11 +123,23 @@ Workflows, Journals and Settings. A shared scheduler serializes safe field patch
 responses acknowledge the submitted snapshot without replacing later edits.
 Server-side admission coordinates writes with task starts, retaining the existing
 Compare-and-Write and Workspace lock protections. Active tasks continue using
-their saved snapshots while edits remain Pending. A new task requires successful
+their captured inputs. Foreground Run/WoS and Preprint snapshot writers keep ordinary
+edits Pending until settlement; independent Browser owners allow unrelated input,
+Journal and Service edits. A change overlapping an executing Service waits for its
+owner to settle. Saved access changes invalidate captured old preparation/authentication
+keys and await their scoped native cleanup outside the configuration write lock.
+An access-cleanup owner prevents conflicting Prepare/control admission until actual
+cleanup; captured old keys cannot revoke a later context. Actual retained-Page
+destruction also invalidates the matching Python preparation, including late results. A new task requires successful
 save and validation; a failed or conflicting draft cannot become task authority.
 Provider secrets, CARSI credentials and high-impact operations use explicit
 submission rather than ordinary autosave. CARSI mutations settle through the
-authenticated native bridge and compare encrypted-store revisions.
+authenticated native bridge and compare encrypted-store revisions. Credential
+controls hold exclusive admission through native settlement, without holding the
+configuration write lock across the bridge wait. Covers commits under the short
+configuration/asset guards and compares its target Journal, asset-tree identity and
+exact target cover record/image, preserving unrelated edits while refusing replaced
+Journal or cover assets.
 
 ## Workbench and task presentation
 
@@ -214,3 +236,13 @@ a formal direct identity or an ordinary date solely through association. Reader
 and Info display these new library projections without old event/source columns
 or active Enrich buttons. Background scheduling, webpage Date/Abstract extraction
 and Download/PDF actions belong to later tasks.
+
+## Physical Browser resource lifetime
+
+One Session-wide `PageBudget` jointly admits global and trusted Service/public
+capacity before native page creation. Task execution, retained access resources
+and user ownership are separate; actual WebContents destruction and native-item
+cleanup return slots. Prepare pins its Portal, and WoS keeps an exact workflow/
+Document loan between native operations. Main waits physical cleanup before the
+shared Session event entry is disposed. See [page counts, retention and live
+configuration](browser-pages.md), including user-page bounds and rollback.

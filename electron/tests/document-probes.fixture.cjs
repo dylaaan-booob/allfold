@@ -14,7 +14,7 @@ app.whenReady().then(async()=>{
   const article=(meta='')=>html('<article><h1>Target article</h1></article>',meta);
   const meta=(doi,key='citation_doi')=>'<meta name="'+key+'" content="'+doi+'">';
   const signal=new AbortController().signal;
-  const task=run=>browser.runTask(signal,{request_id:randomUUID()},run);
+  const task=run=>browser.operation?run():browser.runTask(signal,{request_id:randomUUID()},run);
   const open=async(body,doi='10.5555/target',options={})=>{
     destination='https://article.invalid/current';routes.set(destination,{body});
     return task(()=>browser.openPaperPage({workspace_identity:'a'.repeat(64),paper_id:randomUUID()},doi,{signal,deadline:Date.now()+2000,...options}));
@@ -77,14 +77,15 @@ app.whenReady().then(async()=>{
       await assert.rejects(task(()=>browser.openPaperPage({workspace_identity:'a'.repeat(64),paper_id:randomUUID()},'10.5555/target',{signal})),error=>error.diagnostic?.code===code);
     }
     destination='https://article.invalid/path/10.5555/target';routes.set(destination,{body:article()});
+    await task(async()=>{
     const data={workspace_identity:'a'.repeat(64),paper_id:randomUUID()};
     const doc=await task(()=>browser.openPaperPage(data,'https://dx.doi.org/10.5555/TARGET',{signal}));
     assert.equal(doc.identity.reason,'doi');
     const tab=browser.tabs.get(doc.pageId),wc=tab.view.webContents;
     assert.ok(tab.view.getBounds().width>0 && tab.view.getBounds().height>0);
     assert.equal(browser.selected,null);assert.equal(browser.presentation.visible,false);
-    const duplicate=browser.createTab({present:false});await duplicate.view.webContents.loadURL(doc.url);
-    const other=await browser.documentBinding(duplicate);
+    const duplicate=browser.createTab({present:false,user:true});await duplicate.view.webContents.loadURL(doc.url);
+    const other=await browser.runInOperation(null,()=>browser.documentBinding(duplicate));
     assert.notEqual(other.documentId,doc.documentId);assert.notEqual(other.pageId,doc.pageId);
     // Same native Document, changed primary object: the cached input cannot bypass confirmation.
     await wc.executeJavaScript('document.head.insertAdjacentHTML("beforeend",\'<meta name="citation_doi" content="10.5555/other">\')');
@@ -95,7 +96,7 @@ app.whenReady().then(async()=>{
     assert.equal(before.documentId,doc.documentId,'same-document routes retain native Document identity');
     assert.notEqual(before.navigationGeneration,doc.navigationGeneration,'URL facts still invalidate the prior binding');
     await wc.loadURL('https://article.invalid/replacement');assert.equal(browser.documentCurrent(before),false);
-    const doomed=await browser.documentBinding(duplicate);
+    const doomed=await browser.runInOperation(null,()=>browser.documentBinding(duplicate));
     const crashed=new Promise(resolve=>duplicate.view.webContents.once('render-process-gone',resolve));
     duplicate.view.webContents.forcefullyCrashRenderer();await crashed;
     assert.equal(browser.documentCurrent(doomed),false);
@@ -103,6 +104,7 @@ app.whenReady().then(async()=>{
     destination='https://article.invalid/native/42';routes.set(destination,{body:article()});
     const noDOI=await task(()=>browser.openPaperPage({...data,paper_id:randomUUID()},{confirmed_article_url:destination},{signal}));
     assert.equal(noDOI.identity.reason,'established_article_url');
+    await browser.closePage(browser.tabs.get(noDOI.pageId));
     await assert.rejects(task(()=>browser.openPaperPage(data,{}, {signal})),/article_identity_unconfirmed/);
     const fragmentTarget='https://article.invalid/#/article/one';
     const fragment=await task(()=>browser.openPaperPage({...data,paper_id:randomUUID()},{confirmed_article_url:fragmentTarget},{signal}));
@@ -113,6 +115,7 @@ app.whenReady().then(async()=>{
       const current=await browser.documentBinding(page);
       await assert.rejects(browser.confirmArticlePage({confirmed_article_url:fragmentTarget},current,{signal}),/article_identity_unconfirmed/);
     });
+    await browser.closePage(browser.tabs.get(fragment.pageId));
     // Large unrelated DOM never leaves the preload. Resource-only CAPTCHA/CDN is not a challenge.
     destination='https://article.invalid/bounded';routes.set(destination,{body:article(meta('10.5555/target'))});
     await wc.loadURL(destination);
@@ -162,7 +165,9 @@ app.whenReady().then(async()=>{
       const confirmed=await browser.confirmArticlePage({doi:'10.5555/target'},ready,{signal});
       assert.equal(confirmed.identity.outcome,'confirmed');
     });
+    });
+    assert.equal(browser.paperPages.size,0);assert.equal(browser.tabs.size,1,'only explicit user duplicate remains');
     assert.equal(browser.documents.pending.size,0);
     console.log('DOCUMENT PROBES PASS');
-  }finally {browser.close();host.destroy();}
+  }finally {await browser.close();host.destroy();}
 }).then(()=>app.exit(0),error=>{console.error(error);app.exit(1);});

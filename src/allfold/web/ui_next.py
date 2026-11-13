@@ -91,8 +91,8 @@ def provider_expressions(text: str):
     return values
 
 
-class _WoSCancel(_Action):
-    task_id: str
+class _RunCancel(_Action):
+    task_id: str = Field(min_length=1, max_length=128)
 
 
 def paper_payload(paper: WorkspacePaper, *, preprint_lookup=None) -> dict:
@@ -248,8 +248,8 @@ def install_ui_next(app: FastAPI, config_path: Path, csrf_token: str) -> None:
         if not valid(body):
             return response({"message": "Invalid or missing CSRF token; refresh the page."}, 403)
         with app.state.settings_write_lock:
-            if app.state.browser_task_lock.owner and app.state.browser_task_lock.owner.kind == "credentials":
-                return response({"message": "Credential update is in progress"}, 409)
+            if any(owner.exclusive for owner in app.state.browser_task_lock.owners):
+                return response({"message": "Browser control operation is in progress"}, 409)
             availability = run_data()["providers"][body.provider.value]
             if not availability["enabled"]:
                 return response({"message": availability["message"]}, 409)
@@ -262,11 +262,11 @@ def install_ui_next(app: FastAPI, config_path: Path, csrf_token: str) -> None:
             return response(run_data(start), 200 if start.outcome is StartOutcome.STARTED else 409)
 
     @app.post("/api/ui-next/run/cancel")
-    def run_cancel(body: _Action):
+    def run_cancel(body: _RunCancel):
         if not valid(body):
             return response({"message":"Invalid CSRF token"},403)
-        app.state.run_coordinator.cancel()
-        return response(run_data())
+        accepted = app.state.run_coordinator.cancel(body.task_id)
+        return response({**run_data(), 'accepted': accepted}, 200 if accepted else 409)
 
     @app.post("/api/ui-next/run-expression")
     def run_expression(body: _RunExpression):
@@ -284,9 +284,8 @@ def install_ui_next(app: FastAPI, config_path: Path, csrf_token: str) -> None:
         return run_start(_RunStart(csrf_token=body.csrf_token))
 
     @app.post("/api/ui-next/run-wos/cancel")
-    def wos_cancel(body: _WoSCancel):
+    def wos_cancel(body: _RunCancel):
         if not valid(body):
             return response({"message": "Invalid CSRF token"}, 403)
-        snapshot = app.state.run_coordinator.snapshot()
-        accepted = snapshot.task_id == body.task_id and app.state.run_coordinator.cancel()
+        accepted = app.state.run_coordinator.cancel(body.task_id)
         return response({"accepted": accepted}, 200 if accepted else 409)

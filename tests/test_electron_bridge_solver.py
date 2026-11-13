@@ -127,3 +127,22 @@ def test_disconnect_and_shutdown_stop_queue_and_join_workers(monkeypatch, shutdo
         assert exited.wait(2)
         assert calls == ['a' * 32]
         client.portal.call(bridge.finish_disconnected)
+
+
+def test_access_close_events_and_shared_limits_use_the_authenticated_bridge():
+    bridge = ElectronBridge('secret', 'testserver')
+    closed = []
+    bridge.access_pages_closed = closed.extend
+    bridge.page_limits = lambda: {'global_limit': 16, 'service_limit': 4}
+    with TestClient(application(bridge)) as client, client.websocket_connect('/ws') as socket:
+        socket.send_json({'token': 'secret'})
+        assert socket.receive_json()['page_limits'] == {'global_limit': 16, 'service_limit': 4}
+        socket.send_json({'type': 'access_pages_closed', 'page_ids': [17, 29]})
+        bridge.page_limits = lambda: {'global_limit': 8, 'service_limit': 3}
+        bridge.refresh_page_limits().result(2)
+        assert socket.receive_json() == {'type': 'page_limits', 'page_limits': {'global_limit': 8, 'service_limit': 3}}
+        request = bridge.execute('invalidate_access', {'scope_id': 'a' * 64,
+            'preparation_keys': {'publisher': 'b' * 64}, 'authentication_key': None})
+        sent = socket.receive_json()
+        socket.send_json({**{key: sent[key] for key in ('id', 'action')}, 'type': 'result', 'data': {'ok': True}})
+        assert request.result(2) == {'ok': True} and closed == [17, 29]

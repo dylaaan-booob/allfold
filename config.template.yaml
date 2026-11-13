@@ -28,6 +28,6 @@ institution:
   use_shibboleth: false
 workflow:
   prepare_service_concurrency: 5
-  paper_service_concurrency: 2
-  paper_global_concurrency: 4
+  managed_page_service_limit: 4
+  managed_page_global_limit: 16
   pdf_concurrency: 2

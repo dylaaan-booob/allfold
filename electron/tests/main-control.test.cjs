@@ -19,7 +19,7 @@ function fixture(){
   operationAssociation:require('../src/browser/page-association.cjs').operationAssociation,
   log:(level,event,details)=>logs.push({level,event,...details}),AbortController,BrowserFailure,diagnosticFor,
   send:message=>{messages.push(JSON.parse(JSON.stringify(message)));context.onSend?.(message);},
-  browser:{tabs:new Map(),documentCurrent:()=>true,publish(){},
+  browser:{tabs:new Map(),documentCurrent:()=>true,publish(){},async invalidateAllAccess(){},stopAdmission(){},
    get operation(){return taskContext.getStore();},get taskTab(){return this.operation?.taskTab;},
    async runTask(signal,association,run){try{return await taskContext.run({signal,association,taskTab:{id:++pageId}},run);}finally{calls.end++;}},
    async navigate(){return {pageId:this.taskTab.id,url:'https://example.test/preparation'};}},
@@ -148,4 +148,24 @@ test('shutdown revokes native operations and drains their real settlement before
  await f.run('late');assert.equal(f.messages.find(item=>item.id==='late').data.diagnostic.code,'canceled');
  settled.resolve({outcome:'Opened'});await pending;await Promise.resolve();
  assert.equal(f.context.operations.size,0);assert.equal(quitCalls,1);
+});
+
+test('scoped access cleanup and old workflow release dispatch without creating a Browser task',async()=>{
+  const f=fixture(),calls=[];
+  f.context.browser.invalidateAccess=async data=>{calls.push(['invalidate',data.scope_id]);return {closed:1};};
+  f.context.browser.releaseWorkflowPages=data=>{calls.push(['release',data.workflow_id,data.task_id]);return {released:false};};
+  await f.context.execute({id:'invalidate',action:'invalidate_access',data:{scope_id:'a'.repeat(64),preparation_keys:{},authentication_key:'b'.repeat(64)}});
+  await f.context.execute({id:'release',action:'release_workflow_pages',data:{workflow_id:'old',task_id:'old'}});
+  assert.deepEqual(calls,[['invalidate','a'.repeat(64)],['release','old','old']]);assert.equal(f.calls.end,0);
+  assert.equal(f.messages[0].data.closed,1);assert.equal(f.messages[1].data.released,false);
+});
+
+
+test('successful credential replacement waits retained access destruction before returning success',async()=>{
+  const f=fixture(),cleaned=deferred();let started=false;
+  f.context.saveCASCredentials=async()=>({ok:true,revision:'new'});
+  f.context.browser.invalidateAllAccess=()=>{started=true;return cleaned.promise;};
+  const result=f.context.execute({id:'credentials',action:'cas_credentials',data:{operation:'save'}});
+  await new Promise(setImmediate);assert.equal(started,true);assert.equal(f.messages.length,0);assert.equal(f.context.operations.size,1);
+  cleaned.resolve();await result;assert.equal(f.messages[0].data.ok,true);assert.equal(f.context.operations.size,0);
 });

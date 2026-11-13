@@ -130,3 +130,22 @@ DownloadItem capability fixtures, page quotas/scheduling and complete page-close
 policy. No replacement downloader is introduced. WF06–WF08 connect article
 extraction/collection later. Retained adapted host sources keep their AGPL notices;
 official vendor trees, dependency pins and real user data are unchanged.
+
+The shared Session entry and measured original-response behavior are documented
+in [Browser Session](browser-session.md). WoS uses that native router while
+retaining all Document, known-overlay and real-terminal rules above. Missing
+frame/source facts never become current-page or URL-based Document authority.
+
+## WF04 page ownership boundary
+
+Document authority does not grant resource ownership or extend a page lifetime.
+Temporary article/Covers/helper pages close after their operation; retained Portal
+and Service targets have explicit bounded access-context owners. WoS result loans
+protect the original native Document through Query→Export gaps. Actual close and
+key invalidation revoke preparation state. See [Browser pages](browser-pages.md).
+
+The fixed resource fixture records a current unsupported BrowserRuntime entry:
+main-frame form POST download starts a new navigation generation, so its old
+Document registration is refused and the original item is canceled to actual done,
+without a new GET. The shared Session original-POST fixture is a separate capability
+seam, not permission to relax these checks or claim all Runtime entries supported.

@@ -7,6 +7,7 @@ const path=require('node:path');
 const vm=require('node:vm');
 const hostRequire=require('node:module').createRequire(require.resolve('../src/workflows/wos-operations.cjs'));
 const {EventEmitter}=require('node:events');
+const {sharedSessionEvents}=require('../src/browser/session-events.cjs');
 const {attachBrowserMechanisms}=require('./browser-fixture.cjs');
 const {BrowserFailure,checkPage}=require('../src/browser/browser-errors.cjs');
 const {pageStep,SELECTORS}=require('../src/workflows/page-actions.cjs');
@@ -97,7 +98,7 @@ function fixture(t,{attributable=true,hold=false,challenge=false,domError=null,q
   const ready=new Promise(resolve=>exported=resolve);
   const item=new EventEmitter();item.setSavePath=value=>item.filename=value;
   item.getURLChain=()=>['https://www.webofscience.com/native-export'];
-  item.cancel=()=>{item.cancelled=true;};
+  item.cancel=()=>{item.cancelled=true;if(!hold)setImmediate(()=>item.emit('done',{},'cancelled'));};
   let challengeActive=challenge;
   let exportMenuReady=!deferExportMenu;
   let dialogOpen=!dialogInitiallyClosed;
@@ -124,7 +125,7 @@ function fixture(t,{attributable=true,hold=false,challenge=false,domError=null,q
       }
       ops.push({exportRange:args});
       partition.emit('will-download',{}, {cancel(){throw Error('unrelated download intercepted');}}, {});
-      partition.emit('will-download',{},item,wc);
+      partition.emit('will-download',{},item,wc,{processId:doc.processId,frameToken:doc.frameToken});
       settle=()=>item.emit('done',{},'completed');exported();
       if(!hold)setImmediate(settle);
     }
@@ -132,11 +133,13 @@ function fixture(t,{attributable=true,hold=false,challenge=false,domError=null,q
   }};
   const tab={id:71,view:{webContents:wc},association:preparedIdentity,
     preparationKey:preparedIdentity.preparation_key,wosServiceScope:preparedIdentity.service_scope,wosDocument:doc};
-  const browser={tabs:new Map([[71,tab]]),partition,
+  const browser={tabs:new Map([[71,tab]]),partition,operation:{association:{workflow_id:'fixture',task_id:'fixture'}},sessionEvents:sharedSessionEvents(partition),
     liveToken:doc.frameToken,select(){},async checkAuthentication(){return authentication?.inspect().waiting || false;},async documentBinding(){return {...doc,url:wc.getURL(),navigationGeneration:generation,documentId};},
     documentCurrent(value){return this.liveToken===value.frameToken && value.documentId===documentId && value.navigationGeneration===generation && value.url===currentURL;},
     documentFrame(value){return this.documentCurrent(value)?wc:null;}};
-  attachBrowserMechanisms(browser);
+  Object.defineProperty(tab,"documentGeneration",{get:()=>generation});
+  attachBrowserMechanisms(browser);tab.wosWorkflowId='fixture';
+  t.after(()=>browser.sessionEvents.dispose());
   browser.servicePages=(scopeId,serviceId)=>[...browser.tabs.values()]
     .filter(candidate=>candidate.association?.service_scope?.scope_id===scopeId && candidate.association?.service_id===serviceId)
     .map(candidate=>({page_id:candidate.id}));
@@ -175,7 +178,7 @@ test('WoS accepts only an observed native export URL into its issued file',async
   assert.equal(f.controller.signal.aborted,false);
   assert.equal(f.browser.taskTab.taskSignal.aborted,true,'the completed bounded request releases its signal');
   assert.equal(f.item.filename,f.filename);assert.equal(f.ops.filter(op=>op==='export').length,1);
-  assert.equal(f.browser.partition.listenerCount('will-download'),0);assert.equal(f.ops.at(-1),'cleanup');
+  assert.equal(f.browser.partition.listenerCount('will-download'),1);assert.equal(f.ops.at(-1),'cleanup');
 });
 test('WoS reopens and verifies every persisted Custom field before arming a download',async t=>{
   const f=fixture(t);await f.run();
@@ -189,7 +192,7 @@ test('a wrong persisted Custom field set refuses export before installing a down
   await assert.rejects(f.run(),/export_content_unverified/);
   assert.equal(f.ops.includes('arm'),false);
   assert.equal(f.ops.includes('export'),false);
-  assert.equal(f.browser.partition.listenerCount('will-download'),0);
+  assert.equal(f.browser.partition.listenerCount('will-download'),1);
 });
 test('the current Custom range limit governs every batch without a hardcoded 1000 ceiling',async t=>{
   const small=fixture(t,{batchLimit:1});
@@ -223,7 +226,7 @@ test('WoS query and consecutive exports keep the prepared page/document while an
   await assert.rejects(f.run({...identity,service_scope:{...identity.service_scope,scope_id:'d'.repeat(64)}}),/document_changed/);
   await assert.rejects(f.run(preparedIdentity),/document_changed/);
   assert.equal(f.ops.length,before);
-  assert.equal(f.browser.partition.listenerCount('will-download'),0);
+  assert.equal(f.browser.partition.listenerCount('will-download'),1);
 });
 
 test('manual confirmation opens a WoS query page and keeps that page for export',async t=>{
@@ -254,7 +257,7 @@ test('a later export waits for the toolbar before reopening its closed dialog',a
   assert.equal((await f.run()).filename,f.filename);
   assert.equal(f.ops.filter(op=>op==='exportMenu').length,1);
   assert.equal(f.ops.filter(op=>op==='export').length,1);
-  assert.equal(f.browser.partition.listenerCount('will-download'),0);
+  assert.equal(f.browser.partition.listenerCount('will-download'),1);
 });
 test('WoS refuses an unattributable completed download and a replaced document',async t=>{
   const f=fixture(t,{attributable:false});await assert.rejects(f.run(),/download_not_attributable/);
@@ -269,7 +272,7 @@ test('WoS cancellation waits for the active native download terminal event',asyn
   f.controller.abort();await new Promise(resolve=>setImmediate(resolve));
   assert.equal(f.item.cancelled,true);assert.equal(finished,false);
   f.settle();await assert.rejects(pending,/canceled/);
-  assert.equal(f.browser.partition.listenerCount('will-download'),0);
+  assert.equal(f.browser.partition.listenerCount('will-download'),1);
 });
 
 
@@ -294,19 +297,19 @@ test('WoS Export expiry cancels native save but retains ownership until actual t
   t.mock.timers.tick(600000);
   assert.equal(f.item.cancelled,true);assert.equal(settled,false);
   f.settle();await rejected;
-  assert.equal(f.browser.partition.listenerCount('will-download'),0);
+  assert.equal(f.browser.partition.listenerCount('will-download'),1);
 });
 
 for(const dialogInitiallyClosed of [false,true])test(`WoS export retains the native results Document through known overlay routing (${dialogInitiallyClosed?'reopened':'already open'})`,async t=>{
   const f=fixture(t,{overlayRouting:true,dialogInitiallyClosed});
   assert.equal((await f.run()).filename,f.filename);
   assert.equal(f.ops.filter(op=>op==='export').length,1);
-  assert.equal(f.browser.partition.listenerCount('will-download'),0);
+  assert.equal(f.browser.partition.listenerCount('will-download'),1);
 });
 for(const change of ['replaceAfterExport','otherResultsAfterExport'])test(`WoS export still rejects ${change} after its own click`,async t=>{
   const f=fixture(t,{overlayRouting:true,[change]:true});
   await assert.rejects(f.run(),/document_changed/);
-  assert.equal(f.browser.partition.listenerCount('will-download'),0);
+  assert.equal(f.browser.partition.listenerCount('will-download'),1);
 });
 
 test('a failed export after opening its overlay cleans its own armed observer',async t=>{
@@ -314,7 +317,16 @@ test('a failed export after opening its overlay cleans its own armed observer',a
   await assert.rejects(f.run(),/control_disabled/);
   assert.equal(f.ops.includes('arm'),true);
   assert.equal(f.armedTokens.size,0);
-  assert.equal(f.browser.partition.listenerCount('will-download'),0);
+  assert.equal(f.browser.partition.listenerCount('will-download'),1);
   await assert.rejects(f.run(),/control_disabled/,'retry reaches the control, not a leaked download observer');
   assert.equal(f.armedTokens.size,0);
+});
+
+test('an unresolved prior download refuses a new export before arming or clicking its source',async t=>{
+  const f=fixture(t),tab=f.browser.tabs.get(71),doc=tab.wosDocument;
+  const prior=f.browser.sessionEvents.registerDownload({owner:f.browser.operation,attemptId:'unresolved',
+    contents:tab.view.webContents,frame:doc,document:doc,filename:'/tmp/unused',deadline:Date.now()+1000,validate:()=>true});
+  prior.dispose({dispatched:true});
+  await assert.rejects(f.run(),error=>error.diagnostic?.code==='download_not_attributable');
+  assert.deepEqual(f.ops,[]);assert.equal(f.armedTokens.size,0);
 });

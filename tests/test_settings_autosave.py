@@ -1,4 +1,5 @@
 """Safe domain patches share transaction revisions and active task exclusion."""
+import pytest
 from fastapi.testclient import TestClient
 from allfold.web.app import create_app
 from electron_test_helpers import OfflineBridge
@@ -24,18 +25,23 @@ def test_autosave_patches_only_requested_fields_and_rejects_stale_revisions(tmp_
         assert actual['values']['name'] == 'Updated Monitor' and actual['values']['log_level'] == 'INFO'
 
 
-def test_autosave_retains_original_revision_while_browser_task_owns_configuration(tmp_path):
-    config, _, _, _ = current_mapping_document(tmp_path)
+def test_autosave_allows_unrelated_inputs_but_defers_overlapping_service_edits(tmp_path):
+    from allfold.application.browser_services import BrowserServiceSnapshot
+    config, _, _, service = current_mapping_document(tmp_path)
     app = create_app(config, electron_bridge=OfflineBridge())
     with TestClient(app, base_url='http://localhost') as client:
         opened = client.get('/api/ui-next/settings').json()
-        owner = app.state.browser_task_lock.acquire('prepare')
-        pending = client.post('/api/ui-next/settings/autosave', json=patch_body(opened, name='After task')).json()
+        saved_scope = BrowserServiceSnapshot.read(config)
+        owner = app.state.browser_task_lock.acquire('login', scopes={saved_scope.service_scope(service.id)})
+        saved = client.post('/api/ui-next/settings/autosave', json=patch_body(opened, name='After edit')).json()
+        assert saved['saved'] and saved['values']['name'] == 'After edit'
+        services = saved['values']['access_services']
+        services[0]['access_url'] = 'https://changed.example/'
+        pending = client.post('/api/ui-next/settings/autosave', json=patch_body(saved, access_services=services)).json()
         assert pending['outcome'] == 'TASK_ACTIVE' and not pending['saved']
-        assert client.get('/api/ui-next/settings').json()['values']['name'] == 'Test Monitor'
         app.state.browser_task_lock.release(owner)
-        saved = client.post('/api/ui-next/settings/autosave', json=patch_body(opened, name='After task')).json()
-        assert saved['saved'] and saved['values']['name'] == 'After task'
+        saved = client.post('/api/ui-next/settings/autosave', json=patch_body(saved, access_services=services)).json()
+        assert saved['saved'] and saved['values']['access_services'][0]['access_url'] == 'https://changed.example/'
 
 
 def test_autosave_rejects_secrets_workspace_moves_and_service_removal(tmp_path):
@@ -50,7 +56,7 @@ def test_autosave_rejects_secrets_workspace_moves_and_service_removal(tmp_path):
         assert actual['values']['access_services'][0]['id'] == service.id
 
 
-def test_explicit_legacy_save_cannot_invalidate_waiting_browser_task(tmp_path):
+def test_explicit_save_preserves_unrelated_browser_work(tmp_path):
     from settings_api_helpers import form
     config, _, _, _ = current_mapping_document(tmp_path)
     app = create_app(config, electron_bridge=OfflineBridge())
@@ -60,8 +66,8 @@ def test_explicit_legacy_save_cannot_invalidate_waiting_browser_task(tmp_path):
         submitted = form(opened)
         submitted['name'] = 'Unsafe change'
         rejected = client.post('/settings/save', data=submitted).json()
-        assert not rejected.get('saved', False) and rejected['outcome'] == 'TASK_ACTIVE'
-        assert client.get('/api/ui-next/settings').json()['values']['name'] == 'Test Monitor'
+        assert rejected['saved']
+        assert client.get('/api/ui-next/settings').json()['values']['name'] == 'Unsafe change'
         app.state.browser_task_lock.release(owner)
 
 
@@ -112,7 +118,7 @@ def test_credentials_are_explicit_native_settled_and_blocked_for_waiting_task(tm
         opened = client.get('/api/ui-next/settings').json()
         body = {'csrf_token': opened['csrf_token'], 'operation': 'save', 'username': 'fixture',
                 'password': 'synthetic-only', 'expected_revision': 'missing'}
-        owner = app.state.browser_task_lock.acquire('kept')
+        owner = app.state.browser_task_lock.acquire('covers')
         assert client.post('/api/ui-next/settings/credentials', json=body).json()['error'] == 'cas_task_active'
         assert not bridge.calls
         app.state.browser_task_lock.release(owner)
@@ -137,3 +143,58 @@ def test_active_browser_owner_can_settle_while_configuration_admission_is_held()
             finished = executor.submit(browser.release, owner)
             assert finished.result(timeout=1) is None
     assert browser.owner is None
+
+
+def test_access_save_waits_old_context_cleanup_without_holding_settings_lock(tmp_path):
+    import threading
+    from concurrent.futures import Future, ThreadPoolExecutor
+    from dataclasses import replace
+    from allfold.application.browser_services import BrowserServiceSnapshot
+    from allfold.persistence.user_state import load_user_state, compare_write_user_state
+    from allfold.config import AccessService
+    class Native(OfflineBridge):
+        connected = True
+        def __init__(self):
+            self.pending = Future()
+            self.invalidating = threading.Event()
+        def execute(self, action, data, progress=None, **kwargs):
+            if action == 'invalidate_access':
+                self.invalidation = data
+                self.invalidating.set()
+                return self.pending
+            assert action == 'visit_manual_service'
+            done = Future()
+            done.set_result({'outcome': 'Opened', 'evidence': {'visit_action_observed': True,
+                'navigation_observed': True, 'target_page_id': 17}})
+            return done
+    config, _, _, service = current_mapping_document(tmp_path)
+    initial = load_user_state(config)
+    manual = AccessService.create('Manual', 'https://publisher.example/', access_method='manual')
+    compare_write_user_state(config, replace(initial.state, access_services=(*initial.state.access_services, manual)), initial.revision)
+    bridge = Native()
+    app = create_app(config, electron_bridge=bridge)
+    with TestClient(app, base_url='http://localhost') as client:
+        app.state.login.start(config, manual_service_id=manual.id)
+        app.state.login.join()
+        old = BrowserServiceSnapshot.read(config)
+        old_key = app.state.login.prepared_authority(old, manual.id).key
+        opened = client.get('/api/ui-next/settings').json()
+        rows = opened['values']['access_services']
+        rows[-1]['access_url'] = 'https://replacement.example/'
+        with ThreadPoolExecutor(max_workers=1) as pool:
+            saving = pool.submit(client.post, '/api/ui-next/settings/autosave',
+                json=patch_body(opened, access_services=rows))
+            try:
+                assert bridge.invalidating.wait(2)
+                assert app.state.settings_write_lock.acquire(blocking=False)
+                app.state.settings_write_lock.release()
+                assert bridge.invalidation == {'scope_id': old.scope_id,
+                    'preparation_keys': {manual.id: old_key}, 'authentication_key': None}
+                with pytest.raises(ValueError, match='Browser workflow'):
+                    app.state.login.start(config, manual_service_id=manual.id)
+                assert app.state.browser_task_lock.acquire('credentials') is None
+                assert app.state.login.prepared_authority(BrowserServiceSnapshot.read(config), manual.id) is None
+            finally:
+                bridge.pending.set_result({'ok': True})
+            assert saving.result(timeout=2).json()['saved']
+        assert not app.state.browser_task_lock.owners

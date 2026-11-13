@@ -43,7 +43,7 @@ function render() {
     confirmed:'已人工确认',interrupted:'Browser 连接已中断',canceled:'Login 已取消'})[state.phase] || '';
   const opened=state.services.filter(service=>service.preparation?.status==='Opened').length;
   const outcome=state.phase==='confirmed'?'Services available':'Services opened';
-  const hint=state.confirmation_workflow_id?'请在 Browser 中检查各 Service，确认全部可用后再点击按钮。':'';
+  const hint=state.confirmation_workflow_id?'确认各 Service 全部可用后再点击；页面已关闭时请按需重新 Visit 或运行 Login。':'';
   $('login-status').textContent=state.services.length?[phase,`${opened} / ${state.services.length} ${outcome}`,hint].filter(Boolean).join(' · '):
     '请先在 Journals 的 Access 中保存 Service。';
   const focused=document.activeElement,action=focused?.dataset.loginAction;

@@ -265,7 +265,7 @@ def test_wos_uses_independent_sqlite_service_and_detects_changes(tmp_path, chang
         assert result["outcome"] == "Failed"
     else:
         assert result["outcome"] == "Completed"
-    assert [action for action, _ in bridge.calls] == ["wos_query"]
+    assert [action for action, _ in bridge.calls] == ["wos_query", "release_workflow_pages"]
     assert not slot.locked() and browser_lock.owner is None
     with PaperRepository.open(tmp_path / "workspace") as repository:
         assert repository.list_papers() == ()

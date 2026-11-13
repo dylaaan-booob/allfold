@@ -64,7 +64,8 @@ app.whenReady().then(async()=>{
     await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));origin=`http://127.0.0.1:${server.address().port}`;
     win=new BrowserWindow({width:1200,height:800,show:false,webPreferences:{sandbox:true,contextIsolation:true,backgroundThrottling:false,partition:'browser-workspaces-host',preload:path.join(__dirname,'../src/preload/preload.cjs')}});
     browser=new BrowserRuntime({hostWindow:win,isTaskRunning:()=>loginState.active||runActive});await browser.ready;const update=browser.setPresentation.bind(browser);browser.setPresentation=value=>{nativeUpdates.push({...value});return update(value)};
-    for(const partition of [win.webContents.session,browser.partition])partition.webRequest.onBeforeRequest({urls:['http://*/*','https://*/*']},(details,callback)=>callback({cancel:new URL(details.url).origin!==origin}));
+    win.webContents.session.webRequest.onBeforeRequest({urls:['http://*/*','https://*/*']},(details,callback)=>callback({cancel:new URL(details.url).origin!==origin}));
+    browser.sessionEvents.subscribe('beforeRequest',details=>{const url=new URL(details.url);return {cancel:['http:','https:'].includes(url.protocol)&&url.origin!==origin};});
     ipcMain.handle('cas:status',()=>({available:false,configured:false,revision:'fixture'}));disposeIPC=installBrowserIPC({ipcMain,hostWindow:win,origin,browser});await win.loadURL(origin+'/');win.show();app.focus({steal:true});win.focus();await ready(()=>Promise.resolve(win.isFocused()),'fixture Window focus');
     await ready(()=>host("window.uiWorkspace?.ready()&&!document.getElementById('settings-open').disabled&&document.querySelectorAll('#s-journals [data-journal]').length===1"),'shipped UI ready');
     assert(await host("Array.from(document.querySelectorAll('.view-nav > button .nav-label'),node=>node.textContent).join('|')==='WORKSPACE|WORKFLOWS|JOURNALS|SETTINGS'"),'top-level Workflows navigation');
@@ -142,5 +143,5 @@ app.whenReady().then(async()=>{
     });
     if(process.env.ALLFOLD_BROWSER_WORKSPACES_SCREENSHOTS)fs.writeFileSync(path.join(process.env.ALLFOLD_BROWSER_WORKSPACES_SCREENSHOTS,'measurements.json'),JSON.stringify(measurements,null,2)+'\n');console.log(JSON.stringify(measurements));console.log('BROWSER WORKSPACES DOM PASS');
   }catch(error){failed=true;console.error(error.stack);console.error('RECENT NATIVE UPDATES',JSON.stringify(nativeUpdates.slice(-12)));console.error('FIXTURE DIAGNOSTICS',JSON.stringify(await diagnostics()));await capture('shipped-failure');}
-  finally{ipcMain.removeHandler('cas:status');disposeIPC?.();browser?.close();win?.destroy();await new Promise(resolve=>server.close(resolve));fs.rmSync(temp,{recursive:true,force:true});app.exit(failed?1:0);}
+  finally{ipcMain.removeHandler('cas:status');disposeIPC?.();await browser?.close();win?.destroy();await new Promise(resolve=>server.close(resolve));fs.rmSync(temp,{recursive:true,force:true});app.exit(failed?1:0);}
 });

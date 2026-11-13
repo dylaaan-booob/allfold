@@ -141,3 +141,39 @@ pacing. Browser/Prepare continue to use their separate Chromium Session. Active
 webpage Enrich and its Translator transport are retired; Provider HTTP remains
 independent of Browser authentication.
 See [Provider contracts and limits](providers.md).
+
+
+## Local task cancellation and configuration writes
+
+The loopback `POST /api/ui-next/run/cancel` and legacy
+`POST /api/ui-next/run-wos/cancel` require CSRF plus a nonempty captured `task_id`.
+Missing identity is a validation error; a stale/nonrunning identity returns 409
+with `accepted: false`. The coordinator compares and sets cancellation under one
+lock and forwards the captured same ID to WoS after releasing it. Shutdown has its
+own internal drain and does not use an identity-free public cancellation action.
+Login and Covers continue to require their captured workflow/request identities.
+
+Ordinary settings autosave preserves revision checks and retained drafts. An
+independent Browser owner no longer blocks unrelated patches. Overlapping access
+changes and foreground Run/WoS/Preprint snapshot writers return `TASK_ACTIVE` until
+the affected work settles. Saved access changes clean only captured old native
+keys; the HTTP worker awaits cleanup outside configuration/database locks.
+Authenticated native `access_pages_closed` notifications revoke exact retained
+Page authority. Internal `release_workflow_pages` carries the completed WoS
+workflow/task identity and runs outside its cancelled execution authority; its
+settlement precedes Python owner release. It cannot release another workflow loan. Browser revision/correlation data grants no Page or access rights.
+
+## Browser resource configuration and native maintenance
+
+Settings projection/autosave uses `managed_page_global_limit` (16, 4–64) and
+`managed_page_service_limit` (4, 3–16), independently of Prepare worker concurrency.
+Successful saves publish one effective pair through authenticated `page_limits`;
+ordinary workflow payloads cannot alter it. Invalid drafts and stale revisions
+preserve the existing saved values and draft/conflict behavior.
+
+Authenticated native `invalidate_access` takes a scope plus captured old
+preparation-key map/authentication key, and closes only matching contexts after
+scoped admission. `release_workflow_pages` takes captured workflow/task IDs and
+idempotently releases only that results-page loan. Actual retained-page destruction
+reports bounded exact Page IDs through `access_pages_closed`. Keys are authority
+inputs, never diagnostic fields. See [resource limits and rollback](browser-pages.md).

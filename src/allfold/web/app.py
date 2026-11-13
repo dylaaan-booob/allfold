@@ -235,8 +235,19 @@ def create_app(config_path: Path, *, electron_bridge: ElectronBridge, diagnostic
     run_slot = threading.Lock()
     app.state.run_coordinator = RunCoordinator(resolved_config_path, run_slot=run_slot, diagnostics=app.state.diagnostics)
     app.state.preprint_lookup = PreprintLookup(resolved_config_path, app.state.browser_task_lock, run_slot=run_slot)
-    app.state.journal_cover_search = JournalCoverSearch(electron_bridge, app.state.browser_task_lock, diagnostics=app.state.diagnostics)
+    app.state.journal_cover_search = JournalCoverSearch(electron_bridge, app.state.browser_task_lock,
+        diagnostics=app.state.diagnostics, settings_lock=app.state.settings_write_lock)
     app.state.login = LoginCoordinator(electron_bridge, app.state.browser_task_lock, diagnostics=app.state.diagnostics)
+    electron_bridge.access_pages_closed = app.state.login.invalidate_pages
+    def page_limits():
+        from allfold.config import WorkflowConfig
+        try:
+            workflow = load_config(resolved_config_path).workflow
+        except (ConfigurationError, ValueError, OSError):
+            workflow = WorkflowConfig()
+        return {'global_limit': workflow.managed_page_global_limit,
+                'service_limit': workflow.managed_page_service_limit}
+    electron_bridge.page_limits = page_limits
     app.state.wos_coordinator = WoSCoordinator(resolved_config_path, app.state.login, run_slot,
         bridge=electron_bridge, browser_lock=app.state.browser_task_lock, diagnostics=app.state.diagnostics)
     app.state.run_coordinator.wos_stage = app.state.wos_coordinator
@@ -393,7 +404,7 @@ def create_app(config_path: Path, *, electron_bridge: ElectronBridge, diagnostic
             elif app.state.wos_coordinator.running:
                 app.state.reset_confirmation = None
                 result_message, status = "Run WoS is active; Reset refused.", 409
-            elif app.state.browser_task_lock.owner is not None:
+            elif bool(app.state.browser_task_lock.owners):
                 app.state.reset_confirmation = None
                 result_message, status = "A browser workflow is active; Reset refused.", 409
             else:
@@ -647,10 +658,15 @@ def create_app(config_path: Path, *, electron_bridge: ElectronBridge, diagnostic
         return await run_in_threadpool(save_submitted_settings, request, form)
 
     def save_submitted_settings(request, form):
-        from allfold.web.settings_guard import settings_task_active
+        from allfold.web.settings_guard import settle_settings_effects
+        effects = {}
+        reply = save_submitted_settings_locked(request, form, effects)
+        settle_settings_effects(app, effects)
+        return reply
+
+    def save_submitted_settings_locked(request, form, effects):
+        from allfold.web.settings_guard import settings_write_context
         with app.state.settings_write_lock:
-            if settings_task_active(app):
-                return JSONResponse({"saved": False, "outcome": "TASK_ACTIVE", "message": "Pending: active task owns the saved configuration; the draft is retained."})
             values = settings_form_from_submission(form)
             draft, form_issues = settings_draft_from_form(values)
             if draft is None:
@@ -664,6 +680,9 @@ def create_app(config_path: Path, *, electron_bridge: ElectronBridge, diagnostic
                 )
 
             disk = load_settings(config_path)
+            blocked, invalidation = settings_write_context(app, disk.draft, draft)
+            if blocked:
+                return JSONResponse({"saved": False, "outcome": "TASK_ACTIVE", "message": "Pending: affected work is still active or cleaning up; the draft is retained."})
             plan = plan_settings_deletions(disk.draft, draft)
             proof = hmac.new(deletion_key, repr((draft, plan)).encode("utf-8"), hashlib.sha256).hexdigest()
             approved = (
@@ -692,6 +711,8 @@ def create_app(config_path: Path, *, electron_bridge: ElectronBridge, diagnostic
                 save_settings(config_path, draft, deletion_approval=approval)
                 if approval is not None else save_settings(config_path, draft)
             )
+            from allfold.web.settings_guard import record_settings_effects
+            record_settings_effects(app, effects, invalidation, disk.draft, result.state.draft)
             if result.outcome is SettingsSaveOutcome.SAVED:
                 response = settings_response(request,
                     _settings_result_context(

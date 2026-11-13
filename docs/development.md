@@ -98,6 +98,12 @@ Cloudflare native fixture. Covers and WoS Export expiry tests retain real-termin
 ownership. See [controlled Documents](browser-documents.md) for payload limits,
 identity evidence and fixture/live-service boundaries.
 
+WF04's normal Electron entry also runs `session-downloads.test.cjs`: a real
+Electron 45.0.0/local-HTTP fixture for original POST/inline/frame/popup downloads,
+same-URL isolation, expiry/late/ambiguous events, cancellation/interruption,
+source-close stages and controlled host-fetch association. See the measured
+[capability boundary](browser-session.md#electron-4500-capability-evidence).
+
 ### Workbench manual acceptance reference
 
 ARRAY/Journals rails, Sidebar allocation, the isolated rendered DOM test and remaining pointer/touch/low-height checks are documented in [workspace layout](workspace-layout.md). The full Electron test command includes its hidden-window fixture after UI build; it uses synthetic HTTP responses and a temporary profile.
@@ -187,3 +193,32 @@ SQLite's backup API from that backup into the original database; preserve the
 original and any sidecars until recovery is verified. Never copy over a database
 while the application is running. Paper data is untouched. Per-Paper Markdown is no longer read or migrated; the
 SQLite library and explicit Workspace Reset follow [Paper identity](paper-identity.md).
+
+
+### Scoped Browser authority regressions
+
+`tests/test_browser_services.py`, `tests/test_login.py` and
+`tests/test_settings_autosave.py` use temporary configuration/User State and explicit
+native transports. They cover independent workflow owners, overlapping Service and
+control refusal, unrelated input edits, captured recovery authority, exact
+cancellation, actual-close notifications and old-key access cleanup without a held
+configuration lock. `tests/test_cover_authority.py` exercises final image saving
+across unrelated edits and refuses replaced Journal/cover targets.
+`tests/test_run_cancel_identity.py` covers required HTTP task identity, late old
+cancellation and the lock-outside WoS handoff race. Existing Run commit,
+Workspace/diagnostic Reset, Preprint and shutdown checks retain their protections.
+The autosave and task-presentation Node fixtures verify draft acknowledgement and
+UI-captured parent Run cancellation. These tests do not use real accounts or
+establish native/live Service acceptance.
+
+WF04 adds `page-resources.test.cjs` to the normal serial Electron test command.
+It checks real WebContents at minimum capacities, native popup/opener lifetime,
+multiple temporary batches, retained Portal reuse across unrelated revisions,
+queued cancellation, original native-item source retention and user-page bounds.
+The existing Document fixture keeps independent cases within separate task
+lifetimes and closes dependent-case pages promptly. Delayed-destroy and quota
+update checks use BrowserRuntime; configuration/API tests use temporary YAML and
+UserState. The rendered layout fixture verifies the visible page-limit controls
+and keeps inactive PDF controls absent. [Browser pages](browser-pages.md) records
+counts, live effect timing, configuration rollback and the Runtime form-POST
+limitation; [Session evidence](browser-session.md) has its separate capability scope.

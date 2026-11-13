@@ -24,7 +24,7 @@ from allfold.integrations.cloudflare_solver import solve_cloudflare
 
 
 _CONTROL_ACTIONS = {"diagnostics_reset", "cas_credentials"}
-_BUSINESS_ACTIONS = {"login_carsi", "prepare_service", "visit_manual_service", "search_journal_cover", "wos_query", "wos_export"}
+_BUSINESS_ACTIONS = {"login_carsi", "prepare_service", "visit_manual_service", "search_journal_cover", "wos_query", "wos_export", "invalidate_access", "release_workflow_pages"}
 _RECOVERY_ACTIONS = {"prepare_service"}
 _CONTEXT_FIELDS = ("workflow_id", "task_id", "parent_task_id", "service_id", "paper_id")
 _SOCKET_ERRORS = (WebSocketDisconnect, OSError, RuntimeError)
@@ -67,6 +67,8 @@ class ElectronBridge:
         self.closing = False
         self._native_drained = False
         self.shutdown = None
+        self.access_pages_closed = None
+        self.page_limits = None
 
     @property
     def connected(self) -> bool:
@@ -103,12 +105,24 @@ class ElectronBridge:
                 return
             self._socket, self._loop = socket, asyncio.get_running_loop()
             observe(self.diagnostics, "native_status", hello.get("diagnostics_status"))
-            await self._send(socket, {"type": "ready", "log_level": getattr(self.diagnostics, "level", "info")})
+            limits = self.page_limits() if self.page_limits else None
+            await self._send(socket, {"type": "ready", "log_level": getattr(self.diagnostics, "level", "info"),
+                **({'page_limits': limits} if limits is not None else {})})
             while True:
                 message = await socket.receive_json()
                 if not isinstance(message, dict):
                     raise ValueError("Invalid Electron message")
                 kind = message.get("type")
+                if kind == 'access_pages_closed':
+                    pages = message.get('page_ids')
+                    if (set(message) != {'type', 'page_ids'} or not isinstance(pages, list)
+                            or not 1 <= len(pages) <= 256
+                            or any(type(page) is not int or page <= 0 for page in pages)
+                            or len(pages) != len(set(pages))):
+                        raise ValueError('Invalid access Page closure')
+                    if self.access_pages_closed:
+                        self.access_pages_closed(pages)
+                    continue
                 if kind == "shutdown":
                     if not self.closing:
                         self.closing = True
@@ -347,17 +361,22 @@ class ElectronBridge:
                 break
         return sent
 
-    def _schedule_cancel(self, workflow_id: str | None = None, task_id: str | None = None) -> Future[bool] | None:
+    def _schedule_cancel(self, workflow_id: str, task_id: str | None = None) -> Future[bool] | None:
         if self._loop is not None:
             return asyncio.run_coroutine_threadsafe(self._cancel(workflow_id, task_id), self._loop)
         return None
-
-    def cancel_current(self) -> Future[bool] | None:
-        """Stop every active request under the current Browser workflow owner."""
-        return self._schedule_cancel()
 
     def cancel_workflow(self, workflow_id: str) -> Future[bool] | None:
         return self._schedule_cancel(workflow_id)
 
     def cancel_task(self, workflow_id: str, task_id: str) -> Future[bool] | None:
         return self._schedule_cancel(workflow_id, task_id)
+
+    def refresh_page_limits(self) -> Future[None] | None:
+        async def refresh():
+            socket = self._socket
+            if socket is not None and not self.closing and self.page_limits:
+                await self._send(socket, {'type': 'page_limits', 'page_limits': self.page_limits()})
+        if self._loop is not None:
+            return asyncio.run_coroutine_threadsafe(refresh(), self._loop)
+        return None

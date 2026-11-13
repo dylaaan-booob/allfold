@@ -74,9 +74,48 @@ parent deadlines; original DownloadItem ownership outlives cancellation until
 actual terminal. See [controlled Documents](browser-documents.md). Dedicated Keep/Import/Enrich/Local API
 business paths are retired; no native fallback can dispatch them.
 
+Independent Browser admission is scoped by canonical configuration and saved
+Service ID. Reprepare cannot replace a context while an executing owner uses it;
+credentials, Workspace Reset and Logs Reset retain control exclusivity. Config and
+User State revisions remain Compare-and-Write/diagnostic facts, while Prepare
+access checks capture institution, credential epoch and the selected Service.
+Unrelated edits preserve that captured access. Foreground Run/WoS and Preprint keep
+their input snapshots, commit checks and single Run slot.
+
+Settings access cleanup carries captured old preparation/authentication keys and
+waits outside the configuration write lock, holding only its affected admission
+owner until actual settlement. It cannot close a new-key context. Actual native
+retained-Page destruction revokes matching prepared authority; an in-flight Login
+result cannot restore an already closed Page. Covers final saves verify the target
+Journal and captured managed asset identity/record under the final write guards,
+allowing unrelated User State edits and refusing deleted/replaced targets.
+A saved cover whose image was already missing may be repaired by Search only if
+the captured manifest record and missing-file state still match at final save;
+a newly appeared file, replacement, unsafe path or changed target is refused.
+
+Ordinary Login, Covers and WoS cancellation uses the workflow/task ID captured at
+start. Public Run cancellation carries the UI-captured task ID through HTTP; the
+coordinator compares and sets its signal atomically, then forwards that same
+captured ID to WoS outside its lock. Old cancellation cannot target a replacement
+Run. Cancellation signals do not release native Futures, workflow admission or
+solver slots before actual settlement. Shutdown closes admission, joins business
+workers and waits remaining credential/access-cleanup owners while the bridge can
+still deliver native terminal results.
+
 Diagnostics use strict allowlists and bounded local storage. Credentials,
 Authorization/Cookie values, raw pages and signed URLs stay out of exports.
 Logging failure cannot change business results. [Logging](logging.md) defines
 retention and Reset. Tests use isolated SQLite, files, HTTP and Electron profiles;
 source checks and synthetic fixtures do not prove real provider, institution,
 user-library or actual-PDF behavior. See [development](development.md).
+
+WF04 page admission is Session-wide and jointly reserves both managed dimensions
+before native creation, including popups. Close requests, retired flags, crashes
+and cancellation do not return slots. Cleanup uses captured resource ownership
+even after execution authority is revoked, waits actual DownloadItem terminal
+and WebContents destruction, and touches no other task/user resources. Successful
+Portal/targets transfer ownership without releasing physical counts; stale-key
+cleanup and physical-close feedback cannot invalidate a newer context. Lowered
+limits revoke unused headroom and defer new creation without forcing active pages
+closed. Normal exit disposes common Session listeners only after physical cleanup.
+See [exact counts and rollback](browser-pages.md).

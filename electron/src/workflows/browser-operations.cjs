@@ -6,7 +6,7 @@ const {PAGE_RECOVERY_MS,origin,reportRecovery,recoveryStop,pageRecoveryDetails}=
 const {institutionPageAction,resourcePageAction,detailPageAction,imagePageAction}=require('./page-actions.cjs');
 
 async function pageAction(browser,tab,fn,args=[],signal,allowNavigation=false,deadline=Infinity,beforeDispatch) {
-  checkCanceled(signal);
+  checkCanceled(signal);browser.checkTaskResources();
   if(signal)tab.taskSignal=signal;
   if(Number.isFinite(deadline))await waitForLoad(tab,signal,deadline);
   else while(tab.view.webContents.isLoadingMainFrame())await pause(signal);
@@ -18,13 +18,13 @@ async function pageAction(browser,tab,fn,args=[],signal,allowNavigation=false,de
     return tab.view.webContents.executeJavaScriptInIsolatedWorld(999,[{
       code:'('+fn.toString()+')(...'+JSON.stringify(args)+')'}]);
   },signal,deadline);
-  checkCanceled(signal);
+  checkCanceled(signal);browser.checkTaskResources();
   if(!allowNavigation && !browser.documentCurrent(doc))throw new BrowserFailure('navigation','document_changed');
   return result;
 }
 async function newTaskPage(browser,signal,{managed=false,pageAttempt,deadline=Infinity,...association}={role:'auxiliary',service:false}) {
   await waitFor(()=>browser.ready,signal,deadline);
-  const tab=browser.createTab({present:false,managed,pageAttempt});
+  const tab=await browser.newTaskPage({signal,deadline,managed,pageAttempt});
   browser.associatePage(tab,association);browser.beginPageLoad(tab,signal);
   return tab;
 }
@@ -207,12 +207,15 @@ async function loginInstitution(browser,data,{signal,progress}) {
   return withTaskDeadline(signal,'authentication',async(bounded,deadline)=>{
     if(data.login_url && !official(data.login_url,'/Shibboleth.sso/Login'))
       throw Error('Invalid CARSI entry');
-    const entry=await newTaskPage(browser,bounded,{role:'carsi-portal',service:false,managed:true});
+    await browser.replaceAccess(data,'portal');
+    await browser.reserveTaskPages(3,{signal:bounded,deadline});
+    const entry=await newTaskPage(browser,bounded,{role:'carsi-portal',service:false,managed:true,deadline});
     const portal=await loginCARSI(browser,entry,data,bounded,progress,deadline);
     portal.managed=true;
     browser.associatePage(portal,{role:'carsi-portal',service:false});
     portal.institutionOrigins=new Set(portal.authContext?.origins || []);
     portal.carsiSessionReady=true;
+    browser.retainAccessPage(portal,data,'portal');
     return {outcome:'Opened',portal_page_id:portal.id};
   });
 }
@@ -227,10 +230,12 @@ async function prepareLoggedInService(browser,data,{signal,progress}) {
   requirePreparationKey(data);
   const owner=browser.operation,association=owner.association;
   const {service_id,preparation_key,portal_page_id,workflow_id,task_id}=data;
-  const scopeFields=['scope_id','config_revision','user_state_revision'];
+  const scopeFields=['scope_id'];
   const scope=Object.fromEntries(scopeFields.map(key=>[key,data.service_scope[key]]));
   return withTaskDeadline(signal,'preparation',async(bounded,requestDeadline)=>{
     const entry=browser.tabs.get(portal_page_id);
+    browser.pinAccessPage(entry,data);
+    await browser.replaceAccess(data);
     const frame=entry && !entry.view.webContents.isDestroyed()?entry.view.webContents.mainFrame:null;
     const binding=frame && {pageId:entry.id,processId:frame.processId,frameToken:frame.frameToken};
     const verifyPortal=()=>{
@@ -244,7 +249,7 @@ async function prepareLoggedInService(browser,data,{signal,progress}) {
         || !scopeFields.every(key=>scope[key] && scope[key]===association.service_scope?.[key]
           && scope[key]===data.service_scope?.[key]))
         throw new BrowserFailure('preparation','document_changed');
-      if(!entry?.carsiSessionReady || source?.role!=='carsi-portal' || source.workflow_id!==workflow_id
+      if(!entry?.carsiSessionReady || source?.role!=='carsi-portal'
         || !scopeFields.every(key=>scope[key]===source.service_scope?.[key])
         || !binding || !browser.documentFrame(binding,null) || entry.view.webContents.isLoadingMainFrame()
         || !official(entry.view.webContents.getURL(),'/resource/resource.php'))
@@ -268,6 +273,8 @@ async function prepareLoggedInService(browser,data,{signal,progress}) {
             step:'visit_target',pageId:sourcePageId,authorize:()=>verifyRecovery(signal,deadline)});
           verifyPortal();
         }
+        browser.pageBudget.releaseUnused(owner);
+        await browser.reserveTaskPages(3,{signal,deadline});
         const portal=await newTaskPage(browser,signal,{role:'service-resource',source:entry,managed:true,pageAttempt:attempt,deadline});
         portal.institutionOrigins=new Set(entry.institutionOrigins || []);
         const attemptProgress=value=>{
@@ -286,6 +293,7 @@ async function prepareLoggedInService(browser,data,{signal,progress}) {
           {page_id:result.evidence?.target_page_id ?? browser.taskTab?.id,
             ...(opened?{dispatch_outcome:'confirmed'}:{recovery_stop:'failed'})});
         }
+        if(result.outcome==='Opened')browser.retainAccessPage(browser.tabs.get(result.evidence.target_page_id),data);
         return result;
       } catch(error) {
         const failed=browser.taskTab;
@@ -303,7 +311,7 @@ async function prepareLoggedInService(browser,data,{signal,progress}) {
         deadline=Math.min(deadline,Date.now()+PAGE_RECOVERY_MS);
         firstFailure=error;sourcePageId=failed.id;priorTargetOrigin=attempt.targetOrigin;
         record('recovery_scheduled',error,{page_id:sourcePageId,dispatch_outcome:'not_dispatched'});
-        browser.retirePageAttempt(attempt);
+        await browser.retirePageAttempt(attempt);
       }
     }
   });
@@ -312,10 +320,13 @@ async function prepareLoggedInService(browser,data,{signal,progress}) {
 async function visitManualService(browser,data,{signal,progress}) {
   requirePreparationKey(data);
   return withTaskDeadline(signal,'preparation',async(bounded,deadline)=>{
-    const tab=await newTaskPage(browser,bounded,{role:'service-target',managed:true});
+    await browser.replaceAccess(data);
+    await browser.reserveTaskPages(3,{signal:bounded,deadline});
+    const tab=await newTaskPage(browser,bounded,{role:'service-target',managed:true,deadline});
     const document=await navigate(browser,tab,data.access_url,bounded,progress,deadline);
     if(!browser.documentCurrent(document))throw new BrowserFailure('navigation','document_changed');
     tab.preparationKey=data.preparation_key;
+    browser.retainAccessPage(tab,data);
     return {outcome:'Opened',reason:'target_opened',evidence:{visit_action_observed:true,
       navigation_observed:true,target_page_id:tab.id}};
   });
@@ -385,6 +396,8 @@ async function visitCARSIResource(browser,portal,data,{signal,progress,attempt,p
   const targetOrigin=priorTargetOrigin || browser.carsiVisitOrigins.get(detailURL) || origin(data.access_url);
   await browser.waitForCooldown([targetOrigin,CARSI_PORTAL],{signal,deadline:requestDeadline,validate:verifySource,
     stage:'preparation',step:'visit_target',pageId:detail.id,authorize:verifyVisit});
+  verifySource();
+  await browser.reserveChildPage({signal,deadline:Math.min(requestDeadline,Date.now()+10000)});
   verifySource();
   visitDeadline=Math.min(requestDeadline,Date.now()+10000);
   let target=null,settleClick;
@@ -505,8 +518,11 @@ async function searchJournalCoverWithinDeadline(browser,data,{signal,progress},r
         || /^(localhost|127\.|0\.|10\.|192\.168\.|169\.254\.|\[)/i.test(source.hostname)
         || /\.(local|localhost)$/i.test(source.hostname))throw Error('Unsafe image target');
       // Reuse Chromium and its identity; public cover downloads omit credentials as before.
-      const response=await browser.partition.fetch(source.href,{redirect:'follow',credentials:'omit',
-        signal:AbortSignal.any([signal,AbortSignal.timeout(20000)])});
+      const {response}=await browser.sessionEvents.fetch(source.href,{redirect:'follow',credentials:'omit'},
+        {owner:browser.operation,attemptId:randomBytes(16).toString('hex'),document:doc,signal,
+          deadline:Math.min(requestDeadline,Date.now()+20000),validate:()=>{
+            if(!browser.documentCurrent(doc))throw new BrowserFailure('navigation','document_changed');
+          }});
       if(!response.ok)throw Error('Image download failed');
       checkCanceled(signal);
       const reader=response.body.getReader();let size=0;const chunks=[];

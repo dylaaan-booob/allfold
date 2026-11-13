@@ -8,7 +8,7 @@ for(const browser of [false,true])test(`unified Run cancels the same parent task
   await ui.window.uiRun.start('integrated');await ui.settle();
   assert.equal(ui.get('run-wos-cancel').textContent,'取消 Run');
   await ui.get('run-wos-cancel').emit('click');
-  assert.equal(ui.calls.filter(([url])=>url==='/api/ui-next/run/cancel').length,1);
+  assert.deepEqual(JSON.parse(JSON.stringify(ui.calls.filter(([url])=>url==='/api/ui-next/run/cancel').map(([,body])=>body))),[{task_id:'run-1'}]);
 });
 test('inline Run polls and refreshes results without constructing a player or returning from another workspace',async()=>{
   let state=runData();
@@ -40,7 +40,7 @@ test('restored inline Run browser stage opens its existing task page and cancels
   assert.equal(button.hidden,false);await button.emit('click');
   assert.deepEqual(JSON.parse(JSON.stringify(ui.presentations)),[{workflowId:'run-1'}]);
   await ui.get('run-wos-cancel').emit('click');
-  assert.deepEqual(JSON.parse(JSON.stringify(ui.calls.find(([path])=>path.endsWith('/cancel'))[1])),{});
+  assert.deepEqual(JSON.parse(JSON.stringify(ui.calls.find(([path])=>path.endsWith('/cancel'))[1])),{task_id:'run-1'});
   assert.equal(ui.calls.filter(([path,body])=>path==='/api/ui-next/run-wos' && body).length,0);
 });
 test('display preference changes apply on the next Run and do not cancel the current task',async()=>{

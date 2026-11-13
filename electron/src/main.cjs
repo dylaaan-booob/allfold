@@ -37,6 +37,7 @@ function send(message) {
   socket.send(JSON.stringify(message));
 }
 const CONTROL_ACTIONS=new Set(['cas_credentials','diagnostics_reset']);
+const RESOURCE_ACTIONS=new Set(['invalidate_access','release_workflow_pages']);
 function pendingOperation(message) {
   const current=operations.get(message.id);
   return current?.action===message.action?current:null;
@@ -66,13 +67,15 @@ async function executeControl(message,signal) {
   if(message.action==='cas_credentials') {
     try {
       if(!value || !['save','clear'].includes(value.operation))throw Error('Invalid credential operation');
-      return await (value.operation==='save'?saveCASCredentials(value):clearCASCredentials(value));
+      const result=await (value.operation==='save'?saveCASCredentials(value):clearCASCredentials(value));
+      if(result.ok)await browser.invalidateAllAccess();
+      return result;
     }catch(error){return {ok:false,error:casErrorCode(error)};}
   }
   return {ok:false,error:'unsupported_operation'};
 }
 async function execute(message) {
-  if(!CONTROL_ACTIONS.has(message.action) && !['login_carsi','prepare_service','visit_manual_service','search_journal_cover','wos_query','wos_export'].includes(message.action)){
+  if(!CONTROL_ACTIONS.has(message.action) && !RESOURCE_ACTIONS.has(message.action) && !['login_carsi','prepare_service','visit_manual_service','search_journal_cover','wos_query','wos_export'].includes(message.action)){
     send({type:'result',id:message.id,action:message.action,data:{diagnostic:{stage:'navigation',code:'unsupported_operation'}}});return;
   }
   const control=CONTROL_ACTIONS.has(message.action);
@@ -93,6 +96,11 @@ async function execute(message) {
       const data=await executeControl(message,current.controller.signal);
       send({type:'result',id:message.id,action:message.action,data});
       return;
+    }
+    if(RESOURCE_ACTIONS.has(message.action)) {
+      // Captured cleanup is idempotent and must finish even after the caller's cancellation.
+      const data=message.action==='invalidate_access'?await browser.invalidateAccess(message.data):browser.releaseWorkflowPages(message.data);
+      send({type:'result',id:message.id,action:message.action,data});return;
     }
     let association;
     try {association=operationAssociation({...message.data,request_id:message.id});}catch(_){association=null;}
@@ -226,7 +234,8 @@ async function connect() {
     socket.addEventListener('message',event=>{
       try {
         const message=JSON.parse(event.data);
-        if(message.type === 'ready') {setLogLevel(message.log_level);bridgeReady=true;resolve();}
+        if(message.type === 'ready') {setLogLevel(message.log_level);if(message.page_limits)browser.updatePageLimits(message.page_limits);bridgeReady=true;resolve();}
+        else if(message.type === 'page_limits')browser.updatePageLimits(message.page_limits);
         else if(message.type === 'cancel') {
           pendingOperation(message)?.controller.abort();
         }
@@ -301,12 +310,13 @@ async function main() {
   window.webContents.on('will-prevent-unload',event=>{
     if(exitApproved || confirmBlockedUnload(window,dialog))event.preventDefault();
   });
-  browser=new BrowserRuntime({hostWindow:window,cdpURL,solveCloudflare,isTaskRunning:()=>operations.size>0,readCASCredentials:async()=>{
+  browser=new BrowserRuntime({hostWindow:window,solveCloudflare,isTaskRunning:()=>operations.size>0,readCASCredentials:async()=>{
     if(exiting)return null;
     const credentials=await readCASCredentials();
     return exiting?null:credentials;
   }});
   await browser.ready;
+  browser.events.on('access-pages-closed',page_ids=>{if(socket?.readyState===WebSocket.OPEN)send({type:'access_pages_closed',page_ids});});
   const removeBrowserIPC=installBrowserIPC({ipcMain,hostWindow:window,origin:base,browser});
   window.once('closed',removeBrowserIPC);
   window.webContents.on('did-finish-load',()=>browser.publish());
@@ -342,10 +352,14 @@ app.on('before-quit',event=>{
     void waitForOperations().then(()=>app.quit());
     return;
   }
-  if(readyToExit){browser?.close();return;}
+  if(readyToExit) {
+    if(browser && !browser.closed){event.preventDefault();browser.close().then(()=>app.quit());}
+    return;
+  }
   event.preventDefault();
   if(exiting)return;
   exiting=true;
+  browser?.stopAdmission();
   stopOperations();
   log('info','app_exiting');
   if(bridgeReady) {

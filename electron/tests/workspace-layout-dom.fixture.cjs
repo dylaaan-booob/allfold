@@ -386,6 +386,11 @@ app.whenReady().then(async()=>{
     await check(async navigate=>{
       const $=id=>document.getElementById(id);await navigate('settings');
       if($('s-settings').clientHeight<100)throw Error('Settings lost its parent height');
+      for(const [key,min,max,label] of [['managedPageGlobalLimit','4','64','Managed pages total'],['managedPageServiceLimit','3','16','Pages per Service']]) {
+        const input=document.querySelector(`[data-monitor="${key}"]`);
+        if(!input || input.min!==min || input.max!==max || !input.closest('label').textContent.includes(label) || input.getBoundingClientRect().height===0)throw Error('Physical Browser page limits are not visible with their actual ranges');
+      }
+      if(document.querySelector('[data-monitor="pdfConcurrency"]'))throw Error('Inactive PDF controls must stay hidden');
       if($('s-save') || document.querySelector('.header-browse #s-save'))throw Error('ordinary global SAVE remains');
       if($('s-settings').querySelector('[data-monitor="name"], [data-monitor="displayName"], #s-institution'))throw Error('Settings contains task-owned fields');
       if($('s-settings').querySelector('.navigation-rail').getBoundingClientRect().width<36)throw Error('Settings navigation rail missing');

@@ -185,7 +185,8 @@ def test_legacy_import_settings_preserve_only_neutral_workflow_values(tmp_path):
     saved = save_settings(config, load_settings(config).draft)
     assert saved.outcome is SettingsSaveOutcome.SAVED
     raw = config.read_text()
-    assert 'workflow:' in raw and 'paper_global_concurrency: 6' in raw
+    assert 'workflow:' in raw and 'managed_page_global_limit: 16' in raw
+    assert 'paper_global_concurrency' not in raw
     assert all(retired not in raw for retired in ('kept_workflow', 'zotero_', 'translator_concurrency'))
 
 

@@ -33,6 +33,18 @@ Cancellation/expiry cancels the original DownloadItem and awaits its actual
 terminal before releasing ownership; cleanup remains scoped to the captured
 Document. The eight fields and URL-chain attribution above are unchanged.
 
+WoS now registers its attempt with the [shared Session download router](browser-session.md)
+before the action; it does not install or remove a per-export native Session
+listener. The original item receives the already-issued staging path inside the
+synchronous event callback. Native source/frame and initiator facts precede WoS's
+business URL-chain validation. A missing frame or ambiguous source is refused,
+and a dispatched attempt without an item makes that physical source unsafe for
+new attempts until its actual destruction. Operation cleanup invalidates and
+closes the retained source; a subsequent explicit retry needs a fresh page.
+Successful item completion and verified pre-click DOM refusals leave the source
+reusable for consecutive exports or retries.
+The Session entry remains installed for independent work after export cleanup.
+
 ## Selector evidence
 
 On 2026-11-07, a task-isolated, normally authenticated Core Collection journal
@@ -70,3 +82,13 @@ the parent's operation-local Work queue. Submission does no inline HTTP or Paper
 write and does not alter these eight export choices. Count, path or duplicate-UT
 failure prevents that batch callback. Final native conflict quarantine still
 applies to all roots, including batches already submitted for Work lookup.
+
+WF04 keeps the prepared target in the same physical page ledger as other tasks.
+Query transfers/pins the exact results Document for its captured workflow/task
+through consecutive Export operations. The Python finalizer releases that loan
+only after native operations and actual item terminals settle; stale releases
+cannot free a new workflow. Idle prepared contexts remain bounded and can be
+evicted, with exact Page-close feedback invalidating Login state. Original source
+pages keep occupying capacity until `DownloadItem.done`; the Runtime form-POST
+capability limit does not change the existing WoS production export route. See
+[page resources](browser-pages.md) and [native Session evidence](browser-session.md).
