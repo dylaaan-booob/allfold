@@ -255,3 +255,22 @@ def test_current_form_action_stays_pending_and_is_never_mechanical_get():
     with client(lambda _: pytest.fail('A form action is not a GET')) as http:
         outcome = http.consume(candidate)
     assert outcome.kind == 'pending' and not outcome.transfer_complete
+
+
+def test_supported_current_silverchair_response_uses_explicit_selector_without_reopening_article():
+    from allfold.pdf_rules import KnownPdfUrl
+    paper = target('pubs.acs.org')
+    inputs = PdfRuleInputs(paper, known_pdf_urls=(KnownPdfUrl('https://pubs.acs.org/current', 'API02', 'link'),))
+    seen = []
+    def handle(request):
+        seen.append(str(request.url))
+        if len(seen) == 1:
+            return httpx.Response(200, headers={'Content-Type': 'text/html'}, content=b'''
+                <head><meta name="citation_doi" content="10.1234/AbC"></head>
+                <a class="article-pdfLink" href="/journal/article-pdf/Body.PDF?Signature=Keep">Full text</a>''')
+        return httpx.Response(200, headers={'Content-Type': 'application/pdf'})
+    with client(handle) as http:
+        result = PdfDiscovery(paper, inputs=inputs, io=PdfDiscoveryIO(http)).run(lambda c: http.consume(c,
+            transfer=lambda *_: CandidateResult.pdf(transfer_complete=True)))
+    assert seen == ['https://pubs.acs.org/current', 'https://pubs.acs.org/journal/article-pdf/Body.PDF?Signature=Keep']
+    assert (result.pdf_source, result.fallback_used) == ('P2', False)

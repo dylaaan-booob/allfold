@@ -102,7 +102,7 @@ def _safe_next(candidate, base, value, **extra):
         parsed = urlsplit(url)
         if parsed.hostname == 'journals.plos.org' and 'manuscript' in parse_qs(parsed.query).get('type', ()):
             return None
-        return replace(candidate, url=url, reader_kind=None, credential=None, accept=None, **extra)
+        return replace(candidate, **({'url': url, 'reader_kind': None, 'credential': None, 'accept': None} | extra))
     except ValueError:
         return None
 
@@ -139,9 +139,9 @@ def parse_current_response(candidate, response):
         except (ValueError, AttributeError, TypeError):
             return ()
     # This citation behavior belongs exclusively to Oxford's qualified endpoint.
-    if (candidate.rule_id == 'R020' and candidate.reader_kind == 'oup_citation'
-            and actual.hostname == 'academic.oup.com' and actual.path == '/Citation/Download'
-            and parse_qs(actual.query).get('resourceType') == ['3']):
+    if (actual.hostname == 'academic.oup.com' and actual.path == '/Citation/Download'
+            and parse_qs(actual.query).get('resourceType') == ['3']
+            and re.fullmatch(r'[0-9]{1,16}', next(iter(parse_qs(actual.query).get('resourceId', ())), ''))):
         match = re.search(r'\beprint\s*=\s*(?:\{([^{}]+)\}|"([^"]+)")', text, re.I)
         value = (match[1] or match[2]).strip() if match else None
         # Explicit eprint must be a PDF entry, not the citation's article URL.
@@ -207,6 +207,40 @@ def parse_current_response(candidate, response):
             if (node['tag'] == 'meta' and any(p['tag'] == 'head' for p in node['parents'])
                     and (node['attrs'].get('name') or node['attrs'].get('property', '')).lower() == name):
                 add(node['attrs'].get('content'))
+    host = actual.hostname or ''
+    silverchair = host in {'pubs.acs.org', 'pubs.aip.org', 'jamanetwork.com',
+        'pubs.geoscienceworld.org', 'academic.oup.com'} or any(host == root or host.endswith('.' + root)
+            for root in ('rupress.org', 'ashpublications.org', 'arvojournals.org'))
+    atypon = host in {'onlinelibrary.wiley.com', 'journals.sagepub.com', 'www.tandfonline.com',
+        'www.annualreviews.org', 'pubs.aiaa.org', 'www.liebertpub.com', 'www.worldscientific.com', 'epubs.siam.org'}
+    for node in parser.nodes:
+        tag, attrs = node['tag'], node['attrs']
+        label = node['text'] + ' ' + attrs.get('title', '') + ' ' + attrs.get('href', '')
+        if _excluded(node) or re.search(r'supplement|supporting|appendix|whole issue|entire issue|other article', label, re.I):
+            continue
+        classes = attrs.get('class', '').split()
+        if tag == 'a':
+            selected = (silverchair and 'article-pdfLink' in classes
+                or (host == 'nature.com' or host.endswith('.nature.com')) and attrs.get('data-track-action') == 'download pdf'
+                or host in {'degruyterbrill.com', 'www.degruyterbrill.com'} and 'downloadPdf' in classes
+                or host in {'emerald.com', 'www.emerald.com'} and 'intent_pdf_link' in classes
+                or host in {'opg.optica.org', 'osapublishing.org', 'www.osapublishing.org'} and attrs.get('id') == 'link-pdf'
+                or (host == 'elifesciences.org' or host.endswith('.elifesciences.org'))
+                    and any('article-download-list' in p['attrs'].get('class', '').split() for p in node['parents'])
+                    and re.search(r'\bpdf\b', label, re.I))
+            if selected:
+                add(attrs.get('href'))
+            if host == 'jamanetwork.com' and attrs.get('id') == 'pdf-link':
+                add(attrs.get('data-article-url'))
+            if atypon and isinstance(attrs.get('href'), str):
+                linked = urlsplit(urljoin(response.url, attrs['href']))
+                matched = re.fullmatch(r'/doi/(?:pdf|epdf|pdfplus)/(10\.[0-9]{4,9}/.+)', linked.path)
+                if matched and linked.hostname == host and valid_doi(matched[1]) == candidate.target.identity_doi:
+                    add(attrs['href'])
+        if (tag == 'form' and (host == 'microbiologyresearch.org' or host.endswith('.microbiologyresearch.org'))
+                and 'ft-download-content__form--pdf' in classes
+                and any('download-pdf' in p['attrs'].get('class', '').split() for p in node['parents'])):
+            add(attrs.get('action'), action='refresh_form')
     # Only one unambiguous main-article PDF entrance. Other article/issue and
     # supplement links are excluded before deciding ambiguity.
     generic = []
