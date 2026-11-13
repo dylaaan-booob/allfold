@@ -4,6 +4,7 @@ from __future__ import annotations
 from collections import defaultdict
 from datetime import datetime, timezone
 from pathlib import Path
+from contextlib import nullcontext
 import secrets
 from typing import Literal
 from uuid import UUID
@@ -95,7 +96,10 @@ class _RunCancel(_Action):
     task_id: str = Field(min_length=1, max_length=128)
 
 
-def paper_payload(paper: WorkspacePaper, *, preprint_lookup=None) -> dict:
+def paper_payload(paper: WorkspacePaper, *, preprint_lookup=None, workspace_tasks=None, cleanup_pending=None) -> dict:
+    if cleanup_pending is None:
+        cleanup_pending = (workspace_tasks.cleanup_pending(paper.paper_id, paper.record.workspace_id)
+            if workspace_tasks else bool(preprint_lookup and preprint_lookup.cleaning_up(paper.paper_id, paper.record.workspace_id)))
     metadata = paper.record.metadata
     doi = paper.external_ids.doi
     proof_keys = {(item.provider, item.version, date_value(item)) for item in paper.preprint_evidence}
@@ -119,11 +123,11 @@ def paper_payload(paper: WorkspacePaper, *, preprint_lookup=None) -> dict:
         sources=[source.model_dump(mode='json', exclude_none=True) for source in paper.sources],
         journal_issns=list(paper.journal_issns),
         discovered_at=paper.discovered_at.isoformat() if paper.discovered_at else None,
-        notes=metadata.notes if metadata else None, collection_status='not_started',
+        notes=metadata.notes if metadata else None, collection_status=paper.record.collection_status,
         body_present=paper.record.body is not None,
         preprint_lookup_available=bool(metadata is not None and not paper.record.excluded and formal_lookup_doi(
             doi, paper.publication_type, paper.journal, paper.conference)),
-        cleanup_pending=bool(preprint_lookup and preprint_lookup.cleaning_up(paper.paper_id, paper.record.workspace_id)))
+        cleanup_pending=bool(cleanup_pending))
 
 
 def install_ui_next(app: FastAPI, config_path: Path, csrf_token: str) -> None:
@@ -147,7 +151,11 @@ def install_ui_next(app: FastAPI, config_path: Path, csrf_token: str) -> None:
             state_snapshot = load_user_state(config_path, config.venue_whitelist)
             settings_list = state_snapshot.state
             journals, services = settings_list.journals, settings_list.access_services
-            workspace = load_workspace(config.output_dir, journals=journals)
+            registry = app.state.workspace_tasks.peek()
+            with registry.paper_gate() if registry else nullcontext():
+                workspace = load_workspace(config.output_dir, journals=journals)
+                cleanup = {paper.paper_id: app.state.workspace_tasks.cleanup_pending(paper.paper_id, paper.record.workspace_id)
+                           for paper in workspace.papers}
             if config_path.read_bytes() != configuration or read_user_state(config_path).revision != state_snapshot.revision:
                 raise ContentChangedError('Workspace/configuration changed; refresh before continuing')
             registry_issues = []
@@ -182,7 +190,7 @@ def install_ui_next(app: FastAPI, config_path: Path, csrf_token: str) -> None:
                         group=None, labels=[], publisher=None, service=None, service_id=None, cover=None, papers=[])
                     subjects[(None, True)].append(records[key])
                 entry = records[key]
-                item = paper_payload(paper, preprint_lookup=app.state.preprint_lookup)
+                item = paper_payload(paper, cleanup_pending=cleanup[paper.paper_id])
                 if paper.status is PaperStatus.CANDIDATE:
                     entry['papers'].append(item)
                 else:
@@ -208,12 +216,21 @@ def install_ui_next(app: FastAPI, config_path: Path, csrf_token: str) -> None:
         if not valid(body):
             return response({'message': 'Invalid or missing CSRF token; refresh the page.'}, 403)
         try:
-            with app.state.reset_lock:
+            with app.state.settings_write_lock, app.state.reset_lock:
                 config = load_config(config_path)
-                result = apply_paper_action(config.output_dir, body.workspace_id, paper_id, action,
-                    expected_status=body.expected_status, preprint_lookup=app.state.preprint_lookup)
-            return response(dict(workspace_id=result.paper.workspace_id, revision=result.revision,
-                                 paper=paper_payload(WorkspacePaper(result.paper), preprint_lookup=app.state.preprint_lookup)))
+                registry = app.state.workspace_tasks.current()
+                apply_paper_action(config.output_dir, body.workspace_id, paper_id, action,
+                    expected_status=body.expected_status, preprint_lookup=app.state.preprint_lookup,
+                    workspace_registry=registry, cancel=False)
+            if action == 'reject':
+                registry.cancel_paper(paper_id, body.workspace_id)
+                app.state.preprint_lookup.cancel_paper(paper_id, body.workspace_id)
+            with registry.paper_gate():
+                from allfold.persistence.paper_repository import PaperRepository
+                with PaperRepository.open(config.output_dir, expected_workspace_id=body.workspace_id) as repository:
+                    paper, revision = repository.get(paper_id), repository.revision
+                payload = paper_payload(WorkspacePaper(paper), workspace_tasks=app.state.workspace_tasks)
+            return response(dict(workspace_id=paper.workspace_id, revision=revision, paper=payload))
         except (ConfigurationError, ContentChangedError, LibraryError, ValueError, OSError) as error:
             return response({'message': str(error)}, 409)
 
@@ -248,6 +265,8 @@ def install_ui_next(app: FastAPI, config_path: Path, csrf_token: str) -> None:
         if not valid(body):
             return response({"message": "Invalid or missing CSRF token; refresh the page."}, 403)
         with app.state.settings_write_lock:
+            if app.state.workspace_tasks.changing:
+                return response({'message': 'Workspace/configuration maintenance is in progress'}, 409)
             if any(owner.exclusive for owner in app.state.browser_task_lock.owners):
                 return response({"message": "Browser control operation is in progress"}, 409)
             availability = run_data()["providers"][body.provider.value]

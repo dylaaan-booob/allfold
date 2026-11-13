@@ -1,5 +1,6 @@
 """HTTP projection for bounded local evidence and guarded Logs Reset."""
 from concurrent.futures import TimeoutError
+from contextlib import nullcontext
 import hmac
 import os
 import secrets
@@ -57,7 +58,9 @@ def install_diagnostics_api(app, *, run_slot):
             return False
 
     def logs_preview():
-        app.state.reset_confirmation = None
+        marker = secrets.token_urlsafe(32)
+        with app.state.reset_lock:
+            app.state.reset_confirmation = (marker, None, 'logs-preview', None)
         try:
             if bridge.connected:
                 native = native_call('preview')
@@ -69,7 +72,10 @@ def install_diagnostics_api(app, *, run_slot):
                 native = None
             plan = store.preview_reset()
             token = secrets.token_urlsafe(32)
-            app.state.reset_confirmation = (token, plan, 'logs', native)
+            with app.state.reset_lock:
+                if app.state.reset_confirmation != (marker, None, 'logs-preview', None):
+                    raise DiagnosticRefused('Logs preview was superseded')
+                app.state.reset_confirmation = (token, plan, 'logs', native)
             return {'reset_plan': {'scope': 'logs', 'scope_id': store.scope_id,
                 'history_records': len(store.history()['records']),
                 'includes_native': native is not None, 'includes_app_level': False,
@@ -104,56 +110,63 @@ def install_diagnostics_api(app, *, run_slot):
             'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff'})
 
     def reset_logs(form):
-        result = None
+        result, owner, change = None, None, None
+        slot = False
         status = 409
-        with app.state.settings_write_lock, app.state.reset_lock:
-            saved = app.state.reset_confirmation
-            app.state.reset_confirmation = None  # Every submitted attempt consumes the authorization.
-            token = form.get('reset_token')
-            if (saved is None or len(saved) < 3 or saved[2] != 'logs'
-                    or not isinstance(token, str) or not token.isascii()
-                    or not secrets.compare_digest(token, saved[0])):
-                message = 'Logs confirmation is stale or already used. Reopen Reset.'
-            elif (app.state.run_coordinator.snapshot().status is CoordinatorStatus.RUNNING
-                    or app.state.wos_coordinator.running
-                    or bool(app.state.browser_task_lock.owners)):
-                message = 'A workflow is active; Logs Reset refused.'
-            elif not run_slot.acquire(blocking=False):
-                message = 'A Run is active; Logs Reset refused.'
-            else:
-                owner = app.state.browser_task_lock.acquire('logs-reset')
-                try:
+        try:
+            with app.state.settings_write_lock, app.state.reset_lock:
+                saved = app.state.reset_confirmation
+                app.state.reset_confirmation = None
+                token = form.get('reset_token')
+                if (saved is None or len(saved) < 3 or saved[2] != 'logs'
+                        or not isinstance(token, str) or not token.isascii()
+                        or not secrets.compare_digest(token, saved[0])):
+                    raise DiagnosticRefused('Logs confirmation is stale or already used. Reopen Reset.')
+                registry = app.state.workspace_tasks.peek()
+                with registry.paper_gate() if registry else nullcontext():
+                    from allfold.web.settings_guard import settings_task_active
+                    if settings_task_active(app):
+                        raise DiagnosticRefused('A workflow is active; Logs Reset refused.')
+                    slot = run_slot.acquire(blocking=False)
+                    if not slot:
+                        raise DiagnosticRefused('A Run is active; Logs Reset refused.')
+                    owner = app.state.browser_task_lock.acquire('logs-reset')
                     if owner is None:
-                        raise DiagnosticRefused('A browser workflow is active')
-                    # Check coordinators and own their dispatch exclusions before
-                    # taking the writer lock: Run observes diagnostics while it
-                    # holds its coordinator lock. Never invert that lock order.
-                    with store.reset_guard():
-                        # Validate before any producer deletes data. Revalidation
-                        # inside reset protects the later Python deletion as well.
-                        store.validate_reset(saved[1])
-                        native = saved[3]
-                        if native is not None:
-                            if not bridge.connected:
-                                raise DiagnosticRefused('Native connection changed')
-                            native_result = native_call('reset', native)
-                            result = {'native': native_result, 'python': None}
-                            if native_result.get('success') is not True:
-                                raise DiagnosticRefused('Native logs were not fully cleared')
-                        elif bridge.connected or not offline_native_absent():
-                            raise DiagnosticRefused('Native writer changed since preview')
-                        python_result = store.reset(saved[1])
-                        result = {**(result or {}), 'python': python_result}
-                        status = 200 if python_result['success'] else 409
-                        message = ('Logs cleared for this configuration.' if status == 200 else
-                                   'Logs Reset incomplete; some diagnostic files remain. Reopen Reset to inspect the current target.')
-                except (OSError, ValueError, RuntimeError, TimeoutError):
-                    message = ('Logs Reset could not complete. Some files may have been deleted; '
-                               'the result is unconfirmed. No automatic retry was performed.' if result else
-                               'Logs Reset refused or native result unconfirmed. Reconnect Electron and reopen Reset; no automatic retry was performed.')
-                finally:
-                    if owner is not None:
-                        app.state.browser_task_lock.release(owner)
+                        raise DiagnosticRefused('A Browser control is active; Logs Reset refused.')
+                    # Freeze the idle lifetime under the same Paper gate used by
+                    # late admissions. Logs never interrupts existing business work.
+                    change = app.state.workspace_tasks.begin_change(whole=True)
+            app.state.workspace_tasks.drain_change(change)
+            # Neither settings nor reset admission is held across native Futures.
+            with store.reset_guard():
+                store.validate_reset(saved[1])
+                native = saved[3]
+                if native is not None:
+                    if not bridge.connected:
+                        raise DiagnosticRefused('Native connection changed')
+                    native_result = native_call('reset', native)
+                    result = {'native': native_result, 'python': None}
+                    if native_result.get('success') is not True:
+                        raise DiagnosticRefused('Native logs were not fully cleared')
+                elif bridge.connected or not offline_native_absent():
+                    raise DiagnosticRefused('Native writer changed since preview')
+                python_result = store.reset(saved[1])
+                result = {**(result or {}), 'python': python_result}
+                status = 200 if python_result['success'] else 409
+                message = ('Logs cleared for this configuration.' if status == 200 else
+                           'Logs Reset incomplete; some diagnostic files remain. Reopen Reset to inspect the current target.')
+        except (OSError, ValueError, RuntimeError, TimeoutError) as error:
+            message = (('Logs Reset could not complete. Some files may have been deleted; '
+                        'the result is unconfirmed. No automatic retry was performed.') if result else str(error))
+        finally:
+            if owner is not None:
+                app.state.browser_task_lock.release(owner)
+            try:
+                if change is not None:
+                    with app.state.settings_write_lock:
+                        app.state.workspace_tasks.finish_change(change)
+            finally:
+                if slot:
                     run_slot.release()
         return _json({'reset_plan': None, 'reset_token': None, 'reset_error': message,
                       'reset_success': status == 200, 'reset_result': result}, status)
