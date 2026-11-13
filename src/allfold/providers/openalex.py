@@ -1,4 +1,4 @@
-"""OpenAlex journal lookup and on-demand Import PDF fallback HTTP client."""
+"""OpenAlex journal lookup and exact-Work PDF discovery HTTP client."""
 
 from __future__ import annotations
 
@@ -9,7 +9,8 @@ from urllib.parse import quote
 
 from allfold.identifiers import normalize_doi
 from allfold.progress import ActivityKind, ActivityUpdate, ProgressCallback, ProgressEvent
-from allfold.providers.provider_http import DiscoveryError, ProviderHTTPError, ProviderReadClient, object_json
+from allfold.providers.provider_http import (Cancelled, DiscoveryError, ProviderBudgetExceeded,
+    ProviderHTTPError, ProviderReadClient, object_json)
 
 OPENALEX_BASE_URL = "https://api.openalex.org"
 SOURCE_FIELDS = (
@@ -65,7 +66,7 @@ class OpenAlexClient:
         self.close()
 
     def get_work_by_doi(self, doi: str) -> dict[str, Any]:
-        """Retrieve one exact DOI work for the on-demand Import PDF fallback."""
+        """Retrieve one exact DOI Work for on-demand source discovery."""
         normalized = normalize_doi(doi)
         if normalized is None:
             raise ValueError("Invalid DOI")
@@ -113,6 +114,7 @@ class OpenAlexClient:
         progress_callback: ProgressCallback | None = None,
         activity: ActivityUpdate | None = None,
     ) -> dict[str, Any]:
+        self._reader.check_parent_deadline()
         if self._access_denial is not None:
             raise self._access_denial
         headers = {"Accept": "application/json", "User-Agent": "allfold/0.1.0"}
@@ -132,9 +134,14 @@ class OpenAlexClient:
             )))
 
         try:
-            return self._reader.read(prepare, self._reader.operation(report),
+            result = self._reader.read(prepare, self._reader.operation(report),
                 decode=lambda response: object_json('OpenAlex', response), follow_redirects=True)
+            self._reader.check_parent_deadline()
+            return result
+        except (Cancelled, ProviderBudgetExceeded):
+            raise
         except ProviderHTTPError as error:
+            self._reader.check_parent_deadline()
             if error.status == 404 and not_found_message is not None:
                 raise OpenAlexNotFoundError(not_found_message) from None
             kind = (OpenAlexFailureKind.AUTHORIZATION if error.status in {401, 403} else
@@ -144,4 +151,5 @@ class OpenAlexClient:
                 self._access_denial = failure
             raise failure from None
         except DiscoveryError as error:
+            self._reader.check_parent_deadline()
             raise OpenAlexRequestError(str(error)) from None

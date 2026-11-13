@@ -57,7 +57,7 @@ class PdfTarget:
 @dataclass(frozen=True)
 class PdfCandidate:
     target: PdfTarget
-    stage: Literal['P1', 'P2']
+    stage: Literal['P1', 'P2', 'P3', 'P4', 'P5']
     rule_id: str
     platform: str
     url: str = dataclass_field(repr=False)
@@ -66,9 +66,10 @@ class PdfCandidate:
     field: str | None = None
     credential: str | None = None
     accept: str | None = None
+    action: str | None = None
 
     def __post_init__(self) -> None:
-        if not isinstance(self.target, PdfTarget) or self.stage not in {'P1', 'P2'}:
+        if not isinstance(self.target, PdfTarget) or self.stage not in {'P1', 'P2', 'P3', 'P4', 'P5'}:
             raise ValueError('invalid candidate target/stage')
         for value, name in ((self.rule_id, 'rule'), (self.platform, 'platform')):
             _bounded(value, 64, name, required=True)

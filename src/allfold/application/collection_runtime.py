@@ -81,6 +81,14 @@ class PaperReservation:
     released: bool = False
     cleanup_ended: bool = False
     cleanup_failed: bool = False
+    # Defaults keep legacy/manual reservations independent of discovery clients.
+    authority: object = field(default_factory=lambda: _LocalAuthority())
+    service_id: str | None = None
+    providers: tuple[str, ...] = ()
+    deadline: float = float('inf')
+    future: Future = field(default_factory=SettledFuture)
+    scheduled: Future | None = None
+    browser_owner: object = None
 
     @property
     def paper_id(self):
@@ -260,7 +268,7 @@ class WorkspaceRegistry:
     @property
     def browser_owner_ids(self):
         with self._gate:
-            return frozenset(task.browser_owner.id for task in self._tasks.values()
+            return frozenset(task.browser_owner.id for task in (*self._tasks.values(), *self._reservations.values())
                              if task.browser_owner is not None)
 
     def busy(self, paper_id, workspace_id=None):
@@ -330,11 +338,12 @@ class WorkspaceRegistry:
     def _require_live(self, handle):
         self._require_open()
         self._check_admission(handle.authority)
-        if (self._tasks.get(handle.paper_id) is not handle or handle.lifecycle_id != self.lifecycle_id
+        owners = self._reservations if isinstance(handle, PaperReservation) else self._tasks
+        if (owners.get(handle.paper_id) is not handle or handle.lifecycle_id != self.lifecycle_id
                 or handle.cancel_event.is_set()):
-            raise StaleWriteError('Captured collection owner is no longer valid')
+            raise StaleWriteError('Captured Paper task owner is no longer valid')
         if time.monotonic() >= handle.deadline:
-            raise TimeoutError('Collection parent deadline expired')
+            raise TimeoutError('Paper task parent deadline expired')
 
     def _guard(self, handle, repository=None):
         try:
@@ -343,11 +352,28 @@ class WorkspaceRegistry:
             raise StaleWriteError('Captured access authority was revoked') from error
         with self._gate:
             self._require_live(handle)
+            if isinstance(handle, PaperReservation):
+                if self._identity != self._path_identity():
+                    raise StaleWriteError('Workspace path or database was replaced')
+                if repository is None:
+                    with self._repository() as current:
+                        self._require_reservation(handle, current)
+                else:
+                    self._require_reservation(handle, repository)
+                return
             if repository is not None:
                 repository.require_collection(handle.token)
             else:
                 with self._repository() as current:
                     current.require_collection(handle.token)
+
+    @staticmethod
+    def _require_reservation(handle, repository):
+        paper = repository.get(handle.paper_id)
+        if (paper.token != handle.token or paper.excluded or paper.metadata is None
+                or paper.collection is not None and paper.collection.active):
+            raise StaleWriteError('Captured Paper authority changed')
+        return paper
 
     def _ensure_browser_owner(self, handle):
         if self.browser_lock is None:
@@ -471,12 +497,20 @@ class WorkspaceRegistry:
         self._observe(handle, 'queued', 'workflow_started')
         return self.register(handle)
 
-    def reserve(self, paper_id, *, kind='download', expected_token=None, cancel=None):
+    def reserve(self, paper_id, *, kind='download', expected_token=None, cancel=None,
+                service_id=None, providers=(), deadline=None):
         if kind not in {'download', 'legacy'}:
             raise ValueError('Only download and legacy reservations are supported')
         paper_id = UUID(str(paper_id))
+        providers = tuple(sorted(set(providers)))
+        if not set(providers) <= set(PROVIDERS):
+            raise ValueError('Unknown reservation Provider')
+        authority = (self._authority(service_id, (BranchSpec('pdf-discovery', providers=providers),))
+                     if service_id is not None or providers else _LocalAuthority())
+        reservation_deadline = self._deadline(deadline) if deadline is not None else float('inf')
         with self._gate:
             self._require_open()
+            self._check_admission(authority)
             existing = self._reservations.get(paper_id)
             if existing is not None and kind == existing.kind == 'download':
                 return existing
@@ -490,6 +524,9 @@ class WorkspaceRegistry:
                     raise StaleWriteError('Captured Paper authority changed')
                 repository.touch_projection(paper_id)
             reservation = PaperReservation(self, paper.token, self.lifecycle_id, kind, cancel)
+            reservation.authority, reservation.service_id = authority, service_id
+            reservation.providers = providers
+            reservation.deadline = reservation_deadline
             self._reservations[paper_id] = reservation
             return reservation
 
@@ -513,9 +550,10 @@ class WorkspaceRegistry:
                 self._settled_condition.notify_all()
 
     def fail_reservation(self, reservation, *, phase, error):
-        """A legacy worker exited without proving its captured resource close."""
-        if phase not in {'legacy-client-cleanup', 'legacy-snapshot-cleanup', 'legacy-owner-cleanup'}:
-            raise ValueError('Unknown legacy cleanup phase')
+        """A reservation worker exited without proving its captured resource close."""
+        if phase not in {'legacy-client-cleanup', 'legacy-snapshot-cleanup', 'legacy-owner-cleanup',
+                         'discovery-client-cleanup', 'discovery-native-cleanup', 'discovery-owner-cleanup'}:
+            raise ValueError('Unknown reservation cleanup phase')
         with self._gate:
             if reservation.registry is not self:
                 raise InvalidPaperState('Reservation belongs to another Workspace registry')
@@ -721,8 +759,7 @@ class WorkspaceRegistry:
             try:
                 self._signal(target)
             except Exception as error:
-                if isinstance(target, TaskHandle):
-                    self._fault(target, 'cancel-signal', error)
+                self._fault(target, 'cancel-signal', error)
             with self._gate:
                 pending = isinstance(target, TaskHandle) and target.cancel_pending
                 if pending:
@@ -753,7 +790,7 @@ class WorkspaceRegistry:
         selected = frozenset(service_ids)
         providers = frozenset(providers)
         with self._gate:
-            targets = tuple(task for task in self._tasks.values()
+            targets = tuple(task for task in (*self._tasks.values(), *self._reservations.values())
                             if all_access and task.service_id is not None
                             or task.service_id in selected or providers.intersection(task.providers))
             return tuple(target for target in targets if self._prepare_cancel_target(target))

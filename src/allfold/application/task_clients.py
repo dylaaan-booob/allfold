@@ -100,3 +100,36 @@ class IndependentClientFactory:
         with self._condition:
             self._closed = True
             self._condition.wait_for(lambda: self._active == 0)
+
+    @contextmanager
+    def open_pdf_discovery(self, *, cancel_event, request_guard, deadline, http_options=None):
+        """Owned PDF/API readers; optional publisher credentials have no saved source yet.
+
+        The OpenAlex credential revision belongs to the captured task authority.
+        Check it before and after reading its value, and at every later request.
+        Creating clients here never starts a Provider request.
+        """
+        from allfold.pdf_http import PdfHttpClient
+        from allfold.providers.openalex import OpenAlexClient
+        with self._condition:
+            if self._closed:
+                raise RuntimeError('Independent client factory is closed')
+            self._active += 1
+        try:
+            request_guard()
+            key = read_credential(self.config_path, provider='openalex')[0]
+            request_guard()
+            options = dict(http_options or {})
+            resolver = options.pop('resolver', None)
+            with ExitStack() as resources:
+                http = resources.enter_context(PdfHttpClient(guard=request_guard, cancel_event=cancel_event,
+                    deadline=deadline, pacing_state=self.pacing_state,
+                    **({'resolver': resolver} if resolver is not None else {}), **options))
+                openalex = resources.enter_context(OpenAlexClient(api_key=key, guard=request_guard,
+                    cancel_event=cancel_event, deadline=deadline, pacing_state=self.pacing_state,
+                    request_url_guard=http.openalex_request_guard, **options))
+                yield http, openalex
+        finally:
+            with self._condition:
+                self._active -= 1
+                self._condition.notify_all()
