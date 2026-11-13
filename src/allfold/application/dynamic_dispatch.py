@@ -40,13 +40,16 @@ class DynamicScheduler:
         self._closed = False
         self._pool = ThreadPoolExecutor(max_workers=limit, thread_name_prefix='paper-work')
         self._thread = threading.Thread(target=self._dispatch, name='paper-dispatch', daemon=False)
-        self._thread.start()
+        self._started = False
 
     def submit(self, group, run, *, cancel_event=None, deadline=None, discarded=None):
         future = SettledFuture()
         with self._condition:
             if self._closed:
                 raise RuntimeError('Task scheduler is closed')
+            if not self._started:
+                self._thread.start()
+                self._started = True
             if group not in self._queues:
                 self._queues[group] = deque()
                 self._groups.append(group)
@@ -64,7 +67,8 @@ class DynamicScheduler:
             self._condition.notify_all()
 
     def join(self):
-        self._thread.join()
+        if self._started:
+            self._thread.join()
         self._pool.shutdown(wait=True)
 
     @staticmethod
