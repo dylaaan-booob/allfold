@@ -257,7 +257,7 @@ class PdfDiscoveryIO:
         # missing; a confirmed platform does not force resolver traffic.
         platform = content_platform(route)
         needs_id = platform in {'sciencedirect', 'cell', 'ieee', 'oup', 'jstor'}
-        if not platform or needs_id:
+        if (not platform or needs_id) and needs_p2_query(route, replace(inputs, target=route)):
             try:
                 raw = self.http.json('https://doi.org/api/handles/' + quote(doi, safe='/'))
                 rows = raw.get('values', ())

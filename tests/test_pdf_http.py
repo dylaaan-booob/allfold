@@ -331,6 +331,33 @@ def test_complete_empty_crossref_capability_does_not_trigger_refresh_after_templ
     assert len(seen) == 1
 
 
+@pytest.mark.parametrize('known_pii', [False, True])
+def test_crossref_refresh_queries_handle_only_when_the_sciencedirect_identifier_is_missing(known_pii):
+    from datetime import datetime, timezone
+    from allfold.pdf_facts import crossref_discovery_facts
+    article = 'https://www.sciencedirect.com/science/article/pii/S1234567812345678'
+    paper = target(article_url=article if known_pii else None)
+    facts = crossref_discovery_facts({'DOI': paper.doi, 'link': [{
+        'URL': 'https://cdn.example.org/Old.PDF?Signature=Old', 'content-type': 'application/pdf'}]}, datetime.now(timezone.utc))
+    seen = []
+    def handle(request):
+        seen.append(str(request.url))
+        if request.url.host == 'www.sciencedirect.com':
+            return httpx.Response(404)
+        if request.url.host == 'doi.org':
+            return httpx.Response(200, json={'values': []})
+        if request.url.host == 'api.crossref.org':
+            return httpx.Response(200, json={'message': {'DOI': paper.doi, 'link': [{
+                'URL': 'https://cdn.example.org/Current.PDF?Signature=Keep', 'content-type': 'application/pdf'}]}})
+        return httpx.Response(200, headers={'Content-Type': 'application/pdf'})
+    with client(handle) as http:
+        result = PdfDiscovery(paper, facts=(facts,), io=PdfDiscoveryIO(http)).run(lambda c: http.consume(c,
+            transfer=lambda *_: CandidateResult.pdf(transfer_complete=True)))
+    assert [httpx.URL(url).host for url in seen] == ((['www.sciencedirect.com'] * 2 if known_pii else ['doi.org'])
+        + ['api.crossref.org', 'cdn.example.org'])
+    assert (result.status, result.pdf_source, result.fallback_used) == ('transferred', 'P2', known_pii)
+
+
 @pytest.mark.parametrize('doi_endpoint', [False, True])
 def test_optional_ieee_fixture_is_exact_and_known_number_needs_no_query(doi_endpoint):
     paper = target('ieeexplore.ieee.org')
