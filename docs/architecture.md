@@ -58,14 +58,27 @@ Browser Runtime uses one business Session from `session.fromPartition('allfold')
 Selection and presentation are separate from task ownership. Prepare, WoS, Login
 and Covers retain their scoped Page/Document checks, cancellation and manual
 verification. DocumentRuntime and its isolated preload supply bounded
-binding/access/article/extract observations, never full HTML. Native Document
+binding/access/article/extract/pdf observations, never full HTML. Native Document
 binding, independent Paper identity and task/Service authority are separate.
 The internal Paper extraction operation checks access and current article identity,
-reads Date/Abstract together, then rechecks the same live Document before normal
+reads Date/Abstract and independent PDF clues, then rechecks the same live Document before normal
 page cleanup. Its small verified result can be committed after that cleanup;
 Python rechecks the captured Workspace/Paper/attempt, not the closed page.
 The Cloudflare adapter remains request/CDP-target scoped. See
 [controlled Documents](browser-documents.md) for the runtime contract.
+
+WF07 separates a pure qualified-rule service, small exact-target discovery facts,
+and a result-driven P1–P5 coordinator. The core consumes immutable target/facts
+and task-scoped guard/cancel/deadline capabilities. It owns neither collection
+registration nor metadata/body writes. Current Run and necessary API responses
+project reusable OpenAlex/Crossref facts before lossy bibliography normalization;
+the existing records/increment path persists them in short SQLite transactions.
+Same-Document precollection never follows a PDF candidate. PDF-only refresh and
+known-reader parsing reuse native access, physical quotas and cleanup. Subsequent
+Download can use the core after collection completes without restarting that
+collection. WF08 production orchestration and WF09/10 transfer/files remain
+separate. The [adopted specification and fixed source catalogue](pdf-source-discovery.md)
+retain all platform/input/access conditions and historical exclusions.
 
 Keep/Import/Enrich have no product HTTP/IPC or native dispatch path. Dedicated
 Zotero Local API, attachment writes and full Translator assembly are removed;

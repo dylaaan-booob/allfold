@@ -11,8 +11,8 @@ it does not authorize later tasks.
 | WF03 | Independent Document identity, lightweight page checks, Cloudflare main path | Translator identity coupling, full-snapshot assumptions, page-access docs | Merged in PR #85 at `541b3de7d6d3c08c8bf1441cc8fa9f6c2b37f109`; scoped live acceptance and fixture evidence below |
 | WF04 | Shared Session, page limits, precise cancellation, authorization generations | Global owner, indiscriminate cancellation, duplicate listeners, broad invalidation assertions | Merged in PR #90 at `b8669e9de0758013abd8b240b83e6d86c087d190`; scoped live/fixture evidence below |
 | WF05 | Workspace background registry, dynamic scheduling, branch state, independent resource ownership | One-shot queues, early release, collection terminal states/retries | Merged in PR #96 at `f467ea49e04b9bedd8c674a016b049d88960c355`; spec #91 / tickets #92–95; production Run registration remains deferred to WF08 |
-| WF06 | Date/Abstract extraction and retained API/Preprint capabilities | Old date columns, abstract overwrite, author/ordinary-completion assertions/docs | Proposed in PR #101 (unmerged); spec #97 / tickets #98–100; internal components only, production registration remains WF08 |
-| WF07 | PDF source rules, candidates, same-page Meta/DOM hints | Source order, candidate success, URLs and request context contracts | Not started |
+| WF06 | Date/Abstract extraction and retained API/Preprint capabilities | Old date columns, abstract overwrite, author/ordinary-completion assertions/docs | Merged in PR #101 at `c641ea371c111f45b7d42013df3a0eb6c1d80ac3`; spec #97 / tickets #98–100; internal components only, production registration remains WF08 |
+| WF07 | PDF source rules, candidates, same-page Meta/DOM hints | Source order, candidate success, URLs and request context contracts | In development; spec #102 / tickets #103–106, #108; [adopted request and fixed evidence](pdf-source-discovery.md); production registration and transfer remain deferred |
 | WF08 | Connect new Run and Workspace background collection | Whole-batch Run gates, Completion, Preprint double locking, busy/exit contracts | Not started |
 | WF09 | Session stream, managed file landing, database association service | Whole-file Buffers, extra type detection, file ownership, failure terminals | Not started |
 | WF10 | Original DownloadItem, complete Download UI, local PDF actions | Cancel-and-GET replay, old download/UI states, PDF action contracts | Not started |
@@ -182,7 +182,8 @@ isolated acceptance evidence.
 
 ## WF06 component boundary
 
-Spec #97 and tickets #98–100 are scoped to the single unmerged PR #101. The
+Spec #97 and tickets #98–100 were merged in PR #101 at
+`c641ea371c111f45b7d42013df3a0eb6c1d80ac3`. The
 internal `extract_paper_metadata` operation reads qualified dates and an optional
 abstract in one verified live Document. The fixed `extract` action carries only
 boolean `wantAbstract`; bounded content and local diagnostics return after final
@@ -209,6 +210,36 @@ Isolated Electron/controlled HTTP/disk SQLite fixtures exercise the actual nativ
 task, Provider and projection seams, including independent same-attempt transaction
 races. The current registry still executes same-Paper branches serially. Production
 Run does not register a Date/Abstract-only collector, change creation/completion
-timing or enable background/cross-Run collection. WF07 PDF sources and WF08
-production orchestration remain later tasks. No fake PDF completion, Download/Retry
+timing or enable background/cross-Run collection. WF07 adds the separate PDF
+components below; WF08 production orchestration remains deferred. No fake PDF completion, Download/Retry
 UI, real-account acceptance or multi-platform accuracy claim is included.
+
+## WF07 component boundary
+
+Spec #102 and tickets #103–106/#108 belong to the single unmerged PR #107.
+`extract_paper_metadata` composes independent Date/Abstract and PDF clues in one
+valid article Document; `extract_paper_pdf_clues` refreshes PDF inputs alone.
+The complete adopted [rules and fixed evidence](pdf-source-discovery.md) retain
+R001–R072, API01–API17 and S001–S142 with their original evidence limits.
+
+Pure Host/type/input-qualified P1/P2 rules feed a lazy P1–P5 coordinator. Existing
+OpenAlex/Crossref responses retain exact-target capability, ordered PDF fields,
+landing categories and explicit complete-empty/partial/failed facts through the
+current records/increment/SQLite path. These facts are deletable metadata,
+independent of any body association. Current candidates preserve necessary
+parameters; transient signatures persist only as refresh locators.
+
+The coordinator consumes current-response or downstream transfer outcomes,
+maintains original discovery stage through finite reader chains, and stops on
+PDF-type plus normal transfer confirmation. Task cancellation, captured-authority
+loss, parent expiry and local file/association failure remain terminal. Source
+discovery itself does not write bytes, files, body associations or Downloaded.
+Its read-only task adapter can use a completed collection without renewing it,
+while retaining captured ownership through actual client/native/Future cleanup.
+
+Production Run requests, identity/creation/completion timing and its single slot
+remain unchanged. No background plan, same-Paper production parallelism,
+cross-Run orchestration, public retry/Download, transfer or file action is enabled.
+Those responsibilities remain WF08–10. Controlled Electron/HTTP/SQLite/task
+fixtures are component evidence, not live institution or real PDF-download
+acceptance; executed checks and latest CI are recorded on the PR.

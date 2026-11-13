@@ -151,14 +151,15 @@ without a new GET. The shared Session original-POST fixture is a separate capabi
 seam, not permission to relax these checks or claim all Runtime entries supported.
 
 
-## WF06 internal Date/Abstract operation
+## Internal combined Document operation
 
 The internal authenticated Bridge action is `extract_paper_metadata`, called by a
 captured Workspace task through `BranchContext.execute_native()`. It has no public
 HTTP/button entry and is not installed in production Run. Run still owns its
 ordinary Completion, creation/completion timing and single slot; the public
-Preprint entry retains its gate. This operation supplies no PDF fact and does not
-mark a real Paper's complete collection group finished.
+Preprint entry retains its gate. WF07 composes the existing Date/Abstract read
+with a separate bounded PDF-clue read; neither marks a real Paper's complete
+production collection group finished.
 
 The payload carries the existing workflow/task/Paper association,
 `workspace_identity` (the existing 64-hex live Workspace path/inode hash, **not**
@@ -186,8 +187,19 @@ Successful Main results use:
 ```json
 {
   "outcome": "retrieved",
+  "metadata_status": "complete",
   "metadata": {"dates": [], "abstract": null},
   "extraction_diagnostics": [],
+  "pdf_clues": {
+    "status": "complete",
+    "landing_url": "https://journal.example/article/1",
+    "observed_at": "2026-11-14T00:00:00.000Z",
+    "platform": "generic",
+    "content_type": "unknown",
+    "identifiers": [],
+    "candidates": [],
+    "diagnostics": []
+  },
   "document": {
     "pageId": 1,
     "processId": 2,
@@ -217,7 +229,8 @@ partial diagnostic; it never becomes a truncated successful abstract. The caller
 must retain that distinction. A missing/challenged/wrong-identity/cancelled/expired
 or wholly failed Document returns a failure diagnostic and no metadata. Date
 result overflow and the fixed five-second local scanning budget fail the whole
-read instead of truncating output. The parent deadline can be shorter. JSON-LD
+Date/Abstract read instead of truncating output. Independently valid PDF clues
+may survive that local failure. The parent deadline can be shorter. JSON-LD
 scripts exceeding the 262,144 UTF-16-unit parsing input bound contribute no facts
 and carry `json_ld_invalid`; their contents are never truncated into valid JSON.
 
@@ -230,8 +243,41 @@ and cancellation remain independently checked. Only after this final check does
 `runTask` close its temporary page and Main send the small result. Normal owner
 cleanup does not retroactively revoke verified metadata; Python commits under its
 captured Workspace/Paper/attempt token without reopening a closed page. This
-same-operation, pre-cleanup seam can later compose WF07 PDF clues, but WF06 has no
-empty PDF collector or fabricated skipped/completed PDF outcome.
+same-operation, pre-cleanup seam now composes WF07 PDF clues. The final check
+covers all outputs from that Document, including when one independent reader
+has a local extraction failure.
+
+### WF07 independent PDF clues and refresh
+
+The Date/Abstract `metadata` contract above stays unchanged. The native envelope
+additionally carries `metadata_status` and independent `pdf_clues` containing
+the actual final `landing_url`, `observed_at`, platform/content type, bounded
+identifiers, ordered P3/P4 candidates and finite diagnostics. A local metadata
+failure can leave valid PDF facts, and a local PDF failure can leave valid
+Date/Abstract values. Failure remains explicit; a legal complete-empty PDF read
+is normal. The collection adapter emits a single combined increment, then
+settles a partial branch as failed. It never returns that increment for a second
+commit. Replaced Document/body/subject, conflicting identity, cancellation and
+deadline invalidate all of the Document's current outputs before native cleanup.
+
+The fixed runtime `pdf` action accepts only a validated reader kind, never a
+caller-supplied selector/evaluator. It reads Meta in citation-then-fulltext order,
+qualified platform selectors and unambiguous article PDF entrances, with explicit
+supplement/reference/recommendation exclusions. Known ScienceDirect/LWW state
+uses fixed bounded read-only fields; it does not assume isolated world 999 sees
+main-world variables. Overflow is a diagnostic, never truncated success. No PDF
+candidate is fetched, probed, clicked or submitted during article precollection.
+
+`extract_paper_pdf_clues` and Python `read_document_pdf_clues()` provide an
+independent PDF-only refresh. They do not execute Date/Abstract or emit metadata,
+renew a collection token, reopen a completed collection or run necessary APIs.
+A known reader has separate rule/Host/path/internal-ID/source-chain qualification
+bound to the original target. It keeps exact frame/Document/URL/subject, access,
+prepared Service, cancellation and cleanup checks even when article DOI/h1 proof
+is absent. This does not weaken `openPaperPage`/`confirmArticlePage` for articles.
+Challenges still use the shared access/solver boundary. Actions and one-time
+responses remain typed refresh facts; actual action execution/transfer is WF10.
+See the [complete adopted rules](pdf-source-discovery.md).
 
 ### Shared extraction scope
 

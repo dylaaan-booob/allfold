@@ -49,10 +49,10 @@ exclusively created file for inspection rather than deleting it.
 | `paper_collection_branch` | At most 16 current branch facts and last committed result sequence |
 
 There is no kept/exported state, Zotero parent item, Markdown authority path,
-download queue, unbounded attempt history or durable candidate cache. Collection
+download queue, unbounded attempt history or executable download replay. Collection
 facts contain no queue order, client, page handles or replay instructions. Clearing metadata
 deletes its row and all contained bibliography, notes, dates, sources and Preprint
-results. Core, direct identities, exclusion and an existing body association
+results, including the complete PDF discovery-facts payload. Core, direct identities, exclusion and an existing body association
 remain. This is logical deletion, not a forensic file-erasure guarantee.
 
 Collection facts are deleted when metadata is cleared, after the current owner
@@ -71,7 +71,7 @@ and connection safety. These helpers are not alternate application writers.
 | `get(paper_id)`, `list_papers()` | Immutable `PaperRecord` projections, including excluded and cleared records |
 | `match(direct_ids)` | Match saved direct identities; different owners raise `IdentityConflict` |
 | `create_or_match(workspace_id, direct_ids=..., metadata=...)` | `CreationResult(paper, created)`; a new full record requires title and reliable direct identity. Matches return the existing record unchanged in every state |
-| `merge_metadata(token, delta, direct_ids=...)` | Merge eligible automatic dates, Preprint/source facts and the first valid abstract; optionally add verified direct identities in the same transaction |
+| `merge_metadata(token, delta, direct_ids=...)` | Merge eligible automatic dates, Preprint/source/discovery facts and the first valid abstract; optionally add verified direct identities in the same transaction |
 | `edit_metadata(token, changes)` | Apply only named local fields to the latest payload; no whole-record snapshot save |
 | `exclude(token)` | Mark excluded and revoke prior operation authority |
 | `restore(token)` | Restore a full record, advancing authority; old tokens stay invalid |
@@ -220,6 +220,25 @@ A body association classifies an unexcluded record as Downloaded. It confers no
 physical file-operation authority; those services belong to WF09/WF10.
 
 ## Production lifecycle and projections
+
+WF07 adds bounded `discovery_facts` inside the deletable `PaperMetadata` payload
+and `MetadataDelta`; it does not reuse `BodyReference`. Each version-1 snapshot
+names its exact target, source/capability, observation time and completeness, with
+typed stable PDF/landing/XML facts or fixed refresh locators. No snapshot means
+unknown; complete-empty, partial and failed responses remain distinct. Existing
+v1/v2/v3 libraries without the field read as unknown without requests or bulk
+rewrites. Unsupported fact versions are rejected as invalid payloads; this does
+not authorize replacing the library. New payloads require a reader that knows
+this field, so binary downgrade requires a preserved compatible backup.
+
+There is one bounded current snapshot per source/capability, rather than an
+attempt history. Merging preserves qualified facts and stage order under the
+same captured token, branch sequence and metadata generations. Signed/session
+URLs become refresh locators instead of permanent templates; live current
+candidates retain their original parameters only within their task. Clearing
+metadata removes every discovery fact. Identity, body and manual text/date/
+Preprint contracts remain independent. The complete rules and evidence are in
+the [adopted discovery specification](pdf-source-discovery.md).
 
 HTTP handlers and Run/Preprint workers open, use and close repositories in their
 own execution thread. Network/browser waits never occur in a database transaction.

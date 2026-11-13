@@ -182,3 +182,11 @@ PDF files/Download UI remain outside WF04.
 Normal shutdown stops admission, drains current native operations/items and closes
 owned pages before disposing the common Session entry. It does not replay work,
 resume downloads or release a solver slot before its worker actually exits.
+
+WF07 reuses these same physical quotas, prepared access pins and exact cleanup for
+combined article metadata/PDF-clue reads and PDF-only refresh. Precollection reads
+one article work page and follows no PDF candidate. A later qualified reader uses
+its owning task and source chain, rather than a new unowned page or per-platform
+network listener. Identifying a form/reader does not add main-frame POST or
+one-time-response transfer support. See [Document contracts](browser-documents.md)
+and the [complete discovery specification](pdf-source-discovery.md).

@@ -174,6 +174,27 @@ in each thread. Sharing a `BranchContext`, SQLite connection or `AttemptClients`
 across threads is not supported. Such transaction-level race evidence does not
 enable production same-Paper branch concurrency; that orchestration belongs to WF08.
 
+WF07 component checks add actual normalizer/records/Run and necessary-query
+source-fact persistence, disk reopen, old payload/version handling, independent
+connection races, cleanup and safe public projection in
+`tests/test_pdf_source_facts.py`. Pure rule fixtures exercise adopted expressions
+and applicability rather than only catalogue counts. The temporary-profile
+`pdf-clues` Electron fixture uses production Main/Browser/Document/preload for
+same-page composition, PDF-only reads, known reader access, relative final URLs,
+Referer, bounded state fields and final Document/subject rejection. Controlled
+downstream outcomes verify the coordinator's lazy stop/fallback protocol; they
+are not actual PDF transfer/file acceptance. Existing native DownloadItem and
+WoS fixtures remain active. Full rules and the original evidence strength are
+retained in [the adopted specification](pdf-source-discovery.md).
+
+`tests/test_pdf_discovery_tasks.py` exercises the internal read-only adapter on
+completed collection, actual worker Futures/owned clients, PDF-only native
+results, captured primary identity, cancellation/replacement and maintenance/
+shutdown cleanup. Controlled downstream results in `test_pdf_discovery.py` and
+`test_pdf_http.py` verify T01–T24 without a byte receiver, writer or public
+Download. Python HTTP checks include DNS preflight at dispatch/redirect; they do
+not claim address pinning or DNS validation by the native static URL gate.
+
 WF06 adds `test_necessary_metadata.py` for purpose-driven requests through actual
 registry branches, controlled Provider transports/parsers, immutable capability
 handoff, full batch/pagination draining, partial results and complete native

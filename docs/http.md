@@ -140,6 +140,21 @@ transient. Invalid envelopes, Entrez application errors, wrong identities and
 shortened pages are explicit failures or incomplete results. Valid empty exact
 responses count as no-match.
 
+WF07 discovery requests have their own task-scoped capability rather than new
+Run Provider IDs. They reuse host pacing/cooldown and the captured guard,
+cancellation and absolute parent deadline. P2 queries only missing identifiers or
+fields at the reached stage; P5 uses an exact DOI Work and reuses complete cached
+locations first. OpenAlex cancellation, captured-authority loss and parent expiry
+remain terminal instead of becoming recoverable PDF-source failures.
+
+The coordinator accepts a bounded current response or downstream transfer result;
+it does not issue HEAD/GET type probes or implement a temporary downloader.
+Supported response formats are parsed only for their fixed platform fields and
+qualified source chain. Relative fields use the actual final response address;
+each redirect/next hop repeats request-target checks. Credentials remain scoped
+to their authorized endpoint and necessary Referer is platform-specific. See
+[discovery rules](pdf-source-discovery.md) and [Session URL evidence](browser-session.md).
+
 arXiv uses a three-second interval; bioRxiv and medRxiv share their API host
 pacing. Browser/Prepare continue to use their separate Chromium Session. Active
 webpage Enrich and its Translator transport are retired; Provider HTTP remains

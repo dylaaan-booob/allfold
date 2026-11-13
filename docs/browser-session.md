@@ -129,3 +129,13 @@ same-Document `<a download>` GET, held through real `done`. These results and th
 Session-level original-POST success above have different seams; neither grants
 permission to weaken Document authority. [Browser pages](browser-pages.md) records
 physical counts and retention.
+
+WF07 source discovery consumes bounded clues and existing response facts; it does
+not replace the original DownloadItem mechanisms above. Relative next hops use
+the actual final carrier URL. A controlled `session.fetch` caller must retain
+the associated request's redirect/final-response evidence: Electron 45 does not
+guarantee that its constructed Response supplies a standard final `url`. No extra
+HEAD/GET is permitted to recover a URL or probe PDF type. Required platform
+Referer and transient signatures belong to the current qualified chain;
+credentials cannot be copied to an arbitrary CDN. The
+[adopted rules](pdf-source-discovery.md) preserve the distinct platform conditions.
