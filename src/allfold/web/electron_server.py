@@ -21,15 +21,17 @@ async def drain_application(application):
         # Close admission after that registration, without blocking bridge I/O.
         with application.state.settings_write_lock:
             application.state.browser_task_lock.close_admission()
+            application.state.workspace_tasks.close_admission()
     await asyncio.to_thread(close_admission)
-    workers = (application.state.run_coordinator, application.state.preprint_lookup,
+    workers = (application.state.workspace_tasks, application.state.run_coordinator, application.state.preprint_lookup,
                application.state.journal_cover_search, application.state.wos_coordinator, application.state.login)
     # Requests can still deliver bridge results while shutdown and joins run off
     # the receive loop. Repeated calls observe the same settled owners.
     for worker in workers:
         await asyncio.to_thread(worker.shutdown)
-    for worker in workers:
+    for worker in workers[1:]:
         await asyncio.to_thread(worker.join)
+    await asyncio.to_thread(application.state.workspace_tasks.join)
 
     # Credential and scoped-access cleanup Futures keep their captured owner
     # until real native settlement. They wait without holding configuration locks.

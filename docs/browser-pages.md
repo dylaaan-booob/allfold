@@ -8,6 +8,29 @@ and its tracked native download cleanup has finished, exactly once.
 
 ## Counts and admission
 
+Python workflow admission distinguishes shared data use from exclusive controls.
+Every data owner keeps its trusted saved-Service scope and explicitly requests
+shared admission. Multiple Papers may use the same valid Prepare authority within
+the task scheduler's global/Service limits. Login/Prepare, confirmation and captured
+access cleanup exclude overlapping data owners through their real cleanup;
+credential and Workspace/Logs Reset controls remain globally exclusive. Unrelated
+Services can continue independently. Known physical Page claims remain exclusive,
+even between different Services; native Page/Document navigation and workflow
+loans retain their exact checks. Shared Service admission never grants concurrent
+navigation of a single physical page.
+
+Accepted maintenance can reserve affected admission before draining existing
+owners. The reservation blocks replacement work without granting execution or
+page authority; normal control admission still waits for captured users to settle.
+Cancellation and joins occur outside configuration admission, and cleanup releases
+only its captured reservation. Global reservations also protect Workspace/Logs
+controls; scoped access replacement leaves unrelated Service users independent.
+
+The task scheduler counts executing tasks, while this native ledger counts
+physical WebContents and reservations. These are independent bounds. Shared
+Python admission creates no pages or registry-private page pool, and never
+removes the native limits below.
+
 | Resource | Ownership and counting | End of use |
 | --- | --- | --- |
 | Task page | Work pages, helpers, popups, intermediate pages and retained download sources count against both managed limits | The captured task resource owner closes them on success, failure and cancellation |
@@ -130,6 +153,11 @@ Session WebContents counts at global 4/Service 3, real popup transfer surviving
 opener destruction, six temporary batches returning to Portal/target baseline,
 queued cancellation without creation, original slow-download source retention to
 actual `done`, user limit 16, and final close to zero before Session disposal.
+WF05 extends this fixture with two simultaneous same-Service Paper owners,
+independent navigated work pages and a shared Portal pin at the same minimum
+capacity. Actual cleanup destroys A's page while B remains live, then returns to
+the retained baseline. This is native component evidence; production Run still
+does not register collection.
 It also calls production `prepareLoggedInService` using the same real Portal with
 changed unrelated revisions/workflow and unchanged access keys; controlled resource
 search terminates explicitly while preserving that Portal.

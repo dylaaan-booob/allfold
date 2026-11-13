@@ -81,6 +81,7 @@ Arbitrary strings are excluded rather than merely truncated.
 | `workflow_id`, `task_id`, `parent_task_id` | Explicit business grouping and parent/child identity |
 | `request_id` | One native invocation, separate from its business task |
 | `service_id`, `paper_id` | Reviewed saved identities, without names, DOI or content |
+| `workspace_id`, `attempt`, `collection_status` | Captured Workspace UUID, bounded current attempt and collection state |
 | `page_id`, `source_page_id`, `role`, `generation` | Descriptive page association and navigation generation |
 | `stage`, `step`, `code`, `status`, `net_error` | Reviewed operation stage, stable failure code and bounded network evidence |
 | `imperva_edet`, `imperva_incident_id` | Optional numeric code and support reference from a recognized Imperva response. The event's UTC time records when Allfold reported restricted access or began waiting for verification. |
@@ -196,3 +197,12 @@ task completion, retired attempts, context replacement/eviction/invalidation and
 credential cleanup. Authentication/preparation keys, private headers and page
 contents are never diagnostic fields. Closed-page history does not imply that a
 live task or prepared context still owns that Page.
+
+WF05 collection emits bounded `workflow_started`/`workflow_finished` events with
+`kind` and `stage` equal to `collection`, captured workflow/task/Workspace/Paper
+identity, attempt and durable collection state. It adds no task-history replay or
+background management UI. Source Run identity does not imply cancellation
+ownership. Runtime fault evidence keeps bounded phase/type information; raw
+exceptions, Provider results and credential/Prepare keys stay outside diagnostics.
+Logs Reset protects queued, API-only, writing and cleaning collection work even
+when no native Browser owner exists.

@@ -181,7 +181,8 @@ class WoSCoordinator:
                 raise ValueError('Prepare Web of Science in Workflows → Login')
             if parent_snapshot is None and not self.run_slot.acquire(blocking=False):
                 raise ValueError('Another Run is already active')
-            owner = self.browser_lock.acquire('wos', scopes={saved.service_scope(service.id)})
+            owner = self.browser_lock.acquire('wos', scopes={saved.service_scope(service.id)}, shared=True,
+                pages={prepared.page_id} if prepared.page_id is not None else ())
             if owner is None:
                 if parent_snapshot is None:
                     self.run_slot.release()

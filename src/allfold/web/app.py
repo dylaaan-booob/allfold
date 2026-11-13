@@ -44,6 +44,8 @@ from allfold.application.settings import (
     validate_settings,
 )
 from allfold.application.workspace import WorkspaceSnapshot, load_workspace
+from allfold.application.workspace_tasks import WorkspaceTaskHost
+from allfold.application.task_clients import new_provider_pacing
 from allfold.config import ConfigurationError, LoadedConfig, load_config, parse_settings_list_text
 from allfold.application.full_markdown_import import (
     MAX_MARKDOWN_BYTES, preview_research_scope, confirm_research_scope, export_user_data,
@@ -233,11 +235,19 @@ def create_app(config_path: Path, *, electron_bridge: ElectronBridge, diagnostic
         return await call_next(request)
 
     run_slot = threading.Lock()
-    app.state.run_coordinator = RunCoordinator(resolved_config_path, run_slot=run_slot, diagnostics=app.state.diagnostics)
-    app.state.preprint_lookup = PreprintLookup(resolved_config_path, app.state.browser_task_lock, run_slot=run_slot)
+    app.state.run_slot = run_slot
+    pacing = new_provider_pacing()
+    app.state.run_coordinator = RunCoordinator(resolved_config_path, run_slot=run_slot, diagnostics=app.state.diagnostics, pacing_state=pacing)
     app.state.journal_cover_search = JournalCoverSearch(electron_bridge, app.state.browser_task_lock,
         diagnostics=app.state.diagnostics, settings_lock=app.state.settings_write_lock)
     app.state.login = LoginCoordinator(electron_bridge, app.state.browser_task_lock, diagnostics=app.state.diagnostics)
+    app.state.workspace_tasks = WorkspaceTaskHost(resolved_config_path,
+        browser_lock=app.state.browser_task_lock, bridge=electron_bridge,
+        diagnostics=app.state.diagnostics, login=app.state.login, pacing_state=pacing,
+        settings_lock=app.state.settings_write_lock)
+    app.state.workspace_tasks.initialize()
+    app.state.preprint_lookup = PreprintLookup(resolved_config_path, app.state.browser_task_lock,
+        run_slot=run_slot, pacing_state=pacing, workspace_tasks=app.state.workspace_tasks)
     electron_bridge.access_pages_closed = app.state.login.invalidate_pages
     def page_limits():
         from allfold.config import WorkflowConfig
@@ -342,11 +352,16 @@ def create_app(config_path: Path, *, electron_bridge: ElectronBridge, diagnostic
         if not _csrf_valid(body.csrf_token, csrf_token):
             return JSONResponse({'error': 'Invalid CSRF token'}, status_code=403)
         try:
-            with app.state.reset_lock:
+            with app.state.settings_write_lock, app.state.reset_lock:
+                if app.state.workspace_tasks.changing:
+                    raise ValueError('Workspace/configuration maintenance is in progress')
                 workspace = load_config(resolved_config_path).output_dir
-                paper, revision, fields = edit_paper_fields(workspace, body.workspace_id, paper_id, body.revision, **changes)
+                registry = app.state.workspace_tasks.current()
+                with registry.paper_gate():
+                    paper, revision, fields = edit_paper_fields(workspace, body.workspace_id, paper_id, body.revision, **changes)
+                    payload = paper_payload(WorkspacePaper(paper), workspace_tasks=app.state.workspace_tasks)
             return JSONResponse(jsonable_encoder(dict(saved=True, workspace_id=paper.workspace_id,
-                revision=revision, paper=paper_payload(WorkspacePaper(paper), preprint_lookup=app.state.preprint_lookup), fields=fields)))
+                revision=revision, paper=payload, fields=fields)))
         except (ConfigurationError, LibraryError, ValueError, OSError, ContentChangedError) as error:
             return JSONResponse({'error': str(error)}, status_code=409)
 
@@ -367,9 +382,9 @@ def create_app(config_path: Path, *, electron_bridge: ElectronBridge, diagnostic
     logs_reset_preview = install_diagnostics_api(app, run_slot=run_slot)
 
     def reset_preview_context(scope: str = 'workspace') -> dict[str, object]:
+        if scope == 'logs':
+            return logs_reset_preview()
         with app.state.reset_lock:
-            if scope == 'logs':
-                return logs_reset_preview()
             if scope != 'workspace':
                 app.state.reset_confirmation = None
                 return {'reset_plan': None, 'reset_token': None, 'reset_error': 'Unknown Reset scope.'}
@@ -389,44 +404,70 @@ def create_app(config_path: Path, *, electron_bridge: ElectronBridge, diagnostic
         csrf = form.get("csrf_token")
         if not _csrf_valid(str(csrf) if csrf is not None else None, csrf_token):
             return settings_error("Invalid or missing CSRF token.")
-        reset_result = None
-        with admission_lock, app.state.reset_lock:
-            saved = app.state.reset_confirmation
-            token = form.get("reset_token")
-            if (saved is None or len(saved) < 3 or saved[2] != 'workspace' or not isinstance(token, str)
-                    or not token.isascii()
-                    or not secrets.compare_digest(token, saved[0])):
+        return await run_in_threadpool(reset_workspace, form)
+
+    def reset_workspace(form):
+        change = control = owner = None
+        slot = False
+        result = None
+        message, status = 'Workspace Reset refused.', 409
+        try:
+            with admission_lock, app.state.reset_lock:
+                saved = app.state.reset_confirmation
                 app.state.reset_confirmation = None
-                result_message, status = "Reset confirmation is stale or already used. Reload Settings.", 409
-            elif app.state.run_coordinator.snapshot().status is CoordinatorStatus.RUNNING:
-                app.state.reset_confirmation = None
-                result_message, status = "A Run is active; Reset refused.", 409
-            elif app.state.wos_coordinator.running:
-                app.state.reset_confirmation = None
-                result_message, status = "Run WoS is active; Reset refused.", 409
-            elif bool(app.state.browser_task_lock.owners):
-                app.state.reset_confirmation = None
-                result_message, status = "A browser workflow is active; Reset refused.", 409
-            else:
-                app.state.reset_confirmation = None
-                reset_owner = app.state.browser_task_lock.acquire('workspace-reset')
-                if reset_owner is None:
-                    result_message, status = "A browser workflow is active; Reset refused.", 409
-                else:
-                    try:
-                        result = execute_reset(resolved_config_path, saved[1])
-                        reset_result = result
-                        result_message = result.message
-                        status = 200 if result.success else 409
-                        if result.success or result.workspace_invalidated:
-                            app.state.diagnostics.workspace_reset()
-                    finally:
-                        app.state.browser_task_lock.release(reset_owner)
+                token = form.get('reset_token')
+                if (saved is None or len(saved) < 3 or saved[2] != 'workspace'
+                        or not isinstance(token, str) or not token.isascii()
+                        or not secrets.compare_digest(token, saved[0])):
+                    raise ResetRefused('Reset confirmation is stale or already used. Reload Settings.')
+                if app.state.workspace_tasks.changing:
+                    raise ResetRefused('Workspace maintenance is already in progress.')
+                if app.state.run_coordinator.snapshot().status is CoordinatorStatus.RUNNING or app.state.wos_coordinator.running:
+                    raise ResetRefused('A Run is active; Reset refused.')
+                owned = app.state.workspace_tasks.browser_owner_ids
+                if any(current.id not in owned for current in app.state.browser_task_lock.owners):
+                    raise ResetRefused('A browser workflow is active; Reset refused.')
+                # Verify the exact preview before revoking any background work.
+                if preview_reset(resolved_config_path) != saved[1]:
+                    raise ResetRefused('Workspace or configuration changed; reload Settings to confirm.')
+                control = app.state.browser_task_lock.reserve_control('workspace-reset')
+                if control is None:
+                    raise ResetRefused('Another Browser control is active; Reset refused.')
+                slot = run_slot.acquire(blocking=False)
+                if not slot:
+                    raise ResetRefused('A foreground Run is active; Reset refused.')
+                change = app.state.workspace_tasks.begin_change(whole=True)
+            # API-only/queued/write/cleanup work closes its captured resources and
+            # SQLite connections before the existing filesystem safety operation.
+            app.state.workspace_tasks.drain_change(change)
+            with admission_lock, app.state.reset_lock:
+                if preview_reset(resolved_config_path) != saved[1]:
+                    raise ResetRefused('Workspace or configuration changed while work settled.')
+                owner = app.state.browser_task_lock.acquire('workspace-reset', control=control)
+                if owner is None:
+                    raise ResetRefused('Browser cleanup did not settle; Reset refused.')
+                result = execute_reset(resolved_config_path, saved[1])
+                message, status = result.message, 200 if result.success else 409
+                if result.success or result.workspace_invalidated:
+                    app.state.diagnostics.workspace_reset()
+        except (ResetRefused, LibraryError, ValueError, RuntimeError, OSError) as error:
+            message = str(error)
+        finally:
+            if owner is not None:
+                app.state.browser_task_lock.release(owner)
+            if control is not None:
+                app.state.browser_task_lock.release_control(control)
+            try:
+                if change is not None:
+                    with admission_lock:
+                        app.state.workspace_tasks.finish_change(change)
+            finally:
+                if slot:
+                    run_slot.release()
         return JSONResponse(jsonable_encoder({
-            "reset_plan": None, "reset_token": None,
-            "reset_error": result_message, "reset_success": status == 200,
-            "reset_result": reset_result,
-        }), status_code=status, headers={"Cache-Control": "no-store"})
+            'reset_plan': None, 'reset_token': None, 'reset_error': message,
+            'reset_success': status == 200, 'reset_result': result,
+        }), status_code=status, headers={'Cache-Control': 'no-store'})
 
     def markdown_reply(request: Request, values: SettingsFormValues, *, message: str,
                        plan=None, contents: str = "", filename: str = "",
@@ -598,9 +639,9 @@ def create_app(config_path: Path, *, electron_bridge: ElectronBridge, diagnostic
                 if current.issue or current.revision != draft.monitor_revision:
                     raise ContentChangedError("Monitor configuration changed; Preview again")
             def commit_scope():
-                from allfold.web.settings_guard import settings_task_active
+                from allfold.web.settings_guard import settings_input_active
                 with app.state.settings_write_lock:
-                    if settings_task_active(app):
+                    if settings_input_active(app):
                         raise ContentChangedError('Active task owns the saved configuration; Import is pending')
                     confirm_research_scope(plan, before_write=verify_monitor_before_write)
             await run_in_threadpool(commit_scope)
@@ -660,9 +701,12 @@ def create_app(config_path: Path, *, electron_bridge: ElectronBridge, diagnostic
     def save_submitted_settings(request, form):
         from allfold.web.settings_guard import settle_settings_effects
         effects = {}
-        reply = save_submitted_settings_locked(request, form, effects)
-        settle_settings_effects(app, effects)
-        return reply
+        try:
+            return save_submitted_settings_locked(request, form, effects)
+        except (ValueError, RuntimeError, OSError) as error:
+            return settings_error(str(error), 409)
+        finally:
+            settle_settings_effects(app, effects)
 
     def save_submitted_settings_locked(request, form, effects):
         from allfold.web.settings_guard import settings_write_context
@@ -707,6 +751,16 @@ def create_app(config_path: Path, *, electron_bridge: ElectronBridge, diagnostic
                 draft.monitor_revision, draft.journal_revision,
                 tuple(service.id for service in plan.services),
             ) if approved else None
+            from allfold.web.settings_guard import prepare_settings_effects, drain_settings_effects, settings_revisions_current
+            if (not disk.issues and settings_revisions_current(disk.draft, draft)
+                    and validate_settings(config_path, draft).outcome is SettingsValidationOutcome.VALID):
+                prepare_settings_effects(app, effects, invalidation, disk.draft, draft)
+        drain_settings_effects(app, effects)
+        with app.state.settings_write_lock:
+            # A non-maintenance save may have yielded to a foreground start;
+            # its captured configuration must remain protected until settlement.
+            if effects.get('change') is None and settings_write_context(app, disk.draft, draft)[0]:
+                return JSONResponse({"saved": False, "outcome": "TASK_ACTIVE", "message": "Pending: affected work is still active or cleaning up; the draft is retained."})
             result = (
                 save_settings(config_path, draft, deletion_approval=approval)
                 if approval is not None else save_settings(config_path, draft)

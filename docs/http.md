@@ -80,8 +80,12 @@ locked AnyIO [shared blocking portal](https://anyio.readthedocs.io/en/stable/thr
 
 ## Journal Run and native preprint APIs
 
-Run and the Info preprint lookup use operation-local clients over the shared
-HTTP policy and host pacing. Network requests hold no Workspace write lock.
+Run, the Info preprint lookup and independent collection attempts use owned
+clients over the shared HTTP policy and application-owned pacing. The application
+injects the same pacing state into each creation path; another Run, client or
+attempt does not reset the actual-origin spacing. Request and adapter caches stay
+within their owning operation/attempt, rather than becoming global caches.
+Network requests hold no Workspace write lock.
 Run reuses verified DOI/Work evidence across Discovery and metadata completion.
 It batches quoted PubMed article identifiers after saved-Paper exclusion,
 checking each returned PMID against its direct DOI and reusing fetched records.
@@ -142,6 +146,21 @@ webpage Enrich and its Translator transport are retired; Provider HTTP remains
 independent of Browser authentication.
 See [Provider contracts and limits](providers.md).
 
+`IndependentClientFactory.open` creates one worker-owned context with its own
+clients, request cache, captured cancellation/authority and absolute deadline.
+The runtime owns the corresponding thread-confined repository connections and
+Workspace/Paper/attempt checks; the HTTP factory never borrows a returned Run's
+snapshot, connection, cancellation event or `ExitStack`. Provider credentials are
+captured when the context opens, and the supplied guard runs before client use
+and every physical request. Existing adapter selection, request budgets,
+Retry-After, redirects and cooldown authentication scopes remain unchanged.
+Injected transports keep their existing isolated cooldown state unless a test
+explicitly shares it. Factory close stops new contexts and waits for existing
+contexts to close after runtime cancellation/drain. It does not treat a cancelled
+Future or a returned business result as resource settlement. This internal
+factory does not register production Run Papers or execute the full ordinary
+metadata-completion workflow; WF06 supplies the collection branches.
+
 
 ## Local task cancellation and configuration writes
 
@@ -154,9 +173,11 @@ own internal drain and does not use an identity-free public cancellation action.
 Login and Covers continue to require their captured workflow/request identities.
 
 Ordinary settings autosave preserves revision checks and retained drafts. An
-independent Browser owner no longer blocks unrelated patches. Overlapping access
-changes and foreground Run/WoS/Preprint snapshot writers return `TASK_ACTIVE` until
-the affected work settles. Saved access changes clean only captured old native
+independent Browser owner no longer blocks unrelated patches. Foreground
+Run/WoS/Preprint snapshot writers and conflicting controls return `TASK_ACTIVE`.
+An accepted registry-only access change reserves its affected scope, revokes old
+attempt authority and drains those captured tasks outside configuration locks
+before revalidating and saving; unrelated tasks continue. Saved access changes clean only captured old native
 keys; the HTTP worker awaits cleanup outside configuration/database locks.
 Authenticated native `access_pages_closed` notifications revoke exact retained
 Page authority. Internal `release_workflow_pages` carries the completed WoS
@@ -177,3 +198,27 @@ scoped admission. `release_workflow_pages` takes captured workflow/task IDs and
 idempotently releases only that results-page loan. Actual retained-page destruction
 reports bounded exact Page IDs through `access_pages_closed`. Keys are authority
 inputs, never diagnostic fields. See [resource limits and rollback](browser-pages.md).
+
+## Internal WF05 collection boundary
+
+No collection start/retry/download HTTP route or new Paper button is added.
+Internal `WorkspaceRegistry.admit` commits the complete Paper/queued decision;
+`register` rechecks captured lifecycle, attempt and narrow access before dispatch.
+`submit` combines them for application callers. Each branch declares its actual
+Providers; `IndependentClientFactory.open(providers=...)` creates only that owned
+credential/client scope and keeps a fresh cache. The application shares pacing
+with current Run and old manual Preprint without sharing their snapshots/clients.
+
+Workspace Paper responses project durable `collection_status` and runtime
+`cleanup_pending`, with library revisions ordering collection and occupancy
+changes. Exclusion persists before precise cancellation; Restore cannot revive
+old work. Existing foreground Run timing/slot and public Preprint algorithm remain.
+Workspace switching and confirmed Workspace Reset stop and drain the old
+lifecycle before save/deletion, then bind only the actually saved path. Invalid
+drafts, unapproved deletion previews and stale Reset confirmations do not drain
+work. Logs Reset refuses active registry work, including API-only and queued
+attempts; native Reset waits hold no configuration/reset lock. Legacy Preprint
+cleanup uncertainty retains Paper occupancy and reports a bounded fault.
+During normal exit, authenticated `invalidate_access` and
+`release_workflow_pages` may still settle captured resources after execution
+admission closes. They grant no new navigation or credential authority.

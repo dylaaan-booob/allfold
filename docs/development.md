@@ -17,8 +17,8 @@ Journal state is stored in `.allfold/user-data.sqlite`, isolated by canonical co
 The production [Paper library](paper-library.md) uses standard-library `sqlite3`.
 Read-only uninitialized views do not create it; the first Run initializes
 `Workspace/papers.sqlite`. Use disposable directories, actual SQLite connections
-and local HTTP/DOM fixtures. Existing v1 libraries receive a preserving known
-schema upgrade. Missing, corrupt and unsupported databases have distinct results.
+and local HTTP/DOM fixtures. Existing v1/v2 libraries receive a preserving known
+schema-v3 upgrade. Missing, corrupt and unsupported databases have distinct results.
 
 ```sh
 uv run --locked pytest tests/test_paper_repository.py tests/test_paper_repository_safety.py tests/test_run_commit.py tests/test_preprint_lookup.py
@@ -156,6 +156,23 @@ reopen/classification, stable UUIDs, bounded short commits, cancellation and
 captured generations. The Electron fixture renders ordinary dates and separate
 Preprint proof and checks local recycling without file operations. Source/build,
 rendered fixture, live-service and latest PR CI outcomes remain distinct evidence.
+
+WF05 component regressions additionally use `test_collection_repository.py`,
+`test_dynamic_dispatch.py`, `test_collection_runtime.py`, `test_task_clients.py`
+and `test_task_authority.py`. They exercise on-disk SQLite contention/upgrade and
+rollback, real worker Futures and cleanup barriers, queued/expired work, branch
+idempotence and retry, loopback HTTP with independent clients, common pacing and
+narrow access revocation. Scheduler limits count executing Paper jobs, not native
+WebContents. Internal fixture work does not enable production cross-Run collection
+or public Download/Retry. Existing bounded dispatcher and foreground Run tests
+remain applicable.
+
+`test_workspace_tasks.py` exercises the actual application host, HTTP projection,
+legacy query reaper, signal/join/factory shutdown order, selective credential and
+Service invalidation, accepted switch/Reset, partial save and same-path rebind,
+refusal before drain and Logs protection with real disposable libraries. The
+`page-resources` Electron fixture separately verifies parallel same-Service
+physical work pages; it does not enable production collection.
 
 `tests/test_two_stage_run.py` uses controlled Events/Futures to prove overlapping
 PubMed/WoS/OpenAlex producers, Work lookup before producer completion, deduplication

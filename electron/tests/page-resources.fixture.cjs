@@ -61,6 +61,27 @@ app.whenReady().then(async()=>{
     });
     assert.equal(openerContents.isDestroyed(),true);assert.equal(targetContents.isDestroyed(),false);
     assert.equal(target.view.webContents.getURL(),origin+'/target');assert.equal(physical(),2);
+    // WF05 shared Service data users pin one Prepare context but own different
+    // physical work pages. One user's cleanup cannot retire the other's page.
+    const paperAReady=deferred(),paperBReady=deferred(),paperAFinish=deferred(),paperBFinish=deferred();
+    let paperA,paperB;
+    const paperTask=(label,ready,finish,remember)=>task({...service,workflow_id:'collection_'+label,
+      task_id:'attempt_'+label,paper_id:randomUUID()},async()=>{
+      browser.pinAccessPage(portal,service);
+      const work=await page('auxiliary');remember(work.view.webContents);
+      await browser.navigate(origin+'/paper-'+label,{tab:work,signal,deadline:Date.now()+3000});
+      ready.resolve();await finish.promise;
+    });
+    const paperAWork=paperTask('a',paperAReady,paperAFinish,contents=>{paperA=contents;});
+    const paperBWork=paperTask('b',paperBReady,paperBFinish,contents=>{paperB=contents;});
+    try {
+      await Promise.all([paperAReady.promise,paperBReady.promise]);
+      assert.notEqual(paperA.id,paperB.id);assert.equal(physical(),4);
+      assert.equal(paperA.getURL(),origin+'/paper-a');assert.equal(paperB.getURL(),origin+'/paper-b');
+      paperAFinish.resolve();await paperAWork;
+      assert.equal(paperA.isDestroyed(),true);assert.equal(paperB.isDestroyed(),false);assert.equal(physical(),3);
+      paperBFinish.resolve();await paperBWork;assert.equal(physical(),2);
+    } finally {paperAFinish.resolve();paperBFinish.resolve();await Promise.allSettled([paperAWork,paperBWork]);}
     for(let index=0;index<6;index++) {
       await task(other,async()=>{browser.pinAccessPage(portal,other);await browser.reserveTaskPages(2,{signal,deadline:Date.now()+3000});await page('auxiliary');await page('auxiliary');assert.equal(physical(),4);});
       assert.equal(physical(),2,'completed batches return to the bounded Portal/target base');

@@ -31,16 +31,18 @@ Setup installs locked dependencies and builds the UI. It creates a missing local
 search, local edits, Preprint and Trash share the same repository. An unopened,
 uninitialized Workspace reads as empty without silently creating a library; the
 first Run initializes it explicitly. Corrupt or unsupported libraries report an
-error. Existing WF01 v1 libraries receive the known preserving schema upgrade.
+error. Existing v1/v2 libraries receive the known preserving upgrade to schema v3.
 Paper Markdown is no longer created, scanned or read back; old Workspace data is
 not migrated or deleted automatically. Repeat Run hits preserve complete saved
 records. Stable direct identities also support DOI-free Papers.
 
 Keep, Import to Zotero, Last Import and active webpage Enrich are retired.
-Background collection and public Download/PDF actions are not connected in WF02.
+WF05 supplies internal Workspace collection registration and scheduling; production
+Run registration and public Download/PDF actions remain deferred.
 An existing body association only classifies a Paper as Downloaded; there is no
 PDF download, physical delete, open or locate action. Current Run timing and
-creation-time Completion remain; collection stays `not_started`.
+creation-time Completion remain. Papers created through that current Run path stay
+`not_started`; internal accepted work projects its durable collection state.
 
 **Browser**, **Search** and **History** are available from the header in Workspace, Workflows, Journals and Settings. Search opens local Papers, Journals, saved Services and existing Browser tabs. Enter `>` to find a command. Browser fills the main content area and groups existing pages under CARSI, a saved Service or Other. The Tabs rail opens the grouped directory. Task controls offer **查看任务页面** to open the associated page for inspection or manual verification. Returning keeps the business view, navigation history, shared Session and active task.
 

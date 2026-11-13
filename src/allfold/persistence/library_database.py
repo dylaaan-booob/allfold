@@ -11,7 +11,7 @@ from uuid import UUID, uuid4
 
 
 DATABASE_NAME = "papers.sqlite"
-SCHEMA_VERSION = 2
+SCHEMA_VERSION = 3
 APPLICATION_ID = 0x41464C44  # AFLD; unrelated to configuration-level UserState.
 
 
@@ -75,7 +75,27 @@ PROJECTION_SCHEMA = (
         revision INTEGER NOT NULL DEFAULT 1 CHECK (revision > 0),
         CHECK ((primary_namespace IS NULL) = (primary_value IS NULL)))""",
 )
-SCHEMA = V1_SCHEMA + PROJECTION_SCHEMA
+V2_SCHEMA = V1_SCHEMA + PROJECTION_SCHEMA
+COLLECTION_SCHEMA = (
+    """CREATE TABLE paper_collection (
+        paper_id TEXT PRIMARY KEY NOT NULL REFERENCES paper_core(paper_id) ON DELETE RESTRICT,
+        metadata_generation INTEGER NOT NULL CHECK (metadata_generation > 0),
+        operation_generation INTEGER NOT NULL CHECK (operation_generation > 0),
+        abstract_generation INTEGER NOT NULL CHECK (abstract_generation > 0),
+        body_generation INTEGER NOT NULL CHECK (body_generation > 0),
+        attempt INTEGER NOT NULL CHECK (attempt > 0), lifecycle_id TEXT NOT NULL,
+        status TEXT NOT NULL CHECK (status IN ('queued', 'running', 'completed', 'failed', 'cancelled')),
+        cancel_requested INTEGER NOT NULL DEFAULT 0 CHECK (cancel_requested IN (0, 1)),
+        reason TEXT CHECK (reason IS NULL OR length(reason) <= 240))""",
+    """CREATE TABLE paper_collection_branch (
+        paper_id TEXT NOT NULL REFERENCES paper_collection(paper_id) ON DELETE CASCADE,
+        name TEXT NOT NULL CHECK (length(name) BETWEEN 1 AND 64),
+        state TEXT NOT NULL CHECK (state IN ('queued', 'running', 'completed', 'skipped', 'failed', 'cancelled')),
+        last_sequence INTEGER NOT NULL DEFAULT 0 CHECK (last_sequence >= 0),
+        reason TEXT CHECK (reason IS NULL OR length(reason) <= 240),
+        PRIMARY KEY (paper_id, name))""",
+)
+SCHEMA = V2_SCHEMA + COLLECTION_SCHEMA
 
 
 def _schema_definitions(connection):
@@ -113,15 +133,15 @@ def _sqlite_error(error: sqlite3.Error) -> LibraryError:
 
 
 def upgrade_schema(connection: sqlite3.Connection, version: int) -> None:
-    """Upgrade only the exact known v1 schema, atomically and without losing payloads."""
-    if version not in {1, SCHEMA_VERSION}:
+    """Upgrade exact known v1/v2 schemas in the caller's rollback-safe transaction."""
+    if version not in {1, 2, SCHEMA_VERSION}:
         raise UnsupportedLibrarySchema(f"Unsupported library schema {version}; supported version is {SCHEMA_VERSION}")
     if version == SCHEMA_VERSION:
         return
-    if _schema_definitions(connection) != _expected_schema(V1_SCHEMA):
-        raise LibraryCorruptError("Library v1 schema does not match its recorded version")
+    if _schema_definitions(connection) != _expected_schema(V1_SCHEMA if version == 1 else V2_SCHEMA):
+        raise LibraryCorruptError(f"Library v{version} schema does not match its recorded version")
     if connection.execute("PRAGMA quick_check").fetchone()[0] != "ok" or connection.execute("PRAGMA foreign_key_check").fetchone():
-        raise LibraryCorruptError("Library v1 integrity check failed")
+        raise LibraryCorruptError(f"Library v{version} integrity check failed")
     # Validate saved content before making the first schema change. Missing v1
     # discovery/primary values remain explicitly unknown, never invented on read.
     from allfold.persistence.library_models import PaperMetadata
@@ -129,15 +149,18 @@ def upgrade_schema(connection: sqlite3.Connection, version: int) -> None:
         try:
             PaperMetadata.model_validate_json(row[0])
         except ValueError as error:
-            raise LibraryCorruptError("Invalid saved v1 Paper metadata") from error
-    for statement in PROJECTION_SCHEMA:
+            raise LibraryCorruptError(f"Invalid saved v{version} Paper metadata") from error
+    if version == 1:
+        for statement in PROJECTION_SCHEMA:
+            connection.execute(statement)
+        connection.execute("INSERT INTO library_state VALUES (1, 0)")
+        for row in connection.execute("SELECT paper_id FROM paper_core"):
+            identities = connection.execute("SELECT namespace, normalized_value FROM paper_identities WHERE paper_id = ?", (row[0],)).fetchall()
+            dois = [identity for identity in identities if identity[0] == "doi"]
+            primary = dois[0] if len(dois) == 1 else identities[0] if len(identities) == 1 else (None, None)
+            connection.execute("INSERT INTO paper_projection VALUES (?, ?, ?, 1)", (row[0], *primary))
+    for statement in COLLECTION_SCHEMA:
         connection.execute(statement)
-    connection.execute("INSERT INTO library_state VALUES (1, 0)")
-    for row in connection.execute("SELECT paper_id FROM paper_core"):
-        identities = connection.execute("SELECT namespace, normalized_value FROM paper_identities WHERE paper_id = ?", (row[0],)).fetchall()
-        dois = [identity for identity in identities if identity[0] == "doi"]
-        primary = dois[0] if len(dois) == 1 else identities[0] if len(identities) == 1 else (None, None)
-        connection.execute("INSERT INTO paper_projection VALUES (?, ?, ?, 1)", (row[0], *primary))
     connection.execute(f"PRAGMA user_version = {SCHEMA_VERSION}")
 
 

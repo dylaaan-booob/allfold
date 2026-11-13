@@ -258,3 +258,49 @@ def test_invalid_v1_payload_fails_upgrade_without_partial_schema(tmp_path):
     with pytest.raises(LibraryCorruptError):
         PaperRepository.open(tmp_path)
     assert (tmp_path / DATABASE_NAME).read_bytes() == before
+
+
+def _create_v2_library(workspace):
+    from uuid import uuid4
+    from allfold.persistence.library_database import APPLICATION_ID, V2_SCHEMA
+
+    workspace_id, paper_id = uuid4(), uuid4()
+    with sqlite3.connect(workspace / DATABASE_NAME) as connection:
+        for statement in V2_SCHEMA:
+            connection.execute(statement)
+        connection.execute("INSERT INTO library_info VALUES (1, ?)", (str(workspace_id),))
+        connection.execute("INSERT INTO paper_core VALUES (?, 1, 4, 7, 3)", (str(paper_id),))
+        connection.execute("INSERT INTO paper_identities VALUES ('pmid', '123', ?)", (str(paper_id),))
+        connection.execute("INSERT INTO paper_metadata VALUES (?, ?, 2)",
+                           (str(paper_id), PaperMetadata(title="Saved v2", abstract="Original", notes="Keep").model_dump_json()))
+        connection.execute("INSERT INTO paper_body VALUES (?, 'Documents/existing.pdf', NULL, 81)", (str(paper_id),))
+        connection.execute("INSERT INTO paper_projection VALUES (?, 'pmid', '123', 19)", (str(paper_id),))
+        connection.execute("INSERT INTO library_state VALUES (1, 31)")
+        connection.execute(f"PRAGMA application_id = {APPLICATION_ID}")
+        connection.execute("PRAGMA user_version = 2")
+    return workspace_id, paper_id
+
+
+def test_v2_upgrade_preserves_every_generation_revision_and_no_invented_completion(tmp_path):
+    workspace_id, paper_id = _create_v2_library(tmp_path)
+    with PaperRepository.open(tmp_path, expected_workspace_id=workspace_id) as repository:
+        paper = repository.get(paper_id)
+        assert (paper.metadata_generation, paper.operation_generation, paper.body_generation, paper.abstract_generation) == (4, 7, 3, 2)
+        assert paper.excluded and paper.revision == 19 and repository.revision == 31
+        assert paper.metadata.title == "Saved v2" and paper.metadata.abstract == "Original" and paper.metadata.notes == "Keep"
+        assert paper.body.relative_path == "Documents/existing.pdf" and paper.body.size_bytes == 81
+        assert paper.primary_identity.value == "123"
+        assert paper.collection_status == "not_started"
+    with PaperRepository.open(tmp_path) as repository:
+        assert repository.get(paper_id) == paper
+
+
+def test_v2_upgrade_schema_failure_rolls_back_version_and_all_schema_changes(tmp_path, monkeypatch):
+    from allfold.persistence import library_database
+
+    _create_v2_library(tmp_path)
+    before = (tmp_path / DATABASE_NAME).read_bytes()
+    monkeypatch.setattr(library_database, "COLLECTION_SCHEMA", (library_database.COLLECTION_SCHEMA[0], "INVALID SQL"))
+    with pytest.raises(LibraryError):
+        PaperRepository.open(tmp_path)
+    assert (tmp_path / DATABASE_NAME).read_bytes() == before

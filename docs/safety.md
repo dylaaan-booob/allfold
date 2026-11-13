@@ -12,7 +12,7 @@ execution context. Short rollback-safe transactions contain no network/browser
 wait. Library schema, integrity, UUID and live directory/database identity are
 validated. Symlinks and multiple-link main/sidecar paths are refused. Missing,
 corrupt, unknown-schema, unsafe-path and busy/commit failures remain distinct;
-none authorizes replacement or clearing. Known v1 upgrades preserve records.
+none authorizes replacement or clearing. Known v1/v2 upgrades to v3 preserve records.
 
 Async writes use eligibility captured when the Paper is first claimed, including
 Workspace UUID and metadata/operation generations. Results cannot reread current
@@ -21,6 +21,9 @@ automatic abstract candidates; legal date/source increments remain eligible.
 Library revision and response ordering separately prevent stale UI snapshots.
 
 Reject persists exclusion and invalidates tokens before exact-Paper cancellation.
+The same Paper gate captures and locally revokes the current attempt/reservation
+and legacy request Event. Deferred signals retain those exact targets. If none
+exists at Reject, they cannot cancel a later owner after Restore.
 The transaction and Workspace write lock are released before cancellation or
 worker join. Shared Run requests keep serving other Papers. Restore is local and
 may precede cleanup, but old tokens stay invalid and new mutually exclusive work
@@ -119,3 +122,23 @@ cleanup and physical-close feedback cannot invalidate a newer context. Lowered
 limits revoke unused headroom and defer new creation without forcing active pages
 closed. Normal exit disposes common Session listeners only after physical cleanup.
 See [exact counts and rollback](browser-pages.md).
+
+WF05 collection qualification is committed with identity creation/rebuild in one
+transaction. Persistent queued/running state blocks competing work before any
+worker exists. Captured lifecycle/attempt/branch sequence augments the existing
+field generations; manual editing keeps its separate field contract. Successful
+branch facts survive explicit retries, while failed/cancelled records do not
+retry on a new source or Run. Startup interruption is explicit and once per bound
+lifecycle, without network or queue replay. Runtime client/native/terminal-write
+faults keep conservative Paper occupancy rather than interpreting no worker as
+permission for Download or clearing.
+
+Paper reservations include old manual Preprint through its actual worker exit,
+without declaring collection completed. Occupancy changes advance projection
+revision without changing content generations. Service data use is shared only
+with explicit captured scope; controls and physical pages remain exclusive.
+Accepted maintenance reserves new admission before old owners drain outside
+configuration, Workspace and SQLite write locks. Only captured resource cleanup
+continues through Bridge/Main after normal execution closes; new business work
+and credential mutations remain refused. Common Provider pacing outlives clients,
+while cancellation, guards, caches and absolute deadlines stay attempt-owned.

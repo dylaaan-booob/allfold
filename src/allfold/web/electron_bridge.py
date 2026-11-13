@@ -24,6 +24,7 @@ from allfold.integrations.cloudflare_solver import solve_cloudflare
 
 
 _CONTROL_ACTIONS = {"diagnostics_reset", "cas_credentials"}
+_RESOURCE_ACTIONS = {"invalidate_access", "release_workflow_pages"}
 _BUSINESS_ACTIONS = {"login_carsi", "prepare_service", "visit_manual_service", "search_journal_cover", "wos_query", "wos_export", "invalidate_access", "release_workflow_pages"}
 _RECOVERY_ACTIONS = {"prepare_service"}
 _CONTEXT_FIELDS = ("workflow_id", "task_id", "parent_task_id", "service_id", "paper_id")
@@ -303,7 +304,9 @@ class ElectronBridge:
         if action not in _CONTROL_ACTIONS | _BUSINESS_ACTIONS:
             raise ValueError('Unsupported native operation')
         socket = self._socket
-        if socket is None or self.closing:
+        # Normal exit closes execution admission first. Captured owners still
+        # need this same authenticated receive loop to settle their resources.
+        if socket is None or self.closing and action not in _RESOURCE_ACTIONS:
             raise ElectronDisconnected("Electron runtime is unavailable")
         request_id = uuid4().hex
         result = asyncio.get_running_loop().create_future()

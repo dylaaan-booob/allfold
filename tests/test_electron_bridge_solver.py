@@ -44,6 +44,26 @@ def test_parallel_requests_receive_results_and_cancel_only_their_owner():
         assert progress == [[{'message': '0'}], [{'message': '1'}]]
 
 
+def test_normal_shutdown_keeps_captured_resource_cleanup_transport_open():
+    from allfold.application.browser_runtime import ElectronDisconnected
+    bridge = ElectronBridge('secret', 'testserver')
+    with TestClient(application(bridge)) as client, client.websocket_connect('/ws') as socket:
+        socket.send_json({'token': 'secret'})
+        assert socket.receive_json()['type'] == 'ready'
+        bridge.closing = True
+        with pytest.raises(ElectronDisconnected):
+            bridge.execute('prepare_service', {'workflow_id': 'old', 'task_id': 'old'}).result(2)
+        cleanup = bridge.execute('release_workflow_pages', {'workflow_id': 'old', 'task_id': 'old'})
+        with pytest.raises(TimeoutError):
+            cleanup.result(.03)
+        request = socket.receive_json()
+        assert request['action'] == 'release_workflow_pages'
+        assert not cleanup.done()
+        socket.send_json({'type': 'result', 'id': request['id'], 'action': request['action'],
+                          'data': {'released': True}})
+        assert cleanup.result(2) == {'released': True}
+
+
 def test_solver_slot_waits_for_actual_cleanup_and_skips_expired_or_canceled_queue(monkeypatch):
     started, stopped, release = threading.Event(), threading.Event(), threading.Event()
     calls = []
