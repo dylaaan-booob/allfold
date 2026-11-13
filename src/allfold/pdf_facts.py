@@ -36,6 +36,7 @@ def ephemeral_pdf_url(value: str) -> bool:
         if (name in {'token', 'accesstoken', 'authtoken', 'auth', 'authorization', 'signature',
                 'sig', 'expires', 'expiry', 'apikey', 'key', 'credential', 'policy', 'keypairid',
                 'session', 'sessionid', 'jsessionid', 'jwt', 'hmac', 'securitytoken'}
+                or name == 'md5' and (urlsplit(value).hostname or '').lower() in {'www.sciencedirect.com', 'sciencedirect.com'}
                 or name.startswith(('xamz', 'xgoog'))):
             return True
     return bool(re.search(r';(?:jsessionid|sessionid)=', urlsplit(value).path, re.I))

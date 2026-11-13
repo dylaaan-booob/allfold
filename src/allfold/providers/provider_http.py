@@ -162,7 +162,7 @@ class ProviderReadClient:
     def __init__(self, provider, *, api_key=None, transport=None, timeout=30, interval=0,
                  pacing_state=None, cancel_event=None, guard=None, recovery_observer=None,
                  sleep=time.sleep, monotonic=time.monotonic, wall_time=lambda: datetime.now(timezone.utc),
-                 jitter=random, cooldowns=None, deadline=None):
+                 jitter=random, cooldowns=None, deadline=None, request_url_guard=None):
         self.provider = provider
         self._pubmed_auth = sha256(api_key.encode()).digest() if provider == 'pubmed' and api_key else None
         self._timeout, self._interval = timeout, interval
@@ -170,6 +170,7 @@ class ProviderReadClient:
         self._pacing_lock = self._pacing.setdefault('lock', Lock())
         self._cancel = cancel_event if cancel_event is not None else Event()
         self._guard = guard
+        self._request_url_guard = request_url_guard
         self.recovery_observer = recovery_observer
         self._sleep, self._now, self._wall_time, self._jitter = sleep, monotonic, wall_time, jitter
         self._deadline = deadline
@@ -187,6 +188,12 @@ class ProviderReadClient:
             raise Cancelled('Run cancelled')
         if self._guard is not None:
             self._guard()
+
+    def check_parent_deadline(self):
+        """Preserve the parent's terminal budget independently of retry policy."""
+        self.check_authority()
+        if self._deadline is not None and self._now() >= self._deadline:
+            raise ProviderBudgetExceeded(f'{self.provider}: parent request deadline expired')
 
     def operation(self, activity=None):
         deadline = self._now() + RECOVERY_SECONDS
@@ -257,6 +264,8 @@ class ProviderReadClient:
             self.check_authority()
 
     def _before_request(self, request):
+        if self._request_url_guard is not None:
+            self._request_url_guard(request)
         self._trace.status = None
         operation = self._trace.operation
         scope = self._scope(request)
@@ -330,7 +339,7 @@ class ProviderReadClient:
         if not response.is_stream_consumed:
             response.stream = _DeadlineStream(response.stream, check)
 
-    def read(self, prepare, operation, *, decode, follow_redirects, final=False):
+    def read(self, prepare, operation, *, decode, follow_redirects, final=False, stream=False):
         if final:
             operation.attempt = operation.attempt_limit = REGULAR_ATTEMPTS + 1
             action = 'completion_recheck'
@@ -343,13 +352,13 @@ class ProviderReadClient:
         self._trace.retry_after = False
         self._trace.status = None
         try:
-            return self._read(prepare, operation, decode, follow_redirects, action, final)
+            return self._read(prepare, operation, decode, follow_redirects, action, final, stream)
         finally:
             del self._trace.operation
             del self._trace.retry_after
             del self._trace.status
 
-    def _read(self, prepare, operation, decode, follow_redirects, action, final):
+    def _read(self, prepare, operation, decode, follow_redirects, action, final, stream=False):
         attempts = range(1, REGULAR_ATTEMPTS + 1) if not final else (operation.attempt,)
         for attempt in attempts:
             operation.attempt = attempt
@@ -361,7 +370,7 @@ class ProviderReadClient:
                     raise self._access_failure
                 try:
                     request = operation.request if final else prepare()
-                    response = self.http.send(request, follow_redirects=follow_redirects)
+                    response = self.http.send(request, follow_redirects=follow_redirects, stream=stream)
                 except HTTPDeadlineExceeded:
                     self.check_authority()
                     self._response_budget_exhausted(operation, self._trace.status)
@@ -371,7 +380,13 @@ class ProviderReadClient:
                     raise _transport_failure(self.provider, error) from None
                 self.check_authority()
                 self._check_response_deadline(operation, response.status_code)
-                result = self._decode(response, decode)
+                if stream:
+                    try:
+                        result = self._decode(response, decode)
+                    finally:
+                        response.close()
+                else:
+                    result = self._decode(response, decode)
             except ProviderBudgetExceeded:
                 operation.exhausted = True
                 if attempt > 1:
