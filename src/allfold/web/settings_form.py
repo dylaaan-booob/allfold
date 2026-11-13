@@ -351,5 +351,3 @@ def settings_draft_from_form(
         ),
         (),
     )
-
-

@@ -378,24 +378,16 @@ def test_streaming_timeout_and_early_close(monkeypatch):
         assert len(proxy.requests) == 2
 
 
-@pytest.mark.parametrize(("status", "server_id", "outcome"), [
-    (200, "fixture-server", "VERIFIED"), (200, "", "INVALID_RESPONSE"),
-    (403, "fixture-server", "API_FAILURE"), (412, "fixture-server", "SERVER_ID_MISMATCH"),
-])
-def test_zotero_health_stays_direct_with_external_proxy(monkeypatch, status, server_id, outcome):
-    import allfold.integrations.zotero_local as zotero
-
-    with http_server(lambda _: (status, {"Zotero-Server-ID": server_id}, b"{}")) as local:
-        with http_server(lambda _: pytest.fail("Zotero must never reach the proxy")) as proxy:
+@pytest.mark.parametrize("options", [{"proxy_policy": "direct"}, {"trust_env": False}],
+                         ids=["direct-policy", "trust-env-disabled"])
+def test_explicit_direct_request_bypasses_external_proxy(monkeypatch, options):
+    with http_server() as local:
+        with http_server(lambda _: pytest.fail("Explicit direct requests must not reach the proxy")) as proxy:
             monkeypatch.setenv("ALL_PROXY", proxy.url)
             monkeypatch.setenv("HTTP_PROXY", proxy.url)
-            monkeypatch.setattr(zotero, "LOCAL_API_BASE", local.url + "/api")
-            with zotero.ZoteroLocalClient() as client:
-                result = client.current_instance()
-            assert result.outcome.value == outcome
-            assert result.server_id == (server_id if outcome == "VERIFIED" else None)
-            assert [(r.method, r.path) for r in local.requests] == [("GET", "/api/")]
-            assert local.requests[0].headers["Zotero-API-Version"] == "3"
+            with create_http_client(**options) as client:
+                assert client.get(local.url + "/direct").text == "origin"
+            assert [(r.method, r.path) for r in local.requests] == [("GET", "/direct")]
             assert not proxy.requests
 
 
