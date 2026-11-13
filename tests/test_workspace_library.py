@@ -109,15 +109,67 @@ def test_corrupt_library_get_returns_error_without_overwrite(tmp_path):
 
 
 def test_workspace_projection_uses_saved_primary_doi_with_multiple_direct_aliases(tmp_path):
+    from allfold.application.preprint_lookup import require_lookup_doi
     from allfold.persistence.library_models import DirectIdentity
+    from allfold.web.ui_next import paper_payload
     workspace = tmp_path / 'workspace'
     workspace.mkdir()
     with PaperRepository.create(workspace) as repository:
-        paper = repository.create_or_match(repository.workspace_id, direct_ids=ExternalIds(doi='10.5555/aaa'),
-            additional_identities=(DirectIdentity('doi', '10.5555/zzz'),), metadata=PaperMetadata(title='Article')).paper
+        paper = repository.create_or_match(repository.workspace_id, direct_ids=ExternalIds(doi='10.5555/zzz'),
+            additional_identities=(DirectIdentity('doi', '10.5555/aaa'),),
+            metadata=PaperMetadata(title='Article', publication_type='journal')).paper
     projected, = load_workspace(workspace).inbox
-    assert projected.paper_id == paper.id and projected.external_ids.doi == '10.5555/aaa'
-    assert projected.identity_label == 'doi:10.5555/aaa'
+    assert projected.paper_id == paper.id and projected.external_ids.doi == '10.5555/zzz'
+    assert projected.identity_label == 'doi:10.5555/zzz'
+    assert require_lookup_doi(projected.record) == paper_payload(projected)['doi'] == '10.5555/zzz'
+    assert paper_payload(projected)['preprint_lookup_available']
+
+
+def test_v1_multiple_dois_remain_unresolved_in_workspace_and_http_lookup(tmp_path):
+    import sqlite3
+    from uuid import uuid4
+    import pytest
+    from fastapi.testclient import TestClient
+    from allfold.application.preprint_lookup import require_lookup_doi
+    from allfold.persistence.library_database import APPLICATION_ID, DATABASE_NAME, V1_SCHEMA
+    from allfold.web.app import create_app
+    from electron_test_helpers import OfflineBridge
+    from test_web_app import write_valid_config
+
+    config, workspace = write_valid_config(tmp_path)
+    workspace.mkdir()
+    workspace_id, paper_id = uuid4(), uuid4()
+    metadata = PaperMetadata(title='Existing formal article', publication_type='journal', journal='Biometrics')
+    with sqlite3.connect(workspace / DATABASE_NAME) as connection:
+        for statement in V1_SCHEMA:
+            connection.execute(statement)
+        connection.execute('INSERT INTO library_info VALUES (1, ?)', (str(workspace_id),))
+        connection.execute('INSERT INTO paper_core (paper_id) VALUES (?)', (str(paper_id),))
+        for doi in ('10.5555/zzz', '10.5555/aaa'):
+            connection.execute('INSERT INTO paper_identities VALUES (?, ?, ?)', ('doi', doi, str(paper_id)))
+        connection.execute('INSERT INTO paper_metadata (paper_id, payload) VALUES (?, ?)',
+                           (str(paper_id), metadata.model_dump_json(exclude={'discovered_at'})))
+        connection.execute(f'PRAGMA application_id = {APPLICATION_ID}')
+        connection.execute('PRAGMA user_version = 1')
+
+    projected, = load_workspace(workspace).inbox
+    assert projected.record.primary_identity is None
+    assert projected.external_ids.doi is None
+    with pytest.raises(ValueError, match='formal publication DOI'):
+        require_lookup_doi(projected.record)
+    with TestClient(create_app(config, electron_bridge=OfflineBridge()), base_url='http://localhost') as client:
+        snapshot = client.get('/api/ui-next/workspace').json()
+        item, = [paper for group in snapshot['subjects'] for journal in group['journals'] for paper in journal['papers']]
+        assert item['primary_identity'] is None and item['doi'] is None
+        assert 'doi' not in item['external_ids'] and not item['preprint_lookup_available']
+        assert item['identities'] == [{'namespace': 'doi', 'value': '10.5555/aaa'},
+                                      {'namespace': 'doi', 'value': '10.5555/zzz'}]
+        started = client.post(f'/api/papers/{paper_id}/preprint-lookup/start', json={
+            'csrf_token': snapshot['csrf_token'], 'workspace_id': str(workspace_id)})
+        assert started.status_code == 409 and 'formal publication DOI' in started.json()['error']
+    with PaperRepository.open(workspace) as repository:
+        paper = repository.get(paper_id)
+        assert paper.primary_identity is None and len(paper.identities) == 2
 
 
 def test_legacy_import_settings_preserve_only_neutral_workflow_values(tmp_path):

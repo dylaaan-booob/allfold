@@ -40,7 +40,7 @@ const workspace={workspace_id:'fixture-library',revision:0,initialized:true,csrf
   trash:{papers:[]},downloaded:{papers:[{paper:paper(100,'downloaded'),journal:records[0]},{paper:paper(101,'downloaded'),journal:records[1]}],journals:records,services:[],settings:{},titles:{}}};
 const run={active:false,snapshot:{status:'IDLE',provider:null},providers:Object.fromEntries(['integrated','wos'].map(id=>[id,{enabled:false,message:'Offline fixture',result_summary:null}]))};
 const mimes={'.html':'text/html','.js':'text/javascript','.css':'text/css','.json':'application/json','.woff2':'font/woff2','.ttf':'font/ttf','.otf':'font/otf','.png':'image/png','.mp4':'video/mp4'};
-let rejectAutosave=false,holdWorkspaceResponse,resolveInitialCAS,credentialState={ok:false,error:'cas_store_unreadable',configured:false,username:'',revision:'d'.repeat(64)};
+let rejectAutosave=false,holdWorkspaceResponse,holdPaperActionResponse,resolveInitialCAS,credentialState={ok:false,error:'cas_store_unreadable',configured:false,username:'',revision:'d'.repeat(64)};
 const credentialWrites=[];
 const preprintStarts=[];
 let preprintState={phase:'Idle',saved_fields:[]};
@@ -63,14 +63,18 @@ const server=http.createServer((req,res)=>{
       entry.paper.excluded=false;entry.paper.status='candidate';if(entry.paper.metadata_present)entry.journal.papers.push(entry.paper);
     }
     workspace.revision++;
-    res.writeHead(200,{'Content-Type':'application/json'});res.end(JSON.stringify({workspace_id:workspace.workspace_id,revision:workspace.revision,paper:entry.paper}));return;
+    const body=JSON.stringify({workspace_id:workspace.workspace_id,revision:workspace.revision,paper:entry.paper});
+    const send=()=>{res.writeHead(200,{'Content-Type':'application/json'});res.end(body);};
+    if(holdPaperActionResponse){const release=holdPaperActionResponse;holdPaperActionResponse=null;release(send);}else send();
+    return;
   }
   const preprint=route.match(/^\/api\/papers\/([^/]+)\/preprint-lookup\/(state|start|cancel)$/);
   if(preprint){
     const [,id,action]=preprint;
     const send=(data,status=200)=>{res.writeHead(status,{'Content-Type':'application/json'});res.end(JSON.stringify(data));};
     if(action==='state'){
-      send(preprintStarts.at(-1)?.id===id ? preprintState : {phase:'Idle',saved_fields:[]});return;
+      send({workspace_id:workspace.workspace_id,revision:workspace.revision,
+        ...(preprintStarts.at(-1)?.id===id ? preprintState : {phase:'Idle',saved_fields:[]})});return;
     }
     let text='';req.on('data',chunk=>{text+=chunk;});req.on('end',()=>{
       const body=JSON.parse(text);
@@ -599,7 +603,11 @@ $('s-run-overview-open').click();
       if(document.querySelector('[data-enrich]') || document.getElementById('keep-paper') || document.querySelector('[data-workflow="kept"]'))throw Error('Retired business action remains executable');
     });
     await ready("!document.getElementById('reject-paper').disabled");
+    const pendingReject=new Promise(resolve=>{holdPaperActionResponse=resolve;});
     await js("document.getElementById('reject-paper').click()");
+    const releaseReject=await pendingReject;
+    await js("uiNext.request('/api/papers/paper-1/preprint-lookup/state')");
+    releaseReject();
     await ready("!window.inboxKept.candidates().some(entry=>entry.paper.id==='paper-1') && window.inboxKept.entries('trash').some(entry=>entry.paper.id==='paper-1')");
     await js("document.getElementById('array-trash').click()");
     await ready("document.getElementById('paper-detail').dataset.paperId==='paper-1' && !document.getElementById('restore-paper').disabled");

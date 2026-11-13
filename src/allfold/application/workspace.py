@@ -42,7 +42,10 @@ class WorkspacePaper:
     def external_ids(self):
         values = {}
         for identity in self.record.identities:
-            values.setdefault(identity.namespace, identity.value)
+            if identity.namespace != 'doi':
+                values.setdefault(identity.namespace, identity.value)
+        # DOI display and lookup use the saved main identity, never an alias
+        # chosen by identity-table ordering after an unresolved v1 upgrade.
         if primary := self.record.primary_identity:
             values[primary.namespace] = primary.value
         return ExternalIds(**values)
