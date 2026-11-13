@@ -36,8 +36,8 @@ abstract and existing user notes. ISSN/eISSN matching determines saved Journal a
 Service assignment. Clearing metadata deletes those fields; identity-only rows
 are unassigned and display a reliable identifier instead of a fabricated title.
 
-Ordinary dates are a normalized set of qualified target-article API month/day
-values: deduplicate, supersede a month with its known days, retain distinct days
+Ordinary dates are a normalized set of qualified target-article API and confirmed
+Document month/day values: deduplicate, supersede a month with its known days, retain distinct days
 and valid future values. A year remains bibliographic precision and manufactures
 no month/day. `publication_date` retains its explicit bibliographic source.
 Preprint dates and version-family proof are independent; a date with separate
@@ -52,3 +52,16 @@ eligibility. Manual abstract editing has an independent generation: old abstract
 candidates become ineligible while valid date/source increments may still merge.
 HTTP response order uses a separate persisted library revision, never `WriteToken`
 as a complete UI revision. See [library](paper-library.md) and [safety](safety.md).
+
+The internal Document task uses the saved primary DOI or an explicit upstream
+`confirmed_article_url` supplied by its owning task for DOI-free work. An arbitrary
+source/related-Preprint URL cannot become that confirmation. Native payload
+`workspace_identity` is the existing SHA256 of live Workspace path/device/inode;
+it is distinct from the SQLite Workspace UUID, captured Paper UUID, attempt and
+field generations. Public work omits Service fields. Prepared Service work uses
+the original `TaskAuthority.native_access()` projection (scope, Service, key,
+target and manual policy), forwarded by `WorkspaceTaskHost`; normal and recovery
+guards still validate that exact captured access. Reading a current Paper does
+not renew it or its abstract generation, and native deadlines consume the
+remaining parent budget. Verified native document IDs are operation-local
+evidence, never persistent identity or authority to reopen a closed page.

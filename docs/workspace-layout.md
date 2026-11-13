@@ -109,6 +109,19 @@ proof. No Received/Accepted/Published columns or Enrich question buttons remain.
 The current Preprint query requires complete, unexcluded formal metadata and a
 valid primary DOI; DOI-free complete Papers retain reading and local field tools.
 
+The layout DOM wrapper also exports one fresh Date/Abstract envelope from actual
+isolated Main→Browser→DocumentRuntime→preload execution, after normal work-page
+cleanup. `tests/document_metadata_pipeline.py` consumes that result through the
+native task adapter and separately uses controlled Crossref HTTP/parser results.
+Real captured registry writes, disk reopen and `GET /api/ui-next/workspace`
+produce complete Paper JSON records supplied to the existing built Reader.
+The fixture selects/copies both structured abstracts through the existing copy
+handler and checks exact headings/newlines/scientific text. A same-Paper date
+refresh retains Reader nodes, position and selection; the long API abstract
+provides a real scroll check alongside the existing resize/flyout assertions.
+The wrapper uses disposable profiles, libraries and output files and deletes
+them afterward. It adds no HTTP payload fields, UI controls or HTML rendering.
+
 Run result fixtures retain selected-source counts, failures and WoS batch/date
 hints. These synthetic APIs establish rendering only. Current Run completion and
 Preprint query algorithms remain; no cross-Run collection scheduler, Download

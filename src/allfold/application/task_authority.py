@@ -9,6 +9,23 @@ from allfold.providers.integrated import PROVIDERS
 
 
 @dataclass(frozen=True)
+class NativeAccessBinding:
+    """Captured descriptive association; verification remains with TaskAuthority."""
+    scope: tuple[tuple[str, str], ...] = ()
+    service_id: str | None = None
+    preparation_key: str | None = None
+    target_page_id: int | None = None
+    manually_confirmed: bool = False
+
+    def payload(self):
+        if self.service_id is None:
+            return {}
+        return dict(service_scope=dict(self.scope), service_id=self.service_id,
+                    preparation_key=self.preparation_key, target_page_id=self.target_page_id,
+                    manually_confirmed=self.manually_confirmed)
+
+
+@dataclass(frozen=True)
 class TaskAuthority:
     config_path: Path = field(repr=False)
     service_id: str | None
@@ -48,3 +65,9 @@ class TaskAuthority:
             self._saved.verify((self.service_id,))
             if self._login.prepared_authority(self._saved, self.service_id) != self._prepared:
                 raise ContentChangedError('Collection prepared access context changed')
+
+    def native_access(self):
+        if self.service_id is None:
+            return NativeAccessBinding()
+        return NativeAccessBinding(tuple(self._saved.scope.items()), self.service_id,
+            self._prepared.key, self._prepared.page_id, self._prepared.manually_confirmed)

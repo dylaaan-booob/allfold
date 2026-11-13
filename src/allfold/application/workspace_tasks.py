@@ -41,6 +41,9 @@ class _HostAuthority:
     def service_scope(self):
         return self.authority.service_scope
 
+    def native_access(self):
+        return self.authority.native_access()
+
     def admission_check(self):
         # Pure immutable snapshot only: safe inside the runtime Paper gate.
         self.host._verify_authority(self.service_id, self.providers, self.epochs)

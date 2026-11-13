@@ -9,7 +9,7 @@ from uuid import UUID
 
 from pydantic import ConfigDict, Field, field_validator
 
-from allfold.canonicalize import normalize_abstract
+from allfold.abstract_text import normalize_abstract_text
 from allfold.identifiers import normalize_external_id
 from allfold.models import (
     Author, DomainModel, EvidenceDate, EvidenceDateKind, MetadataSource, NonEmptyStr,
@@ -99,7 +99,8 @@ class PaperMetadata(DomainModel):
     @field_validator("abstract")
     @classmethod
     def validate_abstract(cls, value: str | None) -> str | None:
-        return value if value is not None and normalize_abstract(value) else None
+        # Existing/base text is never reinterpreted by a new candidate algorithm.
+        return value if value is not None and value.strip() else None
 
     @field_validator("ordinary_dates")
     @classmethod
@@ -137,7 +138,8 @@ class MetadataDelta(DomainModel):
     @field_validator("abstract")
     @classmethod
     def validate_abstract(cls, value: str | None) -> str | None:
-        return value if value is not None and normalize_abstract(value) else None
+        # Qualification is pure; the transaction normalizes a new candidate once.
+        return value if normalize_abstract_text(value) else None
 
     @field_validator("ordinary_dates")
     @classmethod

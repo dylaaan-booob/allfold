@@ -1,5 +1,5 @@
 'use strict';
-// Real Chromium DOM, synthetic HTTP responses, no Python process, accounts or native authority.
+// Real Chromium DOM, isolated HTTP responses; optional actual disk→HTTP Paper input.
 const {app,BrowserWindow,ipcMain}=require('electron'),http=require('node:http'),fs=require('node:fs'),path=require('node:path'),os=require('node:os');
 const temp=fs.mkdtempSync(path.join(os.tmpdir(),'allfold-layout-dom-'));
 app.setPath('userData',temp);app.commandLine.appendSwitch('force-prefers-reduced-motion','reduce');
@@ -35,6 +35,8 @@ const paper=(i,status='candidate')=>({
   authors:['Synthetic Author'],doi:i===0?null:'10.5555/layout-'+i,preprint_lookup_available:i!==0,discovered_at:'2026-10-01T00:00:00Z',status,
 });
 const records=journals.map((j,i)=>({key:j.issn,issn:j.issn,name:j.name,group:j.group,labels:[],cover:null,papers:[paper(i*2),paper(i*2+1)]}));
+const extractedPapers=process.argv[2]?JSON.parse(fs.readFileSync(process.argv[2],'utf8')).papers:[];
+if(extractedPapers.length)records.at(-1).papers=extractedPapers;
 Object.assign(records[0],{name:'Synthetic Conference',source_type:'unmapped',issn:null,group:'Old scope'});
 const workspace={workspace_id:'fixture-library',revision:0,initialized:true,csrf_token:'fixture',issues:[],counts:{candidates:48,active_journals:24},subjects:[{name:'Group 0',journals:records}],
   trash:{papers:[]},downloaded:{papers:[{paper:paper(100,'downloaded'),journal:records[0]},{paper:paper(101,'downloaded'),journal:records[1]}],journals:records,services:[],settings:{},titles:{}}};
@@ -160,6 +162,32 @@ app.whenReady().then(async()=>{
     win.webContents.on('console-message',event=>{if(event.level==='error')console.error('RENDERER',event.message,event.lineNumber,event.sourceId);});
     await win.loadURL(`http://127.0.0.1:${server.address().port}/`);
     await ready("window.uiWorkspace?.ready() && !document.getElementById('array-candidates').disabled && document.querySelectorAll('#s-journals [data-journal]').length===24");
+    for(const actual of extractedPapers) {
+      await navigate('workspace');
+      await js(`window.workspaceArray.openPaper(${JSON.stringify(actual.id)})`);
+      await ready(`document.getElementById('paper-detail').dataset.paperId===${JSON.stringify(actual.id)} && document.getElementById('paper-abstract').classList.contains('paragraph-layout')`);
+      await js(`(()=>{
+        const root=document.getElementById('paper-abstract'),reader=document.getElementById('paper-detail');
+        const expected=${JSON.stringify(actual.abstract)},selection=getSelection(),range=document.createRange();
+        range.selectNodeContents(root);selection.removeAllRanges();selection.addRange(range);
+        const transfer=new DataTransfer(),event=new ClipboardEvent('copy',{bubbles:true,cancelable:true,clipboardData:transfer});
+        root.dispatchEvent(event);
+        if(transfer.getData('text/plain')!==expected)throw Error('DTO/disk/HTTP Reader copy changed structured text');
+        window.chainReader=reader;window.chainAbstract=root;window.chainParent=reader.parentElement;
+        reader.scrollTop=Math.min(120,reader.scrollHeight-reader.clientHeight);window.chainScroll=reader.scrollTop;
+      })()`);
+      // A same-Paper ordinary-date increment must keep the actual text and Reader.
+      actual.ordinary_dates=[...actual.ordinary_dates,'2099-12-31'];workspace.revision++;
+      await js('window.uiWorkspace.refresh()');
+      await js(`(()=>{
+        const reader=document.getElementById('paper-detail'),root=document.getElementById('paper-abstract');
+        if(reader!==chainReader || reader.parentElement!==chainParent || root!==chainAbstract || reader.scrollTop!==chainScroll)throw Error('incremental date refresh changed Reader/position');
+        const transfer=new DataTransfer();root.dispatchEvent(new ClipboardEvent('copy',{bubbles:true,cancelable:true,clipboardData:transfer}));
+        if(transfer.getData('text/plain')!==${JSON.stringify(actual.abstract)})throw Error('incremental refresh lost original selection');
+        if(${actual.abstract.length}>1000 && chainScroll<=0)throw Error('long provider abstract did not provide a real scroll check');
+      })()`);
+    }
+    if(extractedPapers.length)await js("getSelection().removeAllRanges(),window.workspaceArray.openPaper('paper-0')");
     await check(async navigate=>{
       if(document.getElementById('array-source-stream'))throw Error('Retired source field remains');
       await navigate('journals');
