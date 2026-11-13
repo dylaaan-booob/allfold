@@ -155,6 +155,7 @@ class PdfDiscovery:
         self._remaining, self._hops, self._retries = max_operations, max_hops, max_retries
         self._seen, self._diagnostics = set(), []
         self._failed, self._fallback, self._used = False, False, False
+        self._document_attempted = False
 
     def check(self):
         if self._cancel.is_set():
@@ -241,7 +242,14 @@ class PdfDiscovery:
 
     def _document_needed(self):
         saved = next((f for f in self.facts if f.source == 'document'), None)
-        return saved is None or saved.status != 'complete' or any(c.refresh or c.action for c in saved.candidates)
+        if saved is None or saved.status != 'complete':
+            return True
+        refresh = [c for c in saved.candidates if c.refresh or c.action]
+        # AN + article slug already supply the qualified refresh reader; do not
+        # reopen the original article merely to rediscover that same next hop.
+        if refresh and all(c.stage == 'P4' and c.rule_id == 'R060' for c in refresh) and tuple(self._lww_viewer(saved)):
+            return False
+        return bool(refresh)
 
     def _document(self):
         if self.io is None or not callable(getattr(type(self.io), 'document', None)):
@@ -256,6 +264,7 @@ class PdfDiscovery:
             return ()
         if result is None:
             return ()
+        self._document_attempted = True
         if self._failed:
             self._fallback = True
         # Native's current candidates preserve signed values. Only the adapter
@@ -263,7 +272,7 @@ class PdfDiscovery:
         values = getattr(result, 'current_candidates', ())
         platform = getattr(getattr(result, 'facts', None), 'platform', None) or self._platform
         return (*tuple(PdfCandidate(self.target, c.stage, c.rule_id, platform, c.url,
-            c.reader_kind, c.referer, c.field, action=c.action) for c in values if not c.action),
+            c.reader_kind, c.referer, c.field, action=c.action) for c in values),
             *self._lww_viewer(result.facts))
 
     def _candidates(self):
@@ -297,19 +306,26 @@ class PdfDiscovery:
                 yield from candidates
                 if candidates:
                     break
+        # An already qualified P3 clue can finish before refreshing missing
+        # fields or a later dynamic P4 entrance in a partial snapshot.
+        yield from self._saved('P3')
         current = self._document() if self._document_needed() else ()
-        for stage in ('P3', 'P4'):
-            values = [c for c in current if c.stage == stage]
-            values.sort(key=lambda c: (0 if c.field == 'citation_pdf_url' else 1) if stage == 'P3' else c.rule_id == 'GENERIC')
-            yield from values
-            yield from self._saved(stage)
+        yield from sorted((c for c in current if c.stage == 'P3'),
+            key=lambda c: 0 if c.field == 'citation_pdf_url' else 1)
+        p4 = [*(c for c in current if c.stage == 'P4'), *self._saved('P4')]
+        yield from sorted(p4, key=lambda c: c.rule_id == 'GENERIC')
+        if self._document_attempted:
+            self._failed = True
         cached = next((f for f in self.facts if f.source == 'openalex'), None)
         refresh = cached and any(c.refresh for c in cached.candidates)
-        if cached and cached.status == 'complete' and not refresh:
+        if cached and cached.status == 'complete':
             for item in cached.candidates:
+                if item.refresh:
+                    break  # Requery only after earlier stable candidates fail.
                 if item.url:
                     yield PdfCandidate(self.target, 'P5', 'OPENALEX', 'openalex', item.url, field=item.field)
-            return
+            if not refresh:
+                return
         if not self.target.identity_doi or self.io is None or not callable(getattr(type(self.io), 'openalex', None)):
             return
         if getattr(self.io, 'openalex_available', True) is False:
@@ -364,16 +380,22 @@ class PdfDiscovery:
                         parsed = None
                     if parsed is not None:
                         following = tuple(replace(candidate, url=c.url, reader_kind=c.reader_kind,
-                            referer=c.referer, action=c.action) for c in parsed.current_candidates if not c.action)
+                            referer=c.referer, action=c.action, credential=None, accept=None)
+                            for c in parsed.current_candidates)
             if not following:
                 self._diagnostics.append((original.stage, original.rule_id, result.diagnostic or 'empty'))
                 return None
             # Multiple links are alternatives within this source chain, not a
             # generic unbounded crawler. Branches use the same finite budget.
+            branch_failed = False
             for next_candidate in following:
+                if branch_failed and (urldefrag(next_candidate.url)[0], next_candidate.action) not in self._seen:
+                    self._fallback = True
+                before = len(self._seen)
                 outcome = self._chain(next_candidate, consume, hop + 1) if len(following) > 1 else None
                 if outcome is not None:
                     return outcome
+                branch_failed = branch_failed or len(self._seen) > before
             if len(following) != 1:
                 return None
             candidate = following[0]

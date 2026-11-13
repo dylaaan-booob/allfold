@@ -378,15 +378,13 @@ class ProviderReadClient:
                     self.check_authority()
                     self._check_response_deadline(operation, self._trace.status)
                     raise _transport_failure(self.provider, error) from None
-                self.check_authority()
-                self._check_response_deadline(operation, response.status_code)
-                if stream:
-                    try:
-                        result = self._decode(response, decode)
-                    finally:
-                        response.close()
-                else:
+                try:
+                    self.check_authority()
+                    self._check_response_deadline(operation, response.status_code)
                     result = self._decode(response, decode)
+                finally:
+                    if stream:
+                        response.close()
             except ProviderBudgetExceeded:
                 operation.exhausted = True
                 if attempt > 1:

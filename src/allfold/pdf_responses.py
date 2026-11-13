@@ -15,11 +15,11 @@ class _SmallHTML(HTMLParser):
         self.nodes, self.stack = [], []
 
     def handle_starttag(self, tag, attrs):
-        if len(self.nodes) >= 4096 or any(len(value or '') > 8192 for _, value in attrs):
+        if len(self.nodes) >= 4096 or len(self.stack) >= 64 or any(len(value or '') > 8192 for _, value in attrs):
             raise ValueError('Response parse budget exceeded')
         node = {'tag': tag, 'attrs': dict(attrs), 'text': '', 'parents': tuple(self.stack)}
         self.nodes.append(node)
-        if tag not in {'meta', 'link', 'img', 'br', 'hr', 'input', 'embed', 'source', 'base', 'area', 'wbr', 'param', 'col'}:
+        if tag not in {'meta', 'link', 'img', 'br', 'hr', 'input', 'embed', 'source', 'base', 'area', 'wbr', 'param', 'col', 'frame'}:
             self.stack.append(node)
 
     def handle_endtag(self, tag):
@@ -71,7 +71,13 @@ def reader_context(candidate, actual=None):
     identifier = (re.search(r'/pii/([^/]+)/', url.path)[1] if kind == 'sciencedirect' else
         query['arnumber' if kind == 'ieee' else 'uri' if kind == 'optica' else 'an'][0])
     source = candidate.target.article_url or candidate.url
-    if urlsplit(source).hostname != url.hostname:
+    source_parsed = urlsplit(source)
+    source_query = parse_qs(source_parsed.query)
+    if (source_parsed.hostname != url.hostname
+            or kind == 'sciencedirect' and '/pii/' + identifier not in source_parsed.path
+            or kind == 'ieee' and source_parsed.path != '/document/' + identifier and source_query.get('arnumber') != [identifier]
+            or kind == 'optica' and source_query.get('uri') != [identifier]
+            or kind == 'lww' and source_parsed.path.split('/')[1] != url.path.split('/')[1]):
         source = actual  # The current response's verified HTTP redirect chain.
     return dict(rule_id={'sciencedirect': 'R024', 'ieee': 'R025', 'optica': 'R053', 'lww': 'R060'}[kind],
         platform=kind, url=actual, identifier=identifier,
@@ -103,6 +109,7 @@ def _safe_next(candidate, base, value, **extra):
 
 def _excluded(node):
     return any(p['tag'] in {'nav', 'footer'} or p['attrs'].get('role') in {'doc-bibliography', 'doc-endnotes'}
+        or 'hidden' in p['attrs'] or p['attrs'].get('aria-hidden') == 'true'
         or re.search(r'references|related|recommend|supplement', p['attrs'].get('id', '') + ' ' + p['attrs'].get('class', ''), re.I)
         for p in (*node['parents'], node))
 
@@ -170,7 +177,9 @@ def parse_current_response(candidate, response):
                     add(attrs.get('data'))
             if kind == 'ieee' and tag in {'frame', 'iframe'}:
                 add(attrs.get('src'))
-            if kind == 'optica' and tag == 'frame' and frames.index(node) > 0:
+            if kind == 'optica' and tag == 'frame' and any(
+                    (old['parents'][-1] if old['parents'] else None) is (node['parents'][-1] if node['parents'] else None)
+                    for old in frames[:frames.index(node)]):
                 add(attrs.get('src'))
             if kind in {'sciencedirect', 'lww'} and tag == 'script' and attrs.get('type') == 'application/json':
                 try:
@@ -190,12 +199,13 @@ def parse_current_response(candidate, response):
     # this response. Native article reads retain their stronger live binding.
     dois = {valid_doi(node['attrs'].get('content')) for node in parser.nodes
         if node['tag'] == 'meta' and (node['attrs'].get('name') or node['attrs'].get('property', '')).lower()
-        in {'citation_doi', 'prism.doi', 'dc.identifier.doi'} and not _excluded(node)}
+        in {'citation_doi', 'prism.doi', 'dc.identifier.doi'} and any(p['tag'] == 'head' for p in node['parents'])}
     if dois != {candidate.target.identity_doi} or not candidate.target.identity_doi:
         return ()
     for name in ('citation_pdf_url', 'fulltext_pdf_url'):
         for node in parser.nodes:
-            if node['tag'] == 'meta' and (node['attrs'].get('name') or node['attrs'].get('property', '')).lower() == name:
+            if (node['tag'] == 'meta' and any(p['tag'] == 'head' for p in node['parents'])
+                    and (node['attrs'].get('name') or node['attrs'].get('property', '')).lower() == name):
                 add(node['attrs'].get('content'))
     # Only one unambiguous main-article PDF entrance. Other article/issue and
     # supplement links are excluded before deciding ambiguity.

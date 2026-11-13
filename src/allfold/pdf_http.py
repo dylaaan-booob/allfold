@@ -7,7 +7,7 @@ Native prepared-session operations keep their own captured access boundary.
 """
 from __future__ import annotations
 
-from dataclasses import dataclass, field, replace
+from dataclasses import replace
 import ipaddress
 import json
 import socket
@@ -68,14 +68,15 @@ class PdfHttpClient:
     that capability a PDF is pending, never falsely reported as downloaded.
     """
     def __init__(self, *, guard, cancel_event, deadline, pacing_state=None,
-                 credentials=(), resolver=public_dns_addresses, **http_options):
-        self._guard, self._resolver = guard, resolver
+                 credentials=(), resolver=public_dns_addresses, max_redirects=6, **http_options):
+        self._resolver = resolver
         self._credentials = dict(credentials)
         if not self._credentials.keys() <= {'ieee', 'elsevier', 'wiley_tdm', 'aps_harvest', 'springer_metadata'}:
             raise ValueError('Unknown optional PDF capability')
         self._credential = None
         self._reader = _FiniteReader('pdf-discovery', guard=guard, cancel_event=cancel_event,
             deadline=deadline, pacing_state=pacing_state, request_url_guard=self._before_request, **http_options)
+        self._reader.http.max_redirects = max_redirects
         self.closed = False
 
     @property
@@ -136,6 +137,10 @@ class PdfHttpClient:
             bytes(body), response.status_code)
 
     def consume(self, candidate, *, transfer=None):
+        if candidate.action:
+            # The fixed current action is reviewable, but WF07 neither submits
+            # the form nor turns it into an unrelated mechanical GET.
+            return CandidateResult('pending')
         headers = {}
         if candidate.referer:
             headers['Referer'] = candidate.referer
@@ -288,9 +293,11 @@ class PdfDiscoveryIO:
         if platform == 'ieee' and 'ieee' in self.http.capabilities:
             try:
                 key = self.http._credentials['ieee']
-                raw = self.http.json('https://ieeexploreapi.ieee.org/api/v1/search/articles?' + urlencode(
-                    {'doi': doi, 'apikey': key}), credential=('ieee', 'ieeexploreapi.ieee.org', '/api/v1/', None, key))
-                yield P2Resolution(ieee_metadata_inputs(raw, target, inputs), route.article_url)
+                rule = 'API04' if 'ieee_doi_metadata' in inputs.conditions else 'API03'
+                url = ('https://ieeexploreapi.ieee.org/api/v1/articles/doi/' + quote(doi, safe='') + '?' + urlencode({'apikey': key})
+                    if rule == 'API04' else 'https://ieeexploreapi.ieee.org/api/v1/search/articles?' + urlencode({'doi': doi, 'apikey': key}))
+                raw = self.http.json(url, credential=('ieee', 'ieeexploreapi.ieee.org', '/api/v1/', None, key))
+                yield P2Resolution(ieee_metadata_inputs(raw, target, inputs, rule=rule), route.article_url)
             except (ProviderFailure, UnsafePdfTarget, PdfResponseTooLarge) as error:
                 yield P2Resolution(inputs, diagnostic=_failure_code(error))
         if platform == 'springer' and 'springer_metadata' in self.http.capabilities:
@@ -313,9 +320,9 @@ class PdfDiscoveryIO:
 
     def reader(self, candidate, response):
         from allfold.application.document_metadata import read_document_pdf_clues, DocumentMetadataFailed
-        from allfold.pdf_responses import access_limited, reader_context
+        from allfold.pdf_responses import reader_context
         reader = reader_context(candidate, response.url)
-        if self.context is None or reader is None or access_limited(response):
+        if self.context is None or reader is None:
             return None
         try:
             return read_document_pdf_clues(self.context, confirmed_article_url=candidate.target.article_url, reader=reader)
