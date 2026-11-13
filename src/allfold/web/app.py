@@ -245,8 +245,8 @@ def create_app(config_path: Path, *, electron_bridge: ElectronBridge, diagnostic
             workflow = load_config(resolved_config_path).workflow
         except (ConfigurationError, ValueError, OSError):
             workflow = WorkflowConfig()
-        return {'global_limit': getattr(workflow, 'managed_page_global_limit', 16),
-                'service_limit': getattr(workflow, 'managed_page_service_limit', 4)}
+        return {'global_limit': workflow.managed_page_global_limit,
+                'service_limit': workflow.managed_page_service_limit}
     electron_bridge.page_limits = page_limits
     app.state.wos_coordinator = WoSCoordinator(resolved_config_path, app.state.login, run_slot,
         bridge=electron_bridge, browser_lock=app.state.browser_task_lock, diagnostics=app.state.diagnostics)

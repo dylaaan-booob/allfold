@@ -114,7 +114,7 @@ Logs Reset. Reset coordinates the native writer, preserves existing Workspace
 safety checks and marks surviving history when Workspace is reset. See
 [logging](logging.md) for storage limits, field meanings and evidence boundaries.
 
-`bindTaskPage` and explicit `navigate(..., {tab})` control task targets. `select` presents a page in the main-window Browser pane; task navigation and WoS handoff do not select tabs. Background creation does not select even the first page, open Browser or focus a webpage. New task pages remain available for explicit manual login or inspection through the existing tabs. Service associations confer no document, task or institution-credential authority. Page/frame identity, task signals, navigation recovery and native-save settlement remain separate checks.
+`bindTaskPage` and explicit `navigate(..., {tab})` control task targets. `select` presents a page in the main-window Browser pane; task navigation and WoS handoff do not select tabs. Background creation does not select even the first page, open Browser or focus a webpage. Task pages remain available for explicit manual login or inspection until their owner finishes; only explicit bounded access contexts survive completion. Service associations confer no document, task or institution-credential authority. Page/frame identity, task signals, navigation recovery and native-save settlement remain separate checks.
 
 ## Configuration editing
 
@@ -236,3 +236,13 @@ a formal direct identity or an ordinary date solely through association. Reader
 and Info display these new library projections without old event/source columns
 or active Enrich buttons. Background scheduling, webpage Date/Abstract extraction
 and Download/PDF actions belong to later tasks.
+
+## Physical Browser resource lifetime
+
+One Session-wide `PageBudget` jointly admits global and trusted Service/public
+capacity before native page creation. Task execution, retained access resources
+and user ownership are separate; actual WebContents destruction and native-item
+cleanup return slots. Prepare pins its Portal, and WoS keeps an exact workflow/
+Document loan between native operations. Main waits physical cleanup before the
+shared Session event entry is disposed. See [page counts, retention and live
+configuration](browser-pages.md), including user-page bounds and rollback.

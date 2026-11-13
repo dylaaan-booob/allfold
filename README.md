@@ -22,7 +22,7 @@ Setup installs locked dependencies and builds the UI. It creates a missing local
 ## Basic workflow
 
 1. In **Journals**, manage followed Journals, Groups, Labels and Access Services. Each configuration has its own saved scope. Import a Markdown research scope through Preview / Confirm, or export **User Data** to share it.
-2. In **Workflows → Login**, authenticate CARSI once and prepare every saved Access Service. Manual Services offer a Visit action. Check each outcome in Login and use the corresponding Browser group to complete any verification. If the batch ends with Services that still need attention, check them in Browser and select **Manual confirmation of login** when all Services are available.
+2. In **Workflows → Login**, authenticate CARSI once and prepare every saved Access Service. Manual Services offer a Visit action. Complete verification in the corresponding Browser group while the task waits. Temporary pages close when the task ends; if a Service still needs attention, retry Visit or Login as needed. Select **Manual confirmation of login** only after confirming all saved Services are available.
 3. In **Workflows → Discover**, set keywords and publication months, then select PubMed, Web of Science and OpenAlex as needed. WoS uses its prepared Service page when available. After manual confirmation without a prepared page, Discover opens the official WoS query page in the shared Browser session. API discovery continues if WoS needs Login. Shared Work lookup and creation-time metadata completion preserve existing Papers. See [Provider roles and query limits](docs/providers.md).
 4. Review **Candidate**, **Downloaded** and **Trash** in **Workspace / ARRAY**. Reject persists exclusion and moves the Paper to Trash. Restore keeps its UUID and existing content. In Trash, clearing metadata removes bibliography, dates, abstract, sources and notes while retaining reliable identities, exclusion and any body association. An identity-only entry can be unexcluded locally; only a later actual Run hit rebuilds its metadata.
 5. In **Info**, query linked preprints for a complete, unexcluded formal article. Reader displays the ordinary date set and independent verified Preprint date; Info keeps version-family proof. Developer Mode retains local field clearing and empty-abstract input.
@@ -46,9 +46,11 @@ creation-time Completion remain; collection stays `not_started`.
 
 Settings' **禁用全屏运行界面** keeps Discover progress inline. Login retains its
 own progress and Service preparation concurrency. Login can reenter a CARSI
-resource once when its captured preparation evidence remains valid. Browser
-pages remain available for inspection; managed pages keep their navigation and
-close protections, and idle pages allow refresh.
+resource once when its captured preparation evidence remains valid. Browser pages remain available while their task is active; successful Portal and
+Service targets retain bounded access-context ownership. Temporary work pages close
+after completion, failure or cancellation. Managed pages keep their navigation and
+close protections, and idle pages allow refresh. Settings exposes the shared
+physical page limits; see [Browser page ownership](docs/browser-pages.md).
 
 ARRAY and Journals keep icon rails on both sides. Hover, focus or click Index/Directory to browse without shifting the content; choose a right-hand tool to open or collapse Info/Details. Journal selection opens Details; Directory filtering closes it. Resize the Sidebar from its left edge; narrow windows use an overlay and restore the preferred width when space returns. ARRAY's Reject/Restore and Trash metadata actions stay beside the Reader. Developer Mode adds a horizontally scrolling Layout strip with independent SAVE/RESET/ORIGIN targets; Journals GRID columns always adapt to the available content width.
 

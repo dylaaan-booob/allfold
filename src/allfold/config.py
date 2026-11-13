@@ -205,18 +205,18 @@ class InstitutionConfig(BaseModel):
 
 DEFAULT_PREPARE_SERVICE_CONCURRENCY = 5
 WORKFLOW_CONCURRENCY_FIELDS = (
-    "prepare_service_concurrency", "paper_service_concurrency", "paper_global_concurrency",
+    "prepare_service_concurrency", "managed_page_service_limit", "managed_page_global_limit",
     "pdf_concurrency",
 )
 
 
 class WorkflowConfig(BaseModel):
-    """Neutral Prepare, Paper and PDF bounds retained for their owning workflows."""
+    """Prepare workers and Session-wide physical managed page capacities."""
 
     model_config = ConfigDict(extra="forbid", frozen=True)
     prepare_service_concurrency: int = Field(default=DEFAULT_PREPARE_SERVICE_CONCURRENCY, strict=True, ge=1, le=5)
-    paper_service_concurrency: int = Field(default=2, strict=True, ge=1, le=8)
-    paper_global_concurrency: int = Field(default=4, strict=True, ge=1, le=16)
+    managed_page_service_limit: int = Field(default=4, strict=True, ge=3, le=16)
+    managed_page_global_limit: int = Field(default=16, strict=True, ge=4, le=64)
     pdf_concurrency: int = Field(default=2, strict=True, ge=1, le=8)
 
     @model_validator(mode="before")
@@ -226,7 +226,8 @@ class WorkflowConfig(BaseModel):
             # Existing YAML loads unchanged. The next Settings save drops obsolete launch preferences.
             return {key: item for key, item in value.items()
                     if key not in {"auto_import_after_preparation", "transition_delay_seconds", "display_name",
-                                   "translator_concurrency", "zotero_writer_concurrency", "zotero_target"}}
+                                   "translator_concurrency", "zotero_writer_concurrency", "zotero_target",
+                                   "paper_service_concurrency", "paper_global_concurrency"}}
         return value
 
 

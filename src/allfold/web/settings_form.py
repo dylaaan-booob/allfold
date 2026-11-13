@@ -70,8 +70,8 @@ class SettingsFormValues:
     institution_use_shibboleth: bool = False
     institution_issues: tuple[SettingsIssue, ...] = ()
     prepare_service_concurrency: str = "5"
-    paper_service_concurrency: str = "2"
-    paper_global_concurrency: str = "4"
+    managed_page_service_limit: str = "4"
+    managed_page_global_limit: str = "16"
     pdf_concurrency: str = "2"
     provider_aliases: dict[str, str] = field(default_factory=dict)
     provider_order: tuple[str, ...] = DEFAULT_PROVIDER_ORDER

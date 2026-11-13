@@ -105,3 +105,14 @@ Logging failure cannot change business results. [Logging](logging.md) defines
 retention and Reset. Tests use isolated SQLite, files, HTTP and Electron profiles;
 source checks and synthetic fixtures do not prove real provider, institution,
 user-library or actual-PDF behavior. See [development](development.md).
+
+WF04 page admission is Session-wide and jointly reserves both managed dimensions
+before native creation, including popups. Close requests, retired flags, crashes
+and cancellation do not return slots. Cleanup uses captured resource ownership
+even after execution authority is revoked, waits actual DownloadItem terminal
+and WebContents destruction, and touches no other task/user resources. Successful
+Portal/targets transfer ownership without releasing physical counts; stale-key
+cleanup and physical-close feedback cannot invalidate a newer context. Lowered
+limits revoke unused headroom and defer new creation without forcing active pages
+closed. Normal exit disposes common Session listeners only after physical cleanup.
+See [exact counts and rollback](browser-pages.md).

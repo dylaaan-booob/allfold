@@ -192,6 +192,8 @@ async function wosQueryWithinDeadline(browser,data,{signal,progress},deadline) {
   tab.wosDocument=await waitFor(()=>browser.documentBinding(tab,{signal,deadline}),signal,deadline,'wos_dom','result');
   if(!browser.documentCurrent(tab.wosDocument))throw new BrowserFailure('navigation','document_changed');
   tab.wosServiceScope=Object.freeze({...data.service_scope});
+  if(tab.resourceOwner?.kind!=='access')browser.retainAccessPage(tab,data);
+  browser.loanWorkflowPage(tab,tab.wosDocument);
   return {total:result.total,batch_limit:batchLimit,page_id:tab.id};
 }
 async function wosExport(browser,data,{signal,progress}) {

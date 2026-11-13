@@ -365,3 +365,31 @@ def test_page_closed_before_login_result_cannot_be_accepted_as_prepared(tmp_path
     pending.set_result(opened(17))
     login.join()
     assert login.prepared_authority(BrowserServiceSnapshot.read(path), services[-1].id) is None
+
+
+@pytest.mark.parametrize('manual', [False, True])
+def test_terminal_failed_login_drops_the_temporary_progress_page(tmp_path, manual):
+    class ProgressNative(Native):
+        def __init__(self):
+            super().__init__()
+            self.progress = {}
+
+        def execute(self, action, data, progress, **kwargs):
+            self.progress[data['task_id']] = progress
+            return super().execute(action, data, progress, **kwargs)
+
+    path, services = login_fixture(tmp_path, count=2)
+    native = ProgressNative()
+    login = LoginCoordinator(native, BrowserTaskLock())
+    login.start(path, manual_service_id=services[-1].id if manual else None)
+    _, data, result = native.operations.get(timeout=2)
+    native.progress[data['task_id']]({'page_id': 77, 'waiting_for_user': True})
+    state = login.snapshot(BrowserServiceSnapshot.read(path))
+    active = state['services'][-1]['preparation'] if manual else state['carsi']
+    assert active.page_id == 77 and active.waiting_for_user
+    result.set_result({'diagnostic': {'stage': 'preparation', 'code': 'timeout'}})
+    login.join()
+    state = login.snapshot(BrowserServiceSnapshot.read(path))
+    failed = state['services'][-1]['preparation'] if manual else state['carsi']
+    assert failed.page_id is None and not failed.waiting_for_user
+    assert login.prepared_page(BrowserServiceSnapshot.read(path), services[-1].id) is None

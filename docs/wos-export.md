@@ -78,3 +78,13 @@ the parent's operation-local Work queue. Submission does no inline HTTP or Paper
 write and does not alter these eight export choices. Count, path or duplicate-UT
 failure prevents that batch callback. Final native conflict quarantine still
 applies to all roots, including batches already submitted for Work lookup.
+
+WF04 keeps the prepared target in the same physical page ledger as other tasks.
+Query transfers/pins the exact results Document for its captured workflow/task
+through consecutive Export operations. The Python finalizer releases that loan
+only after native operations and actual item terminals settle; stale releases
+cannot free a new workflow. Idle prepared contexts remain bounded and can be
+evicted, with exact Page-close feedback invalidating Login state. Original source
+pages keep occupying capacity until `DownloadItem.done`; the Runtime form-POST
+capability limit does not change the existing WoS production export route. See
+[page resources](browser-pages.md) and [native Session evidence](browser-session.md).

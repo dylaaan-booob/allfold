@@ -153,5 +153,5 @@ app.whenReady().then(async()=>{
     if(process.env.ALLFOLD_BROWSER_SCREENSHOTS)fs.writeFileSync(path.join(process.env.ALLFOLD_BROWSER_SCREENSHOTS,'measurements.json'),JSON.stringify(results,null,2)+'\n');
     console.log(JSON.stringify(results));console.log('BROWSER PRESENTATION DOM PASS');
   }catch(error){console.error('PRESENTATION FAILURE',JSON.stringify({windowFocused:win?.isFocused(),sequence:browser?.presentation.sequence,visible:browser?.presentation.visible,mounted:browser?.presentation.mounted?.id}));console.error(error.stack);process.exitCode=1;}
-  finally{heldResponse?.destroy();disposeIPC?.();browser?.close();win?.destroy();await new Promise(resolve=>server.close(resolve));fs.rmSync(temp,{recursive:true,force:true});app.exit(process.exitCode||0);}
+  finally{heldResponse?.destroy();disposeIPC?.();await browser?.close();win?.destroy();await new Promise(resolve=>server.close(resolve));fs.rmSync(temp,{recursive:true,force:true});app.exit(process.exitCode||0);}
 });
