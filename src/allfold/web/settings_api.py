@@ -238,6 +238,12 @@ def install_autosave_api(app, config_path, csrf_token):
             blocked, invalidation = settings_write_context(app, disk.draft, draft)
             if blocked:
                 return refusal('TASK_ACTIVE', 'Pending: affected work is still active or cleaning up.')
+            from allfold.application.settings import validate_settings, SettingsValidationOutcome
+            from allfold.web.settings_guard import prepare_settings_effects, drain_settings_effects
+            if not disk.issues and validate_settings(config_path, draft).outcome is SettingsValidationOutcome.VALID:
+                prepare_settings_effects(app, effects, invalidation, disk.draft, draft)
+        drain_settings_effects(app, effects)
+        with app.state.settings_write_lock:
             result = save_settings(config_path, draft)
             from allfold.web.settings_guard import record_settings_effects
             record_settings_effects(app, effects, invalidation, disk.draft, result.state.draft)
@@ -259,9 +265,12 @@ def install_autosave_api(app, config_path, csrf_token):
         def commit():
             from allfold.web.settings_guard import settle_settings_effects
             effects = {}
-            reply = apply_patch(body, effects)
-            settle_settings_effects(app, effects)
-            return reply
+            try:
+                return apply_patch(body, effects)
+            except (ValueError, RuntimeError, OSError) as error:
+                return settings_error(str(error), 409)
+            finally:
+                settle_settings_effects(app, effects)
         return await run_in_threadpool(commit)
 
 
@@ -270,17 +279,22 @@ def install_credential_api(app, csrf_token):
     import hmac
     from starlette.concurrency import run_in_threadpool
     from allfold.application.browser_runtime import ElectronDisconnected
-    from allfold.web.settings_guard import settings_task_active
+    from allfold.web.settings_guard import settings_input_active, drain_settings_effects, settle_settings_effects
 
     def commit(body):
-        with app.state.settings_write_lock:
-            if settings_task_active(app):
-                return json_response({'ok': False, 'error': 'cas_task_active',
-                    'message': 'Active task owns the saved configuration; credential draft retained.'}, 409)
-            owner = app.state.browser_task_lock.acquire('credentials')
-            if owner is None:
-                return json_response({'ok': False, 'error': 'cas_task_active'}, 409)
+        effects = {}
         try:
+            with app.state.settings_write_lock:
+                owned = app.state.workspace_tasks.browser_owner_ids
+                if settings_input_active(app) or any(owner.id not in owned for owner in app.state.browser_task_lock.owners):
+                    return json_response({'ok': False, 'error': 'cas_task_active',
+                        'message': 'Active task owns the saved configuration; credential draft retained.'}, 409)
+                control = app.state.browser_task_lock.reserve_control('credentials')
+                if control is None:
+                    return json_response({'ok': False, 'error': 'cas_task_active'}, 409)
+                effects['control'] = control
+                effects['change'] = app.state.workspace_tasks.begin_change(all_access=True)
+            drain_settings_effects(app, effects)
             if not app.state.electron_bridge.connected:
                 raise ElectronDisconnected()
             result = app.state.electron_bridge.execute('cas_credentials', {
@@ -288,14 +302,13 @@ def install_credential_api(app, csrf_token):
             }).result()
             if result.get('ok') is True:
                 app.state.login.invalidate_credentials()
-            # Native returns a bounded status only, never password/plaintext.
             return json_response({key: result[key] for key in
                 ('ok', 'error', 'configured', 'username', 'revision') if key in result})
-        except (ElectronDisconnected, RuntimeError, OSError):
+        except (ElectronDisconnected, ValueError, RuntimeError, OSError):
             return json_response({'ok': False, 'error': 'cas_store_unavailable',
                 'message': 'Credential result could not be confirmed. Re-read status before retrying.'}, 409)
         finally:
-            app.state.browser_task_lock.release(owner)
+            settle_settings_effects(app, effects)
 
     @app.post('/api/ui-next/settings/credentials')
     async def credentials(request: Request):

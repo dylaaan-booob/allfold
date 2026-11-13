@@ -78,6 +78,7 @@ class PaperReservation:
     task_id: str = field(default_factory=lambda: uuid4().hex)
     released: bool = False
     cleanup_ended: bool = False
+    cleanup_failed: bool = False
 
     @property
     def paper_id(self):
@@ -474,6 +475,8 @@ class WorkspaceRegistry:
             if reservation.registry is not self:
                 raise InvalidPaperState('Reservation belongs to another Workspace registry')
             if self._reservations.get(reservation.paper_id) is reservation:
+                if reservation.cleanup_failed:
+                    raise InvalidPaperState('Reservation cleanup could not be confirmed')
                 reservation.cleanup_ended = True
                 try:
                     with self._repository() as repository:
@@ -484,6 +487,18 @@ class WorkspaceRegistry:
                     raise
                 del self._reservations[reservation.paper_id]
                 reservation.released = True
+                self._settled_condition.notify_all()
+
+    def fail_reservation(self, reservation, *, phase, error):
+        """A legacy worker exited without proving its captured resource close."""
+        if phase not in {'legacy-client-cleanup', 'legacy-snapshot-cleanup', 'legacy-owner-cleanup'}:
+            raise ValueError('Unknown legacy cleanup phase')
+        with self._gate:
+            if reservation.registry is not self:
+                raise InvalidPaperState('Reservation belongs to another Workspace registry')
+            if self._reservations.get(reservation.paper_id) is reservation and not reservation.cleanup_failed:
+                reservation.cleanup_ended = reservation.cleanup_failed = True
+                self._fault(reservation, phase, error)
                 self._settled_condition.notify_all()
 
     def _fault(self, handle, phase, error):
