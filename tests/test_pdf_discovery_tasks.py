@@ -14,7 +14,7 @@ from allfold.application.task_clients import IndependentClientFactory
 from allfold.application.workspace_tasks import WorkspaceTaskHost
 from allfold.application.browser_runtime import BrowserTaskLock
 from allfold.pdf_discovery import CandidateResult
-from allfold.pdf_rules import PdfTarget
+from allfold.pdf_rules import PdfRuleInputs, PdfTarget
 from allfold.models import ExternalIds
 from allfold.persistence.library_models import MetadataDelta, PaperMetadata
 from allfold.persistence.paper_repository import InvalidPaperState, PaperRepository, StaleWriteError
@@ -478,3 +478,37 @@ def test_replaced_workspace_path_cannot_renew_authority_or_release_into_replacem
         finish.set(); host.shutdown()
         with pytest.raises(RuntimeError, match='could not be settled'):
             host.join()
+
+
+@pytest.mark.parametrize('phase', ['P1', 'P2', 'unavailable'])
+def test_factory_keeps_optional_pdf_credentials_and_redirect_limit_out_of_openalex_options(tmp_path, caplog, phase):
+    secret, requests = 'controlled-wiley-only-secret', []
+    def handler(request):
+        requests.append(request)
+        if request.url.host == 'api.wiley.com':
+            assert request.headers.get('Wiley-TDM-Client-Token') == secret
+            return httpx.Response(200, headers={'content-type': 'application/pdf'})
+        assert secret not in str(request.url) and secret not in str(request.headers)
+        if phase == 'P1' and request.url.host == 'onlinelibrary.wiley.com':
+            return httpx.Response(200, headers={'content-type': 'application/pdf'})
+        return httpx.Response(404)
+    host, _, paper, options = setup_host(tmp_path, handler)
+    options['max_redirects'] = 6
+    if phase != 'unavailable':
+        options['credentials'] = (('wiley_tdm', secret),)
+    selected = target(paper)
+    inputs = PdfRuleInputs(selected, conditions=frozenset({'wiley_tdm_access'}))
+    try:
+        task = submit_pdf_discovery(host, paper, target=selected, inputs=inputs, http_options=options,
+            transfer=lambda *_: CandidateResult.pdf(transfer_complete=True))
+        result = task.future.result(3)
+        if phase == 'unavailable':
+            assert result.status == 'exhausted' and result.pdf_source is None
+            assert not any(request.url.host == 'api.wiley.com' for request in requests)
+        else:
+            assert result.status == 'transferred' and result.pdf_source == phase
+            assert len(requests) == (1 if phase == 'P1' else 2)
+        assert secret not in repr(result) and secret not in caplog.text
+        assert not host.active
+    finally:
+        host.shutdown(); host.join()
