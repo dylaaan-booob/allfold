@@ -233,9 +233,13 @@ this field, so binary downgrade requires a preserved compatible backup.
 
 There is one bounded current snapshot per source/capability, rather than an
 attempt history. Merging preserves qualified facts and stage order under the
-same captured token, branch sequence and metadata generations. Signed/session
-URLs become refresh locators instead of permanent templates; live current
-candidates retain their original parameters only within their task. Clearing
+same captured token, branch sequence and metadata generations.
+Merge capacity includes both item counts and the complete 64 KiB serialized
+snapshot. If the union exceeds either, the preferred verified snapshot is kept
+with a bounded overflow reason when it fits; this cannot discard independent
+Date/Abstract in the same delta. Identity conflicts remain failures.
+Signed/session URLs become refresh locators instead of permanent templates;
+live current candidates retain their original parameters only within their task. Clearing
 metadata removes every discovery fact. Identity, body and manual text/date/
 Preprint contracts remain independent. The complete rules and evidence are in
 the [adopted discovery specification](pdf-source-discovery.md).

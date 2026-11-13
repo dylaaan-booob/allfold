@@ -23,6 +23,7 @@ DiscoveryStatus = Literal['complete', 'partial', 'failed']
 DiscoveryDiagnostic = Literal['parse-failed', 'overflow', 'invalid-url', 'invalid-field',
     'incomplete-response', 'ephemeral-url', 'identity-mismatch']
 RefreshKind = Literal['document-pdf', 'openalex-work', 'crossref-work']
+_MAX_SNAPSHOT_BYTES = 65536
 
 
 class _Fact(BaseModel):
@@ -166,13 +167,20 @@ class PdfDiscoveryFacts(_Fact):
             raise ValueError('Positive failed-read facts require partial status')
         if self.source == 'openalex' and len(self.candidates) > 4:
             raise ValueError('OpenAlex discovery is bounded to four PDF candidates')
-        if len(self.model_dump_json().encode('utf-8')) > 65536:
+        if len(self.model_dump_json().encode('utf-8')) > _MAX_SNAPSHOT_BYTES:
             raise ValueError('Discovery snapshot exceeds payload budget')
         return self
 
 
 def _ordered(*groups):
     return tuple(dict.fromkeys(item for group in groups for item in group))
+
+
+def crossref_pdf_refresh_required(facts):
+    """A saved expiring P2 PDF field, not absent/complete-empty capability."""
+    return any(snapshot.source == 'crossref' and any(item.stage == 'P2'
+        and item.refresh is not None and item.refresh.kind == 'crossref-work'
+        for item in snapshot.candidates) for snapshot in facts)
 
 
 def merge_discovery_facts(existing, incoming):
@@ -206,17 +214,22 @@ def merge_discovery_facts(existing, incoming):
         identifiers = _ordered(preferred.identifiers, other.identifiers)
         links = _ordered(preferred.links, other.links)
         overflow = len(candidates) > 32 or len(identifiers) > 16 or len(links) > 16
-        # Fixed capacities retain the already qualified snapshot rather than
-        # accumulating unlimited signed variants or every historical attempt.
-        if overflow:
-            candidates, identifiers, links = preferred.candidates, preferred.identifiers, preferred.links
-        output[key] = PdfDiscoveryFacts.model_validate(preferred.model_dump() | {
+        merged = preferred.model_copy(update={
             'candidates': candidates, 'identifiers': identifiers, 'links': links,
             'landing_url': preferred.landing_url or other.landing_url,
             'target_doi': preferred.target_doi or other.target_doi,
             'target_openalex': preferred.target_openalex or other.target_openalex,
             'platform': preferred.platform or other.platform,
-            'diagnostics': _ordered(preferred.diagnostics, ('overflow',) if overflow else ())})
+            'diagnostics': _ordered(preferred.diagnostics)})
+        overflow = overflow or len(merged.model_dump_json().encode('utf-8')) > _MAX_SNAPSHOT_BYTES
+        # Count and byte capacities use the same preferred-snapshot policy.
+        # No identity/other validation failure is suppressed to retain content.
+        if overflow:
+            merged = preferred.model_copy(update={'diagnostics': _ordered(preferred.diagnostics, ('overflow',))})
+            if len(merged.model_dump_json().encode('utf-8')) > _MAX_SNAPSHOT_BYTES:
+                # An exactly full trusted snapshot outranks adding a reason code.
+                merged = preferred
+        output[key] = PdfDiscoveryFacts.model_validate(merged)
     if len(output) > 3:
         raise ValueError('Too many PDF discovery capability snapshots')
     return tuple(output.values())

@@ -13,8 +13,11 @@ import json
 import socket
 from urllib.parse import parse_qs, quote, urlencode, urlsplit
 
+import httpx
+
 from allfold.identifiers import valid_doi
 from allfold.pdf_discovery import CandidateResult, CurrentResponse, P2Resolution, PdfSourceReadError
+from allfold.pdf_facts import crossref_pdf_refresh_required
 from allfold.pdf_rules import KnownPdfUrl, PdfRuleInputs, content_platform, needs_p2_query
 from allfold.providers.provider_http import (ProviderReadClient, ProviderFailure,
     ProviderHTTPError, Cancelled, ProviderBudgetExceeded)
@@ -128,10 +131,15 @@ class PdfHttpClient:
     @staticmethod
     def bounded_response(response):
         body = bytearray()
-        for chunk in response.iter_bytes():
-            if len(body) + len(chunk) > 262144:
-                raise PdfResponseTooLarge('Discovery response exceeds read-only parse budget')
-            body.extend(chunk)
+        try:
+            for chunk in response.iter_bytes():
+                if len(body) + len(chunk) > 262144:
+                    raise PdfResponseTooLarge('Discovery response exceeds read-only parse budget')
+                body.extend(chunk)
+        except (httpx.TransportError, httpx.DecodingError):
+            # Only this owned metadata/HTML read is a source failure. Exceptions
+            # from the downstream PDF consumer remain outside this boundary.
+            raise ProviderFailure('PDF current response could not be read', kind='protocol', code='response-read-failed') from None
         # HTTPX response.request.url is the real final request after redirects.
         return CurrentResponse(str(response.request.url), response.headers.get('content-type', ''),
             bytes(body), response.status_code)
@@ -267,8 +275,8 @@ class PdfDiscoveryIO:
         # Only the known platforms requiring these fields, or an unresolved
         # target, need Crossref; not every publisher after a template failure.
         cached = next((f for f in facts if f.source == 'crossref'), None)
-        if platform in {None, 'sciencedirect', 'cell'} and (cached is None or cached.status != 'complete'
-                or any(c.refresh for c in cached.candidates)):
+        if (crossref_pdf_refresh_required(facts) or platform in {None, 'sciencedirect', 'cell'}
+                and (cached is None or cached.status != 'complete')):
             try:
                 raw = self.http.json('https://api.crossref.org/works/' + quote(doi, safe=''))
                 row = raw.get('message')
