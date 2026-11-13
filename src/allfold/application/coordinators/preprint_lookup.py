@@ -1,5 +1,6 @@
 """Cancellable single-Paper lookup; immutable authority crosses the worker boundary."""
 from contextlib import ExitStack, contextmanager
+from dataclasses import dataclass
 import secrets
 import threading
 
@@ -8,6 +9,14 @@ from allfold.application.run_commit import capture_run_workspace, commit_run_wor
 from allfold.config import ConfigurationError, load_config
 from allfold.persistence.paper_repository import LibraryError, PaperRepository, StaleWriteError
 from allfold.providers.supplemental import SupplementalClient
+
+
+@dataclass(frozen=True)
+class LookupCancellation:
+    paper_id: object
+    workspace_id: object
+    request_id: str
+    stop: threading.Event
 
 
 class PreprintLookup:
@@ -24,6 +33,7 @@ class PreprintLookup:
         self._paper_id = None
         self._workspace_id = None
         self._stop = threading.Event()
+        self._cancellation_target = None
         self._state = {}
         self._closed = False
 
@@ -98,6 +108,8 @@ class PreprintLookup:
                                           name='preprint-lookup', daemon=False)
                 self._paper_id, self._workspace_id, self._state = paper_id, paper.workspace_id, state
                 self._worker, self._claim = worker, claim
+                self._cancellation_target = LookupCancellation(paper_id, paper.workspace_id,
+                    state['request_id'], self._stop)
                 if claim is not None:
                     self._reaper = reaper = self.workspace_tasks.watch_legacy(worker, claim, started, settlement)
                 try:
@@ -105,6 +117,7 @@ class PreprintLookup:
                     started.set()
                 except BaseException:
                     self._worker, self._paper_id, self._workspace_id, self._state = None, None, None, {}
+                    self._cancellation_target = None
                     raise
                 return {**state, 'cleaning_up': True}
             except BaseException:
@@ -211,6 +224,24 @@ class PreprintLookup:
             if paper_id != self._paper_id or workspace_id != self._workspace_id or not self.running:
                 return False
             return self.cancel(paper_id, self._state.get('request_id'), workspace_id)
+
+    def prepare_cancel_paper(self, paper_id, workspace_id):
+        # start takes the coordinator lock before the Paper gate. This immutable
+        # published request needs no coordinator lock or callback under that gate.
+        target = self._cancellation_target
+        if target is None or target.paper_id != paper_id or target.workspace_id != workspace_id:
+            return None
+        target.stop.set()
+        return target
+
+    def signal_cancel_target(self, target):
+        with self._lock:
+            if (target is not self._cancellation_target or not self.running
+                    or self._state.get('phase') not in {'Running', 'Cancelling'}):
+                return False
+            target.stop.set()
+            self._state.update(phase='Cancelling', message='Stopping preprint lookup…')
+            return True
 
     def shutdown(self):
         with self._lock:

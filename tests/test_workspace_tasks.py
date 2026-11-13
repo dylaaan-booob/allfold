@@ -114,6 +114,81 @@ def test_app_projects_queued_running_cleanup_and_rejects_before_worker_finishes(
         assert final['revision'] > snapshot['revision']
 
 
+def test_delayed_http_reject_cannot_cancel_restored_paper_retry(tmp_path, monkeypatch):
+    from concurrent.futures import ThreadPoolExecutor
+    from fastapi.testclient import TestClient
+    from allfold.persistence.library_models import MetadataDelta
+    from allfold.web.app import create_app
+    from electron_test_helpers import OfflineBridge
+
+    config, workspace, paper = library(tmp_path)
+    entered, finish_old, rejected, resume_reject = (threading.Event() for _ in range(4))
+    retry_entered, finish_retry = threading.Event(), threading.Event()
+    local = threading.local()
+
+    def old_branch(context):
+        entered.set()
+        assert finish_old.wait(5)
+
+    def retry_branch(context):
+        retry_entered.set()
+        assert finish_retry.wait(5)
+        return MetadataDelta(abstract='Replacement attempt survived the old Reject')
+
+    app = create_app(config, electron_bridge=OfflineBridge(), diagnostics_root=tmp_path / 'logs')
+    with TestClient(app, base_url='http://localhost') as client:
+        import allfold.web.ui_next as ui_next
+        apply_action = ui_next.apply_paper_action
+        settings_lock = app.state.settings_write_lock
+
+        def mark_reject(*args, **kwargs):
+            result = apply_action(*args, **kwargs)
+            local.reject_committed = args[3] == 'reject'
+            return result
+
+        class PauseAfterSettingsUnlock:
+            def __enter__(self):
+                return settings_lock.__enter__()
+
+            def __exit__(self, *args):
+                settings_lock.__exit__(*args)
+                if getattr(local, 'reject_committed', False):
+                    local.reject_committed = False
+                    rejected.set()
+                    assert resume_reject.wait(5)
+
+        monkeypatch.setattr(ui_next, 'apply_paper_action', mark_reject)
+        app.state.settings_write_lock = PauseAfterSettingsUnlock()
+        registry = app.state.workspace_tasks.current()
+        old = registry.submit(direct_ids=ExternalIds(doi='10.5555/host'), metadata=paper.metadata,
+            branches=(BranchSpec('date', old_branch),))
+        body = {'csrf_token': app.state.csrf_token, 'workspace_id': str(paper.workspace_id)}
+        try:
+            assert entered.wait(2)
+            with ThreadPoolExecutor(max_workers=1) as pool:
+                delayed = pool.submit(client.post, f'/api/ui-next/papers/{paper.id}/reject', json=body)
+                try:
+                    assert rejected.wait(2)
+                    with PaperRepository.open(workspace) as repository:
+                        assert repository.get(paper.id).excluded
+                    finish_old.set()
+                    assert old.future.result(3).collection_status == 'cancelled'
+                    assert client.post(f'/api/ui-next/papers/{paper.id}/restore', json=body).status_code == 200
+                    replacement = registry.retry(paper.id, branches=(BranchSpec('date', retry_branch),))
+                    assert retry_entered.wait(2) and replacement.token.attempt == 2
+                    resume_reject.set()
+                    assert delayed.result(3).status_code == 200
+                    assert not replacement.cancel_event.is_set()
+                finally:
+                    resume_reject.set()
+            finish_retry.set()
+            assert replacement.future.result(3).collection_status == 'completed'
+            with PaperRepository.open(workspace) as repository:
+                assert repository.get(paper.id).metadata.abstract == 'Replacement attempt survived the old Reject'
+        finally:
+            finish_old.set(); finish_retry.set(); resume_reject.set()
+
+
 def test_preprint_claim_survives_client_and_thread_cleanup_and_start_failure_rolls_back(tmp_path, monkeypatch):
     from allfold.application.browser_runtime import BrowserTaskLock
     from allfold.application.coordinators.preprint_lookup import PreprintLookup
