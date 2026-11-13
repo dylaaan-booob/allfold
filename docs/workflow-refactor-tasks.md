@@ -9,8 +9,8 @@ it does not authorize later tasks.
 | WF01 | SQLite Paper repository, reliable identity, short transactional increments | New schema/identity/increment contracts; retain active old-path tests | Merged in PR #77 at `70bcefd69850eeb1de22ebc0fb6e00bfd653a41c`; production adoption is WF02 |
 | WF02 | Switch all production Paper readers/writers to SQLite; local recycle bin; retire Keep/Import and active Enrich | Paper MD/Inbox.base, Keep/Import and active Enrich interfaces, tests/docs | Merged in PR #83 at `90cf98e50aba0b8fc333fd84f8409cb5d8a8e47c` |
 | WF03 | Independent Document identity, lightweight page checks, Cloudflare main path | Translator identity coupling, full-snapshot assumptions, page-access docs | Merged in PR #85 at `541b3de7d6d3c08c8bf1441cc8fa9f6c2b37f109`; scoped live acceptance and fixture evidence below |
-| WF04 | Shared Session, page limits, precise cancellation, authorization generations | Global owner, indiscriminate cancellation, duplicate listeners, broad invalidation assertions | Local integration prepared for PR #90; not merged; final integrated checks/review/PR CI pending |
-| WF05 | Workspace background registry, dynamic scheduling, branch state, independent resource ownership | One-shot queues, early release, collection terminal states/retries | Not started |
+| WF04 | Shared Session, page limits, precise cancellation, authorization generations | Global owner, indiscriminate cancellation, duplicate listeners, broad invalidation assertions | Merged in PR #90 at `b8669e9de0758013abd8b240b83e6d86c087d190`; scoped live/fixture evidence below |
+| WF05 | Workspace background registry, dynamic scheduling, branch state, independent resource ownership | One-shot queues, early release, collection terminal states/retries | In progress in PR #96; spec #91; production Run registration remains deferred to WF08 |
 | WF06 | Date/Abstract extraction and retained API/Preprint capabilities | Old date columns, abstract overwrite, author/ordinary-completion assertions/docs | Not started |
 | WF07 | PDF source rules, candidates, same-page Meta/DOM hints | Source order, candidate success, URLs and request context contracts | Not started |
 | WF08 | Connect new Run and Workspace background collection | Whole-batch Run gates, Completion, Preprint double locking, busy/exit contracts | Not started |
@@ -127,10 +127,10 @@ authorization and exact cancellation, physical page admission/lifetime and live
 limit configuration. The retained fixed fixtures prove the tested native resource
 and original-response seams; [page resources](browser-pages.md) records the
 BrowserRuntime main-frame form-POST refusal without replay. Real CARSI/WoS and
-CAPTCHA compatibility remain separately authorized manual acceptance. PR #90 is
-unmerged; final integrated checks, review and latest PR-associated CI must be
-reported from their actual outputs. WF05 registry, WF08 background/cross-Run and
-WF09/WF10 PDF transport/permanent files/Download UI have not been implemented.
+CAPTCHA compatibility remain separately authorized manual acceptance. PR #90 was
+merged on 2026-11-13 at `b8669e9de0758013abd8b240b83e6d86c087d190`.
+WF05 registry work is tracked separately in PR #96. WF08 background/cross-Run and
+WF09/WF10 PDF transport/permanent files/Download UI remain later tasks.
 
 Scoped live acceptance on 2026-11-13 used a separate application copy, temporary
 configuration/Workspace/covers and a fresh profile. Institution QR Login,
