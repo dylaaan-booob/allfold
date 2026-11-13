@@ -154,6 +154,9 @@ platform alone or complete-empty response does not request Crossref. Explicit
 actual article URLs outrank cached Document landings. When a reached ID query
 confirms a new content Host, its newly applicable DOI template is consumed within
 that P2 path, preserving source/fallback semantics without restarting the stages.
+If that template fails, an already configured applicable platform API remains
+available. Refresh locators use the same P2 DOI/content-type gate as missing
+inputs; `unknown` targets can still use qualified P3/P5 without a P2 query.
 P5 reuses complete cached locations for the captured direct Work identity,
 including a DOI-free Paper. New Work requests continue to require its primary
 DOI. OpenAlex cancellation, captured-authority loss and parent expiry

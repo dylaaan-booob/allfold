@@ -268,8 +268,10 @@ uses fixed bounded read-only fields; it does not assume isolated world 999 sees
 main-world variables. Explicit platform selectors retain the same supplement,
 whole-issue and conflicting article-DOI exclusions as generic entrances. LWW AN
 is taken only from the current article outside peripheral regions and must be
-unique; an ambiguous stored AN set cannot select a reader. Candidate count and
-aggregate size are checked before adding each field, reserving space for the
+unique; an ambiguous stored AN set cannot select a reader.
+PDF entry identity reuses the fixed article probe's bounded DOI values and
+recognized scholarly metadata sources, including equivalent duplicate fields.
+Candidate count and aggregate size are checked before adding each field, reserving space for the
 final landing URL and typed persistable-fact projection. Overflow is a diagnostic,
 never truncated success. A local PDF operation/DTO failure keeps independently
 valid Date/Abstract only after the same final live binding/subject/identity check. No PDF
