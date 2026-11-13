@@ -11,7 +11,7 @@ it does not authorize later tasks.
 | WF03 | Independent Document identity, lightweight page checks, Cloudflare main path | Translator identity coupling, full-snapshot assumptions, page-access docs | Merged in PR #85 at `541b3de7d6d3c08c8bf1441cc8fa9f6c2b37f109`; scoped live acceptance and fixture evidence below |
 | WF04 | Shared Session, page limits, precise cancellation, authorization generations | Global owner, indiscriminate cancellation, duplicate listeners, broad invalidation assertions | Merged in PR #90 at `b8669e9de0758013abd8b240b83e6d86c087d190`; scoped live/fixture evidence below |
 | WF05 | Workspace background registry, dynamic scheduling, branch state, independent resource ownership | One-shot queues, early release, collection terminal states/retries | Merged in PR #96 at `f467ea49e04b9bedd8c674a016b049d88960c355`; spec #91 / tickets #92–95; production Run registration remains deferred to WF08 |
-| WF06 | Date/Abstract extraction and retained API/Preprint capabilities | Old date columns, abstract overwrite, author/ordinary-completion assertions/docs | Not started |
+| WF06 | Date/Abstract extraction and retained API/Preprint capabilities | Old date columns, abstract overwrite, author/ordinary-completion assertions/docs | Proposed in PR #101 (unmerged); spec #97 / tickets #98–100; internal components only, production registration remains WF08 |
 | WF07 | PDF source rules, candidates, same-page Meta/DOM hints | Source order, candidate success, URLs and request context contracts | Not started |
 | WF08 | Connect new Run and Workspace background collection | Whole-batch Run gates, Completion, Preprint double locking, busy/exit contracts | Not started |
 | WF09 | Session stream, managed file landing, database association service | Whole-file Buffers, extra type detection, file ownership, failure terminals | Not started |
@@ -175,7 +175,40 @@ latest PR CI evidence is reported on the PR. The merge commit is
 
 Production Run still uses creation-time Completion and its existing single slot;
 it does not register these background tasks, finish early or enable cross-Run
-collection. No empty production collector, Download/Retry UI, Date/Abstract
-implementation, PDF transmission/file writer or WF06–10 product flow is installed.
+collection. WF05 itself installed no empty production collector, Download/Retry
+UI, Date/Abstract implementation, PDF transmission/file writer or WF06–10 flow.
 Real accounts, publishers and permanent user data remain outside this task's
 isolated acceptance evidence.
+
+## WF06 component boundary
+
+Spec #97 and tickets #98–100 are scoped to the single unmerged PR #101. The
+internal `extract_paper_metadata` operation reads qualified dates and an optional
+abstract in one verified live Document. The fixed `extract` action carries only
+boolean `wantAbstract`; bounded content and local diagnostics return after final
+Document/body/identity confirmation and actual native cleanup. The task adapter
+commits through the original attempt and field generations without reopening the
+normally closed page. [Document rules](browser-documents.md) define the complete
+scope, grammar, four date channels and A1/A2/B/C abstract selection.
+
+The separate necessary-query service uses identity, explicit relationships and
+known native version families as request purposes. Ordinary field gaps do not
+cause requests. Formal increments and independent Preprint proof remain separate;
+new first-public values wait for all applicable relationship/native work and all
+known families. Existing Run Work/DOI-to-PMID identity closure and current
+Completion/public Preprint callers remain. [Provider rules](providers.md) describe
+the retained capabilities and finite error/partial outcomes.
+
+New eligible abstracts keep internal headings, scientific text and paragraphs
+through DTO, short SQLite merge, Workspace JSON and Reader copying. Existing
+nonempty text and manual abstract generations retain their separate protection;
+the legacy Run comparison normalizer remains separate. [Library rules](paper-library.md)
+describe these incremental writes.
+
+Isolated Electron/controlled HTTP/disk SQLite fixtures exercise the actual native,
+task, Provider and projection seams, including independent same-attempt transaction
+races. The current registry still executes same-Paper branches serially. Production
+Run does not register a Date/Abstract-only collector, change creation/completion
+timing or enable background/cross-Run collection. WF07 PDF sources and WF08
+production orchestration remain later tasks. No fake PDF completion, Download/Retry
+UI, real-account acceptance or multi-platform accuracy claim is included.

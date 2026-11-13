@@ -174,6 +174,27 @@ in each thread. Sharing a `BranchContext`, SQLite connection or `AttemptClients`
 across threads is not supported. Such transaction-level race evidence does not
 enable production same-Paper branch concurrency; that orchestration belongs to WF08.
 
+WF06 adds `test_necessary_metadata.py` for purpose-driven requests through actual
+registry branches, controlled Provider transports/parsers, immutable capability
+handoff, full batch/pagination draining, partial results and complete native
+first-version proof. The existing Run/Completion/public Preprint tests remain.
+`document-extraction.test.cjs` uses production Main dispatch, BrowserRuntime,
+DocumentRuntime and its isolated preload in Electron 45 with local HTTP and a
+temporary profile. It covers the complete fixed Date/Abstract algorithms,
+strict parameters/DTOs, legal empty results, bounded local diagnostics, live
+Document/body validation, captured Service binding and actual cleanup.
+The rendered Workspace fixture also consumes a fresh real Main extraction DTO
+through `tests/document_metadata_pipeline.py`: captured API/DOM task services,
+independent SQLite connection/client races, disk reopen and the actual Workspace
+HTTP projection feed the built Reader. It checks structured text, exact copied
+selection, incremental date refresh and retained reading position. This is
+isolated component evidence; production Run and same-Paper branch orchestration
+are not switched by the fixture.
+
+In a separate worktree, ensure Python imports resolve to that worktree's `src`
+before relying on test evidence. A shared editable environment can still point
+at another checkout; use an isolated environment or explicit `PYTHONPATH=src`.
+
 `test_workspace_tasks.py` exercises the actual application host, HTTP projection,
 legacy query reaper, signal/join/factory shutdown order, selective credential and
 Service invalidation, accepted switch/Reset, partial save and same-path rebind,
