@@ -162,3 +162,7 @@ projections/diagnostics omit private context. Every new request and next hop mus
 pass the discovery transport's target checks; the shared offline URL validator
 alone is not DNS validation. [Discovery rules](pdf-source-discovery.md) specify
 the lazy order, bounded parsing and platform-specific access conditions.
+Independent content survives a local PDF scanner/size failure only after the
+same final live Document, subject and article-identity check. OCE's conditional
+reader requires an independently captured retained OCE target and its own
+Host recheck at use; a boolean observation and LWW access cannot renew authority.

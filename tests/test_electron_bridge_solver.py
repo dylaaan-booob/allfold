@@ -175,9 +175,12 @@ def test_internal_extraction_contract_and_scoped_recovery_preserve_empty_success
     with TestClient(application(bridge)) as client, client.websocket_connect('/ws') as socket:
         socket.send_json({'token': 'secret'}); socket.receive_json()
         for invalid in ({'wantAbstract': 'false', 'deadline_ms': int(time.time() * 1000) + 5000},
-                        {'wantAbstract': False, 'deadline_ms': True}):
+                        {'wantAbstract': False, 'deadline_ms': True},
+                        {'wantAbstract': False, 'reader_access_only': True, 'deadline_ms': int(time.time() * 1000) + 5000}):
             with pytest.raises(ValueError, match='extraction'):
                 bridge.execute('extract_paper_metadata', invalid).result(2)
+        with pytest.raises(ValueError, match='extraction'):
+            bridge.execute('extract_paper_pdf_clues', {'reader_access_only': 'true', 'deadline_ms': int(time.time() * 1000) + 5000}).result(2)
         parameters = {'wantAbstract': False} if action == 'extract_paper_metadata' else {}
         future = bridge.execute(action, parameters | {
             'workflow_id': 'collection', 'task_id': 'captured',

@@ -139,3 +139,9 @@ HEAD/GET is permitted to recover a URL or probe PDF type. Required platform
 Referer and transient signatures belong to the current qualified chain;
 credentials cannot be copied to an arbitrary CDN. The
 [adopted rules](pdf-source-discovery.md) preserve the distinct platform conditions.
+The conditional LWW-to-OCE alternative uses the same Session and existing
+Document/access/solver ownership. A fixed boolean capability read observes only
+the captured retained target's actual OCE Host, including after a CARSI entry;
+OCE navigation revalidates that exact prepared context. LWW authority alone does
+not enable it. The known OCE viewer's `file` field supplies a current signed
+assets candidate without a new native listener or PDF-byte receiver.

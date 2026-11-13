@@ -79,6 +79,11 @@ Download can use the core after collection completes without restarting that
 collection. WF08 production orchestration and WF09/10 transfer/files remain
 separate. The [adopted specification and fixed source catalogue](pdf-source-discovery.md)
 retain all platform/input/access conditions and historical exclusions.
+The immutable discovery target includes the saved direct-identity closure, so
+complete DOI-free Work facts can be reused without a new lookup or native
+article read. Conditional OCE reading obtains only an operation-local boolean
+from the captured prepared target, then rechecks the same context at use; it
+does not derive OCE access from an LWW Service or change Prepare.
 
 Keep/Import/Enrich have no product HTTP/IPC or native dispatch path. Dedicated
 Zotero Local API, attachment writes and full Translator assembly are removed;

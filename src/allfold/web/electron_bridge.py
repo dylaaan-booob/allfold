@@ -306,6 +306,7 @@ class ElectronBridge:
         if action in {'extract_paper_metadata', 'extract_paper_pdf_clues'} and (
                 not isinstance(data, dict) or action == 'extract_paper_metadata' and type(data.get('wantAbstract')) is not bool
                 or action == 'extract_paper_pdf_clues' and 'wantAbstract' in data
+                or 'reader_access_only' in data and (action != 'extract_paper_pdf_clues' or data['reader_access_only'] is not True)
                 or type(data.get('deadline_ms')) is not int or data['deadline_ms'] <= 0):
             raise ValueError('Invalid native extraction parameters')
         socket = self._socket

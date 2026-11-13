@@ -143,8 +143,13 @@ responses count as no-match.
 WF07 discovery requests have their own task-scoped capability rather than new
 Run Provider IDs. They reuse host pacing/cooldown and the captured guard,
 cancellation and absolute parent deadline. P2 queries only missing identifiers or
-fields at the reached stage; P5 uses an exact DOI Work and reuses complete cached
-locations first. OpenAlex cancellation, captured-authority loss and parent expiry
+fields at the reached stage. Typed existing Crossref landing/resource fields can
+supply a qualified article route/internal ID before querying; they never become
+PDF fields or override a newer actual content Host. A failed optional API/known
+PDF candidate does not suppress a still-missing internal-ID query. Existing IDs
+and the first sufficient response still stop that query chain. P5 reuses complete
+cached locations for the captured direct Work identity, including a DOI-free
+Paper. New Work requests continue to require its primary DOI. OpenAlex cancellation, captured-authority loss and parent expiry
 remain terminal instead of becoming recoverable PDF-source failures.
 
 The coordinator accepts a bounded current response or downstream transfer result;

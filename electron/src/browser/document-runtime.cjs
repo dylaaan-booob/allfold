@@ -78,7 +78,7 @@ class DocumentRuntime {
   async call(doc,action,args={},options={}) {
     if(!['binding','access','article','extract','pdf'].includes(action))throw new BrowserFailure('navigation','document_operation_failed');
     if(!args || typeof args!=='object' || Array.isArray(args) || (action==='extract'
-      ? Object.keys(args).length!==1 || typeof args.wantAbstract!=='boolean' : action==='pdf'?Object.keys(args).length!==1 || ![null,'sciencedirect','ieee','optica','lww'].includes(args.readerKind):Object.keys(args).length!==0))
+      ? Object.keys(args).length!==1 || typeof args.wantAbstract!=='boolean' : action==='pdf'?Object.keys(args).length!==1 || ![null,'sciencedirect','ieee','optica','lww','oce'].includes(args.readerKind):Object.keys(args).length!==0))
       throw new BrowserFailure('navigation','document_operation_failed');
     const frame=this.browser.documentFrame(doc);
     if(!frame)throw new BrowserFailure('navigation','document_changed');

@@ -12,7 +12,7 @@ import time
 
 from allfold.application.browser_services import browser_workspace_identity
 from allfold.application.dynamic_dispatch import SettledFuture
-from allfold.pdf_discovery import DiscoveryResult, PdfDiscovery, SUPPORTED_PDF_TARGET_TYPES
+from allfold.pdf_discovery import DiscoveryResult, PdfDiscovery, PdfSourceReadError, SUPPORTED_PDF_TARGET_TYPES
 from allfold.pdf_http import PdfDiscoveryIO
 from allfold.pdf_rules import PdfRuleInputs, PdfTarget
 from allfold.persistence.paper_repository import InvalidPaperState, StaleWriteError
@@ -30,6 +30,7 @@ class PdfDiscoveryContext:
         self.workflow_id, self.task_id = reservation.workflow_id, reservation.task_id
         self.native = []
         self.native_started = False
+        self._oce_access = None
 
     def guard(self):
         self.registry._guard(self.reservation, self.repository)
@@ -75,6 +76,23 @@ class PdfDiscoveryContext:
         future.add_done_callback(terminal)
         return protected
 
+    def read_oce_access(self):
+        """Only this captured retained target can grant the operation-local bit."""
+        self.guard()
+        binding = self.reservation.authority.native_access()
+        if binding.service_id is None or binding.target_page_id is None:
+            return False
+        if self._oce_access is None:
+            value = self.execute_native('extract_paper_pdf_clues',
+                self.native_payload() | {'reader_access_only': True}).result()
+            self.guard()
+            access = value.get('reader_access') if isinstance(value, dict) else None
+            if (not isinstance(value, dict) or value.get('outcome') != 'retrieved' or value.get('diagnostic') or value.get('error')
+                    or not isinstance(access, dict) or set(access) != {'oce'} or type(access['oce']) is not bool):
+                raise PdfSourceReadError('Prepared reader capability was not verified')
+            self._oce_access = access['oce']
+        return self._oce_access
+
     def close_native(self):
         cancelled = False
         for future in self.native:
@@ -102,7 +120,8 @@ def _run(reservation, target, facts, inputs, transfer, http_options):
         current = context.read_paper()
         primary = current.primary_identity
         current_doi = primary.value if primary is not None and primary.namespace == 'doi' else None
-        if target.identity_doi != current_doi:
+        if (target.identity_doi != current_doi
+                or target.direct_identities != tuple((item.namespace, item.value) for item in current.identities)):
             raise StaleWriteError('Original Paper discovery target changed')
         if reservation.authority.service_scope is not None:
             registry._ensure_browser_owner(reservation)
@@ -190,6 +209,12 @@ def submit_pdf_discovery(host, paper, *, target, service_id=None, deadline=None,
         raise ValueError('PDF target DOI must match the original saved Paper')
     if inputs is not None and inputs.target != target:
         raise ValueError('PDF inputs must belong to the original saved Paper')
+    direct = tuple((item.namespace, item.value) for item in paper.identities)
+    if target.direct_identities and target.direct_identities != direct:
+        raise ValueError('PDF direct identities must match the original saved Paper')
+    target = replace(target, direct_identities=direct)
+    if inputs is not None:
+        inputs = replace(inputs, target=target)
     registry = host.current()
     if registry.workspace_id != paper.workspace_id:
         raise StaleWriteError('PDF discovery belongs to another Workspace')

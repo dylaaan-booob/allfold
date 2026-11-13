@@ -15,7 +15,7 @@ from urllib.parse import parse_qs, quote, urlencode, urlsplit
 
 from allfold.identifiers import valid_doi
 from allfold.pdf_discovery import CandidateResult, CurrentResponse, P2Resolution, PdfSourceReadError
-from allfold.pdf_rules import KnownPdfUrl, PdfRuleInputs, content_platform, iter_p2_candidates
+from allfold.pdf_rules import KnownPdfUrl, PdfRuleInputs, content_platform, needs_p2_query
 from allfold.providers.provider_http import (ProviderReadClient, ProviderFailure,
     ProviderHTTPError, Cancelled, ProviderBudgetExceeded)
 from allfold.url_safety import normalize_public_http_url
@@ -260,7 +260,7 @@ class PdfDiscoveryIO:
                     route = replace(target, article_url=url)
                     platform = content_platform(route)
                 yield P2Resolution(inputs, url)
-                if tuple(iter_p2_candidates(route, replace(inputs, target=route))):
+                if not needs_p2_query(route, replace(inputs, target=route)):
                     return
             except (ProviderFailure, UnsafePdfTarget, PdfResponseTooLarge) as error:
                 yield P2Resolution(inputs, diagnostic=_failure_code(error))
@@ -286,7 +286,7 @@ class PdfDiscoveryIO:
                         route = replace(target, article_url=url)
                         platform = content_platform(route)
                 yield P2Resolution(inputs, route.article_url)
-                if tuple(iter_p2_candidates(route, replace(inputs, target=route))):
+                if not needs_p2_query(route, replace(inputs, target=route)):
                     return
             except (ProviderFailure, UnsafePdfTarget, PdfResponseTooLarge) as error:
                 yield P2Resolution(inputs, diagnostic=_failure_code(error))
@@ -310,7 +310,7 @@ class PdfDiscoveryIO:
                 yield P2Resolution(inputs, diagnostic=_failure_code(error))
 
     def document(self, target):
-        if self.context is None:
+        if self.context is None or not (target.identity_doi or target.article_url):
             return None
         from allfold.application.document_metadata import read_document_pdf_clues, DocumentMetadataFailed
         try:
@@ -328,6 +328,28 @@ class PdfDiscoveryIO:
             return read_document_pdf_clues(self.context, confirmed_article_url=candidate.target.article_url, reader=reader)
         except DocumentMetadataFailed:
             raise PdfSourceReadError('Known reader PDF clues were not retrieved') from None
+
+    def oce_access(self, candidate, response):
+        from allfold.pdf_responses import reader_context, access_limited
+        reader = reader_context(candidate, response.url)
+        return bool(reader and reader['platform'] == 'lww' and response.status == 200
+            and response.content_type.partition(';')[0].strip().lower() in {'text/html', 'application/xhtml+xml'}
+            and not access_limited(response) and self.context is not None
+            and callable(getattr(self.context, 'read_oce_access', None)) and self.context.read_oce_access())
+
+    def oce_reader(self, candidate, response):
+        from allfold.application.document_metadata import read_document_pdf_clues, DocumentMetadataFailed
+        from allfold.pdf_responses import reader_context
+        original = reader_context(candidate, response.url)
+        if original is None or original['platform'] != 'lww' or self.context is None:
+            return None
+        url = 'https://oce.ovid.com/article/' + original['identifier'] + '/HTML'
+        reader = dict(rule_id='R060', platform='oce', url=url, identifier=original['identifier'],
+            source_url=url, stage=candidate.stage)
+        try:
+            return read_document_pdf_clues(self.context, confirmed_article_url=candidate.target.article_url, reader=reader)
+        except DocumentMetadataFailed:
+            raise PdfSourceReadError('OCE reader PDF clues were not retrieved') from None
 
     def openalex(self, doi):
         if self._openalex is None:

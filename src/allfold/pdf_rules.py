@@ -12,7 +12,7 @@ from dataclasses import dataclass, field as dataclass_field
 from typing import Iterator, Literal
 from urllib.parse import parse_qs, quote, unquote, urlsplit, urlunsplit
 
-from allfold.identifiers import valid_doi
+from allfold.identifiers import normalize_external_id, valid_doi
 from allfold.pdf_catalog import API_CATALOG, RULE_CATALOG
 from allfold.url_safety import normalize_public_http_url
 
@@ -37,6 +37,7 @@ class PdfTarget:
     content_host: str | None = None
     article_url: str | None = dataclass_field(default=None, repr=False)
     content_type: str = 'unknown'
+    direct_identities: tuple[tuple[str, str], ...] = ()
 
     def __post_init__(self) -> None:
         if not self.paper_id:
@@ -48,6 +49,13 @@ class PdfTarget:
             _bounded(value, limit, name)
         if self.article_url is not None:
             normalize_public_http_url(self.article_url)
+        if not isinstance(self.direct_identities, tuple) or len(self.direct_identities) > 64:
+            raise ValueError('Direct Paper identities require a bounded immutable closure')
+        for pair in self.direct_identities:
+            if (not isinstance(pair, tuple) or len(pair) != 2
+                    or not all(isinstance(value, str) for value in pair)
+                    or len(pair[1]) > 512 or normalize_external_id(*pair) != pair[1]):
+                raise ValueError('Direct Paper identities must be canonical reliable identities')
 
     @property
     def identity_doi(self) -> str | None:
@@ -346,6 +354,19 @@ def _jstor_stable(target: PdfTarget, inputs: PdfRuleInputs | None) -> str | None
         if all(part not in {'', '.', '..'} for part in value.split('/')):
             return value
     return None
+
+
+def needs_p2_query(target: PdfTarget, inputs: PdfRuleInputs) -> bool:
+    """Missing routable fields, independently of failed optional PDF sources."""
+    if not target.identity_doi or target.content_type not in ARTICLE_TYPES:
+        return False
+    platform = content_platform(target)
+    required = {'sciencedirect': _pii, 'cell': _cell_pii, 'ieee': _ieee_number,
+        'oup': _oup_resource, 'jstor': _jstor_stable}
+    if platform in required:
+        return required[platform](target, inputs) is None
+    return platform is None or (platform == 'springer'
+        and not any(item.rule_id == 'API09' for item in inputs.known_pdf_urls))
 
 
 def _article_transform(target: PdfTarget, platform: str | None, inputs: PdfRuleInputs | None) -> tuple[str, str] | None:

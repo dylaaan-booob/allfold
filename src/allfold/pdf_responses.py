@@ -3,7 +3,7 @@ from dataclasses import replace
 from html.parser import HTMLParser
 import json
 import re
-from urllib.parse import parse_qs, urljoin, urlsplit
+from urllib.parse import parse_qs, unquote, urljoin, urlsplit
 
 from allfold.identifiers import valid_doi
 from allfold.url_safety import normalize_public_http_url
@@ -108,10 +108,23 @@ def _safe_next(candidate, base, value, **extra):
 
 
 def _excluded(node):
-    return any(p['tag'] in {'nav', 'footer'} or p['attrs'].get('role') in {'doc-bibliography', 'doc-endnotes'}
+    return any(p['tag'] in {'nav', 'footer', 'aside'} or p['attrs'].get('role') in {'doc-bibliography', 'doc-endnotes'}
         or 'hidden' in p['attrs'] or p['attrs'].get('aria-hidden') == 'true'
         or re.search(r'references|related|recommend|supplement', p['attrs'].get('id', '') + ' ' + p['attrs'].get('class', ''), re.I)
         for p in (*node['parents'], node))
+
+
+def _body_entry(node, base, doi, attribute='href'):
+    attrs = node['attrs']
+    label = node['text'] + ' ' + attrs.get('title', '') + ' ' + attrs.get(attribute, '')
+    if _excluded(node) or re.search(r'supplement|supporting|appendix|whole issue|entire issue|issue pdf|other article', label, re.I):
+        return False
+    for owner in (*node['parents'], node):
+        if 'data-doi' in owner['attrs'] and valid_doi(owner['attrs']['data-doi']) != doi:
+            return False
+    linked = urlsplit(urljoin(base, attrs.get(attribute, '')))
+    matched = re.fullmatch(r'/doi/(?:pdf|epdf|pdfplus)/(10\.[0-9]{4,9}/.+)', unquote(linked.path))
+    return not matched or valid_doi(matched[1]) == doi
 
 
 def parse_current_response(candidate, response):
@@ -216,7 +229,8 @@ def parse_current_response(candidate, response):
     for node in parser.nodes:
         tag, attrs = node['tag'], node['attrs']
         label = node['text'] + ' ' + attrs.get('title', '') + ' ' + attrs.get('href', '')
-        if _excluded(node) or re.search(r'supplement|supporting|appendix|whole issue|entire issue|other article', label, re.I):
+        if not _body_entry(node, response.url, candidate.target.identity_doi,
+                'data-article-url' if host == 'jamanetwork.com' and attrs.get('id') == 'pdf-link' else 'action' if tag == 'form' else 'href'):
             continue
         classes = attrs.get('class', '').split()
         if tag == 'a':
@@ -245,7 +259,7 @@ def parse_current_response(candidate, response):
     # supplement links are excluded before deciding ambiguity.
     generic = []
     for node in parser.nodes:
-        if node['tag'] != 'a' or _excluded(node) or not any(p['tag'] in {'article', 'main'} for p in node['parents']):
+        if node['tag'] != 'a' or not _body_entry(node, response.url, candidate.target.identity_doi) or not any(p['tag'] in {'article', 'main'} for p in node['parents']):
             continue
         attrs = node['attrs']
         label = (node['text'] + ' ' + attrs.get('title', '')).strip()

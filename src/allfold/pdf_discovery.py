@@ -15,7 +15,7 @@ from urllib.parse import parse_qs, urldefrag, urlsplit
 from allfold.pdf_facts import PdfDiscoveryFacts, discovery_target_matches
 from allfold.pdf_catalog import API_CATALOG, RULE_CATALOG
 from allfold.pdf_rules import (ARTICLE_TYPES, PdfCandidate, PdfRuleInputs, PdfTarget, KnownPdfUrl,
-    content_platform, iter_p1_candidates, iter_p2_candidates)
+    content_platform, iter_p1_candidates, iter_p2_candidates, needs_p2_query)
 from allfold.providers.provider_http import Cancelled, ProviderBudgetExceeded
 from allfold.providers.openalex import OpenAlexNotFoundError, OpenAlexRequestError
 from allfold.url_safety import normalize_public_http_url
@@ -149,12 +149,14 @@ class PdfDiscovery:
         self.deadline = monotonic() + 120 if deadline is None else float(deadline)
         if not 0 < self.deadline < float('inf') or min(max_operations, max_hops) < 1 or max_retries < 0:
             raise ValueError('Finite discovery budgets are required')
-        roots = (('doi', target.identity_doi),) if target.identity_doi else ()
-        self.facts = tuple(f for f in facts if discovery_target_matches(f, roots))
+        roots = (*target.direct_identities, *((('doi', target.identity_doi),) if target.identity_doi else ()))
+        self.facts = tuple(f for f in facts if discovery_target_matches(f, roots)
+            and not (target.identity_doi and f.target_doi and f.target_doi != target.identity_doi))
         self.inputs = self._facts_inputs(inputs or PdfRuleInputs(target))
         for snapshot in self.facts:
             if snapshot.source == 'document' and snapshot.landing_url:
                 self._route = replace(target, article_url=snapshot.landing_url)
+        self._route = self._facts_route(self._route)
         self._remaining, self._hops, self._retries = max_operations, max_hops, max_retries
         self._seen, self._diagnostics = set(), []
         self._failed, self._fallback, self._used = False, False, False
@@ -212,6 +214,30 @@ class PdfDiscovery:
         return replace(initial, identifiers=tuple(identifiers[:24]), alternative_ids=tuple(alternatives[:24]),
             known_pdf_urls=tuple(known[:16]))
 
+    def _facts_route(self, route):
+        # Resource/landing fields supply article routing and IDs, never direct
+        # PDF candidates. A current actual content Host outranks older registry
+        # evidence; complete existing IDs need no second route either.
+        inputs = replace(self.inputs, target=route, known_pdf_urls=(), credentials=frozenset())
+        if tuple(iter_p2_candidates(route, inputs)):
+            return route
+        actual_host = urlsplit(route.article_url).hostname if route.article_url else None
+        fallback = route
+        for snapshot in self.facts:
+            if snapshot.source != 'crossref':
+                continue
+            for link in snapshot.links:
+                if link.kind != 'landing' or actual_host and urlsplit(link.url).hostname != actual_host:
+                    continue
+                proposed = replace(route, article_url=link.url)
+                if not content_platform(proposed):
+                    continue
+                if not actual_host:
+                    fallback = proposed
+                if tuple(iter_p2_candidates(proposed, replace(inputs, target=proposed))):
+                    return proposed
+        return fallback
+
     def _saved(self, stage):
         values = [(snapshot, item) for snapshot in self.facts if snapshot.source == 'document'
                   for item in snapshot.candidates if item.stage == stage]
@@ -233,8 +259,9 @@ class PdfDiscovery:
         if not landing or snapshot.platform != 'lww' or urlsplit(landing).hostname != 'journals.lww.com':
             return
         slug = urlsplit(landing).path.split('/')[1]
-        an = next((item.value for item in snapshot.identifiers if item.kind == 'an'
-            and re.fullmatch(r'[0-9]{8}-[0-9]{9}-[0-9]{5}', item.value)), None)
+        numbers = {item.value for item in snapshot.identifiers if item.kind == 'an'
+            and re.fullmatch(r'[0-9]{8}-[0-9]{9}-[0-9]{5}', item.value)}
+        an = next(iter(numbers)) if len(numbers) == 1 else None
         if an and re.fullmatch(r'[A-Za-z0-9_-]{1,128}', slug):
             yield PdfCandidate(self.target, 'P4', 'R060', 'lww', 'https://journals.lww.com/' + slug
                 + '/_layouts/15/oaks.journals/downloadpdf.aspx?trckng_src_pg=ArticleViewer&an=' + an, 'lww')
@@ -282,7 +309,7 @@ class PdfDiscovery:
         yield from self._rules('P1')
         existing = tuple(self._rules('P2'))
         yield from existing
-        if not existing and self.io is not None and callable(getattr(type(self.io), 'query_missing', None)):
+        if needs_p2_query(self._route, replace(self.inputs, target=self._route)) and self.io is not None and callable(getattr(type(self.io), 'query_missing', None)):
             # IO is an iterator: no second interface is requested until the
             # first response has been considered, and sufficient IDs stop it.
             query_target = self._route
@@ -305,7 +332,7 @@ class PdfDiscovery:
                 if updated.target != query_target:
                     raise ValueError('Query result changed original PDF target')
                 self.inputs = replace(updated, target=self.target)
-                candidates = tuple(self._rules('P2'))
+                candidates = tuple(c for c in self._rules('P2') if (urldefrag(c.url)[0], c.action) not in self._seen)
                 yield from candidates
                 if candidates:
                     break
@@ -345,7 +372,7 @@ class PdfDiscovery:
             yield PdfCandidate(self.target, 'P5', 'OPENALEX', 'openalex', url)
 
     def _chain(self, original, consume, depth=0):
-        from allfold.pdf_responses import parse_current_response
+        from allfold.pdf_responses import parse_current_response, reader_context
         candidate, retries, chain_seen = original, 0, set()
         for hop in range(depth, self._hops + 1):
             self.check()
@@ -385,6 +412,22 @@ class PdfDiscovery:
                         following = tuple(replace(candidate, url=c.url, reader_kind=c.reader_kind,
                             referer=c.referer, action=c.action, credential=None, accept=None)
                             for c in parsed.current_candidates)
+                if (not following and self.io is not None
+                        and (reader_context(candidate, result.response.url) or {}).get('platform') == 'lww'
+                        and callable(getattr(type(self.io), 'oce_access', None))
+                        and callable(getattr(type(self.io), 'oce_reader', None))):
+                    try:
+                        if self._call(self.io.oce_access, candidate, result.response):
+                            # LWW's empty viewer ended that path. OCE requires
+                            # its own captured prepared target, not LWW access.
+                            self._fallback = True
+                            parsed = self._call(self.io.oce_reader, candidate, result.response)
+                            if parsed is not None:
+                                following = tuple(replace(candidate, url=c.url, platform='oce', reader_kind=c.reader_kind,
+                                    referer=c.referer, action=c.action, credential=None, accept=None)
+                                    for c in parsed.current_candidates)
+                    except PdfSourceReadError:
+                        self._diagnostics.append((original.stage, original.rule_id, 'parse-failed'))
             if not following:
                 self._diagnostics.append((original.stage, original.rule_id, result.diagnostic or 'empty'))
                 return None

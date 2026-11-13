@@ -22,6 +22,30 @@ def document(paper, candidates=(), status='complete'):
         candidates=tuple(candidates))
 
 
+def test_lww_ambiguous_saved_article_numbers_do_not_choose_another_paper():
+    from allfold.pdf_facts import PdfIdentifier
+    paper = target('journals.lww.com', article_url='https://journals.lww.com/journal/fulltext/2026/paper.aspx')
+    facts = document(paper).model_copy(update={'platform': 'lww', 'identifiers': (
+        PdfIdentifier(kind='an', value='11111111-111111111-11111', rule_id='R060'),
+        PdfIdentifier(kind='an', value='22222222-222222222-22222', rule_id='R060'))})
+    result = PdfDiscovery(paper, facts=(facts,)).run(lambda _: pytest.fail('Ambiguous AN cannot choose a reader'))
+    assert result.status == 'exhausted'
+
+
+def test_exact_doi_free_work_cache_requires_trusted_direct_identity():
+    from allfold.pdf_facts import openalex_discovery_facts
+    facts = openalex_discovery_facts({'id': 'https://openalex.org/W123', 'doi': None,
+        'best_oa_location': {'pdf_url': 'https://repository.example.org/Body.PDF'},
+        'locations': []}, datetime.now(timezone.utc))
+    paper = PdfTarget('paper-1', direct_identities=(('openalex', 'W123'),))
+    seen = []
+    result = PdfDiscovery(paper, facts=(facts,)).run(lambda c: seen.append(c) or CandidateResult.pdf(transfer_complete=True))
+    assert len(seen) == 1 and seen[0].target is paper
+    assert (result.pdf_source, result.fallback_used) == ('P5', False)
+    for unrelated in (PdfTarget('paper-1'), replace(paper, direct_identities=(('openalex', 'W999'),))):
+        assert PdfDiscovery(unrelated, facts=(facts,)).run(lambda _: pytest.fail('Unbound Work')).status == 'exhausted'
+
+
 def test_t01_p1_confirmation_stops_before_any_later_io():
     class IO:
         def __getattr__(self, name):
