@@ -13,6 +13,23 @@ from allfold.browser_diagnostics import normalize_browser_diagnostic
 from allfold.diagnostics import DiagnosticStore
 
 
+def test_collection_event_preserves_bounded_attempt_identity_in_export(tmp_path):
+    from uuid import uuid4
+    store = DiagnosticStore(tmp_path / 'synthetic.yaml', root=tmp_path / 'logs')
+    workspace_id, paper_id = str(uuid4()), str(uuid4())
+    assert store.event('workflow_started', dict(kind='collection', stage='collection',
+        workflow_id='collection_1', task_id='attempt_1', workspace_id=workspace_id,
+        paper_id=paper_id, attempt=3, collection_status='queued', html='PRIVATE_BODY'))
+    with zipfile.ZipFile(io.BytesIO(store.export())) as archive:
+        events = [json.loads(line) for line in archive.read('events.jsonl').splitlines()]
+    event = next(item for item in events if item.get('task_id') == 'attempt_1')
+    assert event['kind'] == event['stage'] == 'collection'
+    assert event['workspace_id'] == workspace_id
+    assert event['paper_id'] == paper_id and event['attempt'] == 3
+    assert event['collection_status'] == 'queued'
+    assert 'PRIVATE_BODY' not in json.dumps(events)
+
+
 def test_non_ascii_csrf_is_rejected_without_running_export_or_reset(tmp_path):
     from electron_test_helpers import OfflineBridge
     from fastapi.testclient import TestClient
