@@ -25,8 +25,8 @@ from allfold.integrations.cloudflare_solver import solve_cloudflare
 
 _CONTROL_ACTIONS = {"diagnostics_reset", "cas_credentials"}
 _RESOURCE_ACTIONS = {"invalidate_access", "release_workflow_pages"}
-_BUSINESS_ACTIONS = {"login_carsi", "prepare_service", "visit_manual_service", "search_journal_cover", "wos_query", "wos_export", "invalidate_access", "release_workflow_pages"}
-_RECOVERY_ACTIONS = {"prepare_service"}
+_BUSINESS_ACTIONS = {"login_carsi", "prepare_service", "visit_manual_service", "search_journal_cover", "wos_query", "wos_export", "invalidate_access", "release_workflow_pages", "extract_paper_metadata"}
+_RECOVERY_ACTIONS = {"prepare_service", "extract_paper_metadata"}
 _CONTEXT_FIELDS = ("workflow_id", "task_id", "parent_task_id", "service_id", "paper_id")
 _SOCKET_ERRORS = (WebSocketDisconnect, OSError, RuntimeError)
 _RECEIVE_ERRORS = (*_SOCKET_ERRORS, ValueError, TimeoutError)
@@ -303,6 +303,10 @@ class ElectronBridge:
     async def _execute(self, action: str, data: dict, progress: Callable | None, verify_recovery: Callable | None) -> dict:
         if action not in _CONTROL_ACTIONS | _BUSINESS_ACTIONS:
             raise ValueError('Unsupported native operation')
+        if action == 'extract_paper_metadata' and (
+                not isinstance(data, dict) or type(data.get('wantAbstract')) is not bool
+                or type(data.get('deadline_ms')) is not int or data['deadline_ms'] <= 0):
+            raise ValueError('Invalid native extraction parameters')
         socket = self._socket
         # Normal exit closes execution admission first. Captured owners still
         # need this same authenticated receive loop to settle their resources.

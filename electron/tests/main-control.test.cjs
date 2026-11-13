@@ -186,3 +186,17 @@ test('successful credential replacement waits retained access destruction before
   await new Promise(setImmediate);assert.equal(started,true);assert.equal(f.messages.length,0);assert.equal(f.context.operations.size,1);
   cleaned.resolve();await result;assert.equal(f.messages[0].data.ok,true);assert.equal(f.context.operations.size,0);
 });
+
+test('fixed extraction dispatch retains legal empty success after native owner cleanup',async()=>{
+  const f=fixture();let recovery;
+  f.context.browser.extractPaperMetadata=async(data,options)=>{
+    assert.equal(data.wantAbstract,false);assert.ok(options.deadline>Date.now());
+    recovery=f.context.browser.operation.validateRecovery;
+    return {outcome:'retrieved',metadata:{dates:[],abstract:null},extraction_diagnostics:[]};
+  };
+  await f.context.execute({id:'extract-empty',action:'extract_paper_metadata',data:{wantAbstract:false,deadline_ms:Date.now()+2000}});
+  assert.equal(typeof recovery,'function');assert.equal(f.calls.end,1);
+  assert.deepEqual(f.messages.at(-1).data.metadata,{dates:[],abstract:null});
+  assert.equal(f.logs.find(event=>event.event==='task_finished').level,'info');
+  assert.equal(f.logs.find(event=>event.event==='task_finished').outcome,'retrieved');
+});

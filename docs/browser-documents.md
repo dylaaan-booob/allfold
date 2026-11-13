@@ -1,7 +1,7 @@
 # Controlled Documents and article access
 
 `BrowserRuntime` owns Page/WebContents, task claims and navigation. The existing
-`DocumentRuntime` sends only the fixed `binding`, `access` and `article` operations
+`DocumentRuntime` sends only the fixed `binding`, `access`, `article` and `extract` operations
 to the sandboxed, context-isolated Document preload. It exposes no site API,
 generic IPC, arbitrary evaluator, cookies or Node capability. Main validates the
 reply sender, native process/frame, current navigation generation, exact URL and
@@ -61,8 +61,8 @@ The order is controlled navigation → access checks/manual waiting/necessary so
 → fresh current-Document article evidence → fixed identity result. Reuse and page
 rebuild follow the same order. `confirmArticlePage` is the revalidation boundary
 for a caller holding a prior result; a previously returned proof is not permanent
-DOM authority. No authors, dates, abstract, Item, Translator detect or body
-extraction are required.
+DOM authority. Identity confirmation remains independent of Date/Abstract content;
+no author, Item or Translator operation is involved.
 
 DOIs use the shared prefix/validity rules, reliable head Meta and applicable
 current-article DOI `id`/`doi` parameters at an `/article` endpoint or DOI-suffix
@@ -127,8 +127,8 @@ frame enumeration, cookie/observer operations and unused Import-only attachment
 capture/bypass helpers. Its local Session response-cancel/URL-capture loop is gone.
 WF04 owns consolidation of the remaining shared Session listeners, original
 DownloadItem capability fixtures, page quotas/scheduling and complete page-close
-policy. No replacement downloader is introduced. WF06–WF08 connect article
-extraction/collection later. Retained adapted host sources keep their AGPL notices;
+policy. No replacement downloader is introduced. WF06 adds the internal Date/Abstract operation below; production collection
+registration and orchestration remain deferred to WF08. Retained adapted host sources keep their AGPL notices;
 official vendor trees, dependency pins and real user data are unchanged.
 
 The shared Session entry and measured original-response behavior are documented
@@ -149,3 +149,193 @@ main-frame form POST download starts a new navigation generation, so its old
 Document registration is refused and the original item is canceled to actual done,
 without a new GET. The shared Session original-POST fixture is a separate capability
 seam, not permission to relax these checks or claim all Runtime entries supported.
+
+
+## WF06 internal Date/Abstract operation
+
+The internal authenticated Bridge action is `extract_paper_metadata`, called by a
+captured Workspace task through `BranchContext.execute_native()`. It has no public
+HTTP/button entry and is not installed in production Run. Run still owns its
+ordinary Completion, creation/completion timing and single slot; the public
+Preprint entry retains its gate. This operation supplies no PDF fact and does not
+mark a real Paper's complete collection group finished.
+
+The payload carries the existing workflow/task/Paper association,
+`workspace_identity` (the existing 64-hex live Workspace path/inode hash, **not**
+the SQLite Workspace UUID), `identity:{doi?,confirmed_article_url?}`, a strictly
+boolean `wantAbstract`, and absolute integer `deadline_ms`. It opens/recovers only
+through `openPaperPage`, checks access before fresh independent Paper identity,
+and uses the owning operation's recovery-authority callback. It does not borrow a
+foreground Run snapshot. A Service call additionally carries the captured
+`service_scope`, `service_id`, `preparation_key` and `target_page_id`. A retained
+target must match the actual native access context/key/Page; it is pinned through
+actual work-page cleanup without being navigated or closed. A captured explicitly
+manual preparation with no target instead requires `manually_confirmed:true` and
+the same captured key; Python's task authority and recovery check retain that
+policy. No Service fields are needed for public access.
+
+The runtime action is `extract` with exactly `{wantAbstract:boolean}`. Other args,
+unknown actions and non-booleans fail before dispatch; the sandboxed preload
+validates them again. `readDocument` forwards these fixed args. It never accepts an
+evaluator, selector, HTML string, Provider response or webpage request. The pure
+DOM observation only reads the current Document: no network, page creation,
+navigation, API lookup, click, source-DOM modification or Paper write.
+
+Successful Main results use:
+
+```json
+{
+  "outcome": "retrieved",
+  "metadata": {"dates": [], "abstract": null},
+  "extraction_diagnostics": [],
+  "document": {
+    "pageId": 1,
+    "processId": 2,
+    "frameToken": "opaque-native-token",
+    "documentId": "preload-generated-id",
+    "navigationGeneration": 1
+  }
+}
+```
+
+`metadata` has exactly two fields; dates have exactly `value` and `precision`.
+Dates are valid, sorted, unique `YYYY-MM`/`month` or `YYYY-MM-DD`/`day` records,
+at most 256. Same-month qualified day records suppress the month; distinct days
+remain. Abstract is nonempty plain text or null, capped at 65,536 UTF-16 code
+units for IPC (a separate limit from date context code-point counting). C0 controls
+other than ordinary whitespace are refused. No event, source, evidence, platform,
+HTML, raw block, author or DOM path enters this DTO. The document envelope is
+bounded native evidence, has no URL or credential, and grants no new task or
+storage authority. Main can append its existing sanitized recovery/diagnostic
+status annotations.
+
+A valid empty DTO is `retrieved`, not `no_result`. Local diagnostics are unique,
+limited to four fixed codes: `json_ld_invalid`, `json_ld_ambiguous`,
+`abstract_candidate_failed`, `abstract_budget_exceeded`. A locally failed or
+over-budget abstract candidate can leave qualified dates and this explicit
+partial diagnostic; it never becomes a truncated successful abstract. The caller
+must retain that distinction. A missing/challenged/wrong-identity/cancelled/expired
+or wholly failed Document returns a failure diagnostic and no metadata. Date
+result overflow and the fixed five-second local scanning budget fail the whole
+read instead of truncating output. The parent deadline can be shorter. JSON-LD
+scripts exceeding the 262,144 UTF-16-unit parsing input bound contribute no facts
+and carry `json_ld_invalid`; their contents are never truncated into valid JSON.
+
+Reading and final access/article revalidation occur while the exact Document is
+live. An isolated-world WeakMap assigns opaque identities to the body, legal first
+h1 and unique top-level article. Captured, extracted and final subject identities
+must agree. Body/root/h1 replacement, even at the same DOI and URL, invalidates
+both fields; native Document ID, exact URL, frame/process, navigation generation
+and cancellation remain independently checked. Only after this final check does
+`runTask` close its temporary page and Main send the small result. Normal owner
+cleanup does not retroactively revoke verified metadata; Python commits under its
+captured Workspace/Paper/attempt token without reopening a closed page. This
+same-operation, pre-cleanup seam can later compose WF07 PDF clues, but WF06 has no
+empty PDF collector or fabricated skipped/completed PDF outcome.
+
+### Shared extraction scope
+
+Body traversal excludes script/style/noscript/template subtrees, navigation
+semantics, page-level footer, `hidden`, `aria-hidden=true`, and explicit inline
+`display:none`; it performs no inferred CSS visibility or simulated expansion.
+An article-internal footer remains eligible for dates. The DOM root is the sole
+legal top-level article only when it contains the first legal h1; no article,
+multiple articles or an outside h1 falls back to legal body. Abstract additionally
+excludes explicit recommendations and peripheral UI in that same root. Head Meta
+and JSON-LD remain independent of this root. The algorithm-only multi-article
+fallback does not relax the host identity probe's existing multiple-article
+refusal.
+
+Date matching follows source order and preserves continuous inline text. Complete
+li/tr records are indivisible, including nested p/div/td; semantic p/headings,
+dt/dd, blockquote and figcaption use their whole block. Ordinary containers split
+at independent block children and preserve remaining inline runs. Independent
+links introduce matching boundaries, without turning their short text into a
+shorter enclosing li/tr context. After whitespace normalization, a complete
+record of at most **150 Unicode code points** qualifies its dates/time values;
+151 does not. One legal short occurrence suffices, while out-of-root appearances
+do not participate. Abstract has neither this threshold nor a shortest-record
+rule.
+
+Only `application/ld+json` scripts are parsed. Allowed entrances are a top-level
+object/array, direct `@graph` members and an inline `WebPage.mainEntity` article.
+Schema.org context (including inherited graph context) or a complete Schema.org
+type URI is required; string/array `Article` and `ScholarlyArticle` types are
+supported. One stable article is required. Identical repeated information or the
+same stable `@id` can deduplicate; multiple articles, conflicting copies and
+complex references give this channel no contribution. Only the article's direct
+`datePublished`, `dateModified` and `abstract` are read. Publisher/WebSite/page
+fields, recommendations, citations, ordinary JSON caches and global state are not
+walked. A damaged script cannot erase DOM/Meta or another valid script's result.
+
+### Dates
+
+Supported finite grammars are year-first hyphen/slash year-month/day, English
+full/common abbreviated months in day-month-year, month-day-year or year-month
+order, Chinese year-month/day, complete-day ISO timestamps, and numerically
+unambiguous year-last slash dates. Years and months must be explicit. Calendar
+validation checks leap years and month/day ranges. Invalid full candidates never
+degrade to month-only results. Ambiguous `04/02/2020` is refused; `13/02/2020` and
+`02/13/2020` have one valid order. Token boundaries reject URL/DOI/identifier
+substrings, suffixes such as `2020-04junk`, and manuscript/page ranges such as
+`SS-2025-0362`/`1023-1042`. Missing range endpoints are not filled. ISO values keep
+their written calendar day without a timezone conversion.
+
+`time[datetime]` and displayed text are parsed independently, sharing their whole
+record's 150-point limit; a short attribute has no exemption. Pure times and
+durations contribute nothing. Head Meta reads the entire `content`, with
+case-insensitive `name`/`property`: `citation_publication_date`,
+`citation_online_date`, `citation_cover_date`, `dc.date`,
+`prism.publicationDate`, `citation_date`, and `article:published_time` only with
+`og:type=article`. No other maintenance/year/itemprop fields are scanned. Meta
+and qualified JSON-LD bypass the DOM length rule as separate channels. All four
+channels filter first, then union/deduplicate/suppress month/sort; a rejected long
+record's day cannot suppress an accepted Meta month. Explicit future ordinary
+dates remain, without Run-range filtering or publication/first-public inference.
+
+### Abstracts
+
+The fixed preference is **A1 → A2 → B → C**, with no API-versus-DOM write priority:
+
+- **A1:** exact case-insensitive IDs `abstract`/`abstracts`, class tokens
+  `abstract`/`abstract-content`/`abstractInFull`, or a section/region with a unique
+  strict Abstract aria label/title association. Substrings are insufficient.
+  Nested marked containers reduce to their smallest owner; identical copies
+  merge. Graphical/Video/Lay or author summaries, navigation, recommendations,
+  footer/hidden areas and title/button-only regions are refused.
+- **A2:** strict Abstract h2–h6 or explicit section-heading labels, normalizing
+  surrounding whitespace, trailing colon and decorative punctuation. Summary is
+  eligible only when no Abstract heading exists and a finite current-paper
+  section is established. Prefer a small independent section/aria region;
+  otherwise require an ending sibling section. Stop at same/higher headings or
+  independent Keywords/Introduction/References markers, even with inconsistent
+  levels; preserve lower Background/Methods/Results/Conclusions headings. An
+  unbounded heading cannot consume the rest of the article.
+- **B:** head academic Meta in order `citation_abstract`, `dcterms.abstract`,
+  `dc.description.abstract`. Normalize same-field equal duplicates; different
+  valid texts conflict and fall through to another decidable source. Different
+  fields are never concatenated or compared by length.
+- **C:** the unique qualified article's direct `abstract` string/safely purified
+  text. JSON-LD `description`, ordinary/OG/Twitter/DC description never fill it.
+
+Text keeps original paragraph order and newline-separated independent blocks,
+internal scientific headings and inline scientific content. Only standalone
+Abstract/Summary wrapper headings and explicit buttons/action links,
+figure/table labels and keyword UI are removed. Short complete texts are valid.
+Explicit previews, unexpanded Read more/Show more fragments, ellipsis-only text
+and empty notices are refused without a click. Different valid same-level DOM
+candidates fall through to independent structured sources; no first/longest
+choice, source concatenation, generation, translation or Title fallback exists.
+`wantAbstract=false` skips the abstract scanner entirely and still extracts
+dates. Abstract/JSON-LD local faults do not erase successful date work.
+
+`document-extraction.test.cjs` runs real Electron 45, production Main dispatch,
+BrowserRuntime, DocumentRuntime and preload against local HTTP and disposable
+profiles. It covers grammar/scope/Unicode/record/Meta/JSON-LD/abstract cases,
+actual normal cleanup, replacement/navigation/cancellation and local/whole read
+failure. An optional explicit temporary output path to
+`document-extraction.fixture.cjs PROFILE OUTPUT_JSON` exports the actual verified
+structured DTO for cross-language integration; append `--sample-only` to execute
+just that real Main/Document sample. Generated profiles/results are
+not source artifacts. No institution account, live publisher acceptance, actual
+PDF or production collection concurrency is established by these fixtures.
