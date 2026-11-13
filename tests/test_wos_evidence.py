@@ -81,41 +81,24 @@ def test_wos_date_precision_does_not_borrow_formal_year_or_promote_early_access(
 
 
 def test_paper_dates_survive_restart_without_source_snapshot_storage(tmp_path):
-    from datetime import timedelta
-    from allfold.canonicalize import canonicalize_records
-    from allfold.persistence.materialize import materialize_papers
-    raw = {'UT': ['WOS:1'], 'TI': ['Title'], 'SO': ['Journal'], 'DI': ['invalid'], 'PY': ['2027'], 'EA': ['SEP 2026']}
-    evidence = wos.record_evidence(raw)
-    paper, = canonicalize_records([evidence]).papers
-    path, = materialize_papers([paper], tmp_path).created_papers
-    original = path.read_bytes()
-    from allfold.persistence.markdown_state import parse_paper_state
-    saved = parse_paper_state(path, path.read_text())
-    assert saved.external_ids.wos == 'WOS:1'
-    assert saved.publication_date == '2027'
-    assert {item.source_label for item in saved.date_evidence} == {'PD/PY', 'EA'}
-    later = evidence.model_copy(update={'provenance': evidence.provenance.model_copy(update={
-        'retrieved_at': evidence.provenance.retrieved_at + timedelta(days=1)})})
-    assert materialize_papers(canonicalize_records([later]).papers, tmp_path).existing_papers == (path,)
-    assert not (tmp_path / 'Evidence').exists()
-    assert path.read_bytes() == original
-
-
-def test_retired_date_kinds_block_saved_paper_without_mutation(tmp_path):
-    from allfold.canonicalize import canonicalize_records
-    from allfold.persistence.materialize import materialize_papers
-    from allfold.persistence.markdown_state import parse_paper_state
-    evidence = wos.record_evidence({'UT': ['WOS:1'], 'TI': ['Title'], 'PY': ['2027']})
-    paper, = canonicalize_records([evidence]).papers
-    path, = materialize_papers([paper], tmp_path).created_papers
-    original = path.read_text()
-    for retired in ('published-print', 'issued', 'early-access'):
-        contents = original.replace('kind: published', 'kind: ' + retired)
-        path.write_text(contents)
-        state = parse_paper_state(path, contents)
-        assert not state.updateable
-        assert any('explicitly rebuild' in problem for problem in state.problems)
-        assert path.read_text() == contents
+    from allfold.application.wos import persist_wos
+    from allfold.persistence.paper_repository import PaperRepository
+    from allfold.persistence.safe_write import workspace_operation_lock
+    from test_wos import record
+    selected = JournalConfig(name='Biometrics', issn='0006-341X')
+    paper = wos.record_paper(record(PD='FEB 2', EA='JAN 2026'), selected)
+    with workspace_operation_lock(tmp_path) as lock:
+        result = persist_wos([paper], lock, check_current=lambda: None, cancelled=lambda: False)
+    with PaperRepository.open(tmp_path) as repository:
+        saved, = repository.list_papers()
+        assert saved.metadata.ordinary_dates == ('2026-01', '2026-02-02')
+        assert saved.metadata.publication_date == '2026-02-02'
+    later = wos.record_paper(record(TI='Changed title'), selected)
+    with workspace_operation_lock(tmp_path) as lock:
+        repeated = persist_wos([later], lock, check_current=lambda: None, cancelled=lambda: False)
+    with PaperRepository.open(tmp_path) as repository:
+        assert repository.get(saved.id) == saved
+    assert repeated.skipped_existing_papers == 1
 
 
 def test_early_access_only_does_not_become_generic_publication_on_creation():

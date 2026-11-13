@@ -15,14 +15,23 @@ from allfold.web.electron_bridge import ElectronBridge
 
 async def drain_application(application):
     """Stop dispatch and settle workers while the authenticated bridge stays open."""
-    # Admission may be held by a worker waiting for a native bridge result.
-    # Keep this loop receiving that result while shutdown waits for its lock.
-    await asyncio.to_thread(application.state.kept_workflow.shutdown)
-    for worker in (application.state.preprint_lookup, application.state.paper_enrichment, application.state.journal_cover_search, application.state.wos_coordinator, application.state.login):
+    application.state.stopping = True
+    workers = (application.state.run_coordinator, application.state.preprint_lookup,
+               application.state.journal_cover_search, application.state.wos_coordinator, application.state.login)
+    # Requests can still deliver bridge results while shutdown and joins run off
+    # the receive loop. Repeated calls observe the same settled owners.
+    for worker in workers:
         await asyncio.to_thread(worker.shutdown)
-    for worker in (application.state.kept_workflow,
-                   application.state.preprint_lookup, application.state.paper_enrichment, application.state.journal_cover_search, application.state.wos_coordinator, application.state.login):
+    for worker in workers:
         await asyncio.to_thread(worker.join)
+
+    def settle_admission():
+        # Credential mutations can own admission while waiting for a bridge
+        # Future. Keep the receive loop alive until that owner releases it.
+        with application.state.settings_write_lock:
+            pass
+
+    await asyncio.to_thread(settle_admission)
 
 
 def main():

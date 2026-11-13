@@ -26,10 +26,8 @@ institution:
   name: ''
   idp_entity_id: ''
   use_shibboleth: false
-kept_workflow:
+workflow:
   prepare_service_concurrency: 5
   paper_service_concurrency: 2
   paper_global_concurrency: 4
-  translator_concurrency: 2
   pdf_concurrency: 2
-  zotero_writer_concurrency: 2

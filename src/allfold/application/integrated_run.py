@@ -103,14 +103,15 @@ RUN_COMPLETION_PROVIDERS = ('pubmed', 'openalex', 'europe_pmc', 'crossref', 'arx
 
 class _WorkQueue:
     """Operation-local bounded batches; the producer callback never performs I/O."""
-    def __init__(self, client, cancel, guard, progress_callback):
+    def __init__(self, client, cancel, guard, progress_callback, eligible_records=lambda rows: rows, eligible_dois=lambda values: values):
         self.client, self.cancel, self.guard, self.progress = client, cancel, guard, progress_callback
+        self.eligible_records, self.eligible_dois = eligible_records, eligible_dois
         self.condition = Condition()
         self.pending, self.seen, self.finished = [], set(), False
         self.responses, self.problems = {}, []
 
     def submit(self, records):
-        values = {value for record in records if record.provenance.provider != 'openalex'
+        values = {value for record in self.eligible_records(records) if record.provenance.provider != 'openalex'
             for namespace, value in strong_identifiers(record.external_ids) if namespace == 'doi'}
         with self.condition:
             for value in sorted(values - self.seen):
@@ -146,6 +147,9 @@ class _WorkQueue:
                     current=len(self.responses), unit='work')))
             # lookup_many reuses the adapter's full/in-flight cache and returns
             # explicit requested-DOI bindings for different top-level identities.
+            batch = self.eligible_dois(batch)
+            if not batch:
+                continue
             cached = _batch_lookup(self.client,'openalex','doi',batch,None,self.cancel)
             self.responses.update(cached)
             self.problems.extend(f'OpenAlex Work location: {type(value).__name__}'
@@ -184,7 +188,7 @@ def _bind_pubmed_identities(prepared, doi_targets, matches, groups, saved_index)
             record, = match
             identities = evidence_identifiers(record)
             saved_dois = {value for identity in identities if (saved := saved_index.by_identifier.get(identity))
-                for namespace, value in saved.identifiers if namespace == 'doi'}
+                for namespace, value in ((item.namespace, item.value) for item in saved.identities) if namespace == 'doi'}
             preprint_pmid = any(ref.provider in {'pubmed', 'pmid'} and ref.relation == 'preprint'
                 and ref.record_id == record.external_ids.pmid for source in prepared[index] for ref in source.related_ids)
             if any(owners[identity] != {index} for identity in identities):
@@ -210,7 +214,8 @@ def run_integrated(config_path, *, loaded_config=None, workspace_snapshot=None, 
         CompletionSettlement, bind_records, complete_metadata_many, completion_client, prime_record_cache,
     )
     from allfold.canonicalize import canonicalize_records, consolidate_evidence, completion_metadata
-    from allfold.persistence.materialize import materialize_papers, read_workspace_identities
+    from allfold.persistence.paper_repository import PaperRepository, DirectIdentity, IdentityConflict, LibraryError, StaleWriteError
+    from allfold.persistence.run_library import RunIdentityIndex, metadata_from_run
     from allfold.persistence.safe_write import ContentChangedError
     cancel = cancel_event or Event()
     completion_factory = completion_factory or completion_client
@@ -262,7 +267,29 @@ def run_integrated(config_path, *, loaded_config=None, workspace_snapshot=None, 
                 clients[provider] = UnavailableClient(provider,str(error))
         if progress_callback:
             progress_callback(ProgressEvent(stage=ProgressStage.DISCOVERING_PAPERS))
-        work = _WorkQueue(clients['openalex'],cancel,guard,progress_callback)
+        def eligible_records(records):
+            # Keep the verified producer handoff even when authority is revoked;
+            # the parent waits for all producers and reports its latched outcome.
+            try:
+                guard()
+                with commit_run_workspace(snapshot, cancel_event=cancel):
+                    with PaperRepository.open(config.output_dir, expected_workspace_id=snapshot.workspace_id) as repository:
+                        index = RunIdentityIndex.read(repository)
+                        return tuple(record for record in records if index.target(
+                            evidence_identifiers(record), snapshot.initial_papers))
+            except ContentChangedError as error:
+                with guard_lock:
+                    if not cancel.is_set():
+                        guard_errors.append(error)
+                    cancel.set()
+                return ()
+        def eligible_dois(values):
+            guard()
+            with commit_run_workspace(snapshot, cancel_event=cancel):
+                with PaperRepository.open(config.output_dir, expected_workspace_id=snapshot.workspace_id) as repository:
+                    index = RunIdentityIndex.read(repository)
+                    return [doi for doi in values if index.target({('doi', doi)}, snapshot.initial_papers)]
+        work = _WorkQueue(clients['openalex'],cancel,guard,progress_callback,eligible_records,eligible_dois)
         def native():
             if cancel.is_set():
                 return IntegratedDiscovery((),(), 'cancelled')
@@ -331,7 +358,8 @@ def run_integrated(config_path, *, loaded_config=None, workspace_snapshot=None, 
             for item in consolidated.issues)
         issues.extend(MonitorIssue(MonitorIssueSeverity.WARNING,MonitorIssueComponent.DISCOVERY,'work_location',message)
             for message in dict.fromkeys(work.problems))
-        created=existing=conflicts=0
+        created=existing=conflicts=rebuilt=0
+        paper_ids=[]
         provider_totals=None
         completion_status='empty'
         phase_statistics=dict(completion_targets=0,completion_requests=0,completion_date_facts_added=0,
@@ -344,25 +372,28 @@ def run_integrated(config_path, *, loaded_config=None, workspace_snapshot=None, 
                 if warnings or discovery.status=='partial' or completion_status in {'partial','failed'} else RunOutcome.COMPLETED)
             facts=RunFacts(finished_at=datetime.now(timezone.utc),created_papers=created,existing_papers=existing,
                 statistics={**discovery.statistics,**phase_statistics,'integrated_candidates':sum(r.candidates for r in discovery.providers),
-                    'integrated_deduplicated':len(groups),'conflicts':discovery.statistics.get('conflicts',0)+conflicts},
+                    'integrated_deduplicated':len(groups),'rebuilt_papers':rebuilt,'conflicts':discovery.statistics.get('conflicts',0)+conflicts},
                 journals=discovery.journals,issues=tuple(RunIssueFact(category=i.stage,message=i.message,severity=i.severity.value) for i in issues),
                 details={**discovery.details,**({'provider_totals':provider_totals} if provider_totals is not None else {}),
                     'discovery_status':'cancelled' if cancel.is_set() else discovery.status,
                     'completion_status':'cancelled' if cancel.is_set() else completion_status,
-                    'provider_runs':[r.fact() for r in discovery.providers]})
+                    'paper_ids':paper_ids,'provider_runs':[r.fact() for r in discovery.providers]})
             return RunResult(provider=RunProvider.INTEGRATED,resolved_date_range=dates,
                 warnings=warnings,errors=errors,outcome=outcome,facts=facts)
         if cancel.is_set():
             return result()
-        # Classify the complete saved index, including Rejected, before helper requests.
-        with commit_run_workspace(snapshot,cancel_event=cancel) as lock:
-            current=read_workspace_identities(lock)
-            targets={index:group.evidence for index,group in enumerate(groups)
-                if current.complete and not (keys:={key for record in group.evidence for key in evidence_identifiers(record)}) & current.blocked_identifiers
-                and not any(key in current.by_identifier for key in keys)}
+        # Complete records and exclusion stop helper work; only a released
+        # placeholder carrying the original Run qualification may be rebuilt.
+        with commit_run_workspace(snapshot,cancel_event=cancel):
+            with PaperRepository.open(config.output_dir, expected_workspace_id=snapshot.workspace_id) as repository:
+                current = RunIdentityIndex.read(repository)
+                targets = {index: group.evidence for index, group in enumerate(groups)
+                    if current.target({key for record in group.evidence for key in evidence_identifiers(record)},
+                        snapshot.initial_papers)}
         phase_statistics['completion_targets']=len(targets)
         completed_papers={}
         completed_keys={}
+        completed_records={}
         if targets:
             if progress_callback:
                 progress_callback(ProgressEvent(stage=ProgressStage.COMPLETING_PAPERS))
@@ -401,14 +432,23 @@ def run_integrated(config_path, *, loaded_config=None, workspace_snapshot=None, 
                 for index, (_, outcome) in resolutions.items():
                     if outcome and not isinstance(outcome, Exception):
                         keys = ordinary_roots[index] | set(evidence_identifiers(outcome[0]))
-                        if keys & (current.by_identifier.keys() | current.blocked_identifiers):
+                        if not current.target(keys, snapshot.initial_papers):
                             completed_keys[index] = keys
                             enriched.pop(index)
                 return enriched, resolutions
 
+            def paper_guard(index):
+                guard()
+                with commit_run_workspace(snapshot,cancel_event=cancel):
+                    with PaperRepository.open(config.output_dir, expected_workspace_id=snapshot.workspace_id) as repository:
+                        latest = RunIdentityIndex.read(repository)
+                        keys = ordinary_roots[index]
+                        if not latest.target(keys, snapshot.initial_papers):
+                            raise StaleWriteError('Run target was excluded, replaced or already captured')
+
             def complete(enriched, settlement=None):
                 return tuple(complete_metadata_many(enriched, RUN_COMPLETION_PROVIDERS, clients=clients,
-                    cancel_event=cancel, request_cache=request_cache, paper_guard=lambda _: guard(),
+                    cancel_event=cancel, request_cache=request_cache, paper_guard=paper_guard,
                     ordinary_root_ids=ordinary_roots, settlement=settlement))
 
             enriched, resolutions = prepare_completion()
@@ -448,6 +488,7 @@ def run_integrated(config_path, *, loaded_config=None, workspace_snapshot=None, 
                         phase_statistics[key] = phase_statistics.get(key, 0) + 1
                     issues.extend(MonitorIssue(MonitorIssueSeverity.WARNING,MonitorIssueComponent.CANONICALIZATION,
                         'completion',f'{issue.provider}: {issue.message}') for issue in completed.issues)
+                completed_records[index] = records
                 root_keys=ordinary_roots[index]
                 formal=formal_records(records,root_keys)
                 completed_keys[index]={key for record in formal for key in evidence_identifiers(record)}
@@ -487,52 +528,56 @@ def run_integrated(config_path, *, loaded_config=None, workspace_snapshot=None, 
             progress_callback(ProgressEvent(stage=ProgressStage.UPDATING_WORKSPACE))
         try:
             with commit_run_workspace(snapshot,cancel_event=cancel) as lock:
-                # Classify the complete direct identifiers again under the commit
-                # lock, including IDs that cannot all fit one external_ids slot.
-                current=read_workspace_identities(lock)
-                incoming=[]
-                eligible=[]
-                for index, group in enumerate(groups):
-                    keys=completed_keys.get(index,{key for record in group.evidence for key in evidence_identifiers(record)})
-                    owners={item.paper_id for key in keys if (item:=current.by_identifier.get(key)) and item.paper_id}
-                    if len(owners)>1 or keys & current.blocked_identifiers:
-                        conflicts += 1
-                        involved={item.paper_id for key in keys for item in
-                            [current.by_identifier.get(key)] if item and item.paper_id}
-                        # Invalid or multiply-owned IDs are retained in index issues.
-                        issues.append(MonitorIssue(MonitorIssueSeverity.ERROR,MonitorIssueComponent.CANONICALIZATION,
-                            'identity',f'Ambiguous discovery identifiers {sorted(keys)}; Paper UUIDs {sorted(map(str,involved))}; '
-                            + '; '.join(item.message for item in current.issues)))
-                        continue
-                    if not owners and not any(namespace == 'pmid' for namespace, _ in keys):
-                        # An unresolved reported PMID cannot identify a saved
-                        # DOI-free Paper or justify creating a possible duplicate.
-                        unverified = {reported_pmids[id(record)] for record in group.evidence
-                            if id(record) in reported_pmids}
-                        if unverified & current.blocked_identifiers or any(
-                                (owner := current.by_identifier.get(key)) and
-                                not any(namespace == 'doi' for namespace, _ in owner.identifiers)
-                                for key in unverified):
+                matched_record_owners={}
+                created_ids=set()
+                with PaperRepository.open(config.output_dir, expected_workspace_id=snapshot.workspace_id) as repository:
+                    for index, group in enumerate(groups):
+                        if cancel.is_set():
+                            break
+                        keys = completed_keys.get(index, {key for record in group.evidence for key in evidence_identifiers(record)})
+                        try:
+                            current = RunIdentityIndex.read(repository)
+                            owners = current.owners(keys)
+                            if len(owners) > 1:
+                                raise IdentityConflict(f'Direct identifiers belong to different Papers: {sorted(map(str, owners))}')
+                            owner = repository.get(next(iter(owners))) if owners else None
+                            if owner is not None and owner.excluded:
+                                continue
+                            if not owners and not any(namespace == 'pmid' for namespace, _ in keys):
+                                unverified = {reported_pmids[id(record)] for record in group.evidence if id(record) in reported_pmids}
+                                if any((saved := current.by_identifier.get(key)) and
+                                        not any(item.namespace == 'doi' for item in saved.identities) for key in unverified):
+                                    raise IdentityConflict(f'Unconfirmed WoS PMID overlaps a saved Paper: {sorted(unverified)}')
+                            canonical = completed_papers.get(index)
+                            if owner is None:
+                                if canonical is None:
+                                    continue
+                                saved = repository.create_or_match(snapshot.workspace_id,
+                                    direct_ids=canonical.external_ids,
+                                    additional_identities=tuple(DirectIdentity(*key) for key in keys),
+                                    metadata=metadata_from_run(canonical, records=completed_records.get(index, group.evidence)))
+                                owner = saved.paper
+                                if saved.created:
+                                    created_ids.add(owner.id)
+                            elif owner.metadata is None:
+                                initial = snapshot.initial_papers.get(owner.id)
+                                if canonical is None or initial is None or not current.target(keys, snapshot.initial_papers):
+                                    continue
+                                owner = repository.rebuild_from_run(initial.token,
+                                    direct_ids=canonical.external_ids,
+                                    additional_identities=tuple(DirectIdentity(*key) for key in keys),
+                                    metadata=metadata_from_run(canonical, records=completed_records.get(index, group.evidence)))
+                                rebuilt += 1
+                            if owner.excluded or owner.metadata is None:
+                                continue
+                            matched_record_owners.update((id(record), owner.id) for record in group.evidence)
+                        except (LibraryError, ValueError) as error:
                             conflicts += 1
                             issues.append(MonitorIssue(MonitorIssueSeverity.ERROR,MonitorIssueComponent.CANONICALIZATION,
-                                'identity',f'Unconfirmed WoS PMID overlaps a saved Paper: {sorted(unverified)}'))
-                            continue
-                    eligible.append((group, keys))
-                    if not owners:
-                        if index in completed_papers:
-                            incoming.append(completed_papers[index])
-                saved=materialize_papers(incoming,config.output_dir,operation_lock=lock,cancel_event=cancel,progress_callback=progress_callback)
-                created=len(saved.created_papers)
-                issues.extend(MonitorIssue(MonitorIssueSeverity.ERROR,MonitorIssueComponent.MATERIALIZATION,'write',i.message) for i in saved.issues)
-                identities=read_workspace_identities(lock)
-                matched_record_owners={}
-                for group, keys in eligible:
-                    owners={item.paper_id for key in keys if (item:=identities.by_identifier.get(key)) and item.paper_id}
-                    if len(owners)==1 and not keys & identities.blocked_identifiers and identities.complete:
-                        owner, = owners
-                        matched_record_owners.update((id(record), owner) for record in group.evidence)
-                created_ids={item.paper_id for item in identities.by_identifier.values() if item.path in saved.created_papers}
+                                'identity',str(error)))
+                created=len(created_ids)
                 existing=len(set(matched_record_owners.values())-created_ids)
+                paper_ids[:]=sorted(map(str, set(matched_record_owners.values())))
                 updated_runs=[]
                 for run in discovery.providers:
                     owners={matched_record_owners[id(record)] for record in run.records if id(record) in matched_record_owners}

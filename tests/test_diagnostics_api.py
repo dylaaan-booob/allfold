@@ -79,14 +79,12 @@ def test_partial_workspace_reset_marks_old_history_after_the_target_moves(tmp_pa
     with TestClient(app, base_url='http://localhost') as client:
         preview = client.get('/api/ui-next/settings/reset-preview?scope=workspace').json()
         data = {'csrf_token': app.state.csrf_token, 'reset_token': preview['reset_token']}
-        import_token = app.state.import_token
         response = client.post('/settings/workspace-reset', data=data)
         assert response.status_code == 409, response.text
         assert not response.json()['reset_success']
         assert response.json()['reset_result']['workspace_invalidated']
         assert not workspace.exists()
         assert client.get('/api/history').json()['records'][0]['before_workspace_reset']
-        assert app.state.import_token == import_token
         assert client.post('/settings/workspace-reset', data=data).status_code == 409
     captured = next(tmp_path.glob('.allfold-reset-*/workspace'))
     assert (captured / 'snapshot.json').read_text() == 'old result'
@@ -97,10 +95,10 @@ def test_partial_workspace_reset_marks_old_history_after_the_target_moves(tmp_pa
 def test_logs_reset_refuses_active_work_and_disconnected_native_files(tmp_path):
     config = configuration(tmp_path)
     app = create_app(config, electron_bridge=OfflineBridge(), diagnostics_root=tmp_path / 'logs')
-    app.state.diagnostics.begin('import', 'save')
+    app.state.diagnostics.begin('prepare', 'save')
     with TestClient(app, base_url='http://localhost') as client:
         preview = client.get('/api/ui-next/settings/reset-preview?scope=logs').json()
-        owner = app.state.browser_task_lock.acquire('import')
+        owner = app.state.browser_task_lock.acquire('prepare')
         try:
             response = client.post('/settings/logs-reset', data={
                 'csrf_token': app.state.csrf_token, 'reset_token': preview['reset_token']})

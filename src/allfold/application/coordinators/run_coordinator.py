@@ -16,6 +16,7 @@ from allfold.application.monitor import RunResult, run_monitor
 from allfold.application.run_state import RunProvider, discovery_provider
 from allfold.config import ConfigurationError, load_config
 from allfold.application.run_commit import capture_run_workspace
+from allfold.persistence.paper_repository import LibraryError
 from allfold.persistence.safe_write import CompareReadError, ContentChangedError
 from allfold.progress import (
     PROGRESS_STAGES,
@@ -135,7 +136,7 @@ class RunCoordinator:
                 validate_selection(config)
                 self._config_snapshot = config
                 self._workspace_snapshot = capture_run_workspace(self._config_path,config)
-            except (ValueError, CompareReadError, ContentChangedError, OSError) as error:
+            except (LibraryError, ValueError, CompareReadError, ContentChangedError, OSError) as error:
                 self._status = CoordinatorStatus.FINISHED
                 self._finished_at = datetime.now(timezone.utc)
                 self._unexpected_error = UnexpectedRunError(category=type(error).__name__,message=str(error))

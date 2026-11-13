@@ -13,7 +13,7 @@ from safety_config_helpers import current_mapping_document
 
 
 @pytest.mark.parametrize('lifecycle', ['native_drain', 'lifespan'])
-@pytest.mark.parametrize('operation', ['targets', 'authorize', 'credentials'])
+@pytest.mark.parametrize('operation', ['credentials'])
 def test_shutdown_receives_native_result_while_settings_operation_owns_admission(tmp_path, lifecycle, operation):
     class NativeBridge(OfflineBridge):
         connected = True

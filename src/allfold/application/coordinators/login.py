@@ -187,7 +187,7 @@ class LoginCoordinator:
                 self._results[service.id] = ServicePreparation(task_id=uuid4().hex, workflow_id=self._workflow_id)
             observe(self.diagnostics, 'begin', 'login', self._workflow_id)
             self._worker = threading.Thread(target=self._run,
-                args=(saved, services, authentication if needs_carsi else None, owner, manual_service_id, config.kept_workflow.prepare_service_concurrency),
+                args=(saved, services, authentication if needs_carsi else None, owner, manual_service_id, config.workflow.prepare_service_concurrency),
                 name='allfold-login', daemon=False)
             try:
                 self._worker.start()
