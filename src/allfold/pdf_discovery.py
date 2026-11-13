@@ -14,11 +14,14 @@ from urllib.parse import parse_qs, urldefrag, urlsplit
 
 from allfold.pdf_facts import PdfDiscoveryFacts, discovery_target_matches
 from allfold.pdf_catalog import API_CATALOG, RULE_CATALOG
-from allfold.pdf_rules import (PdfCandidate, PdfRuleInputs, PdfTarget, KnownPdfUrl,
+from allfold.pdf_rules import (ARTICLE_TYPES, PdfCandidate, PdfRuleInputs, PdfTarget, KnownPdfUrl,
     content_platform, iter_p1_candidates, iter_p2_candidates)
 from allfold.providers.provider_http import Cancelled, ProviderBudgetExceeded
 from allfold.providers.openalex import OpenAlexNotFoundError, OpenAlexRequestError
 from allfold.url_safety import normalize_public_http_url
+
+
+SUPPORTED_PDF_TARGET_TYPES = ARTICLE_TYPES | {'unknown'}
 
 
 @dataclass(frozen=True)
@@ -406,6 +409,9 @@ class PdfDiscovery:
         if self._used:
             raise RuntimeError('A PDF discovery invocation is single-use')
         self._used = True
+        self.check()
+        if self.target.content_type not in SUPPORTED_PDF_TARGET_TYPES:
+            return DiscoveryResult('not-applicable', diagnostics=(('P1', 'SCOPE', 'unsupported-content-type'),))
         for candidate in self._candidates():
             self.check()
             if not _eligible(candidate):

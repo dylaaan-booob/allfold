@@ -554,3 +554,49 @@ def test_sd_cdn_md5_pid_pair_is_refresh_fact_without_rewriting_current_url():
         refresh_kind='document-pdf', landing_url='https://www.sciencedirect.com/science/article/pii/S014067362400123X')
     assert fact.url is None and fact.refresh.kind == 'document-pdf'
     assert url == 'https://pdf.sciencedirectassets.com/Body.PDF?md5=AbC&pid=Keep'
+
+
+@pytest.mark.parametrize('content_type', ['book', 'chapter', 'book-chapter', 'supplement'])
+@pytest.mark.parametrize('cache', ['none', 'document', 'openalex'])
+def test_explicit_unsupported_target_never_dispatches_any_stage_even_with_bound_cache(content_type, cache):
+    paper = replace(target('unknown.example.org'), content_type=content_type)
+    document_cache = document(paper, [PdfCandidateFact(stage='P3', rule_id='GENERIC',
+        url='https://repository.example.org/Book.PDF', field='citation_pdf_url')])
+    openalex_cache = PdfDiscoveryFacts(source='openalex', capability='openalex-locations', status='complete',
+        target_doi=paper.identity_doi, observed_at=datetime.now(timezone.utc), candidates=(
+            PdfCandidateFact(stage='P5', rule_id='OPENALEX', url='https://repository.example.org/Book.PDF'),))
+    facts = {'none': (), 'document': (document_cache,), 'openalex': (openalex_cache,)}[cache]
+    calls = []
+    class IO:
+        def query_missing(self, *_):
+            calls.append('query')
+            return iter(())
+        def document(self, _):
+            calls.append('document')
+        def openalex(self, doi):
+            calls.append('openalex')
+            return {'doi': doi, 'best_oa_location': {'pdf_url': 'https://repository.example.org/Book.PDF'}}
+    result = PdfDiscovery(paper, facts=facts, io=IO()).run(lambda _: calls.append('consume')
+        or CandidateResult.pdf(transfer_complete=True))
+    assert calls == []
+    assert (result.status, result.pdf_source, result.fallback_used) == ('not-applicable', None, False)
+    assert result.diagnostics == (('P1', 'SCOPE', 'unsupported-content-type'),)
+
+
+@pytest.mark.parametrize('content_type', ['journal-article', 'conference-paper', 'unknown'])
+@pytest.mark.parametrize('cached', [False, True])
+def test_article_or_unknown_target_keeps_own_repository_preprint_p5(content_type, cached):
+    from allfold.pdf_facts import openalex_discovery_facts
+    paper = replace(target('unknown.example.org'), content_type=content_type)
+    raw = {'doi': paper.doi, 'type': 'preprint', 'best_oa_location': {
+        'pdf_url': 'https://repository.example.org/Preprint.PDF'}, 'locations': []}
+    facts = (openalex_discovery_facts(raw, datetime.now(timezone.utc)),) if cached else ()
+    calls = []
+    class IO:
+        def openalex(self, _):
+            calls.append('openalex')
+            return raw
+    result = PdfDiscovery(paper, facts=facts, io=IO()).run(lambda c: calls.append(c.url)
+        or CandidateResult.pdf(transfer_complete=True))
+    assert calls == ([] if cached else ['openalex']) + ['https://repository.example.org/Preprint.PDF']
+    assert (result.status, result.pdf_source) == ('transferred', 'P5')
