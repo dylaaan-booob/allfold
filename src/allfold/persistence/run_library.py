@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from allfold.models import EvidenceDateKind, ProviderRecordRef
+from allfold.models import EvidenceDateKind, ExternalIds, ProviderRecordRef
 from allfold.paper_dates import date_value, known_preprint_families, preprint_query_refs
 from allfold.persistence.library_models import PaperMetadata, PaperRecord, PreprintResult
 
@@ -13,9 +13,11 @@ class RunIdentityIndex:
     by_identifier: dict[tuple[str, str], PaperRecord]
 
     @classmethod
-    def read(cls, repository):
+    def read(cls, repository, keys=None):
+        papers = repository.list_papers() if keys is None else (
+            repository.match(ExternalIds(**{namespace: value})) for namespace, value in keys)
         return cls({(identity.namespace, identity.value): paper
-            for paper in repository.list_papers() for identity in paper.identities})
+            for paper in papers if paper is not None for identity in paper.identities})
 
     def owners(self, keys):
         return {self.by_identifier[key].id for key in keys if key in self.by_identifier}

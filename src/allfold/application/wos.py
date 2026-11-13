@@ -43,7 +43,7 @@ def persist_wos(papers, lock, *, check_current, cancelled, result=None, workspac
             lock.verify()
             try:
                 keys = paper_identifiers(paper)
-                index = RunIdentityIndex.read(repository)
+                index = RunIdentityIndex.read(repository, keys)
                 owners = index.owners(keys)
                 if len(owners) > 1:
                     raise IdentityConflict('Direct identities have different saved Paper owners')
