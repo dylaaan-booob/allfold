@@ -268,13 +268,15 @@ def run_integrated(config_path, *, loaded_config=None, workspace_snapshot=None, 
         if progress_callback:
             progress_callback(ProgressEvent(stage=ProgressStage.DISCOVERING_PAPERS))
         def eligible_records(records):
+            records = tuple(records)
             # Keep the verified producer handoff even when authority is revoked;
             # the parent waits for all producers and reports its latched outcome.
             try:
                 guard()
                 with commit_run_workspace(snapshot, cancel_event=cancel):
                     with PaperRepository.open(config.output_dir, expected_workspace_id=snapshot.workspace_id) as repository:
-                        index = RunIdentityIndex.read(repository)
+                        keys = {key for record in records for key in evidence_identifiers(record)}
+                        index = RunIdentityIndex.read(repository, keys)
                         return tuple(record for record in records if index.target(
                             evidence_identifiers(record), snapshot.initial_papers))
             except ContentChangedError as error:
@@ -284,10 +286,11 @@ def run_integrated(config_path, *, loaded_config=None, workspace_snapshot=None, 
                     cancel.set()
                 return ()
         def eligible_dois(values):
+            values = tuple(values)
             guard()
             with commit_run_workspace(snapshot, cancel_event=cancel):
                 with PaperRepository.open(config.output_dir, expected_workspace_id=snapshot.workspace_id) as repository:
-                    index = RunIdentityIndex.read(repository)
+                    index = RunIdentityIndex.read(repository, {('doi', doi) for doi in values})
                     return [doi for doi in values if index.target({('doi', doi)}, snapshot.initial_papers)]
         work = _WorkQueue(clients['openalex'],cancel,guard,progress_callback,eligible_records,eligible_dois)
         def native():
@@ -441,8 +444,8 @@ def run_integrated(config_path, *, loaded_config=None, workspace_snapshot=None, 
                 guard()
                 with commit_run_workspace(snapshot,cancel_event=cancel):
                     with PaperRepository.open(config.output_dir, expected_workspace_id=snapshot.workspace_id) as repository:
-                        latest = RunIdentityIndex.read(repository)
                         keys = ordinary_roots[index]
+                        latest = RunIdentityIndex.read(repository, keys)
                         if not latest.target(keys, snapshot.initial_papers):
                             raise StaleWriteError('Run target was excluded, replaced or already captured')
 
@@ -536,7 +539,8 @@ def run_integrated(config_path, *, loaded_config=None, workspace_snapshot=None, 
                             break
                         keys = completed_keys.get(index, {key for record in group.evidence for key in evidence_identifiers(record)})
                         try:
-                            current = RunIdentityIndex.read(repository)
+                            unverified = {reported_pmids[id(record)] for record in group.evidence if id(record) in reported_pmids}
+                            current = RunIdentityIndex.read(repository, keys | unverified)
                             owners = current.owners(keys)
                             if len(owners) > 1:
                                 raise IdentityConflict(f'Direct identifiers belong to different Papers: {sorted(map(str, owners))}')
@@ -544,7 +548,6 @@ def run_integrated(config_path, *, loaded_config=None, workspace_snapshot=None, 
                             if owner is not None and owner.excluded:
                                 continue
                             if not owners and not any(namespace == 'pmid' for namespace, _ in keys):
-                                unverified = {reported_pmids[id(record)] for record in group.evidence if id(record) in reported_pmids}
                                 if any((saved := current.by_identifier.get(key)) and
                                         not any(item.namespace == 'doi' for item in saved.identities) for key in unverified):
                                     raise IdentityConflict(f'Unconfirmed WoS PMID overlaps a saved Paper: {sorted(unverified)}')

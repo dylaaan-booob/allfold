@@ -93,6 +93,22 @@ def test_cancel_during_persistence_retains_committed_paper(tmp_path):
         assert result.created_papers == 1 and result.written_paper_ids == [str(saved.id)]
 
 
+def test_wos_batch_uses_indexed_matches_without_rescanning_saved_metadata(tmp_path, monkeypatch):
+    with PaperRepository.create(tmp_path):
+        pass
+    full_reads = []
+    original = PaperRepository.list_papers
+    def read_all(repository):
+        full_reads.append(True)
+        return original(repository)
+    monkeypatch.setattr(PaperRepository, 'list_papers', read_all)
+    papers = [paper(doi=f'10.1234/incoming-{index}', ut=f'WOS:{100 + index}') for index in range(8)]
+    with workspace_operation_lock(tmp_path) as lock:
+        result = persist_wos(papers, lock, check_current=lambda: None, cancelled=lambda: False)
+    assert result.created_papers == 8 and not result.issues
+    assert len(full_reads) == 1  # Initial eligibility capture only, regardless of batch size.
+
+
 def config_files(tmp_path):
     from test_a4_publisher_settings import setup
     path, venues, _ = setup(tmp_path)

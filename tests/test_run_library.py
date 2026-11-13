@@ -144,3 +144,24 @@ def test_library_open_failure_releases_run_admission_and_valid_retry_works(tmp_p
     assert coordinator.start().outcome is StartOutcome.STARTED
     coordinator.join()
     assert not slot.locked() and coordinator.snapshot().unexpected_error is None
+
+
+def test_run_batch_uses_indexed_identity_reads_instead_of_rescanning_each_target(tmp_path, monkeypatch):
+    path = configured(tmp_path)
+    workspace = tmp_path / 'workspace'
+    workspace.mkdir()
+    with PaperRepository.create(workspace) as repository:
+        repository.create_or_match(repository.workspace_id, direct_ids=ExternalIds(doi='10.5555/existing'),
+            metadata=PaperMetadata(title='Untouched library article'))
+    full_reads = []
+    original = PaperRepository.list_papers
+    def read_all(repository):
+        full_reads.append(True)
+        return original(repository)
+    monkeypatch.setattr(PaperRepository, 'list_papers', read_all)
+    rows = tuple(evidence(doi=f'10.5555/incoming-{index}', pmid=str(100 + index)) for index in range(8))
+    result = run_integrated(path, client_factory=client_for(rows))
+    assert result.facts.created_papers == 8 and not result.errors
+    # Initial authority capture and batch classification may read the library;
+    # individual request guards and final captures must use indexed matching.
+    assert len(full_reads) <= 2
