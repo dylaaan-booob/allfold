@@ -184,7 +184,7 @@ Local YAML owns monitor settings. The private `.allfold/user-data.sqlite` owns J
 identities, explicit primary identity, metadata, exclusions and one optional body
 association at `Workspace/papers.sqlite`. HTTP handlers and workers open separate
 thread-confined connections. Read-only uninitialized views create nothing; Run
-performs explicit initialization. Known v1 upgrades preserve data; corruption and
+performs explicit initialization. Known v1/v2 upgrades preserve data; corruption and
 unknown schemas fail without replacement. Schema v3 adds bounded current-attempt
 and branch facts while preserving v1/v2 records. No Markdown shadow/fallback exists.
 
@@ -236,10 +236,19 @@ publication date retains its explicit source. Preprint evidence preserves versio
 families, verified first-version proof and unresolved relations; it never becomes
 a formal direct identity or an ordinary date solely through association. Reader
 and Info display these new library projections without old event/source columns
-or active Enrich buttons. Background scheduling, webpage Date/Abstract extraction
-and Download/PDF actions belong to later tasks.
+or active Enrich buttons. WF05 provides internal background scheduling; production
+registration, webpage Date/Abstract extraction and Download/PDF actions belong to
+later tasks.
 
 ## Workspace collection runtime
+
+FastAPI composes one `WorkspaceTaskHost`, its shared Provider pacing/factory and
+the current Workspace registry. Workspace switching/Reset first reserves admission,
+revokes the old lifecycle and drains outside short configuration/Paper/SQLite
+locks, then revalidates the save/deletion target. Ordinary input edits do not stop
+independent collection; sensitive access changes drain only affected scopes.
+Application shutdown joins owned work before closing the common factory, while
+the authenticated bridge continues to deliver native resource terminal results.
 
 WF05 adds a Workspace-owned `WorkspaceRegistry`, with an immutable Workspace UUID,
 path/inode identity and lifecycle ID. Reliable identity create/match/rebuild and

@@ -1,4 +1,4 @@
-"""Explicit, independent SQLite Paper repository; production wiring belongs to WF02."""
+"""SQLite Paper identity, metadata, collection qualification and short writes."""
 
 from __future__ import annotations
 
