@@ -8,7 +8,7 @@ const operations={
     const title=document.title;
     const markers={unusualTraffic:/Unusual Traffic Detected\s*\(Error 418\)/i.test(title),
       cloudflareTitle:/^(Just a moment|Attention Required)/i.test(title),
-      cloudflareOptions:false,cloudflareOrchestrator:false,robot:false,contentDenied:false,hcaptcha:false,login:false};
+      cloudflareOptions:false,cloudflareOrchestrator:false,robot:false,contentDenied:false,hcaptcha:false,hcaptchaVisible:false,login:false};
     // Compute predicates locally; no script/text/URL or proportional collection crosses IPC.
     for(const script of document.querySelectorAll('script')) {
       const src=script.getAttribute('src') || '';
@@ -30,7 +30,11 @@ const operations={
     // Resource presence alone never identifies a Cloudflare main challenge.
     for(const frame of document.querySelectorAll('iframe[src]')) {
       try {const url=new URL(frame.getAttribute('src'),location.href);
-        if(/(^|\.)hcaptcha\.com$/i.test(url.hostname))markers.hcaptcha=true;
+        if(/(^|\.)hcaptcha\.com$/i.test(url.hostname)) {
+          markers.hcaptcha=true;
+          const style=getComputedStyle(frame);
+          if(frame.getClientRects().length && style.visibility!=='hidden' && style.visibility!=='collapse')markers.hcaptchaVisible=true;
+        }
       } catch { /* No URL evidence. */ }
     }
     markers.login=[...document.querySelectorAll('input[type="password"],input[autocomplete="one-time-code"]')].some(node=>node.getClientRects().length>0);

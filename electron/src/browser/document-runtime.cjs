@@ -21,7 +21,7 @@ function boundedResult(action,value) {
     return {access:boundedResult('access',value.access),article:{values:article.values,
       limited:article.limited,multiple:article.multiple,article:article.article}};
   }
-  const names=['unusualTraffic','cloudflareTitle','cloudflareOptions','cloudflareOrchestrator','robot','contentDenied','hcaptcha','login'];
+  const names=['unusualTraffic','cloudflareTitle','cloudflareOptions','cloudflareOrchestrator','robot','contentDenied','hcaptcha','hcaptchaVisible','login'];
   if(!value.markers || !names.every(key=>typeof value.markers[key]==='boolean'))invalid();
   const markers=Object.fromEntries(names.map(key=>[key,value.markers[key]]));
   let imperva=null;

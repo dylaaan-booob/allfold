@@ -11,7 +11,7 @@ function articleURL(value) {
   try {
     const url=new URL(value);
     if(!['https:','http:'].includes(url.protocol) || url.username || url.password || url.href.length>4096)return null;
-    url.hash='';return url;
+    return url;
   }catch {return null;}
 }
 function locationDOIs(value) {
@@ -21,7 +21,7 @@ function locationDOIs(value) {
   try {
     let path=decodeURIComponent(url.pathname);
     if(url.hostname==='projecteuclid.org' && path.startsWith('/journals/') && path.endsWith('.full'))path=path.slice(0,-5);
-    values.push(path.match(/(?:^|\/)(10\.\d{4,9}\/[^/]+)$/)?.[1]);
+    values.push(path.match(/(?:^|\/)(10\.\d{4,9}\/[^\s]+)$/)?.[1]);
   }catch { /* Malformed escapes cannot prove an article. */ }
   return values.map(validDOI).filter(Boolean);
 }

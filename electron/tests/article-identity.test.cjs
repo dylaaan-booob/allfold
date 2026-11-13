@@ -17,3 +17,12 @@ test('explicit DOI-free relations and fixed absence/overflow/conflict outcomes',
   assert.equal(articleIdentity({doi:'10.5555/a'},doc,{...probe,values:['10.5555/a','10.5555/b']}).outcome,'conflict');
   assert.equal(articleIdentity({doi:'10.5555/a'},doc,{...probe,values:['10.5555/a'],limited:true}).reason,'evidence_limit');
 });
+
+test('fragment article routes and complete DOI suffixes remain distinct identity facts',()=>{
+  const probe={values:[],limited:false,multiple:false,article:true};
+  const target={confirmed_article_url:'https://fixture.invalid/#/article/1'};
+  assert.equal(articleIdentity(target,{url:'https://fixture.invalid/#/article/2'},probe).outcome,'not_applicable');
+  const doc={url:'https://projecteuclid.org/journals/example/10.1214/aos/1176342506.full'};
+  assert.equal(articleIdentity({doi:'10.1214/aos/1176342506'},doc,probe).outcome,'confirmed');
+  assert.equal(articleIdentity({doi:'10.5555/target'},doc,{...probe,values:['10.5555/target']}).outcome,'conflict');
+});

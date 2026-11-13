@@ -46,6 +46,9 @@ app.whenReady().then(async()=>{
     ])await assert.rejects(open(body),error=>error.diagnostic?.code===code);
     for(const body of [html('<input type="password">',meta('10.5555/target')),html('<h1>Are you a robot?</h1><p>Please confirm you are a human by completing the captcha challenge</p>',meta('10.5555/target'))])
       await assert.rejects(open(body,'10.5555/target',{deadline:Date.now()+200}),error=>error.diagnostic?.code==='timeout');
+    destination='https://article.invalid/doi/10.1214/aos/1176342506';routes.set(destination,{body:article()});
+    const multiDOI=await task(()=>browser.openPaperPage({workspace_identity:'a'.repeat(64),paper_id:randomUUID()},'10.1214/aos/1176342506',{signal}));
+    assert.equal(multiDOI.identity.outcome,'confirmed');
     // A resolver URL (the requested DOI) never proves the redirected article.
     destination='https://article.invalid/path/10.5555/target';routes.set(destination,{body:article()});
     for(const [url,body] of [
@@ -62,6 +65,7 @@ app.whenReady().then(async()=>{
       ['https://article.invalid/?doi=10.5555%2Ftarget',html('<p>Generic redirect</p>'),'article_identity_unconfirmed'],
       ['https://article.invalid/search?doi=10.5555%2Ftarget',html('<main><h1>Search results</h1></main>'),'article_identity_unconfirmed'],
       ['https://article.invalid/search?doi=10.5555%2Ftarget',html('<main><article>Recommended target</article></main>'),'article_identity_unconfirmed'],
+      ['https://article.invalid/10.5555/other/part',html('<div>Article</div>',meta('10.5555/target')),'article_identity_conflict'],
       ['https://article.invalid/10.5555/other',html('<div>Article</div>',meta('10.5555/target')),'article_identity_conflict'],
       ['https://article.invalid/native',html('<a class="_doi" href="https://doi.org/10.5555/target">DOI</a>'),'article_identity_unconfirmed'],
     ]) {
@@ -94,6 +98,15 @@ app.whenReady().then(async()=>{
     const noDOI=await task(()=>browser.openPaperPage({...data,paper_id:randomUUID()},{confirmed_article_url:destination},{signal}));
     assert.equal(noDOI.identity.reason,'established_article_url');
     await assert.rejects(task(()=>browser.openPaperPage(data,{}, {signal})),/article_identity_unconfirmed/);
+    const fragmentTarget='https://article.invalid/#/article/one';
+    const fragment=await task(()=>browser.openPaperPage({...data,paper_id:randomUUID()},{confirmed_article_url:fragmentTarget},{signal}));
+    assert.equal(fragment.url,fragmentTarget);
+    await task(async()=>{
+      const page=browser.tabs.get(fragment.pageId);browser.bindTaskPage(page,signal);
+      await page.view.webContents.executeJavaScript('history.replaceState({},"","/#/article/two")');
+      const current=await browser.documentBinding(page);
+      await assert.rejects(browser.confirmArticlePage({confirmed_article_url:fragmentTarget},current,{signal}),/article_identity_unconfirmed/);
+    });
     // Large unrelated DOM never leaves the preload. Resource-only CAPTCHA/CDN is not a challenge.
     destination='https://article.invalid/bounded';routes.set(destination,{body:article(meta('10.5555/target'))});
     await wc.loadURL(destination);
@@ -121,6 +134,14 @@ app.whenReady().then(async()=>{
       assert.throws(()=>checkPage(status,probe),error=>error.diagnostic.code===code && (!diagnostic || Object.entries(diagnostic).every(([key,value])=>error.diagnostic[key]===value)));
       assert.ok(!JSON.stringify(probe).includes('private'));
     }
+    routes.set(destination,{body:html('<article>Normal target</article><iframe style="display:none" src="https://newassets.hcaptcha.com/captcha/v1"></iframe>',meta('10.5555/target'))});
+    await wc.loadURL(destination);
+    await task(async()=>{
+      browser.bindTaskPage(tab,signal);
+      const normal=await browser.waitForPage(tab,{signal,deadline:Date.now()+1000});
+      assert.equal((await browser.confirmArticlePage({doi:'10.5555/target'},normal,{signal})).identity.outcome,'confirmed');
+    });
+    assert.equal(solved,0);
     // Click is not completion; same-operation repeats cannot replenish the attempt budget.
     routes.set(destination,{body:challenge});await wc.loadURL(destination);
     await task(async()=>{

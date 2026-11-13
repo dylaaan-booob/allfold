@@ -19,7 +19,7 @@ function checkPage(status, access) {
     if(typeof incident==='string' && /^[0-9]{1,32}-[0-9]{1,32}$/.test(incident))error.diagnostic.imperva_incident_id=incident;
     throw error;
   }
-  if(markers.cloudflareTitle || markers.cloudflareOptions && markers.cloudflareOrchestrator || markers.robot || markers.hcaptcha)
+  if(markers.cloudflareTitle || markers.cloudflareOptions && markers.cloudflareOrchestrator || markers.robot || markers.hcaptchaVisible)
     throw new BrowserFailure('navigation','verification_page',status);
   if(status>=400)throw new BrowserFailure('navigation','http_error',status);
 }

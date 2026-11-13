@@ -33,7 +33,9 @@ URL bindings are limited to 4,096 characters. Access predicates inspect script
 markers, individual DOM text nodes and iframe locations locally without truncation,
 serializing or retaining page content. The host deadline bounds the native call;
 invalid/incomplete DTOs are refused with `page_probe_unconfirmed`. Ordinary Cloudflare assets/embedded Turnstile resources,
-or a bare 403/503, do not identify an automatic main challenge. Existing title
+or a bare 403/503, do not identify an automatic main challenge. Hidden hCaptcha
+resources on an ordinary page do not themselves require verification; recognized
+main challenge pages with hCaptcha retain the manual boundary. Existing title
 rules and localized page-options plus challenge-page orchestrator combinations
 remain. HTTP errors, 418, CPE00001 and Imperva denial remain failures; hCaptcha,
 Imperva CAPTCHA (`edet=12`), institution login and MFA retain manual waiting.
@@ -45,7 +47,8 @@ Only validated fixed fields enter diagnostics, never raw queries or page content
 production business caller or public IPC/button. A DOI string or `{doi}` starts
 at `doi.org`; it does not establish the redirected article's identity. DOI-free
 callers must supply an upstream-established `{confirmed_article_url}` relation.
-A request URL alone is insufficient. Background collection stays disabled and no
+A request URL alone is insufficient. Established article URLs retain their
+fragment routes during navigation and identity comparison. Background collection stays disabled and no
 collection-completed state is written.
 
 The order is controlled navigation → access checks/manual waiting/necessary solver
@@ -57,7 +60,7 @@ extraction are required.
 
 DOIs use the shared prefix/validity rules, reliable head Meta and applicable
 current-article DOI `id`/`doi` parameters at an `/article` endpoint or DOI-suffix
-paths. URL-only evidence requires a single article object; scholarly DOI Meta
+paths, including multi-segment DOI suffixes. URL-only evidence requires a single article object; scholarly DOI Meta
 also permits checking conflicting article URL facts. Generic main/search layouts
 do not prove an article; resolver URLs do not count. Euclid journal `.full` and
 SciELO article DOI links are scoped by host/structure, not Translator ID. References,

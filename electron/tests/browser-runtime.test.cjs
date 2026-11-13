@@ -1221,7 +1221,7 @@ test('Covers manual waiting cannot renew the absolute parent deadline',async t=>
   t.mock.timers.enable({apis:['Date','setTimeout'],now:1000});
   const {searchJournalCover}=require('../src/workflows/browser-operations.cjs');
   const {BrowserRuntime}=fixture(t),browser=new BrowserRuntime();await browser.ready;t.after(()=>browser.close());
-  browser.events.once('tab-created',(_event,tab)=>{tab.view.webContents.access={markers:{hcaptcha:true}};});
+  browser.events.once('tab-created',(_event,tab)=>{tab.view.webContents.access={markers:{hcaptcha:true,hcaptchaVisible:true}};});
   const signal=new AbortController().signal;
   const pending=browser.runTask(signal,{request_id:'cover-expiry'},()=>searchJournalCover(browser,{name:'Fixture'},
     {signal,progress(){t.mock.timers.tick(600000);}}));
