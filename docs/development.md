@@ -14,6 +14,21 @@ Configure keywords, months and Provider settings in Discover. The Login toolbar 
 
 Journal state is stored in `.allfold/user-data.sqlite`, isolated by canonical configuration path. The YAML `venue_whitelist` remains the first-migration source, not the live data store. The Journal Registry rebuilds offline from the existing five source lists with `uv run --locked python tools/build_journal_registry.py`; its shipped rows and indexes are checked against an isolated rebuild. Shared GOKB/CARSI data lives in `.allfold/resources.sqlite`; neither database belongs in a source candidate. Use temporary project/configuration directories and injected HTTP transports for migration, exchange and Resolver tests. Do not launch tests against personal YAML, Workspace, covers or Zotero.
 
+WF01's independent [Paper library](paper-library.md) uses Python's standard
+`sqlite3`, explicitly creates `papers.sqlite` within a selected Workspace and
+has no startup/production wiring. WF02 will switch current Markdown readers
+and writers together. Do not initialize a library in a personal Workspace for
+WF01 testing; fixtures create disposable directories and actual databases.
+Focused checks use:
+
+```sh
+uv run --locked pytest tests/test_paper_repository.py tests/test_paper_repository_safety.py
+```
+
+Existing Markdown, Import, preprint and event-date regressions remain active.
+[Task tracking](workflow-refactor-tasks.md) records cleanup ownership; no new
+dependency or build is needed.
+
 ## Start and stop
 
 ```sh

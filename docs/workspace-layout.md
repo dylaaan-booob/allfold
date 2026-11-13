@@ -40,6 +40,11 @@ The Electron window minimum is 600 × 480 logical pixels. The Chromium fixtures 
 
 ## Workspace ownership and retained boundaries
 
+The Workspace UI continues to read and edit production Markdown Papers. WF01's
+independent [SQLite repository](paper-library.md) has no UI, HTTP/IPC or startup
+entry point. The unified production change and recycle-bin UI belong to WF02;
+this task does not change the layouts or event-date displays below.
+
 | Area | Container behavior / compatibility | Acceptance boundary |
 | --- | --- | --- |
 | Discover | Overview and Provider Directory share a Rail/Flyout; provider configuration uses the Functional Sidebar. Host geometry and local container rules replace the previous directory/context window breakpoints. Existing fullscreen task surfaces remain. | Synthetic DOM checks cover normal and constrained layouts; real Provider and WoS results require separate service acceptance. |
