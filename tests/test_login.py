@@ -355,16 +355,25 @@ def test_closed_prepared_page_invalidates_only_its_exact_context(tmp_path):
     assert login.prepared_authority(saved, manual.id) is None
 
 
-def test_page_closed_before_login_result_cannot_be_accepted_as_prepared(tmp_path):
+@pytest.mark.parametrize('manual', [False, True])
+def test_page_closed_before_login_result_cannot_be_accepted_as_prepared(tmp_path, manual):
     path, services = login_fixture(tmp_path, count=2)
     native, lock = Native(), BrowserTaskLock()
     login = LoginCoordinator(native, lock)
-    login.start(path, manual_service_id=services[-1].id)
-    _, _, pending = native.operations.get(timeout=2)
+    login.start(path, manual_service_id=services[-1].id if manual else None)
+    if not manual:
+        _, _, ready = native.operations.get(timeout=2)
+        ready.set_result({'outcome': 'Opened', 'portal_page_id': 10})
+    pending = [native.operations.get(timeout=2) for _ in range(1 if manual else 2)]
     login.invalidate_pages([17])
-    pending.set_result(opened(17))
+    for page, (_, _, result) in enumerate(pending, 17):
+        result.set_result(opened(page))
     login.join()
-    assert login.prepared_authority(BrowserServiceSnapshot.read(path), services[-1].id) is None
+    saved = BrowserServiceSnapshot.read(path)
+    service_id = pending[0][1]['service_id']
+    assert login.prepared_authority(saved, service_id) is None
+    row = next(row for row in login.snapshot(saved)['services'] if row['id'] == service_id)
+    assert row['preparation'].reason == 'target_closed'
 
 
 def test_closed_settled_page_keeps_login_batch_and_admission_until_other_native_result(tmp_path):

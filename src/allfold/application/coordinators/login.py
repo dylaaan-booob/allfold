@@ -271,15 +271,17 @@ class LoginCoordinator:
         evidence = data.get('evidence') or {}
         diagnostic = normalize_browser_diagnostic(data.get('diagnostic'))
         target = evidence.get('target_page_id')
+        target_closed = type(target) is int and target in self._closed_pages
         opened = (data.get('outcome') == 'Opened' and evidence.get('visit_action_observed') is True
                   and evidence.get('navigation_observed') is True and type(target) is int and target > 0
-                  and target not in self._closed_pages)
+                  and not target_closed)
         status = ('Opened' if opened else 'Canceled' if self._stop.is_set() else
                   'Needs attention' if data.get('outcome') in {'Opened', 'Needs attention'} else 'Failed')
         return replace(current, status=status, waiting_for_user=False, diagnostic=diagnostic,
             recovery_action=None, recovery=normalize_recovery(data.get('recovery')) or None,
             page_id=target if opened else None,
             reason=('target_opened' if opened else diagnostic.get('code') if diagnostic else
+                    'target_closed' if data.get('outcome') == 'Opened' and target_closed else
                     'unverified_official_page' if data.get('outcome') == 'Opened' else data.get('reason', 'failed')))
 
     def _run(self, saved, services, authentication, owner, manual_service_id, concurrency):
