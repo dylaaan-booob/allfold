@@ -108,12 +108,15 @@ class RunCoordinator:
         self._config_snapshot = None
         self._workspace_snapshot = None
         self._cancel_event = threading.Event()
+        self._closed = False
 
     def start(self, provider: RunProvider = RunProvider.INTEGRATED) -> StartResult:
         """Start a production run on a dedicated worker if none is active."""
 
         provider = discovery_provider(provider)
         with self._lock:
+            if self._closed:
+                return StartResult(StartOutcome.START_FAILED)
             if self._status is CoordinatorStatus.RUNNING:
                 return StartResult(StartOutcome.ALREADY_RUNNING)
 
@@ -180,17 +183,22 @@ class RunCoordinator:
 
         return StartResult(StartOutcome.STARTED)
 
-    def cancel(self) -> bool:
+    def cancel(self, task_id: str) -> bool:
         with self._lock:
-            if self._status is not CoordinatorStatus.RUNNING:
+            if self._status is not CoordinatorStatus.RUNNING or self._task_id != task_id:
                 return False
             self._cancel_event.set()
-        if self.wos_stage is not None and self.wos_stage.running:
-            self.wos_stage.cancel(self._task_id)
+            target, stage = self._task_id, self.wos_stage
+        if stage is not None:
+            stage.cancel(target)
         return True
 
     def shutdown(self):
-        self.cancel()
+        with self._lock:
+            self._closed = True
+            target = self._task_id
+        if target is not None:
+            self.cancel(target)
 
     def join(self):
         worker = self._worker

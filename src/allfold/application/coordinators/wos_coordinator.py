@@ -117,9 +117,8 @@ class WoSCoordinator:
         """Run the native stage synchronously under the parent's existing Run slot."""
         from allfold.application.integrated_run import IntegratedDiscovery
         from allfold.providers.integrated import DiscoveryResult, SourceScope
-        self.start(parent_snapshot=workspace_snapshot, cancel_event=cancel_event,
+        task = self.start(parent_snapshot=workspace_snapshot, cancel_event=cancel_event,
                    workflow_id=workflow_id, progress_callback=progress_callback, records_callback=records_callback)
-        task = self.task
         facts = RunFacts.model_validate(task['result']['facts'])
         from allfold.identifiers import strong_identifiers
         # The native union has already diagnosed conflicting UT/DOI records.
@@ -139,6 +138,8 @@ class WoSCoordinator:
 
     def start(self, *, parent_snapshot=None, cancel_event=None, workflow_id=None, progress_callback=None, records_callback=None):
         with self.lock:
+            if self.running:
+                raise ValueError('WoS is already active or cleaning up')
             if cancel_event is not None and cancel_event.is_set():
                 raise InterruptedError('Run cancelled before native start')
             config, compiled, service, dates = self._configuration()
@@ -180,7 +181,7 @@ class WoSCoordinator:
                 raise ValueError('Prepare Web of Science in Workflows → Login')
             if parent_snapshot is None and not self.run_slot.acquire(blocking=False):
                 raise ValueError('Another Run is already active')
-            owner = self.browser_lock.acquire('wos')
+            owner = self.browser_lock.acquire('wos', scopes={saved.service_scope(service.id)})
             if owner is None:
                 if parent_snapshot is None:
                     self.run_slot.release()
@@ -235,7 +236,7 @@ class WoSCoordinator:
                 return self.state()
         # Native waits must not hold the coordinator lock: Cancel remains callable.
         self._run(task)
-        return self.state()
+        return task
 
     def cancel(self, task_id):
         with self.lock:
@@ -244,7 +245,7 @@ class WoSCoordinator:
                 return False
             task['cancelled'].set()
             task['message'] = 'Canceling; waiting for in-flight browser calls to settle'
-            self.bridge.cancel_current()
+            self.bridge.cancel_workflow(task['id'])
             return True
 
     def check_dispatch_authority(self, cancel_event):
@@ -475,6 +476,15 @@ class WoSCoordinator:
             task['issues'].append(str(error) if isinstance(error, (ValueError, OSError, ContentChangedError)) else 'WoS browser execution failed')
         finally:
             try:
+                # Query→Export keeps a native workflow loan between requests.
+                # Cleanup uses captured identity even after cancellation/input loss.
+                if self.bridge.connected:
+                    try:
+                        self.bridge.execute('release_workflow_pages', {
+                            'workflow_id': task['id'], 'task_id': task['id']}).result()
+                    except Exception as error:
+                        task['history_interrupted'] = task.get('history_interrupted') or isinstance(error, ElectronDisconnected)
+                        task['issues'].append('WoS page cleanup could not be confirmed')
                 self._complete(task)
             finally:
                 with self.lock:

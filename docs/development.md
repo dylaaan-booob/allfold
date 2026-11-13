@@ -193,3 +193,20 @@ SQLite's backup API from that backup into the original database; preserve the
 original and any sidecars until recovery is verified. Never copy over a database
 while the application is running. Paper data is untouched. Per-Paper Markdown is no longer read or migrated; the
 SQLite library and explicit Workspace Reset follow [Paper identity](paper-identity.md).
+
+
+### Scoped Browser authority regressions
+
+`tests/test_browser_services.py`, `tests/test_login.py` and
+`tests/test_settings_autosave.py` use temporary configuration/User State and explicit
+native transports. They cover independent workflow owners, overlapping Service and
+control refusal, unrelated input edits, captured recovery authority, exact
+cancellation, actual-close notifications and old-key access cleanup without a held
+configuration lock. `tests/test_cover_authority.py` exercises final image saving
+across unrelated edits and refuses replaced Journal/cover targets.
+`tests/test_run_cancel_identity.py` covers required HTTP task identity, late old
+cancellation and the lock-outside WoS handoff race. Existing Run commit,
+Workspace/diagnostic Reset, Preprint and shutdown checks retain their protections.
+The autosave and task-presentation Node fixtures verify draft acknowledgement and
+UI-captured parent Run cancellation. These tests do not use real accounts or
+establish native/live Service acceptance.

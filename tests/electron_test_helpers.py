@@ -9,8 +9,10 @@ class OfflineBridge:
         await socket.close(code=1008)
     def execute(self, *args, **kwargs):
         raise AssertionError('Offline fixture must not dispatch browser work')
-    def cancel_current(self):
+    def cancel_workflow(self, workflow_id):
         pass
+    def cancel_task(self, workflow_id, task_id):
+        return self.cancel_workflow(workflow_id)
     def finish_disconnected(self):
         pass
 
@@ -23,13 +25,24 @@ class PendingBridge:
         self.calls = []
         self.progress = None
         self.cancels = 0
+        self.cancelled_tasks = []
+        self.cancelled_workflows = []
     def execute(self, action, data, progress=None, *, verify_recovery=None):
+        if action == 'release_workflow_pages':
+            self.calls.append((action, data))
+            settled = Future()
+            settled.set_result({'released': True})
+            return settled
         self.future = Future()
         self.calls.append((action, data))
         self.progress = progress
         self.dispatched.set()
         return self.future
-    def cancel_current(self):
+    def cancel_workflow(self, workflow_id):
+        self.cancels += 1
+        self.cancelled_workflows.append(workflow_id)
+    def cancel_task(self, workflow_id, task_id):
+        self.cancelled_tasks.append((workflow_id, task_id))
         self.cancels += 1
     def finish_disconnected(self):
         self.closing = True

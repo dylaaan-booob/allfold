@@ -343,3 +343,14 @@ def test_preprint_status_reports_current_same_library_revision_after_terminal_cl
     stale_status = service.state(paper.id, task['request_id'])
     assert stale_status['workspace_id'] == str(paper.workspace_id)
     assert stale_status['revision'] == task['revision'] < foreign_revision
+
+
+def test_lookup_releases_its_owner_when_an_independent_browser_owner_started_first(tmp_path):
+    config, _, paper = create_paper(tmp_path)
+    admission = BrowserTaskLock()
+    covers = admission.acquire('covers')
+    service = PreprintLookup(config, admission, client_factory=factory(
+        native_fixture('biorxiv', version('biorxiv'))))
+    assert lookup(service, paper.id)['phase'] == 'Completed'
+    assert admission.owners == (covers,)
+    admission.release(covers)

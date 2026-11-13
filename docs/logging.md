@@ -180,3 +180,11 @@ missing evidence and identity conflicts remain distinct from HTTP/access failure
 Internal evidence values, HTML, scripts and URL query parameters are not diagnostic
 fields. Imperva continues to emit only strictly validated `imperva_edet` and
 `imperva_incident_id`; see [controlled Documents](browser-documents.md).
+
+
+WF04 keeps configuration/User State revision fields as bounded correlation facts;
+these whole-document revisions no longer by themselves revoke independent Browser
+access. Workflow/task/request IDs remain captured operation identities. Exact
+cancellation and access-context cleanup preserve unrelated owners and their
+records. Authentication/preparation keys and native Page-close events are private
+authority transport, not additional diagnostic export fields.

@@ -116,7 +116,7 @@ def install_diagnostics_api(app, *, run_slot):
                 message = 'Logs confirmation is stale or already used. Reopen Reset.'
             elif (app.state.run_coordinator.snapshot().status is CoordinatorStatus.RUNNING
                     or app.state.wos_coordinator.running
-                    or app.state.browser_task_lock.owner is not None):
+                    or bool(app.state.browser_task_lock.owners)):
                 message = 'A workflow is active; Logs Reset refused.'
             elif not run_slot.acquire(blocking=False):
                 message = 'A Run is active; Logs Reset refused.'

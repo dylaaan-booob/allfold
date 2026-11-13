@@ -124,9 +124,10 @@ async function start(provider,trigger=null) {
 }
 $('run-wos-cancel').addEventListener('click',async()=>{
   if(!active)return;
+  const operation=active;
   $('run-wos-cancel').disabled=true;
-  try {await uiNext.request('/api/ui-next/'+active.kind+'/cancel',active.kind==='run-wos'?{task_id:active.taskID}:{});}
-  catch(error){$('run-description').textContent=error.message;$('run-wos-cancel').disabled=false;}
+  try {await uiNext.request('/api/ui-next/'+operation.kind+'/cancel',{task_id:operation.taskID});}
+  catch(error){if(active!==operation)return;$('run-description').textContent=error.message;$('run-wos-cancel').disabled=false;}
 });
 dialog.addEventListener('cancel',event=>event.preventDefault());
 reduced.addEventListener('change',()=>{if(reduceRunMotion())stopRunAnimation();});

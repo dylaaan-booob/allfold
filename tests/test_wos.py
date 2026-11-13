@@ -159,10 +159,15 @@ def test_coordinator_preserves_saved_service_scope_and_prepared_page_across_batc
     class Bridge:
         connected = True
         calls = []
+        cleanup_dispatched = threading.Event()
+        cleanup_result = Future()
         def execute(self, action, data, progress=None):
             self.calls.append((action, data))
             future = Future()
-            if action == 'wos_query':
+            if action == 'release_workflow_pages':
+                self.cleanup_dispatched.set()
+                return self.cleanup_result
+            elif action == 'wos_query':
                 if change_after_query:
                     path.write_text(path.read_text() + '\n# changed during Query\n')
                 result = dict(page_id=71, total=2, batch_limit=1, recovery=recovery)
@@ -179,15 +184,23 @@ def test_coordinator_preserves_saved_service_scope_and_prepared_page_across_batc
     store = DiagnosticStore(path, root=tmp_path / "logs")
     coordinator = WoSCoordinator(path, login, threading.Lock(), bridge=bridge, browser_lock=lock, diagnostics=store)
     start = coordinator.start()
-    coordinator.join()
-    assert [action for action, _ in bridge.calls] == (['wos_query'] if change_after_query else
-                                                     ['wos_query', 'wos_export', 'wos_export'])
+    try:
+        assert bridge.cleanup_dispatched.wait(2)
+        assert coordinator.running and lock.owners
+        with pytest.raises(ValueError, match='already active'):
+            coordinator.start()
+    finally:
+        bridge.cleanup_result.set_result({'released': True})
+        coordinator.join()
+    assert [action for action, _ in bridge.calls] == (['wos_query', 'release_workflow_pages'] if change_after_query else
+                                                     ['wos_query', 'wos_export', 'wos_export', 'release_workflow_pages'])
+    assert bridge.calls[-1][1] == {'workflow_id': start['snapshot']['task_id'], 'task_id': start['snapshot']['task_id']}
     query = bridge.calls[0][1]
     assert query['page_id'] == prepared_page
     assert query['manually_confirmed'] is manually_confirmed
-    assert all(data['page_id'] == 71 for _, data in bridge.calls[1:])
+    assert all(data['page_id'] == 71 for _, data in bridge.calls[1:-1])
     assert all(data['service_id'] == next(s.id for s in saved.services if s.name == 'Web of Science')
-               and data['service_scope'] == saved.scope and data['preparation_key'] == 'e' * 64 for _, data in bridge.calls)
+               and data['service_scope'] == saved.scope and data['preparation_key'] == 'e' * 64 for _, data in bridge.calls[:-1])
     assert len({data['task_id'] for _, data in bridge.calls}) == 1
     assert all(data['workflow_id'] == start['snapshot']['task_id'] for _,data in bridge.calls)
     assert store.history()['records'][0]['task_id'] == start['snapshot']['task_id']
@@ -222,6 +235,6 @@ def test_coordinator_preserves_saved_service_scope_and_prepared_page_across_batc
         assert len(summary['details']['batches']) == 2
         assert summary['journals']
         assert target.read_bytes() == original
-        assert [action for action, _ in bridge.calls] == ['wos_query', 'wos_export', 'wos_export']
+        assert [action for action, _ in bridge.calls] == ['wos_query', 'wos_export', 'wos_export', 'release_workflow_pages']
 
 

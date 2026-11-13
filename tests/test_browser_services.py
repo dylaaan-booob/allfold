@@ -26,13 +26,13 @@ def test_scope_is_canonical_config_specific_and_snapshot_never_hot_migrates(tmp_
     compare_write_user_state(config, replace(initial.state,
         journals=(initial.state.journals[0].model_copy(update={'access_service_id': None}),)), initial.revision)
     with pytest.raises(ContentChangedError):
-        first.verify()
+        first.verify_snapshot()
     assert first.journals[0].access_service_id == service.id
 
 
 
 
-@pytest.mark.parametrize('change', ['config', 'mapping'])
+@pytest.mark.parametrize('change', ['institution', 'service'])
 def test_login_never_admits_preparation_under_stale_saved_scope(tmp_path, change):
     from allfold.application.coordinators.login import LoginCoordinator
     from allfold.application.browser_runtime import BrowserTaskLock
@@ -48,12 +48,12 @@ def test_login_never_admits_preparation_under_stale_saved_scope(tmp_path, change
     assert action == 'login_carsi'
     assert request['service_id'] is None
     assert request['service_scope'] == BrowserServiceSnapshot.read(config).scope
-    if change == 'config':
-        config.write_text(config.read_text() + '\n# changed\n')
+    if change == 'institution':
+        config.write_text(config.read_text().replace('Test University', 'Other University'))
     else:
         saved = load_user_state(config)
         compare_write_user_state(config, replace(saved.state,
-            journals=(journal.model_copy(update={'access_service_id': None}),)), saved.revision)
+            access_services=(service.model_copy(update={'access_url': 'https://changed.example/'}),)), saved.revision)
     bridge.future.set_result({'outcome': 'Opened', 'portal_page_id': 7})
     login.join()
     saved = BrowserServiceSnapshot.read(config)
@@ -61,3 +61,41 @@ def test_login_never_admits_preparation_under_stale_saved_scope(tmp_path, change
     assert len(bridge.calls) == 1
     assert login.prepared_page(saved, service.id) is None
     assert lock.owner is None
+
+
+def test_independent_browser_owners_share_admission_but_service_and_controls_remain_exclusive():
+    from allfold.application.browser_runtime import BrowserTaskLock
+    lock = BrowserTaskLock()
+    login = lock.acquire('login', scopes={'service:scope:publisher'})
+    covers = lock.acquire('covers')
+    wos = lock.acquire('wos', scopes={'service:scope:wos'})
+    assert login and covers and wos
+    assert lock.acquire('login', scopes={'service:scope:wos'}) is None
+    assert lock.acquire('credentials') is None
+    lock.release(covers)
+    lock.require(login)
+    lock.require(wos)
+    lock.release(login)
+    lock.release(wos)
+    control = lock.acquire('workspace-reset')
+    assert control and lock.acquire('covers') is None
+    lock.release(control)
+    with pytest.raises(RuntimeError):
+        lock.require(login)
+
+
+def test_access_verification_preserves_unrelated_inputs_and_service_edits(tmp_path):
+    from allfold.config import AccessService
+    config, _, journal, service = current_mapping_document(tmp_path)
+    saved = load_user_state(config)
+    other = AccessService.create('Other Publisher', 'https://other.example/')
+    compare_write_user_state(config, replace(saved.state, access_services=(service, other)), saved.revision)
+    captured = BrowserServiceSnapshot.read(config)
+    config.write_text(config.read_text() + '\n# ordinary input change\n')
+    state = load_user_state(config)
+    compare_write_user_state(config, replace(state.state,
+        journals=(journal.model_copy(update={'access_service_id': None}),),
+        access_services=(service, other.model_copy(update={'access_url': 'https://replacement.example/'}))), state.revision)
+    captured.verify((service.id,))
+    with pytest.raises(ContentChangedError):
+        captured.verify((other.id,))
