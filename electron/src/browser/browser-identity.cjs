@@ -5,7 +5,8 @@ const vm = require('node:vm');
 const {THIRD_PARTY_DIR}=require('../shared/paths.cjs');
 const source = path.join(THIRD_PARTY_DIR, 'useragent-switcher/v3');
 
-async function configureBrowserIdentity(partition, preloadDirectory, {cookieAdapter}={}) {
+async function configureBrowserIdentity(partition, preloadDirectory, {sessionEvents}={}) {
+  if(!sessionEvents)throw Error('Shared Browser Session events required');
   const userAgent = partition.getUserAgent();
   const context = vm.createContext({location: {protocol: 'chrome-extension:'},
     chrome: {declarativeNetRequest: {ResourceType: []}, storage: {local: {get: async prefs => prefs}}}});
@@ -62,21 +63,17 @@ ${fs.readFileSync(path.join(source, 'data/inject/override.js'), 'utf8')}
   const preloadFile = path.join(preloadDirectory, 'browser-identity-preload.cjs');
   fs.writeFileSync(preloadFile, preload, {mode: 0o600});
   const preloadId = partition.registerPreloadScript({type: 'frame', filePath: preloadFile});
-  partition.webRequest.onBeforeSendHeaders({urls: ['http://*/*','https://*/*']}, (details, callback) => {
+  const headersRegistration=sessionEvents.subscribe('beforeSendHeaders',(details,state) => {
     const https=details.url?.startsWith('https:');
-    const requestHeaders = Object.fromEntries(Object.entries(details.requestHeaders)
+    const requestHeaders = Object.fromEntries(Object.entries(state.requestHeaders)
       .filter(([name]) => !https || !names.includes(name.toLowerCase())));
     if(https)for (const op of operations) requestHeaders[op.header] = op.value;
-    if(!cookieAdapter){callback({requestHeaders});return;}
-    void cookieAdapter.merge(details,requestHeaders).then(merged=>callback({requestHeaders:merged}),()=>{
-      for(const key of Object.keys(requestHeaders))if(key.toLowerCase()==='x-allfold-http-context')delete requestHeaders[key];
-      callback({requestHeaders});
-    });
+    return {requestHeaders};
   });
   return {userAgent, headers: Object.fromEntries(operations.map(op => [op.header, op.value])),
     dispose() {
       partition.unregisterPreloadScript(preloadId);
-      partition.webRequest.onBeforeSendHeaders(null);
+      headersRegistration.dispose();
       fs.rmSync(preloadFile, {force: true});
     }};
 }

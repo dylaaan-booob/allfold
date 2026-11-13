@@ -37,3 +37,7 @@ is restored. Bounded probes replace serialization; retained Browser/Document and
 project-owned DOM action adaptations continue under the Electron AGPL notice.
 The historical lock/other component notices remain applicable; official vendor
 files and dependency pins are unchanged.
+
+WF04 removes the unused Translator/item-saver partitioned Cookie/CDP adapter.
+Browser identity, Chromium's native shared Session, credentials and the retained
+Browser/Document/Cloudflare host notices continue unchanged in scope.

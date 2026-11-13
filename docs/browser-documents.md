@@ -130,3 +130,8 @@ DownloadItem capability fixtures, page quotas/scheduling and complete page-close
 policy. No replacement downloader is introduced. WF06–WF08 connect article
 extraction/collection later. Retained adapted host sources keep their AGPL notices;
 official vendor trees, dependency pins and real user data are unchanged.
+
+The shared Session entry and measured original-response behavior are documented
+in [Browser Session](browser-session.md). WoS uses that native router while
+retaining all Document, known-overlay and real-terminal rules above. Missing
+frame/source facts never become current-page or URL-based Document authority.

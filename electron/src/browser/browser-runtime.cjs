@@ -13,7 +13,8 @@ const {institutionAuthPage}=require('../auth/institution-auth.cjs');
 const {casErrorCode}=require('../auth/cas-credentials.cjs');
 const {waitFor,checkCanceled,timeoutFailure,TASK_DEADLINE_MS}=require('./browser-task.cjs');
 const {NavigationRecovery,inspectPage,waitForPage}=require('./browser-navigation.cjs');
-const {BrowserCooldown,PAGE_RECOVERY_MS,reportRecovery,recoveryStop,pageRecoveryDetails,origin,loadFailure}=require('./browser-recovery.cjs');
+const {PAGE_RECOVERY_MS,reportRecovery,recoveryStop,pageRecoveryDetails,origin,loadFailure}=require('./browser-recovery.cjs');
+const {sharedSessionEvents}=require('./session-events.cjs');
 const {operationAssociation}=require('./page-association.cjs');
 
 function chromiumUserAgent(userAgent, productName) {
@@ -33,36 +34,31 @@ function browserURL(value) {
     throw Error('Browser requires an HTTP(S) URL without credentials');
   return url.href;
 }
-const {PartitionedCookieAdapter}=require('./partitioned-cookies.cjs');
 class BrowserRuntime {
-  constructor({hostWindow,solveCloudflare,readCASCredentials,isTaskRunning=()=>false,cdpURL='',recoveryTiming={}} = {}) {
+  constructor({hostWindow,solveCloudflare,readCASCredentials,isTaskRunning=()=>false,recoveryTiming={}} = {}) {
     this.solveCloudflare=solveCloudflare;
     this.readCASCredentials=readCASCredentials;
     this.isTaskRunning=isTaskRunning;
     this.recoveryTiming=recoveryTiming;
-    this.cooldown=new BrowserCooldown(recoveryTiming);
     this.partition = configureBrowserSession(session.fromPartition('allfold'));
-    const filter={urls:['http://*/*','https://*/*']};
-    this.partition.webRequest.onBeforeRequest(filter,(details,callback)=>{
+    this.sessionEvents=sharedSessionEvents(this.partition,{timing:recoveryTiming});
+    this.cooldown=this.sessionEvents.cooldown;
+    this.sessionEvents.subscribe('beforeRequest',details=>{
       const tab=this.tabs.get(details.webContentsId);
       if(details.resourceType==='mainFrame')tab?.navigation.observeRequestStart(details);
-      callback({});
+      if(tab?.taskOwner && !tab.pageAttempt?.retired) {
+        const frame=details.frame;
+        this.sessionEvents.associateRequest(details.id,{...tab.taskOwner.association,
+          page_id:tab.id,attempt_id:tab.pageAttempt?.id ?? tab.taskOwner.association.request_id,process_id:frame?.processId,frame_token:frame?.frameToken,
+          document_id:frame?tab.documentIds.get(frame.frameToken):undefined,navigation_generation:tab.documentGeneration});
+      }
     });
-    this.partition.webRequest.onErrorOccurred(filter,details=>{
+    this.sessionEvents.subscribe('errorOccurred',details=>{
       const tab=this.tabs.get(details.webContentsId);
       if(details.resourceType==='mainFrame'){tab?.navigation.observeRequestFailure(details);return;}
       const netError=String(details.error || '').match(/^(?:net::)?(ERR_[A-Z0-9_]{1,80})$/)?.[1];
       if(tab)this.reportPage('debug','page_request_failed',tab,{resource_type:details.resourceType,net_error:netError,
         net_code:loadFailure(netError,details.errorCode).diagnostic.net_code});
-    });
-    this.partition.webRequest.onHeadersReceived(filter,(details,callback)=>{
-      const tab=this.tabs.get(details.webContentsId);
-      if(tab && !tab.pageAttempt?.retired && details.resourceType==='mainFrame') {
-        const retryAfter=Object.entries(details.responseHeaders || {}).filter(([key])=>key.toLowerCase()==='retry-after')
-          .flatMap(([,values])=>values);
-        this.cooldown.observe(details.url,details.statusCode,retryAfter.length===1?retryAfter[0]:undefined);
-      }
-      callback({});
     });
     this.tabs = new Map();
     this.paperPages=new Map();
@@ -74,9 +70,7 @@ class BrowserRuntime {
     this.operations=new Set();
     this.presentation=new BrowserPresentation(hostWindow);
     this.destroying = false;
-    this.cookieAdapter=new PartitionedCookieAdapter({session:this.partition,cdpURL,
-      getPage:id=>this.tabs.get(id)?.view.webContents,documentCurrent:doc=>this.documentCurrent(doc)});
-    this.ready = configureBrowserIdentity(this.partition, app.getPath('sessionData'),{cookieAdapter:this.cookieAdapter}).then(identity => {
+    this.ready = configureBrowserIdentity(this.partition, app.getPath('sessionData'),{sessionEvents:this.sessionEvents}).then(identity => {
       this.identity = identity;
       if (this.destroying) {identity.dispose();throw Error('Browser closed during identity initialization');}
       return identity;
@@ -100,6 +94,7 @@ class BrowserRuntime {
       authContext:inheriting?opener.authContext:undefined,loadOwner:inheriting?opener.loadOwner:null,
       loadAllowed:inheriting?opener.loadAllowed:false};
     this.tabs.set(tab.id, tab);
+    if(inheriting)this.trackTaskDownloads(tab,owner);
     contents.setWindowOpenHandler(({url}) => {
       if(tab.pageAttempt?.retired)return {action:'deny'};
       if (url !== 'about:blank') {
@@ -186,6 +181,7 @@ class BrowserRuntime {
     contents.on('destroyed', () => {
       this.reportPage('info','page_closed',tab,{reason:this.destroying?'app_exit':tab.closeReason});
       tab.association=null;tab.associationOwner=null;
+      tab.downloadScope?.dispose();
       this.tabs.delete(tab.id);
       if(this.paperPages.get(tab.paperKey)===tab)this.paperPages.delete(tab.paperKey);
       if (tab.taskOwner?.taskTab === tab)tab.taskOwner.taskTab=null;
@@ -496,7 +492,14 @@ class BrowserRuntime {
     checkCanceled(owner.signal);
     if(tab.taskOwner && tab.taskOwner!==owner)throw new BrowserFailure('navigation','navigation_active');
     tab.taskOwner=owner;
+    this.trackTaskDownloads(tab,owner);
     return owner;
+  }
+  trackTaskDownloads(tab,owner) {
+    if(tab.downloadScopeOwner===owner)return;
+    tab.downloadScope?.dispose();tab.downloadScopeOwner=owner;
+    tab.downloadScope=this.sessionEvents.registerTaskPage({owner,contents:tab.view.webContents,
+      validate:()=>tab.taskOwner===owner && this.tabs.get(tab.id)===tab});
   }
   associatePage(tab,{role,source=null,service=true,doi=null}={}) {
     if(this.tabs.get(tab?.id)!==tab || tab.view.webContents.isDestroyed())
@@ -524,7 +527,7 @@ class BrowserRuntime {
     const owner=this.operation;
     if(!this.operations.has(owner))throw new BrowserFailure('navigation','canceled');
     const controller=new AbortController();
-    return {owner,controller,signal:AbortSignal.any([controller.signal,...(signal?[signal]:[])])};
+    return {id:randomBytes(16).toString('hex'),owner,controller,signal:AbortSignal.any([controller.signal,...(signal?[signal]:[])])};
   }
   retirePageAttempt(attempt) {
     const owner=this.operation;
@@ -794,7 +797,7 @@ class BrowserRuntime {
         this.reportPage('info','page_association_released',tab);
         tab.associationOwner=null;
       }
-      if(tab.taskOwner===owner){tab.taskOwner=null;tab.taskSignal=null;}
+      if(tab.taskOwner===owner){tab.downloadScope?.dispose();tab.downloadScope=null;tab.downloadScopeOwner=null;tab.taskOwner=null;tab.taskSignal=null;}
       if(tab.loadOwner===owner){tab.loadOwner=null;tab.loadAllowed=false;}
     }
     this.publish();
@@ -807,13 +810,10 @@ class BrowserRuntime {
     }
     this.presentation.dispose();
     this.selected=null;
-    this.partition.webRequest.onBeforeRequest(null);
-    this.partition.webRequest.onErrorOccurred(null);
-    this.partition.webRequest.onHeadersReceived(null);
     this.documents.dispose();
-    this.cookieAdapter.dispose();
     this.identity?.dispose();
     this.identity = null;
+    this.sessionEvents.dispose();
   }
 }
 module.exports={BrowserRuntime,chromiumUserAgent,configureBrowserSession};

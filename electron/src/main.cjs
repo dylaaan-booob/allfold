@@ -301,7 +301,7 @@ async function main() {
   window.webContents.on('will-prevent-unload',event=>{
     if(exitApproved || confirmBlockedUnload(window,dialog))event.preventDefault();
   });
-  browser=new BrowserRuntime({hostWindow:window,cdpURL,solveCloudflare,isTaskRunning:()=>operations.size>0,readCASCredentials:async()=>{
+  browser=new BrowserRuntime({hostWindow:window,solveCloudflare,isTaskRunning:()=>operations.size>0,readCASCredentials:async()=>{
     if(exiting)return null;
     const credentials=await readCASCredentials();
     return exiting?null:credentials;

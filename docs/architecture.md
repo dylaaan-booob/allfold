@@ -83,12 +83,20 @@ window within the original 10-minute native loading or Prepare deadline and a
 three-minute cap from the start of business recovery.
 
 The Browser Session shares active cooldowns by HTTP origin. The existing
-WebRequest listeners observe main-frame 429 responses and 503 responses with a
+WebRequest listeners observe main-frame and explicitly associated request 429 responses and 503 responses with a
 valid Retry-After. The default for a 429 without usable Retry-After is one second.
 An active cooldown can only extend. Allfold-initiated navigations and refreshes
 wait up to 30 seconds within their operation budget. Visit also checks the
 publisher origin when it is known from the saved entry or a prior attributable
 Visit. Chromium continues its redirects, authentication chain and page requests.
+
+[One Session event owner](browser-session.md) now installs the native hooks for
+BrowserRuntime, identity and WoS. Scoped handlers compose synchronously; task
+cleanup leaves the common entry and cooldown live. Controlled cover fetches use
+request-ID association, stripped private markers and the same origin gate.
+Downloads retain native source/frame/Document ownership and actual terminal
+promises rather than replaying captured URLs. Fixed Electron 45 fixtures record
+the supported original-response entries and source-lifetime limits there.
 
 ## History and diagnostics
 
