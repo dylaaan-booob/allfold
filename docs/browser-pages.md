@@ -78,6 +78,9 @@ WoS `finally` waits for native results/items to settle, then sends
 `release_workflow_pages` with that same identity. Release is idempotent and does
 not affect a newer workflow. It removes the workflow loan while leaving a valid
 prepared access context available for ordinary reuse or bounded eviction.
+An export action that ends without receiving an item instead invalidates and
+closes its retained source at operation cleanup. No timer can make that ambiguous
+source reusable; its owner-free late-item guard leaves only on actual destruction.
 
 Retained access validity uses scope and captured authentication/preparation keys.
 Unrelated configuration/UserState revision changes do not invalidate it. Native

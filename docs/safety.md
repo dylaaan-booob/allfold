@@ -89,6 +89,9 @@ retained-Page destruction revokes matching prepared authority; an in-flight Logi
 result cannot restore an already closed Page. Covers final saves verify the target
 Journal and captured managed asset identity/record under the final write guards,
 allowing unrelated User State edits and refusing deleted/replaced targets.
+A saved cover whose image was already missing may be repaired by Search only if
+the captured manifest record and missing-file state still match at final save;
+a newly appeared file, replacement, unsafe path or changed target is refused.
 
 Ordinary Login, Covers and WoS cancellation uses the workflow/task ID captured at
 start. Public Run cancellation carries the UI-captured task ID through HTTP; the

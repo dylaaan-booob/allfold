@@ -73,15 +73,20 @@ app.whenReady().then(async()=>{
     assert.deepEqual(fs.readFileSync(left.filename),payload);assert.deepEqual(fs.readFileSync(right.filename),payload);
     left.registration.dispose({dispatched:true});right.registration.dispose({dispatched:true});
     assert.equal(requests.filter(entry=>entry.path==='/same').length,2);
-    // A missing item expires. Its bounded source guard cancels a native late item
-    // instead of handing it to another attempt on that indistinguishable source.
+    // A missing item expires. The source stays unsafe until actual destruction,
+    // and refuses another attempt before that attempt can dispatch an action.
     const missingWindow=await open(),missing=register(missingWindow,{deadline:Date.now()+30});
     await delay(50);missing.registration.dispose({dispatched:true});
-    let stolen=false;const newer=register(missingWindow,{onItem:()=>{stolen=true;}});
+    assert.throws(()=>register(missingWindow),/download_not_attributable/);
     const lateDone=new Promise(resolve=>partition.prependOnceListener('will-download',(_event,item)=>item.once('done',(_event,state)=>resolve(state))));
     await post(missingWindow.webContents.mainFrame,origin+'/late');assert.equal(await limited(lateDone),'cancelled');
-    assert.equal(stolen,false);assert.equal(fs.existsSync(missing.filename),false);assert.equal(fs.existsSync(newer.filename),false);
-    newer.registration.dispose();
+    assert.equal(fs.existsSync(missing.filename),false);
+    const oldContents=missingWindow.webContents,destroyed=new Promise(resolve=>oldContents.once('destroyed',resolve));
+    missingWindow.destroy();await limited(destroyed);assert.equal(events.downloadSourceUnsafe(oldContents),false);
+    const freshWindow=await open(),fresh=register(freshWindow);
+    await post(freshWindow.webContents.mainFrame,origin+'/fresh-after-late');
+    const freshItem=await limited(fresh.ready);assert.equal(await limited(freshItem.terminal),'completed');
+    assert.deepEqual(fs.readFileSync(fresh.filename),payload);fresh.registration.dispose({dispatched:true});
     // A source-less host download is deliberately outside managed task ownership.
     // The fixture supplies its own path only to avoid native save UI.
     const unownedDone=new Promise(resolve=>partition.prependOnceListener('will-download',(_event,item,contents,frame)=>{
@@ -117,7 +122,7 @@ app.whenReady().then(async()=>{
     await post(interruptedWindow.webContents.mainFrame,origin+'/interrupted');const interruptedItem=await limited(interrupted.ready);
     assert.equal(await limited(interruptedItem.terminal),'cancelled');assert.equal(interruptedItem.observation.interrupted,true);
     interrupted.registration.dispose({dispatched:true});
-    for(const target of ['/late','/ambiguous','/close-before','/slow-close','/slow-cancel','/interrupted'])
+    for(const target of ['/late','/fresh-after-late','/ambiguous','/close-before','/slow-close','/slow-cancel','/interrupted'])
       assert.deepEqual(requests.filter(entry=>entry.path===target).map(entry=>entry.method),['POST']);
     // Real host requests have no WebContents; association follows the stripped
     // private token and Chromium's request ID across the actual 307 redirect.
