@@ -10,7 +10,7 @@ it does not authorize later tasks.
 | WF02 | Switch all production Paper readers/writers to SQLite; local recycle bin; retire Keep/Import and active Enrich | Paper MD/Inbox.base, Keep/Import and active Enrich interfaces, tests/docs | Merged in PR #83 at `90cf98e50aba0b8fc333fd84f8409cb5d8a8e47c` |
 | WF03 | Independent Document identity, lightweight page checks, Cloudflare main path | Translator identity coupling, full-snapshot assumptions, page-access docs | Merged in PR #85 at `541b3de7d6d3c08c8bf1441cc8fa9f6c2b37f109`; scoped live acceptance and fixture evidence below |
 | WF04 | Shared Session, page limits, precise cancellation, authorization generations | Global owner, indiscriminate cancellation, duplicate listeners, broad invalidation assertions | Merged in PR #90 at `b8669e9de0758013abd8b240b83e6d86c087d190`; scoped live/fixture evidence below |
-| WF05 | Workspace background registry, dynamic scheduling, branch state, independent resource ownership | One-shot queues, early release, collection terminal states/retries | Proposed in PR #96 (unmerged); spec #91 / tickets #92–95; production Run registration remains deferred to WF08 |
+| WF05 | Workspace background registry, dynamic scheduling, branch state, independent resource ownership | One-shot queues, early release, collection terminal states/retries | Merged in PR #96 at `f467ea49e04b9bedd8c674a016b049d88960c355`; spec #91 / tickets #92–95; production Run registration remains deferred to WF08 |
 | WF06 | Date/Abstract extraction and retained API/Preprint capabilities | Old date columns, abstract overwrite, author/ordinary-completion assertions/docs | Not started |
 | WF07 | PDF source rules, candidates, same-page Meta/DOM hints | Source order, candidate success, URLs and request context contracts | Not started |
 | WF08 | Connect new Run and Workspace background collection | Whole-batch Run gates, Completion, Preprint double locking, busy/exit contracts | Not started |
@@ -158,7 +158,7 @@ This is scoped compatibility evidence, not a claim about every Service or entry.
 
 ## WF05 implementation boundary
 
-PR #96 proposes schema v3 current collection/branch facts, atomic reliable-identity
+PR #96 merged schema v3 current collection/branch facts, atomic reliable-identity
 admission, a dynamic Service-fair scheduler and Workspace registry, independently
 owned clients with common pacing, explicit single-Paper retry and controlled
 Download occupancy. Application composition, legacy Preprint reservation/reaper,
@@ -170,7 +170,8 @@ HTTP, diagnostic writer barriers and the existing native page fixture. They cove
 preserving upgrades and rollback, the admit/register window, incremental and
 idempotent writes, terminal/cleanup faults, interruption without replay, actual
 thread exit, selective revocation and partial-save/rebind. Full check, review and
-latest PR CI evidence is reported on the PR; this record does not assert merge.
+latest PR CI evidence is reported on the PR. The merge commit is
+`f467ea49e04b9bedd8c674a016b049d88960c355`.
 
 Production Run still uses creation-time Completion and its existing single slot;
 it does not register these background tasks, finish early or enable cross-Run
