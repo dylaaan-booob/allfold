@@ -1,12 +1,10 @@
 """Save only native preprint evidence on the selected formal Paper."""
-from allfold.application.paper_enrichment import _commit_fields, set_managed_value
 from allfold.identifiers import normalize_external_id, valid_doi
-from allfold.models import EvidenceDateKind, MetadataSource, ProviderRecordRef, ProviderWorkEvidence, WorkflowStatus
+from allfold.models import EvidenceDateKind, MetadataSource, ProviderRecordRef, ProviderWorkEvidence
 from allfold.paper_dates import (
     collect_dates, first_public_date, known_preprint_families, merge_dates, preprint_identity, preprint_query_refs,
 )
-from allfold.persistence.markdown_state import parse_paper_state
-from allfold.persistence.safe_write import TextWriteCommittedError
+from allfold.persistence.library_models import MetadataDelta
 
 
 PREPRINT_SERVERS = ('biorxiv', 'medrxiv')
@@ -18,11 +16,13 @@ def formal_lookup_doi(doi, publication_type, journal, conference):
     return None
 
 
-def require_lookup_doi(target):
-    state = parse_paper_state(target.path, target.original)
-    if state.status is WorkflowStatus.REJECTED:
-        raise ValueError('Rejected Paper is excluded from preprint lookup')
-    doi = formal_lookup_doi(target.doi, state.publication_type, state.journal, state.conference)
+def require_lookup_doi(paper):
+    if paper.excluded or paper.metadata is None:
+        raise ValueError('Preprint lookup requires active, complete Paper metadata')
+    identity = paper.primary_identity
+    doi = identity.value if identity and identity.namespace == 'doi' else None
+    metadata = paper.metadata
+    doi = formal_lookup_doi(doi, metadata.publication_type, metadata.journal, metadata.conference)
     if not doi:
         raise ValueError('A valid formal publication DOI is required for preprint lookup')
     return doi
@@ -35,18 +35,18 @@ def _first_public(state, records, native_dates):
     if state.first_public_at or not first_public_date(proof, records=records):
         return None
 
-    refs = list(preprint_query_refs(state.date_evidence))
+    refs = [*state.preprint_relations, *preprint_query_refs(state.preprint_evidence)]
     for source in state.sources:
         if source.provider in PREPRINT_SERVERS and source.record_id.endswith(':publication'):
             if doi := normalize_external_id('doi', source.record_id.removesuffix(':publication')):
                 refs.append(ProviderRecordRef(provider=source.provider, record_id=doi, relation='preprint'))
     existing = ProviderWorkEvidence(provenance=MetadataSource(
-        provider='workspace', record_id=str(state.paper_id), retrieved_at=state.discovered_at),
-        related_ids=tuple(refs), dates=state.date_evidence)
+        provider='workspace', record_id='saved-preprint-proof', retrieved_at=state.discovered_at),
+        related_ids=tuple(refs), dates=state.preprint_evidence)
     all_records = (existing, *records)
     families = known_preprint_families(all_records)
     all_dates = list(native_dates)
-    for item in state.date_evidence:
+    for item in state.preprint_evidence:
         if item.kind != EvidenceDateKind.PREPRINT:
             continue
         family = families.get(item.version_family)
@@ -58,36 +58,19 @@ def _first_public(state, records, native_dates):
     return first_public_date(all_dates, records=all_records)
 
 
-def save_preprint_evidence(target, records, *, operation_lock):
-    state = parse_paper_state(target.path, target.original)
+def save_preprint_evidence(repository, paper, records):
+    """Merge proof incrementally using the token captured before any request."""
+    state = paper.metadata
     native_dates = tuple(item for item in collect_dates(records) if item.kind is EvidenceDateKind.PREPRINT)
-    dates = merge_dates(state.date_evidence, native_dates)
     first_public = _first_public(state, records, native_dates)
-
-    contents, fields = target.original, []
-    if first_public:
-        contents = set_managed_value(contents, 'first_public_at', first_public)
-        fields.append('first_public_at')
-    if native_dates and dates != state.date_evidence:
-        contents = set_managed_value(contents, 'date_evidence', [item.model_dump(mode='json', exclude_none=True) for item in dates])
-        fields.append('date_evidence')
-
-    sources = list(state.sources)
-    keys = {(s.provider, s.record_id, s.version, s.url, s.note) for s in sources}
-    for record in records:
-        source = record.provenance
-        key = source.provider, source.record_id, source.version, source.url, source.note
-        if key not in keys:
-            sources.append(source)
-            keys.add(key)
-    if tuple(sources) != state.sources:
-        contents = set_managed_value(contents, 'sources', [source.model_dump(mode='json', exclude_none=True) for source in sources])
-        fields.append('sources')
-
-    if fields:
-        try:
-            _commit_fields(target, contents, operation_lock=operation_lock)
-        except TextWriteCommittedError as error:
-            error.saved_fields = fields
-            raise
-    return fields
+    relations = tuple(ref for record in records for ref in record.related_ids if ref.relation == 'preprint')
+    def source_key(source):
+        return source.provider, source.record_id, source.version, source.url, source.note
+    known_sources = {source_key(source) for source in state.sources}
+    sources = tuple(record.provenance for record in records if source_key(record.provenance) not in known_sources)
+    delta = MetadataDelta(preprint_evidence=native_dates, preprint_relations=relations,
+                          first_public_at=first_public, sources=sources)
+    result = repository.merge_metadata(paper.token, delta)
+    fields = [name for name in ('preprint_evidence', 'preprint_relations', 'first_public_at', 'sources')
+              if getattr(result.metadata, name) != getattr(state, name)]
+    return result, fields

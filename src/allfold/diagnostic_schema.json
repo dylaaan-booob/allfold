@@ -138,8 +138,6 @@
       "type": "string",
       "enum": [
         "diagnostics_reset",
-        "enrich_paper",
-        "import_paper",
         "login_carsi",
         "prepare_service",
         "visit_manual_service",
@@ -152,9 +150,6 @@
       "type": "string",
       "enum": [
         "covers",
-        "enrich",
-        "import",
-        "kept",
         "prepare",
         "login",
         "run"
@@ -180,14 +175,12 @@
         "attachment",
         "auxiliary",
         "carsi-portal",
-        "import",
         "manual-service",
         "popup",
         "service-resource",
         "service-target",
         "wos-export",
-        "wos-query",
-        "enrich"
+        "wos-query"
       ]
     },
     "stage": {

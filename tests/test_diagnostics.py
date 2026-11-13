@@ -40,29 +40,29 @@ def test_history_survives_restart_and_never_promotes_an_unknown_import(tmp_path)
     store.begin('run', 'run_1', provider='crossref')
     store.finish('run_1', 'partial', statistics={'retrieved': 12, 'created': 3})
     store.finish('run_1', 'completed')  # A terminal result is immutable.
-    store.begin('import', 'save_1', workflow_id='kept_1')
+    store.begin('prepare', 'save_1', workflow_id='kept_1')
     restarted = DiagnosticStore(config, root=root, runtime_id='runtime_second')
     records = {record['task_id']: record for record in restarted.history()['records']}
     assert records['run_1']['outcome'] == 'partial'
     assert records['run_1']['statistics'] == {'retrieved': 12, 'created': 3}
-    assert records['save_1']['outcome'] == 'uncertain'
+    assert records['save_1']['outcome'] == 'interrupted'
     assert records['save_1']['details']['reason'] == 'runtime_interrupted'
     restarted.workspace_reset()
     assert all(record['before_workspace_reset'] for record in restarted.history()['records'])
     exported = bundle(restarted, 'save_1')
     assert set(exported) == {'manifest.json', 'summary.json', 'events.jsonl', 'README.md'}
-    assert json.loads(exported['summary.json'])['records'][0]['outcome'] == 'uncertain'
+    assert json.loads(exported['summary.json'])['records'][0]['outcome'] == 'interrupted'
 
 
 def test_export_revalidates_native_records_and_preserves_exact_associations(tmp_path):
     store = DiagnosticStore(tmp_path / 'config.yaml', root=tmp_path / 'logs', runtime_id='python_1')
-    store.begin('import', 'paper_task', workflow_id='workflow_one')
+    store.begin('prepare', 'paper_task', workflow_id='workflow_one')
     native = store.root / 'scopes' / store.scope_id / 'electron'
     native.mkdir(mode=0o700)
     shared = dict(schema_version=1, time='2026-11-03T01:00:00Z', source='electron',
         runtime_id='native_1', scope_id=store.scope_id, level='error', event='attachment_failed',
         workflow_id='workflow_one', task_id='paper_task', page_id=17, source_page_id=9,
-        action='import_paper', stage='attachment', code='timeout', status=504,
+        action='prepare_service', stage='attachment', code='timeout', status=504,
         attachment_phase='desktop_attachment', parent='confirmed', pdf='unverified')
     records = [dict(shared, cookie='SESSION=secret', authorization='Bearer private',
                     url='https://private.invalid/?token=secret', body='private document',
@@ -189,7 +189,7 @@ def test_symlinks_and_replaced_roots_never_redirect_writes_or_deletion(tmp_path)
 def test_disk_write_failure_keeps_business_outcome_and_safe_memory_warning(tmp_path, monkeypatch, capsys):
     import allfold.diagnostics as diagnostics
     store = DiagnosticStore(tmp_path / 'config.yaml', root=tmp_path / 'logs', runtime_id='runtime')
-    store.begin('import', 'save')
+    store.begin('prepare', 'save')
     def full(*args, **kwargs):
         raise OSError('disk full with PRIVATE_TOKEN')
     monkeypatch.setattr(diagnostics.os, 'replace', full)
@@ -215,7 +215,7 @@ def test_concurrent_recording_and_reset_keep_other_configuration_and_exported_fi
     root = tmp_path / 'logs'
     first = DiagnosticStore(tmp_path / 'one.yaml', root=root, runtime_id='one')
     second = DiagnosticStore(tmp_path / 'two.yaml', root=root, runtime_id='two')
-    second.begin('import', 'other_save')
+    second.begin('prepare', 'other_save')
     second.finish('other_save', 'uncertain')
     def work(index):
         first.begin('run', f'run_{index}')
