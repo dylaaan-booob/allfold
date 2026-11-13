@@ -8,6 +8,7 @@ from allfold.models import (Author, EvidenceDate, EvidenceDateKind, ExternalIds,
     MetadataSource, ProviderRecordRef, ProviderTopic, ProviderWorkEvidence)
 from allfold.providers.integrated import DiscoveryError
 from allfold.paper_dates import source_date
+from allfold.pdf_facts import openalex_discovery_facts, stable_discovery_url
 
 
 
@@ -21,7 +22,7 @@ def _openalex_associations(raw, now):
             related.add(doi)
         for field in ('landing_page_url', 'pdf_url'):
             url = location.get(field)
-            if not isinstance(url, str) or not url.startswith(('https://', 'http://')):
+            if stable_discovery_url(url) is None:
                 continue
             venue = location.get('source') or {}
             locations.append(MetadataSource(provider='openalex', record_id=venue.get('id') or venue.get('display_name') or url,
@@ -72,6 +73,7 @@ def normalize_openalex(raw, source):
         publication_date=raw.get('publication_date'),
         related_dois=tuple(sorted(related - {identifiers['doi']})), related_ids=tuple(sorted(refs, key=lambda x: (x.provider, x.record_id))),
         locations=tuple(locations), abstract=' '.join(tokens[i] for i in sorted(tokens)) or None,
+        discovery_facts=(openalex_discovery_facts(raw, now),),
         external_ids=ExternalIds(**identifiers), monitor_journal_issns=source.issns,
         authors=tuple(Author(name=x['author']['display_name']) for x in raw.get('authorships', []) if x.get('author', {}).get('display_name')))
 

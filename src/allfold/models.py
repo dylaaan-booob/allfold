@@ -18,6 +18,8 @@ from pydantic import (
     model_validator,
 )
 
+from allfold.pdf_facts import PdfDiscoveryFacts
+
 NonEmptyStr = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1)]
 
 
@@ -208,6 +210,7 @@ class ProviderWorkEvidence(DomainModel):
     dates: tuple[EvidenceDate, ...] = ()
     supplements: tuple[ProviderRecordRef, ...] = ()
     monitor_journal_issns: tuple[str, ...] = ()
+    discovery_facts: tuple[PdfDiscoveryFacts, ...] = Field(default=(), max_length=3)
 
     @field_validator("publication_date", "first_public_at", mode="before")
     @classmethod

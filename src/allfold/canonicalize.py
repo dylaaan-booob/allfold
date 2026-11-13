@@ -212,7 +212,7 @@ def evidence_key(record: ProviderWorkEvidence) -> str:
     """Deduplicate operation-local facts independently of retrieval timestamps."""
     def facts(value):
         if isinstance(value, dict):
-            return {key: facts(item) for key, item in value.items() if key != 'retrieved_at'}
+            return {key: facts(item) for key, item in value.items() if key not in {'retrieved_at', 'observed_at'}}
         if isinstance(value, list):
             return [facts(item) for item in value]
         return value
