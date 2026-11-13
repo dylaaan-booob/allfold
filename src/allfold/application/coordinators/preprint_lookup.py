@@ -4,7 +4,8 @@ import threading
 
 from allfold.application.preprint_lookup import PREPRINT_SERVERS, require_lookup_doi, save_preprint_evidence
 from allfold.application.run_commit import capture_run_workspace, commit_run_workspace
-from allfold.persistence.paper_repository import PaperRepository, StaleWriteError
+from allfold.config import ConfigurationError, load_config
+from allfold.persistence.paper_repository import LibraryError, PaperRepository, StaleWriteError
 from allfold.providers.supplemental import SupplementalClient
 
 
@@ -33,7 +34,19 @@ class PreprintLookup:
         with self._lock:
             if paper_id != self._paper_id or request_id is not None and request_id != self._state.get('request_id'):
                 return {'phase': 'Idle', 'request_id': None, 'message': '', 'saved_fields': []}
-            return {**self._state, 'saved_fields': list(self._state['saved_fields']), 'cleaning_up': self.running}
+            state = {**self._state, 'saved_fields': list(self._state['saved_fields']), 'cleaning_up': self.running}
+            workspace_id = self._workspace_id
+        # Status carries no Paper payload and grants no write authority. Attach
+        # the latest revision only after checking the currently bound library so
+        # Reject/local edits cannot hide subsequent cancellation or cleanup.
+        try:
+            workspace = load_config(self.config_path).output_dir
+            with PaperRepository.open(workspace, expected_workspace_id=workspace_id) as repository:
+                state['revision'] = repository.revision
+        except (ConfigurationError, LibraryError, OSError):
+            # A switched/reset/invalid library never adopts this old task.
+            pass
+        return state
 
     def start(self, paper_id, workspace_id=None):
         with self._lock:
