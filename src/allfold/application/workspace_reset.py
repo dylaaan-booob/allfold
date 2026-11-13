@@ -11,7 +11,7 @@ from uuid import uuid4
 
 import yaml
 
-from allfold.config import parse_monitor_definition
+from allfold.config import parse_monitor_definition, resolve_config_path
 from allfold.persistence.user_state import application_data_dir
 from allfold.persistence.safe_write import (
     CompareReadError, ContentChangedError,
@@ -37,19 +37,30 @@ class ResetResult:
     workspace_invalidated: bool = False
 
 
-def _safe_location(config_path: Path, workspace: Path) -> None:
+_PROTECTED_PROJECT_DIRECTORIES = (
+    'src', 'tests', 'electron', 'frontend', 'docs', 'tools', '.github', '.git',
+    '.allfold', 'journal-lists', 'journal-assets', '.work', '.venv', 'node_modules',
+)
+
+
+def _safe_location(config_path: Path, workspace: Path, *, journal_path: Path | None = None) -> None:
     repository = Path(__file__).resolve().parents[3]
     # macOS commonly treats case variants as the same directory.
     folded_workspace = Path(str(workspace).casefold())
-    folded_repository = Path(str(repository).casefold())
-    forbidden = (application_data_dir(config_path), Path('/'), Path.home().resolve(), repository, config_path.parent,
+    protected_directories = (application_data_dir(config_path),
+                             *(repository / name for name in _PROTECTED_PROJECT_DIRECTORIES))
+    if journal_path is not None:
+        protected_directories += (journal_path.parent / 'journal-lists', journal_path.parent / 'journal-assets')
+    forbidden = (Path('/'), Path.home().resolve(), repository, config_path.parent,
                  Path('/tmp').resolve(), Path('/var'), Path('/usr'), Path('/etc'),
-                 Path('/Users'), Path('/Library'), Path('/System'), Path('/Applications'), Path('/Volumes'))
+                 Path('/Users'), Path('/Library'), Path('/System'), Path('/Applications'), Path('/Volumes'),
+                 *protected_directories, *((journal_path,) if journal_path is not None else ()))
+    folded_forbidden = tuple(Path(str(root).casefold()) for root in forbidden)
+    folded_protected = tuple(Path(str(root).casefold()) for root in protected_directories)
     if (not workspace.is_absolute() or '..' in workspace.parts or os.path.ismount(workspace)
-            or (folded_workspace.is_relative_to(folded_repository)
-                and not folded_workspace.is_relative_to(folded_repository / 'workspace'))
+            or any(folded_workspace.is_relative_to(root) for root in folded_protected)
             or (workspace / '.git').exists()
-            or any(workspace == root or workspace in root.parents for root in forbidden)
+            or any(folded_workspace == root or folded_workspace in root.parents for root in folded_forbidden)
             or any(part.casefold() in {'.git', 'zotero', '.zotero', 'chrome', 'chromium',
                                       'profiles', 'application support', 'user data'}
                    for part in workspace.parts)):
@@ -77,7 +88,8 @@ def preview_reset(config_path: Path) -> ResetPlan:
         workspace = definition.output_dir
         if not workspace.is_absolute():
             workspace = config_path.parent / workspace
-        _safe_location(config_path, workspace)
+        journal_path = resolve_config_path(config_path, definition.venue_whitelist, 'list.md')
+        _safe_location(config_path, workspace, journal_path=journal_path)
         identity = _identity(workspace)  # Reject ancestor/target symlinks before normalization.
         if config_path.read_bytes() != raw:
             raise ContentChangedError('Configuration changed during Reset preview')
@@ -146,5 +158,5 @@ def execute_reset(config_path: Path, expected: ResetPlan) -> ResetResult:
     except (ResetRefused, CompareReadError, ContentChangedError, OSError, ValueError) as error:
         remaining = f' Any remaining or unconfirmed contents may be at {custody}.' if custody is not None else ''
         return ResetResult(False, f'Reset failed: {error}.{remaining} Some contents may already be permanently deleted. '
-                           'There is no recovery or automatic retry; Reset does not undo Zotero saves or authorize import retry.',
+                           'There is no recovery or automatic retry.',
                            workspace_invalidated=workspace_invalidated)

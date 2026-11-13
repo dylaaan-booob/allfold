@@ -44,6 +44,12 @@ library, exclusions, Documents and snapshots. Its path/replacement/concurrency
 protections remain. Logs Reset removes only owned history/diagnostics and keeps
 library, configuration, Session and credentials.
 
+Reset accepts configured custom Workspace directories within the project; it does
+not require the directory to be named `workspace`. Project source/runtime trees,
+shared UserState, Registry/covers and active configuration/Journal inputs remain
+protected, including their ancestors and case variants. Directory identity,
+symlink refusal and preview/confirmation checks still apply before deletion.
+
 Journals/Groups/Labels/Services live in canonical-configuration-scoped UserState.
 Compare-and-write revisions preserve newer edits; corrupt state is not replaced
 by defaults. Research Scope Markdown exchange and its first-migration seed remain

@@ -51,6 +51,63 @@ def test_dangerous_target_refuses_before_delete(tmp_path, name):
     with pytest.raises(ResetRefused): preview_reset(config)
 
 
+def _configured_project_workspace(dedicated, monkeypatch, relative):
+    config, original = dedicated
+    project = config.parent
+    monkeypatch.setattr(reset, '__file__', str(project / 'src/allfold/application/workspace_reset.py'))
+    workspace = project / relative
+    if workspace != original:
+        held = project / 'fixture-workspace'
+        original.rename(held)
+        workspace.parent.mkdir(parents=True, exist_ok=True)
+        held.rename(workspace)
+        config.write_text(config.read_text().replace('output_dir: workspace', f'output_dir: {relative}'))
+    return config, workspace
+
+
+@pytest.mark.parametrize('relative', ['workspace', 'workspace/biology', 'Workspace-A', 'tmp/acceptance/Workspace-A', 'libraries/biology'])
+def test_custom_configured_workspace_inside_project_can_reset(dedicated, monkeypatch, relative):
+    config, workspace = _configured_project_workspace(dedicated, monkeypatch, relative)
+    original_config = config.read_bytes()
+    original_seed = (config.parent / 'list.md').read_bytes()
+    neighbor = config.parent / 'other-library'
+    neighbor.mkdir()
+    (neighbor / 'keep.txt').write_text('unrelated data')
+
+    plan = preview_reset(config)
+    assert plan.workspace == workspace
+    assert execute_reset(config, plan).success
+    assert not workspace.exists()
+    assert config.read_bytes() == original_config
+    assert (config.parent / 'list.md').read_bytes() == original_seed
+    assert (neighbor / 'keep.txt').read_text() == 'unrelated data'
+
+
+@pytest.mark.parametrize('relative', [
+    'src', 'src/nested', 'tests', 'electron', 'frontend', 'docs', 'tools',
+    '.allfold', 'journal-lists', 'journal-assets', '.github', '.work', '.venv',
+    'node_modules', 'SRC/nested', 'JOURNAL-ASSETS/nested', '.ALLFOLD/nested',
+])
+def test_project_source_and_shared_data_are_not_reset_targets(dedicated, monkeypatch, relative):
+    config, workspace = _configured_project_workspace(dedicated, monkeypatch, relative)
+    with pytest.raises(ResetRefused):
+        preview_reset(config)
+    assert (workspace / 'papers.sqlite').is_file()
+
+
+@pytest.mark.parametrize('relative', ['custom', 'custom/journal-assets', 'custom/journal-lists'])
+def test_active_journal_inputs_and_assets_are_not_reset_targets(dedicated, monkeypatch, relative):
+    config, workspace = _configured_project_workspace(dedicated, monkeypatch, relative)
+    journal = config.parent / 'custom/list.md'
+    journal.parent.mkdir(exist_ok=True)
+    journal.write_bytes((config.parent / 'list.md').read_bytes())
+    config.write_text(config.read_text().replace('venue_whitelist: list.md', 'venue_whitelist: custom/list.md'))
+    with pytest.raises(ResetRefused):
+        preview_reset(config)
+    assert (workspace / 'papers.sqlite').is_file()
+    assert journal.is_file()
+
+
 def test_public_root_replaced_immediately_before_rmtree_is_preserved(dedicated, monkeypatch):
     config, workspace = dedicated
     plan = preview_reset(config)
