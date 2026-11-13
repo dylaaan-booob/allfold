@@ -53,12 +53,18 @@ app.whenReady().then(async()=>{
     await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));origin=`http://127.0.0.1:${server.address().port}`;
     win=new BrowserWindow({width:1200,height:800,show:false,webPreferences:{sandbox:true,contextIsolation:true,backgroundThrottling:false,partition:'browser-presentation-host',preload:path.join(__dirname,'../src/preload/preload.cjs')}});
     browser=new BrowserRuntime({hostWindow:win});await browser.ready;
-    for(const partition of [win.webContents.session,browser.partition])partition.webRequest.onBeforeRequest({urls:['http://*/*','https://*/*']},(details,callback)=>callback({cancel:new URL(details.url).origin!==origin}));
+    win.webContents.session.webRequest.onBeforeRequest({urls:['http://*/*','https://*/*']},(details,callback)=>callback({cancel:new URL(details.url).origin!==origin}));
+    browser.sessionEvents.subscribe('beforeRequest',details=>{const url=new URL(details.url);return {cancel:['http:','https:'].includes(url.protocol)&&url.origin!==origin};});
     disposeIPC=installBrowserIPC({ipcMain,hostWindow:win,origin,browser});await win.loadURL(origin+'/');
     // Native child Views need a compositor surface for real input and capture on macOS.
     win.show();app.focus({steal:true});win.focus();await ready(()=>Promise.resolve(win.isFocused()),'fixture Window focus');
     await ready(()=>host('!!window.allfoldWorkbench'),'shell');
-    const tab=browser.createTab({present:false});await tab.view.webContents.loadURL(origin+'/challenge');
+    const tab=browser.createTab({present:false});let requestObserved=false;
+    const observeRequestStart=tab.navigation.observeRequestStart.bind(tab.navigation);
+    tab.navigation.observeRequestStart=details=>{if(details.webContentsId===tab.id&&details.url===origin+'/challenge'&&details.method==='GET')requestObserved=true;return observeRequestStart(details);};
+    await tab.view.webContents.loadURL(origin+'/challenge');
+    tab.navigation.observeRequestStart=observeRequestStart;
+    assert(requestObserved,'Runtime missed the native main-frame request');
     const id=tab.id,session=tab.view.webContents.session,load=await page(tab,'fixtureLoad');
     const idle=await browser.runTask(new AbortController().signal,{workflow_id:'run-a',task_id:'prepare-a',request_id:'request-a'},async()=>{
       browser.associatePage(tab,{role:'wos-query'});browser.bindTaskPage(tab);
