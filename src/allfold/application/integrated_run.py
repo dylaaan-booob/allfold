@@ -12,7 +12,7 @@ from allfold.integrations.openalex_credentials import read_credential
 from allfold.progress import ProgressEvent, ProgressStage, ActivityUpdate, ActivityKind
 from allfold.application.metadata_completion import formal_records
 from allfold.identifiers import evidence_identifiers, strong_identifiers
-from allfold.models import ExternalIds, MetadataSource, ProviderWorkEvidence
+from allfold.models import ExternalIds
 from allfold.providers.integrated import (
     Cancelled, DISCOVERY_PROVIDERS, RUN_PROVIDERS, DiscoveryClient, DiscoveryError, DiscoveryResult,
     IdentityMismatch, SourceScope,
@@ -103,9 +103,9 @@ RUN_COMPLETION_PROVIDERS = ('pubmed', 'openalex', 'europe_pmc', 'crossref', 'arx
 
 class _WorkQueue:
     """Operation-local bounded batches; the producer callback never performs I/O."""
-    def __init__(self, client, cancel, guard, progress_callback, eligible_records=lambda rows: rows):
+    def __init__(self, client, cancel, guard, progress_callback, eligible_records=lambda rows: rows, eligible_dois=lambda values: values):
         self.client, self.cancel, self.guard, self.progress = client, cancel, guard, progress_callback
-        self.eligible_records = eligible_records
+        self.eligible_records, self.eligible_dois = eligible_records, eligible_dois
         self.condition = Condition()
         self.pending, self.seen, self.finished = [], set(), False
         self.responses, self.problems = {}, []
@@ -147,9 +147,7 @@ class _WorkQueue:
                     current=len(self.responses), unit='work')))
             # lookup_many reuses the adapter's full/in-flight cache and returns
             # explicit requested-DOI bindings for different top-level identities.
-            batch = [doi for doi in batch if self.eligible_records((ProviderWorkEvidence(
-                provenance=MetadataSource(provider='workspace', record_id=doi, retrieved_at=datetime.now(timezone.utc)),
-                external_ids=ExternalIds(doi=doi)),))]
+            batch = self.eligible_dois(batch)
             if not batch:
                 continue
             cached = _batch_lookup(self.client,'openalex','doi',batch,None,self.cancel)
@@ -216,8 +214,8 @@ def run_integrated(config_path, *, loaded_config=None, workspace_snapshot=None, 
         CompletionSettlement, bind_records, complete_metadata_many, completion_client, prime_record_cache,
     )
     from allfold.canonicalize import canonicalize_records, consolidate_evidence, completion_metadata
-    from allfold.persistence.paper_repository import PaperRepository, IdentityConflict, LibraryError, StaleWriteError
-    from allfold.persistence.run_library import RunIdentityIndex, metadata_from_run, direct_ids_from_keys
+    from allfold.persistence.paper_repository import PaperRepository, DirectIdentity, IdentityConflict, LibraryError, StaleWriteError
+    from allfold.persistence.run_library import RunIdentityIndex, metadata_from_run
     from allfold.persistence.safe_write import ContentChangedError
     cancel = cancel_event or Event()
     completion_factory = completion_factory or completion_client
@@ -270,13 +268,28 @@ def run_integrated(config_path, *, loaded_config=None, workspace_snapshot=None, 
         if progress_callback:
             progress_callback(ProgressEvent(stage=ProgressStage.DISCOVERING_PAPERS))
         def eligible_records(records):
-            # Called in the producer's execution context; never share connections.
+            # Keep the verified producer handoff even when authority is revoked;
+            # the parent waits for all producers and reports its latched outcome.
+            try:
+                guard()
+                with commit_run_workspace(snapshot, cancel_event=cancel):
+                    with PaperRepository.open(config.output_dir, expected_workspace_id=snapshot.workspace_id) as repository:
+                        index = RunIdentityIndex.read(repository)
+                        return tuple(record for record in records if index.target(
+                            evidence_identifiers(record), snapshot.initial_papers))
+            except ContentChangedError as error:
+                with guard_lock:
+                    if not cancel.is_set():
+                        guard_errors.append(error)
+                    cancel.set()
+                return ()
+        def eligible_dois(values):
+            guard()
             with commit_run_workspace(snapshot, cancel_event=cancel):
                 with PaperRepository.open(config.output_dir, expected_workspace_id=snapshot.workspace_id) as repository:
                     index = RunIdentityIndex.read(repository)
-                    return tuple(record for record in records if index.target(
-                        evidence_identifiers(record), snapshot.initial_papers))
-        work = _WorkQueue(clients['openalex'],cancel,guard,progress_callback,eligible_records)
+                    return [doi for doi in values if index.target({('doi', doi)}, snapshot.initial_papers)]
+        work = _WorkQueue(clients['openalex'],cancel,guard,progress_callback,eligible_records,eligible_dois)
         def native():
             if cancel.is_set():
                 return IntegratedDiscovery((),(), 'cancelled')
@@ -540,7 +553,8 @@ def run_integrated(config_path, *, loaded_config=None, workspace_snapshot=None, 
                                 if canonical is None:
                                     continue
                                 saved = repository.create_or_match(snapshot.workspace_id,
-                                    direct_ids=direct_ids_from_keys(keys),
+                                    direct_ids=canonical.external_ids,
+                                    additional_identities=tuple(DirectIdentity(*key) for key in keys),
                                     metadata=metadata_from_run(canonical, records=completed_records.get(index, group.evidence)))
                                 owner = saved.paper
                                 if saved.created:
@@ -550,7 +564,8 @@ def run_integrated(config_path, *, loaded_config=None, workspace_snapshot=None, 
                                 if canonical is None or initial is None or not current.target(keys, snapshot.initial_papers):
                                     continue
                                 owner = repository.rebuild_from_run(initial.token,
-                                    direct_ids=direct_ids_from_keys(keys),
+                                    direct_ids=canonical.external_ids,
+                                    additional_identities=tuple(DirectIdentity(*key) for key in keys),
                                     metadata=metadata_from_run(canonical, records=completed_records.get(index, group.evidence)))
                                 rebuilt += 1
                             if owner.excluded or owner.metadata is None:

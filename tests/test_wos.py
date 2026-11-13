@@ -14,8 +14,7 @@ from allfold.application.settings import load_settings, save_settings, SettingsS
 from allfold.application.wos import WoSWrites, persist_wos
 from allfold.config import JournalConfig
 from allfold.keywords import Prefix, Proximity
-from allfold.persistence.markdown_state import parse_paper_state
-from allfold.persistence.materialize import materialize_papers
+from allfold.persistence.paper_repository import PaperRepository, PaperMetadata
 from allfold.persistence.safe_write import TextWriteCommittedError, WorkspaceTextDirectory, workspace_operation_lock
 from allfold.web.app import create_app
 from allfold.application.coordinators.run_coordinator import RunCoordinator, StartOutcome
@@ -68,12 +67,19 @@ def test_download_reader_rejects_unissued_and_replaced_paths(tmp_path):
         read_export(str(target), relative)
 
 
-def test_unsafe_doi_identity_blocks_capture(tmp_path):
-    path=materialize_papers([paper()],tmp_path).created_papers[0]
-    (path.parent/'duplicate.md').write_bytes(path.read_bytes())
+def test_conflicting_direct_identity_owners_block_capture(tmp_path):
+    from allfold.models import ExternalIds
+    with PaperRepository.create(tmp_path) as repository:
+        repository.create_or_match(repository.workspace_id, direct_ids=ExternalIds(doi='10.1234/example'),
+            metadata=PaperMetadata(title='DOI owner'))
+        repository.create_or_match(repository.workspace_id, direct_ids=ExternalIds(wos='WOS:000123456700001'),
+            metadata=PaperMetadata(title='WoS owner'))
+        before = repository.list_papers()
     with workspace_operation_lock(tmp_path) as lock:
         result=persist_wos([paper()],lock,check_current=lambda:None,cancelled=lambda:False)
     assert result.conflicts==1 and result.skipped_existing_papers==0 and result.created_papers==0
+    with PaperRepository.open(tmp_path) as repository:
+        assert repository.list_papers() == before
 
 
 def test_cancel_during_persistence_retains_committed_paper(tmp_path):
@@ -82,7 +88,9 @@ def test_cancel_during_persistence_retains_committed_paper(tmp_path):
     with workspace_operation_lock(tmp_path,create=True) as lock, pytest.raises(InterruptedError):
         persist_wos(papers,lock,check_current=lambda:None,
                     cancelled=lambda:bool(result.created_papers),result=result)
-    assert result.created_papers==1 and len(list((tmp_path/'Papers').glob('*.md')))==1
+    with PaperRepository.open(tmp_path) as repository:
+        saved, = repository.list_papers()
+        assert result.created_papers == 1 and result.written_paper_ids == [str(saved.id)]
 
 
 def config_files(tmp_path):
