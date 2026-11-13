@@ -98,6 +98,12 @@ Cloudflare native fixture. Covers and WoS Export expiry tests retain real-termin
 ownership. See [controlled Documents](browser-documents.md) for payload limits,
 identity evidence and fixture/live-service boundaries.
 
+WF04's normal Electron entry also runs `session-downloads.test.cjs`: a real
+Electron 45.0.0/local-HTTP fixture for original POST/inline/frame/popup downloads,
+same-URL isolation, expiry/late/ambiguous events, cancellation/interruption,
+source-close stages and controlled host-fetch association. See the measured
+[capability boundary](browser-session.md#electron-4500-capability-evidence).
+
 ### Workbench manual acceptance reference
 
 ARRAY/Journals rails, Sidebar allocation, the isolated rendered DOM test and remaining pointer/touch/low-height checks are documented in [workspace layout](workspace-layout.md). The full Electron test command includes its hidden-window fixture after UI build; it uses synthetic HTTP responses and a temporary profile.

@@ -22,7 +22,8 @@ Translator sandbox and full generated Runtime assembly. Setup/CI no longer fetch
 or assemble those exclusive sources. Existing ignored vendor checkouts are not
 changed. The historical upstream lock remains source attribution for retained
 adaptations, after WF03 removes the remoteTranslate-derived full-page serializer. Browser identity uses the
-existing UserAgent-Switcher adapter, and partitioned Cookie/CDP state stays Main-only.
+existing UserAgent-Switcher adapter. WF04 removes the uncalled Translator/item-saver
+partitioned-Cookie/CDP adapter; Chromium's native Session authentication remains.
 No source/license obligation for remaining adapted code is removed.
 
 The project-owned CARSI, first-image and WoS DOM actions in `src/workflows/page-actions.cjs`

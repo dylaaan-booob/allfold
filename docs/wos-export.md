@@ -33,6 +33,14 @@ Cancellation/expiry cancels the original DownloadItem and awaits its actual
 terminal before releasing ownership; cleanup remains scoped to the captured
 Document. The eight fields and URL-chain attribution above are unchanged.
 
+WoS now registers its attempt with the [shared Session download router](browser-session.md)
+before the action; it does not install or remove a per-export native Session
+listener. The original item receives the already-issued staging path inside the
+synchronous event callback. Native source/frame and initiator facts precede WoS's
+business URL-chain validation. A missing frame or ambiguous source is refused,
+and a dispatched attempt without an item keeps bounded late-event protection.
+The Session entry remains installed for independent work after export cleanup.
+
 ## Selector evidence
 
 On 2026-11-07, a task-isolated, normally authenticated Core Collection journal
