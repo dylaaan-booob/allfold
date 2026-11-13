@@ -57,6 +57,77 @@ def test_pdf_header_alone_never_reads_body_or_claims_transfer():
     assert stream.closed
 
 
+@pytest.mark.parametrize('failure', [httpx.ReadError, httpx.RemoteProtocolError, httpx.DecodingError])
+def test_current_response_stream_failure_closes_source_and_allows_next_candidate(failure):
+    from allfold.pdf_rules import KnownPdfUrl
+    class Broken(httpx.SyncByteStream):
+        closed = False
+        def __iter__(self):
+            yield b'<head>'
+            raise failure('Controlled current-response read failure')
+        def close(self):
+            self.closed = True
+    stream, seen = Broken(), []
+    paper = target('pubs.acs.org')
+    inputs = PdfRuleInputs(paper, known_pdf_urls=(KnownPdfUrl('https://pubs.acs.org/broken', 'API02', 'link'),
+        KnownPdfUrl('https://cdn.example.org/Body.PDF', 'API02', 'link')))
+    def handle(request):
+        seen.append(str(request.url))
+        return (httpx.Response(200, headers={'Content-Type': 'text/html'}, stream=stream) if len(seen) == 1
+            else httpx.Response(200, headers={'Content-Type': 'application/pdf'}))
+    with client(handle) as http:
+        result = PdfDiscovery(paper, inputs=inputs).run(lambda c: http.consume(c,
+            transfer=lambda *_: CandidateResult.pdf(transfer_complete=True)))
+    assert stream.closed and seen == ['https://pubs.acs.org/broken', 'https://cdn.example.org/Body.PDF']
+    assert (result.status, result.pdf_source, result.fallback_used) == ('transferred', 'P2', True)
+    assert result.diagnostics == (('P2', 'API02', 'source-failed'),)
+
+
+def test_transfer_consumer_read_error_remains_terminal_instead_of_source_fallback():
+    paper = target('onlinelibrary.wiley.com')
+    def local_consumer(*_):
+        raise httpx.ReadError('Consumer-owned failure must not be reclassified')
+    with client(lambda _: httpx.Response(200, headers={'Content-Type': 'application/pdf'})) as http:
+        with pytest.raises(httpx.ReadError, match='Consumer-owned'):
+            PdfDiscovery(paper).run(lambda c: http.consume(c, transfer=local_consumer))
+
+
+@pytest.mark.parametrize('stop', ['cancelled', 'expired', 'stale'])
+def test_current_response_read_failure_cannot_hide_terminal_task_state(stop):
+    from allfold.pdf_rules import KnownPdfUrl
+    from allfold.providers.provider_http import Cancelled, ProviderBudgetExceeded
+    from allfold.persistence.paper_repository import StaleWriteError
+    cancel, clock, revoked, seen = Event(), [0.0], [False], []
+    def guard():
+        if revoked[0]:
+            raise StaleWriteError('Captured task revoked')
+    class Broken(httpx.SyncByteStream):
+        closed = False
+        def __iter__(self):
+            yield b'<head>'
+            if stop == 'cancelled':
+                cancel.set()
+            elif stop == 'expired':
+                clock[0] = 11.0
+            else:
+                revoked[0] = True
+            raise httpx.ReadError('Read failed after task state changed')
+        def close(self):
+            self.closed = True
+    stream, paper = Broken(), target('pubs.acs.org')
+    inputs = PdfRuleInputs(paper, known_pdf_urls=(KnownPdfUrl('https://pubs.acs.org/broken', 'API02', 'link'),
+        KnownPdfUrl('https://cdn.example.org/MustNotStart.PDF', 'API02', 'link')))
+    def handle(request):
+        seen.append(str(request.url))
+        return httpx.Response(200, headers={'Content-Type': 'text/html'}, stream=stream)
+    with PdfHttpClient(guard=guard, cancel_event=cancel, deadline=10, monotonic=lambda: clock[0],
+            resolver=lambda *_: ('8.8.8.8',), transport=httpx.MockTransport(handle)) as http:
+        with pytest.raises({'cancelled': Cancelled, 'expired': ProviderBudgetExceeded, 'stale': StaleWriteError}[stop]):
+            PdfDiscovery(paper, inputs=inputs, guard=guard, cancel_event=cancel, deadline=10,
+                monotonic=lambda: clock[0]).run(http.consume)
+    assert stream.closed and seen == ['https://pubs.acs.org/broken']
+
+
 def test_every_redirect_boundary_checks_dns_and_scopes_secrets_but_keeps_referer():
     seen = []
     def handle(request):
@@ -104,6 +175,32 @@ def test_missing_pii_queries_handle_only_and_keeps_original_target_binding():
     assert (result.pdf_source, result.fallback_used) == ('P2', False)
 
 
+@pytest.mark.parametrize('prior_optional_failure', [False, True])
+def test_missing_id_query_routes_to_new_host_template_in_its_original_phase(prior_optional_failure):
+    paper = target('www.sciencedirect.com')
+    inputs = PdfRuleInputs(paper, credentials=frozenset({'elsevier'}) if prior_optional_failure else frozenset(),
+        conditions=frozenset({'elsevier_pdf_access'}) if prior_optional_failure else frozenset())
+    seen, consumed = [], []
+    def handle(request):
+        seen.append(str(request.url))
+        if request.url.host == 'api.elsevier.com':
+            return httpx.Response(403)
+        if request.url.host == 'doi.org':
+            return httpx.Response(200, json={'values': [{'type': 'URL', 'data': {
+                'value': 'https://onlinelibrary.wiley.com/doi/10.1234/AbC'}}]})
+        assert request.url.host == 'onlinelibrary.wiley.com'
+        return httpx.Response(200, headers={'Content-Type': 'application/pdf'})
+    with client(handle, credentials=(('elsevier', 'fixture-key'),) if prior_optional_failure else ()) as http:
+        def consume(candidate):
+            consumed.append(candidate)
+            return http.consume(candidate, transfer=lambda *_: CandidateResult.pdf(transfer_complete=True))
+        result = PdfDiscovery(paper, inputs=inputs, io=PdfDiscoveryIO(http)).run(consume)
+    assert [httpx.URL(url).host for url in seen] == ((['api.elsevier.com'] if prior_optional_failure else [])
+        + ['doi.org', 'onlinelibrary.wiley.com'])
+    assert consumed[-1].rule_id == 'R002' and consumed[-1].stage == 'P2' and consumed[-1].target is paper
+    assert (result.status, result.pdf_source, result.fallback_used) == ('transferred', 'P2', prior_optional_failure)
+
+
 @pytest.mark.parametrize('landing,expected', [
     ('https://www.sciencedirect.com/science/article/pii/S1234567812345678',
      'https://www.sciencedirect.com/science/article/pii/S1234567812345678/pdfft'),
@@ -133,6 +230,24 @@ def test_existing_crossref_resource_cannot_override_actual_new_content_host():
     seen = []
     result = PdfDiscovery(paper, facts=(facts,)).run(lambda c: seen.append(c) or CandidateResult.pdf(transfer_complete=True))
     assert seen[0].rule_id == 'R002' and result.pdf_source == 'P1'
+
+
+def test_explicit_actual_article_route_outranks_an_older_document_landing():
+    from datetime import datetime, timezone
+    from allfold.pdf_facts import PdfDiscoveryFacts, PdfCandidateFact
+    paper = target('pubs.acs.org', article_url='https://pubs.acs.org/current/article')
+    cached = PdfDiscoveryFacts(source='document', capability='document-pdf', status='complete',
+        observed_at=datetime.now(timezone.utc), target_doi=paper.identity_doi,
+        landing_url='https://onlinelibrary.wiley.com/doi/10.1234/AbC',
+        candidates=(PdfCandidateFact(stage='P3', rule_id='GENERIC', field='citation_pdf_url',
+            url='https://cdn.example.org/Body.PDF'),))
+    seen = []
+    with client(lambda request: seen.append(str(request.url)) or httpx.Response(200,
+            headers={'Content-Type': 'application/pdf'})) as http:
+        result = PdfDiscovery(paper, facts=(cached,), io=PdfDiscoveryIO(http)).run(lambda c: http.consume(c,
+            transfer=lambda *_: CandidateResult.pdf(transfer_complete=True)))
+    assert seen == ['https://cdn.example.org/Body.PDF']
+    assert (result.pdf_source, result.fallback_used) == ('P3', False)
 
 
 def test_failed_optional_existing_source_does_not_block_still_missing_web_identifier():
@@ -171,6 +286,49 @@ def test_current_crossref_signed_pdf_field_is_not_lost_to_durable_projection():
     assert [httpx.URL(url).host for url in seen] == ['doi.org', 'api.crossref.org']
     assert attempted[0].url == 'https://cdn.example.org/Body.PDF?token=AbC&Expires=Keep'
     assert result.pdf_source == 'P2'
+
+
+@pytest.mark.parametrize('template_succeeds', [False, True])
+def test_known_crossref_refresh_locator_is_used_only_after_reaching_p2(template_succeeds):
+    from datetime import datetime, timezone
+    from allfold.providers.crossref import normalize_crossref_discovered_work
+    paper = target('onlinelibrary.wiley.com')
+    old, _ = normalize_crossref_discovered_work({'DOI': paper.doi, 'link': [{'URL':
+        'https://cdn.example.org/Old.PDF?Signature=Old', 'content-type': 'application/pdf'}]}, datetime.now(timezone.utc))
+    signed = 'https://cdn.example.org/Current.PDF?Signature=Keep%2FCase&Expires=123'
+    seen = []
+    def handle(request):
+        seen.append(str(request.url))
+        if request.url.host == 'onlinelibrary.wiley.com':
+            return httpx.Response(200, headers={'Content-Type': 'application/pdf'}) if template_succeeds else httpx.Response(404)
+        if request.url.host == 'api.crossref.org':
+            return httpx.Response(200, json={'message': {'DOI': paper.doi,
+                'link': [{'URL': signed, 'content-type': 'application/pdf'}]}})
+        assert str(request.url) == signed
+        return httpx.Response(200, headers={'Content-Type': 'application/pdf'})
+    with client(handle) as http:
+        result = PdfDiscovery(paper, facts=old.discovery_facts, io=PdfDiscoveryIO(http)).run(lambda c: http.consume(c,
+            transfer=lambda *_: CandidateResult.pdf(transfer_complete=True)))
+    assert [httpx.URL(url).host for url in seen] == (['onlinelibrary.wiley.com'] if template_succeeds
+        else ['onlinelibrary.wiley.com', 'api.crossref.org', 'cdn.example.org'])
+    assert (result.status, result.pdf_source, result.fallback_used) == ('transferred',
+        'P1' if template_succeeds else 'P2', not template_succeeds)
+    assert old.discovery_facts[0].candidates[0].url is None
+
+
+def test_complete_empty_crossref_capability_does_not_trigger_refresh_after_template_failure():
+    from datetime import datetime, timezone
+    from allfold.pdf_facts import crossref_discovery_facts
+    paper, seen = target('onlinelibrary.wiley.com'), []
+    facts = crossref_discovery_facts({'DOI': paper.doi, 'link': []}, datetime.now(timezone.utc))
+    def handle(request):
+        seen.append(str(request.url))
+        assert request.url.host == 'onlinelibrary.wiley.com'
+        return httpx.Response(404)
+    with client(handle) as http:
+        result = PdfDiscovery(paper, facts=(facts,), io=PdfDiscoveryIO(http)).run(http.consume)
+    assert result.status == 'exhausted' and result.pdf_source is None and not result.fallback_used
+    assert len(seen) == 1
 
 
 @pytest.mark.parametrize('doi_endpoint', [False, True])

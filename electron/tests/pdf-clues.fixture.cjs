@@ -99,6 +99,13 @@ app.whenReady().then(async()=>{
     const an='22222222-222222222-22222',otherAn='11111111-111111111-11111';
     const lwwArticle=await forHost('journals.lww.com','<div class="related"><button onclick="PDFDownloadInit(\''+otherAn+'\')">Related PDF</button></div><button onclick="PDFDownloadInit(\''+an+'\')">PDF</button>','','/journal/fulltext/2026/paper.aspx');
     assert.deepEqual(lwwArticle.pdf_clues.identifiers.map(item=>item.value),[an]);
+    for(const entry of ['<button onclick="PDFDownloadInit(\''+an+'\')">Supplementary PDF</button>',
+      '<button data-doi="10.5555/other" onclick="PDFDownloadInit(\''+an+'\')">PDF</button>']) {
+      const nonBody=await forHost('journals.lww.com',entry,'<meta name="citation_doi" content="10.5555/target">','/journal/fulltext/2026/paper.aspx');
+      assert.equal(nonBody.pdf_clues.status,'complete');assert.deepEqual(nonBody.pdf_clues.identifiers,[],'AN controls retain body-entry label and identity qualification');
+    }
+    const ownAn=await forHost('journals.lww.com','<button data-doi="10.5555/target" onclick="PDFDownloadInit(\''+an+'\')">PDF</button>','<meta name="citation_doi" content="10.5555/target">','/journal/fulltext/2026/paper.aspx');
+    assert.deepEqual(ownAn.pdf_clues.identifiers.map(item=>item.value),[an]);
     const peripheralAn=await forHost('journals.lww.com','<section id="relatedContent"><button onclick="PDFDownloadInit(\''+otherAn+'\')">PDF</button></section><section id="supplementary-files"><button onclick="PDFDownloadInit(\''+otherAn+'\')">PDF</button></section><button onclick="PDFDownloadInit(\''+an+'\')">PDF</button>','','/journal/fulltext/2026/paper.aspx');
     assert.deepEqual(peripheralAn.pdf_clues.identifiers.map(item=>item.value),[an]);
     const ambiguousAn=await forHost('journals.lww.com','<button onclick="PDFDownloadInit(\''+otherAn+'\')">PDF</button><button onclick="PDFDownloadInit(\''+an+'\')">PDF</button>','','/journal/fulltext/2026/paper.aspx');

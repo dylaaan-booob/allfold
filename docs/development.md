@@ -196,7 +196,13 @@ completed collection, actual worker Futures/owned clients, PDF-only native
 results, captured primary identity, cancellation/replacement and maintenance/
 shutdown cleanup. Controlled downstream results in `test_pdf_discovery.py` and
 `test_pdf_http.py` verify T01–T24 without a byte receiver, writer or public
-Download. Python HTTP checks include DNS preflight at dispatch/redirect; they do
+Download.
+The focused facts/HTTP suites also exercise a real SQLite merge whose individually
+valid snapshots exceed the combined byte budget, finite response-stream failures,
+terminal cancellation/expiry/revocation during reads, captured actual-Host routing,
+known Crossref signature refresh and newly resolved Host templates. They assert
+actual source/fallback results and absence of unnecessary queries.
+Python HTTP checks include DNS preflight at dispatch/redirect; they do
 not claim address pinning or DNS validation by the native static URL gate.
 
 WF06 adds `test_necessary_metadata.py` for purpose-driven requests through actual

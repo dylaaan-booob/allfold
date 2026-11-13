@@ -133,6 +133,33 @@ def test_openalex_capability_empty_partial_and_best_first_four_candidate_boundar
     assert retained.status == 'complete' and retained.candidates == first.candidates
 
 
+@pytest.mark.parametrize('preferred_is_new', [False, True])
+def test_sqlite_fact_merge_size_overflow_preserves_preferred_snapshot_and_independent_content(tmp_path, preferred_is_new):
+    from datetime import timedelta
+    from allfold.pdf_facts import PdfCandidateFact, PdfDiscoveryFacts
+    from allfold.persistence.paper_repository import MetadataDelta, PaperMetadata
+    def snapshot(prefix, count, status, observed):
+        return PdfDiscoveryFacts(source='document', capability='document-pdf', status=status,
+            observed_at=observed, target_doi='10.5555/formal',
+            candidates=tuple(PdfCandidateFact(stage='P3', rule_id='GENERIC',
+                url='https://publisher.example/'+prefix+str(i)+'/'+'A'*3000+'.pdf') for i in range(count)))
+    first = snapshot('old', 10, 'partial' if preferred_is_new else 'complete', NOW)
+    second = snapshot('new', 12, 'complete' if preferred_is_new else 'partial', NOW + timedelta(seconds=1))
+    preferred = second if preferred_is_new else first
+    assert len(first.model_dump_json().encode()) < 65536 and len(second.model_dump_json().encode()) < 65536
+    with PaperRepository.create(tmp_path) as repository:
+        paper = repository.create_or_match(repository.workspace_id, direct_ids=ExternalIds(doi='10.5555/formal'),
+            metadata=PaperMetadata(title='Paper', discovery_facts=(first,))).paper
+        saved = repository.merge_metadata(paper.token, MetadataDelta(abstract='Independent abstract.',
+            ordinary_dates=('2026-01-02',), discovery_facts=(second,)))
+    with PaperRepository.open(tmp_path) as repository:
+        reopened = repository.get(saved.id)
+        facts, = reopened.metadata.discovery_facts
+        assert reopened.metadata.abstract == 'Independent abstract.' and reopened.metadata.ordinary_dates == ('2026-01-02',)
+        assert facts.candidates == preferred.candidates and facts.status == preferred.status
+        assert 'overflow' in facts.diagnostics and len(facts.model_dump_json().encode()) <= 65536
+
+
 def test_independent_connections_preserve_fields_sequences_and_revoke_facts_after_restore_and_clear(tmp_path):
     from uuid import uuid4
     from allfold.pdf_facts import PdfCandidateFact, PdfDiscoveryFacts

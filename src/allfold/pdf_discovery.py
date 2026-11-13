@@ -12,7 +12,7 @@ import time
 from threading import Event
 from urllib.parse import parse_qs, urldefrag, urlsplit
 
-from allfold.pdf_facts import PdfDiscoveryFacts, discovery_target_matches
+from allfold.pdf_facts import PdfDiscoveryFacts, crossref_pdf_refresh_required, discovery_target_matches
 from allfold.pdf_catalog import API_CATALOG, RULE_CATALOG
 from allfold.pdf_rules import (ARTICLE_TYPES, PdfCandidate, PdfRuleInputs, PdfTarget, KnownPdfUrl,
     content_platform, iter_p1_candidates, iter_p2_candidates, needs_p2_query)
@@ -154,7 +154,7 @@ class PdfDiscovery:
             and not (target.identity_doi and f.target_doi and f.target_doi != target.identity_doi))
         self.inputs = self._facts_inputs(inputs or PdfRuleInputs(target))
         for snapshot in self.facts:
-            if snapshot.source == 'document' and snapshot.landing_url:
+            if not target.article_url and snapshot.source == 'document' and snapshot.landing_url:
                 self._route = replace(target, article_url=snapshot.landing_url)
         self._route = self._facts_route(self._route)
         self._remaining, self._hops, self._retries = max_operations, max_hops, max_retries
@@ -309,7 +309,8 @@ class PdfDiscovery:
         yield from self._rules('P1')
         existing = tuple(self._rules('P2'))
         yield from existing
-        if needs_p2_query(self._route, replace(self.inputs, target=self._route)) and self.io is not None and callable(getattr(type(self.io), 'query_missing', None)):
+        if ((needs_p2_query(self._route, replace(self.inputs, target=self._route)) or crossref_pdf_refresh_required(self.facts))
+                and self.io is not None and callable(getattr(type(self.io), 'query_missing', None))):
             # IO is an iterator: no second interface is requested until the
             # first response has been considered, and sufficient IDs stop it.
             query_target = self._route
@@ -319,6 +320,7 @@ class PdfDiscovery:
                     resolved = self._call(next, stream)
                 except StopIteration:
                     break
+                previous_route = self._route
                 if isinstance(resolved, P2Resolution):
                     if self._failed:
                         self._fallback = True
@@ -332,7 +334,13 @@ class PdfDiscovery:
                 if updated.target != query_target:
                     raise ValueError('Query result changed original PDF target')
                 self.inputs = replace(updated, target=self.target)
-                candidates = tuple(c for c in self._rules('P2') if (urldefrag(c.url)[0], c.action) not in self._seen)
+                candidates = tuple(self._rules('P2'))
+                if self._route != previous_route:
+                    # A newly resolved content Host may have a DOI template
+                    # whose inputs were unavailable earlier. Continue this P2
+                    # path in place rather than restarting the discovery chain.
+                    candidates += tuple(replace(c, stage='P2') for c in self._rules('P1'))
+                candidates = tuple(c for c in candidates if (urldefrag(c.url)[0], c.action) not in self._seen)
                 yield from candidates
                 if candidates:
                     break

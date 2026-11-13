@@ -450,10 +450,10 @@ const operations={
     const main=document.querySelector('article') || document.body;
     const bodyEntry=(node,attribute='href')=>{
       if(excluded(node))return false;
-      const value=node.getAttribute(attribute),label=node.textContent+' '+(node.getAttribute('title') || '')+' '+(value || '');
+      const value=attribute===null?null:node.getAttribute(attribute),label=node.textContent+' '+(node.getAttribute('title') || '')+' '+(value || '');
       const identity=normalizeDoi(node.closest('[data-doi]')?.getAttribute('data-doi'));
       return !/supplement|supporting|appendix|whole issue|entire issue|issue pdf|other article/i.test(label)
-        && (!identity || !!targetDoi && identity===targetDoi) && sameArticle(value);
+        && (!identity || !!targetDoi && identity===targetDoi) && (attribute===null || sameArticle(value));
     };
     const explicit=(selector,attribute='href',extra={})=>{for(const node of document.querySelectorAll(selector)){guard();if(bodyEntry(node,attribute))add(node.getAttribute(attribute),'P4',extra);}};
     const addId=(kind,value)=>{if(typeof value==='string' && /^[A-Za-z0-9_.:/-]{1,256}$/.test(value) && !identifiers.some(item=>item.kind===kind&&item.value===value)) {
@@ -495,7 +495,7 @@ const operations={
         if(platform==='lww') {
           const numbers=new Set();
           for(const node of main?.querySelectorAll('[onclick*="PDFDownloadInit"]') || []) {
-            guard();if(excluded(node))continue;
+            guard();if(!bodyEntry(node,null))continue;
             const match=node.getAttribute('onclick').match(/PDFDownloadInit\(\s*['"]([0-9]{8}-[0-9]{9}-[0-9]{5})['"]/);if(match)numbers.add(match[1]);
           }
           if(numbers.size===1)addId('an',[...numbers][0]);
