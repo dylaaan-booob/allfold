@@ -139,6 +139,7 @@
       "enum": [
         "diagnostics_reset",
         "extract_paper_metadata",
+        "extract_paper_pdf_clues",
         "invalidate_access",
         "login_carsi",
         "prepare_service",
@@ -302,6 +303,7 @@
         "core_collection_unverified",
         "document_changed",
         "document_operation_failed",
+        "pdf_target_refused",
         "doi_mismatch",
         "dom_step_failed",
         "download_ambiguous",

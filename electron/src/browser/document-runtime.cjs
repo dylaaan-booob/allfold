@@ -5,10 +5,15 @@ const {PRELOAD_DIR}=require('../shared/paths.cjs');
 const {randomBytes}=require('node:crypto');
 const {BrowserFailure}=require('./browser-errors.cjs');
 const {waitFor}=require('./browser-task.cjs');
+const {boundedPdfClues}=require('./pdf-clues.cjs');
 // Project each reply through its fixed DTO; never forward arbitrary page-owned properties.
 function boundedResult(action,value) {
   const invalid=()=>{throw new BrowserFailure('navigation','page_probe_unconfirmed');};
   if(!value || typeof value!=='object')invalid();
+  if(action==='pdf') {
+    if(typeof value.subject!=='string'||!/^[0-9:]{1,80}$/.test(value.subject))invalid();
+    return {clues:boundedPdfClues(value.clues),subject:value.subject};
+  }
   if(action==='extract') {
     const metadata=value.metadata,diagnostics=value.diagnostics;
     if(!metadata || Object.keys(metadata).sort().join(',')!=='abstract,dates' || !Array.isArray(metadata.dates) || metadata.dates.length>256
@@ -71,9 +76,9 @@ class DocumentRuntime {
     ipcMain.on('document:result',this.listener);
   }
   async call(doc,action,args={},options={}) {
-    if(!['binding','access','article','extract'].includes(action))throw new BrowserFailure('navigation','document_operation_failed');
+    if(!['binding','access','article','extract','pdf'].includes(action))throw new BrowserFailure('navigation','document_operation_failed');
     if(!args || typeof args!=='object' || Array.isArray(args) || (action==='extract'
-      ? Object.keys(args).length!==1 || typeof args.wantAbstract!=='boolean' : Object.keys(args).length!==0))
+      ? Object.keys(args).length!==1 || typeof args.wantAbstract!=='boolean' : action==='pdf'?Object.keys(args).length!==1 || ![null,'sciencedirect','ieee','optica','lww'].includes(args.readerKind):Object.keys(args).length!==0))
       throw new BrowserFailure('navigation','document_operation_failed');
     const frame=this.browser.documentFrame(doc);
     if(!frame)throw new BrowserFailure('navigation','document_changed');

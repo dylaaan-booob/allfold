@@ -75,7 +75,7 @@ async function executeControl(message,signal) {
   return {ok:false,error:'unsupported_operation'};
 }
 async function execute(message) {
-  if(!CONTROL_ACTIONS.has(message.action) && !RESOURCE_ACTIONS.has(message.action) && !['login_carsi','prepare_service','visit_manual_service','search_journal_cover','wos_query','wos_export','extract_paper_metadata'].includes(message.action)){
+  if(!CONTROL_ACTIONS.has(message.action) && !RESOURCE_ACTIONS.has(message.action) && !['login_carsi','prepare_service','visit_manual_service','search_journal_cover','wos_query','wos_export','extract_paper_metadata','extract_paper_pdf_clues'].includes(message.action)){
     send({type:'result',id:message.id,action:message.action,data:{diagnostic:{stage:'navigation',code:'unsupported_operation'}}});return;
   }
   const control=CONTROL_ACTIONS.has(message.action);
@@ -152,7 +152,7 @@ async function executeOperation(message,current) {
           catch (_) {}
         };
         browser.operation.recordRecovery=recordRecovery;
-        if(['prepare_service','extract_paper_metadata'].includes(message.action))
+        if(['prepare_service','extract_paper_metadata','extract_paper_pdf_clues'].includes(message.action))
           browser.operation.validateRecovery=verifyRecovery;
         if(message.action === 'login_carsi') {
           stage='authentication';
@@ -161,9 +161,9 @@ async function executeOperation(message,current) {
           stage='preparation';
           const prepare=message.action==='visit_manual_service'?visitManualService:prepareLoggedInService;
           return await prepare(browser,message.data,{signal:controller.signal,progress});
-        } else if(message.action === 'extract_paper_metadata') {
+        } else if(['extract_paper_metadata','extract_paper_pdf_clues'].includes(message.action)) {
           if(!Number.isSafeInteger(message.data?.deadline_ms))throw new BrowserFailure('navigation','document_operation_failed');
-          return await browser.extractPaperMetadata(message.data,{signal:controller.signal,deadline:message.data.deadline_ms,
+          return await browser[message.action==='extract_paper_metadata'?'extractPaperMetadata':'extractPaperPdfClues'](message.data,{signal:controller.signal,deadline:message.data.deadline_ms,
             onWaiting:diagnostic=>progress({waiting_for_user:true},'navigation',diagnostic)});
         } else if(message.action === 'search_journal_cover') {
           return await searchJournalCover(browser,message.data,{signal:controller.signal,progress});
