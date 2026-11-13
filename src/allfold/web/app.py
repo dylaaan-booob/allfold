@@ -757,6 +757,10 @@ def create_app(config_path: Path, *, electron_bridge: ElectronBridge, diagnostic
                 prepare_settings_effects(app, effects, invalidation, disk.draft, draft)
         drain_settings_effects(app, effects)
         with app.state.settings_write_lock:
+            # A non-maintenance save may have yielded to a foreground start;
+            # its captured configuration must remain protected until settlement.
+            if effects.get('change') is None and settings_write_context(app, disk.draft, draft)[0]:
+                return JSONResponse({"saved": False, "outcome": "TASK_ACTIVE", "message": "Pending: affected work is still active or cleaning up; the draft is retained."})
             result = (
                 save_settings(config_path, draft, deletion_approval=approval)
                 if approval is not None else save_settings(config_path, draft)

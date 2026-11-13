@@ -244,6 +244,10 @@ def install_autosave_api(app, config_path, csrf_token):
                 prepare_settings_effects(app, effects, invalidation, disk.draft, draft)
         drain_settings_effects(app, effects)
         with app.state.settings_write_lock:
+            # Ordinary edits have no maintenance reservation across the drain
+            # boundary. Foreground starts share this final admission/write lock.
+            if effects.get('change') is None and settings_write_context(app, disk.draft, draft)[0]:
+                return refusal('TASK_ACTIVE', 'Pending: affected work is still active or cleaning up.')
             result = save_settings(config_path, draft)
             from allfold.web.settings_guard import record_settings_effects
             record_settings_effects(app, effects, invalidation, disk.draft, result.state.draft)
