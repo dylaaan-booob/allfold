@@ -112,6 +112,7 @@ const operations={
     };
     const parse=(text,whole=false)=>{
       text=normalize(text);
+      const urls=[...text.matchAll(/(?:\b[a-z][a-z\d+.-]*:)?\/\/[^\s<>"']+|\bwww\.[^\s<>"']+/gi)];
       const candidates=[];
       for(const [regex,kind] of formats) {
         regex.lastIndex=0;
@@ -122,6 +123,7 @@ const operations={
       for(const item of candidates) {
         if(item.start<end)continue;
         end=item.end; // Even an invalid full date suppresses its month substring.
+        if(urls.some(url=>item.start<url.index+url[0].length && item.end>url.index))continue;
         const before=text[item.start-1] || '',after=text[item.end] || '';
         if(/[\p{L}\p{N}_/.-]/u.test(before) || /[\p{L}\p{N}_/-]/u.test(after) || after==='.' && /\w/.test(text[item.end+1] || ''))continue;
         if(whole && (item.start!==0 || item.end!==text.length))continue;
@@ -135,8 +137,8 @@ const operations={
           if(item.kind==='englishDay' || item.kind==='englishFirst')[day,year]=numbers;
           else [year]=numbers;
         }
-        if(item.kind==='year' && item.text.includes('T')) {
-          const time=item.text.match(/T(\d{2}):(\d{2})(?::(\d{2})(?:\.\d+)?)?(?:Z|([+-])(\d{2}):?(\d{2}))?$/);
+        if(item.kind==='year' && /T/i.test(item.text)) {
+          const time=item.text.match(/T(\d{2}):(\d{2})(?::(\d{2})(?:\.\d+)?)?(?:Z|([+-])(\d{2}):?(\d{2}))?$/i);
           if(!time || Number(time[1])>23 || Number(time[2])>59 || Number(time[3] || 0)>59 || Number(time[5] || 0)>23 || Number(time[6] || 0)>59)continue;
         }
         const value=canonical(year,month,day);if(value)output.push(value);
@@ -250,10 +252,17 @@ const operations={
         return false;
       };
       const preview=node=>{
-        if([...node.classList].some(token=>/(?:^|[-_])(?:preview|teaser|truncated)(?:$|[-_])/i.test(token)))return true;
+        const elements=[...(node.nodeType===1?[node]:[]),...node.querySelectorAll('[class]')];
+        if(elements.some(el=>!peripheral(el) && [...el.classList].some(token=>/(?:^|[-_])(?:preview|teaser|truncated)(?:$|[-_])/i.test(token))))return true;
         for(const action of node.querySelectorAll('button,a,[role="button"]'))
-          if(!excluded(action) && /^(?:read|show|view)\s+(?:more|full(?:\s+abstract)?)[\s.…]*$/i.test(normalize(action.textContent)))return true;
+          if(!peripheral(action) && /^(?:read|show|view)\s+(?:more|full(?:\s+abstract)?)[\s.…]*$/i.test(normalize(action.textContent)))return true;
         return false;
+      };
+      const eligibleText=value=>{
+        const text=normalize(value);
+        return !text || /^[\s.…-]+$/.test(text)
+          || /^(?:no abstract(?: available)?|abstract (?:unavailable|not available)|please (?:log|sign) in(?: to (?:view|read) (?:the )?abstract)?)[.!]?$/i.test(text)
+          || /^(?:read|show|view)\s+(?:more|full(?:\s+abstract)?)[\s.…]*$/i.test(text)?null:value;
       };
       const textFrom=nodes=>{
         const chunks=[];let size=0;
@@ -273,9 +282,7 @@ const operations={
         for(const node of nodes)walk(node);
         const value=chunks.join('').split(/\r?\n/).map(normalize).filter(Boolean).join('\n');
         if(value.length>65536)throw Error('abstract_budget_exceeded');
-        if(!value || /^[\s.…-]+$/.test(value)
-          || /^(?:no abstract(?: available)?|abstract (?:unavailable|not available)|please (?:log|sign) in(?: to (?:view|read) (?:the )?abstract)?)[.!]?$/i.test(value))return null;
-        return value;
+        return eligibleText(value);
       };
       const safe=read=>{try{return read();}catch(error){if(error.message==='extraction_budget_exceeded')throw error;diagnostics.add(error.message==='abstract_budget_exceeded'?'abstract_budget_exceeded':'abstract_candidate_failed');return null;}};
       const uniqueText=items=>{const choices=[...new Set(items.filter(Boolean))];return {value:choices.length===1?choices[0]:null,conflict:choices.length>1};};
@@ -296,10 +303,11 @@ const operations={
           const prefix=document.createRange();prefix.setStart(node,0);prefix.setEndBefore(title);
           return !!normalize(prefix.toString());
         });
-      // Descendant marked containers are the smaller semantic owner. Identical
-      // independent copies collapse by text; conflicting copies never pick first.
-      const smallest=containers.filter(node=>!containers.some(other=>other!==node && node.contains(other)));
-      const a1=uniqueText(smallest.map(node=>safe(()=>preview(node)?null:textFrom([node]))));
+      // Nested markers belong to the same explicit semantic owner. Read that
+      // owner's content once, including paragraphs around a marked child.
+      // Independent equal copies collapse; conflicting owners never pick first.
+      const owners=containers.filter(node=>!containers.some(other=>other!==node && other.contains(node)));
+      const a1=uniqueText(owners.map(node=>safe(()=>preview(node)?null:textFrom([node]))));
       abstract=a1.value;
       if(!abstract && !a1.conflict) {
         const headings=[...root.querySelectorAll(headingSelector)].filter(node=>!peripheral(node));
@@ -325,17 +333,28 @@ const operations={
         }
         abstract=uniqueText(a2).value;
       }
+      const structuredTags=[...blockTags,'br','a','b','strong','i','em','span','sub','sup','u','italic','bold','xref','img','wbr','button','script','style','noscript','template','abstract','sec','title'];
+      const structuredTagName='(?:[\\w-]+:)?(?:'+structuredTags.join('|')+')';
+      const markupStart='(?:/?'+structuredTagName+'(?:\\s|/?>)|!--|!DOCTYPE\\b)';
+      const structuredMarkup=new RegExp('^\\s*<'+structuredTagName+'(?:\\s|/?>)|</'+structuredTagName+'\\s*>|<!--|<!DOCTYPE','i');
       const cleanStructured=value=>{
         if(value && typeof value==='object' && !Array.isArray(value))value=value['@value'] ?? value.text;
         if(typeof value!=='string')return null;
         if(value.length>131072)throw Error('abstract_budget_exceeded');
-        if(/<(?:\/?[a-z][a-z0-9]*\b|!--)/i.test(value)) {
-          const template=document.createElement('template');template.innerHTML=value;
+        if(structuredMarkup.test(value)) {
+          // The detached template is inert. Only known markup is interpreted;
+          // scientific <T>, E<T> and incomplete x<y remain literal text.
+          const markup=value.replace(new RegExp('<(?!'+markupStart+')','gi'),'&lt;')
+            .replace(/<(\/?)(?:[\w-]+:)([a-z][\w-]*)(?=[\s/>])/gi,'<$1$2')
+            .replace(/<(\/?)(abstract|sec|title|italic|bold|xref)(?=[\s/>])/gi,(_match,slash,tag)=>
+              '<'+slash+({abstract:'section',sec:'section',title:'h3',italic:'em',bold:'strong',xref:'a'}[tag.toLowerCase()]));
+          const template=document.createElement('template');template.innerHTML=markup;
+          if(preview(template.content))return null;
           return textFrom(template.content.childNodes);
         }
         const normalized=value.split(/\r?\n/).map(normalize).filter(Boolean).join('\n');
         if(normalized.length>65536)throw Error('abstract_budget_exceeded');
-        return normalized && !/^[\s.…-]+$/.test(normalized)?normalized:null;
+        return eligibleText(normalized);
       };
       if(!abstract)for(const name of ['citation_abstract','dcterms.abstract','dc.description.abstract']) {
         const candidate=uniqueText(metas.filter(node=>key(node)===name).map(node=>safe(()=>cleanStructured(node.getAttribute('content')))));

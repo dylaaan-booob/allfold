@@ -119,12 +119,22 @@ probe for field gaps. The shared `confirm_formal_dois()` service retains quoted
 DOI EFetch fallback before Run creates a base Paper. It does not rebuild a
 background Paper UUID. Existing-Paper writes retain repository identity-owner
 conflict checks. A Work's related PMID or a related Preprint DOI/PMID never gains
-direct formal ownership.
+direct formal ownership. New-service WoS handoffs also treat every reported PM
+as unverified unless that PMID already belongs to the saved Paper. Same-DOI or
+same-WoS metadata and UT remain usable, including DOI-free handoffs, without
+promoting PM or planning a formal PMID query. The original parser and Run's
+precreation identity confirmation keep their existing contracts.
 
 `VerifiedResponse` carries an immutable tuple of parsed evidence with provider,
 namespace, normalized target and explicit capability. Complete fetch can satisfy
 summary; summary cannot satisfy fetch, and Crossref exact cannot satisfy reverse.
-Incomplete handoffs retain positive facts but cannot suppress the missing work.
+Incomplete handoffs retain positive facts but cannot suppress the missing work,
+even when a partial native v1 proof would otherwise satisfy the family planner.
+The unfinished capability stays required and must settle before a new final
+`first_public_at` can be committed; a failed completion retains valid increments.
+On explicit retry, saved positive native proof does not stand in for a completed
+capability: known native targets are revalidated unless a complete capability
+handoff in that invocation satisfies them. No capability cache is made durable.
 Facts bind through the target's verified identity/relations independently of
 arrival order. Caches and failures remain local to the captured invocation.
 Batch sizes (arXiv 200; Crossref/Europe PMC 100) limit each request group, not the

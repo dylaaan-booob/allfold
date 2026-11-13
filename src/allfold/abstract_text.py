@@ -12,6 +12,10 @@ _INLINE = {'a', 'b', 'strong', 'i', 'em', 'span', 'sub', 'sup', 'u', 'italic', '
 _VOID = {'br', 'hr', 'img', 'wbr'}
 _MARKUP = _BLOCKS | _INLINE | _VOID | {'script', 'style', 'template'}
 _TAGS = re.compile(r'</?([A-Za-z][A-Za-z0-9:_.-]*)(?:\s[^<>]*?)?/?>')
+_EMPTY_NOTICE = re.compile(
+    r'(?:no abstract(?: available)?|abstract (?:unavailable|not available)|'
+    r'please (?:log|sign) in(?: to (?:view|read) (?:the )?abstract)?)[.!]?|'
+    r'(?:read|show|view)\s+(?:more|full(?:\s+abstract)?)[\s.…]*', re.I)
 
 
 class _Text(HTMLParser):
@@ -61,4 +65,7 @@ def normalize_abstract_text(value: str | None) -> str | None:
     lines = [line for line in lines if line and line.casefold().rstrip(':').strip() not in {'abstract', 'summary'}]
     if not any(line.casefold().rstrip(':').strip() not in _HEADINGS for line in lines):
         return None
-    return '\n'.join(lines) or None
+    text = '\n'.join(lines)
+    if re.fullmatch(r'[\s.…-]+', text) or _EMPTY_NOTICE.fullmatch(re.sub(r'\s+', ' ', text)):
+        return None
+    return text or None

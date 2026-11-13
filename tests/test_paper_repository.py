@@ -192,7 +192,7 @@ def test_invalid_or_year_only_ordinary_date_is_rejected_without_guessing(library
     assert library.get(paper.id) == paper
 
 
-@pytest.mark.parametrize('original_abstract', ['Methods: Results: Existing formal abstract', 'Abstract', '  Literal <T> &lt; notation\n\nMethods  '])
+@pytest.mark.parametrize('original_abstract', ['Methods: Results: Existing formal abstract', 'Abstract', 'No abstract available.', '…', '  Literal <T> &lt; notation\n\nMethods  '])
 def test_existing_abstract_and_user_fields_survive_all_automatic_candidates(library, original_abstract):
     metadata = PaperMetadata(title="  Title  ", abstract=original_abstract, notes="  Keep\nnotes\n ")
     paper = library.create_or_match(library.workspace_id, direct_ids=ExternalIds(pmid="123"), metadata=metadata).paper
@@ -220,8 +220,9 @@ def test_new_abstract_preserves_internal_headings_science_and_paragraphs(library
     assert library.merge_metadata(result.token, MetadataDelta(ordinary_dates=("2026-11",))).metadata.abstract == expected
 
 
-@pytest.mark.parametrize("candidate", ["Abstract", "Summary:", "<h2>Abstract</h2>", "<h3>Methods</h3>", "<script>unsafe()</script>", "<!-- no abstract -->", '<img alt="No text"/>'])
-def test_heading_or_markup_only_abstract_does_not_claim_first_candidate(library, candidate):
+@pytest.mark.parametrize("candidate", ["Abstract", "Summary:", "<h2>Abstract</h2>", "<h3>Methods</h3>", "<script>unsafe()</script>", "<!-- no abstract -->", '<img alt="No text"/>',
+    'No abstract available', 'No abstract available.', 'No abstract\navailable.', '<p>Abstract unavailable.</p>', 'Please sign in to read the abstract.', 'Read more', '…', '...'])
+def test_ineligible_abstract_does_not_claim_first_candidate(library, candidate):
     paper = create(library)
     empty = library.merge_metadata(paper.token, MetadataDelta(abstract=candidate))
     assert empty.metadata.abstract is None

@@ -7,6 +7,7 @@ from collections import defaultdict
 from dataclasses import dataclass
 from datetime import datetime, timezone
 
+from allfold.abstract_text import normalize_abstract_text
 from allfold.application.metadata_completion import (
     CompletionIssue, CompletionLookup, _batch_lookup, bind_records, formal_records,
 )
@@ -66,9 +67,11 @@ def _satisfied(request, facts):
             'pubmed', request.namespace, request.identifier, 'fetch')) for fact in facts)
 
 
-def _native_proof_requests(records):
-    """Known explicit identities need native proof only while their family is unresolved."""
+def _native_proof_requests(records, *, include_proven=False):
+    """Plan known native targets; explicit retries may revalidate positive proof."""
     _, answered = preprint_date_coverage(records)
+    if include_proven:
+        answered = set()
     requests = set()
     for item in records:
         platforms = {(ref.provider, ref.record_id) for ref in item.related_ids
@@ -97,6 +100,23 @@ def _native_proof_requests(records):
     return requests
 
 
+def _qualified_direct_records(records, root_ids):
+    """A WoS PM is reported, unless the saved Paper already owns it.
+
+    Keep the parser's source-field evidence and same-article metadata. The
+    precreation PubMed DOI confirmation service owns any new formal PMID.
+    """
+    output = []
+    for item in records:
+        ids = item.external_ids.model_dump(exclude_none=True)
+        if (item.provenance.provider == 'wos' and ids.get('pmid')
+                and ('pmid', ids['pmid']) not in root_ids):
+            ids.pop('pmid')
+            item = item.model_copy(update={'external_ids': ExternalIds(**ids)})
+        output.append(item)
+    return tuple(output)
+
+
 def necessary_requests(records, *, root_ids, providers, facts=(), required=(),
                        discover_relations=True, first_public_saved=False):
     """Plan only unfinished identity/relationship/native purposes, never field gaps.
@@ -104,6 +124,7 @@ def necessary_requests(records, *, root_ids, providers, facts=(), required=(),
     Work location and native /pubs reverse are explicit `required` purposes.
     Direct DOI→PMID closure belongs to the separate precreation service.
     """
+    records = _qualified_direct_records(records, root_ids)
     requests = set(required)
     if discover_relations and not first_public_saved:
         _, answered = preprint_date_coverage(records)
@@ -217,12 +238,15 @@ def _formal_conflicts(records, root_ids, *, formal_root=True):
 
 def _increment(records, root_ids):
     formal = formal_records(records, root_ids)
-    abstracts = tuple(dict.fromkeys(item.abstract for item in formal if item.abstract and item.abstract.strip()))
+    abstracts = {}
+    for item in formal:
+        if text := normalize_abstract_text(item.abstract):
+            abstracts.setdefault(text, item.abstract)
     dates = tuple(date_value(item) for item in collect_dates(formal)
         if item.kind != EvidenceDateKind.PREPRINT and item.publication_type != 'preprint' and item.month is not None)
     proof = tuple(item for item in collect_dates(records) if item.kind == EvidenceDateKind.PREPRINT)
     relations = tuple(dict.fromkeys(ref for item in records for ref in item.related_ids))
-    delta = MetadataDelta(ordinary_dates=dates, abstract=abstracts[0] if len(abstracts) == 1 else None,
+    delta = MetadataDelta(ordinary_dates=dates, abstract=next(iter(abstracts.values())) if len(abstracts) == 1 else None,
         preprint_evidence=proof, preprint_relations=relations,
         sources=tuple(dict.fromkeys(item.provenance for item in records if item.provenance.provider != 'workspace')))
     identities = defaultdict(set)
@@ -250,12 +274,14 @@ def collect_necessary_metadata(context, *, records=(), facts=(), required=(), pr
     output = [_workspace_evidence(paper)]
     seen = {evidence_key(item) for item in output}
     lookups, issues, attempted, completed = [], [], set(), []
+    required = set(required)
     sequence = 0
 
     def absorb(request, values):
         nonlocal sequence
         error = values if isinstance(values, Exception) else None
         candidates = tuple(getattr(error, 'records', ())) if error else tuple(values)
+        candidates = _qualified_direct_records(candidates, root_ids)
         candidates, conflicts = _formal_conflicts(candidates, root_ids,
             formal_root=paper.metadata.publication_type != 'preprint')
         accepted, rejected = bind_records(candidates, root_ids if request is None else {
@@ -303,6 +329,14 @@ def collect_necessary_metadata(context, *, records=(), facts=(), required=(), pr
             if not fact.complete:
                 completed[:] = [item for item in completed if item.request != fact.request]
                 attempted.discard(fact.request)
+                # Positive partial proof can satisfy a family heuristic, but
+                # cannot finish the capability that supplied the handoff.
+                required.add(fact.request)
+    if context.token.attempt > 1 and not paper.metadata.first_public_at:
+        # A failed prior attempt can persist positive proof without persisting
+        # complete capability facts. Explicit retry revalidates known native
+        # targets; a complete handoff in this invocation can satisfy them.
+        required.update(_native_proof_requests(tuple(output), include_proven=True))
     while True:
         context.guard()
         requests = tuple(item for item in necessary_requests(tuple(output), root_ids=root_ids,

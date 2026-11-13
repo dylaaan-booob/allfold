@@ -45,6 +45,15 @@ app.whenReady().then(async()=>{
     await dates('all explicit grammars','<p>2020/2/29</p><p>2021-03</p><p>2021/4</p><p>2 May 2020</p><p>June 3, 2020</p><p>Jul. 2020</p><p>2020 August</p><p>2020年9月4日</p><p>2020年10月</p><p>2020-11-05T00:30:00+14:00</p><p>13/02/2020</p><p>02/14/2020</p>',
       ['2020-02-13','2020-02-14','2020-02-29','2020-05-02','2020-06-03','2020-07','2020-08','2020-09-04','2020-10','2020-11-05','2021-03','2021-04']);
     await dates('invalid full candidates never degrade','<p>2020-02-30 2020-04-00 2021-02-29 31 April 2020 April 31, 2020 04/02/2020</p><p>2020-04junk SS-2025-0362 1023-1042 https://x.invalid/2020-05-02 10.5555/2020-06-02</p>',[]);
+    await dates('complete URL query and fragment tokens never contribute dates',
+      '<p>See https://publisher.example/search?date=2020-04-02 for data.</p><p>https://publisher.example/article#2020-05-02</p>'+
+      '<p>//publisher.example/search?date=2020-06-02</p><p>www.publisher.example/?date=2020-07-02</p>'+
+      '<p>https://publisher.example/search?date=2020-08-02 Published: 2021-03-04.</p>', ['2021-03-04']);
+    await dates('invalid ISO time remains invalid across letter case',
+      '<p>2020-05-02t99:99:99z</p><p>2020-06-02T99:99:99Z</p><p>2020-02-30t12:30:00z</p>', []);
+    await dates('valid ISO lowercase markers keep their written day',
+      '<p>2020-07-02T12:30:00z</p><p>2020-08-02t12:30:00z</p><p>2020-09-02t00:30:00+14:00</p>',
+      ['2020-07-02','2020-08-02','2020-09-02']);
     await dates('future, duplicate and precision union','<p>2099-04 2099-04-02 2099-04-03 2099-04-02</p>',['2099-04-02','2099-04-03']);
     await dates('inline continuity and adjacent links','<p>20<span>26</span>-04-02</p><li><a>Issue 1</a><a>January 2026</a></li>',['2026-01','2026-04-02']);
     await dates('150 Unicode code points accepted','<p>'+('😀'.repeat(139))+' 2020-01-02</p>',['2020-01-02']);
@@ -61,7 +70,7 @@ app.whenReady().then(async()=>{
     await dates('OG article condition','',[], '<meta property="article:published_time" content="2020-07-02"><meta name="dcterms.created" content="2020-08-02"><meta name="citation_year" content="2020">');
     await dates('OG article accepted','',['2020-07-02'],'<meta property="OG:TYPE" content="article"><meta property="ARTICLE:PUBLISHED_TIME" content="2020-07-02">');
     await dates('filter before precision merge','<p>'+('x'.repeat(151))+' 2020-04-02</p>',['2020-04'],'<meta name="citation_date" content="2020-04"><meta name="citation_online_date" content="Published 2020-05-02">');
-    const ld=value=>'<script type="application/ld+json">'+JSON.stringify(value)+'</script>';
+    const ld=value=>'<script type="application/ld+json">'+JSON.stringify(value).replace(/</g,'\\u003c')+'</script>';
     const scholarly={'@context':'https://schema.org','@type':'ScholarlyArticle','@id':'urn:paper:one',datePublished:'2020-04',dateModified:'2020-04-02',abstract:'Structured abstract.'};
     for(const [name,value] of [
       ['top object',scholarly],['top array',[scholarly]],['graph',{'@context':'https://schema.org','@graph':[{'@type':'WebSite',datePublished:'2010-01-01'},scholarly]}],
@@ -97,6 +106,11 @@ app.whenReady().then(async()=>{
     for(const attrs of ['id="ABSTRACT"','id="Abstracts"','class="other abstract"','class="abstract-content"','class="abstractInFull"','aria-label="Abstract"','aria-labelledby="abs-title"'])
       await summary('A1 '+attrs,'<section '+attrs+'><h2 id="abs-title">Abstract</h2>'+structured+'</section>',structuredText);
     await summary('A1 nested duplicate containers','<div class="abstract"><section id="abstract"><h2>Abstract</h2><p>One complete result.</p></section></div>','One complete result.');
+    await summary('A1 nested owner keeps paragraphs around a marked child','<section id="abstract"><h2>Abstract</h2><p>First legitimate paragraph.</p><div class="abstract-content"><h3>Methods</h3><p>Middle legitimate paragraph.</p></div><p>Last legitimate paragraph.</p><div class="keywords">Excluded keyword UI.</div></section>',
+      'First legitimate paragraph.\nMethods\nMiddle legitimate paragraph.\nLast legitimate paragraph.');
+    await summary('A1 hidden and peripheral previews cannot reject visible abstract',
+      '<section id="abstract"><p>Complete visible abstract.</p><div hidden class="preview">Hidden fragment.</div><aside class="preview">Peripheral fragment.<button>Read more</button></aside></section>',
+      'Complete visible abstract.');
     await summary('exact tokens only','<div id="abstract-title">Wrong title.</div><div class="abstract-link">Wrong link.</div><div class="abstractish">Wrong content.</div>',null);
     await summary('explicit unwanted candidates','<section class="abstract"><h2>Graphical Abstract</h2><p>Wrong image summary.</p></section><aside class="recommended-articles"><section id="abstract"><p>Wrong recommendation.</p></section></aside><button class="abstract">Abstract</button>',null);
     await summary('only title and button not abstract','<section id="abstract"><h2>Abstract</h2><button>Download</button></section>',null);
@@ -116,6 +130,27 @@ app.whenReady().then(async()=>{
     await summary('weak descriptions excluded','',null,['description','og:description','twitter:description','dc.description'].map(key=>'<meta name="'+key+'" content="Wrong weak description.">').join('')+ld({...scholarly,abstract:undefined,description:'Wrong JSON description.'}));
     await summary('C direct unique LD abstract','','Structured abstract.',ld(scholarly));
     await summary('C safe HTML text','','First paragraph.\nSecond scientific β < 0.05.',ld({...scholarly,abstract:'<p>First paragraph.</p><p>Second scientific β &lt; 0.05.</p>'}));
+    const scientific='For the statistic <T>, E<T> = 0 and x<y under H0.';
+    await summary('C literal scientific angle tokens','',scientific,ld({...scholarly,abstract:scientific}));
+    await summary('C known angle token mentioned inside prose stays literal','','We refer to <p> and estimate <T>.',
+      ld({...scholarly,abstract:'We refer to <p> and estimate <T>.'}));
+    await summary('B literal scientific angle tokens','',scientific,'<meta name="citation_abstract" content="For the statistic &lt;T&gt;, E&lt;T&gt; = 0 and x&lt;y under H0.">');
+    await summary('C actual markup preserves literal scientific angles','','Methods\n'+scientific+'\nH2O remains.',
+      ld({...scholarly,abstract:'<h3>Methods</h3><p>'+scientific+'</p><p>H<sub>2</sub>O remains.</p><script>Wrong executable text.</script>'}));
+    const abstractMeta=(name,value)=>'<meta name="'+name+'" content="'+value.replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;')+'">';
+    const hiddenPreview='<div><p>Complete visible structured abstract.</p><div hidden class="preview">Hidden fragment.</div><aside class="preview">Peripheral fragment.<button>Read more</button></aside></div>';
+    await summary('B hidden and peripheral previews ignored','','Complete visible structured abstract.',abstractMeta('citation_abstract',hiddenPreview));
+    await summary('C hidden and peripheral previews ignored','','Complete visible structured abstract.',ld({...scholarly,abstract:hiddenPreview}));
+    for(const invalid of ['No abstract available.','No abstract\navailable.','Please sign in to read the abstract.','…','Read more',
+      '<div class="preview">Short fragment.</div>','<p>Truncated fragment.</p><button>Read more</button>']) {
+      await summary('B invalid candidate falls through: '+invalid,'','Valid later structured text.',
+        abstractMeta('citation_abstract',invalid)+ld({...scholarly,abstract:'Valid later structured text.'}));
+      await summary('C invalid candidate is empty: '+invalid,'',null,ld({...scholarly,abstract:invalid}));
+    }
+    await summary('B invalid peer cannot create conflict with valid text','','Valid same-field text.',
+      abstractMeta('citation_abstract','No abstract available.')+abstractMeta('citation_abstract','Valid same-field text.'));
+    await summary('B invalid first field falls through to later academic Meta','','Valid second-field text.',
+      abstractMeta('citation_abstract','No abstract available.')+abstractMeta('dcterms.abstract','Valid second-field text.')+ld(scholarly));
     await summary('preview falls back without expansion','<section class="abstract"><p>Truncated text…</p><button aria-expanded="false">Read more</button></section>','Full meta text.','<meta name="citation_abstract" content="Full meta text.">');
     await summary('ellipsis-only rejected','<div class="abstract">…</div>',null);
     const skipped=await extract(article('<p>2020-01-02</p><section class="abstract"><p>'+('x'.repeat(65537))+'</p></section>'),false);

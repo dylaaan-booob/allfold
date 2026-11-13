@@ -91,6 +91,81 @@ def test_actual_branch_saves_formal_increment_and_keeps_related_preprint_separat
     assert len(requests) == 3 and clients == [('opened', 'crossref'), ('closed', 'crossref')]
 
 
+@pytest.mark.parametrize('saved_pmid', [None, '42', '84'])
+@pytest.mark.parametrize('with_doi', [True, False])
+def test_reported_wos_pmid_cannot_own_a_formal_paper_or_discard_its_metadata(tmp_path, saved_pmid, with_doi):
+    from allfold.application.necessary_metadata import necessary_metadata_branch
+    from allfold.providers.wos import record_evidence
+
+    fields = {'PM': ['42'], 'UT': ['WOS:0001'],
+        'TI': ['Reported article'], 'AB': ['Useful same-article abstract.'], 'PD': ['JAN 2'], 'PY': ['2026']}
+    if with_doi:
+        fields['DI'] = ['10.5555/formal']
+    evidence = record_evidence(fields)
+    identities = {'doi': '10.5555/formal'} if with_doi else {'wos': 'WOS:0001'}
+    if saved_pmid:
+        identities['pmid'] = saved_pmid
+    paper, clients = execute(tmp_path, necessary_metadata_branch(records=(evidence,), discover_relations=False),
+        direct_ids=ExternalIds(**identities),
+        transport=lambda _: pytest.fail('An unverified reported PMID cannot request confirmation'))
+
+    expected = {*identities.items(), ('wos', 'WOS:0001')}
+    assert paper.collection_status == 'completed'
+    assert {(item.namespace, item.value) for item in paper.identities} == expected
+    assert paper.metadata.abstract == 'Useful same-article abstract.'
+    assert paper.metadata.ordinary_dates == ('2026-01-02',)
+    assert any(item.provider == 'wos' for item in paper.metadata.sources)
+    assert clients == []
+
+
+@pytest.mark.parametrize('with_doi', [True, False])
+def test_reported_wos_pmid_cannot_plan_formal_pubmed_queries(tmp_path, with_doi):
+    from allfold.application.necessary_metadata import necessary_metadata_branch, necessary_requests
+    from allfold.providers.wos import record_evidence
+
+    fields = {'PM': ['42'], 'UT': ['WOS:0001'], 'AB': ['Same formal article.']}
+    if with_doi:
+        fields['DI'] = ['10.5555/formal']
+    evidence = record_evidence(fields)
+    identities = {'doi': '10.5555/formal'} if with_doi else {'wos': 'WOS:0001'}
+    providers = ('pubmed', 'europe_pmc')
+    assert necessary_requests((evidence,), root_ids=set(identities.items()), providers=providers) == ()
+    paper, clients = execute(tmp_path, necessary_metadata_branch(records=(evidence,), providers=providers),
+        direct_ids=ExternalIds(**identities), transport=lambda _: pytest.fail('Reported PMID drove a formal query'))
+    assert paper.collection_status == 'completed'
+    assert not any(item.namespace == 'pmid' for item in paper.identities)
+    assert clients == []
+
+
+def test_saved_pmid_only_identity_still_binds_wos_metadata(tmp_path):
+    from allfold.application.necessary_metadata import necessary_metadata_branch
+    from allfold.providers.wos import record_evidence
+
+    evidence = record_evidence({'PM': ['42'], 'UT': ['WOS:0001'], 'AB': ['Same PMID article.']})
+    paper, _ = execute(tmp_path, necessary_metadata_branch(records=(evidence,), discover_relations=False),
+        direct_ids=ExternalIds(pmid='42'), transport=lambda _: pytest.fail('Saved identity needs no request'))
+    assert paper.collection_status == 'completed'
+    assert {(item.namespace, item.value) for item in paper.identities} == {('pmid', '42'), ('wos', 'WOS:0001')}
+    assert paper.metadata.abstract == 'Same PMID article.'
+
+
+def test_invalid_provider_abstract_does_not_conflict_with_valid_same_article_handoff(tmp_path):
+    from allfold.application.necessary_metadata import necessary_metadata_branch
+    from allfold.providers.supplemental import SupplementalClient
+    from allfold.providers.wos import record_evidence
+
+    unavailable = record_evidence({'DI': ['10.5555/formal'], 'UT': ['WOS:0001'], 'AB': ['No abstract available.']})
+    with SupplementalClient('crossref', interval=0, transport=httpx.MockTransport(lambda _: httpx.Response(200,
+            json={'message': {'DOI': '10.5555/formal', 'type': 'journal-article',
+                'abstract': '<jats:p>Valid scientific &lt;T&gt; text.</jats:p>'}}))) as parser:
+        valid = parser.lookup('doi', '10.5555/formal')
+    paper, clients = execute(tmp_path, necessary_metadata_branch(records=(unavailable, *valid), discover_relations=False),
+        transport=lambda _: pytest.fail('Parsed handoffs need no request'))
+    assert paper.collection_status == 'completed'
+    assert paper.metadata.abstract == 'Valid scientific <T> text.'
+    assert clients == []
+
+
 def test_first_public_waits_for_reverse_discovery_and_every_native_family(tmp_path):
     from concurrent.futures import ThreadPoolExecutor
     from threading import Event
@@ -137,6 +212,79 @@ def test_first_public_waits_for_reverse_discovery_and_every_native_family(tmp_pa
     assert paper.collection_status == 'completed'
     assert paper.metadata.first_public_at == '2019-01-02'
     assert paper.metadata.ordinary_dates == ('2026-02-03',)
+
+
+@pytest.mark.parametrize('completion_failed', [False, True])
+def test_incomplete_native_handoff_keeps_its_query_unfinished_after_positive_v1(tmp_path, completion_failed):
+    from allfold.application.necessary_metadata import NecessaryRequest, VerifiedResponse, necessary_metadata_branch
+    from allfold.models import ProviderRecordRef
+    from allfold.persistence.paper_repository import PaperRepository
+    from allfold.providers.supplemental import SupplementalClient
+
+    atom = '''<feed xmlns="http://www.w3.org/2005/Atom"><entry>
+        <id>http://arxiv.org/abs/2201.12345v3</id><published>2022-01-02T00:00:00Z</published>
+        <updated>2025-02-02T00:00:00Z</updated></entry></feed>'''
+    with SupplementalClient('arxiv', interval=0,
+            transport=httpx.MockTransport(lambda _: httpx.Response(200, text=atom))) as parser:
+        native = parser.lookup('arxiv', '2201.12345')
+    requests = []
+    def response(request):
+        requests.append(request)
+        assert request.url.params['id_list'] == '2201.12345'
+        with PaperRepository.open(tmp_path / 'workspace') as repository:
+            paper, = repository.list_papers()
+            assert paper.metadata.abstract == 'Valid formal increment.'
+            assert any(item.first_version for item in paper.metadata.preprint_evidence)
+            assert paper.metadata.first_public_at is None
+        return httpx.Response(200, text='<invalid/>' if completion_failed else atom)
+
+    fact = VerifiedResponse(NecessaryRequest('arxiv', 'arxiv', '2201.12345', 'native'), native, complete=False)
+    branch = necessary_metadata_branch(providers=('arxiv',), discover_relations=False, facts=(fact,),
+        records=(record(abstract='Valid formal increment.', related_ids=(
+            ProviderRecordRef(provider='arxiv', record_id='2201.12345', relation='preprint'),)),))
+    paper, clients = execute(tmp_path, branch, transport=response)
+    assert len(requests) == 1
+    assert clients == [('opened', 'arxiv'), ('closed', 'arxiv')]
+    assert paper.collection_status == ('failed' if completion_failed else 'completed')
+    assert paper.metadata.first_public_at == (None if completion_failed else '2022-01-02')
+    assert any(item.first_version for item in paper.metadata.preprint_evidence)
+
+
+@pytest.mark.parametrize('retry_result', ['retrieved', 'failed', 'verified-complete'])
+def test_retry_cannot_treat_saved_partial_proof_as_a_finished_native_capability(tmp_path, retry_result):
+    from allfold.application.necessary_metadata import NecessaryRequest, VerifiedResponse, necessary_metadata_branch
+    from allfold.models import ProviderRecordRef
+    from allfold.providers.supplemental import SupplementalClient
+
+    atom = '''<feed xmlns="http://www.w3.org/2005/Atom"><entry><id>http://arxiv.org/abs/2201.12345v3</id>
+        <published>2022-01-02T00:00:00Z</published></entry></feed>'''
+    with SupplementalClient('arxiv', interval=0,
+            transport=httpx.MockTransport(lambda _: httpx.Response(200, text=atom))) as parser:
+        native = parser.lookup('arxiv', '2201.12345')
+    request = NecessaryRequest('arxiv', 'arxiv', '2201.12345', 'native')
+    calls, results = [], []
+    def response(incoming):
+        calls.append(incoming)
+        return httpx.Response(200, text=atom if len(calls) == 2 and retry_result == 'retrieved' else '<invalid/>')
+
+    def retry(registry, task):
+        failed = task.future.result(5)
+        assert failed.collection_status == 'failed' and failed.metadata.first_public_at is None
+        assert any(item.first_version for item in failed.metadata.preprint_evidence)
+        facts = (VerifiedResponse(request, native),) if retry_result == 'verified-complete' else ()
+        retried = registry.retry(task.paper_id, branches=(necessary_metadata_branch(providers=('arxiv',), facts=facts),))
+        results.append(retried.future.result(5))
+
+    branch = necessary_metadata_branch(providers=('arxiv',), discover_relations=False,
+        facts=(VerifiedResponse(request, native, complete=False),), records=(record(related_ids=(
+            ProviderRecordRef(provider='arxiv', record_id='2201.12345', relation='preprint'),)),))
+    execute(tmp_path, branch, transport=response, on_task=retry)
+    retried, = results
+    assert len(calls) == (1 if retry_result == 'verified-complete' else 2)
+    assert retried.collection.attempt == 2
+    assert retried.collection_status == ('failed' if retry_result == 'failed' else 'completed')
+    assert retried.metadata.first_public_at == (None if retry_result == 'failed' else '2022-01-02')
+    assert any(item.first_version for item in retried.metadata.preprint_evidence)
 
 
 def test_partial_reverse_retains_facts_and_cannot_publish_first_public(tmp_path):

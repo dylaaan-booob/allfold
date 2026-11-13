@@ -165,8 +165,9 @@ including an equal date independently supplied by the formal article. Neither
 collection derives `publication_date` or Preprint results. Run keeps its existing query and first-version algorithms. Event facts remain
 operation-local inputs; the library ordinary date set has no event/source columns.
 
-Existing nonempty abstract text is retained exactly. Empty/markup-only candidates
-and standalone wrapper/heading-only candidates do not occupy the first-valid
+Existing nonempty abstract text is retained exactly. Empty/markup-only candidates,
+standalone wrapper/heading-only candidates, pure ellipses and explicit unavailable,
+sign-in or Read more notices do not occupy the first-valid
 opportunity. New automatic candidates use `abstract_text.normalize_abstract_text`,
 separate from legacy Run's `canonicalize.normalize_abstract`. It removes explicit
 markup and standalone Abstract/Summary wrappers, retaining internal scientific
