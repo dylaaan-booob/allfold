@@ -131,3 +131,27 @@ CAPTCHA compatibility remain separately authorized manual acceptance. PR #90 is
 unmerged; final integrated checks, review and latest PR-associated CI must be
 reported from their actual outputs. WF05 registry, WF08 background/cross-Run and
 WF09/WF10 PDF transport/permanent files/Download UI have not been implemented.
+
+Scoped live acceptance on 2026-11-13 used a separate application copy, temporary
+configuration/Workspace/covers and a fresh profile. Institution QR Login,
+Oxford/WoS preparation and parallel Cover Search completed. A Manual Project
+Euclid Visit and a WoS challenge resumed after the user completed hCaptcha.
+One small WoS Run queried/exported/accepted 28 records and created 28 test Papers;
+canceling the next Browser-stage Run allowed another successful export with
+28 already saved. Ordinary keyword saving preserved preparation, while changing
+Oxford access invalidated only Oxford. The user-owned page survived task cleanup.
+
+At global 4/Service 3, the live batch ended without blocked admission; native
+creation/destruction events showed a peak of three managed pages. Target eviction
+invalidated the matching Service. Acceptance exposed a late native `Opened`
+result overwriting the closed-target reason with `unverified_official_page`;
+the scoped fix preserves `target_closed`, verified through both public coordinator
+regressions and another live low-capacity batch. Normal exit during an actual
+authentication wait canceled the native operation, destroyed its page and exited;
+restart remained idle, retained the isolated Papers/cover and restored limits 16/4.
+
+The first WoS preparation returned `ERR_INVALID_REDIRECT`; a new controlled
+Prepare after completed authentication succeeded. Its cause was not established,
+and no redirect/replay permission was expanded. Saved-credential mutation and a
+live Cloudflare Solver challenge were not exercised by this QR/hCaptcha sample.
+This is scoped compatibility evidence, not a claim about every Service or entry.
