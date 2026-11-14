@@ -316,3 +316,54 @@ def test_final_inode_replacement_cannot_be_completed_or_removed(tmp_path,monkeyp
         assert (workspace/f'Documents/{paper.id}.pdf').read_bytes()==b'unrelated replacement'
         assert not host.active
     finally:host.shutdown();host.join()
+
+
+def test_admission_binds_candidates_before_concurrent_registration(tmp_path,monkeypatch):
+    from allfold.application.body_downloads import submit_body_download
+    from concurrent.futures import ThreadPoolExecutor
+    from threading import Barrier,Event
+    from dataclasses import replace
+    host,workspace,paper,bridge,candidate=application_host(tmp_path)
+    registry=host.current();original=registry.reserve
+    both,created,reused=Barrier(2),Event(),Event()
+    second=replace(candidate,url='https://publisher.example.org/SECOND')
+    def reserve(*args,**kwargs):
+        both.wait(3)
+        if kwargs['body_request'].candidates[0]==candidate:
+            task=original(*args,**kwargs);created.set();assert reused.wait(3);return task
+        assert created.wait(3)
+        task=original(*args,**kwargs);reused.set();return task
+    try:
+        with monkeypatch.context() as patch,ThreadPoolExecutor(2) as pool:
+            patch.setattr(registry,'reserve',reserve)
+            first=pool.submit(submit_body_download,host,paper,candidates=(candidate,))
+            other=pool.submit(submit_body_download,host,paper,candidates=(second,))
+            task=first.result(3);assert other.result(3) is task
+        assert bridge.started.wait(2)
+        assert bridge.calls[0][1]['url']==candidate.url
+        bridge.finish()
+        assert task.future.result(3).status=='completed'
+    finally:host.shutdown();host.join()
+
+
+def test_old_candidate_cannot_borrow_a_primary_identity_changed_by_new_run(tmp_path):
+    from allfold.application.body_downloads import submit_body_download
+    from dataclasses import replace
+    from allfold.pdf_rules import PdfTarget
+    host,workspace,_,bridge,_=application_host(tmp_path)
+    try:
+        with PaperRepository.open(workspace) as repo:
+            paper=make_paper(repo,'10.5555/unused')
+            paper=repo.create_or_match(repo.workspace_id,direct_ids=ExternalIds(pmid='456'),metadata=PaperMetadata(title='PubMed')).paper
+        target=PdfTarget(str(paper.id),direct_identities=tuple((i.namespace,i.value) for i in paper.identities))
+        from allfold.pdf_rules import PdfCandidate
+        candidate=PdfCandidate(target,'P1','GENERIC','generic','https://publisher.example.org/old-target')
+        from allfold.application.collection_runtime import BranchSpec
+        task=host.current().submit(direct_ids=ExternalIds(pmid='456',doi='10.5555/new-primary'),
+            metadata=paper.metadata,branches=(),no_applicable=True)
+        current=task.future.result(3)
+        assert current.primary_identity!=paper.primary_identity and current.token==paper.token
+        with pytest.raises(StaleWriteError,match='primary'):
+            submit_body_download(host,paper,candidates=(candidate,))
+        assert bridge.calls==[]
+    finally:host.shutdown();host.join()

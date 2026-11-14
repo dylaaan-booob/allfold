@@ -62,12 +62,13 @@ async def main():
     host = application.state.workspace_tasks
     client = httpx.AsyncClient(transport=httpx.ASGITransport(app=application), base_url='http://localhost')
     try:
-        for index, path in enumerate(['redirect?Signature=A%2FB', 'encoded', 'chunked', 'html.pdf', 'unknown', 'truncated', 'cancel', 'expiry', 'cross', 'challenge', 'disk-write', 'disk-flush', 'slow-writer']):
+        for index, path in enumerate(['redirect?Signature=A%2FB', 'encoded', 'chunked', 'html.pdf', 'unknown', 'truncated', 'cancel', 'expiry', 'cross', 'challenge', 'disk-write', 'disk-flush', 'slow-writer', 'cross-referer']):
             with PaperRepository.open(workspace) as repo:
                 paper = repo.create_or_match(repo.workspace_id, direct_ids=ExternalIds(doi=f'10.5555/body{index}'),
                     metadata=PaperMetadata(title='Same title')).paper
             target = PdfTarget(str(paper.id), doi=f'10.5555/body{index}', direct_identities=tuple((i.namespace,i.value) for i in paper.identities))
-            candidate = PdfCandidate(target, 'P1', 'GENERIC', 'generic', origin+'/'+path, referer=origin+'/article')
+            candidate = PdfCandidate(target, 'P1', 'GENERIC', 'generic', origin+'/'+path,
+                referer=origin.replace('pdf.','other.')+'/article?InstitutionToken=synthetic' if path=='cross-referer' else origin+'/article')
             received, closing = threading.Event(), threading.Event()
             def progress(value):
                 if value.get('received_bytes',0)>0:received.set()
@@ -106,7 +107,7 @@ async def main():
             if path.startswith('disk-'):assert result.status=='local_failure'
             if path=='challenge':assert result.candidate_result.response.access=='challenge'
             if path=='html.pdf':assert result.candidate_result.response.access=='login'
-            success = path in {'redirect?Signature=A%2FB','encoded','chunked','slow-writer'}
+            success = path in {'redirect?Signature=A%2FB','encoded','chunked','slow-writer','cross-referer'}
             assert (result.status == 'completed') == success, (path,result)
             assert (saved.body is not None) == success
             if success:

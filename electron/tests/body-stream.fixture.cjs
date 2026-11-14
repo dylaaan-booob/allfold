@@ -12,7 +12,7 @@ app.setPath('userData',profile);app.setPath('sessionData',profile);
 app.commandLine.appendSwitch('host-resolver-rules','MAP *.example.org 127.0.0.1');
 app.commandLine.appendSwitch('no-proxy-server');app.on('window-all-closed',()=>{});
 app.whenReady().then(async()=>{
-  const requests=[],cases=[],pairs=[],drains=[],payload=Buffer.alloc(2*1024*1024,71);let origin;
+  const requests=[],cases=[],pairs=[],drains=[],payload=Buffer.alloc(2*1024*1024,71);let origin,slowProduced=0;
   const server=http.createServer(async(req,res)=>{
     requests.push({url:req.url,method:req.method,headers:req.headers});
     if(req.url==='/cross'){res.writeHead(302,{location:origin.replace('pdf.','other.')+'/leak'});res.end();return;}
@@ -21,10 +21,11 @@ app.whenReady().then(async()=>{
     if(req.url==='/html.pdf'){res.writeHead(200,{'content-type':'text/html','content-disposition':'attachment; filename=body.pdf'});res.end('<html>login required</html>');return;}
     if(req.url==='/unknown'){res.writeHead(200,{'content-type':'application/octet-stream'});res.end('unknown');return;}
     if(req.url==='/encoded'){const data=gzipSync(payload);res.writeHead(200,{'content-type':'application/pdf','content-encoding':'gzip','content-length':data.length});res.end(data);return;}
+    const streamed=req.url==='/slow-writer'?Buffer.alloc(16*1024*1024,71):payload;
     res.writeHead(200,{'content-type':'application/pdf',...(req.url==='/truncated'?{'content-length':payload.length*2}:{})});
-    res.write(payload.subarray(0,65536));
+    res.write(streamed.subarray(0,65536));if(req.url==='/slow-writer')slowProduced=65536;
     if(req.url==='/truncated'){setTimeout(()=>res.destroy(),40);return;}
-    for(let n=65536;n<payload.length&&!res.destroyed;n+=65536){await new Promise(r=>setTimeout(r,req.url==='/expiry'?40:8));if(!res.write(payload.subarray(n,n+65536)))await new Promise(r=>{const done=()=>{res.removeListener('drain',done);res.removeListener('close',done);r();};res.once('drain',done);res.once('close',done);});}
+    for(let n=65536;n<streamed.length&&!res.destroyed;n+=65536){if(req.url!=='/slow-writer')await new Promise(r=>setTimeout(r,req.url==='/expiry'?40:8));if(req.url==='/slow-writer')slowProduced+=65536;if(!res.write(streamed.subarray(n,n+65536)))await new Promise(r=>{const done=()=>{res.removeListener('drain',done);res.removeListener('close',done);r();};res.once('drain',done);res.once('close',done);});}
     res.end();
   });
   await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));origin=`http://pdf.example.org:${server.address().port}`;
@@ -45,16 +46,16 @@ app.whenReady().then(async()=>{
   vm.runInContext(source.slice(source.indexOf('async function execute(message)'),source.indexOf('async function startPython(')),context);
   // Inject actual writer-boundary errors, without stubbing transfer or completion.
   const {Readable}=require('node:stream'),realFromWeb=Readable.fromWeb;
-  let slowBytes=0,slowWitness=false,firstSlowWrite=true,slowOperation;
-  Readable.fromWeb=(...args)=>{const readable=realFromWeb(...args);if(faultKind==='slow-writer')readable.on('data',chunk=>{slowBytes+=chunk.length;});return readable;};
+  let slowBytes=0,slowReadEvents=0,slowWitness=false,firstSlowWrite=true,slowOperation;
+  Readable.fromWeb=(...args)=>{const readable=realFromWeb(...args);if(faultKind==='slow-writer')readable.on('data',chunk=>{slowBytes+=chunk.length;slowReadEvents++;});return readable;};
   const faults=new Map(),realOpen=fs.openSync,realWrite=fs.write,realFsync=fs.fsync,realClose=fs.close;
   let faultTarget,faultKind;
   fs.openSync=(filename,...args)=>{const fd=realOpen(filename,...args);if(filename===faultTarget)faults.set(fd,faultKind);return fd;};
   fs.write=(fd,...args)=>{
     if(faults.get(fd)==='disk-write')return setImmediate(()=>args.at(-1)(Object.assign(Error('fixture ENOSPC'),{code:'ENOSPC'})));
     if(faults.get(fd)==='slow-writer') {
-      if(firstSlowWrite){firstSlowWrite=false;assert.ok(slowBytes<1024*1024,'writer must start before full body aggregation');
-        return setTimeout(()=>{assert.ok(slowBytes<1024*1024,'held writer must backpressure the Node reader');slowWitness=true;realWrite(fd,...args);},100);
+      if(firstSlowWrite){firstSlowWrite=false;assert.ok(slowReadEvents<=3&&slowBytes<16*1024*1024,'writer must start before full body aggregation');
+        return setTimeout(()=>{assert.ok(slowProduced>slowBytes,'fast producer has supplied unread data');assert.ok(slowReadEvents<=3&&slowBytes<16*1024*1024,'held writer must backpressure the Node reader');slowWitness=true;realWrite(fd,...args);},100);
       }
       return setTimeout(()=>realWrite(fd,...args),3);
     }
@@ -82,7 +83,7 @@ app.whenReady().then(async()=>{
         void context.execute(message).catch(error=>{dispatchError=error;python.kill();});
       }
       else if(message.type==='cancel')context.operations.get(message.id)?.controller.abort();
-      else if(message.type==='fixture_case')cases.push(message);
+      else if(message.type==='fixture_case'){cases.push(message);console.log('BODY CASE '+message.path+' '+message.status);}
       else if(message.type==='fixture_pair')pairs.push(message);
       else if(message.type==='fixture_drain')drains.push(message);
       else if(message.type==='fixture_complete'){complete=true;python.stdin.end();}
@@ -92,11 +93,11 @@ app.whenReady().then(async()=>{
   const code=await new Promise(resolve=>python.once('exit',resolve));
   try {
     if(dispatchError)throw dispatchError;
-    assert.equal(code,0,stderr);assert.equal(complete,true,stderr);assert.equal(cases.length,13);assert.equal(slowWitness,true);assert.deepEqual(pairs,[{type:'fixture_pair',statuses:['cancelled','completed']}]);
+    assert.equal(code,0,stderr);assert.equal(complete,true,stderr);assert.equal(cases.length,14);assert.equal(slowWitness,true);assert.deepEqual(pairs,[{type:'fixture_pair',statuses:['cancelled','completed']}]);
     assert.equal(requests.filter(r=>r.url==='/same').length,2);assert.equal(requests.filter(r=>r.url==='/leak').length,0);
     assert.deepEqual(drains,[{type:'fixture_drain',status:'settled'}]);
     assert.equal(browser.tabs.size,0,'pure stream must create no pages');
-    for(const request of requests){assert.equal(request.method,'GET');assert.equal(request.headers['x-allfold-request-context'],undefined);assert.equal(request.headers.cookie,'fixture_session=selected-session');assert.equal(request.headers.referer,origin+'/article');}
+    for(const request of requests){assert.equal(request.method,'GET');assert.equal(request.headers['x-allfold-request-context'],undefined);assert.equal(request.headers.cookie,'fixture_session=selected-session');assert.equal(request.headers.referer,request.url==='/cross-referer'?origin.replace('pdf.','other.')+'/':origin+'/article');}
     assert.equal(requests.filter(r=>r.url==='/body?Signature=A%2FB').length,1);
     const first=cases[0];assert.deepEqual(fs.readFileSync(path.join(profile,'workspace/Documents',first.paper+'.pdf')),payload);
     console.log('BODY STREAM PASS '+JSON.stringify(cases.map(({path,status})=>({path,status}))));

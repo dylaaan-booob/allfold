@@ -39,7 +39,7 @@ credentials. No default Session, Cookie export or Cover `omit` contract is reuse
 Targets require controlled public URLs and public DNS answers. Current direct-stream
 redirect scope is the captured request origin; an origin escape fails before it can
 forward credentials. The original signed query remains in the current request only.
-Referer is set only from the confirmed candidate, with `strict-origin-when-cross-origin`.
+Referer is set only from the confirmed candidate, with `strict-origin-when-cross-origin`: cross-origin values keep only origin and HTTPS→HTTP omits the header.
 Actual final URLs come from associated native response facts. Random private markers
 are stripped before outbound headers. Request/task/attempt identity separates equal URLs.
 

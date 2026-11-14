@@ -18,6 +18,13 @@ from allfold.persistence.paper_repository import PaperRecord, StaleWriteError, I
 
 
 @dataclass(frozen=True)
+class _BodyRequest:
+    primary: object
+    candidates: tuple
+    progress: object = None
+
+
+@dataclass(frozen=True)
 class BodyResult:
     status: str
     paper: PaperRecord | None = None
@@ -227,15 +234,16 @@ def submit_body_download(host, paper, *, candidates, service_id=None, deadline=N
     if registry.bridge is None or not registry.bridge.connected:
         raise InvalidPaperState('Selected Session bridge is unavailable')
     reservation = registry.reserve(paper.id, kind='body', expected_token=paper.token,
-        service_id=service_id, deadline=registry._deadline(deadline))
+        service_id=service_id, deadline=registry._deadline(deadline),
+        body_request=_BodyRequest(primary, candidates, progress))
     if isinstance(reservation, PaperRecord):
         return BodyResult('completed', reservation)
     with registry.paper_gate():
         if reservation.scheduled is not None:
             return reservation
         try:
-            reservation.scheduled = registry._scheduler.submit(service_id,
-                lambda: _run(reservation, candidates, progress), cancel_event=reservation.cancel_event,
+            reservation.scheduled = registry._scheduler.submit(reservation.service_id,
+                lambda: _run(reservation, reservation.body_request.candidates, reservation.body_request.progress), cancel_event=reservation.cancel_event,
                 deadline=reservation.deadline, discarded=lambda reason: _discard(reservation, reason))
             reservation.scheduled.add_done_callback(lambda actual: _settled(reservation, actual))
         except BaseException:

@@ -39,7 +39,7 @@ function openOutput(root,output) {
   const prior=fs.lstatSync(filename);
   if(!prior.isFile()||prior.nlink!==1||!same(prior,output.file)||prior.size!==0)throw failure('output-object');
   // Darwin O_NOFOLLOW_ANY (sys/fcntl.h): refuse symlinks in every component.
-  const fd=fs.openSync(filename,fs.constants.O_WRONLY|fs.constants.O_NOFOLLOW|fs.constants.O_NONBLOCK|(process.platform==='darwin'?0x20000000:0));
+  const fd=fs.openSync(filename,fs.constants.O_WRONLY|fs.constants.O_NONBLOCK|(process.platform==='darwin'?0x20000000:fs.constants.O_NOFOLLOW));
   try {
     const actual=fs.fstatSync(fd);
     if(!actual.isFile()||actual.nlink!==1||actual.size!==0||!same(actual,output.file))throw failure('output-object');
@@ -103,7 +103,12 @@ async function executeBodyStream(browser,data,{signal,progress=()=>{}}={}) {
     const headers={Accept:'application/pdf'};
     if(data.referer) {
       if(!publicClueURL(data.referer))throw Error('unsafe-referer');
-      headers.Referer=data.referer;
+      const referrer=new URL(data.referer);referrer.hash='';
+      // Electron net.fetch accepts explicit Referer as a header; Chromium rejects
+      // a full cross-origin value under strict-origin policy. Project that same
+      // policy before dispatch, including HTTPS-to-HTTP suppression.
+      if(!(referrer.protocol==='https:'&&initial.protocol==='http:'))
+        headers.Referer=referrer.origin===initial.origin?referrer.href:referrer.origin+'/';
     }
     ({response,requests}=await browser.sessionEvents.fetch(data.url,
       {method:'GET',redirect:'follow',credentials:'include',headers,referrerPolicy:'strict-origin-when-cross-origin'},

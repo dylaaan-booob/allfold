@@ -137,6 +137,7 @@ class PaperReservation:
     scheduled: Future | None = None
     browser_owner: object = None
     download_token: object = None
+    body_request: object = field(default=None, repr=False)
 
     def guard(self):
         """Verify this exact reservation without capturing a replacement token."""
@@ -609,9 +610,11 @@ class WorkspaceRegistry:
         return self.register(handle)
 
     def reserve(self, paper_id, *, kind='download', expected_token=None, cancel=None,
-                service_id=None, providers=(), deadline=None):
+                service_id=None, providers=(), deadline=None, body_request=None):
         if kind not in {'download', 'legacy', 'body'}:
             raise ValueError('Unknown Paper reservation kind')
+        if kind == 'body' and body_request is None:
+            raise ValueError('A captured body request is required')
         paper_id = UUID(str(paper_id))
         providers = tuple(sorted(set(providers)))
         if not set(providers) <= set(PROVIDERS):
@@ -638,6 +641,8 @@ class WorkspaceRegistry:
                     raise StaleWriteError('Captured Paper authority changed')
                 download_token = None
                 if kind == 'body':
+                    if paper.primary_identity != body_request.primary:
+                        raise StaleWriteError('Captured primary Paper identity changed')
                     if paper.download is not None and paper.download.output is not None:
                         from allfold.persistence.body_files import ManagedBodyFiles
                         with ManagedBodyFiles(self.workspace, paper.id, paper.download.token.attempt,
@@ -649,6 +654,7 @@ class WorkspaceRegistry:
                     repository.touch_projection(paper_id)
             reservation = PaperReservation(self, paper.token, self.lifecycle_id, kind, cancel)
             reservation.download_token = download_token
+            reservation.body_request = body_request
             reservation.authority, reservation.service_id = authority, service_id
             reservation.providers = providers
             reservation.deadline = reservation_deadline
