@@ -351,23 +351,6 @@ def test_web_routes_use_workspace_identity_and_retire_business_endpoints(tmp_pat
             assert client.get(retired).status_code == 404
 
 
-def test_preprint_can_use_known_metadata_with_unknown_legacy_discovery_time(tmp_path):
-    import json
-    import sqlite3
-    config, workspace, paper = create_paper(tmp_path)
-    # Valid legacy metadata never had this field; its unknown value must stay
-    # unknown while transient proof provenance uses this operation's evidence.
-    with sqlite3.connect(workspace / 'papers.sqlite') as connection:
-        payload = paper.metadata.model_dump(mode='json')
-        payload.pop('discovered_at')
-        connection.execute('UPDATE paper_metadata SET payload = ? WHERE paper_id = ?', (json.dumps(payload), str(paper.id)))
-    assert read_paper(workspace, paper.id).metadata.discovered_at is None
-    service = PreprintLookup(config, BrowserTaskLock(), client_factory=factory(native_fixture('biorxiv', version('biorxiv'))))
-    assert lookup(service, paper.id)['phase'] == 'Completed'
-    metadata = read_paper(workspace, paper.id).metadata
-    assert metadata.first_public_at == '2022-02-03' and metadata.discovered_at is None
-
-
 @pytest.mark.parametrize('stop_kind', ['reject', 'exclude', 'cancel'])
 def test_preprint_status_reports_current_same_library_revision_after_terminal_cleanup(tmp_path, stop_kind):
     config, workspace, paper = create_paper(tmp_path, abstract='Original')

@@ -6,11 +6,6 @@ window.allfoldLayout=(()=>{
   try {
     const raw=localStorage.getItem(key);
     if(raw!==null)saved=model.targets(JSON.parse(raw));
-    else {
-      // Only a valid old right width has value in the new layout. No legacy layout state is restored.
-      const right=JSON.parse(localStorage.getItem('allfold.journal-layout'))?.right;
-      saved=model.targets({sidebarPreferredWidth:right});
-    }
   }catch {storageError='本地保存不可用';}
   values={...saved};
   function debug() {

@@ -37,6 +37,14 @@ Preprint proof come from SQLite. Paper text, raw Provider responses, credentials
 and sensitive URLs stay outside diagnostics. Existing log files are not migrated
 or deleted by the cutover; retired business shapes are not revived as current UI.
 
+WF07 keeps PDF discovery separate from successful transfer provenance. Local
+diagnostics report bounded source/rule/failure categories, never current signed
+URLs, Referer secrets, Cookie/Authorization, raw response bodies or DOM. Candidate
+construction and a normal HTTP response do not create a successful `pdf_source`.
+The PDF-only native action uses the same reviewed operation diagnostics and
+actual settlement boundary; it adds no public Download history product. The
+[discovery specification](pdf-source-discovery.md) defines stop/fallback semantics.
+
 ## Storage and limits
 
 Electron initializes a diagnostics directory inside its standard application logs

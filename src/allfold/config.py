@@ -219,18 +219,6 @@ class WorkflowConfig(BaseModel):
     managed_page_global_limit: int = Field(default=16, strict=True, ge=4, le=64)
     pdf_concurrency: int = Field(default=2, strict=True, ge=1, le=8)
 
-    @model_validator(mode="before")
-    @classmethod
-    def read_legacy_settings(cls, value):
-        if isinstance(value, dict):
-            # Existing YAML loads unchanged. The next Settings save drops obsolete launch preferences.
-            return {key: item for key, item in value.items()
-                    if key not in {"auto_import_after_preparation", "transition_delay_seconds", "display_name",
-                                   "translator_concurrency", "zotero_writer_concurrency", "zotero_target",
-                                   "paper_service_concurrency", "paper_global_concurrency"}}
-        return value
-
-
 class _Settings(BaseModel):
     model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
 
@@ -247,15 +235,6 @@ class _Settings(BaseModel):
     provider_aliases: dict[str, str] = Field(default_factory=dict)
     provider_order: tuple[str, ...] = DEFAULT_PROVIDER_ORDER
     crossref_mailto: str = ""
-
-    @model_validator(mode='before')
-    @classmethod
-    def retire_import_configuration(cls, value):
-        if isinstance(value, dict) and 'kept_workflow' in value:
-            value = dict(value)
-            legacy = value.pop('kept_workflow')
-            value.setdefault('workflow', legacy)
-        return value
 
     @field_validator("enabled_providers", mode="before")
     @classmethod

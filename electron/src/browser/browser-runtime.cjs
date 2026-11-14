@@ -5,6 +5,7 @@ const {BrowserFailure,checkPage}=require('./browser-errors.cjs');
 const {configureBrowserIdentity} = require('./browser-identity.cjs');
 const {validDOI,articleURL,articleIdentity}=require('./article-identity.cjs');
 const {DocumentRuntime}=require('./document-runtime.cjs');
+const {qualifyReader,publicClueURL}=require('./pdf-clues.cjs');
 const {EventEmitter}=require('node:events');
 const {AsyncLocalStorage}=require('node:async_hooks');
 const {randomBytes}=require('node:crypto');
@@ -803,32 +804,83 @@ class BrowserRuntime {
     checkCanceled(signal);
     return {...evidence,identity};
   }
-  async extractPaperMetadata(data,{signal,deadline=Date.now()+TASK_DEADLINE_MS,onWaiting}={}) {
+  async extractPaperMetadata(data,options={}) {
     if(typeof data?.wantAbstract!=='boolean')throw new BrowserFailure('navigation','document_operation_failed');
-    const verifyAccess=this.pinPreparedPaperAccess(data),owner=this.operation,validateRecovery=owner.validateRecovery;
+    return this.extractPaperDocument(data,{...options,metadata:true});
+  }
+  extractPaperPdfClues(data,options={}) {
+    if(Object.hasOwn(data,'wantAbstract') || Object.hasOwn(data,'reader_access_only') && data.reader_access_only!==true)throw new BrowserFailure('navigation','document_operation_failed');
+    if(data.reader_access_only) {
+      if(data.reader || !/^[a-f0-9]{64}$/.test(data.workspace_identity)||!/^[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12}$/i.test(data.paper_id)
+        || !Number.isSafeInteger(data.deadline_ms))throw new BrowserFailure('navigation','document_operation_failed');
+      checkCanceled(options.signal);if(Date.now()>=data.deadline_ms)throw timeoutFailure('navigation','document_operation');
+      this.pinPreparedPaperAccess(data)();
+      const context=data.service_id && Number.isSafeInteger(data.target_page_id)?this.accessContexts.get(this.accessKey(data)):null;
+      const oce=!!context && new URL(context.tab.view.webContents.getURL()).hostname==='oce.ovid.com';
+      return {outcome:'retrieved',reader_access:{oce}};
+    }
+    return this.extractPaperDocument(data,{...options,metadata:false});
+  }
+  async extractPaperDocument(data,{signal,deadline=Date.now()+TASK_DEADLINE_MS,onWaiting,metadata}={}) {
+    if(metadata && (data.reader || Object.hasOwn(data,'reader_access_only')))throw new BrowserFailure('navigation','document_operation_failed');
+    const readerKind=data.reader?qualifyReader(data.reader,data.identity):null;
+    const verifyAccess=this.pinPreparedPaperAccess(data,readerKind==='oce'?'oce.ovid.com':null),owner=this.operation,validateRecovery=owner.validateRecovery;
     owner.validateRecovery=async options=>{verifyAccess();await validateRecovery?.(options);verifyAccess();};
+    let requestGuard,readerFailure;
     try {
-      const doc=await this.openPaperPage(data,data.identity,{role:'article',signal,deadline,onWaiting});
-      const tab=this.tabs.get(doc.pageId);
-      if(!doc.article.subject)throw new BrowserFailure('navigation','page_probe_unconfirmed');
-      const result=await this.readDocument(tab,'extract',{signal,deadline,args:{wantAbstract:data.wantAbstract}});
+      let doc;
+      if(readerKind) {
+        if(!/^[a-f0-9]{64}$/.test(data.workspace_identity)||!/^[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12}$/i.test(data.paper_id))throw new BrowserFailure('navigation','document_operation_failed');
+        const tab=await this.newTaskPage({signal,deadline,managed:true});this.bindTaskPage(tab,signal);this.associatePage(tab,{role:'pdf-reader'});
+        requestGuard=this.sessionEvents.subscribe('beforeRequest',details=>{
+          if(details.webContentsId!==tab.id || !['mainFrame','subFrame'].includes(details.resourceType))return;
+          if(signal?.aborted || Date.now()>=deadline || !publicClueURL(details.url)) {
+            readerFailure=new BrowserFailure('navigation',signal?.aborted?'canceled':'pdf_target_refused');return {cancel:true};
+          }
+        });
+        doc=await this.navigate(data.reader.url,{tab,signal,deadline,onWaiting});this.finishPageLoad(tab);
+        // A redirect may preserve the source chain only inside this fixed reader's qualification.
+        qualifyReader({...data.reader,url:doc.url},data.identity);
+        const bound=await this.readDocument(tab,'article',{signal,deadline});
+        checkPage(bound.status,bound.access);if(bound.access.markers.login)throw new BrowserFailure('navigation','article_identity_unconfirmed');
+        doc={...bound};
+      } else doc=await this.openPaperPage(data,data.identity,{role:'article',signal,deadline,onWaiting});
+      const tab=this.tabs.get(doc.pageId),subject=doc.article.subject;
+      if(!subject)throw new BrowserFailure('navigation','page_probe_unconfirmed');
+      let result=null,metadata_status='complete';
+      if(metadata)try {result=await this.readDocument(tab,'extract',{signal,deadline,args:{wantAbstract:data.wantAbstract}});
+        if(result.diagnostics.some(code=>['abstract_candidate_failed','abstract_budget_exceeded'].includes(code)))metadata_status='partial';}
+      catch(error){if(error.diagnostic?.code!=='document_operation_failed')throw error;metadata_status='failed';}
+      let pdf;
+      try {pdf=await this.readDocument(tab,'pdf',{signal,deadline,args:{readerKind}});}
+      catch(error) {
+        if(error.diagnostic?.code!=='document_operation_failed')throw error;
+        // A local PDF scanner/DTO failure does not discard independent content.
+        // The original live Document, subject and identity are still checked
+        // below; this empty failure envelope cannot authorize a changed page.
+        pdf={documentId:doc.documentId,subject,clues:{status:'failed',landing_url:doc.url,
+          observed_at:new Date().toISOString(),platform:readerKind || 'generic',content_type:'unknown',
+          identifiers:[],candidates:[],diagnostics:['pdf_parse_failed']}};
+      }
       checkCanceled(signal);
-      if(!this.documentCurrent(doc) || result.documentId!==doc.documentId || result.subject!==doc.article.subject)
-        throw new BrowserFailure('navigation','document_changed');
-      // Final live use boundary precedes runTask's actual page cleanup. A later normal
-      // owner close does not revoke this already verified small result.
-      const verified=await this.confirmArticlePage(data.identity,doc,{signal,deadline});
-      if(verified.article.subject!==result.subject)throw new BrowserFailure('navigation','document_changed');
+      if(!this.documentCurrent(doc)||pdf.documentId!==doc.documentId||pdf.subject!==subject
+        ||result&&(result.documentId!==doc.documentId||result.subject!==subject))throw new BrowserFailure('navigation','document_changed');
+      // Revalidate the exact live subject after both independent reads, before normal cleanup.
+      const verified=readerKind?await this.readDocument(tab,'article',{signal,deadline}):await this.confirmArticlePage(data.identity,doc,{signal,deadline});
+      if(readerKind){checkPage(verified.status,verified.access);if(verified.access.markers.login)throw new BrowserFailure('navigation','article_identity_unconfirmed');qualifyReader({...data.reader,url:verified.url},data.identity);}
+      if(!this.documentCurrent(doc)||verified.documentId!==doc.documentId||verified.article.subject!==subject)throw new BrowserFailure('navigation','document_changed');
       checkCanceled(signal);verifyAccess();
       if(Date.now()>=deadline)throw timeoutFailure('navigation','document_operation');
-      return {outcome:'retrieved',metadata:result.metadata,extraction_diagnostics:result.diagnostics,
+      return {outcome:'retrieved',...(metadata?{metadata:result?.metadata || null,metadata_status,
+          extraction_diagnostics:result?.diagnostics || ['metadata_extraction_failed']} : {}),pdf_clues:readerKind?{...pdf.clues,candidates:pdf.clues.candidates.map(candidate=>({...candidate,stage:data.reader.stage,rule_id:data.reader.rule_id}))}:pdf.clues,
         document:{pageId:doc.pageId,processId:doc.processId,frameToken:doc.frameToken,
           documentId:doc.documentId,navigationGeneration:doc.navigationGeneration}};
-    } finally {owner.validateRecovery=validateRecovery;}
+    } catch(error){throw readerFailure || error;}
+    finally {requestGuard?.dispose();owner.validateRecovery=validateRecovery;}
   }
-  pinPreparedPaperAccess(data) {
+  pinPreparedPaperAccess(data,requiredHost=null) {
     const owner=this.operation;
-    if(!data.service_id)return ()=>{};
+    if(!data.service_id){if(requiredHost)throw new BrowserFailure('preparation','document_changed');return ()=>{};}
     const key=this.accessKey(data),preparation=data.preparation_key,scope=data.service_scope.scope_id,
       service=data.service_id,page=data.target_page_id,manual=data.manually_confirmed;
     const context=page==null?null:this.accessContexts.get(key);
@@ -845,6 +897,7 @@ class BrowserRuntime {
         || this.accessContexts.get(key)!==context || context.preparationKey!==preparation
         || context.tab.id!==page || this.tabs.get(page)!==context.tab || context.tab.closing || context.tab.view.webContents.isDestroyed())
         throw new BrowserFailure('preparation','document_changed');
+      if(requiredHost && (!context || new URL(context.tab.view.webContents.getURL()).hostname!==requiredHost))throw new BrowserFailure('preparation','document_changed');
     };
     verify();
     if(context){context.pins.add(owner);context.lastUsed=Date.now();}

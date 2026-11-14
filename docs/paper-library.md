@@ -30,11 +30,9 @@ The application ID identifies an Allfold library, `PRAGMA user_version` records
 schema version 3, and `library_info` stores the Workspace UUID. Opening checks
 the version, expected table/index definitions, integrity and references. Missing,
 corrupt, unsafe and unsupported-schema libraries raise distinct errors. Existing
-content is never overwritten, downgraded or rebuilt. `upgrade_schema` in `library_database.py` recognizes the exact known v1/v2
-schemas and upgrades them transactionally. UUIDs, metadata, identities, exclusion,
-body associations, existing revisions and generations remain intact. Old Papers
-have no collection record and project `not_started`, regardless of stored abstract,
-dates, body or old Run results. Unknown structures are refused. Failed initialization preserves its
+content is never overwritten or rebuilt implicitly. Only the current schema is supported;
+there is no old-data upgrade or compatibility path. Acceptance creates current-format
+data. Failed initialization preserves its
 exclusively created file for inspection rather than deleting it.
 
 | Table | Responsibility |
@@ -49,10 +47,10 @@ exclusively created file for inspection rather than deleting it.
 | `paper_collection_branch` | At most 16 current branch facts and last committed result sequence |
 
 There is no kept/exported state, Zotero parent item, Markdown authority path,
-download queue, unbounded attempt history or durable candidate cache. Collection
+download queue, unbounded attempt history or executable download replay. Collection
 facts contain no queue order, client, page handles or replay instructions. Clearing metadata
 deletes its row and all contained bibliography, notes, dates, sources and Preprint
-results. Core, direct identities, exclusion and an existing body association
+results, including the complete PDF discovery-facts payload. Core, direct identities, exclusion and an existing body association
 remain. This is logical deletion, not a forensic file-erasure guarantee.
 
 Collection facts are deleted when metadata is cleared, after the current owner
@@ -71,7 +69,7 @@ and connection safety. These helpers are not alternate application writers.
 | `get(paper_id)`, `list_papers()` | Immutable `PaperRecord` projections, including excluded and cleared records |
 | `match(direct_ids)` | Match saved direct identities; different owners raise `IdentityConflict` |
 | `create_or_match(workspace_id, direct_ids=..., metadata=...)` | `CreationResult(paper, created)`; a new full record requires title and reliable direct identity. Matches return the existing record unchanged in every state |
-| `merge_metadata(token, delta, direct_ids=...)` | Merge eligible automatic dates, Preprint/source facts and the first valid abstract; optionally add verified direct identities in the same transaction |
+| `merge_metadata(token, delta, direct_ids=...)` | Merge eligible automatic dates, Preprint/source/discovery facts and the first valid abstract; optionally add verified direct identities in the same transaction |
 | `edit_metadata(token, changes)` | Apply only named local fields to the latest payload; no whole-record snapshot save |
 | `exclude(token)` | Mark excluded and revoke prior operation authority |
 | `restore(token)` | Restore a full record, advancing authority; old tokens stay invalid |
@@ -221,6 +219,27 @@ physical file-operation authority; those services belong to WF09/WF10.
 
 ## Production lifecycle and projections
 
+WF07 adds bounded `discovery_facts` inside the deletable `PaperMetadata` payload
+and `MetadataDelta`; it does not reuse `BodyReference`. Each version-1 snapshot
+names its exact target, source/capability, observation time and completeness, with
+typed stable PDF/landing/XML facts or fixed refresh locators. No snapshot means
+unknown; complete-empty, partial and failed responses remain distinct. These are
+current collection capabilities, not old-payload compatibility states. Stored facts
+use the current typed payload contract. Acceptance does not read or migrate old data.
+
+There is one bounded current snapshot per source/capability, rather than an
+attempt history. Merging preserves qualified facts and stage order under the
+same captured token, branch sequence and metadata generations.
+Merge capacity includes both item counts and the complete 64 KiB serialized
+snapshot. If the union exceeds either, the preferred verified snapshot is kept
+with a bounded overflow reason when it fits; this cannot discard independent
+Date/Abstract in the same delta. Identity conflicts remain failures.
+Signed/session URLs become refresh locators instead of permanent templates;
+live current candidates retain their original parameters only within their task. Clearing
+metadata removes every discovery fact. Identity, body and manual text/date/
+Preprint contracts remain independent. The complete rules and evidence are in
+the [adopted discovery specification](pdf-source-discovery.md).
+
 HTTP handlers and Run/Preprint workers open, use and close repositories in their
 own execution thread. Network/browser waits never occur in a database transaction.
 Workspace/database identities and short commit eligibility prevent results from
@@ -240,7 +259,7 @@ cleanup to finish. Shared Run discovery remains available to other Papers.
 
 `test_paper_repository.py`, `test_collection_repository.py` and `test_paper_repository_safety.py` use real temporary
 SQLite databases for reopening, contention, identity conflicts, dates, generations,
-rollback, paths, v1/v2 upgrades, concurrent admission, captured branch writes,
+rollback, paths, concurrent admission, captured branch writes,
 cancellation, retry and explicit interruption. Production Run retains its existing
 creation/completion calls; WF05 does not automatically register collection or
 enable download/retry UI. Application/API fixtures exercise

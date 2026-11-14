@@ -41,3 +41,11 @@ files and dependency pins are unchanged.
 WF04 removes the unused Translator/item-saver partitioned Cookie/CDP adapter.
 Browser identity, Chromium's native shared Session, credentials and the retained
 Browser/Document/Cloudflare host notices continue unchanged in scope.
+
+WF07's [fixed discovery evidence](pdf-source-discovery.md#repositories) preserves
+all 72 rule records, 17 interface records, 142 source identifiers and the original
+per-source license/evidence limits. URL expressions and documented public fields
+are implemented independently; the catalogue does not import a Translator,
+Paperlib, pubpatterns or another download runtime. In particular, an unconfirmed
+code license is not permission to copy source. Existing host notices and pristine
+vendor trees remain applicable.

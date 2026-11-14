@@ -12,7 +12,7 @@ execution context. Short rollback-safe transactions contain no network/browser
 wait. Library schema, integrity, UUID and live directory/database identity are
 validated. Symlinks and multiple-link main/sidecar paths are refused. Missing,
 corrupt, unknown-schema, unsafe-path and busy/commit failures remain distinct;
-none authorizes replacement or clearing. Known v1/v2 upgrades to v3 preserve records.
+none authorizes replacement or clearing. Paper storage has one current schema and no data migration path.
 
 Async writes use eligibility captured when the Paper is first claimed, including
 Workspace UUID and metadata/operation generations. Results cannot reread current
@@ -68,7 +68,8 @@ to the saved institution and attributable authentication chain. Remote pages hav
 no Node or host IPC capabilities. Trusted UI IPC, main-frame sender checks and
 isolated Document preload stay active. Fixed binding/access/article probes and the
 strict-boolean Date/Abstract extraction action return bounded DTOs, never whole
-page text, HTML, scripts, forms or iframe URLs. Sender/frame, random
+page text, HTML or arbitrary scripts/forms/frame inventories. WF07 permits only
+fixed qualified PDF fields and known-reader next-hop observations. Sender/frame, random
 Document ID, navigation generation and current URL are checked across async calls.
 Extraction reads a single verified live Document without navigation, requests or
 page mutation. Its final Document/body/identity check precedes owned page cleanup;
@@ -148,3 +149,20 @@ configuration, Workspace and SQLite write locks. Only captured resource cleanup
 continues through Bridge/Main after normal execution closes; new business work
 and credential mutations remain refused. Common Provider pacing outlives clients,
 while cancellation, guards, caches and absolute deadlines stay attempt-owned.
+
+WF07 discovery facts belong to deletable metadata, with exact target binding and
+finite capability/completeness. Their presence confers no Session, collection or
+body authority. A candidate, Meta tag, extension or HTTP 200 never establishes
+Downloaded or successful PDF provenance. Only downstream PDF-type plus normal
+transfer confirmation stops source discovery; local association/file failure
+ends the task without another network source. The discovery core captures no
+new collection token and writes no body. Signed/session values stay within the
+current task; persistence uses stable facts or typed refresh locators and public
+projections/diagnostics omit private context. Every new request and next hop must
+pass the discovery transport's target checks; the shared offline URL validator
+alone is not DNS validation. [Discovery rules](pdf-source-discovery.md) specify
+the lazy order, bounded parsing and platform-specific access conditions.
+Independent content survives a local PDF scanner/size failure only after the
+same final live Document, subject and article-identity check. OCE's conditional
+reader requires an independently captured retained OCE target and its own
+Host recheck at use; a boolean observation and LWW access cannot renew authority.

@@ -140,6 +140,40 @@ transient. Invalid envelopes, Entrez application errors, wrong identities and
 shortened pages are explicit failures or incomplete results. Valid empty exact
 responses count as no-match.
 
+WF07 discovery requests have their own task-scoped capability rather than new
+Run Provider IDs. They reuse host pacing/cooldown and the captured guard,
+cancellation and absolute parent deadline. P2 queries only missing identifiers or
+fields at the reached stage. Typed existing Crossref landing/resource fields can
+supply a qualified article route/internal ID before querying; they never become
+PDF fields or override a newer actual content Host. A failed optional API/known
+PDF candidate does not suppress a still-missing internal-ID query. Existing IDs
+and the first sufficient response still stop that query chain.
+An existing Crossref signed-PDF refresh locator can request its exact DOI again
+only after reaching P2 and exhausting earlier applicable candidates. A known
+platform alone or complete-empty response does not request Crossref. Explicit
+actual article URLs outrank cached Document landings. When a reached ID query
+confirms a new content Host, its newly applicable DOI template is consumed within
+that P2 path, preserving source/fallback semantics without restarting the stages.
+If that template fails, an already configured applicable platform API remains
+available. Refresh locators use the same P2 DOI/content-type gate as missing
+inputs; `unknown` targets can still use qualified P3/P5 without a P2 query.
+P5 reuses complete cached locations for the captured direct Work identity,
+including a DOI-free Paper. New Work requests continue to require its primary
+DOI. OpenAlex cancellation, captured-authority loss and parent expiry
+remain terminal instead of becoming recoverable PDF-source failures.
+
+The coordinator accepts a bounded current response or downstream transfer result;
+it does not issue HEAD/GET type probes or implement a temporary downloader.
+Supported response formats are parsed only for their fixed platform fields and
+qualified source chain. Relative fields use the actual final response address;
+each redirect/next hop repeats request-target checks.
+Owned HTML/metadata body read or decoding errors become candidate source
+failures after task-state rechecks. PDF transfer-consumer exceptions and
+cancelled, stale or expired authority remain terminal.
+Credentials remain scoped to their authorized endpoint and necessary Referer is
+platform-specific. See
+[discovery rules](pdf-source-discovery.md) and [Session URL evidence](browser-session.md).
+
 arXiv uses a three-second interval; bioRxiv and medRxiv share their API host
 pacing. Browser/Prepare continue to use their separate Chromium Session. Active
 webpage Enrich and its Translator transport are retired; Provider HTTP remains

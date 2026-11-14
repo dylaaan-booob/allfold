@@ -17,8 +17,7 @@ Journal state is stored in `.allfold/user-data.sqlite`, isolated by canonical co
 The production [Paper library](paper-library.md) uses standard-library `sqlite3`.
 Read-only uninitialized views do not create it; the first Run initializes
 `Workspace/papers.sqlite`. Use disposable directories, actual SQLite connections
-and local HTTP/DOM fixtures. Existing v1/v2 libraries receive a preserving known
-schema-v3 upgrade. Missing, corrupt and unsupported databases have distinct results.
+and local HTTP/DOM fixtures. Create current-format databases for acceptance; old-data compatibility and migration are not supported. Missing, corrupt and unsupported databases have distinct results.
 
 ```sh
 uv run --locked pytest tests/test_paper_repository.py tests/test_paper_repository_safety.py tests/test_run_commit.py tests/test_preprint_lookup.py
@@ -159,7 +158,7 @@ rendered fixture, live-service and latest PR CI outcomes remain distinct evidenc
 
 WF05 component regressions additionally use `test_collection_repository.py`,
 `test_dynamic_dispatch.py`, `test_collection_runtime.py`, `test_task_clients.py`
-and `test_task_authority.py`. They exercise on-disk SQLite contention/upgrade and
+and `test_task_authority.py`. They exercise current-format SQLite storage contention and
 rollback, real worker Futures and cleanup barriers, queued/expired work, branch
 idempotence and retry, loopback HTTP with independent clients, common pacing and
 narrow access revocation. Scheduler limits count executing Paper jobs, not native
@@ -173,6 +172,37 @@ the same captured attempt with a separate repository connection and client scope
 in each thread. Sharing a `BranchContext`, SQLite connection or `AttemptClients`
 across threads is not supported. Such transaction-level race evidence does not
 enable production same-Paper branch concurrency; that orchestration belongs to WF08.
+
+WF07 component checks add actual normalizer/records/Run and necessary-query
+source-fact persistence, disk reopen, independent
+connection races, cleanup and safe public projection in
+`tests/test_pdf_source_facts.py`. Pure rule fixtures exercise adopted expressions
+and applicability rather than only catalogue counts. The temporary-profile
+`pdf-clues` Electron fixture uses production Main/Browser/Document/preload for
+same-page composition, PDF-only reads, known reader access, relative final URLs,
+Referer, bounded state fields and final Document/subject rejection. Controlled
+fixtures also cover ambiguous LWW ANs, platform-selector exclusions, aggregate
+PDF budgets through the actual Python validator, independent scanner failure,
+and the own-preparation OCE capability and fixed viewer carrier (including non-OCE,
+revoked and closed contexts). Controlled
+downstream outcomes verify the coordinator's lazy stop/fallback protocol; they
+are not actual PDF transfer/file acceptance. Existing native DownloadItem and
+WoS fixtures remain active. Full rules and the original evidence strength are
+retained in [the adopted specification](pdf-source-discovery.md).
+
+`tests/test_pdf_discovery_tasks.py` exercises the internal read-only adapter on
+completed collection, actual worker Futures/owned clients, PDF-only native
+results, captured primary identity, cancellation/replacement and maintenance/
+shutdown cleanup. Controlled downstream results in `test_pdf_discovery.py` and
+`test_pdf_http.py` verify T01–T24 without a byte receiver, writer or public
+Download.
+The focused facts/HTTP suites also exercise a real SQLite merge whose individually
+valid snapshots exceed the combined byte budget, finite response-stream failures,
+terminal cancellation/expiry/revocation during reads, captured actual-Host routing,
+known Crossref signature refresh and newly resolved Host templates. They assert
+actual source/fallback results and absence of unnecessary queries.
+Python HTTP checks include DNS preflight at dispatch/redirect; they do
+not claim address pinning or DNS validation by the native static URL gate.
 
 WF06 adds `test_necessary_metadata.py` for purpose-driven requests through actual
 registry branches, controlled Provider transports/parsers, immutable capability
@@ -265,5 +295,5 @@ lifetimes and closes dependent-case pages promptly. Delayed-destroy and quota
 update checks use BrowserRuntime; configuration/API tests use temporary YAML and
 UserState. The rendered layout fixture verifies the visible page-limit controls
 and keeps inactive PDF controls absent. [Browser pages](browser-pages.md) records
-counts, live effect timing, configuration rollback and the Runtime form-POST
+counts, live effect timing, configuration limits and the Runtime form-POST
 limitation; [Session evidence](browser-session.md) has its separate capability scope.

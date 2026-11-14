@@ -137,14 +137,6 @@ create above the new limit. An operation must reacquire child capacity before a
 new action when its old headroom was revoked. Normal idle cache eviction still
 applies; active work is not force-closed to enforce a lower number.
 
-The old neutral `paper_service_concurrency` and `paper_global_concurrency` values
-are ignored when loading and removed on the next save. They are not converted
-into physical limits. Other workflow settings, Services, credentials, Journals,
-Research Scope and preferences are preserved. **Code rollback needs a targeted
-configuration rollback:** old code uses `extra="forbid"` and rejects the two new
-`managed_page_*` fields. Remove just those fields and, if needed, restore the
-previous neutral fields from a configuration backup; do not reset the configuration.
-
 ## Native evidence and limits
 
 `page-resources.test.cjs` runs fixed Electron 45.0.0 with a temporary profile,
@@ -182,3 +174,14 @@ PDF files/Download UI remain outside WF04.
 Normal shutdown stops admission, drains current native operations/items and closes
 owned pages before disposing the common Session entry. It does not replay work,
 resume downloads or release a solver slot before its worker actually exits.
+
+WF07 reuses these same physical quotas, prepared access pins and exact cleanup for
+combined article metadata/PDF-clue reads and PDF-only refresh. Precollection reads
+one article work page and follows no PDF candidate. A later qualified reader uses
+its owning task and source chain, rather than a new unowned page or per-platform
+network listener. Identifying a form/reader does not add main-frame POST or
+one-time-response transfer support. See [Document contracts](browser-documents.md)
+and the [complete discovery specification](pdf-source-discovery.md).
+The fixed OCE access-capability mode opens no page. Its later reader uses the
+same captured retained preparation, normal work-page quotas and exact cleanup;
+it never bootstraps a second institutional Service from LWW authority.

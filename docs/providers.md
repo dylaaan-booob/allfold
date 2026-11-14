@@ -183,16 +183,16 @@ Local API, attachment communication, Translator sandbox and generated Runtime
 assembly are retired. Prepare, WoS, Login, Browser/Document identity and
 Cloudflare remain in production. Native background pages retain a nonzero layout
 viewport without selecting or focusing them. WF06 supplies internal Date/Abstract
-components; production collection and new download paths remain disabled.
+components; WF07 adds separate same-Document PDF clues and source discovery.
+Production collection and new download paths remain disabled.
 
 An Imperva response with the Incapsula incident marker and a single CAPTCHA code (`edet=12`) waits for the user to complete verification in Browser. The existing task resumes when the article loads in the same tab. The Cloudflare Solver is skipped for this challenge. Other recognized Imperva denials are reported as restricted access, including when they return HTTP 200.
 
-## Old data and manual acceptance
+## Current storage and manual acceptance
 
 Old per-Paper Markdown and obsolete Evidence directories are no longer read,
 created or migrated. Existing files are preserved. An uninitialized Workspace
-returns an explicit empty view; the first Run initializes SQLite. Known WF01 v1
-libraries upgrade without losing UUIDs, metadata, identities, exclusion or bodies.
+returns an explicit empty view; the first Run initializes SQLite. Paper libraries use only the current format; old-data upgrades and compatibility are not provided.
 Corrupt and unknown libraries report errors and are never cleared automatically.
 Workspace Reset is an explicit whole-directory deletion, including SQLite,
 exclusions and Documents; Logs Reset keeps all of them. Configuration, UserState,
@@ -208,6 +208,18 @@ WF06 adds callable extraction/necessary-API components without installing a
 production cross-Run plan, PDF work or public Retry. Only a bounded fixture's
 explicit complete component plan may finish its own collection attempt; Date/
 Abstract-only work does not claim all production collection groups are complete.
+
+WF07 projects exact-target OpenAlex/Crossref response facts before ordinary
+source normalization loses PDF-versus-landing categories, best-first order or
+response completeness. The existing `records` path carries them into Run saves
+and necessary-query increments without new Run requests or a changed creation
+point. A related Preprint response cannot become the formal target's PDF cache;
+the target Work's own repository locations remain eligible. Ordinary
+`metadata.sources` is never proof of complete P5 capability. The lazy discovery
+service reuses adequate facts and queries missing inputs only when it reaches
+their applicable stage. Optional publisher interfaces have separate access
+conditions and do not extend Run's Provider enumeration or credential UI. See
+the [complete rule/API adoption catalogue](pdf-source-discovery.md#rule-catalog).
 
 Use isolated HTTP/SQLite and rendered Electron fixtures for the cutover. Their
 coverage includes native-version proof, unresolved/no-match/failure cases, dates,

@@ -11,6 +11,7 @@ from pydantic import ConfigDict, Field, field_validator
 
 from allfold.abstract_text import normalize_abstract_text
 from allfold.identifiers import normalize_external_id
+from allfold.pdf_facts import PdfDiscoveryFacts, merge_discovery_facts
 from allfold.models import (
     Author, DomainModel, EvidenceDate, EvidenceDateKind, MetadataSource, NonEmptyStr,
     ProviderRecordRef, ProviderTopic, parse_publication_date,
@@ -70,6 +71,7 @@ class PaperMetadata(DomainModel):
     journal_issns: tuple[NonEmptyStr, ...] = ()
     indexed_terms: tuple[ProviderTopic, ...] = ()
     sources: tuple[MetadataSource, ...] = ()
+    discovery_facts: tuple[PdfDiscoveryFacts, ...] = Field(default=(), max_length=3)
     ordinary_dates: tuple[str, ...] = ()
     preprints: tuple[PreprintResult, ...] = ()
     preprint_evidence: tuple[EvidenceDate, ...] = ()
@@ -90,6 +92,11 @@ class PaperMetadata(DomainModel):
         if any(item.kind != EvidenceDateKind.PREPRINT for item in values):
             raise ValueError("Only independent Preprint proof belongs in preprint_evidence")
         return tuple(sorted(set(values), key=lambda item: item.model_dump_json()))
+
+    @field_validator("discovery_facts")
+    @classmethod
+    def validate_discovery_facts(cls, values):
+        return merge_discovery_facts((), values)
 
     @field_validator("publication_date", "first_public_at", mode="before")
     @classmethod
@@ -121,6 +128,7 @@ class MetadataDelta(DomainModel):
     ordinary_dates: tuple[str, ...] = ()
     preprints: tuple[PreprintResult, ...] = ()
     sources: tuple[MetadataSource, ...] = ()
+    discovery_facts: tuple[PdfDiscoveryFacts, ...] = Field(default=(), max_length=3)
     preprint_evidence: tuple[EvidenceDate, ...] = ()
     preprint_relations: tuple[ProviderRecordRef, ...] = ()
     first_public_at: str | None = None

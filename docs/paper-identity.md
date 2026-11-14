@@ -65,3 +65,17 @@ guards still validate that exact captured access. Reading a current Paper does
 not renew it or its abstract generation, and native deadlines consume the
 remaining parent budget. Verified native document IDs are operation-local
 evidence, never persistent identity or authority to reopen a closed page.
+
+WF07 discovery facts are metadata of this same direct-identity closure. An exact
+OpenAlex Work's own locations may include repository/Preprint PDFs; that does not
+make a separately related Preprint Work the formal Paper. Crossref links retain
+their PDF/landing/XML categories. Generic bibliography sources cannot prove a
+complete PDF lookup. Clearing metadata removes the entire discovery payload while
+keeping identities and any independent body association. See the
+[adopted discovery rules](pdf-source-discovery.md).
+
+The read-only discovery task captures the saved Paper's complete immutable
+direct-identity closure into `PdfTarget.direct_identities` and rechecks it before
+execution. A DOI-free exact Work cache can supply P5 without an article page or
+new lookup; related/unbound Work facts cannot. The explicit primary DOI still
+controls new exact queries and DOI-qualified facts; an alias does not replace it.

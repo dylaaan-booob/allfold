@@ -10,6 +10,7 @@ from typing import Annotated, Any
 from pydantic import Field, ValidationError, model_validator
 
 from allfold.identifiers import normalize_doi
+from allfold.pdf_facts import PdfDiscoveryFacts, crossref_discovery_facts
 from allfold.models import (
     Author,
     DomainModel,
@@ -67,6 +68,7 @@ class CrossrefWorkRecord(DomainModel):
     dates: tuple[CrossrefPartialDate, ...] = ()
     work_type: NonEmptyStr | None = None
     provenance: MetadataSource
+    discovery_facts: tuple[PdfDiscoveryFacts, ...] = Field(default=(), max_length=1)
 
     def to_evidence(self) -> ProviderWorkEvidence:
         return ProviderWorkEvidence(
@@ -75,6 +77,7 @@ class CrossrefWorkRecord(DomainModel):
             journal=self.journal,
             abstract=self.abstract,
             authors=self.authors,
+            discovery_facts=self.discovery_facts,
             external_ids=ExternalIds(
                 doi=self.doi,
                 crossref=self.provenance.record_id,
@@ -352,6 +355,7 @@ def _normalize_crossref_message(
             issns=tuple(issns),
             dates=tuple(dates),
             work_type=work_type,
+            discovery_facts=(crossref_discovery_facts(message, normalized_retrieved_at),),
             provenance=MetadataSource(
                 provider="crossref",
                 record_id=doi,

@@ -6,6 +6,8 @@ from dataclasses import dataclass
 from allfold.models import EvidenceDateKind, ExternalIds, ProviderRecordRef
 from allfold.paper_dates import date_value, known_preprint_families, preprint_query_refs
 from allfold.persistence.library_models import PaperMetadata, PaperRecord, PreprintResult
+from allfold.identifiers import strong_identifiers
+from allfold.pdf_facts import discovery_facts_from_records
 
 
 @dataclass(frozen=True)
@@ -66,6 +68,8 @@ def metadata_from_run(paper, *, records=()):
         discovered_at=paper.workflow.discovered_at, authors=paper.authors,
         journal_issns=paper.journal_issns, indexed_terms=paper.indexed_terms,
         sources=paper.sources, ordinary_dates=ordinary, preprints=tuple(preprints),
+        discovery_facts=discovery_facts_from_records(records, strong_identifiers(paper.external_ids),
+            preprint_root=paper.metadata.publication_type == 'preprint'),
         preprint_evidence=preprint_evidence,
         preprint_relations=tuple(sorted(relations, key=lambda ref: ref.model_dump_json())),
         first_public_at=paper.metadata.first_public_at)
