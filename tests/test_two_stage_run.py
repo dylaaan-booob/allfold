@@ -4,11 +4,12 @@ from threading import Event, Thread
 
 import pytest
 
-from allfold.application.integrated_run import run_integrated, IntegratedDiscovery
+from allfold.application.integrated_run import IntegratedDiscovery
+from integrated_run_helpers import run_integrated
 from allfold.models import ExternalIds, MetadataSource, ProviderWorkEvidence
 from allfold.providers.integrated import DiscoveryResult, SourceScope
 from test_integrated_run import config
-from integrated_run_helpers import EmptyCompletion
+from integrated_run_helpers import EmptyLookup
 from library_helpers import capture_papers, read_papers, read_paper
 
 
@@ -35,7 +36,7 @@ def test_finished_http_sources_report_outcome_while_wos_waits(tmp_path, outcome)
         if activity and activity.source in settled and activity.label.endswith(': ' + expected[activity.source]):
             settled[activity.source].set()
 
-    class Client(EmptyCompletion):
+    class Client(EmptyLookup):
         def discover_many(self, scopes, *args, **kwargs):
             if self.provider == 'pubmed' and outcome == 'exception':
                 raise OSError('Discovery transport failed')
@@ -50,7 +51,7 @@ def test_finished_http_sources_report_outcome_while_wos_waits(tmp_path, outcome)
         return IntegratedDiscovery((), (), 'empty')
 
     with ThreadPoolExecutor(max_workers=1) as worker:
-        run = worker.submit(run_integrated, path, client_factory=Client, completion_factory=EmptyCompletion,
+        run = worker.submit(run_integrated, path, client_factory=Client, lookup_factory=EmptyLookup,
             wos_stage=wos, progress_callback=progress)
         try:
             assert wos_started.wait(2)
@@ -65,13 +66,13 @@ def test_finished_http_sources_report_outcome_while_wos_waits(tmp_path, outcome)
         run.result(timeout=5)
 
 
-def test_discovery_and_work_overlap_then_tail_drains_before_completion(tmp_path):
+def test_discovery_and_work_overlap_then_tail_drains_before_identity_handoff(tmp_path):
     path, settings=config(tmp_path, ('wos','pubmed','openalex'))
     path.write_text(path.read_text()+'enabled_providers: [wos,pubmed,openalex]\n')
     entered={name:Event() for name in ('wos','pubmed','openalex')}
     located=Event()
     batches=[]
-    class Client(EmptyCompletion):
+    class Client(EmptyLookup):
         def discover_many(self, scopes, *args, records_callback=None):
             entered[self.provider].set()
             assert all(event.wait(3) for event in entered.values()), 'Discovery must overlap'
@@ -92,237 +93,25 @@ def test_discovery_and_work_overlap_then_tail_drains_before_completion(tmp_path)
         rows=(record('wos','10.5555/shared'),)
         records_callback(rows)
         return IntegratedDiscovery(rows,(DiscoveryResult('wos',SourceScope('journal','Test'),'complete',rows,candidates=1),),'complete')
-    result=run_integrated(path,loaded_config=settings,client_factory=Client,completion_factory=EmptyCompletion,wos_stage=wos)
+    result=run_integrated(path,loaded_config=settings,client_factory=Client,lookup_factory=EmptyLookup,wos_stage=wos)
     assert result.facts.created_papers==2
     assert [identity for batch in batches for identity in batch]==['10.5555/shared','10.5555/tail']
     assert result.facts.statistics['integrated_deduplicated']==2
-    assert result.facts.statistics['completion_targets']==2
-    assert result.facts.details['completion_status']=='empty'
-
-
-def test_completion_folds_related_version_dates_without_identity_or_ordinary_leak(tmp_path):
-    from allfold.application.workspace import load_workspace
-    from allfold.models import ProviderRecordRef, EvidenceDate, EvidenceDateKind, Author
-    from test_integrated_run import client_for, evidence
-    path,_=config(tmp_path);path.write_text(path.read_text()+'enabled_providers: [pubmed]\n')
-    formal=evidence(doi='10.1093/nar/gkag979',pmid='42908400').model_copy(update={
-        'authors':(Author(name='Formal Author'),), 'abstract':'Formal abstract',
-        'related_ids':(ProviderRecordRef(provider='arxiv',record_id='2201.12345',relation='preprint'),)})
-    # A saved related preprint remains an independent owner, and cannot suppress
-    # creation or provide ordinary fields to the formal root.
-    preprint=ProviderWorkEvidence(title='Preprint title',abstract='Preprint abstract',publication_type='preprint',
-        external_ids=ExternalIds(doi='10.5555/preprint',pmid='42239170',arxiv='2201.12345'),
-        provenance=MetadataSource(provider='arxiv',record_id='2201.12345',retrieved_at=datetime.now(timezone.utc),note='Native version'),
-        dates=(EvidenceDate(kind=EvidenceDateKind.PREPRINT,year=2022,month=1,day=4,first_version=True,publication_type='preprint'),))
-    from allfold.canonicalize import canonicalize_records
-    saved, = capture_papers(canonicalize_records((preprint,)).papers,tmp_path/'workspace')
-    before=saved
-    calls=[]
-    class Completion(EmptyCompletion):
-        def lookup_many(self,namespace,ids,**kwargs):
-            calls.append((self.provider,namespace,tuple(ids)))
-            return {identity:(preprint,) if self.provider=='arxiv' else () for identity in ids}
-    result=run_integrated(path,client_factory=client_for((formal,)),completion_factory=Completion)
-    papers=load_workspace(tmp_path/'workspace').papers
-    created=next(paper for paper in papers if paper.external_ids.doi=='10.1093/nar/gkag979')
-    assert len(papers)==2 and result.facts.created_papers==1 and read_paper(tmp_path/'workspace', saved.id)==before
-    assert created.external_ids.pmid=='42908400' and created.external_ids.arxiv is None
-    assert created.title=='Native hit' and created.abstract=='Formal abstract'
-    assert list(created.authors)==['Formal Author']
-    assert created.first_public_at=='2022-01-04'
-    assert result.facts.statistics['completion_date_facts_added']==1
-    assert result.facts.statistics['first_public_recorded']==1
-    assert any(provider=='arxiv' for provider,_,_ in calls)
-    assert not any(provider in {'biorxiv','medrxiv'} for provider,_,_ in calls)
-
-
-@pytest.mark.parametrize('completion_status', ['empty', 'partial', 'failed'])
-def test_completion_coverage_reports_empty_partial_or_failed_without_losing_discovery(tmp_path, completion_status):
-    from allfold.application.run_summary import build_run_result_summary
-    path, _ = config(tmp_path)
-    path.write_text(path.read_text() + 'enabled_providers: [wos]\n')
-    formal = record('wos', '10.5555/formal')
-
-    class Completion(EmptyCompletion):
-        def lookup_many(self, namespace, ids, **kwargs):
-            # Empty Work location settles Discovery before Completion begins.
-            if ((self.provider == 'crossref' and completion_status != 'empty')
-                    or (self.provider == 'openalex' and completion_status == 'failed')):
-                raise ValueError('Controlled base lookup failure')
-            return super().lookup_many(namespace, ids, **kwargs)
-
-        def lookup_preprints(self, ids):
-            if completion_status == 'failed':
-                raise ValueError('Controlled reverse lookup failure')
-            return super().lookup_preprints(ids)
-
-    def wos(*args, **kwargs):
-        return IntegratedDiscovery((formal,), (DiscoveryResult('wos', SourceScope('journal', 'Test'),
-            'complete', (formal,), candidates=1),), 'complete')
-
-    result = run_integrated(path, wos_stage=wos, completion_factory=Completion)
-    assert result.facts.created_papers == 1
-    assert result.facts.details['completion_status'] == completion_status
-    assert build_run_result_summary(result)['coverage_status'] == (
-        'complete' if completion_status == 'empty' else 'partial')
-
-
-@pytest.mark.parametrize('linked_type', ['preprint', 'journal'])
-def test_formal_abstract_gap_fetches_pubmed_despite_complete_bound_preprint(tmp_path, linked_type):
-    import httpx
-    from allfold.application.workspace import load_workspace
-    from allfold.models import Author, EvidenceDate, EvidenceDateKind, ProviderRecordRef
-    from allfold.providers.integrated import DiscoveryClient
-    from test_pubmed_discovery import article
-    path, _ = config(tmp_path)
-    path.write_text(path.read_text() + 'enabled_providers: [wos]\n')
-    formal = record('wos', '10.1093/nar/gkag979').model_copy(update={
-        'abstract': None, 'authors': (Author(name='WoS One'), Author(name='WoS Two')),
-        'external_ids': ExternalIds(doi='10.1093/nar/gkag979', pmid='42908400')})
-    anchor = ProviderWorkEvidence(publication_type='journal', external_ids=ExternalIds(doi='10.1093/nar/gkag979'),
-        related_ids=(ProviderRecordRef(provider='openalex', record_id='W1'),),
-        provenance=MetadataSource(provider='openalex', record_id='W1:binding', retrieved_at=datetime.now(timezone.utc)))
-    preprint = ProviderWorkEvidence(title='Preprint title', abstract='Preprint abstract',
-        authors=(Author(name='Preprint Author'),), publication_type=linked_type,
-        external_ids=ExternalIds(doi='10.5555/preprint', pmid='42239170', arxiv='2201.12345', openalex='W1'),
-        provenance=MetadataSource(provider='openalex', record_id='W1', retrieved_at=datetime.now(timezone.utc)))
-    native_proof = ProviderWorkEvidence(publication_type='preprint',
-        external_ids=ExternalIds(doi='10.5555/preprint', pmid='42239170', arxiv='2201.12345'),
-        provenance=MetadataSource(provider='arxiv', record_id='2201.12345', retrieved_at=datetime.now(timezone.utc)),
-        dates=(EvidenceDate(kind=EvidenceDateKind.PREPRINT, year=2022, month=1, day=2,
-            first_version=True, publication_type='preprint'),))
-    paths, native_calls = [], []
-    def response(request):
-        paths.append(request)
-        if request.url.path.endswith('esearch.fcgi'):
-            assert request.url.params['term'] == '"10.1093/nar/gkag979"[aid]'
-            return httpx.Response(200, json={'esearchresult': {'count': '1', 'idlist': ['42908400']}})
-        if request.url.path.endswith('efetch.fcgi'):
-            return httpx.Response(200, text='<PubmedArticleSet>' + article(
-                '42908400', '0006-341X', '10.1093/nar/gkag979') + '</PubmedArticleSet>')
-        assert request.url.path.endswith('esummary.fcgi')
-        return httpx.Response(200, json={'result': {'uids': ['42908400'], '42908400': {'uid': '42908400',
-            'articleids': [{'idtype': 'doi', 'value': '10.1093/nar/gkag979'}]}}})
-    class Helper(EmptyCompletion):
-        def lookup_many(self, namespace, ids, **kwargs):
-            if self.provider in {'arxiv', 'biorxiv', 'medrxiv'}:
-                native_calls.append((self.provider, tuple(ids)))
-            if self.provider == 'openalex':
-                return {identity: (anchor, preprint, native_proof) for identity in ids}
-            return super().lookup_many(namespace, ids, **kwargs)
-        def lookup(self, namespace, identity):
-            if self.provider in {'arxiv', 'biorxiv', 'medrxiv'}:
-                native_calls.append((self.provider, identity))
-            return ()
-    def factory(provider, **kwargs):
-        kwargs.pop('mailto', None)
-        return DiscoveryClient(provider, transport=httpx.MockTransport(response), interval=0, **kwargs) if provider == 'pubmed' else Helper(provider)
-    def wos(*args, **kwargs):
-        return IntegratedDiscovery((formal,), (DiscoveryResult('wos', SourceScope('journal', 'Test'),
-            'complete', (formal,), candidates=1),), 'complete')
-    result = run_integrated(path, completion_factory=factory, wos_stage=wos)
-    created, = load_workspace(tmp_path / 'workspace').papers
-    assert [request.url.path.rsplit('/', 1)[-1] for request in paths] == ['esearch.fcgi', 'esummary.fcgi', 'efetch.fcgi']
-    assert [request.url.params['id'] for request in paths[1:]] == ['42908400', '42908400']
-    assert result.facts.created_papers == 1 and created.abstract == 'METHODS: Study abstract'
-    assert created.title == 'Formal 10.1093/nar/gkag979' and list(created.authors) == ['WoS One', 'WoS Two']
-    assert created.external_ids.doi == '10.1093/nar/gkag979' and created.external_ids.pmid == '42908400'
-    assert created.external_ids.arxiv is None and created.external_ids.openalex is None
-    assert created.first_public_at == '2022-01-02'
-    assert native_calls == []
-
-
-@pytest.mark.parametrize('provider', ['arxiv', 'biorxiv', 'medrxiv', 'europe_pmc'])
-@pytest.mark.parametrize('cancel_native', [False, True])
-def test_completion_http_activity_distinguishes_base_pages_and_blocked_native_verification(tmp_path, provider, cancel_native):
-    import httpx
-    from allfold.models import ProviderRecordRef
-    from allfold.progress import ProgressStage
-    from allfold.providers.supplemental import SupplementalClient
-    path, _ = config(tmp_path)
-    path.write_text(path.read_text() + 'enabled_providers: [wos]\n')
-    native_id = {'arxiv': '2201.12345', 'europe_pmc': 'PPR:PPR1'}.get(provider, '10.1101/123456')
-    rows = tuple(record('wos', doi, related_ids=(ProviderRecordRef(provider=provider, record_id=native_id,
-        relation='preprint'),)) for doi in ['10.5555/one', '10.5555/two'])
-    entered, release, cancel = Event(), Event(), Event()
-    events, calls, results, failures = [], [], [], []
-    def response(request):
-        calls.append(request)
-        if request.url.host == 'api.crossref.org':
-            if 'relation.type:' in request.url.params['filter']:
-                return httpx.Response(200, json={'message': {'total-results': 0, 'items': []}})
-            doi = '10.5555/one' if request.url.params['cursor'] == '*' else '10.5555/two'
-            return httpx.Response(200, json={'message': {'total-results': 2, 'next-cursor': 'page-two',
-                'items': [{'DOI': doi, 'type': 'journal-article', 'title': [doi]}]}})
-        entered.set()
-        assert release.wait(5), 'Test must release the native response'
-        if provider == 'arxiv':
-            return httpx.Response(200, text='''<feed xmlns="http://www.w3.org/2005/Atom"><entry>
-                <id>http://arxiv.org/abs/2201.12345v1</id><title>Preprint</title>
-                <published>2022-01-02T00:00:00Z</published></entry></feed>''')
-        if provider == 'europe_pmc':
-            assert 'SRC:PPR' in request.url.params['query']
-            return httpx.Response(200, json={'hitCount': 1, 'resultList': {'result': [{
-                'source': 'PPR', 'id': 'PPR1', 'title': 'Preprint', 'firstPublicationDate': '2022-01-02', 'versionNumber': 1}]}})
-        assert request.url.path.startswith('/details/' + provider + '/')
-        return httpx.Response(200, json={'messages': [{'status': 'ok'}], 'collection': [{
-            'doi': native_id, 'server': provider, 'title': 'Preprint', 'date': '2022-01-02', 'version': '1'}]})
-    def factory(name, **kwargs):
-        if name not in {'crossref', provider}:
-            return EmptyCompletion(name)
-        kwargs.pop('api_key', None)
-        return SupplementalClient(name, transport=httpx.MockTransport(response), interval=0, page_size=1, **kwargs)
-    def wos(*args, **kwargs):
-        return IntegratedDiscovery(rows, (DiscoveryResult('wos', SourceScope('journal', 'Test'),
-            'complete', rows, candidates=2),), 'complete')
-    def execute():
-        try:
-            results.append(run_integrated(path, completion_factory=factory, wos_stage=wos,
-                progress_callback=events.append, cancel_event=cancel))
-        except Exception as error:
-            failures.append(error)
-    worker = Thread(target=execute)
-    worker.start()
-    try:
-        assert entered.wait(3), 'Native version request must start'
-        native = [event.activity for event in events if event.activity and event.activity.operation == 'native-version']
-        assert native and native[-1].source == provider and native[-1].label == 'Native version verification'
-        assert native[-1].detail == 'Request dispatched' and native[-1].current == 1
-        base = [event.activity for event in events if event.activity and event.activity.operation == 'base-api'
-            and event.activity.detail == 'Response received']
-        assert len(base) == 3 and all(activity.label == 'Base API completion' for activity in base)
-        assert sorted(activity.current for activity in base) == [1, 2, 3]
-        assert not any(event.stage == ProgressStage.UPDATING_WORKSPACE for event in events)
-        if cancel_native:
-            cancel.set()
-    finally:
-        release.set()
-        worker.join(5)
-    assert not worker.is_alive() and not failures
-    result, = results
-    assert result.facts.created_papers == (0 if cancel_native else 2)
-    assert result.facts.statistics['completion_requests'] == len(calls) == 4
-    dispatches = [event.activity for event in events if event.activity and event.activity.detail == 'Request dispatched']
-    responses = [event.activity for event in events if event.activity and event.activity.detail == 'Response received']
-    assert len(dispatches) == 4 and len(responses) == (3 if cancel_native else 4)
-    if not cancel_native:
-        native_done = next(index for index, event in enumerate(events) if event.activity and
-            event.activity.operation == 'native-version' and event.activity.detail == 'Response received')
-        saved = next(index for index, event in enumerate(events) if event.stage == ProgressStage.UPDATING_WORKSPACE)
-        assert native_done < saved
+    assert result.facts.statistics['identity_targets']==2
+    assert result.facts.statistics['collection_admitted']==2
 
 
 def test_work_response_extra_records_cannot_become_discovery_candidates(tmp_path):
     from test_integrated_run import evidence, client_for
     from allfold.application.workspace import load_workspace
     path,_=config(tmp_path);path.write_text(path.read_text()+'enabled_providers: [pubmed]\n')
-    class Helper(EmptyCompletion):
+    class Helper(EmptyLookup):
         def lookup_many(self,namespace,ids,**kwargs):
             if self.provider=='openalex':
                 return DiscoveryResult('openalex',SourceScope('journal',''),'complete',
                     (evidence('openalex'),evidence('openalex',doi='10.5555/unrelated',pmid='99')))
             return super().lookup_many(namespace,ids,**kwargs)
-    result=run_integrated(path,client_factory=client_for((evidence(),)),completion_factory=Helper)
+    result=run_integrated(path,client_factory=client_for((evidence(),)),lookup_factory=Helper)
     assert result.facts.created_papers==1
     assert {p.external_ids.doi for p in load_workspace(tmp_path/'workspace').papers}=={'10.5555/formal'}
 
@@ -333,7 +122,7 @@ def test_config_revocation_stops_all_later_helper_dispatch(tmp_path):
     import pytest
     path,_=config(tmp_path);path.write_text(path.read_text()+'enabled_providers: [pubmed]\n')
     dispatched=[]
-    class Helper(EmptyCompletion):
+    class Helper(EmptyLookup):
         def lookup_many(self,namespace,ids,**kwargs):
             self.request_guard()
             dispatched.append(self.provider)
@@ -342,7 +131,7 @@ def test_config_revocation_stops_all_later_helper_dispatch(tmp_path):
                 self.request_guard()
             return super().lookup_many(namespace,ids,**kwargs)
     with pytest.raises(ContentChangedError):
-        run_integrated(path,client_factory=client_for((evidence(),)),completion_factory=Helper)
+        run_integrated(path,client_factory=client_for((evidence(),)),lookup_factory=Helper)
     assert dispatched==['openalex'] and not read_papers(tmp_path/'workspace')
 
 
@@ -396,7 +185,7 @@ def test_selected_native_disconnect_revokes_http_but_waits_native_settlement(tmp
     def factory(provider,**kwargs):return DiscoveryClient(provider,transport=httpx.MockTransport(response),interval=0,**kwargs)
     results=[]
     worker=Thread(target=lambda:results.append(run_integrated(path,wos_stage=stage.execute_stage,
-        client_factory=factory,completion_factory=EmptyCompletion,workflow_id='parent-run')))
+        client_factory=factory,lookup_factory=EmptyLookup,workflow_id='parent-run')))
     worker.start()
     assert disconnected.wait(3)
     assert worker.is_alive() and browser.owner is not None and slot.locked()
@@ -486,7 +275,7 @@ def test_work_guard_settles_native_before_parent_cancel_or_authority_error(tmp_p
         return Discovery(provider, transport=httpx.MockTransport(response), interval=0, **kwargs)
     def monitor(config_path, **kwargs):
         kwargs.pop('provider')
-        return run_integrated(config_path, client_factory=factory, completion_factory=EmptyCompletion, **kwargs)
+        return run_integrated(config_path, client_factory=factory, lookup_factory=EmptyLookup, **kwargs)
     monkeypatch.setattr('allfold.application.coordinators.run_coordinator.run_monitor', monitor)
     coordinator = RunCoordinator(path, run_slot=slot, diagnostics=store)
     coordinator.wos_stage = native
@@ -561,42 +350,14 @@ def test_exact_work_location_with_preprint_top_pmid_is_only_association(tmp_path
         if provider=='openalex':
             kwargs.pop('mailto',None)
             return DiscoveryClient(provider,transport=httpx.MockTransport(response),interval=0,**kwargs)
-        return EmptyCompletion(provider,**kwargs)
+        return EmptyLookup(provider,**kwargs)
     formal=evidence(doi='10.1093/nar/gkag979',pmid='42908400')
-    result=run_integrated(path,client_factory=client_for((formal,)),completion_factory=helper)
+    result=run_integrated(path,client_factory=client_for((formal,)),lookup_factory=helper)
     paper,=load_workspace(tmp_path/'workspace').papers
     assert result.facts.created_papers==1 and len(calls)==1
     assert paper.external_ids.doi=='10.1093/nar/gkag979' and paper.external_ids.pmid=='42908400'
     assert paper.external_ids.openalex is None and paper.title=='Native hit'
-    assert result.facts.statistics['completion_requests']==0  # Work cache reuse is not another HTTP request.
-
-
-def test_completion_counts_physical_shared_batch_requests_and_preserves_notes(tmp_path):
-    import httpx
-    from allfold.providers.supplemental import SupplementalClient
-    from allfold.models import EvidenceDate,EvidenceDateKind
-    from test_integrated_run import evidence,client_for
-    from allfold.application.workspace import load_workspace
-    path,_=config(tmp_path);path.write_text(path.read_text()+'enabled_providers: [pubmed]\n')
-    rows=(evidence(doi='10.5555/a',pmid='1'),evidence(doi='10.5555/b',pmid='2'))
-    calls=[]
-    def response(request):
-        calls.append(request)
-        filters=request.url.params['filter']
-        items=[] if 'relation.type:' in filters else [{'DOI':doi,'title':['Crossref title'],
-            'accepted':{'date-parts':[[2025,12,2]]},'published-online':{'date-parts':[[2026,1,4]]}}
-            for doi in ('10.5555/a','10.5555/b')]
-        return httpx.Response(200,json={'message':{'items':items,'total-results':len(items)}})
-    def helper(provider,**kwargs):
-        if provider=='crossref':
-            kwargs.pop('api_key',None)
-            return SupplementalClient(provider,transport=httpx.MockTransport(response),interval=0,**kwargs)
-        return EmptyCompletion(provider,**kwargs)
-    result=run_integrated(path,client_factory=client_for(rows),completion_factory=helper)
-    assert result.facts.created_papers==2 and result.facts.statistics['completion_targets']==2
-    assert result.facts.statistics['completion_requests']==len(calls)==2
-    assert result.facts.statistics['completion_date_facts_added']==4
-    assert all(paper.title=='Native hit' for paper in load_workspace(tmp_path/'workspace').papers)
+    assert result.facts.statistics['identity_requests']==0  # Work cache reuse is not another HTTP request.
 
 
 def test_formal_metadata_priority_and_relation_notes_are_stable():
@@ -649,140 +410,25 @@ def test_run_resolves_formal_dois_once_and_persists_pubmed_history(tmp_path, fai
     def factory(provider, *, mailto='', **kwargs):
         if provider == 'pubmed':
             return DiscoveryClient(provider, transport=httpx.MockTransport(handler), interval=0, sleep=lambda _: None, **kwargs)
-        return EmptyCompletion(provider)
+        return EmptyLookup(provider)
 
     def wos(*args, **kwargs):
         return IntegratedDiscovery(rows, (DiscoveryResult('wos', SourceScope('journal', 'Test'),
             'complete', rows, candidates=len(rows)),), 'complete')
 
-    run = run_integrated(path, wos_stage=wos, completion_factory=factory)
+    run = run_integrated(path, wos_stage=wos, lookup_factory=factory)
     papers = {paper.external_ids.doi: paper for paper in load_workspace(tmp_path / 'workspace').papers}
     assert run.facts.created_papers == 2 and set(papers) == {found, unmatched}
     assert papers[found].external_ids.pmid == '42925410'
     assert papers[found].ordinary_dates == ('2026-01-06',)
     assert papers[unmatched].external_ids.model_dump().get('pmid') is None
-    assert len(calls) == run.facts.statistics['completion_requests'] == (5 if failed_path else 2)
+    assert len(calls) == run.facts.statistics['identity_requests'] == (5 if failed_path else 2)
     assert run.facts.statistics['pmid_resolution_no_match'] == 1
 
     calls.clear()
-    rerun = run_integrated(path, wos_stage=wos, completion_factory=factory)
+    rerun = run_integrated(path, wos_stage=wos, lookup_factory=factory)
     assert rerun.facts.created_papers == 0 and rerun.facts.existing_papers == 2
     assert calls == []
-
-
-@pytest.mark.parametrize('scenario', ['recovery', 'exhausted', 'cancelled', 'certificate', 'disconnect'])
-def test_run_retries_only_the_failed_completion_page_and_keeps_partial_evidence(tmp_path, scenario):
-    from collections import Counter
-    import ssl
-    import httpx
-
-    from allfold.application.workspace import load_workspace
-    from allfold.providers.supplemental import SupplementalClient
-
-    path, _ = config(tmp_path)
-    path.write_text(path.read_text() + 'enabled_providers: [wos]\n')
-    one, two = '10.5555/one', '10.5555/two'
-    rows = (record('wos', one), record('wos', two))
-    calls = Counter()
-    recovery = []
-    cancel = Event()
-
-    def handler(request):
-        filter_value = request.url.params['filter']
-        cursor = request.url.params['cursor']
-        calls[filter_value, cursor] += 1
-        assert not read_papers(tmp_path / 'workspace')
-        if filter_value.startswith('relation.type:'):
-            return httpx.Response(200, json={'message': {'total-results': 0, 'items': []}})
-        if cursor == 'second':
-            attempts = calls[filter_value, cursor]
-            if scenario == 'certificate':
-                raise httpx.ConnectError('synthetic TLS failure') from ssl.SSLCertVerificationError('certificate')
-            if scenario == 'disconnect' and attempts == 1:
-                raise httpx.ReadError('synthetic connection reset')
-            if scenario not in {'certificate', 'disconnect'} and (attempts <= 3 or scenario == 'exhausted'):
-                return httpx.Response(503)
-            if scenario == 'cancelled':
-                cancel.set()
-        doi = one if cursor == '*' else two
-        return httpx.Response(200, json={'message': {
-            'total-results': 2, 'next-cursor': 'second',
-            'items': [{'DOI': doi, 'type': 'journal-article', 'published': {'date-parts': [[2026, 3, 4]]}}]}})
-
-    def factory(provider, **kwargs):
-        if provider == 'crossref':
-            return SupplementalClient(provider, transport=httpx.MockTransport(handler), interval=0,
-                sleep=lambda _: None, **kwargs)
-        return EmptyCompletion(provider)
-
-    def wos(*args, **kwargs):
-        return IntegratedDiscovery(rows, (DiscoveryResult('wos', SourceScope('journal', 'Test'),
-            'complete', rows, candidates=len(rows)),), 'complete')
-
-    run = run_integrated(path, wos_stage=wos, completion_factory=factory, cancel_event=cancel,
-        recovery_observer=lambda event, details: recovery.append((event, details)))
-    papers = {paper.external_ids.doi: paper for paper in load_workspace(tmp_path / 'workspace').papers}
-    assert calls[f'doi:{one},doi:{two}', '*'] == 1
-    assert calls[f'doi:{one},doi:{two}', 'second'] == {'certificate': 1, 'disconnect': 2}.get(scenario, 4)
-    assert run.facts.statistics['completion_requests'] == sum(calls.values())
-    scheduled = [(entry['recovery_action'], entry['attempt'], entry['attempt_limit'])
-                 for event, entry in recovery if event == 'recovery_scheduled']
-    regular = [('provider_retry', 2, 3), ('provider_retry', 3, 3)]
-    expected = {'certificate': [], 'disconnect': regular[:1]}.get(
-        scenario, [*regular, ('completion_recheck', 4, 4)])
-    assert scheduled == expected
-    successes = [entry['recovery_action'] for event, entry in recovery if event == 'recovery_succeeded']
-    assert successes == {'disconnect': ['provider_retry'], 'recovery': ['completion_recheck']}.get(scenario, [])
-    assert all('request_id' not in entry and 'synthetic' not in repr(entry) for _, entry in recovery)
-    if scenario == 'cancelled':
-        assert run.facts.created_papers == 0 and not papers and run.outcome.value == 'CANCELLED'
-    else:
-        recovers = scenario in {'recovery', 'disconnect'}
-        assert run.facts.created_papers == 2 and papers[one].ordinary_dates
-        assert bool(papers[two].ordinary_dates) == recovers
-        assert run.facts.details['completion_status'] == ('complete' if recovers else 'partial')
-
-
-def test_run_recovers_native_preprint_details_before_create(tmp_path):
-    import httpx
-
-    from allfold.application.workspace import load_workspace
-    from allfold.models import ProviderRecordRef
-    from allfold.providers.supplemental import SupplementalClient
-
-    path, _ = config(tmp_path)
-    path.write_text(path.read_text() + 'enabled_providers: [wos]\n')
-    preprint = '10.5555/native-preprint'
-    formal = record('wos', '10.5555/formal', related_ids=(
-        ProviderRecordRef(provider='biorxiv', record_id=preprint, relation='preprint'),
-    ))
-    calls = []
-
-    def handler(request):
-        assert request.url.path == f'/details/biorxiv/{preprint}/na/json'
-        calls.append(request)
-        assert not read_papers(tmp_path / 'workspace')
-        if len(calls) <= 3:
-            return httpx.Response(503)
-        return httpx.Response(200, json={'messages': [{'status': 'ok'}], 'collection': [
-            {'doi': preprint, 'server': 'biorxiv', 'date': '2025-08-17', 'version': '1'},
-        ]})
-
-    def factory(provider, **kwargs):
-        if provider == 'biorxiv':
-            return SupplementalClient(provider, transport=httpx.MockTransport(handler), interval=0,
-                sleep=lambda _: None, **kwargs)
-        return EmptyCompletion(provider)
-
-    def wos(*args, **kwargs):
-        return IntegratedDiscovery((formal,), (DiscoveryResult('wos', SourceScope('journal', 'Test'),
-            'complete', (formal,), candidates=1),), 'complete')
-
-    run = run_integrated(path, wos_stage=wos, completion_factory=factory)
-    paper, = load_workspace(tmp_path / 'workspace').papers
-    assert run.facts.statistics['completion_requests'] == len(calls) == 4
-    assert run.facts.details['completion_status'] == 'complete'
-    assert paper.first_public_at == '2025-08-17' and paper.external_ids.doi == '10.5555/formal'
 
 
 def test_resolved_pmid_counts_existing_doi_free_paper_for_discovery_source(tmp_path):
@@ -809,15 +455,18 @@ def test_resolved_pmid_counts_existing_doi_free_paper_for_discovery_source(tmp_p
     def factory(provider, *, mailto='', **kwargs):
         if provider == 'pubmed':
             return DiscoveryClient(provider, transport=httpx.MockTransport(handler), interval=0, **kwargs)
-        return EmptyCompletion(provider)
+        return EmptyLookup(provider)
 
     def wos(*args, **kwargs):
         return IntegratedDiscovery((formal,), (DiscoveryResult('wos', SourceScope('journal', 'Test'),
             'complete', (formal,), candidates=1),), 'complete')
 
-    run = run_integrated(path, wos_stage=wos, completion_factory=factory)
+    run = run_integrated(path, wos_stage=wos, lookup_factory=factory)
     assert run.facts.created_papers == 0 and run.facts.existing_papers == 1
-    assert read_paper(workspace, saved.id) == original
+    matched=read_paper(workspace, saved.id)
+    assert matched.id == original.id and matched.metadata.title == original.metadata.title
+    assert matched.collection_status in {'completed','failed'}
+    assert ('doi','10.5555/formal') in {(item.namespace,item.value) for item in matched.identities}
     assert run.facts.details['provider_runs'][0]['existing'] == 1
     assert run.facts.details['provider_totals'][0]['existing'] == 1
 
@@ -866,13 +515,13 @@ def test_europe_pmc_conflicting_formal_doi_cannot_enrich_pmid_owner(tmp_path, kn
         if provider == 'europe_pmc':
             kwargs.pop('api_key')
             return SupplementalClient(provider, interval=0, transport=httpx.MockTransport(handler), **kwargs)
-        return EmptyCompletion(provider)
+        return EmptyLookup(provider)
 
     def wos(*args, **kwargs):
         return IntegratedDiscovery((formal,), (DiscoveryResult('wos', SourceScope('journal', 'Test'),
             'complete', (formal,), candidates=1),), 'complete')
 
-    run = run_integrated(path, wos_stage=wos, completion_factory=factory)
+    run = run_integrated(path, wos_stage=wos, lookup_factory=factory)
     paper, = load_workspace(tmp_path / 'workspace').papers
     assert run.facts.created_papers == 1
     assert paper.external_ids.doi == doi and paper.external_ids.pmid == pmid
@@ -880,8 +529,8 @@ def test_europe_pmc_conflicting_formal_doi_cannot_enrich_pmid_owner(tmp_path, kn
     assert paper.ordinary_dates == ('2026-01-06',)
     assert not any(source.provider == 'europe_pmc' for source in paper.sources)
     assert not any('SRC:PPR' in request.url.params.get('query', '') for request in calls)
-    assert any('Europe PMC response conflicts with direct formal identity' in issue.message for issue in run.warnings)
-
+    assert paper.record.collection_status == 'failed'
+    assert any(branch.name == 'necessary-api' and branch.state == 'failed' for branch in paper.record.collection.branches)
 
 
 @pytest.mark.parametrize('resolution', ['matched', 'unmatched', 'saved_doi_free'])
@@ -924,13 +573,13 @@ def test_wos_reported_pmid_needs_exact_pubmed_confirmation_for_a_formal_doi(tmp_
         if provider == 'europe_pmc':
             kwargs.pop('api_key')
             return SupplementalClient(provider, interval=0, transport=httpx.MockTransport(handler), **kwargs)
-        return EmptyCompletion(provider)
+        return EmptyLookup(provider)
 
     def wos(*args, **kwargs):
         return IntegratedDiscovery((formal,), (DiscoveryResult('wos', SourceScope('journal', 'Test'),
             'complete', (formal,), candidates=1),), 'complete')
 
-    run = run_integrated(path, wos_stage=wos, completion_factory=factory)
+    run = run_integrated(path, wos_stage=wos, lookup_factory=factory)
     paper, = load_workspace(tmp_path / 'workspace').papers
     if resolution == 'saved_doi_free':
         assert run.facts.created_papers == 0
@@ -941,70 +590,3 @@ def test_wos_reported_pmid_needs_exact_pubmed_confirmation_for_a_formal_doi(tmp_
         assert paper.external_ids.doi == doi
         assert paper.external_ids.model_dump().get('pmid') == (verified_pmid if resolution == 'matched' else None)
     assert set(calls) == ({'esearch.fcgi', 'esummary.fcgi', 'search'} if resolution == 'matched' else {'esearch.fcgi'})
-
-
-@pytest.mark.parametrize('conflict', ['doi', 'preprint'])
-def test_efetch_conflict_revokes_provisional_pmid_and_its_evidence(tmp_path, conflict):
-    import httpx
-
-    from allfold.application.workspace import load_workspace
-    from allfold.models import EvidenceDate, EvidenceDateKind
-    from allfold.providers.integrated import DiscoveryClient
-    from allfold.providers.supplemental import SupplementalClient
-    from test_pubmed_discovery import article
-
-    doi, pmid = '10.5555/formal', '42'
-    path, _ = config(tmp_path)
-    path.write_text(path.read_text() + 'enabled_providers: [wos]\n')
-    formal = record('wos', doi).model_copy(update={'abstract': None})
-    independent = record('crossref', doi, dates=(EvidenceDate(
-        kind=EvidenceDateKind.ACCEPTED, year=2026, month=2, day=3),))
-
-    def respond(request):
-        if request.url.path.endswith('esearch.fcgi'):
-            return httpx.Response(200, json={'esearchresult': {'count': '1', 'idlist': [pmid]}})
-        if request.url.path.endswith('esummary.fcgi'):
-            return httpx.Response(200, json={'result': {'uids': [pmid], pmid: {
-                'uid': pmid, 'articleids': [{'idtype': 'doi', 'value': doi}],
-                'history': [{'pubstatus': 'received', 'date': '2026/01/06'}]}}})
-        if request.url.path.endswith('efetch.fcgi'):
-            row = article(pmid, '0006-341X', '10.5555/unrelated' if conflict == 'doi' else doi)
-            if conflict == 'preprint':
-                row = row.replace('</Article>', '<PublicationTypeList><PublicationType>Preprint'
-                    '</PublicationType></PublicationTypeList></Article>')
-            return httpx.Response(200, text='<PubmedArticleSet>' + row + '</PubmedArticleSet>')
-        if 'SRC:PPR' in request.url.params['query']:
-            return httpx.Response(200, json={'hitCount': 1, 'resultList': {'result': [{
-                'source': 'PPR', 'id': 'PPR1', 'title': 'Other preprint', 'versionNumber': '1',
-                'firstPublicationDate': '2024-03-02'}]}})
-        return httpx.Response(200, json={'hitCount': 1, 'resultList': {'result': [{
-            'source': 'MED', 'id': pmid, 'title': 'Article', 'doi': doi, 'firstPublicationDate': '2025-02-03',
-            'commentCorrectionList': {'commentCorrection': [{'type': 'Preprint in', 'source': 'PPR', 'id': 'PPR1'}]},
-        }]}})
-
-    class Crossref(EmptyCompletion):
-        def lookup_many(self, namespace, ids, **kwargs):
-            return {identifier: (independent,) for identifier in ids}
-
-    def factory(provider, **kwargs):
-        if provider == 'pubmed':
-            kwargs.pop('mailto')
-            return DiscoveryClient(provider, interval=0, transport=httpx.MockTransport(respond), **kwargs)
-        if provider == 'europe_pmc':
-            kwargs.pop('api_key')
-            return SupplementalClient(provider, interval=0, transport=httpx.MockTransport(respond), **kwargs)
-        return Crossref(provider) if provider == 'crossref' else EmptyCompletion(provider)
-
-    def wos(*args, **kwargs):
-        return IntegratedDiscovery((formal,), (DiscoveryResult('wos', SourceScope('journal', 'Test'),
-            'complete', (formal,), candidates=1),), 'complete')
-
-    run = run_integrated(path, wos_stage=wos, completion_factory=factory)
-    paper, = load_workspace(tmp_path / 'workspace').papers
-    assert run.facts.created_papers == 1
-    assert run.facts.statistics['pmid_resolution_conflicts'] == 1
-    assert not run.facts.statistics.get('pmid_resolution_matched')
-    assert paper.external_ids.doi == doi and paper.external_ids.model_dump().get('pmid') is None
-    assert paper.first_public_at is None
-    assert paper.ordinary_dates == ('2026-02-03',)
-    assert {source.provider for source in paper.sources} == {'wos', 'crossref'}

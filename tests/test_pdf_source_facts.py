@@ -33,7 +33,7 @@ def test_normalized_openalex_facts_reach_production_run_and_disk_reopen(tmp_path
     assert result.facts.created_papers == 1
     with PaperRepository.open(tmp_path / 'workspace') as repository:
         paper = repository.match(ExternalIds(doi='10.5555/formal'))
-        facts, = paper.metadata.discovery_facts
+        facts, = (fact for fact in paper.metadata.discovery_facts if fact.source == 'openalex')
         assert facts.source == 'openalex' and facts.capability == 'openalex-locations'
         assert facts.status == 'complete' and facts.target_doi == '10.5555/formal'
         assert facts.target_openalex == 'W123'
@@ -72,7 +72,7 @@ def test_crossref_response_facts_emit_through_necessary_branch_without_relation_
     saved, _ = execute(tmp_path, necessary_metadata_branch(providers=('crossref',)), transport=response)
     with PaperRepository.open(tmp_path / 'workspace') as repository:
         paper = repository.get(saved.id)
-        facts, = paper.metadata.discovery_facts
+        facts, = (fact for fact in paper.metadata.discovery_facts if fact.source == 'crossref')
         assert facts.target_doi == '10.5555/formal' and facts.status == 'complete'
         assert [(item.kind, item.url) for item in facts.links] == [
             ('landing', 'https://publisher.example/pii/S1234567890123456'),
@@ -267,7 +267,7 @@ def test_signed_source_links_become_refresh_facts_and_never_enter_workspace_proj
     assert result.facts.created_papers == 1
     with PaperRepository.open(tmp_path / 'workspace') as repository:
         saved = repository.match(ExternalIds(doi='10.5555/formal'))
-        facts, = saved.metadata.discovery_facts
+        facts, = (fact for fact in saved.metadata.discovery_facts if fact.source == 'openalex')
         candidate, = facts.candidates
         assert candidate.url is None and candidate.refresh.kind == 'openalex-work'
         assert candidate.refresh.landing_url == 'https://repository.example/article/123'

@@ -79,7 +79,7 @@ def test_network_recovery_distinguishes_safe_disconnects_from_stopping_failures(
 
 
 def test_openalex_null_source_completion_keeps_other_providers_hit():
-    from allfold.application.metadata_completion import complete_metadata
+    from allfold.application.provider_lookup import _batch_lookup
     from allfold.models import ExternalIds, MetadataSource, ProviderWorkEvidence
     from allfold.providers.integrated import DiscoveryClient
     from datetime import datetime, timezone
@@ -87,13 +87,12 @@ def test_openalex_null_source_completion_keeps_other_providers_hit():
         provenance=MetadataSource(provider='europe_pmc', record_id='MED:42', retrieved_at=datetime.now(timezone.utc),role='discovery'))
     raw={'id':'https://openalex.org/W123','doi':'https://doi.org/10.5555/null','title':'Native hit','primary_location':None}
     with DiscoveryClient('openalex',transport=httpx.MockTransport(lambda _:httpx.Response(200,json={'results':[raw], 'meta':{'count':1}})),interval=0) as client:
-        completed=complete_metadata((original,),('openalex',),clients={'openalex':client})
-    assert not completed.issues and original in completed.records
-    assert completed.records[1].external_ids.openalex=='https://openalex.org/W123'
+        completed=_batch_lookup(client, 'openalex', 'doi', (original.external_ids.doi,), None, None)[original.external_ids.doi]
+    assert completed[0].external_ids.openalex=='https://openalex.org/W123'
 
 
 def test_malformed_supplement_metadata_is_local_to_that_request():
-    from allfold.application.metadata_completion import complete_metadata
+    from allfold.application.provider_lookup import _batch_lookup
     from allfold.models import ExternalIds, MetadataSource, ProviderWorkEvidence
     from allfold.providers.integrated import DiscoveryClient
     from datetime import datetime, timezone
@@ -101,8 +100,8 @@ def test_malformed_supplement_metadata_is_local_to_that_request():
         provenance=MetadataSource(provider='europe_pmc',record_id='MED:42',retrieved_at=datetime.now(timezone.utc)))
     with DiscoveryClient('openalex',transport=httpx.MockTransport(lambda _:httpx.Response(200,json={
         'id':'https://openalex.org/W123','title':'Native hit','primary_location':['malformed']})),interval=0) as client:
-        completed=complete_metadata((original,),('openalex',),clients={'openalex':client})
-    assert completed.records==(original,) and len(completed.issues)==1
+        completed=_batch_lookup(client, 'openalex', 'doi', (original.external_ids.doi,), None, None)[original.external_ids.doi]
+    assert isinstance(completed, Exception)
 
 
 def test_work_level_biomedical_ids_do_not_merge_formal_doi_free_records():
@@ -222,13 +221,9 @@ def test_europe_pmc_preserves_explicit_relations_and_per_version_dates(versions,
     assert any(d.record_id == 'PPR:PPR3' and d.version == '3' and d.year == 2025 for d in paper.date_evidence)
     if expected:
         assert any(d.record_id == 'PPR:PPR1' and d.first_version and d.day is None for d in paper.date_evidence)
-        from allfold.application.metadata_completion import complete_metadata
-        class Forbidden:
-            def lookup(self, *_):
-                pytest.fail('Sufficient aggregate version history triggered a native lookup')
-        result = complete_metadata((formal, preprint), ('arxiv', 'biorxiv', 'medrxiv'),
-            clients=dict.fromkeys(('arxiv', 'biorxiv', 'medrxiv'), Forbidden()))
-        assert not result.lookups
+        from allfold.application.necessary_metadata import necessary_requests
+        assert necessary_requests((formal,preprint), root_ids={('doi','10.5555/formal')},
+            providers=('arxiv','biorxiv','medrxiv')) == ()
 
 
 @pytest.mark.parametrize('provider', ['dblp', 'zbmath'])

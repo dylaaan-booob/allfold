@@ -32,7 +32,7 @@ OUTCOMES = frozenset({'completed', 'partial', 'failed', 'cancelled', 'interrupte
 STATISTICS = frozenset({'retrieved', 'created', 'updated', 'total', 'processed', 'failed', 'skipped',
     'confirmed', 'no_effect', 'uncertain', 'cancelled', 'completed', 'opened',
     'needs_attention', 'eligible', 'matched', 'downloaded', 'unchanged', 'candidates',
-    'completion_targets', 'completion_requests', 'completion_date_facts_added', 'integrated_candidates', 'integrated_deduplicated', 'work_location_targets',
+    'identity_targets', 'identity_requests', 'collection_admitted', 'collection_reused', 'collection_registration_failed', 'excluded_papers', 'rebuilt_papers', 'integrated_candidates', 'integrated_deduplicated', 'work_location_targets',
     'pmid_resolution_matched', 'pmid_resolution_no_match', 'pmid_resolution_conflicts', 'pmid_resolution_failed', 'pmid_resolution_cancelled',
     'first_public_recorded', 'first_public_no_association', 'first_public_known_unresolved', 'first_public_conflict', 'first_public_failed', 'first_public_cancelled',
     'papers', 'services', 'warnings', 'errors', 'excluded', 'duplicates', 'materialized'})
@@ -84,7 +84,6 @@ def _details(value):
     if _enum(value.get('reason'), REASONS):
         result['reason'] = value['reason']
     for key, allowed in (('discovery_status', {'complete','empty','partial','failed','cancelled'}),
-                         ('completion_status', {'complete','empty','partial','failed','cancelled'}),
                          ('result_status', {'completed', 'completed_with_notices', 'incomplete', 'capture_issues', 'failed', 'cancelled'}),
                          ('coverage_status', {'complete', 'empty', 'partial', 'failed', 'unavailable', 'unknown'})):
         if _enum(value.get(key), allowed):

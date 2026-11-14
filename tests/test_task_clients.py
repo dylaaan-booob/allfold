@@ -66,8 +66,8 @@ def test_pacing_survives_run_and_manual_preprint_clients_and_new_attempts(tmp_pa
     import httpx
     from allfold.application.browser_runtime import BrowserTaskLock
     from allfold.application.coordinators.preprint_lookup import PreprintLookup
-    from allfold.application.integrated_run import run_integrated
-    from allfold.application.metadata_completion import completion_client
+    from integrated_run_helpers import run_integrated
+    from allfold.application.provider_lookup import provider_client
     from library_application_helpers import create_paper, FORMAL
     from test_provider_resilience import Clock
 
@@ -87,10 +87,10 @@ def test_pacing_survives_run_and_manual_preprint_clients_and_new_attempts(tmp_pa
         return httpx.Response(200, json={'ok': True})
 
     def clients(provider, **kwargs):
-        return completion_client(provider, interval=1, transport=httpx.MockTransport(respond),
+        return provider_client(provider, interval=1, transport=httpx.MockTransport(respond),
                                  **clock.options(), **kwargs)
 
-    options = dict(client_factory=clients, completion_factory=clients, pacing_state=pacing)
+    options = dict(client_factory=clients, lookup_factory=clients, pacing_state=pacing)
     assert run_integrated(config, **options).facts.created_papers == 0
     lookup = PreprintLookup(config, BrowserTaskLock(), client_factory=clients, pacing_state=pacing)
     lookup.start(paper.id)

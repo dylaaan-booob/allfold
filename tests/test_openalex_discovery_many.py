@@ -188,7 +188,6 @@ def test_record_failure_keeps_verified_neighbors_callbacks_and_later_pages(bad_r
 
 
 def test_missing_title_remains_a_verified_identity_for_completion():
-    from allfold.application.metadata_completion import complete_metadata
     from allfold.models import Author
     from allfold.canonicalize import completion_metadata
     rows = [work(1), work(2, title=None), work(3)]
@@ -200,16 +199,8 @@ def test_missing_title_remains_a_verified_identity_for_completion():
         assert discovered.status == 'complete' and discovered.candidates == 3
         missing = next(row for row in discovered.records if row.external_ids.doi == '10.5555/2')
         assert missing.title is None and client.cached_lookup('doi', '10.5555/2')[0].title is None
-        class Formal:
-            def lookup(self, namespace, identifier):
-                return (missing.model_copy(update={'title': 'Completed formal title', 'abstract': 'Formal abstract',
-                    'authors': (Author(name='Formal One'), Author(name='Formal Two')),
-                    'provenance': missing.provenance.model_copy(update={'provider': 'crossref'})}),)
-        completed = complete_metadata((missing,), ('crossref',), clients={'crossref': Formal()})
     assert len(pages) == 1 and len(pages[0]) == 3
-    metadata = completion_metadata(completed.records)
-    assert metadata.metadata.title == 'Completed formal title'
-    assert metadata.authors == (Author(name='Formal One'), Author(name='Formal Two'))
+    assert missing.title is None and missing.external_ids.doi == '10.5555/2'
 
 
 @pytest.mark.parametrize('revocation', ['cancel', 'workspace'])

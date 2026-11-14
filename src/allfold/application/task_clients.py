@@ -7,7 +7,7 @@ from contextlib import ExitStack, contextmanager
 from pathlib import Path
 from threading import Condition, Lock
 
-from allfold.application.metadata_completion import completion_client
+from allfold.application.provider_lookup import provider_client
 from allfold.integrations.openalex_credentials import read_credential
 from allfold.providers.integrated import DISCOVERY_PROVIDERS, PROVIDERS
 
@@ -67,7 +67,7 @@ class AttemptClients:
 class IndependentClientFactory:
     """Application-owned admission; contexts own their clients through real close."""
 
-    def __init__(self, config_path, *, pacing_state=None, client_factory=completion_client):
+    def __init__(self, config_path, *, pacing_state=None, client_factory=provider_client):
         self.config_path = Path(config_path)
         self.pacing_state = pacing_state if pacing_state is not None else new_provider_pacing()
         self.client_factory = client_factory

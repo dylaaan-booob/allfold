@@ -16,7 +16,7 @@ from allfold.application.coordinators.run_coordinator import (
 _STAGE_LABELS = {
     ProgressStage.CHECKING_MONITOR: "Checking monitor",
     ProgressStage.DISCOVERING_PAPERS: "Discovering papers",
-    ProgressStage.COMPLETING_PAPERS: "Run metadata completion",
+    ProgressStage.RESOLVING_IDENTITIES: "Confirming Paper identities",
     ProgressStage.PREPARING_PAPERS: "Preparing papers",
     ProgressStage.UPDATING_WORKSPACE: "Capturing papers",
 }

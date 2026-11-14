@@ -27,10 +27,10 @@ def test_ordinary_gaps_do_not_schedule_requests_after_necessary_capabilities_set
             providers=('crossref', 'openalex', 'pubmed')) == ()
 
 
-def execute(tmp_path, branch, *, transport, metadata=None, on_task=None, direct_ids=None, wait_timeout=5):
+def execute(tmp_path, branch, *, transport, metadata=None, on_task=None, direct_ids=None, wait_timeout=5, client_options=None):
     from contextlib import contextmanager
     from allfold.application.collection_runtime import WorkspaceRegistry
-    from allfold.application.metadata_completion import completion_client
+    from allfold.application.provider_lookup import provider_client
     from allfold.application.task_clients import IndependentClientFactory
     from allfold.persistence.paper_repository import PaperMetadata, PaperRepository
 
@@ -41,7 +41,7 @@ def execute(tmp_path, branch, *, transport, metadata=None, on_task=None, direct_
     clients = []
     @contextmanager
     def client_factory(provider, **kwargs):
-        with completion_client(provider, transport=httpx.MockTransport(transport), interval=0, **kwargs) as client:
+        with provider_client(provider, transport=httpx.MockTransport(transport), interval=0, **(client_options or {}), **kwargs) as client:
             clients.append(('opened', provider))
             yield client
         clients.append(('closed', provider))
@@ -634,3 +634,21 @@ def test_structured_pubmed_candidate_reaches_service_report_with_headings_and_sc
     paper, _ = execute(tmp_path, BranchSpec('pubmed-candidate', run, providers=('pubmed',)), transport=response)
     assert paper.collection_status == 'completed'
     assert reports[0].records[-1].abstract == 'Background: α + β = γ.\nMethods: Scientific text remains.'
+
+
+def test_necessary_transient_failure_keeps_one_final_check_and_full_capability(tmp_path):
+    from allfold.application.necessary_metadata import necessary_metadata_branch
+    calls=[]
+    def response(request):
+        calls.append(request)
+        if len(calls) <= 3:
+            return httpx.Response(503)
+        rows=[] if 'relation.type:' in request.url.params.get('filter','') else [
+            {'DOI':'10.5555/formal','type':'journal-article','accepted':{'date-parts':[[2026,1,2]]}}]
+        return httpx.Response(200,json={'message':{'total-results':len(rows),'items':rows}})
+    from test_provider_resilience import Clock
+    paper,_=execute(tmp_path,necessary_metadata_branch(providers=('crossref',)),transport=response,
+        client_options=Clock().options())
+    assert paper.collection_status == 'completed'
+    assert paper.metadata.ordinary_dates == ('2026-01-02',)
+    assert len(calls) == 5
