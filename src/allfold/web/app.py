@@ -246,6 +246,10 @@ def create_app(config_path: Path, *, electron_bridge: ElectronBridge, diagnostic
         diagnostics=app.state.diagnostics, login=app.state.login, pacing_state=pacing,
         settings_lock=app.state.settings_write_lock)
     app.state.workspace_tasks.initialize()
+    from allfold.application.collection_planner import ProductionCollectionService
+    app.state.collection_service = ProductionCollectionService(app.state.workspace_tasks)
+    app.state.run_coordinator.workspace_tasks = app.state.workspace_tasks
+    app.state.run_coordinator.collection_service = app.state.collection_service
     app.state.preprint_lookup = PreprintLookup(resolved_config_path, app.state.browser_task_lock,
         run_slot=run_slot, pacing_state=pacing, workspace_tasks=app.state.workspace_tasks)
     electron_bridge.access_pages_closed = app.state.login.invalidate_pages

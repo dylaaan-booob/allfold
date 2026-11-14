@@ -89,8 +89,9 @@ class CoordinatorSnapshot:
 class RunCoordinator:
     """Coordinate one transient production run without persisting run state."""
 
-    def __init__(self, config_path: Path, *, run_slot=None, diagnostics=None, pacing_state=None) -> None:
+    def __init__(self, config_path: Path, *, run_slot=None, diagnostics=None, pacing_state=None, workspace_tasks=None, collection_service=None) -> None:
         self.diagnostics = diagnostics
+        self.workspace_tasks, self.collection_service = workspace_tasks, collection_service
         self.wos_stage = None
         self._task_id = None
         self._config_path = config_path
@@ -268,7 +269,8 @@ class RunCoordinator:
                 progress_callback=self._update_progress, loaded_config=self._config_snapshot,
                 workspace_snapshot=self._workspace_snapshot, cancel_event=self._cancel_event,
                 wos_stage=self.wos_stage.execute_stage if self.wos_stage else None, workflow_id=task_id,
-                recovery_observer=observe_recovery, pacing_state=self.pacing_state)
+                recovery_observer=observe_recovery, pacing_state=self.pacing_state,
+                workspace_tasks=self.workspace_tasks, collection_service=self.collection_service)
         except BaseException as error:
             LOGGER.exception("Unexpected exception during monitor run")
             unexpected_error = UnexpectedRunError(

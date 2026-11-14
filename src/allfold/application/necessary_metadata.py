@@ -1,15 +1,15 @@
 """Purpose-driven identity, Preprint relationship and native-version services.
 
 These components use the captured Workspace task. Ordinary missing fields are
-never request goals, and the production Run's Completion is a separate caller.
+never request goals. Production Run hands off immutable purpose-labelled evidence.
 """
 from collections import defaultdict
 from dataclasses import dataclass
 from datetime import datetime, timezone
 
 from allfold.abstract_text import normalize_abstract_text
-from allfold.application.metadata_completion import (
-    CompletionIssue, CompletionLookup, _batch_lookup, bind_records, formal_records,
+from allfold.application.provider_lookup import (
+    LookupIssue, LookupFact, LookupSettlement, _batch_lookup, bind_records, formal_records,
 )
 from allfold.identifiers import normalize_external_id, related_identifiers, strong_identifiers
 from allfold.models import EvidenceDateKind, ExternalIds, MetadataSource, ProviderWorkEvidence
@@ -64,7 +64,8 @@ class VerifiedResponse:
 
 def _satisfied(request, facts):
     return any(fact.complete and (fact.request == request or request.provider == 'pubmed'
-        and request.capability == 'summary' and fact.request == NecessaryRequest(
+        and (request.capability == 'summary' or request.capability == 'fetch-preprint' and
+            any(item.publication_type == 'preprint' for item in fact.records)) and fact.request == NecessaryRequest(
             'pubmed', request.namespace, request.identifier, 'fetch')) for fact in facts)
 
 
@@ -140,6 +141,8 @@ def necessary_requests(records, *, root_ids, providers, facts=(), required=(),
                     NecessaryRequest('europe_pmc', namespace, value, 'preprints')))
         requests.update(_native_proof_requests(records))
         for item in records:
+            if item.publication_type == 'preprint' and item.external_ids.model_dump().get('pmid'):
+                requests.add(NecessaryRequest('pubmed', 'pmid', item.external_ids.model_dump()['pmid'], 'fetch-preprint'))
             for namespace, value in related_identifiers(item):
                 if (namespace == 'doi' and (namespace, value) not in formal_ids
                         and preprint_identity(namespace, value) not in answered):
@@ -169,8 +172,8 @@ def confirm_formal_dois(client, identifiers, *, guard=lambda: None):
 @dataclass(frozen=True)
 class NecessaryResult:
     records: tuple
-    lookups: tuple[CompletionLookup, ...]
-    issues: tuple[CompletionIssue, ...]
+    lookups: tuple[LookupFact, ...]
+    issues: tuple[LookupIssue, ...]
     first_public_status: str
 
     @property
@@ -207,7 +210,7 @@ def _lookup_group(context, requests):
     return _batch_lookup(client, first.provider, first.namespace, identifiers, capability, context.cancel_event)
 
 
-def _workspace_evidence(paper):
+def paper_evidence(paper):
     metadata = paper.metadata
     return ProviderWorkEvidence(provenance=MetadataSource(provider='workspace', record_id=str(paper.id),
         retrieved_at=datetime.now(timezone.utc)), external_ids=ExternalIds(**{
@@ -255,9 +258,10 @@ def _increment(records, root_ids, *, preprint_root=False):
     for item in formal:
         for namespace, value in strong_identifiers(item.external_ids):
             identities[namespace].add(value)
-    if any(len(values) > 1 for values in identities.values()):
+    if any(len(values) > 1 and not {(namespace, value) for value in values} <= root_ids
+            for namespace, values in identities.items()):
         raise IdentityMismatch('Formal response has conflicting direct identities')
-    direct = {namespace: next(iter(values)) for namespace, values in identities.items()}
+    direct = {namespace: sorted(values)[0] for namespace, values in identities.items()}
     return delta, ExternalIds(**direct) if direct else None
 
 
@@ -273,7 +277,7 @@ def collect_necessary_metadata(context, *, records=(), facts=(), required=(), pr
 
     paper = context.read_paper()
     root_ids = {(identity.namespace, identity.value) for identity in paper.identities}
-    output = [_workspace_evidence(paper)]
+    output = [paper_evidence(paper)]
     seen = {evidence_key(item) for item in output}
     lookups, issues, attempted, completed = [], [], set(), []
     required = set(required)
@@ -293,9 +297,9 @@ def collect_necessary_metadata(context, *, records=(), facts=(), required=(), pr
                 'partial' if error and accepted else 'identity_mismatch' if isinstance(error, IdentityMismatch)
                 or conflicts or rejected else 'failed' if error else 'evidence' if accepted else 'no_match')
             if conflicts or rejected or error and status != 'no_match':
-                issues.append(CompletionIssue(request.provider, request.identifier,
+                issues.append(LookupIssue(request.provider, request.identifier,
                     'Response conflicts with the requested direct identity' if conflicts or rejected else str(error), status))
-            lookups.append(CompletionLookup(request.provider, request.namespace, request.identifier, status, request.capability))
+            lookups.append(LookupFact(request.provider, request.namespace, request.identifier, status, request.capability))
             attempted.add(request)
             if status in {'evidence', 'no_match'}:
                 completed.append(VerifiedResponse(request, tuple(accepted), complete=complete))
@@ -367,7 +371,12 @@ def collect_necessary_metadata(context, *, records=(), facts=(), required=(), pr
         linked = {key for item in output for key in related_identifiers(item)}
         if any((item.namespace, item.identifier) not in linked for item in group):
             raise IdentityMismatch('Necessary target lacks a verified Paper identity or relation')
-        values = _lookup_group(context, group)
+        client = context.provider(first.provider)
+        if hasattr(client, 'begin_completion'):
+            client.begin_completion()
+        values, settlement = {}, LookupSettlement()
+        values.update(settlement.capture(client, lambda: _lookup_group(context, group), values.update))
+        settlement.settle(context.cancel_event)
         for request in group:
             context.guard()
             absorb(request, values[request.identifier])
@@ -375,7 +384,7 @@ def collect_necessary_metadata(context, *, records=(), facts=(), required=(), pr
     current = context.read_paper()
     # Include latest independent proof increments without recapturing write
     # authority. A newly known unresolved family must prevent an early value.
-    final_records = (*output, _workspace_evidence(current))
+    final_records = (*output, paper_evidence(current))
     status = 'recorded' if current.metadata.first_public_at else first_public_status(final_records)
     if issues and status != 'conflict' and not current.metadata.first_public_at:
         status = 'failed'
@@ -389,7 +398,7 @@ def collect_necessary_metadata(context, *, records=(), facts=(), required=(), pr
 
 def necessary_metadata_branch(*, name='necessary-api', providers=(), records=(), facts=(),
                               required=(), discover_relations=True):
-    """Install an explicit internal component plan; production Run does not call it."""
+    """Declare a complete purpose-driven branch with immutable handoff facts."""
     from allfold.application.collection_runtime import BranchSpec
 
     providers, records, facts, required = tuple(providers), tuple(records), tuple(facts), tuple(required)

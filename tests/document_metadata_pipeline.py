@@ -16,7 +16,7 @@ from fastapi.testclient import TestClient
 
 from allfold.application.collection_runtime import BranchContext, WorkspaceRegistry
 from allfold.application.document_metadata import collect_document_metadata, document_metadata_branch, validate_document_metadata
-from allfold.application.metadata_completion import completion_client
+from allfold.application.provider_lookup import provider_client
 from allfold.application.necessary_metadata import collect_necessary_metadata, necessary_metadata_branch
 from allfold.application.task_clients import IndependentClientFactory
 from allfold.application.task_authority import TaskAuthority
@@ -76,7 +76,7 @@ def client_factory(events, abstract=API_TEXT):
 
     @contextmanager
     def factory(provider, **kwargs):
-        with completion_client(provider, transport=httpx.MockTransport(response), interval=0, **kwargs) as client:
+        with provider_client(provider, transport=httpx.MockTransport(response), interval=0, **kwargs) as client:
             events.append(('opened', get_ident(), id(client)))
             yield client
         events.append(('closed', get_ident(), id(client)))

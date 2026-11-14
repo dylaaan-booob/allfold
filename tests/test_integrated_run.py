@@ -6,7 +6,7 @@ import pytest
 from allfold.config import load_config, JournalConfig, render_settings_list_text
 from allfold.models import ExternalIds, MetadataSource, ProviderWorkEvidence
 from allfold.providers.integrated import DiscoveryResult
-from integrated_run_helpers import EmptyCompletion, run_integrated
+from integrated_run_helpers import EmptyLookup, run_integrated
 from library_helpers import read_papers, read_paper
 
 
@@ -25,7 +25,7 @@ def evidence(provider='pubmed', doi='10.5555/formal', pmid='42', title='Native h
 
 
 def client_for(records, *, failed=None, calls=None):
-    class Client(EmptyCompletion):
+    class Client(EmptyLookup):
         def discover_many(self,scopes,*args,records_callback=None):
             if calls is not None: calls.append(self.provider)
             if self.provider==failed: raise OSError('Isolated discovery failure')
@@ -49,7 +49,7 @@ def test_run_preserves_paper_without_persisting_rediscovery(tmp_path):
     retired=tmp_path/'workspace'/'Evidence';retired.write_text('Unmanaged legacy content')
     rows=(evidence(title='Rediscovery title'),)
     result=run_integrated(path,client_factory=factory)
-    assert result.facts.existing_papers==0 and result.facts.statistics['completion_targets']==0
+    assert result.facts.existing_papers==0 and result.facts.statistics['identity_targets']==0
     assert read_paper(tmp_path/'workspace', saved.id) == original
     assert retired.read_text() == 'Unmanaged legacy content'
 
