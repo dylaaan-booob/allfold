@@ -118,6 +118,9 @@ logger.log('info','task_finished',{workflow_id:'workflow_1',task_id:'batch_1',
 logger.log('warn','task_finished',{workflow_id:'workflow_1',task_id:'batch_1',
   request_id:'imperva_request',action:'prepare_service',stage:'navigation',
   code:'site_restricted',status:200,imperva_edet:15,imperva_incident_id:'123-456'});
+logger.log('info','task_finished',{workflow_id:'workflow_1',task_id:'batch_1',
+  request_id:'body_request',action:'stream_paper_body',outcome:'stream_complete',
+  workspace_root:'/PRIVATE_SENTINEL',output:{file:[1,2]},url:'https://private.invalid/?token=PRIVATE_SENTINEL'});
 logger.log('error','task_finished',{workflow_id:'workflow_2',task_id:'batch_2',
   request_id:'unrelated_request',action:'prepare_service',parent:'confirmed'});
 const other=createLogger({root,scopeId:'b'.repeat(64),runtimeId:'other_runtime',stderr(){}});
@@ -141,6 +144,8 @@ other.log('error','task_finished',{workflow_id:'workflow_1',task_id:'batch_1',
         assert native['service_id'] == 'svc_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'
         assert native['workflow_id'] == 'workflow_1'
         assert native['task_id'] == 'batch_1'
+        streamed = next(event for event in events if event.get('request_id') == 'body_request')
+        assert streamed['action'] == 'stream_paper_body' and streamed['outcome'] == 'stream_complete'
         blocked = next(event for event in events if event.get('request_id') == 'imperva_request')
         assert normalize_browser_diagnostic(blocked) == {
             'stage': 'navigation', 'code': 'site_restricted', 'status': 200,

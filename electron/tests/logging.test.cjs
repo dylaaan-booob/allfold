@@ -84,3 +84,12 @@ test('saved Python level vocabulary controls optional details without dropping n
   logger.log('info','task_finished',{request_id:'one',action:'prepare_service',outcome:'failed'});
   assert.equal(logger.readEvents().length,1);assert.equal(logger.readEvents()[0].event,'task_finished');assert.equal(logger.status().incomplete,false);
 });
+test('body stream terminal survives strict diagnostics and retains transport versus body distinction',t=>{
+  const {logger}=fixture(t);
+  logger.log('info','task_finished',{request_id:'body_request',task_id:'body_attempt',
+    action:'stream_paper_body',outcome:'stream_complete',workspace_root:'/private/managed',
+    output:{file:[1,2]},url:'https://publisher.example/body?token=SECRET'});
+  const events=logger.readEvents();assert.equal(events.length,1);
+  assert.equal(events[0].action,'stream_paper_body');assert.equal(events[0].outcome,'stream_complete');
+  assert.doesNotMatch(JSON.stringify(events),/SECRET|managed|token|output|downloaded/);
+});

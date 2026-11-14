@@ -221,4 +221,4 @@ when no native Browser owner exists.
 
 ## WF09 internal body service
 
-WF09 uses explicit native `stream_complete`, which means only PDF transport plus closed writer. Only the later repository transaction means body completed/Downloaded. Public download state exposes bounded state/attempt/reason; absolute roots, output capabilities, raw response content and signed URLs remain private. Durable source projection keeps only origin. It adds no public Download history/control. See [the complete contract](body-downloads.md).
+WF09 admits `stream_paper_body` in the shared native/Python diagnostic action allowlist and uses explicit native `stream_complete`, which means only PDF transport plus closed writer. Only the later repository transaction means body completed/Downloaded. Public download state exposes bounded state/attempt/reason; absolute roots, output capabilities, raw response content and signed URLs remain private. Durable source projection keeps only origin. It adds no public Download history/control. See [the complete contract](body-downloads.md).

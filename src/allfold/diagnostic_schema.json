@@ -145,6 +145,7 @@
         "prepare_service",
         "release_workflow_pages",
         "search_journal_cover",
+        "stream_paper_body",
         "visit_manual_service",
         "wos_export",
         "wos_query"
