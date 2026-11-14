@@ -93,6 +93,10 @@ class ProductionCollectionService:
         return registry.check_retry(paper_id, branches=branches, expected_token=expected_token,
             expected_attempt=expected_attempt, expected_revision=expected_revision)
 
+    def cleanup_pending(self, paper_id, workspace_id):
+        registry = self.host.peek()
+        return bool(registry and registry.busy(paper_id, workspace_id, include_local_reads=False))
+
     def retry(self, paper_id, *, workspace_id, expected_token, expected_attempt, expected_revision=None, deadline=None):
         registry, branches = self._retry(paper_id, workspace_id=workspace_id,
             expected_token=expected_token, expected_attempt=expected_attempt)

@@ -427,7 +427,9 @@ def test_reader_alternatives_continue_only_after_an_ordinary_empty_response(tmp_
             bridge.finish()
             assert task.future.result(2).status=='completed'
         else:
-            assert task.future.result(2).status=='response' and len(bridge.calls)==2
+            result = task.future.result(2)
+            assert result.status == 'failed' and result.candidate_result.diagnostic == 'access-' + access
+            assert len(bridge.calls) == 2
     finally:
         if hasattr(bridge,'result') and not bridge.result.done():bridge.result.set_result(dict(kind='cancelled',outcome='cancelled'))
         host.shutdown();host.join()

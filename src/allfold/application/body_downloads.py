@@ -238,6 +238,12 @@ class _BodyDiscoveryIO:
             return SimpleNamespace(current_candidates=values)
         return None
 
+    def oce_access(self, candidate, response):
+        return self._read(lambda: self.io.oce_access(candidate, response))
+
+    def oce_reader(self, candidate, response):
+        return self._read(lambda: self.io.oce_reader(candidate, response))
+
     def _read(self, read):
         from allfold.pdf_discovery import PdfSourceReadError
         try:
@@ -317,6 +323,9 @@ def _run(reservation, request, progress):
                         result = BodyResult('completed', saved, CandidateResult.pdf(transfer_complete=True))
                     elif discovery.status in {'cancelled', 'stale', 'expired', 'local-failure'}:
                         result = BodyResult(discovery.status.replace('-', '_'), candidate_result=result.candidate_result)
+                    elif discovery.status == 'blocked':
+                        result = BodyResult('failed', candidate_result=CandidateResult.failed(
+                            (result.candidate_result.diagnostic if result.candidate_result else None) or 'access-blocked'))
                     elif discovery.status == 'exhausted' and any(reason == 'native-unsupported'
                             for _, _, reason in discovery.diagnostics):
                         result = BodyResult('failed', candidate_result=CandidateResult('skipped', diagnostic='native-unsupported'))
