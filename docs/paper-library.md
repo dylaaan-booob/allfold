@@ -27,10 +27,10 @@ transaction callbacks: network, page and file work finishes before repository
 calls. No lock spans those operations.
 
 The application ID identifies an Allfold library, `PRAGMA user_version` records
-schema version 4, and `library_info` stores the Workspace UUID. Opening checks
+schema version 5, and `library_info` stores the Workspace UUID. Opening checks
 the version, expected table/index definitions, integrity and references. Missing,
 corrupt, unsafe and unsupported-schema libraries raise distinct errors. Existing
-content is never overwritten or rebuilt implicitly. An exactly valid v3 schema has one transactional forward change to v4; unknown,
+content is never overwritten or rebuilt implicitly. Exactly valid v4 and the supported v3 entry path have transactional forward changes to v5; unknown,
 corrupt and retired v1/v2 formats remain refused. Acceptance uses isolated data. Failed initialization preserves its
 exclusively created file for inspection rather than deleting it.
 
@@ -41,7 +41,7 @@ exclusively created file for inspection rather than deleting it.
 | `library_state`, `paper_projection` | Persisted library and record revisions for current projections |
 | `paper_identities` | Unique `(namespace, normalized_value)` ownership, referencing the core |
 | `paper_metadata` | Deletable complete payload and manual-abstract generation |
-| `paper_body` | One current relative PDF association, source URL and optional byte count |
+| `paper_body` | One current relative PDF association, origin-only source URL, optional byte count and finite successful source/fallback facts; historical provenance may remain unknown |
 | `paper_collection` | Current metadata lifetime's attempt, captured generations/lifecycle, state, cancellation and bounded reason |
 | `paper_collection_branch` | At most 16 current branch facts and last committed result sequence |
 | `paper_download` | Current body attempt, captured qualification, state, bounded reason and actual output ownership |
@@ -78,7 +78,7 @@ and connection safety. These helpers are not alternate application writers.
 | `rebuild_from_run(token, direct_ids=..., metadata=...)` | Only a cleared, unexcluded placeholder accepts a new caller-verified Run result directly identifying it; retain UUID and establish new generations |
 | `complete_body(token, body)` | Logical fixture seeding only; preserves existing body, grants no file authority |
 | `begin_download`, `require_download`, `record_download_output`, `complete_download`, `finish_download`, `interrupt_downloads` | Captured current attempt, owned output, unique final body/terminal transaction and no-replay interruption; see [body lifecycle](body-downloads.md) |
-| `clear_body(token)` | Local unlink, also allowed when excluded or without metadata; revoke pending results even when no body is associated |
+| `clear_body(token)` | Database association clearing only; also allowed when excluded or without metadata, but never authorizes or performs physical deletion |
 | `admit_collection(workspace_id, lifecycle_id=..., branches=..., direct_ids=..., metadata=...)` | Atomically create/match and establish queued authority; rebuild additionally requires original `expected_token` and `allow_rebuild=True`; return `CollectionAdmission(paper, token, admitted, created)` |
 | `require_collection(token)`, `mark_collection_running(token)` | Recheck captured attempt/lifecycle and uncancelled execution authority; optionally mark dispatch |
 | `commit_collection_branch(token, branch, sequence=..., delta=..., outcome=..., reason=..., direct_ids=...)` | Atomically merge an increment and its branch fact; duplicate/older sequences never reapply content |
@@ -214,13 +214,17 @@ transactions. These checks follow applicable UserState safety principles without
 sharing its database or configuration payload.
 
 `BodyReference` accepts a canonical POSIX relative path below `Documents/`, optional
-source URL and nonnegative byte count. Absolute/drive paths, traversal, empty/dot
+source URL, nonnegative byte count and bounded successful provenance. Absolute/drive paths, traversal, empty/dot
 components, backslashes and control characters are refused. This lexical contract
 does not assert file existence or grant permission to follow filesystem links.
-WF09's [file service](body-downloads.md) validates the live managed directory and actual inode when landing files.
-WF02 does not read/write PDF bytes, download, open, locate or delete actual PDFs.
-A body association classifies an unexcluded record as Downloaded. It confers no
-physical file-operation authority; those services belong to WF09/WF10.
+The [file service](body-downloads.md) validates live managed directories and actual
+objects for publication and explicit local opening/locating/Trash deletion.
+Existing legal nested or non-UUID `Documents/` paths are not renamed. A body
+association classifies an unexcluded record as Downloaded but confers no physical
+authority by itself. Local operations capture current body generation and object
+proof; historical `download.output` and completed status cannot authorize them.
+Confirmed absence conditionally clears only the captured association; access and
+system errors preserve it. Physical unlink followed by DB clearing is not atomic.
 
 ## Production lifecycle and projections
 
@@ -269,7 +273,8 @@ cancellation, retry and explicit interruption. Production Run now uses atomic
 base/queued admission with original token/rebuild qualification and complete plans.
 Workspace owns branch resources after foreground completion. Public single-Paper
 retry uses the same eligibility service as its projection and preserves successful
-branch facts; Download stays internal. Application/API fixtures exercise
+branch facts; public Download uses one independent body reservation and the same
+lazy discovery core. Local file services do not acquire download/Prepare authority. Application/API fixtures exercise
 production adoption, fields, Preprint and recycling; Electron fixtures exercise
 projections, response ordering and the existing layout. None establishes real
 provider, institution, user-library or actual-PDF acceptance.

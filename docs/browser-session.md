@@ -7,6 +7,12 @@ subscribe to that entry; WoS registers an attempt before its export action.
 Finishing a task disposes its registrations, never the Session listeners.
 Shutdown drains owned work, pages and native items before disposing the entry.
 
+Public reusable-PDF Download now consumes this Session through the shared body
+owner; see [body downloads](body-downloads.md). Original-response body adoption
+remains [blocked by output cancellation safety](https://github.com/dylaaan-booob/allfold/issues/118#issuecomment-6881292245).
+The Session-level capabilities below remain mechanism evidence, not an accepted
+public native file-completion path.
+
 Request handlers run synchronously in registration order. Each sees the headers
 already composed by the preceding handler and returns the next header state.
 The entry strips private markers last and calls Electron's callback exactly once.
@@ -110,7 +116,9 @@ that sample. Inline override is opt-in to an exact registered source/frame and
 the response's declared MIME type; unrelated pages' responses are unchanged.
 These fixtures establish mechanisms, not PDF validation or a permanent-file/UI
 product. Real CARSI/WoS/accounts and CAPTCHA remain separately authorized live
-acceptance. WF09/WF10 own the later PDF transport and product behavior.
+acceptance. WF09's stream and the current public stream/local-body services have
+separate file/database/UI evidence. Native original-response saving is not
+accepted merely because these Session cases complete.
 
 The interruption fixture also checks native stderr for Chromium assertion
 failures. Electron 45's DownloadItem observer list rejects reentrant cancellation
@@ -118,6 +126,13 @@ inside `updated`; the router defers that cancel to the next event-loop turn and
 continues retaining the item until real `done`.
 
 ## BrowserRuntime entry limitation
+
+This limitation has not been globally relaxed for WF10. Experimental controlled
+action handoff demonstrated original main-frame and new-child responses, but
+its native output capability failed the file-replacement/cancellation boundary.
+Those unsafe changes are excluded from the PR; production skips unsupported
+native body entries before action or output creation. `done(cancelled)` can
+precede Chromium's path-based deletion, so it cannot prove safe file disposal.
 
 The separate `page-resources.fixture.cjs` uses the production Runtime and its WF03
 Document generation checks. A main-frame form POST download invalidates its
@@ -156,4 +171,11 @@ No byte receiver, original-response replay or permanent PDF behavior is added.
 
 ## WF09 internal body service
 
-WF09 adds internal `stream_paper_body` as a second host-fetch consumer. It waits for business Session identity, pins applicable prepared access, uses Chromium credentials and current native response/redirect facts, then awaits backpressured pipeline, flush and writer close. It does not reuse Cover omission or aggregate PDF bytes. Parent stop controls the entire body. Pure streams create no page; original DownloadItem listeners remain unchanged. See [file lifecycle and current redirect scope](body-downloads.md).
+Merged WF09 adds `stream_paper_body` as a second host-fetch consumer, now used by
+public Download's single body owner. It waits for business Session identity,
+pins applicable prepared access, uses Chromium credentials and native response/
+redirect facts, then awaits backpressured pipeline, flush and writer close.
+It does not reuse Cover omission or aggregate PDF bytes. Parent stop controls
+the entire body. Pure streams and local file actions create no Browser page;
+original DownloadItem listeners remain unchanged. See [file lifecycle, optional
+fixed API credentials and current redirect scope](body-downloads.md).
