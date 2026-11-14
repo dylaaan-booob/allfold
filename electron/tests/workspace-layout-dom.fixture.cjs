@@ -48,7 +48,7 @@ const mimes={'.html':'text/html','.js':'text/javascript','.css':'text/css','.jso
 let rejectAutosave=false,holdWorkspaceResponse,holdPaperActionResponse,resolveInitialCAS,credentialState={ok:false,error:'cas_store_unreadable',configured:false,username:'',revision:'d'.repeat(64)};
 const credentialWrites=[];
 const preprintStarts=[],collectionRetries=[],fieldWrites=[];
-let holdFieldResponse;
+let holdFieldResponse,holdPreprintStart;
 let preprintState={phase:'Idle',saved_fields:[]};
 const server=http.createServer((req,res)=>{
   const route=new URL(req.url,'http://fixture').pathname;
@@ -115,18 +115,25 @@ const server=http.createServer((req,res)=>{
     }
     let text='';req.on('data',chunk=>{text+=chunk;});req.on('end',()=>{
       const body=JSON.parse(text);
-      if(action==='start'){
-        preprintStarts.push({id,body});
-        preprintState={phase:'Running',request_id:'fixture-preprint',message:'Looking up…',saved_fields:[]};
-        if(id==='paper-2'){
-          records[1].papers.find(paper=>paper.id===id).sources.push({provider:'biorxiv',record_id:'10.1101/fixture:publication',role:'supplement'});
-          preprintState={...preprintState,phase:'Completed',message:'Preprint evidence saved',saved_fields:['sources']};
-        }
-        send({workspace_id:workspace.workspace_id,revision:workspace.revision,...preprintState});
-      }else if(id===preprintStarts.at(-1)?.id && body.request_id===preprintState.request_id){
-        preprintState={...preprintState,phase:'Cancelled',message:'Preprint lookup cancelled'};
-        send({accepted:true});
-      }else send({error:'Unexpected preprint target'},409);
+      const perform=()=>{
+        const item=records.flatMap(journal=>journal.papers).find(paper=>paper.id===id);
+        if(action==='start'){
+          preprintStarts.push({id,body});
+          preprintState={phase:'Running',request_id:'fixture-preprint',message:'Looking up…',saved_fields:[]};
+          if(id==='paper-2'){
+            item.sources.push({provider:'biorxiv',record_id:'10.1101/fixture:publication',role:'supplement'});
+            preprintState={...preprintState,phase:'Completed',message:'Preprint evidence saved',saved_fields:['sources']};
+          }
+          // Production reservations and metadata commits advance projection revisions.
+          item.revision++;workspace.revision++;
+          send({workspace_id:workspace.workspace_id,revision:workspace.revision,...preprintState});
+        }else if(id===preprintStarts.at(-1)?.id && body.request_id===preprintState.request_id){
+          preprintState={...preprintState,phase:'Cancelled',message:'Preprint lookup cancelled'};
+          item.revision++;workspace.revision++;
+          send({accepted:true});
+        }else send({error:'Unexpected preprint target'},409);
+      };
+      if(action==='start' && holdPreprintStart){const hold=holdPreprintStart;holdPreprintStart=null;hold(perform);}else perform();
     });return;
   }
   if(route==='/api/ui-next/settings/credentials'){
@@ -165,7 +172,7 @@ async function js(code){
 async function capture(name){if(process.env.ALLFOLD_LAYOUT_SCREENSHOTS){await wait(50);fs.mkdirSync(process.env.ALLFOLD_LAYOUT_SCREENSHOTS,{recursive:true});fs.writeFileSync(path.join(process.env.ALLFOLD_LAYOUT_SCREENSHOTS,name+'.png'),(await win.webContents.capturePage()).toPNG());}}
 async function ready(condition){
   for(let i=0;i<150;i++){if(await js(condition))return;await wait(50);}
-  const actual=await js(`({width:innerWidth,height:innerHeight,workspace:window.workspaceNavigation?.current(),arrayMode:document.getElementById('kept-view')?.dataset.sidebarMode,arrayWidth:document.getElementById('kept-view')?.getBoundingClientRect().width,journalMode:document.getElementById('s-journals-page')?.dataset.sidebarMode})`);
+  const actual=await js(`({width:innerWidth,height:innerHeight,workspace:window.workspaceNavigation?.current(),preprintStatus:document.getElementById('preprint-lookup-status')?.textContent,arrayMode:document.getElementById('kept-view')?.dataset.sidebarMode,arrayWidth:document.getElementById('kept-view')?.getBoundingClientRect().width,journalMode:document.getElementById('s-journals-page')?.dataset.sidebarMode})`);
   throw Error('UI readiness timeout: '+condition+'; native='+JSON.stringify(win.getBounds())+'; DOM='+JSON.stringify(actual));
 }
 async function size(width,height,condition){win.setSize(width,height);await ready(`innerWidth===${width} && (${condition})`);}
@@ -423,10 +430,16 @@ app.whenReady().then(async()=>{
     });
     await ready("document.getElementById('preprint-lookup-status').textContent==='Preprint lookup cancelled'");
     if(preprintStarts.length!==1 || preprintStarts[0].id!=='paper-1' || preprintStarts[0].body.workspace_id!==workspace.workspace_id)throw Error('Lookup dispatch was not limited to the selected Paper');
+    let deliverPreprintStart;
+    const preprintStartHeld=new Promise(resolve=>{holdPreprintStart=deliver=>{deliverPreprintStart=deliver;resolve();};});
     await check(()=>{
       window.workspaceArray.openPaper('paper-2');
       document.getElementById('preprint-lookup-start').click();
     });
+    await preprintStartHeld;
+    // Another Paper's poll may refresh the old projection before this admission commits.
+    await js('window.uiWorkspace.refresh()');
+    deliverPreprintStart();
     await ready("document.getElementById('preprint-lookup-status').textContent==='Preprint evidence saved' && document.getElementById('paper-providers').textContent.includes('10.1101/fixture:publication')");
     if(preprintStarts.length!==2 || preprintStarts[1].id!=='paper-2')throw Error('Second lookup used the wrong Paper');
     await check(()=>{
