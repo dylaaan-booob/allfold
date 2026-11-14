@@ -32,11 +32,16 @@ class CurrentResponse:
     body: bytes = field(repr=False, default=b'')
     status: int = 200
     access: str | None = None
+    redirect_url: str | None = field(default=None, repr=False)
 
     def __post_init__(self):
         normalize_public_http_url(self.url)
         if not isinstance(self.url, str) or len(self.url) > 8192 or not isinstance(self.body, bytes) or len(self.body) > 262144:
             raise ValueError('Current response exceeds the finite parse budget')
+        if self.redirect_url is not None:
+            normalize_public_http_url(self.redirect_url)
+            if len(self.redirect_url) > 8192:
+                raise ValueError('Current redirect exceeds the finite parse budget')
 
 
 @dataclass(frozen=True)

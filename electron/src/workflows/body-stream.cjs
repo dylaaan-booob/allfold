@@ -86,7 +86,7 @@ async function executeBodyStream(browser,data,{signal,progress=()=>{}}={}) {
   const controller=new AbortController();
   const bounded=AbortSignal.timeout(Math.max(1,Math.ceil(data.deadline_ms-Date.now())));
   const stop=AbortSignal.any([signal,controller.signal,bounded].filter(Boolean));
-  let fd,writer,response,localError,requests=[],size=0,lastProgress=0,closeError;
+  let fd,writer,response,localError,requests=[],size=0,lastProgress=0,closeError,redirect;
   try {
     await waitFor(()=>browser.ready,stop,data.deadline_ms);checkCanceled(stop);
     const verify=browser.pinPreparedPaperAccess(data);
@@ -99,6 +99,9 @@ async function executeBodyStream(browser,data,{signal,progress=()=>{}}={}) {
     const validateRequest=details=>{
       validate();
       if(!publicClueURL(details.url)||new URL(details.url).origin!==initial.origin)throw Error('redirect-scope');
+      if(details.redirectURL && publicClueURL(details.redirectURL)
+        && new URL(details.redirectURL).origin!==initial.origin)
+        redirect={url:details.url,status:details.statusCode,location:details.redirectURL};
     };
     const headers={Accept:'application/pdf'};
     if(data.referer) {
@@ -141,14 +144,25 @@ async function executeBodyStream(browser,data,{signal,progress=()=>{}}={}) {
         size_bytes:size,output_file:output.file,final_url:final.url};
     }
     const body=await boundedResponse(response,stop);
-    const access=/cf-chl-|challenge-platform|Just a moment/i.test(body)?'challenge':
+    // Match the existing Document access predicates. Cloudflare's background
+    // jsd script and ordinary Sign in navigation are not main access barriers.
+    const cloudflare=/<title\b[^>]*>\s*(?:Just a moment|Attention Required)/i.test(body)
+      || /\b_cf_chl_opt\s*=\s*\{/.test(body)
+        && /\/cdn-cgi\/challenge-platform\/[^\s"'<>]*orchestrate\/chl_page\//i.test(body);
+    const login=/<title\b[^>]*>\s*(?:sign in|log in|login required)/i.test(body)
+      || /<input\b[^>]*\b(?:type|name)\s*=\s*["']?password\b/i.test(body);
+    const access=cloudflare?'challenge':
       [401,403,407].includes(response.status)?'authorization':
-      /(?:sign in|log in|login required)/i.test(body)?'login':null;
+      login?'login':null;
     return {outcome:'response',kind:contentType.includes('html')?'response':'failed',
       response:{url:final.url,content_type:contentType,status:response.status,body,access}};
   }catch(error) {
     if(localError||error.bodyLocal)return {outcome:'local_failure',kind:'local_failure',diagnostic_code:'file-io',resource_closed:!closeError};
     if(stop.aborted)return {outcome:bounded.aborted?'expired':'cancelled',kind:bounded.aborted?'expired':'cancelled'};
+    // Chromium's synchronous request guard blocks the origin escape. Return
+    // only the observed redirect; Python qualifies the fixed CDN relationship,
+    // then a new request performs DNS checks before any CDN headers are sent.
+    if(redirect)return {outcome:'response',kind:'redirect',response:redirect};
     return {outcome:'failed',kind:'failed',diagnostic_code:'source-failed'};
   }finally {
     // pipeline is awaited, then writer/fd close before the native result exists.

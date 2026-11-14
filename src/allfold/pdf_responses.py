@@ -88,7 +88,10 @@ def access_limited(response):
     if response.access or response.status in {401, 403, 407, 429}:
         return True
     text = response.body.decode('utf-8', errors='replace').lower()
-    return any(marker in text for marker in ('cf-chl-', 'challenge-platform', 'g-recaptcha',
+    cloudflare = (re.search(r'<title\b[^>]*>\s*(?:just a moment|attention required)', text)
+        or re.search(r'\b_cf_chl_opt\s*=\s*\{', text)
+            and re.search(r'/cdn-cgi/challenge-platform/[^\s"\'<>]*orchestrate/chl_page/', text))
+    return bool(cloudflare) or any(marker in text for marker in ('g-recaptcha',
         'hcaptcha', 'verify you are human', 'checking your browser', 'access denied',
         'name="password"', "name='password'"))
 
@@ -128,6 +131,17 @@ def _body_entry(node, base, doi, attribute='href'):
 
 
 def parse_current_response(candidate, response):
+    if response.status in {301, 302, 303, 307, 308} and response.redirect_url:
+        source, destination = urlsplit(response.url), urlsplit(response.redirect_url)
+        filename = re.fullmatch(r'/[^/]+/article-pdf/(?:[^/]+/)*([^/]+\.pdf)', source.path, re.I)
+        # A native-observed Oxford body redirect, never an inferred CDN URL or
+        # general permission to carry institutional headers across origins.
+        if (source.hostname == 'academic.oup.com' and filename
+                and re.fullmatch(r'watermark[0-9]{2}\.silverchair\.com', destination.hostname or '')
+                and source.scheme == destination.scheme and destination.path == '/' + filename[1]):
+            item = _safe_next(candidate, response.url, response.redirect_url)
+            return (item,) if item else ()
+        return ()
     if response.status != 200 or access_limited(response):
         return ()
     content = response.content_type.partition(';')[0].strip().lower()

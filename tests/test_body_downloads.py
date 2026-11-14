@@ -170,7 +170,10 @@ class ControlledNative:
         self.started=Event();self.calls=[];self.cancels=[]
     def execute(self,action,data,progress=None,**kwargs):
         from concurrent.futures import Future
-        self.calls.append((action,data));self.result=Future();self.started.set();return self.result
+        self.calls.append((action,data))
+        if action=='release_workflow_pages':
+            done=Future();done.set_result({});return done
+        self.result=Future();self.started.set();return self.result
     def cancel_task(self,workflow,task):self.cancels.append((workflow,task))
     def finish(self,kind='pdf'):
         data=self.calls[-1][1]
@@ -193,6 +196,148 @@ def application_host(tmp_path):
     target=PdfTarget(str(paper.id),doi='10.5555/body',direct_identities=tuple((i.namespace,i.value) for i in paper.identities))
     candidate=PdfCandidate(target,'P1','GENERIC','generic','https://publisher.example.org/body')
     return host,workspace,paper,bridge,candidate
+
+
+def test_current_ieee_reader_response_finishes_the_same_body_attempt(tmp_path):
+    from dataclasses import replace
+    import time
+    from allfold.application.body_downloads import submit_body_download
+    host,workspace,paper,bridge,candidate=application_host(tmp_path)
+    article='https://ieeexplore.ieee.org/document/12345'
+    reader='https://ieeexplore.ieee.org/stamp/stamp.jsp?arnumber=12345'
+    pdf='https://ieeexplore.ieee.org/stampPDF/getPDF.jsp?arnumber=12345'
+    candidate=replace(candidate,target=replace(candidate.target,article_url=article),
+        url=reader,platform='ieee',rule_id='R025')
+    try:
+        task=submit_body_download(host,paper,candidates=(candidate,))
+        assert bridge.started.wait(2)
+        bridge.result.set_result(dict(kind='response',outcome='response',response=dict(
+            url=reader,content_type='text/html',status=200,
+            body='<html><iframe src="'+pdf+'"></iframe></html>',access=None)))
+        until=time.monotonic()+2
+        while len(bridge.calls)<2 and not task.future.done() and time.monotonic()<until:
+            time.sleep(.005)
+        assert len(bridge.calls)==2, 'A qualified current reader must continue to its PDF'
+        assert bridge.calls[-1][1]['url']==pdf
+        assert bridge.calls[-1][1]['attempt']==task.download_token.attempt
+        bridge.finish()
+        result=task.future.result(2)
+        assert result.status=='completed'
+        assert (workspace/result.paper.body.relative_path).read_bytes()==b'body'
+        assert result.paper.collection_status=='not_started'
+    finally:
+        if hasattr(bridge,'result') and not bridge.result.done():
+            bridge.result.set_result(dict(kind='cancelled',outcome='cancelled'))
+        host.shutdown();host.join()
+
+
+def test_observed_oxford_cdn_redirect_is_requalified_before_the_next_get(tmp_path):
+    from dataclasses import replace
+    import time
+    from allfold.application.body_downloads import submit_body_download
+    host,workspace,paper,bridge,candidate=application_host(tmp_path)
+    url='https://academic.oup.com/nar/article-pdf/51/2/870/48929720/gkac1225.pdf'
+    location='https://watermark02.silverchair.com/gkac1225.pdf?token=transient'
+    candidate=replace(candidate,url=url)
+    try:
+        task=submit_body_download(host,paper,candidates=(candidate,))
+        assert bridge.started.wait(2)
+        bridge.result.set_result(dict(kind='redirect',outcome='response',response=dict(
+            url=url,status=302,location=location)))
+        until=time.monotonic()+2
+        while len(bridge.calls)<2 and not task.future.done() and time.monotonic()<until:
+            time.sleep(.005)
+        assert len(bridge.calls)==2, 'The observed Oxford CDN needs a newly checked request'
+        assert bridge.calls[-1][1]['url']==location
+        bridge.finish()
+        result=task.future.result(2)
+        assert result.status=='completed'
+        assert result.paper.body.source_url=='https://watermark02.silverchair.com/'
+        assert 'transient' not in str(result.paper.body)
+    finally:
+        if hasattr(bridge,'result') and not bridge.result.done():
+            bridge.result.set_result(dict(kind='cancelled',outcome='cancelled'))
+        host.shutdown();host.join()
+
+
+def test_known_challenge_reader_uses_managed_document_access_before_its_pdf(tmp_path):
+    from dataclasses import replace
+    import time
+    from test_document_metadata import envelope,pdf_clues
+    from allfold.application.body_downloads import submit_body_download
+    host,workspace,paper,bridge,candidate=application_host(tmp_path)
+    article='https://www.sciencedirect.com/science/article/pii/S0047259X2400006X'
+    reader=article+'/pdfft'
+    candidate=replace(candidate,target=replace(candidate.target,article_url=article),
+        url=reader,platform='sciencedirect',rule_id='R024')
+    def wait_for(action,after):
+        until=time.monotonic()+2
+        while (len(bridge.calls)<=after or bridge.calls[-1][0]!=action) and not task.future.done() and time.monotonic()<until:
+            time.sleep(.005)
+        assert len(bridge.calls)>after and bridge.calls[-1][0]==action
+    try:
+        task=submit_body_download(host,paper,candidates=(candidate,))
+        assert bridge.started.wait(2)
+        bridge.result.set_result(dict(kind='response',outcome='response',response=dict(
+            url=reader,content_type='text/html',status=200,
+            body='<html><title>Just a moment...</title></html>',access='challenge')))
+        wait_for('extract_paper_pdf_clues',1)
+        assert bridge.calls[-1][1]['reader']['identifier']=='S0047259X2400006X'
+        pdf='https://pdf.sciencedirectassets.com/body.pdf?token=transient'
+        bridge.result.set_result(envelope() | {'pdf_clues':pdf_clues(platform='sciencedirect',landing_url=reader,
+            candidates=[dict(stage='P1',rule_id='R024',url=pdf)])})
+        wait_for('stream_paper_body',2)
+        assert bridge.calls[-1][1]['url']==pdf
+        bridge.finish()
+        result=task.future.result(2)
+        assert result.status=='completed' and result.paper.collection_status=='not_started'
+        assert result.paper.metadata==paper.metadata
+    finally:
+        if hasattr(bridge,'result') and not bridge.result.done():
+            bridge.result.set_result(dict(kind='cancelled',outcome='cancelled'))
+        host.shutdown();host.join()
+
+
+@pytest.mark.parametrize('location',[
+    'https://watermark02.silverchair.com/other.pdf',
+    'https://watermark02.silverchair.com.evil.example/gkac1225.pdf',
+    'https://other.example.org/gkac1225.pdf',
+    'http://watermark02.silverchair.com/gkac1225.pdf',
+])
+def test_unqualified_body_redirect_never_starts_another_request(tmp_path,location):
+    from dataclasses import replace
+    from allfold.application.body_downloads import submit_body_download
+    host,workspace,paper,bridge,candidate=application_host(tmp_path)
+    url='https://academic.oup.com/nar/article-pdf/51/2/870/48929720/gkac1225.pdf'
+    try:
+        task=submit_body_download(host,paper,candidates=(replace(candidate,url=url),))
+        assert bridge.started.wait(2)
+        bridge.result.set_result(dict(kind='redirect',outcome='response',response=dict(
+            url=url,status=302,location=location)))
+        result=task.future.result(2)
+        assert result.status=='failed' and len(bridge.calls)==1
+        with PaperRepository.open(workspace) as repo:
+            assert repo.get(paper.id).body is None and repo.get(paper.id).download.output is None
+    finally:
+        host.shutdown();host.join()
+
+
+def test_current_reader_cycle_settles_without_repeating_the_request(tmp_path):
+    from dataclasses import replace
+    from allfold.application.body_downloads import submit_body_download
+    host,workspace,paper,bridge,candidate=application_host(tmp_path)
+    url='https://ieeexplore.ieee.org/stamp/stamp.jsp?arnumber=12345'
+    try:
+        task=submit_body_download(host,paper,candidates=(replace(candidate,url=url),))
+        assert bridge.started.wait(2)
+        bridge.result.set_result(dict(kind='response',outcome='response',response=dict(
+            url=url,content_type='text/html',status=200,
+            body='<iframe src="'+url+'"></iframe>',access=None)))
+        result=task.future.result(2)
+        assert result.status!='completed' and len(bridge.calls)==1
+        assert not host.active
+    finally:
+        host.shutdown();host.join()
 
 
 def test_closed_unlink_fault_releases_budget_and_blocks_retry_network_until_clean(tmp_path,monkeypatch):

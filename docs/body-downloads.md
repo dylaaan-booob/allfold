@@ -36,9 +36,14 @@ the bridge. Main waits for the existing business Session identity, pins applicab
 Prepare access, then uses the single `SharedSessionEvents.fetch` with Chromium
 credentials. No default Session, Cookie export or Cover `omit` contract is reused.
 
-Targets require controlled public URLs and public DNS answers. Current direct-stream
-redirect scope is the captured request origin; an origin escape fails before it can
-forward credentials. The original signed query remains in the current request only.
+Targets require controlled public URLs and public DNS answers. Direct-stream
+redirects stay inside the captured request origin. An origin escape is stopped
+before forwarding headers; an actually observed Oxford `article-pdf` redirect to
+a matching `watermarkNN.silverchair.com/<same filename>.pdf` can become the next
+candidate. That request repeats public DNS/target checks and uses Chromium's
+destination-scoped cookies, never source headers. Other cross-origin redirects,
+filename changes and protocol downgrades remain refused. The original signed
+query remains in the current request only.
 Referer is set only from the confirmed candidate, with `strict-origin-when-cross-origin`: cross-origin values keep only origin and HTTPS→HTTP omits the header.
 Actual final URLs come from associated native response facts. Random private markers
 are stripped before outbound headers. Request/task/attempt identity separates equal URLs.
@@ -49,7 +54,15 @@ close. Parent expiry and exact cancellation stop the same stream and writer; cle
 is awaited without an expired cleanup race. Progress is throttled to 100 ms with
 received bytes; totals may be unknown. Content-Length equality, minimum size, PDF
 headers/EOF/structure/text/identity/hash/version checks are absent. HTML is bounded to
-256 KiB and returned as the current response with access classification; action/POST
+256 KiB and returned as the current response with access classification. The body
+owner consumes the existing qualified current-response parser, with at most 16
+Session stream dispatches, six next hops and no repeated URL/action. A known reader without
+inline PDF clues uses the existing bounded Document/PDF-clue operation and its
+automatic Cloudflare/manual-verification rules, under the same captured body
+authority. Actual native cleanup ends before transfer continues; no collection
+is registered or written. Cloudflare background resources and ordinary Sign in
+navigation do not identify a main challenge or login page. Unknown HTML is not
+a generic crawler. Action/POST
 and explicit API-credential candidates remain pending rather than GET emulation.
 Only ordinary candidate failures permit the next confirmed candidate; a completed
 stream stops sources, and any local finalization error ends that task.
@@ -113,7 +126,9 @@ faults, interruption subprocesses, v3 rollback and reservation exclusion.
 dispatch, Electron 45 Session, local HTTP, files, SQLite and Workspace projection.
 Its saved Service/manual-confirmation authority, controlled slow writer/backpressure
 and held-close barrier, normal application drain, isolated DNS routing and synthetic
-Cookie establish mechanism evidence only.
+Cookie establish mechanism evidence only. It also covers actual Oxford-style
+cross-origin handoff with distinct source/CDN cookies and an IEEE reader-to-PDF
+chain without a second request to the source.
 Real institutions, publisher/CDN/proxy access, manual challenges and installed app
 acceptance require separate authorization. Existing native original-response,
 WoS, Cloudflare and page-lifetime regressions remain separate evidence.

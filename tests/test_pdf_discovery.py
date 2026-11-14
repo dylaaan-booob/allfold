@@ -108,6 +108,21 @@ def test_t16_challenge_iframe_is_not_reader():
     assert result.pdf_source is None
 
 
+def test_sciencedirect_background_cloudflare_script_does_not_block_current_pdf_link():
+    paper=target('www.sciencedirect.com',article_url='https://www.sciencedirect.com/science/article/pii/S014067362400123X')
+    seen=[]
+    def consume(candidate):
+        seen.append(candidate)
+        if len(seen)==1:
+            return CandidateResult.current(CurrentResponse(candidate.url,'text/html',
+                b'<html><title>View PDF</title><script src="/cdn-cgi/challenge-platform/scripts/jsd/main.js"></script>'
+                b'<div class="PdfEmbed"><object data="https://pdf.sciencedirectassets.com/main.pdf?token=synthetic"></object></div></html>'))
+        return CandidateResult.pdf(transfer_complete=True)
+    result=PdfDiscovery(paper).run(consume)
+    assert result.status=='transferred'
+    assert seen[-1].url=='https://pdf.sciencedirectassets.com/main.pdf?token=synthetic'
+
+
 def test_openalex_cancel_is_never_recoverable_and_parent_expiry_wins_over_previous_http_error():
     from allfold.providers.openalex import OpenAlexClient
     from allfold.providers.provider_http import Cancelled, ProviderBudgetExceeded

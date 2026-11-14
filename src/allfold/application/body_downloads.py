@@ -5,14 +5,16 @@ hook or public Download UI is installed. WF10 can reuse complete_attempt with
 its own original DownloadItem transport.
 """
 from concurrent.futures import Future
-from dataclasses import dataclass
+from collections import deque
+from dataclasses import dataclass, replace
 import threading
 import time
-from urllib.parse import urlsplit, urlunsplit
+from urllib.parse import urldefrag, urlsplit, urlunsplit
 
 from allfold.application.browser_services import browser_workspace_identity
 from allfold.pdf_discovery import CandidateResult, CurrentResponse, SUPPORTED_PDF_TARGET_TYPES
 from allfold.pdf_rules import PdfCandidate
+from allfold.pdf_responses import parse_current_response, reader_context
 from allfold.persistence.body_files import ManagedBodyFiles
 from allfold.persistence.paper_repository import PaperRecord, StaleWriteError, InvalidPaperState, LibraryError
 
@@ -102,7 +104,13 @@ def _consume(reservation, repository, files, candidate, progress):
         saved = complete_attempt(reservation, repository, files, output,
             source_url=_source_projection(value['final_url']))
         return CandidateResult.pdf(transfer_complete=True), saved
-    if kind == 'response':
+    if kind == 'redirect':
+        current = value.get('response', {})
+        response = CurrentResponse(url=current['url'], content_type='', status=current['status'],
+            redirect_url=current['location'])
+        result = (CandidateResult.current(response) if parse_current_response(candidate, response)
+            else CandidateResult.failed('redirect-scope'))
+    elif kind == 'response':
         current = value.get('response', {})
         access=current.get('access')
         result = CandidateResult('response', response=CurrentResponse(url=current['url'], content_type=current['content_type'],
@@ -115,6 +123,31 @@ def _consume(reservation, repository, files, candidate, progress):
     files.cleanup(output)
     repository.record_download_output(reservation.download_token, None)
     return result, None
+
+
+def _reader_candidates(reservation, repository, candidate, response):
+    """Use the existing fixed reader/Document/Solver path under body authority."""
+    reader = reader_context(candidate, response.url)
+    if reader is None:
+        return ()
+    from allfold.application.pdf_discovery import PdfDiscoveryContext
+    from allfold.application.document_metadata import read_document_pdf_clues, DocumentMetadataFailed
+    context = PdfDiscoveryContext(reservation, repository)
+    try:
+        try:
+            parsed = read_document_pdf_clues(context,
+                confirmed_article_url=candidate.target.article_url, reader=reader)
+        except DocumentMetadataFailed:
+            return ()
+        return tuple(replace(candidate, url=item.url, reader_kind=item.reader_kind,
+            referer=item.referer, action=item.action, credential=None, accept=None)
+            for item in parsed.current_candidates)
+    finally:
+        try:
+            context.close_native()
+        except BaseException as error:
+            reservation.registry.fail_reservation(reservation, phase='body-reader-cleanup', error=error)
+            raise
 
 
 def _run(reservation, candidates, progress):
@@ -131,7 +164,14 @@ def _run(reservation, candidates, progress):
                 repository.mark_download_running(reservation.download_token)
                 with ManagedBodyFiles(registry.workspace, reservation.paper_id, reservation.download_token.attempt,
                         expected_workspace=registry._identity[0]) as files:
-                    for candidate in candidates:
+                    pending = deque((candidate, 0) for candidate in candidates)
+                    seen = set()
+                    while pending and len(seen) < 16:
+                        candidate, depth = pending.popleft()
+                        key = (urldefrag(candidate.url)[0], candidate.action)
+                        if key in seen:
+                            continue
+                        seen.add(key)
                         candidate_result, saved = _consume(reservation, repository, files, candidate, progress)
                         if saved is not None:
                             # A committed body remains authoritative even if later
@@ -139,6 +179,16 @@ def _run(reservation, candidates, progress):
                             result = BodyResult('completed', saved, candidate_result)
                             break
                         result = BodyResult(candidate_result.kind, candidate_result=candidate_result)
+                        if candidate_result.kind == 'response' and depth < 6:
+                            following = parse_current_response(candidate, candidate_result.response)
+                            if not following:
+                                following = _reader_candidates(reservation, repository, candidate, candidate_result.response)
+                            if following:
+                                # Reuse only fixed, qualified fields of the current
+                                # response. Each next GET owns a fresh empty output
+                                # after the preceding response and fd have closed.
+                                pending.extendleft((item, depth + 1) for item in reversed(following))
+                                continue
                         if candidate_result.kind != 'failed':
                             break
             except TimeoutError:
