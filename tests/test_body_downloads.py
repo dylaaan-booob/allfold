@@ -512,6 +512,33 @@ def test_http_access_barriers_stop_queued_body_alternatives(tmp_path,status,body
         host.shutdown();host.join()
 
 
+@pytest.mark.parametrize('body',[
+    '<div hidden>CPE00001 There was a problem providing the content you requested</div><p>Article</p>',
+    '<div aria-hidden="true">CPE00001 There was a problem providing the content you requested</div><p>Article</p>',
+    '<div style="display:none">CPE00001 There was a problem providing the content you requested</div><p>Article</p>',
+    '<script>const error="CPE00001";</script>'+'<p>Article</p>'*4100,
+    '<p>Article</p>'*4100+'<iframe src="/_Incapsula_Resource?edet=15">Request unsuccessful. Incapsula incident ID: 123-456</iframe>',
+],ids=['hidden','aria-hidden','style-hidden','large-script','large-side-frame'])
+def test_unconfirmed_access_hints_do_not_drop_qualified_alternatives(tmp_path,body):
+    from dataclasses import replace
+    import time
+    from allfold.application.body_downloads import submit_body_download
+    host,workspace,paper,bridge,candidate=application_host(tmp_path)
+    try:
+        task=submit_body_download(host,paper,candidates=(candidate,replace(candidate,url=candidate.url+'?next=1')))
+        assert bridge.started.wait(2)
+        bridge.result.set_result(dict(kind='response',outcome='response',response=dict(
+            url=candidate.url,content_type='text/html',status=200,body=body,access=None)))
+        until=time.monotonic()+2
+        while len(bridge.calls)<2 and not task.future.done() and time.monotonic()<until:time.sleep(.005)
+        assert len(bridge.calls)==2
+        bridge.finish()
+        assert task.future.result(2).status=='completed'
+    finally:
+        if hasattr(bridge,'result') and not bridge.result.done():bridge.result.set_result(dict(kind='cancelled',outcome='cancelled'))
+        host.shutdown();host.join()
+
+
 def test_closed_unlink_fault_releases_budget_and_blocks_retry_network_until_clean(tmp_path,monkeypatch):
     from allfold.application.body_downloads import submit_body_download
     import allfold.persistence.body_files as bf

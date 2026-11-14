@@ -9,6 +9,12 @@ from allfold.identifiers import valid_doi
 from allfold.url_safety import normalize_public_http_url
 
 
+def _hidden_markup(node):
+    attrs = node['attrs']
+    return ('hidden' in attrs or (attrs.get('aria-hidden') or '').strip().lower() == 'true'
+        or re.search(r'(?:^|;)\s*(?:display\s*:\s*none|visibility\s*:\s*(?:hidden|collapse))\b', attrs.get('style') or '', re.I))
+
+
 class _SmallHTML(HTMLParser):
     def __init__(self):
         super().__init__(convert_charrefs=True)
@@ -30,7 +36,7 @@ class _SmallHTML(HTMLParser):
                 break
 
     def handle_data(self, data):
-        if not any(node['tag'] in {'script','style','template','noscript','head','title'} for node in self.stack):
+        if not any(node['tag'] in {'script','style','template','noscript','head','title'} or _hidden_markup(node) for node in self.stack):
             self.has_cpe |= bool(re.search(r'\bCPE00001\b', data, re.I))
             self.has_denial |= 'there was a problem providing the content you requested' in data.lower()
             if data.strip() and not any(node['tag']=='iframe' for node in self.stack):
@@ -107,7 +113,9 @@ def access_limited(response):
     try:
         parser.feed(response.body.decode('utf-8', errors='replace'))
     except (ValueError, RecursionError):
-        return True  # A suspected barrier cannot be ruled out beyond the parse budget.
+        # An incomplete scan is not proof of an access barrier. Only visible
+        # paired denial evidence already observed can retain that conclusion.
+        return parser.has_cpe and parser.has_denial
     if parser.has_cpe and parser.has_denial:
         return True
     root = next((node for node in parser.nodes if node['tag']=='body'), None)

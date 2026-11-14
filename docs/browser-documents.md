@@ -107,6 +107,11 @@ CARSI resource reentry and eligible Paper-page rebuild remain inside the origina
 parent budget. Unknown POST/authentication/one-time actions are never replayed.
 Hidden pages retain nonzero viewports and do not select/focus the user's tab.
 Readiness uses host time and main-frame state, not unlimited network idle.
+PDF-only reads of a confirmed ScienceDirect article allow up to two seconds for
+its current-article PDF toolbar to hydrate after an initially complete empty
+observation. Each read retains the original Document and article subject, and
+the original cancellation, authority and absolute deadline still apply. This
+does not navigate, click an action or extend a task deadline.
 
 ## Validation and following tasks
 
