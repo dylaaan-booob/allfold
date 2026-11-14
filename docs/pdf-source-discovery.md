@@ -4,6 +4,11 @@ Baseline: `c641ea371c111f45b7d42013df3a0eb6c1d80ac3`; spec [#102](https://github
 
 The following records the adopted WF07 request with the current storage policy and historical fixed research. Acceptance requirements describe required behavior, not test results. The original research observations retain their original evidence strength. Transfer, files, production registration and public Download remain outside WF07. Current implementation and executed fixture evidence are documented in the owning module guides and PR.
 
+WF07 merged in PR #107 at `4d0d22bbda02d9fc173175fa8346813752e84204`.
+WF08 connects same-Document clues and necessary-response facts to production
+collection; transfer, permanent files and public Download remain WF09/WF10.
+The original request and R/API/S evidence below retain their WF07 scope and numbering.
+
 ## Component entry points
 
 | Entry | Responsibility |
@@ -19,7 +24,8 @@ The core lives in `src/allfold/pdf_discovery.py`, rules in `pdf_rules.py`, adopt
 metadata in `pdf_catalog.py`, response parsing in `pdf_responses.py`, and scoped
 HTTP in `pdf_http.py`. `pdf_facts.py` owns the bounded version-1 persistable
 contract. The application adapter is `application/pdf_discovery.py`; it is not a
-public Download endpoint or a production Run registration.
+public Download endpoint. Production Run registration belongs to the separate
+`application/collection_planner.py` and Workspace registry.
 
 The core accepts canonical `journal-article`, `conference-paper` or `unknown`
 target types. Explicitly unsupported types return `not-applicable` without

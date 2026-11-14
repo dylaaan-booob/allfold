@@ -76,8 +76,8 @@ the existing records/increment path persists them in short SQLite transactions.
 Same-Document precollection never follows a PDF candidate. PDF-only refresh and
 known-reader parsing reuse native access, physical quotas and cleanup. Subsequent
 Download can use the core after collection completes without restarting that
-collection. WF08 production orchestration and WF09/10 transfer/files remain
-separate. The [adopted specification and fixed source catalogue](pdf-source-discovery.md)
+collection. WF08 installs production collection orchestration; WF09/10
+transfer/files remain separate. The [adopted specification and fixed source catalogue](pdf-source-discovery.md)
 retain all platform/input/access conditions and historical exclusions.
 The immutable discovery target includes the saved direct-identity closure, so
 complete DOI-free Work facts can be reused without a new lookup or native
@@ -220,7 +220,7 @@ The two application-level databases live outside Workspace; the independent Pape
 
 [Safety](safety.md) states the cross-module invariants. Types, parsers and validators in code define fields and interfaces; [development](development.md) defines preparation and verification. Historical plans and investigations are not current implementation authority.
 
-## Discovery and completion boundaries
+## Foreground Run and Paper collection
 
 The Python application process owns Provider cooldowns across clients, keyed by
 actual HTTP origin and authentication context. Short-lived clients retain active
@@ -232,16 +232,35 @@ Provider adapters emit operation-local `ProviderWorkEvidence`; canonicalization 
 explicit strong identities and selects missing metadata in a fixed order.
 One Integrated Run overlaps selected PubMed/WoS/OpenAlex journal Discovery under the parent slot and workflow identity. PubMed batches ESearch History/EFetch; OpenAlex merges native source-ISSN filters. Verified pages/native export batches stream DOI targets to shared exact Work lookup. Provider clients share operation-local capability caches, in-flight full Work details and host pacing. A bounded producer/consumer queue coalesces DOI inputs while sources remain active, then drains the final short batch after every producer settles. Work lookup responses enrich discovered roots and never add Discovery candidates. Formal PubMed identity remains separate from a merged Work’s potentially preprint PMID. The Browser worker retains the same captured configuration/Workspace/cancellation authority and never writes a separate Run snapshot or History result.
 
-After Discovery and Work lookup settle, Run deduplicates and excludes saved Papers including Rejected. Batched PubMed article-ID lookup resolves missing direct formal PMIDs. The shared completion engine adds metadata, date and relationship evidence, follows known native preprint targets and gives exhausted transient requests one additional attempt in final settlement. Bound versions contribute date evidence and provenance. Direct formal records supply ordinary metadata and persisted identity. Run uses fixed PubMed, OpenAlex, Europe PMC, Crossref, arXiv, bioRxiv and medRxiv helpers independently of the selected Discovery sources. Only then does one protected create chain run.
+After Discovery and Work lookup settle, Run deduplicates and excludes saved Papers
+including Rejected. Necessary batched PubMed article-ID lookup confirms missing
+direct formal PMIDs before first creation. Original responses retain qualifying
+formal bibliography, dates, abstracts and source facts. Ordinary missing fields
+never schedule a generic Completion request. Retained client/lookup/batch/binding
+helpers live in `application/provider_lookup.py`.
 Native publication-date filters determine its range; subsequent evidence never
 rejudges inclusion. Commit rechecks captured configuration, source revision,
 Workspace/database identity and the complete identity index before atomic creates.
-Existing full matches remain unchanged. Excluded matches stop avoidable follow-up
+Existing full matches preserve their metadata and acquire any new verified direct
+aliases. Excluded matches stop avoidable follow-up
 work; a cleared unexcluded placeholder can be rebuilt only from a real Run hit,
 using its existing UUID. Final short transactions recheck identity conflicts and
 captured Workspace/database eligibility. Run snapshots/logs use repository UUIDs,
-not temporary Provider IDs or Markdown paths. Current Completion stays until WF08;
-Run does not register background collection completion.
+not temporary Provider IDs or Markdown paths. `ProductionCollectionService`
+composes the entire stable `document` and `necessary-api` plan. Registry admission
+atomically creates/matches base metadata and queued qualification with original
+tokens; registration runs outside the Run commit boundary. A matched complete
+`not_started` Paper is admitted on this actual hit, independently of unknown-only
+helper suppression. Active work is reused, normal completion never reopens, and
+failed/cancelled work requires explicit retry.
+
+Run finishes after all base results are registered or explicitly failed and its
+own queries/native Futures/clients/snapshot have ended. Workspace owns transferred
+tasks and cancellation independently, allowing another foreground Run. Source Run
+IDs are diagnostic labels; cancelling Run B does not cancel A or Papers already
+handed over by B. History/Last Run describe only foreground retrieval, identity,
+created/matched/excluded and admission outcomes; background writes do not change
+those results or their completion time.
 
 WF06's internal necessary-query service has a separate request planner. Ordinary
 abstract, author and event-date gaps do not create requests. It consumes verified
@@ -249,15 +268,20 @@ capability-labelled facts, resolves explicit identity/Preprint relationships and
 queries known native version families with execution-owned clients. Formal
 increments and independent Preprint proof are separate; a new `first_public_at`
 is offered only after all applicable relationship/native work and every known
-family settle successfully. It does not wrap the current Completion pipeline.
+family settle successfully. Production plans explicitly declare Providers,
+records, complete/partial capability facts and required purposes. They transfer
+immutable evidence, never Run clients/caches or replay callbacks. Base metadata
+cannot seal partial native proof; truly complete foreground proof may be reused.
 
-The Info preprint lookup coordinator binds to one saved Paper and verifies both
-native bioRxiv/medRxiv publication and version responses. It shares Run/workflow
-admission without browser authority. Network work holds no Workspace write
-lock. The guarded commit checks the captured Paper generations, configuration, Workspace and
-cancellation before appending verified preprint dates and sources and filling an
-empty First public. The lookup keeps its result and request cache within the
-operation.
+The Info Preprint coordinator tracks independent Workspace/Paper/request
+operations and verifies native bioRxiv/medRxiv publication and version responses.
+It uses the registry's bounded scheduler and original Paper reservation/token,
+without a Run slot or full Run input snapshot. Network work holds no write lock.
+The guarded commit checks metadata/operation and narrow Provider eligibility
+before merging proof. Explicit repeat queries do not modify completed collection
+facts. A first collection intent can wait behind an already accepted query;
+actual client/repository/owner cleanup makes it ready. New manual clicks do not
+queue behind other work on the same Paper.
 
 Ordinary dates are independent normalized month/day sets. Bibliographic
 publication date retains its explicit source. Preprint evidence preserves version
@@ -266,8 +290,8 @@ a formal direct identity or an ordinary date solely through association. Reader
 and Info display these new library projections without old event/source columns
 or active Enrich buttons. WF05 provides internal background scheduling. WF06 adds
 internal Date/Abstract and purpose-driven API/Preprint services through those task
-interfaces. Production registration and branch parallelism belong to WF08;
-PDF sources, transport, files and public actions remain later work.
+interfaces. WF08 uses both branches in production. WF07 supplies PDF clues/source
+discovery; transfer, permanent files and public Download remain WF09/WF10.
 
 ## Workspace collection runtime
 
@@ -287,7 +311,7 @@ The internal defaults bound executing Paper jobs to four globally and two per
 trusted Service; API/public work uses one `None` group. These task counts include
 client/native/write cleanup and are separate from physical page capacity.
 
-One Paper gate arbitrates collection, controlled download reservations, old manual
+One Paper gate arbitrates collection, controlled download reservations, explicit
 Preprint reservations and metadata clearing. Durable queued/running eligibility
 also blocks Download during the admit/register window. Branch increments use the
 original WriteToken, lifecycle, attempt, branch and sequence; duplicate delivery
@@ -295,13 +319,20 @@ cannot reapply a cleared abstract. Completion follows actual worker/client/nativ
 settlement. Explicit retry preserves same-generation successful branch facts.
 Terminal persistence/cleanup faults retain conservative runtime occupancy.
 
-Each worker opens its own repository and independent client context. Declared
+Each leaf branch runs on a separate bounded scheduler and opens its own repository
+and independent client context, allowing same-Paper Document/API overlap without
+parent/child pool starvation. Declared
 Providers scope credentials and mutable clients/caches; shared pacing outlives
 those contexts. Narrow access authority captures the actual saved Service,
 Prepare binding and selected credentials. Source Run IDs are diagnostic only.
 Lifecycle initialization marks prior queued/running work interrupted/failed once,
-without queue replay or network. Current production Run does not register this
-work, and Download/Retry remain internal contracts until later tasks.
+without queue replay or network. Host-visible ownership and original branch epochs
+cover the base-commit/register window before external authority initialization.
+Failed access/startup preserves base metadata and independent branch results.
+Branch-local access changes drain only affected work; Workspace/Reject revocation
+still ends the whole Paper. Explicit Retry checks only unfinished dependencies
+and retains successful branch facts. Public Retry is available; Download and body
+operations remain deferred. See [runtime interfaces](collection-runtime.md).
 
 ## Physical Browser resource lifetime
 
