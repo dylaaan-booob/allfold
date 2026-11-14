@@ -380,7 +380,7 @@ def test_sciencedirect_article_backlink_does_not_skip_its_native_reader(tmp_path
         while len(bridge.calls)<2 and not task.future.done() and time.monotonic()<until:time.sleep(.005)
         assert bridge.calls[-1][0]=='extract_paper_pdf_clues'
         assert bridge.calls[-1][1]['reader']['url']==candidate.url
-        bridge.result.set_result(envelope() | {'pdf_clues':pdf_clues(platform='sciencedirect',landing_url=pdf,
+        bridge.result.set_result(envelope() | {'pdf_clues':pdf_clues(platform='sciencedirect',landing_url=candidate.url,
             candidates=[dict(stage='P4',rule_id='R024',url=pdf,referer=candidate.url)])})
         until=time.monotonic()+2
         while bridge.calls[-1][0]!='stream_paper_body' and not task.future.done() and time.monotonic()<until:time.sleep(.005)

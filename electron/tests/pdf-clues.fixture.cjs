@@ -3,7 +3,7 @@ const {app,BrowserWindow}=require('electron');
 const assert=require('node:assert/strict'),http=require('node:http'),fs=require('node:fs'),path=require('node:path'),vm=require('node:vm');
 const {randomUUID}=require('node:crypto');
 app.commandLine.appendSwitch('no-proxy-server');
-const fixtureHosts=['oce.ovid.com','assets.ovid.com','www.nature.com','journals.lww.com','www.sciencedirect.com','pdf.sciencedirectassets.com','opg.optica.org','ieeexplore.ieee.org','x.biomedcentral.com','pubs.rsc.org','journals.plos.org','www.mdpi.com','x.copernicus.org','pubs.acs.org','academic.oup.com','pubs.aip.org','jamanetwork.com','rupress.org','ashpublications.org','iovs.arvojournals.org','pubs.geoscienceworld.org','www.cambridge.org','www.bmj.com','www.degruyterbrill.com','www.emerald.com','brill.com','elifesciences.org','www.thieme-connect.com','www.microbiologyresearch.org','epubs.siam.org','onlinelibrary.wiley.com','hindawi.com'];
+const fixtureHosts=['oce.ovid.com','assets.ovid.com','www.nature.com','journals.lww.com','www.sciencedirect.com','opg.optica.org','ieeexplore.ieee.org','x.biomedcentral.com','pubs.rsc.org','journals.plos.org','www.mdpi.com','x.copernicus.org','pubs.acs.org','academic.oup.com','pubs.aip.org','jamanetwork.com','rupress.org','ashpublications.org','iovs.arvojournals.org','pubs.geoscienceworld.org','www.cambridge.org','www.bmj.com','www.degruyterbrill.com','www.emerald.com','brill.com','elifesciences.org','www.thieme-connect.com','www.microbiologyresearch.org','epubs.siam.org','onlinelibrary.wiley.com','hindawi.com'];
 app.commandLine.appendSwitch('host-resolver-rules',fixtureHosts.map(host=>'MAP '+host+' 127.0.0.1').join(', '));
 const profile=process.argv[2];app.setPath('userData',profile);app.setPath('sessionData',profile);
 require('../src/shared/logging.cjs').initializeLogging({stderr(){}});
@@ -12,8 +12,6 @@ app.whenReady().then(async()=>{
   let page='',requests=[],delayedPDF;
   const server=http.createServer((request,response)=>{requests.push({url:request.url,referer:request.headers.referer});
     if(request.url==='/hydrated-pdf'){delayedPDF=response;return;}
-    if(request.url.includes('pdf-redirect=')){const id=request.url.includes('wrong-pii')?'S0047259X2400006X':'S1234567812345678';response.writeHead(302,{location:'http://pdf.sciencedirectassets.com:'+server.address().port+'/1-s2.0-'+id+'/main.pdf?token=synthetic'});response.end();return;}
-    if(request.url.startsWith('/1-s2.0-S1234567812345678/main.pdf')){response.setHeader('content-type','application/pdf');response.end('%PDF-1.4\n1 0 obj<</Type/Catalog/Pages 2 0 R>>endobj\n2 0 obj<</Type/Pages/Count 0/Kids[]>>endobj\ntrailer<</Root 1 0 R>>\n%%EOF');return;}
     if(request.url.includes('redirect-reader=1')){response.writeHead(302,{location:request.url.replace('redirect-reader=1','final=1')});response.end();return;}
     if(request.url.includes('internal-redirect=1')){response.writeHead(302,{location:'http://127.0.0.1:'+server.address().port+'/forbidden'});response.end();return;}
     if(request.url.startsWith('/pdfviewer/web/viewer.html')||request.url.startsWith('/arbitrary?')){response.setHeader('content-type','text/html');response.end('<body>Fixed viewer fixture</body>');return;}
@@ -184,19 +182,6 @@ app.whenReady().then(async()=>{
     const sdReader={target:data.identity,rule_id:'R024',platform:'sciencedirect',url:sdReaderURL,identifier:pii,source_url:'https://www.sciencedirect.com/science/article/pii/'+pii,stage:'P2'};
     const redirected=await invoke('extract_paper_pdf_clues',{reader:sdReader});assert.equal(redirected.outcome,'retrieved',JSON.stringify(redirected));assert.equal(redirected.pdf_clues.landing_url,sdReaderURL.replace('redirect-reader=1','final=1'));
     assert.equal(redirected.pdf_clues.candidates[0].stage,'P2');assert.equal(redirected.pdf_clues.candidates[0].url,'http://www.sciencedirect.com:'+port+'/science/article/pii/'+pii+'/Relative.PDF?signature=A%2FB&key=2');
-    const pdfRedirect=await invoke('extract_paper_pdf_clues',{reader:{...sdReader,source_url:sdReaderURL,url:sdReaderURL.replace('redirect-reader=1','pdf-redirect=1')}});
-    assert.equal(pdfRedirect.outcome,'retrieved',JSON.stringify(pdfRedirect));
-    assert.equal(pdfRedirect.pdf_clues.candidates[0].url,'http://pdf.sciencedirectassets.com:'+port+'/1-s2.0-'+pii+'/main.pdf?token=synthetic');
-    const {qualifyReader}=require('../src/browser/pdf-clues.cjs'),asset='https://pdf.sciencedirectassets.com/1-s2.0-'+pii+'/main.pdf?token=synthetic';
-    assert.equal(qualifyReader({...sdReader,url:asset},data.identity),'sciencedirect');
-    for(const refused of [asset.replace('https:','http:'),asset.replace(pii,'S0047259X2400006X'),
-      asset.replace('pdf.sciencedirectassets.com','pdf.sciencedirectassets.com.evil.example'),asset.replace('/main.pdf','/main.pdf/other')])
-      assert.throws(()=>qualifyReader({...sdReader,url:refused},data.identity),'only the same-PII same-protocol assets PDF belongs to the reader');
-    for(const badReader of [{...sdReader,source_url:sdReaderURL,url:sdReaderURL.replace('redirect-reader=1','pdf-redirect=wrong-pii')},
-      {...sdReader,url:sdReaderURL.replace('redirect-reader=1','pdf-redirect=1')}]) {
-      assert.equal((await invoke('extract_paper_pdf_clues',{reader:badReader})).diagnostic.code,'pdf_target_refused');
-      assert.ok(!requests.some(item=>item.url.includes('/main.pdf')),'wrong PII/downgrade is refused before a CDN request');
-    }
     const unsafe=await invoke('extract_paper_pdf_clues',{reader:{...sdReader,url:sdReaderURL.replace('redirect-reader=1','internal-redirect=1')}});assert.ok(unsafe.diagnostic);assert.ok(!requests.some(item=>item.url==='/forbidden'),'internal redirect is blocked before its request');
     page='<!doctype html><body><iframe src="/reader-next/IEEE.PDF?signature=AbC"></iframe></body>';
     const ieeeReader={target:data.identity,rule_id:'R025',platform:'ieee',url:'http://ieeexplore.ieee.org:'+port+'/stamp/stamp.jsp?tp=&arnumber=12345',identifier:'12345',source_url:'https://ieeexplore.ieee.org/document/12345',stage:'P2'};

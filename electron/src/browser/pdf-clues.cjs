@@ -37,12 +37,9 @@ function qualifyReader(reader,identity) {
   // The source URL and exact identifier are supplied by the trusted host's
   // immutable candidate chain, never inferred from an arbitrary reader iframe.
   let kind;
-  if(reader.rule_id==='R024'&&reader.platform==='sciencedirect'
+  if(reader.rule_id==='R024'&&reader.platform==='sciencedirect'&&/^(?:www\.)?sciencedirect\.com$/.test(url.hostname)
     && /^(?:www\.)?sciencedirect\.com$/.test(source.hostname)&&/^[SB][0-9]{7}[0-9X][0-9]{7}[0-9X]$/i.test(id)
-    && (/^(?:www\.)?sciencedirect\.com$/.test(url.hostname)
-      && ['/science/article/pii/'+id+'/pdfft','/science/article/pii/'+id+'/pdf'].includes(url.pathname)
-      || url.hostname==='pdf.sciencedirectassets.com' && url.protocol===source.protocol
-        && url.pathname.endsWith('/1-s2.0-'+id+'/main.pdf'))
+    && ['/science/article/pii/'+id+'/pdfft','/science/article/pii/'+id+'/pdf'].includes(url.pathname)
     && (source.pathname==='/science/article/pii/'+id||source.pathname.startsWith('/science/article/pii/'+id+'/')))kind='sciencedirect';
   if(reader.rule_id==='R025'&&reader.platform==='ieee'&&url.hostname==='ieeexplore.ieee.org'&&source.hostname===url.hostname
     && /^\d{1,16}$/.test(id)&&/^\/(?:stamp\/stamp.jsp|stampPDF\/getPDF.jsp)$/.test(url.pathname)&&url.searchParams.get('arnumber')===id

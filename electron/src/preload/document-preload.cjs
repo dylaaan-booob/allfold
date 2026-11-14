@@ -423,8 +423,7 @@ const operations={
       ['sciencedirect','R024',/^(?:www\.)?sciencedirect\.com$/],['ieee','R025',/^ieeexplore\.ieee\.org$/],
       ['oup','R020',/^academic\.oup\.com$/],['atypon','R039',/^(?:onlinelibrary\.wiley\.com|journals\.sagepub\.com|www\.tandfonline\.com|www\.annualreviews\.org|pubs\.aiaa\.org|www\.liebertpub\.com|www\.worldscientific\.com)$/],
     ];
-    const [platform,rule_id]=readerKind==='sciencedirect' && host==='pdf.sciencedirectassets.com'
-      ? ['sciencedirect','R024'] : entries.find(item=>item[2].test(host)) || ['generic','GENERIC'];
+    const [platform,rule_id]=entries.find(item=>item[2].test(host)) || ['generic','GENERIC'];
     // Main supplies the existing article-identity casefold data, not page code.
     const normalizeDoi=value=>{if(typeof value!=='string')return null;const doi=value.trim().replace(/^(?:https?:\/\/(?:dx\.)?doi\.org\/|doi:\s*)/i,'').trim().toLowerCase().replace(/[^\x00-\x7f]/gu,char=>doiCasefold[char] || char);return /^10\.\d{4,9}\/[^\s]+$/u.test(doi)?doi:null;};
     // The fixed article probe owns the scholarly DOI sources; PDF qualification
@@ -531,7 +530,6 @@ const operations={
       if(!unsupported && platform==='sciencedirect' && typeof knownState==='string')add(knownState,'P4',{reader_kind:'sciencedirect'});
       if(!unsupported && platform==='lww' && typeof knownState==='string')add(knownState,'P4',{reader_kind:'lww',referer:landing_url});
       if(readerKind==='sciencedirect') {
-        if(host==='pdf.sciencedirectassets.com' && document.contentType==='application/pdf')add(landing_url);
         explicit('#redirect-message a[href]');explicit('.PdfEmbed > object[data]','data');
         for(const meta of document.head?.querySelectorAll('meta[http-equiv][content]') || [])if(meta.getAttribute('http-equiv').toLowerCase()==='refresh')add(meta.getAttribute('content').match(/^\s*\d+(?:\.\d+)?\s*;\s*url\s*=\s*["']?([^"']+)["']?\s*$/i)?.[1]);
       }

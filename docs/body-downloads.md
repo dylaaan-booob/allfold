@@ -67,18 +67,16 @@ supplements, references and related regions stay excluded. A ScienceDirect respo
 use the same live-Document reader to refresh the current signed PDF entrance,
 ignoring tracking query/fragment differences but retaining independent article
 identity checks. Actual native cleanup ends before transfer continues; no collection
-is registered or written. A ScienceDirect reader's fallback article backlink is
-not a PDF next hop: its managed browser navigation may reach the exact same-PII,
-same-protocol `pdf.sciencedirectassets.com/.../main.pdf`. The current native PDF
-Document can supply that observed URL for a fresh DNS-checked Session stream.
-Chromium's internal PDF-viewer child remains blocked; it does not invalidate this
-qualified public main Document or grant extension navigation authority. No original
-response/DownloadItem is adopted or saved by the reader. Cloudflare background resources and ordinary Sign in
+is registered or written. Cloudflare background resources and ordinary Sign in
 navigation do not identify a main challenge or login page. Unknown HTML is not
 a generic crawler. Empty ordinary branches retain queued alternatives; access
 barriers still stop, and reader cancellation/expiry is rechecked after native
 cleanup before recording the terminal result. Action/POST
 and explicit API-credential candidates remain pending rather than GET emulation.
+A reader may resolve current HTML PDF clues, but an original browser PDF response
+is not canceled and replayed as a new GET. Publishers requiring that original
+response remain a WF10 native-adoption boundary; displaying a PDF viewer or
+finding a signed entrance alone is not a completed body download.
 Only ordinary candidate failures permit the next confirmed candidate; a completed
 stream stops sources, and any local finalization error ends that task.
 Native Document access refusals remain terminal. HTTP 418, visible paired

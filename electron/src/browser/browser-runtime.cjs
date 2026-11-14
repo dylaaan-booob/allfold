@@ -834,20 +834,6 @@ class BrowserRuntime {
         const tab=await this.newTaskPage({signal,deadline,managed:true});this.bindTaskPage(tab,signal);this.associatePage(tab,{role:'pdf-reader'});
         requestGuard=this.sessionEvents.subscribe('beforeRequest',details=>{
           if(details.webContentsId!==tab.id || !['mainFrame','subFrame'].includes(details.resourceType))return;
-          if(readerKind==='sciencedirect' && details.resourceType==='mainFrame'
-            && new URL(details.url).hostname==='pdf.sciencedirectassets.com') {
-            try {qualifyReader({...data.reader,url:details.url},data.identity);}
-            catch {readerFailure=new BrowserFailure('navigation','pdf_target_refused');return {cancel:true};}
-          }
-          // A native inline PDF creates Chromium's internal viewer child. Keep
-          // that non-HTTP child blocked without revoking its qualified public
-          // main Document, which can supply the actual PDF source URL.
-          const current=new URL(tab.view.webContents.getURL() || 'about:blank');
-          if(readerKind==='sciencedirect' && details.resourceType==='subFrame'
-            && details.url==='chrome-extension://mhjfbmdgcfjbbpaeojofohoefgiehjai/index.html'
-            && current.hostname==='pdf.sciencedirectassets.com'
-            && current.protocol===new URL(data.reader.source_url).protocol
-            && current.pathname.endsWith('/1-s2.0-'+data.reader.identifier+'/main.pdf'))return {cancel:true};
           if(signal?.aborted || Date.now()>=deadline || !publicClueURL(details.url)) {
             readerFailure=new BrowserFailure('navigation',signal?.aborted?'canceled':'pdf_target_refused');return {cancel:true};
           }

@@ -222,8 +222,8 @@ def _run(reservation, candidates, progress):
                                     and article.netloc and all((urlsplit(item.url).scheme,urlsplit(item.url).netloc,urlsplit(item.url).path)
                                         == (article.scheme,article.netloc,article.path) for item in following)):
                                 # The reader's fallback "View article" is not a
-                                # PDF next hop. Let its managed Document perform
-                                # the normal browser redirect instead of cycling.
+                                # PDF next hop. Use the existing bounded reader
+                                # rather than cycling through the article GET.
                                 following = ()
                             if not following:
                                 following = _document_candidates(reservation, repository, candidate, candidate_result.response)
