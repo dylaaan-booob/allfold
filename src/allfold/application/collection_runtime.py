@@ -26,12 +26,17 @@ from allfold.persistence.paper_repository import (
 from allfold.providers.integrated import PROVIDERS
 
 
+_INHERIT_SERVICE = object()
+
+
 @dataclass(frozen=True)
 class BranchSpec:
     name: str
     run: object = None
     skip_reason: str | None = None
     providers: tuple[str, ...] = ()
+    # Omitted inherits the legacy plan Service; explicit None is independent API.
+    service_id: object = _INHERIT_SERVICE
 
 
 @dataclass(eq=False)
@@ -50,6 +55,9 @@ class TaskHandle:
     scheduled: Future | None = None
     browser_owner: object = None
     cancel_pending: bool = False
+    branch_tasks: tuple = ()
+    waiting_on: object = None
+    dispatch_ready: threading.Event = field(default_factory=threading.Event)
 
     @property
     def paper_id(self):
@@ -66,6 +74,44 @@ class TaskHandle:
     @property
     def providers(self):
         return tuple(sorted({provider for branch in self.branches for provider in branch.providers}))
+
+
+@dataclass(eq=False)
+class _BranchTask:
+    parent: TaskHandle
+    branch: BranchSpec
+    authority_captured: bool = False
+    admission_check: object = None
+    admission_error: object = None
+    authority: object = field(default_factory=lambda: _LocalAuthority())
+    cancel_event: threading.Event = field(default_factory=threading.Event)
+    future: Future = field(default_factory=SettledFuture)
+    scheduled: Future | None = None
+    browser_owner: object = None
+    workflow_id: str = field(default_factory=lambda: uuid4().hex)
+    task_id: str = field(default_factory=lambda: uuid4().hex)
+
+    @property
+    def token(self):
+        return self.parent.token
+    @property
+    def paper_id(self):
+        return self.parent.paper_id
+    @property
+    def workspace_id(self):
+        return self.parent.workspace_id
+    @property
+    def lifecycle_id(self):
+        return self.parent.lifecycle_id
+    @property
+    def deadline(self):
+        return self.parent.deadline
+    @property
+    def service_id(self):
+        return self.branch.service_id
+    @property
+    def providers(self):
+        return self.branch.providers
 
 
 @dataclass(eq=False)
@@ -89,6 +135,10 @@ class PaperReservation:
     future: Future = field(default_factory=SettledFuture)
     scheduled: Future | None = None
     browser_owner: object = None
+
+    def guard(self):
+        """Verify this exact reservation without capturing a replacement token."""
+        self.registry._guard(self)
 
     @property
     def paper_id(self):
@@ -216,13 +266,14 @@ class BranchContext:
 
 class WorkspaceRegistry:
     def __init__(self, workspace, *, factory, browser_lock=None, bridge=None,
-                 diagnostics=None, admission_lock=None, authority_capture=None,
+                 diagnostics=None, admission_lock=None, authority_capture=None, admission_capture=None,
                  limit=4, group_limit=2):
         self.workspace = Path(workspace).absolute()
         self.factory, self.browser_lock, self.bridge = factory, browser_lock, bridge
         self.diagnostics = diagnostics
         self._gate = admission_lock if admission_lock is not None else threading.RLock()
         self._authority_capture = authority_capture
+        self._admission_capture = admission_capture
         self.lifecycle_id = uuid4()
         self._stopped = False
         self._shutdown_started = False
@@ -233,6 +284,8 @@ class WorkspaceRegistry:
             self._identity = self._path_identity()
             repository.interrupt_collections(self.lifecycle_id)
         self._scheduler = DynamicScheduler(limit=limit, group_limit=group_limit)
+        # Parent workers may wait for these bounded children, never their own pool.
+        self._branch_scheduler = DynamicScheduler(limit=max(2, limit), group_limit=group_limit)
 
     def _path_identity(self):
         return tuple((info.st_dev, info.st_ino) for info in
@@ -268,8 +321,11 @@ class WorkspaceRegistry:
     @property
     def browser_owner_ids(self):
         with self._gate:
-            return frozenset(task.browser_owner.id for task in (*self._tasks.values(), *self._reservations.values())
+            return frozenset(task.browser_owner.id for task in (*self._branch_tasks(), *self._reservations.values())
                              if task.browser_owner is not None)
+
+    def _branch_tasks(self):
+        return tuple(branch for task in self._tasks.values() for branch in task.branch_tasks)
 
     def busy(self, paper_id, workspace_id=None):
         if workspace_id is not None and UUID(str(workspace_id)) != self.workspace_id:
@@ -280,7 +336,7 @@ class WorkspaceRegistry:
     cleanup_pending = busy
 
     @staticmethod
-    def _plan(branches, no_applicable=False):
+    def _plan(branches, no_applicable=False, service_id=None):
         plan = tuple(branches)
         if not plan and not no_applicable:
             raise ValueError('An empty plan requires explicit no_applicable=True')
@@ -300,7 +356,8 @@ class WorkspaceRegistry:
             if any(provider not in PROVIDERS for provider in branch.providers):
                 raise ValueError('Unknown declared Provider')
         return tuple(BranchSpec(branch.name, branch.run, branch.skip_reason,
-                                tuple(sorted(set(branch.providers)))) for branch in plan)
+                                tuple(sorted(set(branch.providers))),
+                                service_id if branch.service_id is _INHERIT_SERVICE else branch.service_id) for branch in plan)
 
     def _authority(self, service_id, plan):
         providers = tuple(sorted({provider for branch in plan for provider in branch.providers}))
@@ -338,9 +395,12 @@ class WorkspaceRegistry:
     def _require_live(self, handle):
         self._require_open()
         self._check_admission(handle.authority)
+        if isinstance(handle, _BranchTask) and handle.admission_check is not None:
+            handle.admission_check()
+        parent = handle.parent if isinstance(handle, _BranchTask) else handle
         owners = self._reservations if isinstance(handle, PaperReservation) else self._tasks
-        if (owners.get(handle.paper_id) is not handle or handle.lifecycle_id != self.lifecycle_id
-                or handle.cancel_event.is_set()):
+        if (owners.get(handle.paper_id) is not parent or handle.lifecycle_id != self.lifecycle_id
+                or handle.cancel_event.is_set() or parent.cancel_event.is_set()):
             raise StaleWriteError('Captured Paper task owner is no longer valid')
         if time.monotonic() >= handle.deadline:
             raise TimeoutError('Paper task parent deadline expired')
@@ -367,11 +427,12 @@ class WorkspaceRegistry:
                 with self._repository() as current:
                     current.require_collection(handle.token)
 
-    @staticmethod
-    def _require_reservation(handle, repository):
+    def _require_reservation(self, handle, repository):
         paper = repository.get(handle.paper_id)
+        deferred = self._tasks.get(handle.paper_id)
+        waiting = deferred is not None and deferred.waiting_on is handle
         if (paper.token != handle.token or paper.excluded or paper.metadata is None
-                or paper.collection is not None and paper.collection.active):
+                or paper.collection is not None and paper.collection.active and not waiting):
             raise StaleWriteError('Captured Paper authority changed')
         return paper
 
@@ -391,48 +452,57 @@ class WorkspaceRegistry:
                 self._require_live(handle)
                 if handle.browser_owner is None:
                     handle.browser_owner = owner
+                    if isinstance(handle, _BranchTask) and len(handle.parent.branch_tasks) == 1:
+                        handle.parent.browser_owner = owner
                     return
         except BaseException:
             self.browser_lock.release(owner)
             raise
         self.browser_lock.release(owner)
 
+    def _new_handle(self, admission, plan, deadline, service_id=None, source_run_id=None):
+        handle = TaskHandle(admission.token, plan, _LocalAuthority(), deadline, service_id, source_run_id)
+        handle.branch_tasks = tuple(_BranchTask(handle, branch) for branch in plan)
+        if self._admission_capture is not None:
+            for child in handle.branch_tasks:
+                if child.branch.skip_reason is not None:
+                    continue
+                try:
+                    child.admission_check = self._admission_capture(child.service_id, child.providers)
+                except Exception as error:
+                    child.admission_error = error
+        if len(handle.branch_tasks) == 1:
+            child = handle.branch_tasks[0]
+            child.workflow_id, child.task_id = handle.workflow_id, handle.task_id
+        handle.dispatch_ready.set()
+        self._tasks[handle.paper_id] = handle
+        return handle
+
     def admit(self, *, direct_ids, metadata, branches, service_id=None,
-              source_run_id=None, deadline=None, no_applicable=False):
-        plan = self._plan(branches, no_applicable)
+              source_run_id=None, deadline=None, no_applicable=False,
+              additional_identities=(), expected_token=None, allow_rebuild=False):
+        plan = self._plan(branches, no_applicable, service_id)
         deadline = self._deadline(deadline)
         with self._gate:
             self._require_open()
             with self._repository() as repository:
-                reusable = self._reuse(repository, direct_ids)
-                if reusable is not None:
-                    return reusable
-        authority = self._authority(service_id, plan)
-        with self._gate:
-            self._require_open()
-            with self._repository() as repository:
-                reusable = self._reuse(repository, direct_ids)
-                if reusable is not None:
-                    return reusable
-                self._check_admission(authority)
+                paper = repository.match(direct_ids, additional_identities=additional_identities)
+                reservation = self._reservations.get(paper.id) if paper else None
+                if reservation is not None and (reservation.kind != 'legacy' or paper.collection is not None) and not (
+                        paper.id in self._tasks and self._tasks[paper.id].waiting_on is reservation):
+                    raise InvalidPaperState('Another operation owns this Paper')
                 admission = repository.admit_collection(self.workspace_id, lifecycle_id=self.lifecycle_id,
-                    branches=tuple(branch.name for branch in plan), direct_ids=direct_ids, metadata=metadata)
+                    branches=tuple(branch.name for branch in plan), direct_ids=direct_ids, metadata=metadata,
+                    additional_identities=additional_identities, expected_token=expected_token,
+                    allow_rebuild=allow_rebuild)
                 if not admission.admitted:
-                    return admission.paper
-                handle = TaskHandle(admission.token, plan, authority, deadline, service_id, source_run_id)
-                self._tasks[handle.paper_id] = handle
+                    return self._tasks.get(admission.paper.id, admission.paper)
+                handle = self._new_handle(admission, plan, deadline, service_id, source_run_id)
+                handle.waiting_on = reservation
+                if reservation is not None:
+                    handle.dispatch_ready.clear()
         self._observe(handle, 'queued', 'workflow_started')
         return handle
-
-    def _reuse(self, repository, direct_ids):
-        paper = repository.match(direct_ids)
-        if paper is None or paper.excluded:
-            return paper
-        if paper.id in self._tasks:
-            return self._tasks[paper.id]
-        if paper.id in self._reservations:
-            raise InvalidPaperState('Another operation owns this Paper')
-        return paper if paper.collection is not None else None
 
     def submit(self, **kwargs):
         handle = self.admit(**kwargs)
@@ -457,7 +527,8 @@ class WorkspaceRegistry:
                 handle.registered = True
                 scheduled = self._scheduler.submit(handle.service_id,
                     lambda: self._run(handle), cancel_event=handle.cancel_event,
-                    deadline=handle.deadline, discarded=lambda reason: self._discard(handle, reason))
+                    deadline=handle.deadline, discarded=lambda reason: self._discard(handle, reason),
+                    ready_event=handle.dispatch_ready)
                 handle.scheduled = scheduled
                 scheduled.add_done_callback(lambda done: self._settled(handle, done))
         except Exception as error:
@@ -468,11 +539,8 @@ class WorkspaceRegistry:
                 self._settle_unscheduled(handle, 'submission_failed')
         return handle
 
-    def retry(self, paper_id, *, branches, service_id=None, deadline=None):
-        # Empty retry is legal only when the persisted complete plan was empty;
-        # retry_collection refuses discarding any previously captured branch.
-        plan = self._plan(branches, no_applicable=True)
-        deadline = self._deadline(deadline)
+    def _retry_qualification(self, paper_id, branches, service_id, expected_token, expected_attempt):
+        plan = self._plan(branches, no_applicable=True, service_id=service_id)
         paper_id = UUID(str(paper_id))
         with self._gate:
             self._require_open()
@@ -480,20 +548,48 @@ class WorkspaceRegistry:
                 raise InvalidPaperState('Previous Paper resources have not settled')
             with self._repository() as repository:
                 paper = repository.get(paper_id)
-            successful = {branch.name for branch in paper.collection.branches
-                          if branch.state in {'completed', 'skipped'}} if paper.collection else set()
+            if paper.excluded or paper.metadata is None or paper.collection_status not in {'failed', 'cancelled'}:
+                raise InvalidPaperState('Retry requires a settled failed or cancelled full Paper')
+            if expected_token is not None and paper.token != expected_token:
+                raise StaleWriteError('Captured Paper authority changed')
+            if expected_attempt is not None and paper.collection.attempt != expected_attempt:
+                raise StaleWriteError('Captured collection attempt changed')
+            if {branch.name for branch in paper.collection.branches} != {branch.name for branch in plan}:
+                raise InvalidPaperState('Retry must preserve the complete captured branch plan')
+            successful = {branch.name for branch in paper.collection.branches if branch.state in {'completed', 'skipped'}}
             pending = tuple(branch for branch in plan if branch.name not in successful)
-        authority = self._authority(service_id, pending)
+        # Access qualification is read-only and outside every Workspace/SQLite lock.
+        authorities = {branch.name: self._authority(branch.service_id, (branch,))
+                       for branch in pending if branch.skip_reason is None}
+        return paper, plan, pending, authorities
+
+    def check_retry(self, paper_id, *, branches, service_id=None, expected_token=None, expected_attempt=None):
+        """Read-only public retry eligibility, including only pending access dependencies."""
+        paper, _, _, _ = self._retry_qualification(paper_id, branches, service_id, expected_token, expected_attempt)
+        return paper
+
+    def retry(self, paper_id, *, branches, service_id=None, deadline=None,
+              expected_token=None, expected_attempt=None):
+        deadline = self._deadline(deadline)
+        paper, plan, pending, authorities = self._retry_qualification(
+            paper_id, branches, service_id, expected_token, expected_attempt)
         with self._gate:
             self._require_open()
-            self._check_admission(authority)
-            if paper_id in self._tasks or paper_id in self._reservations:
+            for authority in authorities.values():
+                self._check_admission(authority)
+            if paper.id in self._tasks or paper.id in self._reservations:
                 raise InvalidPaperState('Previous Paper resources have not settled')
             with self._repository() as repository:
+                current = repository.get(paper.id)
+                if current.collection != paper.collection:
+                    raise StaleWriteError('Captured collection attempt changed')
                 admission = repository.retry_collection(paper.token, lifecycle_id=self.lifecycle_id,
                     branches=tuple(branch.name for branch in plan))
-            handle = TaskHandle(admission.token, pending, authority, deadline, service_id)
-            self._tasks[paper_id] = handle
+            handle = self._new_handle(admission, pending, deadline, service_id)
+            for child in handle.branch_tasks:
+                if child.branch.name in authorities:
+                    child.authority = authorities[child.branch.name]
+                    child.authority_captured = True
         self._observe(handle, 'queued', 'workflow_started')
         return self.register(handle)
 
@@ -547,6 +643,11 @@ class WorkspaceRegistry:
                     raise
                 del self._reservations[reservation.paper_id]
                 reservation.released = True
+                deferred = self._tasks.get(reservation.paper_id)
+                if deferred is not None and deferred.waiting_on is reservation:
+                    deferred.waiting_on = None
+                    deferred.dispatch_ready.set()
+                    self._scheduler.wake()
                 self._settled_condition.notify_all()
 
     def fail_reservation(self, reservation, *, phase, error):
@@ -604,84 +705,136 @@ class WorkspaceRegistry:
                         outcome='cancelled' if cancelled else 'failed', reason=reason)
         return bool(not cancelled)
 
+    def _discard_branch(self, child, reason):
+        cancelled = child.cancel_event.is_set() or child.parent.cancel_event.is_set() or reason in {
+            'closed', 'cancelled', 'expired', 'revoked'}
+        with self._gate, self._repository() as repository:
+            paper = repository.get(child.paper_id)
+            saved = next(branch for branch in paper.collection.branches if branch.name == child.branch.name)
+            if saved.state in {'queued', 'running'}:
+                repository.commit_collection_branch(child.token, child.branch.name, sequence=saved.last_sequence + 1,
+                    outcome='cancelled' if cancelled else 'failed', reason=reason)
+        return not cancelled
+
+    def _branch_settled(self, child, done):
+        try:
+            result = done.result()
+        except BaseException as error:
+            child.future.set_exception(error)
+        else:
+            child.future.set_result(result)
+
     def _run(self, handle):
-        failed, native, owner, cleanup_fault = False, [], None, False
         timer = threading.Timer(max(0, handle.deadline - time.monotonic()),
                                 lambda: self._cancel_target(handle, 'expired'))
         timer.daemon = True
         timer.start()
         try:
             self._guard(handle)
-            if handle.authority.service_scope is not None:
-                self._ensure_browser_owner(handle)
-            self._guard(handle)
-            with self._repository() as repository:
+            with self._gate, self._repository() as repository:
+                repository.mark_collection_running(handle.token)
+            for child in handle.branch_tasks:
                 with self._gate:
-                    repository.mark_collection_running(handle.token)
-                if self.factory is None or not callable(getattr(self.factory, 'open', None)):
-                    raise RuntimeError('Collection client factory is unavailable')
-                with self._clients(handle, repository) as clients:
-                    for branch in handle.branches:
-                        context = BranchContext(self, handle, repository, clients, branch, native)
-                        try:
-                            context.guard()
-                            if branch.skip_reason is not None:
-                                context._finish('skipped', reason=branch.skip_reason)
-                            else:
-                                if branch.run is None:
-                                    raise RuntimeError('Collection branch implementation is missing')
-                                result = branch.run(context)
-                                if result is not None and not isinstance(result, MetadataDelta):
-                                    raise TypeError('A collection branch returns MetadataDelta or None')
-                                context._finish('completed', delta=result)
-                        except Exception as error:
-                            cancelled = handle.cancel_event.is_set() or isinstance(error, (StaleWriteError, TimeoutError)) or self.stopped
-                            failed = failed or not cancelled
-                            if cancelled:
-                                self._invalidate(handle, 'revoked')
-                            context._finish('cancelled' if cancelled else 'failed', reason=type(error).__name__)
+                    if child.future.done():
+                        continue
+                    try:
+                        child.scheduled = self._branch_scheduler.submit(child.service_id,
+                            lambda child=child: self._run_branch(child), cancel_event=child.cancel_event,
+                            deadline=child.deadline,
+                            discarded=lambda reason, child=child: self._discard_branch(child, reason))
+                    except Exception:
+                        child.future.set_result(self._discard_branch(child, 'submission_failed'))
+                    else:
+                        child.scheduled.add_done_callback(lambda done, child=child: self._branch_settled(child, done))
+            failed, errors = False, []
+            # Join every child even when another cleanup faults.
+            for child in handle.branch_tasks:
+                try:
+                    failed = bool(child.future.result()) or failed
+                except BaseException as error:
+                    errors.append(error)
+            if errors:
+                raise errors[0]
+            return failed
         except Exception as error:
-            if isinstance(error, _CleanupUnconfirmed):
-                cleanup_fault = True
-                self._fault(handle, 'client-cleanup', error)
+            if any(child.future.done() and child.future.exception() is not None for child in handle.branch_tasks):
                 raise
-            failed = True
-            try:
-                self._discard(handle, 'revoked' if handle.cancel_event.is_set() or self.stopped
-                              or isinstance(error, (StaleWriteError, TimeoutError)) else 'execution_failed')
-            except Exception as settlement_error:
-                self._fault(handle, 'branch-settlement', settlement_error)
-                raise
+            self._discard(handle, 'revoked' if handle.cancel_event.is_set() or self.stopped
+                          or isinstance(error, (StaleWriteError, TimeoutError)) else 'execution_failed')
+            return True
+        finally:
+            timer.cancel()
+            timer.join()
+
+    def _run_branch(self, child):
+        native, cleanup_fault = [], False
+        try:
+            # External access/credential work occurs only after durable queued + host ownership.
+            if child.admission_error is not None:
+                raise child.admission_error
+            if child.admission_check is not None:
+                child.admission_check()
+            if child.branch.skip_reason is None and not child.authority_captured:
+                child.authority = self._authority(child.service_id, (child.branch,))
+            self._guard(child)
+            if child.authority.service_scope is not None:
+                self._ensure_browser_owner(child)
+            with self._repository() as repository:
+                context = BranchContext(self, child, repository, None, child.branch, native)
+                try:
+                    if child.branch.skip_reason is not None:
+                        context._finish('skipped', reason=child.branch.skip_reason)
+                    else:
+                        if self.factory is None or not callable(getattr(self.factory, 'open', None)):
+                            raise RuntimeError('Collection client factory is unavailable')
+                        with self._clients(child, repository) as clients:
+                            context._clients = clients
+                            if child.branch.run is None:
+                                raise RuntimeError('Collection branch implementation is missing')
+                            result = child.branch.run(context)
+                            if result is not None and not isinstance(result, MetadataDelta):
+                                raise TypeError('A collection branch returns MetadataDelta or None')
+                            context._finish('completed', delta=result)
+                except _CleanupUnconfirmed:
+                    raise
+                except Exception as error:
+                    cancelled = (child.cancel_event.is_set() or child.parent.cancel_event.is_set()
+                                 or self.stopped or isinstance(error, (StaleWriteError, TimeoutError)))
+                    context._finish('cancelled' if cancelled else 'failed', reason=type(error).__name__)
+                    return not cancelled
+            return False
+        except _CleanupUnconfirmed as error:
+            cleanup_fault = True
+            self._fault(child, 'client-cleanup', error)
+            raise
+        except Exception as error:
+            return self._discard_branch(child, 'revoked' if child.cancel_event.is_set()
+                or child.parent.cancel_event.is_set() or self.stopped
+                or isinstance(error, (StaleWriteError, TimeoutError)) else type(error).__name__)
         finally:
             try:
                 native_cancelled = False
                 for future in native:
                     try:
-                        future.result()  # cancel()/timeout does not prove native terminal.
+                        future.result()
                     except BaseException:
-                        failed = True
                         native_cancelled = native_cancelled or future.cancelled()
                 if native_cancelled:
                     raise _CleanupUnconfirmed('Native Future cancellation is not resource settlement')
-                timer.cancel()
-                timer.join()
                 if native and self.bridge is not None:
                     self.bridge.execute('release_workflow_pages', {
-                        'workflow_id': handle.workflow_id, 'task_id': handle.task_id}).result()
+                        'workflow_id': child.workflow_id, 'task_id': child.task_id}).result()
             except Exception as error:
-                # A cleanup failure has no evidence that physical pages exited.
-                self._fault(handle, 'native-cleanup', error)
+                cleanup_fault = True
+                self._fault(child, 'native-cleanup', error)
                 raise
             finally:
-                timer.cancel()
-                timer.join()
-                owner = handle.browser_owner
-                if owner is not None and not cleanup_fault and not any(fault['phase'] == 'native-cleanup'
-                        and fault['paper_id'] == str(handle.paper_id) for fault in self.faults):
-                    self.browser_lock.release(owner)
+                if child.browser_owner is not None and not cleanup_fault:
+                    self.browser_lock.release(child.browser_owner)
                     with self._gate:
-                        handle.browser_owner = None
-        return failed
+                        child.browser_owner = None
+                        if len(child.parent.branch_tasks) == 1:
+                            child.parent.browser_owner = None
 
     @contextmanager
     def _clients(self, handle, repository):
@@ -732,15 +885,21 @@ class WorkspaceRegistry:
         try:
             if isinstance(target, PaperReservation) and target.cancel is not None:
                 target.cancel()
-            if self.bridge is not None:
+            if isinstance(target, TaskHandle):
+                for child in target.branch_tasks:
+                    child.cancel_event.set()
+                    if self.bridge is not None:
+                        self.bridge.cancel_task(child.workflow_id, child.task_id)
+            elif self.bridge is not None:
                 self.bridge.cancel_task(target.workflow_id, target.task_id)
         finally:
             self._scheduler.wake()
+            self._branch_scheduler.wake()
 
     def _prepare_cancel_target(self, target, reason='cancelled'):
         with self._gate:
-            current = self._tasks.get(target.paper_id) if isinstance(target, TaskHandle) else self._reservations.get(target.paper_id)
-            if current is not target:
+            current = self._tasks.get(target.paper_id) if isinstance(target, (TaskHandle, _BranchTask)) else self._reservations.get(target.paper_id)
+            if current is not (target.parent if isinstance(target, _BranchTask) else target):
                 return False
             if isinstance(target, TaskHandle):
                 try:
@@ -766,6 +925,13 @@ class WorkspaceRegistry:
                     target.cancel_pending = False
             if pending:
                 self._settle_unscheduled(target, 'cancelled')
+            elif isinstance(target, _BranchTask):
+                with self._gate:
+                    if target.scheduled is None and not target.future.done():
+                        try:
+                            target.future.set_result(self._discard_branch(target, 'cancelled'))
+                        except Exception as error:
+                            target.future.set_exception(error)
 
     def _cancel_target(self, target, reason='cancelled'):
         if not self._prepare_cancel_target(target, reason):
@@ -778,8 +944,9 @@ class WorkspaceRegistry:
         if workspace_id is not None and UUID(str(workspace_id)) != self.workspace_id:
             return ()
         with self._gate:
-            target = self._tasks.get(UUID(str(paper_id))) or self._reservations.get(UUID(str(paper_id)))
-            return (target,) if target is not None and self._prepare_cancel_target(target) else ()
+            paper_id = UUID(str(paper_id))
+            targets = (self._tasks.get(paper_id), self._reservations.get(paper_id))
+            return tuple(target for target in targets if target is not None and self._prepare_cancel_target(target))
 
     def cancel_paper(self, paper_id, workspace_id=None):
         targets = self.prepare_cancel_paper(paper_id, workspace_id)
@@ -790,9 +957,17 @@ class WorkspaceRegistry:
         selected = frozenset(service_ids)
         providers = frozenset(providers)
         with self._gate:
-            targets = tuple(task for task in (*self._tasks.values(), *self._reservations.values())
-                            if all_access and task.service_id is not None
-                            or task.service_id in selected or providers.intersection(task.providers))
+            def affected(task):
+                return (all_access and task.service_id is not None or task.service_id in selected
+                        or bool(providers.intersection(task.providers)))
+            targets = [reservation for reservation in self._reservations.values() if affected(reservation)]
+            for task in self._tasks.values():
+                children = tuple(child for child in task.branch_tasks if child.branch.skip_reason is None
+                                 and affected(child) and not child.future.done())
+                if children and len(children) == len(task.branch_tasks):
+                    targets.append(task)
+                else:
+                    targets.extend(children)
             return tuple(target for target in targets if self._prepare_cancel_target(target))
 
     def cancel_services(self, service_ids, *, all_access=False, providers=()):
@@ -824,6 +999,8 @@ class WorkspaceRegistry:
 
     def join(self):
         self._scheduler.join()
+        self._branch_scheduler.close()
+        self._branch_scheduler.join()
         with self._settled_condition:
             self._settled_condition.wait_for(lambda: all(reservation.cleanup_ended
                                                        for reservation in self._reservations.values()))

@@ -114,7 +114,7 @@ class WorkspaceTaskHost:
                 if registry is None:
                     registry = self._registry = WorkspaceRegistry(workspace, factory=self.factory,
                         browser_lock=self.browser_lock, bridge=self.bridge, diagnostics=self.diagnostics,
-                        authority_capture=self._capture_authority)
+                        authority_capture=self._capture_authority, admission_capture=self._capture_admission)
             # Never wait on an existing Paper gate while holding the host mutex.
             if registry.workspace != workspace or registry.stopped:
                 raise InvalidPaperState('Workspace lifetime changed; a fresh binding is required')
@@ -137,6 +137,11 @@ class WorkspaceTaskHost:
                 or changed_providers.intersection(providers) or epochs is not None and epochs != captured):
             raise InvalidPaperState('Captured Workspace/Service/Provider authority was revoked')
         return captured
+
+    def _capture_admission(self, service_id, providers):
+        """Bind process-local epochs before any external capture, without I/O/locks."""
+        epochs = self._verify_authority(service_id, providers)
+        return lambda: self._verify_authority(service_id, providers, epochs)
 
     def _capture_authority(self, service_id, providers):
         with self.settings_lock:

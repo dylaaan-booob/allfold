@@ -89,3 +89,21 @@ def test_global_and_service_limits_hold_until_workers_really_return():
         release.set()
         scheduler.close()
         scheduler.join()
+
+
+def test_unready_job_keeps_no_worker_and_expires_while_ready_work_runs():
+    from threading import Event
+    import time
+    ready, other_entered, discarded = Event(), Event(), Event()
+    scheduler = DynamicScheduler(limit=1, group_limit=1)
+    try:
+        waiting = scheduler.submit('same', lambda: pytest.fail('Unready work executed'), ready_event=ready,
+            deadline=time.monotonic() + .1, discarded=lambda reason: (discarded.set(), reason)[1])
+        other = scheduler.submit('same', lambda: other_entered.set())
+        assert other_entered.wait(2)
+        other.result(2)
+        assert discarded.wait(2)
+        assert waiting.result(2) == 'expired'
+    finally:
+        scheduler.close()
+        scheduler.join()

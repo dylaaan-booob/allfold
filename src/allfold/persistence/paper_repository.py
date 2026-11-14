@@ -193,8 +193,8 @@ class PaperRepository:
             raise IdentityConflict(f"Direct identities belong to different Papers: {', '.join(sorted(owners))}")
         return UUID(next(iter(owners))) if owners else None
 
-    def match(self, direct_ids: ExternalIds) -> PaperRecord | None:
-        identities = _identities(direct_ids)
+    def match(self, direct_ids: ExternalIds, *, additional_identities: tuple[DirectIdentity, ...] = ()) -> PaperRecord | None:
+        identities = tuple(sorted(set(_identities(direct_ids) + _extra_identities(additional_identities))))
         with self._database.transaction() as connection:
             owner = self._match(connection, identities)
             return self._read(connection, owner) if owner else None
@@ -259,7 +259,8 @@ class PaperRepository:
 
     def admit_collection(self, workspace_id: UUID, *, lifecycle_id: UUID, branches: tuple[str, ...],
                          direct_ids: ExternalIds, metadata: PaperMetadata,
-                         additional_identities: tuple[DirectIdentity, ...] = ()) -> CollectionAdmission:
+                         additional_identities: tuple[DirectIdentity, ...] = (),
+                         expected_token: WriteToken | None = None, allow_rebuild: bool = False) -> CollectionAdmission:
         """Commit identity creation/matching and queued authority in one short transaction."""
         lifecycle_id = UUID(str(lifecycle_id))
         branches = self._collection_branches(branches)
@@ -268,12 +269,23 @@ class PaperRepository:
         with self._database.transaction(write=True) as connection:
             if workspace_id != self.workspace_id:
                 raise StaleWriteError("Different Workspace identity")
+            owner = self._match(connection, identities)
+            if expected_token is not None:
+                if owner != expected_token.paper_id:
+                    raise StaleWriteError("Run result no longer matches its original Paper")
+                self._require_token(connection, expected_token)
             result = self._create_or_match(connection, direct_ids, identities, metadata)
             paper = result.paper
             if paper.excluded:
                 return CollectionAdmission(paper, None, False, result.created)
             if paper.metadata is None:
+                if expected_token is None or not allow_rebuild:
+                    raise StaleWriteError("Rebuild requires original released-placeholder qualification")
                 paper = self._rebuild(connection, paper, identities, metadata)
+            elif not set(identities) <= set(paper.identities):
+                self._add_identities(connection, paper.id, identities)
+                self._changed(connection, paper.id)
+                paper = self._read(connection, paper.id)
             if paper.collection is not None:
                 token = CollectionToken(paper.collection.write, paper.collection.attempt, paper.collection.lifecycle_id) if paper.collection.active else None
                 return CollectionAdmission(paper, token, False, result.created)

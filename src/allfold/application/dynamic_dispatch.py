@@ -21,12 +21,14 @@ class _Queued:
     cancel_event: object
     deadline: float | None
     discarded: object
+    ready_event: object = None
 
 
 class DynamicScheduler:
-    """Count executing Paper jobs, including their finally/cleanup, by Service.
+    """Count executing jobs, including their finally/cleanup, by Service.
 
     None is the single public/API group. Queueing never creates pages or clients.
+    An unready job retains deadline/cancellation without occupying a worker.
     Discard callbacks must perform only bounded local settlement without network.
     """
 
@@ -42,7 +44,7 @@ class DynamicScheduler:
         self._thread = threading.Thread(target=self._dispatch, name='paper-dispatch', daemon=False)
         self._started = False
 
-    def submit(self, group, run, *, cancel_event=None, deadline=None, discarded=None):
+    def submit(self, group, run, *, cancel_event=None, deadline=None, discarded=None, ready_event=None):
         future = SettledFuture()
         with self._condition:
             if self._closed:
@@ -53,7 +55,7 @@ class DynamicScheduler:
             if group not in self._queues:
                 self._queues[group] = deque()
                 self._groups.append(group)
-            self._queues[group].append(_Queued(group, run, future, cancel_event, deadline, discarded))
+            self._queues[group].append(_Queued(group, run, future, cancel_event, deadline, discarded, ready_event))
             self._condition.notify_all()
         return future
 
@@ -132,7 +134,15 @@ class DynamicScheduler:
                         if self._running[group] >= self._group_limit:
                             self._groups.append(group)
                             continue
-                        item = self._queues[group].popleft()
+                        queue = self._queues[group]
+                        for _ in range(len(queue)):
+                            item = queue.popleft()
+                            if item.ready_event is None or item.ready_event.is_set():
+                                break
+                            queue.append(item)
+                        else:
+                            self._groups.append(group)
+                            continue
                         if self._queues[group]:
                             self._groups.append(group)
                         else:
