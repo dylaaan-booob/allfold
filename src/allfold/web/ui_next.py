@@ -113,6 +113,8 @@ class _LocalBody(_Action):
 
 
 def collection_payload(record, *, collection_service=None, cleanup_pending=False):
+    if collection_service is not None:
+        cleanup_pending = collection_service.cleanup_pending(record.id, record.workspace_id)
     saved = record.collection
     token = record.token
     retry = dict(attempt=saved.attempt if saved else 0, revision=record.revision,

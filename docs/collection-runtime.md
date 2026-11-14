@@ -122,7 +122,7 @@ reservations, then permits shared factory closure.
 `registry.check_retry(paper_id, branches=complete_plan, service_id=None,
 expected_token=None, expected_attempt=None, expected_revision=None)` performs read-only qualification and
 returns the current `PaperRecord`. It requires full unexcluded metadata, settled
-failed/cancelled collection, no occupation, the complete original branch names
+failed/cancelled collection, no conflicting occupation, the complete original branch names
 and currently available dependencies for pending branches only.
 
 `registry.retry` accepts the same qualification arguments plus `deadline`. It
@@ -166,7 +166,10 @@ has a finite failure rather than remaining pending.
 
 Local file operations capture their own current body proof and host-visible
 lifetime. Open/locate can coexist with collection and require no Service/Prepare;
-destructive Trash PDF/metadata operations remain unavailable until actual Paper
+they remain visible to maintenance without blocking first Run admission or an
+eligible explicit Retry. Destructive or unconfirmed local cleanup blocks both,
+including Retry's final admission check.
+Destructive Trash PDF/metadata operations remain unavailable until actual Paper
 work and cleanup end. Whole-Workspace maintenance stops admission, drains owned
 work outside configuration/SQLite locks and preserves the bridge for actual
 terminal responses. See [the complete contract](body-downloads.md).

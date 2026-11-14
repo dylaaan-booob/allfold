@@ -95,7 +95,7 @@ Arbitrary strings are excluded rather than merely truncated.
 | `page_id`, `source_page_id`, `role`, `generation` | Descriptive page association and navigation generation |
 | `stage`, `step`, `code`, `status`, `net_error` | Reviewed operation stage, stable failure code and bounded network evidence |
 | `imperva_edet`, `imperva_incident_id` | Optional numeric code and support reference from a recognized Imperva response. The event's UTC time records when Allfold reported restricted access or began waiting for verification. |
-| `outcome`, `parent`, `pdf` | Business/native result, parent-save evidence and separate PDF evidence |
+| `outcome` | Explicit business, native or transport result; native/transport completion does not establish a durable body association |
 
 Default diagnostics exclude credentials, Cookie/Authorization, request and response
 bodies, full URLs, research content, DOM/HTML, screenshots, raw Console output,
@@ -131,8 +131,10 @@ AI. The manifest's `collection_range` states the intentional recent-export windo
 `time_range` states the actual included event range. `range_excluded_history` and
 `range_excluded_events` count intentional range exclusions separately from
 rotation, capacity omissions and writing failures that limit completeness. Task
-exports do not apply the seven-day window. Missing or rotated evidence is disclosed; a confirmed parent remains separate
-from PDF persistence. Export creates a local download only. Users decide whether
+exports do not apply the seven-day window. Missing or rotated evidence is disclosed.
+Native or transport completion remains separate from durable body completion in
+the Paper library; filenames and response observations do not establish it.
+Export creates a local download only. Users decide whether
 to share it, and Reset never deletes previously downloaded packages.
 
 ## Reset boundaries

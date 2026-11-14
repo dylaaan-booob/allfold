@@ -176,6 +176,241 @@ class PendingLocalBridge(LocalBridge):
         self.cancelled.set()
 
 
+class ReadingCollectionBridge(PendingLocalBridge):
+    def __init__(self, *, fail_first=False):
+        super().__init__()
+        self.document_started, self.document = threading.Event(), Future()
+        self.fail_first = fail_first
+
+    def execute(self, name, data, *args, **kwargs):
+        if name == 'local_paper_body':
+            return super().execute(name, data, *args, **kwargs)
+        if name == 'release_workflow_pages':
+            done = Future(); done.set_result({'released': True}); return done
+        assert name == 'extract_paper_metadata'
+        if self.fail_first:
+            self.fail_first = False
+            failed = Future()
+            failed.set_result({'diagnostic': {'code': 'site_restricted', 'stage': 'navigation'}})
+            return failed
+        self.document_started.set()
+        return self.document
+
+
+@pytest.mark.parametrize('action,outcome', [('open', 'opened'), ('locate', 'locate_requested')])
+def test_first_real_run_collects_saved_body_while_local_native_read_is_pending(tmp_path, action, outcome):
+    from allfold.application.integrated_run import run_integrated
+    from allfold.models import ExternalIds
+    from integrated_run_helpers import EmptyLookup
+    from test_document_metadata import envelope
+    from test_integrated_run import client_for, evidence
+
+    config, workspace, paper, path = saved_body(tmp_path)
+    config.write_text(config.read_text() + 'enabled_providers: [pubmed]\n')
+    bridge = ReadingCollectionBridge()
+    app = create_app(config, electron_bridge=bridge, diagnostics_root=tmp_path/'logs')
+    # Both foreground and independent collection use controlled Provider clients.
+    app.state.workspace_tasks.factory.client_factory = EmptyLookup
+    with TestClient(app, base_url='http://localhost') as client, ThreadPoolExecutor() as threads:
+        pending = threads.submit(client.post, f'/api/papers/{paper.id}/body/{action}', json=request_for(client, paper))
+        try:
+            assert bridge.started.wait(2)
+            host = app.state.workspace_tasks
+            assert host.active and host.cleanup_pending(paper.id, paper.workspace_id)
+            assert read_paper(workspace, paper.id).collection_status == 'not_started'
+            result = run_integrated(config, client_factory=client_for((evidence(doi='10.5555/decision'),)),
+                lookup_factory=EmptyLookup, workspace_tasks=host)
+            assert (result.facts.existing_papers, result.facts.created_papers) == (1, 0)
+            collecting = read_paper(workspace, paper.id)
+            assert collecting.id == paper.id and collecting.collection_status in {'queued', 'running'}
+            assert {branch.name for branch in collecting.collection.branches} == {'document', 'necessary-api'}
+            assert bridge.document_started.wait(2) and not bridge.future.done()
+            task = host.current().admit(direct_ids=ExternalIds(doi='10.5555/decision'), metadata=collecting.metadata,
+                branches=app.state.collection_service.plan(paper=collecting))
+            bridge.document.set_result(envelope())
+            completed = task.future.result(3)
+            assert completed.id == paper.id and completed.collection_status == 'completed'
+            assert not pending.done() and host.cleanup_pending(paper.id, paper.workspace_id)
+        finally:
+            if not bridge.document.done(): bridge.document.set_result(envelope())
+            if not bridge.future.done(): bridge.future.set_result(dict(outcome=outcome, resource_closed=True))
+        opened = pending.result(3)
+        assert opened.status_code == 200 and opened.json()['outcome'] == outcome
+        assert path.read_bytes() == b'normal transfer bytes'
+        assert not app.state.workspace_tasks.active
+
+
+@pytest.mark.parametrize('action,outcome', [('open', 'opened'), ('locate', 'locate_requested')])
+def test_public_collection_retry_remains_available_while_native_read_is_pending(tmp_path, action, outcome):
+    from allfold.models import ExternalIds
+    from integrated_run_helpers import EmptyLookup
+    from test_document_metadata import envelope
+
+    config, workspace, paper, path = saved_body(tmp_path)
+    bridge = ReadingCollectionBridge(fail_first=True)
+    app = create_app(config, electron_bridge=bridge, diagnostics_root=tmp_path/'logs')
+    app.state.workspace_tasks.factory.client_factory = EmptyLookup
+    with TestClient(app, base_url='http://localhost') as client, ThreadPoolExecutor() as threads:
+        registry = app.state.workspace_tasks.current()
+        plan = app.state.collection_service.plan(paper=paper)
+        failed = registry.submit(direct_ids=ExternalIds(doi='10.5555/decision'), metadata=paper.metadata,
+            branches=plan).future.result(3)
+        assert failed.collection_status == 'failed'
+        pending = threads.submit(client.post, f'/api/papers/{paper.id}/body/{action}', json=request_for(client, failed))
+        try:
+            assert bridge.started.wait(2)
+            snapshot = client.get('/api/ui-next/workspace').json()
+            item = snapshot['downloaded']['papers'][0]['paper']
+            assert item['cleanup_pending'] and not item['collection']['cleaning_up']
+            assert item['collection']['retry_available']
+            assert registry.check_retry(paper.id, branches=plan, expected_token=failed.token,
+                expected_attempt=1, expected_revision=failed.revision) == failed
+            response = client.post(f'/api/papers/{paper.id}/collection/retry', json=dict(
+                csrf_token=snapshot['csrf_token'], workspace_id=snapshot['workspace_id'], **item['collection']['retry']))
+            assert response.status_code == 200, response.text
+            assert bridge.document_started.wait(2) and not bridge.future.done()
+            task = registry.admit(direct_ids=ExternalIds(doi='10.5555/decision'), metadata=paper.metadata, branches=plan)
+            bridge.document.set_result(envelope())
+            completed = task.future.result(3)
+            assert completed.collection_status == 'completed' and completed.collection.attempt == 2
+            assert completed.body == paper.body and not pending.done()
+        finally:
+            if not bridge.document.done(): bridge.document.set_result(envelope())
+            if not bridge.future.done(): bridge.future.set_result(dict(outcome=outcome, resource_closed=True))
+        assert pending.result(3).status_code == 200
+        assert not app.state.workspace_tasks.active and path.read_bytes() == b'normal transfer bytes'
+
+
+@pytest.mark.parametrize('terminal', ['cancelled-future', 'unclosed'])
+@pytest.mark.parametrize('collection_state', ['not_started', 'failed'])
+def test_unconfirmed_local_terminal_keeps_collection_blocked(tmp_path, terminal, collection_state):
+    from concurrent.futures import CancelledError
+    from allfold.application.collection_runtime import BranchSpec
+    from allfold.models import ExternalIds
+
+    config, workspace, paper, _ = saved_body(tmp_path)
+    bridge = PendingLocalBridge()
+    app = create_app(config, electron_bridge=bridge, diagnostics_root=tmp_path/'logs')
+    client = TestClient(app, base_url='http://localhost')
+    client.__enter__()
+    try:
+        registry = app.state.workspace_tasks.current()
+        def failure(_): raise RuntimeError('Controlled collection failure')
+        if collection_state == 'failed':
+            paper = registry.submit(direct_ids=ExternalIds(doi='10.5555/decision'), metadata=paper.metadata,
+                branches=(BranchSpec('controlled', failure),)).future.result(3)
+            assert paper.collection_status == 'failed'
+        with ThreadPoolExecutor() as threads:
+            pending = threads.submit(client.post, f'/api/papers/{paper.id}/body/open', json=request_for(client, paper))
+            assert bridge.started.wait(2)
+            if terminal == 'cancelled-future':
+                bridge.future.cancel()
+                with pytest.raises(CancelledError): pending.result(3)
+            else:
+                bridge.future.set_result(dict(outcome='local_failure', resource_closed=False))
+                assert pending.result(3).status_code == 409
+            blocked = registry.submit(direct_ids=ExternalIds(doi='10.5555/decision'), metadata=paper.metadata,
+                branches=(BranchSpec('must-not-start', lambda _: pytest.fail('Unconfirmed cleanup admitted collection')),))
+            assert blocked == paper and read_paper(workspace, paper.id).collection_status == collection_state
+            assert app.state.workspace_tasks.active and registry.cleanup_pending(paper.id)
+            if collection_state == 'failed':
+                from allfold.persistence.paper_repository import InvalidPaperState
+                plan = (BranchSpec('controlled', lambda _: pytest.fail('Unconfirmed cleanup admitted Retry')),)
+                for retry in (registry.check_retry, registry.retry):
+                    with pytest.raises(InvalidPaperState, match='resources have not settled'):
+                        retry(paper.id, branches=plan, expected_token=paper.token, expected_attempt=1)
+    finally:
+        # Assert shutdown separately so its expected error cannot hide a failed
+        # collection/occupancy assertion above.
+        with pytest.raises(RuntimeError, match='resources or state could not be settled'):
+            client.__exit__(None, None, None)
+
+
+@pytest.mark.parametrize('collection_state', ['not_started', 'failed'])
+def test_destructive_local_lease_still_blocks_collection_after_restore(tmp_path, collection_state):
+    from allfold.application.collection_runtime import BranchSpec
+    from allfold.models import ExternalIds
+
+    config, workspace, paper, path = saved_body(tmp_path)
+    app = create_app(config, electron_bridge=LocalBridge(), diagnostics_root=tmp_path/'logs')
+    with TestClient(app, base_url='http://localhost') as client:
+        host = app.state.workspace_tasks
+        registry = host.current()
+        def failure(_): raise RuntimeError('Controlled collection failure')
+        if collection_state == 'failed':
+            paper = registry.submit(direct_ids=ExternalIds(doi='10.5555/decision'), metadata=paper.metadata,
+                branches=(BranchSpec('controlled', failure),)).future.result(3)
+            assert paper.collection_status == 'failed'
+        with PaperRepository.open(workspace) as repository:
+            paper = repository.exclude(paper.token)
+        request = request_for(client, paper)
+        with host.local_operation(paper, destructive=True):
+            restored = client.post(f'/api/ui-next/papers/{paper.id}/restore', json={
+                key: value for key, value in request.items() if key != 'body_generation'})
+            assert restored.status_code == 200, restored.text
+            current = read_paper(workspace, paper.id)
+            blocked = registry.submit(direct_ids=ExternalIds(doi='10.5555/decision'), metadata=current.metadata,
+                branches=(BranchSpec('must-not-start', lambda _: pytest.fail('Deletion admitted collection')),))
+            assert blocked == current and current.collection_status == collection_state
+            if collection_state == 'failed':
+                from allfold.persistence.paper_repository import InvalidPaperState
+                plan = (BranchSpec('controlled', lambda _: pytest.fail('Deletion admitted Retry')),)
+                for retry in (registry.check_retry, registry.retry):
+                    with pytest.raises(InvalidPaperState, match='resources have not settled'):
+                        retry(paper.id, branches=plan, expected_token=current.token, expected_attempt=1)
+            assert client.post(f'/api/papers/{paper.id}/body/open', json=request).status_code == 409
+            assert host.active and host.cleanup_pending(paper.id, paper.workspace_id)
+        assert not host.active and path.read_bytes() == b'normal transfer bytes'
+
+
+def test_retry_rechecks_native_uncertainty_captured_after_initial_qualification(tmp_path):
+    from allfold.application.collection_runtime import BranchSpec
+    from allfold.application.local_body import LocalBodyService
+    from allfold.application.task_authority import TaskAuthority
+    from allfold.application.workspace_tasks import WorkspaceTaskHost
+    from allfold.models import ExternalIds
+    from allfold.persistence.paper_repository import InvalidPaperState
+
+    class UnclosedBridge(LocalBridge):
+        def execute(self, action, data, progress=None, *, verify_recovery=None):
+            assert action == 'local_paper_body'
+            verify_recovery()
+            self.calls.append((action, data))
+            result = Future()
+            result.set_result(dict(outcome='local_failure', resource_closed=False))
+            return result
+
+    config, workspace, paper, path = saved_body(tmp_path)
+    bridge, inject_local_failure = UnclosedBridge(), False
+    def capture(service_id, providers):
+        nonlocal inject_local_failure
+        if inject_local_failure:
+            inject_local_failure = False
+            # Authority is captured outside the Paper gate. An independent
+            # local request can settle uncertain after the first idle check.
+            result = LocalBodyService(host).perform(paper.id, paper.workspace_id,
+                action='open', body_generation=paper.body_generation)
+            assert result.status == 'local_failure'
+        return TaskAuthority.capture(config, None, service_id, providers)
+    host = WorkspaceTaskHost(config, bridge=bridge, authority_capture=capture)
+    try:
+        registry = host.current()
+        def failure(_): raise RuntimeError('Controlled collection failure')
+        failed = registry.submit(direct_ids=ExternalIds(doi='10.5555/decision'), metadata=paper.metadata,
+            branches=(BranchSpec('controlled', failure),)).future.result(3)
+        assert failed.collection_status == 'failed'
+        inject_local_failure = True
+        with pytest.raises(InvalidPaperState, match='resources have not settled'):
+            registry.retry(paper.id, branches=(BranchSpec('controlled', lambda _: None),),
+                expected_token=failed.token, expected_attempt=1, expected_revision=failed.revision)
+        assert len(bridge.calls) == 1 and host.active
+        assert read_paper(workspace, paper.id) == failed and path.read_bytes() == b'normal transfer bytes'
+    finally:
+        host.shutdown()
+        with pytest.raises(RuntimeError, match='resources or state could not be settled'):
+            host.join()
+
+
 def test_old_missing_native_result_cannot_clear_a_new_body(tmp_path):
     config, workspace, paper, path = saved_body(tmp_path)
     bridge = PendingLocalBridge()

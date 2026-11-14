@@ -332,12 +332,20 @@ class WorkspaceRegistry:
     def _branch_tasks(self):
         return tuple(branch for task in self._tasks.values() for branch in task.branch_tasks)
 
-    def busy(self, paper_id, workspace_id=None):
+    def _local_blocks_collection(self, paper_id):
+        # Ordinary reads coexist with collection. A retained ended lease means
+        # native cleanup is unconfirmed and still excludes work.
+        return any(owner.paper_id == paper_id and (owner.destructive or owner.cleanup_failed or owner.cleanup_ended)
+            for owner in self._local_operations.values())
+
+    def busy(self, paper_id, workspace_id=None, *, include_local_reads=True):
         if workspace_id is not None and UUID(str(workspace_id)) != self.workspace_id:
             return False
+        paper_id = UUID(str(paper_id))
         with self._gate:
-            return (UUID(str(paper_id)) in self._tasks or UUID(str(paper_id)) in self._reservations
-                    or any(owner.paper_id == UUID(str(paper_id)) for owner in self._local_operations.values()))
+            local = (any(owner.paper_id == paper_id for owner in self._local_operations.values())
+                if include_local_reads else self._local_blocks_collection(paper_id))
+            return paper_id in self._tasks or paper_id in self._reservations or local
 
     cleanup_pending = busy
 
@@ -504,7 +512,7 @@ class WorkspaceRegistry:
             self._require_open()
             with self._repository() as repository:
                 paper = repository.match(direct_ids, additional_identities=additional_identities)
-                if paper and any(owner.paper_id == paper.id for owner in self._local_operations.values()):
+                if paper and self._local_blocks_collection(paper.id):
                     return paper
                 reservation = self._reservations.get(paper.id) if paper else None
                 if reservation is not None and reservation.kind == 'body':
@@ -567,7 +575,7 @@ class WorkspaceRegistry:
         paper_id = UUID(str(paper_id))
         with self._gate:
             self._require_open()
-            if paper_id in self._tasks or paper_id in self._reservations:
+            if self.busy(paper_id, include_local_reads=False):
                 raise InvalidPaperState('Previous Paper resources have not settled')
             with self._repository() as repository:
                 paper = repository.get(paper_id)
@@ -602,7 +610,7 @@ class WorkspaceRegistry:
             self._require_open()
             for authority in authorities.values():
                 self._check_admission(authority)
-            if paper.id in self._tasks or paper.id in self._reservations:
+            if self.busy(paper.id, include_local_reads=False):
                 raise InvalidPaperState('Previous Paper resources have not settled')
             with self._repository() as repository:
                 current = repository.get(paper.id)
