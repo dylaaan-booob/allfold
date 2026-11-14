@@ -23,9 +23,9 @@ Setup installs locked dependencies and builds the UI. It creates a missing local
 
 1. In **Journals**, manage followed Journals, Groups, Labels and Access Services. Each configuration has its own saved scope. Import a Markdown research scope through Preview / Confirm, or export **User Data** to share it.
 2. In **Workflows → Login**, authenticate CARSI once and prepare every saved Access Service. Manual Services offer a Visit action. Complete verification in the corresponding Browser group while the task waits. Temporary pages close when the task ends; if a Service still needs attention, retry Visit or Login as needed. Select **Manual confirmation of login** only after confirming all saved Services are available.
-3. In **Workflows → Discover**, set keywords and publication months, then select PubMed, Web of Science and OpenAlex as needed. WoS uses its prepared Service page when available. After manual confirmation without a prepared page, Discover opens the official WoS query page in the shared Browser session. API discovery continues if WoS needs Login. Shared Work lookup and creation-time metadata completion preserve existing Papers. See [Provider roles and query limits](docs/providers.md).
+3. In **Workflows → Discover**, set keywords and publication months, then select PubMed, Web of Science and OpenAlex as needed. WoS uses its prepared Service page when available. After manual confirmation without a prepared page, Discover opens the official WoS query page in the shared Browser session. API discovery continues if WoS needs Login. Run resolves necessary direct identities, establishes readable basic Papers and registers their complete collection plans. Workspace continues collection after Run finishes, while another Run can start. See [Provider roles and query limits](docs/providers.md).
 4. Review **Candidate**, **Downloaded** and **Trash** in **Workspace / ARRAY**. Reject persists exclusion and moves the Paper to Trash. Restore keeps its UUID and existing content. In Trash, clearing metadata removes bibliography, dates, abstract, sources and notes while retaining reliable identities, exclusion and any body association. An identity-only entry can be unexcluded locally; only a later actual Run hit rebuilds its metadata.
-5. In **Info**, query linked preprints for a complete, unexcluded formal article. Reader displays the ordinary date set and independent verified Preprint date; Info keeps version-family proof. Developer Mode retains local field clearing and empty-abstract input.
+5. Read Papers while their dates, abstract, Preprint proof and collection state update. Retry an eligible failed/cancelled Paper after its resources finish cleaning up. In **Info**, explicitly query linked preprints for a complete, unexcluded formal article; different Papers have independent requests. Reader displays the ordinary date set and independent verified Preprint date. Developer Mode retains local field clearing and empty-abstract input.
 
 `Workspace/papers.sqlite` is the sole production Paper store. Run/WoS, Reader,
 search, local edits, Preprint and Trash share the same repository. An unopened,
@@ -34,15 +34,17 @@ first Run initializes it explicitly. Corrupt or unsupported libraries report an
 error. Paper storage uses the current schema only; no old-data upgrade is provided.
 Paper Markdown is no longer created, scanned or read back; old Workspace data is
 not migrated or deleted automatically. Repeat Run hits preserve complete saved
-records. Stable direct identities also support DOI-free Papers.
+records. A complete `not_started` Paper is registered on its next actual Run hit;
+completed Papers are not recollected, and failed/cancelled Papers require explicit
+single-Paper retry. Stable direct identities also support DOI-free Papers.
 
 Keep, Import to Zotero, Last Import and active webpage Enrich are retired.
-WF05 supplies internal Workspace collection registration and scheduling; production
-Run registration and public Download/PDF actions remain deferred.
+Workspace owns bounded collection and explicit Preprint operations across Runs.
 An existing body association only classifies a Paper as Downloaded; there is no
-PDF download, physical delete, open or locate action. Current Run timing and
-creation-time Completion remain. Papers created through that current Run path stay
-`not_started`; internal accepted work projects its durable collection state.
+PDF download, physical delete, open or locate action. Foreground Run finish means
+retrieval, base admission and its own cleanup have ended; each Paper's collection
+and cleanup status remain independent. Cancelling Run leaves accepted Paper work
+running. Restart fails interrupted attempts without replaying requests or pages.
 
 **Browser**, **Search** and **History** are available from the header in Workspace, Workflows, Journals and Settings. Search opens local Papers, Journals, saved Services and existing Browser tabs. Enter `>` to find a command. Browser fills the main content area and groups existing pages under CARSI, a saved Service or Other. The Tabs rail opens the grouped directory. Task controls offer **查看任务页面** to open the associated page for inspection or manual verification. Returning keeps the business view, navigation history, shared Session and active task.
 
@@ -67,13 +69,14 @@ Supported Cloudflare challenges invoke the existing Solver within their owning
 Browser operation. hCaptcha, Imperva CAPTCHA and MFA require manual verification. Controlled page
 checks return bounded observations rather than full HTML. Internal article access
 and combined Date/Abstract/PDF-clue operations confirm current-Document identity independently.
-Necessary API/Preprint services use captured collection attempts; production Run
-still uses its current Completion and does not register background collection.
+The complete collection plan runs combined Document and necessary API/Preprint
+branches with independent clients and captured authority. Ordinary missing fields
+do not trigger generic Completion requests.
 See [Document access](docs/browser-documents.md).
 
 WF07 provides internal lazy PDF-source discovery and bounded, deletable source
 facts. Candidate URLs and reader entrances do not mark a Paper as Downloaded.
-Production registration, PDF transfer/files and public Download remain deferred;
+WF08 connects source-fact collection to production; PDF transfer/files and public Download remain deferred to WF09/WF10;
 see the [component scope and fixed rules](docs/pdf-source-discovery.md).
 
 ## Local data and privacy
@@ -92,7 +95,7 @@ see the [component scope and fixed rules](docs/pdf-source-discovery.md).
 | Electron application logs directory | Bounded configuration-scoped run history and structured diagnostics | No |
 | `*.openalex-secrets.json`, `*.pubmed-secrets.json` | Optional API keys beside the configuration | No |
 
-Submit API key replacement or clearing explicitly from the corresponding Run Provider Sidebar. PubMed and OpenAlex keys are optional. Anonymous OpenAlex queries retain first-page evidence and explicitly report incomplete coverage when cursor paging needs a key. Run settings select Discovery sources. Run uses its fixed API helpers for creation-time identity, date and relationship evidence. Optional institution credentials use Electron safeStorage separately from YAML, through the Login Access toolbar. Ordinary configuration changes save automatically; Pending, failure and conflict states retain the draft. Independent Browser work allows unrelated input, Journal and Service edits. Changes to access used by an active Service wait for its actual settlement, then invalidate only the old context. Foreground Run/WoS keeps its input snapshot and ordinary edits Pending until completion; every save still rechecks saved revisions. Sensitive credential changes and destructive operations keep separate explicit submission and confirmation. Discovery and page workflows contact the selected external providers and sites.
+Submit API key replacement or clearing explicitly from the corresponding Run Provider Sidebar. PubMed and OpenAlex keys are optional. Anonymous OpenAlex queries retain first-page evidence and explicitly report incomplete coverage when cursor paging needs a key. Run settings select Discovery sources; necessary identity and relationship capabilities have their own eligibility. Optional institution credentials use Electron safeStorage separately from YAML, through the Login Access toolbar. Ordinary configuration changes save automatically; Pending, failure and conflict states retain the draft. Background Paper work permits new Run inputs and unrelated Journal/Service edits. Changes to access used by an active branch revoke and drain only affected work before replacing the old context. Foreground Run/WoS keeps its input snapshot and ordinary edits Pending until completion; every save still rechecks saved revisions. Sensitive credential changes and destructive operations keep separate explicit submission and confirmation. Discovery and page workflows contact the selected external providers and sites.
 
 Configuration, legacy journal seed and Workspace paths must stay inside the project directory. On first use, each configuration validates and copies its legacy managed Markdown data into SQLite without changing the source file; later changes use SQLite. Include `.allfold/` in local backups. Use **Export User Data** to transfer a research scope to another configuration or application location, since canonical configuration paths identify saved scopes. Export contains no provider credentials, resource caches, Workspace papers . Legacy Markdown is a first-migration or explicit exchange source, not the live store.
 

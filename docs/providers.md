@@ -1,10 +1,14 @@
-# Journal discovery and metadata completion
+# Journal discovery and Paper collection
 
-**Run** discovers journal Papers, completes their metadata and creates a reviewable snapshot. **ARRAY Info** offers a manual bioRxiv/medRxiv preprint lookup for the current Paper. Active webpage Enrich and Import are retired; Run keeps its current creation-time Completion.
+**Run** discovers journal Papers, confirms necessary direct identities, establishes
+basic Papers and registers complete collection plans. Workspace continues each
+Paper's combined webpage and necessary API/Preprint branches after foreground
+cleanup. **ARRAY Info** also offers independent explicit bioRxiv/medRxiv queries.
+Ordinary field-gap Completion, active Enrich and Import are retired.
 
 ## Provider roles
 
-| Provider | Run Discovery | Run metadata completion |
+| Provider | Run Discovery | Necessary identity / collection capabilities |
 | --- | --- | --- |
 | PubMed | Merged saved ISSNs, native Title/Abstract keywords and publication dates; ESearch History + EFetch | Batched DOI-to-PMID lookup, ESummary v2 dates/relations and selective EFetch |
 | OpenAlex | Merged `primary_location.source.issn`, native title/abstract/keyword search and publication dates | Shared exact DOI/Work lookup and complete locations |
@@ -14,7 +18,7 @@
 | arXiv | None | Known arXiv IDs through batched `id_list`; Atom `published` establishes the first-version date |
 | bioRxiv / medRxiv | None | Native `details` for a known platform and preprint DOI |
 
-Run's `enabled_providers` accepts PubMed, WoS and OpenAlex in any nonempty combination and defaults to PubMed + OpenAlex. WoS never enables institutional Browser access automatically. Run always uses the fixed Work, identity, date and relationship APIs in the table. Discovery selection governs journal searches. Provider aliases, ordering, Settings forms, expression previews and runtime dispatch use the same IDs.
+Run's `enabled_providers` accepts PubMed, WoS and OpenAlex in any nonempty combination and defaults to PubMed + OpenAlex. WoS never enables institutional Browser access automatically. Discovery selection governs journal searches. Necessary identity and relationship purposes have independent eligibility; no Paper blindly probes all services. OpenAlex collection credentials are declared only for an explicit Work purpose. Provider aliases, ordering, Settings forms, expression previews and runtime dispatch use the same IDs.
 
 PubMed and OpenAlex keys are optional, explicitly submitted to revision-checked local 0600 secret files beside the YAML; ordinary autosave, draft recovery, snapshots and diagnostics contain no keys. PubMed anonymous pacing is at least 0.35 seconds and keyed pacing at least 0.11 seconds. Keyed Entrez requests use form POST so the key does not enter request URLs. Crossref contact/mailto remains optional. Obsolete PubMed query fields, Europe PMC Discovery selections and old Provider orders are rejected with `config.template.yaml` reconstruction guidance; no startup or validation deletes user data.
 
@@ -26,19 +30,26 @@ The shared parser accepts `AND`, `OR`, parentheses, adjacent quoted phrases and 
 
 PubMed compiles the shared AST into explicit `[Title/Abstract]` terms, including phrases and supported prefixes. It merges followed ISSN/eISSNs with native `[Date - Publication]` bounds, retrieves and validates the complete ESearch PMID set, reuses History Server and batches EFetch. Searches beyond the 9999-ID transport window are split by publication day range; a single day still above the window reports incomplete coverage rather than truncating. Missing DOI does not discard a reliable PMID. EFetch retains direct article identifiers, bibliography, native journal identities, independent publication/history events and explicit version references. Journal Discovery treats `phrasesnotfound` entries that exactly match the current batch's ISSN/eISSN terms as gaps in PubMed coverage and continues to validate the returned PMIDs. Empty error lists are valid responses. Other Entrez application errors inside HTTP 200 still fail.
 
-OpenAlex uses `search.title_abstract_keywords` (the `.exact` variant for prefixes), merged `primary_location.source.issn`, `from_publication_date` and `to_publication_date`. At most 100 OR values and a 6000-character encoded-parameter budget split batches; normal Discovery does not resolve Sources per ISSN. Returned primary-source ISSNs map each Work to its followed Journal. Missing/mismatched source identity cannot expand scope. Accessible pages validate totals, Work identities and cursor progress. Individual parse or singleton-detail failures retain valid neighboring records and later pages with partial coverage; a valid Work without a title remains an identity candidate for ordinary-field completion. Anonymous basic first-page queries are supported; further cursor paging requires the optional key and reports incomplete coverage when unavailable. Native hits are never subjected to a second local keyword/date filter.
+OpenAlex uses `search.title_abstract_keywords` (the `.exact` variant for prefixes), merged `primary_location.source.issn`, `from_publication_date` and `to_publication_date`. At most 100 OR values and a 6000-character encoded-parameter budget split batches; normal Discovery does not resolve Sources per ISSN. Returned primary-source ISSNs map each Work to its followed Journal. Missing/mismatched source identity cannot expand scope. Accessible pages validate totals, Work identities and cursor progress. Individual parse or singleton-detail failures retain valid neighboring records and later pages with partial coverage; a valid Work without a title remains an identity candidate for necessary Work location; no field-gap query is added. Anonymous basic first-page queries are supported; further cursor paging requires the optional key and reports incomplete coverage when unavailable. Native hits are never subjected to a second local keyword/date filter.
 
 Selected PubMed, WoS and OpenAlex Discovery overlap within one parent Run, slot, workflow, cancellation signal and captured configuration/Workspace. WoS retains CARSI, Browser ownership and the [native export contract](wos-export.md). Verified PubMed/HTTP pages and WoS batches feed formal DOIs into a shared bounded Work-location queue while discovery continues. Exact DOI/Work batches map returned identities independently of response order, cache confirmed full evidence/no-match/failure and drain the final short batch. Discovery and locator share OpenAlex full details, in-flight exact requests and host pacing. Shortened authorships/locations require a verified exact Work singleton; unresolved caps and failed pages remain limitations. Work lookup only adds evidence for discovered candidates. Work-level PMID/PMCID values on formal records remain related identifiers and cannot overwrite a directly confirmed formal PMID.
 
-Before creation, all saved Papers including Rejected participate in direct-identity conflict checks. Run completes only new candidates and preserves existing Paper metadata. Ordinary fields use fixed source priority with formal WoS bibliography first; author lists remain whole. Completion responses and version relationships never become extra Discovery candidates. Only reliable direct identifiers establish ownership; conflicting saved owners are skipped and reported. Counts derive from distinct candidates, completion activity and actual protected creates.
+Before creation, all saved Papers including Rejected participate in direct-identity conflict checks. Run admits new candidates and actual `not_started` matches, preserving existing Paper metadata. Ordinary fields use fixed source priority with formal WoS bibliography first; author lists remain whole. Necessary responses and version relationships never become extra Discovery candidates. Only reliable direct identifiers establish ownership; conflicting saved owners are skipped and reported. Counts derive from distinct candidates, necessary identities, actual creates/matches/exclusions and collection registration.
 
 Run batches unique new formal DOIs missing a directly confirmed PMID. PubMed ESearch uses quoted `[aid]` clauses without the Discovery date, ISSN or keyword filters. Each result set is checked for completeness, and ESummary or EFetch verifies the returned direct DOI for each PMID. A complete empty lookup is normal. An incomplete response or ambiguous binding reports a limitation. A confirmed formal PMID is available to subsequent helpers and persists in the new Paper. If a later EFetch directly contradicts the binding, Run drops the disputed PMID and facts reached solely through it. [PubMed Article Identifier](https://pubmed.ncbi.nlm.nih.gov/help/#aid), [NCBI E-utilities](https://www.ncbi.nlm.nih.gov/books/NBK25499/).
 
-Ordinary-field gaps use the same direct formal-identity chain as final creation. A related preprint or association-only Work cannot satisfy a formal root's missing title, authors, abstract or source, even when that Work is labelled journal. A formal PMID with such gaps requests EFetch; complete formal bibliography needs only ESummary for remaining date/relationship goals.
+Only directly bound formal records supply base bibliography or formal increments.
+A related Preprint or association-only Work cannot supply the formal article's
+fields or direct aliases, even when labelled journal. Missing abstract, authors
+or event dates do not request EFetch or any generic Completion. The precreation
+DOI confirmation retains its summary-first, missing-direct-DOI fetch fallback.
 
-Completion activity distinguishes **Base API completion** from **Native version verification** per provider. Actual HTTP dispatches and responses refresh activity, including paginated batches; the counters count requests rather than Papers. Cache reuse emits no HTTP activity or request count. Cancellation stops new dispatch and prevents cancelled responses from reporting completion activity.
+Foreground activity reports retrieval and necessary identity work. Background
+branch status belongs to the Paper. Physical dispatch counts include pagination;
+cache reuse adds no HTTP count. Foreground cancellation stops new Run requests
+without cancelling already accepted Paper operations.
 
-A safe read has at most three regular attempts under the shared [Provider HTTP policy](http.md#journal-run-and-native-preprint-apis). The absolute deadline also bounds a blocked HTTP read. Run can give each eligible failed physical request one final check within that same request's 90-second budget. Completion reuses successful pages and confirmed no-matches, and only resends the exact failed request with its original redirect authorization policy. Identity and parse errors, access restrictions and cancellation stop recovery. Newly verified identities can still schedule their necessary dependent metadata requests.
+A safe read has at most three regular attempts under the shared [Provider HTTP policy](http.md#journal-run-and-native-preprint-apis). The absolute deadline also bounds a blocked HTTP read. Run can give each eligible failed physical request one final check within that same request's 90-second budget. Necessary lookups reuse successful pages and confirmed no-matches, and only resends the exact failed request with its original redirect authorization policy. Identity and parse errors, access restrictions and cancellation stop recovery. Newly verified identities can still schedule their necessary dependent metadata requests.
 
 Each HTTP Discovery source reports its settled status and retained-record count as soon as it finishes, even while WoS is waiting for user verification. A finished or failed source therefore does not retain its initial discovery activity until the whole phase ends.
 
@@ -79,29 +90,37 @@ The SQLite Paper library is the only persisted literature object. Run creates
 new Papers, preserves existing full records and can rebuild only an unexcluded
 identity-only record hit by the current Run. No standalone Evidence file is written. Provider records
 are temporary normalization/query/date inputs. WF06 can hand off explicitly
-verified immutable capability facts to an internal task; it never transfers a
+verified immutable capability facts to the Workspace task; it never transfers a
 Run client, mutable cache, snapshot or replay callback. There is no permanent
 response archive or background sync.
 Run snapshots, configuration, Registry and History/Diagnostics retain
 their separate business storage.
 
-Received, Accepted and publication events remain current operation-local request goals. Persistence extracts qualified formal-article month/day values into the ordinary date set; Reader no longer exposes old event/source columns. The engine also follows verified preprint associations and fills actual title, authors, source and abstract gaps. Optional keywords, indexed terms and affiliations do not create requests.
+Received, Accepted and publication evidence remains operation-local data, never a missing-field request goal. Persistence extracts qualified formal-article month/day values into the ordinary date set; Reader no longer exposes old event/source columns. The necessary service follows verified Preprint associations. Incidental directly bound formal fields are retained; missing bibliography, keywords, indexed terms and affiliations create no generic request.
 
-The shared completion engine collects exact identifier sets across Papers. Confirmed formal PMIDs use PubMed ESummary v2 for dates/relations, or selective EFetch when full bibliography is missing; complete EFetch evidence satisfies summary capability. Europe PMC uses `SRC:MED AND HAS_PREPRINT:Y` with batched PMID clauses, plus direct known PPR IDs/DOIs. It does not read every PMID core record for ordinary metadata. Crossref exact DOI batches and reverse `relation.type:is-preprint-of` / repeated `relation.object` batches run alongside the other necessary base APIs. Exact target relations bind reverse results to each formal DOI, independently of response order; cursors exhaust every group and failed pages retain verified earlier facts with partial status. Crossref Received/Accepted assertions require explicit history semantics and valid ISO or English dates, preserving source labels and precision. Deposit, registration and indexing times never become manuscript history.
+Purpose-driven collection groups exact identifiers within its owned branch. Confirmed formal PMIDs use PubMed ESummary v2 for relations; qualified direct/related Preprint PMID purposes use EFetch. Complete qualified fetch evidence satisfies summary capability; missing bibliography never triggers fetch. Europe PMC uses `SRC:MED AND HAS_PREPRINT:Y` with batched PMID clauses, plus direct known PPR IDs/DOIs. It does not read every PMID core record for ordinary metadata. Crossref exact DOI batches and reverse `relation.type:is-preprint-of` / repeated `relation.object` batches run alongside the other necessary base APIs. Exact target relations bind reverse results to each formal DOI, independently of response order; cursors exhaust every group and failed pages retain verified earlier facts with partial status. Crossref Received/Accepted assertions require explicit history semantics and valid ISO or English dates, preserving source labels and precision. Deposit, registration and indexing times never become manuscript history.
 
-Operation-local caches distinguish PubMed summary/fetch, Crossref exact/reverse and complete Work evidence, including success, empty and failure responses. They are shared across new candidates and discarded when Run settles. Verified records from partial batches stay available while attributable failures settle. OpenAlex Work/locations already obtained during Discovery are reused. Every new relation enters the next shared native-version wave before final First public coverage is calculated. arXiv `id_list` spans Papers in bounded groups of 200; each group drains without a total quota. Explicit bioRxiv/medRxiv preprint DOI targets, including `10.64898/`, use native `/details` version lists. Only the explicit Info preprint lookup queries `/pubs` by formal DOI.
+Operation-local caches distinguish PubMed summary/fetch, Crossref exact/reverse and complete Work evidence, including success, empty and failure responses. Foreground caches end with Run; every background branch has a fresh independent scope and may consume immutable verified handoff facts. Verified records from partial batches stay available while attributable failures settle. OpenAlex Work/locations already obtained during Discovery are reused. Every new relation enters the next necessary native-version wave before final First public coverage is calculated. arXiv `id_list` uses bounded groups of 200 identifiers; each group drains without a total quota. Explicit bioRxiv/medRxiv preprint DOI targets, including `10.64898/`, use native `/details` version lists. Native `/pubs` reverse lookup requires an explicit necessary purpose; the public Info query retains its formal-DOI use.
+
+For native bioRxiv/medRxiv `/pubs` and `/details` paths, keep the first DOI slash
+literal and encode each suffix slash as `%252F`, including in provenance URLs.
+Canonical DOI identities remain unchanged. An empty response must still name the
+complete requested DOI where the status supplies a subject; a truncated status
+or service error is not NoMatch. See the [routing investigation](biorxiv-doi-routing.md)
+for the community fix and live positive/negative controls.
 
 Every known family needs first-version proof. Native arXiv Atom `published`, never `updated`, establishes its first public date. Europe PMC explicit PPR version facts can establish v1; native platform details supply missing proof. Crossref `posted`, version text or a DOI suffix alone do not establish native v1. OpenAlex `related_works`, `acceptedVersion`, `is_accepted` and repository locations cannot prove First public. Only explicit validated DOI/arXiv/official-URI relations are followed; there is no title similarity matching. Europe PMC keeps `Preprint in`/`Preprint of`, version identities and native relation notes, including automatic title/first-author matching notes, in source provenance. Missing history, conflicting dates or future preprint dates remain unresolved. Cancellation and configuration/Workspace checks guard every subsequent request and batch.
 
-Run reports complete, partial, failed, cancelled and empty coverage. First public coverage independently distinguishes recorded, no association, known unresolved, conflicting evidence, service failure and cancellation. Valid evidence survives a source failure and remains eligible for the protected create chain.
+Foreground retrieval and each Paper collection report their own complete/partial/failed/cancelled/empty outcomes. First public coverage independently distinguishes recorded, no association, known unresolved, conflicting evidence, service failure and cancellation. Valid evidence survives a source failure and remains eligible for the protected create chain.
 
-## Internal necessary Provider services (WF06)
+## Necessary Provider services
 
 `application.necessary_metadata` supplies `necessary_metadata_branch()` through
-the existing `BranchSpec`/`WorkspaceRegistry` interface. Production Run still
-uses the creation-time Completion described above, and Info keeps its public
-Preprint gate. These components do not register production background work or
-change Run creation, completion or its single slot.
+`BranchSpec`/`WorkspaceRegistry`. `ProductionCollectionService` installs it with
+the complete `document` branch in production. Foreground Run retains its serial
+slot only through retrieval, necessary identities, complete admission and its
+own cleanup. Necessary clients/lookup types/batching/formal binding live in
+`application.provider_lookup`; the ordinary Completion driver is removed.
 
 `necessary_requests()` plans unfinished relationship and native-proof work.
 Missing abstract, authors or Received/Accepted/Published online/Published values
@@ -150,7 +169,7 @@ Same-formal month/day dates and an eligible abstract may arrive incrementally;
 related Preprint bibliography and dates stay outside the ordinary date set.
 Year-only dates gain no invented precision, and database maintenance timestamps
 gain no publication eligibility. Crossref JATS structure and arXiv summary
-paragraphs remain intact in raw Provider candidates; legacy Run normalization
+paragraphs remain intact in raw Provider candidates; Run base normalization
 continues to own its existing canonical comparison behavior.
 
 Preprint relations and version proof may also persist incrementally, but a new
@@ -164,19 +183,30 @@ repository locations and PubMed publication dates do not substitute for native
 v1. Partial or failed work retains verified increments and terminates the branch
 as failed; cancellation and actual client cleanup remain task-owned.
 
-The current registry executes one Paper's branches serially in one worker/client
-scope. Cross-thread component races use separate owned contexts/connections;
-these checks do not enable production per-Paper parallel collection.
+The registry executes independent Document and API branches concurrently using
+separate thread-owned repositories, client/cache scopes and native identities.
+Only application pacing/cooldown and explicit captured ownership are shared.
+Parent and leaf execution are separately bounded; Paper occupancy survives every
+branch and actual cleanup. A failed document does not discard independent API
+results, and normal empty work can complete.
 
 ## Info preprint lookup
 
 Open **Info** in ARRAY and start a lookup for the current Paper's formal DOI. Each server is queried through `/pubs/{server}/{published_doi}/na/json`. Exact publication-to-preprint matches lead to `/details/{server}/{preprint_doi}/na/json` for native version dates. The relation and server-specific response establish the platform.
 
-A successful lookup appends deduplicated preprint evidence to the selected Paper. Verified first-version evidence can fill an empty First public. A later version can be saved as evidence while First public stays empty. Existing First public, primary identifiers, bibliography, notes and workflow state are protected. No match, failure and cancellation each have their own outcome and leave the Paper untouched. The commit rechecks captured Paper generations, configuration, Workspace/database identity and cancellation. No Enrich or Markdown helper owns this write. See [Safety](safety.md).
+A successful lookup appends deduplicated preprint evidence to the selected Paper. Verified first-version evidence can fill an empty First public. A later version can be saved as evidence while First public stays empty. Existing First public, primary identifiers, bibliography, notes and workflow state are protected. No match, failure and cancellation each have their own outcome and leave the Paper untouched. The commit rechecks original metadata/operation generations, narrow Provider authority, Workspace/database identity and cancellation. No Enrich or Markdown helper owns this write. See [Safety](safety.md).
+
+Requests are keyed by Workspace/Paper/request and use the existing bounded registry
+execution. They do not take a Run slot, change collection attempts or stop when
+the Reader changes. Same-Paper work/cleanup blocks a new operation; different
+Papers and another Run can proceed. After actual cleanup, another explicit query
+is allowed even when collection completed normally or empty. A first complete
+collection intent waits behind an already accepted query without revoking it;
+new manual clicks do not queue automatically.
 
 ## HTTP and Browser boundary
 
-Run, Info preprint lookup and standalone OpenAlex share the [Provider HTTP policy](http.md#journal-run-and-native-preprint-apis). Recoverable connection failures and temporary HTTP responses can show **Retrying**. An active dependency cooldown can show **Waiting**. Retry-After is enforced across clients for the same origin and authentication context. A request whose remaining budget is shorter ends while the cooldown stays active. Recognized verification pages stop that Provider client. Unexpected HTML and invalid envelopes report failures. A known-ID HTTP 404 or valid empty response can report no match. arXiv uses three-second pacing, and bioRxiv and medRxiv share their API host pacing.
+Run, Info preprint lookup and standalone OpenAlex share the [Provider HTTP policy](http.md#journal-run-and-native-preprint-apis). Recoverable connection failures and temporary HTTP responses can show **Retrying**. An active dependency cooldown can show **Waiting**. Retry-After is enforced across clients for the same origin and authentication context. A request whose remaining budget is shorter ends while the cooldown stays active. Recognized verification pages stop that Provider client. Unexpected HTML and invalid envelopes report failures. Only an adapter-confirmed exact no-match is empty; raw service 404 is a failure. arXiv uses three-second pacing, and bioRxiv and medRxiv share their API host pacing.
 
 Keep/Import and active Enrich have no UI, HTTP or native dispatch path. Their
 Local API, attachment communication, Translator sandbox and generated Runtime
@@ -184,7 +214,8 @@ assembly are retired. Prepare, WoS, Login, Browser/Document identity and
 Cloudflare remain in production. Native background pages retain a nonzero layout
 viewport without selecting or focusing them. WF06 supplies internal Date/Abstract
 components; WF07 adds separate same-Document PDF clues and source discovery.
-Production collection and new download paths remain disabled.
+WF08 installs production collection; PDF transmission, files and public Download
+remain deferred to WF09/WF10.
 
 An Imperva response with the Incapsula incident marker and a single CAPTCHA code (`edet=12`) waits for the user to complete verification in Browser. The existing task resumes when the article loads in the same tab. The Cloudflare Solver is skipped for this challenge. Other recognized Imperva denials are reported as restricted access, including when they return HTTP 200.
 
@@ -199,15 +230,14 @@ exclusions and Documents; Logs Reset keeps all of them. Configuration, UserState
 resources, covers and credentials remain separate. Research Scope Markdown
 exchange continues to work.
 
-Current Run still settles discovery, identity confirmation and ordinary
-Completion before final commits. Excluded known identities are filtered before
-avoidable helpers and adjudicated again in the transaction. Complete matches
-remain unchanged; unexcluded cleared identities may reach the rebuild branch.
-WF05 provides durable internal attempt/branch facts and the Workspace task host.
-WF06 adds callable extraction/necessary-API components without installing a
-production cross-Run plan, PDF work or public Retry. Only a bounded fixture's
-explicit complete component plan may finish its own collection attempt; Date/
-Abstract-only work does not claim all production collection groups are complete.
+Run settles discovery and necessary direct identities before atomic base/queued
+admission. Exclusions and ownership conflicts are rechecked in that transaction.
+Full matches preserve metadata; `not_started` matches are first collected only
+when hit by this Run. Active attempts are reused; completed/empty do not reopen,
+and failed/cancelled require explicit single-Paper retry after cleanup. Only an
+originally qualified released placeholder can be rebuilt with its UUID. A manual
+query may hold an accepted first-collection intent until real release. Neither
+startup nor later Runs scan the library to fill gaps or replay work.
 
 WF07 projects exact-target OpenAlex/Crossref response facts before ordinary
 source normalization loses PDF-versus-landing categories, best-first order or
@@ -248,8 +278,8 @@ include their dependent tags and inherent bibliographic/identity fields.
 Canonical creation prefers formal versions, then valid WoS ordinary fields, then
 deterministic other-source fills. Source retrieval time never decides ordinary
 field precedence. Repeated facts deduplicate independent of retrieval timestamps.
-Date-only requests independently target Received, Accepted, Published online and
-Published; native print, issued and early-access labels are retained rather than
-becoming additional business goals. Original native date
+Necessary responses retain Received, Accepted, Published online and Published
+evidence; those labels never independently drive a query. Native print, issued
+and early-access labels remain provenance. Original native date
 labels remain provenance. Future formal dates and available year/month precision
 are preserved; First public retains its independent version and future-date checks.

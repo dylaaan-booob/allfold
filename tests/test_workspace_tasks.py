@@ -7,7 +7,7 @@ import pytest
 from allfold.application.collection_runtime import BranchSpec
 from allfold.application.workspace_tasks import WorkspaceTaskHost
 from allfold.models import ExternalIds
-from allfold.persistence.library_models import PaperMetadata
+from allfold.persistence.library_models import MetadataDelta, PaperMetadata
 from allfold.persistence.paper_repository import InvalidPaperState, PaperRepository
 from safety_config_helpers import current_mapping_document
 
@@ -51,26 +51,37 @@ def test_host_binds_existing_lifetime_once_and_never_creates_missing_library(tmp
         host.shutdown(); host.join()
 
 
-def test_legacy_claim_and_collection_share_atomic_gate_and_captured_release(tmp_path):
+def test_manual_claim_and_deferred_collection_share_original_tokens_until_actual_release(tmp_path):
     config, workspace, paper = library(tmp_path)
     host = WorkspaceTaskHost(config)
+    claim = None
     try:
         registry = host.current()
-        claim = host.claim_legacy(paper, cancel=lambda: None)
-        with pytest.raises(InvalidPaperState):
-            registry.admit(direct_ids=ExternalIds(doi='10.5555/host'), metadata=paper.metadata,
-                           branches=(BranchSpec('date', lambda context: None),))
+        claim = registry.reserve(paper.id, kind='legacy', expected_token=paper.token, cancel=lambda: None)
+        args = dict(direct_ids=ExternalIds(doi='10.5555/host'), metadata=paper.metadata,
+                    branches=(BranchSpec('date', lambda context: MetadataDelta(ordinary_dates=('2026-11',))),))
+        task = registry.submit(**args)
+        assert registry.submit(**args) is task
+        assert task.waiting_on is claim and not task.future.done()
+        with PaperRepository.open(workspace) as repository:
+            assert repository.get(paper.id).collection_status == 'queued'
+            # The accepted manual operation retains its exact original write authority.
+            repository.merge_metadata(claim.token, MetadataDelta(abstract='Manual result'))
+        claim.guard()
         with pytest.raises(InvalidPaperState):
             registry.reserve(paper.id, kind='download')
-        assert host.cleanup_pending(paper.id, paper.workspace_id)
-        host.release_legacy(claim)
-        assert not host.cleanup_pending(paper.id, paper.workspace_id)
-        task = registry.admit(direct_ids=ExternalIds(doi='10.5555/host'), metadata=paper.metadata,
-                              branches=(BranchSpec('date', lambda context: None),))
         with pytest.raises(InvalidPaperState):
-            host.claim_legacy(paper, cancel=lambda: None)
-        assert registry.register(task).future.result(timeout=3).collection_status == 'completed'
+            registry.reserve(paper.id, kind='legacy', expected_token=paper.token, cancel=lambda: None)
+        assert host.cleanup_pending(paper.id, paper.workspace_id)
+        registry.release(claim)
+        finished = task.future.result(3)
+        assert finished.collection_status == 'completed'
+        assert finished.metadata.abstract == 'Manual result'
+        assert finished.metadata.ordinary_dates == ('2026-11',)
+        assert not host.cleanup_pending(paper.id, paper.workspace_id)
     finally:
+        if claim is not None and not claim.released:
+            registry.release(claim)
         host.shutdown(); host.join()
 
 
@@ -189,7 +200,7 @@ def test_delayed_http_reject_cannot_cancel_restored_paper_retry(tmp_path, monkey
             finish_old.set(); finish_retry.set(); resume_reject.set()
 
 
-def test_preprint_claim_survives_client_and_thread_cleanup_and_start_failure_rolls_back(tmp_path, monkeypatch):
+def test_preprint_claim_survives_client_cleanup_and_submission_failure_rolls_back(tmp_path):
     from allfold.application.browser_runtime import BrowserTaskLock
     from allfold.application.coordinators.preprint_lookup import PreprintLookup
     from test_preprint_lookup import create_paper
@@ -217,13 +228,8 @@ def test_preprint_claim_survives_client_and_thread_cleanup_and_start_failure_rol
         assert not host.cleanup_pending(paper.id, paper.workspace_id)
         with PaperRepository.open(workspace) as repository:
             assert repository.get(paper.id).collection_status == 'not_started'
-        real_start = threading.Thread.start
-        def fail_worker(thread):
-            if thread.name == 'preprint-lookup':
-                raise RuntimeError('Synthetic Thread.start failure')
-            return real_start(thread)
-        monkeypatch.setattr(threading.Thread, 'start', fail_worker)
-        with pytest.raises(RuntimeError, match='Synthetic'):
+        registry._scheduler.close()
+        with pytest.raises(RuntimeError, match='closed'):
             lookup.start(paper.id, paper.workspace_id)
         lookup.join()
         assert not host.cleanup_pending(paper.id, paper.workspace_id)
@@ -349,11 +355,11 @@ def test_settings_ordinary_inputs_preserve_work_and_service_change_drains_only_a
                 assert not saving.done() and not other_task.cancel_event.is_set()
                 assert app.state.settings_write_lock.acquire(timeout=1)
                 app.state.settings_write_lock.release()
-                with pytest.raises(InvalidPaperState):
-                    registry.admit(direct_ids=ExternalIds(doi='10.5555/late'), metadata=paper.metadata,
-                        service_id=first.id, branches=(BranchSpec('date', lambda context: None),))
+                late = registry.admit(direct_ids=ExternalIds(doi='10.5555/late'), metadata=paper.metadata,
+                    service_id=first.id, branches=(BranchSpec('date', lambda context: pytest.fail('Maintenance renewed authority')),))
                 release.set()
                 assert saving.result(timeout=3).json()['saved']
+            assert registry.register(late).future.result(3).collection_status == 'failed'
             assert task.future.result(timeout=2).collection_status == 'cancelled'
             assert not other_task.future.done() and not other_task.cancel_event.is_set()
         finally:
@@ -693,3 +699,50 @@ def test_workspace_get_does_not_initialize_or_interrupt_a_late_appearing_library
         assert item['collection_status'] == 'failed'
         with PaperRepository.open(workspace) as repository:
             assert repository.get(queued.paper.id).collection.reason == 'interrupted'
+
+
+def test_service_change_cancels_only_matching_branch_and_does_not_renew_queued_epoch(tmp_path):
+    config, workspace, paper = library(tmp_path)
+    entered, cancelled, cleanup_release, api_entered, api_release = (threading.Event() for _ in range(5))
+    class Authority:
+        def __init__(self, service):
+            self.service_id, self.service_scope = service, f'service/{service}' if service else None
+        def verify(self): pass
+    host = WorkspaceTaskHost(config, authority_capture=lambda service, providers: Authority(service))
+    registry = host.current()
+    def document(context):
+        entered.set()
+        assert context.cancel_event.wait(3)
+        cancelled.set()
+        assert cleanup_release.wait(3)
+    def api(context):
+        api_entered.set()
+        assert api_release.wait(3)
+        context.emit(MetadataDelta(abstract='Independent API survives Service change'), sequence=1)
+    try:
+        task = registry.submit(direct_ids=ExternalIds(doi='10.5555/host'), metadata=paper.metadata,
+            branches=[BranchSpec('document', document, service_id='publisher'), BranchSpec('api', api, service_id=None)])
+        assert entered.wait(2) and api_entered.wait(2)
+        change = host.begin_change(services=('publisher',))
+        registry.signal_cancel_targets(change.targets)
+        assert cancelled.wait(2)
+        assert not task.cancel_event.is_set()
+        late = registry.admit(direct_ids=ExternalIds(doi='10.5555/late'), metadata=PaperMetadata(title='Late'),
+            branches=[BranchSpec('document', lambda _: pytest.fail('Renewed old Service epoch'), service_id='publisher')])
+        skipped = registry.submit(direct_ids=ExternalIds(doi='10.5555/inapplicable'),
+            metadata=PaperMetadata(title='Inapplicable'), branches=[
+                BranchSpec('document', skip_reason='No applicable article page', service_id='publisher')])
+        assert skipped.future.result(3).collection_status == 'completed'
+        cleanup_release.set()
+        host.drain_change(change)
+        host.finish_change(change)
+        assert not task.future.done()
+        # Even when initialized after maintenance, this original admission cannot borrow new authority.
+        assert registry.register(late).future.result(3).collection_status == 'failed'
+        api_release.set()
+        finished = task.future.result(3)
+        assert finished.metadata.abstract == 'Independent API survives Service change'
+        assert {b.name: b.state for b in finished.collection.branches} == {'api': 'completed', 'document': 'cancelled'}
+    finally:
+        cleanup_release.set(); api_release.set()
+        host.shutdown(); host.join()

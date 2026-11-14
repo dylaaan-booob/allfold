@@ -181,8 +181,10 @@ def test_reject_restore_never_renews_capture_and_clearing_waits_for_cleanup(tmp_
         cleared = repository.clear_metadata(repository.exclude(body.token).token)
         assert cleared.collection_status == "not_started"
         assert cleared.body == body.body
-        repository.unexclude(cleared.token)
-        rebuilt = admit(repository, uuid4())
+        released = repository.unexclude(cleared.token)
+        rebuilt = repository.admit_collection(repository.workspace_id, lifecycle_id=uuid4(),
+            branches=("api", "preprint"), direct_ids=ExternalIds(pmid="123"),
+            metadata=PaperMetadata(title="Article"), expected_token=released.token, allow_rebuild=True)
         assert rebuilt.admitted and not rebuilt.created
         assert rebuilt.paper.id == admission.paper.id
         assert rebuilt.paper.metadata_generation > admission.paper.metadata_generation
@@ -225,3 +227,33 @@ def test_cleanup_failure_retains_success_but_group_fails_until_explicit_retry(tm
         retry = repository.retry_collection(failed.token, lifecycle_id=uuid4(), branches=("api",))
         assert retry.paper.collection.branches[0].state == "completed"
         assert repository.finish_collection(retry.token).collection_status == "completed"
+
+
+def test_admission_requires_original_rebuild_qualification_and_keeps_all_direct_aliases(tmp_path):
+    from allfold.persistence.paper_repository import DirectIdentity
+    ids = ExternalIds(doi='10.1234/original', pmid='123')
+    with PaperRepository.create(tmp_path) as repository:
+        original = repository.create_or_match(repository.workspace_id, direct_ids=ids,
+            metadata=PaperMetadata(title='Original')).paper
+        excluded = repository.exclude(original.token)
+        empty = repository.clear_metadata(excluded.token)
+        released = repository.unexclude(empty.token)
+        args = dict(lifecycle_id=uuid4(), branches=('api',), direct_ids=ids,
+            metadata=PaperMetadata(title='New actual hit'),
+            additional_identities=(DirectIdentity('pmid', '456'),))
+        with pytest.raises(StaleWriteError):
+            repository.admit_collection(repository.workspace_id, **args)
+        with pytest.raises(StaleWriteError):
+            repository.admit_collection(repository.workspace_id, expected_token=original.token,
+                allow_rebuild=True, **args)
+        assert repository.get(original.id).metadata is None
+        admission = repository.admit_collection(repository.workspace_id, expected_token=released.token,
+            allow_rebuild=True, **args)
+        assert admission.paper.id == original.id
+        assert admission.paper.metadata_generation > released.metadata_generation
+        assert repository.match(ExternalIds(pmid='456')).id == original.id
+        repeated = repository.admit_collection(repository.workspace_id, lifecycle_id=uuid4(), branches=('api',),
+            direct_ids=ids, metadata=PaperMetadata(title='Ignored'),
+            additional_identities=(DirectIdentity('pmid', '789'),))
+        assert not repeated.admitted
+        assert repository.match(ExternalIds(pmid='789')).id == original.id

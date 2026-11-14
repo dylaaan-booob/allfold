@@ -36,13 +36,14 @@ class RunIdentityIndex:
             and initial.token == paper.token and not initial.excluded and initial.metadata is None)
 
 
-def metadata_from_run(paper, *, records=()):
+def metadata_from_run(paper, *, records=(), first_public_complete=True):
     """Keep bibliography and independent proof; no old workflow status is stored."""
     ordinary = tuple(date_value(item) for item in paper.date_evidence
         if item.kind != EvidenceDateKind.PREPRINT and item.publication_type != 'preprint'
         and item.month is not None and item.provider != 'workspace')
     preprint_evidence = tuple(item for item in paper.date_evidence if item.kind == EvidenceDateKind.PREPRINT)
     relations = set(preprint_query_refs(preprint_evidence))
+    relations.update(ref for record in records for ref in record.related_ids if ref.provider == "openalex")
     # Preserve only families established by the existing relation algorithm.
     # A preprint's link back to its formal article must not become another
     # unresolved Preprint family on the saved formal Paper.
@@ -64,6 +65,9 @@ def metadata_from_run(paper, *, records=()):
             # The complete native fact above remains available; a source record
             # label is not always a supported normalized query identifier.
             pass
+    saved_values = {record.first_public_at for record in records if record.first_public_at}
+    first_public = (paper.metadata.first_public_at if first_public_complete else
+        next(iter(saved_values)) if len(saved_values) == 1 else None)
     return PaperMetadata(**paper.metadata.model_dump(exclude={'first_public_at'}),
         discovered_at=paper.workflow.discovered_at, authors=paper.authors,
         journal_issns=paper.journal_issns, indexed_terms=paper.indexed_terms,
@@ -72,4 +76,4 @@ def metadata_from_run(paper, *, records=()):
             preprint_root=paper.metadata.publication_type == 'preprint'),
         preprint_evidence=preprint_evidence,
         preprint_relations=tuple(sorted(relations, key=lambda ref: ref.model_dump_json())),
-        first_public_at=paper.metadata.first_public_at)
+        first_public_at=first_public)

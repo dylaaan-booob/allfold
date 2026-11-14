@@ -174,8 +174,12 @@ def test_ordinary_save_rechecks_foreground_started_after_preflight(tmp_path, mon
                     assert requesting.wait(2)
                     resume_save.set()
                     pending = saving.result(timeout=2)
-                    assert not pending['saved'] and pending.get('outcome') == 'TASK_ACTIVE', (pending['saved'], pending.get('outcome'))
-                    assert client.get('/api/ui-next/settings').json()['values']['keyword_expression'] == 'causal'
+                    if foreground == 'run':
+                        assert not pending['saved'] and pending.get('outcome') == 'TASK_ACTIVE'
+                        assert client.get('/api/ui-next/settings').json()['values']['keyword_expression'] == 'causal'
+                    else:
+                        assert pending['saved'], pending
+                        assert client.get('/api/ui-next/settings').json()['values']['keyword_expression'] == 'inference'
                 finally:
                     resume_save.set()
                     finish_request.set()
@@ -187,11 +191,13 @@ def test_ordinary_save_rechecks_foreground_started_after_preflight(tmp_path, mon
                 assert actual['snapshot']['result']['outcome'] == 'COMPLETED'
                 assert actual['providers']['integrated']['latest'] is not None
             else:
-                actual = client.get(f'/api/papers/{paper.id}/preprint-lookup/state').json()
+                actual = client.get(f'/api/papers/{paper.id}/preprint-lookup/state', params={
+                    'workspace_id': str(paper.workspace_id), 'request_id': started.json()['request_id']}).json()
                 assert actual['phase'] == 'NoMatch', actual
                 assert not actual['cleaning_up']
             assert origin.requests
-            assert save()['saved']
+            if foreground == 'run':
+                assert save()['saved']
             assert client.get('/api/ui-next/settings').json()['values']['keyword_expression'] == 'inference'
 
 

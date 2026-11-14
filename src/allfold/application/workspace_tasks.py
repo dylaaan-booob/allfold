@@ -1,4 +1,4 @@
-"""Application-owned Workspace lifetimes and exact legacy Paper reservations.
+"""Application-owned Workspace lifetimes and exact Paper operations.
 
 Only work admission/initialization binds a library. Read projections use peek(),
 so a GET never creates a database or normalizes a newly appeared library.
@@ -73,7 +73,6 @@ class WorkspaceTaskHost:
         self._closed = False
         self._epoch, self._access_epoch = 0, 0
         self._service_epochs, self._provider_epochs = {}, {}
-        self._reapers = set()
         self._publish_authority()
 
     def initialize(self):
@@ -114,7 +113,7 @@ class WorkspaceTaskHost:
                 if registry is None:
                     registry = self._registry = WorkspaceRegistry(workspace, factory=self.factory,
                         browser_lock=self.browser_lock, bridge=self.bridge, diagnostics=self.diagnostics,
-                        authority_capture=self._capture_authority)
+                        authority_capture=self._capture_authority, admission_capture=self._capture_admission)
             # Never wait on an existing Paper gate while holding the host mutex.
             if registry.workspace != workspace or registry.stopped:
                 raise InvalidPaperState('Workspace lifetime changed; a fresh binding is required')
@@ -138,59 +137,17 @@ class WorkspaceTaskHost:
             raise InvalidPaperState('Captured Workspace/Service/Provider authority was revoked')
         return captured
 
+    def _capture_admission(self, service_id, providers):
+        """Bind process-local epochs before any external capture, without I/O/locks."""
+        epochs = self._verify_authority(service_id, providers)
+        return lambda: self._verify_authority(service_id, providers, epochs)
+
     def _capture_authority(self, service_id, providers):
         with self.settings_lock:
             epochs = self._verify_authority(service_id, providers)
             authority = self.authority_capture(service_id, providers)
             self._verify_authority(service_id, providers, epochs)
             return _HostAuthority(self, authority, epochs, tuple(providers))
-
-    def claim_legacy(self, paper, *, cancel):
-        if self.changing:
-            raise InvalidPaperState('Configuration maintenance blocks a new foreground query')
-        registry = self.current()
-        if registry.workspace_id != paper.workspace_id:
-            raise InvalidPaperState('Legacy query belongs to another Workspace')
-        return registry.reserve(paper.id, kind='legacy', expected_token=paper.token, cancel=cancel)
-
-    @staticmethod
-    def release_legacy(claim):
-        # Captured registry only: no settings/configuration read or renewed auth.
-        claim.registry.release(claim)
-
-    def watch_legacy(self, worker, claim, started, settlement):
-        """One reaper per singleton query releases only after Thread.join()."""
-        def reap():
-            try:
-                started.wait()
-                if worker.ident is not None:
-                    worker.join()
-                failure = settlement.get('failure')
-                if failure is None:
-                    self.release_legacy(claim)
-                else:
-                    phase, error = failure
-                    claim.registry.fail_reservation(claim, phase=phase, error=error)
-            except Exception:
-                # Reservation release records a bounded storage/cleanup fault and
-                # retains occupancy. Host join/maintenance reports that fault;
-                # never retry a failed finalizer from this reaper.
-                if not any(fault['paper_id'] == str(claim.paper_id) and fault['phase'] == 'reservation-release'
-                           for fault in claim.registry.faults):
-                    raise
-            finally:
-                with self._lock:
-                    self._reapers.discard(threading.current_thread())
-        reaper = threading.Thread(target=reap, name='preprint-settlement', daemon=False)
-        with self._lock:
-            self._reapers.add(reaper)
-        try:
-            reaper.start()
-        except BaseException:
-            with self._lock:
-                self._reapers.discard(reaper)
-            raise
-        return reaper
 
     def cleanup_pending(self, paper_id, workspace_id):
         registry = self.peek()
@@ -273,15 +230,7 @@ class WorkspaceTaskHost:
             registries = (self._registry,) if self._registry else ()
         for registry in registries:
             registry.join()
-        while True:
-            with self._lock:
-                reapers = tuple(self._reapers)
-            if not reapers:
-                break
-            for reaper in reapers:
-                if reaper is not threading.current_thread():
-                    reaper.join()
-        # Shared factory closes last, after registry and legacy real settlement.
+        # Every operation Future follows its bounded worker's real settlement.
         self.factory.close()
         if any(registry.active and registry.faults for registry in registries):
             raise RuntimeError('Workspace task resources or state could not be settled')

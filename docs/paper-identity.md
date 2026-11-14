@@ -17,18 +17,32 @@ A primary identity is selected explicitly and persisted. Its DOI, when present,
 is the formal-article DOI used for eligible Preprint lookup and links. Multiple
 saved DOI values do not make dictionary order a primary-identity policy. DOI-free
 Papers remain readable and locally editable when complete and unexcluded.
+A first collection admission can promote a non-DOI primary to the formal DOI
+explicitly confirmed by that Run. It retains every saved alias and any existing
+primary DOI; the complete accepted identity closure determines applicability.
+Necessary metadata keeps bibliography, dates and relationships from reliable DOI
+aliases, while its bounded Crossref PDF facts use the selected primary DOI.
+Necessary purposes use the full trusted direct-identity closure,
+including saved aliases absent from this Run's single-value evidence projection.
+Primary selection chooses the display/PDF target; it does not narrow that closure.
+Direct Preprint PMID fetch and native-family coverage before First public use
+the same complete saved closure.
 
 | Existing match during Run | Result |
 | --- | --- |
 | None | Create only with valid title and reliable direct identity; repository supplies UUID |
-| Full metadata, unexcluded | Reuse UUID and return the saved record unchanged |
+| Full metadata, unexcluded | Reuse UUID and preserve saved fields; retain new verified direct aliases; first collection only when `not_started` |
 | Excluded, including identity-only | Keep excluded and stop avoidable subsequent work |
 | Cleared metadata, unexcluded | Only an actual Run hit may call `rebuild_from_run`, reusing UUID and body association |
 
 Early filtering avoids unnecessary helper requests. Final short transactions
 repeat the classification and identity-conflict checks. Ordinary repeat hits do
-not become metadata completion. Current Run/Completion timing is preserved; a
-Run result does not register background collection completion.
+not become ordinary metadata completion. Run finishes direct identity work before
+atomic base/queued admission, then Workspace executes the full plan independently.
+Active attempts are reused; completed/empty and failed/cancelled facts do not
+auto-retry. An initial Run snapshot that held full metadata cannot later rebuild
+a user-cleared placeholder by capturing a new token. Extra confirmed IDs within
+one namespace remain part of the same stable direct-identity closure.
 
 `PaperMetadata` keeps stable `discovered_at`, title, journal/conference/type,
 bibliographic publication date, authors, keywords, ISSNs, indexed terms, sources,

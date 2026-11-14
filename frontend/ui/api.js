@@ -49,7 +49,8 @@ window.uiNext={
     let data;
     try{data=await response.json();}catch{throw new Error(`服务响应异常 (${response.status})，请确认 Web 服务仍在运行。`);}
     if(!response.ok){const error=new Error(data.message || data.error || `请求失败 (${response.status})`);error.state=data;throw error;}
-    this.acceptEnvelope(data,epoch,order,path==='/api/ui-next/workspace' || Object.hasOwn(data || {},'paper'));
+    try{this.acceptEnvelope(data,epoch,order,path==='/api/ui-next/workspace' || Object.hasOwn(data || {},'paper'));}
+    catch(error){error.state=data;error.workspaceEpoch=epoch;throw error;}
     return data;
   },
   async workspace(){

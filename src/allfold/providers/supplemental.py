@@ -27,6 +27,12 @@ def _first(values):
     return next((value.strip() for value in values if isinstance(value, str) and value.strip()), None) if isinstance(values, list) else None
 
 
+def _native_doi_path(doi):
+    """Keep the registrant separator; native routes need suffix slashes twice escaped."""
+    prefix, suffix = doi.split('/', 1)
+    return quote(prefix, safe='') + '/' + quote(suffix, safe='').replace('%2F', '%252F')
+
+
 def _date(parts, kind):
     if not isinstance(parts, (list, tuple)) or not 1 <= len(parts) <= 3:
         return None
@@ -379,7 +385,7 @@ class SupplementalClient(DiscoveryClient):
         return ProviderWorkEvidence(
             provenance=MetadataSource(provider=self.provider, record_id=doi + (":" + version if version else ""),
                 retrieved_at=datetime.now(timezone.utc), role="supplement", version=version,
-                url=f"https://api.biorxiv.org/details/{self.provider}/{quote(doi, safe='/')}/na/json"),
+                url=f"https://api.biorxiv.org/details/{self.provider}/{_native_doi_path(doi)}/na/json"),
             external_ids=ExternalIds(doi=doi), related_dois=(published,) if published else (),
             title=row.get("title") or None, abstract=row.get("abstract") or None,
             authors=tuple(Author(name=name.strip()) for name in str(row.get("authors") or "").split(";") if name.strip()),
@@ -393,7 +399,7 @@ class SupplementalClient(DiscoveryClient):
         # Embedded publication lookups and direct preprint lookups share results.
         if doi not in self._details_cache:
             self._details_cache[doi] = tuple(self._bio_record(row, doi) for row in
-                self._collection(f"/details/{self.provider}/{quote(doi, safe='/')}/na/json", doi=doi))
+                self._collection(f"/details/{self.provider}/{_native_doi_path(doi)}/na/json", doi=doi))
         return self._details_cache[doi]
 
     def lookup_published_preprints(self, identifier):
@@ -401,7 +407,7 @@ class SupplementalClient(DiscoveryClient):
         doi = valid_doi(identifier)
         if self.provider not in {"biorxiv", "medrxiv"} or not doi:
             raise DiscoveryError("Publication lookup requires a native preprint server and a valid formal DOI")
-        encoded = quote(doi, safe="/")
+        encoded = _native_doi_path(doi)
         rows = self._collection(f"/pubs/{self.provider}/{encoded}/na/json", doi=doi)
         relations = {}
         for row in rows:

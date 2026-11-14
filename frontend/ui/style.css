@@ -108,7 +108,8 @@ html.developer-mode.paper-tools-active body>footer{flex-wrap:nowrap}
 #paper-tools-dialog textarea{width:100%;resize:vertical;min-height:180px;background:transparent;border:1px solid var(--rule);padding:10px;color:var(--ink);font:14px/1.7 var(--font)}
 #paper-tools-dialog .s-field-error{color:#a83d22;margin:0}
 #paper-tools-dialog .s-actions{display:flex;gap:8px}
-#paper-preprint-lookup{margin:16px 0}
+#paper-preprint-lookup,#paper-collection{margin:16px 0}
+#paper-collection-status{margin:0 0 8px;font-size:13px;color:var(--muted,#73786f)}
 #preprint-lookup-status{margin:6px 0 0;overflow-wrap:anywhere}
 #paper-tools-dialog .s-button{min-height:28px;padding:0 10px;border:1px solid var(--ink);background:var(--paper);font:500 11px/26px var(--font)}
 #paper-tools-dialog .s-primary{background:var(--ink);color:var(--paper)}

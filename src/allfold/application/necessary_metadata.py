@@ -1,15 +1,15 @@
 """Purpose-driven identity, Preprint relationship and native-version services.
 
 These components use the captured Workspace task. Ordinary missing fields are
-never request goals, and the production Run's Completion is a separate caller.
+never request goals. Production Run hands off immutable purpose-labelled evidence.
 """
 from collections import defaultdict
 from dataclasses import dataclass
 from datetime import datetime, timezone
 
 from allfold.abstract_text import normalize_abstract_text
-from allfold.application.metadata_completion import (
-    CompletionIssue, CompletionLookup, _batch_lookup, bind_records, formal_records,
+from allfold.application.provider_lookup import (
+    LookupIssue, LookupFact, LookupSettlement, _batch_lookup, bind_records, formal_records,
 )
 from allfold.identifiers import normalize_external_id, related_identifiers, strong_identifiers
 from allfold.models import EvidenceDateKind, ExternalIds, MetadataSource, ProviderWorkEvidence
@@ -64,7 +64,8 @@ class VerifiedResponse:
 
 def _satisfied(request, facts):
     return any(fact.complete and (fact.request == request or request.provider == 'pubmed'
-        and request.capability == 'summary' and fact.request == NecessaryRequest(
+        and (request.capability == 'summary' or request.capability == 'fetch-preprint' and
+            any(item.publication_type == 'preprint' for item in fact.records)) and fact.request == NecessaryRequest(
             'pubmed', request.namespace, request.identifier, 'fetch')) for fact in facts)
 
 
@@ -140,6 +141,8 @@ def necessary_requests(records, *, root_ids, providers, facts=(), required=(),
                     NecessaryRequest('europe_pmc', namespace, value, 'preprints')))
         requests.update(_native_proof_requests(records))
         for item in records:
+            if item.publication_type == 'preprint' and item.external_ids.model_dump().get('pmid'):
+                requests.add(NecessaryRequest('pubmed', 'pmid', item.external_ids.model_dump()['pmid'], 'fetch-preprint'))
             for namespace, value in related_identifiers(item):
                 if (namespace == 'doi' and (namespace, value) not in formal_ids
                         and preprint_identity(namespace, value) not in answered):
@@ -169,8 +172,8 @@ def confirm_formal_dois(client, identifiers, *, guard=lambda: None):
 @dataclass(frozen=True)
 class NecessaryResult:
     records: tuple
-    lookups: tuple[CompletionLookup, ...]
-    issues: tuple[CompletionIssue, ...]
+    lookups: tuple[LookupFact, ...]
+    issues: tuple[LookupIssue, ...]
     first_public_status: str
 
     @property
@@ -207,15 +210,31 @@ def _lookup_group(context, requests):
     return _batch_lookup(client, first.provider, first.namespace, identifiers, capability, context.cancel_event)
 
 
-def _workspace_evidence(paper):
+def paper_evidence(paper):
     metadata = paper.metadata
+    direct = {identity.namespace: identity.value for identity in paper.identities}
+    if paper.primary_identity is not None:
+        direct[paper.primary_identity.namespace] = paper.primary_identity.value
     return ProviderWorkEvidence(provenance=MetadataSource(provider='workspace', record_id=str(paper.id),
-        retrieved_at=datetime.now(timezone.utc)), external_ids=ExternalIds(**{
-            identity.namespace: identity.value for identity in paper.identities}),
+        retrieved_at=datetime.now(timezone.utc)), external_ids=ExternalIds(**direct),
         publication_type=metadata.publication_type, journal=metadata.journal, conference=metadata.conference,
         dates=metadata.preprint_evidence,
         related_ids=tuple(dict.fromkeys((*metadata.preprint_relations, *preprint_query_refs(metadata.preprint_evidence)))),
         first_public_at=metadata.first_public_at)
+
+
+def paper_evidence_records(paper):
+    """Project every saved direct alias without changing the selected primary.
+
+    One projection cannot hold multiple values in a namespace. Extra records
+    express the trusted Paper closure for purpose/native/family planning, never
+    turn related or unconfirmed source identities into direct ownership.
+    """
+    primary = paper_evidence(paper)
+    represented = strong_identifiers(primary.external_ids)
+    return (primary, *(primary.model_copy(update={'external_ids': primary.external_ids.model_copy(update={
+        identity.namespace: identity.value})}) for identity in paper.identities
+        if (identity.namespace, identity.value) not in represented))
 
 
 def _formal_conflicts(records, root_ids, *, formal_root=True):
@@ -237,7 +256,7 @@ def _formal_conflicts(records, root_ids, *, formal_root=True):
     return tuple(accepted), tuple(rejected)
 
 
-def _increment(records, root_ids, *, preprint_root=False):
+def _increment(records, root_ids, *, preprint_root=False, target_doi=None):
     formal = formal_records(records, root_ids)
     abstracts = {}
     for item in formal:
@@ -247,17 +266,24 @@ def _increment(records, root_ids, *, preprint_root=False):
         if item.kind != EvidenceDateKind.PREPRINT and item.publication_type != 'preprint' and item.month is not None)
     proof = tuple(item for item in collect_dates(records) if item.kind == EvidenceDateKind.PREPRINT)
     relations = tuple(dict.fromkeys(ref for item in records for ref in item.related_ids))
+    # Reliable DOI aliases may each supply bibliography/relations, while the
+    # bounded Crossref PDF snapshot belongs to the explicitly selected target.
+    # Unknown targets retain the normal binding/conflict checks.
+    discovery_records = tuple(item.model_copy(update={'discovery_facts': tuple(fact for fact in item.discovery_facts
+        if not (fact.source == 'crossref' and target_doi and fact.target_doi != target_doi
+                and ('doi', fact.target_doi) in root_ids))}) for item in records)
     delta = MetadataDelta(ordinary_dates=dates, abstract=next(iter(abstracts.values())) if len(abstracts) == 1 else None,
-        discovery_facts=discovery_facts_from_records(records, root_ids, preprint_root=preprint_root),
+        discovery_facts=discovery_facts_from_records(discovery_records, root_ids, preprint_root=preprint_root),
         preprint_evidence=proof, preprint_relations=relations,
         sources=tuple(dict.fromkeys(item.provenance for item in records if item.provenance.provider != 'workspace')))
     identities = defaultdict(set)
     for item in formal:
         for namespace, value in strong_identifiers(item.external_ids):
             identities[namespace].add(value)
-    if any(len(values) > 1 for values in identities.values()):
+    if any(len(values) > 1 and not {(namespace, value) for value in values} <= root_ids
+            for namespace, values in identities.items()):
         raise IdentityMismatch('Formal response has conflicting direct identities')
-    direct = {namespace: next(iter(values)) for namespace, values in identities.items()}
+    direct = {namespace: sorted(values)[0] for namespace, values in identities.items()}
     return delta, ExternalIds(**direct) if direct else None
 
 
@@ -273,7 +299,9 @@ def collect_necessary_metadata(context, *, records=(), facts=(), required=(), pr
 
     paper = context.read_paper()
     root_ids = {(identity.namespace, identity.value) for identity in paper.identities}
-    output = [_workspace_evidence(paper)]
+    target_doi = (paper.primary_identity.value if paper.primary_identity is not None
+        and paper.primary_identity.namespace == 'doi' else None)
+    output = list(paper_evidence_records(paper))
     seen = {evidence_key(item) for item in output}
     lookups, issues, attempted, completed = [], [], set(), []
     required = set(required)
@@ -293,9 +321,9 @@ def collect_necessary_metadata(context, *, records=(), facts=(), required=(), pr
                 'partial' if error and accepted else 'identity_mismatch' if isinstance(error, IdentityMismatch)
                 or conflicts or rejected else 'failed' if error else 'evidence' if accepted else 'no_match')
             if conflicts or rejected or error and status != 'no_match':
-                issues.append(CompletionIssue(request.provider, request.identifier,
+                issues.append(LookupIssue(request.provider, request.identifier,
                     'Response conflicts with the requested direct identity' if conflicts or rejected else str(error), status))
-            lookups.append(CompletionLookup(request.provider, request.namespace, request.identifier, status, request.capability))
+            lookups.append(LookupFact(request.provider, request.namespace, request.identifier, status, request.capability))
             attempted.add(request)
             if status in {'evidence', 'no_match'}:
                 completed.append(VerifiedResponse(request, tuple(accepted), complete=complete))
@@ -311,7 +339,8 @@ def collect_necessary_metadata(context, *, records=(), facts=(), required=(), pr
         empty_snapshot = ()
         if (request is not None and not accepted and not isinstance(error, Cancelled)
                 and request.provider in {'crossref', 'openalex'} and request.capability in {'exact', 'work'}
-                and (request.namespace, request.identifier) in root_ids):
+                and (request.namespace, request.identifier) in root_ids
+                and not (request.provider == 'crossref' and target_doi and request.identifier != target_doi)):
             failed = bool(error or conflicts or rejected)
             empty_snapshot = (PdfDiscoveryFacts(source=request.provider,
                 capability='crossref-links' if request.provider == 'crossref' else 'openalex-locations',
@@ -322,7 +351,7 @@ def collect_necessary_metadata(context, *, records=(), facts=(), required=(), pr
                 diagnostics=('parse-failed',) if failed else ('incomplete-response',) if not complete else ()),)
         if new or empty_snapshot:
             delta, direct_ids = _increment(tuple(new), root_ids,
-                preprint_root=paper.metadata.publication_type == 'preprint')
+                preprint_root=paper.metadata.publication_type == 'preprint', target_doi=target_doi)
             if empty_snapshot:
                 delta = delta.model_copy(update={'discovery_facts': empty_snapshot})
             sequence += 1
@@ -367,7 +396,12 @@ def collect_necessary_metadata(context, *, records=(), facts=(), required=(), pr
         linked = {key for item in output for key in related_identifiers(item)}
         if any((item.namespace, item.identifier) not in linked for item in group):
             raise IdentityMismatch('Necessary target lacks a verified Paper identity or relation')
-        values = _lookup_group(context, group)
+        client = context.provider(first.provider)
+        if hasattr(client, 'begin_completion'):
+            client.begin_completion()
+        values, settlement = {}, LookupSettlement()
+        values.update(settlement.capture(client, lambda: _lookup_group(context, group), values.update))
+        settlement.settle(context.cancel_event)
         for request in group:
             context.guard()
             absorb(request, values[request.identifier])
@@ -375,7 +409,7 @@ def collect_necessary_metadata(context, *, records=(), facts=(), required=(), pr
     current = context.read_paper()
     # Include latest independent proof increments without recapturing write
     # authority. A newly known unresolved family must prevent an early value.
-    final_records = (*output, _workspace_evidence(current))
+    final_records = (*output, *paper_evidence_records(current))
     status = 'recorded' if current.metadata.first_public_at else first_public_status(final_records)
     if issues and status != 'conflict' and not current.metadata.first_public_at:
         status = 'failed'
@@ -389,7 +423,7 @@ def collect_necessary_metadata(context, *, records=(), facts=(), required=(), pr
 
 def necessary_metadata_branch(*, name='necessary-api', providers=(), records=(), facts=(),
                               required=(), discover_relations=True):
-    """Install an explicit internal component plan; production Run does not call it."""
+    """Declare a complete purpose-driven branch with immutable handoff facts."""
     from allfold.application.collection_runtime import BranchSpec
 
     providers, records, facts, required = tuple(providers), tuple(records), tuple(facts), tuple(required)

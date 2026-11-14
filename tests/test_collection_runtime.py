@@ -28,37 +28,39 @@ def submit(registry, suffix, branches, **kwargs):
         metadata=PaperMetadata(title=f'Paper {suffix}'), branches=branches, **kwargs)
 
 
-def test_revoked_capture_cannot_admit_between_access_verification_and_paper_gate(tmp_path):
-    verified, finish_verification, revoked = Event(), Event(), Event()
-
-    class Authority:
-        service_id = service_scope = None
-
-        def verify(self):
-            verified.set()
-            assert finish_verification.wait(3)
-
-        def admission_check(self):
-            if revoked.is_set():
-                raise InvalidPaperState('Captured scope was revoked')
-
+def test_reject_during_authority_capture_keeps_original_admission_and_never_renews_token(tmp_path):
+    capturing, finish_capture = Event(), Event()
+    captured = []
+    def capture(service_id, providers):
+        captured.append((service_id, providers))
+        capturing.set()
+        assert finish_capture.wait(3)
+        return Authority(service_id)
     path = workspace(tmp_path)
     registry = WorkspaceRegistry(path, factory=IndependentClientFactory(tmp_path / 'config.yaml'),
-        authority_capture=lambda *_: Authority())
+        authority_capture=capture)
     try:
-        with ThreadPoolExecutor(max_workers=1) as pool:
-            accepting = pool.submit(registry.admit, direct_ids=ExternalIds(doi='10.1234/late-admit'),
-                metadata=PaperMetadata(title='Late hit'), branches=[BranchSpec('empty', lambda _: None)])
-            assert verified.wait(2)
-            revoked.set()
-            finish_verification.set()
-            with pytest.raises(InvalidPaperState, match='revoked'):
-                accepting.result(3)
+        task = submit(registry, 'late-admit', [BranchSpec('empty', lambda _: pytest.fail('Rejected executed'))])
+        assert capturing.wait(2)
         with PaperRepository.open(path) as repository:
-            assert repository.list_papers() == ()
+            original = repository.get(task.paper_id)
+            rejected = repository.exclude(original.token)
+        targets = registry.prepare_cancel_paper(task.paper_id)
+        with PaperRepository.open(path) as repository:
+            restored = repository.restore(rejected.token)
+            assert restored.token != task.token.write
+        registry.signal_cancel_targets(targets)
+        assert registry.admit(direct_ids=ExternalIds(doi='10.1234/late-admit'),
+            metadata=PaperMetadata(title='Repeat'), branches=task.branches) is task
+        assert not task.future.done()
+        finish_capture.set()
+        finished = task.future.result(3)
+        assert finished.id == original.id and finished.collection_status == 'cancelled'
+        assert finished.collection.attempt == 1
+        assert captured == [(None, ())]
         assert not registry.active
     finally:
-        finish_verification.set()
+        finish_capture.set()
         registry.shutdown()
         registry.join()
 
@@ -200,22 +202,53 @@ def test_admitted_before_registration_is_atomic_against_download_and_legacy(tmp_
 
 def test_failure_retains_incremental_results_and_occupancy_until_cleanup_then_retries_only_failed(tmp_path):
     path = workspace(tmp_path)
-    entered, release = Event(), Event()
-    registry = WorkspaceRegistry(path, factory=IndependentClientFactory(tmp_path / 'config.yaml'))
+    entered, release, success_closed, failure_settled = Event(), Event(), Event(), Event()
+    factory = IndependentClientFactory(tmp_path / 'config.yaml')
+
+    class OwnedScopes:
+        @contextmanager
+        def open(self, **kwargs):
+            try:
+                with factory.open(**kwargs) as clients:
+                    yield clients
+            finally:
+                if kwargs['providers'] == ('crossref',):
+                    success_closed.set()
+
+    class NativeFailure:
+        def execute(self, action, data, *args, **kwargs):
+            done = Future()
+            if action == 'release_workflow_pages':
+                done.set_result({'released': True})
+                # Failed outcome and HTTP close precede owned native cleanup.
+                failure_settled.set()
+            else:
+                done.set_exception(ValueError('controlled failure'))
+            return done
+
+        def cancel_task(self, *_):
+            pass
+
+    registry = WorkspaceRegistry(path, factory=OwnedScopes(), bridge=NativeFailure(),
+        authority_capture=lambda service, providers: Authority(service))
 
     def success(context):
+        # Force cleanup to enter first; callback order cannot establish settlement.
+        assert entered.wait(3)
         context.emit(MetadataDelta(abstract='Kept after failure'), sequence=1)
 
-    def failure(_):
-        raise ValueError('controlled failure')
+    def failure(context):
+        context.execute_native('controlled_failure', {})
 
     def cleanup(_):
         entered.set()
         assert release.wait(3)
 
     try:
-        task = submit(registry, 'failed', [BranchSpec('success', success), BranchSpec('failure', failure), BranchSpec('cleanup', cleanup)])
+        task = submit(registry, 'failed', [BranchSpec('success', success, providers=('crossref',)),
+            BranchSpec('failure', failure), BranchSpec('cleanup', cleanup)])
         assert entered.wait(2)
+        assert success_closed.wait(2) and failure_settled.wait(2)
         with PaperRepository.open(path) as repository:
             paper = repository.get(task.paper_id)
             assert paper.metadata.abstract == 'Kept after failure'
@@ -243,6 +276,7 @@ def test_failure_retains_incremental_results_and_occupancy_until_cleanup_then_re
         release.set()
         registry.shutdown()
         registry.join()
+        factory.close()
 
 
 def test_empty_missing_and_skipped_plans_are_distinct(tmp_path):
@@ -421,7 +455,7 @@ def test_recheck_authority_at_register_and_dispatch_prevents_late_execution(tmp_
             metadata=PaperMetadata(title='Revoked'), service_id='a',
             branches=[BranchSpec('late', lambda _: pytest.fail('revoked started'))])
         authority.revoked.set()
-        assert registry.register(task).future.result(3).collection_status == 'cancelled'
+        assert registry.register(task).future.result(3).collection_status == 'failed'
         assert not registry.active
     finally:
         registry.shutdown()
@@ -895,3 +929,158 @@ def test_api_work_acquires_browser_owner_only_when_it_actually_dispatches_native
             bridge.operation.set_result({'ok': True})
         registry.shutdown()
         registry.join()
+
+
+def test_base_is_queued_before_branch_authority_failure_and_independent_branch_survives(tmp_path):
+    path = workspace(tmp_path)
+    capturing, finish_capture, api_entered, api_release = Event(), Event(), Event(), Event()
+    def capture(service_id, providers):
+        if service_id:
+            capturing.set()
+            assert finish_capture.wait(3)
+            raise InvalidPaperState('Service is not prepared')
+        return Authority()
+    registry = WorkspaceRegistry(path, factory=IndependentClientFactory(tmp_path / 'config.yaml'),
+        authority_capture=capture, limit=1, group_limit=1)
+    def api(context):
+        api_entered.set()
+        assert api_release.wait(3)
+        context.emit(MetadataDelta(abstract='Independent result'), sequence=1)
+    try:
+        task = submit(registry, 'authority-gap', [
+            BranchSpec('document', lambda _: pytest.fail('unprepared document ran'), service_id='unprepared'),
+            BranchSpec('api', api, service_id=None)])
+        assert capturing.wait(2)
+        assert api_entered.wait(2)
+        with PaperRepository.open(path) as repository:
+            paper = repository.get(task.paper_id)
+            assert paper.metadata.title == 'Paper authority-gap'
+            assert paper.collection.active
+        with pytest.raises(InvalidPaperState):
+            registry.reserve(task.paper_id)
+        assert registry.admit(direct_ids=ExternalIds(doi='10.1234/authority-gap'),
+            metadata=PaperMetadata(title='Repeat'), branches=task.branches) is task
+        finish_capture.set()
+        api_release.set()
+        failed = task.future.result(3)
+        assert failed.collection_status == 'failed'
+        assert failed.metadata.abstract == 'Independent result'
+        assert {b.name: b.state for b in failed.collection.branches} == {'api': 'completed', 'document': 'failed'}
+    finally:
+        finish_capture.set()
+        api_release.set()
+        registry.shutdown()
+        registry.join()
+
+
+def test_retry_checks_only_pending_branch_dependencies_before_creating_attempt(tmp_path):
+    path = workspace(tmp_path)
+    revoked, captures = set(), []
+    def capture(service_id, providers):
+        captures.append((service_id, providers))
+        if service_id in revoked:
+            raise InvalidPaperState('Service unavailable')
+        return Authority(service_id)
+    registry = WorkspaceRegistry(path, factory=IndependentClientFactory(tmp_path / 'config.yaml'),
+        authority_capture=capture)
+    def failed(_):
+        raise RuntimeError('Controlled API failure')
+    plan = [BranchSpec('document', lambda _: MetadataDelta(ordinary_dates=('2026-11',)), service_id='publisher'),
+            BranchSpec('api', failed, service_id=None)]
+    try:
+        task = submit(registry, 'retry-dependencies', plan)
+        assert task.future.result(3).collection_status == 'failed'
+        captures.clear()
+        revoked.add('publisher')
+        retry_plan = [plan[0], BranchSpec('api', lambda _: MetadataDelta(abstract='Retried API'), service_id=None)]
+        qualified = registry.check_retry(task.paper_id, branches=retry_plan, expected_attempt=1)
+        assert qualified.collection.attempt == 1
+        assert captures == [(None, ())]
+        retried = registry.retry(task.paper_id, branches=retry_plan, expected_attempt=1)
+        assert retried.future.result(3).metadata.abstract == 'Retried API'
+        assert all(service is None for service, _ in captures)
+        with pytest.raises(InvalidPaperState):
+            registry.check_retry(task.paper_id, branches=retry_plan, expected_attempt=2)
+        # A currently unavailable pending dependency refuses without creating attempt 2.
+        other = submit(registry, 'retry-denied', [BranchSpec('document', failed, service_id='other')])
+        assert other.future.result(3).collection_status == 'failed'
+        revoked.add('other')
+        with pytest.raises(InvalidPaperState, match='unavailable'):
+            registry.retry(other.paper_id, branches=[BranchSpec('document', failed, service_id='other')], expected_attempt=1)
+        with PaperRepository.open(path) as repository:
+            assert repository.get(other.paper_id).collection.attempt == 1
+    finally:
+        registry.shutdown()
+        registry.join()
+
+
+def test_same_paper_branches_overlap_with_thread_owned_client_cache_and_sqlite(tmp_path):
+    from threading import get_ident
+    path = workspace(tmp_path)
+    first, second, release, first_closed, second_closed, finish_close = (Event() for _ in range(6))
+    scopes = []
+    real = IndependentClientFactory(tmp_path / 'config.yaml')
+    class Factory:
+        @contextmanager
+        def open(self, **kwargs):
+            with real.open(**kwargs) as clients:
+                scopes.append((get_ident(), clients, clients.request_cache))
+                yield clients
+                (first_closed if scopes[0][1] is clients else second_closed).set()
+                assert finish_close.wait(3)
+    registry = WorkspaceRegistry(path, factory=Factory(),
+        authority_capture=lambda service, providers: Authority(service), limit=1, group_limit=1)
+    # Different execution groups allow a webpage and API to overlap even at one Paper worker.
+    def collect(entered, abstract, dates):
+        def run(context):
+            entered.set()
+            assert release.wait(3)
+            assert context.read_paper().metadata.title == 'Paper branch-scopes'
+            context.emit(MetadataDelta(abstract=abstract, ordinary_dates=dates), sequence=1)
+        return run
+    try:
+        task = submit(registry, 'branch-scopes', [
+            BranchSpec('document', collect(first, 'Document abstract', ('2026-11',)), service_id='publisher'),
+            BranchSpec('api', collect(second, 'API abstract', ('2026-11-02',)), service_id=None)])
+        assert first.wait(2) and second.wait(2)
+        assert len(scopes) == 2 and scopes[0][0] != scopes[1][0]
+        assert scopes[0][1] is not scopes[1][1] and scopes[0][2] is not scopes[1][2]
+        release.set()
+        assert first_closed.wait(2) and second_closed.wait(2)
+        assert not task.future.done() and registry.busy(task.paper_id)
+        with pytest.raises(InvalidPaperState):
+            registry.reserve(task.paper_id)
+        finish_close.set()
+        finished = task.future.result(3)
+        assert finished.collection_status == 'completed'
+        assert finished.metadata.abstract in {'Document abstract', 'API abstract'}
+        assert finished.metadata.ordinary_dates == ('2026-11-02',)
+    finally:
+        release.set(); finish_close.set()
+        registry.shutdown(); registry.join(); real.close()
+
+
+def test_deferred_intent_expires_without_revoking_original_manual_reservation(tmp_path):
+    path = workspace(tmp_path)
+    with PaperRepository.open(path) as repository:
+        paper = repository.create_or_match(repository.workspace_id, direct_ids=ExternalIds(doi='10.1234/deferred'),
+            metadata=PaperMetadata(title='Manual')).paper
+    registry = WorkspaceRegistry(path, factory=IndependentClientFactory(tmp_path / 'config.yaml'), limit=1, group_limit=1)
+    reservation = registry.reserve(paper.id, kind='legacy')
+    try:
+        task = registry.submit(direct_ids=ExternalIds(doi='10.1234/deferred'), metadata=paper.metadata,
+            branches=[BranchSpec('never', lambda _: pytest.fail('Expired intent executed'))],
+            deadline=time.monotonic() + .1)
+        assert task.future.result(3).collection_status == 'cancelled'
+        assert not reservation.cancel_event.is_set()
+        reservation.guard()
+        with PaperRepository.open(path) as repository:
+            repository.merge_metadata(reservation.token, MetadataDelta(abstract='Accepted manual result'))
+        assert registry.busy(paper.id)
+        with pytest.raises(InvalidPaperState):
+            registry.reserve(paper.id)
+        registry.release(reservation)
+        assert not registry.busy(paper.id)
+    finally:
+        registry.release(reservation)
+        registry.shutdown(); registry.join()

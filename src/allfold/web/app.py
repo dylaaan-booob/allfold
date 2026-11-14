@@ -246,8 +246,12 @@ def create_app(config_path: Path, *, electron_bridge: ElectronBridge, diagnostic
         diagnostics=app.state.diagnostics, login=app.state.login, pacing_state=pacing,
         settings_lock=app.state.settings_write_lock)
     app.state.workspace_tasks.initialize()
+    from allfold.application.collection_planner import ProductionCollectionService
+    app.state.collection_service = ProductionCollectionService(app.state.workspace_tasks)
+    app.state.run_coordinator.workspace_tasks = app.state.workspace_tasks
+    app.state.run_coordinator.collection_service = app.state.collection_service
     app.state.preprint_lookup = PreprintLookup(resolved_config_path, app.state.browser_task_lock,
-        run_slot=run_slot, pacing_state=pacing, workspace_tasks=app.state.workspace_tasks)
+        workspace_tasks=app.state.workspace_tasks)
     electron_bridge.access_pages_closed = app.state.login.invalidate_pages
     def page_limits():
         from allfold.config import WorkflowConfig
@@ -317,9 +321,12 @@ def create_app(config_path: Path, *, electron_bridge: ElectronBridge, diagnostic
 
 
     @app.get('/api/papers/{paper_id}/preprint-lookup/state')
-    def preprint_lookup_state(paper_id: UUID, request_id: str | None = None):
-        return JSONResponse(app.state.preprint_lookup.state(paper_id, request_id),
-                            headers={'Cache-Control': 'no-store'})
+    def preprint_lookup_state(paper_id: UUID, workspace_id: UUID, request_id: str | None = None):
+        try:
+            return JSONResponse(app.state.preprint_lookup.state(paper_id, request_id, workspace_id),
+                                headers={'Cache-Control': 'no-store'})
+        except (ConfigurationError, LibraryError, ValueError, OSError) as error:
+            return JSONResponse({'error': str(error)}, status_code=409)
 
     @app.post('/api/papers/{paper_id}/preprint-lookup/start')
     def preprint_lookup_start(paper_id: UUID, body: _PreprintLookupAction):
@@ -359,7 +366,9 @@ def create_app(config_path: Path, *, electron_bridge: ElectronBridge, diagnostic
                 registry = app.state.workspace_tasks.current()
                 with registry.paper_gate():
                     paper, revision, fields = edit_paper_fields(workspace, body.workspace_id, paper_id, body.revision, **changes)
-                    payload = paper_payload(WorkspacePaper(paper), workspace_tasks=app.state.workspace_tasks)
+                    cleanup = app.state.workspace_tasks.cleanup_pending(paper.id, paper.workspace_id)
+                payload = paper_payload(WorkspacePaper(paper), cleanup_pending=cleanup,
+                    collection_service=app.state.collection_service)
             return JSONResponse(jsonable_encoder(dict(saved=True, workspace_id=paper.workspace_id,
                 revision=revision, paper=payload, fields=fields)))
         except (ConfigurationError, LibraryError, ValueError, OSError, ContentChangedError) as error:

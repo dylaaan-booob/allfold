@@ -12,7 +12,7 @@ from uuid import UUID
 from fastapi import FastAPI
 from fastapi.encoders import jsonable_encoder
 from fastapi.responses import FileResponse, JSONResponse
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, StrictInt
 
 from allfold.application.decisions import apply_paper_action
 from allfold.application.journal_covers import cover_details
@@ -24,7 +24,8 @@ from allfold.persistence.user_state import load_user_state, read_user_state
 from allfold.config import ConfigurationError, load_config
 from allfold.paper_dates import date_value
 from allfold.models import EvidenceDate
-from allfold.persistence.paper_repository import LibraryError
+from allfold.persistence.paper_repository import LibraryError, PaperRepository, StaleWriteError
+from allfold.persistence.library_models import WriteToken
 from allfold.url_safety import normalize_public_http_url
 from allfold.pdf_facts import stable_discovery_url
 from allfold.keywords import parse_keyword_expression
@@ -73,6 +74,45 @@ class _Decision(_Action):
     expected_status: PaperStatus | None = None
 
 
+class _RetryToken(BaseModel):
+    model_config = ConfigDict(extra='forbid')
+    metadata_generation: StrictInt = Field(ge=0)
+    operation_generation: StrictInt = Field(ge=0)
+    abstract_generation: StrictInt | None = Field(ge=0)
+    body_generation: StrictInt = Field(ge=0)
+
+
+class _CollectionRetry(_Action):
+    workspace_id: UUID
+    attempt: StrictInt = Field(ge=1)
+    revision: StrictInt = Field(ge=0)
+    token: _RetryToken
+
+
+def collection_payload(record, *, collection_service=None, cleanup_pending=False):
+    saved = record.collection
+    token = record.token
+    retry = dict(attempt=saved.attempt if saved else 0, revision=record.revision,
+        token={name: getattr(token, name) for name in ('metadata_generation', 'operation_generation',
+            'abstract_generation', 'body_generation')})
+    available = False
+    reason = None
+    if record.metadata is not None and not record.excluded and record.collection_status in {'failed', 'cancelled'}:
+        reason = 'cleanup_pending' if cleanup_pending else 'unavailable'
+        if not cleanup_pending and collection_service is not None:
+            try:
+                qualified = collection_service.check_retry(record.id, workspace_id=record.workspace_id,
+                    expected_token=token, expected_attempt=saved.attempt, expected_revision=record.revision)
+                available = qualified.revision == record.revision
+            except (LibraryError, ConfigurationError, ValueError, OSError, RuntimeError):
+                pass  # Public projections never include authority/transport exception text.
+        if available:
+            reason = None
+    return dict(status=record.collection_status, attempt=saved.attempt if saved else 0,
+        cleaning_up=bool(cleanup_pending), retry_available=available, retry_reason=reason, retry=retry,
+        branches=[dict(name=branch.name, status=branch.state) for branch in saved.branches] if saved else [])
+
+
 class _RunStart(_Action):
     provider: Literal[RunProvider.INTEGRATED] = RunProvider.INTEGRATED
     enabled_providers: tuple[str, ...] | None = None
@@ -104,10 +144,10 @@ class _RunCancel(_Action):
     task_id: str = Field(min_length=1, max_length=128)
 
 
-def paper_payload(paper: WorkspacePaper, *, preprint_lookup=None, workspace_tasks=None, cleanup_pending=None) -> dict:
+def paper_payload(paper: WorkspacePaper, *, workspace_tasks=None, cleanup_pending=None,
+                  collection_service=None) -> dict:
     if cleanup_pending is None:
-        cleanup_pending = (workspace_tasks.cleanup_pending(paper.paper_id, paper.record.workspace_id)
-            if workspace_tasks else bool(preprint_lookup and preprint_lookup.cleaning_up(paper.paper_id, paper.record.workspace_id)))
+        cleanup_pending = bool(workspace_tasks and workspace_tasks.cleanup_pending(paper.paper_id, paper.record.workspace_id))
     metadata = paper.record.metadata
     doi = paper.external_ids.doi
     proof_keys = {(item.provider, item.version, date_value(item)) for item in paper.preprint_evidence}
@@ -132,6 +172,7 @@ def paper_payload(paper: WorkspacePaper, *, preprint_lookup=None, workspace_task
         journal_issns=list(paper.journal_issns),
         discovered_at=paper.discovered_at.isoformat() if paper.discovered_at else None,
         notes=metadata.notes if metadata else None, collection_status=paper.record.collection_status,
+        collection=collection_payload(paper.record, collection_service=collection_service, cleanup_pending=cleanup_pending),
         body_present=paper.record.body is not None,
         preprint_lookup_available=bool(metadata is not None and not paper.record.excluded and formal_lookup_doi(
             doi, paper.publication_type, paper.journal, paper.conference)),
@@ -198,7 +239,7 @@ def install_ui_next(app: FastAPI, config_path: Path, csrf_token: str) -> None:
                         group=None, labels=[], publisher=None, service=None, service_id=None, cover=None, papers=[])
                     subjects[(None, True)].append(records[key])
                 entry = records[key]
-                item = paper_payload(paper, cleanup_pending=cleanup[paper.paper_id])
+                item = paper_payload(paper, cleanup_pending=cleanup[paper.paper_id], collection_service=app.state.collection_service)
                 if paper.status is PaperStatus.CANDIDATE:
                     entry['papers'].append(item)
                 else:
@@ -235,10 +276,40 @@ def install_ui_next(app: FastAPI, config_path: Path, csrf_token: str) -> None:
                 from allfold.persistence.paper_repository import PaperRepository
                 with PaperRepository.open(config.output_dir, expected_workspace_id=body.workspace_id) as repository:
                     paper, revision = repository.get(paper_id), repository.revision
-                payload = paper_payload(WorkspacePaper(paper), workspace_tasks=app.state.workspace_tasks)
+                cleanup = app.state.workspace_tasks.cleanup_pending(paper.id, paper.workspace_id)
+            payload = paper_payload(WorkspacePaper(paper), cleanup_pending=cleanup,
+                collection_service=app.state.collection_service)
             return response(dict(workspace_id=paper.workspace_id, revision=revision, paper=payload))
         except (ConfigurationError, ContentChangedError, LibraryError, ValueError, OSError) as error:
             return response({'message': str(error)}, 409)
+
+    @app.post('/api/papers/{paper_id}/collection/retry')
+    def collection_retry(paper_id: UUID, body: _CollectionRetry):
+        if not valid(body):
+            return response({'message': 'Invalid or missing CSRF token; refresh the page.'}, 403)
+        try:
+            with app.state.settings_write_lock, app.state.reset_lock:
+                if app.state.workspace_tasks.changing:
+                    raise StaleWriteError('Workspace maintenance is in progress')
+                # Construct authority from the caller's captured generations, never a renewed token.
+                token = WriteToken(body.workspace_id, paper_id, **body.token.model_dump())
+                workspace = load_config(config_path).output_dir
+                with PaperRepository.open(workspace, expected_workspace_id=body.workspace_id) as repository:
+                    captured = repository.get(paper_id)
+                if captured.revision != body.revision:
+                    raise StaleWriteError('Paper changed; refresh before retrying')
+                registry = app.state.workspace_tasks.current()
+                app.state.collection_service.retry(paper_id, workspace_id=body.workspace_id,
+                    expected_token=token, expected_attempt=body.attempt, expected_revision=body.revision)
+                with registry.paper_gate():
+                    with PaperRepository.open(registry.workspace, expected_workspace_id=body.workspace_id) as repository:
+                        paper, revision = repository.get(paper_id), repository.revision
+                    cleanup = app.state.workspace_tasks.cleanup_pending(paper.id, paper.workspace_id)
+                payload = paper_payload(WorkspacePaper(paper), cleanup_pending=cleanup,
+                    collection_service=app.state.collection_service)
+            return response(dict(workspace_id=paper.workspace_id, revision=revision, paper=payload))
+        except (ConfigurationError, ContentChangedError, LibraryError, ValueError, OSError, RuntimeError):
+            return response({'message': 'Paper 重试资格已变化，或所需访问条件不可用；请刷新后检查。'}, 409)
 
     def run_data(start=None):
         snapshot = app.state.run_coordinator.snapshot()

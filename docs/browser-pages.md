@@ -148,8 +148,8 @@ actual `done`, user limit 16, and final close to zero before Session disposal.
 WF05 extends this fixture with two simultaneous same-Service Paper owners,
 independent navigated work pages and a shared Portal pin at the same minimum
 capacity. Actual cleanup destroys A's page while B remains live, then returns to
-the retained baseline. This is native component evidence; production Run still
-does not register collection.
+the retained baseline. This is native component evidence; WF08 production
+orchestration additionally uses this same ledger, not a per-Run page budget.
 It also calls production `prepareLoggedInService` using the same real Portal with
 changed unrelated revisions/workflow and unchanged access keys; controlled resource
 search terminates explicitly while preserving that Portal.
@@ -185,3 +185,11 @@ and the [complete discovery specification](pdf-source-discovery.md).
 The fixed OCE access-capability mode opens no page. Its later reader uses the
 same captured retained preparation, normal work-page quotas and exact cleanup;
 it never bootstraps a second institutional Service from LWW authority.
+
+WF08 Run, collection branches, explicit Preprint and internal read-only discovery
+share one Workspace occupation boundary. Only tasks that actually dispatch native
+operations acquire work pages. API-only work and unready collection intents create
+no page; scheduler capacity does not replace the physical ledger. New Runs reuse
+valid retained Prepare contexts without replacing active Paper resources. Branch
+native identities and exact cleanup remain independent of the source Run and of
+the currently selected Browser/Reader page.

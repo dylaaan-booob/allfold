@@ -78,9 +78,6 @@ def build_run_result_summary(record: object) -> dict[str, object] | None:
     journals, issues, details = _visible_result_facts(facts, provider)
     if provider == "integrated":
         coverage_status = details.get('discovery_status', 'unknown')
-        completion = details.get('completion_status', 'empty')
-        if coverage_status in {'complete','partial'} and completion in {'partial','failed'}:
-            coverage_status = 'partial'
     elif provider == "wos":
         coverage_status = ("complete" if details.get("query_finished") and all(b["complete"] for b in details.get("batches", []))
                            else "partial" if result.get("returned_records") else "failed")

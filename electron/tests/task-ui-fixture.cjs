@@ -49,7 +49,8 @@ async function taskUI(script,{inline=true,request,ready=false,reduced=false,arch
   window.allfoldWorkbench={showTaskPage:async identity=>{presentations.push(identity);return true;}};
   window.allfoldLayoutModel={minOperationalSize:{array:360}};
   window.allfoldLayout={create:()=>({sync(){},closeFlyout(){}})};
-  const uiNext={data:{},notice:message=>calls.push(['notice',message]),request:async(url,body)=>{calls.push([String(url),body]);return request(String(url),body);}};
+  const uiNext={libraryIdentity:'library-fixture',workspaceEpoch:0,data:{},notice:message=>calls.push(['notice',message]),request:async(url,body)=>{calls.push([String(url),body]);return request(String(url),body);}};
+  window.uiNext=uiNext;
   const context={window,document,uiNext,workspaceSearch:{register(){},refresh(){}},URL,Date,Map,Set,Math,Promise,console,
     CustomEvent:class{constructor(type,options){this.type=type;this.detail=options?.detail;}},Event:class{constructor(type){this.type=type;}},
     matchMedia:()=>Object.assign(new Target(),{matches:reduced}),localStorage:{getItem:()=>null,setItem(){}},

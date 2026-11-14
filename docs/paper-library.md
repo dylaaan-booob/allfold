@@ -67,7 +67,7 @@ and connection safety. These helpers are not alternate application writers.
 | --- | --- |
 | `create`, `open`, `close` | Explicit lifecycle; optional expected Workspace UUID on open |
 | `get(paper_id)`, `list_papers()` | Immutable `PaperRecord` projections, including excluded and cleared records |
-| `match(direct_ids)` | Match saved direct identities; different owners raise `IdentityConflict` |
+| `match(direct_ids, additional_identities=...)` | Match saved direct identities; different owners raise `IdentityConflict` |
 | `create_or_match(workspace_id, direct_ids=..., metadata=...)` | `CreationResult(paper, created)`; a new full record requires title and reliable direct identity. Matches return the existing record unchanged in every state |
 | `merge_metadata(token, delta, direct_ids=...)` | Merge eligible automatic dates, Preprint/source/discovery facts and the first valid abstract; optionally add verified direct identities in the same transaction |
 | `edit_metadata(token, changes)` | Apply only named local fields to the latest payload; no whole-record snapshot save |
@@ -78,7 +78,7 @@ and connection safety. These helpers are not alternate application writers.
 | `rebuild_from_run(token, direct_ids=..., metadata=...)` | Only a cleared, unexcluded placeholder accepts a new caller-verified Run result directly identifying it; retain UUID and establish new generations |
 | `complete_body(token, body)` | Associate a newly completed body only with complete, unexcluded metadata and unchanged body authority |
 | `clear_body(token)` | Local unlink, also allowed when excluded or without metadata; revoke pending results even when no body is associated |
-| `admit_collection(workspace_id, lifecycle_id=..., branches=..., direct_ids=..., metadata=...)` | Atomically create/match or rebuild a released placeholder and establish queued authority; return `CollectionAdmission(paper, token, admitted, created)` |
+| `admit_collection(workspace_id, lifecycle_id=..., branches=..., direct_ids=..., metadata=...)` | Atomically create/match and establish queued authority; rebuild additionally requires original `expected_token` and `allow_rebuild=True`; return `CollectionAdmission(paper, token, admitted, created)` |
 | `require_collection(token)`, `mark_collection_running(token)` | Recheck captured attempt/lifecycle and uncancelled execution authority; optionally mark dispatch |
 | `commit_collection_branch(token, branch, sequence=..., delta=..., outcome=..., reason=..., direct_ids=...)` | Atomically merge an increment and its branch fact; duplicate/older sequences never reapply content |
 | `request_collection_cancel(token, reason=...)` | Revoke writes immediately; preserve active occupancy through actual cleanup |
@@ -113,7 +113,7 @@ attempt after Reject/Restore, without renewing execution authority. These cannot
 write content or touch a later attempt/lifetime. Successful facts and committed
 fields survive failure, cancellation and explicit retry. Metadata clearing and
 body completion reject active collection in their own transaction. The application
-also serializes download/legacy-query occupation and admission under one Paper gate.
+also serializes download/explicit-Preprint occupation and admission under one Paper gate.
 
 `open()` never interrupts tasks. The Workspace lifecycle owner explicitly calls
 `interrupt_collections` before first admission; ordinary worker/reader connections
@@ -167,7 +167,7 @@ Existing nonempty abstract text is retained exactly. Empty/markup-only candidate
 standalone wrapper/heading-only candidates, pure ellipses and explicit unavailable,
 sign-in or Read more notices do not occupy the first-valid
 opportunity. New automatic candidates use `abstract_text.normalize_abstract_text`,
-separate from legacy Run's `canonicalize.normalize_abstract`. It removes explicit
+separate from Run base `canonicalize.normalize_abstract`. It removes explicit
 markup and standalone Abstract/Summary wrappers, retaining internal scientific
 headings, ordered newline-separated paragraphs, Unicode and inequalities/angle
 notation. `MetadataDelta` qualifies candidates without rewriting their input;
@@ -189,16 +189,20 @@ not enter persistent metadata. Final native live verification precedes normal
 owned-page cleanup; repository commit then rechecks captured task authority
 without revisiting the closed Document.
 
-The current registry still executes same-Paper branches serially. The Reader
-pipeline fixture separately runs actual API/parser and native-DTO services in
-independent threads, each constructing its own `BranchContext`, repository and
-`AttemptClients` scope for one captured attempt. Its component-only registry
-removes the Python Paper commit gate so real independent SQLite transactions
-arbitrate API-first, DOM-first and simultaneous submissions. It covers first-valid
-abstracts, empty candidates, base text, manual edits/clear, notes, duplicate
-sequences, identity rollback and Reject/Restore. Clients/threads end before
-terminal branch/group settlement. This evidence does not enable production
-parallel scheduling, collection registration or a PDF branch.
+The registry now executes applicable same-Paper branches concurrently using a
+bounded leaf scheduler separate from its parent Paper pool. Each leaf opens its
+own repository, client/cache scope and native owner; thread checking remains
+enabled. Actual client/native/page cleanup and final writes gate Paper release.
+The [runtime contract](collection-runtime.md) documents Run admission, original
+snapshot/rebuild qualification, deferred intent behind manual work, exact scoped
+maintenance and pending-only explicit retry.
+
+The earlier Reader pipeline fixture remains component evidence for API-first,
+DOM-first and simultaneous transactions, first-valid abstracts, empty candidates,
+manual edits/clear, notes, duplicate sequences, identity rollback and Reject/Restore.
+Registry/host tests now additionally exercise actual production schedulers and
+independent thread-owned SQLite/client scopes. Production Run/UI adoption is
+verified separately from these foundational runtime checks.
 
 ## Paths and actual files
 
@@ -260,9 +264,11 @@ cleanup to finish. Shared Run discovery remains available to other Papers.
 `test_paper_repository.py`, `test_collection_repository.py` and `test_paper_repository_safety.py` use real temporary
 SQLite databases for reopening, contention, identity conflicts, dates, generations,
 rollback, paths, concurrent admission, captured branch writes,
-cancellation, retry and explicit interruption. Production Run retains its existing
-creation/completion calls; WF05 does not automatically register collection or
-enable download/retry UI. Application/API fixtures exercise
+cancellation, retry and explicit interruption. Production Run now uses atomic
+base/queued admission with original token/rebuild qualification and complete plans.
+Workspace owns branch resources after foreground completion. Public single-Paper
+retry uses the same eligibility service as its projection and preserves successful
+branch facts; Download stays internal. Application/API fixtures exercise
 production adoption, fields, Preprint and recycling; Electron fixtures exercise
 projections, response ordering and the existing layout. None establishes real
 provider, institution, user-library or actual-PDF acceptance.

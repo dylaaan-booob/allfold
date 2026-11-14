@@ -12,7 +12,7 @@ def settings_task_active(app) -> bool:
 def settings_input_active(app) -> bool:
     """Ordinary edits retain foreground snapshot protection only."""
     return (app.state.workspace_tasks.changing
-            or any(owner.exclusive or owner.kind in {'wos', 'preprint-lookup'}
+            or any(owner.exclusive or owner.kind == 'wos'
                    for owner in app.state.browser_task_lock.owners)
             or app.state.run_coordinator.snapshot().status is CoordinatorStatus.RUNNING
             or app.state.wos_coordinator.running)

@@ -145,3 +145,10 @@ the captured retained target's actual OCE Host, including after a CARSI entry;
 OCE navigation revalidates that exact prepared context. LWW authority alone does
 not enable it. The known OCE viewer's `file` field supplies a current signed
 assets candidate without a new native listener or PDF-byte receiver.
+
+WF08 production collection uses the same Session, origin cooldown and physical
+page ledger across foreground Runs and Workspace tasks. Run cancellation carries
+only its captured parent identity; it cannot cancel transferred Paper native
+requests. Each branch retains its own workflow/task through actual Future/page
+cleanup. Switching the displayed Reader/Browser surface does not end that lifetime.
+No byte receiver, original-response replay or permanent PDF behavior is added.

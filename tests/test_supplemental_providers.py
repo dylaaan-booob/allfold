@@ -9,6 +9,44 @@ from allfold.providers.supplemental import SupplementalClient
 
 
 @pytest.mark.parametrize('provider', ('biorxiv', 'medrxiv'))
+@pytest.mark.parametrize(('doi', 'suffix'), [
+    ('10.1093/nar/gkac1225', 'nar%252Fgkac1225'),
+    ('10.1093/nar/extra/gkac1225', 'nar%252Fextra%252Fgkac1225'),
+    ('10.1093/nar/a+b?c#d', 'nar%252Fa%2Bb%3Fc%23d'),
+    ('10.1093/nar/raw%2fvalue', 'nar%252Fraw%252fvalue'),
+])
+def test_native_publication_path_preserves_complete_suffix_and_exact_no_match(provider, doi, suffix):
+    calls = []
+    expected = f'/pubs/{provider}/10.1093/{suffix}/na/json'.encode()
+    def response(request):
+        calls.append(request.url.raw_path)
+        # The actual upstream returns only the first suffix component on raw '/'.
+        subject = doi if request.url.raw_path == expected else '10.1093/nar'
+        return httpx.Response(200, json={'messages': [
+            {'status': f'Preprint for DOI {subject} not found'}], 'collection': []})
+    with SupplementalClient(provider, interval=0, transport=httpx.MockTransport(response)) as client:
+        assert client.lookup_published_preprints(doi) == ()
+    assert calls == [expected]
+
+
+@pytest.mark.parametrize('provider', ('biorxiv', 'medrxiv'))
+def test_native_details_path_preserves_multi_slash_identity(provider):
+    doi = '10.1101/123456/alias'
+    expected = f'/details/{provider}/10.1101/123456%252Falias/na/json'.encode()
+    calls = []
+    def response(request):
+        calls.append(request.url.raw_path)
+        subject = doi if request.url.raw_path == expected else '10.1101/123456'
+        return httpx.Response(200, json={'messages': [{'status': 'ok'}], 'collection': [{
+            'doi': subject, 'server': provider, 'date': '2022-01-02', 'version': '1', 'title': 'Preprint'}]})
+    with SupplementalClient(provider, interval=0, transport=httpx.MockTransport(response)) as client:
+        record, = client.lookup('doi', doi)
+    assert calls == [expected]
+    assert record.external_ids.doi == doi
+    assert record.provenance.url == 'https://api.biorxiv.org' + expected.decode()
+
+
+@pytest.mark.parametrize('provider', ('biorxiv', 'medrxiv'))
 @pytest.mark.parametrize('status', ('service unavailable', 'Preprint for DOI 10.1093/bioinformatics not found'))
 def test_native_no_match_does_not_hide_errors_or_truncated_doi(provider, status):
     from allfold.providers.integrated import DiscoveryError
@@ -19,26 +57,32 @@ def test_native_no_match_does_not_hide_errors_or_truncated_doi(provider, status)
 
 
 @pytest.mark.parametrize('provider', ('biorxiv', 'medrxiv'))
-def test_publication_lookup_accepts_current_native_preprint_doi_field(provider):
+@pytest.mark.parametrize(('formal', 'path'), [
+    ('10.5555/formal', '10.5555/formal'),
+    ('10.1093/nar/formal', '10.1093/nar%252Fformal'),
+])
+def test_publication_lookup_accepts_current_native_preprint_doi_field(provider, formal, path):
     def response(request):
         if request.url.path.startswith('/pubs/'):
+            assert request.url.raw_path == f'/pubs/{provider}/{path}/na/json'.encode()
             return httpx.Response(200, json={'messages': [{'status': 'ok'}], 'collection': [{
-                'preprint_doi': '10.1101/123456', 'published_doi': '10.5555/formal',
+                'preprint_doi': '10.1101/123456', 'published_doi': formal,
                 'preprint_platform': provider, 'preprint_date': '2022-01-02',
                 'published_date': '2026-01-02', 'published_journal': 'Journal',
             }]})
         return httpx.Response(200, json={'messages': [{'status': 'ok'}], 'collection': [{
-            'doi': '10.1101/123456', 'published': '10.5555/formal', 'server': provider,
+            'doi': '10.1101/123456', 'published': formal, 'server': provider,
             'date': '2022-01-02', 'version': '1', 'title': 'Original preprint',
         }]})
     with SupplementalClient(provider, transport=httpx.MockTransport(response), interval=0) as client:
-        records = client.lookup_published_preprints('10.5555/formal')
-    assert records[0].external_ids.doi == '10.5555/formal'
+        records = client.lookup_published_preprints(formal)
+    assert records[0].external_ids.doi == formal
+    assert records[0].provenance.url == f'https://api.biorxiv.org/pubs/{provider}/{path}/na/json'
     assert records[0].related_dois == ('10.1101/123456',)
     assert records[1].external_ids.doi == '10.1101/123456'
     assert len(consolidate_evidence(records).clusters) == 2
     paper = completion_metadata(records)
-    assert paper.doi == '10.5555/formal'
+    assert paper.doi == formal
     assert paper.metadata.first_public_at == '2022-01-02'
 
 

@@ -127,8 +127,9 @@ frame enumeration, cookie/observer operations and unused Import-only attachment
 capture/bypass helpers. Its local Session response-cancel/URL-capture loop is gone.
 WF04 owns consolidation of the remaining shared Session listeners, original
 DownloadItem capability fixtures, page quotas/scheduling and complete page-close
-policy. No replacement downloader is introduced. WF06 adds the internal Date/Abstract operation below; production collection
-registration and orchestration remain deferred to WF08. Retained adapted host sources keep their AGPL notices;
+policy. No replacement downloader is introduced. WF06 adds the Date/Abstract
+operation below; WF08 connects its complete Document/API plan to production.
+Retained adapted host sources keep their AGPL notices;
 official vendor trees, dependency pins and real user data are unchanged.
 
 The shared Session entry and measured original-response behavior are documented
@@ -154,12 +155,13 @@ seam, not permission to relax these checks or claim all Runtime entries supporte
 ## Internal combined Document operation
 
 The internal authenticated Bridge action is `extract_paper_metadata`, called by a
-captured Workspace task through `BranchContext.execute_native()`. It has no public
-HTTP/button entry and is not installed in production Run. Run still owns its
-ordinary Completion, creation/completion timing and single slot; the public
-Preprint entry retains its gate. WF07 composes the existing Date/Abstract read
-with a separate bounded PDF-clue read; neither marks a real Paper's complete
-production collection group finished.
+captured Workspace branch through `BranchContext.execute_native()`. WF08 installs
+it in the complete production plan after base Paper admission. It has no standalone
+public extraction button. WF07 composes Date/Abstract with independent bounded PDF
+clues on the same live Document. The parallel necessary-API branch has separate
+resources; only all planned branch results and actual cleanup settle the Paper.
+Foreground Run has its own serial slot and ends independently. Explicit Preprint
+uses the same Paper occupation gate without impersonating collection.
 
 The payload carries the existing workflow/task/Paper association,
 `workspace_identity` (the existing 64-hex live Workspace path/inode hash, **not**
