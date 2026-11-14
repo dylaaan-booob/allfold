@@ -10,14 +10,14 @@ npm --prefix electron run setup
 
 Setup checks tools, creates `config.example.yaml` only if absent, installs locked Python/Electron/build dependencies, explicitly installs the Electron binary and builds the UI. Existing ignored vendor/Runtime directories are untouched. Translation-only assembly and Local API saving are retired; remaining Browser/Document/Prepare/Cloudflare helpers have no generated Runtime dependency.
 
-Configure keywords, months and Provider settings in Discover. The Login toolbar owns Institution and Service preparation concurrency. Neutral Paper/PDF workflow values remain in configuration for existing contracts; no Download or retired Import controls are exposed. Application settings remain in Settings. Ordinary edits autosave, while credential replacement/clearing and high-impact operations require explicit submission. The public template is separate from local configuration; setup does not create or copy credentials.
+Configure keywords, months and Provider settings in Discover. The Login toolbar owns Institution and Service preparation concurrency. Single-Paper Download/Cancel and local PDF controls live in the existing reader; retired Import controls remain absent. Original DownloadItem body output is blocked by the pinned-runtime safety boundary in [body downloads](body-downloads.md). Application settings remain in Settings. Ordinary edits autosave, while credential replacement/clearing and high-impact operations require explicit submission. The public template is separate from local configuration; setup does not create or copy credentials.
 
 Journal state is stored in `.allfold/user-data.sqlite`, isolated by canonical configuration path. The YAML `venue_whitelist` remains the first-migration source, not the live data store. The Journal Registry rebuilds offline from the existing five source lists with `uv run --locked python tools/build_journal_registry.py`; its shipped rows and indexes are checked against an isolated rebuild. Shared GOKB/CARSI data lives in `.allfold/resources.sqlite`; neither database belongs in a source candidate. Use temporary project/configuration directories and injected HTTP transports for migration, exchange and Resolver tests. Do not launch tests against personal YAML, Workspace, covers or Zotero.
 
 The production [Paper library](paper-library.md) uses standard-library `sqlite3`.
 Read-only uninitialized views do not create it; the first Run initializes
 `Workspace/papers.sqlite`. Use disposable directories, actual SQLite connections
-and local HTTP/DOM fixtures. Create current-format databases for acceptance; exactly valid v3 has a transactional v4 forward change; retired/unknown formats remain refused. Missing, corrupt and unsupported databases have distinct results.
+and local HTTP/DOM fixtures. Create current-format v5 databases for acceptance; exactly valid v4 and the supported v3 path have transactional forward changes preserving saved data and unknown historical provenance. Retired/unknown formats remain refused. Missing, corrupt and unsupported databases have distinct results.
 
 ```sh
 uv run --locked pytest tests/test_paper_repository.py tests/test_paper_repository_safety.py tests/test_run_commit.py tests/test_preprint_lookup.py
@@ -166,7 +166,8 @@ rollback, real worker Futures and cleanup barriers, queued/expired work, branch
 idempotence and retry, loopback HTTP with independent clients, common pacing and
 narrow access revocation. Scheduler limits count executing Paper jobs, not native
 WebContents. WF08 connects this runtime to production and single-Paper Retry;
-public Download remains deferred. Existing bounded dispatcher and foreground Run
+WF10's public body service reuses the host/gate with its separate reservation.
+Existing bounded dispatcher and foreground Run
 tests remain applicable.
 
 The registry runs same-Paper branches on a separate bounded leaf scheduler.
@@ -314,6 +315,23 @@ counts, live effect timing, configuration limits and the Runtime form-POST
 limitation; [Session evidence](browser-session.md) has its separate capability scope.
 
 
-## WF09 internal body service
+## Public body service and native output gate
 
-WF09 adds `test_body_downloads.py` and the serial `body-stream.test.cjs` composition fixture. Run them for isolated inode/no-clobber/schema/transaction checks and real Electron Session→stream/file→SQLite→Workspace projection evidence. The fixture uses local HTTP, a temporary profile, synthetic Cookie and controlled DNS routing; it does not use real accounts or user data. See [the complete contract](body-downloads.md).
+Run `test_body_downloads.py`, `test_body_download_http.py` and the serial
+`body-stream.test.cjs` composition fixture for body qualification, lazy P1/P2/P3,
+fixed secret scope, exact cancel/progress, inode/no-clobber, v4/v3→v5 preservation,
+transactions and original-generation races. The real Electron composition adds
+public HTTP→Main Session→file→SQLite→Workspace evidence to the retained internal
+stream cases. Local HTTP, temporary profile/library and synthetic Cookie/DNS
+routing isolate all data. The rendered layout fixture checks ongoing download
+refresh, usable Reject/Run, classification/remount and retained reading scroll;
+`ALLFOLD_LAYOUT_SCREENSHOTS` captures optional local QA images.
+
+Original POST/inline/iframe/popup mechanisms can work while safe native output
+does not. Real Electron45 probes showed precreated inode replacement and
+asynchronous cancellation deletion by path; both `/dev/fd` output approaches
+interrupted without body writes. Production refuses native body action before
+dispatch, and the WF10 PR remains Draft. Those experiments do not establish
+normal file-task settlement or a public native body chain. See [the complete
+contract and precise blocker](body-downloads.md); do not replace the failing
+boundary with sleeps, altered assertions, resumed downloads or POST-to-GET replay.

@@ -219,6 +219,21 @@ Logs Reset protects queued, API-only, writing and cleaning collection work even
 when no native Browser owner exists.
 
 
-## WF09 internal body service
+## Body state and local operations
 
-WF09 admits `stream_paper_body` in the shared native/Python diagnostic action allowlist and uses explicit native `stream_complete`, which means only PDF transport plus closed writer. Only the later repository transaction means body completed/Downloaded. Public download state exposes bounded state/attempt/reason; absolute roots, output capabilities, raw response content and signed URLs remain private. Durable source projection keeps only origin. It adds no public Download history/control. See [the complete contract](body-downloads.md).
+`stream_paper_body` and fixed `local_paper_body` use the common native/
+Python operation ledger. `stream_complete` means PDF transport and closed writer;
+only the later repository transaction means body completed/Downloaded. Local
+open/locate/delete retain bounded outcomes and actual maintenance visibility,
+without declaring a shell error to be missing or manufacturing file-manager
+completion.
+
+Public download state exposes finite status, task/attempt, byte progress,
+sequence, cleanup and successful source/fallback. Absolute roots, output proofs,
+raw responses, secrets, signatures and exception stacks remain private. Durable
+source URL remains origin-only; successful provenance is stored independently,
+with unknown values for old bodies. Progress does not write every byte or create
+a separate history product. Native-unsupported records a finite condition and
+does not claim original-response transfer. Retired Translator/parent-item saving
+enums and producer-less inference are removed; generic parent task ownership,
+WoS and current body diagnostics remain. See [the complete contract](body-downloads.md).

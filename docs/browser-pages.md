@@ -1,5 +1,11 @@
 # Browser pages and physical capacity
 
+The public body service reuses these physical quotas for necessary reader and
+solver pages. Pure Session streams and local open/locate/delete create no blank
+WebContents. Original DownloadItem body saving is currently blocked by the
+[native output object/cancellation boundary](body-downloads.md), not enabled by
+relaxing Document ownership or returning page slots before actual settlement.
+
 BrowserRuntime owns one page ledger for the `allfold` Session. Execution ownership
 and physical resource ownership are separate. Tab selection, hiding, a renderer
 crash, task cancellation, removing an association and requesting close do not

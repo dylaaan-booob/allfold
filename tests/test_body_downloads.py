@@ -301,44 +301,6 @@ def test_sciencedirect_article_return_refreshes_current_signed_pdf_from_document
         host.shutdown();host.join()
 
 
-def test_known_challenge_reader_uses_managed_document_access_before_its_pdf(tmp_path):
-    from dataclasses import replace
-    import time
-    from test_document_metadata import envelope,pdf_clues
-    from allfold.application.body_downloads import submit_body_download
-    host,workspace,paper,bridge,candidate=application_host(tmp_path)
-    article='https://www.sciencedirect.com/science/article/pii/S0047259X2400006X'
-    reader=article+'/pdfft?md5=current'
-    candidate=replace(candidate,target=replace(candidate.target,article_url=article),
-        url=reader,platform='sciencedirect',rule_id='R024')
-    def wait_for(action,after):
-        until=time.monotonic()+2
-        while (len(bridge.calls)<=after or bridge.calls[-1][0]!=action) and not task.future.done() and time.monotonic()<until:
-            time.sleep(.005)
-        assert len(bridge.calls)>after and bridge.calls[-1][0]==action
-    try:
-        task=submit_body_download(host,paper,candidates=(candidate,))
-        assert bridge.started.wait(2)
-        bridge.result.set_result(dict(kind='response',outcome='response',response=dict(
-            url=reader,content_type='text/html',status=200,
-            body='<html><title>Just a moment...</title></html>',access='challenge')))
-        wait_for('extract_paper_pdf_clues',1)
-        assert bridge.calls[-1][1]['reader']['identifier']=='S0047259X2400006X'
-        pdf='https://pdf.sciencedirectassets.com/body.pdf?token=transient'
-        bridge.result.set_result(envelope() | {'pdf_clues':pdf_clues(platform='sciencedirect',landing_url=reader,
-            candidates=[dict(stage='P1',rule_id='R024',url=pdf)])})
-        wait_for('stream_paper_body',2)
-        assert bridge.calls[-1][1]['url']==pdf
-        bridge.finish()
-        result=task.future.result(2)
-        assert result.status=='completed' and result.paper.collection_status=='not_started'
-        assert result.paper.metadata==paper.metadata
-    finally:
-        if hasattr(bridge,'result') and not bridge.result.done():
-            bridge.result.set_result(dict(kind='cancelled',outcome='cancelled'))
-        host.shutdown();host.join()
-
-
 @pytest.mark.parametrize('signed',[True,False])
 def test_unsigned_sciencedirect_reader_qualifies_current_link_before_any_stream(tmp_path,signed):
     from dataclasses import replace

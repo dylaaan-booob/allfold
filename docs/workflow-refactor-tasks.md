@@ -4,9 +4,11 @@ Each task has one PR targeting `main`. The user accepts and merges the current P
 before a separately requested prompt starts the next task. Any temporary integration branch/ticket graph is scoped to the current WF task;
 it does not authorize later tasks.
 
-WF01–WF07 boundary sections below record those PRs at their merged versions.
+WF01–WF09 boundary sections below record those PRs at their merged versions.
 WF08 supersedes their then-deferred production registration, serial branches and
-global Preprint admission. Current operation is described in the WF08 section.
+global Preprint admission. Current public stream/local-body operation and the
+remaining native safety blocker are described in the WF10 section and
+[body downloads](body-downloads.md). Historical sections retain their own scope.
 
 | Task | Goal | Cleanup ownership | Actual status |
 | --- | --- | --- | --- |
@@ -18,8 +20,8 @@ global Preprint admission. Current operation is described in the WF08 section.
 | WF06 | Date/Abstract extraction and retained API/Preprint capabilities | Old date columns, abstract overwrite, author/ordinary-completion assertions/docs | Merged in PR #101 at `c641ea371c111f45b7d42013df3a0eb6c1d80ac3`; spec #97 / tickets #98–100; extraction/necessary components, connected in WF08 |
 | WF07 | PDF source rules, candidates, same-page Meta/DOM hints | Source order, candidate success, URLs and request context contracts | Merged in PR #107 at `4d0d22bbda02d9fc173175fa8346813752e84204`; spec #102 / tickets #103–106, #108; [adopted request and fixed evidence](pdf-source-discovery.md) |
 | WF08 | Connect new Run and Workspace background collection | Whole-batch Run gates, Completion, Preprint double locking, busy/exit contracts | Merged in PR #114 at `1af11e3c3f0eb0ae893c6a3e2e5ade550a81a19d`; spec #109 / tickets #110–113; source/fixture and live evidence remain distinct |
-| WF09 | Session stream, managed file landing, database association service | Current-response streaming, actual file ownership, no-clobber and unique completion | Implemented on this branch; spec #115; internal service only, PR/CI evidence reported separately |
-| WF10 | Original DownloadItem, complete Download UI, local PDF actions | Cancel-and-GET replay, old download/UI states, PDF action contracts | Not started |
+| WF09 | Session stream, managed file landing, database association service | Current-response streaming, actual file ownership, no-clobber and unique completion | Merged in PR #116 at `029bc9a148170c699dbbe43f63885fc9718656e6`; spec #115; internal stream/file/SQLite service |
+| WF10 | Original DownloadItem, complete Download UI, local PDF actions | Cancel-and-GET replay, old download/UI states, PDF action contracts | Partial/Draft PR #121; spec #117, tickets #118–120. Public stream/local body work proceeds; original native output is blocked by measured cancellation/object safety, not accepted |
 | WF11 | Clean install, dependencies/licenses, whole regression and residual cleanup | Uncalled Runtime/build dependencies, installation/license docs, cross-task leftovers | Not started |
 
 ## WF01 implementation boundary
@@ -294,10 +296,46 @@ cancel, identity/rebuild races, capability/First public and selective retry.
 Rendered Electron fixtures exercise incremental fields/state, editing/save races,
 scroll/selection and per-Paper operations. Final command/review/latest PR CI
 evidence is recorded on the PR; these fixtures do not establish real institutions,
-publishers, CAPTCHA or installed-app acceptance. WF09/WF10 byte transport,
-permanent PDFs, body completion and public Download/file actions are not delivered.
+publishers, CAPTCHA or installed-app acceptance. Byte transport, permanent PDFs,
+body completion and public file actions were outside WF08; later adoption is
+recorded in the WF09/WF10 sections below.
 
 
 ## WF09 internal body boundary
 
-[Body lifecycle](body-downloads.md) records the current service, exact v3→v4 change, qualification, closed-writer completion, proven-fragment cleanup and isolated evidence. This branch does not implement WF10 public Download/open/locate/physical deletion or native action/POST adoption. Historical WF02–08 evidence above retains its original scope.
+[Body lifecycle](body-downloads.md) records the merged internal stream service,
+its original v3→v4 change, qualification, closed-writer completion, proven-fragment
+cleanup and isolated evidence. WF09's IEEE reader and Oxford CDN samples and its
+ScienceDirect viewer/fresh-GET boundary remain historical observations, not new
+WF10 acceptance. Public operations are the following task.
+
+## WF10 partial implementation and blocked native output
+
+The public service drives existing lazy P1–P5 from saved trustworthy Paper facts
+inside one body reservation. It adds identity/current-qualification Download,
+exact task/attempt Cancel, finite progress, continuous Workspace refresh and
+current-body-first local reading. Source/fallback provenance is committed with
+completion through schema v5; valid v4 and supported v3 content remains intact
+and old provenance stays unknown. Independent local open/locate/Trash PDF
+deletion captures body/filesystem qualification and participates in actual host/
+Main settlement. No completed metadata recollection or foreground Run slot is
+introduced.
+
+Public Session stream and rendered Reader fixtures are separate evidence from
+raw original-response capability. Experimental Main/Runtime POST, inline and
+action-created iframe/popup cases worked, but native output failed the required
+directory/leaf replacement and cancellation boundary. Chromium's asynchronous
+saved-path deletion can remove an unknown replacement after `done(cancelled)`;
+real directory/file `/dev/fd` sinks both interrupted without body writes. The
+unsafe implementation is excluded from the PR. Native-dependent entries have a
+finite production refusal before action, network or output, without manufacturing
+fallback or dropping later legitimate stream sources.
+
+The exact blocker and pinned source/fixture observations are recorded in
+[#118](https://github.com/dylaaan-booob/allfold/issues/118#issuecomment-6881292245).
+WF10 is not complete; #117/#118 remain open and PR #121 remains Draft. It needs a
+native output/settlement capability meeting actual-object safety, or a separately
+authorized runtime/contract change. CI passing for the safe partial branch does
+not resolve that requirement. Real institutions/publishers, default-app effects
+and WF11 remain separately unaccepted; no dependency upgrade or safety waiver
+has been made.

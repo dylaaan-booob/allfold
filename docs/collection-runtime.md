@@ -146,6 +146,27 @@ name/status and the same read-only retry qualification. Raw failure messages,
 clients, lifecycle authority and PDF discovery context are omitted.
 
 
-## WF09 internal body service
+## Independent body and local-file work
 
-WF09 adds distinct internal `body` reservations on the same host, Paper gate and bounded scheduler. They persist a queued download attempt before dispatch and remain visible through stream/writer/publication/commit/cleanup. Read-only `download` discovery and manual `legacy` Preprint retain their consumers. A Run match during body work returns the original Paper without new collection intent; no foreground Run slot owns the download. See [the complete contract](body-downloads.md).
+WF09's `body` reservations now own public Download on the same host, Paper gate
+and bounded scheduler. A queued attempt is persisted before dispatch and remains
+visible through lazy discovery, stream/writer, publication, completion and actual
+cleanup. Repeated clicks return the original task/attempt/deadline; durable
+collection intent and uncertain cleanup block a second writer. Read-only
+`download` discovery and manual `legacy` Preprint retain their real consumers,
+without nested admission. A Run match reuses the UUID/current facts without new
+collection intent; no foreground Run slot or reader selection owns the body.
+
+New-download qualification omits abstract generation but retains original
+metadata/operation/body generations, observed attempt, reliable identity closure,
+Workspace/lifecycle and actually used access dependencies. A conditional skip is
+not a failed transfer or fallback. Native-dependent entries currently skip before
+dispatch because safe DownloadItem output is blocked; all-exhausted work still
+has a finite failure rather than remaining pending.
+
+Local file operations capture their own current body proof and host-visible
+lifetime. Open/locate can coexist with collection and require no Service/Prepare;
+destructive Trash PDF/metadata operations remain unavailable until actual Paper
+work and cleanup end. Whole-Workspace maintenance stops admission, drains owned
+work outside configuration/SQLite locks and preserves the bridge for actual
+terminal responses. See [the complete contract](body-downloads.md).

@@ -1,5 +1,12 @@
 # Controlled Documents and article access
 
+Public Download reuses the PDF-only read capability under its existing body
+reservation, without recollecting completed Date/Abstract. These probes remain
+read-only and still release only their owned pages after verified bounded results.
+They do not supply action/script/file authority. Original Document→request/item
+body adoption remains [blocked on native output safety](body-downloads.md);
+no production path cancels an obtained one-shot response and replays its URL.
+
 `BrowserRuntime` owns Page/WebContents, task claims and navigation. The existing
 `DocumentRuntime` sends only the fixed `binding`, `access`, `article` and `extract` operations
 to the sandboxed, context-isolated Document preload. It exposes no site API,
@@ -295,7 +302,9 @@ bound to the original target. It keeps exact frame/Document/URL/subject, access,
 prepared Service, cancellation and cleanup checks even when article DOI/h1 proof
 is absent. This does not weaken `openPaperPage`/`confirmArticlePage` for articles.
 Challenges still use the shared access/solver boundary. Actions and one-time
-responses remain typed refresh facts; actual action execution/transfer is WF10.
+responses remain typed refresh facts; production native action execution/transfer
+is still the explicitly blocked portion of WF10. Public reusable-URL transfer
+uses the Session body service and its separate completion transaction.
 See the [complete adopted rules](pdf-source-discovery.md).
 
 The same internal `extract_paper_pdf_clues` action accepts the fixed

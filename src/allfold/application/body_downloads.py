@@ -67,14 +67,8 @@ def _source_projection(url):
 def _consume(reservation, repository, files, candidate, progress):
     registry = reservation.registry
     registry._guard(reservation, repository)
-    try:
-        from allfold.application.native_body_downloads import native_applicable, transfer_native
-    except ImportError:
-        native_applicable = lambda value: bool(value.action)
-        transfer_native = None
+    from allfold.application.native_body_downloads import native_applicable, transfer_native
     if native_applicable(candidate):
-        if transfer_native is None:
-            return CandidateResult.failed('native-unavailable'), None, ''
         native = transfer_native(reservation, repository, files, candidate, progress)
         if not (native.result.pdf_type and native.result.transfer_complete) and native.output is not None:
             files.cleanup(native.output)
@@ -259,12 +253,9 @@ class _BodyDiscoveryIO:
             raise
 
     def prepare(self, candidate):
-        try:
-            from allfold.application.native_body_downloads import native_applicable
-            if native_applicable(candidate):
-                return ()
-        except ImportError:
-            pass
+        from allfold.application.native_body_downloads import native_applicable
+        if native_applicable(candidate):
+            return ()
         key = (urldefrag(candidate.url)[0], candidate.action)
         reader = reader_context(candidate)
         if (reader and reader['platform'] == 'sciencedirect' and candidate.target.article_url
@@ -326,6 +317,11 @@ def _run(reservation, request, progress):
                         result = BodyResult('completed', saved, CandidateResult.pdf(transfer_complete=True))
                     elif discovery.status in {'cancelled', 'stale', 'expired', 'local-failure'}:
                         result = BodyResult(discovery.status.replace('-', '_'), candidate_result=result.candidate_result)
+                    elif discovery.status == 'exhausted' and any(reason == 'native-unsupported'
+                            for _, _, reason in discovery.diagnostics):
+                        result = BodyResult('failed', candidate_result=CandidateResult('skipped', diagnostic='native-unsupported'))
+                    elif result.status == 'skipped':
+                        result = BodyResult('failed', candidate_result=result.candidate_result)
             except _BodyAccessBlocked:
                 result = BodyResult('failed', candidate_result=CandidateResult.failed('access-blocked'))
             except (TimeoutError, ProviderBudgetExceeded):
