@@ -202,22 +202,53 @@ def test_admitted_before_registration_is_atomic_against_download_and_legacy(tmp_
 
 def test_failure_retains_incremental_results_and_occupancy_until_cleanup_then_retries_only_failed(tmp_path):
     path = workspace(tmp_path)
-    entered, release = Event(), Event()
-    registry = WorkspaceRegistry(path, factory=IndependentClientFactory(tmp_path / 'config.yaml'))
+    entered, release, success_closed, failure_settled = Event(), Event(), Event(), Event()
+    factory = IndependentClientFactory(tmp_path / 'config.yaml')
+
+    class OwnedScopes:
+        @contextmanager
+        def open(self, **kwargs):
+            try:
+                with factory.open(**kwargs) as clients:
+                    yield clients
+            finally:
+                if kwargs['providers'] == ('crossref',):
+                    success_closed.set()
+
+    class NativeFailure:
+        def execute(self, action, data, *args, **kwargs):
+            done = Future()
+            if action == 'release_workflow_pages':
+                done.set_result({'released': True})
+                # Failed outcome and HTTP close precede owned native cleanup.
+                failure_settled.set()
+            else:
+                done.set_exception(ValueError('controlled failure'))
+            return done
+
+        def cancel_task(self, *_):
+            pass
+
+    registry = WorkspaceRegistry(path, factory=OwnedScopes(), bridge=NativeFailure(),
+        authority_capture=lambda service, providers: Authority(service))
 
     def success(context):
+        # Force cleanup to enter first; callback order cannot establish settlement.
+        assert entered.wait(3)
         context.emit(MetadataDelta(abstract='Kept after failure'), sequence=1)
 
-    def failure(_):
-        raise ValueError('controlled failure')
+    def failure(context):
+        context.execute_native('controlled_failure', {})
 
     def cleanup(_):
         entered.set()
         assert release.wait(3)
 
     try:
-        task = submit(registry, 'failed', [BranchSpec('success', success), BranchSpec('failure', failure), BranchSpec('cleanup', cleanup)])
+        task = submit(registry, 'failed', [BranchSpec('success', success, providers=('crossref',)),
+            BranchSpec('failure', failure), BranchSpec('cleanup', cleanup)])
         assert entered.wait(2)
+        assert success_closed.wait(2) and failure_settled.wait(2)
         with PaperRepository.open(path) as repository:
             paper = repository.get(task.paper_id)
             assert paper.metadata.abstract == 'Kept after failure'
@@ -245,6 +276,7 @@ def test_failure_retains_incremental_results_and_occupancy_until_cleanup_then_re
         release.set()
         registry.shutdown()
         registry.join()
+        factory.close()
 
 
 def test_empty_missing_and_skipped_plans_are_distinct(tmp_path):
