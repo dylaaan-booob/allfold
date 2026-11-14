@@ -17,6 +17,11 @@ A primary identity is selected explicitly and persisted. Its DOI, when present,
 is the formal-article DOI used for eligible Preprint lookup and links. Multiple
 saved DOI values do not make dictionary order a primary-identity policy. DOI-free
 Papers remain readable and locally editable when complete and unexcluded.
+A first collection admission can promote a non-DOI primary to the formal DOI
+explicitly confirmed by that Run. It retains every saved alias and any existing
+primary DOI; the complete accepted identity closure determines applicability.
+Necessary metadata keeps bibliography, dates and relationships from reliable DOI
+aliases, while its bounded Crossref PDF facts use the selected primary DOI.
 
 | Existing match during Run | Result |
 | --- | --- |

@@ -46,7 +46,7 @@ const run={active:false,snapshot:{status:'IDLE',provider:null},providers:Object.
 const mimes={'.html':'text/html','.js':'text/javascript','.css':'text/css','.json':'application/json','.woff2':'font/woff2','.ttf':'font/ttf','.otf':'font/otf','.png':'image/png','.mp4':'video/mp4'};
 let rejectAutosave=false,holdWorkspaceResponse,holdPaperActionResponse,resolveInitialCAS,credentialState={ok:false,error:'cas_store_unreadable',configured:false,username:'',revision:'d'.repeat(64)};
 const credentialWrites=[];
-const preprintStarts=[],collectionRetries=[];
+const preprintStarts=[],collectionRetries=[],fieldWrites=[];
 let holdFieldResponse;
 let preprintState={phase:'Idle',saved_fields:[]};
 const server=http.createServer((req,res)=>{
@@ -84,15 +84,21 @@ const server=http.createServer((req,res)=>{
         {workspace_id:workspace.workspace_id,revision:workspace.revision,paper:item}:{message:'stale retry'}));
     });return;
   }
-  const field=route.match(/^\/api\/papers\/([^/]+)\/(fields|abstract\/input)$/);
+  const field=route.match(/^\/api\/papers\/([^/]+)\/(fields|fields\/reset|abstract\/input)$/);
   if(field){
     const item=records.flatMap(journal=>journal.papers).find(paper=>paper.id===field[1]);
     const fields=()=>({workspace_id:workspace.workspace_id,snapshot_revision:workspace.revision,
-      revision:'field-'+item.revision,abstract:item.abstract,authors:item.authors,publication_date:item.publication_date});
+      revision:JSON.stringify([item.abstract,item.authors,item.publication_date]),
+      abstract:item.abstract,authors:item.authors,publication_date:item.publication_date});
     const send=value=>{res.writeHead(200,{'Content-Type':'application/json'});res.end(JSON.stringify(value));};
     if(field[2]==='fields'){send(fields());return;}
     let text='';req.on('data',chunk=>{text+=chunk;});req.on('end',()=>{
-      const body=JSON.parse(text);item.abstract=body.abstract;item.revision++;workspace.revision++;
+      const body=JSON.parse(text),valid=body.revision===fields().revision;
+      fieldWrites.push({id:item.id,action:field[2],valid,body});
+      if(!valid){res.writeHead(409,{'Content-Type':'application/json'});res.end(JSON.stringify({message:'stale field revision'}));return;}
+      if(field[2]==='fields/reset'){for(const name of body.fields)item[name]=name==='authors'?[]:null;}
+      else item.abstract=body.abstract;
+      item.revision++;workspace.revision++;
       const value={saved:true,workspace_id:workspace.workspace_id,revision:workspace.revision,paper:{...item},fields:fields()};
       const deliver=()=>send(value);
       if(holdFieldResponse){const hold=holdFieldResponse;holdFieldResponse=null;hold(deliver);}else deliver();
@@ -276,6 +282,30 @@ app.whenReady().then(async()=>{
     });
     await navigate('workspace');
     await capture('paper-identity');
+    // Resetting the last Paper keeps list membership stable and must patch its existing row.
+    const originalPublicationDate=records[0].papers[1].publication_date;
+    await js(`(()=>{window.workspaceArray.openPaper('paper-1');document.documentElement.classList.add('developer-mode');window.dispatchEvent(new Event('workspace-navigation-state'));})()`);
+    await ready("!document.querySelector('[data-paper-reset=publication_date]').disabled");
+    await js(`(()=>{
+      window.dateRow=document.querySelector('.paper-row[data-paper-id="paper-1"]');window.dateTime=dateRow.querySelector('time');
+      window.dateReader=document.getElementById('paper-detail');window.dateAbstract=document.getElementById('paper-abstract');
+      dateReader.scrollTop=160;window.dateScroll=dateReader.scrollTop;
+      const range=document.createRange();range.selectNodeContents(dateAbstract);getSelection().removeAllRanges();getSelection().addRange(range);
+      const reset=document.querySelector('[data-paper-reset=publication_date]');reset.checked=true;reset.dispatchEvent(new Event('change',{bubbles:true}));
+    })()`);
+    await ready("!document.getElementById('paper-reset-fields').disabled");
+    await js("document.getElementById('paper-reset-fields').click()");
+    await ready("window.uiNext.data.subjects.flatMap(g=>g.journals).flatMap(j=>j.papers).find(p=>p.id==='paper-1').publication_date===null && !window.inboxKept.busy()");
+    await js(`(()=>{
+      const row=document.querySelector('.paper-row[data-paper-id="paper-1"]'),time=row.querySelector('time');
+      if(row!==dateRow || time!==dateTime || document.getElementById('paper-detail')!==dateReader ||
+        document.getElementById('paper-abstract')!==dateAbstract || dateReader.scrollTop!==dateScroll || !getSelection().toString())throw Error('Date reset remounted Reader/list or lost reading position/selection');
+      if(time.textContent!=='—' || time.hasAttribute('datetime') || time.getAttribute('aria-label')!=='Publication date unavailable')throw Error('Date reset left stale Archive row date');
+      getSelection().removeAllRanges();
+    })()`);
+    records[0].papers[1].publication_date=originalPublicationDate;records[0].papers[1].revision++;workspace.revision++;
+    await js('window.uiWorkspace.refresh()');
+    await js(`(()=>{if(dateRow.querySelector('time')!==dateTime || dateTime.textContent!=='2026-10' || dateTime.dateTime!=='2026-10' || dateTime.hasAttribute('aria-label'))throw Error('Background date did not patch the existing Archive row');document.documentElement.classList.remove('developer-mode');window.dispatchEvent(new Event('workspace-navigation-state'));window.workspaceArray.openPaper('paper-0');})()`);
     // Same membership/revision increments retain actual Reader DOM, selection and Infos state.
     await js(`(()=>{
       const $=id=>document.getElementById(id);window.wf08Index=$('array-index').firstElementChild;
@@ -283,16 +313,20 @@ app.whenReady().then(async()=>{
       $('paper-metadata-details').open=false;$('paper-detail').scrollTop=160;window.wf08Scroll=$('paper-detail').scrollTop;
       const range=document.createRange();range.selectNodeContents($('paper-abstract'));getSelection().removeAllRanges();getSelection().addRange(range);
     })()`);
-    Object.assign(records[0].papers[0],{revision:1,collection_status:'running',collection:{status:'running',attempt:1,retry_available:false}});
+    Object.assign(records[0].papers[0],{revision:1,collection_status:'queued',collection:{status:'queued',attempt:1,cleaning_up:true,retry_available:false}});
     workspace.revision++;
     await js('window.uiWorkspace.refresh()');
     await js(`(()=>{
       const $=id=>document.getElementById(id);
       if($('array-index').firstElementChild!==wf08Index || $('paper-detail')!==wf08Reader || $('paper-abstract')!==wf08Abstract ||
         $('paper-detail').scrollTop!==wf08Scroll || $('paper-metadata-details').open || !getSelection().toString())throw Error('collection state refresh rebuilt reading state');
-      if(!$('paper-collection-status').textContent.includes('正在采集'))throw Error('collection is not independently visible');
+      if($('paper-collection-status').textContent!=='等待采集')throw Error('queued collection was displayed as terminal cleanup');
       getSelection().removeAllRanges();
     })()`);
+    Object.assign(records[0].papers[0],{collection_status:'running',collection:{status:'running',attempt:1,cleaning_up:true,retry_available:false}});
+    records[0].papers[0].revision++;workspace.revision++;
+    await js('window.uiWorkspace.refresh()');
+    await js(`(()=>{if(document.getElementById('paper-collection-status').textContent!=='正在采集')throw Error('running collection was displayed as terminal cleanup');})()`);
     let deliverCollectionPoll;
     const collectionPollHeld=new Promise(resolve=>{holdWorkspaceResponse=send=>{deliverCollectionPoll=send;resolve();};});
     await collectionPollHeld;
@@ -307,6 +341,20 @@ app.whenReady().then(async()=>{
     const originalAbstract=records[0].papers[0].abstract,originalDates=[...records[0].papers[0].ordinary_dates];
     records[0].papers[0].abstract=null;records[0].papers[0].revision++;workspace.revision++;
     await js(`window.uiWorkspace.refresh().then(()=>{document.documentElement.classList.add('developer-mode');window.dispatchEvent(new Event('workspace-navigation-state'));})`);
+    await ready("!document.getElementById('paper-abstract-input').disabled");
+    const originalInputDate=records[0].papers[0].publication_date;
+    Object.assign(records[0].papers[0],{abstract:'Background supplied Abstract',publication_date:'2027-03'});
+    records[0].papers[0].revision++;workspace.revision++;
+    await js('window.uiWorkspace.refresh()');
+    await ready("document.getElementById('paper-abstract').textContent.includes('Background supplied Abstract') && document.getElementById('paper-abstract-input').disabled && !document.querySelector('[data-paper-reset=abstract]').disabled");
+    await js(`(()=>{for(const name of ['abstract','publication_date']){const input=document.querySelector('[data-paper-reset="'+name+'"]');input.checked=true;input.dispatchEvent(new Event('change',{bubbles:true}));}})()`);
+    await ready("!document.getElementById('paper-reset-fields').disabled");
+    await js("document.getElementById('paper-reset-fields').click()");
+    await ready("window.uiNext.data.subjects.flatMap(g=>g.journals).flatMap(j=>j.papers).find(p=>p.id==='paper-0').abstract===null && !window.inboxKept.busy()");
+    if(fieldWrites.at(-1)?.id!=='paper-0' || fieldWrites.at(-1)?.action!=='fields/reset' || !fieldWrites.at(-1)?.valid ||
+      records[0].papers[0].publication_date!==null)throw Error('Idle field tools sent an obsolete revision after background fields changed');
+    records[0].papers[0].publication_date=originalInputDate;records[0].papers[0].revision++;workspace.revision++;
+    await js('window.uiWorkspace.refresh()');
     await ready("!document.getElementById('paper-abstract-input').disabled");
     await js(`(()=>{document.getElementById('paper-abstract-input').click();const input=document.getElementById('paper-input-text');input.value='Unsubmitted WF08 draft';input.dispatchEvent(new Event('input'));window.wf08Draft=input;})()`);
     records[0].papers[0].ordinary_dates.push('2098-01-01');records[0].papers[0].revision++;workspace.revision++;

@@ -212,9 +212,11 @@ def _lookup_group(context, requests):
 
 def paper_evidence(paper):
     metadata = paper.metadata
+    direct = {identity.namespace: identity.value for identity in paper.identities}
+    if paper.primary_identity is not None:
+        direct[paper.primary_identity.namespace] = paper.primary_identity.value
     return ProviderWorkEvidence(provenance=MetadataSource(provider='workspace', record_id=str(paper.id),
-        retrieved_at=datetime.now(timezone.utc)), external_ids=ExternalIds(**{
-            identity.namespace: identity.value for identity in paper.identities}),
+        retrieved_at=datetime.now(timezone.utc)), external_ids=ExternalIds(**direct),
         publication_type=metadata.publication_type, journal=metadata.journal, conference=metadata.conference,
         dates=metadata.preprint_evidence,
         related_ids=tuple(dict.fromkeys((*metadata.preprint_relations, *preprint_query_refs(metadata.preprint_evidence)))),
@@ -240,7 +242,7 @@ def _formal_conflicts(records, root_ids, *, formal_root=True):
     return tuple(accepted), tuple(rejected)
 
 
-def _increment(records, root_ids, *, preprint_root=False):
+def _increment(records, root_ids, *, preprint_root=False, target_doi=None):
     formal = formal_records(records, root_ids)
     abstracts = {}
     for item in formal:
@@ -250,8 +252,14 @@ def _increment(records, root_ids, *, preprint_root=False):
         if item.kind != EvidenceDateKind.PREPRINT and item.publication_type != 'preprint' and item.month is not None)
     proof = tuple(item for item in collect_dates(records) if item.kind == EvidenceDateKind.PREPRINT)
     relations = tuple(dict.fromkeys(ref for item in records for ref in item.related_ids))
+    # Reliable DOI aliases may each supply bibliography/relations, while the
+    # bounded Crossref PDF snapshot belongs to the explicitly selected target.
+    # Unknown targets retain the normal binding/conflict checks.
+    discovery_records = tuple(item.model_copy(update={'discovery_facts': tuple(fact for fact in item.discovery_facts
+        if not (fact.source == 'crossref' and target_doi and fact.target_doi != target_doi
+                and ('doi', fact.target_doi) in root_ids))}) for item in records)
     delta = MetadataDelta(ordinary_dates=dates, abstract=next(iter(abstracts.values())) if len(abstracts) == 1 else None,
-        discovery_facts=discovery_facts_from_records(records, root_ids, preprint_root=preprint_root),
+        discovery_facts=discovery_facts_from_records(discovery_records, root_ids, preprint_root=preprint_root),
         preprint_evidence=proof, preprint_relations=relations,
         sources=tuple(dict.fromkeys(item.provenance for item in records if item.provenance.provider != 'workspace')))
     identities = defaultdict(set)
@@ -277,6 +285,8 @@ def collect_necessary_metadata(context, *, records=(), facts=(), required=(), pr
 
     paper = context.read_paper()
     root_ids = {(identity.namespace, identity.value) for identity in paper.identities}
+    target_doi = (paper.primary_identity.value if paper.primary_identity is not None
+        and paper.primary_identity.namespace == 'doi' else None)
     output = [paper_evidence(paper)]
     seen = {evidence_key(item) for item in output}
     lookups, issues, attempted, completed = [], [], set(), []
@@ -315,7 +325,8 @@ def collect_necessary_metadata(context, *, records=(), facts=(), required=(), pr
         empty_snapshot = ()
         if (request is not None and not accepted and not isinstance(error, Cancelled)
                 and request.provider in {'crossref', 'openalex'} and request.capability in {'exact', 'work'}
-                and (request.namespace, request.identifier) in root_ids):
+                and (request.namespace, request.identifier) in root_ids
+                and not (request.provider == 'crossref' and target_doi and request.identifier != target_doi)):
             failed = bool(error or conflicts or rejected)
             empty_snapshot = (PdfDiscoveryFacts(source=request.provider,
                 capability='crossref-links' if request.provider == 'crossref' else 'openalex-locations',
@@ -326,7 +337,7 @@ def collect_necessary_metadata(context, *, records=(), facts=(), required=(), pr
                 diagnostics=('parse-failed',) if failed else ('incomplete-response',) if not complete else ()),)
         if new or empty_snapshot:
             delta, direct_ids = _increment(tuple(new), root_ids,
-                preprint_root=paper.metadata.publication_type == 'preprint')
+                preprint_root=paper.metadata.publication_type == 'preprint', target_doi=target_doi)
             if empty_snapshot:
                 delta = delta.model_copy(update={'discovery_facts': empty_snapshot})
             sequence += 1

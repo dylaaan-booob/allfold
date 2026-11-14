@@ -23,6 +23,227 @@ def test_production_plan_has_independent_api_and_explicit_document_access(tmp_pa
     assert 'openalex' not in branches[1].providers
 
 
+@pytest.mark.parametrize('saved_doi', [None, '10.5555/aaa-original'])
+@pytest.mark.parametrize('positive_crossref', [False, True])
+def test_run_first_collection_uses_new_verified_doi_without_replacing_saved_primary(tmp_path, saved_doi, positive_crossref):
+    from concurrent.futures import Future
+    from threading import Event
+    from allfold.application.integrated_run import run_integrated
+    from allfold.application.collection_planner import ProductionCollectionService
+    from allfold.application.provider_lookup import provider_client
+    from allfold.application.run_commit import capture_run_workspace
+    from allfold.application.task_clients import IndependentClientFactory
+    from allfold.application.workspace_tasks import WorkspaceTaskHost
+    from allfold.persistence.library_models import DirectIdentity
+    from integrated_run_helpers import EmptyLookup
+    from test_document_metadata import envelope
+    from test_integrated_run import config, evidence, client_for
+    import httpx
+
+    path, _ = config(tmp_path)
+    path.write_text(path.read_text() + 'enabled_providers: [pubmed]\n')
+    with capture_run_workspace(path):
+        pass
+    original_metadata = PaperMetadata(title='Saved title', abstract='Saved abstract',
+        authors=({'name':'Saved author'},))
+    with PaperRepository.open(tmp_path / 'workspace') as repository:
+        original = repository.create_or_match(repository.workspace_id,
+            direct_ids=ExternalIds(pmid='42', doi=saved_doi), metadata=original_metadata,
+            additional_identities=(DirectIdentity('pmid', '43'),)).paper
+
+    class Bridge:
+        def __init__(self):
+            self.started, self.operation, self.identities = Event(), Future(), []
+        def execute(self, action, payload, *args, **kwargs):
+            if action == 'release_workflow_pages':
+                future = Future(); future.set_result({'released': True}); return future
+            assert action == 'extract_paper_metadata'
+            self.identities.append(payload['identity'])
+            self.started.set()
+            return self.operation
+        def cancel_task(self, *_):
+            pass
+
+    bridge = Bridge()
+    def response(request):
+        selector = request.url.params['filter']
+        rows = []
+        if positive_crossref and selector.startswith('doi:'):
+            rows = [{'DOI': doi, 'type': 'journal-article',
+                'accepted': {'date-parts': [[2026, 9, 3 if doi == saved_doi else 4]]},
+                'link': [{'URL': 'https://example.org/' + doi.rsplit('/', 1)[-1] + '.pdf', 'content-type': 'application/pdf'}]}
+                for doi in (item.removeprefix('doi:') for item in selector.split(','))]
+        return httpx.Response(200, json={'message': {'items': rows, 'total-results': len(rows)}})
+    def factory(provider, **kwargs):
+        return (provider_client(provider, transport=httpx.MockTransport(response), interval=0, **kwargs)
+            if provider == 'crossref' else EmptyLookup(provider, **kwargs))
+    host = WorkspaceTaskHost(path, bridge=bridge,
+        factory=IndependentClientFactory(path, client_factory=factory))
+    try:
+        result = run_integrated(path, client_factory=client_for((evidence(),)), lookup_factory=EmptyLookup,
+            workspace_tasks=host)
+        assert result.facts.existing_papers == 1 and result.facts.created_papers == 0
+        assert bridge.started.wait(2), 'A newly confirmed DOI must enable the first Document collection'
+        assert bridge.identities == [{'doi': saved_doi or '10.5555/formal'}]
+        with PaperRepository.open(tmp_path / 'workspace') as repository:
+            queued = repository.get(original.id)
+        assert {(item.namespace, item.value) for item in queued.identities} == {
+            ('pmid', '42'), ('pmid', '43'), ('doi', '10.5555/formal'),
+            *((('doi', saved_doi),) if saved_doi else ())}
+        assert queued.metadata.title == original.metadata.title
+        assert queued.metadata.abstract == original.metadata.abstract
+        assert queued.metadata.authors == original.metadata.authors
+        task = host.current().admit(direct_ids=ExternalIds(pmid='42'), metadata=original_metadata,
+            branches=ProductionCollectionService(host).plan(paper=queued))
+        bridge.operation.set_result(envelope(abstract='Automatic replacement', dates=[{'value':'2026-10-04','precision':'day'}]))
+        completed = task.future.result(3)
+        assert completed.id == original.id and completed.collection_status == 'completed', completed.collection.branches
+        assert completed.metadata.title == 'Saved title' and completed.metadata.authors == original.metadata.authors
+        assert completed.metadata.abstract == 'Saved abstract'
+        expected_dates = {'2026-10-04'} | ({'2026-09-04'} if positive_crossref else set())
+        if positive_crossref and saved_doi: expected_dates.add('2026-09-03')
+        assert set(completed.metadata.ordinary_dates) == expected_dates
+        crossref, = (fact for fact in completed.metadata.discovery_facts if fact.source == 'crossref')
+        assert crossref.target_doi == (saved_doi or '10.5555/formal')
+        assert len(crossref.candidates) == int(positive_crossref)
+        assert {branch.name: branch.state for branch in completed.collection.branches} == {
+            'document': 'completed', 'necessary-api': 'completed'}
+    finally:
+        if not bridge.operation.done(): bridge.operation.set_result(envelope())
+        host.shutdown(); host.join()
+
+
+def test_production_run_preserves_parent_service_fairness_while_other_documents_wait(tmp_path):
+    from concurrent.futures import Future
+    from dataclasses import replace
+    from threading import Event
+    from allfold.application.browser_runtime import BrowserTaskLock
+    from allfold.application.coordinators.login import PreparedService
+    from allfold.application.integrated_run import run_integrated
+    from allfold.application.run_commit import capture_run_workspace
+    from allfold.application.task_clients import IndependentClientFactory
+    from allfold.application.workspace_tasks import WorkspaceTaskHost
+    from allfold.config import AccessService, JournalConfig
+    from allfold.persistence.user_state import load_user_state, compare_write_user_state
+    from integrated_run_helpers import EmptyLookup
+    from test_document_metadata import envelope
+    from test_integrated_run import config, evidence, client_for
+
+    path, _ = config(tmp_path)
+    path.write_text(path.read_text() + 'enabled_providers: [pubmed]\n')
+    services = (AccessService.create('Service A', 'https://a.example.org'),
+        AccessService.create('Service B', 'https://b.example.org'))
+    saved = load_user_state(path)
+    compare_write_user_state(path, replace(saved.state, access_services=services, journals=tuple(
+        JournalConfig(name=name, issn=issn, access_service_id=service.id)
+        for name, issn, service in zip(('A', 'B'), ('0006-341X', '0090-5364'), services))), saved.revision)
+    rows = tuple(evidence(doi=f'10.5555/{name}', pmid=str(42 + index)).model_copy(update={
+        'monitor_journal_issns': (('0006-341X' if index < 2 else '0090-5364'),)}) for index, name in enumerate(('a1', 'a2', 'b')))
+    with capture_run_workspace(path):
+        pass
+
+    class Login:
+        def prepared_authority(self, _, service_id):
+            index = next(index for index, service in enumerate(services) if service.id == service_id)
+            return PreparedService(71 + index, str(index + 1) * 64, False)
+    class Bridge:
+        def __init__(self):
+            self.started = {row.external_ids.doi: Event() for row in rows}
+            self.operations = {doi: Future() for doi in self.started}
+            self.bindings = {}
+        def execute(self, action, payload, *args, **kwargs):
+            if action == 'release_workflow_pages':
+                future = Future(); future.set_result({'released': True}); return future
+            assert action == 'extract_paper_metadata'
+            doi = payload['identity']['doi']
+            self.bindings[doi] = payload['service_id']
+            self.started[doi].set()
+            return self.operations[doi]
+        def cancel_task(self, *_):
+            pass
+    bridge = Bridge()
+    host = WorkspaceTaskHost(path, bridge=bridge, login=Login(), browser_lock=BrowserTaskLock(),
+        factory=IndependentClientFactory(path, client_factory=EmptyLookup))
+    try:
+        first = run_integrated(path, client_factory=client_for(rows[:2]), lookup_factory=EmptyLookup, workspace_tasks=host)
+        assert first.facts.created_papers == 2
+        started = all(bridge.started[row.external_ids.doi].wait(2) for row in rows[:2])
+        with PaperRepository.open(tmp_path / 'workspace') as repository:
+            first_papers = repository.list_papers()
+        assert started, [(paper.metadata.journal_issns, paper.collection) for paper in first_papers]
+        second = run_integrated(path, client_factory=client_for(rows[2:]), lookup_factory=EmptyLookup, workspace_tasks=host)
+        assert second.facts.created_papers == 1
+        assert bridge.started['10.5555/b'].wait(2), 'Service B must use the remaining parent and leaf capacity'
+        assert bridge.bindings == {'10.5555/a1': services[0].id, '10.5555/a2': services[0].id,
+            '10.5555/b': services[1].id}
+        assert not any(future.done() for future in bridge.operations.values())
+    finally:
+        for future in bridge.operations.values(): future.set_result(envelope())
+        host.shutdown(); host.join()
+
+
+def test_background_crossref_exact_and_reverse_keep_saved_contact_and_owned_scope(tmp_path):
+    from concurrent.futures import Future
+    from contextlib import contextmanager
+    from threading import Event
+    import httpx
+    from allfold.application.collection_planner import ProductionCollectionService
+    from allfold.application.integrated_run import run_integrated
+    from allfold.application.provider_lookup import provider_client
+    from allfold.application.run_commit import capture_run_workspace
+    from allfold.application.task_clients import IndependentClientFactory
+    from allfold.application.workspace_tasks import WorkspaceTaskHost
+    from integrated_run_helpers import EmptyLookup
+    from test_document_metadata import envelope
+    from test_integrated_run import config, evidence, client_for
+
+    path, _ = config(tmp_path)
+    path.write_text(path.read_text() + 'enabled_providers: [pubmed]\ncrossref_mailto: collector@example.org\n')
+    with capture_run_workspace(path): pass
+    calls, owned, closed, cancellations = [], [], [], []
+    foreground_cancel, reverse_started, release_reverse = Event(), Event(), Event()
+    def respond(request):
+        calls.append(request)
+        if 'relation.type:' in request.url.params.get('filter', ''):
+            reverse_started.set(); assert release_reverse.wait(3)
+        return httpx.Response(200, json={'message': {'items': [], 'total-results': 0}})
+    @contextmanager
+    def factory(provider, **kwargs):
+        if provider != 'crossref':
+            with EmptyLookup(provider, **kwargs) as client: yield client
+            return
+        with provider_client(provider, interval=0, transport=httpx.MockTransport(respond), **kwargs) as client:
+            owned.append(client)
+            cancellations.append(kwargs['cancel_event'])
+            yield client
+        closed.append(client)
+    class Bridge:
+        def execute(self, action, *args, **kwargs):
+            future = Future(); future.set_result({'released': True} if action == 'release_workflow_pages' else envelope()); return future
+        def cancel_task(self, *_): pass
+    host = WorkspaceTaskHost(path, bridge=Bridge(), factory=IndependentClientFactory(path, client_factory=factory))
+    try:
+        result = run_integrated(path, client_factory=client_for((evidence(),)), lookup_factory=EmptyLookup,
+            cancel_event=foreground_cancel, workspace_tasks=host)
+        assert result.facts.created_papers == 1 and reverse_started.wait(2)
+        with PaperRepository.open(tmp_path / 'workspace') as repository: paper, = repository.list_papers()
+        task = host.current().admit(direct_ids=ExternalIds(doi='10.5555/formal'), metadata=paper.metadata,
+            branches=ProductionCollectionService(host).plan(paper=paper))
+        # Its captured guard/cancellation survive foreground closure and unrelated input changes.
+        foreground_cancel.set()
+        path.write_text(path.read_text().replace('keyword_expression: learning', 'keyword_expression: changed'))
+        release_reverse.set()
+        assert task.future.result(3).collection_status == 'completed'
+        assert len(calls) == 2 and all(request.url.params.get('mailto') == 'collector@example.org' for request in calls)
+        assert {'doi:10.5555/formal', 'relation.type:is-preprint-of,relation.object:10.5555/formal'} == {
+            request.url.params['filter'] for request in calls}
+        assert len(owned) == 1 and owned == closed
+        assert cancellations[0] is not foreground_cancel and not cancellations[0].is_set()
+        with pytest.raises(RuntimeError, match='closed'): owned[0].request('/late', {})
+    finally:
+        release_reverse.set(); host.shutdown(); host.join()
+
+
 def test_direct_preprint_pmid_and_related_work_are_necessary_purposes(tmp_path):
     from allfold.application.necessary_metadata import NecessaryRequest, necessary_requests
     from allfold.application.collection_planner import ProductionCollectionService

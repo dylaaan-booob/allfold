@@ -836,17 +836,25 @@ function createLists(journals = shelves.flatMap(group => group.journals)) {
       row.className = 'paper-row'; row.dataset.paperId = paper.id;
       const number = document.createElement('span'); number.className = 'row-number'; number.textContent = pad(i + 1);
       const clip = document.createElement('span'); clip.className = 'title-clip';
-      const title = document.createElement('span'); title.className = 'title-text'; title.textContent = paper.title;
+      const title = document.createElement('span'); title.className = 'title-text';
       clip.append(title);
-      const date = document.createElement('time'); date.textContent = paper.publication_date || '—';
-      if (paper.publication_date) date.dateTime = paper.publication_date;
-      else date.setAttribute('aria-label', 'Publication date unavailable');
+      const date = document.createElement('time');
       row.append(number, clip, date);
+      patchPaperRow(row,paper);
       list.append(row);
     });
     lists.set(journal.key, list); $('paper-lists').append(list);
     list.scrollTop=scroll;
   }
+}
+function patchPaperRow(row,paper) {
+  const title=row.querySelector('.title-text'),date=row.querySelector('time');
+  if(title.textContent!==paper.title)title.textContent=paper.title;
+  if(row.getAttribute('aria-label')!==paper.title)row.setAttribute('aria-label',paper.title);
+  const value=paper.publication_date || '—';
+  if(date.textContent!==value)date.textContent=value;
+  if(paper.publication_date){if(date.dateTime!==paper.publication_date)date.dateTime=paper.publication_date;date.removeAttribute('aria-label');}
+  else {date.removeAttribute('datetime');date.setAttribute('aria-label','Publication date unavailable');}
 }
 
 // RhinE lift / 60-frame Inspection driven by the shared stage durations.
@@ -1163,7 +1171,7 @@ function renderPaper(previous=null) {
   detail.dataset.paperId=paper.id;
   detail.classList.toggle('abstract-locked', !paper.abstract?.trim());
   if (changed) detail.scrollTop=0;
-  renderPaperTools(!previous && !paperToolsBusy());
+  renderPaperTools((!previous || ['abstract','authors','publication_date'].some(differs)) && !paperToolsBusy());
   renderReadingControls();
 }
 function renderPaperFields(paper, fields) {
@@ -1226,7 +1234,8 @@ function renderReadingControls() {
   const collection=paper.collection;
   $('paper-collection').hidden=!paper.metadata_present || !collection;
   const collectionLabels={not_started:'尚未采集',queued:'等待采集',running:'正在采集',completed:'采集完成',failed:'采集未完成',cancelled:'采集已取消'};
-  $('paper-collection-status').textContent=collection?.cleaning_up?'正在清理 Paper 资源…':collectionLabels[collection?.status] || '';
+  $('paper-collection-status').textContent=['queued','running'].includes(collection?.status)?collectionLabels[collection.status]:
+    collection?.cleaning_up?'正在清理 Paper 资源…':collectionLabels[collection?.status] || '';
   $('paper-collection-retry').hidden=paper.excluded || !['failed','cancelled'].includes(collection?.status);
   $('paper-collection-retry').disabled=busy || !collection?.retry_available;
   fillAbstractPlaceholder();
@@ -1323,7 +1332,7 @@ async function submitPaperEdit(kind) {
     else {paperTools.error=error.message;uiNext.notice(error.message);}
   }finally{
     if(epoch!==uiNext.workspaceEpoch)return;
-    paperTools.pending=false;$('paper-dialog-cancel').disabled=false;
+    paperTools.pending=false;$('paper-dialog-cancel').disabled=false;renderPaperTools(true);
     $('paper-dialog-save').disabled=!$('paper-input-text').value.trim();renderReadingControls();
     if(input && !$('paper-tools-dialog').open)$('paper-abstract-input').focus();
   }
@@ -1603,6 +1612,9 @@ async function applySnapshot(data,selection=window.inboxRun?.selection(),coverVe
     const incoming=[...data.subjects.flatMap(group=>group.journals.flatMap(journal=>journal.papers)),
       ...data.downloaded.papers.map(entry=>entry.paper),...data.trash.papers.map(entry=>entry.paper)];
     for(const paper of incoming){const saved=objects.get(paper.id);if(saved)Object.assign(saved,paper);}
+    for(const list of lists.values())for(const row of list.children){
+      const paper=objects.get(row.dataset.paperId);if(paper)patchPaperRow(row,paper);
+    }
     librarySnapshot={...data.downloaded,trash:data.trash};
     // Stable membership keeps lists, selection, expansion, paragraph DOM and editor drafts mounted.
     if(currentPaper() && JSON.stringify(previous)!==JSON.stringify(currentPaper()) && (state.view==='journal' || readerContext))renderPaper(previous);

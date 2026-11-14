@@ -131,6 +131,11 @@ unchanged list/Reader, moving selection, resetting scroll/filter/Info expansion 
 overwriting editor drafts and pending saves. A successful field-save acknowledgement
 can settle its editor even if a newer projection has already arrived; its older
 Paper projection still cannot overwrite that newer state. Normal completed/empty
-work stops loading. These rendered/synthetic results do not establish real
+work stops loading. Queued/running labels take precedence over conservative
+resource occupancy; terminal cleanup still disables Retry. Idle developer field
+tools refresh their editable snapshot after Abstract/Authors/Date changes, while
+open drafts and pending saves retain their captured revision until they settle.
+Archive rows patch title/date text and date attributes in place, including REST
+on the last Paper of a Journal. These rendered/synthetic results do not establish real
 Provider/Session acceptance. Download and PDF file actions remain deferred.
 See [Provider contracts](providers.md).
