@@ -217,3 +217,8 @@ ownership. Runtime fault evidence keeps bounded phase/type information; raw
 exceptions, Provider results and credential/Prepare keys stay outside diagnostics.
 Logs Reset protects queued, API-only, writing and cleaning collection work even
 when no native Browser owner exists.
+
+
+## WF09 internal body service
+
+WF09 uses explicit native `stream_complete`, which means only PDF transport plus closed writer. Only the later repository transaction means body completed/Downloaded. Public download state exposes bounded state/attempt/reason; absolute roots, output capabilities, raw response content and signed URLs remain private. Durable source projection keeps only origin. It adds no public Download history/control. See [the complete contract](body-downloads.md).

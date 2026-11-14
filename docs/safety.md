@@ -12,7 +12,7 @@ execution context. Short rollback-safe transactions contain no network/browser
 wait. Library schema, integrity, UUID and live directory/database identity are
 validated. Symlinks and multiple-link main/sidecar paths are refused. Missing,
 corrupt, unknown-schema, unsafe-path and busy/commit failures remain distinct;
-none authorizes replacement or clearing. Paper storage has one current schema and no data migration path.
+none authorizes replacement or clearing. Paper storage has schema v4 and one verified transactional forward change from valid v3, without retired/unknown format compatibility.
 
 Async writes use eligibility captured when the Paper is first claimed, including
 Workspace UUID and metadata/operation generations. Results cannot reread current
@@ -35,8 +35,8 @@ expiry or ordinary bulk-clear action.
 
 A body association classifies Downloaded but grants no physical file authority.
 WF02 does not download, delete, open or locate PDF files. `Documents/` relative
-paths reject traversal/absolute paths; the later landing service must validate
-live filesystem ownership. Clearing metadata leaves associated file bytes intact.
+paths reject traversal/absolute paths; WF09 validates actual directory/file identities
+and performs no-clobber publication through the [body lifecycle service](body-downloads.md). Clearing metadata leaves associated file bytes intact.
 
 Shutdown stops admission and waits for Run, Preprint, WoS, Login, Covers and
 in-flight native bridge results before closing their owned connections. Teardown

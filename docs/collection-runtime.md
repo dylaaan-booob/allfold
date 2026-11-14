@@ -144,3 +144,8 @@ is rechecked before admission; a stale request cannot borrow newer generations.
 The public `collection` projection contains status, attempt, cleanup, branch
 name/status and the same read-only retry qualification. Raw failure messages,
 clients, lifecycle authority and PDF discovery context are omitted.
+
+
+## WF09 internal body service
+
+WF09 adds distinct internal `body` reservations on the same host, Paper gate and bounded scheduler. They persist a queued download attempt before dispatch and remain visible through stream/writer/publication/commit/cleanup. Read-only `download` discovery and manual `legacy` Preprint retain their consumers. A Run match during body work returns the original Paper without new collection intent; no foreground Run slot owns the download. See [the complete contract](body-downloads.md).

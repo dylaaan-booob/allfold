@@ -233,6 +233,49 @@ class CollectionToken:
         return self.write.paper_id
 
 
+class OutputOwnership(DomainModel):
+    """Private inode facts; planned names alone never authorize removal/writing."""
+    temporary: str
+    target: str
+    workspace: tuple[int, int]
+    documents: tuple[int, int]
+    staging: tuple[int, int]
+    file: tuple[int, int]
+
+    @field_validator("temporary", "target")
+    @classmethod
+    def validate_path(cls, value):
+        return BodyReference.validate_relative_path(value)
+
+
+@dataclass(frozen=True)
+class DownloadToken:
+    write: WriteToken
+    attempt: int
+    lifecycle_id: UUID
+    primary: DirectIdentity
+
+    @property
+    def paper_id(self):
+        return self.write.paper_id
+
+    @property
+    def workspace_id(self):
+        return self.write.workspace_id
+
+
+@dataclass(frozen=True)
+class DownloadRecord:
+    token: DownloadToken
+    status: str
+    reason: str | None
+    output: OutputOwnership | None
+
+    @property
+    def active(self):
+        return self.status in {"queued", "running"}
+
+
 @dataclass(frozen=True)
 class PaperRecord:
     workspace_id: UUID
@@ -248,6 +291,7 @@ class PaperRecord:
     primary_identity: DirectIdentity | None = None
     revision: int = 0
     collection: CollectionRecord | None = None
+    download: DownloadRecord | None = None
 
     @property
     def collection_status(self) -> str:

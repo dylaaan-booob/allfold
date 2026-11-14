@@ -283,3 +283,8 @@ cleanup uncertainty retains Paper occupancy and reports a bounded fault.
 During normal exit, authenticated `invalidate_access` and
 `release_workflow_pages` may still settle captured resources after execution
 admission closes. They grant no new navigation or credential authority.
+
+
+## WF09 internal body service
+
+WF09 body requests begin in the selected Chromium Session, through authenticated internal `stream_paper_body` dispatch. Python HTTPX never probes that PDF first. Python bounded API/JSON/HTML reads remain valid. The internal stream currently permits redirects only within its captured origin, preserving signed request spelling transiently; see the [body lifecycle](body-downloads.md).

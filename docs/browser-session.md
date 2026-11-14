@@ -21,7 +21,7 @@ BrowserRuntime records workflow/task/request/attempt and Page/native-frame facts
 when a real native request begins; a known preload Document ID is included when
 available. Absence remains absence. Host fetches use `sessionEvents.fetch` with
 an explicit owner, attempt, parent deadline, signal and authority validator.
-Covers is the current production host-fetch consumer and keeps
+Covers is the public production host-fetch consumer and keeps
 `credentials: 'omit'`. A random marker associates a fetch with Chromium's request
 ID at `onBeforeSendHeaders`, then is removed before consumers or the network see
 it. Redirects retain that native request association. Returned request facts
@@ -152,3 +152,8 @@ only its captured parent identity; it cannot cancel transferred Paper native
 requests. Each branch retains its own workflow/task through actual Future/page
 cleanup. Switching the displayed Reader/Browser surface does not end that lifetime.
 No byte receiver, original-response replay or permanent PDF behavior is added.
+
+
+## WF09 internal body service
+
+WF09 adds internal `stream_paper_body` as a second host-fetch consumer. It waits for business Session identity, pins applicable prepared access, uses Chromium credentials and current native response/redirect facts, then awaits backpressured pipeline, flush and writer close. It does not reuse Cover omission or aggregate PDF bytes. Parent stop controls the entire body. Pure streams create no page; original DownloadItem listeners remain unchanged. See [file lifecycle and current redirect scope](body-downloads.md).

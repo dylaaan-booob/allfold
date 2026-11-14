@@ -25,7 +25,7 @@ from allfold.integrations.cloudflare_solver import solve_cloudflare
 
 _CONTROL_ACTIONS = {"diagnostics_reset", "cas_credentials"}
 _RESOURCE_ACTIONS = {"invalidate_access", "release_workflow_pages"}
-_BUSINESS_ACTIONS = {"login_carsi", "prepare_service", "visit_manual_service", "search_journal_cover", "wos_query", "wos_export", "invalidate_access", "release_workflow_pages", "extract_paper_metadata", "extract_paper_pdf_clues"}
+_BUSINESS_ACTIONS = {"login_carsi", "prepare_service", "visit_manual_service", "search_journal_cover", "wos_query", "wos_export", "invalidate_access", "release_workflow_pages", "extract_paper_metadata", "extract_paper_pdf_clues", "stream_paper_body"}
 _RECOVERY_ACTIONS = {"prepare_service", "extract_paper_metadata", "extract_paper_pdf_clues"}
 _CONTEXT_FIELDS = ("workflow_id", "task_id", "parent_task_id", "service_id", "paper_id")
 _SOCKET_ERRORS = (WebSocketDisconnect, OSError, RuntimeError)
