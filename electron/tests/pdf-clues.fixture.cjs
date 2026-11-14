@@ -114,6 +114,26 @@ app.whenReady().then(async()=>{
       const foreignAn=await forHost('journals.lww.com',body.replace('data-doi="10.5555/target"','data-doi="10.5555/other"'),head,'/journal/fulltext/2026/paper.aspx');
       assert.deepEqual(foreignAn.pdf_clues.identifiers,[],key+' still rejects a foreign AN control');
     }
+    for(const [raw,folded] of [['Straße','strasse'],['Σς','σσ'],['ﬃ','ffi'],['Ꭰꭰ','ᎠᎠ']]) {
+      const head='<meta charset="utf-8"><meta name="citation_doi" content="10.5555/'+raw+'"><meta name="dc.identifier" content="https://doi.org/10.5555/'+folded+'">';
+      const body='<button data-doi="10.5555/'+raw+'" onclick="PDFDownloadInit(\''+an+'\')">PDF</button>';
+      const equivalent=await forHost('journals.lww.com',body,head,'/journal/fulltext/2026/paper.aspx');
+      assert.equal(equivalent.outcome,'retrieved',JSON.stringify(equivalent));
+      assert.deepEqual(equivalent.pdf_clues.identifiers.map(item=>item.value),[an],raw+' equivalent DOI fields retain their own AN');
+      const foreign=await forHost('journals.lww.com',body.replace('data-doi="10.5555/'+raw+'"','data-doi="10.5555/other"'),head,'/journal/fulltext/2026/paper.aspx');
+      assert.deepEqual(foreign.pdf_clues.identifiers,[],raw+' still rejects a genuinely foreign DOI');
+      const supplement=await forHost('journals.lww.com',body.replace('>PDF<','>Supplementary PDF<'),head,'/journal/fulltext/2026/paper.aspx');
+      assert.deepEqual(supplement.pdf_clues.identifiers,[],raw+' still rejects supplementary material');
+    }
+    const unicodeLink=await forHost('onlinelibrary.wiley.com','<a data-doi="10.5555/Σς" href="/doi/pdf/10.5555/Σς">PDF</a>',
+      '<meta charset="utf-8"><meta name="citation_doi" content="10.5555/σσ">');
+    assert.deepEqual(unicodeLink.pdf_clues.candidates.map(item=>item.url),['http://onlinelibrary.wiley.com:'+port+'/doi/pdf/10.5555/%CE%A3%CF%82']);
+    const unicodePath=await forHost('onlinelibrary.wiley.com','<a data-doi="10.5555/strasse" href="/doi/pdf/10.5555/STRASSE">PDF</a>',
+      '<meta charset="utf-8">','/doi/abs/10.5555/Straße');
+    assert.deepEqual(unicodePath.pdf_clues.candidates.map(item=>item.url),['http://onlinelibrary.wiley.com:'+port+'/doi/pdf/10.5555/STRASSE']);
+    const conflictingUnicode=await forHost('journals.lww.com','<button data-doi="10.5555/Straße" onclick="PDFDownloadInit(\''+an+'\')">PDF</button>',
+      '<meta charset="utf-8"><meta name="citation_doi" content="10.5555/Straße"><meta name="dc.identifier" content="10.5555/other">','/journal/fulltext/2026/paper.aspx');
+    assert.equal(conflictingUnicode.diagnostic.code,'article_identity_conflict');
     const peripheralAn=await forHost('journals.lww.com','<section id="relatedContent"><button onclick="PDFDownloadInit(\''+otherAn+'\')">PDF</button></section><section id="supplementary-files"><button onclick="PDFDownloadInit(\''+otherAn+'\')">PDF</button></section><button onclick="PDFDownloadInit(\''+an+'\')">PDF</button>','','/journal/fulltext/2026/paper.aspx');
     assert.deepEqual(peripheralAn.pdf_clues.identifiers.map(item=>item.value),[an]);
     const ambiguousAn=await forHost('journals.lww.com','<button onclick="PDFDownloadInit(\''+otherAn+'\')">PDF</button><button onclick="PDFDownloadInit(\''+an+'\')">PDF</button>','','/journal/fulltext/2026/paper.aspx');
