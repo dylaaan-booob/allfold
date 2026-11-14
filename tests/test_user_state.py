@@ -62,9 +62,12 @@ def test_settings_and_runtime_read_sqlite_and_settings_uses_cas(tmp_path):
     config, legacy, journal, service = current_mapping_document(tmp_path)
     opened = load_settings(config)
     original = legacy.read_bytes()
+    original_config = config.read_bytes()
     changed = replace(opened.draft, groups=("Statistics", "New Group"))
     saved = save_settings(config, changed)
     assert saved.outcome is SettingsSaveOutcome.SAVED
+    assert saved.journal_written and not saved.monitor_written
+    assert config.read_bytes() == original_config
     assert load_settings(config).draft.groups == ("Statistics", "New Group")
     assert load_user_state(config).state.groups == ("Statistics", "New Group")
     assert save_settings(config, changed).outcome is SettingsSaveOutcome.REVISION_CONFLICT

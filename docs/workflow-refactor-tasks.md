@@ -166,7 +166,7 @@ the same lifetime/cleanup boundary. The prior lifecycle is never retargeted.
 
 Isolated component/application tests use real SQLite, worker Futures, loopback
 HTTP, diagnostic writer barriers and the existing native page fixture. They cover
-preserving upgrades and rollback, the admit/register window, incremental and
+current-format storage and rollback, the admit/register window, incremental and
 idempotent writes, terminal/cleanup faults, interruption without replay, actual
 thread exit, selective revocation and partial-save/rebind. Full check, review and
 latest PR CI evidence is reported on the PR. The merge commit is

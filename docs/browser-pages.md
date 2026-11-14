@@ -137,14 +137,6 @@ create above the new limit. An operation must reacquire child capacity before a
 new action when its old headroom was revoked. Normal idle cache eviction still
 applies; active work is not force-closed to enforce a lower number.
 
-The old neutral `paper_service_concurrency` and `paper_global_concurrency` values
-are ignored when loading and removed on the next save. They are not converted
-into physical limits. Other workflow settings, Services, credentials, Journals,
-Research Scope and preferences are preserved. **Code rollback needs a targeted
-configuration rollback:** old code uses `extra="forbid"` and rejects the two new
-`managed_page_*` fields. Remove just those fields and, if needed, restore the
-previous neutral fields from a configuration backup; do not reset the configuration.
-
 ## Native evidence and limits
 
 `page-resources.test.cjs` runs fixed Electron 45.0.0 with a temporary profile,
