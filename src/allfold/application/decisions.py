@@ -27,8 +27,8 @@ class DecisionResult:
 def apply_paper_action(workspace: Path, workspace_id: UUID, paper_id: UUID, action: str, *,
                        expected_status: PaperStatus | None = None, preprint_lookup=None,
                        workspace_registry=None, cancel=True) -> DecisionResult:
-    if action == 'clear-metadata' and preprint_lookup is not None and preprint_lookup.cleaning_up(paper_id, workspace_id):
-        raise InvalidPaperState('Paper work is still cleaning up; wait before clearing metadata')
+    if workspace_registry is None and preprint_lookup is not None:
+        workspace_registry = preprint_lookup.workspace_tasks.peek()
     # Capture/revoke inside the Paper gate; callbacks and coordinator/native locks
     # remain outside every write lock. Never reselect an owner after Reject.
     with workspace_registry.paper_gate() if workspace_registry else nullcontext():
@@ -56,10 +56,6 @@ def apply_paper_action(workspace: Path, workspace_id: UUID, paper_id: UUID, acti
                     if workspace_registry is not None:
                         targets = workspace_registry.prepare_cancel_paper(paper_id, workspace_id)
                         cancel_targets.append(partial(workspace_registry.signal_cancel_targets, targets))
-                    if preprint_lookup is not None:
-                        target = preprint_lookup.prepare_cancel_paper(paper_id, workspace_id)
-                        if target is not None:
-                            cancel_targets.append(partial(preprint_lookup.signal_cancel_target, target))
                 result = DecisionResult(paper, repository.revision, tuple(cancel_targets))
     if cancel:
         result.signal_cancellation()

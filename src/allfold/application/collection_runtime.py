@@ -431,7 +431,10 @@ class WorkspaceRegistry:
         paper = repository.get(handle.paper_id)
         deferred = self._tasks.get(handle.paper_id)
         waiting = deferred is not None and deferred.waiting_on is handle
-        if (paper.token != handle.token or paper.excluded or paper.metadata is None
+        if (handle.kind == 'download' and paper.token != handle.token
+                or paper.metadata_generation != handle.token.metadata_generation
+                or paper.operation_generation != handle.token.operation_generation
+                or paper.excluded or paper.metadata is None
                 or paper.collection is not None and paper.collection.active and not waiting):
             raise StaleWriteError('Captured Paper authority changed')
         return paper
@@ -652,7 +655,7 @@ class WorkspaceRegistry:
 
     def fail_reservation(self, reservation, *, phase, error):
         """A reservation worker exited without proving its captured resource close."""
-        if phase not in {'legacy-client-cleanup', 'legacy-snapshot-cleanup', 'legacy-owner-cleanup',
+        if phase not in {'preprint-client-cleanup', 'preprint-repository-cleanup', 'preprint-owner-cleanup',
                          'discovery-client-cleanup', 'discovery-native-cleanup', 'discovery-owner-cleanup'}:
             raise ValueError('Unknown reservation cleanup phase')
         with self._gate:

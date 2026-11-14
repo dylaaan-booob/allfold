@@ -247,7 +247,7 @@ def create_app(config_path: Path, *, electron_bridge: ElectronBridge, diagnostic
         settings_lock=app.state.settings_write_lock)
     app.state.workspace_tasks.initialize()
     app.state.preprint_lookup = PreprintLookup(resolved_config_path, app.state.browser_task_lock,
-        run_slot=run_slot, pacing_state=pacing, workspace_tasks=app.state.workspace_tasks)
+        workspace_tasks=app.state.workspace_tasks)
     electron_bridge.access_pages_closed = app.state.login.invalidate_pages
     def page_limits():
         from allfold.config import WorkflowConfig
@@ -317,9 +317,12 @@ def create_app(config_path: Path, *, electron_bridge: ElectronBridge, diagnostic
 
 
     @app.get('/api/papers/{paper_id}/preprint-lookup/state')
-    def preprint_lookup_state(paper_id: UUID, request_id: str | None = None):
-        return JSONResponse(app.state.preprint_lookup.state(paper_id, request_id),
-                            headers={'Cache-Control': 'no-store'})
+    def preprint_lookup_state(paper_id: UUID, workspace_id: UUID, request_id: str | None = None):
+        try:
+            return JSONResponse(app.state.preprint_lookup.state(paper_id, request_id, workspace_id),
+                                headers={'Cache-Control': 'no-store'})
+        except (ConfigurationError, LibraryError, ValueError, OSError) as error:
+            return JSONResponse({'error': str(error)}, status_code=409)
 
     @app.post('/api/papers/{paper_id}/preprint-lookup/start')
     def preprint_lookup_start(paper_id: UUID, body: _PreprintLookupAction):
