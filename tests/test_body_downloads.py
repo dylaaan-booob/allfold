@@ -361,6 +361,37 @@ def test_unsigned_sciencedirect_reader_qualifies_current_link_before_any_stream(
         host.shutdown();host.join()
 
 
+def test_sciencedirect_article_backlink_does_not_skip_its_native_reader(tmp_path):
+    from dataclasses import replace
+    import time
+    from test_document_metadata import envelope,pdf_clues
+    from allfold.application.body_downloads import submit_body_download
+    host,workspace,paper,bridge,candidate=application_host(tmp_path)
+    article='https://www.sciencedirect.com/science/article/pii/S0047259X2400006X'
+    candidate=replace(candidate,target=replace(candidate.target,article_url=article),url=article+'/pdfft?md5=current')
+    pdf='https://pdf.sciencedirectassets.com/1-s2.0-S0047259X2400006X/main.pdf?token=current'
+    try:
+        task=submit_body_download(host,paper,candidates=(candidate,))
+        assert bridge.started.wait(2)
+        bridge.result.set_result(dict(kind='response',outcome='response',response=dict(
+            url=candidate.url,content_type='text/html',status=200,access=None,
+            body='<div id="redirect-message"><a href="'+article+'?ref=pdf">View article</a></div>')))
+        until=time.monotonic()+2
+        while len(bridge.calls)<2 and not task.future.done() and time.monotonic()<until:time.sleep(.005)
+        assert bridge.calls[-1][0]=='extract_paper_pdf_clues'
+        assert bridge.calls[-1][1]['reader']['url']==candidate.url
+        bridge.result.set_result(envelope() | {'pdf_clues':pdf_clues(platform='sciencedirect',landing_url=pdf,
+            candidates=[dict(stage='P4',rule_id='R024',url=pdf,referer=candidate.url)])})
+        until=time.monotonic()+2
+        while bridge.calls[-1][0]!='stream_paper_body' and not task.future.done() and time.monotonic()<until:time.sleep(.005)
+        assert bridge.calls[-1][0]=='stream_paper_body' and bridge.calls[-1][1]['url']==pdf
+        bridge.finish()
+        assert task.future.result(2).status=='completed'
+    finally:
+        if hasattr(bridge,'result') and not bridge.result.done():bridge.result.set_result(dict(kind='cancelled',outcome='cancelled'))
+        host.shutdown();host.join()
+
+
 @pytest.mark.parametrize('location',[
     'https://watermark02.silverchair.com/other.pdf',
     'https://watermark02.silverchair.com.evil.example/gkac1225.pdf',

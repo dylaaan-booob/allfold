@@ -216,6 +216,15 @@ def _run(reservation, candidates, progress):
                         result = BodyResult(candidate_result.kind, candidate_result=candidate_result)
                         if candidate_result.kind == 'response' and depth < 6:
                             following = parse_current_response(candidate, candidate_result.response)
+                            current_reader = reader_context(candidate, candidate_result.response.url)
+                            article = urlsplit(candidate.target.article_url or '')
+                            if (following and current_reader and current_reader['platform']=='sciencedirect'
+                                    and article.netloc and all((urlsplit(item.url).scheme,urlsplit(item.url).netloc,urlsplit(item.url).path)
+                                        == (article.scheme,article.netloc,article.path) for item in following)):
+                                # The reader's fallback "View article" is not a
+                                # PDF next hop. Let its managed Document perform
+                                # the normal browser redirect instead of cycling.
+                                following = ()
                             if not following:
                                 following = _document_candidates(reservation, repository, candidate, candidate_result.response)
                             if following:
