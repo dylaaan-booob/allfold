@@ -1,4 +1,4 @@
-"""Captured read-only PDF discovery; production Download registration is deferred.
+"""Captured read-only PDF discovery, independent of the public body workflow.
 
 The existing Paper scheduler owns the actual worker Future. Its reservation is
 released only after that worker's clients, native Futures and pages have settled.

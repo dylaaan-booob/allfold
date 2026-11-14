@@ -140,3 +140,35 @@ def test_reject_restore_does_not_renew_a_late_download_click(tmp_path):
             repository.restore(excluded.token)
         denied=client.post(f'/api/papers/{paper.id}/body/download',json=request)
         assert denied.status_code==409 and bridge.calls==[] and not app.state.workspace_tasks.active
+
+
+def test_public_missing_input_api_is_lazy_and_its_answer_drives_first_session_body_request(tmp_path):
+    import httpx
+    config,workspace,paper=create_paper(tmp_path)
+    api_requests=[]
+    def api(request):
+        api_requests.append(str(request.url))
+        assert str(request.url)=='https://doi.org/api/handles/10.5555/decision'
+        return httpx.Response(200,json={'values':[{'type':'URL','data':{'value':'https://link.springer.com/article/10.5555/Decision'}}]})
+    bridge=PendingBridge()
+    app=create_app(config,electron_bridge=bridge,diagnostics_root=tmp_path/'logs')
+    app.state.body_downloads.http_options={'transport':httpx.MockTransport(api),'resolver':lambda *_:('93.184.216.34',)}
+    with TestClient(app,base_url='http://localhost') as client:
+        snapshot=client.get('/api/ui-next/workspace').json()
+        item=snapshot['subjects'][0]['journals'][0]['papers'][0]
+        response=client.post(f'/api/papers/{paper.id}/body/download',json=dict(csrf_token=snapshot['csrf_token'],
+            workspace_id=snapshot['workspace_id'],qualification=item['download']['qualification']))
+        assert response.status_code==200,response.text
+        assert bridge.dispatched.wait(2)
+        task=app.state.workspace_tasks.current()._reservations[paper.id]
+        data=bridge.calls[-1][1]
+        assert api_requests==['https://doi.org/api/handles/10.5555/decision']
+        assert len(bridge.calls)==1 and bridge.calls[0][0]=='stream_paper_body'
+        assert data['url']=='https://link.springer.com/content/pdf/10.5555%2Fdecision.pdf'
+        output=data['output'];(Path(data['workspace_root'])/output['temporary']).write_bytes(b'body')
+        bridge.future.set_result(dict(kind='pdf',outcome='stream_complete',pdf_type=True,transfer_complete=True,
+            size_bytes=4,output_file=output['file'],final_url=data['url']))
+        assert task.future.result(3).status=='completed'
+        final=client.get('/api/ui-next/workspace').json()['downloaded']['papers'][0]['paper']
+        assert final['download']['pdf_source']=='P2' and final['download']['fallback_used'] is False
+        assert final['collection_status']=='not_started'
