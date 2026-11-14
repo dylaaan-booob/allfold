@@ -1249,6 +1249,10 @@ function renderBodyControls(paper) {
   $('paper-download').hidden=active && !paper.body_present;
   $('paper-download').textContent=paper.body_present?'打开 PDF':'Download';
   $('paper-download').disabled=bodyRequests.has(paper.id) || (!paper.body_present && !download?.available);
+  $('paper-locate').hidden=!paper.body_present;
+  $('paper-locate').disabled=bodyRequests.has(paper.id);
+  $('paper-delete-body').hidden=!paper.body_present || !paper.excluded;
+  $('paper-delete-body').disabled=bodyRequests.has(paper.id) || paper.cleanup_pending===true;
   $('paper-download-cancel').hidden=!active;
   $('paper-download-cancel').disabled=bodyRequests.has(paper.id) || !download?.cancel_available;
   const bytes=value=>value>=1048576?(value/1048576).toFixed(1)+' MB':value>=1024?Math.round(value/1024)+' KB':value+' B';
@@ -1264,18 +1268,22 @@ async function bodyAction(action) {
   const paper=currentPaper();if(!paper || bodyRequests.has(paper.id))return;
   const workspace=uiNext.libraryIdentity,epoch=uiNext.workspaceEpoch,id=paper.id;
   const qualification=action==='cancel'?{task_id:paper.download.task_id,attempt:paper.download.attempt}:
-    {qualification:structuredClone(paper.download.qualification)};
+    ['open','locate','delete'].includes(action)?{body_generation:paper.download.qualification.body_generation}:
+      {qualification:structuredClone(paper.download.qualification)};
   bodyRequests.add(id);renderBodyControls(paper);
   try {
     const result=await uiNext.request(`/api/papers/${id}/body/${action}`,{workspace_id:workspace,...qualification});
     await applyPaperResponse(result);
+    if(result.outcome==='missing')uiNext.notice('PDF 文件已缺失，已移除当前正文关联。');
   }catch(error){if(epoch===uiNext.workspaceEpoch && !error.stale)uiNext.notice(error.message);}
   finally {
     bodyRequests.delete(id);
     if(epoch===uiNext.workspaceEpoch){renderReadingControls();scheduleCollectionPoll();}
   }
 }
-$('paper-download').addEventListener('click',()=>void bodyAction('download'));
+$('paper-download').addEventListener('click',()=>void bodyAction(currentPaper()?.body_present?'open':'download'));
+$('paper-locate').addEventListener('click',()=>void bodyAction('locate'));
+$('paper-delete-body').addEventListener('click',()=>void bodyAction('delete'));
 $('paper-download-cancel').addEventListener('click',()=>void bodyAction('cancel'));
 $('paper-collection-retry').addEventListener('click',async()=>{
   const paper=currentPaper();

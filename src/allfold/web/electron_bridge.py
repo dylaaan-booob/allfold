@@ -25,8 +25,8 @@ from allfold.integrations.cloudflare_solver import solve_cloudflare
 
 _CONTROL_ACTIONS = {"diagnostics_reset", "cas_credentials"}
 _RESOURCE_ACTIONS = {"invalidate_access", "release_workflow_pages"}
-_BUSINESS_ACTIONS = {"login_carsi", "prepare_service", "visit_manual_service", "search_journal_cover", "wos_query", "wos_export", "invalidate_access", "release_workflow_pages", "extract_paper_metadata", "extract_paper_pdf_clues", "stream_paper_body"}
-_RECOVERY_ACTIONS = {"prepare_service", "extract_paper_metadata", "extract_paper_pdf_clues"}
+_BUSINESS_ACTIONS = {"login_carsi", "prepare_service", "visit_manual_service", "search_journal_cover", "wos_query", "wos_export", "invalidate_access", "release_workflow_pages", "extract_paper_metadata", "extract_paper_pdf_clues", "stream_paper_body", "local_paper_body"}
+_RECOVERY_ACTIONS = {"prepare_service", "extract_paper_metadata", "extract_paper_pdf_clues", "local_paper_body"}
 _CONTEXT_FIELDS = ("workflow_id", "task_id", "parent_task_id", "service_id", "paper_id")
 _SOCKET_ERRORS = (WebSocketDisconnect, OSError, RuntimeError)
 _RECEIVE_ERRORS = (*_SOCKET_ERRORS, ValueError, TimeoutError)
@@ -221,10 +221,9 @@ class ElectronBridge:
             return
         observe(self.diagnostics, "native_status", data.get("diagnostics_status"))
         diagnostic = normalize_browser_diagnostic(data.get("diagnostic")) or {}
-        parent = data.get("parent")
-        outcome = parent.get("outcome") if isinstance(parent, dict) else data.get("outcome")
+        outcome = data.get("outcome")
         if outcome is None:
-            outcome = ("failed" if diagnostic else "retrieved" if data.get("item") or data.get("image_base64")
+            outcome = ("failed" if diagnostic else "retrieved" if data.get("image_base64")
                        else "downloaded" if data.get("filename") else "queried" if type(data.get("total")) is int
                        else "no_result")
         observe(self.diagnostics, "event", "task_finished", {**pending.context, **diagnostic, "outcome": outcome})

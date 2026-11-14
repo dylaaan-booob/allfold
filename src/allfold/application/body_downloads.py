@@ -565,6 +565,8 @@ class BodyDownloadService:
             with registry._repository() as repository:
                 paper = repository.get(paper_id)
             if paper.body is not None:
+                if qualification is not None and qualification.get('body_generation') != paper.body_generation:
+                    raise StaleWriteError('Original local body changed')
                 local = True
             else:
                 local = False
