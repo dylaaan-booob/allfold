@@ -334,7 +334,8 @@ def test_known_challenge_reader_uses_managed_document_access_before_its_pdf(tmp_
         host.shutdown();host.join()
 
 
-def test_unsigned_sciencedirect_reader_qualifies_current_link_before_any_stream(tmp_path):
+@pytest.mark.parametrize('signed',[True,False])
+def test_unsigned_sciencedirect_reader_qualifies_current_link_before_any_stream(tmp_path,signed):
     from dataclasses import replace
     import time
     from test_document_metadata import envelope,pdf_clues
@@ -347,7 +348,7 @@ def test_unsigned_sciencedirect_reader_qualifies_current_link_before_any_stream(
         assert bridge.started.wait(2)
         assert bridge.calls[-1][0]=='extract_paper_pdf_clues'
         assert not list((workspace/'Documents/.downloads').glob('*.part'))
-        pdf=article+'/pdfft?md5=current'
+        pdf=article+'/pdfft'+('?md5=current' if signed else '')
         bridge.result.set_result(envelope() | {'pdf_clues':pdf_clues(platform='sciencedirect',landing_url=article,
             candidates=[dict(stage='P4',rule_id='R024',url=pdf,referer=article)])})
         until=time.monotonic()+2
@@ -465,7 +466,7 @@ def test_known_reader_cancellation_retains_its_terminal_after_native_cleanup(tmp
         host.shutdown();host.join()
 
 
-@pytest.mark.parametrize('code',['content_access_blocked','site_restricted'])
+@pytest.mark.parametrize('code',['content_access_blocked','site_restricted','article_identity_unconfirmed','article_identity_conflict'])
 def test_native_document_access_barrier_stops_queued_body_alternatives(tmp_path,code):
     from dataclasses import replace
     import time

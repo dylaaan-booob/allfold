@@ -152,7 +152,8 @@ def _document_candidates(reservation, repository, candidate, response=None):
             value = context.native[-1].result() if context.native else None
             diagnostic = value.get('diagnostic', {}) if isinstance(value, dict) else {}
             if isinstance(diagnostic, dict):
-                blocked = (diagnostic.get('code') in {'verification_page','content_access_blocked','site_restricted'}
+                blocked = (diagnostic.get('code') in {'verification_page','content_access_blocked','site_restricted',
+                        'article_identity_unconfirmed','article_identity_conflict'}
                     or diagnostic.get('code') == 'http_error' and diagnostic.get('status') in {401,403,407,418,429})
     finally:
         try:
@@ -185,23 +186,27 @@ def _run(reservation, candidates, progress):
                 with ManagedBodyFiles(registry.workspace, reservation.paper_id, reservation.download_token.attempt,
                         expected_workspace=registry._identity[0]) as files:
                     pending = deque((candidate, 0) for candidate in candidates)
-                    seen = set()
-                    while pending and len(seen) < 16:
+                    seen, prequalified = set(), set()
+                    while pending:
                         candidate, depth = pending.popleft()
                         key = (urldefrag(candidate.url)[0], candidate.action)
-                        if key in seen:
+                        if key in seen or key not in prequalified and len(seen | prequalified) >= 16:
                             continue
-                        seen.add(key)
                         reader = reader_context(candidate)
                         if (reader and reader['platform']=='sciencedirect' and candidate.target.article_url
                                 and not candidate.action and not candidate.credential
-                                and not parse_qs(urlsplit(candidate.url).query).get('md5') and depth < 6):
+                                and not parse_qs(urlsplit(candidate.url).query).get('md5') and depth < 6
+                                and key not in prequalified):
                             # An unsigned reader entrance needs its current live
                             # article link, not a speculative PDF GET first.
+                            prequalified.add(key)
                             following = _document_candidates(reservation, repository, candidate)
                             if following:
                                 pending.extendleft((item, depth + 1) for item in reversed(following))
                                 continue
+                        # Qualification is not a request: the current live
+                        # entrance may legitimately retain the original URL.
+                        seen.add(key)
                         candidate_result, saved = _consume(reservation, repository, files, candidate, progress)
                         if saved is not None:
                             # A committed body remains authoritative even if later
