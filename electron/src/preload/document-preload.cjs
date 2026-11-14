@@ -594,3 +594,60 @@ ipcRenderer.on('document:operation',async(_event,{id,action,expectedDocumentId,e
     ipcRenderer.send('document:result',{id,result,documentId,url});
   }catch {ipcRenderer.send('document:result',{id,error:'document_operation_failed'});}
 });
+
+// Only the authenticated body workflow invokes these fixed actions. No code,
+// selector, form body or headers are accepted from a renderer or the host.
+let pendingBodyAction;
+function bodyAction(candidate,subject,id,dispatch=false) {
+  const state=globalThis.__allfoldBodyAction;
+  if(dispatch) {
+    if(!state || state.id!==id || state.url!==location.href || state.subject!==subject
+      || !state.node.isConnected || (state.kind==='form'
+        ?state.node.action!==state.action || state.node.method.toUpperCase()!==state.method
+        :state.node!==document.body&&state.node.href!==state.action))throw Error('document_changed');
+    delete globalThis.__allfoldBodyAction;
+    if(state.kind==='navigation') {
+      if(state.node===document.body)location.assign(state.action);else state.node.click();
+    }else if(state.submitter)state.submitter.click();else state.node.requestSubmit();
+    return;
+  }
+  if(!candidate.action&&candidate.platform==='sciencedirect'&&candidate.rule_id==='R024'
+    &&/^(?:www\.)?sciencedirect\.com$/.test(location.hostname)) {
+    const pii=location.pathname.match(/\/science\/article\/pii\/([SB][0-9X]{16})(?:\/|$)/i)?.[1],next=new URL(candidate.url);
+    if(!pii||!(next.origin===location.origin&&['/science/article/pii/'+pii+'/pdfft','/science/article/pii/'+pii+'/pdf'].includes(next.pathname)
+      ||next.protocol==='https:'&&next.hostname==='pdf.sciencedirectassets.com'&&next.pathname.endsWith('/1-s2.0-'+pii+'/main.pdf')))throw Error('body_action_identity');
+    const links=[...document.querySelectorAll('a[href]')].filter(node=>node.href===candidate.url);
+    if(links.length>1)throw Error('body_action_ambiguous');
+    const node=links[0]||document.body;
+    globalThis.__allfoldBodyAction={id,node,kind:'navigation',url:location.href,subject,action:candidate.url};
+    return {url:candidate.url,method:'GET',target:node.target==='_blank'?'popup':node.target&&node.target!=='_self'?'frame':'self'};
+  }
+  if(candidate.action!=='refresh_form' || candidate.platform!=='microbiology' || candidate.rule_id!=='R059'
+    || !/(^|\.)microbiologyresearch\.org$/.test(location.hostname))throw Error('unsupported_body_action');
+  const forms=[...document.querySelectorAll('.download-pdf form.ft-download-content__form--pdf[action]')]
+    .filter(node=>node.action===candidate.url && !node.closest('nav,aside,[role="navigation"],.supplementary-material,.references'));
+  if(forms.length!==1)throw Error('body_action_ambiguous');
+  const node=forms[0],method=node.method.toUpperCase();
+  if(!['GET','POST'].includes(method))throw Error('body_action_method');
+  const submitters=[...node.querySelectorAll('button:not([type]),button[type="submit"],input[type="submit"]')].filter(item=>!item.disabled);
+  if(submitters.length>1)throw Error('body_action_ambiguous');
+  globalThis.__allfoldBodyAction={id,node,kind:'form',submitter:submitters[0],url:location.href,subject,action:node.action,method};
+  return {url:node.action,method,target:node.target==='_blank'?'popup':node.target&&node.target!=='_self'?'frame':'self'};
+}
+ipcRenderer.on('body:prepare',async(_event,{id,candidate,documentId:expected,url,subject})=>{
+  try {
+    if(expected!==documentId || location.href!==url || !/^[a-f0-9]{48}$/.test(id))throw Error('document_changed');
+    const code='(()=>{const subject=('+documentSubject.toString()+')();if(subject!=='+JSON.stringify(subject)+')throw Error("document_changed");return ('+bodyAction.toString()+')('+JSON.stringify(candidate)+',subject,'+JSON.stringify(id)+');})()';
+    const plan=await webFrame.executeJavaScriptInIsolatedWorld(999,[{code}]);
+    if(location.href!==url)throw Error('document_changed');
+    pendingBodyAction={id,url,subject};ipcRenderer.send('body:prepared',{id,plan});
+  }catch {ipcRenderer.send('body:prepared',{id,error:'document_changed'});}
+});
+ipcRenderer.on('body:dispatch',async(_event,{id})=>{
+  const action=pendingBodyAction;pendingBodyAction=null;
+  if(!action || action.id!==id || action.url!==location.href)return;
+  // Main checks the captured Document immediately before this one-shot action.
+  if(ipcRenderer.sendSync('body:dispatching',{id})!==true)return;
+  const code='(()=>{const subject=('+documentSubject.toString()+')();if(subject!=='+JSON.stringify(action.subject)+')throw Error("document_changed");('+bodyAction.toString()+')(null,subject,'+JSON.stringify(id)+',true);})()';
+  try {await webFrame.executeJavaScriptInIsolatedWorld(999,[{code}],true);}catch {ipcRenderer.send('body:action-error',{id});}
+});

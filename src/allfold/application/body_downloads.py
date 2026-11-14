@@ -73,6 +73,8 @@ def _consume(reservation, repository, files, candidate, progress):
         if not (native.result.pdf_type and native.result.transfer_complete) and native.output is not None:
             files.cleanup(native.output)
             repository.record_download_output(reservation.download_token, None)
+            if native.result.diagnostic == 'access-blocked':
+                raise _BodyAccessBlocked()
             return native.result, None, native.final_url
         return native.result, native.output, native.final_url
     if candidate.action:

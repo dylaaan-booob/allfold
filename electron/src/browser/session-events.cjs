@@ -56,7 +56,12 @@ class SharedSessionEvents {
       const request=this.observe(event,details);
       if(event==='beforeSendHeaders')state.requestHeaders=withoutMarkers(details.requestHeaders);
       if(event==='headersReceived')state.responseHeaders=details.responseHeaders;
-      if(event==='headersReceived')this.overrideInline(details,state);
+      if(event==='headersReceived') {
+        for(const entry of this.downloads)if(entry.request?.id===details.id && this.matchesDownload(entry,entry.contents,details.frame))
+          entry.response={url:details.url,status:details.statusCode,contentType:Object.entries(details.responseHeaders || {})
+            .find(([name])=>name.toLowerCase()==='content-type')?.[1]?.[0]?.split(';')[0].trim().toLowerCase() || ''};
+        this.overrideInline(details,state);
+      }
       // Private association tokens never reach consumers, diagnostics or the wire.
       this.emit(event,event==='beforeSendHeaders'?{...details,requestHeaders:state.requestHeaders}:details,state);
       if(event==='beforeSendHeaders')state.requestHeaders=withoutMarkers(state.requestHeaders);
@@ -129,7 +134,7 @@ class SharedSessionEvents {
       throw Error('Managed download context required');
     if(this.downloadSourceUnsafe(options.contents))throw new BrowserFailure('wos_download','download_not_attributable');
     const registration={...options,active:true,item:null};this.downloads.add(registration);
-    const retire=()=>{registration.active=false;registration.item?.cancel();};
+    const retire=()=>{registration.active=false;if(registration.item)this.cancelItem(registration.item);};
     const timer=setTimeout(retire,Math.max(1,options.deadline-Date.now()));timer.unref?.();
     options.signal?.addEventListener('abort',retire,{once:true});
     if(options.signal?.aborted)retire();
@@ -137,7 +142,14 @@ class SharedSessionEvents {
       if(!this.downloads.delete(registration))return;
       clearTimeout(timer);options.signal?.removeEventListener('abort',retire);registration.active=false;
       if(dispatched && !registration.item)this.guardDownload(registration);
-    };registration.dispose=dispose;return {dispose};
+    };registration.dispose=dispose;
+    const bindRequest=details=>{
+      if(!registration.active || registration.item || registration.request || details.webContentsId!==options.contents.id || !details.frame
+        || !['mainFrame','subFrame'].includes(details.resourceType))throw Error('Original navigation is not attributable');
+      registration.request={id:details.id,method:details.method,url:details.url};
+      registration.frame={processId:details.frame.processId,frameToken:details.frame.frameToken};
+    };
+    return {dispose,bindRequest};
   }
   registerTaskPage(options) {
     if(this.closed || !options.owner || !options.contents)throw Error('Managed task Page required');
@@ -147,7 +159,7 @@ class SharedSessionEvents {
   overrideInline(details,state) {
     if(!['mainFrame','subFrame'].includes(details.resourceType) || !details.frame)return;
     const candidates=[...this.downloads].filter(entry=>entry.contents.id===details.webContentsId
-      && this.matchesDownload(entry,entry.contents,details.frame));
+      && this.matchesDownload(entry,entry.contents,details.frame) && (!entry.requireRequest || entry.request?.id===details.id));
     if(candidates.length!==1)return;
     const entry=candidates[0];
     if(!entry.active || entry.signal?.aborted || Date.now()>=entry.deadline || !entry.inlineMimeTypes)return;
@@ -174,12 +186,18 @@ class SharedSessionEvents {
     const expected=registration.frame || registration.document;
     return expected?.processId===frame.processId && expected?.frameToken===frame.frameToken;
   }
+  cancelItem(item) {
+    const tracked=[...this.items].find(entry=>entry.item===item);
+    if(tracked?.updating) {setImmediate(()=>{if(this.items.has(tracked))item.cancel();});return;}
+    item.cancel();
+  }
   trackItem(item,contents) {
     let finish;const terminal=new Promise(resolve=>{finish=resolve;});
     const observation={interrupted:false,terminal:null};
     const entry={item,contents,terminal,observation};this.items.add(entry);
     let cancellation;
     const updated=(_event,state)=>{
+      entry.updating=true;setImmediate(()=>{entry.updating=false;});
       if(state!=='interrupted')return;
       observation.interrupted=true;
       // Chromium's DownloadItem observer list disallows reentrant mutation.
@@ -214,6 +232,7 @@ class SharedSessionEvents {
       return;
     }
     let valid=registration.active && !registration.signal?.aborted && Date.now()<registration.deadline;
+    if(registration.requireRequest)valid=valid && !!registration.request && !!registration.response;
     try{valid=valid && registration.validate()!==false;}catch(_){valid=false;}
     try {
       const initiator=item.getInitiatorOrigin?.();
@@ -227,9 +246,10 @@ class SharedSessionEvents {
     // The staging path was prepared before dispatch. Never await in this callback.
     const tracked=this.trackItem(item,contents);
     try {
+      registration.beforeSave?.();
       item.setSavePath(registration.filename);
-      registration.onItem?.({...tracked,frame});
-    }catch(_){item.cancel();}
+      registration.onItem?.({...tracked,frame,request:registration.request,response:registration.response});
+    }catch(error){try{registration.onRejected?.({...tracked,error});}catch(_){}item.cancel();}
   }
   async waitForDownloads(contents) {
     while(true) {

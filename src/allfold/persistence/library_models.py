@@ -243,7 +243,8 @@ class OutputOwnership(DomainModel):
     documents: tuple[int, int]
     staging: tuple[int, int]
     disposal: tuple[int, int]
-    file: tuple[int, int]
+    file: tuple[int, int] | None = None
+    native_directory: tuple[int, int] | None = None
 
     @field_validator("temporary", "target")
     @classmethod

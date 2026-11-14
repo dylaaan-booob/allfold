@@ -705,6 +705,21 @@ class PaperRepository:
                 (output.model_dump_json() if output else None, str(paper.id)))
             self._changed(connection, paper.id)
 
+    def adopt_native_output(self, token, expected, actual):
+        """Persist one observed inode under the original native-directory capability."""
+        expected, actual = OutputOwnership.model_validate(expected), OutputOwnership.model_validate(actual)
+        if (expected.native_directory is None or expected.file is not None or actual.file is None
+                or actual.model_copy(update={'file': None}) != expected):
+            raise InvalidPaperState('Native output proof changed')
+        with self._database.transaction(write=True) as connection:
+            paper = self._require_download(connection, token, settlement=True)
+            if paper.download.output == actual:
+                return
+            if paper.download.status == 'completed' or paper.download.output != expected:
+                raise InvalidPaperState('Native output no longer belongs to this attempt')
+            connection.execute("UPDATE paper_download SET output=? WHERE paper_id=?", (actual.model_dump_json(), str(paper.id)))
+            self._changed(connection, paper.id)
+
     def finish_download(self, token, *, status, reason=None):
         if status not in {'failed', 'cancelled'}:
             raise ValueError('Only actual failure/cancellation settlement is permitted')

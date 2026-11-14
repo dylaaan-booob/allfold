@@ -1,4 +1,4 @@
-"""Pinned native incompatibility is finite and cannot gain file/network authority."""
+"""Original-response bridge boundary retains one attempt and observed output proof."""
 from dataclasses import replace
 import pytest
 from allfold.pdf_rules import PdfCandidate, PdfTarget
@@ -8,19 +8,19 @@ from allfold.persistence.paper_repository import PaperRepository
 def native_candidate():
     article='https://www.sciencedirect.com/science/article/pii/S0047259X2400006X'
     target=PdfTarget('paper-1',doi='10.5555/body',article_url=article)
-    return PdfCandidate(target,'P2','R024','sciencedirect',article+'/pdfft',reader_kind='sciencedirect')
+    return PdfCandidate(target,'P4','R024','sciencedirect',article+'/pdfft',reader_kind='sciencedirect')
 
 
-def test_unsupported_native_transport_does_not_touch_host_files_bridge_or_progress():
+def test_inapplicable_native_transport_does_not_touch_host_files_bridge_or_progress():
     from allfold.application.native_body_downloads import transfer_native
     class Forbidden:
         def __getattribute__(self,name):
-            raise AssertionError('No native/file capability may be used: '+name)
+            raise AssertionError('Inapplicable native transport used capability: '+name)
         def __call__(self,*args):
-            raise AssertionError('No progress is emitted without physical transfer')
+            raise AssertionError('No progress exists without physical transfer')
     forbidden=Forbidden()
-    result=transfer_native(forbidden,forbidden,forbidden,native_candidate(),forbidden)
-    assert result.result.kind=='skipped' and result.result.diagnostic=='native-unsupported'
+    result=transfer_native(forbidden,forbidden,forbidden,replace(native_candidate(),rule_id='GENERIC'),forbidden)
+    assert result.result.kind=='failed' and result.result.diagnostic=='native-inapplicable'
     assert result.output is None and result.final_url==''
 
 
@@ -38,49 +38,61 @@ def test_fixed_native_classification_preserves_reusable_stream_and_credential_sc
 
 
 @pytest.mark.parametrize('signed',[False,True])
-def test_native_unavailable_ends_without_creating_output_or_native_task(tmp_path,signed):
+def test_native_attempt_uses_original_bridge_capability_then_shared_completion(tmp_path,signed):
     from allfold.application.body_downloads import submit_body_download
     from test_body_downloads import application_host
     host,workspace,paper,bridge,original=application_host(tmp_path)
     candidate=replace(native_candidate(),target=replace(original.target,article_url=native_candidate().target.article_url))
     if signed:candidate=replace(candidate,url=candidate.url+'?md5=current')
+    progress=[]
+    execute=bridge.execute
+    def capture(action,data,callback=None,**kwargs):
+        bridge.native_progress=callback
+        return execute(action,data,callback,**kwargs)
+    bridge.execute=capture
     try:
-        result=submit_body_download(host,paper,candidates=(candidate,)).future.result(2)
-        assert result.status=='failed' and result.candidate_result.diagnostic=='native-unsupported'
-        assert bridge.calls==[] and not (workspace/'Documents').exists() and not host.active
-        with PaperRepository.open(workspace) as repo:
-            saved=repo.get(paper.id)
-            assert saved.download.status=='failed' and saved.download.reason=='native-unsupported'
-            assert saved.body is None and saved.download.output is None
+        task=submit_body_download(host,paper,candidates=(candidate,),progress=progress.append)
+        assert bridge.started.wait(2)
+        action,data=bridge.calls[0]
+        assert action=='native_paper_body' and len(bridge.calls)==1
+        assert data['candidate']['url']==candidate.url and data['identity']['confirmed_article_url']==candidate.target.article_url
+        leaf=workspace/data['output']['temporary']
+        assert data['output']['file'] is None and not leaf.exists()
+        leaf.write_bytes(b'original response')
+        info=leaf.stat();file=[info.st_dev,info.st_ino]
+        bridge.native_progress(dict(native_output_file=file,received_bytes=17,total_bytes=17))
+        assert 'native_output_file' not in str(progress)
+        bridge.result.set_result(dict(kind='pdf',outcome='native_complete',pdf_type=True,transfer_complete=True,
+            output_file=file,final_url=candidate.url,resource_closed=True))
+        result=task.future.result(2)
+        assert result.status=='completed' and result.paper.body.pdf_source=='P4'
+        assert result.paper.body.fallback_used is False
+        assert (workspace/result.paper.body.relative_path).read_bytes()==b'original response'
+        assert not leaf.parent.exists() and not host.active
     finally:
         if hasattr(bridge,'result') and not bridge.result.done():bridge.result.set_result(dict(kind='cancelled',outcome='cancelled'))
         host.shutdown();host.join()
 
 
-@pytest.mark.parametrize('stream_result',['pdf','failed'])
-def test_skipped_native_keeps_later_stream_and_accurate_terminal_provenance(tmp_path,stream_result):
+@pytest.mark.parametrize('kind,diagnostic,expected',[
+    ('local_failure','interrupted','local_failure'),('failed','access-blocked','failed')])
+def test_native_terminal_refusal_stops_sources_and_never_publishes(tmp_path,kind,diagnostic,expected):
     from allfold.application.body_downloads import submit_body_download
     from test_body_downloads import application_host
     host,workspace,paper,bridge,original=application_host(tmp_path)
-    target=replace(original.target,article_url=native_candidate().target.article_url)
-    native=replace(native_candidate(),target=target)
-    stream=replace(original,target=target,stage='P5')
+    candidate=replace(native_candidate(),target=replace(original.target,article_url=native_candidate().target.article_url))
     try:
-        task=submit_body_download(host,paper,candidates=(native,stream))
+        task=submit_body_download(host,paper,candidates=(candidate,replace(original,target=candidate.target)))
         assert bridge.started.wait(2)
-        assert [action for action,_ in bridge.calls]==['stream_paper_body']
-        assert bridge.calls[0][1]['url']==stream.url
-        bridge.finish(stream_result)
+        assert bridge.calls[0][0]=='native_paper_body'
+        bridge.result.set_result(dict(kind=kind,outcome=kind,diagnostic_code=diagnostic,
+            native_terminal='cancelled',native_cleanup='asynchronous'))
         result=task.future.result(2)
-        if stream_result=='pdf':
-            assert result.status=='completed'
-            assert result.paper.body.pdf_source=='P5' and result.paper.body.fallback_used is False
-            assert (workspace/result.paper.body.relative_path).read_bytes()==b'body'
-        else:
-            assert result.status=='failed' and result.candidate_result.diagnostic=='native-unsupported'
-            with PaperRepository.open(workspace) as repo:
-                saved=repo.get(paper.id)
-                assert saved.body is None and saved.download.reason=='native-unsupported'
+        assert result.status==expected and len(bridge.calls)==1 and not host.active
+        with PaperRepository.open(workspace) as repo:
+            saved=repo.get(paper.id)
+            assert saved.body is None and saved.download.reason==diagnostic
+            assert saved.download.output is None
     finally:
         if hasattr(bridge,'result') and not bridge.result.done():bridge.result.set_result(dict(kind='cancelled',outcome='cancelled'))
         host.shutdown();host.join()

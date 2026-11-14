@@ -76,7 +76,7 @@ function fixture(t) {
   const electron={app:{getName:()=> 'allfold-desktop',getPath:()=>profile},session:{fromPartition:()=>partition},
     webFrameMain:{fromFrameToken:(_process,token)=>frames.get(token) || null},
     BrowserWindow:Window,WebContentsView:View,Menu:{buildFromTemplate:items=>({popup(){menus.push(items);}})},
-    ipcMain:{handle:(name,fn)=>handlers.set(name,fn),removeHandler:name=>handlers.delete(name)}};
+    ipcMain:Object.assign(new EventEmitter(),{handle:(name,fn)=>handlers.set(name,fn),removeHandler:name=>handlers.delete(name)})};
   const context=vm.createContext({module:{exports:{}},__dirname:path.dirname(require.resolve('../src/browser/browser-runtime.cjs')),URL,Buffer,Date,AbortController,AbortSignal,setTimeout,clearTimeout,
     require:name=>name==='electron'?electron:name==='./document-runtime.cjs'?{DocumentRuntime:class {
       constructor(browser){this.browser=browser;}

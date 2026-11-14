@@ -1,10 +1,11 @@
 'use strict';
-const {app, WebContentsView, session, webFrameMain, Menu, clipboard} = require('electron');
+const {app, WebContentsView, session, webFrameMain, Menu, clipboard, ipcMain} = require('electron');
 const {BrowserPresentation}=require('./browser-presentation.cjs');
 const {BrowserFailure,checkPage}=require('./browser-errors.cjs');
 const {configureBrowserIdentity} = require('./browser-identity.cjs');
 const {validDOI,articleURL,articleIdentity}=require('./article-identity.cjs');
 const {DocumentRuntime}=require('./document-runtime.cjs');
+const {BodyActionRuntime}=require('./body-action-runtime.cjs');
 const {qualifyReader,publicClueURL}=require('./pdf-clues.cjs');
 const {EventEmitter}=require('node:events');
 const {AsyncLocalStorage}=require('node:async_hooks');
@@ -70,6 +71,7 @@ class BrowserRuntime {
     this.failedCreations=new Set();
     this.carsiVisitOrigins=new Map();
     this.documents=new DocumentRuntime(this);
+    this.bodyActions=new BodyActionRuntime(this,{ipc:ipcMain});
     this.events = new EventEmitter();
     this.selected = null;
     this.operationContext=new AsyncLocalStorage();
@@ -116,6 +118,7 @@ class BrowserRuntime {
     if(owner)this.trackTaskDownloads(tab,owner);
     contents.setWindowOpenHandler(({url}) => {
       if(tab.pageAttempt?.retired || contents.isDestroyed() || tab.closing)return {action:'deny'};
+      if(tab.bodyAction && !tab.bodyAction.acceptPopup(url))return {action:'deny'};
       const popupOwner=tab.taskOwner;
       if(popupOwner && !this.ownsPage(popupOwner,tab.id) || !popupOwner && tab.resourceOwner.kind!=='user')return {action:'deny'};
       if (url !== 'about:blank') {
@@ -235,6 +238,7 @@ class BrowserRuntime {
     if(options.present!==false)this.select(tab);
     else this.publish();
     this.events.emit('tab-created',null,tab);
+    opener?.bodyAction?.addPopup(tab);
     return tab;
   }
   beginAuthentication(tab,signal,{institution=true}={}) {
@@ -1112,7 +1116,7 @@ class BrowserRuntime {
       await this.sessionEvents.waitForDownloads();
       await this.ready.catch(()=>{});
       this.presentation.dispose();this.selected=null;
-      this.documents.dispose();this.identity?.dispose();this.identity=null;
+      this.documents.dispose();this.bodyActions.dispose();this.identity?.dispose();this.identity=null;
       this.sessionEvents.dispose();this.closed=true;
     })();
     return this.closing;

@@ -116,3 +116,19 @@ test('an unresolved dispatched source stays unsafe past timeouts and a fresh phy
   current.emit('done',{},'completed');independent.dispose({dispatched:true});
   contents.emit('destroyed');events.dispose();
 });
+test('original navigation ownership binds an exact native request before accepting its response/item',async()=>{
+  const {session,hooks,events}=fixture(),contents=new EventEmitter();contents.id=41;
+  const frame={processId:7,frameToken:'source'};let accepted;
+  const handle=events.registerDownload({owner:{task_id:'original'},attemptId:'once',contents,frame,
+    document:{...frame,url:'https://publisher.example/article'},filename:'/tmp/original',deadline:Date.now()+1000,
+    requireRequest:true,inlineMimeTypes:['application/pdf'],validate:()=>true,onItem:value=>{accepted=value;}});
+  const base={id:42,webContentsId:41,frame,resourceType:'mainFrame',method:'POST',url:'https://publisher.example/once'};
+  hooks.onBeforeRequest(base,()=>{});handle.bindRequest(base);
+  let headers;
+  hooks.onHeadersReceived({...base,statusCode:200,responseHeaders:{'Content-Type':['application/pdf']}},value=>{headers=value.responseHeaders;});
+  assert.deepEqual(headers['Content-Disposition'],['attachment']);
+  const item=new EventEmitter();item.getInitiatorOrigin=()=> 'https://publisher.example';item.setSavePath=value=>{item.filename=value;};item.cancel=()=>{item.emit('done',{},'cancelled');};
+  session.emit('will-download',{},item,contents,frame);
+  assert.equal(item.filename,'/tmp/original');assert.equal(accepted.request.id,42);assert.equal(accepted.response.url,base.url);
+  item.emit('done',{},'completed');assert.equal(await accepted.terminal,'completed');handle.dispose();events.dispose();
+});

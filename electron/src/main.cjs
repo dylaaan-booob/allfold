@@ -13,6 +13,7 @@ const {log,errorCode,initializeLogging,withLogContext,associationLogContext,diag
 const {operationAssociation}=require('./browser/page-association.cjs');
 const {loginInstitution,prepareLoggedInService,visitManualService,searchJournalCover}=require('./workflows/browser-operations.cjs');
 const {executeBodyStream}=require('./workflows/body-stream.cjs');
+const {executeBodyNative}=require('./workflows/body-native.cjs');
 const {executeLocalBody}=require('./workflows/local-body.cjs');
 const {wosQuery,wosExport}=require('./workflows/wos-operations.cjs');
 const {readCASCredentials,casStatus,saveCASCredentials,clearCASCredentials,casErrorCode}=require('./auth/cas-credentials.cjs');
@@ -77,7 +78,7 @@ async function executeControl(message,signal) {
   return {ok:false,error:'unsupported_operation'};
 }
 async function execute(message) {
-  if(!CONTROL_ACTIONS.has(message.action) && !RESOURCE_ACTIONS.has(message.action) && !['login_carsi','prepare_service','visit_manual_service','search_journal_cover','wos_query','wos_export','extract_paper_metadata','extract_paper_pdf_clues','stream_paper_body','local_paper_body'].includes(message.action)){
+  if(!CONTROL_ACTIONS.has(message.action) && !RESOURCE_ACTIONS.has(message.action) && !['login_carsi','prepare_service','visit_manual_service','search_journal_cover','wos_query','wos_export','extract_paper_metadata','extract_paper_pdf_clues','stream_paper_body','native_paper_body','local_paper_body'].includes(message.action)){
     send({type:'result',id:message.id,action:message.action,data:{diagnostic:{stage:'navigation',code:'unsupported_operation'}}});return;
   }
   const control=CONTROL_ACTIONS.has(message.action);
@@ -157,9 +158,11 @@ async function executeOperation(message,current) {
           catch (_) {}
         };
         browser.operation.recordRecovery=recordRecovery;
-        if(['prepare_service','extract_paper_metadata','extract_paper_pdf_clues'].includes(message.action))
+        if(['prepare_service','extract_paper_metadata','extract_paper_pdf_clues','native_paper_body'].includes(message.action))
           browser.operation.validateRecovery=verifyRecovery;
-        if(message.action === 'stream_paper_body') {
+        if(message.action === 'native_paper_body') {
+          return await executeBodyNative(browser,message.data,{signal:controller.signal,progress});
+        } else if(message.action === 'stream_paper_body') {
           return await executeBodyStream(browser,message.data,{signal:controller.signal,progress});
         } else if(message.action === 'login_carsi') {
           stage='authentication';
