@@ -147,13 +147,6 @@ class EvidenceDate(DomainModel):
     month: Annotated[int, Field(strict=True, ge=1, le=12)] | None = None
     day: Annotated[int, Field(strict=True, ge=1, le=31)] | None = None
 
-    @field_validator("kind", mode="before")
-    @classmethod
-    def reject_retired_date_kinds(cls, value):
-        if isinstance(value, str) and value in {"published-print", "issued", "early-access"}:
-            raise ValueError("Unsupported legacy date kind; back up and explicitly rebuild the affected Paper, then rerun discovery. No automatic migration.")
-        return value
-
     @model_validator(mode="after")
     def validate_partial_date(self) -> EvidenceDate:
         if self.day is not None and self.month is None:

@@ -12,15 +12,11 @@ test('rails are allocated first; sidebar yields to the content minimum and overl
   assert.equal(m.measure(1200,targets,360,true).sidebarEffectiveWidth,320);
   assert.equal(targets.sidebarPreferredWidth,320);
 });
-test('corrupt targets fall back independently and obsolete journal columns/left widths are ignored',()=>{
+test('current targets validate dimensions independently',()=>{
   const m=model();
   assert.deepEqual({...m.targets({railWidth:0,sidebarPreferredWidth:'400',flyoutPreferredWidth:Infinity})},{railWidth:48,flyoutPreferredWidth:280,sidebarPreferredWidth:320});
-  assert.deepEqual({...m.targets({railWidth:60,sidebarPreferredWidth:420,columns:2,left:900})},{railWidth:60,flyoutPreferredWidth:280,sidebarPreferredWidth:420});
+  assert.deepEqual({...m.targets({railWidth:60,sidebarPreferredWidth:420})},{railWidth:60,flyoutPreferredWidth:280,sidebarPreferredWidth:420});
   assert.deepEqual({...m.targets(null)},{railWidth:48,flyoutPreferredWidth:280,sidebarPreferredWidth:320});
-});
-test('retired Compact preferences do not affect workbench layout targets',()=>{
-  const m=model();
-  assert.deepEqual({...m.targets({browserPreferredWidth:320,browserPreferredHeight:140})},{...m.defaults});
 });
 function fixture(preferences={}) {
   const elements=new Map(),timers=new Map(),observers=[],storage=new Map(Object.entries(preferences)),previews=[];
@@ -98,10 +94,8 @@ test('SAVE/RESET/ORIGIN save only target sizes and shrinking never changes the b
   f.resizeTo(1200);assert.equal(f.host.geometry.sidebarEffectiveWidth,460);
   assert.equal(f.storage.get('allfold.browser-services-width'),'420');assert.equal(f.storage.get('inbox-rhine.archive-debug'),'{"height":600}');
 });
-test('invalid storage is safe; only an in-range legacy right width seeds new preferences',()=>{
+test('invalid current storage falls back to source defaults',()=>{
   for(const raw of ['broken','null','{"sidebarPreferredWidth":1,"railWidth":"60"}']){
     const f=fixture({'allfold.workbench-layout':raw});assert.equal(f.get('layout-sidebarPreferredWidth').value,320);
   }
-  const f=fixture({'allfold.journal-layout':'{"right":420,"left":900,"columns":1}'});f.info.emit('click');assert.equal(f.host.geometry.sidebarEffectiveWidth,420);
-  assert.equal(f.get('layout-flyoutPreferredWidth').value,280);
 });

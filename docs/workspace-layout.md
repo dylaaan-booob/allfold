@@ -35,7 +35,7 @@ The Electron window minimum is 600 × 480 logical pixels. The Chromium fixtures 
 - Tool icons open on click, toggle the current view closed, or switch an open view. Journal selection opens Details. ARRAY selection updates Info without changing expansion. Each workspace retains its host and expansion while away. Browser presentation retains the mounted business DOM.
 - ARRAY Reject/Restore and Trash metadata clearing remain in Content. Workflows contains Login and Discover. Task-page handoff opens the shared Browser while workflow status and controls stay in their original surface.
 - Layout targets use the independent localStorage key `allfold.workbench-layout`. Developer inputs preview live; SAVE stores all targets, RESET restores that baseline, ORIGIN uses source defaults without replacing the baseline. Ordinary pointer/keyboard Sidebar resize persists only its new preferred width on completion. Shrinking and host Zoom never write effective dimensions back into preferences.
-- Invalid values fall back independently to defaults. Only when the new key is absent may an in-range legacy `allfold.journal-layout.right` seed the Sidebar target. Legacy left/columns state is ignored; no old layout controller or manual GRID controls remain. Archive and other UI preferences keep their own keys.
+- Invalid current values fall back independently to source defaults. The layout reads only `allfold.workbench-layout`; no historical preference migration is provided. Archive and other UI preferences keep their own keys.
 - The developer/status strip stays one row and scrolls horizontally. Messages have bounded internal scrolling. Window-level overlays and dialogs retain viewport bounds.
 
 ## Workspace ownership and retained boundaries
