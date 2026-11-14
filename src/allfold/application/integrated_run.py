@@ -521,7 +521,7 @@ def run_integrated(config_path, *, loaded_config=None, workspace_snapshot=None, 
                     # published together. No access capture runs in this boundary.
                     admitted = registry.admit(direct_ids=base.external_ids,
                         additional_identities=tuple(DirectIdentity(*key) for key in keys), metadata=metadata,
-                        branches=branches, source_run_id=workflow_id,
+                        branches=branches, service_id=branches[0].service_id, source_run_id=workflow_id,
                         expected_token=initial.token if initial is not None else None,
                         allow_rebuild=bool(initial is not None and initial.metadata is None and not initial.excluded))
                 paper_id = admitted.paper_id if isinstance(admitted, TaskHandle) else admitted.id

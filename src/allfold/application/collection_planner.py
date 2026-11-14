@@ -35,7 +35,7 @@ class ProductionCollectionService:
     def plan(self, *, paper=None, metadata=None, identities=(), records=(), facts=(), required=(), config=None):
         if paper is not None:
             metadata = paper.metadata
-            identities = tuple((item.namespace, item.value) for item in paper.identities)
+            identities = set(identities) | {(item.namespace, item.value) for item in paper.identities}
         if metadata is None:
             raise InvalidPaperState('Collection requires complete Paper metadata')
         config = config or load_config(self.host.config_path)
@@ -58,7 +58,7 @@ class ProductionCollectionService:
         else:
             document = BranchSpec('document', skip_reason='No reliable DOI or confirmed article entrance', service_id=None)
         api = replace(necessary_metadata_branch(providers=providers, records=records, facts=facts,
-            required=tuple(sorted(required))), service_id=None)
+            required=tuple(sorted(required))), service_id=None, mailto=config.crossref_mailto)
         return document, api
 
     def base_metadata(self, canonical, *, identities, records=(), facts=(), required=()):

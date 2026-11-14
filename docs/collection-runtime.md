@@ -15,6 +15,7 @@ handle = registry.admit(
     additional_identities=additional_identities,
     metadata=metadata,
     branches=complete_plan,
+    service_id=document_service_id,
     expected_token=initial_paper.token if initial_paper is not None else None,
     allow_rebuild=(initial_paper is not None and initial_paper.metadata is None
                    and not initial_paper.excluded),
@@ -54,15 +55,19 @@ branches or legal prior increments.
 
 ## Complete plans and independent branches
 
-`BranchSpec(name, run=None, skip_reason=None, providers=(), service_id=...)`
+`BranchSpec(name, run=None, skip_reason=None, providers=(), service_id=..., mailto='')`
 uses unique bounded names. An omitted `service_id` inherits the admission's legacy
 Service argument; explicit `None` declares independent API/public work. Declare
 only the Providers a branch actually uses. A skipped branch has an explicit
 applicability reason and no runner. An empty plan requires `no_applicable=True`.
+The production necessary branch captures saved `crossref_mailto` for its own
+client scope; it does not borrow a Run client, cache or configuration guard.
 
 A bounded parent scheduler owns Paper lifetimes. A separate bounded scheduler
 runs leaf branches, so parents waiting for children cannot exhaust the children's
-worker pool. Both retain Service fairness; only native operations consume the
+worker pool. Production admission groups each parent by its planned Document
+Service; the necessary API leaf remains independently grouped under `None`.
+Both retain Service fairness; only native operations consume the
 shared Session's physical page quotas. Every branch constructs and closes its own
 repository, `BranchContext`, clients and request cache in its execution thread.
 SQLite's thread guard stays enabled. Application-owned pacing is shared; Run

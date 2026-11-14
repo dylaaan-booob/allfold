@@ -286,6 +286,15 @@ class PaperRepository:
                 self._add_identities(connection, paper.id, identities)
                 self._changed(connection, paper.id)
                 paper = self._read(connection, paper.id)
+            if paper.collection is None and paper.primary_identity.namespace != "doi" and direct_ids.doi:
+                # The first collection may learn its formal DOI on this Run.
+                # Use that explicit direct DOI, never an alias's iteration order;
+                # an already selected DOI remains authoritative.
+                primary = self._primary(direct_ids, identities)
+                connection.execute("UPDATE paper_projection SET primary_namespace = ?, primary_value = ? WHERE paper_id = ?",
+                                   (primary.namespace, primary.value, str(paper.id)))
+                self._changed(connection, paper.id)
+                paper = self._read(connection, paper.id)
             if paper.collection is not None:
                 token = CollectionToken(paper.collection.write, paper.collection.attempt, paper.collection.lifecycle_id) if paper.collection.active else None
                 return CollectionAdmission(paper, token, False, result.created)

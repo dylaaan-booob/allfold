@@ -37,6 +37,7 @@ class BranchSpec:
     providers: tuple[str, ...] = ()
     # Omitted inherits the legacy plan Service; explicit None is independent API.
     service_id: object = _INHERIT_SERVICE
+    mailto: str = ''
 
 
 @dataclass(eq=False)
@@ -357,7 +358,8 @@ class WorkspaceRegistry:
                 raise ValueError('Unknown declared Provider')
         return tuple(BranchSpec(branch.name, branch.run, branch.skip_reason,
                                 tuple(sorted(set(branch.providers))),
-                                service_id if branch.service_id is _INHERIT_SERVICE else branch.service_id) for branch in plan)
+                                service_id if branch.service_id is _INHERIT_SERVICE else branch.service_id,
+                                branch.mailto) for branch in plan)
 
     def _authority(self, service_id, plan):
         providers = tuple(sorted({provider for branch in plan for provider in branch.providers}))
@@ -845,9 +847,11 @@ class WorkspaceRegistry:
     def _clients(self, handle, repository):
         resources = ExitStack()
         try:
+            branch = getattr(handle, 'branch', None)
+            options = {'mailto': branch.mailto} if branch is not None and branch.mailto else {}
             clients = resources.enter_context(self.factory.open(cancel_event=handle.cancel_event,
                 request_guard=lambda: self._guard(handle, repository), deadline=handle.deadline,
-                providers=handle.providers))
+                providers=handle.providers, **options))
             yield clients
         finally:
             try:
