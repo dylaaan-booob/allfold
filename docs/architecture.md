@@ -76,8 +76,8 @@ the existing records/increment path persists them in short SQLite transactions.
 Same-Document precollection never follows a PDF candidate. PDF-only refresh and
 known-reader parsing reuse native access, physical quotas and cleanup. Subsequent
 Download can use the core after collection completes without restarting that
-collection. WF08 installs production collection orchestration; WF09/10
-transfer/files remain separate. The [adopted specification and fixed source catalogue](pdf-source-discovery.md)
+collection. WF08 installs production collection orchestration; WF09 supplies the internal
+[Session/file completion service](body-downloads.md); WF10 owns public Download and native action adoption. The [adopted specification and fixed source catalogue](pdf-source-discovery.md)
 retain all platform/input/access conditions and historical exclusions.
 The immutable discovery target includes the saved direct-identity closure, so
 complete DOI-free Work facts can be reused without a new lookup or native
@@ -206,7 +206,7 @@ identities, explicit primary identity, metadata, exclusions and one optional bod
 association at `Workspace/papers.sqlite`. HTTP handlers and workers open separate
 thread-confined connections. Read-only uninitialized views create nothing; Run
 performs explicit initialization. Paper storage supports only its current schema; corruption and
-unknown schemas fail without replacement. Current-attempt and branch facts are bounded. No data-upgrade path or Markdown shadow/fallback exists.
+unknown schemas fail without replacement. Current-attempt, branch and body-output facts are bounded. Exactly valid v3 has a transactional forward change to v4; retired/unknown formats and Markdown shadow/fallback remain refused.
 
 Workspace UI uses separate library revisions for response order. WriteToken
 remains captured asynchronous eligibility, with separate abstract generation.

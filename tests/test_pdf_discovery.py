@@ -108,6 +108,44 @@ def test_t16_challenge_iframe_is_not_reader():
     assert result.pdf_source is None
 
 
+def test_sciencedirect_background_cloudflare_script_does_not_block_current_pdf_link():
+    paper=target('www.sciencedirect.com',article_url='https://www.sciencedirect.com/science/article/pii/S014067362400123X')
+    seen=[]
+    def consume(candidate):
+        seen.append(candidate)
+        if len(seen)==1:
+            return CandidateResult.current(CurrentResponse(candidate.url,'text/html',
+                b'<html><title>View PDF</title><script src="/cdn-cgi/challenge-platform/scripts/jsd/main.js"></script>'
+                b'<div class="PdfEmbed"><object data="https://pdf.sciencedirectassets.com/main.pdf?token=synthetic"></object></div></html>'))
+        return CandidateResult.pdf(transfer_complete=True)
+    result=PdfDiscovery(paper).run(consume)
+    assert result.status=='transferred'
+    assert seen[-1].url=='https://pdf.sciencedirectassets.com/main.pdf?token=synthetic'
+
+
+@pytest.mark.parametrize('destination',[
+    'https://pdf.sciencedirectassets.com/1-s2.0-S014067362400999X/main.pdf',
+    'https://pdf.sciencedirectassets.com.evil.example/1-s2.0-S014067362400123X/main.pdf',
+    'http://pdf.sciencedirectassets.com/1-s2.0-S014067362400123X/main.pdf',
+])
+def test_sciencedirect_redirect_cannot_change_pii_host_or_protocol(destination):
+    from allfold.pdf_rules import PdfCandidate
+    from allfold.pdf_responses import parse_current_response
+    url='https://www.sciencedirect.com/science/article/pii/S014067362400123X/pdfft'
+    candidate=PdfCandidate(target(),'P1','R024','sciencedirect',url)
+    response=CurrentResponse(url,'',status=302,redirect_url=destination)
+    assert parse_current_response(candidate,response)==()
+
+
+@pytest.mark.parametrize('body',[
+    '<script>var errors="CPE00001 There was a problem providing the content you requested";</script><p>Article content</p>',
+    '<p>Article content</p><iframe src="/_Incapsula_Resource?edet=15">Request unsuccessful. Incapsula incident ID: 123-456</iframe>',
+])
+def test_background_error_strings_or_embedded_frames_are_not_main_access_denials(body):
+    from allfold.pdf_responses import access_limited
+    assert not access_limited(CurrentResponse('https://publisher.example.org/article','text/html',body.encode()))
+
+
 def test_openalex_cancel_is_never_recoverable_and_parent_expiry_wins_over_previous_http_error():
     from allfold.providers.openalex import OpenAlexClient
     from allfold.providers.provider_http import Cancelled, ProviderBudgetExceeded

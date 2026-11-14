@@ -136,6 +136,8 @@ class PaperReservation:
     future: Future = field(default_factory=SettledFuture)
     scheduled: Future | None = None
     browser_owner: object = None
+    download_token: object = None
+    body_request: object = field(default=None, repr=False)
 
     def guard(self):
         """Verify this exact reservation without capturing a replacement token."""
@@ -284,6 +286,7 @@ class WorkspaceRegistry:
             self.workspace_id = repository.workspace_id
             self._identity = self._path_identity()
             repository.interrupt_collections(self.lifecycle_id)
+            repository.interrupt_downloads(self.lifecycle_id)
         self._scheduler = DynamicScheduler(limit=limit, group_limit=group_limit)
         # Parent workers may wait for these bounded children, never their own pool.
         self._branch_scheduler = DynamicScheduler(limit=max(2, limit), group_limit=group_limit)
@@ -433,6 +436,8 @@ class WorkspaceRegistry:
         paper = repository.get(handle.paper_id)
         deferred = self._tasks.get(handle.paper_id)
         waiting = deferred is not None and deferred.waiting_on is handle
+        if handle.kind == 'body':
+            return repository.require_download(handle.download_token)
         if (handle.kind == 'download' and paper.token != handle.token
                 or paper.metadata_generation != handle.token.metadata_generation
                 or paper.operation_generation != handle.token.operation_generation
@@ -493,6 +498,10 @@ class WorkspaceRegistry:
             with self._repository() as repository:
                 paper = repository.match(direct_ids, additional_identities=additional_identities)
                 reservation = self._reservations.get(paper.id) if paper else None
+                if reservation is not None and reservation.kind == 'body':
+                    # A reliable match that is busy stays that same Paper. No
+                    # collection intent may mutate the active body's authority.
+                    return paper
                 if reservation is not None and (reservation.kind != 'legacy' or paper.collection is not None) and not (
                         paper.id in self._tasks and self._tasks[paper.id].waiting_on is reservation):
                     raise InvalidPaperState('Another operation owns this Paper')
@@ -601,21 +610,23 @@ class WorkspaceRegistry:
         return self.register(handle)
 
     def reserve(self, paper_id, *, kind='download', expected_token=None, cancel=None,
-                service_id=None, providers=(), deadline=None):
-        if kind not in {'download', 'legacy'}:
-            raise ValueError('Only download and legacy reservations are supported')
+                service_id=None, providers=(), deadline=None, body_request=None):
+        if kind not in {'download', 'legacy', 'body'}:
+            raise ValueError('Unknown Paper reservation kind')
+        if kind == 'body' and body_request is None:
+            raise ValueError('A captured body request is required')
         paper_id = UUID(str(paper_id))
         providers = tuple(sorted(set(providers)))
         if not set(providers) <= set(PROVIDERS):
             raise ValueError('Unknown reservation Provider')
         authority = (self._authority(service_id, (BranchSpec('pdf-discovery', providers=providers),))
-                     if service_id is not None or providers else _LocalAuthority())
+                     if service_id is not None or providers or kind == 'body' else _LocalAuthority())
         reservation_deadline = self._deadline(deadline) if deadline is not None else float('inf')
         with self._gate:
             self._require_open()
             self._check_admission(authority)
             existing = self._reservations.get(paper_id)
-            if existing is not None and kind == existing.kind == 'download':
+            if existing is not None and kind == existing.kind and kind in {'download', 'body'}:
                 return existing
             if existing is not None or paper_id in self._tasks:
                 raise InvalidPaperState('Another operation owns this Paper')
@@ -623,10 +634,27 @@ class WorkspaceRegistry:
                 paper = repository.get(paper_id)
                 if paper.excluded or paper.metadata is None or paper.collection is not None and paper.collection.active:
                     raise InvalidPaperState('Paper is not eligible while excluded, empty or collecting')
-                if expected_token is not None and paper.token != expected_token:
+                if kind == 'body' and paper.body is not None:
+                    return paper
+                if expected_token is not None and (repository._body_key(paper.token) != repository._body_key(expected_token)
+                        if kind == 'body' else paper.token != expected_token):
                     raise StaleWriteError('Captured Paper authority changed')
-                repository.touch_projection(paper_id)
+                download_token = None
+                if kind == 'body':
+                    if paper.primary_identity != body_request.primary:
+                        raise StaleWriteError('Captured primary Paper identity changed')
+                    if paper.download is not None and paper.download.output is not None:
+                        from allfold.persistence.body_files import ManagedBodyFiles
+                        with ManagedBodyFiles(self.workspace, paper.id, paper.download.token.attempt,
+                                expected_workspace=self._identity[0]) as files:
+                            files.cleanup(paper.download.output)
+                        repository.record_download_output(paper.download.token, None)
+                    download_token = repository.begin_download(paper.token, lifecycle_id=self.lifecycle_id)
+                else:
+                    repository.touch_projection(paper_id)
             reservation = PaperReservation(self, paper.token, self.lifecycle_id, kind, cancel)
+            reservation.download_token = download_token
+            reservation.body_request = body_request
             reservation.authority, reservation.service_id = authority, service_id
             reservation.providers = providers
             reservation.deadline = reservation_deadline
@@ -660,7 +688,8 @@ class WorkspaceRegistry:
     def fail_reservation(self, reservation, *, phase, error):
         """A reservation worker exited without proving its captured resource close."""
         if phase not in {'preprint-client-cleanup', 'preprint-repository-cleanup', 'preprint-owner-cleanup',
-                         'discovery-client-cleanup', 'discovery-native-cleanup', 'discovery-owner-cleanup'}:
+                         'discovery-client-cleanup', 'discovery-native-cleanup', 'discovery-owner-cleanup',
+                         'body-native-cleanup', 'body-file-cleanup', 'body-owner-cleanup', 'body-terminal-write'}:
             raise ValueError('Unknown reservation cleanup phase')
         with self._gate:
             if reservation.registry is not self:

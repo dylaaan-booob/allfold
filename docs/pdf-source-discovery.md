@@ -4030,3 +4030,8 @@ Zotero 相关已读文件主要声明 AGPL-3.0-or-later；其他仓库按表中�
 ## 目标与完成定义
 
 请自主推进到**针对本次变更的一张 PR 已创建或更新、最新 PR 版本对应的 GitHub Actions 检查实际通过**，目标分支为 `main`，**暂不合并**。计划、提交、Review 或 PR 创建本身均不是终点。若存在真实阻塞，则提交已完成工作，并明确给出阻塞和未通过/未验证事项，不得虚报完成。
+
+
+## WF09 internal body service
+
+WF09 supplies a separate internal Session consumer for caller-confirmed bounded candidates, with the same `CandidateResult` stop/fallback semantics. It never passes the Python HTTPX streaming response to a second Session GET. Current PDF MIME plus normal closed pipeline stops sources; local file/final transaction failure ends the attempt. HTML returns the current bounded response, action/POST and explicit secret candidates stay pending. Production full P1–P5/native product scheduling remains WF10; the existing read-only discovery adapter and bounded API clients remain in use. See [the complete contract](body-downloads.md).

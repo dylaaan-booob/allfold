@@ -9,8 +9,9 @@ const profile=process.argv[2];app.setPath('userData',profile);app.setPath('sessi
 require('../src/shared/logging.cjs').initializeLogging({stderr(){}});
 const {BrowserRuntime}=require('../src/browser/browser-runtime.cjs');
 app.whenReady().then(async()=>{
-  let page='',requests=[];
+  let page='',requests=[],delayedPDF;
   const server=http.createServer((request,response)=>{requests.push({url:request.url,referer:request.headers.referer});
+    if(request.url==='/hydrated-pdf'){delayedPDF=response;return;}
     if(request.url.includes('redirect-reader=1')){response.writeHead(302,{location:request.url.replace('redirect-reader=1','final=1')});response.end();return;}
     if(request.url.includes('internal-redirect=1')){response.writeHead(302,{location:'http://127.0.0.1:'+server.address().port+'/forbidden'});response.end();return;}
     if(request.url.startsWith('/pdfviewer/web/viewer.html')||request.url.startsWith('/arbitrary?')){response.setHeader('content-type','text/html');response.end('<body>Fixed viewer fixture</body>');return;}
@@ -94,6 +95,24 @@ app.whenReady().then(async()=>{
       const nonArticle=await forHost(host,'<a href="/Citation/Download?resourceId=99993&amp;resourceType=2">Book cite</a><a href="/Citation/Download?resourceId=12345">Unknown type</a>');assert.deepEqual(nonArticle.pdf_clues.identifiers,[]);
     }
     const sd=await forHost('www.sciencedirect.com','<script>var article={pdfDownload:{urlMetadata:"https://cdn.example/sd.PDF"}};</script>','','/science/article/pii/S1234567812345678');assert.equal(sd.pdf_clues.identifiers[0].kind,'pii');assert.equal(sd.pdf_clues.candidates[0].reader_kind,'sciencedirect');
+    const currentPii='S0047259X2400006X',currentPDF='/science/article/pii/'+currentPii+'/pdfft?md5=synthetic';
+    const toolbar=await forHost('www.sciencedirect.com','<nav><a href="'+currentPDF+'">View PDF</a><a href="https://pdf.sciencedirectassets.com/1-s2.0-'+currentPii+'/main.pdf?token=synthetic">View PDF</a><a href="https://pdf.sciencedirectassets.com/1-s2.0-S1234567812345678/main.pdf">View PDF</a><a href="/science/article/pii/S1234567812345678/pdfft">View PDF</a><a href="'+currentPDF+'&amp;supplement=1">Supplement PDF</a></nav><aside><a href="'+currentPDF+'&amp;related=1">View PDF</a></aside>','','/science/article/pii/'+currentPii);
+    assert.equal(toolbar.pdf_clues.candidates.length,2,'only current PII toolbar entrances are body clues');
+    assert.equal(toolbar.pdf_clues.candidates[0].url,'http://www.sciencedirect.com:'+port+currentPDF);
+    assert.equal(toolbar.pdf_clues.candidates[0].reader_kind,'sciencedirect');
+    page=article('','<script>fetch("/hydrated-pdf").then(r=>r.text()).then(markup=>document.querySelector("article").insertAdjacentHTML("beforeend",markup));</script>');
+    browser.readDocument=async(...args)=>{
+      const result=await read(...args);
+      if(args[1]==='pdf' && !result.clues.candidates.length && delayedPDF) {
+        delayedPDF.end('<nav><a href="'+currentPDF+'">View PDF</a></nav>');delayedPDF=null;
+      }
+      return result;
+    };
+    const hydrated=await invoke('extract_paper_pdf_clues',{identity:{confirmed_article_url:'http://www.sciencedirect.com:'+port+'/science/article/pii/'+currentPii}});
+    browser.readDocument=read;
+    assert.equal(hydrated.outcome,'retrieved');
+    assert.deepEqual(hydrated.pdf_clues.candidates.map(item=>item.url),['http://www.sciencedirect.com:'+port+currentPDF],
+      'a current article toolbar hydrated after the initial empty PDF observation is retained');
     const overflow=await forHost('www.sciencedirect.com','<script>var article={pdfDownload:{urlMetadata:"'+('x'.repeat(4097))+'"}};</script>');assert.equal(overflow.pdf_clues.status,'failed');assert.deepEqual(overflow.pdf_clues.diagnostics,['pdf_budget_exceeded']);
     const ieee=await forHost('ieeexplore.ieee.org','','','/document/12345');assert.deepEqual(ieee.pdf_clues.identifiers.map(item=>[item.kind,item.value]),[['article_number','12345']]);
     const an='22222222-222222222-22222',otherAn='11111111-111111111-11111';

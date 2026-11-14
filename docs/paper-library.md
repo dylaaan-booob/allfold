@@ -27,12 +27,11 @@ transaction callbacks: network, page and file work finishes before repository
 calls. No lock spans those operations.
 
 The application ID identifies an Allfold library, `PRAGMA user_version` records
-schema version 3, and `library_info` stores the Workspace UUID. Opening checks
+schema version 4, and `library_info` stores the Workspace UUID. Opening checks
 the version, expected table/index definitions, integrity and references. Missing,
 corrupt, unsafe and unsupported-schema libraries raise distinct errors. Existing
-content is never overwritten or rebuilt implicitly. Only the current schema is supported;
-there is no old-data upgrade or compatibility path. Acceptance creates current-format
-data. Failed initialization preserves its
+content is never overwritten or rebuilt implicitly. An exactly valid v3 schema has one transactional forward change to v4; unknown,
+corrupt and retired v1/v2 formats remain refused. Acceptance uses isolated data. Failed initialization preserves its
 exclusively created file for inspection rather than deleting it.
 
 | Table | Responsibility |
@@ -45,9 +44,10 @@ exclusively created file for inspection rather than deleting it.
 | `paper_body` | One current relative PDF association, source URL and optional byte count |
 | `paper_collection` | Current metadata lifetime's attempt, captured generations/lifecycle, state, cancellation and bounded reason |
 | `paper_collection_branch` | At most 16 current branch facts and last committed result sequence |
+| `paper_download` | Current body attempt, captured qualification, state, bounded reason and actual output ownership |
 
 There is no kept/exported state, Zotero parent item, Markdown authority path,
-download queue, unbounded attempt history or executable download replay. Collection
+replayable download queue, unbounded attempt history or executable download replay. Collection
 facts contain no queue order, client, page handles or replay instructions. Clearing metadata
 deletes its row and all contained bibliography, notes, dates, sources and Preprint
 results, including the complete PDF discovery-facts payload. Core, direct identities, exclusion and an existing body association
@@ -76,7 +76,8 @@ and connection safety. These helpers are not alternate application writers.
 | `clear_metadata(token)` | Only in the recycle bin; delete the payload and advance metadata/operation generations |
 | `unexclude(token)` | Release only a cleared identity placeholder; content remains absent |
 | `rebuild_from_run(token, direct_ids=..., metadata=...)` | Only a cleared, unexcluded placeholder accepts a new caller-verified Run result directly identifying it; retain UUID and establish new generations |
-| `complete_body(token, body)` | Associate a newly completed body only with complete, unexcluded metadata and unchanged body authority |
+| `complete_body(token, body)` | Logical fixture seeding only; preserves existing body, grants no file authority |
+| `begin_download`, `require_download`, `record_download_output`, `complete_download`, `finish_download`, `interrupt_downloads` | Captured current attempt, owned output, unique final body/terminal transaction and no-replay interruption; see [body lifecycle](body-downloads.md) |
 | `clear_body(token)` | Local unlink, also allowed when excluded or without metadata; revoke pending results even when no body is associated |
 | `admit_collection(workspace_id, lifecycle_id=..., branches=..., direct_ids=..., metadata=...)` | Atomically create/match and establish queued authority; rebuild additionally requires original `expected_token` and `allow_rebuild=True`; return `CollectionAdmission(paper, token, admitted, created)` |
 | `require_collection(token)`, `mark_collection_running(token)` | Recheck captured attempt/lifecycle and uncancelled execution authority; optionally mark dispatch |
@@ -216,7 +217,7 @@ sharing its database or configuration payload.
 source URL and nonnegative byte count. Absolute/drive paths, traversal, empty/dot
 components, backslashes and control characters are refused. This lexical contract
 does not assert file existence or grant permission to follow filesystem links.
-WF09's file service must validate the live managed directory when landing files.
+WF09's [file service](body-downloads.md) validates the live managed directory and actual inode when landing files.
 WF02 does not read/write PDF bytes, download, open, locate or delete actual PDFs.
 A body association classifies an unexcluded record as Downloaded. It confers no
 physical file-operation authority; those services belong to WF09/WF10.

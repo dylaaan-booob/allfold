@@ -16,7 +16,7 @@ from allfold.persistence.library_database import (
 )
 from allfold.persistence.library_models import (
     BodyReference, CollectionAdmission, CollectionBranch, CollectionRecord, CollectionToken,
-    CreationResult, DirectIdentity, MetadataDelta, PaperMetadata, PaperRecord, PreprintResult, WriteToken,
+    DownloadToken, DownloadRecord, OutputOwnership, CreationResult, DirectIdentity, MetadataDelta, PaperMetadata, PaperRecord, PreprintResult, WriteToken,
 )
 from allfold.pdf_facts import discovery_target_matches, merge_discovery_facts
 
@@ -125,6 +125,14 @@ class PaperRepository:
                                                      WriteToken(self.workspace_id, paper_id, collection["metadata_generation"],
                                                                 collection["operation_generation"], collection["abstract_generation"],
                                                                 collection["body_generation"]))
+            download = connection.execute("SELECT * FROM paper_download WHERE paper_id = ?", (str(paper_id),)).fetchone()
+            download_record = None
+            if download is not None:
+                captured = WriteToken(self.workspace_id, paper_id, download["metadata_generation"],
+                    download["operation_generation"], None, download["body_generation"])
+                download_record = DownloadRecord(DownloadToken(captured, download["attempt"], UUID(download["lifecycle_id"]),
+                    DirectIdentity(download["primary_namespace"], download["primary_value"])), download["status"],
+                    download["reason"], OutputOwnership.model_validate_json(download["output"]) if download["output"] else None)
             return PaperRecord(self.workspace_id, UUID(row["paper_id"]), bool(row["excluded"]),
                                row["metadata_generation"], row["operation_generation"],
                                metadata["abstract_generation"] if metadata else None,
@@ -132,7 +140,7 @@ class PaperRepository:
                                PaperMetadata.model_validate_json(metadata["payload"]) if metadata else None,
                                BodyReference.model_validate(dict(body)) if body else None,
                                DirectIdentity(projection[0], projection[1]) if projection[0] else None,
-                               projection["revision"], collection_record)
+                               projection["revision"], collection_record, download_record)
         except ValueError as error:
             raise LibraryCorruptError("Invalid saved Paper") from error
 
@@ -286,6 +294,8 @@ class PaperRepository:
                 self._add_identities(connection, paper.id, identities)
                 self._changed(connection, paper.id)
                 paper = self._read(connection, paper.id)
+            if paper.download is not None and paper.download.active:
+                return CollectionAdmission(paper, None, False, result.created)
             if paper.collection is None and paper.primary_identity.namespace != "doi" and direct_ids.doi:
                 # The first collection may learn its formal DOI on this Run.
                 # Use that explicit direct DOI, never an alias's iteration order;
@@ -433,6 +443,8 @@ class PaperRepository:
 
     @staticmethod
     def _require_collection_idle(paper):
+        if paper.download is not None and paper.download.active:
+            raise InvalidPaperState("Download owns this Paper until real cleanup settles")
         if paper.collection is not None and paper.collection.active:
             raise InvalidPaperState("Collection owns this Paper until real cleanup settles")
 
@@ -572,16 +584,20 @@ class PaperRepository:
         return self._read(connection, paper.id)
 
     def complete_body(self, token: WriteToken, body: BodyReference) -> PaperRecord:
-        """Associate a newly completed result only while content and body authority remain valid."""
+        """Seed a logical association in repository fixtures; never replace a body.
+
+        Production transports use the attempt-qualified complete_download service.
+        This method grants no physical file authority.
+        """
         body = BodyReference.model_validate(body)
         with self._database.transaction(write=True) as connection:
             paper = self._require_token(connection, token, automatic=True)
             self._require_collection_idle(paper)
             if token.body_generation != paper.body_generation:
                 raise StaleWriteError("Body association changed after this operation started")
-            connection.execute("""INSERT INTO paper_body VALUES (?, ?, ?, ?)
-                ON CONFLICT(paper_id) DO UPDATE SET relative_path = excluded.relative_path,
-                source_url = excluded.source_url, size_bytes = excluded.size_bytes""",
+            if paper.body is not None:
+                return paper
+            connection.execute("INSERT INTO paper_body VALUES (?, ?, ?, ?)",
                                (str(paper.id), body.relative_path, body.source_url, body.size_bytes))
             connection.execute("UPDATE paper_core SET body_generation = body_generation + 1 WHERE paper_id = ?",
                                (str(paper.id),))
@@ -600,3 +616,109 @@ class PaperRepository:
                                (str(paper.id),))
             self._changed(connection, paper.id)
             return self._read(connection, paper.id)
+
+    @staticmethod
+    def _body_key(token):
+        return (token.workspace_id, token.paper_id, token.metadata_generation,
+                token.operation_generation, token.body_generation)
+
+    def begin_download(self, token, *, lifecycle_id):
+        with self._database.transaction(write=True) as connection:
+            paper = self._require_token(connection, token, automatic=True)
+            if self._body_key(paper.token) != self._body_key(token):
+                raise StaleWriteError("Body generation changed")
+            if paper.body is not None:
+                raise InvalidPaperState("Paper already has a body")
+            self._require_collection_idle(paper)
+            if paper.download is not None and paper.download.output is not None:
+                raise InvalidPaperState("Known download output must be cleaned before another attempt")
+            attempt = paper.download.token.attempt + 1 if paper.download else 1
+            primary = paper.primary_identity
+            connection.execute("""INSERT INTO paper_download VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'queued', NULL, NULL)
+                ON CONFLICT(paper_id) DO UPDATE SET metadata_generation=excluded.metadata_generation,
+                operation_generation=excluded.operation_generation, body_generation=excluded.body_generation,
+                attempt=excluded.attempt, lifecycle_id=excluded.lifecycle_id,
+                primary_namespace=excluded.primary_namespace, primary_value=excluded.primary_value,
+                status='queued', reason=NULL, output=NULL""", (str(paper.id), paper.metadata_generation,
+                paper.operation_generation, paper.body_generation, attempt, str(lifecycle_id), primary.namespace, primary.value))
+            self._changed(connection, paper.id)
+            return self._read(connection, paper.id).download.token
+
+    def _require_download(self, connection, token, *, settlement=False):
+        if token.workspace_id != self.workspace_id:
+            raise StaleWriteError("Different download Workspace")
+        paper = self._read(connection, token.paper_id)
+        if paper.download is None or paper.download.token != token:
+            raise StaleWriteError("Different download attempt")
+        if not settlement and (not paper.download.active or paper.excluded or paper.metadata is None
+                or self._body_key(paper.token) != self._body_key(token.write)
+                or paper.primary_identity != token.primary or paper.body is not None
+                or paper.collection is not None and paper.collection.active):
+            raise StaleWriteError("Captured body authority changed")
+        return paper
+
+    def require_download(self, token):
+        with self._database.transaction() as connection:
+            return self._require_download(connection, token)
+
+    def mark_download_running(self, token):
+        with self._database.transaction(write=True) as connection:
+            paper = self._require_download(connection, token)
+            if paper.download.status == 'queued':
+                connection.execute("UPDATE paper_download SET status='running' WHERE paper_id=?", (str(paper.id),))
+                self._changed(connection, paper.id)
+            return self._read(connection, paper.id)
+
+    def record_download_output(self, token, output):
+        output = OutputOwnership.model_validate(output) if output is not None else None
+        with self._database.transaction(write=True) as connection:
+            paper = self._require_download(connection, token, settlement=True)
+            if paper.download.status == 'completed':
+                raise InvalidPaperState("Completed body ownership cannot be changed")
+            if output is not None:
+                self._require_download(connection, token)
+                if paper.download.output is not None:
+                    raise InvalidPaperState("Previous output must be settled first")
+            connection.execute("UPDATE paper_download SET output=? WHERE paper_id=?",
+                (output.model_dump_json() if output else None, str(paper.id)))
+            self._changed(connection, paper.id)
+
+    def finish_download(self, token, *, status, reason=None):
+        if status not in {'failed', 'cancelled'}:
+            raise ValueError('Only actual failure/cancellation settlement is permitted')
+        reason = self._collection_reason(reason)
+        with self._database.transaction(write=True) as connection:
+            paper = self._require_download(connection, token, settlement=True)
+            if paper.download.status == 'completed':
+                return paper
+            if paper.download.status != status or paper.download.reason != reason:
+                connection.execute("UPDATE paper_download SET status=?, reason=? WHERE paper_id=?",
+                    (status, reason, str(paper.id)))
+                self._changed(connection, paper.id)
+            return self._read(connection, paper.id)
+
+    def complete_download(self, token, *, size_bytes, source_url=None):
+        with self._database.transaction(write=True) as connection:
+            paper = self._require_download(connection, token, settlement=True)
+            if paper.download.status == 'completed':
+                return paper
+            self._require_download(connection, token)
+            output = paper.download.output
+            if output is None:
+                raise InvalidPaperState('No proven download output')
+            body = BodyReference(relative_path=output.target, source_url=source_url, size_bytes=size_bytes)
+            connection.execute('INSERT INTO paper_body VALUES (?, ?, ?, ?)',
+                (str(paper.id), body.relative_path, body.source_url, body.size_bytes))
+            connection.execute('UPDATE paper_core SET body_generation=body_generation+1 WHERE paper_id=?', (str(paper.id),))
+            connection.execute("UPDATE paper_download SET status='completed', reason=NULL, output=NULL WHERE paper_id=?", (str(paper.id),))
+            self._changed(connection, paper.id)
+            return self._read(connection, paper.id)
+
+    def interrupt_downloads(self, lifecycle_id):
+        with self._database.transaction(write=True) as connection:
+            ids = tuple(UUID(row[0]) for row in connection.execute(
+                "SELECT paper_id FROM paper_download WHERE lifecycle_id != ? AND status IN ('queued','running')", (str(lifecycle_id),)))
+            for paper_id in ids:
+                connection.execute("UPDATE paper_download SET status='failed', reason='interrupted' WHERE paper_id=?", (str(paper_id),))
+                self._changed(connection, paper_id)
+            return ids

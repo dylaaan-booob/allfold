@@ -12,7 +12,7 @@ const {randomBytes}=require('node:crypto');
 const {log,withLogContext,associationLogContext}=require('../shared/logging.cjs');
 const {institutionAuthPage}=require('../auth/institution-auth.cjs');
 const {casErrorCode}=require('../auth/cas-credentials.cjs');
-const {waitFor,checkCanceled,timeoutFailure,TASK_DEADLINE_MS}=require('./browser-task.cjs');
+const {waitFor,pause,checkCanceled,timeoutFailure,TASK_DEADLINE_MS}=require('./browser-task.cjs');
 const {NavigationRecovery,inspectPage,waitForPage}=require('./browser-navigation.cjs');
 const {PAGE_RECOVERY_MS,reportRecovery,recoveryStop,pageRecoveryDetails,origin,loadFailure}=require('./browser-recovery.cjs');
 const {sharedSessionEvents}=require('./session-events.cjs');
@@ -852,7 +852,20 @@ class BrowserRuntime {
         if(result.diagnostics.some(code=>['abstract_candidate_failed','abstract_budget_exceeded'].includes(code)))metadata_status='partial';}
       catch(error){if(error.diagnostic?.code!=='document_operation_failed')throw error;metadata_status='failed';}
       let pdf;
-      try {pdf=await this.readDocument(tab,'pdf',{signal,deadline,args:{readerKind}});}
+      try {
+        pdf=await this.readDocument(tab,'pdf',{signal,deadline,args:{readerKind}});
+        // ScienceDirect hydrates its current-article toolbar after the first
+        // usable Document. Give that fixed read a short window within the
+        // original task deadline; do not navigate or renew identity/authority.
+        const hydrationEnd=Math.min(deadline,Date.now()+2000);
+        while(!metadata && !readerKind && pdf.clues.platform==='sciencedirect'
+          && pdf.clues.status==='complete' && !pdf.clues.candidates.length && Date.now()<hydrationEnd) {
+          if(!this.documentCurrent(doc)||pdf.documentId!==doc.documentId||pdf.subject!==subject)
+            throw new BrowserFailure('navigation','document_changed');
+          await waitFor(()=>pause(signal,Math.min(200,hydrationEnd-Date.now())),signal,deadline,'navigation','document_operation');
+          pdf=await this.readDocument(tab,'pdf',{signal,deadline,args:{readerKind}});
+        }
+      }
       catch(error) {
         if(error.diagnostic?.code!=='document_operation_failed')throw error;
         // A local PDF scanner/DTO failure does not discard independent content.

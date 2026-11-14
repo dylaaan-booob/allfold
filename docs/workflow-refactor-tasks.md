@@ -17,8 +17,8 @@ global Preprint admission. Current operation is described in the WF08 section.
 | WF05 | Workspace background registry, dynamic scheduling, branch state, independent resource ownership | One-shot queues, early release, collection terminal states/retries | Merged in PR #96 at `f467ea49e04b9bedd8c674a016b049d88960c355`; spec #91 / tickets #92–95; component foundation, connected in WF08 |
 | WF06 | Date/Abstract extraction and retained API/Preprint capabilities | Old date columns, abstract overwrite, author/ordinary-completion assertions/docs | Merged in PR #101 at `c641ea371c111f45b7d42013df3a0eb6c1d80ac3`; spec #97 / tickets #98–100; extraction/necessary components, connected in WF08 |
 | WF07 | PDF source rules, candidates, same-page Meta/DOM hints | Source order, candidate success, URLs and request context contracts | Merged in PR #107 at `4d0d22bbda02d9fc173175fa8346813752e84204`; spec #102 / tickets #103–106, #108; [adopted request and fixed evidence](pdf-source-discovery.md) |
-| WF08 | Connect new Run and Workspace background collection | Whole-batch Run gates, Completion, Preprint double locking, busy/exit contracts | Implemented in unmerged PR #114; spec #109 / tickets #110–113; source/fixture and final PR evidence remain distinct from live acceptance |
-| WF09 | Session stream, managed file landing, database association service | Whole-file Buffers, extra type detection, file ownership, failure terminals | Not started |
+| WF08 | Connect new Run and Workspace background collection | Whole-batch Run gates, Completion, Preprint double locking, busy/exit contracts | Merged in PR #114 at `1af11e3c3f0eb0ae893c6a3e2e5ade550a81a19d`; spec #109 / tickets #110–113; source/fixture and live evidence remain distinct |
+| WF09 | Session stream, managed file landing, database association service | Current-response streaming, actual file ownership, no-clobber and unique completion | Implemented on this branch; spec #115; internal service only, PR/CI evidence reported separately |
 | WF10 | Original DownloadItem, complete Download UI, local PDF actions | Cancel-and-GET replay, old download/UI states, PDF action contracts | Not started |
 | WF11 | Clean install, dependencies/licenses, whole regression and residual cleanup | Uncalled Runtime/build dependencies, installation/license docs, cross-task leftovers | Not started |
 
@@ -296,3 +296,8 @@ scroll/selection and per-Paper operations. Final command/review/latest PR CI
 evidence is recorded on the PR; these fixtures do not establish real institutions,
 publishers, CAPTCHA or installed-app acceptance. WF09/WF10 byte transport,
 permanent PDFs, body completion and public Download/file actions are not delivered.
+
+
+## WF09 internal body boundary
+
+[Body lifecycle](body-downloads.md) records the current service, exact v3→v4 change, qualification, closed-writer completion, proven-fragment cleanup and isolated evidence. This branch does not implement WF10 public Download/open/locate/physical deletion or native action/POST adoption. Historical WF02–08 evidence above retains its original scope.

@@ -361,7 +361,8 @@ def test_concurrent_body_completions_have_one_current_slot(library, tmp_path):
     assert len(accepted) == 1
     assert library.get(paper.id).body == accepted[0].body
     replacement = library.complete_body(accepted[0].token, BodyReference(relative_path="Documents/replacement.pdf"))
-    assert library.get(paper.id).body.relative_path == "Documents/replacement.pdf"
+    assert replacement == accepted[0]
+    assert library.get(paper.id).body == accepted[0].body
     cleared = library.clear_body(replacement.token)
     with pytest.raises(StaleWriteError):
         library.complete_body(replacement.token, BodyReference(relative_path="Documents/late.pdf"))

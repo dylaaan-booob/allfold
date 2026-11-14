@@ -60,7 +60,7 @@ class SharedSessionEvents {
       // Private association tokens never reach consumers, diagnostics or the wire.
       this.emit(event,event==='beforeSendHeaders'?{...details,requestHeaders:state.requestHeaders}:details,state);
       if(event==='beforeSendHeaders')state.requestHeaders=withoutMarkers(state.requestHeaders);
-      request?.controlled?.validate();
+      request?.controlled?.validate(details);
     } catch(_){state={cancel:true};}
     finally {
       finish?.(state);
@@ -109,7 +109,7 @@ class SharedSessionEvents {
     const token=randomBytes(24).toString('hex'),requests=[];
     const identity=Object.freeze({...owner.association || owner,attempt_id:attemptId,
       page_id:document?.pageId,document_id:document?.documentId});
-    const controlled={identity,requests,validate:check};this.fetches.set(token,controlled);
+    const controlled={identity,requests,validate:details=>{check();context.validateRequest?.(details);}};this.fetches.set(token,controlled);
     const headers=new Headers(options.headers);headers.set(MARKER,token);
     // The deadline belongs to this physical request, including its response body.
     const bounded=Number.isFinite(deadline)?AbortSignal.timeout(Math.max(1,Math.ceil(deadline-Date.now()))):null;
@@ -117,7 +117,7 @@ class SharedSessionEvents {
     const requestSignal=signals.length?AbortSignal.any(signals):undefined;
     try {
       const response=await this.session.fetch(url,{...options,headers,signal:requestSignal});check();
-      return {response,requests};
+      return {response,requests,signal:requestSignal};
     } finally {
       this.fetches.delete(token);
       // Request-ID facts live only until Chromium's completed/error event.

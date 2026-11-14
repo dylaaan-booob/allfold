@@ -174,6 +174,9 @@ def paper_payload(paper: WorkspacePaper, *, workspace_tasks=None, cleanup_pendin
         notes=metadata.notes if metadata else None, collection_status=paper.record.collection_status,
         collection=collection_payload(paper.record, collection_service=collection_service, cleanup_pending=cleanup_pending),
         body_present=paper.record.body is not None,
+        download=dict(status=paper.record.download.status if paper.record.download else 'not_started',
+            attempt=paper.record.download.token.attempt if paper.record.download else 0,
+            reason=paper.record.download.reason if paper.record.download else None),
         preprint_lookup_available=bool(metadata is not None and not paper.record.excluded and formal_lookup_doi(
             doi, paper.publication_type, paper.journal, paper.conference)),
         cleanup_pending=bool(cleanup_pending))

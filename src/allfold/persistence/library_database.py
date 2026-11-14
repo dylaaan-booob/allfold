@@ -11,7 +11,7 @@ from uuid import UUID, uuid4
 
 
 DATABASE_NAME = "papers.sqlite"
-SCHEMA_VERSION = 3
+SCHEMA_VERSION = 4
 APPLICATION_ID = 0x41464C44  # AFLD; unrelated to configuration-level UserState.
 
 
@@ -94,7 +94,20 @@ COLLECTION_SCHEMA = (
         reason TEXT CHECK (reason IS NULL OR length(reason) <= 240),
         PRIMARY KEY (paper_id, name))""",
 )
-SCHEMA = PAPER_SCHEMA + PROJECTION_SCHEMA + COLLECTION_SCHEMA
+V3_SCHEMA = PAPER_SCHEMA + PROJECTION_SCHEMA + COLLECTION_SCHEMA
+DOWNLOAD_SCHEMA = (
+    """CREATE TABLE paper_download (
+        paper_id TEXT PRIMARY KEY NOT NULL REFERENCES paper_core(paper_id) ON DELETE RESTRICT,
+        metadata_generation INTEGER NOT NULL CHECK (metadata_generation > 0),
+        operation_generation INTEGER NOT NULL CHECK (operation_generation > 0),
+        body_generation INTEGER NOT NULL CHECK (body_generation > 0),
+        attempt INTEGER NOT NULL CHECK (attempt > 0), lifecycle_id TEXT NOT NULL,
+        primary_namespace TEXT NOT NULL, primary_value TEXT NOT NULL,
+        status TEXT NOT NULL CHECK (status IN ('queued', 'running', 'completed', 'failed', 'cancelled')),
+        reason TEXT CHECK (reason IS NULL OR length(reason) <= 240),
+        output TEXT CHECK (output IS NULL OR json_valid(output)))""",
+)
+SCHEMA = V3_SCHEMA + DOWNLOAD_SCHEMA
 
 
 def _schema_definitions(connection):
@@ -184,6 +197,17 @@ class LibraryDatabase:
         if connection.execute("PRAGMA application_id").fetchone()[0] != APPLICATION_ID:
             raise LibraryCorruptError("Not an Allfold Paper library")
         version = connection.execute("PRAGMA user_version").fetchone()[0]
+        if version == 3:
+            # Only the exact formerly-current structure is eligible. The owning
+            # BEGIN IMMEDIATE includes validation, DDL and version update.
+            if _schema_definitions(connection) != _expected_schema(V3_SCHEMA):
+                raise LibraryCorruptError("Library schema does not match its recorded version")
+            if connection.execute("PRAGMA quick_check").fetchone()[0] != "ok" or connection.execute("PRAGMA foreign_key_check").fetchone():
+                raise LibraryCorruptError("Library integrity check failed")
+            for statement in DOWNLOAD_SCHEMA:
+                connection.execute(statement)
+            connection.execute(f"PRAGMA user_version = {SCHEMA_VERSION}")
+            version = SCHEMA_VERSION
         if version != SCHEMA_VERSION:
             raise UnsupportedLibrarySchema(f"Unsupported library schema {version}; supported version is {SCHEMA_VERSION}")
         if _schema_definitions(connection) != _expected_schema(SCHEMA):

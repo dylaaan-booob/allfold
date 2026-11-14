@@ -12,6 +12,7 @@ const {BrowserFailure,diagnosticFor}=require('./browser/browser-errors.cjs');
 const {log,errorCode,initializeLogging,withLogContext,associationLogContext,diagnosticsReset,diagnosticsStatus,setLogLevel} = require('./shared/logging.cjs');
 const {operationAssociation}=require('./browser/page-association.cjs');
 const {loginInstitution,prepareLoggedInService,visitManualService,searchJournalCover}=require('./workflows/browser-operations.cjs');
+const {executeBodyStream}=require('./workflows/body-stream.cjs');
 const {wosQuery,wosExport}=require('./workflows/wos-operations.cjs');
 const {readCASCredentials,casStatus,saveCASCredentials,clearCASCredentials,casErrorCode}=require('./auth/cas-credentials.cjs');
 const {confirmConfigurationExit,confirmBlockedUnload}=require('./shared/configuration-exit.cjs');
@@ -75,7 +76,7 @@ async function executeControl(message,signal) {
   return {ok:false,error:'unsupported_operation'};
 }
 async function execute(message) {
-  if(!CONTROL_ACTIONS.has(message.action) && !RESOURCE_ACTIONS.has(message.action) && !['login_carsi','prepare_service','visit_manual_service','search_journal_cover','wos_query','wos_export','extract_paper_metadata','extract_paper_pdf_clues'].includes(message.action)){
+  if(!CONTROL_ACTIONS.has(message.action) && !RESOURCE_ACTIONS.has(message.action) && !['login_carsi','prepare_service','visit_manual_service','search_journal_cover','wos_query','wos_export','extract_paper_metadata','extract_paper_pdf_clues','stream_paper_body'].includes(message.action)){
     send({type:'result',id:message.id,action:message.action,data:{diagnostic:{stage:'navigation',code:'unsupported_operation'}}});return;
   }
   const control=CONTROL_ACTIONS.has(message.action);
@@ -154,7 +155,9 @@ async function executeOperation(message,current) {
         browser.operation.recordRecovery=recordRecovery;
         if(['prepare_service','extract_paper_metadata','extract_paper_pdf_clues'].includes(message.action))
           browser.operation.validateRecovery=verifyRecovery;
-        if(message.action === 'login_carsi') {
+        if(message.action === 'stream_paper_body') {
+          return await executeBodyStream(browser,message.data,{signal:controller.signal,progress});
+        } else if(message.action === 'login_carsi') {
           stage='authentication';
           return await loginInstitution(browser,message.data,{signal:controller.signal,progress});
         } else if(message.action === 'prepare_service' || message.action === 'visit_manual_service') {
@@ -182,7 +185,7 @@ async function executeOperation(message,current) {
   const diagnostic=data.diagnostic || {};
   const outcome=data.outcome || (data.filename?'downloaded':Number.isInteger(data.total)?'queried':data.source_url?'retrieved':'no_result');
   const canceled=controller.signal.aborted || diagnostic.code==='canceled';
-  const failed=!!data.diagnostic || !!data.error || data.outcome==='Needs attention' || outcome==='no_result';
+  const failed=!!data.diagnostic || !!data.error || data.outcome==='Needs attention' || ['no_result','failed','local_failure','expired'].includes(outcome);
   log(canceled?'info':failed?'warn':'info','task_finished',{...context,page_id:resultPageId,
     duration_ms:Date.now()-started,outcome:canceled?'canceled':outcome,
     stage:diagnostic.stage || stage,

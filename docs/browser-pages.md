@@ -193,3 +193,8 @@ no page; scheduler capacity does not replace the physical ledger. New Runs reuse
 valid retained Prepare contexts without replacing active Paper resources. Branch
 native identities and exact cleanup remain independent of the source Run and of
 the currently selected Browser/Reader page.
+
+
+## WF09 internal body service
+
+WF09 pure Session streams reserve no blank WebContents. They retain captured Prepare pins through actual native settlement and use the existing shared host/Service admission. Reader/challenge continuations retain their existing physical page and solver limits; this internal direct-stream entry returns current bounded access/HTML results and does not install a page recovery loop. See [the complete contract](body-downloads.md).

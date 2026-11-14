@@ -9,10 +9,17 @@ from allfold.identifiers import valid_doi
 from allfold.url_safety import normalize_public_http_url
 
 
+def _hidden_markup(node):
+    attrs = node['attrs']
+    return ('hidden' in attrs or (attrs.get('aria-hidden') or '').strip().lower() == 'true'
+        or re.search(r'(?:^|;)\s*(?:display\s*:\s*none|visibility\s*:\s*(?:hidden|collapse))\b', attrs.get('style') or '', re.I))
+
+
 class _SmallHTML(HTMLParser):
     def __init__(self):
         super().__init__(convert_charrefs=True)
         self.nodes, self.stack = [], []
+        self.has_cpe, self.has_denial, self.shell_text = False, False, False
 
     def handle_starttag(self, tag, attrs):
         if len(self.nodes) >= 4096 or len(self.stack) >= 64 or any(len(value or '') > 8192 for _, value in attrs):
@@ -29,8 +36,13 @@ class _SmallHTML(HTMLParser):
                 break
 
     def handle_data(self, data):
+        if not any(node['tag'] in {'script','style','template','noscript','head','title'} or _hidden_markup(node) for node in self.stack):
+            self.has_cpe |= bool(re.search(r'\bCPE00001\b', data, re.I))
+            self.has_denial |= 'there was a problem providing the content you requested' in data.lower()
+            if data.strip() and not any(node['tag']=='iframe' for node in self.stack):
+                self.shell_text = True
         for node in self.stack:
-            if node['tag'] in {'a', 'script', 'title'}:
+            if node['tag'] in {'a', 'script', 'title', 'iframe'}:
                 node['text'] += data
                 if len(node['text']) > 131072:
                     raise ValueError('Response field budget exceeded')
@@ -85,12 +97,41 @@ def reader_context(candidate, actual=None):
 
 
 def access_limited(response):
-    if response.access or response.status in {401, 403, 407, 429}:
+    if response.access or response.status in {401, 403, 407, 418, 429}:
         return True
     text = response.body.decode('utf-8', errors='replace').lower()
-    return any(marker in text for marker in ('cf-chl-', 'challenge-platform', 'g-recaptcha',
+    cloudflare = (re.search(r'<title\b[^>]*>\s*(?:just a moment|attention required)', text)
+        or re.search(r'\b_cf_chl_opt\s*=\s*\{', text)
+            and re.search(r'/cdn-cgi/challenge-platform/[^\s"\'<>]*orchestrate/chl_page/', text))
+    if bool(cloudflare) or any(marker in text for marker in ('g-recaptcha',
         'hcaptcha', 'verify you are human', 'checking your browser', 'access denied',
-        'name="password"', "name='password'"))
+        'name="password"', "name='password'")):
+        return True
+    if 'cpe00001' not in text and '_incapsula_resource' not in text:
+        return False
+    parser = _SmallHTML()
+    try:
+        parser.feed(response.body.decode('utf-8', errors='replace'))
+    except (ValueError, RecursionError):
+        # An incomplete scan is not proof of an access barrier. Only visible
+        # paired denial evidence already observed can retain that conclusion.
+        return parser.has_cpe and parser.has_denial
+    if parser.has_cpe and parser.has_denial:
+        return True
+    root = next((node for node in parser.nodes if node['tag']=='body'), None)
+    if root is None:
+        root = next((node for node in parser.nodes if node['tag']=='html'), None)
+    children = [node for node in parser.nodes if (node['parents'][-1] if node['parents'] else None) is root
+        and node['tag']!='head']
+    if not children or parser.shell_text or any(node['tag']!='iframe' for node in children):
+        return False
+    source = urlsplit(response.url)
+    for frame in children:
+        linked = urlsplit(urljoin(response.url, frame['attrs'].get('src','')))
+        if ((linked.scheme,linked.netloc)==(source.scheme,source.netloc) and linked.path=='/_Incapsula_Resource'
+                and re.match(r'\s*Request unsuccessful\.\s*Incapsula incident ID:',frame['text'],re.I)):
+            return True
+    return False
 
 
 def _safe_next(candidate, base, value, **extra):
@@ -128,6 +169,22 @@ def _body_entry(node, base, doi, attribute='href'):
 
 
 def parse_current_response(candidate, response):
+    if response.status in {301, 302, 303, 307, 308} and response.redirect_url:
+        source, destination = urlsplit(response.url), urlsplit(response.redirect_url)
+        filename = re.fullmatch(r'/[^/]+/article-pdf/(?:[^/]+/)*([^/]+\.pdf)', source.path, re.I)
+        # A native-observed publisher body redirect, never an inferred CDN URL or
+        # general permission to carry institutional headers across origins.
+        oxford = (source.hostname == 'academic.oup.com' and filename
+                and re.fullmatch(r'watermark[0-9]{2}\.silverchair\.com', destination.hostname or '')
+                and destination.path == '/' + filename[1])
+        pii = re.fullmatch(r'/science/article/pii/([SB][0-9]{7}[0-9X][0-9]{7}[0-9X])/(?:pdfft|pdf)', source.path, re.I)
+        sciencedirect = (source.hostname in {'www.sciencedirect.com', 'sciencedirect.com'} and pii
+            and destination.hostname == 'pdf.sciencedirectassets.com'
+            and re.fullmatch(r'(?:/[^/]+)*/1-s2\.0-' + re.escape(pii[1]) + r'/main\.pdf', destination.path, re.I))
+        if source.scheme == destination.scheme and (oxford or sciencedirect):
+            item = _safe_next(candidate, response.url, response.redirect_url)
+            return (item,) if item else ()
+        return ()
     if response.status != 200 or access_limited(response):
         return ()
     content = response.content_type.partition(';')[0].strip().lower()

@@ -17,7 +17,7 @@ Journal state is stored in `.allfold/user-data.sqlite`, isolated by canonical co
 The production [Paper library](paper-library.md) uses standard-library `sqlite3`.
 Read-only uninitialized views do not create it; the first Run initializes
 `Workspace/papers.sqlite`. Use disposable directories, actual SQLite connections
-and local HTTP/DOM fixtures. Create current-format databases for acceptance; old-data compatibility and migration are not supported. Missing, corrupt and unsupported databases have distinct results.
+and local HTTP/DOM fixtures. Create current-format databases for acceptance; exactly valid v3 has a transactional v4 forward change; retired/unknown formats remain refused. Missing, corrupt and unsupported databases have distinct results.
 
 ```sh
 uv run --locked pytest tests/test_paper_repository.py tests/test_paper_repository_safety.py tests/test_run_commit.py tests/test_preprint_lookup.py
@@ -312,3 +312,8 @@ UserState. The rendered layout fixture verifies the visible page-limit controls
 and keeps inactive PDF controls absent. [Browser pages](browser-pages.md) records
 counts, live effect timing, configuration limits and the Runtime form-POST
 limitation; [Session evidence](browser-session.md) has its separate capability scope.
+
+
+## WF09 internal body service
+
+WF09 adds `test_body_downloads.py` and the serial `body-stream.test.cjs` composition fixture. Run them for isolated inode/no-clobber/schema/transaction checks and real Electron Session→stream/file→SQLite→Workspace projection evidence. The fixture uses local HTTP, a temporary profile, synthetic Cookie and controlled DNS routing; it does not use real accounts or user data. See [the complete contract](body-downloads.md).

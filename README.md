@@ -31,7 +31,7 @@ Setup installs locked dependencies and builds the UI. It creates a missing local
 search, local edits, Preprint and Trash share the same repository. An unopened,
 uninitialized Workspace reads as empty without silently creating a library; the
 first Run initializes it explicitly. Corrupt or unsupported libraries report an
-error. Paper storage uses the current schema only; no old-data upgrade is provided.
+error. Paper storage uses schema v4 with a transactional forward change from exactly valid v3; retired and unknown formats remain refused.
 Paper Markdown is no longer created, scanned or read back; old Workspace data is
 not migrated or deleted automatically. Repeat Run hits preserve complete saved
 records. A complete `not_started` Paper is registered on its next actual Run hit;
@@ -40,8 +40,9 @@ single-Paper retry. Stable direct identities also support DOI-free Papers.
 
 Keep, Import to Zotero, Last Import and active webpage Enrich are retired.
 Workspace owns bounded collection and explicit Preprint operations across Runs.
-An existing body association only classifies a Paper as Downloaded; there is no
-PDF download, physical delete, open or locate action. Foreground Run finish means
+An existing body association only classifies a Paper as Downloaded; there is no public
+PDF download, physical delete, open or locate action. WF09 supplies the internal
+[Session/file completion service](docs/body-downloads.md). Foreground Run finish means
 retrieval, base admission and its own cleanup have ended; each Paper's collection
 and cleanup status remain independent. Cancelling Run leaves accepted Paper work
 running. Restart fails interrupted attempts without replaying requests or pages.
@@ -76,7 +77,7 @@ See [Document access](docs/browser-documents.md).
 
 WF07 provides internal lazy PDF-source discovery and bounded, deletable source
 facts. Candidate URLs and reader entrances do not mark a Paper as Downloaded.
-WF08 connects source-fact collection to production; PDF transfer/files and public Download remain deferred to WF09/WF10;
+WF08 connects source-fact collection to production; WF09 supplies internal Session transfer/files, while public Download remains deferred to WF10;
 see the [component scope and fixed rules](docs/pdf-source-discovery.md).
 
 ## Local data and privacy
