@@ -327,6 +327,16 @@ routing isolate all data. The rendered layout fixture checks ongoing download
 refresh, usable Reject/Run, classification/remount and retained reading scroll;
 `ALLFOLD_LAYOUT_SCREENSHOTS` captures optional local QA images.
 
+`tests/test_local_body.py` uses actual temporary managed files, independent
+SQLite/HTTP operations and controlled errors for missing/permission/object
+replacement, Trash preservation, DB-after-unlink failure and maintenance drain.
+`electron/tests/local-body.test.cjs` tests the fixed shell adapter, and the same
+real `body-stream` composition additionally runs existing-body Download/open/
+locate, non-empty `openPath` errors, reading during collection, Trash deletion,
+explicit new attempt and identity-only nested-path cases through authenticated
+Bridge/Main. The built Reader fixture checks local buttons with a valid
+metadata-free DTO. No default viewer or file manager is launched by those tests.
+
 Original POST/inline/iframe/popup mechanisms can work while safe native output
 does not. Real Electron45 probes showed precreated inode replacement and
 asynchronous cancellation deletion by path; both `/dev/fd` output approaches
