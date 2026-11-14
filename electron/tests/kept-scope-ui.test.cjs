@@ -1,7 +1,7 @@
 'use strict';
 const test=require('node:test'),assert=require('node:assert/strict');
 const {taskUI}=require('./task-ui-fixture.cjs');
-test('ARRAY retains Reader selection and identity-only Downloaded and Trash entries without starting Import polling',async()=>{
+test('ARRAY retains Reader selection and identity-only Downloaded and Trash entries while the shared Reader owns body polling',async()=>{
  const f=await taskUI('kept.js',{page:'workspace',request:async()=>{throw Error('ARRAY has no workflow polling');}});
  const journal={key:'unassigned',name:'Unassigned'};
  f.window.inboxKept.entries=status=>[{paper:{id:status+'-identity',title:null,identity_label:'doi: 10.5555/identity'},journal}];

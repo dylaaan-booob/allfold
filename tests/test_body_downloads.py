@@ -105,7 +105,8 @@ def test_reject_final_transaction_order_and_restore_never_revives_old_token(tmp_
                 assert (tmp_path/proof.target).read_bytes()==b'body'
 
 
-def test_v3_forward_change_preserves_content_and_schema_failure_rolls_back(tmp_path, monkeypatch):
+@pytest.mark.parametrize('version', [3, 4])
+def test_valid_prior_format_preserves_content_and_schema_failure_rolls_back(tmp_path, monkeypatch, version):
     import sqlite3
     import allfold.persistence.library_database as db
     with PaperRepository.create(tmp_path) as repo:
@@ -114,17 +115,21 @@ def test_v3_forward_change_preserves_content_and_schema_failure_rolls_back(tmp_p
         saved=repo.exclude(body.token)
         revision=repo.revision
     with sqlite3.connect(tmp_path/'papers.sqlite') as conn:
-        conn.execute('DROP TABLE paper_download');conn.execute('PRAGMA user_version=3')
-    original=db.DOWNLOAD_SCHEMA
+        conn.execute('DROP TABLE paper_body_source')
+        if version == 3:
+            conn.execute('DROP TABLE paper_download')
+        conn.execute(f'PRAGMA user_version={version}')
+    original=db.BODY_SOURCE_SCHEMA
     with monkeypatch.context() as patch:
-        patch.setattr(db,'DOWNLOAD_SCHEMA',original+('CREATE TABLE broken syntax',))
+        patch.setattr(db,'BODY_SOURCE_SCHEMA',original+('CREATE TABLE broken syntax',))
         with pytest.raises(db.LibraryError):PaperRepository.open(tmp_path)
     with sqlite3.connect(tmp_path/'papers.sqlite') as conn:
-        assert conn.execute('PRAGMA user_version').fetchone()[0]==3
-        assert conn.execute("SELECT name FROM sqlite_schema WHERE name='paper_download'").fetchone() is None
+        assert conn.execute('PRAGMA user_version').fetchone()[0]==version
+        assert conn.execute("SELECT name FROM sqlite_schema WHERE name='paper_body_source'").fetchone() is None
     with PaperRepository.open(tmp_path) as repo:
         assert repo.get(paper.id)==saved and repo.revision==revision
-        assert repo._database.connection.execute('PRAGMA user_version').fetchone()[0]==4
+        assert repo._database.connection.execute('PRAGMA user_version').fetchone()[0]==5
+        assert repo.get(paper.id).body.pdf_source is None and repo.get(paper.id).body.fallback_used is None
         definitions=db._schema_definitions(repo._database.connection)
     fresh=tmp_path/'fresh';fresh.mkdir()
     with PaperRepository.create(fresh) as repo:

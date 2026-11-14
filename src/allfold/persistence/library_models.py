@@ -162,6 +162,8 @@ class BodyReference(DomainModel):
     relative_path: str
     source_url: NonEmptyStr | None = None
     size_bytes: int | None = Field(default=None, strict=True, ge=0)
+    pdf_source: Literal['P1', 'P2', 'P3', 'P4', 'P5'] | None = None
+    fallback_used: bool | None = Field(default=None, strict=True)
 
     @field_validator("relative_path")
     @classmethod

@@ -62,6 +62,33 @@ async def main():
     host = application.state.workspace_tasks
     client = httpx.AsyncClient(transport=httpx.ASGITransport(app=application), base_url='http://localhost')
     try:
+        # Formal public identity-only entry, through the same authenticated
+        # Bridge/Main Session, managed files, SQLite and Workspace projection.
+        from datetime import datetime, timezone
+        from allfold.pdf_facts import PdfDiscoveryFacts, PdfCandidateFact
+        with PaperRepository.open(workspace) as repo:
+            public = repo.create_or_match(repo.workspace_id, direct_ids=ExternalIds(openalex='W777'),
+                metadata=PaperMetadata(title='Public PDF', discovery_facts=(PdfDiscoveryFacts(
+                    source='document', capability='document-pdf', status='complete',
+                    observed_at=datetime.now(timezone.utc), target_openalex='W777', landing_url=origin+'/article',
+                    candidates=(PdfCandidateFact(stage='P3', rule_id='GENERIC', url=origin+'/public',
+                        referer=origin+'/article', field='citation_pdf_url'),)),))).paper
+        state = (await client.get('/api/ui-next/workspace')).json()
+        public_projection = next(paper for group in state['subjects'] for journal in group['journals'] for paper in journal['papers'] if paper['id']==str(public.id))
+        public_request = dict(csrf_token=state['csrf_token'], workspace_id=str(public.workspace_id),
+            qualification=public_projection['download']['qualification'])
+        accepted = await client.post(f'/api/papers/{public.id}/body/download', json=public_request)
+        assert accepted.status_code == 200, accepted.text
+        current = host.current()
+        with current.paper_gate():
+            public_task = current._reservations[public.id]
+        assert (await asyncio.to_thread(public_task.future.result, 8)).status == 'completed'
+        projection = (await client.get('/api/ui-next/workspace')).json()
+        projected = next(entry['paper'] for entry in projection['downloaded']['papers'] if entry['paper']['id'] == str(public.id))
+        assert projected['download']['pdf_source'] == 'P3' and projected['download']['fallback_used'] is False
+        assert projected['body_present'] and projection['counts']['downloaded'] == 1
+        assert not projected['download']['active'] and not projected['cleanup_pending']
+        print(json.dumps({'type':'fixture_public','status':'completed','paper':str(public.id)}), flush=True)
         cases=[(path,origin+'/'+path,None) for path in ['redirect?Signature=A%2FB', 'encoded', 'chunked', 'html.pdf', 'unknown', 'truncated', 'cancel', 'expiry', 'cross', 'challenge', 'disk-write', 'disk-flush', 'slow-writer', 'cross-referer']]
         cases.extend([
             ('background-cloudflare',origin+'/background-cloudflare',None),

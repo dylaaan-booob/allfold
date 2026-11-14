@@ -89,6 +89,24 @@ class _CollectionRetry(_Action):
     token: _RetryToken
 
 
+class _BodyQualification(BaseModel):
+    model_config = ConfigDict(extra='forbid')
+    metadata_generation: StrictInt = Field(ge=1)
+    operation_generation: StrictInt = Field(ge=1)
+    body_generation: StrictInt = Field(ge=1)
+    attempt: StrictInt = Field(ge=0)
+
+
+class _BodyDownload(_Action):
+    workspace_id: UUID
+    qualification: _BodyQualification | None = None
+
+
+class _BodyCancel(_BodyDownload):
+    task_id: str = Field(min_length=1, max_length=128)
+    attempt: StrictInt = Field(ge=1)
+
+
 def collection_payload(record, *, collection_service=None, cleanup_pending=False):
     saved = record.collection
     token = record.token
@@ -145,7 +163,7 @@ class _RunCancel(_Action):
 
 
 def paper_payload(paper: WorkspacePaper, *, workspace_tasks=None, cleanup_pending=None,
-                  collection_service=None) -> dict:
+                  collection_service=None, body_downloads=None) -> dict:
     if cleanup_pending is None:
         cleanup_pending = bool(workspace_tasks and workspace_tasks.cleanup_pending(paper.paper_id, paper.record.workspace_id))
     metadata = paper.record.metadata
@@ -174,9 +192,10 @@ def paper_payload(paper: WorkspacePaper, *, workspace_tasks=None, cleanup_pendin
         notes=metadata.notes if metadata else None, collection_status=paper.record.collection_status,
         collection=collection_payload(paper.record, collection_service=collection_service, cleanup_pending=cleanup_pending),
         body_present=paper.record.body is not None,
-        download=dict(status=paper.record.download.status if paper.record.download else 'not_started',
-            attempt=paper.record.download.token.attempt if paper.record.download else 0,
-            reason=paper.record.download.reason if paper.record.download else None),
+        download=body_downloads.projection(paper.record, cleanup_pending=cleanup_pending) if body_downloads else
+            dict(status=paper.record.download.status if paper.record.download else 'not_started',
+                attempt=paper.record.download.token.attempt if paper.record.download else 0,
+                reason=paper.record.download.reason if paper.record.download else None),
         preprint_lookup_available=bool(metadata is not None and not paper.record.excluded and formal_lookup_doi(
             doi, paper.publication_type, paper.journal, paper.conference)),
         cleanup_pending=bool(cleanup_pending))
@@ -242,7 +261,7 @@ def install_ui_next(app: FastAPI, config_path: Path, csrf_token: str) -> None:
                         group=None, labels=[], publisher=None, service=None, service_id=None, cover=None, papers=[])
                     subjects[(None, True)].append(records[key])
                 entry = records[key]
-                item = paper_payload(paper, cleanup_pending=cleanup[paper.paper_id], collection_service=app.state.collection_service)
+                item = paper_payload(paper, cleanup_pending=cleanup[paper.paper_id], collection_service=app.state.collection_service, body_downloads=app.state.body_downloads)
                 if paper.status is PaperStatus.CANDIDATE:
                     entry['papers'].append(item)
                 else:
@@ -281,10 +300,42 @@ def install_ui_next(app: FastAPI, config_path: Path, csrf_token: str) -> None:
                     paper, revision = repository.get(paper_id), repository.revision
                 cleanup = app.state.workspace_tasks.cleanup_pending(paper.id, paper.workspace_id)
             payload = paper_payload(WorkspacePaper(paper), cleanup_pending=cleanup,
-                collection_service=app.state.collection_service)
+                collection_service=app.state.collection_service, body_downloads=app.state.body_downloads)
             return response(dict(workspace_id=paper.workspace_id, revision=revision, paper=payload))
         except (ConfigurationError, ContentChangedError, LibraryError, ValueError, OSError) as error:
             return response({'message': str(error)}, 409)
+
+    def body_response(paper_id, workspace_id, **extra):
+        registry = app.state.workspace_tasks.current()
+        with registry.paper_gate(), PaperRepository.open(registry.workspace, expected_workspace_id=workspace_id) as repository:
+            paper, revision = repository.get(paper_id), repository.revision
+            cleanup = app.state.workspace_tasks.cleanup_pending(paper.id, paper.workspace_id)
+        payload = paper_payload(WorkspacePaper(paper), cleanup_pending=cleanup,
+            collection_service=app.state.collection_service, body_downloads=app.state.body_downloads)
+        return response(dict(workspace_id=workspace_id, revision=revision, paper=payload, **extra))
+
+    @app.post('/api/papers/{paper_id}/body/download')
+    def body_download(paper_id: UUID, body: _BodyDownload):
+        if not valid(body):
+            return response({'message':'Invalid or missing CSRF token; refresh the page.'}, 403)
+        try:
+            with app.state.settings_write_lock, app.state.reset_lock:
+                result = app.state.body_downloads.start(paper_id, body.workspace_id,
+                    qualification=body.qualification.model_dump() if body.qualification is not None else None)
+            return body_response(paper_id, body.workspace_id, outcome=getattr(result, 'status', 'accepted'))
+        except (LibraryError, ConfigurationError, ValueError, OSError, RuntimeError):
+            return response({'message':'当前 Paper 无法下载，请刷新状态后重试。'}, 409)
+
+    @app.post('/api/papers/{paper_id}/body/cancel')
+    def body_cancel(paper_id: UUID, body: _BodyCancel):
+        if not valid(body):
+            return response({'message':'Invalid or missing CSRF token; refresh the page.'}, 403)
+        if not app.state.body_downloads.cancel(paper_id, body.workspace_id, body.task_id, body.attempt):
+            return response({'message':'下载任务已变化，请刷新状态。'}, 409)
+        try:
+            return body_response(paper_id, body.workspace_id)
+        except (LibraryError, ConfigurationError, ValueError, OSError, RuntimeError):
+            return response({'message':'Workspace 状态已变化，请刷新。'}, 409)
 
     @app.post('/api/papers/{paper_id}/collection/retry')
     def collection_retry(paper_id: UUID, body: _CollectionRetry):
@@ -309,7 +360,7 @@ def install_ui_next(app: FastAPI, config_path: Path, csrf_token: str) -> None:
                         paper, revision = repository.get(paper_id), repository.revision
                     cleanup = app.state.workspace_tasks.cleanup_pending(paper.id, paper.workspace_id)
                 payload = paper_payload(WorkspacePaper(paper), cleanup_pending=cleanup,
-                    collection_service=app.state.collection_service)
+                    collection_service=app.state.collection_service, body_downloads=app.state.body_downloads)
             return response(dict(workspace_id=paper.workspace_id, revision=revision, paper=payload))
         except (ConfigurationError, ContentChangedError, LibraryError, ValueError, OSError, RuntimeError):
             return response({'message': 'Paper 重试资格已变化，或所需访问条件不可用；请刷新后检查。'}, 409)

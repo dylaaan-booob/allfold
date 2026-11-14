@@ -12,7 +12,7 @@ app.setPath('userData',profile);app.setPath('sessionData',profile);
 app.commandLine.appendSwitch('host-resolver-rules','MAP *.example.org 127.0.0.1, MAP academic.oup.com 127.0.0.1, MAP watermark02.silverchair.com 127.0.0.1, MAP ieeexplore.ieee.org 127.0.0.1');
 app.commandLine.appendSwitch('no-proxy-server');app.on('window-all-closed',()=>{});
 app.whenReady().then(async()=>{
-  const requests=[],cases=[],pairs=[],drains=[],resolved=[],payload=Buffer.alloc(2*1024*1024,71);let origin,slowProduced=0;
+  const requests=[],cases=[],pairs=[],drains=[],publicCases=[],resolved=[],payload=Buffer.alloc(2*1024*1024,71);let origin,slowProduced=0;
   const server=http.createServer(async(req,res)=>{
     requests.push({url:req.url,method:req.method,headers:req.headers});
     if(req.headers.host.startsWith('academic.oup.com:')){res.writeHead(302,{location:origin.replace('pdf.example.org','watermark02.silverchair.com')+'/'+req.url.split('/').at(-1)+'?Signature=synthetic'});res.end();return;}
@@ -89,6 +89,7 @@ app.whenReady().then(async()=>{
       }
       else if(message.type==='cancel')context.operations.get(message.id)?.controller.abort();
       else if(message.type==='fixture_case'){cases.push(message);console.log('BODY CASE '+message.path+' '+message.status);}
+      else if(message.type==='fixture_public')publicCases.push(message);
       else if(message.type==='fixture_pair')pairs.push(message);
       else if(message.type==='fixture_drain')drains.push(message);
       else if(message.type==='fixture_complete'){complete=true;python.stdin.end();}
@@ -99,6 +100,9 @@ app.whenReady().then(async()=>{
   try {
     if(dispatchError)throw dispatchError;
     assert.equal(code,0,stderr);assert.equal(complete,true,stderr);assert.equal(cases.length,18);assert.equal(slowWitness,true);assert.deepEqual(pairs,[{type:'fixture_pair',statuses:['cancelled','completed']}]);
+    assert.equal(publicCases.length,1);assert.equal(publicCases[0].status,'completed');
+    assert.equal(requests.filter(r=>r.url==='/public').length,1,'public first body request uses selected Session exactly once');
+    assert.deepEqual(fs.readFileSync(path.join(profile,'workspace/Documents',publicCases[0].paper+'.pdf')),payload);
     assert.equal(requests.filter(r=>r.url==='/same').length,2);assert.equal(requests.filter(r=>r.url==='/leak').length,0);
     assert.deepEqual(drains,[{type:'fixture_drain',status:'settled'}]);
     assert.equal(browser.tabs.size,0,'pure stream must create no pages');

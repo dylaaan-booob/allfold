@@ -106,6 +106,8 @@ class PaperRepository:
                                       (str(paper_id),)).fetchone()
         body = connection.execute("SELECT relative_path, source_url, size_bytes FROM paper_body WHERE paper_id = ?",
                                   (str(paper_id),)).fetchone()
+        body_source = connection.execute("SELECT pdf_source, fallback_used FROM paper_body_source WHERE paper_id = ?",
+                                        (str(paper_id),)).fetchone()
         projection = connection.execute("SELECT primary_namespace, primary_value, revision FROM paper_projection WHERE paper_id = ?",
                                         (str(paper_id),)).fetchone()
         if projection is None:
@@ -138,7 +140,8 @@ class PaperRepository:
                                metadata["abstract_generation"] if metadata else None,
                                row["body_generation"], identities,
                                PaperMetadata.model_validate_json(metadata["payload"]) if metadata else None,
-                               BodyReference.model_validate(dict(body)) if body else None,
+                               BodyReference.model_validate(dict(body) | (dict(pdf_source=body_source['pdf_source'],
+                                   fallback_used=bool(body_source['fallback_used'])) if body_source else {})) if body else None,
                                DirectIdentity(projection[0], projection[1]) if projection[0] else None,
                                projection["revision"], collection_record, download_record)
         except ValueError as error:
@@ -697,18 +700,27 @@ class PaperRepository:
                 self._changed(connection, paper.id)
             return self._read(connection, paper.id)
 
-    def complete_download(self, token, *, size_bytes, source_url=None):
+    def complete_download(self, token, *, size_bytes, source_url=None, pdf_source=None, fallback_used=None,
+                          direct_identities=None):
         with self._database.transaction(write=True) as connection:
             paper = self._require_download(connection, token, settlement=True)
             if paper.download.status == 'completed':
                 return paper
             self._require_download(connection, token)
+            if direct_identities is not None and tuple((item.namespace, item.value) for item in paper.identities) != direct_identities:
+                raise StaleWriteError('Original Paper identity closure changed')
             output = paper.download.output
             if output is None:
                 raise InvalidPaperState('No proven download output')
-            body = BodyReference(relative_path=output.target, source_url=source_url, size_bytes=size_bytes)
+            body = BodyReference(relative_path=output.target, source_url=source_url, size_bytes=size_bytes,
+                pdf_source=pdf_source, fallback_used=fallback_used)
+            if (pdf_source is None) != (fallback_used is None):
+                raise ValueError('Successful provenance is either finite and complete or unknown')
             connection.execute('INSERT INTO paper_body VALUES (?, ?, ?, ?)',
                 (str(paper.id), body.relative_path, body.source_url, body.size_bytes))
+            if pdf_source is not None:
+                connection.execute('INSERT INTO paper_body_source VALUES (?, ?, ?)',
+                    (str(paper.id), body.pdf_source, int(body.fallback_used)))
             connection.execute('UPDATE paper_core SET body_generation=body_generation+1 WHERE paper_id=?', (str(paper.id),))
             connection.execute("UPDATE paper_download SET status='completed', reason=NULL, output=NULL WHERE paper_id=?", (str(paper.id),))
             self._changed(connection, paper.id)
