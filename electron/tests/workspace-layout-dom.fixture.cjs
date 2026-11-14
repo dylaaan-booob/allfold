@@ -371,6 +371,7 @@ app.whenReady().then(async()=>{
     let deliverBodyPoll;
     const bodyPollHeld=new Promise(resolve=>{holdWorkspaceResponse=send=>{deliverBodyPoll=send;resolve();};});
     await bodyPollHeld;deliverBodyPoll();
+    await js("document.getElementById('paper-detail').scrollTop=0");
     await capture('wf10-download-progress');
     await js(`(()=>{document.getElementById('paper-detail').scrollTop=160;window.wf10BodyScroll=document.getElementById('paper-detail').scrollTop;})()`);
     records[0].papers=records[0].papers.filter(item=>item.id!==bodyPaper.id);
@@ -384,6 +385,7 @@ app.whenReady().then(async()=>{
         $('paper-detail').scrollTop!==wf10BodyScroll || $('paper-download').textContent!=='打开 PDF' || !$('paper-download-cancel').hidden)
         throw Error('Completed body did not preserve the same Reader in Downloaded');
     })()`);
+    await js("document.getElementById('paper-detail').scrollTop=0");
     await capture('wf10-download-completed');
     // Restore the controlled fixture for the remaining independent UI scenarios.
     workspace.downloaded.papers=workspace.downloaded.papers.filter(entry=>entry.paper.id!==bodyPaper.id);

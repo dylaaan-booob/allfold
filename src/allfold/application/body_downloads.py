@@ -425,7 +425,8 @@ def submit_body_download(host, paper, *, candidates=None, service_id=None, deadl
                     or candidate.target.direct_identities != direct
                     or candidate.target.content_type not in SUPPORTED_PDF_TARGET_TYPES):
                 raise ValueError('Candidate must bind the original saved Paper identity')
-    if not isinstance(target, PdfTarget) or target.paper_id != str(paper.id) or target.direct_identities != direct:
+    if (not isinstance(target, PdfTarget) or target.paper_id != str(paper.id) or target.direct_identities != direct
+            or target.content_type not in SUPPORTED_PDF_TARGET_TYPES):
         raise ValueError('Original saved Paper target is required')
     if registry.bridge is None or not registry.bridge.connected:
         raise InvalidPaperState('Selected Session bridge is unavailable')
@@ -476,6 +477,8 @@ def body_qualification(paper, *, occupied=False, connected=False, available=True
         return False, 'excluded'
     if paper.metadata is None or paper.primary_identity is None:
         return False, 'metadata-required'
+    if paper.metadata.publication_type == 'preprint':
+        return False, 'unsupported-content-type'
     if occupied or paper.collection is not None and paper.collection.active or paper.download is not None and paper.download.active:
         return False, 'paper-busy'
     if not connected or not available:
@@ -505,7 +508,7 @@ def saved_pdf_target(paper):
             doi = spelling[0]
     # Preprint source relationships and arbitrary MetadataSource URLs are not
     # authoritative article targets. P5 exact Work facts remain independent.
-    content_type = {'journal':'journal-article', 'conference':'conference-paper'}.get(paper.metadata.publication_type, 'unknown')
+    content_type = {'journal':'journal-article', 'conference':'conference-paper', 'preprint':'preprint'}.get(paper.metadata.publication_type, 'unknown')
     return PdfTarget(str(paper.id), doi=doi, article_url=article, content_type=content_type,
         direct_identities=direct), facts
 
