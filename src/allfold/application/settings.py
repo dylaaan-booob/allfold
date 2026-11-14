@@ -301,7 +301,7 @@ def _recovery_fields(config_path: Path, raw: Any) -> _DraftFields:
         institution = None  # Never project invalid or sensitive institution data.
 
     try:
-        workflow = WorkflowConfig.model_validate(raw.get("workflow", raw.get("kept_workflow", {})))
+        workflow = WorkflowConfig.model_validate(raw.get("workflow", {}))
     except ValueError:
         workflow = defaults.workflow
 
@@ -951,13 +951,8 @@ def _save_settings(
             != (stored_state.draft.journals, stored_state.draft.access_services,
                 stored_state.draft.groups, stored_state.draft.custom_labels)
         )
-        saved_mapping = yaml.safe_load(monitor_snapshot.contents or "") or {}
-        retired_workflow_fields = {'translator_concurrency', 'zotero_writer_concurrency', 'zotero_target',
-                                   'auto_import_after_preparation', 'transition_delay_seconds', 'display_name'}
         monitor_changed = (
             not monitor_snapshot.revision.exists
-            or bool({"wos_query", "wos_query_mode", "wos_service_id", "kept_workflow"} & set(saved_mapping))
-            or bool(retired_workflow_fields & set(saved_mapping.get("workflow", {})))
             or _draft_monitor_mapping(draft, venue_whitelist=storage_fields.venue_whitelist)
             != _draft_monitor_mapping(stored_state.draft, venue_whitelist=storage_fields.venue_whitelist)
         )

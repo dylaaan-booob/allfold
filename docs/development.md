@@ -158,7 +158,7 @@ rendered fixture, live-service and latest PR CI outcomes remain distinct evidenc
 
 WF05 component regressions additionally use `test_collection_repository.py`,
 `test_dynamic_dispatch.py`, `test_collection_runtime.py`, `test_task_clients.py`
-and `test_task_authority.py`. They exercise on-disk SQLite contention/upgrade and
+and `test_task_authority.py`. They exercise current-format SQLite storage contention and
 rollback, real worker Futures and cleanup barriers, queued/expired work, branch
 idempotence and retry, loopback HTTP with independent clients, common pacing and
 narrow access revocation. Scheduler limits count executing Paper jobs, not native
@@ -295,5 +295,5 @@ lifetimes and closes dependent-case pages promptly. Delayed-destroy and quota
 update checks use BrowserRuntime; configuration/API tests use temporary YAML and
 UserState. The rendered layout fixture verifies the visible page-limit controls
 and keeps inactive PDF controls absent. [Browser pages](browser-pages.md) records
-counts, live effect timing, configuration rollback and the Runtime form-POST
+counts, live effect timing, configuration limits and the Runtime form-POST
 limitation; [Session evidence](browser-session.md) has its separate capability scope.
