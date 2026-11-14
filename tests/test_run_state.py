@@ -26,8 +26,6 @@ def integrated_payload(version=6):
             'details': {'discovery_status': 'complete', 'provider_runs': []},
         },
     }
-    if version == 4:
-        payload['coverage'] = []
     return payload
 
 
@@ -45,17 +43,6 @@ def save_payload(tmp_path, payload):
     target.parent.mkdir(exist_ok=True)
     target.write_text(json.dumps(payload))
     return target
-
-
-@pytest.mark.parametrize("version", [4, 5])
-def test_old_integrated_is_unsupported_without_migration_or_deletion(tmp_path, version):
-    target = save_payload(tmp_path, integrated_payload(version))
-    original = target.read_bytes()
-    result = read_last_run_snapshot(tmp_path, RunProvider.INTEGRATED)
-    assert result.status.value == 'unsupported'
-    assert '重新运行' in result.error
-    assert target.read_bytes() == original
-    assert sorted(tmp_path.iterdir()) == [target.parent]
 
 
 def test_integrated_v6_atomic_create_and_replace_round_trip(tmp_path):

@@ -30,11 +30,9 @@ The application ID identifies an Allfold library, `PRAGMA user_version` records
 schema version 3, and `library_info` stores the Workspace UUID. Opening checks
 the version, expected table/index definitions, integrity and references. Missing,
 corrupt, unsafe and unsupported-schema libraries raise distinct errors. Existing
-content is never overwritten, downgraded or rebuilt. `upgrade_schema` in `library_database.py` recognizes the exact known v1/v2
-schemas and upgrades them transactionally. UUIDs, metadata, identities, exclusion,
-body associations, existing revisions and generations remain intact. Old Papers
-have no collection record and project `not_started`, regardless of stored abstract,
-dates, body or old Run results. Unknown structures are refused. Failed initialization preserves its
+content is never overwritten or rebuilt implicitly. Only the current schema is supported;
+there is no old-data upgrade or compatibility path. Acceptance creates current-format
+data. Failed initialization preserves its
 exclusively created file for inspection rather than deleting it.
 
 | Table | Responsibility |
@@ -225,11 +223,9 @@ WF07 adds bounded `discovery_facts` inside the deletable `PaperMetadata` payload
 and `MetadataDelta`; it does not reuse `BodyReference`. Each version-1 snapshot
 names its exact target, source/capability, observation time and completeness, with
 typed stable PDF/landing/XML facts or fixed refresh locators. No snapshot means
-unknown; complete-empty, partial and failed responses remain distinct. Existing
-v1/v2/v3 libraries without the field read as unknown without requests or bulk
-rewrites. Unsupported fact versions are rejected as invalid payloads; this does
-not authorize replacing the library. New payloads require a reader that knows
-this field, so binary downgrade requires a preserved compatible backup.
+unknown; complete-empty, partial and failed responses remain distinct. These are
+current collection capabilities, not old-payload compatibility states. Stored facts
+use the current typed payload contract. Acceptance does not read or migrate old data.
 
 There is one bounded current snapshot per source/capability, rather than an
 attempt history. Merging preserves qualified facts and stage order under the
@@ -263,7 +259,7 @@ cleanup to finish. Shared Run discovery remains available to other Papers.
 
 `test_paper_repository.py`, `test_collection_repository.py` and `test_paper_repository_safety.py` use real temporary
 SQLite databases for reopening, contention, identity conflicts, dates, generations,
-rollback, paths, v1/v2 upgrades, concurrent admission, captured branch writes,
+rollback, paths, concurrent admission, captured branch writes,
 cancellation, retry and explicit interruption. Production Run retains its existing
 creation/completion calls; WF05 does not automatically register collection or
 enable download/retry UI. Application/API fixtures exercise

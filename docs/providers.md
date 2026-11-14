@@ -188,12 +188,11 @@ Production collection and new download paths remain disabled.
 
 An Imperva response with the Incapsula incident marker and a single CAPTCHA code (`edet=12`) waits for the user to complete verification in Browser. The existing task resumes when the article loads in the same tab. The Cloudflare Solver is skipped for this challenge. Other recognized Imperva denials are reported as restricted access, including when they return HTTP 200.
 
-## Old data and manual acceptance
+## Current storage and manual acceptance
 
 Old per-Paper Markdown and obsolete Evidence directories are no longer read,
 created or migrated. Existing files are preserved. An uninitialized Workspace
-returns an explicit empty view; the first Run initializes SQLite. Known WF01 v1
-libraries upgrade without losing UUIDs, metadata, identities, exclusion or bodies.
+returns an explicit empty view; the first Run initializes SQLite. Paper libraries use only the current format; old-data upgrades and compatibility are not provided.
 Corrupt and unknown libraries report errors and are never cleared automatically.
 Workspace Reset is an explicit whole-directory deletion, including SQLite,
 exclusions and Documents; Logs Reset keeps all of them. Configuration, UserState,

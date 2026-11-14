@@ -49,10 +49,6 @@ def _date_evidence_payload(event: EvidenceDate) -> dict:
 
 
 def _metadata_source_payload(source):
-    # Older location adapters used the URL itself when no native source ID was
-    # available. Keep that legacy payload on disk while withholding signed URLs.
-    if source.record_id.lower().startswith(('http://', 'https://')) and stable_discovery_url(source.record_id) is None:
-        return None
     payload = source.model_dump(mode='json', exclude_none=True, exclude={'url'})
     if url := stable_discovery_url(source.url):
         payload['url'] = url
@@ -132,7 +128,7 @@ def paper_payload(paper: WorkspacePaper, *, preprint_lookup=None, workspace_task
         indexed_terms=[term.model_dump(mode='json', exclude_none=True) for term in paper.indexed_terms],
         author_keywords=list(paper.author_keywords), authors=list(paper.authors),
         external_ids=paper.external_ids.model_dump(exclude_none=True), doi=doi,
-        sources=[payload for source in paper.sources if (payload := _metadata_source_payload(source)) is not None],
+        sources=[_metadata_source_payload(source) for source in paper.sources],
         journal_issns=list(paper.journal_issns),
         discovered_at=paper.discovered_at.isoformat() if paper.discovered_at else None,
         notes=metadata.notes if metadata else None, collection_status=paper.record.collection_status,

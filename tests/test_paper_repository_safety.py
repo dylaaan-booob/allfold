@@ -46,7 +46,7 @@ def test_corrupt_or_uninitialized_library_is_never_replaced(tmp_path, contents):
     assert path.read_bytes() == contents
 
 
-@pytest.mark.parametrize("version", [0, SCHEMA_VERSION + 1])
+@pytest.mark.parametrize("version", [SCHEMA_VERSION + 1])
 def test_unknown_schema_is_refused_without_modification(tmp_path, version):
     with PaperRepository.create(tmp_path):
         pass
@@ -213,94 +213,3 @@ def test_replaced_open_database_is_rejected(tmp_path):
         with pytest.raises(UnsafeLibraryPath):
             library.list_papers()
         assert path.read_bytes() == b"replacement"
-
-
-def test_known_v1_upgrade_preserves_library_and_metadata_without_inventing_discovery(tmp_path):
-    from uuid import uuid4
-    from allfold.persistence.library_database import APPLICATION_ID, V1_SCHEMA
-
-    workspace_id, paper_id = uuid4(), uuid4()
-    original = PaperMetadata(title='Existing v1 title', notes='Existing notes').model_dump_json(exclude={'discovered_at'})
-    with sqlite3.connect(tmp_path / DATABASE_NAME) as connection:
-        for statement in V1_SCHEMA:
-            connection.execute(statement)
-        connection.execute('INSERT INTO library_info VALUES (1, ?)', (str(workspace_id),))
-        connection.execute('INSERT INTO paper_core (paper_id, excluded) VALUES (?, 1)', (str(paper_id),))
-        connection.execute('INSERT INTO paper_identities VALUES (?, ?, ?)', ('doi', '10.1234/main', str(paper_id)))
-        connection.execute('INSERT INTO paper_metadata (paper_id, payload) VALUES (?, ?)', (str(paper_id), original))
-        connection.execute('INSERT INTO paper_body VALUES (?, ?, NULL, NULL)', (str(paper_id), 'Documents/existing.pdf'))
-        connection.execute(f'PRAGMA application_id = {APPLICATION_ID}')
-        connection.execute('PRAGMA user_version = 1')
-    with PaperRepository.open(tmp_path, expected_workspace_id=workspace_id) as repository:
-        paper = repository.get(paper_id)
-        assert paper.excluded and paper.metadata.notes == 'Existing notes'
-        assert paper.metadata.discovered_at is None
-        assert paper.primary_identity.value == '10.1234/main'
-        assert paper.body.relative_path == 'Documents/existing.pdf'
-    with PaperRepository.open(tmp_path) as reopened:
-        assert reopened.get(paper_id) == paper
-
-
-def test_invalid_v1_payload_fails_upgrade_without_partial_schema(tmp_path):
-    from uuid import uuid4
-    from allfold.persistence.library_database import APPLICATION_ID, V1_SCHEMA
-
-    paper_id = str(uuid4())
-    with sqlite3.connect(tmp_path / DATABASE_NAME) as connection:
-        for statement in V1_SCHEMA:
-            connection.execute(statement)
-        connection.execute('INSERT INTO library_info VALUES (1, ?)', (str(uuid4()),))
-        connection.execute('INSERT INTO paper_core (paper_id) VALUES (?)', (paper_id,))
-        connection.execute('INSERT INTO paper_metadata (paper_id, payload) VALUES (?, ?)', (paper_id, '{"title":""}'))
-        connection.execute(f'PRAGMA application_id = {APPLICATION_ID}')
-        connection.execute('PRAGMA user_version = 1')
-    before = (tmp_path / DATABASE_NAME).read_bytes()
-    with pytest.raises(LibraryCorruptError):
-        PaperRepository.open(tmp_path)
-    assert (tmp_path / DATABASE_NAME).read_bytes() == before
-
-
-def _create_v2_library(workspace):
-    from uuid import uuid4
-    from allfold.persistence.library_database import APPLICATION_ID, V2_SCHEMA
-
-    workspace_id, paper_id = uuid4(), uuid4()
-    with sqlite3.connect(workspace / DATABASE_NAME) as connection:
-        for statement in V2_SCHEMA:
-            connection.execute(statement)
-        connection.execute("INSERT INTO library_info VALUES (1, ?)", (str(workspace_id),))
-        connection.execute("INSERT INTO paper_core VALUES (?, 1, 4, 7, 3)", (str(paper_id),))
-        connection.execute("INSERT INTO paper_identities VALUES ('pmid', '123', ?)", (str(paper_id),))
-        connection.execute("INSERT INTO paper_metadata VALUES (?, ?, 2)",
-                           (str(paper_id), PaperMetadata(title="Saved v2", abstract="Original", notes="Keep").model_dump_json()))
-        connection.execute("INSERT INTO paper_body VALUES (?, 'Documents/existing.pdf', NULL, 81)", (str(paper_id),))
-        connection.execute("INSERT INTO paper_projection VALUES (?, 'pmid', '123', 19)", (str(paper_id),))
-        connection.execute("INSERT INTO library_state VALUES (1, 31)")
-        connection.execute(f"PRAGMA application_id = {APPLICATION_ID}")
-        connection.execute("PRAGMA user_version = 2")
-    return workspace_id, paper_id
-
-
-def test_v2_upgrade_preserves_every_generation_revision_and_no_invented_completion(tmp_path):
-    workspace_id, paper_id = _create_v2_library(tmp_path)
-    with PaperRepository.open(tmp_path, expected_workspace_id=workspace_id) as repository:
-        paper = repository.get(paper_id)
-        assert (paper.metadata_generation, paper.operation_generation, paper.body_generation, paper.abstract_generation) == (4, 7, 3, 2)
-        assert paper.excluded and paper.revision == 19 and repository.revision == 31
-        assert paper.metadata.title == "Saved v2" and paper.metadata.abstract == "Original" and paper.metadata.notes == "Keep"
-        assert paper.body.relative_path == "Documents/existing.pdf" and paper.body.size_bytes == 81
-        assert paper.primary_identity.value == "123"
-        assert paper.collection_status == "not_started"
-    with PaperRepository.open(tmp_path) as repository:
-        assert repository.get(paper_id) == paper
-
-
-def test_v2_upgrade_schema_failure_rolls_back_version_and_all_schema_changes(tmp_path, monkeypatch):
-    from allfold.persistence import library_database
-
-    _create_v2_library(tmp_path)
-    before = (tmp_path / DATABASE_NAME).read_bytes()
-    monkeypatch.setattr(library_database, "COLLECTION_SCHEMA", (library_database.COLLECTION_SCHEMA[0], "INVALID SQL"))
-    with pytest.raises(LibraryError):
-        PaperRepository.open(tmp_path)
-    assert (tmp_path / DATABASE_NAME).read_bytes() == before

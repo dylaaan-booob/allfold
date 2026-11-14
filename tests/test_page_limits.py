@@ -1,18 +1,16 @@
-"""Physical page configuration replaces the retired neutral Paper bounds."""
+"""Current physical page configuration and live effective limits."""
 import pytest
 from pydantic import ValidationError
 from allfold.config import WorkflowConfig
 
 
-def test_legacy_paper_bounds_do_not_become_physical_limits():
+def test_current_page_limits_validate_dimensions_independently():
     workflow = WorkflowConfig.model_validate({
-        'paper_global_concurrency': 6, 'paper_service_concurrency': 2,
         'prepare_service_concurrency': 3, 'pdf_concurrency': 4})
     assert workflow.managed_page_global_limit == 16
     assert workflow.managed_page_service_limit == 4
     assert workflow.prepare_service_concurrency == 3
     assert workflow.pdf_concurrency == 4
-    assert 'paper_global_concurrency' not in workflow.model_dump()
     for field, values in (
         ('managed_page_global_limit', (3, 65, True, '16')),
         ('managed_page_service_limit', (2, 17, True, '4')),

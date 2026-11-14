@@ -229,39 +229,6 @@ def test_source_facts_cancellation_refuses_a_late_sequence_and_explicit_retry_ke
             owner.commit_collection_branch(admitted.token, 'api', sequence=2, delta=MetadataDelta(discovery_facts=(good,)))
 
 
-def test_legacy_payload_is_unknown_and_unknown_facts_version_is_explicitly_refused(tmp_path):
-    import json
-    import sqlite3
-    from uuid import uuid4
-    from allfold.persistence.library_database import APPLICATION_ID, DATABASE_NAME, V1_SCHEMA
-    from allfold.persistence.paper_repository import LibraryCorruptError, MetadataDelta
-    from allfold.pdf_facts import PdfDiscoveryFacts
-
-    workspace_id, paper_id = uuid4(), uuid4()
-    with sqlite3.connect(tmp_path / DATABASE_NAME) as connection:
-        for statement in V1_SCHEMA:
-            connection.execute(statement)
-        connection.execute('INSERT INTO library_info VALUES (1, ?)', (str(workspace_id),))
-        connection.execute('INSERT INTO paper_core (paper_id) VALUES (?)', (str(paper_id),))
-        connection.execute('INSERT INTO paper_identities VALUES (?, ?, ?)', ('doi', '10.5555/formal', str(paper_id)))
-        connection.execute('INSERT INTO paper_metadata (paper_id, payload) VALUES (?, ?)',
-            (str(paper_id), '{"title":"Legacy title","notes":"Preserved note"}'))
-        connection.execute(f'PRAGMA application_id = {APPLICATION_ID}')
-        connection.execute('PRAGMA user_version = 1')
-    with PaperRepository.open(tmp_path, expected_workspace_id=workspace_id) as repository:
-        legacy = repository.get(paper_id)
-        assert legacy.metadata.discovery_facts == () and legacy.metadata.notes == 'Preserved note'
-        facts = PdfDiscoveryFacts(source='document', capability='document-pdf', status='complete', observed_at=NOW)
-        saved = repository.merge_metadata(legacy.token, MetadataDelta(discovery_facts=(facts,)))
-    with sqlite3.connect(tmp_path / DATABASE_NAME) as connection:
-        payload = saved.metadata.model_dump(mode='json')
-        payload['discovery_facts'][0]['version'] = 2
-        connection.execute('UPDATE paper_metadata SET payload=? WHERE paper_id=?', (json.dumps(payload), str(paper_id)))
-    with PaperRepository.open(tmp_path) as repository:
-        with pytest.raises(LibraryCorruptError, match='Invalid saved Paper'):
-            repository.get(paper_id)
-
-
 @pytest.mark.parametrize(('failed', 'expected_status'), [(False, 'complete'), (True, 'failed')])
 def test_necessary_exact_response_without_records_persists_complete_empty_or_failure(tmp_path, failed, expected_status):
     import httpx
@@ -285,8 +252,6 @@ def test_necessary_exact_response_without_records_persists_complete_empty_or_fai
 
 def test_signed_source_links_become_refresh_facts_and_never_enter_workspace_projection(tmp_path):
     from fastapi.testclient import TestClient
-    from allfold.models import MetadataSource
-    from allfold.persistence.paper_repository import MetadataDelta
     from allfold.web.app import create_app
     from electron_test_helpers import OfflineBridge
 
@@ -308,11 +273,6 @@ def test_signed_source_links_become_refresh_facts_and_never_enter_workspace_proj
         assert candidate.refresh.landing_url == 'https://repository.example/article/123'
         assert signed == raw['best_oa_location']['pdf_url']
         assert 'secret123' not in saved.metadata.model_dump_json()
-        # A prior binary may already have persisted signed generic locations.
-        # Projection must not expose them; reading does not rewrite real data.
-        legacy_source = MetadataSource(provider='openalex', record_id='legacy', retrieved_at=NOW, url=signed)
-        legacy_url_id = legacy_source.model_copy(update={'record_id': signed})
-        repository.merge_metadata(saved.token, MetadataDelta(sources=(legacy_source, legacy_url_id)))
         assert saved.body is None
     with TestClient(create_app(path, electron_bridge=OfflineBridge(), diagnostics_root=tmp_path / 'logs'),
             base_url='http://localhost') as client:

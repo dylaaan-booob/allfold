@@ -43,7 +43,7 @@ class LibraryBusyError(LibraryError):
     pass
 
 
-V1_SCHEMA = (
+PAPER_SCHEMA = (
     "CREATE TABLE library_info (singleton INTEGER PRIMARY KEY CHECK (singleton = 1), workspace_id TEXT NOT NULL UNIQUE)",
     """CREATE TABLE paper_core (
         paper_id TEXT PRIMARY KEY NOT NULL,
@@ -75,7 +75,6 @@ PROJECTION_SCHEMA = (
         revision INTEGER NOT NULL DEFAULT 1 CHECK (revision > 0),
         CHECK ((primary_namespace IS NULL) = (primary_value IS NULL)))""",
 )
-V2_SCHEMA = V1_SCHEMA + PROJECTION_SCHEMA
 COLLECTION_SCHEMA = (
     """CREATE TABLE paper_collection (
         paper_id TEXT PRIMARY KEY NOT NULL REFERENCES paper_core(paper_id) ON DELETE RESTRICT,
@@ -95,7 +94,7 @@ COLLECTION_SCHEMA = (
         reason TEXT CHECK (reason IS NULL OR length(reason) <= 240),
         PRIMARY KEY (paper_id, name))""",
 )
-SCHEMA = V2_SCHEMA + COLLECTION_SCHEMA
+SCHEMA = PAPER_SCHEMA + PROJECTION_SCHEMA + COLLECTION_SCHEMA
 
 
 def _schema_definitions(connection):
@@ -130,38 +129,6 @@ def _sqlite_error(error: sqlite3.Error) -> LibraryError:
     if code in {sqlite3.SQLITE_CORRUPT, sqlite3.SQLITE_NOTADB}:
         return LibraryCorruptError("Library is not a valid SQLite database")
     return LibraryError(f"SQLite library operation failed: {error}")
-
-
-def upgrade_schema(connection: sqlite3.Connection, version: int) -> None:
-    """Upgrade exact known v1/v2 schemas in the caller's rollback-safe transaction."""
-    if version not in {1, 2, SCHEMA_VERSION}:
-        raise UnsupportedLibrarySchema(f"Unsupported library schema {version}; supported version is {SCHEMA_VERSION}")
-    if version == SCHEMA_VERSION:
-        return
-    if _schema_definitions(connection) != _expected_schema(V1_SCHEMA if version == 1 else V2_SCHEMA):
-        raise LibraryCorruptError(f"Library v{version} schema does not match its recorded version")
-    if connection.execute("PRAGMA quick_check").fetchone()[0] != "ok" or connection.execute("PRAGMA foreign_key_check").fetchone():
-        raise LibraryCorruptError(f"Library v{version} integrity check failed")
-    # Validate saved content before making the first schema change. Missing v1
-    # discovery/primary values remain explicitly unknown, never invented on read.
-    from allfold.persistence.library_models import PaperMetadata
-    for row in connection.execute("SELECT payload FROM paper_metadata"):
-        try:
-            PaperMetadata.model_validate_json(row[0])
-        except ValueError as error:
-            raise LibraryCorruptError(f"Invalid saved v{version} Paper metadata") from error
-    if version == 1:
-        for statement in PROJECTION_SCHEMA:
-            connection.execute(statement)
-        connection.execute("INSERT INTO library_state VALUES (1, 0)")
-        for row in connection.execute("SELECT paper_id FROM paper_core"):
-            identities = connection.execute("SELECT namespace, normalized_value FROM paper_identities WHERE paper_id = ?", (row[0],)).fetchall()
-            dois = [identity for identity in identities if identity[0] == "doi"]
-            primary = dois[0] if len(dois) == 1 else identities[0] if len(identities) == 1 else (None, None)
-            connection.execute("INSERT INTO paper_projection VALUES (?, ?, ?, 1)", (row[0], *primary))
-    for statement in COLLECTION_SCHEMA:
-        connection.execute(statement)
-    connection.execute(f"PRAGMA user_version = {SCHEMA_VERSION}")
 
 
 class LibraryDatabase:
@@ -216,7 +183,9 @@ class LibraryDatabase:
     def _validate_schema(self, connection):
         if connection.execute("PRAGMA application_id").fetchone()[0] != APPLICATION_ID:
             raise LibraryCorruptError("Not an Allfold Paper library")
-        upgrade_schema(connection, connection.execute("PRAGMA user_version").fetchone()[0])
+        version = connection.execute("PRAGMA user_version").fetchone()[0]
+        if version != SCHEMA_VERSION:
+            raise UnsupportedLibrarySchema(f"Unsupported library schema {version}; supported version is {SCHEMA_VERSION}")
         if _schema_definitions(connection) != _expected_schema(SCHEMA):
             raise LibraryCorruptError("Library schema does not match its recorded version")
         if connection.execute("PRAGMA quick_check").fetchall()[0][0] != "ok":

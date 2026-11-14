@@ -17,8 +17,7 @@ Journal state is stored in `.allfold/user-data.sqlite`, isolated by canonical co
 The production [Paper library](paper-library.md) uses standard-library `sqlite3`.
 Read-only uninitialized views do not create it; the first Run initializes
 `Workspace/papers.sqlite`. Use disposable directories, actual SQLite connections
-and local HTTP/DOM fixtures. Existing v1/v2 libraries receive a preserving known
-schema-v3 upgrade. Missing, corrupt and unsupported databases have distinct results.
+and local HTTP/DOM fixtures. Create current-format databases for acceptance; old-data compatibility and migration are not supported. Missing, corrupt and unsupported databases have distinct results.
 
 ```sh
 uv run --locked pytest tests/test_paper_repository.py tests/test_paper_repository_safety.py tests/test_run_commit.py tests/test_preprint_lookup.py
@@ -175,7 +174,7 @@ across threads is not supported. Such transaction-level race evidence does not
 enable production same-Paper branch concurrency; that orchestration belongs to WF08.
 
 WF07 component checks add actual normalizer/records/Run and necessary-query
-source-fact persistence, disk reopen, old payload/version handling, independent
+source-fact persistence, disk reopen, independent
 connection races, cleanup and safe public projection in
 `tests/test_pdf_source_facts.py`. Pure rule fixtures exercise adopted expressions
 and applicability rather than only catalogue counts. The temporary-profile

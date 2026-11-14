@@ -12,7 +12,7 @@ execution context. Short rollback-safe transactions contain no network/browser
 wait. Library schema, integrity, UUID and live directory/database identity are
 validated. Symlinks and multiple-link main/sidecar paths are refused. Missing,
 corrupt, unknown-schema, unsafe-path and busy/commit failures remain distinct;
-none authorizes replacement or clearing. Known v1/v2 upgrades to v3 preserve records.
+none authorizes replacement or clearing. Paper storage has one current schema and no data migration path.
 
 Async writes use eligibility captured when the Paper is first claimed, including
 Workspace UUID and metadata/operation generations. Results cannot reread current

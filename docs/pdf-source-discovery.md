@@ -2,7 +2,7 @@
 
 Baseline: `c641ea371c111f45b7d42013df3a0eb6c1d80ac3`; spec [#102](https://github.com/dylaaan-booob/allfold/issues/102), tickets [#103](https://github.com/dylaaan-booob/allfold/issues/103), [#104](https://github.com/dylaaan-booob/allfold/issues/104), [#105](https://github.com/dylaaan-booob/allfold/issues/105), [#106](https://github.com/dylaaan-booob/allfold/issues/106), [#108](https://github.com/dylaaan-booob/allfold/issues/108).
 
-The following preserves the complete adopted request and historical fixed research. Acceptance requirements describe required behavior, not test results. The original research observations retain their original evidence strength. Transfer, files, production registration and public Download remain outside WF07. Current implementation and executed fixture evidence are documented in the owning module guides and PR.
+The following records the adopted WF07 request with the current storage policy and historical fixed research. Acceptance requirements describe required behavior, not test results. The original research observations retain their original evidence strength. Transfer, files, production registration and public Download remain outside WF07. Current implementation and executed fixture evidence are documented in the owning module guides and PR.
 
 ## Component entry points
 
@@ -131,13 +131,13 @@ WF06 的读取在 isolated world 999 内，不能假定直接可见网站主世�
 4. 通过实际 `ProviderWorkEvidence` 或等价受限数据结构、`metadata_from_run(paper, records=...)` 和 `necessary_metadata._increment` 接入基础 Paper/统一增量保存。当前 records 参数已贯通，保持当前 Run 的请求集合、身份归并、创建和完成时点，不新增后台登记。
 5. 只采用已确认属于本 Paper 直接身份闭包的响应事实；独立关联 Preprint 记录不能因 relation 就成为正式目标 Work。目标 Work 自身 locations 中的合法仓储/Preprint 版本 PDF 仍是 P5 候选，不增加版本筛选。
 
-完整而无候选、未查、部分响应和失败要有可区分的事实；不是空 URL 列表就认定查完。旧 Paper 没有新增事实时保持未知，不自动重采、补 API 或重写整库。已有可复用、capability 足够的响应优先使用，P5 未到达时不为了填缓存增加请求。
+完整而无候选、未查、部分响应和失败要有可区分的事实；不是空 URL 列表就认定查完。当前 Paper 尚未采集相应 capability 时保持未知，不自动重采或补 API。已有可复用、capability 足够的响应优先使用，P5 未到达时不为了填缓存增加请求。
 
 稳定 landing、内部 ID、规则/来源、采集时间及重取定位信息属于可删除的 metadata 载荷。临时签名不能成为长期模板；当前候选需要时保持其原始参数和必要 Referer，过期或上下文不足时按 PDF-only 路径重取，不用删参数方式假造稳定 URL。长期数据不保存可重放的会话、密钥或活页面对象，公开 Workspace/诊断投影不泄露敏感上下文。
 
 增量合并保留不同阶段顺序、去重和明确归属，不用空/partial 覆盖另一条已核有效事实，不累积每次 attempt 的无限历史。原 captured token、sequence 幂等、Reject→Restore、metadata generation、Reset 和退出边界继续生效。metadata 清除同时删除其完整 discovery 载荷，不残留在仅身份排除记录中；已有正文关联按现有独立语义保留。
 
-如需要 schema/载荷版本调整，使用现有保留数据的升级机制，并验证旧库读取及不兼容版本的明确处理。不得清空 WF01–06 的 SQLite 库，不引入旧 Markdown 迁移。
+只支持当前 Paper 数据格式，不提供旧库升级、旧载荷兼容或旧数据验收；验收使用新建数据。旧数据可以删除后重建，不引入 Markdown 迁移。
 
 ### 5. P2 条件性解析与接口接入
 
@@ -244,7 +244,7 @@ P1–P5 核心依赖不可变 Paper 目标、已核 source facts、任务 guard/
 5. **合法空、partial 与整体失效。** 无 PDF 入口正常完成；局部错误保留其他合格结果并正确结算。最终复核前的同 URL 换 Document、主体替换、身份冲突和取消使该页本次结果全部不能提交。最终验证后的正常关闭不使可信小型结果失效。
 6. **PDF-only 能力。** 动态入口重取只调用 PDF 读取，不调用 Date/Abstract、不改变已完成 collection/attempt，不写旧摘要或重跑必要 API。动作/POST 线索不被简化为 GET 重放。
 7. **现有响应真实入库。** 受控真实 OpenAlex/Crossref 响应经过当前 normalizer/records/Run 保存和必要查询 emit，SQLite 保留 target/capability、PDF/landing 区别、best/locations 顺序和完整空事实；没有增加当前 Run 网络集合或改变其时序。关联 Preprint 记录不误入正式目标 facts。
-8. **来源事实可持续且可删除。** 重启后稳定小型线索可读；旧库无字段正常为未知，不自动补采。metadata 清除删掉完整载荷，可靠身份排除及独立正文关系按既有契约保留。必要升级不清空库，公开投影/诊断无凭据与敏感签名。
+8. **来源事实可持续且可删除。** 重启后当前数据的稳定小型线索可读；未采集 capability 不自动补采。metadata 清除删掉完整载荷，可靠身份排除及独立正文关系按既有契约保留。不提供旧数据迁移兼容，公开投影/诊断无凭据与敏感签名。
 9. **写入竞争与生命周期。** 真实独立 SQLite 连接验证增量去重、序号幂等、字段代次、Reject→Restore、清除和取消后迟到结果拒绝；Date/Abstract/笔记/Preprint 已有事实不被线索写回覆盖。旧任务不能取得新 token 续权。
 10. **P2 条件正确。** 覆盖已定 PII/Cell、IEEE、OUP、JSTOR、SPIE、Nature/MDPI/ACS、Springer 变体、Microbiology、LWW 等正反例；不猜内部 ID、不拼历史路径、不混淆 XML/JATS/PDF、form action/POST 或不同平台授权。
 11. **可选接口如实适用。** 没有额外凭据时跳过相应接口，网页模板仍可尝试。已接入的条件接口通过受控真实解析验证，不能新增默认 Provider 扫描或凭据管理产品；不把 17 个资料条目等同于 17 个默认请求。
@@ -4016,7 +4016,7 @@ Zotero 相关已读文件主要声明 AGPL-3.0-or-later；其他仓库按表中�
 以下由 Codex 核查最新本地源码后决定最小实现，不要求用户重复已确认的产品选择：
 
 1. 固定 native 操作/模式、独立 clues DTO 与组合 adapter 的拆分；PDF-only 和受控 reader 如何共用访问/页面能力而保持文章身份强度。
-2. 小型 source facts 的字段/版本与合并规则；如何在现有 OpenAlex/Crossref 响应被降维前投影，经 records/necessary emit 入库，兼容无新字段的旧库并随 metadata 清除。
+2. 小型 source facts 的字段/版本与合并规则；如何在现有 OpenAlex/Crossref 响应被降维前投影，经 records/necessary emit 入库，遵守当前载荷契约并随 metadata 清除。
 3. 只读发现任务接口、条件性 HTTP/凭据能力与现有 Provider/TaskAuthority 的最小接入；避免要求后续 Download 重新启动 collection，避免另建通用调度和账号系统。
 4. 真实最终 URL、Referer、每跳目标检查及页面状态读取在固定 Electron 中的实现；保留参数、精确 scope、有限预算与实际 cleanup，报告尚需真实站点确认的条件。
 5. 用实际规则和真实组件加受控传输结果验证全部 T01–T24；把真实字节接收/原 DownloadItem/永久文件验收留给相应后续任务。

@@ -205,9 +205,8 @@ Local YAML owns monitor settings. The private `.allfold/user-data.sqlite` owns J
 identities, explicit primary identity, metadata, exclusions and one optional body
 association at `Workspace/papers.sqlite`. HTTP handlers and workers open separate
 thread-confined connections. Read-only uninitialized views create nothing; Run
-performs explicit initialization. Known v1/v2 upgrades preserve data; corruption and
-unknown schemas fail without replacement. Schema v3 adds bounded current-attempt
-and branch facts while preserving v1/v2 records. No Markdown shadow/fallback exists.
+performs explicit initialization. Paper storage supports only its current schema; corruption and
+unknown schemas fail without replacement. Current-attempt and branch facts are bounded. No data-upgrade path or Markdown shadow/fallback exists.
 
 Workspace UI uses separate library revisions for response order. WriteToken
 remains captured asynchronous eligibility, with separate abstract generation.

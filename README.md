@@ -31,7 +31,7 @@ Setup installs locked dependencies and builds the UI. It creates a missing local
 search, local edits, Preprint and Trash share the same repository. An unopened,
 uninitialized Workspace reads as empty without silently creating a library; the
 first Run initializes it explicitly. Corrupt or unsupported libraries report an
-error. Existing v1/v2 libraries receive the known preserving upgrade to schema v3.
+error. Paper storage uses the current schema only; no old-data upgrade is provided.
 Paper Markdown is no longer created, scanned or read back; old Workspace data is
 not migrated or deleted automatically. Repeat Run hits preserve complete saved
 records. Stable direct identities also support DOI-free Papers.

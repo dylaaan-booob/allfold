@@ -37,8 +37,7 @@ it does not authorize later tasks.
 ## WF02 production adoption
 
 Run/WoS, Workspace/Reader/search, local field edits, Preprint and Trash now use
-`PaperRepository` and `Workspace/papers.sqlite`. Known-v1 schema upgrades retain
-existing data. Uninitialized reads create nothing; the first Run initializes
+`PaperRepository` and `Workspace/papers.sqlite`. Uninitialized reads create nothing; the first Run initializes
 explicitly. Library errors never become an empty/rebuilt store. HTTP/worker
 connections are thread-local, with Workspace UUID/path and captured generation
 guards across cancellation, Reset, output-directory changes and shutdown.
