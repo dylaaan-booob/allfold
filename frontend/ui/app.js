@@ -1832,7 +1832,8 @@ window.uiWorkspace={
   ready:()=>state.ready,
 };
 window.addEventListener('focus',()=>{if(!window.allfoldWorkbench?.presentationChanging?.() && !configurationActive() && state.ready && !decisionPending && !paperToolsBusy())void refreshWorkspace().catch(error=>uiNext.notice(error.message));});
-window.addEventListener('settings-saved',()=>{settingsRefreshPending=true;refreshSavedSettings();});
+for(const name of ['settings-saved','login-state-changed'])
+  window.addEventListener(name,()=>{settingsRefreshPending=true;refreshSavedSettings();});
 window.addEventListener('pagehide',event=>{clearTimeout(collectionTimer);if(!event.persisted)paragraphLayout?.destroy();});
 window.workspaceNavigation.register('workspace',{
   canNavigate:()=>!navigationBusy() && !window.workspaceArray?.navigationBusy?.(),

@@ -43,6 +43,7 @@ const workspace={workspace_id:'fixture-library',revision:0,initialized:true,csrf
 const workspaceSnapshot=()=>({...workspace,subjects:workspace.subjects.map(group=>({...group,
   journals:group.journals.filter(journal=>journal.papers.length)})).filter(group=>group.journals.length)});
 const run={active:false,snapshot:{status:'IDLE',provider:null},providers:Object.fromEntries(['integrated','wos'].map(id=>[id,{enabled:false,message:'Offline fixture',result_summary:null}]))};
+let loginState={active:false,phase:'idle',services:[]};
 const mimes={'.html':'text/html','.js':'text/javascript','.css':'text/css','.json':'application/json','.woff2':'font/woff2','.ttf':'font/ttf','.otf':'font/otf','.png':'image/png','.mp4':'video/mp4'};
 let rejectAutosave=false,holdWorkspaceResponse,holdPaperActionResponse,resolveInitialCAS,credentialState={ok:false,error:'cas_store_unreadable',configured:false,username:'',revision:'d'.repeat(64)};
 const credentialWrites=[];
@@ -146,7 +147,7 @@ const server=http.createServer((req,res)=>{
   if(route.startsWith('/api/') || route==='/settings/covers/search'){
     const data=route==='/api/ui-next/workspace'?workspaceSnapshot():route==='/api/ui-next/settings'?settings:
       route==='/api/ui-next/run'?run:route==='/api/ui-next/run-expression'?{providers:Object.fromEntries([...settings.values.provider_order,'integrated'].map(id=>[id,{expression:'causal',error:null}]))}:route==='/settings/covers/search'?cover_search:
-      route==='/api/login/state'?{active:false,phase:'idle',services:[]}:{active:false,phase:'idle',navigation:null,can_cancel:false};
+      route==='/api/login/state'?loginState:{active:false,phase:'idle',navigation:null,can_cancel:false};
     res.writeHead(200,{'Content-Type':'application/json'});res.end(JSON.stringify(data));return;
   }
   const relative=route==='/'?'index.html':decodeURIComponent(route.replace(/^\/static\/ui_next\//,''));
@@ -376,8 +377,22 @@ app.whenReady().then(async()=>{
     await js(`(()=>{if(!document.getElementById('paper-collection-retry').disabled || !document.getElementById('paper-collection-status').textContent.includes('清理'))throw Error('Retry was available before cleanup');})()`);
     const retryRevision=++records[0].papers[0].revision;workspace.revision++;
     Object.assign(records[0].papers[0],{cleanup_pending:false,collection:{status:'failed',attempt:1,cleaning_up:false,
-      retry_available:true,retry:{attempt:1,revision:retryRevision,token:{metadata_generation:1,operation_generation:1,abstract_generation:1,body_generation:0}}}});
+      retry_available:false,retry_reason:'unavailable',retry:{attempt:1,revision:retryRevision,token:{metadata_generation:1,operation_generation:1,abstract_generation:1,body_generation:0}}}});
     await js('window.uiWorkspace.refresh()');
+    await js(`(()=>{if(!document.getElementById('paper-collection-retry').disabled)throw Error('Retry ignored unavailable access');})()`);
+    // Prepare changes access qualification without changing Paper/Workspace content revisions.
+    const preparedWorkspaceRevision=workspace.revision;
+    loginState={active:true,phase:'preparing',workflow_id:'wf08-prepare-retry',services:[
+      {id:'svc_fixture',name:'Synthetic Service',access_method:'manual',access_url:'',preparation:{status:'Preparing'}}]};
+    await navigate('login');
+    await ready("!document.getElementById('login-cancel').hidden");
+    await ready("window.inboxRun.available()");
+    Object.assign(records[0].papers[0].collection,{retry_available:true,retry_reason:null});
+    loginState={...loginState,active:false,phase:'completed',services:loginState.services.map(service=>({...service,preparation:{status:'Opened'}}))};
+    await ready("document.getElementById('login-status').textContent.includes('1 / 1 Services opened')");
+    await navigate('workspace');
+    await ready("!document.getElementById('paper-collection-retry').disabled");
+    if(workspace.revision!==preparedWorkspaceRevision || records[0].papers[0].revision!==retryRevision)throw Error('Prepare qualification refresh changed content revisions');
     await capture('wf08-retry-ready');
     await js("document.getElementById('paper-collection-retry').click()");
     await ready("document.getElementById('paper-collection-status').textContent==='正在采集' && !window.inboxKept.busy()");

@@ -126,6 +126,8 @@ Run result fixtures retain selected-source counts, failures and WoS batch/date
 hints. WF08 keeps foreground busy/Last Run separate from continuing Paper work.
 Collection status and single-Paper Retry use the shared Reader and server
 qualification; explicit Preprint requests are keyed by Workspace/Paper/request.
+Login/Prepare state changes refresh Retry qualification even when Paper and
+Workspace content revisions stay unchanged.
 Background revision updates patch changed Paper fields without rebuilding the
 unchanged list/Reader, moving selection, resetting scroll/filter/Info expansion or
 overwriting editor drafts and pending saves. A successful field-save acknowledgement
