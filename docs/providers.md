@@ -102,6 +102,13 @@ Purpose-driven collection groups exact identifiers within its owned branch. Conf
 
 Operation-local caches distinguish PubMed summary/fetch, Crossref exact/reverse and complete Work evidence, including success, empty and failure responses. Foreground caches end with Run; every background branch has a fresh independent scope and may consume immutable verified handoff facts. Verified records from partial batches stay available while attributable failures settle. OpenAlex Work/locations already obtained during Discovery are reused. Every new relation enters the next necessary native-version wave before final First public coverage is calculated. arXiv `id_list` uses bounded groups of 200 identifiers; each group drains without a total quota. Explicit bioRxiv/medRxiv preprint DOI targets, including `10.64898/`, use native `/details` version lists. Native `/pubs` reverse lookup requires an explicit necessary purpose; the public Info query retains its formal-DOI use.
 
+For native bioRxiv/medRxiv `/pubs` and `/details` paths, keep the first DOI slash
+literal and encode each suffix slash as `%252F`, including in provenance URLs.
+Canonical DOI identities remain unchanged. An empty response must still name the
+complete requested DOI where the status supplies a subject; a truncated status
+or service error is not NoMatch. See the [routing investigation](biorxiv-doi-routing.md)
+for the community fix and live positive/negative controls.
+
 Every known family needs first-version proof. Native arXiv Atom `published`, never `updated`, establishes its first public date. Europe PMC explicit PPR version facts can establish v1; native platform details supply missing proof. Crossref `posted`, version text or a DOI suffix alone do not establish native v1. OpenAlex `related_works`, `acceptedVersion`, `is_accepted` and repository locations cannot prove First public. Only explicit validated DOI/arXiv/official-URI relations are followed; there is no title similarity matching. Europe PMC keeps `Preprint in`/`Preprint of`, version identities and native relation notes, including automatic title/first-author matching notes, in source provenance. Missing history, conflicting dates or future preprint dates remain unresolved. Cancellation and configuration/Workspace checks guard every subsequent request and batch.
 
 Foreground retrieval and each Paper collection report their own complete/partial/failed/cancelled/empty outcomes. First public coverage independently distinguishes recorded, no association, known unresolved, conflicting evidence, service failure and cancellation. Valid evidence survives a source failure and remains eligible for the protected create chain.
