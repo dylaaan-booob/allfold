@@ -1,10 +1,10 @@
-import {completionLabel,resultLabel} from './run-results.js';
+import {resultLabel} from './run-results.js';
 import {preparationReason,providerNames,recoveryLabel} from './business-results.js';
 const esc=value=>String(value??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const kinds={run:'Discover',login:'Login',prepare:'Service Preparation',preprint:'Preprint',covers:'Cover Search'};
 const outcomes={running:'进行中',completed:'完成',partial:'部分完成',failed:'失败',cancelled:'已取消',
   interrupted:'已中断',uncertain:'结果未确认',needs_attention:'需要处理',opened:'已打开',no_effect:'未产生保存',confirmed:'父条目已确认'};
-const metrics={integrated_candidates:'Discovery 候选',integrated_deduplicated:'去重 Paper',work_location_targets:'Work 定位 DOI',completion_targets:'补全 Paper',completion_requests:'补全 HTTP 请求',completion_date_facts_added:'新增日期事实',first_public_recorded:'首版日期已记录',first_public_no_association:'尚无预印本关联',first_public_known_unresolved:'已知首版未确定',first_public_conflict:'首版证据冲突',first_public_failed:'首版查询失败',first_public_cancelled:'首版查询取消',total:'总数',processed:'已处理',retrieved:'检索记录',created:'新增 Paper',updated:'更新',
+const metrics={integrated_candidates:'Discovery 候选',integrated_deduplicated:'去重 Paper',work_location_targets:'Work 定位 DOI',identity_targets:'身份目标',identity_requests:'身份 HTTP 请求',collection_admitted:'已登记采集',collection_reused:'复用采集',collection_registration_failed:'登记失败',excluded_papers:'已排除 Paper',rebuilt_papers:'重建 Paper',total:'总数',processed:'已处理',retrieved:'检索记录',created:'新增 Paper',updated:'更新',
   pmid_resolution_matched:'已验证 PMID',pmid_resolution_no_match:'无 PMID 匹配',
   pmid_resolution_conflicts:'PMID 冲突',pmid_resolution_failed:'PMID 查询失败',pmid_resolution_cancelled:'PMID 查询取消',
   failed:'失败',
@@ -67,7 +67,7 @@ export function renderHistoryRecord(record) {
       ${saved.length?`<p>已补充：${saved.map(esc).join('、')}</p>`:''}
       ${record.diagnostic_message?`<p>${esc(record.diagnostic_message)}</p>`:''}
       ${recovery?`<p>${esc(recovery)}</p>`:''}
-      ${record.kind==='run' && details.completion_status?`<p>Discovery · ${esc(resultLabel(details.discovery_status || 'unknown'))} / Run metadata completion · ${esc(completionLabel(details.completion_status,stats.completion_targets))}</p>`:''}
+      ${record.kind==='run' && details.discovery_status?`<p>Discovery · ${esc(resultLabel(details.discovery_status))} / Paper collection · 已登记后独立执行</p>`:''}
       ${sourceRows?`<ul>${sourceRows}</ul>`:''}${wosChecks}
       ${serviceCounts}${details.omitted_services?'<p>更多 Service 汇总已省略。</p>':''}
       ${rows?`<ol>${rows}</ol>`:''}${details.omitted_results?'<p>更多结果已省略；请结合诊断包中的保留证据。</p>':''}

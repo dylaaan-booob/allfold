@@ -224,10 +224,12 @@ def project_paper(path, native, *, api=False, with_dom=False):
             metadata=PaperMetadata(title='API structured abstract' if api else 'DOM structured abstract',
                 journal='Biometrics', journal_issns=('0006-341X',), publication_type='journal'), branches=branches)
         result = task.future.result(15)
-        expected = API_TEXT if api else native['metadata']['abstract']
+        expected = result.metadata.abstract if with_dom else API_TEXT if api else native['metadata']['abstract']
         assert result.metadata.abstract == expected
         if with_dom:
-            assert [data['wantAbstract'] for _, action, data in bridge.calls if action == 'extract_paper_metadata'] == [False]
+            assert expected in {API_TEXT, native['metadata']['abstract']}
+            reads = [data['wantAbstract'] for _, action, data in bridge.calls if action == 'extract_paper_metadata']
+            assert len(reads) == 1 and type(reads[0]) is bool
     finally:
         registry.shutdown()
         registry.join()
@@ -254,9 +256,9 @@ def main():
         component_race(root / mutation, native, 'simultaneous', mutation=mutation)
     component_race(root / 'empty-api', native, 'api-first', empty_api=True)
     papers = [project_paper(root / source, native, api=source == 'api') for source in ('dom', 'api')]
-    project_paper(root / 'serial', native, api=True, with_dom=True)
+    project_paper(root / 'parallel', native, api=True, with_dom=True)
     output_path.write_text(json.dumps({'papers': papers}, ensure_ascii=False))
-    print('METADATA PIPELINE PASS: 8 independent service races; serial registry; DOM/API disk→HTTP projections')
+    print('METADATA PIPELINE PASS: 8 independent service races; parallel registry; DOM/API disk→HTTP projections')
 
 
 if __name__ == '__main__':

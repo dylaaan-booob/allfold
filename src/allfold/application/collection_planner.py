@@ -74,25 +74,27 @@ class ProductionCollectionService:
             facts=facts, required=purposes)
         return metadata_from_run(canonical, records=records, first_public_complete=complete)
 
-    def _retry(self, paper_id, *, workspace_id, expected_token, expected_attempt):
+    def _retry(self, paper_id, *, workspace_id, expected_token, expected_attempt, bind=True):
         if expected_token is None or type(expected_attempt) is not int or expected_attempt < 1:
             raise StaleWriteError('Retry requires the exact Paper token and collection attempt')
-        registry = self.host.current()
+        registry = self.host.current() if bind else self.host.peek()
+        if registry is None:
+            raise InvalidPaperState('Workspace collection is not bound')
         if UUID(str(workspace_id)) != registry.workspace_id:
             raise StaleWriteError('Retry belongs to another Workspace')
         with PaperRepository.open(registry.workspace, expected_workspace_id=registry.workspace_id) as repository:
             paper = repository.get(UUID(str(paper_id)))
         return registry, self.plan(paper=paper)
 
-    def check_retry(self, paper_id, *, workspace_id, expected_token, expected_attempt):
+    def check_retry(self, paper_id, *, workspace_id, expected_token, expected_attempt, expected_revision=None):
         """Read-only eligibility; successful branches do not recapture old access."""
         registry, branches = self._retry(paper_id, workspace_id=workspace_id,
-            expected_token=expected_token, expected_attempt=expected_attempt)
+            expected_token=expected_token, expected_attempt=expected_attempt, bind=False)
         return registry.check_retry(paper_id, branches=branches, expected_token=expected_token,
-            expected_attempt=expected_attempt)
+            expected_attempt=expected_attempt, expected_revision=expected_revision)
 
-    def retry(self, paper_id, *, workspace_id, expected_token, expected_attempt, deadline=None):
+    def retry(self, paper_id, *, workspace_id, expected_token, expected_attempt, expected_revision=None, deadline=None):
         registry, branches = self._retry(paper_id, workspace_id=workspace_id,
             expected_token=expected_token, expected_attempt=expected_attempt)
         return registry.retry(paper_id, branches=branches, expected_token=expected_token,
-            expected_attempt=expected_attempt, deadline=deadline)
+            expected_attempt=expected_attempt, expected_revision=expected_revision, deadline=deadline)

@@ -769,7 +769,7 @@ function renderRun() {
   for(const group of root.querySelectorAll('[data-provider-settings]'))group.hidden=group.dataset.providerSettings!==selectedProvider;
   const discovery=new Set(['pubmed','wos','openalex']);
   const choices=ids=>ids.map(id=>`<label class="s-setting-row s-check"><span class="s-setting-label">${esc(providerName(id))}</span><input type="checkbox" data-discovery-provider="${id}" ${draft.monitor.enabledProviders.includes(id)?'checked':''}></label>`).join('');
-  $('s-run-operations').innerHTML=`<fieldset class="s-setting-group"><legend>Journal Discovery</legend>${choices(providerOrder().filter(id=>discovery.has(id)))}</fieldset><div class="s-run-operation"><button class="s-button" data-run-provider="integrated" disabled>Run ↗</button><p class="s-help" data-run-reason="integrated"></p></div><p class="s-help">Run 自动使用 PubMed、OpenAlex、Europe PMC、Crossref 与原生预印本 API 在保存新 Paper 前补全身份、日期和预印本关系。</p>`;
+  $('s-run-operations').innerHTML=`<fieldset class="s-setting-group"><legend>Journal Discovery</legend>${choices(providerOrder().filter(id=>discovery.has(id)))}</fieldset><div class="s-run-operation"><button class="s-button" data-run-provider="integrated" disabled>Run ↗</button><p class="s-help" data-run-reason="integrated"></p></div><p class="s-help">Run 完成检索、必要身份确认与基础 Paper 登记后结束；日期、摘要、PDF 线索与必要预印本查询由 Workspace 独立采集。</p>`;
   updateRunButtons();renderRunRecords();
 }
 function updateRunButtons() {

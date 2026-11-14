@@ -11,7 +11,7 @@ test('history reuses Run status wording and distinguishes opened evidence from a
   const {renderHistoryRecord}=await import('../../frontend/ui/history-view.js');
   const run=renderHistoryRecord({kind:'run',provider:'crossref',task_id:'run_1',outcome:'partial',
     statistics:{created:2},details:{result_status:'incomplete'}});
-  assert.match(run,/Crossref/);assert.match(run,/检索或补全不完整/);
+  assert.match(run,/Crossref/);assert.match(run,/检索不完整/);
   const prep=renderHistoryRecord({kind:'prepare',task_id:'prep_1',outcome:'opened',statistics:{opened:1},
     details:{results:[{service_id:'svc_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',outcome:'opened',reason:'target_opened',
       recovery:[{recovery_action:'resource_reentry',count:1,outcome:'recovered'}]}]}});
@@ -78,24 +78,17 @@ test('unified Run history presents selected sources and native batch hints',asyn
   assert.match(html,/1 期刊清单提示/);
 });
 
-test('Run history keeps first-public coverage independent of Paper creation',async()=>{
-  const {renderHistoryRecord}=await import('../../frontend/ui/history-view.js');
-  const html=renderHistoryRecord({kind:'run',provider:'integrated',task_id:'run-dates',outcome:'completed',
-    statistics:{created:3,pmid_resolution_matched:1,pmid_resolution_no_match:2,
-      first_public_recorded:1,first_public_known_unresolved:1,first_public_conflict:1}});
-  assert.match(html,/已验证 PMID 1/);assert.match(html,/无 PMID 匹配 2/);
-  assert.match(html,/首版日期已记录/);assert.match(html,/已知首版未确定/);assert.match(html,/首版证据冲突/);
-});
-
-test('Run results distinguish no completion match from a phase without targets',async()=>{
+test('Run results and History report foreground identity and registration without background totals',async()=>{
   const {renderHistoryRecord}=await import('../../frontend/ui/history-view.js');
   const {renderRunResult}=await import('../../frontend/ui/run-results.js');
-  const result={availability:'available',provider:'integrated',status:'completed',
-    created_papers:1,existing_papers:0,details:{discovery_status:'complete',completion_status:'empty'},
-    journals:[],issues:[],statistics:{completion_targets:1,pmid_resolution_no_match:1}};
-  assert.match(renderRunResult(result),/Run metadata completion · 无匹配/);
-  const history={kind:'run',provider:'integrated',task_id:'no-match',outcome:'completed',
-    details:result.details,statistics:result.statistics};
-  assert.match(renderHistoryRecord(history),/Run metadata completion · 无匹配/);
-  assert.match(renderHistoryRecord({...history,statistics:{completion_targets:0}}),/Run metadata completion · 无需补全/);
+  const statistics={identity_targets:2,identity_requests:3,collection_admitted:4,collection_reused:1,
+    collection_registration_failed:1,excluded_papers:2,rebuilt_papers:1};
+  const result={availability:'available',provider:'integrated',status:'completed',created_papers:4,existing_papers:1,
+    details:{discovery_status:'complete'},journals:[],issues:[],statistics};
+  for(const html of [renderRunResult(result),renderHistoryRecord({kind:'run',provider:'integrated',task_id:'run-registration',
+    outcome:'completed',details:result.details,statistics})]){
+    assert.match(html,/Collection admitted|已登记采集/);
+    assert.match(html,/Registration failed|登记失败/);
+    assert.doesNotMatch(html,/Completion|metadata completion|首版日期已记录/);
+  }
 });
