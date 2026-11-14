@@ -196,8 +196,11 @@ async def main():
             with PaperRepository.open(workspace) as repo:
                 saved = repo.get(paper.id)
             if path.startswith('disk-'):assert result.status=='local_failure'
-            if path=='challenge':assert result.candidate_result.response.access=='challenge'
-            if path=='html.pdf':assert result.candidate_result.response.access=='login'
+            if path in {'challenge', 'html.pdf'}:
+                reason = 'access-challenge' if path == 'challenge' else 'access-login'
+                assert result.status == 'failed' and result.candidate_result.kind == 'failed'
+                assert result.candidate_result.diagnostic == reason
+                assert saved.download.reason == reason
             if path=='background-cloudflare':assert result.candidate_result.response.access is None
             success = path in {'redirect?Signature=A%2FB','encoded','chunked','slow-writer','cross-referer','oxford-cdn','ieee-reader'}
             assert (result.status == 'completed') == success, (path,result)
