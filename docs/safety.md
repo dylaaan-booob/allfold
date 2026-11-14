@@ -2,7 +2,7 @@
 
 Production Paper reads and writes use one [SQLite library](paper-library.md),
 with stable Workspace/Paper UUIDs and reliable direct identity uniqueness. A Run
-uses the repository-returned UUID. Full repeat matches remain unchanged;
+uses the repository-returned UUID. Full repeat matches preserve their saved metadata;
 excluded records stay excluded; only an actual Run hit can rebuild an unexcluded
 identity placeholder. Different direct-identity owners are an explicit conflict.
 No Markdown fallback, shadow store, dual write or old Workspace migration exists.
@@ -21,8 +21,8 @@ automatic abstract candidates; legal date/source increments remain eligible.
 Library revision and response ordering separately prevent stale UI snapshots.
 
 Reject persists exclusion and invalidates tokens before exact-Paper cancellation.
-The same Paper gate captures and locally revokes the current attempt/reservation
-and legacy request Event. Deferred signals retain those exact targets. If none
+The same Paper gate captures and locally revokes the current attempt and any
+explicit Preprint/download reservation. Deferred signals retain those exact targets. If none
 exists at Reject, they cannot cancel a later owner after Restore.
 The transaction and Workspace write lock are released before cancellation or
 worker join. Shared Run requests keep serving other Papers. Restore is local and
@@ -89,8 +89,9 @@ Service ID. Reprepare cannot replace a context while an executing owner uses it;
 credentials, Workspace Reset and Logs Reset retain control exclusivity. Config and
 User State revisions remain Compare-and-Write/diagnostic facts, while Prepare
 access checks capture institution, credential epoch and the selected Service.
-Unrelated edits preserve that captured access. Foreground Run/WoS and Preprint keep
-their input snapshots, commit checks and single Run slot.
+Unrelated edits preserve that captured access. Foreground Run/WoS keeps its input
+snapshot, commit checks and single Run slot. Explicit Preprint requests have
+independent Paper tokens and narrow Provider authority, without a Run snapshot or slot.
 
 Settings access cleanup carries captured old preparation/authentication keys and
 waits outside the configuration write lock, holding only its affected admission
@@ -140,7 +141,7 @@ lifecycle, without network or queue replay. Runtime client/native/terminal-write
 faults keep conservative Paper occupancy rather than interpreting no worker as
 permission for Download or clearing.
 
-Paper reservations include old manual Preprint through its actual worker exit,
+Paper reservations include manual Preprint through its actual worker exit,
 without declaring collection completed. Occupancy changes advance projection
 revision without changing content generations. Service data use is shared only
 with explicit captured scope; controls and physical pages remain exclusive.
@@ -148,7 +149,32 @@ Accepted maintenance reserves new admission before old owners drain outside
 configuration, Workspace and SQLite write locks. Only captured resource cleanup
 continues through Bridge/Main after normal execution closes; new business work
 and credential mutations remain refused. Common Provider pacing outlives clients,
-while cancellation, guards, caches and absolute deadlines stay attempt-owned.
+while cancellation, guards, caches and absolute deadlines stay operation-owned.
+
+WF08 production Run establishes basic metadata and the entire queued plan in one
+short transaction, under its original Run snapshot and initial identity token.
+All confirmed direct aliases survive; clearing metadata during an older Run
+cannot grant that Run new rebuild authority. Registry ownership and original host
+epochs cover admission through registration before external access initialization.
+Service/credential/startup failure retains the base Paper and explicit failed
+branch facts; it cannot become skipped/empty or cancel independent branches.
+
+A bounded leaf scheduler gives each branch its own connection, client/cache and
+native identities. Branch-specific access revocation leaves unrelated branches
+running; Reject and whole-Workspace invalidation revoke the complete Paper.
+Foreground cancellation never follows source Run IDs into accepted Paper work.
+The Run slot releases only after foreground queries, native work, clients and
+snapshot end; Paper occupancy lasts through its separate actual cleanup.
+
+An accepted manual query on a `not_started` Paper keeps its captured token while
+the first complete collection intent waits in the same registry. Durable queued
+facts and host ownership block competing operations; the intent starts only after
+actual reservation release, or settles cancelled/expired without execution.
+Explicit collection retry requires current full unexcluded metadata, a settled
+failed/cancelled attempt, no competing owner and available pending dependencies.
+It preserves completed/skipped branches and never retries normal completed/empty
+work. Restore does not renew old tokens or trigger collection. No queue replays
+after restart, and no collection/retry action grants PDF/body authority.
 
 WF07 discovery facts belong to deletable metadata, with exact target binding and
 finite capability/completeness. Their presence confers no Session, collection or

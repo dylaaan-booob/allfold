@@ -113,7 +113,7 @@ attempt after Reject/Restore, without renewing execution authority. These cannot
 write content or touch a later attempt/lifetime. Successful facts and committed
 fields survive failure, cancellation and explicit retry. Metadata clearing and
 body completion reject active collection in their own transaction. The application
-also serializes download/legacy-query occupation and admission under one Paper gate.
+also serializes download/explicit-Preprint occupation and admission under one Paper gate.
 
 `open()` never interrupts tasks. The Workspace lifecycle owner explicitly calls
 `interrupt_collections` before first admission; ordinary worker/reader connections
@@ -167,7 +167,7 @@ Existing nonempty abstract text is retained exactly. Empty/markup-only candidate
 standalone wrapper/heading-only candidates, pure ellipses and explicit unavailable,
 sign-in or Read more notices do not occupy the first-valid
 opportunity. New automatic candidates use `abstract_text.normalize_abstract_text`,
-separate from legacy Run's `canonicalize.normalize_abstract`. It removes explicit
+separate from Run base `canonicalize.normalize_abstract`. It removes explicit
 markup and standalone Abstract/Summary wrappers, retaining internal scientific
 headings, ordered newline-separated paragraphs, Unicode and inequalities/angle
 notation. `MetadataDelta` qualifies candidates without rewriting their input;
@@ -264,9 +264,11 @@ cleanup to finish. Shared Run discovery remains available to other Papers.
 `test_paper_repository.py`, `test_collection_repository.py` and `test_paper_repository_safety.py` use real temporary
 SQLite databases for reopening, contention, identity conflicts, dates, generations,
 rollback, paths, concurrent admission, captured branch writes,
-cancellation, retry and explicit interruption. Production Run retains its existing
-creation/completion calls; WF05 does not automatically register collection or
-enable download/retry UI. Application/API fixtures exercise
+cancellation, retry and explicit interruption. Production Run now uses atomic
+base/queued admission with original token/rebuild qualification and complete plans.
+Workspace owns branch resources after foreground completion. Public single-Paper
+retry uses the same eligibility service as its projection and preserves successful
+branch facts; Download stays internal. Application/API fixtures exercise
 production adoption, fields, Preprint and recycling; Electron fixtures exercise
 projections, response ordering and the existing layout. None establishes real
 provider, institution, user-library or actual-PDF acceptance.

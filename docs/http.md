@@ -86,7 +86,7 @@ injects the same pacing state into each creation path; another Run, client or
 attempt does not reset the actual-origin spacing. Request and adapter caches stay
 within their owning operation/attempt, rather than becoming global caches.
 Network requests hold no Workspace write lock.
-Run reuses verified DOI/Work evidence across Discovery and metadata completion.
+Run reuses verified DOI/Work evidence across Discovery and necessary identities.
 It batches quoted PubMed article identifiers after saved-Paper exclusion,
 checking each returned PMID against its direct DOI and reusing fetched records.
 
@@ -98,7 +98,7 @@ across parallel producers and locators. PubMed uses 0.35-second anonymous or
 OpenAlex basic first-page access reports incomplete coverage if further cursor
 paging needs a key.
 
-Discovery, Completion and standalone OpenAlex reads use one request policy.
+Discovery, necessary collection queries and standalone OpenAlex reads use one request policy.
 Safe reads include PubMed's existing read-only form POST. Connect, read and
 write timeouts, ordinary connect/read/write transport failures, and HTTP
 429/500/502/503/504 are eligible for up to three regular attempts. TLS,
@@ -110,7 +110,7 @@ caller's authority.
 
 The Python application process owns in-memory cooldowns across its Provider
 clients. The actual request origin and authentication context determine scope.
-bioRxiv and medRxiv share their API origin. Discovery/Completion and standalone
+bioRxiv and medRxiv share their API origin. Discovery/necessary queries and standalone
 OpenAlex share a cooldown when they use the same origin and credential. The
 scope of a redirect uses the headers HTTPX prepared for that hop. HTTP 429
 and transient server statuses with a valid Retry-After extend only their scope.
@@ -121,14 +121,14 @@ waiting. Expired entries are discarded, and process exit clears the in-memory
 state.
 
 The 90-second logical request budget begins with the first attempt and covers
-pacing, backoff, cooldown, redirects and any final Completion check. A shorter
+pacing, backoff, cooldown, redirects and any final necessary-request check. A shorter
 caller deadline takes precedence. Provider clients keep synchronous request and
 response hooks and opt in to cancellable I/O through HTTPX's async transport.
 Connection setup, waiting for headers and blocked body reads use the remaining
 time from the same absolute deadline. Expiry cancels the active I/O, releases
 the response and prevents another attempt. A cooldown already published from
 response headers remains in force. If a cooldown cannot fit, the current
-operation ends. Final Completion settlement can send the exact
+operation ends. Necessary-request settlement can send the exact
 failed prepared request once, with its original budget, successful cached
 prefixes and the redirect's applied authorization policy. Counts include each
 physical dispatch, including redirects and the final check. Cache hits and
@@ -191,9 +191,10 @@ Retry-After, redirects and cooldown authentication scopes remain unchanged.
 Injected transports keep their existing isolated cooldown state unless a test
 explicitly shares it. Factory close stops new contexts and waits for existing
 contexts to close after runtime cancellation/drain. It does not treat a cancelled
-Future or a returned business result as resource settlement. This internal
-factory does not register production Run Papers or execute the full ordinary
-metadata-completion workflow; WF06 supplies the collection branches.
+Future or a returned business result as resource settlement. The production
+planner supplies combined Document and purpose-driven API
+branches; this HTTP factory owns independent resources, never registration or a
+generic missing-field workflow.
 
 
 ## Local task cancellation and configuration writes
@@ -208,7 +209,8 @@ Login and Covers continue to require their captured workflow/request identities.
 
 Ordinary settings autosave preserves revision checks and retained drafts. An
 independent Browser owner no longer blocks unrelated patches. Foreground
-Run/WoS/Preprint snapshot writers and conflicting controls return `TASK_ACTIVE`.
+Run/WoS snapshot writers and conflicting controls return `TASK_ACTIVE`.
+Background collection and explicit Preprint permit unrelated ordinary input edits.
 An accepted registry-only access change reserves its affected scope, revokes old
 attempt authority and drains those captured tasks outside configuration locks
 before revalidating and saving; unrelated tasks continue. Saved access changes clean only captured old native
@@ -233,25 +235,50 @@ idempotently releases only that results-page loan. Actual retained-page destruct
 reports bounded exact Page IDs through `access_pages_closed`. Keys are authority
 inputs, never diagnostic fields. See [resource limits and rollback](browser-pages.md).
 
-## Internal WF05 collection boundary
+## Workspace collection and explicit Paper operations
 
-No collection start/retry/download HTTP route or new Paper button is added.
-Internal `WorkspaceRegistry.admit` commits the complete Paper/queued decision;
-`register` rechecks captured lifecycle, attempt and narrow access before dispatch.
-`submit` combines them for application callers. Each branch declares its actual
-Providers; `IndependentClientFactory.open(providers=...)` creates only that owned
-credential/client scope and keeps a fresh cache. The application shares pacing
-with current Run and old manual Preprint without sharing their snapshots/clients.
+`WorkspaceRegistry.admit` commits the complete Paper/queued decision and original
+host epochs before external initialization; `register` uses that captured owner.
+Production Run registers the complete Document/API plan and ends after foreground
+cleanup, without waiting for Paper Futures. Each branch declares actual
+Providers/Service; its thread opens independent connection/client/cache scopes.
+The application shares pacing with Run and explicit Preprint without borrowing
+their snapshots, clients or cancellation signals.
+
+`POST /api/papers/{paper_uuid}/collection/retry` requires CSRF, Workspace UUID,
+strict positive `attempt`, current Paper `revision`, and `token` containing the
+captured metadata/operation/abstract/body generations. The server reconstructs
+the original WriteToken and uses the same `collection_service.check_retry` /
+`retry` qualification as the UI projection. Current revision is rechecked at
+admission. Complete unexcluded metadata, failed/cancelled state, actual cleanup,
+no conflicting operation and available pending dependencies are required.
+Completed/empty, `not_started`, excluded and identity-only records cannot force
+collection. Successful/skipped branches survive; only pending branches execute.
+The result is a safe `{workspace_id, revision, paper}` projection. There is no
+public collection-start/batch-retry/Download route or body/file operation.
+
+Explicit Preprint status uses
+`GET /api/papers/{paper_uuid}/preprint-lookup/state?workspace_id=...&request_id=...`.
+Workspace identity is required; an optional request ID selects the exact request.
+Start and cancel retain CSRF and Workspace/Paper identity, and cancel requires the
+captured request ID. Different Papers are independent. A repeated active start
+returns its existing operation; a new manual click does not queue behind another
+kind of Paper work. After actual cleanup, explicit repeat queries remain allowed
+without changing completed collection facts.
 
 Workspace Paper responses project durable `collection_status` and runtime
 `cleanup_pending`, with library revisions ordering collection and occupancy
-changes. Exclusion persists before precise cancellation; Restore cannot revive
-old work. Existing foreground Run timing/slot and public Preprint algorithm remain.
+changes. The safe `collection` projection adds attempt, branch states, cleanup,
+retry qualification and captured generations; it omits lifecycle/authority,
+transport errors and private PDF facts. Status reads do not supersede newer Paper
+operation responses. Read-only qualification uses the already bound host lifetime;
+a GET never binds or interrupts a later-appearing library. Exclusion persists
+before precise cancellation; Restore cannot revive old work.
 Workspace switching and confirmed Workspace Reset stop and drain the old
 lifecycle before save/deletion, then bind only the actually saved path. Invalid
 drafts, unapproved deletion previews and stale Reset confirmations do not drain
 work. Logs Reset refuses active registry work, including API-only and queued
-attempts; native Reset waits hold no configuration/reset lock. Legacy Preprint
+attempts; native Reset waits hold no configuration/reset lock. Explicit Preprint
 cleanup uncertainty retains Paper occupancy and reports a bounded fault.
 During normal exit, authenticated `invalidate_access` and
 `release_workflow_pages` may still settle captured resources after execution

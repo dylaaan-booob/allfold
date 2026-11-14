@@ -38,7 +38,10 @@ The local origin is `http://127.0.0.1:18767`. An occupied port is an error; clos
 
 Pass an absolute `--config` path. The example expands `$PWD` from the project root before npm runs the Electron package script from `electron/`; a relative configuration argument would otherwise resolve under that directory.
 
-Normal exit stops further dispatch and waits for native operations and Run/Preprint workers to truly settle before closing their owned database connections. Externally killed processes require inspection before restarting.
+Normal exit stops admission and waits for foreground Run, all Workspace branches,
+explicit Preprint and native operations to actually settle before closing owned
+connections and the shared factory/Session. Restart fails interrupted attempts
+without replaying the queue or opening pages.
 
 ## Build resources
 
@@ -144,8 +147,8 @@ See [architecture](architecture.md) before changing ownership and [safety](safet
 
 ### Integrated discovery acceptance
 
-The [Provider guide](providers.md) describes Discovery, creation-time completion,
-the Info preprint lookup and change-scoped acceptance. HTTP fixtures and rendered
+The [Provider guide](providers.md) describes foreground Discovery/identity work,
+Workspace collection, the Info Preprint lookup and change-scoped acceptance. HTTP fixtures and rendered
 Electron tests use synthetic data and isolated configurations. Real Provider
 compatibility and Zotero acceptance require separate verification.
 
@@ -162,16 +165,15 @@ and `test_task_authority.py`. They exercise current-format SQLite storage conten
 rollback, real worker Futures and cleanup barriers, queued/expired work, branch
 idempotence and retry, loopback HTTP with independent clients, common pacing and
 narrow access revocation. Scheduler limits count executing Paper jobs, not native
-WebContents. Internal fixture work does not enable production cross-Run collection
-or public Download/Retry. Existing bounded dispatcher and foreground Run tests
-remain applicable.
+WebContents. WF08 connects this runtime to production and single-Paper Retry;
+public Download remains deferred. Existing bounded dispatcher and foreground Run
+tests remain applicable.
 
-The current registry executes one Paper's branches sequentially within its worker,
-connection and client scope. Tests of API/Document arrival races must instead use
-the same captured attempt with a separate repository connection and client scope
-in each thread. Sharing a `BranchContext`, SQLite connection or `AttemptClients`
-across threads is not supported. Such transaction-level race evidence does not
-enable production same-Paper branch concurrency; that orchestration belongs to WF08.
+The registry runs same-Paper branches on a separate bounded leaf scheduler.
+Each branch constructs its own `BranchContext`, repository connection and client/
+cache scope in its execution thread; sharing them across threads is unsupported.
+Parent scheduling and physical Browser quotas remain separate. Explicit Events,
+actual Futures and client/native cleanup barriers verify overlap and settlement.
 
 WF07 component checks add actual normalizer/records/Run and necessary-query
 source-fact persistence, disk reopen, independent
@@ -207,7 +209,8 @@ not claim address pinning or DNS validation by the native static URL gate.
 WF06 adds `test_necessary_metadata.py` for purpose-driven requests through actual
 registry branches, controlled Provider transports/parsers, immutable capability
 handoff, full batch/pagination draining, partial results and complete native
-first-version proof. The existing Run/Completion/public Preprint tests remain.
+first-version proof. Run identity/registration and public Preprint regressions remain;
+the retired ordinary Completion driver and its exclusive fixtures are removed.
 `document-extraction.test.cjs` uses production Main dispatch, BrowserRuntime,
 DocumentRuntime and its isolated preload in Electron 45 with local HTTP and a
 temporary profile. It covers the complete fixed Date/Abstract algorithms,
@@ -218,29 +221,41 @@ through `tests/document_metadata_pipeline.py`: captured API/DOM task services,
 independent SQLite connection/client races, disk reopen and the actual Workspace
 HTTP projection feed the built Reader. It checks structured text, exact copied
 selection, incremental date refresh and retained reading position. This is
-isolated component evidence; production Run and same-Paper branch orchestration
-are not switched by the fixture.
+isolated native/component evidence. Production Run and same-Paper orchestration
+are additionally exercised through the real HTTP planner/registry path below.
 
 In a separate worktree, ensure Python imports resolve to that worktree's `src`
 before relying on test evidence. A shared editable environment can still point
 at another checkout; use an isolated environment or explicit `PYTHONPATH=src`.
 
 `test_workspace_tasks.py` exercises the actual application host, HTTP projection,
-legacy query reaper, signal/join/factory shutdown order, selective credential and
+bounded manual reservations, signal/join/factory shutdown order, selective credential and
 Service invalidation, accepted switch/Reset, partial save and same-path rebind,
 refusal before drain and Logs protection with real disposable libraries. The
 `page-resources` Electron fixture separately verifies parallel same-Service
-physical work pages; it does not enable production collection.
+physical work pages; it remains a native resource seam rather than a real-site test.
 
 `tests/test_two_stage_run.py` uses controlled Events/Futures to prove overlapping
 PubMed/WoS/OpenAlex producers, Work lookup before producer completion, deduplication
-and tail drain, fixed helper roles, unknown-only completion, relation-only date
+and tail drain, fixed helper roles, unknown-only identity lookup, relation-only date
 folding, formal/preprint identity isolation, physical request counts, failure
 isolation, global dispatch revocation, native-disconnect settlement and parent
 shutdown/join. `tests/test_incremental_discovery.py` retains parent slot/partial
 export checks, verified-batch refusal for count/path/duplicate-UT failures,
 late conflict quarantine, >200 unordered Work IDs, whole-author full-detail
 fallback and ambiguous-owner isolation. `electron/tests/task-presentation.test.cjs` covers unified browser-stage recovery and parent cancellation without opening native windows. History keeps sanitized source totals and WoS batch/journal/date hint counts; actual Custom controls and downloaded exports remain a separately authorized live acceptance boundary.
+
+`test_collection_planner.py` runs actual `create_app` HTTP Run admission through
+the production planner, registry, controlled Provider/native transports and real
+SQLite. With Document and API responses blocked, base Papers remain readable and
+foreground Run finishes; later API-only and WoS Runs execute, and cancelling B
+leaves A running. It also covers complete/partial capability handoff, First public
+coverage, retained UUID/aliases and pending-only retry dependencies.
+`test_collection_http.py` covers the shared HTTP/UI Retry qualification, original
+Workspace/token/attempt/revision, occupied/finished refusal and safe projections.
+Rendered fixtures exercise incremental fields/state, unsaved and in-flight edits,
+scroll/selection/filter retention and per-Paper manual queries. Their local
+temporary-profile results are distinct from actual institution/publisher acceptance.
 
 ## One-time retired scope cleanup
 

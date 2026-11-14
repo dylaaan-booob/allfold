@@ -26,8 +26,10 @@ settlement cannot change that result.
 
 ## Metadata results
 
-The single-Paper Preprint lookup reports completion, no match, failure and
-cancellation in ARRAY Info. Run metadata completion stays part of the parent Run.
+Explicit Preprint reports completion, no match, failure and cancellation per
+Workspace/Paper/request in ARRAY Info. Collection reports its own persisted
+attempt/branch state and runtime cleanup. Neither occupies the foreground Run
+slot or changes a settled parent result.
 Run results, statistics and links reference repository-returned Paper UUIDs.
 Last Run remains an independent execution summary. Last Import and its Item/PDF/
 Fallback, keys and attachment verification projection are retired.
@@ -166,18 +168,19 @@ publisher and actual-PDF acceptance; those require explicit manual validation.
 Integrated Run retains one parent History/result and latest snapshot. Discovery
 `provider_runs`/`run_sources` contain only selected PubMed, WoS and OpenAlex sources;
 automatic helpers do not become extra Discovery sources. Separate allowlisted
-`discovery_status` and `completion_status` report complete, empty, partial, failed
-or cancelled phases. Completion failure preserves discovered facts and reports
-partial coverage instead of claiming all dates were completed.
+`discovery_status` reports complete, empty, partial, failed or cancelled retrieval.
+Run ends after necessary identities, base admission, full-plan registration and
+foreground cleanup; it does not claim that Paper collection has completed.
 
 Numeric Run statistics distinguish `integrated_candidates` (source hits),
 `integrated_deduplicated` (final roots), `work_location_targets` (unique DOI queue
-inputs), `completion_targets` (unknown safe roots), `completion_requests` (physical
-HTTP dispatches during identity resolution and metadata completion, including pages and final retries),
-`completion_date_facts_added`, DOI-to-PMID outcomes, First public outcomes and
-actual Paper creates. PMID outcomes separate verified matches, no match,
+inputs), `identity_targets`, `identity_requests` (foreground physical identity
+dispatches), `collection_admitted`, `collection_reused`,
+`collection_registration_failed`, `excluded_papers`, `rebuilt_papers` and actual
+Paper creates/matches. PMID outcomes separate verified matches, no match,
 identity conflicts, failure and cancellation.
-First public coverage distinguishes recorded, no association, unresolved, conflict, failure and cancellation.
+Background increments, first-public proof and failures belong to each Paper and
+its bounded diagnostics, not a late rewrite of Run totals or finish time.
 Cached evidence/per-Paper lookup projections do not increment physical requests.
 Source created/existing counts overlap and must not be summed as global Paper
 counts. No request URL, response body, API key, relation identifier or arbitrary
