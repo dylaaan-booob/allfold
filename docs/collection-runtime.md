@@ -76,6 +76,24 @@ page releases must actually settle before the parent can release Paper occupancy
 Cleanup or terminal-write uncertainty records a fault and retains conservative
 occupancy. Cancellation flags and a returning callback do not prove cleanup.
 
+Public explicit Preprint queries use this same bounded Paper scheduler and an
+independent reservation per Workspace/Paper/request. They declare only bioRxiv
+and medRxiv, use the shared application factory and pacing, and open their own
+client scope and SQLite connection in the worker. They do not hold a foreground
+Run slot or a Run input snapshot. The exact reservation guards every request and
+commit using its original Paper token; a local Abstract edit cannot invalidate
+independent Preprint proof. Repeated clicks during activity/cleanup return that
+same request; a new explicit query after settlement is allowed even when the
+collection completed empty. Manual results never change collection facts.
+
+Preprint status requires the current Workspace UUID and may select an exact
+request ID. Unknown requests are Idle, and another Workspace is refused. Reader
+navigation only changes presentation. Cancellation and Reject capture the exact
+reservation, so a delayed old action cannot cancel a replacement. The reservation
+Future settles only after the actual scheduled worker, client scope, repository
+and Browser owner have closed; the host drains it for matching Provider epochs
+or whole-Workspace maintenance. Ordinary Run input edits remain available.
+
 ## Manual reservations and maintenance
 
 A first complete plan for a `not_started` Paper may wait behind its already

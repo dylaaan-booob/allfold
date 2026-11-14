@@ -102,6 +102,7 @@ def test_pacing_survives_run_and_manual_preprint_clients_and_new_attempts(tmp_pa
     factory.close()
     assert run_integrated(config, **options).facts.created_papers == 0
     assert [now for _, now in calls] == [100, 101, 102, 103, 104]
+    lookup.shutdown(); lookup.join()
 
 
 def test_factory_shutdown_waits_until_in_flight_response_and_worker_clients_settle(tmp_path, monkeypatch):
