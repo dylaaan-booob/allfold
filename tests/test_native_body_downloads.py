@@ -57,7 +57,8 @@ def test_native_unavailable_ends_without_creating_output_or_native_task(tmp_path
         host.shutdown();host.join()
 
 
-def test_skipped_native_allows_later_legal_stream_without_failure_provenance(tmp_path):
+@pytest.mark.parametrize('stream_result',['pdf','failed'])
+def test_skipped_native_keeps_later_stream_and_accurate_terminal_provenance(tmp_path,stream_result):
     from allfold.application.body_downloads import submit_body_download
     from test_body_downloads import application_host
     host,workspace,paper,bridge,original=application_host(tmp_path)
@@ -69,11 +70,17 @@ def test_skipped_native_allows_later_legal_stream_without_failure_provenance(tmp
         assert bridge.started.wait(2)
         assert [action for action,_ in bridge.calls]==['stream_paper_body']
         assert bridge.calls[0][1]['url']==stream.url
-        bridge.finish()
+        bridge.finish(stream_result)
         result=task.future.result(2)
-        assert result.status=='completed'
-        assert result.paper.body.pdf_source=='P5' and result.paper.body.fallback_used is False
-        assert (workspace/result.paper.body.relative_path).read_bytes()==b'body'
+        if stream_result=='pdf':
+            assert result.status=='completed'
+            assert result.paper.body.pdf_source=='P5' and result.paper.body.fallback_used is False
+            assert (workspace/result.paper.body.relative_path).read_bytes()==b'body'
+        else:
+            assert result.status=='failed' and result.candidate_result.diagnostic=='native-unsupported'
+            with PaperRepository.open(workspace) as repo:
+                saved=repo.get(paper.id)
+                assert saved.body is None and saved.download.reason=='native-unsupported'
     finally:
         if hasattr(bridge,'result') and not bridge.result.done():bridge.result.set_result(dict(kind='cancelled',outcome='cancelled'))
         host.shutdown();host.join()

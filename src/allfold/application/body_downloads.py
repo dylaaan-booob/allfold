@@ -317,6 +317,9 @@ def _run(reservation, request, progress):
                         result = BodyResult('completed', saved, CandidateResult.pdf(transfer_complete=True))
                     elif discovery.status in {'cancelled', 'stale', 'expired', 'local-failure'}:
                         result = BodyResult(discovery.status.replace('-', '_'), candidate_result=result.candidate_result)
+                    elif discovery.status == 'exhausted' and any(reason == 'native-unsupported'
+                            for _, _, reason in discovery.diagnostics):
+                        result = BodyResult('failed', candidate_result=CandidateResult('skipped', diagnostic='native-unsupported'))
                     elif result.status == 'skipped':
                         result = BodyResult('failed', candidate_result=result.candidate_result)
             except _BodyAccessBlocked:
