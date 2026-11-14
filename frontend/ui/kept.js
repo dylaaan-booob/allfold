@@ -183,6 +183,12 @@ function openPaper(id) {
 }
 window.workspaceArray={
   workflowBusy,navigationBusy,openPaper,readerEntries:orderedEntries,
+  followClassification(next,id){
+    if(!Object.hasOwn(states,next))return;
+    saveScroll();const previous=ui;
+    status=next;ui=states[status];
+    Object.assign(ui,{selected:id,reader:true,bodyPaper:id,bodyScroll:previous.bodyScroll,missingLinkPaper:false});
+  },
   leave(){closeReader();bridge.suspend();layoutHost.closeFlyout({restoreFocus:false});},
   enter(){queueArchivePreference();render();$('array-content').focus({preventScroll:true});},
 };

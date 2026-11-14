@@ -413,6 +413,8 @@ class WorkspaceRegistry:
     def _guard(self, handle, repository=None):
         try:
             handle.authority.verify()
+            if getattr(handle, 'pdf_provider_authority', None) is not None:
+                handle.pdf_provider_authority.verify()
         except Exception as error:
             raise StaleWriteError('Captured access authority was revoked') from error
         with self._gate:
@@ -437,6 +439,9 @@ class WorkspaceRegistry:
         deferred = self._tasks.get(handle.paper_id)
         waiting = deferred is not None and deferred.waiting_on is handle
         if handle.kind == 'body':
+            direct = getattr(handle.body_request, 'direct', ())
+            if direct and direct != tuple((identity.namespace, identity.value) for identity in paper.identities):
+                raise StaleWriteError('Original Paper identity closure changed')
             return repository.require_download(handle.download_token)
         if (handle.kind == 'download' and paper.token != handle.token
                 or paper.metadata_generation != handle.token.metadata_generation
@@ -643,6 +648,10 @@ class WorkspaceRegistry:
                 if kind == 'body':
                     if paper.primary_identity != body_request.primary:
                         raise StaleWriteError('Captured primary Paper identity changed')
+                    if (paper.download.token.attempt if paper.download else 0) != body_request.prior_attempt:
+                        raise StaleWriteError('Captured Download attempt changed')
+                    if getattr(body_request, 'direct', ()) != tuple((identity.namespace, identity.value) for identity in paper.identities):
+                        raise StaleWriteError('Captured Paper identity closure changed')
                     if paper.download is not None and paper.download.output is not None:
                         from allfold.persistence.body_files import ManagedBodyFiles
                         with ManagedBodyFiles(self.workspace, paper.id, paper.download.token.attempt,

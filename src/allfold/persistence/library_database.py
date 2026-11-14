@@ -11,7 +11,7 @@ from uuid import UUID, uuid4
 
 
 DATABASE_NAME = "papers.sqlite"
-SCHEMA_VERSION = 4
+SCHEMA_VERSION = 5
 APPLICATION_ID = 0x41464C44  # AFLD; unrelated to configuration-level UserState.
 
 
@@ -107,7 +107,14 @@ DOWNLOAD_SCHEMA = (
         reason TEXT CHECK (reason IS NULL OR length(reason) <= 240),
         output TEXT CHECK (output IS NULL OR json_valid(output)))""",
 )
-SCHEMA = V3_SCHEMA + DOWNLOAD_SCHEMA
+V4_SCHEMA = V3_SCHEMA + DOWNLOAD_SCHEMA
+BODY_SOURCE_SCHEMA = (
+    """CREATE TABLE paper_body_source (
+        paper_id TEXT PRIMARY KEY NOT NULL REFERENCES paper_body(paper_id) ON DELETE CASCADE,
+        pdf_source TEXT NOT NULL CHECK (pdf_source IN ('P1', 'P2', 'P3', 'P4', 'P5')),
+        fallback_used INTEGER NOT NULL CHECK (fallback_used IN (0, 1)))""",
+)
+SCHEMA = V4_SCHEMA + BODY_SOURCE_SCHEMA
 
 
 def _schema_definitions(connection):
@@ -197,14 +204,14 @@ class LibraryDatabase:
         if connection.execute("PRAGMA application_id").fetchone()[0] != APPLICATION_ID:
             raise LibraryCorruptError("Not an Allfold Paper library")
         version = connection.execute("PRAGMA user_version").fetchone()[0]
-        if version == 3:
+        if version in {3, 4}:
             # Only the exact formerly-current structure is eligible. The owning
             # BEGIN IMMEDIATE includes validation, DDL and version update.
-            if _schema_definitions(connection) != _expected_schema(V3_SCHEMA):
+            if _schema_definitions(connection) != _expected_schema(V3_SCHEMA if version == 3 else V4_SCHEMA):
                 raise LibraryCorruptError("Library schema does not match its recorded version")
             if connection.execute("PRAGMA quick_check").fetchone()[0] != "ok" or connection.execute("PRAGMA foreign_key_check").fetchone():
                 raise LibraryCorruptError("Library integrity check failed")
-            for statement in DOWNLOAD_SCHEMA:
+            for statement in (*(DOWNLOAD_SCHEMA if version == 3 else ()), *BODY_SOURCE_SCHEMA):
                 connection.execute(statement)
             connection.execute(f"PRAGMA user_version = {SCHEMA_VERSION}")
             version = SCHEMA_VERSION

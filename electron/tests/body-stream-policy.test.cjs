@@ -7,3 +7,13 @@ test('Session stream preserves exact public DNS boundaries and global exceptions
   for(const address of ['127.0.0.1','10.0.0.1','100.64.0.1','198.51.100.1','203.0.113.1','100::1',
     '2001::1','2001:10::1','2001:db8::1','fe80::1','fd00::1','::ffff:127.0.0.1'])assert.equal(publicAddress(address),false,address);
 });
+
+test('publisher API secrets are fixed scoped headers, never arbitrary injection',()=>{
+  const {credentialHeaders}=require('../src/workflows/body-stream.cjs');
+  assert.deepEqual(credentialHeaders({kind:'elsevier',value:'fixture'},'https://api.elsevier.com/content/article/doi/10.5555/x'),{'X-ELS-APIKey':'fixture'});
+  for(const url of ['https://attacker.example/content/article/x','http://api.elsevier.com/content/article/x',
+    'https://api.elsevier.com/elsewhere','https://api.elsevier.com:444/content/article/x'])
+    assert.throws(()=>credentialHeaders({kind:'elsevier',value:'fixture'},url));
+  assert.throws(()=>credentialHeaders({kind:'cookie',value:'fixture'},'https://api.elsevier.com/content/article/x'));
+  assert.throws(()=>credentialHeaders({kind:'elsevier',value:'a\r\nb'},'https://api.elsevier.com/content/article/x'));
+});

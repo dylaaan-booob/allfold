@@ -1238,8 +1238,45 @@ function renderReadingControls() {
     collection?.cleaning_up?'正在清理 Paper 资源…':collectionLabels[collection?.status] || '';
   $('paper-collection-retry').hidden=paper.excluded || !['failed','cancelled'].includes(collection?.status);
   $('paper-collection-retry').disabled=busy || !collection?.retry_available;
+  renderBodyControls(paper);
   fillAbstractPlaceholder();
 }
+const bodyRequests=new Set();
+function renderBodyControls(paper) {
+  const download=paper.download;
+  $('paper-body-actions').hidden=!download || (!paper.body_present && (!paper.metadata_present || paper.excluded));
+  const active=download?.active===true;
+  $('paper-download').hidden=active && !paper.body_present;
+  $('paper-download').textContent=paper.body_present?'打开 PDF':'Download';
+  $('paper-download').disabled=bodyRequests.has(paper.id) || (!paper.body_present && !download?.available);
+  $('paper-download-cancel').hidden=!active;
+  $('paper-download-cancel').disabled=bodyRequests.has(paper.id) || !download?.cancel_available;
+  const bytes=value=>value>=1048576?(value/1048576).toFixed(1)+' MB':value>=1024?Math.round(value/1024)+' KB':value+' B';
+  let text='';
+  if(active){
+    text=download.cleaning_up?'正在清理下载资源…':download.status==='queued'?'等待下载':'正在下载';
+    if(download.received_bytes>0)text+=' · '+bytes(download.received_bytes)+(download.total_bytes?' / '+bytes(download.total_bytes):'');
+  }else if(!paper.body_present && ['failed','cancelled'].includes(download?.status))text=download.status==='cancelled'?'下载已取消':'下载未完成';
+  $('paper-download-status').textContent=text;
+  $('paper-download-status').hidden=!text;
+}
+async function bodyAction(action) {
+  const paper=currentPaper();if(!paper || bodyRequests.has(paper.id))return;
+  const workspace=uiNext.libraryIdentity,epoch=uiNext.workspaceEpoch,id=paper.id;
+  const qualification=action==='cancel'?{task_id:paper.download.task_id,attempt:paper.download.attempt}:
+    {qualification:structuredClone(paper.download.qualification)};
+  bodyRequests.add(id);renderBodyControls(paper);
+  try {
+    const result=await uiNext.request(`/api/papers/${id}/body/${action}`,{workspace_id:workspace,...qualification});
+    await applyPaperResponse(result);
+  }catch(error){if(epoch===uiNext.workspaceEpoch && !error.stale)uiNext.notice(error.message);}
+  finally {
+    bodyRequests.delete(id);
+    if(epoch===uiNext.workspaceEpoch){renderReadingControls();scheduleCollectionPoll();}
+  }
+}
+$('paper-download').addEventListener('click',()=>void bodyAction('download'));
+$('paper-download-cancel').addEventListener('click',()=>void bodyAction('cancel'));
 $('paper-collection-retry').addEventListener('click',async()=>{
   const paper=currentPaper();
   if(!paper || $('paper-collection-retry').disabled)return;
@@ -1599,7 +1636,8 @@ function snapshotStructure(data) {
 let appliedStructure=null, collectionTimer=null;
 function scheduleCollectionPoll(){
   clearTimeout(collectionTimer);
-  const working=[...paperObjects().values()].some(paper=>['queued','running'].includes(paper.collection_status) || paper.cleanup_pending);
+  const working=[...paperObjects().values()].some(paper=>['queued','running'].includes(paper.collection_status) ||
+    paper.download?.active || ['queued','running'].includes(paper.download?.status) || paper.cleanup_pending);
   if(working)collectionTimer=setTimeout(async()=>{
     try{await refreshWorkspace(undefined,{background:true});}catch(error){if(!error.stale)collectionTimer=setTimeout(scheduleCollectionPoll,1500);}
   },900);
@@ -1644,6 +1682,12 @@ async function applySnapshot(data,selection=window.inboxRun?.selection(),coverVe
   document.querySelector('.collection').hidden=!shelves.length;
   $('empty-inbox').hidden=shelves.length>0;
   if(readerContext){
+    const moved=[...data.downloaded.papers,...data.trash.papers].find(entry=>entry.paper.id===selected);
+    if(moved && moved.paper.status!==readerContext.status){
+      readerContext.status=moved.paper.status;
+      window.workspaceArray.followClassification(moved.paper.status,selected);
+      $('array-kept-infos').append(paperMetadata);
+    }
     const current=readerContext.status==='candidates'?candidateEntries():readerContext.status==='trash'?[...trashPapers.values()]:[...downloadedPapers.values()];
     const entries=window.workspaceArray.readerEntries(current,data.downloaded.journals);
     if(entries.some(entry=>entry.paper.id===selected))readerContext.entries=entries;

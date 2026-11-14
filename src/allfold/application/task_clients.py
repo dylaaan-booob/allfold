@@ -117,8 +117,6 @@ class IndependentClientFactory:
             self._active += 1
         try:
             request_guard()
-            key = read_credential(self.config_path, provider='openalex')[0]
-            request_guard()
             options = dict(http_options or {})
             # These capabilities belong to the PDF reader, not ProviderReadClient.
             pdf_options = {name: options.pop(name) for name in ('resolver', 'credentials', 'max_redirects')
@@ -126,9 +124,19 @@ class IndependentClientFactory:
             with ExitStack() as resources:
                 http = resources.enter_context(PdfHttpClient(guard=request_guard, cancel_event=cancel_event,
                     deadline=deadline, pacing_state=self.pacing_state, **pdf_options, **options))
-                openalex = resources.enter_context(OpenAlexClient(api_key=key, guard=request_guard,
-                    cancel_event=cancel_event, deadline=deadline, pacing_state=self.pacing_state,
-                    request_url_guard=http.openalex_request_guard, **options))
+                factory = self
+                class LazyOpenAlex:
+                    client = None
+                    def get_work_by_doi(self, doi):
+                        request_guard()
+                        if self.client is None:
+                            key = read_credential(factory.config_path, provider='openalex')[0]
+                            request_guard()
+                            self.client = resources.enter_context(OpenAlexClient(api_key=key, guard=request_guard,
+                                cancel_event=cancel_event, deadline=deadline, pacing_state=factory.pacing_state,
+                                request_url_guard=http.openalex_request_guard, **options))
+                        return self.client.get_work_by_doi(doi)
+                openalex = LazyOpenAlex()
                 yield http, openalex
         finally:
             with self._condition:
