@@ -240,6 +240,7 @@ class OutputOwnership(DomainModel):
     workspace: tuple[int, int]
     documents: tuple[int, int]
     staging: tuple[int, int]
+    disposal: tuple[int, int]
     file: tuple[int, int]
 
     @field_validator("temporary", "target")

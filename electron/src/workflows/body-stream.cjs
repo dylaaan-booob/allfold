@@ -2,6 +2,7 @@
 // Only authenticated application dispatch can supply this attempt capability.
 // PDF bytes remain in Main: Web stream -> Node pipeline -> verified file fd.
 const fs=require('node:fs'),path=require('node:path'),dns=require('node:dns/promises');
+const {BlockList,isIP}=require('node:net');
 const {Readable,Transform}=require('node:stream');
 const {pipeline}=require('node:stream/promises');
 const {publicClueURL}=require('../browser/pdf-clues.cjs');
@@ -37,7 +38,8 @@ function openOutput(root,output) {
   const filename=path.join(root,output.temporary);
   const prior=fs.lstatSync(filename);
   if(!prior.isFile()||prior.nlink!==1||!same(prior,output.file)||prior.size!==0)throw failure('output-object');
-  const fd=fs.openSync(filename,fs.constants.O_WRONLY|fs.constants.O_NOFOLLOW|fs.constants.O_NONBLOCK);
+  // Darwin O_NOFOLLOW_ANY (sys/fcntl.h): refuse symlinks in every component.
+  const fd=fs.openSync(filename,fs.constants.O_WRONLY|fs.constants.O_NOFOLLOW|fs.constants.O_NONBLOCK|(process.platform==='darwin'?0x20000000:0));
   try {
     const actual=fs.fstatSync(fd);
     if(!actual.isFile()||actual.nlink!==1||actual.size!==0||!same(actual,output.file))throw failure('output-object');
@@ -45,12 +47,21 @@ function openOutput(root,output) {
     return fd;
   }catch(error){fs.closeSync(fd);throw error;}
 }
+// Exact special-purpose ranges matching the pinned Python ipaddress.is_global
+// policy used by PdfHttpClient. BlockList also handles IPv4-mapped IPv6 forms.
+const nonGlobal=new BlockList(),globalExceptions=new BlockList();
+for(const [address,prefix] of [['0.0.0.0',8],['10.0.0.0',8],['100.64.0.0',10],['127.0.0.0',8],
+  ['169.254.0.0',16],['172.16.0.0',12],['192.0.0.0',24],['192.0.2.0',24],['192.168.0.0',16],
+  ['198.18.0.0',15],['198.51.100.0',24],['203.0.113.0',24],['240.0.0.0',4]])nonGlobal.addSubnet(address,prefix,'ipv4');
+for(const address of ['192.0.0.9','192.0.0.10'])globalExceptions.addAddress(address,'ipv4');
+for(const [address,prefix] of [['::',128],['::1',128],['64:ff9b:1::',48],['100::',64],['2001::',23],
+  ['2001:db8::',32],['2002::',16],['3fff::',20],['fc00::',7],['fe80::',10]])nonGlobal.addSubnet(address,prefix,'ipv6');
+for(const [address,prefix] of [['2001:1::1',128],['2001:1::2',128],['2001:3::',32],['2001:4:112::',48],
+  ['2001:20::',28],['2001:30::',28]])globalExceptions.addSubnet(address,prefix,'ipv6');
 function publicAddress(address) {
-  // Match the discovery transport's refusal of private/reserved DNS answers.
-  if(address.includes(':'))return !/^(?:::|fc|fd|fe[89ab]|ff|2001:db8)/i.test(address);
-  const octets=address.split('.').map(Number),[a,b]=octets;
-  return octets.length===4&&!(a===0||a===10||a===127||a>=224||a===169&&b===254||a===172&&b>=16&&b<=31
-    ||a===192&&(b===168||b===0)||a===100&&b>=64&&b<=127||a===198&&(b===18||b===19||b===51)||a===203&&b===0);
+  const version=isIP(address);if(!version)return false;
+  const family=version===4?'ipv4':'ipv6';
+  return globalExceptions.check(address,family)||!nonGlobal.check(address,family);
 }
 async function target(url,resolver=dns.lookup) {
   if(!publicClueURL(url))throw Error('unsafe-target');
@@ -146,4 +157,4 @@ async function executeBodyStream(browser,data,{signal,progress=()=>{}}={}) {
     }catch(_){return {outcome:'local_failure',kind:'local_failure',diagnostic_code:'resource-close',resource_closed:false};}
   }
 }
-module.exports={executeBodyStream,openOutput};
+module.exports={executeBodyStream,openOutput,publicAddress};

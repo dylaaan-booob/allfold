@@ -36,6 +36,9 @@ def complete_attempt(reservation, repository, files, output, *, source_url=None)
     registry._guard(reservation, repository)
     with registry.paper_gate():
         registry._require_live(reservation)
+        # Short inode qualification at the final boundary, independent of PDF
+        # content/length validation and after any publication interleaving.
+        size_bytes = files.verify_published(output)
         return repository.complete_download(reservation.download_token, size_bytes=size_bytes, source_url=source_url)
 
 

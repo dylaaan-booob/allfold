@@ -61,13 +61,20 @@ New bodies use `Documents/<paper UUID>.pdf`, staged on the same filesystem at
 without following links. Python uses pinned directory descriptors for exclusive
 creation, link/unlink publication and removal. Private SQLite output facts record
 Workspace/Documents/staging device/inode identities plus the actually created
-regular inode; planned names alone confer no authority. Main opens without truncate
+regular inode and a private disposal-directory identity; planned names alone confer no authority. Main opens without truncate
 or following the final link and verifies both descriptor inode and live directories
 before any write. Publication uses atomic no-clobber link, never exists-then-replace.
+Removal first atomically moves the addressed entry without clobbering into the
+service-private `.downloads/.cleanup` directory, verifies the moved inode, then
+unlinks it. A concurrently substituted entry is restored without overwriting; it
+is never deleted. A recorded inode stranded in the deterministic disposal slot is
+handled on explicit retry. macOS uses standard-library ctypes with native
+`renameatx_np(RENAME_EXCL)`; no helper executable/dependency is required.
 Conflicts and replacements preserve unknown files and never choose numbered names.
 
 `complete_attempt` is shared completion service for a closed qualified transport:
-recheck original authority, publish the owned output, recheck, then use a short
+recheck original authority, publish the owned output, recheck authority and final
+inode at the completion boundary, then use a short
 `complete_download` transaction to atomically add the unique body, completed state,
 byte count, origin-only source projection and revision. Network and publication are
 outside SQLite transactions. Candidate becomes Downloaded only after this commit.
@@ -104,7 +111,9 @@ conflicts, directory and object replacement, Reject order, unlink/DB/submission
 faults, interruption subprocesses, v3 rollback and reservation exclusion.
 `body-stream.test.cjs` composes the real application service, production Bridge/Main
 dispatch, Electron 45 Session, local HTTP, files, SQLite and Workspace projection.
-Its isolated DNS routing and synthetic Cookie establish mechanism evidence only.
+Its saved Service/manual-confirmation authority, controlled slow writer/backpressure
+and held-close barrier, normal application drain, isolated DNS routing and synthetic
+Cookie establish mechanism evidence only.
 Real institutions, publisher/CDN/proxy access, manual challenges and installed app
 acceptance require separate authorization. Existing native original-response,
 WoS, Cloudflare and page-lifetime regressions remain separate evidence.

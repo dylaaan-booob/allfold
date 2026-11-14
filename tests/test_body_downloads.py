@@ -272,3 +272,47 @@ def test_existing_body_requires_no_new_access_capture_or_native_connection(tmp_p
         result=submit_body_download(host,saved,candidates=(candidate,),service_id='no-longer-present')
         assert result.status=='completed' and result.paper.body==saved.body and bridge.calls==[]
     finally:host.shutdown();host.join()
+
+
+def test_cleanup_quarantines_and_restores_replacement_between_check_and_removal(tmp_path,monkeypatch):
+    import allfold.persistence.body_files as bf
+    with PaperRepository.create(tmp_path) as repo:
+        paper=make_paper(repo);token=repo.begin_download(paper.token,lifecycle_id=uuid4())
+        with ManagedBodyFiles(tmp_path,paper.id,token.attempt) as files:
+            proof=files.prepare();repo.record_download_output(token,proof)
+            temporary=tmp_path/proof.temporary;temporary.write_bytes(b'owned')
+            moved=temporary.with_suffix('.old');original=bf._move_exclusive;swapped=False
+            def race(source,destination,source_directory,destination_directory):
+                nonlocal swapped
+                if not swapped:
+                    swapped=True;temporary.rename(moved);temporary.write_bytes(b'unrelated')
+                return original(source,destination,source_directory,destination_directory)
+            with monkeypatch.context() as patch:
+                patch.setattr(bf,'_move_exclusive',race)
+                with pytest.raises(bf.UnsafeLibraryPath):files.cleanup(proof)
+            assert moved.read_bytes()==b'owned' and temporary.read_bytes()==b'unrelated'
+
+
+def test_final_inode_replacement_cannot_be_completed_or_removed(tmp_path,monkeypatch):
+    from allfold.application.body_downloads import submit_body_download
+    host,workspace,paper,bridge,candidate=application_host(tmp_path)
+    original=ManagedBodyFiles.publish
+    try:
+        task=submit_body_download(host,paper,candidates=(candidate,))
+        assert bridge.started.wait(2)
+        def replaced(files,proof):
+            size=original(files,proof)
+            path=workspace/proof.target
+            path.rename(path.with_suffix('.owned'))
+            path.write_bytes(b'unrelated replacement')
+            return size
+        with monkeypatch.context() as patch:
+            patch.setattr(ManagedBodyFiles,'publish',replaced)
+            bridge.finish()
+            assert task.future.result(3).status=='local_failure'
+        with PaperRepository.open(workspace) as repo:
+            saved=repo.get(paper.id)
+            assert saved.body is None and saved.download.status=='failed'
+        assert (workspace/f'Documents/{paper.id}.pdf').read_bytes()==b'unrelated replacement'
+        assert not host.active
+    finally:host.shutdown();host.join()

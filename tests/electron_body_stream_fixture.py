@@ -37,7 +37,7 @@ class Socket:
 
 async def main():
     root, origin = Path(sys.argv[1]), sys.argv[2]
-    config, *_ = current_mapping_document(root)
+    config, _, _, service = current_mapping_document(root)
     workspace = root / 'workspace'
     workspace.mkdir()
     with PaperRepository.create(workspace):
@@ -47,19 +47,34 @@ async def main():
     application = create_app(config, electron_bridge=bridge, diagnostics_root=root / 'logs')
     receiver = asyncio.create_task(bridge.connect(socket))
     await socket.ready.wait()
+    # Real saved Service authority, using the established manual-confirmation policy.
+    from dataclasses import replace
+    from allfold.persistence.user_state import load_user_state, compare_write_user_state
+    from allfold.application.browser_services import BrowserServiceSnapshot
+    saved=load_user_state(config)
+    service=service.model_copy(update={'access_method':'manual'})
+    compare_write_user_state(config,replace(saved.state,access_services=(service,)),saved.revision)
+    login=application.state.login
+    login.start(config)
+    await asyncio.to_thread(login.join)
+    access=BrowserServiceSnapshot.read(config)
+    login.confirm_all(access,login.snapshot(access)['confirmation_workflow_id'])
     host = application.state.workspace_tasks
     client = httpx.AsyncClient(transport=httpx.ASGITransport(app=application), base_url='http://localhost')
     try:
-        for index, path in enumerate(['redirect?Signature=A%2FB', 'encoded', 'chunked', 'html.pdf', 'unknown', 'truncated', 'cancel', 'expiry', 'cross', 'challenge', 'disk-write', 'disk-flush']):
+        for index, path in enumerate(['redirect?Signature=A%2FB', 'encoded', 'chunked', 'html.pdf', 'unknown', 'truncated', 'cancel', 'expiry', 'cross', 'challenge', 'disk-write', 'disk-flush', 'slow-writer']):
             with PaperRepository.open(workspace) as repo:
                 paper = repo.create_or_match(repo.workspace_id, direct_ids=ExternalIds(doi=f'10.5555/body{index}'),
                     metadata=PaperMetadata(title='Same title')).paper
             target = PdfTarget(str(paper.id), doi=f'10.5555/body{index}', direct_identities=tuple((i.namespace,i.value) for i in paper.identities))
             candidate = PdfCandidate(target, 'P1', 'GENERIC', 'generic', origin+'/'+path, referer=origin+'/article')
-            received = threading.Event()
-            task = await asyncio.to_thread(submit_body_download, host, paper, candidates=(candidate,),
+            received, closing = threading.Event(), threading.Event()
+            def progress(value):
+                if value.get('received_bytes',0)>0:received.set()
+                if value.get('fixture_close_pending'):closing.set()
+            task = await asyncio.to_thread(submit_body_download, host, paper, candidates=(candidate,), service_id=service.id,
                 deadline=__import__('time').monotonic() + (.3 if path=='expiry' else 8),
-                progress=lambda value: received.set() if value.get('received_bytes',0)>0 else None)
+                progress=progress)
             if path in {'redirect?Signature=A%2FB','cancel','expiry'}:
                 assert await asyncio.to_thread(received.wait, 3)
                 # Observe bytes on disk while the real server is still streaming.
@@ -70,7 +85,7 @@ async def main():
                 assert any(item.stat().st_size>0 for item in parts) and not task.future.done()
                 before = (await client.get('/api/ui-next/workspace')).json()
                 assert 'Downloaded' not in str(before.get('downloaded',[]))
-                duplicate = await asyncio.to_thread(submit_body_download, host, paper, candidates=(candidate,))
+                duplicate = await asyncio.to_thread(submit_body_download, host, paper, candidates=(candidate,), service_id=service.id)
                 assert duplicate is task
                 if path=='redirect?Signature=A%2FB':
                     with PaperRepository.open(workspace) as repo:
@@ -80,13 +95,18 @@ async def main():
                     assert admitted.id == paper.id and admitted.collection is None
                 if path=='cancel':
                     host.current().cancel_paper(paper.id, paper.workspace_id)
+            if path=='slow-writer':
+                assert await asyncio.to_thread(closing.wait,3)
+                assert not task.future.done() and host.active
+                with PaperRepository.open(workspace) as repo:
+                    assert repo.get(paper.id).body is None
             result = await asyncio.to_thread(task.future.result, 10)
             with PaperRepository.open(workspace) as repo:
                 saved = repo.get(paper.id)
             if path.startswith('disk-'):assert result.status=='local_failure'
             if path=='challenge':assert result.candidate_result.response.access=='challenge'
             if path=='html.pdf':assert result.candidate_result.response.access=='login'
-            success = path in {'redirect?Signature=A%2FB','encoded','chunked'}
+            success = path in {'redirect?Signature=A%2FB','encoded','chunked','slow-writer'}
             assert (result.status == 'completed') == success, (path,result)
             assert (saved.body is not None) == success
             if success:
@@ -119,6 +139,18 @@ async def main():
         assert [value.status for value in values]==['cancelled','completed']
         assert not host.active
         print(json.dumps({'type':'fixture_pair','statuses':[value.status for value in values]}),flush=True)
+        with PaperRepository.open(workspace) as repo:
+            paper=repo.create_or_match(repo.workspace_id,direct_ids=ExternalIds(doi='10.5555/shutdown'),metadata=PaperMetadata(title='Shutdown')).paper
+        target=PdfTarget(str(paper.id),doi='10.5555/shutdown',direct_identities=tuple((i.namespace,i.value) for i in paper.identities))
+        candidate=PdfCandidate(target,'P1','GENERIC','generic',origin+'/shutdown',referer=origin+'/article')
+        received=threading.Event()
+        task=await asyncio.to_thread(submit_body_download,host,paper,candidates=(candidate,),service_id=service.id,
+            progress=lambda value:received.set() if value.get('received_bytes',0)>0 else None)
+        assert await asyncio.to_thread(received.wait,3)
+        from allfold.web.electron_server import drain_application
+        await drain_application(application)
+        assert task.future.done() and task.future.result().status=='cancelled' and not host.active
+        print(json.dumps({'type':'fixture_drain','status':'settled'}),flush=True)
         await asyncio.to_thread(host.shutdown)
         await asyncio.to_thread(host.join)
         print(json.dumps({'type':'fixture_complete'}),flush=True)
