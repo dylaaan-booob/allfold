@@ -662,3 +662,19 @@ def test_article_or_unknown_target_keeps_own_repository_preprint_p5(content_type
         or CandidateResult.pdf(transfer_complete=True))
     assert calls == ([] if cached else ['openalex']) + ['https://repository.example.org/Preprint.PDF']
     assert (result.status, result.pdf_source) == ('transferred', 'P5')
+
+@pytest.mark.parametrize('preceded_by_failure',[False,True])
+def test_unavailable_condition_continues_without_creating_fallback(preceded_by_failure):
+    from allfold.pdf_rules import PdfCandidate
+    paper=target()
+    candidates=tuple(PdfCandidate(paper,'P1' if index==0 else 'P2','GENERIC','generic',f'https://example.org/{index}')
+        for index in range(3 if preceded_by_failure else 2))
+    seen=[]
+    def consume(candidate):
+        seen.append(candidate.url)
+        if preceded_by_failure and len(seen)==1:return CandidateResult.failed('source-failed')
+        if candidate is candidates[-1]:return CandidateResult.pdf(transfer_complete=True)
+        return CandidateResult('skipped',diagnostic='native-unsupported')
+    result=PdfDiscovery(paper,candidates=candidates,max_transfers=2 if preceded_by_failure else 1).run(consume)
+    assert result.status=='transferred' and result.fallback_used is preceded_by_failure
+    assert ('P2' if preceded_by_failure else 'P1','GENERIC','native-unsupported') in result.diagnostics
