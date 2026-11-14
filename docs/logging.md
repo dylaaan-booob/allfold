@@ -221,7 +221,7 @@ when no native Browser owner exists.
 
 ## Body state and local operations
 
-`stream_paper_body` and the fixed local-body bridge action use the common native/
+`stream_paper_body` and fixed `local_paper_body` use the common native/
 Python operation ledger. `stream_complete` means PDF transport and closed writer;
 only the later repository transaction means body completed/Downloaded. Local
 open/locate/delete retain bounded outcomes and actual maintenance visibility,

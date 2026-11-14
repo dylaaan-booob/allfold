@@ -310,8 +310,10 @@ Current Document/POST/one-shot body adoption is explicitly unsupported before
 dispatch until the pinned native output safety gate is resolved; it is never
 converted into a replacement GET or indefinite pending task.
 
-Explicit local open/locate/Trash delete requests carry Workspace/Paper identity
-and captured body generation. Trusted services resolve the current association;
+`POST /api/papers/{paper_uuid}/body/open`, `body/locate` and `body/delete`
+carry CSRF, Workspace identity and captured `body_generation`. Delete requires
+Trash and real Paper cleanup; open/locate may read an identity-only or Trash
+body while collection runs. Trusted services resolve the current association;
 there is no renderer path or shell-command capability. Local reading needs no
 Prepare or download eligibility. Native waiting occurs outside settings/reset/
 SQLite locks, and maintenance sees its actual host-owned lifetime.
