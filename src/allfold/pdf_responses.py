@@ -13,6 +13,7 @@ class _SmallHTML(HTMLParser):
     def __init__(self):
         super().__init__(convert_charrefs=True)
         self.nodes, self.stack = [], []
+        self.has_cpe, self.has_denial, self.shell_text = False, False, False
 
     def handle_starttag(self, tag, attrs):
         if len(self.nodes) >= 4096 or len(self.stack) >= 64 or any(len(value or '') > 8192 for _, value in attrs):
@@ -29,8 +30,13 @@ class _SmallHTML(HTMLParser):
                 break
 
     def handle_data(self, data):
+        if not any(node['tag'] in {'script','style','template','noscript','head','title'} for node in self.stack):
+            self.has_cpe |= bool(re.search(r'\bCPE00001\b', data, re.I))
+            self.has_denial |= 'there was a problem providing the content you requested' in data.lower()
+            if data.strip() and not any(node['tag']=='iframe' for node in self.stack):
+                self.shell_text = True
         for node in self.stack:
-            if node['tag'] in {'a', 'script', 'title'}:
+            if node['tag'] in {'a', 'script', 'title', 'iframe'}:
                 node['text'] += data
                 if len(node['text']) > 131072:
                     raise ValueError('Response field budget exceeded')
@@ -85,15 +91,39 @@ def reader_context(candidate, actual=None):
 
 
 def access_limited(response):
-    if response.access or response.status in {401, 403, 407, 429}:
+    if response.access or response.status in {401, 403, 407, 418, 429}:
         return True
     text = response.body.decode('utf-8', errors='replace').lower()
     cloudflare = (re.search(r'<title\b[^>]*>\s*(?:just a moment|attention required)', text)
         or re.search(r'\b_cf_chl_opt\s*=\s*\{', text)
             and re.search(r'/cdn-cgi/challenge-platform/[^\s"\'<>]*orchestrate/chl_page/', text))
-    return bool(cloudflare) or any(marker in text for marker in ('g-recaptcha',
+    if bool(cloudflare) or any(marker in text for marker in ('g-recaptcha',
         'hcaptcha', 'verify you are human', 'checking your browser', 'access denied',
-        'name="password"', "name='password'"))
+        'name="password"', "name='password'")):
+        return True
+    if 'cpe00001' not in text and '_incapsula_resource' not in text:
+        return False
+    parser = _SmallHTML()
+    try:
+        parser.feed(response.body.decode('utf-8', errors='replace'))
+    except (ValueError, RecursionError):
+        return True  # A suspected barrier cannot be ruled out beyond the parse budget.
+    if parser.has_cpe and parser.has_denial:
+        return True
+    root = next((node for node in parser.nodes if node['tag']=='body'), None)
+    if root is None:
+        root = next((node for node in parser.nodes if node['tag']=='html'), None)
+    children = [node for node in parser.nodes if (node['parents'][-1] if node['parents'] else None) is root
+        and node['tag']!='head']
+    if not children or parser.shell_text or any(node['tag']!='iframe' for node in children):
+        return False
+    source = urlsplit(response.url)
+    for frame in children:
+        linked = urlsplit(urljoin(response.url, frame['attrs'].get('src','')))
+        if ((linked.scheme,linked.netloc)==(source.scheme,source.netloc) and linked.path=='/_Incapsula_Resource'
+                and re.match(r'\s*Request unsuccessful\.\s*Incapsula incident ID:',frame['text'],re.I)):
+            return True
+    return False
 
 
 def _safe_next(candidate, base, value, **extra):

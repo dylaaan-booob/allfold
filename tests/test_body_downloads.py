@@ -264,7 +264,8 @@ def test_observed_publisher_cdn_redirect_is_requalified_before_the_next_get(tmp_
         host.shutdown();host.join()
 
 
-def test_sciencedirect_article_return_refreshes_current_signed_pdf_from_document(tmp_path):
+@pytest.mark.parametrize('tracking',['','?ref=pdf_download&fr=RR-2'])
+def test_sciencedirect_article_return_refreshes_current_signed_pdf_from_document(tmp_path,tracking):
     from dataclasses import replace
     import time
     from test_document_metadata import envelope,pdf_clues
@@ -276,7 +277,7 @@ def test_sciencedirect_article_return_refreshes_current_signed_pdf_from_document
         task=submit_body_download(host,paper,candidates=(candidate,))
         assert bridge.started.wait(2)
         bridge.result.set_result(dict(kind='response',outcome='response',response=dict(
-            url=article,content_type='text/html',status=200,body='<title>ScienceDirect article</title>',access=None)))
+            url=article+tracking,content_type='text/html',status=200,body='<title>ScienceDirect article</title>',access=None)))
         until=time.monotonic()+2
         while len(bridge.calls)<2 and not task.future.done() and time.monotonic()<until:time.sleep(.005)
         assert len(bridge.calls)==2 and bridge.calls[-1][0]=='extract_paper_pdf_clues'
@@ -302,7 +303,7 @@ def test_known_challenge_reader_uses_managed_document_access_before_its_pdf(tmp_
     from allfold.application.body_downloads import submit_body_download
     host,workspace,paper,bridge,candidate=application_host(tmp_path)
     article='https://www.sciencedirect.com/science/article/pii/S0047259X2400006X'
-    reader=article+'/pdfft'
+    reader=article+'/pdfft?md5=current'
     candidate=replace(candidate,target=replace(candidate.target,article_url=article),
         url=reader,platform='sciencedirect',rule_id='R024')
     def wait_for(action,after):
@@ -330,6 +331,32 @@ def test_known_challenge_reader_uses_managed_document_access_before_its_pdf(tmp_
     finally:
         if hasattr(bridge,'result') and not bridge.result.done():
             bridge.result.set_result(dict(kind='cancelled',outcome='cancelled'))
+        host.shutdown();host.join()
+
+
+def test_unsigned_sciencedirect_reader_qualifies_current_link_before_any_stream(tmp_path):
+    from dataclasses import replace
+    import time
+    from test_document_metadata import envelope,pdf_clues
+    from allfold.application.body_downloads import submit_body_download
+    host,workspace,paper,bridge,candidate=application_host(tmp_path)
+    article='https://www.sciencedirect.com/science/article/pii/S0047259X2400006X'
+    candidate=replace(candidate,target=replace(candidate.target,article_url=article),url=article+'/pdfft')
+    try:
+        task=submit_body_download(host,paper,candidates=(candidate,))
+        assert bridge.started.wait(2)
+        assert bridge.calls[-1][0]=='extract_paper_pdf_clues'
+        assert not list((workspace/'Documents/.downloads').glob('*.part'))
+        pdf=article+'/pdfft?md5=current'
+        bridge.result.set_result(envelope() | {'pdf_clues':pdf_clues(platform='sciencedirect',landing_url=article,
+            candidates=[dict(stage='P4',rule_id='R024',url=pdf,referer=article)])})
+        until=time.monotonic()+2
+        while bridge.calls[-1][0]!='stream_paper_body' and not task.future.done() and time.monotonic()<until:time.sleep(.005)
+        assert bridge.calls[-1][0]=='stream_paper_body' and bridge.calls[-1][1]['url']==pdf
+        bridge.finish()
+        assert task.future.result(2).status=='completed'
+    finally:
+        if hasattr(bridge,'result') and not bridge.result.done():bridge.result.set_result(dict(kind='cancelled',outcome='cancelled'))
         host.shutdown();host.join()
 
 
@@ -433,6 +460,53 @@ def test_known_reader_cancellation_retains_its_terminal_after_native_cleanup(tmp
             assert saved.download.status=='cancelled' and saved.download.reason==reason
             assert saved.body is None and saved.download.output is None
         assert not host.active and bridge.calls[-1][0]=='release_workflow_pages'
+    finally:
+        if hasattr(bridge,'result') and not bridge.result.done():bridge.result.set_result(dict(kind='cancelled',outcome='cancelled'))
+        host.shutdown();host.join()
+
+
+@pytest.mark.parametrize('code',['content_access_blocked','site_restricted'])
+def test_native_document_access_barrier_stops_queued_body_alternatives(tmp_path,code):
+    from dataclasses import replace
+    import time
+    from allfold.application.body_downloads import submit_body_download
+    host,workspace,paper,bridge,candidate=application_host(tmp_path)
+    reader='https://ieeexplore.ieee.org/stamp/stamp.jsp?arnumber=12345'
+    try:
+        task=submit_body_download(host,paper,candidates=(replace(candidate,url=reader),candidate))
+        assert bridge.started.wait(2)
+        bridge.result.set_result(dict(kind='response',outcome='response',response=dict(
+            url=reader,content_type='text/html',status=200,body='<html>Reader</html>',access=None)))
+        until=time.monotonic()+2
+        while len(bridge.calls)<2 and not task.future.done() and time.monotonic()<until:time.sleep(.005)
+        assert len(bridge.calls)==2
+        bridge.result.set_result(dict(diagnostic=dict(code=code,stage='navigation')))
+        until=time.monotonic()+2
+        while not task.future.done() and time.monotonic()<until:time.sleep(.005)
+        assert task.future.done(), 'Document access denial must not start the queued source'
+        assert task.future.result().status=='failed'
+        assert [a for a,_ in bridge.calls]==['stream_paper_body','extract_paper_pdf_clues','release_workflow_pages']
+    finally:
+        if hasattr(bridge,'result') and not bridge.result.done():bridge.result.set_result(dict(kind='cancelled',outcome='cancelled'))
+        host.shutdown();host.join()
+
+
+@pytest.mark.parametrize('status,body',[
+    (418,'<title>Unusual Traffic Detected (Error 418)</title>'),
+    (200,'<p>CPE00001</p><p>There was a problem providing the content you requested</p>'),
+    (200,'<iframe src="/_Incapsula_Resource?edet=15&incident_id=123-456">Request unsuccessful. Incapsula incident ID: 123-456</iframe>'),
+])
+def test_http_access_barriers_stop_queued_body_alternatives(tmp_path,status,body):
+    from allfold.application.body_downloads import submit_body_download
+    host,workspace,paper,bridge,candidate=application_host(tmp_path)
+    from dataclasses import replace
+    try:
+        task=submit_body_download(host,paper,candidates=(candidate,replace(candidate,url=candidate.url+'?next=1')))
+        assert bridge.started.wait(2)
+        bridge.result.set_result(dict(kind='response',outcome='response',response=dict(
+            url=candidate.url,content_type='text/html',status=status,body=body,access=None)))
+        assert task.future.result(2).status!='completed'
+        assert len(bridge.calls)==1
     finally:
         if hasattr(bridge,'result') and not bridge.result.done():bridge.result.set_result(dict(kind='cancelled',outcome='cancelled'))
         host.shutdown();host.join()

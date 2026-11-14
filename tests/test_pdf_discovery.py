@@ -137,6 +137,15 @@ def test_sciencedirect_redirect_cannot_change_pii_host_or_protocol(destination):
     assert parse_current_response(candidate,response)==()
 
 
+@pytest.mark.parametrize('body',[
+    '<script>var errors="CPE00001 There was a problem providing the content you requested";</script><p>Article content</p>',
+    '<p>Article content</p><iframe src="/_Incapsula_Resource?edet=15">Request unsuccessful. Incapsula incident ID: 123-456</iframe>',
+])
+def test_background_error_strings_or_embedded_frames_are_not_main_access_denials(body):
+    from allfold.pdf_responses import access_limited
+    assert not access_limited(CurrentResponse('https://publisher.example.org/article','text/html',body.encode()))
+
+
 def test_openalex_cancel_is_never_recoverable_and_parent_expiry_wins_over_previous_http_error():
     from allfold.providers.openalex import OpenAlexClient
     from allfold.providers.provider_http import Cancelled, ProviderBudgetExceeded

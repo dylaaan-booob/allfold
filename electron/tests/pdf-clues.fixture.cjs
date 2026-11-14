@@ -94,6 +94,11 @@ app.whenReady().then(async()=>{
       const nonArticle=await forHost(host,'<a href="/Citation/Download?resourceId=99993&amp;resourceType=2">Book cite</a><a href="/Citation/Download?resourceId=12345">Unknown type</a>');assert.deepEqual(nonArticle.pdf_clues.identifiers,[]);
     }
     const sd=await forHost('www.sciencedirect.com','<script>var article={pdfDownload:{urlMetadata:"https://cdn.example/sd.PDF"}};</script>','','/science/article/pii/S1234567812345678');assert.equal(sd.pdf_clues.identifiers[0].kind,'pii');assert.equal(sd.pdf_clues.candidates[0].reader_kind,'sciencedirect');
+    const currentPii='S0047259X2400006X',currentPDF='/science/article/pii/'+currentPii+'/pdfft?md5=synthetic';
+    const toolbar=await forHost('www.sciencedirect.com','<nav><a href="'+currentPDF+'">View PDF</a><a href="https://pdf.sciencedirectassets.com/1-s2.0-'+currentPii+'/main.pdf?token=synthetic">View PDF</a><a href="https://pdf.sciencedirectassets.com/1-s2.0-S1234567812345678/main.pdf">View PDF</a><a href="/science/article/pii/S1234567812345678/pdfft">View PDF</a><a href="'+currentPDF+'&amp;supplement=1">Supplement PDF</a></nav><aside><a href="'+currentPDF+'&amp;related=1">View PDF</a></aside>','','/science/article/pii/'+currentPii);
+    assert.equal(toolbar.pdf_clues.candidates.length,2,'only current PII toolbar entrances are body clues');
+    assert.equal(toolbar.pdf_clues.candidates[0].url,'http://www.sciencedirect.com:'+port+currentPDF);
+    assert.equal(toolbar.pdf_clues.candidates[0].reader_kind,'sciencedirect');
     const overflow=await forHost('www.sciencedirect.com','<script>var article={pdfDownload:{urlMetadata:"'+('x'.repeat(4097))+'"}};</script>');assert.equal(overflow.pdf_clues.status,'failed');assert.deepEqual(overflow.pdf_clues.diagnostics,['pdf_budget_exceeded']);
     const ieee=await forHost('ieeexplore.ieee.org','','','/document/12345');assert.deepEqual(ieee.pdf_clues.identifiers.map(item=>[item.kind,item.value]),[['article_number','12345']]);
     const an='22222222-222222222-22222',otherAn='11111111-111111111-11111';

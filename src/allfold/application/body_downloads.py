@@ -9,7 +9,7 @@ from collections import deque
 from dataclasses import dataclass, replace
 import threading
 import time
-from urllib.parse import urldefrag, urlsplit, urlunsplit
+from urllib.parse import parse_qs, urldefrag, urlsplit, urlunsplit
 
 from allfold.application.browser_services import browser_workspace_identity
 from allfold.pdf_discovery import CandidateResult, CurrentResponse, SUPPORTED_PDF_TARGET_TYPES
@@ -31,6 +31,10 @@ class BodyResult:
     status: str
     paper: PaperRecord | None = None
     candidate_result: CandidateResult | None = None
+
+
+class _BodyAccessBlocked(Exception):
+    """A verified native access refusal is terminal, not an empty source."""
 
 
 def complete_attempt(reservation, repository, files, output, *, source_url=None):
@@ -125,23 +129,31 @@ def _consume(reservation, repository, files, candidate, progress):
     return result, None
 
 
-def _document_candidates(reservation, repository, candidate, response):
+def _document_candidates(reservation, repository, candidate, response=None):
     """Use fixed article/reader Document access under the original body authority."""
-    reader = reader_context(candidate, response.url)
+    reader = reader_context(candidate, response.url) if response is not None else None
     if reader is None:
         article = candidate.target.article_url
-        if (article is None or urldefrag(response.url)[0] != urldefrag(article)[0]
-                or urlsplit(article).hostname not in {'www.sciencedirect.com', 'sciencedirect.com'}):
+        confirmed = urlsplit(article or '')
+        current = urlsplit(response.url) if response is not None else confirmed
+        if (article is None or (current.scheme,current.netloc,current.path) != (confirmed.scheme,confirmed.netloc,confirmed.path)
+                or confirmed.hostname not in {'www.sciencedirect.com', 'sciencedirect.com'}):
             return ()
     from allfold.application.pdf_discovery import PdfDiscoveryContext
     from allfold.application.document_metadata import read_document_pdf_clues, DocumentMetadataFailed
     context = PdfDiscoveryContext(reservation, repository)
+    blocked = False
     try:
         try:
             parsed = read_document_pdf_clues(context,
                 confirmed_article_url=candidate.target.article_url, reader=reader)
         except DocumentMetadataFailed:
             parsed = None
+            value = context.native[-1].result() if context.native else None
+            diagnostic = value.get('diagnostic', {}) if isinstance(value, dict) else {}
+            if isinstance(diagnostic, dict):
+                blocked = (diagnostic.get('code') in {'verification_page','content_access_blocked','site_restricted'}
+                    or diagnostic.get('code') == 'http_error' and diagnostic.get('status') in {401,403,407,418,429})
     finally:
         try:
             context.close_native()
@@ -151,6 +163,8 @@ def _document_candidates(reservation, repository, candidate, response):
     if time.monotonic() >= reservation.deadline:
         raise TimeoutError('Body reader parent deadline expired')
     context.guard()
+    if blocked:
+        raise _BodyAccessBlocked()
     return tuple(replace(candidate, url=item.url, reader_kind=item.reader_kind,
         referer=item.referer, action=item.action, credential=None, accept=None)
         for item in parsed.current_candidates) if parsed is not None else ()
@@ -178,6 +192,16 @@ def _run(reservation, candidates, progress):
                         if key in seen:
                             continue
                         seen.add(key)
+                        reader = reader_context(candidate)
+                        if (reader and reader['platform']=='sciencedirect' and candidate.target.article_url
+                                and not candidate.action and not candidate.credential
+                                and not parse_qs(urlsplit(candidate.url).query).get('md5') and depth < 6):
+                            # An unsigned reader entrance needs its current live
+                            # article link, not a speculative PDF GET first.
+                            following = _document_candidates(reservation, repository, candidate)
+                            if following:
+                                pending.extendleft((item, depth + 1) for item in reversed(following))
+                                continue
                         candidate_result, saved = _consume(reservation, repository, files, candidate, progress)
                         if saved is not None:
                             # A committed body remains authoritative even if later
@@ -201,6 +225,8 @@ def _run(reservation, candidates, progress):
                             continue
                         if candidate_result.kind != 'failed':
                             break
+            except _BodyAccessBlocked:
+                result = BodyResult('failed', candidate_result=CandidateResult.failed('access-blocked'))
             except TimeoutError:
                 result = BodyResult('expired')
             except StaleWriteError:

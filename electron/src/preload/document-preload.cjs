@@ -445,14 +445,14 @@ const operations={
       const candidate={stage,rule_id,url:resolved,...extra};
       if(candidates.length>=32 || JSON.stringify({identifiers,candidates:[...candidates,candidate]}).length>fieldsLimit)throw Error('pdf_budget_exceeded');
       seen.add(resolved);candidates.push(candidate);};
-    const excluded=node=>{for(let owner=node;owner;owner=owner.parentElement) {
-      if(owner.matches('nav,footer,aside,[role="doc-bibliography"],[role="doc-endnotes"],[data-related],[hidden],[aria-hidden="true"]')
+    const excluded=(node,allowNavigation=false)=>{for(let owner=node;owner;owner=owner.parentElement) {
+      if(owner.matches('footer,aside,[role="doc-bibliography"],[role="doc-endnotes"],[data-related],[hidden],[aria-hidden="true"]') || !allowNavigation && owner.matches('nav')
         || /references|related|recommend|supplement/i.test(owner.id+' '+(owner.getAttribute('class') || ''))
         || /(?:^|;)\s*display\s*:\s*none\s*(?:!important\s*)?(?:;|$)/i.test(owner.getAttribute('style') || ''))return true;
     }return false;};
     const main=document.querySelector('article') || document.body;
-    const bodyEntry=(node,attribute='href')=>{
-      if(excluded(node))return false;
+    const bodyEntry=(node,attribute='href',allowNavigation=false)=>{
+      if(excluded(node,allowNavigation))return false;
       const value=attribute===null?null:node.getAttribute(attribute),label=node.textContent+' '+(node.getAttribute('title') || '')+' '+(value || '');
       const identity=normalizeDoi(node.closest('[data-doi]')?.getAttribute('data-doi'));
       return !/supplement|supporting|appendix|whole issue|entire issue|issue pdf|other article/i.test(label)
@@ -489,7 +489,25 @@ const operations={
           }
           if(resourceIds.size===1){addId('resource_id',[...resourceIds][0]);addId('resource_type','3');}
         }
-        if(platform==='sciencedirect'){const pii=path.match(/\/pii\/([SB][0-9]{7}[0-9X][0-9]{7}[0-9X])(?:\/|$)/i)?.[1];if(pii)addId('pii',pii);}
+        if(platform==='sciencedirect') {
+          const pii=path.match(/\/pii\/([SB][0-9]{7}[0-9X][0-9]{7}[0-9X])(?:\/|$)/i)?.[1];
+          if(pii) {
+            addId('pii',pii);
+            // The current article's PDF toolbar may live in navigation. Only
+            // this exact PII/path relationship can relax generic nav exclusion.
+            for(const node of document.querySelectorAll('a[href]')) {
+              guard();if(!bodyEntry(node,'href',true))continue;
+              const resolved=url(node.getAttribute('href'));if(!resolved)continue;
+              const link=new URL(resolved);
+              const page=new URL(landing_url),reader=link.origin===page.origin
+                && ['/science/article/pii/'+pii+'/pdfft','/science/article/pii/'+pii+'/pdf'].includes(link.pathname);
+              const asset=link.hostname==='pdf.sciencedirectassets.com' && link.protocol==='https:'
+                && link.pathname.endsWith('/1-s2.0-'+pii+'/main.pdf');
+              if(reader || asset)
+                add(resolved,'P4',{reader_kind:'sciencedirect',referer:landing_url});
+            }
+          }
+        }
         if(platform==='ieee') {
           const pathId=path.match(/^\/document\/([0-9]{1,16})\/?$/)?.[1],queryIds=new URL(landing_url).searchParams.getAll('arnumber');
           if(queryIds.length===0)addId('article_number',pathId);

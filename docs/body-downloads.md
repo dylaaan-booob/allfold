@@ -60,9 +60,13 @@ owner consumes the existing qualified current-response parser, with at most 16
 Session stream dispatches, six next hops and no repeated URL/action. A known reader without
 inline PDF clues uses the existing bounded Document/PDF-clue operation and its
 automatic Cloudflare/manual-verification rules, under the same captured body
-authority. A ScienceDirect response returning its exact confirmed article may
+authority. An unsigned ScienceDirect reader first refreshes its live confirmed
+article's current entrance before any stream request. Only same-PII toolbar
+reader/assets links may bypass generic navigation exclusion; other Papers,
+supplements, references and related regions stay excluded. A ScienceDirect response returning its confirmed article origin/path may
 use the same live-Document reader to refresh the current signed PDF entrance,
-with independent article identity checks. Actual native cleanup ends before transfer continues; no collection
+ignoring tracking query/fragment differences but retaining independent article
+identity checks. Actual native cleanup ends before transfer continues; no collection
 is registered or written. Cloudflare background resources and ordinary Sign in
 navigation do not identify a main challenge or login page. Unknown HTML is not
 a generic crawler. Empty ordinary branches retain queued alternatives; access
@@ -71,6 +75,10 @@ cleanup before recording the terminal result. Action/POST
 and explicit API-credential candidates remain pending rather than GET emulation.
 Only ordinary candidate failures permit the next confirmed candidate; a completed
 stream stops sources, and any local finalization error ends that task.
+Native Document access refusals remain terminal. HTTP 418, visible paired
+CPE00001 denial text and a same-origin Imperva main iframe shell cannot become
+ordinary empty branches; background error strings or embedded side frames alone
+do not establish these barriers.
 
 ## File ownership and final transaction
 
