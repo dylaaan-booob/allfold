@@ -249,7 +249,9 @@ def create_app(config_path: Path, *, electron_bridge: ElectronBridge, diagnostic
     from allfold.application.collection_planner import ProductionCollectionService
     app.state.collection_service = ProductionCollectionService(app.state.workspace_tasks)
     from allfold.application.body_downloads import BodyDownloadService
-    app.state.body_downloads = BodyDownloadService(app.state.workspace_tasks)
+    from allfold.application.local_body import LocalBodyService
+    app.state.local_body = LocalBodyService(app.state.workspace_tasks)
+    app.state.body_downloads = BodyDownloadService(app.state.workspace_tasks, local_body=app.state.local_body)
     app.state.run_coordinator.workspace_tasks = app.state.workspace_tasks
     app.state.run_coordinator.collection_service = app.state.collection_service
     app.state.preprint_lookup = PreprintLookup(resolved_config_path, app.state.browser_task_lock,

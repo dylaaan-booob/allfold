@@ -107,6 +107,11 @@ class _BodyCancel(_BodyDownload):
     attempt: StrictInt = Field(ge=1)
 
 
+class _LocalBody(_Action):
+    workspace_id: UUID
+    body_generation: StrictInt = Field(ge=1)
+
+
 def collection_payload(record, *, collection_service=None, cleanup_pending=False):
     saved = record.collection
     token = record.token
@@ -305,24 +310,25 @@ def install_ui_next(app: FastAPI, config_path: Path, csrf_token: str) -> None:
         except (ConfigurationError, ContentChangedError, LibraryError, ValueError, OSError) as error:
             return response({'message': str(error)}, 409)
 
-    def body_response(paper_id, workspace_id, **extra):
+    def body_response(paper_id, workspace_id, *, status=200, **extra):
         registry = app.state.workspace_tasks.current()
         with registry.paper_gate(), PaperRepository.open(registry.workspace, expected_workspace_id=workspace_id) as repository:
             paper, revision = repository.get(paper_id), repository.revision
             cleanup = app.state.workspace_tasks.cleanup_pending(paper.id, paper.workspace_id)
         payload = paper_payload(WorkspacePaper(paper), cleanup_pending=cleanup,
             collection_service=app.state.collection_service, body_downloads=app.state.body_downloads)
-        return response(dict(workspace_id=workspace_id, revision=revision, paper=payload, **extra))
+        return response(dict(workspace_id=workspace_id, revision=revision, paper=payload, **extra), status)
 
     @app.post('/api/papers/{paper_id}/body/download')
     def body_download(paper_id: UUID, body: _BodyDownload):
         if not valid(body):
             return response({'message':'Invalid or missing CSRF token; refresh the page.'}, 403)
         try:
-            with app.state.settings_write_lock, app.state.reset_lock:
-                result = app.state.body_downloads.start(paper_id, body.workspace_id,
-                    qualification=body.qualification.model_dump() if body.qualification is not None else None)
-            return body_response(paper_id, body.workspace_id, outcome=getattr(result, 'status', 'accepted'))
+            result = app.state.body_downloads.start(paper_id, body.workspace_id,
+                qualification=body.qualification.model_dump() if body.qualification is not None else None)
+            outcome = getattr(result, 'status', 'accepted')
+            return body_response(paper_id, body.workspace_id, outcome=outcome,
+                **({'status':409, 'message':'PDF 本地操作失败，请刷新状态后重试。'} if getattr(result, 'failed', False) else {}))
         except (LibraryError, ConfigurationError, ValueError, OSError, RuntimeError):
             return response({'message':'当前 Paper 无法下载，请刷新状态后重试。'}, 409)
 
@@ -336,6 +342,19 @@ def install_ui_next(app: FastAPI, config_path: Path, csrf_token: str) -> None:
             return body_response(paper_id, body.workspace_id)
         except (LibraryError, ConfigurationError, ValueError, OSError, RuntimeError):
             return response({'message':'Workspace 状态已变化，请刷新。'}, 409)
+
+    @app.post('/api/papers/{paper_id}/body/{action}')
+    def local_body(paper_id: UUID, action: Literal['open', 'locate', 'delete'], body: _LocalBody):
+        if not valid(body):
+            return response({'message':'Invalid or missing CSRF token; refresh the page.'}, 403)
+        try:
+            result = app.state.local_body.perform(paper_id, body.workspace_id,
+                action=action, body_generation=body.body_generation)
+            return body_response(paper_id, body.workspace_id, outcome=result.status,
+                **({'status':409, 'message':('文件处理已结束，但正文关联未能更新；请明确重试以确认当前文件。'
+                    if result.status == 'association_failure' else 'PDF 本地操作失败，原正文关联已保留。')} if result.failed else {}))
+        except (LibraryError, ConfigurationError, ValueError, OSError, RuntimeError):
+            return response({'message':'当前 PDF 操作失败，请刷新状态后重试。', 'outcome':'local_failure'}, 409)
 
     @app.post('/api/papers/{paper_id}/collection/retry')
     def collection_retry(paper_id: UUID, body: _CollectionRetry):

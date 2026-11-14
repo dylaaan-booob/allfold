@@ -620,6 +620,25 @@ class PaperRepository:
             self._changed(connection, paper.id)
             return self._read(connection, paper.id)
 
+    def clear_current_body(self, token: WriteToken, body: BodyReference, *, require_excluded=False) -> PaperRecord:
+        """Clear only a captured association after a separately verified local operation.
+
+        Metadata edits, collection and exclusion are independent of local reading.
+        Neither this transaction nor BodyReference confers filesystem authority.
+        """
+        with self._database.transaction(write=True) as connection:
+            if token.workspace_id != self.workspace_id:
+                raise StaleWriteError('Different Workspace identity')
+            paper = self._read(connection, token.paper_id)
+            if paper.body_generation != token.body_generation or paper.body != body:
+                raise StaleWriteError('Original body association changed')
+            if require_excluded and (not paper.excluded or paper.operation_generation != token.operation_generation):
+                raise StaleWriteError('Original Trash qualification changed')
+            connection.execute('DELETE FROM paper_body WHERE paper_id = ?', (str(paper.id),))
+            connection.execute('UPDATE paper_core SET body_generation = body_generation + 1 WHERE paper_id = ?', (str(paper.id),))
+            self._changed(connection, paper.id)
+            return self._read(connection, paper.id)
+
     @staticmethod
     def _body_key(token):
         return (token.workspace_id, token.paper_id, token.metadata_generation,

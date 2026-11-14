@@ -281,6 +281,7 @@ class WorkspaceRegistry:
         self._stopped = False
         self._shutdown_started = False
         self._tasks, self._reservations, self._faults = {}, {}, []
+        self._local_operations = {}
         self._settled_condition = threading.Condition(self._gate)
         with PaperRepository.open(self.workspace) as repository:
             self.workspace_id = repository.workspace_id
@@ -320,7 +321,7 @@ class WorkspaceRegistry:
     @property
     def active(self):
         with self._gate:
-            return bool(self._tasks or self._reservations)
+            return bool(self._tasks or self._reservations or self._local_operations)
 
     @property
     def browser_owner_ids(self):
@@ -335,7 +336,8 @@ class WorkspaceRegistry:
         if workspace_id is not None and UUID(str(workspace_id)) != self.workspace_id:
             return False
         with self._gate:
-            return UUID(str(paper_id)) in self._tasks or UUID(str(paper_id)) in self._reservations
+            return (UUID(str(paper_id)) in self._tasks or UUID(str(paper_id)) in self._reservations
+                    or any(owner.paper_id == UUID(str(paper_id)) for owner in self._local_operations.values()))
 
     cleanup_pending = busy
 
@@ -502,6 +504,8 @@ class WorkspaceRegistry:
             self._require_open()
             with self._repository() as repository:
                 paper = repository.match(direct_ids, additional_identities=additional_identities)
+                if paper and any(owner.paper_id == paper.id for owner in self._local_operations.values()):
+                    return paper
                 reservation = self._reservations.get(paper.id) if paper else None
                 if reservation is not None and reservation.kind == 'body':
                     # A reliable match that is busy stays that same Paper. No
@@ -633,7 +637,7 @@ class WorkspaceRegistry:
             existing = self._reservations.get(paper_id)
             if existing is not None and kind == existing.kind and kind in {'download', 'body'}:
                 return existing
-            if existing is not None or paper_id in self._tasks:
+            if self.busy(paper_id):
                 raise InvalidPaperState('Another operation owns this Paper')
             with self._repository() as repository:
                 paper = repository.get(paper_id)
@@ -1034,8 +1038,14 @@ class WorkspaceRegistry:
             self._shutdown_started = True
             self._stopped = True
             tasks, reservations = tuple(self._tasks.values()), tuple(self._reservations.values())
+            local_operations = tuple(self._local_operations.values())
         for target in (*tasks, *reservations):
             self._cancel_target(target)
+        for owner in local_operations:
+            try:
+                owner.cancel_native()
+            except Exception as error:
+                self._fault(owner, 'local-body-cancel-signal', error)
         for task in tasks:
             with self._gate:
                 if task.registered:
@@ -1050,4 +1060,5 @@ class WorkspaceRegistry:
         self._branch_scheduler.join()
         with self._settled_condition:
             self._settled_condition.wait_for(lambda: all(reservation.cleanup_ended
-                                                       for reservation in self._reservations.values()))
+                                                       for reservation in self._reservations.values())
+                and all(owner.cleanup_ended for owner in self._local_operations.values()))

@@ -11,7 +11,7 @@ const source=fs.readFileSync(path.join(__dirname,'../src/main.cjs'),'utf8');
 const execute=source.slice(source.indexOf('const CONTROL_ACTIONS='),source.indexOf('async function startPython('));
 const deferred=()=>{let resolve;const promise=new Promise(r=>{resolve=r;});return {promise,resolve};};
 function fixture(){
- const messages=[],logs=[],calls={end:0,save:0,translation:0};
+ const messages=[],logs=[],calls={end:0,save:0};
  const taskContext=new AsyncLocalStorage();let pageId=0;
  const context=vm.createContext({operations:new Map(),exiting:false,bridgeReady:true,randomBytes,setTimeout,clearTimeout,
   ...require('../src/shared/logging.cjs'),...require('../src/shared/recovery-summary.cjs'),...require('../src/workflows/recovery-authority.cjs'),
@@ -199,4 +199,19 @@ test('fixed extraction dispatch retains legal empty success after native owner c
   assert.deepEqual(f.messages.at(-1).data.metadata,{dates:[],abstract:null});
   assert.equal(f.logs.find(event=>event.event==='task_finished').level,'info');
   assert.equal(f.logs.find(event=>event.event==='task_finished').outcome,'retrieved');
+});
+
+test('local body operations bypass Browser and remain Main-owned through actual shell settlement',async()=>{
+  const f=fixture(),started=deferred(),settled=deferred();
+  f.context.shell={};
+  f.context.browser.runTask=()=>{throw Error('local body must not acquire a Browser/Session task');};
+  f.context.executeLocalBody=async(data,options)=>{
+    assert.equal(data.action,'open');assert.equal(typeof options.verifyAuthority,'function');
+    started.resolve();await settled.promise;return {outcome:'opened',resource_closed:true};
+  };
+  const pending=f.context.execute({id:'local-body',action:'local_paper_body',data:{action:'open',task_id:'local'}});
+  await started.promise;
+  assert.equal(f.context.operations.size,1);assert.equal(f.messages.length,0);assert.equal(f.calls.end,0);
+  settled.resolve();await pending;
+  assert.equal(f.context.operations.size,0);assert.equal(f.messages[0].data.outcome,'opened');
 });

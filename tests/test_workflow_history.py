@@ -207,10 +207,16 @@ def test_native_reset_control_does_not_mutate_python_preview_identity(tmp_path):
     ('redirect_rejected','附件重定向未被接受'), ('attachment_rejected','附件保存请求未被接受'),
     ('timeout','附件操作超时'),
 ])
-def test_attachment_message_describes_problem_and_preserves_pdf_uncertainty(code, text):
+def test_attachment_message_describes_failure_without_inventing_body_state(code, text):
     message = format_browser_diagnostic({'stage':'attachment','code':code,'status':403,'net_error':'ERR_ABORTED'})
     assert text in message
-    assert 'PDF 是否保存仍未验证' in message
+    assert 'PDF 是否保存仍未验证' not in message
     assert '403' in message and 'ERR_ABORTED' in message
     assert '父条目失败' not in message
     assert '重试' not in message
+
+
+def test_retired_translation_and_parent_save_meanings_are_not_current_diagnostics():
+    assert normalize_browser_diagnostic({'stage':'translation','code':'translator_no_items'}) is None
+    assert normalize_browser_diagnostic({'stage':'parent_save','step':'attachment_save'}) is None
+    assert 'Zotero' not in format_browser_diagnostic({'stage':'navigation','code':'authorization_required'})

@@ -41,10 +41,6 @@
       "type": "string",
       "pattern": "^[a-fA-F0-9]{8}-[a-fA-F0-9]{4}-[a-fA-F0-9]{4}-[a-fA-F0-9]{4}-[a-fA-F0-9]{12}$"
     },
-    "translator_id": {
-      "type": "string",
-      "pattern": "^[a-fA-F0-9]{8}-[a-fA-F0-9]{4}-[a-fA-F0-9]{4}-[a-fA-F0-9]{4}-[a-fA-F0-9]{12}$"
-    },
     "time": {
       "type": "string",
       "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(?:\\.\\d{1,6})?Z$"
@@ -92,7 +88,6 @@
         "institution_auth_action",
         "institution_auth_failed",
         "institution_auth_skipped",
-        "item_save_result",
         "logs_reset",
         "manual_wait",
         "metadata_selected",
@@ -109,19 +104,11 @@
         "page_load_started",
         "page_renderer_gone",
         "page_request_failed",
-        "parent_save_dispatched",
-        "parent_save_result",
         "python_exited",
         "startup_failed",
         "task_finished",
         "task_progress",
         "task_started",
-        "translation_attempt_failed",
-        "translation_completed",
-        "translation_failed",
-        "translation_frame_skipped",
-        "translator_detected",
-        "translator_http",
         "workflow_finished",
         "workflow_interrupted",
         "workflow_started",
@@ -148,7 +135,8 @@
         "stream_paper_body",
         "visit_manual_service",
         "wos_export",
-        "wos_query"
+        "wos_query",
+        "local_paper_body"
       ]
     },
     "kind": {
@@ -195,9 +183,7 @@
         "attachment",
         "authentication",
         "navigation",
-        "parent_save",
         "preparation",
-        "translation",
         "wos_dom",
         "wos_download",
         "provider",
@@ -209,8 +195,6 @@
       "enum": [
         "account",
         "arm",
-        "attachment_create",
-        "attachment_save",
         "child_page",
         "configure",
         "configureCustom",
@@ -230,8 +214,6 @@
         "links",
         "login",
         "none",
-        "note_save",
-        "oa_resolver",
         "openContent",
         "page_admission",
         "page_load",
@@ -247,15 +229,12 @@
         "resource_ready",
         "resource_search",
         "result",
-        "sandbox_init",
-        "sandbox_load",
         "saveCustom",
         "search",
         "select",
         "selectContent",
         "submit",
         "terms",
-        "translator",
         "verification",
         "verifyCustom",
         "visit_target"
@@ -266,9 +245,7 @@
       "enum": [
         "access_denied",
         "action_expired",
-        "always_allow_required",
         "ambiguous_resource",
-        "api_failure",
         "article_identity_conflict",
         "article_identity_unconfirmed",
         "attachment_rejected",
@@ -315,7 +292,6 @@
         "download_not_attributable",
         "download_observer_busy",
         "empty_response",
-        "encryption_unavailable",
         "export_content_unverified",
         "export_range_unverified",
         "failed",
@@ -324,23 +300,17 @@
         "institution_credentials_rejected",
         "institution_name_required",
         "institution_search_failed",
-        "invalid_attachment",
         "invalid_local_path",
         "invalid_response",
         "invalid_target",
-        "invalid_upload_destination",
-        "key_store_unreadable",
-        "key_store_write_failed",
         "load_failed",
         "manual_action_required",
         "mime_mismatch",
-        "missing_server_id",
         "navigation_active",
         "navigation_failed",
         "network_error",
         "no_resolver",
         "not_found",
-        "object_rejected",
         "openalex_authorization_required",
         "openalex_credential_unavailable",
         "openalex_lookup_failed",
@@ -353,7 +323,6 @@
         "page_not_unique",
         "page_probe_unconfirmed",
         "page_ready",
-        "precondition_required",
         "python_exited",
         "rate_limited",
         "redirect_rejected",
@@ -364,28 +333,17 @@
         "resource_request_failed",
         "response_too_large",
         "save_uncertain",
-        "server_id_mismatch",
         "server_unexpected_error",
         "site_restricted",
         "solver_disabled",
         "solver_failed",
         "stale_search_results",
         "succeeded",
-        "target_list_incomplete",
-        "target_missing",
         "timeout",
-        "translator_doi_missing",
-        "translator_failed",
-        "translator_invalid_item",
-        "translator_multiple_items",
-        "translator_no_items",
-        "unattributable_response",
         "unknown_dom_step",
         "unsafe_url",
-        "unsupported_version",
         "unverified_official_page",
         "unverified_results_page",
-        "upload_failed",
         "verification_page",
         "write_stopped"
       ]
@@ -440,21 +398,13 @@
         "retrieved",
         "submitted",
         "succeeded",
-        "uncertain"
-      ]
-    },
-    "parent": {
-      "type": "string",
-      "enum": [
-        "confirmed",
-        "no_effect",
-        "uncertain"
-      ]
-    },
-    "pdf": {
-      "type": "string",
-      "enum": [
-        "unverified"
+        "uncertain",
+        "missing",
+        "locate_requested",
+        "deleted",
+        "stale",
+        "file_failure",
+        "association_failure"
       ]
     },
     "metadata_source": {
@@ -472,12 +422,8 @@
         "callback",
         "desktop_attachment",
         "initial_fetch",
-        "oa_resolver",
         "refetch",
-        "hidden_iframe",
-        "note_save",
-        "attachment_create",
-        "attachment_save"
+        "hidden_iframe"
       ]
     },
     "error_kind": {
@@ -485,7 +431,6 @@
       "enum": [
         "host_api_missing",
         "http_status",
-        "translator",
         "transport"
       ]
     },
@@ -498,19 +443,6 @@
         "ReferenceError",
         "SyntaxError",
         "TypeError"
-      ]
-    },
-    "api_name": {
-      "type": "string",
-      "enum": [
-        "HTTP.doGet",
-        "HTTP.doPost",
-        "HTTP.processDocuments",
-        "HTTP.request",
-        "getItemArray",
-        "loadDocuments",
-        "processDocuments",
-        "selectItems"
       ]
     },
     "content_type": {
@@ -767,9 +699,7 @@
   "optional_detail_events": [
     "task_progress",
     "page_request_failed",
-    "translator_http",
-    "attachment_http",
-    "translation_frame_skipped"
+    "attachment_http"
   ],
   "events_require": {
     "task_started": [

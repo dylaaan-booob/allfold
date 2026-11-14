@@ -89,6 +89,63 @@ async def main():
         assert projected['body_present'] and projection['counts']['downloaded'] == 1
         assert not projected['download']['active'] and not projected['cleanup_pending']
         print(json.dumps({'type':'fixture_public','status':'completed','paper':str(public.id)}), flush=True)
+        local_request = dict(csrf_token=state['csrf_token'], workspace_id=str(public.workspace_id),
+            body_generation=projected['download']['qualification']['body_generation'])
+        # Existing-body Download uses local authority before discovery or Prepare.
+        opened = await client.post(f'/api/papers/{public.id}/body/download', json={key:value for key,value in local_request.items() if key != 'body_generation'})
+        assert opened.status_code == 200 and opened.json()['outcome'] == 'opened', opened.text
+        located = await client.post(f'/api/papers/{public.id}/body/locate', json=local_request)
+        assert located.status_code == 200 and located.json()['outcome'] == 'locate_requested', located.text
+        shell_failed = await client.post(f'/api/papers/{public.id}/body/open', json=local_request)
+        assert shell_failed.status_code == 409 and shell_failed.json()['paper']['body_present'], shell_failed.text
+        # Local reading remains available while this Paper's collection owns work.
+        from allfold.application.collection_runtime import BranchSpec
+        entered, release = threading.Event(), threading.Event()
+        def held_branch(context):
+            entered.set()
+            assert release.wait(4)
+        collected = await asyncio.to_thread(current.submit, direct_ids=ExternalIds(openalex='W777'),
+            metadata=public.metadata, branches=(BranchSpec('held', held_branch),))
+        assert await asyncio.to_thread(entered.wait, 2)
+        reading = await client.post(f'/api/papers/{public.id}/body/open', json=local_request)
+        assert reading.status_code == 200 and reading.json()['outcome'] == 'opened', reading.text
+        release.set()
+        await asyncio.to_thread(collected.future.result, 3)
+        rejected = await client.post(f'/api/ui-next/papers/{public.id}/reject', json={key:value for key,value in local_request.items() if key != 'body_generation'})
+        assert rejected.status_code == 200, rejected.text
+        deleted = await client.post(f'/api/papers/{public.id}/body/delete', json=local_request)
+        assert deleted.status_code == 200 and deleted.json()['outcome'] == 'deleted', deleted.text
+        assert not (workspace/'Documents'/f'{public.id}.pdf').exists()
+        restored = await client.post(f'/api/ui-next/papers/{public.id}/restore', json={key:value for key,value in local_request.items() if key != 'body_generation'})
+        assert restored.status_code == 200 and restored.json()['paper']['download']['available'], restored.text
+        # A historical completed record is not a new-download gate.
+        retried = await client.post(f'/api/papers/{public.id}/body/download', json=dict(
+            csrf_token=state['csrf_token'], workspace_id=str(public.workspace_id),
+            qualification=restored.json()['paper']['download']['qualification']))
+        assert retried.status_code == 200, retried.text
+        with current.paper_gate():
+            retry_task = current._reservations[public.id]
+        assert (await asyncio.to_thread(retry_task.future.result, 8)).status == 'completed'
+        assert retry_task.download_token.attempt == public_task.download_token.attempt + 1
+        # Identity-only Trash has an actual legal nested current body, with zero
+        # discovery/Session dependency. The fixture shell never opens a real app.
+        from allfold.persistence.paper_repository import BodyReference
+        retained = workspace/'Documents'/'retained'/'nested.pdf'
+        retained.parent.mkdir(); retained.write_bytes(b'local identity-only body')
+        with PaperRepository.open(workspace) as repo:
+            identity_only = repo.create_or_match(repo.workspace_id, direct_ids=ExternalIds(openalex='W778'),
+                metadata=PaperMetadata(title='Local identity-only')).paper
+            identity_only = repo.complete_body(identity_only.token, BodyReference(relative_path='Documents/retained/nested.pdf'))
+            identity_only = repo.exclude(identity_only.token)
+            identity_only = repo.clear_metadata(identity_only.token)
+        identity_request = dict(csrf_token=state['csrf_token'], workspace_id=str(public.workspace_id), body_generation=identity_only.body_generation)
+        identity_read = await client.post(f'/api/papers/{identity_only.id}/body/open', json=identity_request)
+        assert identity_read.status_code == 200 and identity_read.json()['outcome'] == 'opened', identity_read.text
+        retained.unlink()
+        missing = await client.post(f'/api/papers/{identity_only.id}/body/locate', json=identity_request)
+        assert missing.status_code == 200 and missing.json()['outcome'] == 'missing', missing.text
+        assert missing.json()['paper']['body_present'] is False and missing.json()['paper']['metadata_present'] is False
+        print(json.dumps({'type':'fixture_local','status':'settled','retry_attempt':retry_task.download_token.attempt}), flush=True)
         cases=[(path,origin+'/'+path,None) for path in ['redirect?Signature=A%2FB', 'encoded', 'chunked', 'html.pdf', 'unknown', 'truncated', 'cancel', 'expiry', 'cross', 'challenge', 'disk-write', 'disk-flush', 'slow-writer', 'cross-referer']]
         cases.extend([
             ('background-cloudflare',origin+'/background-cloudflare',None),

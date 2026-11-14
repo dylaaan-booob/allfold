@@ -80,10 +80,25 @@ def test_export_revalidates_native_records_and_preserves_exact_associations(tmp_
     assert native_events[0]['page_id'] == 17
     assert native_events[0]['source_page_id'] == 9
     assert native_events[0]['stage'] == 'attachment'
-    assert native_events[0]['parent'] == 'confirmed'
-    assert native_events[0]['pdf'] == 'unverified'
+    assert 'parent' not in native_events[0] and 'pdf' not in native_events[0]
     assert native_events[0]['attachment_phase'] == 'desktop_attachment'
     assert json.loads(exported['manifest.json'])['integrity']['invalid_records'] == 2
+
+
+def test_retired_native_events_are_revalidated_without_rewriting_retained_files(tmp_path):
+    store = DiagnosticStore(tmp_path/'config.yaml', root=tmp_path/'logs')
+    native = store.root/'scopes'/store.scope_id/'electron'
+    native.mkdir(mode=0o700)
+    records = [dict(schema_version=1, time='2026-11-03T01:00:00Z', source='electron', runtime_id='old',
+        scope_id=store.scope_id, level='info', event=name, parent_task_id='retained-parent')
+        for name in ('translation_completed', 'parent_save_result', 'item_save_result')]
+    path = native/'events.0.jsonl'
+    original = '\n'.join(map(json.dumps, records))+'\n'
+    path.write_text(original)
+    exported = bundle(store)
+    assert json.loads(exported['manifest.json'])['integrity']['invalid_records'] == 3
+    assert all(event['source'] == 'python' for event in map(json.loads, exported['events.jsonl'].splitlines()))
+    assert path.read_text() == original
 
 
 def test_logs_reset_is_one_use_configuration_and_file_identity_bound(tmp_path):

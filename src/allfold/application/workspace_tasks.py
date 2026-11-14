@@ -3,7 +3,7 @@
 Only work admission/initialization binds a library. Read projections use peek(),
 so a GET never creates a database or normalizes a newly appeared library.
 """
-from contextlib import nullcontext
+from contextlib import contextmanager, nullcontext
 from dataclasses import dataclass, field
 from pathlib import Path
 import threading
@@ -12,7 +12,45 @@ from allfold.application.collection_runtime import WorkspaceRegistry
 from allfold.application.task_authority import TaskAuthority
 from allfold.application.task_clients import IndependentClientFactory, new_provider_pacing
 from allfold.config import ConfigurationError, load_config
-from allfold.persistence.paper_repository import InvalidPaperState, LibraryError
+from allfold.persistence.paper_repository import InvalidPaperState, LibraryError, StaleWriteError
+
+
+@dataclass(eq=False)
+class _LocalOperation:
+    host: object
+    registry: object
+    paper: object
+    epochs: tuple
+    destructive: bool
+    native_future: object = None
+    cleanup_ended: bool = False
+    cleanup_failed: bool = False
+
+    @property
+    def paper_id(self):
+        return self.paper.id
+
+    @property
+    def token(self):
+        return self.paper.token
+
+    def cancel_native(self):
+        # A cancel signal only prevents future shell work. This owner remains
+        # visible until the native Future and Python descriptors actually settle.
+        if self.native_future is not None and not self.native_future.done():
+            self.host.bridge.cancel_task('local-body', self.task_id)
+
+    def guard(self):
+        self.host._verify_authority(None, (), self.epochs)
+        with self.registry.paper_gate(), self.registry._repository() as repository:
+            if self.registry.stopped or self not in self.registry._local_operations:
+                raise StaleWriteError('Local body lifetime changed')
+            current = repository.get(self.paper.id)
+            if (current.body_generation != self.paper.body_generation or current.body != self.paper.body
+                    or self.destructive and (not current.excluded
+                        or current.operation_generation != self.paper.operation_generation)):
+                raise StaleWriteError('Original body association changed')
+            return current
 
 
 @dataclass(eq=False)
@@ -152,6 +190,46 @@ class WorkspaceTaskHost:
     def cleanup_pending(self, paper_id, workspace_id):
         registry = self.peek()
         return bool(registry and registry.cleanup_pending(paper_id, workspace_id))
+
+    @contextmanager
+    def local_operation(self, paper, *, destructive=False):
+        """Host-visible synchronous work; no Session authority or executor.
+
+        Only the short admission uses settings/Paper locks. Native terminal and
+        filesystem work run outside them; maintenance sees this original owner.
+        """
+        with self.settings_lock:
+            registry = self.current()
+            with registry.paper_gate():
+                epochs = self._verify_authority(None, ())
+                if paper.workspace_id != registry.workspace_id or registry.stopped:
+                    raise StaleWriteError('Local body belongs to another lifetime')
+                if any(owner.paper_id == paper.id and owner.destructive for owner in registry._local_operations.values()):
+                    raise InvalidPaperState('Body deletion is still active')
+                if destructive:
+                    with registry._repository() as repository:
+                        current = repository.get(paper.id)
+                    if (not current.excluded or registry.busy(paper.id)
+                            or current.collection is not None and current.collection.active
+                            or current.download is not None and (current.download.active or current.download.output is not None)):
+                        raise InvalidPaperState('Wait for this Paper actual cleanup before deleting its body')
+                owner = _LocalOperation(self, registry, paper, epochs, destructive)
+                registry._local_operations[owner] = owner
+                try:
+                    owner.guard()
+                except BaseException:
+                    del registry._local_operations[owner]
+                    raise
+        try:
+            yield owner
+        finally:
+            with registry.paper_gate():
+                owner.cleanup_ended = True
+                if owner.cleanup_failed or owner.native_future is not None and (not owner.native_future.done() or owner.native_future.cancelled()):
+                    registry._fault(owner, 'local-body-native-cleanup', RuntimeError('Native terminal is unconfirmed'))
+                else:
+                    del registry._local_operations[owner]
+                registry._settled_condition.notify_all()
 
     def begin_change(self, *, whole=False, services=(), providers=(), all_access=False):
         """Short settings → Paper → host decision; no cancellation callbacks."""

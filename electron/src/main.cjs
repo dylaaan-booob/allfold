@@ -1,5 +1,5 @@
 'use strict';
-const {app,BrowserWindow,ipcMain,dialog} = require('electron');
+const {app,BrowserWindow,ipcMain,dialog,shell} = require('electron');
 const {spawn,spawnSync} = require('node:child_process');
 const {randomBytes,createHash} = require('node:crypto');
 const path = require('node:path');
@@ -13,6 +13,7 @@ const {log,errorCode,initializeLogging,withLogContext,associationLogContext,diag
 const {operationAssociation}=require('./browser/page-association.cjs');
 const {loginInstitution,prepareLoggedInService,visitManualService,searchJournalCover}=require('./workflows/browser-operations.cjs');
 const {executeBodyStream}=require('./workflows/body-stream.cjs');
+const {executeLocalBody}=require('./workflows/local-body.cjs');
 const {wosQuery,wosExport}=require('./workflows/wos-operations.cjs');
 const {readCASCredentials,casStatus,saveCASCredentials,clearCASCredentials,casErrorCode}=require('./auth/cas-credentials.cjs');
 const {confirmConfigurationExit,confirmBlockedUnload}=require('./shared/configuration-exit.cjs');
@@ -76,7 +77,7 @@ async function executeControl(message,signal) {
   return {ok:false,error:'unsupported_operation'};
 }
 async function execute(message) {
-  if(!CONTROL_ACTIONS.has(message.action) && !RESOURCE_ACTIONS.has(message.action) && !['login_carsi','prepare_service','visit_manual_service','search_journal_cover','wos_query','wos_export','extract_paper_metadata','extract_paper_pdf_clues','stream_paper_body'].includes(message.action)){
+  if(!CONTROL_ACTIONS.has(message.action) && !RESOURCE_ACTIONS.has(message.action) && !['login_carsi','prepare_service','visit_manual_service','search_journal_cover','wos_query','wos_export','extract_paper_metadata','extract_paper_pdf_clues','stream_paper_body','local_paper_body'].includes(message.action)){
     send({type:'result',id:message.id,action:message.action,data:{diagnostic:{stage:'navigation',code:'unsupported_operation'}}});return;
   }
   const control=CONTROL_ACTIONS.has(message.action);
@@ -123,7 +124,10 @@ async function executeOperation(message,current) {
   const recovery=invocationRecovery();
   const verifyRecovery=options=>validateRecovery(current,send,options);
   try {
-    data=await browser.runTask(controller.signal,{...message.data,request_id:message.id},async()=>{
+    if(message.action==='local_paper_body'){
+      stage='attachment';
+      data=await executeLocalBody(message.data,{signal:controller.signal,shell,verifyAuthority:verifyRecovery});
+    }else data=await browser.runTask(controller.signal,{...message.data,request_id:message.id},async()=>{
       browser.operation.action=message.action;
       try {
         if(controller.signal.aborted)throw new BrowserFailure('navigation','canceled');
