@@ -158,7 +158,8 @@ does not carry the stream writer's close guarantee. Unique attempt paths prevent
 ordinary retries from reusing the old pathname, but cannot guarantee a manually
 or externally installed replacement survives.
 
-This measured race is an accepted WF10 risk and no longer blocks acceptance. It
+This measured race is an accepted WF10 risk. Once disclosed, it blocks neither
+acceptance nor WF10 task completion; eliminating it is not a passing criterion. It
 does not grant arbitrary file access, weaken final publication or relax local
 open/locate/Trash safeguards. No occurrence rate in ordinary use or general
 website ability to delete arbitrary user files has been established. Keep other
@@ -171,8 +172,9 @@ and POST replay are not used as substitutes for a cleanup acknowledgement.
 New bodies use `Documents/<paper UUID>.pdf`. Streams are staged on the same filesystem
 at `Documents/.downloads/<paper UUID>.<attempt>.part`. Existing legal
 `Documents/...` body paths remain usable without migration or renaming.
-`ManagedBodyFiles` pins no-follow directory descriptors and exclusively creates
-the regular inode. Private output facts record Workspace/Documents/staging and
+`ManagedBodyFiles` pins no-follow directory descriptors and, for streams,
+exclusively creates the regular inode. Native output uses the observed inode
+described above. Private output facts record Workspace/Documents/staging and
 disposal directory identities plus that actual inode; a planned filename alone
 grants no authority. Main verifies live directories and its opened descriptor
 without truncating or following the final link.
