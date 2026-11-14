@@ -7,11 +7,10 @@ subscribe to that entry; WoS registers an attempt before its export action.
 Finishing a task disposes its registrations, never the Session listeners.
 Shutdown drains owned work, pages and native items before disposing the entry.
 
-Public reusable-PDF Download now consumes this Session through the shared body
-owner; see [body downloads](body-downloads.md). Original-response body adoption
-remains [blocked by output cancellation safety](https://github.com/dylaaan-booob/allfold/issues/118#issuecomment-6881292245).
-The Session-level capabilities below remain mechanism evidence, not an accepted
-public native file-completion path.
+Public reusable-PDF and qualified original-response Download consume this Session
+through the shared body owner; see [body downloads](body-downloads.md), including
+the accepted native cancellation limitation. The Session-level capabilities below
+remain mechanism evidence; production body composition is tested separately.
 
 Request handlers run synchronously in registration order. Each sees the headers
 already composed by the preceding handler and returns the next header state.
@@ -125,21 +124,23 @@ failures. Electron 45's DownloadItem observer list rejects reentrant cancellatio
 inside `updated`; the router defers that cancel to the next event-loop turn and
 continues retaining the item until real `done`.
 
-## BrowserRuntime entry limitation
+## BrowserRuntime Document handoff
 
-This limitation has not been globally relaxed for WF10. Experimental controlled
-action handoff demonstrated original main-frame and new-child responses, but
-its native output capability failed the file-replacement/cancellation boundary.
-Those unsafe changes are excluded from the PR; production skips unsupported
-native body entries before action or output creation. `done(cancelled)` can
-precede Chromium's path-based deletion, so it cannot prove safe file disposal.
+WF10 adds a separate fixed body-action capability for qualified R059 current
+forms and R024 ScienceDirect article/reader entries. Before dispatch it transfers
+the verified Document's authority to the exact controlled request/frame and
+original item; action-created child sources register before their first PDF
+headers. It does not globally relax current-Document checks or make read-only
+probes execute actions. The [accepted cancellation risk](body-downloads.md#native-output-and-accepted-cancellation-risk)
+concerns Chromium's temporary pathname cleanup, not Document authority.
 
 The separate `page-resources.fixture.cjs` uses the production Runtime and its WF03
 Document generation checks. A main-frame form POST download invalidates its
 captured navigation generation; current-Document validation therefore refuses
 that registration and cancels the original item to actual terminal. The local
 server observes exactly one POST, no extra GET, and no managed file. This entry
-is not supported by BrowserRuntime. Its slow source-lifetime case uses one
+remains refused by that ordinary Document registration; only the dedicated body
+handoff supports the qualified action. Its slow source-lifetime case uses one
 same-Document `<a download>` GET, held through real `done`. These results and the
 Session-level original-POST success above have different seams; neither grants
 permission to weaken Document authority. [Browser pages](browser-pages.md) records

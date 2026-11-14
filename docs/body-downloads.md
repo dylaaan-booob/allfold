@@ -1,19 +1,19 @@
 # Paper body downloads and local files
 
 `BodyDownloadService` owns the public single-Paper Download/Cancel path. One
-Workspace host reservation owns lazy P1–P5 discovery, the selected Session stream,
+Workspace host reservation owns lazy P1–P5 discovery, the selected Session stream
+or qualified original DownloadItem response,
 file publication, the SQLite completion transaction and actual cleanup. There is
 one current body per Paper and no separate save, receive or commit task.
 
 WF09 merged in [PR #116](https://github.com/dylaaan-booob/allfold/pull/116) at
-`029bc9a148170c699dbbe43f63885fc9718656e6`. This branch adds the public stream and
-local-file work from [WF10 #117](https://github.com/dylaaan-booob/allfold/issues/117).
-**WF10 is partial and the PR remains Draft:** original DownloadItem body output is
-blocked by the [measured cancellation/path safety boundary](https://github.com/dylaaan-booob/allfold/issues/118#issuecomment-6881292245).
-Mechanism fixtures for original POST/inline/frame/popup responses do not establish
-safe permanent-body completion. The unsupported body-native path performs no
-action, request or output creation; legitimate later reusable stream candidates
-remain eligible. It never emulates POST or one-time responses with a GET.
+`029bc9a148170c699dbbe43f63885fc9718656e6`. This branch implements public Download,
+qualified original responses and local-file work from
+[WF10 #117](https://github.com/dylaaan-booob/allfold/issues/117). The accepted native
+boundary below permits Chromium's measured cancellation limitation; it does not
+claim that limitation is fixed. A fixed current-form or ScienceDirect action
+retains its original method/body and Session. It never emulates POST or one-time
+responses with a GET. Reusable URLs keep the existing Session stream consumer.
 
 ## Public input and admission
 
@@ -72,8 +72,9 @@ identity/access/solver, physical-page and cleanup checks and never recollects
 completed Date/Abstract. Known IEEE reader, Oxford same-filename Silverchair CDN
 and ScienceDirect same-PII response/reader rules keep their narrow qualifications.
 Unknown pages are not a crawler, and login/identity/access refusals are not empty
-branches. Unsupported native actions are finite condition skips, not pending or
-successful transfers, and do not manufacture `fallback_used`.
+branches. Only the fixed qualified native entries execute actions; inapplicable
+entries are finite condition skips, not pending or successful transfers, and do
+not manufacture `fallback_used`.
 
 Only a normal PDF-type transfer permits completion. Ordinary candidate failures
 may advance sources within the same remaining budget; cancellation, revocation,
@@ -117,20 +118,57 @@ private. No Content-Length equality, minimum size, PDF header/EOF/structure/text
 identity/hash/version validation is added. Bounded current HTML/access responses
 return to the same source coordinator after that output has settled.
 
-DownloadItem `done(cancelled)` is not a file-deletion settlement barrier in the
-pinned runtime. Chromium queues deletion by saved pathname after emitting the
-terminal state. A changed directory/leaf can therefore be deleted despite a
-Main refusal. Precreated output is also not the stream inode: Chromium may
-replace it or use another partial. Real `/dev/fd` directory and file sink probes
-both interrupted without writing a body. No unsupported fd path, fixed sleep,
-extra helper download, permanently retained fd, cancellation replay or weakened
-object check substitutes for the missing native output capability. Production
-original-response saving remains blocked, including the live ScienceDirect path
-that needed it in WF09. The existing Session/WoS mechanisms remain unchanged.
+## Native output and accepted cancellation risk
+
+`native_paper_body` uses a separate fixed action capability in Main/BrowserRuntime
+and the isolated Document preload. It opens and verifies the current article,
+reads its live R059 form or R024 ScienceDirect entry, then registers before the
+controlled action. A one-shot handoff binds the verified Document to the exact
+original navigation request, frame, owner and item. An action-created iframe or
+popup registers before its first PDF response; child pages use the same physical
+quotas. The scoped attachment override changes only the qualified navigation's
+headers and retains its response body. Read-only probes stay read-only, and
+ordinary Document registrations still refuse unrelated navigation.
+
+The unique Session listener synchronously sets the managed save path, reports
+bounded progress and waits for actual DownloadItem terminal. Interrupted updates
+defer cancellation out of Chromium's observer callback and retain the interrupted
+reason; no resume or automatic action replay is added. Sources remain owned until
+item terminal and actual page destruction, including no-item/late-item cleanup.
+Only a normal completed PDF-type response with a verified actual output enters
+the common publication/SQLite path. A filename, viewer display or `will-download`
+event alone cannot complete the Paper.
+
+Native output reserves an exclusive `0700` directory at
+`Documents/.downloads/<paper UUID>.<attempt>.native/` and initially leaves
+`body.part` absent. Chromium does not promise to reuse a precreated stream inode;
+Main observes its actual regular-file inode and Python independently checks it
+before publication. Each attempt has a distinct path. Directory/file replacement,
+symlinks, unrelated links and unknown objects still cause application refusal;
+final body publication remains no-clobber. Application cleanup never deliberately
+unlinks an unproved replacement.
+
+**Accepted limitation:** Electron 45 gives Chromium a pathname, not an output file
+descriptor. If another process replaces this private temporary file or directory
+during transfer, cancellation/interruption cleanup can delete the replacement,
+even after Main detects the change and refuses it. Chromium's asynchronous
+path-based deletion may run after `done(cancelled)`; that event confirms the item
+terminal, not that every file-worker action is finished. Cancellation therefore
+does not carry the stream writer's close guarantee. Unique attempt paths prevent
+ordinary retries from reusing the old pathname, but cannot guarantee a manually
+or externally installed replacement survives.
+
+This measured race is an accepted WF10 risk and no longer blocks acceptance. It
+does not grant arbitrary file access, weaken final publication or relax local
+open/locate/Trash safeguards. No occurrence rate in ordinary use or general
+website ability to delete arbitrary user files has been established. Keep other
+programs from editing `.downloads` during an active transfer. Real `/dev/fd` sink
+probes failed; fixed sleeps, extra downloads, permanently retained descriptors
+and POST replay are not used as substitutes for a cleanup acknowledgement.
 
 ## Managed publication and final transaction
 
-New stream bodies use `Documents/<paper UUID>.pdf`, staged on the same filesystem
+New bodies use `Documents/<paper UUID>.pdf`. Streams are staged on the same filesystem
 at `Documents/.downloads/<paper UUID>.<attempt>.part`. Existing legal
 `Documents/...` body paths remain usable without migration or renaming.
 `ManagedBodyFiles` pins no-follow directory descriptors and exclusively creates
@@ -142,10 +180,11 @@ without truncating or following the final link.
 Publication is atomic no-clobber link, never exists-then-replace or numbered
 copies. Removal moves the addressed entry without clobbering to the private
 disposal directory, verifies it and unlinks only the proven object; a substituted
-object is restored without overwrite. Directory/target replacement preserves
-unknown objects and fails the operation.
+object is restored without overwrite. Directory/target replacement in these
+application operations preserves unknown objects and fails the operation.
+Chromium's separate cancellation cleanup has the accepted exception above.
 
-After actual transport/writer settlement, `complete_attempt` checks original
+After successful transport/writer settlement, `complete_attempt` checks original
 authority, publishes the output, checks authority/final inode again, then uses
 one short `complete_download` transaction for the body, successful provenance,
 completed status and revision. Network and long file work occur outside SQLite
@@ -220,10 +259,30 @@ must settle those facts before another request. There is no orphan scan,
 filename-based ownership recovery, persistent replay queue or resume engine.
 
 Tests use isolated real host/SQLite/files, authenticated production bridge/Main,
-temporary-profile Electron, controlled HTTP and shell adapters. Public stream
-and rendered reader evidence are distinct from raw Session original-response
-mechanisms and the blocked native file boundary. Actual default-app/file-manager
-effects, real publishers/institutions/proxies/CDNs and manual challenges remain
-separate acceptance requiring task-specific authorization. Latest PR CI and the
-known native blocker are reported in the PR; neither old live samples nor a PDF
-viewer display establish WF10 completion.
+temporary-profile Electron, controlled HTTP and shell adapters. Public stream,
+public original-item composition and rendered reader evidence are distinct from
+real-site and OS effects. Actual default-app/file-manager effects, real
+publishers/institution sessions/proxies/CDNs and manual challenges require
+separate acceptance and task-specific authorization. Latest PR CI and remaining
+unverified effects are reported in the PR; neither old live samples nor a PDF
+viewer display establish success of the current public path.
+
+## Scoped manual acceptance
+
+Use a disposable configuration and Workspace containing only test Papers. Start
+from the reviewed PR version and a settled collection; reuse an available access
+session where needed rather than retesting institution Login or Prepare itself.
+These checks cover effects changed by WF10 that isolated fixtures cannot prove:
+
+| Affected area | Minimal human check and expected result |
+| --- | --- |
+| Original publisher response | From a ScienceDirect test Paper that needs the original browser response, click **Download** once. If testing the form path, add one accessible R059 Microbiology example. The transfer completes from the original action, the Paper appears once in Downloaded and its PDF opens. A browser viewer alone is not success. Record access denial separately from a transfer failure. |
+| Retained reusable publisher paths | Use one known IEEE reader example and one Oxford/Silverchair CDN example, because the unified source coordinator and shared Session hooks affect their routing. Both complete through public Download without a second body or new save step. Do not expand this to every publisher. |
+| Download interaction and cancellation | On one sufficiently slow test download, switch Papers and return, cancel that exact attempt, wait for its displayed cleanup to end, then explicitly retry. Progress and terminal state follow the right Paper; unrelated work continues, cancellation creates no Downloaded body, and retry creates one body. Reuse this sample for completion/classification/Reader checks rather than a separate whole-UI pass. |
+| OS and independent body deletion | On a downloaded test Paper, use **打开 PDF** and **定位 PDF** to verify the default viewer and Finder select the same managed body; repeat local open offline. Move the test Paper to Trash, select **删除 PDF**, then Restore. Only that PDF/association is removed; metadata survives and the Paper is an eligible Candidate. Do not clear unrelated real files or metadata. |
+
+Path/object replacement races, frame/IPC forgery, page quotas, schema forward
+changes, SQLite failures and maintenance interleavings belong to isolated
+automated tests. Do not manually replace active temporary files to reproduce the
+accepted deletion race. No blanket Login/CARSI, WoS Run, Zotero, Settings, Journal,
+Cover, installer or all-workspace navigation acceptance is required for WF10.

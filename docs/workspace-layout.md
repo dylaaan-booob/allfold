@@ -76,7 +76,7 @@ The following real-UI checks are a reference for changes affecting those behavio
 1. Real pointer hover across trigger/flyout boundaries, delayed dismissal, touch activation, Tab/Shift-Tab and Escape. Drag/keyboard-resize Sidebar at wide/narrow bounds; inspect clipping and focus with long Directory and Details content.
 2. At 600 × 480 and larger sizes, check Reader, list, flyout, forms and workflow scroll regions; vary host zoom, display scale, low height, messages and developer controls. Verify preferred width after repeated narrow/wide changes and restart.
 3. Real-data Group/Service/Label edits, destructive confirmations and Cover upload/crop/search. Isolated tests cover ordinary autosave, error/conflict recovery and assignment Undo; real covers and user data are outside those fixtures.
-4. Native Browser pages and Session across Allfold return, tasks and dialog suspension; Login and Discover handoff, task-page association, polling, Cancel and completion. Real publisher PDFs and OS default-app/file-manager effects remain separate acceptance; original native body output is currently blocked.
+4. Native Browser pages and Session across Allfold return, tasks and dialog suspension; Login and Discover handoff, task-page association, polling, Cancel and completion. Real publisher PDFs and OS default-app/file-manager effects remain separate acceptance; select only the affected [body workflow checks](body-downloads.md#scoped-manual-acceptance) for WF10.
 5. Re-enable Archive and verify actual Canvas inspection/return, shared Reader, Archive layout/debug preferences, and recovery from both enabled and disabled states. The DOM test proves restoration mechanics, not the full animated Archive experience.
 
 ## Task Browser synthetic acceptance
