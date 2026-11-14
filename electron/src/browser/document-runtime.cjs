@@ -6,6 +6,7 @@ const {randomBytes}=require('node:crypto');
 const {BrowserFailure}=require('./browser-errors.cjs');
 const {waitFor}=require('./browser-task.cjs');
 const {boundedPdfClues}=require('./pdf-clues.cjs');
+const doiCasefold=Object.freeze(require('./doi-casefold.json'));
 // Project each reply through its fixed DTO; never forward arbitrary page-owned properties.
 function boundedResult(action,value) {
   const invalid=()=>{throw new BrowserFailure('navigation','page_probe_unconfirmed');};
@@ -89,7 +90,8 @@ class DocumentRuntime {
     const closed=()=>reject(new BrowserFailure('navigation','page_closed'));
     contents.on('did-start-navigation',changed);contents.on('did-navigate-in-page',changed);contents.on('did-frame-navigate',changed);contents.once('destroyed',closed);contents.once('render-process-gone',closed);
     try {
-      const result=await waitFor(()=>{frame.send('document:operation',{id,action,args,expectedDocumentId:doc.documentId,expectedURL:doc.url});return response;},
+      const result=await waitFor(()=>{frame.send('document:operation',{id,action,args,expectedDocumentId:doc.documentId,expectedURL:doc.url,
+        ...(action==='pdf'?{doiCasefold}:{})});return response;},
         options.signal,Math.min(options.deadline ?? Infinity,Date.now()+15000),'navigation','document_operation');
       if(!this.browser.documentCurrent(doc))throw new BrowserFailure('navigation','document_changed');
       return result;

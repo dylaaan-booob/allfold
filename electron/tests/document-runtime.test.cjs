@@ -52,6 +52,7 @@ test('unbounded evidence, replaced URLs and unsupported operations fail closed',
   const replaced=f.runtime.call(f.doc,'binding');f.reply({type:'text/html'},{url:'https://fixture.invalid/replaced'});
   await assert.rejects(replaced,/document_changed/);
   await assert.rejects(f.runtime.call(f.doc,'execute',{code:'arbitrary'}),/document_operation_failed/);
+  await assert.rejects(f.runtime.call(f.doc,'pdf',{readerKind:null,doiCasefold:{}}),/document_operation_failed/);
   assert.equal(f.messages.length,2);
 });
 test('fixed extraction forwards only boolean qualification and accepts legal empty metadata',async t=>{

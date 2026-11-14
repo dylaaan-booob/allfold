@@ -271,6 +271,9 @@ is taken only from the current article outside peripheral regions and must be
 unique; an ambiguous stored AN set cannot select a reader.
 PDF entry identity reuses the fixed article probe's bounded DOI values and
 recognized scholarly metadata sources, including equivalent duplicate fields.
+The private fixed PDF message carries the existing host-owned Unicode casefold
+data used by article identity; Meta, control DOI and DOI-path comparisons share
+those semantics. Public operation arguments cannot supply normalization data.
 Candidate count and aggregate size are checked before adding each field, reserving space for the
 final landing URL and typed persistable-fact projection. Overflow is a diagnostic,
 never truncated success. A local PDF operation/DTO failure keeps independently

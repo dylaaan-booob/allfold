@@ -403,7 +403,7 @@ const operations={
     guard();
     return {metadata:{dates,abstract},diagnostics:[...diagnostics]};
   },
-  pdf(readerKind,knownState,articleProbe) {
+  pdf(readerKind,knownState,articleProbe,doiCasefold) {
     const diagnostics=new Set(),candidates=[],identifiers=[],seen=new Set(),landing_url=location.href;
     // Reserve space within the 64 KiB fact DTO for the final landing URL,
     // exact target and Python's typed/default candidate fields as well.
@@ -424,14 +424,15 @@ const operations={
       ['oup','R020',/^academic\.oup\.com$/],['atypon','R039',/^(?:onlinelibrary\.wiley\.com|journals\.sagepub\.com|www\.tandfonline\.com|www\.annualreviews\.org|pubs\.aiaa\.org|www\.liebertpub\.com|www\.worldscientific\.com)$/],
     ];
     const [platform,rule_id]=entries.find(item=>item[2].test(host)) || ['generic','GENERIC'];
-    const normalizeDoi=value=>{if(typeof value!=='string')return null;const doi=value.trim().replace(/^(?:https?:\/\/(?:dx\.)?doi\.org\/|doi:\s*)/i,'').trim().toLowerCase();return /^10\.\d{4,9}\/[^\s]+$/.test(doi)?doi:null;};
+    // Main supplies the existing article-identity casefold data, not page code.
+    const normalizeDoi=value=>{if(typeof value!=='string')return null;const doi=value.trim().replace(/^(?:https?:\/\/(?:dx\.)?doi\.org\/|doi:\s*)/i,'').trim().toLowerCase().replace(/[^\x00-\x7f]/gu,char=>doiCasefold[char] || char);return /^10\.\d{4,9}\/[^\s]+$/u.test(doi)?doi:null;};
     // The fixed article probe owns the scholarly DOI sources; PDF qualification
     // reuses its bounded values instead of maintaining another alias list.
     const doiValues=[...new Set((articleProbe?.values || []).map(normalizeDoi).filter(Boolean))];
     const decode=value=>{try{return decodeURI(value);}catch{return value;}};
-    const pathDoi=decode(path).match(/\/doi\/(?:abs\/|full\/)?(10\.\d{4,9}\/[^\s]+)$/)?.[1]?.toLowerCase();
+    const pathDoi=normalizeDoi(decode(path).match(/\/doi\/(?:abs\/|full\/)?(10\.\d{4,9}\/[^\s]+)$/)?.[1]);
     const targetDoi=doiValues.length===1?doiValues[0]:doiValues.length?null:pathDoi;
-    const sameArticle=value=>{const link=url(value);if(!link)return false;const doi=decode(new URL(link).pathname).match(/\/doi\/(?:pdf|epdf|pdfplus)\/(10\.\d{4,9}\/[^\s]+)$/)?.[1]?.toLowerCase();return !doi || !!targetDoi && doi===targetDoi;};
+    const sameArticle=value=>{const link=url(value);if(!link)return false;const doi=normalizeDoi(decode(new URL(link).pathname).match(/\/doi\/(?:pdf|epdf|pdfplus)\/(10\.\d{4,9}\/[^\s]+)$/)?.[1]);return !doi || !!targetDoi && doi===targetDoi;};
     const type=[...document.head?.querySelectorAll('meta[content]') || []].filter(node=>/^(?:citation_type|dc.type)$/i.test(node.getAttribute('name') || node.getAttribute('property') || '')).map(node=>node.getAttribute('content').toLowerCase()).join(' ');
     const unsupported=/book|chapter|supplement/i.test(type) || /\/(?:chapter|chapter-abstract|books|book)\//i.test(path);
     const content_type=unsupported?'unknown':/conference|proceeding/i.test(type)?'conference-paper':/journal|article/i.test(type)?'journal-article':'unknown';
@@ -549,7 +550,7 @@ const operations={
     return {values,limited,multiple,article:articles.length===1};
   },
 };
-ipcRenderer.on('document:operation',async(_event,{id,action,expectedDocumentId,expectedURL,args})=>{
+ipcRenderer.on('document:operation',async(_event,{id,action,expectedDocumentId,expectedURL,args,doiCasefold})=>{
   if(!Object.hasOwn(operations,action) || !args || typeof args!=='object' || Array.isArray(args)
     || (action==='extract'?Object.keys(args).length!==1 || typeof args.wantAbstract!=='boolean':action==='pdf'?Object.keys(args).length!==1 || ![null,'sciencedirect','ieee','optica','lww','oce'].includes(args.readerKind):Object.keys(args).length!==0)) {
     ipcRenderer.send('document:result',{id,error:'document_operation_failed'});return;
@@ -569,7 +570,7 @@ ipcRenderer.on('document:operation',async(_event,{id,action,expectedDocumentId,e
     const source=name=>'('+operations[name].toString().replace(/^\w+\(/,'function(')+')()';
     // Access and article facts are observed in one synchronous DOM turn.
     const code=action==='article'?'({access:'+source('access')+',article:{...'+source('article')+',subject:'+subject+'}})'
-      :action==='extract'?'({...('+operations.extract.toString().replace(/^\w+\(/,'function(')+')('+JSON.stringify(args.wantAbstract)+'),subject:'+subject+'})':action==='pdf'?'({clues:('+operations.pdf.toString().replace(/^\w+\(/,'function(')+')('+JSON.stringify(args.readerKind)+','+JSON.stringify(knownState)+','+source('article')+'),subject:'+subject+'})':source(action);
+      :action==='extract'?'({...('+operations.extract.toString().replace(/^\w+\(/,'function(')+')('+JSON.stringify(args.wantAbstract)+'),subject:'+subject+'})':action==='pdf'?'({clues:('+operations.pdf.toString().replace(/^\w+\(/,'function(')+')('+JSON.stringify(args.readerKind)+','+JSON.stringify(knownState)+','+source('article')+','+JSON.stringify(doiCasefold)+'),subject:'+subject+'})':source(action);
     const result=await webFrame.executeJavaScriptInIsolatedWorld(999,[{code}]);
     if(location.href!==url)throw Error('document_changed');
     ipcRenderer.send('document:result',{id,result,documentId,url});
