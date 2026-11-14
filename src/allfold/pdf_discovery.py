@@ -53,7 +53,7 @@ class CandidateResult:
     diagnostic: str | None = None
 
     def __post_init__(self):
-        if self.kind not in {'pdf', 'failed', 'response', 'retry', 'pending', 'local_failure', 'cancelled', 'stale', 'expired'}:
+        if self.kind not in {'pdf', 'failed', 'response', 'retry', 'pending', 'skipped', 'local_failure', 'cancelled', 'stale', 'expired'}:
             raise ValueError('Unknown candidate outcome')
         if self.diagnostic is not None and not re.fullmatch(r'[a-z][a-z0-9-]{0,63}', self.diagnostic):
             raise ValueError('Diagnostics contain bounded reason codes only')
@@ -169,6 +169,7 @@ class PdfDiscovery:
         self._document_attempted = False
         self._initial = tuple(candidates) if candidates is not None else None
         self._transfers = max_transfers
+        self._consumed = 0
         self._stop_on_access = stop_on_access
 
     def check(self):
@@ -411,15 +412,17 @@ class PdfDiscovery:
                 if following:
                     # A current entrance can keep its spelling after refresh.
                     # Qualification is not a body request and consumes no URL.
+                    before = self._consumed
                     outcome = self._chain(following[0], consume, hop + 1)
                     if outcome is not None:
                         return outcome
+                    self._failed = self._failed or self._consumed > before
                     for item in following[1:]:
-                        if (urldefrag(item.url)[0], item.action) not in self._seen:
-                            self._fallback = True
+                        before = self._consumed
                         outcome = self._chain(item, consume, hop + 1)
                         if outcome is not None:
                             return outcome
+                        self._failed = self._failed or self._consumed > before
                     return None
             chain_seen.add(key)
             self._seen.add(key)
@@ -435,6 +438,17 @@ class PdfDiscovery:
                 result = self._call(consume, candidate)
             if not isinstance(result, CandidateResult):
                 raise TypeError('Consumer must report a CandidateResult')
+            if result.kind == 'skipped':
+                # A missing native capability is a condition, not a physical
+                # transfer or an observed source failure. Keep duplicate guards
+                # and the overall operation budget, refund this transfer slot.
+                self._transfers += 1
+                self._consumed += retries
+                self._diagnostics.append((original.stage, original.rule_id, result.diagnostic or 'condition-unavailable'))
+                return None
+            self._consumed += retries + 1
+            if self._failed:
+                self._fallback = True
             if result.kind == 'local_failure':
                 return DiscoveryResult('local-failure', fallback_used=self._fallback,
                     candidate=candidate, diagnostics=tuple(self._diagnostics))
@@ -486,15 +500,12 @@ class PdfDiscovery:
                 return None
             # Multiple links are alternatives within this source chain, not a
             # generic unbounded crawler. Branches use the same finite budget.
-            branch_failed = False
             for next_candidate in following:
-                if branch_failed and (urldefrag(next_candidate.url)[0], next_candidate.action) not in self._seen:
-                    self._fallback = True
-                before = len(self._seen)
+                before = self._consumed
                 outcome = self._chain(next_candidate, consume, hop + 1) if len(following) > 1 else None
                 if outcome is not None:
                     return outcome
-                branch_failed = branch_failed or len(self._seen) > before
+                self._failed = self._failed or self._consumed > before
             if len(following) != 1:
                 return None
             candidate = following[0]
@@ -514,11 +525,10 @@ class PdfDiscovery:
                 continue
             if (urldefrag(candidate.url)[0], candidate.action) in self._seen:
                 continue
-            if self._failed:
-                self._fallback = True
+            before = self._consumed
             result = self._chain(candidate, consume)
             if result is not None:
                 return result
-            self._failed = True
+            self._failed = self._failed or self._consumed > before
         self.check()
         return DiscoveryResult('exhausted', fallback_used=self._fallback, diagnostics=tuple(self._diagnostics))
