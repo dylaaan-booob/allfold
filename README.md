@@ -26,7 +26,7 @@ Setup installs locked dependencies and builds the UI. It creates a missing local
 3. In **Workflows → Discover**, set keywords and publication months, then select PubMed, Web of Science and OpenAlex as needed. WoS uses its prepared Service page when available. After manual confirmation without a prepared page, Discover opens the official WoS query page in the shared Browser session. API discovery continues if WoS needs Login. Run resolves necessary direct identities, establishes readable basic Papers and registers their complete collection plans. Workspace continues collection after Run finishes, while another Run can start. See [Provider roles and query limits](docs/providers.md).
 4. Review **Candidate**, **Downloaded** and **Trash** in **Workspace / ARRAY**. Reject persists exclusion and moves the Paper to Trash. Restore keeps its UUID and existing content. In Trash, clearing metadata removes bibliography, dates, abstract, sources and notes while retaining reliable identities, exclusion and any body association. An identity-only entry can be unexcluded locally; only a later actual Run hit rebuilds its metadata.
 5. Read Papers while their dates, abstract, Preprint proof and collection state update. Retry an eligible failed/cancelled Paper after its resources finish cleaning up. In **Info**, explicitly query linked preprints for a complete, unexcluded formal article; different Papers have independent requests. Reader displays the ordinary date set and independent verified Preprint date. Developer Mode retains local field clearing and empty-abstract input.
-6. Select **Download** for one eligible Candidate; its independent task discovers sources and streams a reusable PDF URL while the reader stays usable. Cancel addresses that exact attempt. Only file publication and SQLite completion move it to Downloaded. Open or locate an existing body locally, including identity-only and Trash entries. Trash can independently delete the PDF after this Paper's work finishes; metadata and exclusion remain. Confirmed absence clears only its current association; permission/system failures preserve it.
+6. Select **Download** for one eligible Candidate; its independent task discovers sources and uses a reusable Session stream or the qualified original browser response while the reader stays usable. Cancel addresses that exact attempt. Only file publication and SQLite completion move it to Downloaded. Open or locate an existing body locally, including identity-only and Trash entries. Trash can independently delete the PDF after this Paper's work finishes; metadata and exclusion remain. Confirmed absence clears only its current association; permission/system failures preserve it.
 
 `Workspace/papers.sqlite` is the sole production Paper store. Run/WoS, Reader,
 search, local edits, Preprint and Trash share the same repository. An unopened,
@@ -42,10 +42,11 @@ single-Paper retry. Stable direct identities also support DOI-free Papers.
 Keep, Import to Zotero, Last Import and active webpage Enrich are retired.
 Workspace owns bounded collection and explicit Preprint operations across Runs.
 Public single-Paper Download/Cancel and local body operations use the shared
-[Session/file completion service](docs/body-downloads.md). WF10 remains partial:
-original browser-response saving is [blocked by the pinned native output cancellation safety boundary](https://github.com/dylaaan-booob/allfold/issues/118#issuecomment-6881292245),
-so dependent native actions are refused before dispatch; reusable Session-stream
-sources can still run. Foreground Run finish means
+[Session/file completion service](docs/body-downloads.md). Original-response saving
+retains the documented [native cancellation limitation](docs/body-downloads.md#native-output-and-accepted-cancellation-risk):
+if another program replaces its private temporary file or directory during a
+download, Chromium's cancellation cleanup can delete the replacement. Final body
+publication remains no-clobber. Foreground Run finish means
 retrieval, base admission and its own cleanup have ended; each Paper's collection
 and cleanup status remain independent. Cancelling Run leaves accepted Paper work
 running. Restart fails interrupted attempts without replaying requests or pages.
@@ -80,7 +81,7 @@ See [Document access](docs/browser-documents.md).
 
 WF07 provides internal lazy PDF-source discovery and bounded, deletable source
 facts. Candidate URLs and reader entrances do not mark a Paper as Downloaded.
-WF08 connects source-fact collection to production; merged WF09 supplies Session transfer/files, and this WF10 branch connects public lazy Download and local file management while original DownloadItem output remains blocked;
+WF08 connects source-fact collection to production; merged WF09 supplies Session transfer/files, and this WF10 branch connects public lazy Download, original DownloadItem responses and local file management;
 see the [component scope and fixed rules](docs/pdf-source-discovery.md).
 
 ## Local data and privacy

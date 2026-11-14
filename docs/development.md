@@ -10,7 +10,7 @@ npm --prefix electron run setup
 
 Setup checks tools, creates `config.example.yaml` only if absent, installs locked Python/Electron/build dependencies, explicitly installs the Electron binary and builds the UI. Existing ignored vendor/Runtime directories are untouched. Translation-only assembly and Local API saving are retired; remaining Browser/Document/Prepare/Cloudflare helpers have no generated Runtime dependency.
 
-Configure keywords, months and Provider settings in Discover. The Login toolbar owns Institution and Service preparation concurrency. Single-Paper Download/Cancel and local PDF controls live in the existing reader; retired Import controls remain absent. Original DownloadItem body output is blocked by the pinned-runtime safety boundary in [body downloads](body-downloads.md). Application settings remain in Settings. Ordinary edits autosave, while credential replacement/clearing and high-impact operations require explicit submission. The public template is separate from local configuration; setup does not create or copy credentials.
+Configure keywords, months and Provider settings in Discover. The Login toolbar owns Institution and Service preparation concurrency. Single-Paper Download/Cancel and local PDF controls live in the existing reader; retired Import controls remain absent. Original DownloadItem body output retains the accepted [native cancellation limitation](body-downloads.md#native-output-and-accepted-cancellation-risk). Application settings remain in Settings. Ordinary edits autosave, while credential replacement/clearing and high-impact operations require explicit submission. The public template is separate from local configuration; setup does not create or copy credentials.
 
 Journal state is stored in `.allfold/user-data.sqlite`, isolated by canonical configuration path. The YAML `venue_whitelist` remains the first-migration source, not the live data store. The Journal Registry rebuilds offline from the existing five source lists with `uv run --locked python tools/build_journal_registry.py`; its shipped rows and indexes are checked against an isolated rebuild. Shared GOKB/CARSI data lives in `.allfold/resources.sqlite`; neither database belongs in a source candidate. Use temporary project/configuration directories and injected HTTP transports for migration, exchange and Resolver tests. Do not launch tests against personal YAML, Workspace, covers or Zotero.
 
@@ -315,7 +315,7 @@ counts, live effect timing, configuration limits and the Runtime form-POST
 limitation; [Session evidence](browser-session.md) has its separate capability scope.
 
 
-## Public body service and native output gate
+## Public body service and native output
 
 Run `test_body_downloads.py`, `test_body_download_http.py` and the serial
 `body-stream.test.cjs` composition fixture for body qualification, lazy P1/P2/P3,
@@ -337,11 +337,22 @@ explicit new attempt and identity-only nested-path cases through authenticated
 Bridge/Main. The built Reader fixture checks local buttons with a valid
 metadata-free DTO. No default viewer or file manager is launched by those tests.
 
-Original POST/inline/iframe/popup mechanisms can work while safe native output
-does not. Real Electron45 probes showed precreated inode replacement and
-asynchronous cancellation deletion by path; both `/dev/fd` output approaches
-interrupted without body writes. Production refuses native body action before
-dispatch, and the WF10 PR remains Draft. Those experiments do not establish
-normal file-task settlement or a public native body chain. See [the complete
-contract and precise blocker](body-downloads.md); do not replace the failing
-boundary with sleeps, altered assertions, resumed downloads or POST-to-GET replay.
+The serial `body-native.test.cjs` fixture uses actual Electron45, production
+Main/Runtime and local HTTP to exercise original POST/inline and action-created
+iframe/popup first responses. Public composition must additionally pass through
+the HTTP service, managed publication, SQLite and Workspace projection, rather
+than stopping at a transport helper. Native output reserves an exclusive private
+directory with an absent leaf, then qualifies Chromium's actual output inode;
+stream placeholders are not reused for native output. Application replacement
+refusal and no-clobber final publication remain active.
+
+Chromium's asynchronous cancellation unlink may delete an externally replaced
+temporary file after `done(cancelled)`. This measured limitation is accepted and
+documented; it is not a required replacement-survival assertion or proof of a
+fully closed file worker. Failed `/dev/fd` probes remain historical evidence,
+not an alternative sink. Do not use fixed sleeps, extra helper downloads, resume
+or POST-to-GET replay to claim cleanup guarantees. See [the native boundary](body-downloads.md#native-output-and-accepted-cancellation-risk).
+
+For human acceptance, use only the [affected body workflow matrix](body-downloads.md#scoped-manual-acceptance),
+not the whole Workbench reference above. Publisher/OS effects remain unverified
+until actually exercised with separately authorized test accounts/data.

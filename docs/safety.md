@@ -43,11 +43,16 @@ shell and unsafe-path failures preserve it. Trash deletion waits for actual Pape
 cleanup, safely removes only the captured file, then conditionally clears SQLite;
 file and DB operations are not atomic. Clearing metadata leaves body bytes intact.
 
-Original DownloadItem body output remains [blocked](https://github.com/dylaaan-booob/allfold/issues/118#issuecomment-6881292245):
-the pinned Chromium cancellation deletes asynchronously by saved path after
-`done(cancelled)`, which can remove an unknown replacement. Measured fd sinks did
-not transfer successfully. The production refusal starts no action/output and
-does not weaken file checks, replay POST as GET or report native completion.
+Original DownloadItem output has an accepted [native cancellation limitation](body-downloads.md#native-output-and-accepted-cancellation-risk).
+The pinned Chromium cancels asynchronously by saved pathname after
+`done(cancelled)`. If another process replaces that attempt's private temporary
+file or directory during transfer, Chromium's cleanup can remove the replacement
+despite Main detecting the change and refusing it. The application cannot promise
+that replacement survives. Exclusive private staging, unique attempt paths,
+object/path refusal, scoped application cleanup and no-clobber final publication
+remain required; stream, local open/locate and Trash deletion protections are
+unchanged. Do not treat `done(cancelled)` or a fixed delay as proof that the
+Chromium file worker has finished deleting. No POST-to-GET replay is permitted.
 
 Shutdown stops admission and waits for Run, Preprint, WoS, Login, Covers and
 in-flight native bridge results before closing their owned connections. Teardown

@@ -8,9 +8,10 @@ WF07 merged in PR #107 at `4d0d22bbda02d9fc173175fa8346813752e84204`.
 WF08 connects same-Document clues and necessary-response facts to production
 collection. WF09 merged in PR #116 and supplies Session/file/SQLite completion;
 the current WF10 branch runs the existing lazy coordinator inside a public body
-owner and adds local body management. Original DownloadItem output remains
-[blocked on measured cancellation/object safety](https://github.com/dylaaan-booob/allfold/issues/118#issuecomment-6881292245),
-so WF10 is partial/Draft. This current note supersedes only adoption status, not
+owner and adds local body management. Qualified current-form/ScienceDirect entries
+consume their original DownloadItem response under the same owner, subject to the
+documented [native cancellation limitation](body-downloads.md#native-output-and-accepted-cancellation-risk).
+This current note supersedes only adoption status, not
 the fixed R001–R072/API01–API17/S001–S142 numbering or conditions below.
 The original request and R/API/S evidence below retain their WF07 scope and numbering.
 

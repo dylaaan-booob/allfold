@@ -3,9 +3,11 @@
 Public Download reuses the PDF-only read capability under its existing body
 reservation, without recollecting completed Date/Abstract. These probes remain
 read-only and still release only their owned pages after verified bounded results.
-They do not supply action/script/file authority. Original Document→request/item
-body adoption remains [blocked on native output safety](body-downloads.md);
-no production path cancels an obtained one-shot response and replays its URL.
+They do not supply action/script/file authority. A separate fixed body action
+hands verified Document authority to its exact original request/item for the
+qualified current form or ScienceDirect reader. It preserves the original response
+and Session; it never cancels a one-shot response and replays its URL. See
+[body output and its accepted cancellation risk](body-downloads.md#native-output-and-accepted-cancellation-risk).
 
 `BrowserRuntime` owns Page/WebContents, task claims and navigation. The existing
 `DocumentRuntime` sends only the fixed `binding`, `access`, `article` and `extract` operations

@@ -223,7 +223,7 @@ when no native Browser owner exists.
 
 ## Body state and local operations
 
-`stream_paper_body` and fixed `local_paper_body` use the common native/
+`stream_paper_body`, `native_paper_body` and fixed `local_paper_body` use the common native/
 Python operation ledger. `stream_complete` means PDF transport and closed writer;
 only the later repository transaction means body completed/Downloaded. Local
 open/locate/delete retain bounded outcomes and actual maintenance visibility,
@@ -235,7 +235,9 @@ sequence, cleanup and successful source/fallback. Absolute roots, output proofs,
 raw responses, secrets, signatures and exception stacks remain private. Durable
 source URL remains origin-only; successful provenance is stored independently,
 with unknown values for old bodies. Progress does not write every byte or create
-a separate history product. Native-unsupported records a finite condition and
-does not claim original-response transfer. Retired Translator/parent-item saving
+a separate history product. Native transport completion reports the original
+response and actual item terminal; only the common repository completion means
+Downloaded. The documented native cancellation risk is not hidden by a successful
+task result or a claim that `done(cancelled)` closes every file worker. Retired Translator/parent-item saving
 enums and producer-less inference are removed; generic parent task ownership,
 WoS and current body diagnostics remain. See [the complete contract](body-downloads.md).

@@ -160,9 +160,11 @@ collection intent; no foreground Run slot or reader selection owns the body.
 New-download qualification omits abstract generation but retains original
 metadata/operation/body generations, observed attempt, reliable identity closure,
 Workspace/lifecycle and actually used access dependencies. A conditional skip is
-not a failed transfer or fallback. Native-dependent entries currently skip before
-dispatch because safe DownloadItem output is blocked; all-exhausted work still
-has a finite failure rather than remaining pending.
+not a failed transfer or fallback. Qualified original-response entries use the
+same body owner through Main and actual DownloadItem terminal, then common file/
+SQLite completion. Inapplicable entries skip without inventing a transfer or
+fallback; exhausted work ends finitely. The accepted native temporary-file
+cancellation risk is documented in [body downloads](body-downloads.md).
 
 Local file operations capture their own current body proof and host-visible
 lifetime. Open/locate can coexist with collection and require no Service/Prepare;

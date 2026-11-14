@@ -77,7 +77,7 @@ Same-Document precollection never follows a PDF candidate. PDF-only refresh and
 known-reader parsing reuse native access, physical quotas and cleanup. Subsequent
 Download can use the core after collection completes without restarting that
 collection. WF08 installs production collection orchestration; WF09 supplies the internal
-[Session/file completion service](body-downloads.md); this WF10 branch connects public Download and local body management. Original native action saving remains blocked by the measured pinned-runtime output safety boundary, so the branch is partial/Draft. The [adopted specification and fixed source catalogue](pdf-source-discovery.md)
+[Session/file completion service](body-downloads.md); this WF10 branch connects public Download, qualified original DownloadItem responses and local body management. Native output uses private attempt staging with an explicitly accepted [cancellation limitation](body-downloads.md#native-output-and-accepted-cancellation-risk). The [adopted specification and fixed source catalogue](pdf-source-discovery.md)
 retain all platform/input/access conditions and historical exclusions.
 The immutable discovery target includes the saved direct-identity closure, so
 complete DOI-free Work facts can be reused without a new lookup or native

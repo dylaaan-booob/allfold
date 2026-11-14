@@ -6,8 +6,8 @@ it does not authorize later tasks.
 
 WF01–WF09 boundary sections below record those PRs at their merged versions.
 WF08 supersedes their then-deferred production registration, serial branches and
-global Preprint admission. Current public stream/local-body operation and the
-remaining native safety blocker are described in the WF10 section and
+global Preprint admission. Current public stream/original-response/local-body
+operation and the accepted native cancellation risk are described in the WF10 section and
 [body downloads](body-downloads.md). Historical sections retain their own scope.
 
 | Task | Goal | Cleanup ownership | Actual status |
@@ -21,7 +21,7 @@ remaining native safety blocker are described in the WF10 section and
 | WF07 | PDF source rules, candidates, same-page Meta/DOM hints | Source order, candidate success, URLs and request context contracts | Merged in PR #107 at `4d0d22bbda02d9fc173175fa8346813752e84204`; spec #102 / tickets #103–106, #108; [adopted request and fixed evidence](pdf-source-discovery.md) |
 | WF08 | Connect new Run and Workspace background collection | Whole-batch Run gates, Completion, Preprint double locking, busy/exit contracts | Merged in PR #114 at `1af11e3c3f0eb0ae893c6a3e2e5ade550a81a19d`; spec #109 / tickets #110–113; source/fixture and live evidence remain distinct |
 | WF09 | Session stream, managed file landing, database association service | Current-response streaming, actual file ownership, no-clobber and unique completion | Merged in PR #116 at `029bc9a148170c699dbbe43f63885fc9718656e6`; spec #115; internal stream/file/SQLite service |
-| WF10 | Original DownloadItem, complete Download UI, local PDF actions | Cancel-and-GET replay, old download/UI states, PDF action contracts | Partial/Draft PR #121; spec #117, tickets #118–120. Public stream/local body work proceeds; original native output is blocked by measured cancellation/object safety, not accepted |
+| WF10 | Original DownloadItem, complete Download UI, local PDF actions | Cancel-and-GET replay, old download/UI states, PDF action contracts | Implementation in PR #121; spec #117, tickets #118–120. Public stream, qualified original responses and local body management; measured native cancellation risk accepted and documented. Issues stay open until merge; real-site/OS evidence remains separate |
 | WF11 | Clean install, dependencies/licenses, whole regression and residual cleanup | Uncalled Runtime/build dependencies, installation/license docs, cross-task leftovers | Not started |
 
 ## WF01 implementation boundary
@@ -309,7 +309,7 @@ cleanup and isolated evidence. WF09's IEEE reader and Oxford CDN samples and its
 ScienceDirect viewer/fresh-GET boundary remain historical observations, not new
 WF10 acceptance. Public operations are the following task.
 
-## WF10 partial implementation and blocked native output
+## WF10 implementation and accepted native cancellation risk
 
 The public service drives existing lazy P1–P5 from saved trustworthy Paper facts
 inside one body reservation. It adds identity/current-qualification Download,
@@ -321,21 +321,24 @@ deletion captures body/filesystem qualification and participates in actual host/
 Main settlement. No completed metadata recollection or foreground Run slot is
 introduced.
 
-Public Session stream and rendered Reader fixtures are separate evidence from
-raw original-response capability. Experimental Main/Runtime POST, inline and
-action-created iframe/popup cases worked, but native output failed the required
-directory/leaf replacement and cancellation boundary. Chromium's asynchronous
-saved-path deletion can remove an unknown replacement after `done(cancelled)`;
-real directory/file `/dev/fd` sinks both interrupted without body writes. The
-unsafe implementation is excluded from the PR. Native-dependent entries have a
-finite production refusal before action, network or output, without manufacturing
-fallback or dropping later legitimate stream sources.
+Qualified R059 current forms and R024 ScienceDirect entries now use a dedicated
+Document→request/frame→original DownloadItem handoff, retaining method/body and
+Session rather than replaying GET. Main/Runtime POST, inline and action-created
+iframe/popup fixtures and the public file/SQLite composition have separate
+evidence from historical raw Session capabilities. Source ownership and page
+quotas last through actual item terminal and page destruction; ordinary
+Document checks and reusable-stream routing remain active.
 
-The exact blocker and pinned source/fixture observations are recorded in
-[#118](https://github.com/dylaaan-booob/allfold/issues/118#issuecomment-6881292245).
-WF10 is not complete; #117/#118 remain open and PR #121 remains Draft. It needs a
-native output/settlement capability meeting actual-object safety, or a separately
-authorized runtime/contract change. CI passing for the safe partial branch does
-not resolve that requirement. Real institutions/publishers, default-app effects
-and WF11 remain separately unaccepted; no dependency upgrade or safety waiver
-has been made.
+The [pinned investigation](https://github.com/dylaaan-booob/allfold/issues/118#issuecomment-6881292245)
+showed that Chromium can asynchronously delete an externally substituted private
+staging file after `done(cancelled)`; both `/dev/fd` alternatives failed. On
+2026-11-15 the user accepted that precise residual risk with disclosure, so
+unknown replacement survival in this native cancellation race no longer blocks
+acceptance. This is a changed contract, not a fix to Chromium. Unique private
+attempt staging, actual output proof, application-level replacement refusal,
+no-clobber final publication and stream/local-file/Trash protections remain.
+
+PR #121 and #117/#118 record the updated boundary; Issues stay open until merge.
+Latest PR CI is distinct from real institutions/publishers and OS default-app/
+file-manager acceptance. Human checks are limited to the [affected body paths](body-downloads.md#scoped-manual-acceptance).
+WF11 remains unstarted; no dependency or runtime upgrade is introduced.
