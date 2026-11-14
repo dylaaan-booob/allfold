@@ -58,3 +58,12 @@ for(const revision of [4,5])test(`an applied revision ${revision} snapshot still
   await assert.rejects(action,error=>error.stale===true);
   assert.equal(api.data.revision,revision);
 });
+test('a superseded successful field save retains only its acknowledgement and original Workspace epoch',async()=>{
+  const {api,requests}=fixture();
+  const initial=api.workspace();requests.shift()({workspace_id:'library-a',revision:3});await initial;
+  const save=api.request('/api/papers/paper/abstract/input',{abstract:'Human draft'}),snapshot=api.workspace();
+  requests[1]({workspace_id:'library-a',revision:4,subjects:['newer snapshot']});await snapshot;
+  requests[0]({saved:true,workspace_id:'library-a',revision:4,paper:{id:'paper',abstract:'Human draft'}});
+  await assert.rejects(save,error=>error.stale===true && error.state.saved===true && error.workspaceEpoch===api.workspaceEpoch);
+  assert.deepEqual(api.data.subjects,['newer snapshot']);
+});

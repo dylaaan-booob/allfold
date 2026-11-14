@@ -366,7 +366,9 @@ def create_app(config_path: Path, *, electron_bridge: ElectronBridge, diagnostic
                 registry = app.state.workspace_tasks.current()
                 with registry.paper_gate():
                     paper, revision, fields = edit_paper_fields(workspace, body.workspace_id, paper_id, body.revision, **changes)
-                    payload = paper_payload(WorkspacePaper(paper), workspace_tasks=app.state.workspace_tasks)
+                    cleanup = app.state.workspace_tasks.cleanup_pending(paper.id, paper.workspace_id)
+                payload = paper_payload(WorkspacePaper(paper), cleanup_pending=cleanup,
+                    collection_service=app.state.collection_service)
             return JSONResponse(jsonable_encoder(dict(saved=True, workspace_id=paper.workspace_id,
                 revision=revision, paper=payload, fields=fields)))
         except (ConfigurationError, LibraryError, ValueError, OSError, ContentChangedError) as error:

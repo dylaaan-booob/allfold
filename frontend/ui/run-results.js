@@ -2,19 +2,18 @@
 const esc=value=>String(value??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const count=value=>Number.isInteger(value)?String(value):'未知';
 const labels={
-  completed:'完成',completed_with_notices:'完成，有提示',incomplete:'完成，检索或补全不完整',
+  completed:'完成',completed_with_notices:'完成，有提示',incomplete:'完成，检索不完整',
   capture_issues:'完成，Paper 保存存在问题',failed:'运行失败',cancelled:'已取消',
   complete:'检索完整',empty:'当前范围无记录',partial:'检索不完整',
   unknown:'证据不足',observed:'已发现导出记录',
   hint:'本地来源清单提示',resolved:'已解析',not_found:'未找到',request_failed:'请求失败',
   local_not_listed:'未列入本地 WoS 来源清单，仍参与检索',
-  completion_targets:'Completion targets',completion_requests:'Completion HTTP requests',
+  identity_targets:'Identity targets',identity_requests:'Identity HTTP requests',
+  collection_admitted:'Collection admitted',collection_reused:'Collection reused',
+  collection_registration_failed:'Registration failed',excluded_papers:'Excluded Papers',rebuilt_papers:'Rebuilt Papers',
   pmid_resolution:'DOI → PMID',pmid_resolution_matched:'Verified PMID',pmid_resolution_no_match:'No PMID match',
   pmid_resolution_conflicts:'PMID conflicts',pmid_resolution_failed:'PMID lookup failed',pmid_resolution_cancelled:'PMID lookup cancelled',
-  completion_date_facts_added:'Added date facts',first_public_recorded:'First public recorded',
-  first_public_no_association:'No preprint association',first_public_known_unresolved:'Unverified preprint',
-  first_public_conflict:'First public conflicts',first_public_failed:'First public failed',first_public_cancelled:'First public cancelled',
-  work_location_targets:'DOI Work targets',completion:'Run metadata completion',work_location:'Work location',
+  work_location_targets:'DOI Work targets',work_location:'Work location',
   integrated_candidates:'Candidates',integrated_deduplicated:'Distinct Papers',skipped:'未执行',
   returned_records:'Returned records',matched_journal_records:'Matched Journal records',issn_queries:'ISSN queries',
   unmatched_journal_records:'Unmatched Journal records',eligible_records:'Eligible records',
@@ -27,10 +26,6 @@ const labels={
 };
 const label=value=>labels[value] || value;
 export const resultLabel=label;
-export function completionLabel(status, targets) {
-  if(status==='empty')return targets>0?'无匹配':'无需补全';
-  return ({complete:'完成',partial:'部分完成',failed:'失败',cancelled:'已取消'})[status] || '未知';
-}
 const identifierProblem=item=>!['resolved','complete','empty','unknown'].includes(item.status);
 const journalProblem=journal=>!['complete','empty','observed','unknown'].includes(journal.status) || journal.identifiers.some(identifierProblem);
 
@@ -42,7 +37,7 @@ export function resultHeadline(result) {
 export function resultMessages(result) {
   if(!result || result.availability!=='available')return [];
   const messages=[];
-  if(['partial','failed'].includes(result.coverage_status))messages.push(`检索或补全不完整，详情见 ${result.journals.length?'Journal Coverage 与 ':''}Provider Details。`);
+  if(['partial','failed'].includes(result.coverage_status))messages.push(`检索不完整，详情见 ${result.journals.length?'Journal Coverage 与 ':''}Provider Details。`);
   const problems=result.journals.filter(journalProblem),hints=problems.filter(j=>j.status==='hint');
   if(problems.length>hints.length)messages.push(`${problems.length-hints.length} 本期刊有标识或检索提示。`);
   if(hints.length)messages.push(`${hints.length} 本期刊有本地 WoS 来源清单提示，仍参与检索。`);
@@ -105,7 +100,7 @@ export function renderRunResult(result,{compact=false,id='' }={}) {
     .filter(item=>item.reasons.length).map(item=>`<li>Record ${count(item.record_number)} · ${esc(item.doi || item.ut || '')} · ${item.reasons.map(reason=>esc(label(reason))).join(' · ')}</li>`).join('');
   const issues=result.issues.filter(i=>i.category!=='exclusion').map(issue=>`<li><strong>${esc(label(issue.category))}</strong> · ${esc(result.provider==='wos'?wosDiagnostic(issue.message):issue.message)}${issue.issn?` · ${esc(issue.issn)}`:''}</li>`).join('');
   const providerRuns=(details.provider_runs || []).map(run=>`<li><strong>${esc(run.provider)} · ${esc(run.source)}</strong> · ${esc(label(run.status))} · ${count(run.candidates)} candidates / ${count(run.retained)} retained · ${count(run.created)} new / ${count(run.existing)} existing${run.limitations?.length?`<p>${run.limitations.map(esc).join(' · ')}</p>`:''}</li>`).join('');
-  const phases=result.provider==='integrated'?`<p class="s-run-phases">Discovery · ${esc(label(details.discovery_status || 'unknown'))} / Run metadata completion · ${esc(completionLabel(details.completion_status,stats.completion_targets))}</p>`:'';
+  const phases=result.provider==='integrated'?`<p class="s-run-phases">Discovery · ${esc(label(details.discovery_status || 'unknown'))} / Paper collection · 已登记后独立执行</p>`:'';
   return header+impact+phases+coverage+`<details class="s-run-provider-details" data-result-detail="${esc(id)}:provider"><summary>Provider Details</summary>${metrics(stats,['integrated_candidates','integrated_deduplicated','returned_records','eligible_records','search_total','conflicts'])}
     ${providerRuns?`<ul>${providerRuns}</ul>`:''}
     ${metricSection('正常排除',details.skipped)}

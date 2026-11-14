@@ -115,15 +115,27 @@ reservations, then permits shared factory closure.
 ## Explicit retry
 
 `registry.check_retry(paper_id, branches=complete_plan, service_id=None,
-expected_token=None, expected_attempt=None)` performs read-only qualification and
+expected_token=None, expected_attempt=None, expected_revision=None)` performs read-only qualification and
 returns the current `PaperRecord`. It requires full unexcluded metadata, settled
 failed/cancelled collection, no occupation, the complete original branch names
 and currently available dependencies for pending branches only.
 
 `registry.retry` accepts the same qualification arguments plus `deadline`. It
 prechecks pending access outside write locks, then atomically rechecks the original
-Paper token, attempt facts and host epochs before creating an attempt. Workers
+Paper token, Paper revision, attempt facts and host epochs before creating an attempt. Workers
 verify the captured dependencies again. Completed/skipped branch facts and saved
 increments survive; their historical Service/Provider conditions are not new
 prerequisites. Public callers must require the exact Workspace/Paper/attempt and
 CSRF before invoking this service. No retry path grants Download or body authority.
+
+The production `ProductionCollectionService.check_retry` uses the already bound
+`host.peek()` lifecycle; read-only projections cannot bind or normalize a library
+that appeared later. The explicit `retry` operation may bind through `current()`.
+HTTP uses `POST /api/papers/{paper_id}/collection/retry` with CSRF, Workspace UUID,
+exact attempt, Paper revision and the captured metadata/operation/abstract/body
+generations. It constructs the original `WriteToken` from that request. Pending
+access is checked outside Paper/SQLite write locks, and revision/attempt ownership
+is rechecked before admission; a stale request cannot borrow newer generations.
+The public `collection` projection contains status, attempt, cleanup, branch
+name/status and the same read-only retry qualification. Raw failure messages,
+clients, lifecycle authority and PDF discovery context are omitted.

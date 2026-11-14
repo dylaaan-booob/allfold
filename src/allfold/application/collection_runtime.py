@@ -542,7 +542,7 @@ class WorkspaceRegistry:
                 self._settle_unscheduled(handle, 'submission_failed')
         return handle
 
-    def _retry_qualification(self, paper_id, branches, service_id, expected_token, expected_attempt):
+    def _retry_qualification(self, paper_id, branches, service_id, expected_token, expected_attempt, expected_revision=None):
         plan = self._plan(branches, no_applicable=True, service_id=service_id)
         paper_id = UUID(str(paper_id))
         with self._gate:
@@ -557,6 +557,8 @@ class WorkspaceRegistry:
                 raise StaleWriteError('Captured Paper authority changed')
             if expected_attempt is not None and paper.collection.attempt != expected_attempt:
                 raise StaleWriteError('Captured collection attempt changed')
+            if expected_revision is not None and paper.revision != expected_revision:
+                raise StaleWriteError('Captured Paper revision changed')
             if {branch.name for branch in paper.collection.branches} != {branch.name for branch in plan}:
                 raise InvalidPaperState('Retry must preserve the complete captured branch plan')
             successful = {branch.name for branch in paper.collection.branches if branch.state in {'completed', 'skipped'}}
@@ -566,16 +568,16 @@ class WorkspaceRegistry:
                        for branch in pending if branch.skip_reason is None}
         return paper, plan, pending, authorities
 
-    def check_retry(self, paper_id, *, branches, service_id=None, expected_token=None, expected_attempt=None):
+    def check_retry(self, paper_id, *, branches, service_id=None, expected_token=None, expected_attempt=None, expected_revision=None):
         """Read-only public retry eligibility, including only pending access dependencies."""
-        paper, _, _, _ = self._retry_qualification(paper_id, branches, service_id, expected_token, expected_attempt)
+        paper, _, _, _ = self._retry_qualification(paper_id, branches, service_id, expected_token, expected_attempt, expected_revision)
         return paper
 
     def retry(self, paper_id, *, branches, service_id=None, deadline=None,
-              expected_token=None, expected_attempt=None):
+              expected_token=None, expected_attempt=None, expected_revision=None):
         deadline = self._deadline(deadline)
         paper, plan, pending, authorities = self._retry_qualification(
-            paper_id, branches, service_id, expected_token, expected_attempt)
+            paper_id, branches, service_id, expected_token, expected_attempt, expected_revision)
         with self._gate:
             self._require_open()
             for authority in authorities.values():
@@ -584,8 +586,8 @@ class WorkspaceRegistry:
                 raise InvalidPaperState('Previous Paper resources have not settled')
             with self._repository() as repository:
                 current = repository.get(paper.id)
-                if current.collection != paper.collection:
-                    raise StaleWriteError('Captured collection attempt changed')
+                if current.collection != paper.collection or current.revision != paper.revision:
+                    raise StaleWriteError('Captured Paper or collection attempt changed')
                 admission = repository.retry_collection(paper.token, lifecycle_id=self.lifecycle_id,
                     branches=tuple(branch.name for branch in plan))
             handle = self._new_handle(admission, pending, deadline, service_id)
