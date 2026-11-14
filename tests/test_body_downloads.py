@@ -231,13 +231,17 @@ def test_current_ieee_reader_response_finishes_the_same_body_attempt(tmp_path):
         host.shutdown();host.join()
 
 
-def test_observed_oxford_cdn_redirect_is_requalified_before_the_next_get(tmp_path):
+@pytest.mark.parametrize('url,location,source',[
+    ('https://academic.oup.com/nar/article-pdf/51/2/870/48929720/gkac1225.pdf',
+        'https://watermark02.silverchair.com/gkac1225.pdf?token=transient','https://watermark02.silverchair.com/'),
+    ('https://www.sciencedirect.com/science/article/pii/S0047259X2400006X/pdfft?md5=transient',
+        'https://pdf.sciencedirectassets.com/272481/1-s2.0-S0047259X2400006X/main.pdf?token=transient','https://pdf.sciencedirectassets.com/'),
+])
+def test_observed_publisher_cdn_redirect_is_requalified_before_the_next_get(tmp_path,url,location,source):
     from dataclasses import replace
     import time
     from allfold.application.body_downloads import submit_body_download
     host,workspace,paper,bridge,candidate=application_host(tmp_path)
-    url='https://academic.oup.com/nar/article-pdf/51/2/870/48929720/gkac1225.pdf'
-    location='https://watermark02.silverchair.com/gkac1225.pdf?token=transient'
     candidate=replace(candidate,url=url)
     try:
         task=submit_body_download(host,paper,candidates=(candidate,))
@@ -252,11 +256,42 @@ def test_observed_oxford_cdn_redirect_is_requalified_before_the_next_get(tmp_pat
         bridge.finish()
         result=task.future.result(2)
         assert result.status=='completed'
-        assert result.paper.body.source_url=='https://watermark02.silverchair.com/'
+        assert result.paper.body.source_url==source
         assert 'transient' not in str(result.paper.body)
     finally:
         if hasattr(bridge,'result') and not bridge.result.done():
             bridge.result.set_result(dict(kind='cancelled',outcome='cancelled'))
+        host.shutdown();host.join()
+
+
+def test_sciencedirect_article_return_refreshes_current_signed_pdf_from_document(tmp_path):
+    from dataclasses import replace
+    import time
+    from test_document_metadata import envelope,pdf_clues
+    from allfold.application.body_downloads import submit_body_download
+    host,workspace,paper,bridge,candidate=application_host(tmp_path)
+    article='https://www.sciencedirect.com/science/article/pii/S0047259X2400006X'
+    candidate=replace(candidate,target=replace(candidate.target,article_url=article),url=article)
+    try:
+        task=submit_body_download(host,paper,candidates=(candidate,))
+        assert bridge.started.wait(2)
+        bridge.result.set_result(dict(kind='response',outcome='response',response=dict(
+            url=article,content_type='text/html',status=200,body='<title>ScienceDirect article</title>',access=None)))
+        until=time.monotonic()+2
+        while len(bridge.calls)<2 and not task.future.done() and time.monotonic()<until:time.sleep(.005)
+        assert len(bridge.calls)==2 and bridge.calls[-1][0]=='extract_paper_pdf_clues'
+        assert 'reader' not in bridge.calls[-1][1]
+        assert bridge.calls[-1][1]['identity']['confirmed_article_url']==article
+        pdf='https://pdf.sciencedirectassets.com/1-s2.0-S0047259X2400006X/main.pdf?token=transient'
+        bridge.result.set_result(envelope() | {'pdf_clues':pdf_clues(platform='sciencedirect',landing_url=article,
+            candidates=[dict(stage='P1',rule_id='R024',url=pdf)])})
+        until=time.monotonic()+2
+        while (bridge.calls[-1][0]!='stream_paper_body' or len(bridge.calls)<3) and not task.future.done() and time.monotonic()<until:time.sleep(.005)
+        assert bridge.calls[-1][0]=='stream_paper_body' and bridge.calls[-1][1]['url']==pdf
+        bridge.finish()
+        assert task.future.result(2).status=='completed'
+    finally:
+        if hasattr(bridge,'result') and not bridge.result.done():bridge.result.set_result(dict(kind='cancelled',outcome='cancelled'))
         host.shutdown();host.join()
 
 
@@ -337,6 +372,69 @@ def test_current_reader_cycle_settles_without_repeating_the_request(tmp_path):
         assert result.status!='completed' and len(bridge.calls)==1
         assert not host.active
     finally:
+        host.shutdown();host.join()
+
+
+@pytest.mark.parametrize('access',[None,'challenge'])
+def test_reader_alternatives_continue_only_after_an_ordinary_empty_response(tmp_path,access):
+    from dataclasses import replace
+    import time
+    from allfold.application.body_downloads import submit_body_download
+    host,workspace,paper,bridge,candidate=application_host(tmp_path)
+    reader='https://ieeexplore.ieee.org/stamp/stamp.jsp?arnumber=12345'
+    empty='https://cdn.example.org/empty.pdf';good='https://cdn.example.org/good.pdf'
+    try:
+        task=submit_body_download(host,paper,candidates=(replace(candidate,url=reader),))
+        assert bridge.started.wait(2)
+        bridge.result.set_result(dict(kind='response',outcome='response',response=dict(
+            url=reader,content_type='text/html',status=200,
+            body='<iframe src="'+empty+'"></iframe><iframe src="'+good+'"></iframe>',access=None)))
+        until=time.monotonic()+2
+        while len(bridge.calls)<2 and not task.future.done() and time.monotonic()<until:time.sleep(.005)
+        assert len(bridge.calls)==2
+        bridge.result.set_result(dict(kind='response',outcome='response',response=dict(
+            url=empty,content_type='text/html',status=200,body='<html>No PDF here</html>',access=access)))
+        until=time.monotonic()+2
+        while len(bridge.calls)<3 and not task.future.done() and time.monotonic()<until:time.sleep(.005)
+        if access is None:
+            assert len(bridge.calls)==3 and bridge.calls[-1][1]['url']==good
+            bridge.finish()
+            assert task.future.result(2).status=='completed'
+        else:
+            assert task.future.result(2).status=='response' and len(bridge.calls)==2
+    finally:
+        if hasattr(bridge,'result') and not bridge.result.done():bridge.result.set_result(dict(kind='cancelled',outcome='cancelled'))
+        host.shutdown();host.join()
+
+
+@pytest.mark.parametrize('reason',['cancelled','expired'])
+def test_known_reader_cancellation_retains_its_terminal_after_native_cleanup(tmp_path,reason):
+    from dataclasses import replace
+    import time
+    from allfold.application.body_downloads import submit_body_download
+    host,workspace,paper,bridge,candidate=application_host(tmp_path)
+    reader='https://ieeexplore.ieee.org/stamp/stamp.jsp?arnumber=12345'
+    try:
+        task=submit_body_download(host,paper,candidates=(replace(candidate,url=reader),),deadline=time.monotonic()+.5)
+        assert bridge.started.wait(2)
+        bridge.result.set_result(dict(kind='response',outcome='response',response=dict(
+            url=reader,content_type='text/html',status=200,
+            body='<title>Just a moment...</title>',access='challenge')))
+        until=time.monotonic()+.3
+        while len(bridge.calls)<2 and not task.future.done() and time.monotonic()<until:time.sleep(.005)
+        assert len(bridge.calls)==2 and bridge.calls[-1][0]=='extract_paper_pdf_clues'
+        if reason=='cancelled':task.registry.cancel_paper(paper.id)
+        else:assert task.cancel_event.wait(1)
+        bridge.result.set_result(dict(diagnostic=dict(code='canceled' if reason=='cancelled' else 'timeout',stage='navigation')))
+        result=task.future.result(2)
+        assert result.status==reason
+        with PaperRepository.open(workspace) as repo:
+            saved=repo.get(paper.id)
+            assert saved.download.status=='cancelled' and saved.download.reason==reason
+            assert saved.body is None and saved.download.output is None
+        assert not host.active and bridge.calls[-1][0]=='release_workflow_pages'
+    finally:
+        if hasattr(bridge,'result') and not bridge.result.done():bridge.result.set_result(dict(kind='cancelled',outcome='cancelled'))
         host.shutdown();host.join()
 
 

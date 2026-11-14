@@ -40,7 +40,8 @@ Targets require controlled public URLs and public DNS answers. Direct-stream
 redirects stay inside the captured request origin. An origin escape is stopped
 before forwarding headers; an actually observed Oxford `article-pdf` redirect to
 a matching `watermarkNN.silverchair.com/<same filename>.pdf` can become the next
-candidate. That request repeats public DNS/target checks and uses Chromium's
+candidate. A ScienceDirect `pdfft`/`pdf` redirect can likewise reach only
+`pdf.sciencedirectassets.com/.../1-s2.0-<same PII>/main.pdf`. That request repeats public DNS/target checks and uses Chromium's
 destination-scoped cookies, never source headers. Other cross-origin redirects,
 filename changes and protocol downgrades remain refused. The original signed
 query remains in the current request only.
@@ -59,10 +60,14 @@ owner consumes the existing qualified current-response parser, with at most 16
 Session stream dispatches, six next hops and no repeated URL/action. A known reader without
 inline PDF clues uses the existing bounded Document/PDF-clue operation and its
 automatic Cloudflare/manual-verification rules, under the same captured body
-authority. Actual native cleanup ends before transfer continues; no collection
+authority. A ScienceDirect response returning its exact confirmed article may
+use the same live-Document reader to refresh the current signed PDF entrance,
+with independent article identity checks. Actual native cleanup ends before transfer continues; no collection
 is registered or written. Cloudflare background resources and ordinary Sign in
 navigation do not identify a main challenge or login page. Unknown HTML is not
-a generic crawler. Action/POST
+a generic crawler. Empty ordinary branches retain queued alternatives; access
+barriers still stop, and reader cancellation/expiry is rechecked after native
+cleanup before recording the terminal result. Action/POST
 and explicit API-credential candidates remain pending rather than GET emulation.
 Only ordinary candidate failures permit the next confirmed candidate; a completed
 stream stops sources, and any local finalization error ends that task.

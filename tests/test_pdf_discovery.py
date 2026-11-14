@@ -123,6 +123,20 @@ def test_sciencedirect_background_cloudflare_script_does_not_block_current_pdf_l
     assert seen[-1].url=='https://pdf.sciencedirectassets.com/main.pdf?token=synthetic'
 
 
+@pytest.mark.parametrize('destination',[
+    'https://pdf.sciencedirectassets.com/1-s2.0-S014067362400999X/main.pdf',
+    'https://pdf.sciencedirectassets.com.evil.example/1-s2.0-S014067362400123X/main.pdf',
+    'http://pdf.sciencedirectassets.com/1-s2.0-S014067362400123X/main.pdf',
+])
+def test_sciencedirect_redirect_cannot_change_pii_host_or_protocol(destination):
+    from allfold.pdf_rules import PdfCandidate
+    from allfold.pdf_responses import parse_current_response
+    url='https://www.sciencedirect.com/science/article/pii/S014067362400123X/pdfft'
+    candidate=PdfCandidate(target(),'P1','R024','sciencedirect',url)
+    response=CurrentResponse(url,'',status=302,redirect_url=destination)
+    assert parse_current_response(candidate,response)==()
+
+
 def test_openalex_cancel_is_never_recoverable_and_parent_expiry_wins_over_previous_http_error():
     from allfold.providers.openalex import OpenAlexClient
     from allfold.providers.provider_http import Cancelled, ProviderBudgetExceeded

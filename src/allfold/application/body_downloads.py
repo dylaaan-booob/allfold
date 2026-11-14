@@ -14,7 +14,7 @@ from urllib.parse import urldefrag, urlsplit, urlunsplit
 from allfold.application.browser_services import browser_workspace_identity
 from allfold.pdf_discovery import CandidateResult, CurrentResponse, SUPPORTED_PDF_TARGET_TYPES
 from allfold.pdf_rules import PdfCandidate
-from allfold.pdf_responses import parse_current_response, reader_context
+from allfold.pdf_responses import access_limited, parse_current_response, reader_context
 from allfold.persistence.body_files import ManagedBodyFiles
 from allfold.persistence.paper_repository import PaperRecord, StaleWriteError, InvalidPaperState, LibraryError
 
@@ -125,11 +125,14 @@ def _consume(reservation, repository, files, candidate, progress):
     return result, None
 
 
-def _reader_candidates(reservation, repository, candidate, response):
-    """Use the existing fixed reader/Document/Solver path under body authority."""
+def _document_candidates(reservation, repository, candidate, response):
+    """Use fixed article/reader Document access under the original body authority."""
     reader = reader_context(candidate, response.url)
     if reader is None:
-        return ()
+        article = candidate.target.article_url
+        if (article is None or urldefrag(response.url)[0] != urldefrag(article)[0]
+                or urlsplit(article).hostname not in {'www.sciencedirect.com', 'sciencedirect.com'}):
+            return ()
     from allfold.application.pdf_discovery import PdfDiscoveryContext
     from allfold.application.document_metadata import read_document_pdf_clues, DocumentMetadataFailed
     context = PdfDiscoveryContext(reservation, repository)
@@ -138,16 +141,19 @@ def _reader_candidates(reservation, repository, candidate, response):
             parsed = read_document_pdf_clues(context,
                 confirmed_article_url=candidate.target.article_url, reader=reader)
         except DocumentMetadataFailed:
-            return ()
-        return tuple(replace(candidate, url=item.url, reader_kind=item.reader_kind,
-            referer=item.referer, action=item.action, credential=None, accept=None)
-            for item in parsed.current_candidates)
+            parsed = None
     finally:
         try:
             context.close_native()
         except BaseException as error:
             reservation.registry.fail_reservation(reservation, phase='body-reader-cleanup', error=error)
             raise
+    if time.monotonic() >= reservation.deadline:
+        raise TimeoutError('Body reader parent deadline expired')
+    context.guard()
+    return tuple(replace(candidate, url=item.url, reader_kind=item.reader_kind,
+        referer=item.referer, action=item.action, credential=None, accept=None)
+        for item in parsed.current_candidates) if parsed is not None else ()
 
 
 def _run(reservation, candidates, progress):
@@ -182,13 +188,17 @@ def _run(reservation, candidates, progress):
                         if candidate_result.kind == 'response' and depth < 6:
                             following = parse_current_response(candidate, candidate_result.response)
                             if not following:
-                                following = _reader_candidates(reservation, repository, candidate, candidate_result.response)
+                                following = _document_candidates(reservation, repository, candidate, candidate_result.response)
                             if following:
                                 # Reuse only fixed, qualified fields of the current
                                 # response. Each next GET owns a fresh empty output
                                 # after the preceding response and fd have closed.
                                 pending.extendleft((item, depth + 1) for item in reversed(following))
                                 continue
+                        if candidate_result.kind == 'response' and not access_limited(candidate_result.response):
+                            # An exhausted ordinary HTML branch does not discard
+                            # its queued alternatives. Access barriers still stop.
+                            continue
                         if candidate_result.kind != 'failed':
                             break
             except TimeoutError:

@@ -134,11 +134,16 @@ def parse_current_response(candidate, response):
     if response.status in {301, 302, 303, 307, 308} and response.redirect_url:
         source, destination = urlsplit(response.url), urlsplit(response.redirect_url)
         filename = re.fullmatch(r'/[^/]+/article-pdf/(?:[^/]+/)*([^/]+\.pdf)', source.path, re.I)
-        # A native-observed Oxford body redirect, never an inferred CDN URL or
+        # A native-observed publisher body redirect, never an inferred CDN URL or
         # general permission to carry institutional headers across origins.
-        if (source.hostname == 'academic.oup.com' and filename
+        oxford = (source.hostname == 'academic.oup.com' and filename
                 and re.fullmatch(r'watermark[0-9]{2}\.silverchair\.com', destination.hostname or '')
-                and source.scheme == destination.scheme and destination.path == '/' + filename[1]):
+                and destination.path == '/' + filename[1])
+        pii = re.fullmatch(r'/science/article/pii/([SB][0-9]{7}[0-9X][0-9]{7}[0-9X])/(?:pdfft|pdf)', source.path, re.I)
+        sciencedirect = (source.hostname in {'www.sciencedirect.com', 'sciencedirect.com'} and pii
+            and destination.hostname == 'pdf.sciencedirectassets.com'
+            and re.fullmatch(r'(?:/[^/]+)*/1-s2\.0-' + re.escape(pii[1]) + r'/main\.pdf', destination.path, re.I))
+        if source.scheme == destination.scheme and (oxford or sciencedirect):
             item = _safe_next(candidate, response.url, response.redirect_url)
             return (item,) if item else ()
         return ()
