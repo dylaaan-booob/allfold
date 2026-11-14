@@ -223,6 +223,20 @@ def paper_evidence(paper):
         first_public_at=metadata.first_public_at)
 
 
+def paper_evidence_records(paper):
+    """Project every saved direct alias without changing the selected primary.
+
+    One projection cannot hold multiple values in a namespace. Extra records
+    express the trusted Paper closure for purpose/native/family planning, never
+    turn related or unconfirmed source identities into direct ownership.
+    """
+    primary = paper_evidence(paper)
+    represented = strong_identifiers(primary.external_ids)
+    return (primary, *(primary.model_copy(update={'external_ids': primary.external_ids.model_copy(update={
+        identity.namespace: identity.value})}) for identity in paper.identities
+        if (identity.namespace, identity.value) not in represented))
+
+
 def _formal_conflicts(records, root_ids, *, formal_root=True):
     """A returned direct root cannot carry a conflicting existing DOI or PMID."""
     known = defaultdict(set)
@@ -287,7 +301,7 @@ def collect_necessary_metadata(context, *, records=(), facts=(), required=(), pr
     root_ids = {(identity.namespace, identity.value) for identity in paper.identities}
     target_doi = (paper.primary_identity.value if paper.primary_identity is not None
         and paper.primary_identity.namespace == 'doi' else None)
-    output = [paper_evidence(paper)]
+    output = list(paper_evidence_records(paper))
     seen = {evidence_key(item) for item in output}
     lookups, issues, attempted, completed = [], [], set(), []
     required = set(required)
@@ -395,7 +409,7 @@ def collect_necessary_metadata(context, *, records=(), facts=(), required=(), pr
     current = context.read_paper()
     # Include latest independent proof increments without recapturing write
     # authority. A newly known unresolved family must prevent an early value.
-    final_records = (*output, paper_evidence(current))
+    final_records = (*output, *paper_evidence_records(current))
     status = 'recorded' if current.metadata.first_public_at else first_public_status(final_records)
     if issues and status != 'conflict' and not current.metadata.first_public_at:
         status = 'failed'

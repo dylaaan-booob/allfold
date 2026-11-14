@@ -27,7 +27,8 @@ def test_ordinary_gaps_do_not_schedule_requests_after_necessary_capabilities_set
             providers=('crossref', 'openalex', 'pubmed')) == ()
 
 
-def execute(tmp_path, branch, *, transport, metadata=None, on_task=None, direct_ids=None, wait_timeout=5, client_options=None):
+def execute(tmp_path, branch, *, transport, metadata=None, on_task=None, direct_ids=None,
+            additional_identities=(), wait_timeout=5, client_options=None):
     from contextlib import contextmanager
     from allfold.application.collection_runtime import WorkspaceRegistry
     from allfold.application.provider_lookup import provider_client
@@ -54,7 +55,7 @@ def execute(tmp_path, branch, *, transport, metadata=None, on_task=None, direct_
     try:
         task = registry.submit(direct_ids=direct_ids or ExternalIds(doi='10.5555/formal'),
             metadata=metadata or PaperMetadata(title='Original', journal='Journal', publication_type='journal'),
-            branches=(branch,))
+            additional_identities=additional_identities, branches=(branch,))
         if on_task:
             on_task(registry, task)
         return task.future.result(wait_timeout), clients
@@ -62,6 +63,62 @@ def execute(tmp_path, branch, *, transport, metadata=None, on_task=None, direct_
         registry.shutdown()
         registry.join()
         factory.close()
+
+
+@pytest.mark.parametrize('handoff', ['none', 'complete-empty', 'partial-empty', 'complete-fetch'])
+def test_direct_preprint_pmid_aliases_keep_fetch_purposes_and_exact_capability_handoff(tmp_path, handoff):
+    from allfold.application.necessary_metadata import NecessaryRequest, VerifiedResponse, necessary_metadata_branch
+    from allfold.persistence.library_models import DirectIdentity
+    from allfold.persistence.paper_repository import PaperMetadata
+    alias = ProviderWorkEvidence(provenance=MetadataSource(provider='pubmed', record_id='43',
+        retrieved_at=datetime.now(timezone.utc)), external_ids=ExternalIds(pmid='43'), publication_type='preprint')
+    facts = () if handoff == 'none' else (VerifiedResponse(NecessaryRequest('pubmed', 'pmid', '43',
+        'fetch' if handoff == 'complete-fetch' else 'fetch-preprint'),
+        (alias,) if handoff == 'complete-fetch' else (), complete=handoff != 'partial-empty'),)
+    calls = []
+    def response(request):
+        calls.append(request)
+        assert request.url.path.endswith('efetch.fcgi')
+        articles = ''.join(f'<PubmedArticle><MedlineCitation><PMID>{pmid}</PMID><Article>'
+            '<ArticleTitle>Direct preprint</ArticleTitle><PublicationTypeList><PublicationType>Preprint</PublicationType>'
+            '</PublicationTypeList></Article></MedlineCitation></PubmedArticle>'
+            for pmid in request.url.params['id'].split(','))
+        return httpx.Response(200, text='<PubmedArticleSet>' + articles + '</PubmedArticleSet>')
+    paper, _ = execute(tmp_path, necessary_metadata_branch(providers=('pubmed',), facts=facts),
+        direct_ids=ExternalIds(pmid='42'), additional_identities=(DirectIdentity('pmid', '43'),),
+        metadata=PaperMetadata(title='Saved direct preprint', publication_type='preprint'), transport=response)
+    assert paper.collection_status == 'completed'
+    assert len(calls) == 1
+    assert calls[0].url.params['id'] == ('42,43' if handoff in {'none', 'partial-empty'} else '42')
+    assert paper.primary_identity == DirectIdentity('pmid', '42')
+    assert set(paper.identities) == {DirectIdentity('pmid', '42'), DirectIdentity('pmid', '43')}
+
+
+def test_saved_native_alias_is_required_before_first_public_can_settle(tmp_path):
+    from allfold.application.necessary_metadata import necessary_metadata_branch
+    from allfold.persistence.library_models import DirectIdentity
+    from allfold.persistence.paper_repository import PaperMetadata, PaperRepository
+    from allfold.providers.supplemental import SupplementalClient
+    def atom(identifier, date):
+        return ('<feed xmlns="http://www.w3.org/2005/Atom"><entry><id>http://arxiv.org/abs/'
+            + identifier + 'v3</id><published>' + date + 'T00:00:00Z</published></entry></feed>')
+    with SupplementalClient('arxiv', interval=0, transport=httpx.MockTransport(
+            lambda _: httpx.Response(200, text=atom('2201.12345', '2022-01-02')))) as parser:
+        native, = parser.lookup('arxiv', '2201.12345')
+    calls = []
+    def response(request):
+        calls.append(request)
+        assert request.url.params['id_list'] == '2202.12345'
+        with PaperRepository.open(tmp_path / 'workspace') as repository:
+            current, = repository.list_papers()
+            assert current.metadata.first_public_at is None and current.metadata.preprint_evidence
+        return httpx.Response(200, text=atom('2202.12345', '2020-01-02'))
+    paper, _ = execute(tmp_path, necessary_metadata_branch(providers=('arxiv',)),
+        direct_ids=ExternalIds(arxiv='2201.12345'), additional_identities=(DirectIdentity('arxiv', '2202.12345'),),
+        metadata=PaperMetadata(title='Saved direct preprint', publication_type='preprint', preprint_evidence=native.dates),
+        transport=response)
+    assert len(calls) == 1
+    assert paper.collection_status == 'completed' and paper.metadata.first_public_at == '2020-01-02'
 
 
 def test_actual_branch_saves_formal_increment_and_keeps_related_preprint_separate(tmp_path):
