@@ -41,8 +41,8 @@ class ProductionCollectionService:
         config = config or load_config(self.host.config_path)
         records, facts = tuple(records), tuple(facts)
         if paper is not None and not records:
-            from allfold.application.necessary_metadata import paper_evidence
-            records = (paper_evidence(paper),)
+            from allfold.application.necessary_metadata import paper_evidence_records
+            records = paper_evidence_records(paper)
         # A declared related Work is a purpose; an ordinary field gap is not.
         required = _required_purposes(records, required)
         providers = _providers(required)

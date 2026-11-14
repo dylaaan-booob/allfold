@@ -113,6 +113,70 @@ def test_run_first_collection_uses_new_verified_doi_without_replacing_saved_prim
         host.shutdown(); host.join()
 
 
+@pytest.mark.parametrize('primary_pmid', ['42', '43'])
+def test_doi_free_run_collects_saved_pmid_aliases_when_only_one_is_rediscovered(tmp_path, primary_pmid):
+    import httpx
+    from allfold.application.collection_planner import ProductionCollectionService
+    from allfold.application.collection_runtime import TaskHandle
+    from allfold.application.integrated_run import run_integrated
+    from allfold.application.provider_lookup import provider_client
+    from allfold.application.run_commit import capture_run_workspace
+    from allfold.application.task_clients import IndependentClientFactory
+    from allfold.application.workspace_tasks import WorkspaceTaskHost
+    from allfold.persistence.library_models import DirectIdentity, MetadataDelta
+    from integrated_run_helpers import EmptyLookup
+    from test_integrated_run import config, evidence, client_for
+
+    path, _ = config(tmp_path)
+    path.write_text(path.read_text() + 'enabled_providers: [pubmed]\n')
+    with capture_run_workspace(path): pass
+    with PaperRepository.open(tmp_path / 'workspace') as repository:
+        created = repository.create_or_match(repository.workspace_id, direct_ids=ExternalIds(pmid=primary_pmid),
+            metadata=PaperMetadata(title='Saved title', publication_type='journal')).paper
+        saved = repository.merge_metadata(created.token, MetadataDelta(),
+            direct_ids=ExternalIds(pmid='43' if primary_pmid == '42' else '42'))
+        assert saved.primary_identity == DirectIdentity('pmid', primary_pmid)
+    calls = []
+    def response(request):
+        calls.append(request)
+        if request.url.path.endswith('esummary.fcgi'):
+            pmids = request.url.params['id'].split(',')
+            return httpx.Response(200, json={'result': {'uids': pmids, **{pmid: {'uid': pmid,
+                **({'pubdate': '2026 Sep 3'} if pmid == '43' else {})} for pmid in pmids}}})
+        assert request.url.host == 'www.ebi.ac.uk'
+        query = request.url.params['query']
+        rows = ([{'source': 'MED', 'id': '43', 'title': 'Alias article',
+            'abstractText': 'Useful alias abstract', 'firstPublicationDate': '2026-09-03'}]
+            if 'EXT_ID:43' in query else [])
+        return httpx.Response(200, json={'hitCount': len(rows), 'resultList': {'result': rows}})
+    def factory(provider, **kwargs):
+        return (provider_client(provider, interval=0, transport=httpx.MockTransport(response), **kwargs)
+            if provider in {'pubmed', 'europe_pmc'} else EmptyLookup(provider, **kwargs))
+    host = WorkspaceTaskHost(path, factory=IndependentClientFactory(path, client_factory=factory))
+    try:
+        result = run_integrated(path, client_factory=client_for((evidence(doi=None, pmid='42'),)),
+            lookup_factory=EmptyLookup, workspace_tasks=host)
+        assert result.facts.existing_papers == 1 and result.facts.created_papers == 0
+        admission = host.current().admit(direct_ids=ExternalIds(pmid='42'), metadata=saved.metadata,
+            branches=ProductionCollectionService(host).plan(paper=saved))
+        completed = admission.future.result(3) if isinstance(admission, TaskHandle) else admission
+        summary, = (request for request in calls if request.url.path.endswith('esummary.fcgi'))
+        assert summary.url.params['id'] == '42,43'
+        associations, = (request for request in calls if request.url.host == 'www.ebi.ac.uk')
+        assert all('EXT_ID:' + pmid in associations.url.params['query'] for pmid in ('42', '43'))
+        assert len(calls) == 2  # Each exact capability is batched and queried once.
+        assert completed.id == saved.id and completed.primary_identity == DirectIdentity('pmid', primary_pmid)
+        assert {DirectIdentity('pmid', '42'), DirectIdentity('pmid', '43')} <= set(completed.identities)
+        assert completed.metadata.title == 'Saved title'
+        assert completed.metadata.abstract == 'Useful alias abstract'
+        assert completed.metadata.ordinary_dates == ('2026-09-03',)
+        assert completed.collection_status == 'completed'
+        assert {branch.name: branch.state for branch in completed.collection.branches} == {
+            'document': 'skipped', 'necessary-api': 'completed'}
+    finally:
+        host.shutdown(); host.join()
+
+
 def test_production_run_preserves_parent_service_fairness_while_other_documents_wait(tmp_path):
     from concurrent.futures import Future
     from dataclasses import replace

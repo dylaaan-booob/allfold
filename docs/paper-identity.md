@@ -22,6 +22,11 @@ explicitly confirmed by that Run. It retains every saved alias and any existing
 primary DOI; the complete accepted identity closure determines applicability.
 Necessary metadata keeps bibliography, dates and relationships from reliable DOI
 aliases, while its bounded Crossref PDF facts use the selected primary DOI.
+Necessary purposes use the full trusted direct-identity closure,
+including saved aliases absent from this Run's single-value evidence projection.
+Primary selection chooses the display/PDF target; it does not narrow that closure.
+Direct Preprint PMID fetch and native-family coverage before First public use
+the same complete saved closure.
 
 | Existing match during Run | Result |
 | --- | --- |
