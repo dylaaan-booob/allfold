@@ -114,10 +114,8 @@ const directoryCanvas = document.createElement('canvas');
 directoryCanvas.width = directoryCanvas.height = 768;
 const directoryContext = directoryCanvas.getContext('2d');
 let directoryAreas = [];
-const decryption = new DocumentDecryption();
 const paragraphLayout = window.ParagraphLayout?.create($('paper-abstract'), {
   scrollRoot:$('paper-detail'),
-  onLayout:()=>{if(decryption.active) decryption.refresh();},
 });
 const filePanel = document.querySelector('.file-panel');
 const completionSurface = new SurfaceTransition($('empty-inbox'), undefined, archiveDebug.values.liftEndMs, 180);
@@ -491,10 +489,6 @@ function tick(now) {
     more = stepSpring(directoryScroll, dt) || more;
     if (!inspection.removeAfter) paintDirectory();
   }
-  const revealing = decryption.active;
-  decryption.update(now / 1000, { clarity: 1 }, REDUCE_MOTION);
-  if (revealing && !decryption.active && (state.view === 'journal' || readerContext)) renderReadingControls();
-  more = decryption.active || more;
   draw();
   if (more) requestAnimationFrame(tick);
   else { running = false; lastTime = 0; }
@@ -503,7 +497,7 @@ function wake() { if (!configurationActive() && !running && state.ready) { runni
 function resize() {
   syncNavigation();
   if(!inboxActive() || !archiveLayout){
-    if(readerContext && arrayActive()){fillAbstractPlaceholder();if(decryption.active)decryption.refresh();}
+    if(readerContext && arrayActive()){fillAbstractPlaceholder();}
     return;
   }
   const metrics=archiveControlMetrics();
@@ -537,7 +531,6 @@ function resize() {
   hideTickLabel();
   if (state.view === 'journal' && shelves.length) resetDirectory(true);
   if (state.view === 'journal' || readerContext) fillAbstractPlaceholder();
-  if (decryption.active) decryption.refresh();
   wake();
 }
 new ResizeObserver(resize).observe(canvas);
@@ -991,7 +984,6 @@ function openView(paperId = null, source = canvas) {
 }
 function back() {
   if (state.view !== 'journal' || !inspection.target || decisionPending || snapshotApplying || paperToolsBusy()) return;
-   decryption.reset(null, true);
   inspection.target = 0;
   $('journal-view').inert = true;
   const selection = returnSelection();
@@ -1138,7 +1130,7 @@ function movePaper(delta) {
   selectPaper(papers[(next + papers.length) % papers.length].id,next < 0 || next >= papers.length);
 }
 function renderField(id, text, missing, bars=1) {
-  const root=$(id); root.classList.remove('enrich-new','reveal-pending'); root.replaceChildren();
+  const root=$(id); root.replaceChildren();
   if (!missing) { root.textContent=text; return; }
   const placeholder=document.createElement('span');placeholder.className='missing-field';
   placeholder.setAttribute('aria-label','暂无内容');
@@ -1149,7 +1141,6 @@ function renderPaper(previous=null) {
   const paper=currentPaper(); if (!paper) return;
   const text=(id,value)=>{if($(id).textContent!==value)$(id).textContent=value;};
   const differs=field=>!previous || JSON.stringify(previous[field])!==JSON.stringify(paper[field]);
-  if(!previous || differs('abstract'))decryption.reset(null,true);
   const detail=$('paper-detail'), changed=detail.dataset.paperId!==paper.id;
   if(changed) {paperMetadata.open=false;paragraphLayout?.clear();}
   if(readerContext && changed)paperMetadata.open=true;
@@ -1190,7 +1181,6 @@ function renderPaperFields(paper, fields) {
   }
   if (fields.includes('abstract')) {
     if(paragraphLayout && paper.abstract?.trim()) {
-      $('paper-abstract').classList.remove('enrich-new','reveal-pending');
       paragraphLayout.setText(paper.abstract);
     } else {
       paragraphLayout?.clear();
@@ -1480,7 +1470,6 @@ $('restore-paper').addEventListener('click',()=>void paperAction(currentPaper()?
 $('clear-paper-metadata').addEventListener('click',()=>void paperAction('clear-metadata'));
 $('paper-metadata-details').addEventListener('toggle',()=>{
   fillAbstractPlaceholder();
-  if(decryption.active) decryption.refresh();
 });
 
 $('back').addEventListener('click', back);
@@ -1745,7 +1734,7 @@ window.addEventListener('workspace-reset',()=>{
   uiNext.resetWorkspace();snapshotApplying=false;decisionPending=false;
   paperTools.pending=false;if($('paper-tools-dialog').open)$('paper-tools-dialog').close();
   closeArrayReader(true);clearInspectionPanel();
-  paragraphLayout?.clear();decryption.reset(null,true);paperMetadata.open=false;
+  paragraphLayout?.clear();paperMetadata.open=false;
   for(const id of ['view-paper-title','view-paper-id','paper-position','paper-authors','paper-date','paper-source','paper-identifiers','paper-indexed-terms','paper-providers','paper-doi','paper-abstract'])$(id).replaceChildren();
   window.allfoldPaperDates.render(null,$('paper-dates'),$('paper-date-evidence'));
   $('paper-doi').removeAttribute('href');delete $('paper-detail').dataset.paperId;
@@ -1782,7 +1771,7 @@ async function load() {
 let inboxScrollPosition=0;
 function leaveInboxReview() {
   if(state.view!=='journal') return;
-  decryption.reset(null,true);
+
   inspection.target=inspection.time=0;finishReturn();
 }
 function candidateEntries() {
@@ -1791,7 +1780,7 @@ function candidateEntries() {
 function closeArrayReader(snapshot=false) {
   if(!snapshot && (decisionPending || snapshotApplying || paperToolsBusy()))return false;
   if(readerContext){
-    paragraphLayout?.clear();decryption.reset(null,true);
+    paragraphLayout?.clear();
     readerContext=null;state.pendingPaper=null;
     window.allfoldPreprintLookup.select(null);
     window.allfoldPaperDates.render(null,$('paper-dates'),$('paper-date-evidence'));
@@ -1837,7 +1826,7 @@ window.inboxKept={
   suspend() {renderReadingControls();},
   openReader(entries,id,status,filter) {
     if(this.busy() || !arrayActive() || !entries.some(entry=>entry.paper.id===id)) return false;
-    decryption.reset(null,true);
+
     clearInspectionPanel();
     if(!readerContext)paperMetadata.open=false;
     readerContext={entries,status,filter};state.pendingPaper=id;

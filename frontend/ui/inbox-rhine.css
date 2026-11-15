@@ -74,7 +74,6 @@
 #journal-view .review-right{padding-top:24px;background:transparent;isolation:isolate}
 #journal-view .review-right::before{content:'';position:absolute;inset:0;z-index:0;background:var(--paper);opacity:var(--journal-reveal-progress,0);pointer-events:none}
 #journal-view .review-right>*{position:relative;z-index:1}
-:is(#journal-view,#kept-reader-body) .review-controls{display:flex;align-items:flex-start;gap:12px;padding:0;margin:0 0 16px}
 :is(#journal-view,#kept-reader-body,.array-paper-infos) button.missing-field{width:100%;text-align:left;font:inherit}
 :is(#journal-view,#kept-reader-body,.array-paper-infos) button.missing-field:disabled{opacity:1}
 :is(#journal-view,#kept-reader-body,.array-paper-infos) .date-precision{margin:0;padding:0;border:0;font:inherit;color:inherit;white-space:nowrap}
