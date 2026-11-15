@@ -62,8 +62,8 @@ class CurrentBodyFile:
 
     @staticmethod
     def _regular(info):
-        if not stat.S_ISREG(info.st_mode) or info.st_nlink != 1:
-            raise UnsafeLibraryPath('Body must remain a regular single-link file')
+        if not stat.S_ISREG(info.st_mode):
+            raise UnsafeLibraryPath('Body must remain a regular file')
 
     def _live(self):
         current = _open_directory_nofollow(self.workspace)

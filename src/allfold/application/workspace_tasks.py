@@ -207,11 +207,12 @@ class WorkspaceTaskHost:
                 if any(owner.paper_id == paper.id and owner.destructive for owner in registry._local_operations.values()):
                     raise InvalidPaperState('Body deletion is still active')
                 if destructive:
+                    registry.settle_ended(paper.id)
                     with registry._repository() as repository:
                         current = repository.get(paper.id)
                     if (not current.excluded or registry.busy(paper.id)
                             or current.collection is not None and current.collection.active
-                            or current.download is not None and (current.download.active or current.download.output is not None)):
+                            or current.download is not None and current.download.active):
                         raise InvalidPaperState('Wait for this Paper actual cleanup before deleting its body')
                 owner = _LocalOperation(self, registry, paper, epochs, destructive)
                 registry._local_operations[owner] = owner
@@ -269,8 +270,17 @@ class WorkspaceTaskHost:
             else:
                 registry.signal_cancel_targets(change.targets)
                 for target in change.targets:
-                    target.future.result()
-            if registry.active and registry.faults:
+                    try:
+                        target.future.result()
+                    except Exception:
+                        # Storage/auxiliary faults have already been recorded.
+                        # Only a still-owned resource can obstruct maintenance.
+                        with registry.paper_gate():
+                            parent = getattr(target, 'parent', target)
+                            if (registry._tasks.get(target.paper_id) is parent
+                                    or registry._reservations.get(target.paper_id) is target):
+                                raise
+            if change.whole and registry.active:
                 raise RuntimeError('Workspace task resources or state could not be settled')
         change.drained = True
 

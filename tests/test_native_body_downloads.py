@@ -60,7 +60,8 @@ def test_native_attempt_uses_original_bridge_capability_then_shared_completion(t
         assert data['output']['file'] is None and not leaf.exists()
         leaf.write_bytes(b'original response')
         info=leaf.stat();file=[info.st_dev,info.st_ino]
-        bridge.native_progress(dict(native_output_file=file,received_bytes=17,total_bytes=17))
+        if signed:
+            bridge.native_progress(dict(native_output_file=file,received_bytes=17,total_bytes=17))
         assert 'native_output_file' not in str(progress)
         bridge.result.set_result(dict(kind='pdf',outcome='native_complete',pdf_type=True,transfer_complete=True,
             output_file=file,final_url=candidate.url,resource_closed=True))

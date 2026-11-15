@@ -80,6 +80,51 @@ def test_identity_only_trash_can_open_and_locate_without_network_or_prepare(tmp_
         assert not app.state.workspace_tasks.active
 
 
+@pytest.mark.parametrize('action,outcome', [('open', 'opened'), ('locate', 'locate_requested')])
+def test_successful_shell_result_survives_projection_storage_failure(tmp_path, monkeypatch, action, outcome):
+    from allfold.persistence.paper_repository import LibraryError
+    config, workspace, paper, path = saved_body(tmp_path)
+    bridge = LocalBridge()
+    app = create_app(config, electron_bridge=bridge, diagnostics_root=tmp_path/'logs')
+    with TestClient(app, base_url='http://localhost') as client:
+        request = request_for(client, paper)
+        execute = bridge.execute
+        with monkeypatch.context() as patch:
+            def native(*args, **kwargs):
+                bridge.outcome = outcome
+                result = execute(*args, **kwargs)
+                def unavailable(*args, **kwargs):
+                    raise LibraryError('private storage failure')
+                patch.setattr(PaperRepository, 'get', unavailable)
+                return result
+            patch.setattr(bridge, 'execute', native)
+            response = client.post(f'/api/papers/{paper.id}/body/{action}', json=request)
+        assert response.status_code == 200 and response.json()['outcome'] == outcome
+        assert response.json()['refresh_error'] and 'revision' not in response.json()
+        assert 'private storage failure' not in response.text
+        assert len(bridge.calls) == 1 and not app.state.workspace_tasks.active
+        assert read_paper(workspace, paper.id) == paper and path.exists()
+
+
+def test_successful_local_action_survives_closed_descriptor_cleanup_fault(tmp_path, monkeypatch):
+    from allfold.persistence.local_body_files import CurrentBodyFile
+    config, workspace, paper, path = saved_body(tmp_path)
+    bridge = LocalBridge()
+    app = create_app(config, electron_bridge=bridge, diagnostics_root=tmp_path/'logs')
+    close = CurrentBodyFile.__exit__
+    def closed(file, *args):
+        close(file, *args)
+        raise OSError('controlled auxiliary close failure')
+    with TestClient(app, base_url='http://localhost') as client:
+        request = request_for(client, paper)
+        with monkeypatch.context() as patch:
+            patch.setattr(CurrentBodyFile, '__exit__', closed)
+            response = client.post(f'/api/papers/{paper.id}/body/open', json=request)
+        assert response.status_code == 200 and response.json()['outcome'] == 'opened'
+        assert response.json()['warning'] and not app.state.workspace_tasks.active
+        assert read_paper(workspace, paper.id) == paper and path.exists()
+
+
 @pytest.mark.parametrize('identity_only', [False, True])
 def test_trash_pdf_deletion_removes_only_file_and_association(tmp_path, identity_only):
     config, workspace, paper, path = saved_body(tmp_path, trash=True, identity_only=identity_only)
@@ -117,13 +162,11 @@ def test_confirmed_missing_conditionally_clears_only_body_and_keeps_identity_pla
         assert bridge.calls == []
 
 
-@pytest.mark.parametrize('unsafe', ['symlink', 'hardlink', 'directory', 'permission'])
+@pytest.mark.parametrize('unsafe', ['symlink', 'directory', 'permission'])
 def test_unsafe_or_inaccessible_body_preserves_association(tmp_path, monkeypatch, unsafe):
     config, workspace, paper, path = saved_body(tmp_path, trash=True)
     if unsafe == 'symlink':
         path.unlink(); path.symlink_to(workspace/'papers.sqlite')
-    elif unsafe == 'hardlink':
-        os.link(path, path.with_name('unrelated-link.pdf'))
     elif unsafe == 'directory':
         path.unlink(); path.mkdir()
     else:
@@ -450,7 +493,8 @@ def test_local_native_terminal_is_host_visible_and_drain_waits_outside_settings_
             assert not draining.done() and not bridge.future.done() and host.active
         finally:
             bridge.future.set_result(dict(outcome='opened', resource_closed=True))
-        assert pending.result(3).status_code == 409
+        opened = pending.result(3)
+        assert opened.status_code == 200 and opened.json()['outcome'] == 'opened'
         draining.result(3)
         assert not host.active and path.read_bytes() == b'normal transfer bytes'
         host.finish_change(change)

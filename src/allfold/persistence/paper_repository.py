@@ -171,17 +171,6 @@ class PaperRepository:
         connection.execute("UPDATE library_state SET revision = revision + 1 WHERE singleton = 1")
         connection.execute("UPDATE paper_projection SET revision = revision + 1 WHERE paper_id = ?", (str(paper_id),))
 
-    def touch_projection(self, paper_id: UUID) -> PaperRecord:
-        """Order a runtime occupancy change without changing content qualification.
-
-        The runtime holds its Paper gate and captured resource identity through
-        this commit and the corresponding reservation change.
-        """
-        with self._database.transaction(write=True) as connection:
-            self._read(connection, paper_id)
-            self._changed(connection, paper_id)
-            return self._read(connection, paper_id)
-
     @staticmethod
     def _new_metadata(metadata):
         if metadata.discovered_at is None:
@@ -652,8 +641,6 @@ class PaperRepository:
             if paper.body is not None:
                 raise InvalidPaperState("Paper already has a body")
             self._require_collection_idle(paper)
-            if paper.download is not None and paper.download.output is not None:
-                raise InvalidPaperState("Known download output must be cleaned before another attempt")
             attempt = paper.download.token.attempt + 1 if paper.download else 1
             primary = paper.primary_identity
             connection.execute("""INSERT INTO paper_download VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'queued', NULL, NULL)

@@ -64,7 +64,7 @@ def test_delayed_reject_signals_only_its_captured_reservation(tmp_path, monkeypa
             lock.release()
             with workspace_operation_lock(workspace, create=False):
                 with PaperRepository.open(workspace) as repository:
-                    repository.touch_projection(paper.id)
+                    repository.edit_metadata(repository.get(paper.id).token, {'notes': 'Saved after cancellation'})
         with ThreadPoolExecutor(max_workers=1) as pool:
             pool.submit(check_write_locks_released).result(2)
         cancellations.append((workflow_id, task_id))

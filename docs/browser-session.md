@@ -68,6 +68,10 @@ resumes the item; its eventual `done` state remains distinct from that observati
 WoS reports the interruption after that actual terminal. `waitForDownloads`
 waits for all tracked items, or only one source WebContents, and is not shortened
 by a task's aborted signal. Source pages remain retained through that wait.
+At `done`, that item's deadline timer and abort listener are retired; unrelated
+live items retain theirs. Body transfer accepts actual final `completed` even
+after an earlier interrupted observation, while still capturing its actual owned
+output. Running-item page/access invalidation policy is unchanged.
 
 Disposing a dispatched attempt that never received an item makes its physical
 source unsafe until actual WebContents destruction. Elapsed time cannot establish

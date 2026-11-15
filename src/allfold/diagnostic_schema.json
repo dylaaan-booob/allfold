@@ -100,6 +100,7 @@
         "python_exited",
         "startup_failed",
         "task_finished",
+        "task_cleanup_failed",
         "task_progress",
         "task_started",
         "workflow_finished",

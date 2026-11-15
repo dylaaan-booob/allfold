@@ -282,9 +282,8 @@ production adoption, fields, saved Preprint evidence and recycling; Electron fix
 projections, response ordering and the existing layout. None establishes real
 provider, institution, user-library or actual-PDF acceptance.
 
-`touch_projection(paper_id)` advances only the Paper/library response revisions
-for a runtime reservation change. It grants no metadata/operation/abstract/body
-qualification. The application holds the same Paper gate and captured reservation
-identity through that commit and runtime ownership change. Current failure-related
-occupancy is an implementation limitation, not a requirement to keep finished work
-reserved indefinitely; see [Workspace runtime](collection-runtime.md).
+Runtime reservation changes use the existing same-revision response ordering,
+without a SQLite projection-touch write. Finished work releases its occupancy
+even after terminal storage failure; the original exact token may still need
+settlement on the next explicit operation. No read projection performs that
+write or renews authority; see [Workspace runtime](collection-runtime.md).

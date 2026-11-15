@@ -6,7 +6,7 @@ const {checkCanceled}=require('../browser/browser-task.cjs');
 const UUID=/^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i;
 const pair=value=>Array.isArray(value)&&value.length===2&&value.every(n=>Number.isSafeInteger(n)&&n>=0);
 const same=(info,expected)=>pair(expected)&&info.dev===expected[0]&&info.ino===expected[1];
-function regular(info,expected){if(!info.isFile()||info.nlink!==1||!same(info,expected))throw Error('body-changed');}
+function regular(info,expected){if(!info.isFile()||!same(info,expected))throw Error('body-changed');}
 
 function capture(data,handles){
   const proof=data?.body,root=data?.workspace_root,parts=proof?.relative_path?.split('/');
@@ -54,7 +54,7 @@ async function executeLocalBody(data,{signal,shell,verifyAuthority}={}){
       else if(data.action==='open'){
         const error=await shell.openPath(body.filename);
         // shell.openPath resolves to an error string instead of rejecting.
-        if(error==='')outcome=body.verify()?'opened':'stale';
+        if(error==='')outcome='opened';
       }else{
         shell.showItemInFolder(body.filename);
         // The API returns void; only issuance can be reported.

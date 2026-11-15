@@ -94,6 +94,7 @@ class PdfDiscoveryContext:
         return self._oce_access
 
     def close_native(self):
+        from allfold.application.collection_runtime import _CleanupUnconfirmed
         cancelled = False
         for future in self.native:
             try:
@@ -101,10 +102,18 @@ class PdfDiscoveryContext:
             except BaseException:
                 cancelled = cancelled or future.cancelled()
         if cancelled:
-            raise RuntimeError('Cancelled native Future does not prove resource settlement')
+            raise _CleanupUnconfirmed('Cancelled native Future does not prove resource settlement')
         if self.native_started:
-            self.registry.bridge.execute('release_workflow_pages', {
-                'workflow_id': self.workflow_id, 'task_id': self.task_id}).result()
+            release = self.registry.bridge.execute('release_workflow_pages', {
+                'workflow_id': self.workflow_id, 'task_id': self.task_id})
+            try:
+                value = release.result()
+            except BaseException:
+                if release.cancelled():
+                    raise _CleanupUnconfirmed('Native page release was cancelled before settlement') from None
+                raise
+            if isinstance(value, dict) and value.get('resource_closed') is False:
+                raise _CleanupUnconfirmed('Native page release is unconfirmed')
 
 
 def _run(reservation, target, facts, inputs, transfer, http_options):
@@ -147,20 +156,22 @@ def _run(reservation, target, facts, inputs, transfer, http_options):
             return DiscoveryResult('cancelled')
         raise
     finally:
+        from allfold.application.collection_runtime import _CleanupUnconfirmed
         try:
             if context is not None:
                 try:
                     context.close_native()
                 except BaseException as error:
-                    registry.fail_reservation(reservation, phase='discovery-native-cleanup', error=error)
-                    raise
+                    registry.fail_reservation(reservation, phase='discovery-native-cleanup', error=error,
+                        unconfirmed=isinstance(error, _CleanupUnconfirmed))
+                    if isinstance(error, _CleanupUnconfirmed):
+                        raise
         finally:
             try:
                 try:
                     resources.close()
                 except BaseException as error:
                     registry.fail_reservation(reservation, phase='discovery-client-cleanup', error=error)
-                    raise
             finally:
                 timer.cancel()
                 timer.join()
@@ -170,7 +181,6 @@ def _run(reservation, target, facts, inputs, transfer, http_options):
                         reservation.browser_owner = None
                     except BaseException as error:
                         registry.fail_reservation(reservation, phase='discovery-owner-cleanup', error=error)
-                        raise
 
 
 def _settled(reservation, actual):
@@ -183,7 +193,10 @@ def _settled(reservation, actual):
         try:
             reservation.registry.release(reservation)
         except BaseException as failure:
-            error = failure
+            reservation.registry._fault(reservation, 'discovery-owner-cleanup', failure)
+    reservation.cleanup_ended = True
+    with reservation.registry._settled_condition:
+        reservation.registry._settled_condition.notify_all()
     if error is not None:
         reservation.future.set_exception(error)
     else:

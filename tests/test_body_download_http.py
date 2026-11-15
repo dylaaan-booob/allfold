@@ -276,6 +276,59 @@ def test_cancel_is_exact_and_retains_occupancy_until_actual_terminal(tmp_path):
         current.future.result(3)
 
 
+def test_terminal_storage_failure_is_idle_and_explicit_download_recovers_exact_attempt(tmp_path, monkeypatch):
+    from allfold.persistence.paper_repository import LibraryError
+    fact = PdfDiscoveryFacts(source='document', capability='document-pdf', status='complete',
+        observed_at=datetime.now(timezone.utc), target_doi='10.5555/decision',
+        landing_url='https://link.springer.com/article/10.5555/decision', platform='springer')
+    config, workspace, paper = create_paper(tmp_path, discovery_facts=(fact,))
+    bridge = PendingBridge()
+    app = create_app(config, electron_bridge=bridge, diagnostics_root=tmp_path/'logs')
+    with TestClient(app, base_url='http://localhost') as client:
+        snapshot = client.get('/api/ui-next/workspace').json()
+        request = dict(csrf_token=snapshot['csrf_token'], workspace_id=snapshot['workspace_id'])
+        item = snapshot['subjects'][0]['journals'][0]['papers'][0]
+        endpoint = f'/api/papers/{paper.id}/body/download'
+        assert client.post(endpoint, json=request | dict(qualification=item['download']['qualification'])).status_code == 200
+        assert bridge.dispatched.wait(2)
+        registry = app.state.workspace_tasks.current()
+        old = registry._reservations[paper.id]
+        with monkeypatch.context() as patch:
+            def failed_write(*args, **kwargs):
+                raise LibraryError('controlled private terminal store error')
+            patch.setattr(PaperRepository, 'finish_download', failed_write)
+            bridge.future.set_result(dict(kind='local_failure', outcome='local_failure'))
+            with pytest.raises(LibraryError):
+                old.future.result(3)
+            assert not registry.active
+            with PaperRepository.open(workspace) as repository:
+                before = repository.revision
+                assert repository.get(paper.id).download.active
+            projected = client.get('/api/ui-next/workspace').json()['subjects'][0]['journals'][0]['papers'][0]
+            assert projected['download']['status'] == 'failed' and projected['download']['reason'] == 'storage-error'
+            assert projected['download']['available'] and not projected['download']['active'] and not projected['cleanup_pending']
+            assert 'private' not in str(projected)
+            with PaperRepository.open(workspace) as repository:
+                assert repository.revision == before
+            retry = request | dict(qualification=projected['download']['qualification'])
+            denied = client.post(endpoint, json=retry)
+            assert denied.status_code == 409 and '数据库' in denied.json()['message']
+            assert len(bridge.calls) == 1
+        bridge.dispatched.clear()
+        accepted = client.post(endpoint, json=retry)
+        assert accepted.status_code == 200, accepted.text
+        assert bridge.dispatched.wait(2)
+        current = registry._reservations[paper.id]
+        assert current.download_token.attempt == old.download_token.attempt + 1
+        assert not app.state.body_downloads.cancel(paper.id, paper.workspace_id, old.task_id, old.download_token.attempt)
+        data = bridge.calls[-1][1]
+        assert data['output']['temporary'] != bridge.calls[0][1]['output']['temporary']
+        (workspace/data['output']['temporary']).write_bytes(b'body')
+        bridge.future.set_result(dict(kind='pdf', outcome='stream_complete', pdf_type=True, transfer_complete=True,
+            output_file=data['output']['file'], size_bytes=4, final_url=data['url']))
+        assert current.future.result(3).status == 'completed' and not registry.active
+
+
 def test_existing_identity_only_trash_body_precedes_all_download_eligibility(tmp_path, monkeypatch):
     from allfold.persistence.paper_repository import BodyReference
     from electron_test_helpers import OfflineBridge

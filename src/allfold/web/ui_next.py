@@ -23,7 +23,7 @@ from allfold.persistence.user_state import load_user_state, read_user_state
 from allfold.config import ConfigurationError, load_config
 from allfold.paper_dates import date_value
 from allfold.models import EvidenceDate
-from allfold.persistence.paper_repository import LibraryError, PaperRepository, StaleWriteError
+from allfold.persistence.paper_repository import InvalidPaperState, LibraryError, PaperRepository, StaleWriteError
 from allfold.persistence.library_models import WriteToken
 from allfold.url_safety import normalize_public_http_url
 from allfold.pdf_facts import stable_discovery_url
@@ -115,13 +115,22 @@ def collection_payload(record, *, collection_service=None, cleanup_pending=False
     if collection_service is not None:
         cleanup_pending = collection_service.cleanup_pending(record.id, record.workspace_id)
     saved = record.collection
+    registry = collection_service.host.peek() if collection_service is not None else None
+    ended = registry is not None and registry.ended_kind(record) == 'collection'
+    status = 'failed' if ended else record.collection_status
+    warning = None
+    if registry is not None and saved and not cleanup_pending:
+        messages = {'client-cleanup':'采集已结束，但客户端关闭时发生错误。',
+            'native-cleanup':'采集已结束，但辅助页面清理失败。', 'owner-cleanup':'采集已结束，但浏览器占用释放通知失败。'}
+        warning = next((messages[fault['phase']] for fault in reversed(registry.faults)
+            if fault['paper_id'] == str(record.id) and fault['attempt'] == saved.attempt and fault['phase'] in messages), None)
     token = record.token
     retry = dict(attempt=saved.attempt if saved else 0, revision=record.revision,
         token={name: getattr(token, name) for name in ('metadata_generation', 'operation_generation',
             'abstract_generation', 'body_generation')})
     available = False
     reason = None
-    if record.metadata is not None and not record.excluded and record.collection_status in {'failed', 'cancelled'}:
+    if record.metadata is not None and not record.excluded and status in {'failed', 'cancelled'}:
         reason = 'cleanup_pending' if cleanup_pending else 'unavailable'
         if not cleanup_pending and collection_service is not None:
             try:
@@ -132,9 +141,11 @@ def collection_payload(record, *, collection_service=None, cleanup_pending=False
                 pass  # Public projections never include authority/transport exception text.
         if available:
             reason = None
-    return dict(status=record.collection_status, attempt=saved.attempt if saved else 0,
+    return dict(status=status, attempt=saved.attempt if saved else 0,
+        reason='storage-error' if ended else saved.reason if saved else None, warning=warning,
         cleaning_up=bool(cleanup_pending), retry_available=available, retry_reason=reason, retry=retry,
-        branches=[dict(name=branch.name, status=branch.state) for branch in saved.branches] if saved else [])
+        branches=[dict(name=branch.name, status='failed' if ended and branch.state in {'queued', 'running'} else branch.state)
+            for branch in saved.branches] if saved else [])
 
 
 class _RunStart(_Action):
@@ -173,6 +184,7 @@ def paper_payload(paper: WorkspacePaper, *, workspace_tasks=None, cleanup_pendin
     if cleanup_pending is None:
         cleanup_pending = bool(workspace_tasks and workspace_tasks.cleanup_pending(paper.paper_id, paper.record.workspace_id))
     metadata = paper.record.metadata
+    collection = collection_payload(paper.record, collection_service=collection_service, cleanup_pending=cleanup_pending)
     doi = paper.external_ids.doi
     proof_keys = {(item.provider, item.version, date_value(item)) for item in paper.preprint_evidence}
     preprints = [item.model_dump(mode='json', exclude_none=True) for item in paper.preprints
@@ -195,8 +207,7 @@ def paper_payload(paper: WorkspacePaper, *, workspace_tasks=None, cleanup_pendin
         sources=[_metadata_source_payload(source) for source in paper.sources],
         journal_issns=list(paper.journal_issns),
         discovered_at=paper.discovered_at.isoformat() if paper.discovered_at else None,
-        notes=metadata.notes if metadata else None, collection_status=paper.record.collection_status,
-        collection=collection_payload(paper.record, collection_service=collection_service, cleanup_pending=cleanup_pending),
+        notes=metadata.notes if metadata else None, collection_status=collection['status'], collection=collection,
         body_present=paper.record.body is not None,
         download=body_downloads.projection(paper.record, cleanup_pending=cleanup_pending) if body_downloads else
             dict(status=paper.record.download.status if paper.record.download else 'not_started',
@@ -310,12 +321,20 @@ def install_ui_next(app: FastAPI, config_path: Path, csrf_token: str) -> None:
             return response({'message': str(error)}, 409)
 
     def body_response(paper_id, workspace_id, *, status=200, **extra):
-        registry = app.state.workspace_tasks.current()
-        with registry.paper_gate(), PaperRepository.open(registry.workspace, expected_workspace_id=workspace_id) as repository:
-            paper, revision = repository.get(paper_id), repository.revision
-            cleanup = app.state.workspace_tasks.cleanup_pending(paper.id, paper.workspace_id)
-        payload = paper_payload(WorkspacePaper(paper), cleanup_pending=cleanup,
-            collection_service=app.state.collection_service, body_downloads=app.state.body_downloads)
+        try:
+            registry = app.state.workspace_tasks.current()
+            with registry.paper_gate(), registry._repository() as repository:
+                if registry.workspace_id != workspace_id:
+                    raise StaleWriteError('Different Workspace')
+                paper, revision = repository.get(paper_id), repository.revision
+                cleanup = app.state.workspace_tasks.cleanup_pending(paper.id, paper.workspace_id)
+            payload = paper_payload(WorkspacePaper(paper), cleanup_pending=cleanup,
+                collection_service=app.state.collection_service, body_downloads=app.state.body_downloads)
+        except (LibraryError, ConfigurationError, ValueError, OSError, RuntimeError):
+            if 'outcome' not in extra:
+                raise
+            return response(dict(workspace_id=workspace_id, **extra,
+                refresh_error='操作结果已确认，但 Workspace 状态刷新失败。请刷新状态，无需重复操作。'), status)
         return response(dict(workspace_id=workspace_id, revision=revision, paper=payload, **extra), status)
 
     @app.post('/api/papers/{paper_id}/body/download')
@@ -326,10 +345,14 @@ def install_ui_next(app: FastAPI, config_path: Path, csrf_token: str) -> None:
             result = app.state.body_downloads.start(paper_id, body.workspace_id,
                 qualification=body.qualification.model_dump() if body.qualification is not None else None)
             outcome = getattr(result, 'status', 'accepted')
-            return body_response(paper_id, body.workspace_id, outcome=outcome,
+            return body_response(paper_id, body.workspace_id, outcome=outcome, warning=getattr(result, 'warning', None),
                 **({'status':409, 'message':'PDF 本地操作失败，请刷新状态后重试。'} if getattr(result, 'failed', False) else {}))
-        except (LibraryError, ConfigurationError, ValueError, OSError, RuntimeError):
+        except (StaleWriteError, InvalidPaperState, ConfigurationError, ValueError, RuntimeError):
             return response({'message':'当前 Paper 无法下载，请刷新状态后重试。'}, 409)
+        except LibraryError:
+            return response({'message':'Paper 数据库读写失败；存储恢复后可重新下载。'}, 409)
+        except OSError:
+            return response({'message':'正文文件无法创建或清理；请检查目标文件与目录权限。'}, 409)
 
     @app.post('/api/papers/{paper_id}/body/cancel')
     def body_cancel(paper_id: UUID, body: _BodyCancel):
@@ -349,11 +372,15 @@ def install_ui_next(app: FastAPI, config_path: Path, csrf_token: str) -> None:
         try:
             result = app.state.local_body.perform(paper_id, body.workspace_id,
                 action=action, body_generation=body.body_generation)
-            return body_response(paper_id, body.workspace_id, outcome=result.status,
+            return body_response(paper_id, body.workspace_id, outcome=result.status, warning=result.warning,
                 **({'status':409, 'message':('文件处理已结束，但正文关联未能更新；请明确重试以确认当前文件。'
                     if result.status == 'association_failure' else 'PDF 本地操作失败，原正文关联已保留。')} if result.failed else {}))
-        except (LibraryError, ConfigurationError, ValueError, OSError, RuntimeError):
+        except (StaleWriteError, InvalidPaperState, ConfigurationError, ValueError, RuntimeError):
             return response({'message':'当前 PDF 操作失败，请刷新状态后重试。', 'outcome':'local_failure'}, 409)
+        except LibraryError:
+            return response({'message':'Paper 数据库读写失败，正文关联未能更新。请在存储恢复后重试。', 'outcome':'association_failure'}, 409)
+        except OSError:
+            return response({'message':'PDF 文件操作失败，请检查文件与目录权限。', 'outcome':'file_failure'}, 409)
 
     @app.post('/api/papers/{paper_id}/collection/retry')
     def collection_retry(paper_id: UUID, body: _CollectionRetry):
@@ -380,8 +407,10 @@ def install_ui_next(app: FastAPI, config_path: Path, csrf_token: str) -> None:
                 payload = paper_payload(WorkspacePaper(paper), cleanup_pending=cleanup,
                     collection_service=app.state.collection_service, body_downloads=app.state.body_downloads)
             return response(dict(workspace_id=paper.workspace_id, revision=revision, paper=payload))
-        except (ConfigurationError, ContentChangedError, LibraryError, ValueError, OSError, RuntimeError):
+        except (StaleWriteError, InvalidPaperState, ConfigurationError, ContentChangedError, ValueError, OSError, RuntimeError):
             return response({'message': 'Paper 重试资格已变化，或所需访问条件不可用；请刷新后检查。'}, 409)
+        except LibraryError:
+            return response({'message': 'Paper 数据库读写失败；存储恢复后可重试采集。'}, 409)
 
     def run_data(start=None):
         snapshot = app.state.run_coordinator.snapshot()

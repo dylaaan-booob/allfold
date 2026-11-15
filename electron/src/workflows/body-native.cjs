@@ -148,7 +148,8 @@ class OriginalNavigation {
             if(observed&&!this.observed){this.observed=observed.file;this.progress({native_output_file:observed.file});}
             if(Date.now()-last>=100){last=Date.now();this.progress({received_bytes:Math.max(0,tracked.item.getReceivedBytes()),
               total_bytes:tracked.item.getTotalBytes()>0?tracked.item.getTotalBytes():null});}
-          }catch(error){this.error ??= error;setImmediate(()=>tracked.item.cancel());}
+          }catch(error){if(error.bodyLocal)this.outputError ??= error;this.error ??= error;
+            setImmediate(()=>this.browser.sessionEvents.cancelItem(tracked.item));}
         };
         tracked.item.on('updated',update);tracked.terminal.then(()=>tracked.item.removeListener('updated',update));
         update();this.resolve(tracked);
@@ -272,7 +273,8 @@ class OriginalNavigation {
 }
 async function executeBodyNative(browser,data,{signal,progress=()=>{}}={}) {
   let output,operation,prepared,primary,verify;
-  const bounded=AbortSignal.timeout(Math.max(1,Math.ceil(data.deadline_ms-Date.now())));
+  const deadlineController=new AbortController(),bounded=deadlineController.signal;
+  const timer=setTimeout(()=>deadlineController.abort(),Math.max(1,Math.ceil(data.deadline_ms-Date.now())));
   const stop=AbortSignal.any([signal,bounded].filter(Boolean));
   try {
     output=new NativeOutput(data);
@@ -324,16 +326,19 @@ async function executeBodyNative(browser,data,{signal,progress=()=>{}}={}) {
     await prepared.dispatch(()=>operation.dispatch(),error=>operation.fail(error));
     primary=await waitFor(()=>operation.received,stop,Math.min(data.deadline_ms,Date.now()+15000));
     const terminal=await primary.terminal; // actual done is never raced with timeout/cancellation
-    if(primary.observation.interrupted)return {outcome:'local_failure',kind:'local_failure',diagnostic_code:'interrupted',
-      native_terminal:terminal,native_cleanup:'asynchronous'};
-    if(operation.error)throw operation.error;
-    if(terminal!=='completed'||stop.aborted)return {outcome:bounded.aborted?'expired':stop.aborted?'cancelled':'local_failure',
+    clearTimeout(timer);
+    if(terminal!=='completed') {
+      if(primary.observation.interrupted)return {outcome:'local_failure',kind:'local_failure',diagnostic_code:'interrupted',
+        native_terminal:terminal,native_cleanup:'asynchronous'};
+      if(operation.error)throw operation.error;
+      return {outcome:bounded.aborted?'expired':stop.aborted?'cancelled':'local_failure',
       kind:bounded.aborted?'expired':stop.aborted?'cancelled':'local_failure',diagnostic_code:'native-interrupted',
       native_terminal:terminal,native_cleanup:'asynchronous'};
-    operation.valid();
+    }
+    if(operation.outputError)throw operation.outputError;
     const observed=output.capture();
-    if(!operation.observed){operation.observed=observed.file;progress({native_output_file:observed.file});}
-    progress({received_bytes:observed.size,total_bytes:primary.item.getTotalBytes()>0?primary.item.getTotalBytes():null});
+    if(!operation.observed){operation.observed=observed.file;try{progress({native_output_file:observed.file});}catch(_){}}
+    try{progress({received_bytes:observed.size,total_bytes:primary.item.getTotalBytes()>0?primary.item.getTotalBytes():null});}catch(_){}
     return {outcome:'native_complete',kind:'pdf',pdf_type:true,transfer_complete:true,output_file:observed.file,
       size_bytes:observed.size,final_url:primary.response.url,resource_closed:true};
   }catch(error) {
@@ -348,11 +353,12 @@ async function executeBodyNative(browser,data,{signal,progress=()=>{}}={}) {
     const kind=code==='document_changed'?'stale':operation?.dispatched?'local_failure':'failed';
     return {outcome:kind,kind,diagnostic_code:'native-action',diagnostic:error.diagnostic};
   }finally {
+    clearTimeout(timer);
     // Keep registrations and their physical sources alive until all accepted or
     // refused native items have reached actual done, including late cancellation.
     // done(cancelled) does not acknowledge Chromium's queued pathname unlink.
-    prepared?.dispose();
-    if(operation){await operation.settle();operation.dispose();}
+    browser.cleanupStep(()=>prepared?.dispose(),operation?.owner);
+    if(operation){await operation.settle();browser.cleanupStep(()=>operation.dispose(),operation.owner);}
   }
 }
 module.exports={executeBodyNative,OriginalNavigation};

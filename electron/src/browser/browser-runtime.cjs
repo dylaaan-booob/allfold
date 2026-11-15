@@ -209,12 +209,13 @@ class BrowserRuntime {
     for (const name of ['page-title-updated', 'did-navigate-in-page'])
       contents.on(name, () => this.publish());
     contents.on('destroyed', () => {
-      this.reportPage('info','page_closed',tab,{reason:this.destroying?'app_exit':tab.closeReason});
+      this.cleanupStep(()=>this.reportPage('info','page_closed',tab,{reason:this.destroying?'app_exit':tab.closeReason}),tab.taskOwner);
       tab.association=null;tab.associationOwner=null;
-      tab.downloadScope?.dispose();
+      this.cleanupStep(()=>tab.downloadScope?.dispose(),tab.taskOwner);
       this.tabs.delete(tab.id);
       const access=tab.resourceOwner?.kind==='access'?tab.resourceOwner:null;
-      if(access){access.valid=false;if(this.accessContexts.get(access.key)===access)this.accessContexts.delete(access.key);this.events.emit('access-pages-closed',[tab.id]);}
+      if(access){access.valid=false;if(this.accessContexts.get(access.key)===access)this.accessContexts.delete(access.key);
+        this.cleanupStep(()=>this.events.emit('access-pages-closed',[tab.id]),tab.taskOwner);}
       tab.destroyedCleanup=this.sessionEvents.waitForDownloads(contents).then(()=>resource.release());
       if(this.paperPages.get(tab.paperKey)===tab)this.paperPages.delete(tab.paperKey);
       if (tab.taskOwner?.taskTab === tab)tab.taskOwner.taskTab=null;
@@ -225,9 +226,9 @@ class BrowserRuntime {
       }
       if (this.destroying) return;
       if (this.selected === tab) {
-        this.select([...this.tabs.values()].filter(page=>!page.pageAttempt?.retired).at(-1));
+        this.cleanupStep(()=>this.select([...this.tabs.values()].filter(page=>!page.pageAttempt?.retired).at(-1)),tab.taskOwner);
       }
-      this.publish();
+      this.cleanupStep(()=>this.publish(),tab.taskOwner);
     });
     if(opener?.association) {
       tab.association=Object.freeze({...opener.association,role:'popup',source_page_id:opener.id});
@@ -502,6 +503,13 @@ class BrowserRuntime {
     // Native callbacks can run in an old async context: the saved page association is authoritative for diagnostics.
     withLogContext({},()=>log(level,event,{...snapshot,...details}));
   }
+  cleanupStep(run,owner) {
+    try{return run();}catch(_) {
+      // Only auxiliary synchronous release/notification work uses this path.
+      // Physical DownloadItem/page settlement is still awaited by its owner.
+      try{log('warn','task_cleanup_failed',{...associationLogContext(owner?.association),step:'release',code:'document_operation_failed'});}catch(_){}
+    }
+  }
   get operation() {return this.operationContext.getStore();}
   get taskTab() {return this.operation?.taskTab ?? null;}
   get taskActive() {return !!this.operation?.taskTab;}
@@ -510,8 +518,15 @@ class BrowserRuntime {
     const owner={signal,phase:'loading',solverDocuments:new Map(),association:operationAssociation(data),
       taskTab:null,navigationAbort:null};
     this.operations.add(owner);
-    try {const result=await this.runInOperation(owner,run);if(owner.resourceFailure)throw owner.resourceFailure;return result;}
-    finally {await this.releaseOperation(owner);}
+    try {
+      const result=await this.runInOperation(owner,run);
+      const completedBody=result?.kind==='pdf'&&result.pdf_type===true&&result.transfer_complete===true;
+      if(owner.resourceFailure&&!completedBody)throw owner.resourceFailure;
+      return result;
+    }
+    finally {
+      try{await this.releaseOperation(owner);}catch(error){error.resource_closed=false;throw error;}
+    }
   }
   runInOperation(owner,run) {
     return this.operationContext.run(owner,run);
@@ -1075,31 +1090,38 @@ class BrowserRuntime {
       await this.sessionEvents.waitForDownloads(contents);
       if(contents.isDestroyed())return;
       const destroyed=new Promise(resolve=>contents.once('destroyed',resolve));
-      tab.closeReason=reason;this.reportPage('info','page_close_requested',tab,{reason});
+      tab.closeReason=reason;this.cleanupStep(()=>this.reportPage('info','page_close_requested',tab,{reason}),tab.taskOwner);
       contents.close({waitForBeforeUnload:false});await destroyed;await tab.destroyedCleanup;
     })();
     return tab.closing;
   }
   releaseOperation(owner) {
     if(owner.cleanup)return owner.cleanup;
-    this.operations.delete(owner);owner.navigationAbort?.abort();this.pageBudget.releaseUnused(owner);
+    this.cleanupStep(()=>owner.navigationAbort?.abort(),owner);
+    this.cleanupStep(()=>this.pageBudget.releaseUnused(owner),owner);
     owner.cleanup=(async()=>{
       const temporary=[];
       for(const tab of this.tabs.values()) {
-        if(tab.navigation.current?.owner===owner)tab.navigation.finish();
+        if(tab.navigation.current?.owner===owner)this.cleanupStep(()=>tab.navigation.finish(),owner);
         if(tab.authContext?.owner===owner)tab.authContext.active=false;
-        if(tab.associationOwner===owner) {this.reportPage('info','page_association_released',tab);tab.associationOwner=null;}
+        if(tab.associationOwner===owner) {this.cleanupStep(()=>this.reportPage('info','page_association_released',tab),owner);tab.associationOwner=null;}
         const unsafeSource=tab.taskOwner===owner && this.sessionEvents.downloadSourceUnsafe(tab.view.webContents);
         if(tab.resourceOwner===owner || unsafeSource) {
           if(unsafeSource && tab.resourceOwner?.kind==='access'){tab.resourceOwner.valid=false;tab.resourceOwner.loan=null;}
           temporary.push(tab);
         }
-        else if(tab.taskOwner===owner){tab.downloadScope?.dispose();tab.downloadScope=null;tab.downloadScopeOwner=null;tab.taskOwner=null;tab.taskSignal=null;}
+        else if(tab.taskOwner===owner){this.cleanupStep(()=>tab.downloadScope?.dispose(),owner);tab.downloadScope=null;tab.downloadScopeOwner=null;tab.taskOwner=null;tab.taskSignal=null;}
         if(tab.loadOwner===owner){tab.loadOwner=null;tab.loadAllowed=false;}
       }
-      await Promise.all([...temporary.map(tab=>this.closePage(tab)),...(owner.creationCleanup || [])]);
+      const settled=await Promise.allSettled([...temporary.map(tab=>this.closePage(tab)),...(owner.creationCleanup || [])]);
       for(const context of this.accessContexts.values())context.pins.delete(owner);
-      this.reconsiderAdmission();this.publish();
+      this.cleanupStep(()=>this.reconsiderAdmission(),owner);
+      this.cleanupStep(()=>this.publish(),owner);
+      const rejected=settled.find(value=>value.status==='rejected');
+      if(rejected && (temporary.some(tab=>!tab.view.webContents.isDestroyed()) || owner.creationCleanup?.size))
+        throw rejected.reason;
+      this.operations.delete(owner);
+      if(rejected)this.cleanupStep(()=>{throw rejected.reason;},owner);
     })();
     return owner.cleanup;
   }

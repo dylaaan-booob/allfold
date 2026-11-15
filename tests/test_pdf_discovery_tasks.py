@@ -521,7 +521,7 @@ def test_shutdown_waits_real_native_terminal_and_cleanup_before_closing_factory(
 
 
 @pytest.mark.parametrize('resource', ['client', 'native'])
-def test_unconfirmed_cleanup_is_a_fault_and_keeps_paper_occupied(tmp_path, resource):
+def test_finished_cleanup_fault_is_reported_without_retaining_paper(tmp_path, resource):
     bridge = NativeBridge() if resource == 'native' else None
     host, _, paper, options = setup_host(tmp_path,
         lambda _: httpx.Response(200, headers={'content-type': 'application/pdf'}), bridge=bridge)
@@ -534,17 +534,15 @@ def test_unconfirmed_cleanup_is_a_fault_and_keeps_paper_occupied(tmp_path, resou
         bridge.operation.set_result(native_envelope())
         assert bridge.cleaning.wait(2)
         bridge.cleanup.set_exception(RuntimeError('Controlled native page cleanup failure'))
-    with pytest.raises((RuntimeError, OSError), match='[Cc]ontrolled'):
-        task.future.result(3)
+    result = task.future.result(3)
+    assert result.status in {'pending', 'exhausted'}
     registry = host.current()
-    assert registry.busy(paper.id) and task.cleanup_failed and task.cleanup_ended
+    assert not registry.busy(paper.id) and not task.cleanup_failed and task.cleanup_ended
     assert registry.faults[-1]['phase'] == f'discovery-{resource}-cleanup'
-    with pytest.raises(InvalidPaperState, match='Another operation owns'):
-        registry.admit(direct_ids=ExternalIds(doi='10.5555/task'), metadata=paper.metadata,
-            branches=(), no_applicable=True)
+    next_owner = registry.reserve(paper.id)
+    registry.release(next_owner)
     host.shutdown()
-    with pytest.raises(RuntimeError, match='could not be settled'):
-        host.join()
+    host.join()
 
 
 def test_cleared_metadata_invalidates_original_task_without_any_late_write_or_fallback(tmp_path):
@@ -584,17 +582,15 @@ def test_replaced_workspace_path_cannot_renew_authority_or_release_into_replacem
         with PaperRepository.create(workspace) as repository:
             replacement_id = repository.workspace_id
         finish.set()
-        with pytest.raises(StaleWriteError, match='replaced'):
-            task.future.result(3)
+        assert task.future.result(3).status == 'stale'
         registry = host.peek()
-        assert registry.active and registry.faults[-1]['phase'] == 'reservation-release'
-        assert task.cleanup_ended and not task.released and len(requests) == 1
+        assert not registry.active
+        assert task.cleanup_ended and task.released and len(requests) == 1
         with PaperRepository.open(workspace) as repository:
             assert repository.workspace_id == replacement_id and repository.list_papers() == ()
     finally:
         finish.set(); host.shutdown()
-        with pytest.raises(RuntimeError, match='could not be settled'):
-            host.join()
+        host.join()
 
 
 @pytest.mark.parametrize('phase', ['P1', 'P2', 'unavailable'])

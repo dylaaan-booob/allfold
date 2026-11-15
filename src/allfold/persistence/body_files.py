@@ -48,6 +48,7 @@ class ManagedBodyFiles:
             raise ValueError('Canonical Workspace and positive attempt required')
         self.expected_workspace = expected_workspace
         self._stack = ExitStack()
+        self.cleanup_errors = []
 
     def __enter__(self):
         try:
@@ -223,21 +224,18 @@ class ManagedBodyFiles:
         # prepare. Both fds remain pinned; no path-based rename/replace occurs.
         os.link(temporary, target, src_dir_fd=source, dst_dir_fd=documents, follow_symlinks=False)
         self._owned(target, documents, proof)
-        self._retire(temporary, source, disposal, proof)
-        if proof.native_directory is not None:
-            self._remove_native(staging, disposal, proof)
-
         os.fsync(documents)
-        self._live(documents, staging, disposal)
-        return info.st_size
-
-    def verify_published(self, proof):
-        _, target = self._validate_names(proof)
-        documents, staging, disposal = self._directories(proof)
-        self._live(documents, staging, disposal)
-        info = self._owned(target, documents, proof)
-        if info.st_nlink != 1:
-            raise UnsafeLibraryPath('Published body has an unrelated link')
+        # The permanent link is durable. Auxiliary retirement cannot undo it or
+        # turn it into an unassociated failed transfer.
+        try:
+            self._retire(temporary, source, disposal, proof)
+        except (OSError, UnsafeLibraryPath) as error:
+            self.cleanup_errors.append(error)
+        if proof.native_directory is not None:
+            try:
+                self._remove_native(staging, disposal, proof)
+            except (OSError, UnsafeLibraryPath) as error:
+                self.cleanup_errors.append(error)
         return info.st_size
 
     def _retire(self, name, directory, disposal, proof):

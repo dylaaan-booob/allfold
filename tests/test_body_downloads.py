@@ -160,11 +160,17 @@ with PaperRepository.open(workspace) as repo:
         repo.interrupt_downloads(uuid4())
         saved=repo.get(paper.id)
         assert saved.download.status=='failed' and saved.download.reason=='interrupted' and saved.body is None
-        with pytest.raises(Exception,match='cleaned'):repo.begin_download(saved.token,lifecycle_id=uuid4())
-        with ManagedBodyFiles(tmp_path,paper.id,saved.download.token.attempt) as files:files.cleanup(saved.download.output)
-        repo.record_download_output(saved.download.token,None)
         new=repo.begin_download(saved.token,lifecycle_id=uuid4())
         assert new.attempt==2
+        with ManagedBodyFiles(tmp_path,paper.id,new.attempt) as files:
+            if phase == 'published':
+                with pytest.raises(FileExistsError):files.prepare()
+            else:
+                current=files.prepare()
+                assert current.temporary != saved.download.output.temporary
+                files.cleanup(current)
+        with ManagedBodyFiles(tmp_path,paper.id,saved.download.token.attempt) as files:files.cleanup(saved.download.output)
+        with pytest.raises(StaleWriteError):repo.record_download_output(saved.download.token,None)
 
 
 class ControlledNative:
@@ -540,7 +546,75 @@ def test_unconfirmed_access_hints_do_not_drop_qualified_alternatives(tmp_path,bo
         host.shutdown();host.join()
 
 
-def test_closed_unlink_fault_releases_budget_and_blocks_retry_network_until_clean(tmp_path,monkeypatch):
+def test_completed_body_survives_temporary_cleanup_and_late_cancellation(tmp_path, monkeypatch):
+    import allfold.persistence.body_files as bf
+    from allfold.application.body_downloads import submit_body_download
+    from allfold.application.local_body import LocalBodyService
+    from concurrent.futures import Future
+    host, workspace, paper, bridge, candidate = application_host(tmp_path)
+    try:
+        task = submit_body_download(host, paper, candidates=(candidate,))
+        assert bridge.started.wait(2)
+        with monkeypatch.context() as patch:
+            def denied(*args, **kwargs):
+                raise PermissionError('controlled temporary unlink failure')
+            patch.setattr(bf.os, 'unlink', denied)
+            task.cancel_event.set()
+            bridge.finish()
+            result = task.future.result(3)
+        assert result.status == 'completed' and not host.active
+        final = workspace / result.paper.body.relative_path
+        assert final.read_bytes() == b'body' and final.stat().st_nlink == 2
+        assert host.current().faults[-1]['phase'] == 'body-file-cleanup'
+        def local(action, data, *args, **kwargs):
+            assert action == 'local_paper_body'
+            done = Future()
+            done.set_result({'outcome': 'opened' if data['action'] == 'open' else 'locate_requested'})
+            return done
+        bridge.execute = local
+        assert LocalBodyService(host)(result.paper).status == 'opened'
+        assert LocalBodyService(host)(result.paper, action='locate').status == 'locate_requested'
+    finally:
+        host.shutdown(); host.join()
+
+
+def test_completed_transfer_stops_network_timer_and_needs_no_post_commit_read(tmp_path, monkeypatch):
+    from allfold.application.body_downloads import submit_body_download
+    from allfold.persistence.paper_repository import LibraryError
+    from threading import Event
+    import time
+    host, workspace, paper, bridge, candidate = application_host(tmp_path)
+    publishing, finish = Event(), Event()
+    publish, complete = ManagedBodyFiles.publish, PaperRepository.complete_download
+    def held(files, proof):
+        publishing.set()
+        assert finish.wait(3)
+        return publish(files, proof)
+    def committed(repository, *args, **kwargs):
+        saved = complete(repository, *args, **kwargs)
+        def no_reread(*args, **kwargs):
+            raise LibraryError('No post-commit reread')
+        monkeypatch.setattr(repository, 'get', no_reread)
+        return saved
+    monkeypatch.setattr(ManagedBodyFiles, 'publish', held)
+    monkeypatch.setattr(PaperRepository, 'complete_download', committed)
+    try:
+        task = submit_body_download(host, paper, candidates=(candidate,), deadline=time.monotonic()+.3)
+        assert bridge.started.wait(2)
+        bridge.finish()
+        assert publishing.wait(2)
+        time.sleep(.35)
+        assert not task.cancel_event.is_set() and not bridge.cancels
+        assert host.active
+        finish.set()
+        saved = task.future.result(3)
+        assert saved.status == 'completed' and not host.active
+        assert (workspace/saved.paper.body.relative_path).read_bytes() == b'body'
+    finally:
+        finish.set(); host.shutdown(); host.join()
+
+
+def test_closed_unlink_fault_releases_budget_and_allows_independent_retry(tmp_path,monkeypatch):
     from allfold.application.body_downloads import submit_body_download
     import allfold.persistence.body_files as bf
     host,workspace,paper,bridge,candidate=application_host(tmp_path)
@@ -553,13 +627,11 @@ def test_closed_unlink_fault_releases_budget_and_blocks_retry_network_until_clea
             patch.setattr(bf.os,'unlink',denied)
             bridge.finish('failed')
             assert task.future.result(3).status=='local_failure'
-            assert not host.active and not host.current().faults
+            assert not host.active and host.current().faults[-1]['phase']=='body-file-cleanup'
             with PaperRepository.open(workspace) as repo:
                 saved=repo.get(paper.id)
                 assert saved.download.output is not None and saved.download.status=='failed'
-            with pytest.raises(PermissionError):submit_body_download(host,saved,candidates=(candidate,))
-            assert len(bridge.calls)==1
-        replacement=submit_body_download(host,saved,candidates=(candidate,))
+            replacement=submit_body_download(host,saved,candidates=(candidate,))
         assert replacement.download_token.attempt==2
         # Old cancellation is scoped to its original owner.
         host.current().signal_cancel_targets((task,))
@@ -637,21 +709,21 @@ def test_cleanup_quarantines_and_restores_replacement_between_check_and_removal(
             assert moved.read_bytes()==b'owned' and temporary.read_bytes()==b'unrelated'
 
 
-def test_final_inode_replacement_cannot_be_completed_or_removed(tmp_path,monkeypatch):
+def test_publication_of_replaced_inode_is_refused_without_removing_unknown_output(tmp_path,monkeypatch):
     from allfold.application.body_downloads import submit_body_download
+    import allfold.persistence.body_files as bf
     host,workspace,paper,bridge,candidate=application_host(tmp_path)
-    original=ManagedBodyFiles.publish
+    original=bf.os.link
     try:
         task=submit_body_download(host,paper,candidates=(candidate,))
         assert bridge.started.wait(2)
-        def replaced(files,proof):
-            size=original(files,proof)
-            path=workspace/proof.target
+        def replaced(*args, **kwargs):
+            original(*args, **kwargs)
+            path=workspace/f'Documents/{paper.id}.pdf'
             path.rename(path.with_suffix('.owned'))
             path.write_bytes(b'unrelated replacement')
-            return size
         with monkeypatch.context() as patch:
-            patch.setattr(ManagedBodyFiles,'publish',replaced)
+            patch.setattr(bf.os,'link',replaced)
             bridge.finish()
             assert task.future.result(3).status=='local_failure'
         with PaperRepository.open(workspace) as repo:

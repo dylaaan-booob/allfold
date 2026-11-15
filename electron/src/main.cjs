@@ -113,7 +113,7 @@ async function execute(message) {
   try {await current.settlement;}
   finally {
     operations.delete(current.id);
-    if(!control)browser.publish();
+    if(!control)try{browser.publish();}catch(_){log('warn','task_cleanup_failed',{request_id:message.id,step:'release'});}
   }
 }
 async function executeOperation(message,current) {
@@ -182,22 +182,23 @@ async function executeOperation(message,current) {
           return await (message.action==='wos_query'?wosQuery:wosExport)(browser,message.data,{signal:controller.signal,progress});
         } else throw Error('Unsupported Electron operation');
       } finally {
-        for(const challenge of current.challenges.values())challenge.cancel();
+        for(const challenge of current.challenges.values())try{challenge.cancel();}catch(_){log('warn','task_cleanup_failed',context);}
         resultPageId=browser.taskTab?.id;
       }
     });
   } catch (error) {
-    data={diagnostic:diagnosticFor(error,stage)};
+    data={diagnostic:diagnosticFor(error,stage),...(error.resource_closed===false?{resource_closed:false}:{})};
   }
   const diagnostic=data.diagnostic || {};
   const outcome=data.outcome || (data.filename?'downloaded':Number.isInteger(data.total)?'queried':data.source_url?'retrieved':'no_result');
-  const canceled=controller.signal.aborted || diagnostic.code==='canceled';
+  const completed=['stream_complete','native_complete','opened','locate_requested'].includes(outcome);
+  const canceled=!completed && (controller.signal.aborted || diagnostic.code==='canceled');
   const failed=!!data.diagnostic || !!data.error || data.outcome==='Needs attention' || ['no_result','failed','local_failure','expired'].includes(outcome);
-  log(canceled?'info':failed?'warn':'info','task_finished',{...context,page_id:resultPageId,
+  try{log(canceled?'info':failed?'warn':'info','task_finished',{...context,page_id:resultPageId,
     duration_ms:Date.now()-started,outcome:canceled?'canceled':outcome,
     stage:diagnostic.stage || stage,
     step:diagnostic.step,code:diagnostic.code || data.reason,net_error:diagnostic.net_error,net_code:diagnostic.net_code,status:diagnostic.status,
-    imperva_edet:diagnostic.imperva_edet,imperva_incident_id:diagnostic.imperva_incident_id});
+    imperva_edet:diagnostic.imperva_edet,imperva_incident_id:diagnostic.imperva_incident_id});}catch(_){}
   const summary=recovery.summary();
   send({type:'result',id:message.id,action:message.action,data:{...data,...(summary.length?{recovery:summary}:{}),diagnostics_status:diagnosticsStatus()}});
 }

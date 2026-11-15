@@ -21,7 +21,7 @@ from allfold.application.browser_services import browser_workspace_identity
 from allfold.application.task_authority import NativeAccessBinding
 from allfold.persistence.library_database import DATABASE_NAME
 from allfold.persistence.paper_repository import (
-    CollectionToken, InvalidPaperState, MetadataDelta, PaperRepository, StaleWriteError,
+    CollectionToken, InvalidPaperState, LibraryError, MetadataDelta, PaperRepository, StaleWriteError,
 )
 from allfold.providers.integrated import PROVIDERS
 
@@ -87,6 +87,7 @@ class _BranchTask:
     future: Future = field(default_factory=SettledFuture)
     scheduled: Future | None = None
     browser_owner: object = None
+    cleanup_failed: bool = False
     workflow_id: str = field(default_factory=lambda: uuid4().hex)
     task_id: str = field(default_factory=lambda: uuid4().hex)
 
@@ -135,6 +136,7 @@ class PaperReservation:
     browser_owner: object = None
     download_token: object = None
     body_request: object = field(default=None, repr=False)
+    output: object = field(default=None, repr=False)
 
     def guard(self):
         """Verify this exact reservation without capturing a replacement token."""
@@ -278,6 +280,10 @@ class WorkspaceRegistry:
         self._stopped = False
         self._shutdown_started = False
         self._tasks, self._reservations, self._faults = {}, {}, []
+        # Exact tokens whose work ended but whose necessary terminal write did
+        # not. These are not active owners and are retried only by an explicit
+        # operation on that Paper, never by projection, a timer or a scan.
+        self._ended_attempts = {}
         self._local_operations = {}
         self._settled_condition = threading.Condition(self._gate)
         with PaperRepository.open(self.workspace) as repository:
@@ -345,6 +351,36 @@ class WorkspaceRegistry:
             return paper_id in self._tasks or paper_id in self._reservations or local
 
     cleanup_pending = busy
+
+    def ended_kind(self, paper):
+        with self._gate:
+            token = self._ended_attempts.get(paper.id)
+            if token is None or paper.workspace_id != self.workspace_id:
+                return None
+            if isinstance(token, CollectionToken):
+                saved = paper.collection
+                return 'collection' if saved and CollectionToken(saved.write, saved.attempt, saved.lifecycle_id) == token else None
+            return 'body' if paper.download and paper.download.token == token else None
+
+    def settle_ended(self, paper_id):
+        """Finish only a known ended original attempt, at explicit admission."""
+        with self._gate:
+            paper_id = UUID(str(paper_id))
+            token = self._ended_attempts.get(paper_id)
+            if token is None:
+                return
+            with self._repository() as repository:
+                paper = repository.get(paper_id)
+                if self.ended_kind(paper) == 'collection':
+                    for branch in paper.collection.branches:
+                        if branch.state in {'queued', 'running'}:
+                            repository.commit_collection_branch(token, branch.name,
+                                sequence=branch.last_sequence + 1, outcome='failed', reason='storage-error')
+                    repository.finish_collection(token, failed=True, reason='storage-error')
+                elif self.ended_kind(paper) == 'body':
+                    repository.finish_download(token, status='failed', reason='storage-error')
+            if self._ended_attempts.get(paper_id) == token:
+                del self._ended_attempts[paper_id]
 
     @staticmethod
     def _plan(branches, no_applicable=False, service_id=None):
@@ -504,6 +540,9 @@ class WorkspaceRegistry:
             self._require_open()
             with self._repository() as repository:
                 paper = repository.match(direct_ids, additional_identities=additional_identities)
+                if paper is not None:
+                    self.settle_ended(paper.id)
+                    paper = repository.get(paper.id)
                 if paper and self._local_blocks_collection(paper.id):
                     return paper
                 reservation = self._reservations.get(paper.id) if paper else None
@@ -557,7 +596,7 @@ class WorkspaceRegistry:
                 self._settle_unscheduled(handle, 'submission_failed')
         return handle
 
-    def _retry_qualification(self, paper_id, branches, service_id, expected_token, expected_attempt, expected_revision=None):
+    def _retry_qualification(self, paper_id, branches, service_id, expected_token, expected_attempt, expected_revision=None, *, settle=False):
         plan = self._plan(branches, no_applicable=True, service_id=service_id)
         paper_id = UUID(str(paper_id))
         with self._gate:
@@ -566,7 +605,8 @@ class WorkspaceRegistry:
                 raise InvalidPaperState('Previous Paper resources have not settled')
             with self._repository() as repository:
                 paper = repository.get(paper_id)
-            if paper.excluded or paper.metadata is None or paper.collection_status not in {'failed', 'cancelled'}:
+            ended = self.ended_kind(paper) == 'collection'
+            if paper.excluded or paper.metadata is None or (not ended and paper.collection_status not in {'failed', 'cancelled'}):
                 raise InvalidPaperState('Retry requires a settled failed or cancelled full Paper')
             if expected_token is not None and paper.token != expected_token:
                 raise StaleWriteError('Captured Paper authority changed')
@@ -574,6 +614,10 @@ class WorkspaceRegistry:
                 raise StaleWriteError('Captured collection attempt changed')
             if expected_revision is not None and paper.revision != expected_revision:
                 raise StaleWriteError('Captured Paper revision changed')
+            if settle and ended:
+                self.settle_ended(paper_id)
+                with self._repository() as repository:
+                    paper = repository.get(paper_id)
             if {branch.name for branch in paper.collection.branches} != {branch.name for branch in plan}:
                 raise InvalidPaperState('Retry must preserve the complete captured branch plan')
             successful = {branch.name for branch in paper.collection.branches if branch.state in {'completed', 'skipped'}}
@@ -592,7 +636,7 @@ class WorkspaceRegistry:
               expected_token=None, expected_attempt=None, expected_revision=None):
         deadline = self._deadline(deadline)
         paper, plan, pending, authorities = self._retry_qualification(
-            paper_id, branches, service_id, expected_token, expected_attempt, expected_revision)
+            paper_id, branches, service_id, expected_token, expected_attempt, expected_revision, settle=True)
         with self._gate:
             self._require_open()
             for authority in authorities.values():
@@ -634,6 +678,7 @@ class WorkspaceRegistry:
                 return existing
             if self.busy(paper_id):
                 raise InvalidPaperState('Another operation owns this Paper')
+            self.settle_ended(paper_id)
             with self._repository() as repository:
                 paper = repository.get(paper_id)
                 if paper.excluded or paper.metadata is None or paper.collection is not None and paper.collection.active:
@@ -653,13 +698,13 @@ class WorkspaceRegistry:
                         raise StaleWriteError('Captured Paper identity closure changed')
                     if paper.download is not None and paper.download.output is not None:
                         from allfold.persistence.body_files import ManagedBodyFiles
-                        with ManagedBodyFiles(self.workspace, paper.id, paper.download.token.attempt,
-                                expected_workspace=self._identity[0]) as files:
-                            files.cleanup(paper.download.output)
-                        repository.record_download_output(paper.download.token, None)
+                        try:
+                            with ManagedBodyFiles(self.workspace, paper.id, paper.download.token.attempt,
+                                    expected_workspace=self._identity[0]) as files:
+                                files.cleanup(paper.download.output, associated=True)
+                        except (OSError, ValueError, LibraryError) as error:
+                            self._fault(paper, 'body-file-cleanup', error)
                     download_token = repository.begin_download(paper.token, lifecycle_id=self.lifecycle_id)
-                else:
-                    repository.touch_projection(paper_id)
             reservation = PaperReservation(self, paper.token, self.lifecycle_id, kind)
             reservation.download_token = download_token
             reservation.body_request = body_request
@@ -677,33 +722,27 @@ class WorkspaceRegistry:
                 if reservation.cleanup_failed:
                     raise InvalidPaperState('Reservation cleanup could not be confirmed')
                 reservation.cleanup_ended = True
-                try:
-                    with self._repository() as repository:
-                        repository.touch_projection(reservation.paper_id)
-                except Exception as error:
-                    self._fault(reservation, 'reservation-release', error)
-                    self._settled_condition.notify_all()
-                    raise
                 del self._reservations[reservation.paper_id]
                 reservation.released = True
                 self._settled_condition.notify_all()
 
-    def fail_reservation(self, reservation, *, phase, error):
-        """A reservation worker exited without proving its captured resource close."""
+    def fail_reservation(self, reservation, *, phase, error, unconfirmed=False):
+        """Record an auxiliary fault; only unknown native settlement retains work."""
         if phase not in {'discovery-client-cleanup', 'discovery-native-cleanup', 'discovery-owner-cleanup',
-                         'body-native-cleanup', 'body-file-cleanup', 'body-owner-cleanup', 'body-terminal-write'}:
+                         'body-native-cleanup', 'body-reader-cleanup', 'body-file-cleanup', 'body-owner-cleanup', 'body-terminal-write'}:
             raise ValueError('Unknown reservation cleanup phase')
         with self._gate:
             if reservation.registry is not self:
                 raise InvalidPaperState('Reservation belongs to another Workspace registry')
-            if self._reservations.get(reservation.paper_id) is reservation and not reservation.cleanup_failed:
-                reservation.cleanup_ended = reservation.cleanup_failed = True
-                self._fault(reservation, phase, error)
-                self._settled_condition.notify_all()
+            if self._reservations.get(reservation.paper_id) is reservation:
+                reservation.cleanup_failed |= unconfirmed
+            self._fault(reservation, phase, error)
+            self._settled_condition.notify_all()
 
     def _fault(self, handle, phase, error):
         with self._gate:
-            self._faults.append({'paper_id': str(handle.paper_id), 'attempt': getattr(handle.token, 'attempt', None),
+            self._faults.append({'paper_id': str(getattr(handle, 'paper_id', None) or handle.id),
+                                 'attempt': getattr(getattr(handle, 'download_token', None) or handle.token, 'attempt', None),
                                  'phase': phase, 'reason': type(error).__name__})
             del self._faults[:-64]
 
@@ -723,9 +762,9 @@ class WorkspaceRegistry:
         try:
             self._discard(handle, reason)
         except Exception as error:
-            self._fault(handle, 'branch-settlement', error)
-            if not handle.future.done():
-                handle.future.set_exception(error)
+            done = SettledFuture()
+            done.set_exception(error)
+            self._settled(handle, done)
         else:
             self._settled(handle, None)
 
@@ -805,7 +844,7 @@ class WorkspaceRegistry:
             timer.join()
 
     def _run_branch(self, child):
-        native, cleanup_fault = [], False
+        native = []
         try:
             # External access/credential work occurs only after durable queued + host ownership.
             if child.admission_error is not None:
@@ -838,41 +877,58 @@ class WorkspaceRegistry:
                 except Exception as error:
                     cancelled = (child.cancel_event.is_set() or child.parent.cancel_event.is_set()
                                  or self.stopped or isinstance(error, (StaleWriteError, TimeoutError)))
-                    context._finish('cancelled' if cancelled else 'failed', reason=type(error).__name__)
+                    context._finish('cancelled' if cancelled else 'failed',
+                        reason='storage-error' if isinstance(error, LibraryError) and not cancelled else type(error).__name__)
                     return not cancelled
             return False
         except _CleanupUnconfirmed as error:
-            cleanup_fault = True
-            self._fault(child, 'client-cleanup', error)
+            child.cleanup_failed = True
+            self._fault(child, 'native-cleanup', error)
             raise
         except Exception as error:
             return self._discard_branch(child, 'revoked' if child.cancel_event.is_set()
                 or child.parent.cancel_event.is_set() or self.stopped
-                or isinstance(error, (StaleWriteError, TimeoutError)) else type(error).__name__)
+                or isinstance(error, (StaleWriteError, TimeoutError)) else
+                'storage-error' if isinstance(error, LibraryError) else type(error).__name__)
         finally:
             try:
                 native_cancelled = False
                 for future in native:
                     try:
-                        future.result()
+                        value = future.result()
+                        if isinstance(value, dict) and value.get('resource_closed') is False:
+                            native_cancelled = True
                     except BaseException:
                         native_cancelled = native_cancelled or future.cancelled()
                 if native_cancelled:
                     raise _CleanupUnconfirmed('Native Future cancellation is not resource settlement')
                 if native and self.bridge is not None:
-                    self.bridge.execute('release_workflow_pages', {
-                        'workflow_id': child.workflow_id, 'task_id': child.task_id}).result()
+                    release = self.bridge.execute('release_workflow_pages', {
+                        'workflow_id': child.workflow_id, 'task_id': child.task_id})
+                    try:
+                        value = release.result()
+                    except BaseException:
+                        if release.cancelled():
+                            raise _CleanupUnconfirmed('Native page release was cancelled before settlement') from None
+                        raise
+                    if isinstance(value, dict) and value.get('resource_closed') is False:
+                        raise _CleanupUnconfirmed('Native page release is unconfirmed')
             except Exception as error:
-                cleanup_fault = True
                 self._fault(child, 'native-cleanup', error)
-                raise
+                if isinstance(error, _CleanupUnconfirmed):
+                    child.cleanup_failed = True
+                    raise
             finally:
-                if child.browser_owner is not None and not cleanup_fault:
-                    self.browser_lock.release(child.browser_owner)
-                    with self._gate:
-                        child.browser_owner = None
-                        if len(child.parent.branch_tasks) == 1:
-                            child.parent.browser_owner = None
+                if child.browser_owner is not None and not child.cleanup_failed:
+                    try:
+                        self.browser_lock.release(child.browser_owner)
+                    except Exception as error:
+                        self._fault(child, 'owner-cleanup', error)
+                    finally:
+                        with self._gate:
+                            child.browser_owner = None
+                            if len(child.parent.branch_tasks) == 1:
+                                child.parent.browser_owner = None
 
     @contextmanager
     def _clients(self, handle, repository):
@@ -888,33 +944,33 @@ class WorkspaceRegistry:
             try:
                 resources.close()
             except Exception as error:
-                raise _CleanupUnconfirmed('Client disposal could not be confirmed') from error
+                self._fault(handle, 'client-cleanup', error)
 
     def _settled(self, handle, done):
+        paper, failure = None, None
         try:
             failed = bool(done.result()) if done is not None else True
-        except BaseException as error:
-            self._fault(handle, 'execution-settlement', error)
-            if not handle.future.done():
-                handle.future.set_exception(error)
-            return
-        try:
             with self._gate, self._repository() as repository:
                 paper = repository.finish_collection(handle.token, failed=failed)
-            # Logs Reset must not observe this job idle while its final event
-            # is still waiting on the shared diagnostic writer.
-            self._observe(handle, paper.collection_status, 'workflow_finished')
-            with self._gate, self._repository() as repository:
-                if self._tasks.get(handle.paper_id) is handle:
-                    paper = repository.touch_projection(handle.paper_id)
+        except BaseException as error:
+            failure = error
+            self._fault(handle, 'terminal-write', error)
+        finally:
+            with self._gate:
+                if (self._tasks.get(handle.paper_id) is handle
+                        and not any(child.cleanup_failed for child in handle.branch_tasks)):
+                    if failure is not None:
+                        self._ended_attempts[handle.paper_id] = handle.token
                     del self._tasks[handle.paper_id]
                     self._settled_condition.notify_all()
-            if not handle.future.done():
+        if not handle.future.done():
+            if failure is not None:
+                handle.future.set_exception(failure)
+            else:
                 handle.future.set_result(paper)
-        except BaseException as error:
-            self._fault(handle, 'terminal-write', error)
-            if not handle.future.done():
-                handle.future.set_exception(error)
+        # SQLite is the collection terminal record. A synchronous duplicate
+        # diagnostic here would still occupy an executor thread after Future
+        # callbacks, even with the Paper and scheduler counters released.
 
     def _invalidate(self, handle, reason):
         with self._gate, self._repository() as repository:

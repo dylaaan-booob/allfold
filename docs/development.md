@@ -228,6 +228,14 @@ end in `.test.cjs`. Combined body fixtures exercise public HTTP → Main/Session
 managed files → SQLite → Workspace. Document/Reader fixtures exercise actual
 native DTOs, independent connections, incremental updates and retained selection.
 Their source code defines the assertions; module guides define supported behavior.
+Completion regressions exercise actual completed transports after late signals,
+temporary hard-link cleanup failure, successful shell receipts with failed
+projection refresh, and ended attempts whose terminal storage write failed.
+They also retain the contrary cases: unfinished writers/items/native Futures,
+original-token/Workspace protection, no-clobber output and real association
+failure. Owner release needs no extra revision; a single-slot collection test
+guards against diagnostics retaining scheduler execution capacity. Reader fixtures
+check storage-error controls and successful actions with refresh-only errors.
 Real institutions, publishers, default PDF apps and file managers require separate
 acceptance. The [body matrix](body-downloads.md#scoped-manual-acceptance) and
 [workspace layout](workspace-layout.md) describe relevant human checks.

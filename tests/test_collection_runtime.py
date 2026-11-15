@@ -105,7 +105,7 @@ def test_native_branch_failure_remains_retryable_after_callback_returns(tmp_path
         registry.join()
 
 
-def test_final_diagnostic_write_retains_paper_and_logs_occupancy(tmp_path):
+def test_final_diagnostic_write_does_not_retain_finished_paper_or_scheduler_slot(tmp_path):
     from allfold.diagnostics import DiagnosticStore
     writing, finish_write = Event(), Event()
 
@@ -118,16 +118,19 @@ def test_final_diagnostic_write_retains_paper_and_logs_occupancy(tmp_path):
 
     path = workspace(tmp_path)
     store = Store(tmp_path / 'config.yaml', root=tmp_path / 'logs')
-    registry = WorkspaceRegistry(path, factory=IndependentClientFactory(tmp_path / 'config.yaml'), diagnostics=store)
+    registry = WorkspaceRegistry(path, factory=IndependentClientFactory(tmp_path / 'config.yaml'), diagnostics=store,
+        limit=1, group_limit=1)
     try:
         task = submit(registry, 'diagnostic-cleanup', [BranchSpec('empty', lambda _: None)])
-        assert writing.wait(2)
+        completed = task.future.result(.5)
         with PaperRepository.open(path) as repository:
             assert repository.get(task.paper_id).collection_status == 'completed'
-        assert registry.active and registry.cleanup_pending(task.paper_id, registry.workspace_id)
-        assert not task.future.done()
-        with pytest.raises(InvalidPaperState):
-            registry.reserve(task.paper_id)
+        assert not registry.active and not registry.cleanup_pending(task.paper_id, registry.workspace_id)
+        assert task.future.done()
+        reservation = registry.reserve(task.paper_id)
+        registry.release(reservation)
+        next_task = submit(registry, 'after-diagnostic', [BranchSpec('empty', lambda _: None)])
+        assert next_task.future.result(.5).collection_status == 'completed'
         finish_write.set()
         completed = task.future.result(3)
         with PaperRepository.open(path) as repository:
@@ -598,7 +601,7 @@ class ClosingFactory:
                 raise OSError('controlled client close failure')
 
 
-def test_client_cleanup_and_terminal_write_fault_never_open_next_paper_qualification(tmp_path):
+def test_terminal_storage_fault_releases_work_and_explicit_operation_finishes_original_attempt(tmp_path):
     path = workspace(tmp_path)
     factory = ClosingFactory(tmp_path / 'config.yaml')
     registry = WorkspaceRegistry(path, factory=factory)
@@ -615,10 +618,24 @@ def test_client_cleanup_and_terminal_write_fault_never_open_next_paper_qualifica
         with pytest.raises(LibraryBusyError):
             task.future.result(5)
         assert factory.closed.is_set()
-        assert registry.busy(task.paper_id)
+        assert not registry.busy(task.paper_id)
         assert registry.faults[-1]['phase'] == 'terminal-write'
-        with pytest.raises(InvalidPaperState):
+        with pytest.raises(LibraryBusyError):
             registry.reserve(task.paper_id)
+        locker.rollback()
+        locker.close()
+        locker = None
+        resumed = registry.reserve(task.paper_id)
+        with PaperRepository.open(path) as repository:
+            saved = repository.get(task.paper_id)
+            assert saved.collection_status == 'failed'
+            assert saved.collection.reason == 'storage-error'
+            assert saved.metadata.abstract == 'Committed first'
+        registry.release(resumed)
+        retried = registry.retry(task.paper_id,
+            branches=(BranchSpec('metadata', lambda _: pytest.fail('Completed increment replayed')),),
+            expected_token=saved.token, expected_attempt=saved.collection.attempt, expected_revision=saved.revision)
+        assert retried.future.result(3).collection_status == 'completed'
     finally:
         if locker is not None:
             locker.rollback()
@@ -628,7 +645,7 @@ def test_client_cleanup_and_terminal_write_fault_never_open_next_paper_qualifica
         registry.join()
 
 
-def test_cleanup_exception_is_exposed_and_retains_conservative_occupancy(tmp_path):
+def test_finished_client_cleanup_exception_preserves_result_and_releases_occupancy(tmp_path):
     path = workspace(tmp_path)
     factory = ClosingFactory(tmp_path / 'config.yaml', fail=True)
     registry = WorkspaceRegistry(path, factory=factory)
@@ -636,15 +653,14 @@ def test_cleanup_exception_is_exposed_and_retains_conservative_occupancy(tmp_pat
         task = submit(registry, 'cleanup-fault', [BranchSpec('metadata', lambda _: MetadataDelta(abstract='Committed'))])
         assert factory.closing.wait(2)
         factory.release.set()
-        with pytest.raises(RuntimeError, match='disposal'):
-            task.future.result(3)
+        assert task.future.result(3).collection_status == 'completed'
         with PaperRepository.open(path) as repository:
-            assert repository.get(task.paper_id).collection_status == 'running'
+            assert repository.get(task.paper_id).collection_status == 'completed'
             assert repository.get(task.paper_id).metadata.abstract == 'Committed'
-        assert registry.active
+        assert not registry.active
         assert any(fault['phase'] == 'client-cleanup' for fault in registry.faults)
-        with pytest.raises(InvalidPaperState):
-            registry.reserve(task.paper_id)
+        next_owner = registry.reserve(task.paper_id)
+        registry.release(next_owner)
     finally:
         factory.release.set()
         registry.shutdown()
@@ -804,7 +820,9 @@ def test_collection_diagnostics_preserve_captured_attempt_and_source_without_his
         with zipfile.ZipFile(io.BytesIO(store.export())) as archive:
             events = [json.loads(line) for line in archive.read('events.jsonl').decode().splitlines()]
         collection = [event for event in events if event.get('kind') == 'collection']
-        assert [event['collection_status'] for event in collection] == ['queued', 'completed']
+        assert [event['collection_status'] for event in collection] == ['queued']
+        with PaperRepository.open(path) as repository:
+            assert repository.get(task.paper_id).collection_status == 'completed'
         assert all(event['workspace_id'] == str(task.workspace_id) and event['paper_id'] == str(task.paper_id)
                    and event['attempt'] == 1 and event['parent_task_id'] == 'source-run' for event in collection)
         assert store.history()['records'] == []
@@ -865,13 +883,15 @@ def test_reservation_projection_and_prepare_cancel_are_atomic_without_native_cal
             before = repository.revision
         claim = registry.reserve(paper.id)
         with PaperRepository.open(path) as repository:
-            assert repository.revision == before + 1
+            assert repository.revision == before
+        assert registry.busy(paper.id)
         registry.release(claim)
         with PaperRepository.open(path) as repository:
-            assert repository.revision == before + 2
+            assert repository.revision == before
+        assert not registry.busy(paper.id)
         registry.release(claim)
         with PaperRepository.open(path) as repository:
-            assert repository.revision == before + 2
+            assert repository.revision == before
         task = registry.admit(direct_ids=ExternalIds(doi='10.1234/prepared-cancel'), metadata=PaperMetadata(title='Cancel'),
             service_id='a', branches=[BranchSpec('never', lambda _: pytest.fail('cancel preparation started'))])
         bridge.cancelled.clear()

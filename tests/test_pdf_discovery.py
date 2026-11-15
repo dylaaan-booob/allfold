@@ -386,6 +386,27 @@ def test_t22_terminal_parent_state_stops_all_followup(terminal):
     assert len(seen) == 1
 
 
+@pytest.mark.parametrize('terminal', ['cancel', 'expiry', 'stale'])
+def test_completed_transfer_survives_late_parent_signal(terminal):
+    cancelled, now, stale = Event(), [0.0], [False]
+    def guard():
+        if stale[0]:
+            raise RuntimeError('Captured authority revoked')
+    seen = []
+    def consume(candidate):
+        seen.append(candidate)
+        if terminal == 'cancel':
+            cancelled.set()
+        elif terminal == 'expiry':
+            now[0] = 2.0
+        else:
+            stale[0] = True
+        return CandidateResult.pdf(transfer_complete=True)
+    result = PdfDiscovery(target(), cancel_event=cancelled, guard=guard,
+        deadline=1.0, monotonic=lambda: now[0]).run(consume)
+    assert (result.status, result.pdf_source, len(seen)) == ('transferred', 'P1', 1)
+
+
 def test_t23_same_candidate_retry_and_known_chain_are_not_fallback():
     paper = target('ieeexplore.ieee.org', article_url='https://ieeexplore.ieee.org/document/123')
     seen = []

@@ -48,7 +48,7 @@ const mimes={'.html':'text/html','.js':'text/javascript','.css':'text/css','.jso
 let rejectAutosave=false,holdWorkspaceResponse,holdPaperActionResponse,resolveInitialCAS,credentialState={ok:false,error:'cas_store_unreadable',configured:false,username:'',revision:'d'.repeat(64)};
 const credentialWrites=[],apiRequests=[],rendererErrors=[];
 const collectionRetries=[],fieldWrites=[],bodyActions=[];
-let holdFieldResponse;
+let holdFieldResponse,localRefreshFailure=false;
 const server=http.createServer((req,res)=>{
   const route=new URL(req.url,'http://fixture').pathname;
   if(route.startsWith('/api/'))apiRequests.push(route);
@@ -79,6 +79,11 @@ const server=http.createServer((req,res)=>{
     let text='';req.on('data',chunk=>{text+=chunk;});req.on('end',()=>{
       const body=JSON.parse(text),item=[...records.flatMap(journal=>journal.papers),...workspace.downloaded.papers.map(entry=>entry.paper),...workspace.trash.papers.map(entry=>entry.paper)].find(paper=>paper.id===bodyAction[1]);
       bodyActions.push({id:bodyAction[1],action:bodyAction[2],body});
+      if(localRefreshFailure&&bodyAction[2]==='open'){
+        res.writeHead(200,{'Content-Type':'application/json'});
+        res.end(JSON.stringify({workspace_id:workspace.workspace_id,outcome:'opened',
+          refresh_error:'PDF 已打开，但状态刷新失败；无需重复操作。'}));return;
+      }
       if(bodyAction[2]==='download')item.download={...item.download,status:'running',attempt:1,task_id:'body-fixture-1',active:true,
         available:false,cancel_available:true,received_bytes:2048,total_bytes:null,progress_sequence:1,deadline_ms:Date.now()+30000};
       else if(bodyAction[2]==='cancel')Object.assign(item.download,{cleaning_up:true,cancel_available:false});
@@ -94,7 +99,7 @@ const server=http.createServer((req,res)=>{
       const body=JSON.parse(text),item=records.flatMap(journal=>journal.papers).find(paper=>paper.id===retry[1]);
       collectionRetries.push({id:retry[1],body});
       const valid=body.workspace_id===workspace.workspace_id && body.attempt===item.collection.attempt && body.revision===item.revision;
-      if(valid){item.collection_status='running';item.collection={...item.collection,status:'running',attempt:body.attempt+1,retry_available:false};item.revision++;workspace.revision++;}
+      if(valid){item.collection_status='running';item.collection={...item.collection,status:'running',reason:null,attempt:body.attempt+1,retry_available:false};item.revision++;workspace.revision++;}
       res.writeHead(valid?200:409,{'Content-Type':'application/json'});res.end(JSON.stringify(valid?
         {workspace_id:workspace.workspace_id,revision:workspace.revision,paper:item}:{message:'stale retry'}));
     });return;
@@ -335,6 +340,13 @@ app.whenReady().then(async()=>{
       qualification:{metadata_generation:1,operation_generation:1,body_generation:1,attempt:0}};
     bodyPaper.body_present=false;bodyPaper.revision++;workspace.revision++;
     await js('window.uiWorkspace.refresh()');
+    Object.assign(bodyPaper.download,{status:'failed',reason:'storage-error'});
+    await js('window.uiWorkspace.refresh()');
+    await js(`(()=>{if(document.getElementById('paper-download').disabled || !document.getElementById('paper-download-cancel').hidden ||
+      !document.getElementById('paper-download-status').textContent.includes('数据库'))throw Error('Ended storage failure retained Download busy state');})()`);
+    await js("document.getElementById('paper-detail').scrollTop=0");
+    await capture('stage3-download-storage-error');
+    bodyPaper.download.reason=null;
     await js("document.getElementById('paper-download').click()");
     await ready("!window.inboxKept.busy() && document.getElementById('paper-download-status').textContent.includes('2 KB')");
     if(bodyActions.length!==1 || Object.keys(bodyActions[0].body).sort().join(',')!=='csrf_token,qualification,workspace_id')throw Error('Download request supplied network/file capabilities');
@@ -363,9 +375,17 @@ app.whenReady().then(async()=>{
     await ready("!document.getElementById('paper-locate').disabled");
     if(bodyActions.at(-1)?.action!=='locate' || Object.keys(bodyActions.at(-1).body).sort().join(',')!=='body_generation,csrf_token,workspace_id' || bodyActions.at(-1).body.body_generation!==2)
       throw Error('Locate did not carry only the current body qualification');
+    localRefreshFailure=true;
     await js("document.getElementById('paper-download').click()");
     await ready("!document.getElementById('paper-download').disabled");
     if(bodyActions.at(-1)?.action!=='open')throw Error('Existing body did not use explicit local open');
+    await ready("document.getElementById('app-notice-summary').textContent.includes('PDF 已打开')");
+    await capture('stage3-open-refresh-error');
+    localRefreshFailure=false;
+    const localCount=bodyActions.length;
+    await js('window.uiWorkspace.refresh()');
+    if(bodyActions.length!==localCount)throw Error('Refresh repeated the successful shell action');
+    await js('window.uiNext.notice(\'\')');
     const beforeLocal=structuredClone(bodyPaper);
     workspace.downloaded.papers=workspace.downloaded.papers.filter(entry=>entry.paper.id!==bodyPaper.id);
     Object.assign(bodyPaper,{title:null,abstract:null,notes:null,authors:[],ordinary_dates:[],preprints:[],preprint_evidence:[],
@@ -441,11 +461,12 @@ app.whenReady().then(async()=>{
     await navigate('login');
     await ready("!document.getElementById('login-cancel').hidden");
     await ready("window.inboxRun.available()");
-    Object.assign(records[0].papers[0].collection,{retry_available:true,retry_reason:null});
+    Object.assign(records[0].papers[0].collection,{retry_available:true,retry_reason:null,reason:'storage-error'});
     loginState={...loginState,active:false,phase:'completed',services:loginState.services.map(service=>({...service,preparation:{status:'Opened'}}))};
     await ready("document.getElementById('login-status').textContent.includes('1 / 1 Services opened')");
     await navigate('workspace');
     await ready("!document.getElementById('paper-collection-retry').disabled");
+    await js(`(()=>{if(!document.getElementById('paper-collection-status').textContent.includes('数据库'))throw Error('Storage failure was hidden as running');})()`);
     if(workspace.revision!==preparedWorkspaceRevision || records[0].papers[0].revision!==retryRevision)throw Error('Prepare qualification refresh changed content revisions');
     await capture('wf08-retry-ready');
     await js("document.getElementById('paper-collection-retry').click()");

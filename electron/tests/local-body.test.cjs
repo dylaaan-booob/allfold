@@ -33,7 +33,14 @@ test('openPath nonempty error is finite failure and locate only reports its requ
   assert.equal(located.outcome,'locate_requested');assert.notEqual(located.outcome,'opened');
 });
 
-for(const replacement of ['file','directory','symlink','hardlink','workspace'])test(`a ${replacement} replacement during authority confirmation never reaches shell`,async t=>{
+test('opened remains successful after the shell has removed the path; residual hard links can open',async t=>{
+  const {file,data}=fixture(t);
+  fs.linkSync(file,file+'.part');
+  const result=await executeLocalBody(data,{verifyAuthority:async()=>{},shell:{openPath:async()=>{fs.unlinkSync(file);return '';}}});
+  assert.equal(result.outcome,'opened');assert.equal(result.resource_closed,true);
+});
+
+for(const replacement of ['file','directory','symlink','workspace'])test(`a ${replacement} replacement during authority confirmation never reaches shell`,async t=>{
   const {root,file,data}=fixture(t);let opened=false;
   const result=await executeLocalBody(data,{verifyAuthority:async()=>{
     if(replacement==='workspace'){
@@ -42,8 +49,7 @@ for(const replacement of ['file','directory','symlink','hardlink','workspace'])t
     }else if(replacement==='directory'){
       fs.renameSync(path.dirname(file),path.dirname(file)+'-old');fs.mkdirSync(path.dirname(file));
       fs.writeFileSync(file,'unknown');
-    }else if(replacement==='hardlink')fs.linkSync(file,file+'.link');
-    else {fs.renameSync(file,file+'.old');if(replacement==='symlink')fs.symlinkSync(file+'.old',file);else fs.writeFileSync(file,'unknown');}
+    }else {fs.renameSync(file,file+'.old');if(replacement==='symlink')fs.symlinkSync(file+'.old',file);else fs.writeFileSync(file,'unknown');}
   },shell:{openPath:async()=>{opened=true;return '';}}});
   assert.equal(opened,false);assert.equal(result.outcome,'local_failure');assert.equal(result.resource_closed,true);
 });

@@ -32,6 +32,10 @@ def apply_paper_action(workspace: Path, workspace_id: UUID, paper_id: UUID, acti
     with workspace_registry.paper_gate() if workspace_registry else nullcontext():
         if action == 'clear-metadata' and workspace_registry and workspace_registry.busy(paper_id, workspace_id):
             raise InvalidPaperState('Paper work is still cleaning up; wait before clearing metadata')
+        if action == 'clear-metadata' and workspace_registry:
+            if workspace_registry.workspace_id != workspace_id:
+                raise StaleWriteError('Different Workspace identity')
+            workspace_registry.settle_ended(paper_id)
         with workspace_operation_lock(workspace, create=False):
             with PaperRepository.open(workspace, expected_workspace_id=workspace_id) as repository:
                 paper = repository.get(paper_id)

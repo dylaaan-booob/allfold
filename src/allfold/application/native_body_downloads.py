@@ -41,6 +41,7 @@ def transfer_native(reservation, repository, files, candidate, progress=None):
     registry = reservation.registry
     registry._guard(reservation, repository)
     pending = files.prepare_native()
+    reservation.output = pending
     try:
         repository.record_download_output(reservation.download_token, pending)
     except BaseException:
@@ -77,6 +78,7 @@ def transfer_native(reservation, repository, files, candidate, progress=None):
                         with ManagedBodyFiles(registry.workspace, reservation.paper_id, reservation.download_token.attempt,
                                 expected_workspace=registry._identity[0]) as native_files:
                             actual = native_files.adopt_native(pending, pair)
+                        reservation.output = actual
                         with registry._repository() as progress_repository:
                             progress_repository.adopt_native_output(reservation.download_token, pending, actual)
                         observed['output'] = actual
@@ -99,16 +101,25 @@ def transfer_native(reservation, repository, files, candidate, progress=None):
     value = future.result()  # Actual item done and runTask source destruction; cancellation unlink can remain queued.
     if future.cancelled() or not isinstance(value, dict) or value.get('resource_closed') is False:
         error = RuntimeError('Native body resource settlement is unconfirmed')
-        registry.fail_reservation(reservation, phase='body-native-cleanup', error=error)
+        registry.fail_reservation(reservation, phase='body-native-cleanup', error=error, unconfirmed=True)
         raise error
     with lock:
         output, error = observed['output'], observed['error']
     if error is not None:
         return NativeTransferResult(CandidateResult('local_failure', diagnostic='native-output'), output)
-    if (value.get('kind') == 'pdf' and value.get('outcome') == 'native_complete'
-            and value.get('pdf_type') is True and value.get('transfer_complete') is True
-            and output.file is not None and tuple(value.get('output_file', ())) == output.file
-            and isinstance(value.get('final_url'), str)):
+    completed = (value.get('kind') == 'pdf' and value.get('outcome') == 'native_complete'
+        and value.get('pdf_type') is True and value.get('transfer_complete') is True
+        and isinstance(value.get('final_url'), str))
+    if completed and output.file is None:
+        # Progress is optional. The actual terminal DTO carries the same inode
+        # observation and can supply the first output proof for this attempt.
+        pair = value.get('output_file')
+        if not isinstance(pair, (tuple, list)) or len(pair) != 2 or any(type(item) is not int or item < 1 for item in pair):
+            return NativeTransferResult(CandidateResult('local_failure', diagnostic='native-output'), output)
+        output = files.adopt_native(pending, pair)
+        reservation.output = output
+        repository.adopt_native_output(reservation.download_token, pending, output)
+    if completed and tuple(value.get('output_file', ())) == output.file:
         return NativeTransferResult(CandidateResult.pdf(transfer_complete=True), output, value['final_url'])
     kind = value.get('kind')
     if kind not in {'failed', 'local_failure', 'cancelled', 'stale', 'expired'}:

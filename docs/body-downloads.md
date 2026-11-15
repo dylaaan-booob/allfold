@@ -27,8 +27,8 @@ Admission uses the current host, Paper gate and bounded scheduler:
 | A current body exists | Capture its local-file qualification before candidate construction, Prepare or new-download checks. Existing identity-only and Trash bodies can be read locally. |
 | A real body owner is queued, running or still cleaning up | Return its original task/attempt, progress and deadline; do not change sources, Service or writer. |
 | Full unexcluded metadata, no body and no conflicting work or cleanup | Recheck the captured generations/observed attempt, resolve actual access and admit one body attempt. A complete idle `not_started` collection needs no invented completed-history prerequisite. |
-| Durable collection intent/queued/running work, read-only discovery or unsettled cleanup | Refuse new body work until actual settlement. No-worker-in-memory is not an eligibility shortcut. |
-| Failed/cancelled/interrupted download explicitly retried | First dispose only recorded, proven old output; then create a new attempt and run applicable sources from the start. Completed metadata is not recollected. |
+| Queued/running work, read-only discovery or genuinely unsettled resources | Refuse new body work until actual settlement. A missing owner alone is not an eligibility shortcut; a known ended attempt with a failed terminal write is settled precisely on the next explicit operation. |
+| Failed/cancelled/interrupted download explicitly retried | Attempt cleanup of its recorded temporary output, then use the next attempt's distinct path. Failed temporary unlink alone does not block admission; an existing permanent target still causes a real no-clobber conflict. Completed metadata is not recollected. |
 | Excluded or metadata-free Paper without a body | Do not start a new download, restore content or prepare access. |
 
 `body` reservations remain distinct from read-only discovery's `download`
@@ -116,6 +116,13 @@ private. No Content-Length equality, minimum size, PDF header/EOF/structure/text
 identity/hash/version validation is added. Bounded current HTML/access responses
 return to the same source coordinator after that output has settled.
 
+Once `pipeline` returns normally, the completed writer result is retained. Its
+network deadline is retired; late cancellation, Prepare revocation or page
+changes cannot revoke that transfer. Python discovery recognizes the complete
+result before its generic post-request check and stops the original network timer
+before publication/association. Incomplete candidates still check cancellation
+and deadlines before following another source or request.
+
 ## Native output and accepted cancellation risk
 
 The R059 form selector can identify a download in the article navigation toolbar;
@@ -149,6 +156,10 @@ bounded progress and waits for actual DownloadItem terminal. Interrupted updates
 defer cancellation out of Chromium's observer callback and retain the interrupted
 reason; no resume or automatic action replay is added. Sources remain owned until
 item terminal and actual page destruction, including no-item/late-item cleanup.
+The item's deadline timer and abort listener retire at `done`. Actual final
+`completed` outranks an earlier interrupted observation and late page/access/
+deadline signals; the actual owned output must still be obtained. Progress is
+optional: a terminal DTO can supply the first actual inode observation.
 Only a normal completed PDF-type response with a verified actual output enters
 the common publication/SQLite path. A filename, viewer display or `will-download`
 event alone cannot complete the Paper.
@@ -197,7 +208,11 @@ grants no authority. Main verifies live directories and its opened descriptor
 without truncating or following the final link.
 
 Publication is atomic no-clobber link, never exists-then-replace or numbered
-copies. Removal moves the addressed entry without clobbering to the private
+copies. The created permanent link is checked against this output and synced as
+part of publication. Temporary-link removal and empty native-directory cleanup
+are auxiliary: failure records a bounded diagnostic and does not revoke the
+publication or prevent association. A residual temporary hard link does not make
+the associated body invalid for Open/Locate. Removal moves the addressed entry without clobbering to the private
 disposal directory, verifies it and unlinks only the proven object; a substituted
 object is restored without overwrite. Directory/target replacement in these
 application operations preserves unknown objects and fails the operation.
@@ -206,7 +221,11 @@ Chromium's separate cancellation cleanup has the accepted exception above.
 After transport/writer settlement, `complete_attempt` publishes the output and
 uses one short `complete_download` transaction for the body, successful provenance,
 completed status and revision. Network and long file work occur outside SQLite
-write transactions. Duplicate terminal delivery is idempotent.
+write transactions. The exact original Workspace/Paper/attempt and body write
+ownership are checked at this transaction, without replaying network eligibility
+or a second publication verification. The returned committed record establishes
+success; no final reread, notification, diagnostic or owner-release write is
+required. Duplicate terminal delivery is idempotent.
 `complete_body` remains a logical repository fixture constructor and authorizes
 neither physical opening nor deletion.
 
@@ -228,11 +247,18 @@ see them; no settings/SQLite lock spans native waiting.
 
 Open uses the system default and handles a non-empty `shell.openPath` error.
 Locate verifies the same file before `showItemInFolder`; it does not claim a
-system completion result that API does not provide. Confirmed absence clears
+system completion result that API does not provide. Empty `openPath` error text
+means `opened`; a normally issued Locate means `locate_requested`. Main and Python
+do not recheck the file or Paper to decide whether that action happened. A later
+HTTP projection failure returns the successful outcome plus a separate refresh
+error, without inventing a revision or asking for another Open. Older successful
+receipts retain only their outcome when a newer UI projection already won.
+Confirmed absence clears
 only the captured current association and advances body generation/revision.
 Permission, unsafe path, missing default application and shell failures preserve
 the association. Replaced directory/file, changed body or Workspace makes the
-old operation stale. No content validation, external search, viewer-lifetime
+old operation stale before dispatch or a conditional missing/delete association
+write; they do not undo a successful system call. No content validation, external search, viewer-lifetime
 tracking or watcher is added.
 
 Trash permits explicit independent physical PDF deletion after this Paper's
@@ -270,8 +296,12 @@ unknown/corrupt libraries and Paper Markdown compatibility remain refused.
 Older binaries reject v5; real upgrades require a stopped-application backup.
 
 Startup normalizes interrupted old attempts without queue/network/action replay;
-completed bodies remain. Recorded owned fragments can be disposed before an
-explicit retry. There is no orphan scan, filename-based ownership recovery,
+completed bodies remain. In the current lifetime, a failed terminal write retains
+only the exact ended attempt token, outside active owners. Projection reports
+storage failure without changing revision; the next explicit operation retries
+that token's necessary terminal write. Persistent storage failure remains a
+storage error. Successful increments survive; no new attempt or replacement
+Workspace can be modified by the old token. There is no orphan scan, filename-based ownership recovery,
 persistent replay queue or resume engine.
 
 ### Current limitations and follow-up
@@ -283,14 +313,11 @@ limits. These are not permanent source requirements. Follow-up changes will
 separate candidate-local access failure from task cancellation and reassess limits
 against actual needs, while preserving request/target and credential association.
 
-Current completion/local-file paths still repeat qualification, deadline or file
-checks after successful work. Fault paths can retain Paper occupancy after
-terminal-record or auxiliary cleanup errors. The agreed follow-up preserves
-successful transport/open/locate and releases finished work despite those
-auxiliary failures; it adds no local completion phase, state or extra deadline.
-Actual unfinished I/O, protected file publication and database association remain
-separate obligations. None of these production changes is implemented by this
-document cleanup.
+Completed transport/local actions survive late signals and auxiliary failures.
+Actual unfinished I/O retains its original owner; a cancelled Future or returning
+callback is not physical settlement. File publication and database association
+remain necessary separate operations. There is no local completion phase,
+additional business state, second deadline or automatic recovery queue.
 
 Tests use isolated real host/SQLite/files, authenticated production bridge/Main,
 temporary-profile Electron, controlled HTTP and shell adapters. Public stream,
@@ -315,7 +342,7 @@ Choose from these effects when a change needs evidence beyond isolated fixtures:
 | --- | --- |
 | Original publisher response | From a ScienceDirect test Paper that needs the original browser response, click **Download** once. If testing the form path, add one accessible R059 Microbiology example. The transfer completes from the original action, the Paper appears once in Downloaded and its PDF opens. A browser viewer alone is not success. Record access denial separately from a transfer failure. |
 | Retained reusable publisher paths | Use one known IEEE reader example and one Oxford/Silverchair CDN example, because the unified source coordinator and shared Session hooks affect their routing. Both complete through public Download without a second body or new save step. Do not expand this to every publisher. |
-| Download interaction and cancellation | On one sufficiently slow test download, switch Papers and return, cancel that exact attempt, wait for its displayed cleanup to end, then explicitly retry. Progress and terminal state follow the right Paper; unrelated work continues, cancellation creates no Downloaded body, and retry creates one body. Reuse this sample for completion/classification/Reader checks rather than a separate whole-UI pass. |
+| Download interaction and cancellation | On one sufficiently slow test download, switch Papers and return, cancel that exact unfinished attempt, wait for actual settlement, then explicitly retry. Progress follows the right Paper and unrelated work continues. Cancellation before transfer completion creates no Downloaded body; a late cancellation after actual completion preserves it. Reuse this sample for completion/classification/Reader checks. |
 | OS and independent body deletion | On a downloaded test Paper, use **打开 PDF** and **定位 PDF** to verify the default viewer and Finder select the same managed body. Move that test Paper to Trash, select **删除 PDF**, then Restore. Only that PDF/association is removed; metadata survives and the Paper is an eligible Candidate. Offline/zero-network, missing-file and permission behavior already have isolated coverage; no system network or permission changes are required. Do not clear unrelated real files or metadata. |
 
 Path/object replacement races, frame/IPC forgery, page quotas, schema forward
