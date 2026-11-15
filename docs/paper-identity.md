@@ -14,7 +14,7 @@ records. If multiple direct identities belong to different saved UUIDs, the
 operation reports a conflict and rolls back the whole identity change.
 
 A primary identity is selected explicitly and persisted. Its DOI, when present,
-is the formal-article DOI used for eligible Preprint lookup and links. Multiple
+is the formal-article DOI used for links and direct lookup targets. Multiple
 saved DOI values do not make dictionary order a primary-identity policy. DOI-free
 Papers remain readable and locally editable when complete and unexcluded.
 A first collection admission can promote a non-DOI primary to the formal DOI

@@ -25,10 +25,8 @@ class DecisionResult:
 
 
 def apply_paper_action(workspace: Path, workspace_id: UUID, paper_id: UUID, action: str, *,
-                       expected_status: PaperStatus | None = None, preprint_lookup=None,
+                       expected_status: PaperStatus | None = None,
                        workspace_registry=None, cancel=True) -> DecisionResult:
-    if workspace_registry is None and preprint_lookup is not None:
-        workspace_registry = preprint_lookup.workspace_tasks.peek()
     # Capture/revoke inside the Paper gate; callbacks and coordinator/native locks
     # remain outside every write lock. Never reselect an owner after Reject.
     with workspace_registry.paper_gate() if workspace_registry else nullcontext():
@@ -60,8 +58,3 @@ def apply_paper_action(workspace: Path, workspace_id: UUID, paper_id: UUID, acti
     if cancel:
         result.signal_cancellation()
     return result
-
-
-def reject_paper(workspace, paper_id, expected_status=None, *, workspace_id, preprint_lookup=None):
-    return apply_paper_action(workspace, workspace_id, paper_id, 'reject',
-                              expected_status=expected_status, preprint_lookup=preprint_lookup)

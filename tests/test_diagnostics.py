@@ -54,6 +54,30 @@ def test_history_survives_restart_and_never_promotes_an_unfinished_prepare(tmp_p
     assert json.loads(exported['summary.json'])['records'][0]['outcome'] == 'interrupted'
 
 
+def test_saved_preprint_history_remains_readable_and_exportable_after_restart(tmp_path):
+    config, root = tmp_path / 'config.yaml', tmp_path / 'logs'
+    previous = DiagnosticStore(config, root=root, runtime_id='previous')
+    history = previous.root / 'scopes' / previous.scope_id / 'python' / 'history.json'
+    saved = dict(schema_version=1, scope_id=previous.scope_id, workspace_generation=0)
+    # Persisted records from the retired producer, never a new execution entry.
+    saved['records'] = [dict(kind='preprint', task_id=task_id, workflow_id=task_id,
+        runtime_id='previous', started_at='2026-11-15T00:00:00Z', outcome=outcome,
+        workspace_generation=0, statistics={}, details={'result_known': True}, private='PRIVATE')
+        for task_id, outcome in [('saved_preprint', 'completed'), ('unfinished_preprint', 'running')]]
+    history.write_text(json.dumps(saved))
+    restarted = DiagnosticStore(config, root=root, runtime_id='current')
+    assert not restarted.begin('preprint', 'new_preprint')
+    records = {record['task_id']: record for record in restarted.history()['records']}
+    assert records['saved_preprint']['kind'] == 'preprint'
+    assert records['saved_preprint']['outcome'] == 'completed'
+    assert records['unfinished_preprint']['outcome'] == 'interrupted'
+    assert records['unfinished_preprint']['details']['reason'] == 'runtime_interrupted'
+    for task_id in records:
+        exported = bundle(restarted, task_id)
+        assert json.loads(exported['summary.json'])['records'] == [records[task_id]]
+        assert 'PRIVATE' not in ''.join(exported.values())
+
+
 def test_export_revalidates_native_records_and_preserves_exact_associations(tmp_path):
     store = DiagnosticStore(tmp_path / 'config.yaml', root=tmp_path / 'logs', runtime_id='python_1')
     store.begin('prepare', 'paper_task', workflow_id='workflow_one')

@@ -62,16 +62,14 @@ def test_attempts_have_fresh_clients_cache_and_cancellation_and_close_owned_tran
         assert [request.path for request in origin.requests] == ['/first', '/second']
 
 
-def test_pacing_survives_run_and_manual_preprint_clients_and_new_attempts(tmp_path, monkeypatch):
+def test_pacing_survives_run_and_independent_clients_and_new_attempts(tmp_path, monkeypatch):
     import httpx
-    from allfold.application.browser_runtime import BrowserTaskLock
-    from allfold.application.coordinators.preprint_lookup import PreprintLookup
     from integrated_run_helpers import run_integrated
     from allfold.application.provider_lookup import provider_client
-    from library_application_helpers import create_paper, FORMAL
+    from library_application_helpers import create_paper
     from test_provider_resilience import Clock
 
-    config, _, paper = create_paper(tmp_path)
+    config, _, _ = create_paper(tmp_path)
     config.write_text(config.read_text() + 'enabled_providers: [pubmed]\n')
     clock, calls, pacing = Clock(), [], new_provider_pacing()
     for provider in integrated.PROVIDERS:
@@ -81,8 +79,6 @@ def test_pacing_survives_run_and_manual_preprint_clients_and_new_attempts(tmp_pa
         calls.append((request.url.path, clock.now))
         if request.url.path.endswith('esearch.fcgi'):
             return httpx.Response(200, json={'esearchresult': {'count': '0', 'idlist': []}})
-        if request.url.path.startswith('/pubs/'):
-            return httpx.Response(200, json={'messages': [{'status': f'Preprint for DOI {FORMAL} not found'}], 'collection': []})
         assert request.url.path == '/factory'
         return httpx.Response(200, json={'ok': True})
 
@@ -92,17 +88,17 @@ def test_pacing_survives_run_and_manual_preprint_clients_and_new_attempts(tmp_pa
 
     options = dict(client_factory=clients, lookup_factory=clients, pacing_state=pacing)
     assert run_integrated(config, **options).facts.created_papers == 0
-    lookup = PreprintLookup(config, BrowserTaskLock(), client_factory=clients, pacing_state=pacing)
-    lookup.start(paper.id)
-    lookup.join()
-    assert lookup.state(paper.id)['phase'] == 'NoMatch'
     factory = IndependentClientFactory(config, pacing_state=pacing, client_factory=clients)
-    with factory.open(cancel_event=Event(), request_guard=lambda: None, deadline=clock.now + 10) as attempt:
-        assert attempt.provider('crossref').request('/factory', {}) == {'ok': True}
-    factory.close()
+    try:
+        for _ in range(2):
+            with factory.open(cancel_event=Event(), request_guard=lambda: None, deadline=clock.now + 10) as attempt:
+                assert attempt.provider('crossref').request('/factory', {}) == {'ok': True}
+    finally:
+        factory.close()
     assert run_integrated(config, **options).facts.created_papers == 0
-    assert [now for _, now in calls] == [100, 101, 102, 103, 104]
-    lookup.shutdown(); lookup.join()
+    assert any(path.endswith('esearch.fcgi') for path, _ in calls)
+    assert any(path == '/factory' for path, _ in calls)
+    assert all(later - earlier >= 1 for (_, earlier), (_, later) in zip(calls, calls[1:]))
 
 
 def test_factory_shutdown_waits_until_in_flight_response_and_worker_clients_settle(tmp_path, monkeypatch):

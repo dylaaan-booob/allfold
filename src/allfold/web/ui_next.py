@@ -16,7 +16,6 @@ from pydantic import BaseModel, ConfigDict, Field, StrictInt
 
 from allfold.application.decisions import apply_paper_action
 from allfold.application.journal_covers import cover_details
-from allfold.application.preprint_lookup import formal_lookup_doi
 from allfold.application.run_state import RunProvider, read_last_run_snapshot
 from allfold.application.workspace import PaperStatus, WorkspacePaper, journal_for_paper, load_workspace
 from allfold.application.journal_lookup import journal_metadata
@@ -203,8 +202,6 @@ def paper_payload(paper: WorkspacePaper, *, workspace_tasks=None, cleanup_pendin
             dict(status=paper.record.download.status if paper.record.download else 'not_started',
                 attempt=paper.record.download.token.attempt if paper.record.download else 0,
                 reason=paper.record.download.reason if paper.record.download else None),
-        preprint_lookup_available=bool(metadata is not None and not paper.record.excluded and formal_lookup_doi(
-            doi, paper.publication_type, paper.journal, paper.conference)),
         cleanup_pending=bool(cleanup_pending))
 
 
@@ -298,7 +295,7 @@ def install_ui_next(app: FastAPI, config_path: Path, csrf_token: str) -> None:
                 config = load_config(config_path)
                 registry = app.state.workspace_tasks.current()
                 result = apply_paper_action(config.output_dir, body.workspace_id, paper_id, action,
-                    expected_status=body.expected_status, preprint_lookup=app.state.preprint_lookup,
+                    expected_status=body.expected_status,
                     workspace_registry=registry, cancel=False)
             result.signal_cancellation()
             with registry.paper_gate():

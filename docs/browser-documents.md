@@ -122,8 +122,7 @@ captured Workspace branch through `BranchContext.execute_native()` after base
 Paper admission. It has no standalone public extraction button. Date/Abstract and
 independent PDF clues share the current page. The parallel necessary-API branch
 has separate resources; only all planned branch results and actual cleanup settle the Paper.
-Foreground Run has its own serial slot and ends independently. Explicit Preprint
-uses the same Paper occupation gate without impersonating collection.
+Foreground Run has its own serial slot and ends independently.
 
 The payload carries the existing workflow/task/Paper association,
 `workspace_identity` (the existing 64-hex live Workspace path/inode hash, **not**

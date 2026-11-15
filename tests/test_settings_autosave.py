@@ -101,14 +101,10 @@ def test_ordinary_run_defers_autosave_until_worker_settles(tmp_path, monkeypatch
 
 
 @pytest.mark.parametrize('save_path', ['autosave', 'explicit'])
-@pytest.mark.parametrize('foreground', ['run', 'preprint'])
-def test_ordinary_save_rechecks_foreground_started_after_preflight(tmp_path, monkeypatch, save_path, foreground):
+def test_ordinary_save_rechecks_foreground_started_after_preflight(tmp_path, monkeypatch, save_path):
     import json
     from concurrent.futures import ThreadPoolExecutor
     from threading import Event
-    from allfold.models import ExternalIds
-    from allfold.persistence.library_models import PaperMetadata
-    from allfold.persistence.paper_repository import PaperRepository
     from allfold.providers import integrated
     from allfold.web import settings_guard
     from http_test_helpers import http_server, isolate_proxy_environment
@@ -117,13 +113,6 @@ def test_ordinary_save_rechecks_foreground_started_after_preflight(tmp_path, mon
     isolate_proxy_environment(monkeypatch)
     config, _, _, _ = current_mapping_document(tmp_path)
     config.write_text(config.read_text() + 'enabled_providers: [openalex]\n')
-    workspace = tmp_path / 'workspace'
-    workspace.mkdir()
-    doi = '10.5555/settings-race'
-    with PaperRepository.create(workspace) as repository:
-        paper = repository.create_or_match(repository.workspace_id, direct_ids=ExternalIds(doi=doi),
-            metadata=PaperMetadata(title='Settings race', publication_type='journal')).paper
-
     preflight, resume_save, requesting, finish_request = (Event() for _ in range(4))
     drain = settings_guard.drain_settings_effects
 
@@ -138,17 +127,12 @@ def test_ordinary_save_rechecks_foreground_started_after_preflight(tmp_path, mon
     def response(request):
         requesting.set()
         assert finish_request.wait(5)
-        if foreground == 'run':
-            assert request.path.startswith('/works?')
-            body = {'results': [], 'meta': {'count': 0}}
-        else:
-            assert request.path in {f'/pubs/{provider}/{doi}/na/json' for provider in ('biorxiv', 'medrxiv')}
-            body = {'messages': [{'status': f'Preprint for DOI {doi} not found'}], 'collection': []}
+        assert request.path.startswith('/works?')
+        body = {'results': [], 'meta': {'count': 0}}
         return 200, {'Content-Type': 'application/json'}, json.dumps(body).encode()
 
     with http_server(response) as origin:
-        for provider in integrated.PROVIDERS:
-            monkeypatch.setitem(integrated.BASE_URLS, provider, origin.url)
+        monkeypatch.setitem(integrated.BASE_URLS, 'openalex', origin.url)
         app = create_app(config, electron_bridge=OfflineBridge(), diagnostics_root=tmp_path / 'logs')
         with TestClient(app, base_url='http://localhost') as client:
             opened = client.get('/api/ui-next/settings').json()
@@ -165,39 +149,23 @@ def test_ordinary_save_rechecks_foreground_started_after_preflight(tmp_path, mon
                 saving = pool.submit(save)
                 try:
                     assert preflight.wait(2)
-                    if foreground == 'run':
-                        started = client.post('/api/ui-next/run', json={'csrf_token': opened['csrf_token']})
-                    else:
-                        started = client.post(f'/api/papers/{paper.id}/preprint-lookup/start',
-                            json={'csrf_token': opened['csrf_token'], 'workspace_id': str(paper.workspace_id)})
+                    started = client.post('/api/ui-next/run', json={'csrf_token': opened['csrf_token']})
                     assert started.status_code == 200, started.text
                     assert requesting.wait(2)
                     resume_save.set()
                     pending = saving.result(timeout=2)
-                    if foreground == 'run':
-                        assert not pending['saved'] and pending.get('outcome') == 'TASK_ACTIVE'
-                        assert client.get('/api/ui-next/settings').json()['values']['keyword_expression'] == 'causal'
-                    else:
-                        assert pending['saved'], pending
-                        assert client.get('/api/ui-next/settings').json()['values']['keyword_expression'] == 'inference'
+                    assert not pending['saved'] and pending.get('outcome') == 'TASK_ACTIVE'
+                    assert client.get('/api/ui-next/settings').json()['values']['keyword_expression'] == 'causal'
                 finally:
                     resume_save.set()
                     finish_request.set()
                     app.state.run_coordinator.join()
-                    app.state.preprint_lookup.join()
-            if foreground == 'run':
-                actual = client.get('/api/ui-next/run').json()
-                assert actual['snapshot']['unexpected_error'] is None
-                assert actual['snapshot']['result']['outcome'] == 'COMPLETED'
-                assert actual['providers']['integrated']['latest'] is not None
-            else:
-                actual = client.get(f'/api/papers/{paper.id}/preprint-lookup/state', params={
-                    'workspace_id': str(paper.workspace_id), 'request_id': started.json()['request_id']}).json()
-                assert actual['phase'] == 'NoMatch', actual
-                assert not actual['cleaning_up']
+            actual = client.get('/api/ui-next/run').json()
+            assert actual['snapshot']['unexpected_error'] is None
+            assert actual['snapshot']['result']['outcome'] == 'COMPLETED'
+            assert actual['providers']['integrated']['latest'] is not None
             assert origin.requests
-            if foreground == 'run':
-                assert save()['saved']
+            assert save()['saved']
             assert client.get('/api/ui-next/settings').json()['values']['keyword_expression'] == 'inference'
 
 

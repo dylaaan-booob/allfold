@@ -28,6 +28,16 @@ test('history escapes record identity and only renders reviewed business fields'
   assert.match(historyIntegrityMessage({rotated_files:1,native:{status_known:true,incomplete:false}}),/不完整/);
 });
 
+test('saved Preprint history stays filterable and only offers diagnostic export',async()=>{
+  const {renderHistoryRecord,filterHistoryRecords}=await import('../../frontend/ui/history-view.js');
+  const record={kind:'preprint',task_id:'saved-preprint',outcome:'completed',details:{service_id:'svc_a'}};
+  assert.deepEqual(filterHistoryRecords([record],''),[record]);
+  assert.deepEqual(filterHistoryRecords([record],'svc_a'),[record]);
+  const html=renderHistoryRecord(record);
+  assert.match(html,/Preprint/);assert.match(html,/data-history-export="saved-preprint"/);
+  assert.equal((html.match(/<button/g) || []).length,1);
+});
+
 test('interruption takes priority over a Run snapshot',async()=>{
  const {renderHistoryRecord}=await import('../../frontend/ui/history-view.js');
  const run=renderHistoryRecord({kind:'run',provider:'wos',task_id:'wos_1',outcome:'interrupted',details:{result_status:'failed',reason:'connection_lost'}});

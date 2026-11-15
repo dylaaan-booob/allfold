@@ -100,7 +100,7 @@ Received, Accepted and publication evidence remains operation-local data, never 
 
 Purpose-driven collection groups exact identifiers within its owned branch. Confirmed formal PMIDs use PubMed ESummary v2 for relations; qualified direct/related Preprint PMID purposes use EFetch. Complete qualified fetch evidence satisfies summary capability; missing bibliography never triggers fetch. Europe PMC uses `SRC:MED AND HAS_PREPRINT:Y` with batched PMID clauses, plus direct known PPR IDs/DOIs. It does not read every PMID core record for ordinary metadata. Crossref exact DOI batches and reverse `relation.type:is-preprint-of` / repeated `relation.object` batches run alongside the other necessary base APIs. Exact target relations bind reverse results to each formal DOI, independently of response order; cursors exhaust every group and failed pages retain verified earlier facts with partial status. Crossref Received/Accepted assertions require explicit history semantics and valid ISO or English dates, preserving source labels and precision. Deposit, registration and indexing times never become manuscript history.
 
-Operation-local caches distinguish PubMed summary/fetch, Crossref exact/reverse and complete Work evidence, including success, empty and failure responses. Foreground caches end with Run; every background branch has a fresh independent scope and may consume immutable verified handoff facts. Verified records from partial batches stay available while attributable failures settle. OpenAlex Work/locations already obtained during Discovery are reused. Every new relation enters the next necessary native-version wave before final First public coverage is calculated. arXiv `id_list` uses bounded groups of 200 identifiers; each group drains without a total quota. Explicit bioRxiv/medRxiv preprint DOI targets, including `10.64898/`, use native `/details` version lists. Native `/pubs` reverse lookup requires an explicit necessary purpose; the public Info query retains its formal-DOI use.
+Operation-local caches distinguish PubMed summary/fetch, Crossref exact/reverse and complete Work evidence, including success, empty and failure responses. Foreground caches end with Run; every background branch has a fresh independent scope and may consume immutable verified handoff facts. Verified records from partial batches stay available while attributable failures settle. OpenAlex Work/locations already obtained during Discovery are reused. Every new relation enters the next necessary native-version wave before final First public coverage is calculated. arXiv `id_list` uses bounded groups of 200 identifiers; each group drains without a total quota. Explicit bioRxiv/medRxiv preprint DOI targets, including `10.64898/`, use native `/details` version lists. Native `/pubs` reverse lookup requires an explicit necessary purpose; it is not a default request for every Paper.
 
 For native bioRxiv/medRxiv `/pubs` and `/details` paths, keep the first DOI slash
 literal and encode each suffix slash as `%252F`, including in provenance URLs.
@@ -190,27 +190,27 @@ Parent and leaf execution are separately bounded; Paper occupancy survives every
 branch and actual cleanup. A failed document does not discard independent API
 results, and normal empty work can complete.
 
-## Info preprint lookup
+## Preprint evidence
 
-This standalone Info operation still exists and its runtime/tests remain active.
-It is scheduled for retirement in the next implementation stage. Necessary
-background Preprint relationship and first-version evidence collection remains.
+The standalone Info query is retired. Info has no query, cancellation or query
+status controls; Reader selection, closure and Workspace refresh do not dispatch
+or restore it. There is no replacement query or compatibility API.
 
-Open **Info** in ARRAY and start a lookup for the current Paper's formal DOI. Each server is queried through `/pubs/{server}/{published_doi}/na/json`. Exact publication-to-preprint matches lead to `/details/{server}/{preprint_doi}/na/json` for native version dates. The relation and server-specific response establish the platform.
+Necessary background collection still follows verified relations and known native
+version families. An explicit native `reverse` purpose can query
+`/pubs/{server}/{published_doi}/na/json`, then the bound preprint's
+`/details/{server}/{preprint_doi}/na/json`. bioRxiv/medRxiv retain their
+[DOI path handling](biorxiv-doi-routing.md). This purpose does not enable scanning
+both servers for every Paper.
 
-A successful lookup appends deduplicated preprint evidence to the selected Paper. Verified first-version evidence can fill an empty First public. A later version can be saved as evidence while First public stays empty. Existing First public, primary identifiers, bibliography, notes and workflow state are protected. No match, failure and cancellation each have their own outcome and leave the Paper untouched. The commit rechecks original metadata/operation generations, narrow Provider authority, Workspace/database identity and cancellation. No Enrich or Markdown helper owns this write. See [Safety](safety.md).
-
-Requests are keyed by Workspace/Paper/request and use the existing bounded registry
-execution. They do not take a Run slot, change collection attempts or stop when
-the Reader changes. Same-Paper work/cleanup blocks a new operation; different
-Papers and another Run can proceed. After actual cleanup, another explicit query
-is allowed even when collection completed normally or empty. A first complete
-collection intent waits behind an already accepted query without revoking it;
-new manual clicks do not queue automatically.
+Saved Preprint results, version evidence, relations, First public and source links
+remain in SQLite and Reader. Existing history remains read-only and exportable;
+old tasks do not resume. Background increments retain the existing proof, field
+eligibility and First public rules described above.
 
 ## HTTP and Browser boundary
 
-Run, Info preprint lookup and standalone OpenAlex share the [Provider HTTP policy](http.md#journal-run-and-native-preprint-apis). Recoverable connection failures and temporary HTTP responses can show **Retrying**. An active dependency cooldown can show **Waiting**. Retry-After is enforced across clients for the same origin and authentication context. A request whose remaining budget is shorter ends while the cooldown stays active. Current verification-page classification can stop that Provider client; narrowing
+Run, necessary collection and standalone OpenAlex share the [Provider HTTP policy](http.md#journal-run-and-native-preprint-apis). Recoverable connection failures and temporary HTTP responses can show **Retrying**. An active dependency cooldown can show **Waiting**. Retry-After is enforced across clients for the same origin and authentication context. A request whose remaining budget is shorter ends while the cooldown stays active. Current verification-page classification can stop that Provider client; narrowing
 weak-marker detection and local-failure propagation is follow-up work, not a
 requirement to preserve client-wide failure. Unexpected HTML and invalid envelopes report failures. Only an adapter-confirmed exact no-match is empty; raw service 404 is a failure. arXiv uses three-second pacing, and bioRxiv and medRxiv share their API host pacing.
 

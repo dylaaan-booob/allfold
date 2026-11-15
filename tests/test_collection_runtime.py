@@ -166,7 +166,7 @@ def test_incremental_results_and_empty_completion_persist_without_automatic_repl
         factory.close()
 
 
-def test_admitted_before_registration_is_atomic_against_download_and_legacy(tmp_path):
+def test_admitted_before_registration_is_atomic_against_download(tmp_path):
     path = workspace(tmp_path)
     registry = WorkspaceRegistry(path, factory=IndependentClientFactory(tmp_path / 'config.yaml'))
     try:
@@ -176,21 +176,15 @@ def test_admitted_before_registration_is_atomic_against_download_and_legacy(tmp_
             handles = list(pool.map(lambda _: registry.admit(**args), range(20)))
         assert all(handle is handles[0] for handle in handles)
         task = handles[0]
-        for kind in ('download', 'legacy'):
-            with pytest.raises(InvalidPaperState):
-                registry.reserve(task.paper_id, kind=kind)
+        with pytest.raises(InvalidPaperState):
+            registry.reserve(task.paper_id)
         assert registry.register(task).future.result(3).collection.attempt == 1
         owner = registry.reserve(task.paper_id)
         assert registry.reserve(task.paper_id) is owner
         with pytest.raises(InvalidPaperState):
-            registry.reserve(task.paper_id, kind='legacy')
-        with pytest.raises(InvalidPaperState):
             registry.admit(**args)
         registry.release(owner)
         registry.release(owner)
-        legacy = registry.reserve(task.paper_id, kind='legacy')
-        assert legacy.kind == 'legacy'
-        registry.release(legacy)
         assert not registry.active
         with PaperRepository.open(path) as repository:
             assert len(repository.list_papers()) == 1
@@ -736,13 +730,13 @@ def test_first_lifecycle_bind_interrupts_old_tasks_once_without_network_or_repla
         registry.join()
 
 
-def test_shutdown_joins_legacy_actual_release_and_old_release_cannot_unseat_new_owner(tmp_path):
+def test_shutdown_joins_download_actual_release_and_old_release_cannot_unseat_new_owner(tmp_path):
     path = workspace(tmp_path)
     registry = WorkspaceRegistry(path, factory=IndependentClientFactory(tmp_path / 'config.yaml'))
     paper = submit(registry, 'reservation', [BranchSpec('empty', lambda _: None)]).future.result(3)
-    old = registry.reserve(paper.id, kind='legacy')
+    old = registry.reserve(paper.id)
     registry.release(old)
-    current = registry.reserve(paper.id, kind='legacy')
+    current = registry.reserve(paper.id)
     registry.release(old)
     assert registry.busy(paper.id)
     registry.shutdown()
@@ -869,7 +863,7 @@ def test_reservation_projection_and_prepare_cancel_are_atomic_without_native_cal
         paper = submit(registry, 'projection', [BranchSpec('empty', lambda _: None)]).future.result(3)
         with PaperRepository.open(path) as repository:
             before = repository.revision
-        claim = registry.reserve(paper.id, kind='legacy')
+        claim = registry.reserve(paper.id)
         with PaperRepository.open(path) as repository:
             assert repository.revision == before + 1
         registry.release(claim)
@@ -1058,29 +1052,3 @@ def test_same_paper_branches_overlap_with_thread_owned_client_cache_and_sqlite(t
     finally:
         release.set(); finish_close.set()
         registry.shutdown(); registry.join(); real.close()
-
-
-def test_deferred_intent_expires_without_revoking_original_manual_reservation(tmp_path):
-    path = workspace(tmp_path)
-    with PaperRepository.open(path) as repository:
-        paper = repository.create_or_match(repository.workspace_id, direct_ids=ExternalIds(doi='10.1234/deferred'),
-            metadata=PaperMetadata(title='Manual')).paper
-    registry = WorkspaceRegistry(path, factory=IndependentClientFactory(tmp_path / 'config.yaml'), limit=1, group_limit=1)
-    reservation = registry.reserve(paper.id, kind='legacy')
-    try:
-        task = registry.submit(direct_ids=ExternalIds(doi='10.1234/deferred'), metadata=paper.metadata,
-            branches=[BranchSpec('never', lambda _: pytest.fail('Expired intent executed'))],
-            deadline=time.monotonic() + .1)
-        assert task.future.result(3).collection_status == 'cancelled'
-        assert not reservation.cancel_event.is_set()
-        reservation.guard()
-        with PaperRepository.open(path) as repository:
-            repository.merge_metadata(reservation.token, MetadataDelta(abstract='Accepted manual result'))
-        assert registry.busy(paper.id)
-        with pytest.raises(InvalidPaperState):
-            registry.reserve(paper.id)
-        registry.release(reservation)
-        assert not registry.busy(paper.id)
-    finally:
-        registry.release(reservation)
-        registry.shutdown(); registry.join()

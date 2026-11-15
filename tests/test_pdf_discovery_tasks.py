@@ -145,7 +145,7 @@ def test_cancelled_http_worker_keeps_occupancy_until_owned_clients_really_close(
         assert host.active and not task.future.done()
         assert not task.future.cancel()
         with pytest.raises(InvalidPaperState):
-            registry.reserve(paper.id, kind='legacy')
+            registry.retry(paper.id, branches=())
         transport.finish.set()
         assert task.future.result(3).status == 'cancelled'
         assert not host.active
@@ -539,7 +539,7 @@ def test_unconfirmed_cleanup_is_a_fault_and_keeps_paper_occupied(tmp_path, resou
     assert registry.busy(paper.id) and task.cleanup_failed and task.cleanup_ended
     assert registry.faults[-1]['phase'] == f'discovery-{resource}-cleanup'
     with pytest.raises(InvalidPaperState):
-        registry.reserve(paper.id, kind='legacy')
+        registry.retry(paper.id, branches=())
     host.shutdown()
     with pytest.raises(RuntimeError, match='could not be settled'):
         host.join()

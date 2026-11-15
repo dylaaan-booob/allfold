@@ -4,7 +4,7 @@ Allfold keeps two bounded local projections. **History** shows coordinator-confi
 business tasks and results. Structured **diagnostics** explain the native and Python
 operations behind those tasks. Neither store restores Workspace data or grants operation authority.
 
-Discover, Login, Preprint lookup and Cover Search share explicit
+Discover, Login and Cover Search share explicit
 workflow/task identities. Native requests have their own request IDs. Service and
 page metadata come from the existing invocation snapshots and page associations;
 logging does not grant browser or institution-credential authority. Native
@@ -26,10 +26,10 @@ settlement cannot change that result.
 
 ## Metadata results
 
-Explicit Preprint reports completion, no match, failure and cancellation per
-Workspace/Paper/request in ARRAY Info. Collection reports its own persisted
-attempt/branch state and runtime cleanup. Neither occupies the foreground Run
-slot or changes a settled parent result.
+Standalone Preprint execution is retired. Its retained historical records remain
+readable, filterable and exportable; no query is restored or resumed. Collection
+reports its own persisted attempt/branch state and runtime cleanup without
+occupying the foreground Run slot or changing a settled parent result.
 Run results, statistics and links reference repository-returned Paper UUIDs.
 Last Run remains an independent execution summary. Last Import and its Item/PDF/
 Fallback, keys and attachment verification projection are retired.

@@ -57,8 +57,6 @@ class TaskHandle:
     browser_owner: object = None
     cancel_pending: bool = False
     branch_tasks: tuple = ()
-    waiting_on: object = None
-    dispatch_ready: threading.Event = field(default_factory=threading.Event)
 
     @property
     def paper_id(self):
@@ -121,14 +119,13 @@ class PaperReservation:
     token: object
     lifecycle_id: UUID
     kind: str
-    cancel: object = None
     cancel_event: threading.Event = field(default_factory=threading.Event)
     workflow_id: str = field(default_factory=lambda: uuid4().hex)
     task_id: str = field(default_factory=lambda: uuid4().hex)
     released: bool = False
     cleanup_ended: bool = False
     cleanup_failed: bool = False
-    # Defaults keep legacy/manual reservations independent of discovery clients.
+    # Public discovery reservations need no Service authority by default.
     authority: object = field(default_factory=lambda: _LocalAuthority())
     service_id: str | None = None
     providers: tuple[str, ...] = ()
@@ -446,18 +443,14 @@ class WorkspaceRegistry:
 
     def _require_reservation(self, handle, repository):
         paper = repository.get(handle.paper_id)
-        deferred = self._tasks.get(handle.paper_id)
-        waiting = deferred is not None and deferred.waiting_on is handle
         if handle.kind == 'body':
             direct = getattr(handle.body_request, 'direct', ())
             if direct and direct != tuple((identity.namespace, identity.value) for identity in paper.identities):
                 raise StaleWriteError('Original Paper identity closure changed')
             return repository.require_download(handle.download_token)
-        if (handle.kind == 'download' and paper.token != handle.token
-                or paper.metadata_generation != handle.token.metadata_generation
-                or paper.operation_generation != handle.token.operation_generation
+        if (paper.token != handle.token
                 or paper.excluded or paper.metadata is None
-                or paper.collection is not None and paper.collection.active and not waiting):
+                or paper.collection is not None and paper.collection.active):
             raise StaleWriteError('Captured Paper authority changed')
         return paper
 
@@ -499,7 +492,6 @@ class WorkspaceRegistry:
         if len(handle.branch_tasks) == 1:
             child = handle.branch_tasks[0]
             child.workflow_id, child.task_id = handle.workflow_id, handle.task_id
-        handle.dispatch_ready.set()
         self._tasks[handle.paper_id] = handle
         return handle
 
@@ -519,8 +511,7 @@ class WorkspaceRegistry:
                     # A reliable match that is busy stays that same Paper. No
                     # collection intent may mutate the active body's authority.
                     return paper
-                if reservation is not None and (reservation.kind != 'legacy' or paper.collection is not None) and not (
-                        paper.id in self._tasks and self._tasks[paper.id].waiting_on is reservation):
+                if reservation is not None:
                     raise InvalidPaperState('Another operation owns this Paper')
                 admission = repository.admit_collection(self.workspace_id, lifecycle_id=self.lifecycle_id,
                     branches=tuple(branch.name for branch in plan), direct_ids=direct_ids, metadata=metadata,
@@ -529,9 +520,6 @@ class WorkspaceRegistry:
                 if not admission.admitted:
                     return self._tasks.get(admission.paper.id, admission.paper)
                 handle = self._new_handle(admission, plan, deadline, service_id, source_run_id)
-                handle.waiting_on = reservation
-                if reservation is not None:
-                    handle.dispatch_ready.clear()
         self._observe(handle, 'queued', 'workflow_started')
         return handle
 
@@ -558,8 +546,7 @@ class WorkspaceRegistry:
                 handle.registered = True
                 scheduled = self._scheduler.submit(handle.service_id,
                     lambda: self._run(handle), cancel_event=handle.cancel_event,
-                    deadline=handle.deadline, discarded=lambda reason: self._discard(handle, reason),
-                    ready_event=handle.dispatch_ready)
+                    deadline=handle.deadline, discarded=lambda reason: self._discard(handle, reason))
                 handle.scheduled = scheduled
                 scheduled.add_done_callback(lambda done: self._settled(handle, done))
         except Exception as error:
@@ -626,9 +613,9 @@ class WorkspaceRegistry:
         self._observe(handle, 'queued', 'workflow_started')
         return self.register(handle)
 
-    def reserve(self, paper_id, *, kind='download', expected_token=None, cancel=None,
+    def reserve(self, paper_id, *, kind='download', expected_token=None,
                 service_id=None, providers=(), deadline=None, body_request=None):
-        if kind not in {'download', 'legacy', 'body'}:
+        if kind not in {'download', 'body'}:
             raise ValueError('Unknown Paper reservation kind')
         if kind == 'body' and body_request is None:
             raise ValueError('A captured body request is required')
@@ -673,7 +660,7 @@ class WorkspaceRegistry:
                     download_token = repository.begin_download(paper.token, lifecycle_id=self.lifecycle_id)
                 else:
                     repository.touch_projection(paper_id)
-            reservation = PaperReservation(self, paper.token, self.lifecycle_id, kind, cancel)
+            reservation = PaperReservation(self, paper.token, self.lifecycle_id, kind)
             reservation.download_token = download_token
             reservation.body_request = body_request
             reservation.authority, reservation.service_id = authority, service_id
@@ -699,17 +686,11 @@ class WorkspaceRegistry:
                     raise
                 del self._reservations[reservation.paper_id]
                 reservation.released = True
-                deferred = self._tasks.get(reservation.paper_id)
-                if deferred is not None and deferred.waiting_on is reservation:
-                    deferred.waiting_on = None
-                    deferred.dispatch_ready.set()
-                    self._scheduler.wake()
                 self._settled_condition.notify_all()
 
     def fail_reservation(self, reservation, *, phase, error):
         """A reservation worker exited without proving its captured resource close."""
-        if phase not in {'preprint-client-cleanup', 'preprint-repository-cleanup', 'preprint-owner-cleanup',
-                         'discovery-client-cleanup', 'discovery-native-cleanup', 'discovery-owner-cleanup',
+        if phase not in {'discovery-client-cleanup', 'discovery-native-cleanup', 'discovery-owner-cleanup',
                          'body-native-cleanup', 'body-file-cleanup', 'body-owner-cleanup', 'body-terminal-write'}:
             raise ValueError('Unknown reservation cleanup phase')
         with self._gate:
@@ -942,8 +923,6 @@ class WorkspaceRegistry:
     def _signal(self, target):
         target.cancel_event.set()
         try:
-            if isinstance(target, PaperReservation) and target.cancel is not None:
-                target.cancel()
             if isinstance(target, TaskHandle):
                 for child in target.branch_tasks:
                     child.cancel_event.set()

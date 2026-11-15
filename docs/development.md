@@ -20,7 +20,7 @@ Read-only uninitialized views do not create it; the first Run initializes
 and local HTTP/DOM fixtures. Create current-format v5 databases for acceptance; exactly valid v4 and the supported v3 path have transactional forward changes preserving saved data and unknown historical provenance. Retired/unknown formats remain refused. Missing, corrupt and unsupported databases have distinct results.
 
 ```sh
-uv run --locked pytest tests/test_paper_repository.py tests/test_paper_repository_safety.py tests/test_run_commit.py tests/test_preprint_lookup.py
+uv run --locked pytest tests/test_paper_repository.py tests/test_paper_repository_safety.py tests/test_run_commit.py
 ```
 
 Paper MD/Inbox authority, Keep/Import and active Enrich are retired. Current
@@ -38,7 +38,7 @@ The local origin is `http://127.0.0.1:18767`. An occupied port is an error; clos
 Pass an absolute `--config` path. The example expands `$PWD` from the project root before npm runs the Electron package script from `electron/`; a relative configuration argument would otherwise resolve under that directory.
 
 Normal exit stops admission and waits for foreground Run, all Workspace branches,
-explicit Preprint and native operations to actually settle before closing owned
+native operations to actually settle before closing owned
 connections and the shared factory/Session. Restart fails interrupted attempts
 without replaying the queue or opening pages.
 
@@ -217,7 +217,7 @@ related verification without turning every row into a requirement for every PR.
 | CI scope | `tests/test_ci_scope.py`: disposable Git histories and workflow-command outputs, including full PR/push, docs, mixed, deletion/rename and unavailable diff |
 | Paper storage / Run admission | `test_paper_repository.py`, `test_paper_repository_safety.py`, `test_run_commit.py`, `test_run_library.py`; actual temporary SQLite reopen and ownership |
 | Collection / retry / lifecycle | `test_collection_repository.py`, `test_collection_runtime.py`, `test_collection_planner.py`, `test_collection_http.py`, `test_task_clients.py`, `test_task_authority.py`; real workers with isolated transports |
-| Provider queries / HTTP | `test_necessary_metadata.py`, `test_preprint_lookup.py`, `test_integrated_discovery.py`, `test_http_client.py`, `test_provider_resilience.py`; independent clients and synthetic responses |
+| Provider queries / HTTP | `test_necessary_metadata.py`, `test_integrated_discovery.py`, `test_http_client.py`, `test_provider_resilience.py`; independent clients and synthetic responses |
 | Document extraction / PDF sources | `test_document_metadata.py`, `test_pdf_rules.py`, `test_pdf_source_facts.py`, `test_pdf_discovery.py`, `test_pdf_http.py`; serial `document-probes`, `document-extraction`, `pdf-clues` Electron tests |
 | Native IPC / resources / Solver | `test_electron_bridge_solver.py`, `test_browser_services.py`, `test_login.py`; serial `cloudflare-solver`, `session-downloads`, `page-resources`, `browser-workspaces-dom` Electron tests |
 | Download / local files | `test_body_downloads.py`, `test_body_download_http.py`, `test_native_body_downloads.py`, `test_local_body.py`; serial `body-stream`, `body-native`, `local-body`, `native-output` Electron tests |

@@ -192,10 +192,10 @@ The fixed OCE access-capability mode opens no page. Its later reader uses the
 same captured retained preparation, normal work-page quotas and exact cleanup;
 it never bootstraps a second institutional Service from LWW authority.
 
-Run, collection branches, explicit Preprint and internal read-only discovery
+Run, collection branches and internal read-only discovery
 share one Workspace occupation boundary. Only tasks that actually dispatch native
-operations acquire work pages. API-only work and unready collection intents create
-no page; scheduler capacity does not replace the physical ledger. New Runs reuse
+operations acquire work pages. API-only work creates no page; scheduler capacity
+does not replace the physical ledger. New Runs reuse
 valid retained Prepare contexts without replacing active Paper resources. Branch
 native identities and exact cleanup remain independent of the source Run and of
 the currently selected Browser/Reader page.

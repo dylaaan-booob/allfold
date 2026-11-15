@@ -1,7 +1,7 @@
 # Workspace collection runtime
 
 `WorkspaceTaskHost.current()` binds one verified Workspace lifecycle. Its registry
-owns collection attempts and manual/download reservations independently of a
+owns collection attempts and discovery/body reservations independently of a
 foreground Run. Source Run IDs are diagnostic labels and never cancellation owners.
 
 ## Foreground admission
@@ -84,31 +84,20 @@ Current fault paths can also retain occupancy after terminal-record or auxiliary
 cleanup failure; releasing already-finished work in those cases is a planned fix,
 not a requirement to preserve indefinite occupancy.
 
-Info's independent Preprint query still uses this scheduler and a per-Paper
-reservation with its own bioRxiv/medRxiv clients, connection and cancellation.
-It holds no foreground Run slot, and results do not change collection facts.
-The entry and its runtime/tests remain active now, but this standalone query is
-scheduled for retirement next. Necessary background Preprint evidence collection
-remains supported. User behavior and evidence rules belong to
-[Providers](providers.md#info-preprint-lookup).
+## Reservations and maintenance
 
-## Manual reservations and maintenance
-
-A first complete plan for a `not_started` Paper may wait behind its already
-accepted `legacy` manual reservation. Queued facts and the original host-visible
-owner block competitors. Repeated hits reuse that same intent. The exact manual
-reservation's `guard()` and original write token remain valid; adding the intent
-does not renew or revoke them. Actual release sets the scheduler readiness event.
-An unready intent owns no worker/client/page, permits later ready work in its
-Service group, and still expires/cancels normally. This is process-local intent;
-startup only fails interrupted persistent work and never replays it.
+Read-only PDF discovery uses `download` reservations; public Download uses `body`.
+Both exclude competing collection admission on that Paper. Repeated admission of
+the same reservation kind reuses its current owner. A Run match during body work
+returns the saved Paper without registering a new collection intent.
 
 Reject and whole-Workspace maintenance revoke the complete original Paper task
-and any exact manual reservation before signalling outside write locks. Service
-or Provider maintenance cancels and drains only matching unfinished branches;
+and its exact reservation before signalling outside write locks. Service or
+Provider maintenance cancels and drains only matching unfinished branches;
 independent branches continue. A captured late cancellation cannot target a later
-owner. Shutdown closes admission, drains parents and leaf branches plus manual
-reservations, then permits shared factory closure.
+owner. Shutdown closes admission and drains parents, leaf branches and actual
+reservations before shared factory closure. No standalone Preprint reservation,
+deferred collection intent or scheduler readiness gate remains.
 
 ## Explicit retry
 
@@ -142,8 +131,7 @@ and bounded scheduler. A queued attempt is persisted before dispatch and remains
 visible through lazy discovery, stream/writer, publication, completion and actual
 cleanup. Repeated clicks return the original task/attempt/deadline; durable
 collection intent and actual unsettled resources block a second writer. Read-only
-`download` discovery and manual `legacy` Preprint retain their real consumers,
-without nested admission. A Run match reuses the UUID/current facts without new
+`download` discovery retains its separate consumers, without nested admission. A Run match reuses the UUID/current facts without new
 collection intent; no foreground Run slot or reader selection owns the body.
 
 New-download qualification omits abstract generation but retains original
