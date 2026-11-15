@@ -36,10 +36,10 @@ Fallback, keys and attachment verification projection are retired.
 
 No active Enrich task or event-date UI remains. Ordinary dates and separate
 Preprint proof come from SQLite. Paper text, raw Provider responses, credentials
-and sensitive URLs stay outside diagnostics. Existing log files are not migrated
-or deleted by the cutover; retired business shapes are not revived as current UI.
+and sensitive URLs stay outside diagnostics. Existing log files remain untouched;
+retired business shapes are not revived as current UI.
 
-WF07 keeps PDF discovery separate from successful transfer provenance. Local
+PDF discovery is separate from successful transfer provenance. Local
 diagnostics report bounded source/rule/failure categories, never current signed
 URLs, Referer secrets, Cookie/Authorization, raw response bodies or DOM. Candidate
 construction and a normal HTTP response do not create a successful `pdf_source`.
@@ -192,22 +192,24 @@ Source created/existing counts overlap and must not be summed as global Paper
 counts. No request URL, response body, API key, relation identifier or arbitrary
 Provider error payload is added to persistent History diagnostics.
 
-WF03 page checks add the fixed `page_probe_unconfirmed`,
+Current page checks emit the fixed `page_probe_unconfirmed`,
 `article_identity_unconfirmed` and `article_identity_conflict` codes. Probe limits,
 missing evidence and identity conflicts remain distinct from HTTP/access failure.
+These codes describe current observations, not a requirement to preserve repeated
+page-identity checks. The reading changes are owned by [Document access](browser-documents.md).
 Internal evidence values, HTML, scripts and URL query parameters are not diagnostic
 fields. Imperva continues to emit only strictly validated `imperva_edet` and
 `imperva_incident_id`; see [controlled Documents](browser-documents.md).
 
 
-WF04 keeps configuration/User State revision fields as bounded correlation facts;
+Configuration/User State revision fields are bounded correlation facts;
 these whole-document revisions no longer by themselves revoke independent Browser
 access. Workflow/task/request IDs remain captured operation identities. Exact
 cancellation and access-context cleanup preserve unrelated owners and their
 records. Authentication/preparation keys and native Page-close events are private
 authority transport, not additional diagnostic export fields.
 
-WF04 retains fixed `invalidate_access`/`release_workflow_pages` action names and
+Native maintenance retains fixed `invalidate_access`/`release_workflow_pages` action names and
 `page_capacity`/`page_capacity_changed` failure codes. `page_admission`/`child_page`
 identify bounded capacity waits or refusals. Page-close reasons distinguish normal
 task completion, retired attempts, context replacement/eviction/invalidation and
@@ -215,7 +217,7 @@ credential cleanup. Authentication/preparation keys, private headers and page
 contents are never diagnostic fields. Closed-page history does not imply that a
 live task or prepared context still owns that Page.
 
-WF05 collection emits bounded `workflow_started`/`workflow_finished` events with
+Collection emits bounded `workflow_started`/`workflow_finished` events with
 `kind` and `stage` equal to `collection`, captured workflow/task/Workspace/Paper
 identity, attempt and durable collection state. It adds no task-history replay or
 background management UI. Source Run identity does not imply cancellation

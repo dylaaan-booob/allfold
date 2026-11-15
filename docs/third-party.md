@@ -16,12 +16,12 @@ Dependencies and assets retain their individual terms.
 - Pydoll 3.0.0: the Python adapter uses public APIs; retain its MIT notice from
   Electron NOTICE. No additional Chromium is supplied by that integration.
 
-WF02 retires Zotero Local API and attachment communication, active Enrich, the
-uncalled Translator sandbox and its generated Runtime assembly. Setup and CI no
-longer obtain or assemble those exclusive dependencies. Existing ignored vendor
-checkouts remain untouched. [upstream.lock](../electron/upstream.lock) retains
-historical source attribution for pinned sources from which retained adaptations
-were derived; it is not an active build/download dependency.
+Zotero Local API, attachment communication, active Enrich and the full Translator
+Runtime are retired. Setup/CI no longer obtain or assemble translation-only
+sources. Existing ignored vendor checkouts remain untouched.
+[upstream.lock](../electron/upstream.lock) preserves historical attribution for
+pinned sources from which retained adaptations were derived; it is not an active
+build/download dependency.
 
 BrowserRuntime, isolated Document preload/page inspection, Prepare/WoS/Login/Covers,
 Cloudflare and browser identity remain production mechanisms. Their host-owned
@@ -34,21 +34,10 @@ instructions. A lock/notice alone does not replace corresponding-source delivery
 obligations. Python's package excludes Electron/vendor trees; see
 [release preparation](release.md) before distributing combined artifacts.
 
-WF03 removes the remaining remoteTranslate-derived full-page serializer and
-translation-only frame/cookie/observer helpers. No Translator source/build input
-is restored. Bounded probes replace serialization; retained Browser/Document and
-project-owned DOM action adaptations continue under the Electron AGPL notice.
-The historical lock/other component notices remain applicable; official vendor
-files and dependency pins are unchanged.
-
-WF04 removes the unused Translator/item-saver partitioned Cookie/CDP adapter.
-Browser identity, Chromium's native shared Session, credentials and the retained
-Browser/Document/Cloudflare host notices continue unchanged in scope.
-
-WF07's [fixed discovery evidence](pdf-source-discovery.md#repositories) preserves
-all 72 rule records, 17 interface records, 142 source identifiers and the original
-per-source license/evidence limits. URL expressions and documented public fields
-are implemented independently; the catalogue does not import a Translator,
-Paperlib, pubpatterns or another download runtime. In particular, an unconfirmed
-code license is not permission to copy source. Existing host notices and pristine
-vendor trees remain applicable.
+The [PDF discovery catalogue](pdf-source-discovery.md#repositories) preserves
+R/API/S records, fixed source versions and per-source license/evidence limits.
+URL expressions and documented public fields are independently implemented; the
+catalogue imports no Translator, Paperlib, pubpatterns or other download runtime.
+An unconfirmed code license is not permission to copy source. Retained
+Browser/Document/DOM-action adaptations keep their Electron AGPL notices,
+regardless of the page-reading representation used by later implementations.

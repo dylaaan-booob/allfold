@@ -70,21 +70,18 @@ evidence for that workflow. Diagnostic packages are local downloads; sharing the
 is your choice. See [local history and
 diagnostics](docs/logging.md) for retention, privacy and evidence limits.
 
-Supported Cloudflare challenges invoke the existing Solver within their owning
-Browser operation. hCaptcha, Imperva CAPTCHA and MFA require manual verification. Controlled page
-checks return bounded observations rather than full HTML. Internal article access
-and combined Date/Abstract/PDF-clue operations confirm current-Document identity independently.
-The complete collection plan runs combined Document and necessary API/Preprint
-branches with independent clients and captured authority. Ordinary missing fields
-do not trigger generic Completion requests.
-See [Document access](docs/browser-documents.md).
+Supported Cloudflare challenges use the existing Solver; hCaptcha, Imperva CAPTCHA
+and MFA require manual verification. Current fixed Document probes support combined
+Date/Abstract/PDF-clue collection; [Document access](docs/browser-documents.md)
+records current reading limits and planned changes. Necessary API/Preprint branches
+use independent clients and captured authority. Ordinary missing fields do not
+trigger generic Completion requests.
 
-WF07 provides internal lazy PDF-source discovery and bounded, deletable source
-facts. Candidate URLs and reader entrances do not mark a Paper as Downloaded.
-WF08 connects source-fact collection to production. WF09 supplies Session transfer/files;
-WF10, merged in [PR #121](https://github.com/dylaaan-booob/allfold/pull/121), connects
-public lazy Download, original DownloadItem responses and local file management;
-see the [component scope and fixed rules](docs/pdf-source-discovery.md).
+PDF discovery follows the [P1–P5 source rules](docs/pdf-source-discovery.md).
+Candidates are not completed bodies; public Download uses the shared
+[body service](docs/body-downloads.md) for transfer, publication and local files.
+Info's standalone Preprint query still exists, but is scheduled for retirement;
+necessary background Preprint evidence collection remains. See [Providers](docs/providers.md#info-preprint-lookup).
 
 ## Local data and privacy
 

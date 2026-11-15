@@ -137,12 +137,10 @@ pages controls use these names and ranges. Inactive PDF controls remain hidden.
 Ordinary drafts, validation failures and Compare-and-Write conflicts retain their
 existing behavior.
 
-A limit update revokes unconsumed reservations. Existing physical pages are not
-forcibly closed; while their occupied slots exceed a lowered limit, new admission
-waits or fails within its parent deadline. It cannot use an old reservation to
-create above the new limit. An operation must reacquire child capacity before a
-new action when its old headroom was revoked. Normal idle cache eviction still
-applies; active work is not force-closed to enforce a lower number.
+The current implementation revokes unconsumed reservations on any limit update.
+That broad invalidation is scheduled for revision; future implementations need not
+preserve it. Existing physical pages are not force-closed. New creation still uses
+the effective capacity and actual page ownership.
 
 ## Native evidence and limits
 
@@ -152,10 +150,10 @@ Session WebContents counts at global 4/Service 3, real popup transfer surviving
 opener destruction, six temporary batches returning to Portal/target baseline,
 queued cancellation without creation, original slow-download source retention to
 actual `done`, user limit 16, and final close to zero before Session disposal.
-WF05 extends this fixture with two simultaneous same-Service Paper owners,
+The fixture also tests two simultaneous same-Service Paper owners,
 independent navigated work pages and a shared Portal pin at the same minimum
 capacity. Actual cleanup destroys A's page while B remains live, then returns to
-the retained baseline. This is native component evidence; WF08 production
+the retained baseline. This is native component evidence; production
 orchestration additionally uses this same ledger, not a per-Run page budget.
 It also calls production `prepareLoggedInService` using the same real Portal with
 changed unrelated revisions/workflow and unchanged access keys; controlled resource
@@ -163,10 +161,10 @@ search terminates explicitly while preserving that Portal.
 
 The slow source-retention case uses one same-Document `<a download>` original GET.
 A separate regression records BrowserRuntime's current main-frame form POST
-boundary: starting that navigation invalidates the captured WF03 navigation
+boundary: starting that navigation invalidates the captured navigation
 generation, so strict current-Document validation refuses the item, cancels it to
 actual terminal, writes no managed file and sends no replacement GET. This entry
-remains refused by that ordinary Document registration. WF10's separate fixed
+remains refused by that ordinary Document registration. The separate fixed
 body-action handoff supports only its qualified request/frame chain. The independent
 [shared Session fixture](browser-session.md) proves original POST and inline
 response capability at its tested Session registration seam; it does not establish
@@ -176,14 +174,14 @@ that every BrowserRuntime entry meets Document authority.
 failure, lowered limits, independent owners, exact old-key cleanup and workflow
 loans. The Document/native preload, article identity, Cloudflare and WoS regression
 fixtures remain. These isolated results do not establish real CARSI/WoS/account or
-CAPTCHA compatibility. WF05 registry, background/cross-Run collection and WF09/10
-PDF files/Download UI remain outside WF04.
+CAPTCHA compatibility. Registry, background collection and body files/UI have separate composition
+fixtures; these page tests alone do not establish those results.
 
 Normal shutdown stops admission, drains current native operations/items and closes
 owned pages before disposing the common Session entry. It does not replay work,
 resume downloads or release a solver slot before its worker actually exits.
 
-WF07 reuses these same physical quotas, prepared access pins and exact cleanup for
+PDF discovery reuses these same physical quotas, prepared access pins and exact cleanup for
 combined article metadata/PDF-clue reads and PDF-only refresh. Precollection reads
 one article work page and follows no PDF candidate. A later qualified reader uses
 its owning task and source chain, rather than a new unowned page or per-platform
@@ -194,7 +192,7 @@ The fixed OCE access-capability mode opens no page. Its later reader uses the
 same captured retained preparation, normal work-page quotas and exact cleanup;
 it never bootstraps a second institutional Service from LWW authority.
 
-WF08 Run, collection branches, explicit Preprint and internal read-only discovery
+Run, collection branches, explicit Preprint and internal read-only discovery
 share one Workspace occupation boundary. Only tasks that actually dispatch native
 operations acquire work pages. API-only work and unready collection intents create
 no page; scheduler capacity does not replace the physical ledger. New Runs reuse
@@ -203,6 +201,6 @@ native identities and exact cleanup remain independent of the source Run and of
 the currently selected Browser/Reader page.
 
 
-## WF09 internal body service
+## Body service
 
-WF09 pure Session streams reserve no blank WebContents. They retain captured Prepare pins through actual native settlement and use the existing shared host/Service admission. Reader/challenge continuations retain their existing physical page and solver limits; this internal direct-stream entry returns current bounded access/HTML results and does not install a page recovery loop. See [the complete contract](body-downloads.md).
+Pure Session streams reserve no blank WebContents. They retain captured Prepare pins through actual native settlement and use the existing shared host/Service admission. Reader/challenge continuations retain their existing physical page and solver limits; this internal direct-stream entry returns current bounded access/HTML results and does not install a page recovery loop. See [the complete contract](body-downloads.md).

@@ -6,15 +6,10 @@ or qualified original DownloadItem response,
 file publication, the SQLite completion transaction and actual cleanup. There is
 one current body per Paper and no separate save, receive or commit task.
 
-WF09 merged in [PR #116](https://github.com/dylaaan-booob/allfold/pull/116) at
-`029bc9a148170c699dbbe43f63885fc9718656e6`. WF10 merged in [PR #121](https://github.com/dylaaan-booob/allfold/pull/121) at
-`229b6fb157bf2cb8d993c2cbb3b458240a507417`, adding public Download,
-qualified original responses and local-file work from
-[WF10 #117](https://github.com/dylaaan-booob/allfold/issues/117). The accepted native
-boundary below permits Chromium's measured cancellation limitation; it does not
-claim that limitation is fixed. A fixed current-form or ScienceDirect action
-retains its original method/body and Session. It never emulates POST or one-time
-responses with a GET. Reusable URLs keep the existing Session stream consumer.
+A fixed current-form or ScienceDirect action retains its original method/body and
+Session. It does not emulate POST or one-time responses with a GET. Reusable URLs
+use the Session stream consumer. Original output retains the measured
+[native cancellation limitation](#native-output-and-accepted-cancellation-risk).
 
 ## Public input and admission
 
@@ -42,6 +37,11 @@ read-only reservation inside its body owner. A matching new Run reuses the UUID
 and current facts without registering collection intent that revokes the body
 attempt. Foreground Run cancellation and reader selection do not own the body.
 
+Current new-download admission resolves the saved Service's Prepare access before
+source discovery. Whether Prepare should gate the whole Download remains
+unresolved; this guide does not prescribe a replacement policy or make the current
+gate permanent. Existing local bodies do not need Prepare.
+
 The captured Workspace root/UUID/lifecycle, direct identity closure and
 metadata/operation/body generations stay authoritative through completion.
 Reject invalidates the original token before exact cancellation outside write
@@ -61,15 +61,13 @@ spelling, multiple DOI path segments, signatures and necessary Referer.
 remaining parent budget. P1 templates precede conditional P2 identifiers/APIs,
 P3 Meta, current P4 entries and finally exact-target OpenAlex P5 candidates.
 P1 success makes later queries/pages zero. Saved P3/P4 facts do not reorder it.
-The complete [fixed catalogue and applicability](pdf-source-discovery.md) remain
-unchanged. Conditional interfaces are skipped when their actual prerequisites
+The [source catalogue](pdf-source-discovery.md) owns rule applicability. Conditional interfaces are skipped when their actual prerequisites
 are absent; no publisher-key settings product or generic header capability is
 added.
 
 Python may perform bounded API/JSON/HTML discovery reads, but the selected
 Chromium Session receives the first actual reusable PDF request. It does not
-follow an HTTPX PDF GET/HEAD probe. PDF-only Document refresh retains existing
-identity/access/solver, physical-page and cleanup checks and never recollects
+follow an HTTPX PDF GET/HEAD probe. PDF-only refresh uses [Document access](browser-documents.md) and never recollects
 completed Date/Abstract. Known IEEE reader, Oxford same-filename Silverchair CDN
 and ScienceDirect same-PII response/reader rules keep their narrow qualifications.
 Unknown pages are not a crawler, and login/identity/access refusals are not empty
@@ -121,27 +119,13 @@ return to the same source coordinator after that output has settled.
 
 ## Native output and accepted cancellation risk
 
-The fixed R059 form may live in the article navigation toolbar. Its exact
-`.download-pdf form.ft-download-content__form--pdf[action]` selector remains
-qualified there; related, reference, supplementary and foreign-identity controls
-stay excluded. The action still uses the unique current form and its original fields.
-Its original POST may return one observed 303 from `/deliver/fulltext/...` to
-the same origin's `/docserver/fulltext/...` with the identical pathname suffix.
-Only the response's exact Location GET on the same native request and frame is
-accepted; another origin/path, a new request or a further redirect gains no authority.
-
-ScienceDirect's original `/pdfft` or `/pdf` response may be an HTML reader that
-navigates its same-PII reader entry once, then navigates itself to the same PII's
-`pdf.sciencedirectassets.com/.../main.pdf` once.
-The fixed CDN DNS preflight gates that one continuation; a failed check disables
-CDN handoff while allowing the original endpoint to return its PDF directly.
-The handoff binds the committed HTML response, its actual native initiator,
-destination FrameTreeNode and exact next GET. `did-start-navigation` can retire
-the superseded read probe but grants no request authority; `will-frame-navigate`
-must qualify the handoff before registration and the actual request. No response
-is copied or replayed. A second reader refresh or CDN continuation, another PII/source, static access
-challenge or ordinary unrelated HTML remains refused. The original deadline,
-owner, output, progress and actual-item terminal still govern completion.
+The R059 form selector can identify a download in the article navigation toolbar;
+related, reference, supplementary and foreign-identity controls stay excluded.
+The current form uses its original fields. Its observed POST→303→PDF path and
+ScienceDirect's same-PII reader/CDN path are supported through native request/frame
+handoff. Destination checks and scoped headers preserve the original response;
+no response is copied or replayed. These platform paths are narrow current
+implementations, not general permission to follow unrelated requests.
 
 `native_paper_body` uses a separate fixed action capability in Main/BrowserRuntime
 and the isolated Document preload. It opens and verifies the current article,
@@ -157,10 +141,9 @@ navigation initiator; creating a child alone grants no download registration. An
 popup registers before its first PDF response; child pages use the same physical
 quotas. The scoped attachment override changes only the qualified navigation's
 headers and retains its response body. Read-only probes stay read-only, and
-ordinary Document registrations still refuse unrelated navigation. During the
-original item, unrelated child-frame navigation has no file authority and does
-not revoke that item; replacing its action frame, request or source Document
-still invalidates the attempt.
+unrelated frame activity has no file authority. The current action-frame/source-
+Document invalidation behavior is one of the limitations below; an already-bound
+item need not inherit incidental page changes as a permanent cancellation rule.
 
 The unique Session listener synchronously sets the managed save path, reports
 bounded progress and waits for actual DownloadItem terminal. Interrupted updates
@@ -194,9 +177,8 @@ does not carry the stream writer's close guarantee. Unique attempt paths prevent
 ordinary retries from reusing the old pathname, but cannot guarantee a manually
 or externally installed replacement survives.
 
-This measured race is an accepted WF10 risk. Once disclosed, it blocks neither
-acceptance nor WF10 task completion; eliminating it is not a passing criterion. It
-does not grant arbitrary file access, weaken final publication or relax local
+This measured race remains an accepted native-output limitation. It does not
+grant arbitrary file access, weaken final publication or relax local
 open/locate/Trash safeguards. No occurrence rate in ordinary use or general
 website ability to delete arbitrary user files has been established. Keep other
 programs from editing `.downloads` during an active transfer. Real `/dev/fd` sink
@@ -222,9 +204,8 @@ object is restored without overwrite. Directory/target replacement in these
 application operations preserves unknown objects and fails the operation.
 Chromium's separate cancellation cleanup has the accepted exception above.
 
-After successful transport/writer settlement, `complete_attempt` checks original
-authority, publishes the output, checks authority/final inode again, then uses
-one short `complete_download` transaction for the body, successful provenance,
+After transport/writer settlement, `complete_attempt` publishes the output and
+uses one short `complete_download` transaction for the body, successful provenance,
 completed status and revision. Network and long file work occur outside SQLite
 write transactions. Duplicate terminal delivery is idempotent.
 `complete_body` remains a logical repository fixture constructor and authorizes
@@ -290,11 +271,27 @@ unknown/corrupt libraries and Paper Markdown compatibility remain refused.
 Older binaries reject v5; real upgrades require a stopped-application backup.
 
 Startup normalizes interrupted old attempts without queue/network/action replay;
-completed bodies remain. Unconfirmed writer/native cleanup conservatively keeps
-occupancy. Once resources are closed, a known scoped fragment deletion failure
-can persist finite output facts while freeing idle capacity. Explicit retry
-must settle those facts before another request. There is no orphan scan,
-filename-based ownership recovery, persistent replay queue or resume engine.
+completed bodies remain. Recorded owned fragments can be disposed before an
+explicit retry. There is no orphan scan, filename-based ownership recovery,
+persistent replay queue or resume engine.
+
+### Current limitations and follow-up
+
+Current code can stop all sources on a candidate access refusal; response readers
+still enforce exact PDF MIME, a 256 KiB HTML ceiling and a 30-second Retry-After
+ceiling. Native handoff and discovery also have fixed continuation/count/length
+limits. These are not permanent source requirements. Follow-up changes will
+separate candidate-local access failure from task cancellation and reassess limits
+against actual needs, while preserving request/target and credential association.
+
+Current completion/local-file paths still repeat qualification, deadline or file
+checks after successful work. Fault paths can retain Paper occupancy after
+terminal-record or auxiliary cleanup errors. The agreed follow-up preserves
+successful transport/open/locate and releases finished work despite those
+auxiliary failures; it adds no local completion phase, state or extra deadline.
+Actual unfinished I/O, protected file publication and database association remain
+separate obligations. None of these production changes is implemented by this
+document cleanup.
 
 Tests use isolated real host/SQLite/files, authenticated production bridge/Main,
 temporary-profile Electron, controlled HTTP and shell adapters. Public stream,
@@ -304,13 +301,16 @@ publishers/institution sessions/proxies/CDNs and manual challenges require
 separate acceptance and task-specific authorization. Latest PR CI and remaining
 unverified effects are reported in the PR; neither old live samples nor a PDF
 viewer display establish success of the current public path.
+[PR #107](https://github.com/dylaaan-booob/allfold/pull/107) found Optica clues but
+received Radware HTML for its candidates, without successful PDF-transfer evidence.
+That historical access result does not establish the current site's behavior.
 
 ## Scoped manual acceptance
 
 Use a disposable configuration and Workspace containing only test Papers. Start
 from the reviewed PR version and a settled collection; reuse an available access
 session where needed rather than retesting institution Login or Prepare itself.
-These checks cover effects changed by WF10 that isolated fixtures cannot prove:
+Choose from these effects when a change needs evidence beyond isolated fixtures:
 
 | Affected area | Minimal human check and expected result |
 | --- | --- |
@@ -323,4 +323,4 @@ Path/object replacement races, frame/IPC forgery, page quotas, schema forward
 changes, SQLite failures and maintenance interleavings belong to isolated
 automated tests. Do not manually replace active temporary files to reproduce the
 accepted deletion race. No blanket Login/CARSI, WoS Run, Zotero, Settings, Journal,
-Cover, installer or all-workspace navigation acceptance is required for WF10.
+Cover, installer or all-workspace navigation acceptance is implied by a body change.

@@ -89,7 +89,7 @@ actual counts. History remains independent of Workspace snapshots.
 The SQLite Paper library is the only persisted literature object. Run creates
 new Papers, preserves existing full records and can rebuild only an unexcluded
 identity-only record hit by the current Run. No standalone Evidence file is written. Provider records
-are temporary normalization/query/date inputs. WF06 can hand off explicitly
+are temporary normalization/query/date inputs. Run can hand off explicitly
 verified immutable capability facts to the Workspace task; it never transfers a
 Run client, mutable cache, snapshot or replay callback. There is no permanent
 response archive or background sync.
@@ -192,6 +192,10 @@ results, and normal empty work can complete.
 
 ## Info preprint lookup
 
+This standalone Info operation still exists and its runtime/tests remain active.
+It is scheduled for retirement in the next implementation stage. Necessary
+background Preprint relationship and first-version evidence collection remains.
+
 Open **Info** in ARRAY and start a lookup for the current Paper's formal DOI. Each server is queried through `/pubs/{server}/{published_doi}/na/json`. Exact publication-to-preprint matches lead to `/details/{server}/{preprint_doi}/na/json` for native version dates. The relation and server-specific response establish the platform.
 
 A successful lookup appends deduplicated preprint evidence to the selected Paper. Verified first-version evidence can fill an empty First public. A later version can be saved as evidence while First public stays empty. Existing First public, primary identifiers, bibliography, notes and workflow state are protected. No match, failure and cancellation each have their own outcome and leave the Paper untouched. The commit rechecks original metadata/operation generations, narrow Provider authority, Workspace/database identity and cancellation. No Enrich or Markdown helper owns this write. See [Safety](safety.md).
@@ -206,16 +210,17 @@ new manual clicks do not queue automatically.
 
 ## HTTP and Browser boundary
 
-Run, Info preprint lookup and standalone OpenAlex share the [Provider HTTP policy](http.md#journal-run-and-native-preprint-apis). Recoverable connection failures and temporary HTTP responses can show **Retrying**. An active dependency cooldown can show **Waiting**. Retry-After is enforced across clients for the same origin and authentication context. A request whose remaining budget is shorter ends while the cooldown stays active. Recognized verification pages stop that Provider client. Unexpected HTML and invalid envelopes report failures. Only an adapter-confirmed exact no-match is empty; raw service 404 is a failure. arXiv uses three-second pacing, and bioRxiv and medRxiv share their API host pacing.
+Run, Info preprint lookup and standalone OpenAlex share the [Provider HTTP policy](http.md#journal-run-and-native-preprint-apis). Recoverable connection failures and temporary HTTP responses can show **Retrying**. An active dependency cooldown can show **Waiting**. Retry-After is enforced across clients for the same origin and authentication context. A request whose remaining budget is shorter ends while the cooldown stays active. Current verification-page classification can stop that Provider client; narrowing
+weak-marker detection and local-failure propagation is follow-up work, not a
+requirement to preserve client-wide failure. Unexpected HTML and invalid envelopes report failures. Only an adapter-confirmed exact no-match is empty; raw service 404 is a failure. arXiv uses three-second pacing, and bioRxiv and medRxiv share their API host pacing.
 
 Keep/Import and active Enrich have no UI, HTTP or native dispatch path. Their
 Local API, attachment communication, Translator sandbox and generated Runtime
 assembly are retired. Prepare, WoS, Login, Browser/Document identity and
 Cloudflare remain in production. Native background pages retain a nonzero layout
-viewport without selecting or focusing them. WF06 supplies internal Date/Abstract
-components; WF07 adds separate same-Document PDF clues and source discovery.
-WF08 installs production collection; PDF transmission, files and public Download
-remain deferred to WF09/WF10.
+viewport without selecting or focusing them. Production collection combines
+Date/Abstract, PDF clues and necessary APIs. Public Download already uses shared
+Session/original-response transfer and local-file services; see [body downloads](body-downloads.md).
 
 An Imperva response with the Incapsula incident marker and a single CAPTCHA code (`edet=12`) waits for the user to complete verification in Browser. The existing task resumes when the article loads in the same tab. The Cloudflare Solver is skipped for this challenge. Other recognized Imperva denials are reported as restricted access, including when they return HTTP 200.
 
@@ -223,7 +228,8 @@ An Imperva response with the Incapsula incident marker and a single CAPTCHA code
 
 Old per-Paper Markdown and obsolete Evidence directories are no longer read,
 created or migrated. Existing files are preserved. An uninitialized Workspace
-returns an explicit empty view; the first Run initializes SQLite. Paper libraries use only the current format; old-data upgrades and compatibility are not provided.
+returns an explicit empty view; the first Run initializes SQLite. Paper libraries use schema v5 with the supported v4/v3 forward changes described
+in [Paper library](paper-library.md); retired and unknown formats remain refused.
 Corrupt and unknown libraries report errors and are never cleared automatically.
 Workspace Reset is an explicit whole-directory deletion, including SQLite,
 exclusions and Documents; Logs Reset keeps all of them. Configuration, UserState,
@@ -239,7 +245,7 @@ originally qualified released placeholder can be rebuilt with its UUID. A manual
 query may hold an accepted first-collection intent until real release. Neither
 startup nor later Runs scan the library to fill gaps or replay work.
 
-WF07 projects exact-target OpenAlex/Crossref response facts before ordinary
+Collection projects exact-target OpenAlex/Crossref response facts before ordinary
 source normalization loses PDF-versus-landing categories, best-first order or
 response completeness. The existing `records` path carries them into Run saves
 and necessary-query increments without new Run requests or a changed creation
@@ -251,7 +257,7 @@ their applicable stage. Optional publisher interfaces have separate access
 conditions and do not extend Run's Provider enumeration or credential UI. See
 the [complete rule/API adoption catalogue](pdf-source-discovery.md#rule-catalog).
 
-Use isolated HTTP/SQLite and rendered Electron fixtures for the cutover. Their
+Select isolated HTTP/SQLite and rendered Electron fixtures for the changed behavior. Their
 coverage includes native-version proof, unresolved/no-match/failure cases, dates,
 identity conflicts, cancellation and safe commits. Real Provider, WoS, CARSI and
 other authenticated service behavior requires separately scoped acceptance; old

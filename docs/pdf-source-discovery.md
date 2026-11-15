@@ -1,28 +1,23 @@
-# WF07 PDF source discovery — adopted specification and fixed evidence
+# PDF source discovery — rules and fixed evidence
 
-Baseline: `c641ea371c111f45b7d42013df3a0eb6c1d80ac3`; spec [#102](https://github.com/dylaaan-booob/allfold/issues/102), tickets [#103](https://github.com/dylaaan-booob/allfold/issues/103), [#104](https://github.com/dylaaan-booob/allfold/issues/104), [#105](https://github.com/dylaaan-booob/allfold/issues/105), [#106](https://github.com/dylaaan-booob/allfold/issues/106), [#108](https://github.com/dylaaan-booob/allfold/issues/108).
+The current P1–P5 coordinator serves public Download. Workspace collection saves
+reusable page/API clues; PDF-only refresh does not restart completed metadata
+collection. Transfer, original DownloadItem responses, file publication and local
+body operations are described in [body downloads](body-downloads.md).
 
-The following records the adopted WF07 request with the current storage policy and historical fixed research. Acceptance requirements describe required behavior, not test results. The original research observations retain their original evidence strength. Transfer, files, production registration and public Download remain outside WF07. Current implementation and executed fixture evidence are documented in the owning module guides and PR.
-
-WF07 merged in PR #107 at `4d0d22bbda02d9fc173175fa8346813752e84204`.
-WF08 connects same-Document clues and necessary-response facts to production
-collection. WF09 merged in PR #116 and supplies Session/file/SQLite completion;
-the public body service (merged in PR #121) runs the existing lazy coordinator inside a public body
-owner and adds local body management. Qualified current-form/ScienceDirect entries
-consume their original DownloadItem response under the same owner, subject to the
-documented [native cancellation limitation](body-downloads.md#native-output-and-accepted-cancellation-risk).
-This current note supersedes only adoption status, not
-the fixed R001–R072/API01–API17/S001–S142 numbering or conditions below.
-The original request and R/API/S evidence below retain their WF07 scope and numbering.
+This document owns source order, platform/input conditions and the R/API/S
+catalogue. Fixed external observations retain their original dates and evidence
+limits; they are not current Allfold live-test results. Task, page and transfer
+policy belongs to the linked module guides, not the historical research process.
 
 ## Component entry points
 
 | Entry | Responsibility |
 | --- | --- |
-| `document_metadata_branch()` / `collect_document_metadata()` | One captured collection branch reads independent Date/Abstract and PDF clues in the same verified Document, emits one increment, and settles partial failure explicitly. |
+| `document_metadata_branch()` / `collect_document_metadata()` | One captured collection branch reads independent Date/Abstract and PDF clues in the same current Document, emits one increment, and settles partial failure explicitly. |
 | `read_document_pdf_clues(context, ...)` | PDF-only article/qualified-reader refresh; returns current candidates and separately persistable facts without emitting or restarting collection. |
 | `iter_p1_candidates()` / `iter_p2_candidates()` | Pure Host/type/input-qualified lazy rules; no requests or completion claims. |
-| `PdfDiscovery(...).run(consume)` | P1–P5 coordination with downstream `CandidateResult` feedback, source/fallback semantics and finite guard/cancel/deadline budgets. |
+| `PdfDiscovery(...).run(consume)` | P1–P5 coordination with downstream `CandidateResult` feedback, source/fallback semantics and captured cancellation/authority. |
 | `PdfHttpClient` / `PdfDiscoveryIO` | Independent paced HTTP, bounded current response/API parsing and optional fixed native reads; no temporary downloader. |
 | `submit_pdf_discovery(host, paper, target=..., ...)` | Internal read-only task using captured Paper/Workspace/access qualification, existing reservation/scheduler and actual resource settlement. Completed collection remains unchanged. |
 
@@ -47,260 +42,28 @@ the discovery HTTP client does not read its body or claim transfer. A local
 failure ends the task. Current signed URLs/Referer stay operation-local; stored
 facts contain stable fields or explicit refresh locators. Same-reader parsing
 keeps its original discovery phase and ordinary redirects/retries are not
-fallbacks. The default component limits are 48 operations, six reader hops and
-one same-candidate retry, all subordinate to the captured parent deadline.
+fallbacks. Current implementation limits and response handling are not additional
+source-rule requirements; see [body downloads](body-downloads.md).
 
 Python discovery HTTP validates each actual request/redirect and checks resolved
 addresses before dispatch. This is a DNS preflight, not transport-level address
 pinning: OS/proxy resolution may occur again. Native fixed-reader navigation has
 its own per-hop static public-URL gate and does not claim DNS resolution coverage.
 Neither check expands Prepare/institution navigation or forwards credentials to
-an arbitrary next hop. Real platforms/accounts and original POST/one-time
-response transfer remain separate acceptance boundaries.
+an arbitrary next hop. Real platform/account compatibility requires separately scoped acceptance.
 
-请在本地 Allfold 仓库（GitHub：`dylaaan-booob/allfold`）完成以下开发任务。
-
-## 需求
-
-### 0. 本次任务、基线与阶段边界
-
-只执行 **WF07：P1–P5 PDF 来源发现、同页 PDF 线索读取与小型来源事实持久化**。WF06 已由 [PR #101](https://github.com/dylaaan-booob/allfold/pull/101) 合并；本 Prompt 核查的 main 为 `c641ea371c111f45b7d42013df3a0eb6c1d80ac3`。开始时获取最新 `origin/main`，核对新增变更。Spec、Tickets、分支和最终唯一一张 PR 均限于 WF07。
-
-已具备的基础是 WF03–04 的文章 Document 身份、Prepare、共享 Session、页面额度、统一事件与 Cloudflare，以及 WF05–06 的捕获任务资格、真实清理、SQLite 增量合并、完整 Date/Abstract 和必要 API/Preprint 服务。复用这些实际接口，保留其取消、代次和用户编辑保护。
-
-本次交付两项可调用能力：一是同一有效文章 Document 中的 Date/Abstract 与独立 PDF 线索组合采集；二是供以后 Download 调用的完整、惰性 P1–P5 发现与有限解析服务。接通既有检索/必要请求响应到小型来源事实的保存，但不增加当前 Run 的网络请求、不改变创建/完成时点或单 Run slot，不登记生产后台采集。
-
-WF08 负责生产后台登记、同 Paper 分支并行、跨 Run、显式采集重试及全组完成；WF09/10 负责字节接收、原 DownloadItem、正文文件和公开 Download。**本次不开放下载、不写正文 PDF、不设置 BodyReference 或 Downloaded，不把真实 Paper 提前标成新的全组采集 completed。** 隔离组件计划可完成自身完整的测试生命周期。
-
-### 1. 已确认规格与完整材料的使用
-
-本文件的外部研究依据部分完整嵌入整合稿的**附录 F、A–D**，包含 F1–F11、T01–T24、R001–R072、API01–API17、仓库版本/许可和 S001–S142。它们是本任务随附的完整规格与证据，不要求再寻找 Project 附件或重新研究平台机制。
-
-- 附录 F 的行为规则与附录 A 的本规格采用栏共同决定实现范围。参考项目的原始流程、下载验证、附件模型和调用顺序不覆盖 Allfold 的决定。
-- 72 条是采用目录，包含默认、条件、扩展/待核和历史禁用；17 项是接口资料，包含可用、条件性和明确不作为 PDF 的服务。不能将目录全部注册为默认能力或在失败后逐一盲试。
-- 保留全部稳定编号、适用条件、固定源码链接、证据等级及许可记录。将本次生效的规则与条件维护为可测试的轻量目录；历史材料可保存在文档，不要求生成无调用价值的执行函数。
-- R021 的 T&F eBooks、R027 的 MDPI CDN 推导不进入本版默认链；R062–R072 的历史转换不进入默认或失败候选池。历史转换禁用不等于封锁其 Host 上独立合格的通用 PDF Meta。
-- R009、R012、R013、R019、R026、R049、R050、R060 等专门条件随规则保存；R040 采用当前页面明确入口，不凭迁移信息猜新路径。
-- 附录中的历史研究时间、源码验证和样本结果沿用原证据强度。它们不是本次执行结果；其中正文第九/十四节及真实下载成功的跨阶段引用，在本任务仅落实发现接口和结果协议，实际传输及永久保存留到 WF09/10。
-
-完整 Date/Abstract 算法已在 WF06 落地，本次只扩展组合边界，不重新选择或改写算法。
-
-### 2. 惰性 P1–P5 协调与候选结果协议
-
-实现确定性的规则选择与逐个候选消费，至少区分以下阶段：
-
-| 阶段 | 行为及顺序 |
-| --- | --- |
-| P1 | 已确认内容 Platform/Host、类型和 DOI 对应的直接模板。 |
-| P2 | 已有内部 ID、已知 PDF URL、已有文章 URL 转换；确有缺项才进行 Handle、Crossref 或条件性官方接口查询。 |
-| P3 | 当前目标文章的 `citation_pdf_url`，随后 `fulltext_pdf_url`；同字段保序去空、去重。 |
-| P4 | 匹配平台的明确选择器、已知页面状态/阅读器，再使用无歧义正文 PDF 通用入口。 |
-| P5 | 精确目标 Work 的既有 OpenAlex PDF 候选回退。 |
-
-预采集 P3/P4 线索可以先存在，实际消费顺序仍为 P1→P5。初始化发现器不得提前并行请求所有 P2 接口、打开文章页或查询 P5。条件不满足直接跳过；已有 ID/响应足够就停止补查，Handle→Crossref→平台 API 不是固定流水线。已有 Platform 不要求每篇再 DOI Resolution。
-
-候选至少携带 URL 或固定动作/阅读器类型、来源阶段、规则编号、目标 Platform，以及确有必要的上下文和原目标绑定。构造成功、HTTP 200、PDF Meta、文件扩展名或阅读器 URL 均只是候选。不得用一个只返回 URL 列表且无法接收结果的函数冒充完整协调器。
-
-提供可与后续传输层组合的有限结果协议，语义至少覆盖：
-
-- 当前候选失败或无合格结果：在预算内尝试下一适用候选。
-- 当前响应是已知中间页/支持的数据格式：利用这次响应或其有效 Document 就地解析，保留原发现阶段。
-- 当前响应/Chromium 类型为 PDF 且传输正常结束：立即停止后续发现。
-- 取消、捕获资格失效、总期限结束：终止，不再派发新请求。
-- 磁盘、权限、落位、数据库关联等本地失败：终止整个任务，不以换网络来源解决。
-
-WF07 以受控传输结果或当前响应 fixture 验证停止/回退协议，不为测试而实现一套临时 downloader。正常传输已完成后也不因后续本地失败重新找来源；用户最终 completed 仍留给完整下载服务裁决。
-
-保留 `pdf_source` 与 `fallback_used` 语义。最终来源仅在传输确认后有值；中间页继承原发现方式。条件跳过、首次 ID 查询、普通重定向、同一阅读器链和同候选有限重试不算回退；某条已实际尝试的路径失败后改试另一候选或来源才算。没有结果时不能把最后发现的 URL 写成成功来源。
-
-### 3. 同一有效 Document 组合读取与 PDF-only 再取页
-
-当前 `extract_paper_metadata → extractPaperMetadata → extract` 已真实接通；metadata 严格只有 dates/abstract，返回的 document envelope 没有 landing URL。新增独立、有界 PDF clues 契约，不把规则、URL、ID 或 HTML 塞进 Date/Abstract 子结果。
-
-在同一次 native 操作、同一工作页、同一有效 Document 内，分别调用既有 Date/Abstract 和 PDF 线索读取。两者完成后统一做最后的 binding、subject 与文章身份复核，再释放工作页。不要另登记一个会再次打开文章页的 PDF 采集分支。具体固定 action/模式和模块拆分由本地实现决定，同步贯通 Main、BrowserRuntime、DocumentRuntime、隔离 preload、Bridge 和 Python validator。
-
-PDF 小型结果应包括真实最终 landing URL、采集时间、平台及受支持内容类型、必要内部 ID、按来源/规则分类的稳定候选或刷新定位事实，以及必要的非秘密请求上下文。页面句柄、Cookie、Authorization、一次性 body、完整 HTML、任意脚本与原始 DOM 不作为持久结果。
-
-遵守以下边界：
-
-- 预采集只读目标页信息，不跟进 PDF URL、不点击下载、不提交表单、不额外 HEAD/GET 探测，也不为了填满发现链运行 P2/P5。
-- PDF 合法空结果是正常完成；PDF 局部解析失败可保留成功 Date/Abstract，但必须有有限诊断和正确分支结算。反向也要保留同一有效 Document 中已成功的独立线索。不能把失败伪装为空成功。
-- Document、主体或文章身份在最终复核前失效时，该 Document 的全部本次输出作废。相同 URL 不等于相同 Document。
-- 最终活页复核成功后的正常关闭不追溯否定可信 DTO。Python 再校验原 Workspace/Paper/attempt，不重新访问已关页。
-- 当前 `collect_document_metadata` 固定 `sequence=1` 并通过 emit 后的 partial 状态结算；扩展组合时协调序号与独立结果，不重复 emit/return 同一增量。
-- 为之后动态 PDF 入口更新准备独立 PDF-only 取页/读取能力。它不调用 Date/Abstract、不重开已完成 collection，也不因新入口缺信息改写完成事实。真实动作执行和原响应接管留到 WF10。
-- 页面动作、POST、一次性响应只保留明确的动作种类、规则和重新取得条件，不能降成稍后机械 GET 的永久 URL；不能根据 form 外观推断 POST。
-
-WF06 的读取在 isolated world 999 内，不能假定直接可见网站主世界变量。ScienceDirect `article.pdfDownload.urlMetadata`、LWW `pdfDownloadDetails.pdfUrl` 等只从对应已知载体提取有界字段，或通过固定只读能力读取。禁止恢复整页 HTML snapshot、执行网页提供的 JavaScript、遍历任意对象图或开放任意 evaluator/selector。
-
-### 4. 来源事实的真实数据通路与 SQLite
-
-当前 `PaperMetadata/MetadataDelta` 没有 PDF clues；`BodyReference` 表示已经完成的正文关联，不是候选缓存。新增最小、有界、类型明确的 discovery facts，并接入现有短事务与字段/attempt 资格，具体表或字段由 Codex 决定。
-
-必须补齐已核查的数据丢失点：
-
-1. `normalize_openalex` 目前把 landing URL 和 pdf_url 混入 MetadataSource，丢失字段类别、best 优先及响应完整性；`canonicalize._deduplicate_sources` 及保存链并不把完整 locations 保留下来。
-2. 在已有已核 OpenAlex 响应被降维前，提取精确 Work/DOI 绑定、`best_oa_location.pdf_url` 与 `locations[].pdf_url` 的必要顺序事实，区分 PDF 与 landing，保留 capability/完整性。不能据普通 `metadata.sources` 推断已有完整 P5 缓存。
-3. 在已有 Crossref 目标响应的 `alternative-id`、资源 URL、`link[]` 被丢弃前提取规则实际需要的有限事实。JSON/JATS 或关联作品不能伪装为目标 PDF。
-4. 通过实际 `ProviderWorkEvidence` 或等价受限数据结构、`metadata_from_run(paper, records=...)` 和 `necessary_metadata._increment` 接入基础 Paper/统一增量保存。当前 records 参数已贯通，保持当前 Run 的请求集合、身份归并、创建和完成时点，不新增后台登记。
-5. 只采用已确认属于本 Paper 直接身份闭包的响应事实；独立关联 Preprint 记录不能因 relation 就成为正式目标 Work。目标 Work 自身 locations 中的合法仓储/Preprint 版本 PDF 仍是 P5 候选，不增加版本筛选。
-
-完整而无候选、未查、部分响应和失败要有可区分的事实；不是空 URL 列表就认定查完。当前 Paper 尚未采集相应 capability 时保持未知，不自动重采或补 API。已有可复用、capability 足够的响应优先使用，P5 未到达时不为了填缓存增加请求。
-
-稳定 landing、内部 ID、规则/来源、采集时间及重取定位信息属于可删除的 metadata 载荷。临时签名不能成为长期模板；当前候选需要时保持其原始参数和必要 Referer，过期或上下文不足时按 PDF-only 路径重取，不用删参数方式假造稳定 URL。长期数据不保存可重放的会话、密钥或活页面对象，公开 Workspace/诊断投影不泄露敏感上下文。
-
-增量合并保留不同阶段顺序、去重和明确归属，不用空/partial 覆盖另一条已核有效事实，不累积每次 attempt 的无限历史。原 captured token、sequence 幂等、Reject→Restore、metadata generation、Reset 和退出边界继续生效。metadata 清除同时删除其完整 discovery 载荷，不残留在仅身份排除记录中；已有正文关联按现有独立语义保留。
-
-只支持当前 Paper 数据格式，不提供旧库升级、旧载荷兼容或旧数据验收；验收使用新建数据。旧数据可以删除后重建，不引入 Markdown 迁移。
-
-### 5. P2 条件性解析与接口接入
-
-按完整附录实现各自输入、Host、类型、访问和编码条件。重点保留以下会改变正确性的边界：
-
-- ScienceDirect PII 来自可信已有字段、明确 /pii/ 路径或合格 alternative-id，按已定形状检查；Cell 的有标点 PII 不套用 ScienceDirect 的清理。直接 scidir-pdf 链接可使用，不强制绕回 DOI→PII。
-- IEEE 使用真实 article_number/arnumber，getPDF 在前，失败后才 stamp；不猜 DOI 尾号。已知编号时不重复查询。
-- OUP resourceId 必须有规范路径/已知字段/引用入口依据，Citation 的 BibTeX eprint 仅在该 Host/类型条件使用；不推广到 ACS/JAMA 等全部 Silverchair。
-- JSTOR stable ID 允许 DOI-like 多级路径；不把 TDM UUID 代入。acceptTC 参数不是自动同意条款的授权。
-- SPIE 明确区分期刊和会议；类型未知不双试。Nature 只保留有限已有 URL 转换；MDPI 默认 Meta；ACS 当前 Silverchair；Springer reference 变体有既定限定。
-- Microbiology 读取明确 form action，不默认 POST；Emerald 的引用导出 XSRF 不能变成所有 PDF 请求必需 Header；LWW viewer Referer 条件不推广全站。
-- JMLR/PMLR 仅利用已有 URL/ID，不新增无 DOI 发现流程；默认不扩展图书、章节或 supplement。
-
-官方 API 依附录 B 逐项处置。缺少额外凭据或访问条件时跳过相应可选接口，不阻塞普通网页模板，也不强加新账号/密钥管理界面。IEEE fulltext、Springer JATS/XML、JSTOR OCR 不因服务名变成 PDF。API01/02 的查询也必须按缺项执行和复用已有响应。
-
-当前 `BranchSpec.providers/TaskAuthority/AttemptClients` 只接受已有 metadata Provider，凭据入口也不覆盖所有出版平台。为实际需要的发现 HTTP 能力建立最小的任务作用域接入，复用独立 client、共享 pacing/cooldown、捕获授权和父期限；不能把任意新平台字符串塞入旧枚举，也不扩大 Run provider_order。无可用凭据来源的接口如实保持不适用，接口目录不能成为新增 17 个默认客户端的理由。可用条件接口的输入/响应解析用受控凭据 fixture 验证，真实外部访问仍按授权处理。
-
-### 6. P5 OpenAlex 的当前接入与历史算法迁移
-
-当前主干已经没有 `application/import_openalex.py`；不能要求修改不存在的文件或恢复旧 Import 工作流。保留的 `OpenAlexClient.get_work_by_doi()` 可作为精确查询能力，但尚没有新 PDF 候选协调器。
-
-从固定历史 [import_openalex.py](https://github.com/dylaaan-booob/allfold/blob/c82b2cec29b36726c2710100c38378fad56cae9a/src/allfold/application/import_openalex.py) 的 `lookup_pdf_candidates` 提取独立算法，重新接入新服务：
-
-- 规范化目标 DOI 并精确核对返回 Work 的 DOI。
-- `best_oa_location.pdf_url → locations[].pdf_url`，保序去重，保留原有最多 4 个合格候选边界。
-- 只接受合格公开 HTTP(S) PDF 字段；不把 landing 页面当直接 PDF，不使用 OpenAlex 自托管下载服务；沿用有依据的 fragment 处理，保留路径大小写及查询参数。
-- 已有经核实且 capability 完整的目标 Work 事实优先复用；只有真正进入 P5 且信息不足时才精确查询。不增加标题模糊检索、Unpaywall、Semantic Scholar 或版本比较。
-- 区分 404/no match、401/403 授权、402 quota、有限可恢复来源错误、取消和到期。候选为空不等于下载成功。
-
-特别修正实际错误传播：当前 `OpenAlexClient._request_json()` 会把 `DiscoveryError` 子类的取消/预算错误包装为默认 recoverable `OpenAlexRequestError`；历史 helper 又把它降为 lookup_failed。新路径必须保留取消、资格失效与父期限的终止语义，不能把这些错误变成下一候选或下一来源回退。修改共享 client 时保留其现有期刊来源查询调用者和错误契约。
-
-只迁移算法及必要请求语义，不带回 Zotero parent item、旧 Import callback、exported/kept、附件接收检查或旧成功状态。清理 OpenAlex 文档和 docstring 中仍使用 Import 描述的遗留文字。
-
-### 7. 受控中间页、真实 URL 与访问上下文
-
-中间页是当前候选的有限依赖链，不是所有 Paper 必经的额外阶段。ScienceDirect、IEEE、Optica、LWW/OCE、Silverchair/CDN 等仅按附录的 Host、路径、ID、页面形态及指定字段解析；同一链有去重、环路、跳数和总预算。普通 HTTP 重定向不必人为转 DOM；已有下一跳时就地继续，不无条件回文章页重新开始。
-
-严格文章身份与中间页资格分开：
-
-- 原文章仍使用既有 `openPaperPage/confirmArticlePage`，不放宽 DOI/主体验证。
-- 已知阅读器未必有文章 DOI/h1。由原 Paper、固定规则、已核 Host/路径/内部 ID 与候选来源链授权其有限解析；新页面仍需准确 frame/Document/URL/代次、访问状态、取消和期限检查。
-- 安全检查、登录、拒绝、验证码或 Cloudflare 先进入统一访问判断，不能把挑战 iframe 当 PDF reader。保留 solver 精确 target/frame、串行 slot、有限恢复及处理后复查。
-- 新页使用现有已 Prepare Session、页面额度、冷却、Session 事件与实际释放；不增加无归属页面或各规则自装网络 listener，不重用 Run-owned client/snapshot 续权。
-- 当前 BrowserRuntime 主 frame POST 与 shared-session 能力 fixture 的支持范围不同；本次不以来源识别完成为由宣称原生 POST/一次性响应传输已接入。
-
-相对 Meta/anchor/frame/action 使用**承载响应或 Document 的实际最终 URL**。Electron 45 的 `session.fetch` 响应构造不保证标准 Response.url 含最终地址，不能直接套 Web Fetch 假设；若使用受控 HTTP 响应读取，应从真实导航/重定向链保留可信基准。不得为了补最终 URL 或确认类型额外 HEAD/GET。
-
-按端点编码 DOI，保留完整 suffix、多级斜杠、路径/文件名大小写、签名参数和顺序，不全局 lowercase/替换 epdf/删 query，不重复编码。去重不能把不同签名 token 的地址强行合并。
-
-在新候选与每个 redirect/next-hop 的实际请求边界落实公开 HTTP(S) 及既有 URL 安全限制，拒绝脚本、文件、本地/内部不合格目标、userinfo 和畸形地址。当前 `browserURL` 只查 scheme/userinfo，`normalize_public_http_url` 还检查主机和非全局 IP literal，但不做 DNS 解析；不能把它们宣称为已经覆盖所有目标检查。按当前网络栈落实本任务所需检查，不借此重写全部 Prepare/机构导航。
-
-允许明确来源链中的正常跨域 CDN，不能强制所有候选同源；Cookie/API key/Authorization 只在其既有授权范围使用，不复制到任意下一跳。必要 Referer 按平台条件传递，并用固定 Electron 的实际请求 fixture 验证。公开日志及诊断只保留安全来源/规则/失败原因，不暴露签名、凭据或完整敏感请求。
-
-### 8. 发现核心与任务适配分开
-
-P1–P5 核心依赖不可变 Paper 目标、已核 source facts、任务 guard/cancel/deadline，以及受限请求/Document 读取能力。它不自行获取 CollectionToken，不 register/retry collection，不写正文关联或用户元数据。
-
-同页采集 adapter 使用现有 `BranchContext.read_paper/native_payload/execute_native/emit` 和原 CollectionToken 保存线索。以后 Download 会在采集结束后调用发现核心；不能要求它再启动一次 running collection 才能找 PDF。当前 `WorkspaceRegistry.reserve(kind='download')` 的 WriteToken/互斥可作为后续接入基础，本次不建设完整 Download 状态机。
-
-可为新的只读发现能力提供最小任务适配；保留捕获 Workspace/Paper/Service/凭据资格、独立 client/缓存、共享限速、真实 Future/页面清理和精确取消。所有网络及页面工作在数据库事务外；不在线程间共享现有 BranchContext、SQLite 连接或可变 client。
-
-既有 WF06 摘要格式、首个有效填空、日期集合、Preprint 隔离、手工代次、正常关页后提交和 partial 事实继续成立。现 registry 同 Paper 分支仍串行，生产并行与跨 Run 编排仍由 WF08 完成。
-
-### 9. 本 PR 同步清理测试、契约、断言与技术文档
-
-按实现切片同步更新，不把相应清理推到 WF11：
-
-- 新建或调整 PDF 规则/候选/来源事实的行为测试与真实接口 fixture。对每项启用规则覆盖实际表达式/字段、适用条件和关键负例；对禁用/待核记录验证不会进入默认或失败链。目录完整性检查不能代替规则行为验证。
-- 扩展真实 Electron 的 Document/Main/Bridge fixture：同页组合、PDF-only、最终 landing、精确绑定、有限 DTO、已知页面状态、合法空/partial、整体失效及真实资源释放。
-- 扩展 `test_document_metadata.py`、`test_collection_repository.py`、必要查询/Run 保存测试：实际数据投影、短事务、sequence、重启、metadata 清除、Reject→Restore 和旧结果拒绝。保存链的 fixture 必须经过真实 Provider normalizer/records/SQLite，不以手工拼成最终 facts 代替全部证据。
-- 为 P2/P5 使用实际解析器和受控 HTTP/凭据，验证按需请求、精确身份、完整空缓存、partial、分页/已有信息复用、取消和期限。保留现有 OpenAlex 期刊检索与必要身份能力。
-- 以受控 transport 结果驱动真实发现状态，验证 stop/fallback/本地失败终止；真实字节接收、原 DownloadItem 与文件完成验收明确留 WF09/10。
-- 删除或改写新路径中过时的 Import/parent item、提前 OpenAlex、任意 URL 200 即成功、额外类型探测、全局路径替换、候选随意择取及错误回退断言。当前仍服务 WoS 的 Session DownloadItem、late-item、取消与真实 terminal 测试保留。
-- 保留生产 Run 当前 Completion、公开 Preprint 门控和 WF03–06 有效回归；不为了本次通过而提前删除仍在运行的旧路径测试，不重写 Reader 排版。
-
-把完整采用目录与来源索引落入相关仓库技术文档，保留 R/API/S 编号和证据。同步更新 `docs/browser-documents.md`、`docs/browser-pages.md`、`docs/browser-session.md`、`docs/paper-library.md`、`docs/providers.md`、`docs/paper-identity.md`、`docs/architecture.md`、`docs/development.md`、`docs/safety.md` 及实际受影响的 HTTP/诊断说明和注释。新增固定 action、bounded DTO、诊断 allowlist/schema 与生成资源按现有构建方式更新。
-
-`docs/workflow-refactor-tasks.md` 中 WF06 PR #101 unmerged 的表述应更新为实际合并事实；WF07 按实际交付记录内部组合、来源发现和保存链，不能提前写成后台采集、跨 Run、正式下载或所有机构平台已验收。保留来源许可与 NOTICE，不因脱离运行时而删掉仍适用的署名。
-
-### 10. 当前源码定位
-
-以下固定链接用于定位已核查的接入点，不要求保留现有模块边界：
-
-| 当前入口 | 本次调整 |
-| --- | --- |
-| [document_metadata.py](https://github.com/dylaaan-booob/allfold/blob/c641ea371c111f45b7d42013df3a0eb6c1d80ac3/src/allfold/application/document_metadata.py)、[browser-runtime.cjs](https://github.com/dylaaan-booob/allfold/blob/c641ea371c111f45b7d42013df3a0eb6c1d80ac3/electron/src/browser/browser-runtime.cjs) | 同页组合、sequence/partial、PDF-only、最终验证和正常清理。 |
-| [document-runtime.cjs](https://github.com/dylaaan-booob/allfold/blob/c641ea371c111f45b7d42013df3a0eb6c1d80ac3/electron/src/browser/document-runtime.cjs)、[document-preload.cjs](https://github.com/dylaaan-booob/allfold/blob/c641ea371c111f45b7d42013df3a0eb6c1d80ac3/electron/src/preload/document-preload.cjs) | 固定操作/参数、独立有界 clues、已知状态读取及精确 Document 绑定。 |
-| [main.cjs](https://github.com/dylaaan-booob/allfold/blob/c641ea371c111f45b7d42013df3a0eb6c1d80ac3/electron/src/main.cjs)、[electron_bridge.py](https://github.com/dylaaan-booob/allfold/blob/c641ea371c111f45b7d42013df3a0eb6c1d80ac3/src/allfold/web/electron_bridge.py) | 内部动作、成功/失败 envelope、recovery 与诊断契约。 |
-| [discovery_evidence.py](https://github.com/dylaaan-booob/allfold/blob/c641ea371c111f45b7d42013df3a0eb6c1d80ac3/src/allfold/providers/discovery_evidence.py)、[integrated.py](https://github.com/dylaaan-booob/allfold/blob/c641ea371c111f45b7d42013df3a0eb6c1d80ac3/src/allfold/providers/integrated.py)、[supplemental.py](https://github.com/dylaaan-booob/allfold/blob/c641ea371c111f45b7d42013df3a0eb6c1d80ac3/src/allfold/providers/supplemental.py) | 既有响应转小型来源事实、精确 Work/capability，保持请求规划。 |
-| [models.py](https://github.com/dylaaan-booob/allfold/blob/c641ea371c111f45b7d42013df3a0eb6c1d80ac3/src/allfold/models.py)、[run_library.py](https://github.com/dylaaan-booob/allfold/blob/c641ea371c111f45b7d42013df3a0eb6c1d80ac3/src/allfold/persistence/run_library.py)、[necessary_metadata.py](https://github.com/dylaaan-booob/allfold/blob/c641ea371c111f45b7d42013df3a0eb6c1d80ac3/src/allfold/application/necessary_metadata.py) | ProviderWorkEvidence、records 到基础 Paper/增量的真实保存链。 |
-| [library_models.py](https://github.com/dylaaan-booob/allfold/blob/c641ea371c111f45b7d42013df3a0eb6c1d80ac3/src/allfold/persistence/library_models.py)、[paper_repository.py](https://github.com/dylaaan-booob/allfold/blob/c641ea371c111f45b7d42013df3a0eb6c1d80ac3/src/allfold/persistence/paper_repository.py)、[library_database.py](https://github.com/dylaaan-booob/allfold/blob/c641ea371c111f45b7d42013df3a0eb6c1d80ac3/src/allfold/persistence/library_database.py) | 可删除来源载荷、条件合并、版本与生命周期。 |
-| [openalex.py](https://github.com/dylaaan-booob/allfold/blob/c641ea371c111f45b7d42013df3a0eb6c1d80ac3/src/allfold/providers/openalex.py)、[url_safety.py](https://github.com/dylaaan-booob/allfold/blob/c641ea371c111f45b7d42013df3a0eb6c1d80ac3/src/allfold/url_safety.py) | 精确 P5 请求、取消错误传播、候选安全和现有调用者。 |
-| [collection_runtime.py](https://github.com/dylaaan-booob/allfold/blob/c641ea371c111f45b7d42013df3a0eb6c1d80ac3/src/allfold/application/collection_runtime.py)、[task_authority.py](https://github.com/dylaaan-booob/allfold/blob/c641ea371c111f45b7d42013df3a0eb6c1d80ac3/src/allfold/application/task_authority.py)、[task_clients.py](https://github.com/dylaaan-booob/allfold/blob/c641ea371c111f45b7d42013df3a0eb6c1d80ac3/src/allfold/application/task_clients.py) | 采集 adapter、独立只读发现任务能力、真实 client 与捕获资格。 |
-| [session-events.cjs](https://github.com/dylaaan-booob/allfold/blob/c641ea371c111f45b7d42013df3a0eb6c1d80ac3/electron/src/browser/session-events.cjs)、[workflow-refactor-tasks.md](https://github.com/dylaaan-booob/allfold/blob/c641ea371c111f45b7d42013df3a0eb6c1d80ac3/docs/workflow-refactor-tasks.md) | 保留活跃 Session/WoS 能力，更新分阶段事实。 |
-
-## 验收条件
-
-附录 F 的 **T01–T24 全部是本次发现组件验收要求**。其中依赖真实 PDF 完成的 T01/T21 及本地文件错误，在 WF07 用受控下游结果驱动真实协调器验证；WF09/10 再验证字节/文件终态，不能以组件结果冒充真实下载。另覆盖总稿 A26–A29、A31、A37 在本阶段的适用部分，并满足以下集成条件：
-
-1. **规则完整且采用状态准确。** R001–R072、API01–API17、S001–S142 无遗漏、无重编号；每项启用规则有输入/Host/内容类型/授权资格及对应行为证据。历史/待核不被自动启用；禁用转换不产生额外 Host 黑名单。
-2. **P1–P5 真正惰性。** 已有 P3/P4 缓存时仍从适用 P1/P2 开始；受控 P1 成功后 Handle、Crossref、新 HTML 与 OpenAlex 调用数为零。跳过不适用条件没有伪造失败；已有 ID/响应时不重查。
-3. **候选与完成分离。** URL、HTTP 200、PDF 扩展名、Meta 和 reader 入口均不设置 BodyReference、Downloaded 或成功 pdf_source；收到下游 PDF 类型与正常传输终态后停止。传输后本地失败不继续发网络请求。
-4. **一次文章页组合。** 真实 Main→Browser→Document→preload 在同一有效页返回既有 dates/abstract 和独立 PDF clues，真实 landing/时间/规则/ID 正确；没有为了三个内容再开三页，也未触发 PDF 网络请求或页面动作。
-5. **合法空、partial 与整体失效。** 无 PDF 入口正常完成；局部错误保留其他合格结果并正确结算。最终复核前的同 URL 换 Document、主体替换、身份冲突和取消使该页本次结果全部不能提交。最终验证后的正常关闭不使可信小型结果失效。
-6. **PDF-only 能力。** 动态入口重取只调用 PDF 读取，不调用 Date/Abstract、不改变已完成 collection/attempt，不写旧摘要或重跑必要 API。动作/POST 线索不被简化为 GET 重放。
-7. **现有响应真实入库。** 受控真实 OpenAlex/Crossref 响应经过当前 normalizer/records/Run 保存和必要查询 emit，SQLite 保留 target/capability、PDF/landing 区别、best/locations 顺序和完整空事实；没有增加当前 Run 网络集合或改变其时序。关联 Preprint 记录不误入正式目标 facts。
-8. **来源事实可持续且可删除。** 重启后当前数据的稳定小型线索可读；未采集 capability 不自动补采。metadata 清除删掉完整载荷，可靠身份排除及独立正文关系按既有契约保留。不提供旧数据迁移兼容，公开投影/诊断无凭据与敏感签名。
-9. **写入竞争与生命周期。** 真实独立 SQLite 连接验证增量去重、序号幂等、字段代次、Reject→Restore、清除和取消后迟到结果拒绝；Date/Abstract/笔记/Preprint 已有事实不被线索写回覆盖。旧任务不能取得新 token 续权。
-10. **P2 条件正确。** 覆盖已定 PII/Cell、IEEE、OUP、JSTOR、SPIE、Nature/MDPI/ACS、Springer 变体、Microbiology、LWW 等正反例；不猜内部 ID、不拼历史路径、不混淆 XML/JATS/PDF、form action/POST 或不同平台授权。
-11. **可选接口如实适用。** 没有额外凭据时跳过相应接口，网页模板仍可尝试。已接入的条件接口通过受控真实解析验证，不能新增默认 Provider 扫描或凭据管理产品；不把 17 个资料条目等同于 17 个默认请求。
-12. **P5 保留既有算法。** 精确 DOI、best_oa_location→locations、最多 4 个、保序去重、排除 landing/OpenAlex 自托管及非法目标均成立；同一目标 Work 的合法仓储版本 URL 可用，不做版本比较。完整已核缓存不重查，真正到达 P5 且信息不足才查询。
-13. **取消不被降级。** OpenAlex/发现请求的取消、父期限和资格失效不被 recoverable 包装吞掉；之后没有新候选、补 ID 或 OpenAlex 请求。401/403、402、404、来源失败和本地失败保持可观察区别。
-14. **受控中间页真实接入。** 已知 reader 没有文章 DOI/h1 时，可按来源链资格读取指定字段；原文章身份门槛保持。挑战 iframe、任意 script/URL 属性不能成为下一跳，未知页面有限结束；统一 access/solver、scope、取消和实际清理仍有效。
-15. **重定向与上下文。** 真实 Electron/受控 HTTP fixture 覆盖重定向后的相对 Meta/frame、必要 Referer、路径大小写及签名参数不变、合法 CDN；不依赖无保证的 Response.url，不增加类型探测请求，不向任意跳转目标转发凭据。
-16. **安全及有限性。** 新候选和每跳请求边界拒绝不合格协议、userinfo、本地/内部目标和畸形 URL；去重、环路、跳数与总预算有效。只读状态提取有固定载体/字段与输出界限，既不序列化整页也不静默截断后冒充完整成功。
-17. **回退语义准确。** F9.4/T23 的跳过、重定向、同链和同候选重试不算 fallback；真实失败后改候选才算。中间页保留初始发现来源；未取得 PDF 时没有成功来源。
-18. **真实任务适配且不提前切换产品。** collection completed 的 Paper 可输入发现核心，原 collection 事实不变；同页采集继续通过实际 BranchContext/Bridge/repository。真实 Future/client/page 清理后结算，不共享跨线程连接或 client。不启用生产后台、跨 Run、公开重试/Download 或正文保存。
-19. **对应清理和回归完成。** 新路径测试/契约/断言/MD 与行为一致；保留仍活跃的 WoS 下载、Session、Run Completion、Preprint 和 WF03–06 保护。文档记录 PR #101 已合并及本次组件边界，完整规则/来源目录可从仓库读取。
-20. **证据与交付闭合。** 使用真实 Electron、受控 Provider/HTTP、实际 SQLite 和任务接口证明本次可观察行为；执行模板要求的检查、提交后 Review、唯一 PR 和最新关联 CI。真实机构/动态站点未执行项列为人工验收，不把历史研究、PR #101 的样本或模拟传输称作本次真实 PDF 下载。
-
-## 已确认约束与非目标
-
-- 只实施 WF07。生产后台登记、同 Paper 并行与跨 Run 留 WF08；字节传输、原 DownloadItem、writer、文件落位/正文关联、公开 Download 和文件操作留 WF09/10。
-- 不重新论证 Date/Abstract 或平台发现机制，不扩大默认平台、图书/章节、supplement、无 DOI 检索、新外部回退、版本评分、LLM 决策或自动动作。
-- 不增加 PDF Validation、HEAD/GET 类型探测、头尾/结构/页数/文本/哈希检查；不取消原响应再机械 GET，不把候选 URL 当下载完成。
-- 不恢复 Zotero Runtime/Utilities/Desktop/Local API、Keep/Import、parent item/exported/Last Import、完整 HTML snapshot、Markdown 主存储、普通缺字段 API Completion 或 Author enrichment。
-- 不建设跨重启下载队列、自动补采、外部文件 watcher、孤立文件恢复、待保存/提交状态或新凭据设置产品。配置、Service、凭据与源注册继续保留。
-- 不清空现有永久库或改写无关元数据，不自动收集旧 Paper 缺失的新 facts。历史 OpenAlex 文件只作独立算法依据，不恢复旧调用链。
-- 自动验证使用隔离 Workspace/数据库/profile、受控响应和临时文件；真实机构账户、浏览器会话与用户永久数据不在本 Prompt 授权内。
-
-## 外部研究依据
-
-本次沿用已确认的固定版本研究，并针对当前接入再次核对了下列关键源码。优先独立实现公开字段、URL 规则和资格；引用源项目并不授权照搬其下载校验、存储、Cookie 搬运或任意脚本扫描。
+## Fixed external evidence
 
 | 固定依据 | 可借鉴机制与边界 |
 | --- | --- |
 | [JabRef DoiResolution](https://github.com/JabRef/jabref/blob/d79f1490aaafa9bc80da760d1baa6497cebf7c01/jablib/src/main/java/org/jabref/logic/importer/fetcher/DoiResolution.java) | 明确 Meta、正文入口歧义与原始 URL 大小写保护；不采用其额外 isPdf 网络探测或默认 Referer。 |
 | [Parseland find_pdf.py](https://github.com/ourresearch/parseland/blob/442a300a247aee1f4b8b7e75aaa2b105aee52626/find_pdf.py) | 已观察的平台限定 URL 转换与正文入口筛除；本规格明确排除其中全局 epdf/ScienceDirect/Nature 重写、任意 JS 扫描、HEAD/GET/内容 Validation 和 Zyte 回退。 |
-| [Paperlib webcontent-embed-entry-scraper.ts](https://github.com/Future-Scholars/paperlib-entry-scrape-extension/blob/f3ea1065fe6d9b82f081f170432b98a819171150/src/scrapers/webcontent-embed-entry-scraper.ts) | 学术 Meta 与 PDF 字段同页读取的实际实现；不复制整页 HTML、Cookie 转交、正文头尾检查或自动下载。项目代码许可未确认，不能据字体许可复制源码。 |
+| [Paperlib webcontent-embed-entry-scraper.ts](https://github.com/Future-Scholars/paperlib-entry-scrape-extension/blob/f3ea1065fe6d9b82f081f170432b98a819171150/src/scrapers/webcontent-embed-entry-scraper.ts) | 学术 Meta 与 PDF 字段同页读取的实际实现；不引入 Cookie 转交、正文头尾检查或自动下载。项目代码许可未确认，不能据字体许可复制源码。 |
 | [Electron 45 net-fetch.ts](https://github.com/electron/electron/blob/54f961b44b83e4ece81065ab60a182fd0c38c01e/lib/browser/api/net-fetch.ts#L83-L138) | 当前响应构造与请求头传递支持最终 URL/Referer 的具体接入约束；Allfold 行为仍需固定 Electron fixture。 |
 
-以下完整保留原整合稿附录 F 与 A–D。固定历史材料与本轮当前源码基线分开；原资料中的本次、当前、未执行均属于原研究时间点。执行范围以前面的 WF07 条款为准，采用状态和算法条件以原附录继续生效。请将这份完整资料及本任务要求提供给 Spec Reviewer，并在实现时同步更新相关仓库规则文档。
+## PDF 来源规则
 
-<!-- WF07_REFERENCE_MATERIAL_BEGIN -->
-## 附录 F：PDF Source Discovery 实施细则
-
-本附录保留原第二阶段正文的完整平台、URL、ID、接口、候选和测试细节，直接修订已被整合工作流替代的接入条款。原章号加 F 前缀；R/API/S 编号和 anchors 保持。
-
-本附录中的取得有效 PDF 均指正文第九节的现有类型信息与正常传输完成，不指 PDF 文件结构或版本检查。规则预采集与实际下载尝试分离，P1–P5 只规定 PDF 获取时的来源顺序。
+以下记录来源选择、平台适用条件和证据。取得有效 PDF 指当前响应类型与正常传输完成，不指 PDF 文件结构或版本检查。规则预采集与实际下载尝试分离，P1–P5 规定 Download 的来源顺序。文件落位与数据库关联见 [body downloads](body-downloads.md)。
 
 <a id="scope"></a>
 
@@ -333,7 +96,7 @@ PDF Source Discovery 不运行 Zotero Translator、Zotero Translate 或 Zotero U
 
 不进行 PDF 版本识别、版本评分、全文语义比对、PDF/OCR 元数据提取或跨版本替换；不增加 Unpaywall、Semantic Scholar 等新的外部全文回退服务；不建立 LLM 网页决策或新的登录/验证码处理系统。现有 Prepare 和 Cloudflare solver 由统一网页访问层接入，发现器不自行实现挑战处理。
 
-整体方案已确定 Workspace 永久文献库、SQLite 元数据主存储、独立正文 PDF、整 Paper 回收区及下载任务终态。独立 Date + Abstract 提取器保持小型结果契约，PDF 线索由同页独立函数采集；存储和回收区行为统一按正文执行。
+当前 Workspace 已使用 SQLite 与独立正文文件。页面采集的当前接口和后续快照解析方向见 [Document access](browser-documents.md)；本目录不限定页面采集载体。
 
 <a id="pipeline"></a>
 
@@ -370,11 +133,11 @@ PDF Source Discovery 不运行 Zotero Translator、Zotero Translate 或 Zotero U
 
 #### F2.4 唯一成功停止条件
 
-候选成功构造、HTTP 200、发现 `citation_pdf_url` 或取得一个阅读器 URL，都不是最终成功。**当前响应/Chromium 类型确认是 PDF，且下载传输正常完成后，立即停止后续发现。** 不另设 PDF Validation；具体传输与终态见正文第九节。
+候选成功构造、HTTP 200、发现 `citation_pdf_url` 或取得一个阅读器 URL，都不是最终成功。**当前响应/Chromium 类型确认是 PDF，且下载传输正常完成后，立即停止后续发现。** 不另设 PDF Validation；具体传输与终态见[body downloads](body-downloads.md)。
 
 不因为取得的 PDF 可能来自其他出版版本而继续寻找；不添加版本字段、版本比较或升级流程。正文链接与补充材料链接仍根据页面上下文区分，这不涉及 PDF 内容或版本核验。
 
-传输已经正常完成后，来源发现即停止。最终文件落位、Paper 关联或状态写入失败属于本地任务失败，结束本次 Download，不因本地失败再尝试其他 PDF 来源。用户看到的 completed 以正文定义的整项下载终态为准。
+传输已经正常完成后，来源发现即停止。最终文件落位、Paper 关联或状态写入失败属于本地任务失败，结束本次 Download，不因本地失败再尝试其他 PDF 来源。用户看到的 completed 以[body downloads](body-downloads.md) 定义的整项下载终态为准。
 
 <a id="rules"></a>
 
@@ -390,7 +153,7 @@ DOI 前缀只作辅助线索。既有目标 URL 或解析结果表明内容已�
 
 #### F3.2 轻量规则需要保存的信息
 
-规则目录不复制 Zotero 的 Item、Translator 注册、导入导出或 Sandbox 体系。每条规则只需明确以下语义；具体语言和文件格式留给后续实现。
+规则目录不复制 Zotero 的 Item、Translator 注册、导入导出或 Sandbox 体系。每条规则只需明确以下语义；对应实现见上面的组件入口。
 
 | 信息 | 用途 |
 |---|---|
@@ -620,7 +383,7 @@ Meta 值指向 HTML 下载器时进入适用的中间页规则。不能因为 UR
 
 每个中间页面规则必须限定 Host/页面形态和可读字段。相对下一跳使用当前实际响应 URL，而非最初文章 URL。每次下一跳经过同样的 URL 资格检查。
 
-同一解析链必须有有限跳数、请求总预算和去重记录；重复 URL、环路或预算耗尽时停止该链。具体数值留作实现参数，不照搬参考仓库的任意超时和重试常量。
+解析链保留去重和环路识别，并响应实际任务取消。跳数、请求数和等待常量不作为通用来源规则；相应实现调整另行处理。
 
 #### F7.3 特殊机制的采用范围
 
@@ -696,11 +459,11 @@ API 的 HTTP 状态、限流和访问要求以相应官方证据为依据，不�
 
 发现层逐个提供候选，并根据结果决定继续、解析中间页或停止。下载层按当前响应类型和传输正常终态确认完成时，不再发起后续查询。
 
-对于同一个响应，不为确定类型再进行一轮独立的 HEAD/GET。复用已经得到的响应分类；流式 Session 下载与原 DownloadItem 接管见正文第九节。
+对于同一个响应，不为确定类型再进行一轮独立的 HEAD/GET。复用已经得到的响应分类；流式 Session 下载与原 DownloadItem 接管见[body downloads](body-downloads.md)。
 
 身份以既有目标论文关系、可靠内部 ID、目标页面和正文入口为依据。不新增下载后解析 PDF 标题/DOI、页数、文本量或版本的校验。
 
-任务最终的本地文件关联与 completed 条件见正文第九、十四节；发现器不接管数据库或文件落位写入。
+任务最终的本地文件关联与 completed 条件见[body downloads](body-downloads.md)；发现器不接管数据库或文件落位写入。
 
 #### F9.4 回退的最小可观察结果
 
@@ -711,7 +474,7 @@ API 的 HTTP 状态、限流和访问要求以相应官方证据为依据，不�
 | 最终 PDF 来源 | 成功候选的发现方式；没有取得有效 PDF 时为空或 `none` |
 | 是否发生回退 | 已实际执行的路径或候选没有成功后，是否继续尝试了另一条适用路径或候选 |
 
-字段名可沿用 `pdf_source` 和 `fallback_used`；成功结果随正文规定的 Paper 主 PDF 关联记录，失败尝试的必要信息保留在任务诊断中，不要求新建独立候选数据库或评分系统。来源至少能区分 DOI 模板、标识符/已有 URL、HTML Meta、DOM/平台解析、OpenAlex。中间页解析保留原发现路径作为来源，不需要新的版本或可信度分数。
+字段名可沿用 `pdf_source` 和 `fallback_used`；成功结果随 Paper 主 PDF 关联记录，失败尝试的必要信息保留在任务诊断中，不要求新建独立候选数据库或评分系统。来源至少能区分 DOI 模板、标识符/已有 URL、HTML Meta、DOM/平台解析、OpenAlex。中间页解析保留原发现路径作为来源，不需要新的版本或可信度分数。
 
 **不算回退：** 因输入或凭证不足而跳过不适用规则；从 DOI 查询取得 PII 后首次请求 PDF；正常 HTTP 重定向；同一路径读取已知中间页；下载方对同一候选的受控重试。
 
@@ -723,9 +486,9 @@ API 的 HTTP 状态、限流和访问要求以相应官方证据为依据，不�
 
 <a id="acceptance"></a>
 
-### F10 规格层验收条件
+### F10 来源规则示例
 
-以下是后续实现的可观察行为，不是本次已执行的测试。以确定性 fixture 和模拟响应验证规则即可；不以重新证明所有平台基本可行性作为开始实施的前提。
+这些例子说明上述来源规则，不是历史阶段的执行指令或已通过的真实站点验收。
 
 | 编号 | 条件 | 预期行为 |
 |---|---|---|
@@ -746,7 +509,7 @@ API 的 HTTP 状态、限流和访问要求以相应官方证据为依据，不�
 | T15 | 已知中间页提供明确的下一跳 | 就地解析并继续；不强制重新访问原文章页 |
 | T16 | 挑战 HTML 内出现 iframe 或不明 JS URL | 不当作 PDF Reader 盲目跟随；统一网页访问流程识别支持的 Cloudflare 或人工状态，不执行任意提取脚本 |
 | T17 | LWW viewer 提供签名地址和对应 Referer | 保留必要上下文及签名参数；不改写为永久模板 |
-| T18 | 同一 URL 被多个来源发现，或出现中间页环路 | 不重复完整尝试；达到链上限时结束该路径 |
+| T18 | 同一 URL 被多个来源发现，或出现中间页环路 | 不因重复发现再次完整尝试；识别并结束环路 |
 | T19 | 发现明显补充材料、整期文件或其他论文入口 | 不作为目标论文正文候选；不通过下载后 NLP 弥补无依据选择 |
 | T20 | 缺少某官方 API 的额外凭证 | 跳过该接口，继续其他适用路径；不影响普通网页模板 |
 | T21 | 任意来源已确认有效 PDF | 不再比较出版版本，不再调用后续来源 |
@@ -754,7 +517,7 @@ API 的 HTTP 状态、限流和访问要求以相应官方证据为依据，不�
 | T23 | 多次内部重定向/同候选重试，但首条发现路径成功 | 回退标志为否；改用另一失败后的候选或来源时为是 |
 | T24 | 只发现候选，尚未收到有效 PDF 确认 | 只报告发现/待处理状态，不记录成功 PDF 来源 |
 
-真实机构权限、动态会话初始化及站点响应差异属于环境验收。登录、页面动作与 solver 使用正文规定的统一访问边界，不由规则各自实现一套流程。
+真实机构权限、动态会话初始化及站点响应差异属于环境验收。登录、页面动作与 solver 使用 [Document access](browser-documents.md) 中的共享访问能力，不由规则各自实现一套流程。
 
 <a id="exclusions"></a>
 
@@ -786,26 +549,19 @@ Atypon 共享有条件的路径选择；Silverchair 共享 PDF DOM 读取并保�
 
 #### F11.4 与完整工作流的衔接
 
-Allfold 接入、Session/Document 生命周期、独立提取契约、Zotero 退役、两条下载路径、跨 Run 调度和单 Paper 门控均已在正文确定。永久文献库、主 PDF 关联、重复下载、回收区及身份排除也按正文执行，不再另设等待保存或文件提交工作流；存储细则见正文第十四节。
-
-本文件已经确定发现层的顺序、规则资格、候选处理、平台特殊情况、停止条件和回退语义。剩余的站点条件通过条件性或禁用记录表达，不需要重新扩大研究范围才能使用本规格。
-
----
-
-
----
+当前采集由 [Workspace runtime](collection-runtime.md) 管理；传输、原响应接管、文件与终态由 [body downloads](body-downloads.md) 说明。来源目录不另行规定任务阶段或文件提交工作流。
 
 ## PDF 规则、接口与来源总目录
 
-以下完整保留原附件附录 A–D 的 72 条规则、17 项接口、仓库版本/许可与 142 项来源索引。目录中的默认、条件性、扩展与历史状态继续生效；引用源项目的行为不自动成为 Allfold 的运行时要求。
+附录 A–D 保留 R/API/S 来源编号、规则采用状态、固定版本与许可。默认、条件性、扩展与历史记录分别标注；引用源项目的行为不自动成为 Allfold 的运行时要求。
 
-特别是，源项目可能使用 Zotero、同步 HTTP、PDF 内容校验或自己的存储结构。这里保留它们作为规则证据；Allfold 的任务生命周期、Cloudflare、原响应接管、不增加 PDF Validation 和永久存储边界统一按正文执行。
+特别是，源项目可能使用 Zotero、同步 HTTP、PDF 内容校验或自己的存储结构。这里保留它们作为规则证据；Allfold 的任务、页面与文件边界由上述所属模块文档说明。
 
 <a id="rule-catalog"></a>
 
 ## 附录 A：72 条规则的采用目录
 
-编号、分类、表达式、输入条件、访问条件和来源编号与研究工作簿对应；“本规格采用”是本次收敛后的处置。正文中的优先级和排除条件高于参考源码的原始调用顺序。
+编号、分类、表达式、输入条件、访问条件和来源编号与研究工作簿对应；“本规格采用”记录 Allfold 的规则处置。本文的来源优先级和排除条件与参考源码的原始调用顺序分别表述。
 
 | 原材料分类 | 记录数 | 本规格解释 |
 |---|---:|---|
@@ -4021,45 +3777,3 @@ Zotero 相关已读文件主要声明 AGPL-3.0-or-later；其他仓库按表中�
 网页/官方资料；许可：不适用；原研究范围：见关联记录；不含实际授权下载验证。
 
 [资料](<https://www.annualreviews.org/page/librarians/MigrationFAQ_LRC>)
-<!-- WF07_REFERENCE_MATERIAL_END -->
-
-外部参考仅作为研究依据，不代表已在 Allfold 本地验证。优先对照当前代码、依赖及许可证确认适配；不必无理由重复外部调研，也不得盲目复制源项目。
-
-## 待 Codex 验证的假设
-
-以下由 Codex 核查最新本地源码后决定最小实现，不要求用户重复已确认的产品选择：
-
-1. 固定 native 操作/模式、独立 clues DTO 与组合 adapter 的拆分；PDF-only 和受控 reader 如何共用访问/页面能力而保持文章身份强度。
-2. 小型 source facts 的字段/版本与合并规则；如何在现有 OpenAlex/Crossref 响应被降维前投影，经 records/necessary emit 入库，遵守当前载荷契约并随 metadata 清除。
-3. 只读发现任务接口、条件性 HTTP/凭据能力与现有 Provider/TaskAuthority 的最小接入；避免要求后续 Download 重新启动 collection，避免另建通用调度和账号系统。
-4. 真实最终 URL、Referer、每跳目标检查及页面状态读取在固定 Electron 中的实现；保留参数、精确 scope、有限预算与实际 cleanup，报告尚需真实站点确认的条件。
-5. 用实际规则和真实组件加受控传输结果验证全部 T01–T24；把真实字节接收/原 DownloadItem/永久文件验收留给相应后续任务。
-
-## 目标与完成定义
-
-请自主推进到**针对本次变更的一张 PR 已创建或更新、最新 PR 版本对应的 GitHub Actions 检查实际通过**，目标分支为 `main`，**暂不合并**。计划、提交、Review 或 PR 创建本身均不是终点。若存在真实阻塞，则提交已完成工作，并明确给出阻塞和未通过/未验证事项，不得虚报完成。
-
-
-## Current public body consumer and original-response adoption
-
-Public `BodyDownloadService` constructs the original target from reliable saved
-identity and target-bound discovery facts, then runs P1–P5 lazily with actual
-Session transfer feedback. It never passes an HTTPX PDF response to a second
-GET or consumes cached P3 before P1. Conditional APIs run only when reached;
-current reader/redirect parsing has one coordinator and remaining budget.
-Current PDF MIME plus normal closed pipeline stops sources, then common file/
-SQLite completion persists successful source/fallback. Local completion failure
-ends the task. Existing body and real active owner paths precede target creation.
-
-Optional secret capabilities retain fixed HTTPS Host/path/header qualification
-and are absent from public input. Qualified current R059 forms and R024
-ScienceDirect reader entries now adopt the original navigation/POST response and
-DownloadItem, without replay or replacement GET. Other unsupported native entries
-return a finite skipped condition before dispatch; legitimate later stream
-sources remain available. A dispatched native action settles terminally rather
-than replaying or falling back after an unknown response. Native staging retains
-the [accepted Chromium cancellation risk](body-downloads.md#native-output-and-accepted-cancellation-risk).
-The core's standalone HTTP consumer can still return pending when no downstream
-transfer is provided; that component contract is not the public product path.
-The historical rule catalogue and WF07 evidence above retain their original
-scope. See [the current body contract](body-downloads.md).

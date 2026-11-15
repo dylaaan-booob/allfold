@@ -18,13 +18,11 @@ Define and validate the installer build, bundled Python/UI content, platform sup
 
 Repository creation, commits, tags, publishing and credentials require explicit authorization covering those actions. This document does not configure or authorize a release.
 
-WF02 retires translation-only Runtime assembly and Zotero Local API product paths.
 A clean source setup installs locked dependencies and builds UI without fetching
-vendor repositories. Existing vendor/Runtime/user data remain excluded from public
-candidates and are not deleted by setup. Preserve notices for retained adapted
-Browser/Document/Prepare and Cloudflare sources. Public single-Paper Download uses
-Session stream or a qualified original DownloadItem, then no-clobber file
-publication and SQLite completion. Local open/locate and independent Trash PDF
-deletion are connected. This source workflow has controlled native/file/UI
-coverage and scoped WF10 live evidence; it does not establish packaged-app or
-universal publisher/institution acceptance. See the [final acceptance index](workflow-acceptance.md).
+translation-only vendor repositories. Existing vendor/Runtime/user data stay
+excluded from public candidates and are not deleted by setup. Preserve notices
+for retained Browser/Document/Prepare and Cloudflare adaptations.
+
+Public Download and local body operations are connected; their controlled
+fixtures and historical live samples do not establish packaged-app or universal
+publisher/institution acceptance. See [body download limits](body-downloads.md#projection-restart-and-evidence).

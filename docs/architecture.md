@@ -55,70 +55,31 @@ retains its stricter foreground Run input snapshot and Query→Export binding.
 Login runs one CARSI institution flow. Each subsequent CARSI preparation opens its own resource Portal in the same Session. The saved Access Service ID and observed source and target pages establish provenance. Manual Services use explicit visits. Login keeps outcomes and target Page IDs in memory, bound to the saved Service and institution authority. After a settled batch with Services that need attention, one user confirmation marks the batch's unchanged saved Services available. Existing prepared targets are retained. Ordinary settings edits preserve a prepared target while the next task takes a fresh configuration and User State revision. Discover uses the prepared WoS target or opens the official query page in the shared Session after manual confirmation. Query and Export still validate the scoped Service, document and export path. API discovery remains independent of that prerequisite.
 
 Browser Runtime uses one business Session from `session.fromPartition('allfold')`.
-Selection and presentation are separate from task ownership. Prepare, WoS, Login
-and Covers retain their scoped Page/Document checks, cancellation and manual
-verification. DocumentRuntime and its isolated preload supply bounded
-binding/access/article/extract/pdf observations, never full HTML. Native Document
-binding, independent Paper identity and task/Service authority are separate.
-The internal Paper extraction operation checks access and current article identity,
-reads Date/Abstract and independent PDF clues, then rechecks the same live Document before normal
-page cleanup. Its small verified result can be committed after that cleanup;
-Python rechecks the captured Workspace/Paper/attempt, not the closed page.
-The Cloudflare adapter remains request/CDP-target scoped. See
-[controlled Documents](browser-documents.md) for the runtime contract.
+Selection and presentation are separate from task ownership. DocumentRuntime and
+its isolated preload currently supply fixed binding/access/article/extract/pdf
+observations. [Document access](browser-documents.md) owns current interfaces,
+reading limits and the planned rendered-HTML/independent-Document path. Snapshot
+parsing and tab-wide Solver are follow-up work, not current capabilities.
 
-WF07 separates a pure qualified-rule service, small exact-target discovery facts,
-and a result-driven P1–P5 coordinator. The core consumes immutable target/facts
-and task-scoped guard/cancel/deadline capabilities. It owns neither collection
-registration nor metadata/body writes. Current Run and necessary API responses
-project reusable OpenAlex/Crossref facts before lossy bibliography normalization;
-the existing records/increment path persists them in short SQLite transactions.
-Same-Document precollection never follows a PDF candidate. PDF-only refresh and
-known-reader parsing reuse native access, physical quotas and cleanup. Subsequent
-Download can use the core after collection completes without restarting that
-collection. Production collection orchestration uses both branches; the
-[Session/file completion service](body-downloads.md) serves public Download, qualified
-original DownloadItem responses and local body management (merged in PR #121). Native output uses private attempt staging with an explicitly accepted [cancellation limitation](body-downloads.md#native-output-and-accepted-cancellation-risk). The [adopted specification and fixed source catalogue](pdf-source-discovery.md)
-retain all platform/input/access conditions and historical exclusions.
-The immutable discovery target includes the saved direct-identity closure, so
-complete DOI-free Work facts can be reused without a new lookup or native
-article read. Conditional OCE reading obtains only an operation-local boolean
-from the captured prepared target, then rechecks the same context at use; it
-does not derive OCE access from an LWW Service or change Prepare.
+PDF discovery separates qualified rules, exact-target source facts and a
+result-driven P1–P5 coordinator. Run and necessary API responses project reusable
+OpenAlex/Crossref facts before bibliography normalization; the existing increment
+path persists them in SQLite. Collection reads page clues without following PDF
+candidates. PDF-only refresh lets Download reuse the coordinator without reopening
+completed metadata collection. [Source rules](pdf-source-discovery.md) own platform
+applicability and research evidence; [body downloads](body-downloads.md) owns public
+Session/original-response transfer, files, local operations and the accepted native
+cancellation limit. The Download-wide Prepare entry policy remains unresolved.
 
-Keep/Import/Enrich have no product HTTP/IPC or native dispatch path. Dedicated
-Zotero Local API, attachment writes and full Translator assembly are removed;
-Setup no longer downloads or assembles translation-only sources. Existing ignored
-vendor checkouts are untouched. [Third-party notices](third-party.md) retain
-attribution for remaining adapted Document/Browser sources.
+[One Session event owner](browser-session.md) composes native hooks for Browser,
+identity, Covers, WoS and body transfer. Request association, shared cooldown and
+actual item settlement belong there; physical page admission/retention belongs to
+[Browser pages](browser-pages.md). Rules do not install independent native listeners.
 
-A managed main-frame load has an 85-second window and at most two refreshes.
-The refresh delays are 350 and 700 ms, each multiplied by a random factor from
-0.75 to 1.25. During CARSI Prepare, the target page shares that refresh budget
-across redirects and subsequent main-frame GET navigations. A transient target
-load failure after two refreshes can start one new Visit from the CARSI resource,
-even if the second refresh completed and a later navigation failed. This path
-does not resend the failed request. An eligible page-load timeout can also
-trigger reentry. An eligible initial Paper load can similarly replace its page
-once. The new page gets its own loading
-window within the original 10-minute native loading or Prepare deadline and a
-three-minute cap from the start of business recovery.
-
-The Browser Session shares active cooldowns by HTTP origin. The existing
-WebRequest listeners observe main-frame and explicitly associated request 429 responses and 503 responses with a
-valid Retry-After. The default for a 429 without usable Retry-After is one second.
-An active cooldown can only extend. Allfold-initiated navigations and refreshes
-wait up to 30 seconds within their operation budget. Visit also checks the
-publisher origin when it is known from the saved entry or a prior attributable
-Visit. Chromium continues its redirects, authentication chain and page requests.
-
-[One Session event owner](browser-session.md) now installs the native hooks for
-BrowserRuntime, identity and WoS. Scoped handlers compose synchronously; task
-cleanup leaves the common entry and cooldown live. Controlled cover fetches use
-request-ID association, stripped private markers and the same origin gate.
-Downloads retain native source/frame/Document ownership and actual terminal
-promises rather than replaying captured URLs. Fixed Electron 45 fixtures record
-the supported original-response entries and source-lifetime limits there.
+Keep/Import/Enrich have no product HTTP/IPC or native dispatch path. Zotero Local
+API, attachment writes and full Translator assembly are retired. Setup no longer
+fetches translation-only sources; ignored vendor checkouts stay untouched and
+retained adaptations keep their [third-party notices](third-party.md).
 
 ## History and diagnostics
 
@@ -145,8 +106,8 @@ Workflows, Journals and Settings. A shared scheduler serializes safe field patch
 responses acknowledge the submitted snapshot without replacing later edits.
 Server-side admission coordinates writes with task starts, retaining the existing
 Compare-and-Write and Workspace lock protections. Active tasks continue using
-their captured inputs. Foreground Run/WoS and Preprint snapshot writers keep ordinary
-edits Pending until settlement; independent Browser owners allow unrelated input,
+their captured inputs. Foreground Run/WoS snapshot writers currently keep ordinary
+edits Pending until settlement; independent Preprint uses its Paper reservation, and independent Browser owners allow unrelated input,
 Journal and Service edits. A change overlapping an executing Service waits for its
 owner to settle. Saved access changes invalidate captured old preparation/authentication
 keys and await their scoped native cleanup outside the configuration write lock.
@@ -213,7 +174,7 @@ Workspace UI uses separate library revisions for response order. WriteToken
 remains captured asynchronous eligibility, with separate abstract generation.
 Reject persists exclusion before exact-Paper cancellation outside write locks;
 restoration cannot revive old work. Clearing metadata waits for actual cleanup.
-See [identity](paper-identity.md) and [task boundaries](workflow-refactor-tasks.md).
+See [identity](paper-identity.md) and [Workspace runtime](collection-runtime.md).
 
 The private `.allfold/resources.sqlite` shares complete GOKB snapshots and the CARSI official Catalog across configurations. It holds external evidence, not users' Service preferences. Refresh commits only validated, complete data and retains the previous cache on failure. The Journal Resolver follows Journal → GOKB Platform → CARSI Resource, retaining multiple identities and products. Only a unique, reliable candidate can fill an empty default; saved user choices take precedence. Ordinary Run never requires GOKB.
 
@@ -263,7 +224,7 @@ handed over by B. History/Last Run describe only foreground retrieval, identity,
 created/matched/excluded and admission outcomes; background writes do not change
 those results or their completion time.
 
-WF06's internal necessary-query service has a separate request planner. Ordinary
+The internal necessary-query service has a separate request planner. Ordinary
 abstract, author and event-date gaps do not create requests. It consumes verified
 capability-labelled facts, resolves explicit identity/Preprint relationships and
 queries known native version families with execution-owned clients. Formal
@@ -289,12 +250,9 @@ publication date retains its explicit source. Preprint evidence preserves versio
 families, verified first-version proof and unresolved relations; it never becomes
 a formal direct identity or an ordinary date solely through association. Reader
 and Info display these new library projections without old event/source columns
-or active Enrich buttons. WF05 provides internal background scheduling. WF06 adds
-internal Date/Abstract and purpose-driven API/Preprint services through those task
-interfaces. WF08 uses both branches in production. WF07 supplies PDF clues/source
-discovery, WF09 supplies stream/files, and the public body service drives that
-same lazy coordinator inside one body reservation. It never nests the read-only
-discovery reservation or recollects completed metadata.
+or active Enrich buttons. Production collection uses Document and necessary API
+branches. Info's standalone Preprint operation is scheduled for retirement while
+background necessary proof remains; see [Providers](providers.md#info-preprint-lookup).
 
 ## Workspace collection runtime
 
@@ -306,38 +264,18 @@ independent collection; sensitive access changes drain only affected scopes.
 Application shutdown joins owned work before closing the common factory, while
 the authenticated bridge continues to deliver native resource terminal results.
 
-WF05 adds a Workspace-owned `WorkspaceRegistry`, with an immutable Workspace UUID,
+The Workspace-owned `WorkspaceRegistry` has an immutable Workspace UUID,
 path/inode identity and lifecycle ID. Reliable identity create/match/rebuild and
-queued collection admission commit together before registration. Its dynamic
-round-robin scheduler admits later Papers and Services and survives idle periods.
-The internal defaults bound executing Paper jobs to four globally and two per
-trusted Service; API/public work uses one `None` group. These task counts include
-client/native/write cleanup and are separate from physical page capacity.
+queued collection admission commit together before registration. Parent and leaf
+schedulers permit independent Paper and same-Paper branch execution. Each leaf
+owns its thread-confined repository, client/cache scope and native identity.
 
-One Paper gate arbitrates collection, controlled download reservations, explicit
-Preprint reservations and metadata clearing. Durable queued/running eligibility
-also blocks Download during the admit/register window. Branch increments use the
-original WriteToken, lifecycle, attempt, branch and sequence; duplicate delivery
-cannot reapply a cleared abstract. Completion follows actual worker/client/native
-settlement. Explicit retry preserves same-generation successful branch facts.
-Terminal persistence/cleanup faults retain conservative runtime occupancy.
-
-Each leaf branch runs on a separate bounded scheduler and opens its own repository
-and independent client context, allowing same-Paper Document/API overlap without
-parent/child pool starvation. Declared
-Providers scope credentials and mutable clients/caches; shared pacing outlives
-those contexts. Narrow access authority captures the actual saved Service,
-Prepare binding and selected credentials. Source Run IDs are diagnostic only.
-Lifecycle initialization marks prior queued/running work interrupted/failed once,
-without queue replay or network. Host-visible ownership and original branch epochs
-cover the base-commit/register window before external authority initialization.
-Failed access/startup preserves base metadata and independent branch results.
-Branch-local access changes drain only affected work; Workspace/Reject revocation
-still ends the whole Paper. Explicit Retry checks only unfinished dependencies
-and retains successful branch facts. Public Retry and single-Paper Download use
-their own shared qualifications. Host-visible local file leases protect actual
-body operations and maintenance without granting Service/Prepare authority or
-blocking local reading on collection. See [runtime interfaces](collection-runtime.md).
+One Paper gate coordinates collection, body work, explicit Preprint and destructive
+local actions. Run cancellation does not cancel transferred Paper tasks; reader
+selection has no ownership effect. Startup marks interrupted attempts without
+queue/network replay. Retry preserves successful branch facts. Current full-token
+retry, broad Provider dependencies and fault-related occupancy are documented as
+limitations in [runtime interfaces](collection-runtime.md), with fixes deferred.
 
 ## Physical Browser resource lifetime
 

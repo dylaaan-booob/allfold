@@ -29,8 +29,9 @@ retrieval. An old Run must never reread a current placeholder token to authorize
 reconstruction. A placeholder rebuild requires both its original unchanged token
 and explicit rebuild eligibility. A new identity can create a Paper without an
 expected token; a new identity that now matches an existing placeholder cannot
-silently rebuild it. The Run snapshot still verifies configuration, cancellation,
-Workspace/database paths and UUID; registry admission does not replace that guard.
+silently rebuild it. The current Run snapshot also checks configuration, cancellation and
+Workspace/database identity. Whole-file configuration equality is a current
+restriction scheduled for revision, not a permanent admission requirement.
 
 Admission stores base metadata, all reliable direct identities (including extra
 values in one namespace), the complete branch plan and queued attempt in one short
@@ -78,26 +79,18 @@ Branches use `context.read_paper()`, `context.emit(delta, sequence=...)`, declar
 operations retain the original collection token. Each branch has its own exact
 native workflow/task identity. All native Futures, client closes and captured
 page releases must actually settle before the parent can release Paper occupancy.
-Cleanup or terminal-write uncertainty records a fault and retains conservative
-occupancy. Cancellation flags and a returning callback do not prove cleanup.
+Cancellation flags and a returning callback do not prove actual resource cleanup.
+Current fault paths can also retain occupancy after terminal-record or auxiliary
+cleanup failure; releasing already-finished work in those cases is a planned fix,
+not a requirement to preserve indefinite occupancy.
 
-Public explicit Preprint queries use this same bounded Paper scheduler and an
-independent reservation per Workspace/Paper/request. They declare only bioRxiv
-and medRxiv, use the shared application factory and pacing, and open their own
-client scope and SQLite connection in the worker. They do not hold a foreground
-Run slot or a Run input snapshot. The exact reservation guards every request and
-commit using its original Paper token; a local Abstract edit cannot invalidate
-independent Preprint proof. Repeated clicks during activity/cleanup return that
-same request; a new explicit query after settlement is allowed even when the
-collection completed empty. Manual results never change collection facts.
-
-Preprint status requires the current Workspace UUID and may select an exact
-request ID. Unknown requests are Idle, and another Workspace is refused. Reader
-navigation only changes presentation. Cancellation and Reject capture the exact
-reservation, so a delayed old action cannot cancel a replacement. The reservation
-Future settles only after the actual scheduled worker, client scope, repository
-and Browser owner have closed; the host drains it for matching Provider epochs
-or whole-Workspace maintenance. Ordinary Run input edits remain available.
+Info's independent Preprint query still uses this scheduler and a per-Paper
+reservation with its own bioRxiv/medRxiv clients, connection and cancellation.
+It holds no foreground Run slot, and results do not change collection facts.
+The entry and its runtime/tests remain active now, but this standalone query is
+scheduled for retirement next. Necessary background Preprint evidence collection
+remains supported. User behavior and evidence rules belong to
+[Providers](providers.md#info-preprint-lookup).
 
 ## Manual reservations and maintenance
 
@@ -119,40 +112,36 @@ reservations, then permits shared factory closure.
 
 ## Explicit retry
 
-`registry.check_retry(paper_id, branches=complete_plan, service_id=None,
-expected_token=None, expected_attempt=None, expected_revision=None)` performs read-only qualification and
-returns the current `PaperRecord`. It requires full unexcluded metadata, settled
-failed/cancelled collection, no conflicting occupation, the complete original branch names
-and currently available dependencies for pending branches only.
+`registry.check_retry` projects eligibility; `registry.retry` admits the explicit
+attempt. Both accept the current Paper/attempt qualification, with `retry` also
+receiving its deadline. Eligible work has full unexcluded metadata, a settled
+failed/cancelled collection, no competing owner and available pending dependencies.
+Completed/skipped branch facts and saved increments survive. Public requests keep
+CSRF and exact Workspace/Paper/attempt association. Retry grants no body authority.
 
-`registry.retry` accepts the same qualification arguments plus `deadline`. It
-prechecks pending access outside write locks, then atomically rechecks the original
-Paper token, Paper revision, attempt facts and host epochs before creating an attempt. Workers
-verify the captured dependencies again. Completed/skipped branch facts and saved
-increments survive; their historical Service/Provider conditions are not new
-prerequisites. Public callers must require the exact Workspace/Paper/attempt and
-CSRF before invoking this service. No retry path grants Download or body authority.
+The production projection uses `host.peek()`; read-only queries cannot bind or
+normalize a library that appeared later. Explicit retry may bind through `current()`.
+The public route is `POST /api/papers/{paper_id}/collection/retry`; its current
+request carries `revision` and the full captured token as well as the attempt.
+Repeated full revision/token checks are a current limitation scheduled for
+simplification alongside callers and behavior tests, not an invariant to retain.
 
-The production `ProductionCollectionService.check_retry` uses the already bound
-`host.peek()` lifecycle; read-only projections cannot bind or normalize a library
-that appeared later. The explicit `retry` operation may bind through `current()`.
-HTTP uses `POST /api/papers/{paper_id}/collection/retry` with CSRF, Workspace UUID,
-exact attempt, Paper revision and the captured metadata/operation/abstract/body
-generations. It constructs the original `WriteToken` from that request. Pending
-access is checked outside Paper/SQLite write locks, and revision/attempt ownership
-is rechecked before admission; a stale request cannot borrow newer generations.
-The public `collection` projection contains status, attempt, cleanup, branch
-name/status and the same read-only retry qualification. Raw failure messages,
-clients, lifecycle authority and PDF discovery context are omitted.
+The necessary API branch currently declares a Provider set at admission, even
+though individual requests have narrower needs. Follow-up work will narrow those
+dependencies and the propagation of local access failures. Current registration,
+clients and tests remain in place. Successful independent increments must survive.
 
+The public collection projection contains status, attempt, cleanup, branch states
+and retry qualification. Raw failures, clients, lifecycle authority and private
+PDF context are omitted. Actual resources still drain before conflicting work.
 
 ## Independent body and local-file work
 
-WF09's `body` reservations now own public Download on the same host, Paper gate
+`body` reservations own public Download on the same host, Paper gate
 and bounded scheduler. A queued attempt is persisted before dispatch and remains
 visible through lazy discovery, stream/writer, publication, completion and actual
 cleanup. Repeated clicks return the original task/attempt/deadline; durable
-collection intent and uncertain cleanup block a second writer. Read-only
+collection intent and actual unsettled resources block a second writer. Read-only
 `download` discovery and manual `legacy` Preprint retain their real consumers,
 without nested admission. A Run match reuses the UUID/current facts without new
 collection intent; no foreground Run slot or reader selection owns the body.

@@ -1,33 +1,34 @@
 # Controlled Documents and article access
 
-Public Download reuses the PDF-only read capability under its existing body
-reservation, without recollecting completed Date/Abstract. These probes remain
-read-only and still release only their owned pages after verified bounded results.
-They do not supply action/script/file authority. A separate fixed body action
-hands verified Document authority to its exact original request/item for the
-qualified current form or ScienceDirect reader. It preserves the original response
-and Session; it never cancels a one-shot response and replays its URL. See
-[body output and its accepted cancellation risk](body-downloads.md#native-output-and-accepted-cancellation-risk).
+`BrowserRuntime` owns Page/WebContents, task claims and navigation.
+`DocumentRuntime` and its sandboxed, context-isolated preload currently expose
+fixed `binding`, `access`, `article`, `extract` and `pdf` observations. Main checks
+reply/request, sender and native frame association. No site-facing host IPC,
+Node capability or caller-supplied evaluator is exposed. Selecting a tab does not
+choose a task target. Cancellation, destruction and pending-call cleanup remain
+associated with their actual owner.
 
-`BrowserRuntime` owns Page/WebContents, task claims and navigation. The existing
-`DocumentRuntime` sends only the fixed `binding`, `access`, `article` and `extract` operations
-to the sandboxed, context-isolated Document preload. It exposes no site API,
-generic IPC, arbitrary evaluator, cookies or Node capability. Main validates the
-reply sender, native process/frame, current navigation generation, exact URL and
-preload-generated Document ID before accepting a bounded DTO. Pending calls end
-on cancellation, navigation, destruction, crash or the remaining deadline; their
-listeners and references are removed. Same-URL Pages do not share identity. An owned authentication read superseded
-by an in-flight redirect returns loading and discards the old observation; it
-does not end Login or replay any credential/selection action. Cancellation,
-renderer failure and lost ownership remain terminal.
+Public Download uses PDF-only refresh without recollecting Date/Abstract. A
+separate fixed body action hands the original request/item to the body service
+for qualified current forms and ScienceDirect readers. See [body downloads](body-downloads.md).
 
-A native binding proves which Document produced facts. Article identity proves
-whether that Document corresponds to a target Paper. Neither grants task, Service,
-institution-credential or file authority. Same-document URL changes invalidate
-captured bindings; primary-object changes are checked afresh at an article use
-boundary. There is no permanent DOM observer or cached input-DOI proof.
+## Current reading limits and planned changes
 
-## Fixed observations
+Current code still rejects same-document URL changes, replaced body/h1/article
+objects and failed repeated article/final-read checks. These are existing
+limitations, not conditions future implementations must preserve. A confirmed
+Paper does not need repeated identity proof at every page-reading boundary.
+The chosen follow-up captures the current rendered HTML, URL and needed values,
+then parses an independent Document. That snapshot path is not implemented here;
+Translator Runtime remains retired. Request/target correlation, cancellation and
+protected Paper writes continue to apply.
+
+Current access predicates include broad page markers. Weak strings such as a
+password field, CAPTCHA text or `access denied` in otherwise unrelated content
+are insufficient as the future basis for denying article access; access
+classification will be revised with its behavior tests.
+
+## Current fixed observations
 
 - `binding`: content type, Document ID and host-captured Page/process/frame/URL/
   navigation facts. pageAction, CARSI selection/search/Visit and WoS results use
@@ -40,153 +41,96 @@ boundary. There is no permanent DOM observer or cached input-DOI proof.
   HTTP status comes from the actual native main-frame navigation. No title,
   HTML, script, iframe URL, query, form value or page text is returned.
 - `article`: access markers and limited main-article evidence from one synchronous
-  DOM turn. At most 32 values of 1,024 characters from the six scholarly head Meta
+  DOM turn, using scholarly head Meta
   keys and the scoped SciELO article DOI link locator. Multiple main articles or
   evidence overflow is unconfirmed; a matching subset never defeats a conflict.
 
-URL bindings are limited to 4,096 characters. Access predicates inspect script
-markers, individual DOM text nodes and iframe locations locally without truncation,
-serializing or retaining page content. The host deadline bounds the native call;
-invalid/incomplete DTOs are refused with `page_probe_unconfirmed`. Ordinary Cloudflare assets/embedded Turnstile resources,
-or a bare 403/503, do not identify an automatic main challenge. Hidden hCaptcha
-resources on an ordinary page do not themselves require verification; recognized
-main challenge pages with hCaptcha retain the manual boundary. Existing title
-rules and localized page-options plus challenge-page orchestrator combinations
-remain. A recognized publisher robot challenge also uses Solver when the current
-native frame subtree contains an HTTPS `challenges.cloudflare.com/cdn-cgi/challenge-platform/`
-frame, including one inside a closed shadow root. That frame alone does not mark
-an ordinary article as a challenge. HTTP errors, 418, CPE00001 and Imperva denial remain failures; hCaptcha,
-Imperva CAPTCHA (`edet=12`), institution login and MFA retain manual waiting.
-Only validated fixed fields enter diagnostics, never raw queries or page content.
+Current probes return typed observations and sanitized diagnostic codes.
+Supported Cloudflare challenges can use the existing Solver; hCaptcha, Imperva
+CAPTCHA and MFA retain manual verification. Fixed challenge-frame and publisher
+markers are implemented in the access preload. Raw page content, queries and
+credentials are not diagnostic fields. These observations are not a universal
+live-site compatibility guarantee.
 
 ## Internal Paper entry
 
-`openPaperPage(data, identity, options)` remains an internal capability with no
-production business caller or public IPC/button. A DOI string or `{doi}` starts
+`openPaperPage(data, identity, options)` is an internal capability used by
+production metadata/PDF operations, without a standalone public IPC/button. A DOI string or `{doi}` starts
 at `doi.org`; it does not establish the redirected article's identity. DOI-free
 callers must supply an upstream-established `{confirmed_article_url}` relation.
 A request URL alone is insufficient. Established article URLs retain their
-fragment routes during navigation and identity comparison. Background collection stays disabled and no
-collection-completed state is written.
+fragment routes during navigation and identity comparison. The owning Workspace
+branch settles collection; this page helper does not write it.
 
-The order is controlled navigation → access checks/manual waiting/necessary solver
-→ fresh current-Document article evidence → fixed identity result. Reuse and page
-rebuild follow the same order. `confirmArticlePage` is the revalidation boundary
-for a caller holding a prior result; a previously returned proof is not permanent
-DOM authority. Identity confirmation remains independent of Date/Abstract content;
-no author, Item or Translator operation is involved.
+Current callers navigate through access handling and the article probe before
+reading. `confirmArticlePage` is an existing recheck helper; its repeated use is
+part of the reading limitation above, not a permanent design obligation.
 
-DOIs use the shared prefix/validity rules, reliable head Meta and applicable
-current-article DOI `id`/`doi` parameters at an `/article` endpoint or DOI-suffix
-paths, including multi-segment DOI suffixes. URL-only evidence requires a single article object; scholarly DOI Meta
-also permits checking conflicting article URL facts. Generic main/search layouts
-do not prove an article; resolver URLs do not count. Euclid journal `.full` and
-SciELO article DOI links are scoped by host/structure, not Translator ID. IOP's
-known `/article/DOI/meta` and `/pdf` views (and trailing route slash) are separated
-from its multi-segment DOI by the explicit IOP host/route rule. References,
-recommendations, arbitrary body text and unrelated frames supply no DOI evidence.
-Conflicting main DOIs return `article_identity_conflict`. Missing/overflow/multiple
-object evidence returns `article_identity_unconfirmed`, with a fixed internal
-identity outcome/reason. DOI-free absence is `not_applicable`; a trusted established
-article URL can confirm the current Document. This does not discover new platforms.
+The current article probe uses reliable head Meta and qualified article URLs,
+with explicit platform routing for multi-segment DOI paths. It excludes references,
+recommendations and unrelated frames. Missing/conflicting observations currently
+return `article_identity_unconfirmed` / `article_identity_conflict`; this describes
+the helper, not a requirement to rerun it for an already-confirmed Paper. Reliable
+Paper creation/merging is separately owned by [Paper identity](paper-identity.md).
 
 ## Solver, recovery and terminal ownership
 
-The retained chain is Browser `inspectPage`/`waitForPage` → real access preload →
-Main's production target dispatcher → ElectronBridge → Pydoll on the existing
-Electron CDP endpoint → fresh access check. Main captures the exact target and
-checks task/Page/frame/Document/URL and navigation; full or same-document
-navigation, crash, close, expiry and cancellation invalidate the solve. Same URLs
-never select a target. Pydoll's supported challenge-frame ownership checks remain.
+The current chain is Browser `inspectPage`/`waitForPage` → access preload →
+Main's target dispatcher → ElectronBridge → Pydoll on Electron's CDP endpoint →
+access observation. Exact native targets and owned challenge frames prevent
+same-URL tabs from being confused. A click is an action result, not proof that
+access succeeded.
 
-The operation ledger gives one effective Document at most two attempts, the second
-only after the first `not_found`. Reentering a wait does not reset it. `clicked`
-means an action occurred: persistent challenge/login/error remains waiting/failure,
-and article access must still confirm identity. Unavailable/failed solvers and
-manual waits end under the same parent deadline or cancellation.
+Solver is currently attached to business operations and fixed Documents, with
+navigation invalidation and a limited attempt ledger. Those restrictions are
+scheduled for replacement by tab-wide solving; that capability is not implemented
+yet. Document/URL changes and a fixed order/count are not future Solver constraints.
 
-Bridge's application solver slot stays held through actual worker cleanup. Queued
-canceled/expired work cannot execute. Other requests and exact cancellation keep
-flowing. Shutdown/disconnect stop queued/running work and join workers before
-completion; no late callback is accepted. Covers and WoS Export now establish one
-absolute request deadline across navigation, probes, business polling and waits.
-WoS cancellation still cancels an original DownloadItem and waits for its actual
-terminal before releasing native-save ownership; expiry cannot fabricate save
-settlement. Document-scoped cleanup has its own short cleanup bound.
+Bridge currently serializes Solver work through an application slot and joins
+actual workers on cancellation/shutdown. Queued cancelled work cannot execute;
+other requests and exact cancellation remain routable. Browser recovery and
+cooldowns currently share the operation deadline. Numeric attempt/refresh limits
+are implementation details, not platform guarantees. Unknown POST/authentication/
+one-time actions are not replayed. Background pages keep a usable viewport without
+selecting or focusing the user's tab. PDF-only ScienceDirect reads currently allow
+its toolbar to hydrate before declaring a complete empty observation.
 
-Existing two-refresh navigation budgets, origin cooldowns, attributable one-time
-CARSI resource reentry and eligible Paper-page rebuild remain inside the original
-parent budget. Unknown POST/authentication/one-time actions are never replayed.
-Hidden pages retain nonzero viewports and do not select/focus the user's tab.
-Readiness uses host time and main-frame state, not unlimited network idle.
-PDF-only reads of a confirmed ScienceDirect article allow up to two seconds for
-its current-article PDF toolbar to hydrate after an initially complete empty
-observation. Each read retains the original Document and article subject, and
-the original cancellation, authority and absolute deadline still apply. This
-does not navigate, click an action or extend a task deadline.
+## Validation and page ownership
 
-## Validation and following tasks
+The serial Electron suite uses real BrowserRuntime/DocumentRuntime/preload,
+production Main/Bridge dispatch and Pydoll/CDP with temporary profiles and local
+responses. These prove controlled mechanisms, not universal publisher access.
+Live Cloudflare, hCaptcha, Imperva and MFA completion remains unverified by those
+fixtures. Historical CARSI/WoS/Cover samples are recorded in their PRs.
+[PR #76](https://github.com/dylaaan-booob/allfold/pull/76) observed intermittent
+Service-opening failures with an undetermined cause; universal batch reliability
+has not been established, and that old sample is not proof of a current failure.
 
-The normal Electron test entry runs real BrowserRuntime/DocumentRuntime/preload
-fixtures with temporary profiles and controlled local responses, public Bridge
-queue/cancel tests, and the real Pydoll/CDP target fixture. The latter also connects
-the production Main dispatcher to the real Python Bridge through a fixture-only
-framed transport; WebSocket multiplex/settlement has separate Bridge tests.
-These fixtures prove isolated mechanisms. Scoped live acceptance additionally
-completed fresh CARSI Login with user QR authentication, Oxford/WoS preparation,
-one 28-record native WoS export, one Cover Search and cancellation/restart in a
-test copy. This is sample-specific compatibility evidence. No live Cloudflare,
-hCaptcha or Imperva challenge, or separate MFA step, was observed; their live completion remains
-unverified. See [WF03 status](workflow-refactor-tasks.md#wf03-document-access).
+[Browser Session](browser-session.md) owns original-response routing;
+[Browser pages](browser-pages.md) owns temporary pages, retained access targets
+and WoS Query→Export loans. An ordinary Document registration currently refuses
+main-frame form-download navigation; the separate body action supplies supported
+original-response handoff. That limitation is not a requirement to invalidate
+already-bound DownloadItems on incidental page changes.
 
-WF03 removes full-page/remoteTranslate-derived serialization, translation-only
-frame enumeration, cookie/observer operations and unused Import-only attachment
-capture/bypass helpers. Its local Session response-cancel/URL-capture loop is gone.
-WF04 owns consolidation of the remaining shared Session listeners, original
-DownloadItem capability fixtures, page quotas/scheduling and complete page-close
-policy. No replacement downloader is introduced. WF06 adds the Date/Abstract
-operation below; WF08 connects its complete Document/API plan to production.
-Retained adapted host sources keep their AGPL notices;
-official vendor trees, dependency pins and real user data are unchanged.
-
-The shared Session entry and measured original-response behavior are documented
-in [Browser Session](browser-session.md). WoS uses that native router while
-retaining all Document, known-overlay and real-terminal rules above. Missing
-frame/source facts never become current-page or URL-based Document authority.
-
-## WF04 page ownership boundary
-
-Document authority does not grant resource ownership or extend a page lifetime.
-Temporary article/Covers/helper pages close after their operation; retained Portal
-and Service targets have explicit bounded access-context owners. WoS result loans
-protect the original native Document through Query→Export gaps. Actual close and
-key invalidation revoke preparation state. See [Browser pages](browser-pages.md).
-
-The fixed resource fixture records a current unsupported BrowserRuntime entry:
-main-frame form POST download starts a new navigation generation, so its old
-Document registration is refused and the original item is canceled to actual done,
-without a new GET. The shared Session original-POST fixture is a separate capability
-seam, not permission to relax these checks or claim all Runtime entries supported.
-
+Retained host adaptations keep their [third-party notices](third-party.md).
 
 ## Internal combined Document operation
 
 The internal authenticated Bridge action is `extract_paper_metadata`, called by a
-captured Workspace branch through `BranchContext.execute_native()`. WF08 installs
-it in the complete production plan after base Paper admission. It has no standalone
-public extraction button. WF07 composes Date/Abstract with independent bounded PDF
-clues on the same live Document. The parallel necessary-API branch has separate
-resources; only all planned branch results and actual cleanup settle the Paper.
+captured Workspace branch through `BranchContext.execute_native()` after base
+Paper admission. It has no standalone public extraction button. Date/Abstract and
+independent PDF clues share the current page. The parallel necessary-API branch
+has separate resources; only all planned branch results and actual cleanup settle the Paper.
 Foreground Run has its own serial slot and ends independently. Explicit Preprint
 uses the same Paper occupation gate without impersonating collection.
 
 The payload carries the existing workflow/task/Paper association,
 `workspace_identity` (the existing 64-hex live Workspace path/inode hash, **not**
 the SQLite Workspace UUID), `identity:{doi?,confirmed_article_url?}`, a strictly
-boolean `wantAbstract`, and absolute integer `deadline_ms`. It opens/recovers only
-through `openPaperPage`, checks access before fresh independent Paper identity,
-and uses the owning operation's recovery-authority callback. It does not borrow a
-foreground Run snapshot. A Service call additionally carries the captured
+boolean `wantAbstract`, and absolute integer `deadline_ms`. It currently opens/recovers
+through `openPaperPage` and uses the owning operation's recovery-authority callback.
+It does not borrow a foreground Run snapshot. A Service call additionally carries the captured
 `service_scope`, `service_id`, `preparation_key` and `target_page_id`. A retained
 target must match the actual native access context/key/Page; it is pinned through
 actual work-page cleanup without being navigated or closed. A captured explicitly
@@ -196,9 +140,8 @@ policy. No Service fields are needed for public access.
 
 The runtime action is `extract` with exactly `{wantAbstract:boolean}`. Other args,
 unknown actions and non-booleans fail before dispatch; the sandboxed preload
-validates them again. `readDocument` forwards these fixed args. It never accepts an
-evaluator, selector, HTML string, Provider response or webpage request. The pure
-DOM observation only reads the current Document: no network, page creation,
+validates them again. `readDocument` forwards these fixed args. It accepts no
+caller-supplied evaluator, selector or webpage request. The pure DOM observation only reads the current Document: no network, page creation,
 navigation, API lookup, click, source-DOM modification or Paper write.
 
 Successful Main results use:
@@ -229,44 +172,20 @@ Successful Main results use:
 }
 ```
 
-`metadata` has exactly two fields; dates have exactly `value` and `precision`.
-Dates are valid, sorted, unique `YYYY-MM`/`month` or `YYYY-MM-DD`/`day` records,
-at most 256. Same-month qualified day records suppress the month; distinct days
-remain. Abstract is nonempty plain text or null, capped at 65,536 UTF-16 code
-units for IPC (a separate limit from date context code-point counting). C0 controls
-other than ordinary whitespace are refused. No event, source, evidence, platform,
-HTML, raw block, author or DOM path enters this DTO. The document envelope is
-bounded native evidence, has no URL or credential, and grants no new task or
-storage authority. Main can append its existing sanitized recovery/diagnostic
-status annotations.
+`metadata` has two fields: valid sorted unique month/day `dates` and a plain-text
+`abstract` or null. Same-month qualified day records suppress the month; distinct
+days remain. The document envelope carries native evidence, without credentials
+or new task/storage authority. Current validators enforce field/count/size budgets;
+those arbitrary numeric caps are not extraction rules to perpetuate.
 
-A valid empty DTO is `retrieved`, not `no_result`. Local diagnostics are unique,
-limited to four fixed codes: `json_ld_invalid`, `json_ld_ambiguous`,
-`abstract_candidate_failed`, `abstract_budget_exceeded`. A locally failed or
-over-budget abstract candidate can leave qualified dates and this explicit
-partial diagnostic; it never becomes a truncated successful abstract. The caller
-must retain that distinction. A missing/challenged/wrong-identity/cancelled/expired
-or wholly failed Document returns a failure diagnostic and no metadata. Date
-result overflow and the fixed five-second local scanning budget fail the whole
-Date/Abstract read instead of truncating output. Independently valid PDF clues
-may survive that local failure. The parent deadline can be shorter. JSON-LD
-scripts exceeding the 262,144 UTF-16-unit parsing input bound contribute no facts
-and carry `json_ld_invalid`; their contents are never truncated into valid JSON.
+A valid empty DTO is `retrieved`. Fixed local diagnostics distinguish JSON-LD or
+abstract failure from empty success. An independent PDF-reader failure can leave
+valid Date/Abstract data and vice versa; the collection branch reports partial
+failure explicitly. Current final-read/subject validation is covered by the
+limitation above. Normal owned-page cleanup does not retroactively revoke a
+returned result; Python commits using original Workspace/Paper/attempt eligibility.
 
-Reading and final access/article revalidation occur while the exact Document is
-live. An isolated-world WeakMap assigns opaque identities to the body, legal first
-h1 and unique top-level article. Captured, extracted and final subject identities
-must agree. Body/root/h1 replacement, even at the same DOI and URL, invalidates
-both fields; native Document ID, exact URL, frame/process, navigation generation
-and cancellation remain independently checked. Only after this final check does
-`runTask` close its temporary page and Main send the small result. Normal owner
-cleanup does not retroactively revoke verified metadata; Python commits under its
-captured Workspace/Paper/attempt token without reopening a closed page. This
-same-operation, pre-cleanup seam now composes WF07 PDF clues. The final check
-covers all outputs from that Document, including when one independent reader
-has a local extraction failure.
-
-### WF07 independent PDF clues and refresh
+### Independent PDF clues and refresh
 
 The Date/Abstract `metadata` contract above stays unchanged. The native envelope
 additionally carries `metadata_status` and independent `pdf_clues` containing
@@ -276,8 +195,7 @@ failure can leave valid PDF facts, and a local PDF failure can leave valid
 Date/Abstract values. Failure remains explicit; a legal complete-empty PDF read
 is normal. The collection adapter emits a single combined increment, then
 settles a partial branch as failed. It never returns that increment for a second
-commit. Replaced Document/body/subject, conflicting identity, cancellation and
-deadline invalidate all of the Document's current outputs before native cleanup.
+commit. Cancellation and task authority remain owned by the captured operation.
 
 The fixed runtime `pdf` action accepts only a validated reader kind, never a
 caller-supplied selector/evaluator. It reads Meta in citation-then-fulltext order,
@@ -293,19 +211,16 @@ recognized scholarly metadata sources, including equivalent duplicate fields.
 The private fixed PDF message carries the existing host-owned Unicode casefold
 data used by article identity; Meta, control DOI and DOI-path comparisons share
 those semantics. Public operation arguments cannot supply normalization data.
-Candidate count and aggregate size are checked before adding each field, reserving space for the
-final landing URL and typed persistable-fact projection. Overflow is a diagnostic,
-never truncated success. A local PDF operation/DTO failure keeps independently
-valid Date/Abstract only after the same final live binding/subject/identity check. No PDF
-candidate is fetched, probed, clicked or submitted during article precollection.
+Current validators report overflow rather than returning truncated successful
+facts. Article precollection reads candidates without fetching, probing, clicking
+or submitting them.
 
 `extract_paper_pdf_clues` and Python `read_document_pdf_clues()` provide an
 independent PDF-only refresh. They do not execute Date/Abstract or emit metadata,
 renew a collection token, reopen a completed collection or run necessary APIs.
 A known reader has separate rule/Host/path/internal-ID/source-chain qualification
-bound to the original target. It keeps exact frame/Document/URL/subject, access,
-prepared Service, cancellation and cleanup checks even when article DOI/h1 proof
-is absent. This does not weaken `openPaperPage`/`confirmArticlePage` for articles.
+bound to the original target. It uses the captured request/target, access context and cancellation even when
+article DOI/h1 proof is absent.
 Challenges still use the shared access/solver boundary. Actions and one-time
 responses remain typed refresh facts. The separate fixed body action capability
 submits qualified live R059 forms and follows R024 ScienceDirect entries once,
@@ -327,8 +242,7 @@ target again, the original Paper binding and a qualified AN. Only the fixed
 `/pdfviewer/web/viewer.html?file=...` carrier are accepted; the file value must
 point to `assets.ovid.com` and retains its complete signature. An empty LWW
 viewer can reach this conditional alternative, keeping its original discovery
-phase and recording a fallback. Missing OCE access skips it. No OCE bootstrap,
-per-rule native listener, action submission or PDF-byte receive is added.
+phase and recording a fallback. Missing OCE access skips it. The OCE reader itself does not bootstrap access or receive PDF bytes.
 
 ### Shared extraction scope
 
@@ -339,9 +253,8 @@ An article-internal footer remains eligible for dates. The DOM root is the sole
 legal top-level article only when it contains the first legal h1; no article,
 multiple articles or an outside h1 falls back to legal body. Abstract additionally
 excludes explicit recommendations and peripheral UI in that same root. Head Meta
-and JSON-LD remain independent of this root. The algorithm-only multi-article
-fallback does not relax the host identity probe's existing multiple-article
-refusal.
+and JSON-LD remain independent of this root. The host identity probe currently has a separate multiple-article refusal,
+covered by the reading limitation above.
 
 Date matching follows source order and preserves continuous inline text. Complete
 li/tr records are indivisible, including nested p/div/td; semantic p/headings,
