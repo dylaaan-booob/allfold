@@ -1,7 +1,8 @@
 # SQLite Paper library
 
 `Workspace/papers.sqlite` is the only production Paper store. Current Run/WoS,
-Workspace/Reader/search, local fields, Preprint and Trash share `PaperRepository`.
+Workspace/Reader/search, local fields, background evidence and Trash share
+`PaperRepository`.
 Uninitialized read-only Workspace views remain empty without creating a database;
 the first Run explicitly initializes one. Corruption, unsafe paths, unsupported
 schemas and database failures are errors, never an empty or recreated library.

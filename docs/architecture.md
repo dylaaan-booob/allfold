@@ -107,7 +107,7 @@ responses acknowledge the submitted snapshot without replacing later edits.
 Server-side admission coordinates writes with task starts, retaining the existing
 Compare-and-Write and Workspace lock protections. Active tasks continue using
 their captured inputs. Foreground Run/WoS snapshot writers currently keep ordinary
-edits Pending until settlement; independent Preprint uses its Paper reservation, and independent Browser owners allow unrelated input,
+edits Pending until settlement; independent Browser owners allow unrelated input,
 Journal and Service edits. A change overlapping an executing Service waits for its
 owner to settle. Saved access changes invalidate captured old preparation/authentication
 keys and await their scoped native cleanup outside the configuration write lock.
@@ -151,7 +151,7 @@ labels. Unassigned and shared pages use explicit roles and recorded provenance.
 The directory uses the shared layout controller for flyout size, focus and scroll.
 Grouping grants no task, document or authentication authority.
 
-Archive availability and fullscreen task presentation are local UI preferences, outside YAML Save and business SQLite. Archive defaults disabled while its existing resources and layout preference remain available. Legacy Paper links resolve against the current ARRAY Candidate/Downloaded/Trash projection or report a missing Paper. Login, Discover and Preprint keep their existing coordinators. Discover captures its display preference at start. Login retains their progress and controls in Workflows independently of Browser visibility.
+Archive availability and fullscreen task presentation are local UI preferences, outside YAML Save and business SQLite. Archive defaults disabled while its existing resources and layout preference remain available. Legacy Paper links resolve against the current ARRAY Candidate/Downloaded/Trash projection or report a missing Paper. Login and Discover keep their existing coordinators. Discover captures its display preference at start. Login retains their progress and controls in Workflows independently of Browser visibility.
 
 ## Resources and third-party code
 
