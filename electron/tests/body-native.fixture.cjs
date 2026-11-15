@@ -25,10 +25,10 @@ app.whenReady().then(async()=>{
       if(kind==='blocked'){res.writeHead(403,{'content-type':'text/html'});res.end('<title>Login required</title>');return;}
       const background=['iframe-background','popup-background','iframe-replaced','popup-source-replaced'].includes(kind);
       const popup=['popup','popup-background','popup-source-replaced','action-challenge-popup'].includes(kind);
-      const setup=['iframe','iframe-background','iframe-replaced','action-challenge-iframe'].includes(kind)?`onsubmit="const frame=document.createElement('iframe');frame.name='new-body';document.body.appendChild(frame);this.target=frame.name"`:
+      const setup=['iframe','predeclared-iframe','predeclared-popup-guard','iframe-background','iframe-replaced','action-challenge-iframe'].includes(kind)?`onsubmit="${kind==='predeclared-popup-guard'?`window.open(this.action,'_blank');`:''}const frame=document.createElement('iframe');frame.name='new-body';document.body.appendChild(frame);${kind.startsWith('predeclared-')?'':'this.target=frame.name'}"`:
         kind==='no-item'?`onsubmit="event.preventDefault()"`:
         kind==='get-changed'?`onsubmit="this.elements.once.value='changed-after-prepare'"`:
-        kind==='existing-target-changed'?`onsubmit="this.target='_self'"`:
+        ['existing-target-changed','predeclared-target-changed'].includes(kind)?`onsubmit="this.target='_self'"`:
         kind==='unrelated'?`onsubmit="event.preventDefault();location.assign('/unrelated')"`:'';
       res.writeHead(200,{'content-type':'text/html'});
       const getForm=['get-form','get-changed'].includes(kind);
@@ -36,7 +36,7 @@ app.whenReady().then(async()=>{
         ${['existing-iframe','existing-target-changed'].includes(kind)?'<iframe name="body" src="/frame"></iframe>':''}
         ${background?`<iframe id="background" name="background" src="/frame"></iframe><script>fetch('/child-ready?case=${kind}').then(()=>{${kind==='iframe-replaced'?`document.querySelector('iframe[name="new-body"]').remove();const replacement=document.createElement('iframe');replacement.name='new-body';replacement.src='/source-replaced?case=${kind}';document.body.appendChild(replacement)`:
           kind==='popup-source-replaced'?`location.assign('/source-replaced?case=${kind}')`:`document.getElementById('background').src='/unrelated?case=${kind}'`}})</script>`:''}
-        <div class="download-pdf"><form class="ft-download-content__form--pdf" method="${getForm?'GET':'POST'}" action="/once?${getForm?'discard=old-action-query&':''}case=${kind}" ${popup?'target="_blank"':['existing-iframe','existing-target-changed'].includes(kind)?'target="body"':''} ${setup}>
+        <div class="download-pdf"><form class="ft-download-content__form--pdf" method="${getForm?'GET':'POST'}" action="/once?${getForm?'discard=old-action-query&':''}case=${kind}" ${popup?'target="_blank"':kind.startsWith('predeclared-')?'target="new-body"':['existing-iframe','existing-target-changed'].includes(kind)?'target="body"':''} ${setup}>
         ${getForm?`<input name="case" value="${kind}"><input name="once" value="fixture + &"><input name="tag" value="one"><input name="tag" value="two"><input disabled name="ignored" value="disabled"><input type="checkbox" name="ignored" value="unchecked">`:`<input name="once" value="${kind==='current-form'?'current-document':'fixture'}">`}
         <button type="submit" ${getForm?'name="download" value="PDF now"':''}>Download PDF</button></form></div></article></body></html>`);return;
     }
@@ -165,10 +165,10 @@ app.whenReady().then(async()=>{
       python.stdin.write(JSON.stringify({type:'hello',token:'fixture-only'})+'\n');
       const code=await new Promise(resolve=>python.once('exit',resolve));python=null;
       if(dispatchError)throw dispatchError;
-      assert.equal(code,0,stderr);assert.equal(complete,true,stderr);assert.equal(publicCases.length,22);
+      assert.equal(code,0,stderr);assert.equal(complete,true,stderr);assert.equal(publicCases.length,25);
       for(const item of publicCases)if(item.status==='completed')assert.deepEqual(fs.readFileSync(path.join(profile,'workspace/Documents',item.paper+'.pdf')),payload);
       assert.equal(browser.tabs.size,0);assert.equal(browser.sessionEvents.downloads.size,0);assert.equal(browser.sessionEvents.items.size,0);
-      for(const kind of ['attachment','inline','iframe','existing-iframe','iframe-background','popup-background','iframe-replaced','popup-source-replaced','popup','action-blocked','action-challenge','action-challenge-iframe','action-challenge-popup','action-html','cancel','drain'])assert.deepEqual(requests.filter(request=>request.url==='/once?case='+kind),
+      for(const kind of ['attachment','inline','iframe','predeclared-iframe','predeclared-popup-guard','existing-iframe','iframe-background','popup-background','iframe-replaced','popup-source-replaced','popup','action-blocked','action-challenge','action-challenge-iframe','action-challenge-popup','action-html','cancel','drain'])assert.deepEqual(requests.filter(request=>request.url==='/once?case='+kind),
         [{url:'/once?case='+kind,method:'POST',body:'once=fixture'}]);
       for(const kind of ['iframe-background','popup-background'])assert.equal(requests.filter(request=>request.url==='/unrelated?case='+kind).length,1);
       assert.deepEqual(requests.filter(request=>request.url==='/once?case=current-form'),
@@ -177,6 +177,7 @@ app.whenReady().then(async()=>{
         [{url:'/once?case=get-form&once=fixture+%2B+%26&tag=one&tag=two&download=PDF+now',method:'GET',body:''}]);
       assert.equal(requests.filter(request=>request.url.startsWith('/once?')&&request.url.includes('get-changed')).length,0);
       assert.equal(requests.filter(request=>request.url==='/once?case=existing-target-changed').length,0);
+      assert.equal(requests.filter(request=>request.url==='/once?case=predeclared-target-changed').length,0);
       assert.equal(requests.filter(request=>request.url.startsWith('/expired-action')).length,0);
       assert.equal(requests.filter(request=>request.url==='/once?case=blocked').length,0);
       assert.equal(requests.filter(request=>request.url.endsWith('/pdfft')).length,1);

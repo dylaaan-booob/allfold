@@ -86,7 +86,7 @@ async def main():
     host = application.state.workspace_tasks
     client = httpx.AsyncClient(transport=httpx.ASGITransport(app=application), base_url='http://localhost')
     try:
-        for index, kind in enumerate(('attachment', 'inline', 'iframe', 'existing-iframe', 'existing-target-changed', 'iframe-background', 'popup-background', 'iframe-replaced', 'popup-source-replaced', 'popup', 'current-form', 'get-form', 'get-changed', 'sciencedirect', 'blocked',
+        for index, kind in enumerate(('attachment', 'inline', 'iframe', 'predeclared-iframe', 'predeclared-target-changed', 'predeclared-popup-guard', 'existing-iframe', 'existing-target-changed', 'iframe-background', 'popup-background', 'iframe-replaced', 'popup-source-replaced', 'popup', 'current-form', 'get-form', 'get-changed', 'sciencedirect', 'blocked',
                                       'action-blocked', 'action-challenge', 'action-challenge-iframe', 'action-challenge-popup', 'action-html', 'cancel', 'drain')):
             science = kind == 'sciencedirect'
             access_blocked = kind in {'blocked', 'action-blocked'} or kind.startswith('action-challenge')
@@ -131,7 +131,7 @@ async def main():
                     from allfold.web.electron_server import drain_application
                     await drain_application(application)
             result = await asyncio.to_thread(task.future.result, 20 if kind.startswith('action-') else 10)
-            stale = kind in {'get-changed', 'existing-target-changed', 'iframe-replaced', 'popup-source-replaced'}
+            stale = kind in {'get-changed', 'existing-target-changed', 'predeclared-target-changed', 'iframe-replaced', 'popup-source-replaced'}
             expected = ('cancelled' if stopping else 'stale' if stale else 'local_failure' if kind == 'action-html'
                         else 'failed' if access_blocked else 'completed')
             assert result.status == expected, (kind, result)

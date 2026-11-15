@@ -34,7 +34,7 @@ class OriginalNavigation {
     return !!pii && (next.origin===source.origin&&['/science/article/pii/'+pii+'/pdfft','/science/article/pii/'+pii+'/pdf'].includes(next.pathname)
       ||next.protocol==='https:'&&next.hostname==='pdf.sciencedirectassets.com'&&next.pathname.endsWith('/1-s2.0-'+pii+'/main.pdf'));
   }
-  acceptPopup(url) {return this.dispatched&&!this.error&&!this.primary&&(url==='about:blank'||this.acceptsURL(url));}
+  acceptPopup(url) {return !this.targetName&&this.dispatched&&!this.error&&!this.primary&&(url==='about:blank'||this.acceptsURL(url));}
   addPopup(tab) {
     if(!this.acceptPopup('about:blank'))return;
     if(tab.opener?.bodyAction!==this||tab.taskOwner!==this.owner)return;
@@ -55,8 +55,10 @@ class OriginalNavigation {
       if(!this.dispatched||this.bound||this.primary||this.error||event.isMainFrame||!frame)return;
       if(!source.createdFrames.has(frame.frameToken)||!sameFrame(event.initiator,this.doc)
         ||event.url!==(this.requestURL||this.candidate.url))return;
+      if(this.targetName&&(this.targetFrame||frame.name!==this.targetName))return;
       // The fixed action's native initiator and newly created destination are
       // known before its first request; unrelated new children stay unregistered.
+      if(this.targetName)this.targetFrame=frame;
       this.addFrame(source,frame);
     };
     contents.on('will-frame-navigate',source.targetNavigation);
@@ -127,6 +129,7 @@ class OriginalNavigation {
     }
     try {
       this.valid();
+      if(!this.bound&&this.targetName&&!this.targetFrame)throw failure('document_changed');
       if(!this.bound&&this.targetFrame&&!sameFrame(this.targetFrame,details.frame))throw failure('document_changed');
       if(!this.dispatched||!entry||!sameFrame(entry.frame,details.frame)||!this.acceptsURL(details.url)
         ||!['GET','POST'].includes(details.method)||this.primary)throw failure('document_changed');
@@ -237,6 +240,7 @@ async function executeBodyNative(browser,data,{signal,progress=()=>{}}={}) {
     prepared=await browser.bodyActions.prepare(doc,{url:candidate.url,action:candidate.action,platform:candidate.platform,rule_id:candidate.rule_id},
       {signal:stop,deadline:data.deadline_ms});
     operation.method=prepared.plan.method;operation.requestURL=prepared.plan.request_url;
+    operation.targetName=prepared.plan.target==='frame'?prepared.plan.target_name:null;
     operation.targetFrame=prepared.targetFrame;
     if(prepared.targetFrame)operation.addFrame(operation.sources.get(doc.pageId),prepared.targetFrame);
     if(prepared.plan.target==='popup')await browser.reserveChildPage({signal:stop,deadline:data.deadline_ms});

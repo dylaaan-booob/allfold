@@ -55,7 +55,8 @@ class BodyActionRuntime {
       // Resolve only the controlled action's named destination, never grant the
       // current frame inventory native output authority.
       const matches=plan.target==='frame'?contents.mainFrame.framesInSubtree.filter(item=>item.name===plan.target_name):[];
-      if(plan.target==='frame'&&matches.length!==1)throw new BrowserFailure('navigation','document_changed');
+      if(matches.length>1)throw new BrowserFailure('navigation','document_changed');
+      // No match can be the fixed action's not-yet-created named iframe.
       const targetFrame=matches[0];
       return {plan,targetFrame,dispatch:(beforeDispatch,onError)=>this.dispatch(entry,id,()=>{
         if(targetFrame&&!contents.mainFrame.framesInSubtree.some(item=>item.processId===targetFrame.processId

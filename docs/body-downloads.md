@@ -125,9 +125,10 @@ and the isolated Document preload. It opens and verifies the current article,
 reads its live R059 form or R024 ScienceDirect entry, then registers before the
 controlled action. A one-shot handoff binds the verified Document to the exact
 original navigation request, frame, owner and item. A named existing form target
-is resolved to its unique native frame before dispatch. New iframe destinations
-must have the original Document as their native navigation initiator; creating a
-child alone grants no download registration. An action-created iframe or
+is resolved to its unique native frame before dispatch. A predeclared target
+absent before dispatch waits for a newly created frame with that exact name.
+Every new iframe destination must have the original Document as its native
+navigation initiator; creating a child alone grants no download registration. An action-created iframe or
 popup registers before its first PDF response; child pages use the same physical
 quotas. The scoped attachment override changes only the qualified navigation's
 headers and retains its response body. Read-only probes stay read-only, and
