@@ -16,23 +16,43 @@ app.commandLine.appendSwitch('no-proxy-server');app.on('window-all-closed',()=>{
 const identity=file=>{const info=fs.lstatSync(file);return [info.dev,info.ino];};
 app.whenReady().then(async()=>{
   assert.equal(process.versions.electron,'45.0.0');
-  const requests=[],payload=Buffer.alloc(256*1024,71),cases=[];let origin;
+  const requests=[],payload=Buffer.alloc(256*1024,71),cases=[],childBarriers=new Map(),bodyResponses=new Map(),activeBodies=new Set();let origin;
   const server=http.createServer(async(req,res)=>{
     let body='';for await(const chunk of req)body+=chunk;
     requests.push({url:req.url,method:req.method,body});
     const url=new URL(req.url,origin),kind=url.searchParams.get('case');
     if(url.pathname==='/article') {
       if(kind==='blocked'){res.writeHead(403,{'content-type':'text/html'});res.end('<title>Login required</title>');return;}
-      const setup=['iframe','action-challenge-iframe'].includes(kind)?`onsubmit="const frame=document.createElement('iframe');frame.name='new-body';document.body.appendChild(frame);this.target=frame.name"`:
+      const background=['iframe-background','popup-background','iframe-replaced','popup-source-replaced'].includes(kind);
+      const popup=['popup','popup-background','popup-source-replaced','action-challenge-popup'].includes(kind);
+      const setup=['iframe','iframe-background','iframe-replaced','action-challenge-iframe'].includes(kind)?`onsubmit="const frame=document.createElement('iframe');frame.name='new-body';document.body.appendChild(frame);this.target=frame.name"`:
         kind==='no-item'?`onsubmit="event.preventDefault()"`:
         kind==='get-changed'?`onsubmit="this.elements.once.value='changed-after-prepare'"`:
+        kind==='existing-target-changed'?`onsubmit="this.target='_self'"`:
         kind==='unrelated'?`onsubmit="event.preventDefault();location.assign('/unrelated')"`:'';
       res.writeHead(200,{'content-type':'text/html'});
       const getForm=['get-form','get-changed'].includes(kind);
       res.end(`<!doctype html><html><head><meta charset="utf-8"><title>Original response</title></head><body><article><h1>Original response</h1>
-        <div class="download-pdf"><form class="ft-download-content__form--pdf" method="${getForm?'GET':'POST'}" action="/once?${getForm?'discard=old-action-query&':''}case=${kind}" ${['popup','action-challenge-popup'].includes(kind)?'target="_blank"':''} ${setup}>
+        ${['existing-iframe','existing-target-changed'].includes(kind)?'<iframe name="body" src="/frame"></iframe>':''}
+        ${background?`<iframe id="background" name="background" src="/frame"></iframe><script>fetch('/child-ready?case=${kind}').then(()=>{${kind==='iframe-replaced'?`document.querySelector('iframe[name="new-body"]').remove();const replacement=document.createElement('iframe');replacement.name='new-body';replacement.src='/source-replaced?case=${kind}';document.body.appendChild(replacement)`:
+          kind==='popup-source-replaced'?`location.assign('/source-replaced?case=${kind}')`:`document.getElementById('background').src='/unrelated?case=${kind}'`}})</script>`:''}
+        <div class="download-pdf"><form class="ft-download-content__form--pdf" method="${getForm?'GET':'POST'}" action="/once?${getForm?'discard=old-action-query&':''}case=${kind}" ${popup?'target="_blank"':['existing-iframe','existing-target-changed'].includes(kind)?'target="body"':''} ${setup}>
         ${getForm?`<input name="case" value="${kind}"><input name="once" value="fixture + &"><input name="tag" value="one"><input name="tag" value="two"><input disabled name="ignored" value="disabled"><input type="checkbox" name="ignored" value="unchecked">`:`<input name="once" value="${kind==='current-form'?'current-document':'fixture'}">`}
         <button type="submit" ${getForm?'name="download" value="PDF now"':''}>Download PDF</button></form></div></article></body></html>`);return;
+    }
+    if(url.pathname==='/frame') {res.writeHead(200,{'content-type':'text/html'});res.end('<title>Existing target</title>');return;}
+    if(url.pathname==='/child-ready') {
+      childBarriers.set(kind,res);if(activeBodies.has(kind))res.end('go');return;
+    }
+    if(url.pathname==='/unrelated') {
+      assert.equal(activeBodies.has(kind),true,'background navigation waits for actual native output progress');
+      const native=bodyResponses.get(kind);assert.ok(native&&!native.destroyed&&!native.writableEnded,'original item is still transferring');
+      res.writeHead(200,{'content-type':'text/html'});res.end(`<title>Unrelated child</title><script>location.hash='steady';fetch('/child-finished?case=${kind}')</script>`);return;
+    }
+    if(['/child-finished','/source-replaced'].includes(url.pathname)) {
+      const native=bodyResponses.get(kind);assert.ok(native&&!native.destroyed&&!native.writableEnded,'original item remains active at child settlement');
+      res.writeHead(200,{'content-type':'text/html'});res.end('<title>Child settled</title>');
+      native.end(payload.subarray(65536));return;
     }
     if(url.pathname==='/once') {
       if(req.method!=='POST'&&kind!=='get-form'){res.writeHead(200,{'content-type':'text/html'});res.end('<title>Craft GET refused</title>');return;}
@@ -41,6 +61,9 @@ app.whenReady().then(async()=>{
         res.end(kind.startsWith('action-challenge')?'<title>Just a moment...</title>':'<title>Body unavailable</title>');return;
       }
       res.writeHead(200,{'content-type':'application/pdf',...(kind==='attachment'?{'content-disposition':'attachment; filename="body.pdf"'}:{})});
+      if(['iframe-background','popup-background','iframe-replaced','popup-source-replaced'].includes(kind)) {
+        bodyResponses.set(kind,res);res.write(payload.subarray(0,65536));return;
+      }
       if(['cancel','drain','interrupted','replace'].includes(kind)) {
         res.write(payload.subarray(0,65536));
         if(kind==='interrupted'){setTimeout(()=>res.destroy(),80);return;}
@@ -62,8 +85,12 @@ app.whenReady().then(async()=>{
   await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));origin=`http://www.microbiologyresearch.org:${server.address().port}`;
   const window=new BrowserWindow({show:false,webPreferences:{sandbox:true}}),browser=new BrowserRuntime({hostWindow:window,pageLimits:{global_limit:4,service_limit:3}});
   browser.bodyTargetResolver=async()=>[{address:'93.184.216.34'}];await browser.ready;
-  const messages=new Map(),progresses=new Map();let python;
+  const messages=new Map(),progresses=new Map(),nativeCases=new Map();let python;
   const send=message=>{
+    const kind=nativeCases.get(message.id);
+    if(message.type==='progress'&&message.data.native_output_file&&['iframe-background','popup-background','iframe-replaced','popup-source-replaced'].includes(kind)) {
+      activeBodies.add(kind);childBarriers.get(kind)?.end('go');
+    }
     if(python)python.stdin.write(JSON.stringify(message)+'\n');
     if(message.type==='progress')progresses.get(message.id)?.(message.data);
     if(message.type==='result')messages.get(message.id)?.(message.data);
@@ -125,7 +152,10 @@ app.whenReady().then(async()=>{
       createInterface({input:python.stdout}).on('line',line=>{
         try {
           const message=JSON.parse(line);
-          if(message.type==='execute')void context.execute(message).catch(error=>{dispatchError=error;python.kill();});
+          if(message.type==='execute') {
+            if(message.action==='native_paper_body')nativeCases.set(message.id,new URL(message.data.candidate.url).searchParams.get('case'));
+            void context.execute(message).catch(error=>{dispatchError=error;python.kill();});
+          }
           else if(message.type==='cancel')context.operations.get(message.id)?.controller.abort();
           else if(message.type==='verify_recovery_authority_result')settleRecoveryAuthority(context.operations.get(message.id),message);
           else if(message.type==='fixture_public_native') {publicCases.push(message);console.log('PUBLIC NATIVE CASE '+JSON.stringify(message));}
@@ -135,16 +165,18 @@ app.whenReady().then(async()=>{
       python.stdin.write(JSON.stringify({type:'hello',token:'fixture-only'})+'\n');
       const code=await new Promise(resolve=>python.once('exit',resolve));python=null;
       if(dispatchError)throw dispatchError;
-      assert.equal(code,0,stderr);assert.equal(complete,true,stderr);assert.equal(publicCases.length,16);
+      assert.equal(code,0,stderr);assert.equal(complete,true,stderr);assert.equal(publicCases.length,22);
       for(const item of publicCases)if(item.status==='completed')assert.deepEqual(fs.readFileSync(path.join(profile,'workspace/Documents',item.paper+'.pdf')),payload);
       assert.equal(browser.tabs.size,0);assert.equal(browser.sessionEvents.downloads.size,0);assert.equal(browser.sessionEvents.items.size,0);
-      for(const kind of ['attachment','inline','iframe','popup','action-blocked','action-challenge','action-challenge-iframe','action-challenge-popup','action-html','cancel','drain'])assert.deepEqual(requests.filter(request=>request.url==='/once?case='+kind),
+      for(const kind of ['attachment','inline','iframe','existing-iframe','iframe-background','popup-background','iframe-replaced','popup-source-replaced','popup','action-blocked','action-challenge','action-challenge-iframe','action-challenge-popup','action-html','cancel','drain'])assert.deepEqual(requests.filter(request=>request.url==='/once?case='+kind),
         [{url:'/once?case='+kind,method:'POST',body:'once=fixture'}]);
+      for(const kind of ['iframe-background','popup-background'])assert.equal(requests.filter(request=>request.url==='/unrelated?case='+kind).length,1);
       assert.deepEqual(requests.filter(request=>request.url==='/once?case=current-form'),
         [{url:'/once?case=current-form',method:'POST',body:'once=current-document'}]);
       assert.deepEqual(requests.filter(request=>request.url.startsWith('/once?')&&request.url.includes('get-form')),
         [{url:'/once?case=get-form&once=fixture+%2B+%26&tag=one&tag=two&download=PDF+now',method:'GET',body:''}]);
       assert.equal(requests.filter(request=>request.url.startsWith('/once?')&&request.url.includes('get-changed')).length,0);
+      assert.equal(requests.filter(request=>request.url==='/once?case=existing-target-changed').length,0);
       assert.equal(requests.filter(request=>request.url.startsWith('/expired-action')).length,0);
       assert.equal(requests.filter(request=>request.url==='/once?case=blocked').length,0);
       assert.equal(requests.filter(request=>request.url.endsWith('/pdfft')).length,1);

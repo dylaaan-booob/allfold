@@ -3,6 +3,7 @@ import asyncio
 from dataclasses import replace
 from datetime import datetime, timezone
 import json
+from functools import wraps
 from pathlib import Path
 import sys
 
@@ -13,9 +14,27 @@ from allfold.web.electron_bridge import ElectronBridge
 from allfold.models import ExternalIds
 from allfold.pdf_facts import PdfDiscoveryFacts, PdfCandidateFact
 from allfold.persistence.paper_repository import PaperRepository, PaperMetadata
+from allfold.persistence.body_files import ManagedBodyFiles
 from allfold.persistence.user_state import load_user_state, compare_write_user_state
 from allfold.application.browser_services import BrowserServiceSnapshot
 from safety_config_helpers import current_mapping_document
+
+
+def trace_native_adoption(owner, name):
+    original = getattr(owner, name)
+    @wraps(original)
+    def traced(*args, **kwargs):
+        try:
+            return original(*args, **kwargs)
+        except BaseException as error:
+            print(json.dumps({'type': 'fixture_native_adoption_error', 'operation': name,
+                'error': type(error).__name__, 'detail': str(error)[:256]}), file=sys.stderr, flush=True)
+            raise
+    setattr(owner, name, traced)
+
+
+trace_native_adoption(ManagedBodyFiles, 'adopt_native')
+trace_native_adoption(PaperRepository, 'adopt_native_output')
 
 
 class Socket:
@@ -67,7 +86,7 @@ async def main():
     host = application.state.workspace_tasks
     client = httpx.AsyncClient(transport=httpx.ASGITransport(app=application), base_url='http://localhost')
     try:
-        for index, kind in enumerate(('attachment', 'inline', 'iframe', 'popup', 'current-form', 'get-form', 'get-changed', 'sciencedirect', 'blocked',
+        for index, kind in enumerate(('attachment', 'inline', 'iframe', 'existing-iframe', 'existing-target-changed', 'iframe-background', 'popup-background', 'iframe-replaced', 'popup-source-replaced', 'popup', 'current-form', 'get-form', 'get-changed', 'sciencedirect', 'blocked',
                                       'action-blocked', 'action-challenge', 'action-challenge-iframe', 'action-challenge-popup', 'action-html', 'cancel', 'drain')):
             science = kind == 'sciencedirect'
             access_blocked = kind in {'blocked', 'action-blocked'} or kind.startswith('action-challenge')
@@ -112,7 +131,8 @@ async def main():
                     from allfold.web.electron_server import drain_application
                     await drain_application(application)
             result = await asyncio.to_thread(task.future.result, 20 if kind.startswith('action-') else 10)
-            expected = ('cancelled' if stopping else 'stale' if kind == 'get-changed' else 'local_failure' if kind == 'action-html'
+            stale = kind in {'get-changed', 'existing-target-changed', 'iframe-replaced', 'popup-source-replaced'}
+            expected = ('cancelled' if stopping else 'stale' if stale else 'local_failure' if kind == 'action-html'
                         else 'failed' if access_blocked else 'completed')
             assert result.status == expected, (kind, result)
             projected = paper_projection((await client.get('/api/ui-next/workspace')).json(), paper.id)
@@ -128,7 +148,7 @@ async def main():
                     assert stored.body.size_bytes == 256 * 1024
                 elif access_blocked:
                     assert stored.download.reason == 'access-blocked'
-                elif kind in {'action-html', 'get-changed'}:
+                elif kind == 'action-html' or stale:
                     assert stored.download.reason == 'native-action'
             print(json.dumps({'type': 'fixture_public_native', 'case': kind, 'status': result.status, 'paper': str(paper.id)}), flush=True)
         print(json.dumps({'type': 'fixture_complete'}), flush=True)

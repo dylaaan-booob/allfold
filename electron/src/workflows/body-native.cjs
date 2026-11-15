@@ -20,6 +20,8 @@ class OriginalNavigation {
     if(Date.now()>=this.deadline)throw failure('timeout');
     if(!this.browser.operations.has(this.owner))throw failure('document_changed');
     if(!this.dispatched&&!this.browser.documentCurrent(this.doc))throw failure('document_changed');
+    if(this.boundEntry&&!this.boundSource.contents.mainFrame.framesInSubtree.some(frame=>
+      frame.frameTreeNodeId===this.boundEntry.request.frameTreeNodeId))throw failure('document_changed');
     if(this.error)throw this.error;
   }
   fail(error) {this.error ??= error;this.reject(this.error);for(const entry of this.tracked)this.browser.sessionEvents.cancelItem(entry.item);}
@@ -40,21 +42,34 @@ class OriginalNavigation {
   }
   addSource(tab) {
     if(!tab||this.sources.has(tab.id))return;
-    const contents=tab.view.webContents,source={tab,contents,frames:new Map()};this.sources.set(tab.id,source);tab.bodyAction=this;
+    const contents=tab.view.webContents,source={tab,contents,frames:new Map(),createdFrames:new Set()};this.sources.set(tab.id,source);tab.bodyAction=this;
     this.addFrame(source,contents.mainFrame);
     source.created=(_event,{frame})=>{
       if(!this.dispatched||!frame||this.primary||this.error)return;
-      if(!frame.parent || ![...source.frames.values()].some(entry=>sameFrame(entry.frame,frame.parent)))return;
-      this.addFrame(source,frame);
+      if(source.createdFrames.size>=8||!sameFrame(frame.parent,contents.mainFrame))return;
+      source.createdFrames.add(frame.frameToken);
     };
     contents.on('frame-created',source.created);
+    source.targetNavigation=event=>{
+      const frame=event.frame;
+      if(!this.dispatched||this.bound||this.primary||this.error||event.isMainFrame||!frame)return;
+      if(!source.createdFrames.has(frame.frameToken)||!sameFrame(event.initiator,this.doc)
+        ||event.url!==(this.requestURL||this.candidate.url))return;
+      // The fixed action's native initiator and newly created destination are
+      // known before its first request; unrelated new children stay unregistered.
+      this.addFrame(source,frame);
+    };
+    contents.on('will-frame-navigate',source.targetNavigation);
     source.navigation=(event,url,_inPlace,main)=>{
       if(!(event.isMainFrame ?? main))return;
       url=event.url ?? url;
       if(url==='about:blank'&&tab.id!==this.doc.pageId)return;
       if(!this.dispatched||!this.acceptsURL(url)||this.primary)this.fail(failure('document_changed'));
     };
-    source.replaced=()=>this.fail(failure('document_changed'));
+    source.replaced=(_event,_url,main,processId,routingId)=>{
+      if(main||this.boundSource===source&&this.boundEntry?.frame.processId===processId
+        &&this.boundEntry.frame.routingId===routingId)this.fail(failure('document_changed'));
+    };
     source.loaded=(_event,_main,processId,routingId)=>{
       if(this.error||this.primary)return;
       const frame=source.contents.mainFrame.framesInSubtree.find(item=>item.processId===processId&&item.routingId===routingId);
@@ -83,6 +98,7 @@ class OriginalNavigation {
         let last=0;
         const update=()=>{
           try {
+            this.valid();
             const observed=this.output.capture({missing:true});
             if(observed&&!this.observed){this.observed=observed.file;this.progress({native_output_file:observed.file});}
             if(Date.now()-last>=100){last=Date.now();this.progress({received_bytes:Math.max(0,tracked.item.getReceivedBytes()),
@@ -100,9 +116,18 @@ class OriginalNavigation {
     const source=this.sources.get(details.webContentsId);
     if(!source||!['mainFrame','subFrame'].includes(details.resourceType))return;
     if(details.url==='about:blank')return;
+    const entry=source.frames.get(details.frame?.frameToken);
+    if(details.resourceType==='subFrame') {
+      // Once dispatched, authority belongs to one physical request/frame. Other
+      // article children can navigate without acquiring output authority or
+      // revoking that request. The action destination itself remains guarded,
+      // including a successor renderer with the same FrameTreeNode ID.
+      if(this.bound && !(this.boundSource===source&&this.boundEntry.request.frameTreeNodeId===details.frame?.frameTreeNodeId))return;
+      if(!this.bound&&!entry)return;
+    }
     try {
       this.valid();
-      const entry=source.frames.get(details.frame?.frameToken);
+      if(!this.bound&&this.targetFrame&&!sameFrame(this.targetFrame,details.frame))throw failure('document_changed');
       if(!this.dispatched||!entry||!sameFrame(entry.frame,details.frame)||!this.acceptsURL(details.url)
         ||!['GET','POST'].includes(details.method)||this.primary)throw failure('document_changed');
       if(entry.request) {
@@ -113,7 +138,8 @@ class OriginalNavigation {
       // Redirects keep the bound request ID. A new request after the one-shot
       // dispatch cannot borrow the action merely because its URL looks related.
       if(this.bound)throw failure('document_changed');
-      this.bound=true;entry.request={id:details.id,frameTreeNodeId:details.frame.frameTreeNodeId,
+      this.bound=true;this.boundSource=source;this.boundEntry=entry;
+      entry.request={id:details.id,frameTreeNodeId:details.frame.frameTreeNodeId,
         frame:{processId:details.frame.processId,frameToken:details.frame.frameToken}};
       entry.registration.bindRequest(details);
     } catch(error){this.fail(error);return {cancel:true};}
@@ -156,6 +182,7 @@ class OriginalNavigation {
     for(const registration of this.registrations)registration.dispose({dispatched:this.dispatched});
     for(const source of this.sources.values()) {
       source.contents.removeListener('frame-created',source.created);
+      source.contents.removeListener('will-frame-navigate',source.targetNavigation);
       source.contents.removeListener('did-start-navigation',source.navigation);source.contents.removeListener('did-navigate-in-page',source.replaced);
       source.contents.removeListener('did-frame-finish-load',source.loaded);
       if(source.tab.bodyAction===this)source.tab.bodyAction=null;
@@ -210,6 +237,8 @@ async function executeBodyNative(browser,data,{signal,progress=()=>{}}={}) {
     prepared=await browser.bodyActions.prepare(doc,{url:candidate.url,action:candidate.action,platform:candidate.platform,rule_id:candidate.rule_id},
       {signal:stop,deadline:data.deadline_ms});
     operation.method=prepared.plan.method;operation.requestURL=prepared.plan.request_url;
+    operation.targetFrame=prepared.targetFrame;
+    if(prepared.targetFrame)operation.addFrame(operation.sources.get(doc.pageId),prepared.targetFrame);
     if(prepared.plan.target==='popup')await browser.reserveChildPage({signal:stop,deadline:data.deadline_ms});
     await prepared.dispatch(()=>operation.dispatch(),error=>operation.fail(error));
     primary=await waitFor(()=>operation.received,stop,Math.min(data.deadline_ms,Date.now()+15000));
@@ -220,7 +249,7 @@ async function executeBodyNative(browser,data,{signal,progress=()=>{}}={}) {
     if(terminal!=='completed'||stop.aborted)return {outcome:bounded.aborted?'expired':stop.aborted?'cancelled':'local_failure',
       kind:bounded.aborted?'expired':stop.aborted?'cancelled':'local_failure',diagnostic_code:'native-interrupted',
       native_terminal:terminal,native_cleanup:'asynchronous'};
-    verify();
+    operation.valid();
     const observed=output.capture();
     if(!operation.observed){operation.observed=observed.file;progress({native_output_file:observed.file});}
     progress({received_bytes:observed.size,total_bytes:primary.item.getTotalBytes()>0?primary.item.getTotalBytes():null});

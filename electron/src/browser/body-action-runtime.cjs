@@ -14,10 +14,10 @@ class BodyActionRuntime {
         || event.senderFrame?.frameToken!==entry.doc.frameToken)return;
       if(message.error){entry.reject(new BrowserFailure('navigation','document_operation_failed'));return;}
       const plan=message.plan;
-      if(!this.browser.documentCurrent(entry.doc) || !plan || Object.keys(plan).sort().join(',')!=='method,request_url,target,url'
+      if(!this.browser.documentCurrent(entry.doc) || !plan || Object.keys(plan).sort().join(',')!=='method,request_url,target,target_name,url'
         || !['GET','POST'].includes(plan.method) || plan.url!==entry.candidate.url
         || !publicClueURL(plan.request_url)
-        || !['self','frame','popup'].includes(plan.target)) {
+        || !['self','frame','popup'].includes(plan.target) || typeof plan.target_name!=='string' || plan.target_name.length>256) {
         entry.reject(new BrowserFailure('navigation','document_changed'));return;
       }
       const action=new URL(plan.url),request=new URL(plan.request_url);
@@ -52,7 +52,16 @@ class BodyActionRuntime {
     try {
       const plan=await waitFor(()=>{frame.send('body:prepare',{id,candidate,documentId:doc.documentId,url:doc.url,
         subject:doc.article.subject});return response;},signal,Math.min(deadline,Date.now()+15000));
-      return {plan,dispatch:(beforeDispatch,onError)=>this.dispatch(entry,id,beforeDispatch,onError,{signal,deadline}),
+      // Resolve only the controlled action's named destination, never grant the
+      // current frame inventory native output authority.
+      const matches=plan.target==='frame'?contents.mainFrame.framesInSubtree.filter(item=>item.name===plan.target_name):[];
+      if(plan.target==='frame'&&matches.length!==1)throw new BrowserFailure('navigation','document_changed');
+      const targetFrame=matches[0];
+      return {plan,targetFrame,dispatch:(beforeDispatch,onError)=>this.dispatch(entry,id,()=>{
+        if(targetFrame&&!contents.mainFrame.framesInSubtree.some(item=>item.processId===targetFrame.processId
+          &&item.frameToken===targetFrame.frameToken&&item.name===plan.target_name))throw new BrowserFailure('navigation','document_changed');
+        beforeDispatch();
+      },onError,{signal,deadline}),
         dispose:()=>this.pending.delete(id)};
     } catch(error){this.pending.delete(id);throw error;}
   }

@@ -602,7 +602,7 @@ function bodyAction(candidate,subject,id,dispatch=false) {
   const state=globalThis.__allfoldBodyAction;
   if(dispatch) {
     if(!state || state.id!==id || state.url!==location.href || state.subject!==subject
-      || !state.node.isConnected || (state.kind==='form'
+      || !state.node.isConnected || (state.node.target||'')!==state.target || (state.kind==='form'
         ?state.node.action!==state.action || state.node.method.toUpperCase()!==state.method
         :state.node!==document.body&&state.node.href!==state.action))throw Error('document_changed');
     delete globalThis.__allfoldBodyAction;
@@ -611,6 +611,10 @@ function bodyAction(candidate,subject,id,dispatch=false) {
     }else if(state.submitter)state.submitter.click();else state.node.requestSubmit();
     return;
   }
+  const target=node=>{
+    const name=node.target||'',special=name.toLowerCase();
+    return {target_name:name,target:special==='_blank'?'popup':!name||['_self','_parent','_top'].includes(special)?'self':'frame'};
+  };
   if(!candidate.action&&candidate.platform==='sciencedirect'&&candidate.rule_id==='R024'
     &&/^(?:www\.)?sciencedirect\.com$/.test(location.hostname)) {
     const pii=location.pathname.match(/\/science\/article\/pii\/([SB][0-9X]{16})(?:\/|$)/i)?.[1],next=new URL(candidate.url);
@@ -619,8 +623,8 @@ function bodyAction(candidate,subject,id,dispatch=false) {
     const links=[...document.querySelectorAll('a[href]')].filter(node=>node.href===candidate.url);
     if(links.length>1)throw Error('body_action_ambiguous');
     const node=links[0]||document.body;
-    globalThis.__allfoldBodyAction={id,node,kind:'navigation',url:location.href,subject,action:candidate.url};
-    return {url:candidate.url,request_url:candidate.url,method:'GET',target:node.target==='_blank'?'popup':node.target&&node.target!=='_self'?'frame':'self'};
+    globalThis.__allfoldBodyAction={id,node,kind:'navigation',url:location.href,subject,action:candidate.url,target:node.target||''};
+    return {url:candidate.url,request_url:candidate.url,method:'GET',...target(node)};
   }
   if(candidate.action!=='refresh_form' || candidate.platform!=='microbiology' || candidate.rule_id!=='R059'
     || !/(^|\.)microbiologyresearch\.org$/.test(location.hostname))throw Error('unsupported_body_action');
@@ -642,8 +646,8 @@ function bodyAction(candidate,subject,id,dispatch=false) {
     for(const [name,value] of data)query.append(newline(name),newline(typeof value==='string'?value:value.name));
     const next=new URL(node.action);next.search=query.toString();request_url=next.href;
   }
-  globalThis.__allfoldBodyAction={id,node,kind:'form',submitter:submitters[0],url:location.href,subject,action:node.action,method};
-  return {url:node.action,request_url,method,target:node.target==='_blank'?'popup':node.target&&node.target!=='_self'?'frame':'self'};
+  globalThis.__allfoldBodyAction={id,node,kind:'form',submitter:submitters[0],url:location.href,subject,action:node.action,method,target:node.target||''};
+  return {url:node.action,request_url,method,...target(node)};
 }
 ipcRenderer.on('body:prepare',async(_event,{id,candidate,documentId:expected,url,subject})=>{
   try {

@@ -338,9 +338,11 @@ Bridge/Main. The built Reader fixture checks local buttons with a valid
 metadata-free DTO. No default viewer or file manager is launched by those tests.
 
 The serial `body-native.test.cjs` fixture uses actual Electron45, production
-Main/Runtime and local HTTP to exercise original POST/inline and action-created
-iframe/popup first responses. Public composition must additionally pass through
-the HTTP service, managed publication, SQLite and Workspace projection, rather
+Main/Runtime and local HTTP to exercise original POST/inline, existing named form
+targets and action-created iframe/popup first responses. Native-output barriers
+exercise unrelated child navigation during an active item and refusal when its
+actual action frame or source Document is replaced. Public composition must
+additionally pass through the HTTP service, managed publication, SQLite and Workspace projection, rather
 than stopping at a transport helper. Native output reserves an exclusive private
 directory with an absent leaf, then qualifies Chromium's actual output inode;
 stream placeholders are not reused for native output. Application replacement
