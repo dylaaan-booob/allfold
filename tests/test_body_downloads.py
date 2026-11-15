@@ -708,7 +708,8 @@ def test_cleanup_quarantines_and_restores_replacement_between_check_and_removal(
             assert moved.read_bytes()==b'owned' and temporary.read_bytes()==b'unrelated'
 
 
-def test_publication_of_replaced_inode_is_refused_without_removing_unknown_output(tmp_path,monkeypatch):
+@pytest.mark.parametrize('replacement', ['file', 'documents'])
+def test_publication_of_replaced_inode_is_refused_without_removing_unknown_output(tmp_path,monkeypatch,replacement):
     from allfold.application.body_downloads import submit_body_download
     import allfold.persistence.body_files as bf
     host,workspace,paper,bridge,candidate=application_host(tmp_path)
@@ -719,7 +720,11 @@ def test_publication_of_replaced_inode_is_refused_without_removing_unknown_outpu
         def replaced(*args, **kwargs):
             original(*args, **kwargs)
             path=workspace/f'Documents/{paper.id}.pdf'
-            path.rename(path.with_suffix('.owned'))
+            if replacement == 'documents':
+                path.parent.rename(workspace/'Documents.owned')
+                path.parent.mkdir()
+            else:
+                path.rename(path.with_suffix('.owned'))
             path.write_bytes(b'unrelated replacement')
         with monkeypatch.context() as patch:
             patch.setattr(bf.os,'link',replaced)

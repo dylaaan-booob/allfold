@@ -93,14 +93,20 @@ class ManagedBodyFiles:
         self._live(documents, staging, disposal)
         return documents, staging, disposal
 
-    def _live(self, documents, staging, disposal):
+    def _live_documents(self, documents):
         current = _open_directory_nofollow(self.workspace)
         try:
             if identity(os.fstat(current)) != identity(os.fstat(self.root)):
                 raise UnsafeLibraryPath('Workspace directory changed')
         finally:
             os.close(current)
-        for name, parent, descriptor in [('Documents', self.root, documents), ('.downloads', documents, staging), ('.cleanup', staging, disposal)]:
+        info = os.stat('Documents', dir_fd=self.root, follow_symlinks=False)
+        if not stat.S_ISDIR(info.st_mode) or identity(info) != identity(os.fstat(documents)):
+            raise UnsafeLibraryPath('Managed body directory changed')
+
+    def _live(self, documents, staging, disposal):
+        self._live_documents(documents)
+        for name, parent, descriptor in [('.downloads', documents, staging), ('.cleanup', staging, disposal)]:
             info = os.stat(name, dir_fd=parent, follow_symlinks=False)
             if not stat.S_ISDIR(info.st_mode) or identity(info) != identity(os.fstat(descriptor)):
                 raise UnsafeLibraryPath('Managed directory changed')
@@ -225,6 +231,9 @@ class ManagedBodyFiles:
         os.link(temporary, target, src_dir_fd=source, dst_dir_fd=documents, follow_symlinks=False)
         self._owned(target, documents, proof)
         os.fsync(documents)
+        # A link into a renamed/replaced Documents descriptor is not publication
+        # at the associated path. Temporary/disposal parents are auxiliary now.
+        self._live_documents(documents)
         # The permanent link is durable. Auxiliary retirement cannot undo it or
         # turn it into an unassociated failed transfer.
         try:

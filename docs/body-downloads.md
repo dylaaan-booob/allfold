@@ -209,7 +209,8 @@ without truncating or following the final link.
 
 Publication is atomic no-clobber link, never exists-then-replace or numbered
 copies. The created permanent link is checked against this output and synced as
-part of publication. Temporary-link removal and empty native-directory cleanup
+part of publication, with the original Workspace/Documents directory identity
+confirmed at that file-operation boundary. Temporary-link removal and empty native-directory cleanup
 are auxiliary: failure records a bounded diagnostic and does not revoke the
 publication or prevent association. A residual temporary hard link does not make
 the associated body invalid for Open/Locate. Removal moves the addressed entry without clobbering to the private
