@@ -72,12 +72,6 @@
         "app_exiting",
         "app_ready",
         "app_started",
-        "attachment_bypass",
-        "attachment_failed",
-        "attachment_failure",
-        "attachment_http",
-        "attachment_inventory",
-        "attachment_request_failed",
         "bridge_disconnected",
         "browser_cache_failed",
         "cloudflare_solver_failed",
@@ -90,7 +84,6 @@
         "institution_auth_skipped",
         "logs_reset",
         "manual_wait",
-        "metadata_selected",
         "navigation_ready",
         "page_associated",
         "page_association_released",
@@ -113,7 +106,6 @@
         "workflow_interrupted",
         "workflow_started",
         "workspace_reset",
-        "zotero_request_failed",
         "recovery_scheduled",
         "recovery_succeeded",
         "recovery_exhausted",
@@ -167,7 +159,7 @@
     "role": {
       "type": "string",
       "enum": [
-        "attachment",
+        "article",
         "auxiliary",
         "carsi-portal",
         "manual-service",
@@ -210,7 +202,6 @@
         "download",
         "export",
         "exportMenu",
-        "hidden_iframe",
         "institution",
         "links",
         "login",
@@ -249,7 +240,6 @@
         "ambiguous_resource",
         "article_identity_conflict",
         "article_identity_unconfirmed",
-        "attachment_rejected",
         "auth_action_dispatched",
         "auth_action_unconfirmed",
         "auth_execution_failed",
@@ -292,7 +282,6 @@
         "download_interrupted",
         "download_not_attributable",
         "download_observer_busy",
-        "empty_response",
         "export_content_unverified",
         "export_range_unverified",
         "failed",
@@ -301,23 +290,14 @@
         "institution_credentials_rejected",
         "institution_name_required",
         "institution_search_failed",
-        "invalid_local_path",
         "invalid_response",
         "invalid_target",
         "load_failed",
         "manual_action_required",
-        "mime_mismatch",
         "navigation_active",
         "navigation_failed",
         "network_error",
-        "no_resolver",
         "not_found",
-        "openalex_authorization_required",
-        "openalex_credential_unavailable",
-        "openalex_lookup_failed",
-        "openalex_no_pdf",
-        "openalex_not_found",
-        "openalex_quota",
         "page_capacity",
         "page_capacity_changed",
         "page_closed",
@@ -347,15 +327,6 @@
         "unverified_results_page",
         "verification_page",
         "write_stopped"
-      ]
-    },
-    "transport_code": {
-      "type": "string",
-      "enum": [
-        "failed",
-        "network_error",
-        "redirect_rejected",
-        "timeout"
       ]
     },
     "net_error": {
@@ -409,64 +380,6 @@
         "association_failure"
       ]
     },
-    "metadata_source": {
-      "type": "string",
-      "enum": [
-        "doi",
-        "web",
-        "workspace"
-      ]
-    },
-    "attachment_phase": {
-      "type": "string",
-      "enum": [
-        "bypass",
-        "callback",
-        "desktop_attachment",
-        "initial_fetch",
-        "refetch",
-        "hidden_iframe"
-      ]
-    },
-    "error_kind": {
-      "type": "string",
-      "enum": [
-        "host_api_missing",
-        "http_status",
-        "transport"
-      ]
-    },
-    "error_name": {
-      "type": "string",
-      "enum": [
-        "AbortError",
-        "Error",
-        "RangeError",
-        "ReferenceError",
-        "SyntaxError",
-        "TypeError"
-      ]
-    },
-    "content_type": {
-      "type": "string",
-      "enum": [
-        "application/epub+zip",
-        "application/json",
-        "application/pdf",
-        "application/x-bibtex",
-        "application/x-research-info-systems",
-        "application/xml",
-        "text/html",
-        "text/plain",
-        "text/xml"
-      ]
-    },
-    "challenge": {
-      "type": "string",
-      "enum": [
-        "cf-mitigated"
-      ]
-    },
     "reason": {
       "type": "string",
       "enum": [
@@ -492,20 +405,6 @@
         "task_complete",
         "url_mismatch",
         "user"
-      ]
-    },
-    "method": {
-      "type": "string",
-      "enum": [
-        "GET",
-        "HEAD",
-        "OPTIONS",
-        "POST",
-        "getSelectedCollection",
-        "hasAttachmentResolvers",
-        "saveAttachment",
-        "saveAttachmentFromResolver",
-        "saveItems"
       ]
     },
     "resource_type": {
@@ -547,26 +446,6 @@
       "maximum": 2147483647
     },
     "item_count": {
-      "type": "integer",
-      "minimum": 0,
-      "maximum": 2147483647
-    },
-    "attachment_count": {
-      "type": "integer",
-      "minimum": 0,
-      "maximum": 2147483647
-    },
-    "pdf_attachment_count": {
-      "type": "integer",
-      "minimum": 0,
-      "maximum": 2147483647
-    },
-    "candidate_count": {
-      "type": "integer",
-      "minimum": 0,
-      "maximum": 2147483647
-    },
-    "response_bytes": {
       "type": "integer",
       "minimum": 0,
       "maximum": 2147483647
@@ -700,8 +579,7 @@
   },
   "optional_detail_events": [
     "task_progress",
-    "page_request_failed",
-    "attachment_http"
+    "page_request_failed"
   ],
   "events_require": {
     "task_started": [

@@ -28,9 +28,6 @@ body{font-size:14px}
 .paper-metadata{font-size:14px}
 .paper-metadata dt{font-size:12px}
 .paper-navigation{font-size:12px}
-.kept-record-heading{font-size:12px}
-#kept-record-summary,#kept-record-items li{font-size:14px}
-#kept-record-items small,.import-result-details{font-size:12px}
 #configuration-workspace .s-browser-title h2{font-size:22px}
 #configuration-workspace .s-context h2{font-size:22px!important}
 .s-help,.s-field-error,.s-card-meta,.s-context dt,.s-cover-status,.s-cover-controls{font-size:12px}

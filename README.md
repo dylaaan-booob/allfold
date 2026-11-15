@@ -81,7 +81,9 @@ See [Document access](docs/browser-documents.md).
 
 WF07 provides internal lazy PDF-source discovery and bounded, deletable source
 facts. Candidate URLs and reader entrances do not mark a Paper as Downloaded.
-WF08 connects source-fact collection to production; merged WF09 supplies Session transfer/files, and this WF10 branch connects public lazy Download, original DownloadItem responses and local file management;
+WF08 connects source-fact collection to production. WF09 supplies Session transfer/files;
+WF10, merged in [PR #121](https://github.com/dylaaan-booob/allfold/pull/121), connects
+public lazy Download, original DownloadItem responses and local file management;
 see the [component scope and fixed rules](docs/pdf-source-discovery.md).
 
 ## Local data and privacy

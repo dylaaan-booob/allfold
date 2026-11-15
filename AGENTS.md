@@ -16,8 +16,8 @@ Allfold is an Electron-managed Python application with a Web UI. Keep changes wi
 - Journals, Registry, Research Scope and Run manage journals only. Keep ordinary Paper conference bibliography and independent date evidence; retired source identities require explicit refusal rather than silent conversion.
 
 - Use isolated test files and transports. Preserve local configuration, credentials, Workspace, covers and Zotero data unless the user explicitly authorizes their modification.
-- Keep official vendor sources pristine. Adapt in host code; generate UI and Runtime through their build scripts.
-- For changed behavior, update callers and focused safety checks. Run checks appropriate to the change and distinguish source/build evidence from rendered UI and real-site/Zotero acceptance. Browser control requires task-specific user consent.
+- Keep official vendor sources pristine. Adapt in host code; generate UI through its build script. The retired Translator Runtime is not a build input.
+- For changed behavior, update callers and focused safety checks. Run checks appropriate to the change and distinguish source/build evidence from rendered UI and real-site/system PDF acceptance. Browser control requires task-specific user consent.
 - Include source, necessary helpers and non-sensitive fixtures; keep generated resources, environments, local data, credentials and reports out of public candidates.
 - Keep dependency pins and product scope unless their change is authorized. Repository initialization, commits, push, tags, publishing and deployment require explicit authorization for the action; existing authorization remains valid within its scope.
 

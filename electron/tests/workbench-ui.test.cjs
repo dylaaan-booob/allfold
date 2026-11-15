@@ -89,7 +89,7 @@ test('task handoff selects its existing active Page and leaves fullscreen Discov
   const association=(workflow_id,task_id,role,active)=>({workflow_id,task_id,role,active});
   f.setState({selected:4,taskPageId:8,tabs:[
     {id:4,association:null},{id:7,association:association('flow-a','prepare','service-resource',false)},
-    {id:8,association:association('flow-a','import','import',true)},
+    {id:8,association:association('flow-a','document','article',true)},
     {id:9,association:association('flow-b','other','popup',true)}]});
   assert.equal(await f.window.allfoldWorkbench.showTaskPage({workflowId:'flow-a'}),true);f.flush();
   assert.equal(f.calls.find(call=>call.action==='select').id,8);
@@ -98,19 +98,19 @@ test('task handoff selects its existing active Page and leaves fullscreen Discov
   f.window.allfoldWorkbench.hide();f.flush();assert.equal(flow.open,true);
   assert.equal(await f.window.allfoldWorkbench.showTaskPage({workflowId:'missing'}),false);
 });
-test('WoS handoff finds a CARSI child task by owning Run workflow and precise Kept tasks stay scoped',async()=>{
+test('WoS handoff finds a CARSI child task by owning Run workflow and precise Paper tasks stay scoped',async()=>{
   const f=fixture();
   f.setState({selected:4,taskPageId:8,tabs:[
     {id:4,association:null},
     {id:8,association:{workflow_id:'run-1',task_id:'prepare-2',parent_task_id:'run-1',role:'carsi-portal',active:true}},
     {id:9,association:{workflow_id:'run-other',task_id:'prepare-other',role:'carsi-portal',active:true}},
-    {id:10,association:{workflow_id:'kept-1',task_id:'prepare-3',role:'service-resource',active:false}},
-    {id:11,association:{workflow_id:'kept-1',task_id:'import-4',parent_task_id:'batch-2',role:'import',active:true}}]});
+    {id:10,association:{workflow_id:'paper-1',task_id:'prepare-3',role:'service-resource',active:false}},
+    {id:11,association:{workflow_id:'paper-1',task_id:'document-4',parent_task_id:'collection-2',role:'article',active:true}}]});
   assert.equal(await f.window.allfoldWorkbench.showTaskPage({workflowId:'run-1'}),true);
   assert.equal(f.calls.filter(call=>call.action==='select').at(-1).id,8);
-  assert.equal(await f.window.allfoldWorkbench.showTaskPage({workflowId:'kept-1',taskId:'prepare-3'}),true);
+  assert.equal(await f.window.allfoldWorkbench.showTaskPage({workflowId:'paper-1',taskId:'prepare-3'}),true);
   assert.equal(f.calls.filter(call=>call.action==='select').at(-1).id,10);
-  assert.equal(await f.window.allfoldWorkbench.showTaskPage({workflowId:'kept-1',parentTaskId:'batch-2'}),true);
+  assert.equal(await f.window.allfoldWorkbench.showTaskPage({workflowId:'paper-1',parentTaskId:'collection-2'}),true);
   assert.equal(f.calls.filter(call=>call.action==='select').at(-1).id,11);
   assert.equal(f.calls.some(call=>call.action==='new'),false);
 });
@@ -119,7 +119,7 @@ test('one grouped list preserves Page identities, scope and managed toolbar cont
   await f.window.allfoldWorkbench.show();await Promise.resolve();
   const page=(id,scope,service,role)=>({id,title:'Page '+id,url:'https://same.test/',back:true,forward:true,association:
     role?{role,service_scope:scope?{scope_id:scope}:null,service_id:service}:null});
-  f.setState({selected:1,tabs:[{...page(1,'scope-a','service-a','import'),managed:true},page(2,'scope-b','service-a','popup'),
+  f.setState({selected:1,tabs:[{...page(1,'scope-a','service-a','article'),managed:true},page(2,'scope-b','service-a','popup'),
     page(3,null,null,'carsi-portal'),page(4,null,null,null),{...page(5,null,null,'popup'),openerId:3}]});
   const list=f.document.getElementById('browser-tabs'),groups=list.children;
   assert.equal(groups.length,4);
@@ -129,7 +129,7 @@ test('one grouped list preserves Page identities, scope and managed toolbar cont
   assert.equal(f.document.getElementById('browser-url').readOnly,true);
   assert.equal(f.document.getElementById('browser-back').disabled,true);
   assert.equal(f.document.getElementById('browser-reload').disabled,false);
-  f.setState({selected:1,tabs:[{...page(1,'scope-b','service-a','import'),managed:true,busy:true}]});
+  f.setState({selected:1,tabs:[{...page(1,'scope-b','service-a','article'),managed:true,busy:true}]});
   assert.equal(list.children.length,1);assert.equal(list.children[0].children[1].children[0].dataset.pageId,'1');
   assert.equal(f.document.getElementById('browser-reload').disabled,true);
 });

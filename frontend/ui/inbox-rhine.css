@@ -75,12 +75,9 @@
 #journal-view .review-right::before{content:'';position:absolute;inset:0;z-index:0;background:var(--paper);opacity:var(--journal-reveal-progress,0);pointer-events:none}
 #journal-view .review-right>*{position:relative;z-index:1}
 :is(#journal-view,#kept-reader-body) .review-controls{display:flex;align-items:flex-start;gap:12px;padding:0;margin:0 0 16px}
-:is(#journal-view,#kept-reader-body) #enrich-status{flex:1;min-width:0;min-height:0;font-size:12px;margin:0;overflow-wrap:anywhere}
-:is(#journal-view,#kept-reader-body) #cancel-enrich{flex-shrink:0;height:auto;min-height:26px;padding:2px 10px;border:1px solid var(--ink);font-size:11px;line-height:20px}
 :is(#journal-view,#kept-reader-body,.array-paper-infos) button.missing-field{width:100%;text-align:left;font:inherit}
 :is(#journal-view,#kept-reader-body,.array-paper-infos) button.missing-field:disabled{opacity:1}
 :is(#journal-view,#kept-reader-body,.array-paper-infos) .date-precision{margin:0;padding:0;border:0;font:inherit;color:inherit;white-space:nowrap}
-:is(#journal-view,#kept-reader-body,.array-paper-infos) .date-precision [data-enrich]{padding:0 2px;font:inherit;text-decoration:underline;text-underline-offset:3px}
 #selected-view.returning-complete #empty-inbox{left:calc(100% - var(--archive-pane-width));padding:24px;align-items:flex-start}
 #selected-view.returning-complete #empty-inbox h1{font-size:22px}
 #selected-view.returning-complete #empty-inbox p{max-width:40ch}
@@ -91,21 +88,18 @@
 
 /* Array moves the shared full Paper title above its Abstract, without a rule. */
 #array-paper-heading{min-width:0;flex-shrink:0}
-#kept-view[data-status=kept] .kept-manager-row{grid-template-columns:24px minmax(0,1fr)}
 .array-paper-infos{min-width:0;margin-top:24px}
 .array-paper-infos:empty{display:none}
 .array-paper-infos .paper-metadata{margin:0;font-size:14px}
 .array-paper-infos .paper-metadata>div{display:block;margin:12px 0}
 .array-paper-infos .paper-metadata dd{margin:4px 0 0}
 .array-paper-infos #paper-metadata-summary{display:none}
-#kept-view[data-status=candidates] .array-context-scroll{flex:1;min-height:0;overflow:auto;overscroll-behavior:contain;scrollbar-width:thin}
 #kept-reading-tools{display:flex;flex-direction:column;flex-shrink:0;align-items:stretch;min-height:28px;margin-bottom:12px}
 #kept-reader-body .abstract-heading .paper-navigation{flex:0 1 180px;min-width:0;min-height:28px;margin:0 0 0 auto;padding:0;border:0}
 #kept-reader-body .abstract-heading .paper-stepper{width:100%;justify-content:space-between;gap:6px}
 #kept-reader-body .abstract-heading .paper-stepper button{height:28px;padding:0 6px;font-size:16px}
 #kept-reader-body .abstract-heading .paper-stepper strong{font-size:12px;min-width:58px}
 #kept-view #kept-reader{padding-top:16px}
-#kept-view #kept-record-items strong{display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2;line-clamp:2;overflow:hidden}
 /* Keep the Kept reader on one content measure after the font change. */
 #kept-reader-body .abstract-heading,#kept-reader-body #paper-abstract{max-width:none}
 
@@ -116,11 +110,9 @@
 #paper-authors,
 .abstract-heading,
 #paper-abstract,
-#enrich-status,
 #load-status,
 #empty-inbox :is(h1,p),
-#kept-view :is(#kept-empty,#kept-record-summary,
-  #kept-record-items strong,#kept-record-items small,.import-result-details p){font-family:var(--font-reading)}
+#kept-view #kept-empty{font-family:var(--font-reading)}
 #configuration-workspace :where(.s-browser-title h2,.s-journals-head>h2,.s-run-head>h2,.s-context h2,.s-reset h2,
   .s-journal-card h3,.s-journal-row strong,.s-lookup-candidate strong,
   .s-help,.s-field-error,.s-message,.s-empty,.s-cover-status,.s-diagnostic p,
@@ -140,8 +132,6 @@
 #configuration-workspace :is(button,input,select,textarea,code,pre,kbd,.s-card-meta,
   .s-setting-label,.s-run-metrics,.s-run-timing),
 #configuration-workspace .s-run-journals>li>details>ul>li>span,
-#kept-view .import-result-details summary,
-#kept-view #kept-record-items :is(button,input,select,textarea,code,pre,kbd),
 #app-notice :is(button,summary,code,pre,kbd){font-family:var(--font-mono)}
 
 /* Mono functional labels. Reading content, controls and mixed-heading values
@@ -149,14 +139,12 @@
 #selected-view .archive-context,
 #selected-view .profile-heading>span:first-child,
 #selected-view .selection-count>span,
-#kept-view .kept-record-heading>span:first-child,
 #configuration-workspace :is(.s-eyebrow,.s-context-title,.s-context dt,.s-layout-caption,.s-directory-heading),
 #configuration-workspace .s-run-metrics dt,
 #run-view .run-time{font-family:var(--font-label)}
 #archive-subject{font-family:var(--font-mono)}
 .view-nav small,.nav-inverse small,
 #kept-count,#profile-identity,#directory-position,#run-elapsed,
-#kept-record-count,
 #configuration-workspace :is(#s-preview-file,#s-group-count,#s-service-count),
 #configuration-workspace .s-run-metrics dd{font-family:var(--font-mono)}
 

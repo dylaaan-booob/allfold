@@ -1,4 +1,4 @@
-# Electron Layer 1 official source pins.
+# Historical official source pins for retained adaptations; not setup inputs.
 upstream https://github.com/zotero/zotero-connectors.git e942336f9a3671944c34abf5d35864d73265d5c1
 submodule src/translate bea5b9afc1cc424f066c38e77a42ddbef152070f
 submodule src/utilities 5b93ec8b4e7ce6124cde1b8ff89ca65b2919d114

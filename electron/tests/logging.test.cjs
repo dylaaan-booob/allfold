@@ -93,3 +93,19 @@ test('body stream terminal survives strict diagnostics and retains transport ver
   assert.equal(events[0].action,'stream_paper_body');assert.equal(events[0].outcome,'stream_complete');
   assert.doesNotMatch(JSON.stringify(events),/SECRET|managed|token|output|downloaded/);
 });
+test('current native body ownership survives while retired save events are refused',t=>{
+  const {logger}=fixture(t);
+  for(const event of ['zotero_request_failed','attachment_bypass','attachment_failed','attachment_failure',
+    'attachment_http','attachment_inventory','attachment_request_failed','metadata_selected'])logger.log('error',event);
+  logger.log('info','task_finished',{request_id:'body_request',workflow_id:'collection_one',
+    task_id:'body_attempt',parent_task_id:'paper_task',action:'native_paper_body',role:'article',
+    page_id:17,source_page_id:9,outcome:'native_complete',attachment_phase:'desktop_attachment',
+    attachment_count:1,pdf_attachment_count:1,metadata_source:'web',method:'saveItems'});
+  const events=logger.readEvents();assert.equal(events.length,1);
+  const [event]=events;
+  assert.equal(event.request_id,'body_request');assert.equal(event.workflow_id,'collection_one');
+  assert.equal(event.task_id,'body_attempt');assert.equal(event.parent_task_id,'paper_task');
+  assert.equal(event.role,'article');assert.equal(event.page_id,17);assert.equal(event.source_page_id,9);
+  assert.equal(event.outcome,'native_complete');
+  for(const key of ['attachment_phase','attachment_count','pdf_attachment_count','metadata_source','method'])assert.equal(event[key],undefined);
+});

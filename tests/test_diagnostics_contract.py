@@ -111,7 +111,7 @@ const root=process.argv[2],scopeId=process.argv[3];
 const logger=createLogger({root,scopeId,runtimeId:'runtime_original',level:'error',stderr(){}});
 logger.log('info','task_finished',{workflow_id:'workflow_1',task_id:'batch_1',
   request_id:'native_1',action:'prepare_service',page_id:7,source_page_id:3,
-  service_id:'svc_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',stage:'attachment',step:'hidden_iframe',
+  service_id:'svc_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',stage:'navigation',step:'page_load',
   code:'load_failed',net_error:'ERR_CONNECTION_RESET',status:503,outcome:'failed',parent:'uncertain',pdf:'unverified',
   host:'private.invalid',body:'PRIVATE_SENTINEL',url:'https://private.invalid/?token=PRIVATE_SENTINEL'});
 logger.log('warn','task_finished',{workflow_id:'workflow_1',task_id:'batch_1',
@@ -139,7 +139,7 @@ other.log('error','task_finished',{workflow_id:'workflow_1',task_id:'batch_1',
         native = next(event for event in events if event.get('request_id') == 'native_1')
         assert {key: native[key] for key in ('page_id', 'source_page_id', 'stage', 'step',
                 'code', 'net_error', 'status', 'outcome')} == {
-            'page_id': 7, 'source_page_id': 3, 'stage': 'attachment', 'step': 'hidden_iframe',
+            'page_id': 7, 'source_page_id': 3, 'stage': 'navigation', 'step': 'page_load',
             'code': 'load_failed', 'net_error': 'ERR_CONNECTION_RESET', 'status': 503,
             'outcome': 'failed',
         }

@@ -22,5 +22,9 @@ WF02 retires translation-only Runtime assembly and Zotero Local API product path
 A clean source setup installs locked dependencies and builds UI without fetching
 vendor repositories. Existing vendor/Runtime/user data remain excluded from public
 candidates and are not deleted by setup. Preserve notices for retained adapted
-Browser/Document/Prepare and Cloudflare sources. Public Download and PDF actions
-remain future workflow tasks; body-association projection is not file acceptance.
+Browser/Document/Prepare and Cloudflare sources. Public single-Paper Download uses
+Session stream or a qualified original DownloadItem, then no-clobber file
+publication and SQLite completion. Local open/locate and independent Trash PDF
+deletion are connected. This source workflow has controlled native/file/UI
+coverage and scoped WF10 live evidence; it does not establish packaged-app or
+universal publisher/institution acceptance. See the [final acceptance index](workflow-acceptance.md).
