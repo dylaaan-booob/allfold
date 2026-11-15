@@ -57,7 +57,7 @@ app.whenReady().then(async()=>{
     let body='';for await(const chunk of req)body+=chunk;
     requests.push({url:req.url,method:req.method,body});
     const url=new URL(req.url,origin),kind=url.searchParams.get('case');
-    if(url.pathname==='/article') {
+    if(url.pathname==='/article'||url.pathname.startsWith('/doi/10.5555/')) {
       if(kind==='blocked'){res.writeHead(403,{'content-type':'text/html'});res.end('<title>Login required</title>');return;}
       const background=['iframe-background','popup-background','iframe-replaced','popup-source-replaced'].includes(kind);
       const popup=['popup','popup-reservation','popup-background','popup-source-replaced','action-challenge-popup'].includes(kind);
@@ -72,9 +72,9 @@ app.whenReady().then(async()=>{
         ${['existing-iframe','existing-target-changed'].includes(kind)?'<iframe name="body" src="/frame"></iframe>':''}
         ${background?`<iframe id="background" name="background" src="/frame"></iframe><script>fetch('/child-ready?case=${kind}').then(()=>{${kind==='iframe-replaced'?`document.querySelector('iframe[name="new-body"]').remove();const replacement=document.createElement('iframe');replacement.name='new-body';replacement.src='/source-replaced?case=${kind}';document.body.appendChild(replacement)`:
           kind==='popup-source-replaced'?`location.assign('/source-replaced?case=${kind}')`:`document.getElementById('background').src='/unrelated?case=${kind}'`}})</script>`:''}
-        ${kind==='inline'?'<nav aria-label="Article navigation">':''}<div class="download-pdf"><form class="ft-download-content__form--pdf" ${kind==='inline'?'data-doi="https://doi.org/10.5555/STRAẞE"':''} method="${getForm?'GET':'POST'}" action="/once?${getForm?'discard=old-action-query&':''}case=${kind}" ${popup?'target="_blank"':kind.startsWith('predeclared-')||kind.startsWith('named-popup')?'target="new-body"':['existing-iframe','existing-target-changed'].includes(kind)?'target="body"':''} ${setup}>
+        ${kind==='inline'?'<nav aria-label="Article navigation">':''}<div class="download-pdf"><form class="ft-download-content__form--pdf" ${['inline','url-doi-form'].includes(kind)?'data-doi="https://doi.org/10.5555/STRAẞE"':''} method="${getForm?'GET':'POST'}" action="/once?${getForm?'discard=old-action-query&':''}case=${kind}" ${popup?'target="_blank"':kind.startsWith('predeclared-')||kind.startsWith('named-popup')?'target="new-body"':['existing-iframe','existing-target-changed'].includes(kind)?'target="body"':''} ${setup}>
         ${getForm?`<input name="case" value="${kind}"><input name="once" value="fixture + &"><input name="tag" value="one"><input name="tag" value="two"><input disabled name="ignored" value="disabled"><input type="checkbox" name="ignored" value="unchecked">`:`<input name="once" value="${kind==='current-form'?'current-document':'fixture'}">`}
-        <button type="submit" ${getForm?'name="download" value="PDF now"':''}>Download PDF</button></form></div>${kind==='inline'?'<div class="related"><div class="download-pdf"><form class="ft-download-content__form--pdf" method="POST" action="/once?case=inline"><input name="once" value="related"><button>Download PDF</button></form></div></div><div hidden class="download-pdf"><form class="ft-download-content__form--pdf" action="/once?case=inline"></form></div><div class="download-pdf"><form data-doi="10.5555/foreign" class="ft-download-content__form--pdf" action="/once?case=inline"></form></div></nav>':''}</article></body></html>`);return;
+        <button type="submit" ${getForm?'name="download" value="PDF now"':''}>Download PDF</button></form></div>${kind==='inline'?'<div class="related"><div class="download-pdf"><form class="ft-download-content__form--pdf" method="POST" action="/once?case=inline"><input name="once" value="related"><button>Download PDF</button></form></div></div><div hidden class="download-pdf"><form class="ft-download-content__form--pdf" action="/once?case=inline"></form></div><div class="download-pdf"><form data-doi="10.5555/foreign" class="ft-download-content__form--pdf" action="/once?case=inline"></form></div><div class="download-pdf"><form class="ft-download-content__form--pdf" action="/once?case=inline"><button>Supporting PDF</button></form></div></nav>':''}</article></body></html>`);return;
     }
     if(url.pathname==='/frame') {res.writeHead(200,{'content-type':'text/html'});res.end('<title>Existing target</title>');return;}
     if(url.pathname==='/child-ready') {
@@ -167,7 +167,7 @@ app.whenReady().then(async()=>{
       };
       const science=kind.startsWith('sciencedirect');
       const paper=randomUUID(),id=randomUUID(),output=capability(paper),article=science?
-        origin.replace('www.microbiologyresearch.org','www.sciencedirect.com')+'/science/article/pii/S1234567890123456'+(kind==='sciencedirect'?'':'?case='+kind):origin+'/article?case='+kind;
+        origin.replace('www.microbiologyresearch.org','www.sciencedirect.com')+'/science/article/pii/S1234567890123456'+(kind==='sciencedirect'?'':'?case='+kind):origin+(kind==='url-doi-form'?'/doi/10.5555/STRA%C3%9FE':'/article')+'?case='+kind;
       const data={...output,workspace_identity:'a'.repeat(64),paper_id:paper,attempt:1,attempt_id:id,deadline_ms:Date.now()+(kind==='no-item'?800:10000),
         workflow_id:'body-fixture',task_id:'body-'+id,identity:{confirmed_article_url:article},
         candidate:{url:science?new URL(article).origin+new URL(article).pathname+'/pdfft'+new URL(article).search:origin+'/once?case='+kind,action:science?null:'refresh_form',
@@ -201,7 +201,7 @@ app.whenReady().then(async()=>{
       const terminal=new Promise(resolve=>messages.set(id,resolve));
       await context.execute({id,action:'native_paper_body',data});const result=await terminal;
       cases.push({kind,result});console.log('NATIVE CASE '+kind+' '+JSON.stringify(result));
-      const success=['attachment','inline','iframe','popup','named-popup','popup-reservation','sciencedirect','sciencedirect-direct-cdn-unavailable','sciencedirect-reader','sciencedirect-reader-self','sciencedirect-reader-reload'].includes(kind);
+      const success=['attachment','inline','url-doi-form','iframe','popup','named-popup','popup-reservation','sciencedirect','sciencedirect-direct-cdn-unavailable','sciencedirect-reader','sciencedirect-reader-self','sciencedirect-reader-reload'].includes(kind);
       if(success) {
         assert.equal(result.outcome,'native_complete');assert.equal(result.resource_closed,true);assert.deepEqual(result.output_file,observed);
         const leaf=path.join(data.workspace_root,data.output.temporary);assert.deepEqual(fs.readFileSync(leaf),payload);assert.deepEqual(identity(leaf),observed);
@@ -248,10 +248,10 @@ app.whenReady().then(async()=>{
       python.stdin.write(JSON.stringify({type:'hello',token:'fixture-only'})+'\n');
       const code=await new Promise(resolve=>python.once('exit',resolve));python=null;
       if(dispatchError)throw dispatchError;
-      assert.equal(code,0,stderr);assert.equal(complete,true,stderr);assert.equal(publicCases.length,26);
+      assert.equal(code,0,stderr);assert.equal(complete,true,stderr);assert.equal(publicCases.length,27);
       for(const item of publicCases)if(item.status==='completed')assert.deepEqual(fs.readFileSync(path.join(profile,'workspace/Documents',item.paper+'.pdf')),payload);
       assert.equal(browser.tabs.size,0);assert.equal(browser.sessionEvents.downloads.size,0);assert.equal(browser.sessionEvents.items.size,0);
-      for(const kind of ['attachment','inline','iframe','predeclared-iframe','predeclared-popup-guard','existing-iframe','iframe-background','popup-background','iframe-replaced','popup-source-replaced','popup','named-popup','action-blocked','action-challenge','action-challenge-iframe','action-challenge-popup','action-html','cancel','drain'])assert.deepEqual(requests.filter(request=>request.url==='/once?case='+kind),
+      for(const kind of ['attachment','inline','url-doi-form','iframe','predeclared-iframe','predeclared-popup-guard','existing-iframe','iframe-background','popup-background','iframe-replaced','popup-source-replaced','popup','named-popup','action-blocked','action-challenge','action-challenge-iframe','action-challenge-popup','action-html','cancel','drain'])assert.deepEqual(requests.filter(request=>request.url==='/once?case='+kind),
         [{url:'/once?case='+kind,method:'POST',body:'once=fixture'}]);
       for(const kind of ['iframe-background','popup-background'])assert.equal(requests.filter(request=>request.url==='/unrelated?case='+kind).length,1);
       assert.deepEqual(requests.filter(request=>request.url==='/once?case=current-form'),

@@ -86,12 +86,12 @@ async def main():
     host = application.state.workspace_tasks
     client = httpx.AsyncClient(transport=httpx.ASGITransport(app=application), base_url='http://localhost')
     try:
-        for index, kind in enumerate(('attachment', 'inline', 'iframe', 'predeclared-iframe', 'predeclared-target-changed', 'predeclared-popup-guard', 'existing-iframe', 'existing-target-changed', 'iframe-background', 'popup-background', 'iframe-replaced', 'popup-source-replaced', 'popup', 'named-popup', 'current-form', 'get-form', 'get-changed', 'sciencedirect', 'blocked',
+        for index, kind in enumerate(('attachment', 'inline', 'url-doi-form', 'iframe', 'predeclared-iframe', 'predeclared-target-changed', 'predeclared-popup-guard', 'existing-iframe', 'existing-target-changed', 'iframe-background', 'popup-background', 'iframe-replaced', 'popup-source-replaced', 'popup', 'named-popup', 'current-form', 'get-form', 'get-changed', 'sciencedirect', 'blocked',
                                       'action-blocked', 'action-challenge', 'action-challenge-iframe', 'action-challenge-popup', 'action-html', 'cancel', 'drain')):
             science = kind == 'sciencedirect'
             access_blocked = kind in {'blocked', 'action-blocked'} or kind.startswith('action-challenge')
             article = (origin.replace('www.microbiologyresearch.org', 'www.sciencedirect.com') + '/science/article/pii/S1234567890123456'
-                if science else origin + '/article?case=' + kind)
+                if science else origin + ('/doi/10.5555/STRA%C3%9FE' if kind == 'url-doi-form' else '/article') + '?case=' + kind)
             candidate = PdfCandidateFact(stage='P4', rule_id='R024' if science else 'R059',
                 url=article + '/pdfft' if science else origin + ('/expired-action' if kind == 'current-form' else '/once') + '?' + ('discard=old-action-query&' if kind in {'get-form', 'get-changed'} else '') + 'case=' + kind,
                 reader_kind='sciencedirect' if science else None, action=None if science else 'refresh_form', referer=article)

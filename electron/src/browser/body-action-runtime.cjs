@@ -52,7 +52,10 @@ class BodyActionRuntime {
     let entry;
     const response=new Promise((resolve,reject)=>{entry={doc,candidate,contents,resolve,reject};this.pending.set(id,entry);});
     try {
-      const doi=validDOI(doc.identity?.doi) || doc.article?.values?.map(validDOI).find(Boolean) || null;
+      let path=new URL(doc.url).pathname;
+      try {path=decodeURI(path);}catch { /* Preserve the literal path when escapes cannot be decoded. */ }
+      const doi=validDOI(doc.identity?.doi) || doc.article?.values?.map(validDOI).find(Boolean)
+        || validDOI(path.match(/\/doi\/(?:abs\/|full\/)?(10\.\d{4,9}\/[^\s]+)$/)?.[1]);
       const plan=await waitFor(()=>{frame.send('body:prepare',{id,candidate,documentId:doc.documentId,url:doc.url,
         subject:doc.article.subject,doi,doiCasefold});return response;},signal,Math.min(deadline,Date.now()+15000));
       // Resolve only the controlled action's named destination, never grant the

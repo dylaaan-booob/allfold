@@ -632,6 +632,7 @@ function bodyAction(candidate,subject,id,dispatch=false,doi=null,doiCasefold={})
     for(let owner=node;owner;owner=owner.parentElement)if(owner.matches('footer,aside,[role="doc-bibliography"],[role="doc-endnotes"],[data-related],[hidden],[aria-hidden="true"]')
       ||/references|related|recommend|supplement/i.test(owner.id+' '+(owner.getAttribute('class') || ''))
       ||/(?:^|;)\s*display\s*:\s*none\s*(?:!important\s*)?(?:;|$)/i.test(owner.getAttribute('style') || ''))return true;
+    if(/supplement|supporting|appendix|whole issue|entire issue|issue pdf|other article/i.test(node.textContent+' '+(node.getAttribute('title') || '')+' '+(node.getAttribute('action') || '')))return true;
     const raw=node.closest('[data-doi]')?.getAttribute('data-doi');
     const scope=typeof raw==='string'?raw.trim().replace(/^(?:https?:\/\/(?:dx\.)?doi\.org\/|doi:\s*)/i,'').trim().toLowerCase().replace(/[^\x00-\x7f]/gu,char=>doiCasefold[char] || char):'';
     return /^10\.\d{4,9}\/[^\s]+$/u.test(scope)&&scope!==doi;
