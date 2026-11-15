@@ -2,15 +2,34 @@
 
 WF11 is the final task, from main `229b6fb157bf2cb8d993c2cbb3b458240a507417`.
 This index records current callers and observable assertions, not 72 new tests.
-Verification is in progress; the execution ledger below must be completed before
-the WF11 PR is ready. No real account, personal profile/library or user file is
-used. No installer, signing, release or additional workflow phase is introduced.
+The execution ledger separates completed source/fixture checks from historical
+samples and remaining human conditions. No real account, personal profile/library
+or user file is used. No installer, signing, release or additional workflow phase
+is introduced.
 
 ## Execution ledger
 
-The source candidate/version, clean setup, startup and complete-suite outcomes
-will be recorded here after execution. Final PR Head and PR-associated CI belong
-in the PR, avoiding a documentation self-SHA loop.
+On 2026-11-15, macOS 27.2.1 arm64 used Node 24.21.0, Python 3.12.14,
+uv 0.12.19 and Electron 45.0.0. The code candidate is
+`9ffa958b768e961fc0eabc7f15988e7434bc52a6`; subsequent ledger edits are documentation.
+Final PR Head and PR-associated CI belong in the PR, avoiding a self-SHA loop.
+
+| Command / observation | Actual result and version |
+| --- | --- |
+| `npm --prefix electron run check` | 63 project files passed, including after the final inactive-reveal removal. |
+| `node tools/build-ui-next.mjs` | Passed; generated UI stays ignored. |
+| `uv run --locked pytest` | 1,466 passed, two existing dependency deprecation warnings, at `48dec324d02abe7b0c61ce8d6fe34169fdfea81f`; Python/schema/fixtures are unchanged in the code candidate. The earlier full run identified one stale `hidden_iframe` diagnostic example; it was rewritten as current navigation, retaining exact association/error/privacy assertions, before this passing full run. |
+| `npm --prefix electron test` | 238 passed, zero failed/skipped at `48dec324d02abe7b0c61ce8d6fe34169fdfea81f`; public native composition printed all 28 cases. Rendered Download/Trash screenshots were inspected. |
+| `node --test --test-concurrency=1 electron/tests/workspace-layout-dom.test.cjs electron/tests/browser-workspaces.test.cjs` | Passed (one rendered integration test) after removing the inactive Enrich reveal object and its CSS/callbacks. Text/selection/scroll, collection/edit races, Download/Trash and Browser workspace assertions remain. The unchanged abstract-line metric helper and source notice remain. |
+| `npm --prefix electron run setup` | Passed on a fresh tracked-source export of the code candidate, initially without `.venv`, either dependency tree, generated UI, vendor/Runtime, Workspace, config or UserState. Normal package caches were allowed; no old dependency tree was copied. Locked uv/npm installs, official Electron binary/version check and UI build all completed. |
+| Repeated actual setup + `setup.test.cjs` | Earlier clean candidate `48dec324` preserved a modified existing config byte-for-byte on repeat. Normal suite tests also preserve a synthetic credential file and symlink target. Setup/config logic is unchanged in the code candidate. |
+| `electron/node_modules/.bin/electron electron/tests/source-startup.fixture.cjs "$PWD/.startup-smoke/profile" --config "$PWD/config.example.yaml"` | Passed on the freshly installed code candidate: Main → project Python health → authenticated bridge → built UI → native Browser page navigation/actual destruction → normal quit. Captured UI inspected; zero renderer errors. Python reported application shutdown complete/process exit; port 18767 was free afterward, and read-only startup created no Paper database. |
+
+The Main smoke is deliberately a normal empty-library startup. New-library Run,
+collection, Retry and both durable body paths are proved by the separate P/N
+production compositions below, not inferred from the startup screenshot. Setup's
+normal npm policy reported a blocked esbuild postinstall; the existing platform
+package/build path still completed without changing trust settings or locks.
 
 - **P**: `uv run --locked pytest`, including every named Python test below.
 - **N**: `npm --prefix electron test`, serial as defined by `package.json`.
