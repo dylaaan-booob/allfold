@@ -31,9 +31,12 @@ class OriginalNavigation {
     if(!publicClueURL(url))return false;
     if(url===(this.requestURL || this.candidate.url))return true;
     if(this.candidate.platform!=='sciencedirect')return false;
-    const source=new URL(this.doc.url),next=new URL(url),pii=this.sciencePII;
-    return !!pii && (next.origin===source.origin&&['/science/article/pii/'+pii+'/pdfft','/science/article/pii/'+pii+'/pdf'].includes(next.pathname)
-      ||this.scienceAsset(url));
+    return this.scienceReaderURL(url)||this.scienceAsset(url);
+  }
+  scienceReaderURL(url) {
+    if(!this.sciencePII||!publicClueURL(url))return false;
+    const source=new URL(this.doc.url),next=new URL(url);
+    return next.origin===source.origin&&['/science/article/pii/'+this.sciencePII+'/pdfft','/science/article/pii/'+this.sciencePII+'/pdf'].includes(next.pathname);
   }
   scienceAsset(url) {
     if(!this.cdnAllowed||!this.sciencePII||!publicClueURL(url))return false;
@@ -44,20 +47,25 @@ class OriginalNavigation {
     if(!this.sciencePII||!entry?.response||entry.continued||source!==this.boundSource||entry!==this.boundEntry
       ||entry.response.status<200||entry.response.status>=300
       ||frame.frameTreeNodeId!==entry.request.frameTreeNodeId||frame.url!==entry.response.url)return false;
-    const url=new URL(frame.url),article=new URL(this.doc.url);
-    return url.origin===article.origin&&['/science/article/pii/'+this.sciencePII+'/pdfft','/science/article/pii/'+this.sciencePII+'/pdf'].includes(url.pathname);
+    return this.scienceReaderURL(frame.url);
+  }
+  scienceContinuation(url) {
+    if(this.cdnContinued)return null;
+    if(this.scienceAsset(url))return 'cdn';
+    return !this.readerRefreshed&&this.scienceReaderURL(url)?'reader':null;
   }
   continueScienceReader(source,event) {
-    const frame=source.contents.mainFrame,previous=this.boundEntry;
-    if(!this.dispatched||this.error||this.primary||this.continuation||!event.isMainFrame
-      ||event.frame?.frameTreeNodeId!==frame.frameTreeNodeId||!sameFrame(event.initiator,frame)||!this.scienceAsset(event.url)
+    const frame=source.contents.mainFrame,previous=this.boundEntry,kind=this.scienceContinuation(event.url);
+    if(!this.dispatched||this.error||this.primary||this.continuation&&!this.continuation.used||!event.isMainFrame
+      ||event.frame?.frameTreeNodeId!==frame.frameTreeNodeId||!sameFrame(event.initiator,frame)||!kind
       ||!this.scienceReader(source,previous,frame))return;
     this.valid();
     // The committed HTML response cannot later become an item. Transfer only
-    // its own native navigation to the one same-PII CDN request, without replay.
+    // its own native navigation: at most one reader refresh and one CDN GET.
     previous.continued=true;previous.registration.dispose();source.frames.delete(previous.frame.frameToken);
     const entry=this.addFrame(source,event.frame);
     if(!entry)throw failure('document_changed');
+    if(kind==='reader')this.readerRefreshed=true;else this.cdnContinued=true;
     this.continuation={source,entry,url:event.url,frameTreeNodeId:frame.frameTreeNodeId,used:false};
   }
   acceptPopup(url) {return !this.targetName&&!this.continuation&&this.dispatched&&!this.error&&!this.primary&&(url==='about:blank'||this.acceptsURL(url));}
@@ -95,7 +103,7 @@ class OriginalNavigation {
       if(url==='about:blank'&&tab.id!==this.doc.pageId)return;
       // did-start-navigation precedes will-frame-navigate. Retire only the old
       // read probe here; native initiator/destination checks still gate the request.
-      if(!this.continuation&&this.scienceAsset(url)&&this.scienceReader(source,this.boundEntry,contents.mainFrame))
+      if((!this.continuation||this.continuation.used)&&this.scienceContinuation(url)&&this.scienceReader(source,this.boundEntry,contents.mainFrame))
         this.boundEntry.pendingContinuation=true;
       if(!this.dispatched||!this.acceptsURL(url)||this.primary)this.fail(failure('document_changed'));
     };

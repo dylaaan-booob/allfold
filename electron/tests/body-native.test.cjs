@@ -14,7 +14,7 @@ test('ScienceDirect original HTML reader hands off once to its own same-PII CDN 
   const profile=fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(),'allfold-native-reader-')));
   t.after(()=>fs.rmSync(profile,{recursive:true,force:true}));
   const {stdout,stderr}=await promisify(execFile)(require('electron'),[path.join(__dirname,'body-native.fixture.cjs'),profile,
-    'sciencedirect-reader,sciencedirect-reader-self,sciencedirect-reader-wrong-pii,sciencedirect-reader-wrong-origin,sciencedirect-reader-wrong-source,sciencedirect-reader-twice,sciencedirect-reader-challenge,sciencedirect-reader-http-error,sciencedirect-reader-cancel,sciencedirect-reader-cdn-unavailable,sciencedirect-direct-cdn-unavailable'],
+    'sciencedirect-reader,sciencedirect-reader-self,sciencedirect-reader-reload,sciencedirect-reader-loop,sciencedirect-reader-wrong-pii,sciencedirect-reader-wrong-origin,sciencedirect-reader-wrong-source,sciencedirect-reader-twice,sciencedirect-reader-challenge,sciencedirect-reader-http-error,sciencedirect-reader-cancel,sciencedirect-reader-cdn-unavailable,sciencedirect-direct-cdn-unavailable'],
     {timeout:40000,maxBuffer:1024*1024,env:{...process.env,ELECTRON_RUN_AS_NODE:''}});
   assert.match(stdout,/BODY NATIVE PASS/);assert.doesNotMatch(stderr,/Check failed/);t.diagnostic(stdout.trim());
 });

@@ -126,14 +126,15 @@ qualified there; related, reference, supplementary and foreign-identity controls
 stay excluded. The action still uses the unique current form and its original fields.
 
 ScienceDirect's original `/pdfft` or `/pdf` response may be an HTML reader that
-navigates itself to the same PII's `pdf.sciencedirectassets.com/.../main.pdf`.
+navigates its same-PII reader entry once, then navigates itself to the same PII's
+`pdf.sciencedirectassets.com/.../main.pdf` once.
 The fixed CDN DNS preflight gates that one continuation; a failed check disables
 CDN handoff while allowing the original endpoint to return its PDF directly.
 The handoff binds the committed HTML response, its actual native initiator,
 destination FrameTreeNode and exact next GET. `did-start-navigation` can retire
 the superseded read probe but grants no request authority; `will-frame-navigate`
 must qualify the handoff before registration and the actual request. No response
-is copied or replayed. A second continuation, another PII/source, static access
+is copied or replayed. A second reader refresh or CDN continuation, another PII/source, static access
 challenge or ordinary unrelated HTML remains refused. The original deadline,
 owner, output, progress and actual-item terminal still govern completion.
 

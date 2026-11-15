@@ -114,6 +114,13 @@ app.whenReady().then(async()=>{
         if(kind?.startsWith('sciencedirect-reader')) {
           res.writeHead(kind==='sciencedirect-reader-http-error'?500:200,{'content-type':'text/html'});
           if(kind==='sciencedirect-reader-challenge'){res.end('<title>Just a moment...</title>');return;}
+          if(['sciencedirect-reader-reload','sciencedirect-reader-loop'].includes(kind)) {
+            const step=Number(url.searchParams.get('reader')||'0');
+            if(step===0||kind==='sciencedirect-reader-loop'&&step===1) {
+              url.searchParams.set('reader',String(step+1));
+              res.end('<script>location.replace('+JSON.stringify(url.pathname+url.search)+')</script>');return;
+            }
+          }
           const pii=kind==='sciencedirect-reader-wrong-pii'?'S9999999999999999':'S1234567890123456';
           const pdf=(kind==='sciencedirect-reader-wrong-origin'?cdnOrigin.replace('pdf.sciencedirectassets.com','assets.example'):cdnOrigin)+'/fixture/1-s2.0-'+pii+'/main.pdf?case='+kind;
           res.end('<script>'+(kind==='sciencedirect-reader-wrong-source'?'window.opener.location':'location')+'.replace('+JSON.stringify(pdf)+')</script>');return;
@@ -188,7 +195,7 @@ app.whenReady().then(async()=>{
       const terminal=new Promise(resolve=>messages.set(id,resolve));
       await context.execute({id,action:'native_paper_body',data});const result=await terminal;
       cases.push({kind,result});console.log('NATIVE CASE '+kind+' '+JSON.stringify(result));
-      const success=['attachment','inline','iframe','popup','popup-reservation','sciencedirect','sciencedirect-direct-cdn-unavailable','sciencedirect-reader','sciencedirect-reader-self'].includes(kind);
+      const success=['attachment','inline','iframe','popup','popup-reservation','sciencedirect','sciencedirect-direct-cdn-unavailable','sciencedirect-reader','sciencedirect-reader-self','sciencedirect-reader-reload'].includes(kind);
       if(success) {
         assert.equal(result.outcome,'native_complete');assert.equal(result.resource_closed,true);assert.deepEqual(result.output_file,observed);
         const leaf=path.join(data.workspace_root,data.output.temporary);assert.deepEqual(fs.readFileSync(leaf),payload);assert.deepEqual(identity(leaf),observed);
@@ -257,8 +264,12 @@ app.whenReady().then(async()=>{
     for(const kind of caseNames.filter(kind=>kind.startsWith('sciencedirect-reader'))) {
       assert.equal(requests.filter(request=>request.url==='/science/article/pii/S1234567890123456/pdfft?case='+kind).length,1);
       assert.equal(requests.filter(request=>request.cdn&&request.url.endsWith('?case='+kind)).length,
-        ['sciencedirect-reader','sciencedirect-reader-self','sciencedirect-reader-twice','sciencedirect-reader-cancel'].includes(kind)?1:0,kind);
+        ['sciencedirect-reader','sciencedirect-reader-self','sciencedirect-reader-reload','sciencedirect-reader-twice','sciencedirect-reader-cancel'].includes(kind)?1:0,kind);
       assert.equal(requests.filter(request=>request.cdn&&request.url.endsWith('?case='+kind+'&next=1')).length,0,'a second HTML continuation is refused');
+      if(['sciencedirect-reader-reload','sciencedirect-reader-loop'].includes(kind)) {
+        assert.equal(requests.filter(request=>request.url.endsWith('?case='+kind+'&reader=1')).length,1);
+        assert.equal(requests.filter(request=>request.url.endsWith('?case='+kind+'&reader=2')).length,0,'a second reader refresh is refused');
+      }
     }
     assert.equal(browser.partition.listenerCount('will-download'),1);
     console.log('BODY NATIVE PASS');
