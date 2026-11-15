@@ -95,14 +95,15 @@ class PdfDiscoveryContext:
 
     def close_native(self):
         from allfold.application.collection_runtime import _CleanupUnconfirmed
-        cancelled = False
+        unconfirmed = False
         for future in self.native:
             try:
-                future.result()  # A cancellation request never proves physical exit.
+                value = future.result()  # A cancellation request never proves physical exit.
+                unconfirmed = unconfirmed or isinstance(value, dict) and value.get('resource_closed') is False
             except BaseException:
-                cancelled = cancelled or future.cancelled()
-        if cancelled:
-            raise _CleanupUnconfirmed('Cancelled native Future does not prove resource settlement')
+                unconfirmed = unconfirmed or future.cancelled()
+        if unconfirmed:
+            raise _CleanupUnconfirmed('Native resource settlement is unconfirmed')
         if self.native_started:
             release = self.registry.bridge.execute('release_workflow_pages', {
                 'workflow_id': self.workflow_id, 'task_id': self.task_id})

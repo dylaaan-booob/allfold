@@ -520,6 +520,30 @@ def test_shutdown_waits_real_native_terminal_and_cleanup_before_closing_factory(
         bridge.finish(); host.shutdown(); host.join()
 
 
+def test_native_unclosed_result_retains_owner_despite_successful_loan_release(tmp_path):
+    bridge, lock = NativeBridge(), BrowserTaskLock()
+    host, _, paper, options = setup_host(tmp_path,
+        lambda _: httpx.Response(404, json={}), bridge=bridge, browser_lock=lock)
+    task = submit_pdf_discovery(host, paper, target=native_target(paper), http_options=options)
+    try:
+        assert bridge.started.wait(2)
+        bridge.cleanup.set_result({'released': False})
+        bridge.operation.set_result({'diagnostic': {'code': 'document_operation_failed', 'stage': 'navigation'},
+            'resource_closed': False})
+        with pytest.raises(RuntimeError, match='settlement'):
+            task.future.result(3)
+        assert host.active and host.browser_owner_ids and task.cleanup_failed and not task.released
+        with pytest.raises(InvalidPaperState, match='Another operation owns'):
+            host.current().reserve(paper.id, kind='body', body_request=object())
+    finally:
+        host.shutdown()
+        if host.active:
+            with pytest.raises(RuntimeError, match='could not be settled'):
+                host.join()
+        else:
+            host.join()
+
+
 @pytest.mark.parametrize('resource', ['client', 'native'])
 def test_finished_cleanup_fault_is_reported_without_retaining_paper(tmp_path, resource):
     bridge = NativeBridge() if resource == 'native' else None

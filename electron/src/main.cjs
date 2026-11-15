@@ -194,13 +194,15 @@ async function executeOperation(message,current) {
   const completed=['stream_complete','native_complete','opened','locate_requested'].includes(outcome);
   const canceled=!completed && (controller.signal.aborted || diagnostic.code==='canceled');
   const failed=!!data.diagnostic || !!data.error || data.outcome==='Needs attention' || ['no_result','failed','local_failure','expired'].includes(outcome);
+  const summary=recovery.summary();
+  // Deliver the actual terminal before synchronous diagnostic file IO. Python
+  // can settle its original Future/Paper without depending on that observation.
+  send({type:'result',id:message.id,action:message.action,data:{...data,...(summary.length?{recovery:summary}:{}),diagnostics_status:diagnosticsStatus()}});
   try{log(canceled?'info':failed?'warn':'info','task_finished',{...context,page_id:resultPageId,
     duration_ms:Date.now()-started,outcome:canceled?'canceled':outcome,
     stage:diagnostic.stage || stage,
     step:diagnostic.step,code:diagnostic.code || data.reason,net_error:diagnostic.net_error,net_code:diagnostic.net_code,status:diagnostic.status,
     imperva_edet:diagnostic.imperva_edet,imperva_incident_id:diagnostic.imperva_incident_id});}catch(_){}
-  const summary=recovery.summary();
-  send({type:'result',id:message.id,action:message.action,data:{...data,...(summary.length?{recovery:summary}:{}),diagnostics_status:diagnosticsStatus()}});
 }
 async function startPython(config,cdpURL) {
   if(!fs.existsSync(path.join(ROOT,'.venv/bin/python'))) throw Error('Run uv sync --locked --group dev in the project copy first');

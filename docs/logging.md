@@ -243,7 +243,9 @@ without declaring a shell error to be missing or manufacturing file-manager
 completion.
 
 Main logs successful stream/native/Open/Locate outcomes according to their actual
-result, even when an abort arrives later. Auxiliary native cleanup uses the bounded
+result, even when an abort arrives later. Main sends that terminal result before
+the synchronous final diagnostic write, so Python settlement does not wait for it.
+Auxiliary native cleanup uses the bounded
 `task_cleanup_failed` event and does not rewrite a successful outcome. Local Python
 observations follow host lease release. Body/collection projections expose fixed
 storage/file/cleanup explanations, never raw exception text or request contents.
