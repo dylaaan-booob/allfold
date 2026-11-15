@@ -11,7 +11,7 @@ is introduced.
 
 On 2026-11-15, macOS 27.2.1 arm64 used Node 24.21.0, Python 3.12.14,
 uv 0.12.19 and Electron 45.0.0. The code candidate is
-`9ffa958b768e961fc0eabc7f15988e7434bc52a6`; subsequent ledger edits are documentation.
+`af37fe7d71591711359b767b3ba252f64d50f50e`; subsequent ledger edits are documentation.
 Final PR Head and PR-associated CI belong in the PR, avoiding a self-SHA loop.
 
 | Command / observation | Actual result and version |
@@ -20,10 +20,11 @@ Final PR Head and PR-associated CI belong in the PR, avoiding a self-SHA loop.
 | `node tools/build-ui-next.mjs` | Passed; generated UI stays ignored. |
 | `uv run --locked pytest` | 1,466 passed, two existing dependency deprecation warnings, at `48dec324d02abe7b0c61ce8d6fe34169fdfea81f`; Python/schema/fixtures are unchanged in the code candidate. The earlier full run identified one stale `hidden_iframe` diagnostic example; it was rewritten as current navigation, retaining exact association/error/privacy assertions, before this passing full run. |
 | `npm --prefix electron test` | 238 passed, zero failed/skipped at `48dec324d02abe7b0c61ce8d6fe34169fdfea81f`; public native composition printed all 28 cases. Rendered Download/Trash screenshots were inspected. |
-| `node --test --test-concurrency=1 electron/tests/workspace-layout-dom.test.cjs electron/tests/browser-workspaces.test.cjs` | Passed (one rendered integration test) after removing the inactive Enrich reveal object and its CSS/callbacks. Text/selection/scroll, collection/edit races, Download/Trash and Browser workspace assertions remain. The unchanged abstract-line metric helper and source notice remain. |
+| `node --test --test-concurrency=1 electron/tests/workspace-layout-dom.test.cjs electron/tests/browser-workspaces-dom.test.cjs electron/tests/browser-presentation-dom.test.cjs` | Three passed after final review corrections. Text/selection/scroll, collection/edit races, Download/Trash, native Browser input/focus/Session and workspace assertions remain. The inactive Enrich reveal object/CSS/callbacks and vacuous retired assertions are removed; the used abstract-line metric helper, Candidate scrolling rule and source notices remain. |
 | `npm --prefix electron run setup` | Passed on a fresh tracked-source export of the code candidate, initially without `.venv`, either dependency tree, generated UI, vendor/Runtime, Workspace, config or UserState. Normal package caches were allowed; no old dependency tree was copied. Locked uv/npm installs, official Electron binary/version check and UI build all completed. |
 | Repeated actual setup + `setup.test.cjs` | Earlier clean candidate `48dec324` preserved a modified existing config byte-for-byte on repeat. Normal suite tests also preserve a synthetic credential file and symlink target. Setup/config logic is unchanged in the code candidate. |
 | `electron/node_modules/.bin/electron electron/tests/source-startup.fixture.cjs "$PWD/.startup-smoke/profile" --config "$PWD/config.example.yaml"` | Passed on the freshly installed code candidate: Main → project Python health → authenticated bridge → built UI → native Browser page navigation/actual destruction → normal quit. Captured UI inspected; zero renderer errors. Python reported application shutdown complete/process exit; port 18767 was free afterward, and read-only startup created no Paper database. |
+| Same startup command with fixture-only `--fail-after-ready` / `--timeout-after-ready` | Each returned expected failure status 1 after normal Main drain; Python process was gone and 18767 free. Before the fix, an intentional failure reproduced the orphaned test Python; only that proved test-owned process was signalled for cleanup. Main/production shutdown itself is unchanged. |
 
 The Main smoke is deliberately a normal empty-library startup. New-library Run,
 collection, Retry and both durable body paths are proved by the separate P/N

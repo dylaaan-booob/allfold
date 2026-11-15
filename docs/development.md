@@ -65,6 +65,11 @@ defer this smoke. The complete collection/stream/original-item compositions run
 separately in the standard suites. [Final acceptance](workflow-acceptance.md)
 records actual versions, commands and the remaining real-service/OS boundaries.
 
+Fixture-only `--fail-after-ready` and `--timeout-after-ready` exercise assertion
+and watchdog failure after Python has started. Both must return status 1 only
+after normal Main shutdown; verify the reported Python PID has exited and 18767
+is free. They never change production configuration or bypass Main drain.
+
 ## Build resources
 
 Editable UI files are in [frontend/ui](../frontend/ui/). Build the complete delivery tree with:
