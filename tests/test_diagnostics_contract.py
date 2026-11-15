@@ -104,8 +104,7 @@ def test_native_evidence_survives_restart_and_export_filters_exact_scope_and_wor
     root = tmp_path / 'logs'
     store = DiagnosticStore(config, root=root, runtime_id='runtime_original')
     store.begin('prepare', 'batch_1', workflow_id='workflow_1')
-    store.finish('batch_1', 'uncertain', statistics={'uncertain': 1},
-                 details={'parent_outcome': 'uncertain', 'pdf_outcome': 'unverified'})
+    store.finish('batch_1', 'failed', statistics={'failed': 1})
     script = r'''
 const {createLogger}=require(process.argv[1]);
 const root=process.argv[2],scopeId=process.argv[3];
@@ -113,7 +112,7 @@ const logger=createLogger({root,scopeId,runtimeId:'runtime_original',level:'erro
 logger.log('info','task_finished',{workflow_id:'workflow_1',task_id:'batch_1',
   request_id:'native_1',action:'prepare_service',page_id:7,source_page_id:3,
   service_id:'svc_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',stage:'attachment',step:'hidden_iframe',
-  code:'load_failed',net_error:'ERR_CONNECTION_RESET',status:503,parent:'uncertain',pdf:'unverified',
+  code:'load_failed',net_error:'ERR_CONNECTION_RESET',status:503,outcome:'failed',parent:'uncertain',pdf:'unverified',
   host:'private.invalid',body:'PRIVATE_SENTINEL',url:'https://private.invalid/?token=PRIVATE_SENTINEL'});
 logger.log('warn','task_finished',{workflow_id:'workflow_1',task_id:'batch_1',
   request_id:'imperva_request',action:'prepare_service',stage:'navigation',
@@ -121,11 +120,14 @@ logger.log('warn','task_finished',{workflow_id:'workflow_1',task_id:'batch_1',
 logger.log('info','task_finished',{workflow_id:'workflow_1',task_id:'batch_1',
   request_id:'body_request',action:'stream_paper_body',outcome:'stream_complete',
   workspace_root:'/PRIVATE_SENTINEL',output:{file:[1,2]},url:'https://private.invalid/?token=PRIVATE_SENTINEL'});
+logger.log('info','task_finished',{workflow_id:'workflow_1',task_id:'batch_1',
+  request_id:'local_body_request',action:'local_paper_body',outcome:'locate_requested',
+  path:'/PRIVATE_SENTINEL/body.pdf',body_generation:2});
 logger.log('error','task_finished',{workflow_id:'workflow_2',task_id:'batch_2',
-  request_id:'unrelated_request',action:'prepare_service',parent:'confirmed'});
+  request_id:'unrelated_request',action:'prepare_service',outcome:'opened'});
 const other=createLogger({root,scopeId:'b'.repeat(64),runtimeId:'other_runtime',stderr(){}});
 other.log('error','task_finished',{workflow_id:'workflow_1',task_id:'batch_1',
-  request_id:'other_scope_request',action:'prepare_service',parent:'confirmed'});
+  request_id:'other_scope_request',action:'prepare_service',outcome:'opened'});
 '''
     module = Path(__file__).resolve().parents[1] / 'electron/src/shared/logging.cjs'
     subprocess.run(['node', '-e', script, str(module), str(root), store.scope_id], check=True)
@@ -136,16 +138,19 @@ other.log('error','task_finished',{workflow_id:'workflow_1',task_id:'batch_1',
         assert events == sorted(events, key=lambda event: event['time'])
         native = next(event for event in events if event.get('request_id') == 'native_1')
         assert {key: native[key] for key in ('page_id', 'source_page_id', 'stage', 'step',
-                'code', 'net_error', 'status', 'parent', 'pdf')} == {
+                'code', 'net_error', 'status', 'outcome')} == {
             'page_id': 7, 'source_page_id': 3, 'stage': 'attachment', 'step': 'hidden_iframe',
             'code': 'load_failed', 'net_error': 'ERR_CONNECTION_RESET', 'status': 503,
-            'parent': 'uncertain', 'pdf': 'unverified',
+            'outcome': 'failed',
         }
+        assert 'parent' not in native and 'pdf' not in native
         assert native['service_id'] == 'svc_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'
         assert native['workflow_id'] == 'workflow_1'
         assert native['task_id'] == 'batch_1'
         streamed = next(event for event in events if event.get('request_id') == 'body_request')
         assert streamed['action'] == 'stream_paper_body' and streamed['outcome'] == 'stream_complete'
+        local = next(event for event in events if event.get('request_id') == 'local_body_request')
+        assert local['action'] == 'local_paper_body' and local['outcome'] == 'locate_requested'
         blocked = next(event for event in events if event.get('request_id') == 'imperva_request')
         assert normalize_browser_diagnostic(blocked) == {
             'stage': 'navigation', 'code': 'site_restricted', 'status': 200,

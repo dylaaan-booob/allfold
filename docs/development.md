@@ -10,14 +10,14 @@ npm --prefix electron run setup
 
 Setup checks tools, creates `config.example.yaml` only if absent, installs locked Python/Electron/build dependencies, explicitly installs the Electron binary and builds the UI. Existing ignored vendor/Runtime directories are untouched. Translation-only assembly and Local API saving are retired; remaining Browser/Document/Prepare/Cloudflare helpers have no generated Runtime dependency.
 
-Configure keywords, months and Provider settings in Discover. The Login toolbar owns Institution and Service preparation concurrency. Neutral Paper/PDF workflow values remain in configuration for existing contracts; no Download or retired Import controls are exposed. Application settings remain in Settings. Ordinary edits autosave, while credential replacement/clearing and high-impact operations require explicit submission. The public template is separate from local configuration; setup does not create or copy credentials.
+Configure keywords, months and Provider settings in Discover. The Login toolbar owns Institution and Service preparation concurrency. Single-Paper Download/Cancel and local PDF controls live in the existing reader; retired Import controls remain absent. Original DownloadItem body output retains the accepted [native cancellation limitation](body-downloads.md#native-output-and-accepted-cancellation-risk). Application settings remain in Settings. Ordinary edits autosave, while credential replacement/clearing and high-impact operations require explicit submission. The public template is separate from local configuration; setup does not create or copy credentials.
 
 Journal state is stored in `.allfold/user-data.sqlite`, isolated by canonical configuration path. The YAML `venue_whitelist` remains the first-migration source, not the live data store. The Journal Registry rebuilds offline from the existing five source lists with `uv run --locked python tools/build_journal_registry.py`; its shipped rows and indexes are checked against an isolated rebuild. Shared GOKB/CARSI data lives in `.allfold/resources.sqlite`; neither database belongs in a source candidate. Use temporary project/configuration directories and injected HTTP transports for migration, exchange and Resolver tests. Do not launch tests against personal YAML, Workspace, covers or Zotero.
 
 The production [Paper library](paper-library.md) uses standard-library `sqlite3`.
 Read-only uninitialized views do not create it; the first Run initializes
 `Workspace/papers.sqlite`. Use disposable directories, actual SQLite connections
-and local HTTP/DOM fixtures. Create current-format databases for acceptance; exactly valid v3 has a transactional v4 forward change; retired/unknown formats remain refused. Missing, corrupt and unsupported databases have distinct results.
+and local HTTP/DOM fixtures. Create current-format v5 databases for acceptance; exactly valid v4 and the supported v3 path have transactional forward changes preserving saved data and unknown historical provenance. Retired/unknown formats remain refused. Missing, corrupt and unsupported databases have distinct results.
 
 ```sh
 uv run --locked pytest tests/test_paper_repository.py tests/test_paper_repository_safety.py tests/test_run_commit.py tests/test_preprint_lookup.py
@@ -166,7 +166,8 @@ rollback, real worker Futures and cleanup barriers, queued/expired work, branch
 idempotence and retry, loopback HTTP with independent clients, common pacing and
 narrow access revocation. Scheduler limits count executing Paper jobs, not native
 WebContents. WF08 connects this runtime to production and single-Paper Retry;
-public Download remains deferred. Existing bounded dispatcher and foreground Run
+WF10's public body service reuses the host/gate with its separate reservation.
+Existing bounded dispatcher and foreground Run
 tests remain applicable.
 
 The registry runs same-Paper branches on a separate bounded leaf scheduler.
@@ -314,6 +315,52 @@ counts, live effect timing, configuration limits and the Runtime form-POST
 limitation; [Session evidence](browser-session.md) has its separate capability scope.
 
 
-## WF09 internal body service
+## Public body service and native output
 
-WF09 adds `test_body_downloads.py` and the serial `body-stream.test.cjs` composition fixture. Run them for isolated inode/no-clobber/schema/transaction checks and real Electron Session→stream/file→SQLite→Workspace projection evidence. The fixture uses local HTTP, a temporary profile, synthetic Cookie and controlled DNS routing; it does not use real accounts or user data. See [the complete contract](body-downloads.md).
+Run `test_body_downloads.py`, `test_body_download_http.py` and the serial
+`body-stream.test.cjs` composition fixture for body qualification, lazy P1/P2/P3,
+fixed secret scope, exact cancel/progress, inode/no-clobber, v4/v3→v5 preservation,
+transactions and original-generation races. The real Electron composition adds
+public HTTP→Main Session→file→SQLite→Workspace evidence to the retained internal
+stream cases. Local HTTP, temporary profile/library and synthetic Cookie/DNS
+routing isolate all data. The rendered layout fixture checks ongoing download
+refresh, usable Reject/Run, classification/remount and retained reading scroll;
+`ALLFOLD_LAYOUT_SCREENSHOTS` captures optional local QA images.
+
+`tests/test_local_body.py` uses actual temporary managed files, independent
+SQLite/HTTP operations and controlled errors for missing/permission/object
+replacement, Trash preservation, DB-after-unlink failure and maintenance drain.
+`electron/tests/local-body.test.cjs` tests the fixed shell adapter, and the same
+real `body-stream` composition additionally runs existing-body Download/open/
+locate, non-empty `openPath` errors, reading during collection, Trash deletion,
+explicit new attempt and identity-only nested-path cases through authenticated
+Bridge/Main. The built Reader fixture checks local buttons with a valid
+metadata-free DTO. No default viewer or file manager is launched by those tests.
+
+The serial `body-native.test.cjs` fixture uses actual Electron45, production
+Main/Runtime and local HTTP to exercise original POST/inline, existing named form
+targets and action-created iframe/popup first responses. Native-output barriers
+exercise unrelated child navigation during an active item and refusal when its
+actual action frame or source Document is replaced. Public composition must
+additionally pass through the HTTP service, managed publication, SQLite and Workspace projection, rather
+than stopping at a transport helper. Native output reserves an exclusive private
+directory with an absent leaf, then qualifies Chromium's actual output inode;
+stream placeholders are not reused for native output. Application replacement
+refusal and no-clobber final publication remain active.
+The native fixture replays a real unlinked empty reservation stat at the Main
+filesystem boundary while the original popup item completes its actual output.
+`native-output.test.cjs` separately refuses that state at final/owned capture,
+empty hardlinks/symlinks and replacement of an adopted inode. Fixture-only failure
+observations retain the output phase and bounded error site before Main maps it
+to the private native-output result.
+
+Chromium's asynchronous cancellation unlink may delete an externally replaced
+temporary file after `done(cancelled)`. This measured limitation is accepted and
+documented; it is not a required replacement-survival assertion or proof of a
+fully closed file worker. Failed `/dev/fd` probes remain historical evidence,
+not an alternative sink. Do not use fixed sleeps, extra helper downloads, resume
+or POST-to-GET replay to claim cleanup guarantees. See [the native boundary](body-downloads.md#native-output-and-accepted-cancellation-risk).
+
+For human acceptance, use only the [affected body workflow matrix](body-downloads.md#scoped-manual-acceptance),
+not the whole Workbench reference above. Publisher/OS effects remain unverified
+until actually exercised with separately authorized test accounts/data.

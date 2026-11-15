@@ -6,7 +6,13 @@ The following records the adopted WF07 request with the current storage policy a
 
 WF07 merged in PR #107 at `4d0d22bbda02d9fc173175fa8346813752e84204`.
 WF08 connects same-Document clues and necessary-response facts to production
-collection; transfer, permanent files and public Download remain WF09/WF10.
+collection. WF09 merged in PR #116 and supplies Session/file/SQLite completion;
+the current WF10 branch runs the existing lazy coordinator inside a public body
+owner and adds local body management. Qualified current-form/ScienceDirect entries
+consume their original DownloadItem response under the same owner, subject to the
+documented [native cancellation limitation](body-downloads.md#native-output-and-accepted-cancellation-risk).
+This current note supersedes only adoption status, not
+the fixed R001–R072/API01–API17/S001–S142 numbering or conditions below.
 The original request and R/API/S evidence below retain their WF07 scope and numbering.
 
 ## Component entry points
@@ -23,9 +29,11 @@ The original request and R/API/S evidence below retain their WF07 scope and numb
 The core lives in `src/allfold/pdf_discovery.py`, rules in `pdf_rules.py`, adoption
 metadata in `pdf_catalog.py`, response parsing in `pdf_responses.py`, and scoped
 HTTP in `pdf_http.py`. `pdf_facts.py` owns the bounded version-1 persistable
-contract. The application adapter is `application/pdf_discovery.py`; it is not a
-public Download endpoint. Production Run registration belongs to the separate
-`application/collection_planner.py` and Workspace registry.
+contract. The read-only adapter is `application/pdf_discovery.py`; it remains
+read-only. Public Download is composed by `application/body_downloads.py` using
+the same coordinator inside its body reservation, without nested read-only
+admission or a second source deque. Production Run registration belongs to the
+separate `application/collection_planner.py` and Workspace registry.
 
 The core accepts canonical `journal-article`, `conference-paper` or `unknown`
 target types. Explicitly unsupported types return `not-applicable` without
@@ -4032,6 +4040,26 @@ Zotero 相关已读文件主要声明 AGPL-3.0-or-later；其他仓库按表中�
 请自主推进到**针对本次变更的一张 PR 已创建或更新、最新 PR 版本对应的 GitHub Actions 检查实际通过**，目标分支为 `main`，**暂不合并**。计划、提交、Review 或 PR 创建本身均不是终点。若存在真实阻塞，则提交已完成工作，并明确给出阻塞和未通过/未验证事项，不得虚报完成。
 
 
-## WF09 internal body service
+## Current public body consumer and original-response adoption
 
-WF09 supplies a separate internal Session consumer for caller-confirmed bounded candidates, with the same `CandidateResult` stop/fallback semantics. It never passes the Python HTTPX streaming response to a second Session GET. Current PDF MIME plus normal closed pipeline stops sources; local file/final transaction failure ends the attempt. HTML returns the current bounded response, action/POST and explicit secret candidates stay pending. Production full P1–P5/native product scheduling remains WF10; the existing read-only discovery adapter and bounded API clients remain in use. See [the complete contract](body-downloads.md).
+Public `BodyDownloadService` constructs the original target from reliable saved
+identity and target-bound discovery facts, then runs P1–P5 lazily with actual
+Session transfer feedback. It never passes an HTTPX PDF response to a second
+GET or consumes cached P3 before P1. Conditional APIs run only when reached;
+current reader/redirect parsing has one coordinator and remaining budget.
+Current PDF MIME plus normal closed pipeline stops sources, then common file/
+SQLite completion persists successful source/fallback. Local completion failure
+ends the task. Existing body and real active owner paths precede target creation.
+
+Optional secret capabilities retain fixed HTTPS Host/path/header qualification
+and are absent from public input. Qualified current R059 forms and R024
+ScienceDirect reader entries now adopt the original navigation/POST response and
+DownloadItem, without replay or replacement GET. Other unsupported native entries
+return a finite skipped condition before dispatch; legitimate later stream
+sources remain available. A dispatched native action settles terminally rather
+than replaying or falling back after an unknown response. Native staging retains
+the [accepted Chromium cancellation risk](body-downloads.md#native-output-and-accepted-cancellation-risk).
+The core's standalone HTTP consumer can still return pending when no downstream
+transfer is provided; that component contract is not the public product path.
+The historical rule catalogue and WF07 evidence above retain their original
+scope. See [the current body contract](body-downloads.md).

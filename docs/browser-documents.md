@@ -1,5 +1,14 @@
 # Controlled Documents and article access
 
+Public Download reuses the PDF-only read capability under its existing body
+reservation, without recollecting completed Date/Abstract. These probes remain
+read-only and still release only their owned pages after verified bounded results.
+They do not supply action/script/file authority. A separate fixed body action
+hands verified Document authority to its exact original request/item for the
+qualified current form or ScienceDirect reader. It preserves the original response
+and Session; it never cancels a one-shot response and replays its URL. See
+[body output and its accepted cancellation risk](body-downloads.md#native-output-and-accepted-cancellation-risk).
+
 `BrowserRuntime` owns Page/WebContents, task claims and navigation. The existing
 `DocumentRuntime` sends only the fixed `binding`, `access`, `article` and `extract` operations
 to the sandboxed, context-isolated Document preload. It exposes no site API,
@@ -43,7 +52,10 @@ or a bare 403/503, do not identify an automatic main challenge. Hidden hCaptcha
 resources on an ordinary page do not themselves require verification; recognized
 main challenge pages with hCaptcha retain the manual boundary. Existing title
 rules and localized page-options plus challenge-page orchestrator combinations
-remain. HTTP errors, 418, CPE00001 and Imperva denial remain failures; hCaptcha,
+remain. A recognized publisher robot challenge also uses Solver when the current
+native frame subtree contains an HTTPS `challenges.cloudflare.com/cdn-cgi/challenge-platform/`
+frame, including one inside a closed shadow root. That frame alone does not mark
+an ordinary article as a challenge. HTTP errors, 418, CPE00001 and Imperva denial remain failures; hCaptcha,
 Imperva CAPTCHA (`edet=12`), institution login and MFA retain manual waiting.
 Only validated fixed fields enter diagnostics, never raw queries or page content.
 
@@ -295,7 +307,12 @@ bound to the original target. It keeps exact frame/Document/URL/subject, access,
 prepared Service, cancellation and cleanup checks even when article DOI/h1 proof
 is absent. This does not weaken `openPaperPage`/`confirmArticlePage` for articles.
 Challenges still use the shared access/solver boundary. Actions and one-time
-responses remain typed refresh facts; actual action execution/transfer is WF10.
+responses remain typed refresh facts. The separate fixed body action capability
+submits qualified live R059 forms and follows R024 ScienceDirect entries once,
+binding the original response to the exact request/frame/DownloadItem. Public
+reusable-URL transfer uses the Session body service; both paths share managed
+publication and SQLite completion. Native staging retains the
+[accepted Chromium cancellation risk](body-downloads.md#native-output-and-accepted-cancellation-risk).
 See the [complete adopted rules](pdf-source-discovery.md).
 
 The same internal `extract_paper_pdf_clues` action accepts the fixed

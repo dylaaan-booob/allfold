@@ -255,7 +255,8 @@ no conflicting operation and available pending dependencies are required.
 Completed/empty, `not_started`, excluded and identity-only records cannot force
 collection. Successful/skipped branches survive; only pending branches execute.
 The result is a safe `{workspace_id, revision, paper}` projection. There is no
-public collection-start/batch-retry/Download route or body/file operation.
+public collection-start or batch-retry route. Independent body actions use their
+own qualification and do not acquire collection authority.
 
 Explicit Preprint status uses
 `GET /api/papers/{paper_uuid}/preprint-lookup/state?workspace_id=...&request_id=...`.
@@ -285,6 +286,36 @@ During normal exit, authenticated `invalidate_access` and
 admission closes. They grant no new navigation or credential authority.
 
 
-## WF09 internal body service
+## Single-Paper body service
 
-WF09 body requests begin in the selected Chromium Session, through authenticated internal `stream_paper_body` dispatch. Python HTTPX never probes that PDF first. Python bounded API/JSON/HTML reads remain valid. The internal stream currently permits redirects only within its captured origin, preserving signed request spelling transiently; see the [body lifecycle](body-downloads.md).
+`POST /api/papers/{paper_uuid}/body/download` accepts CSRF, Workspace identity and
+finite `qualification` containing captured metadata/operation/body generations
+and observed download attempt. It accepts no URL, path, header, cookie or script.
+An existing body takes the local-file path first; an active request reuses its
+task/attempt and deadline. A genuinely new attempt rechecks the original
+qualification without abstract generation. `body/cancel` additionally requires
+the exact task ID and attempt, so an old cancel cannot target a replacement.
+
+Workspace/operation responses project bounded download state, used task/attempt,
+throttled byte progress, cleanup, current qualification and successful provenance.
+Progress itself does not create an entire-library revision or expose output
+proof. Workspace epoch, record revision, response order and progress sequence
+prevent late snapshots from restoring a spinner or body association.
+
+Reusable PDF requests begin in the selected Chromium Session through authenticated
+`stream_paper_body`. Python HTTPX never probes that PDF first; bounded API/JSON/
+HTML discovery remains valid. Scoped observed publisher continuations and optional
+fixed API-secret contracts are defined in the [body lifecycle](body-downloads.md).
+Qualified current R059 forms and R024 ScienceDirect reader actions use
+`native_paper_body` to adopt the original navigation/POST response and DownloadItem.
+Other unsupported native entries are skipped before dispatch. Dispatched actions
+are never replayed or converted into replacement GETs. Native output retains the
+[accepted Chromium cancellation risk](body-downloads.md#native-output-and-accepted-cancellation-risk).
+
+`POST /api/papers/{paper_uuid}/body/open`, `body/locate` and `body/delete`
+carry CSRF, Workspace identity and captured `body_generation`. Delete requires
+Trash and real Paper cleanup; open/locate may read an identity-only or Trash
+body while collection runs. Trusted services resolve the current association;
+there is no renderer path or shell-command capability. Local reading needs no
+Prepare or download eligibility. Native waiting occurs outside settings/reset/
+SQLite locks, and maintenance sees its actual host-owned lifetime.

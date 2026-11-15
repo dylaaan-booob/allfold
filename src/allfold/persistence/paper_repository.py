@@ -106,6 +106,8 @@ class PaperRepository:
                                       (str(paper_id),)).fetchone()
         body = connection.execute("SELECT relative_path, source_url, size_bytes FROM paper_body WHERE paper_id = ?",
                                   (str(paper_id),)).fetchone()
+        body_source = connection.execute("SELECT pdf_source, fallback_used FROM paper_body_source WHERE paper_id = ?",
+                                        (str(paper_id),)).fetchone()
         projection = connection.execute("SELECT primary_namespace, primary_value, revision FROM paper_projection WHERE paper_id = ?",
                                         (str(paper_id),)).fetchone()
         if projection is None:
@@ -138,7 +140,8 @@ class PaperRepository:
                                metadata["abstract_generation"] if metadata else None,
                                row["body_generation"], identities,
                                PaperMetadata.model_validate_json(metadata["payload"]) if metadata else None,
-                               BodyReference.model_validate(dict(body)) if body else None,
+                               BodyReference.model_validate(dict(body) | (dict(pdf_source=body_source['pdf_source'],
+                                   fallback_used=bool(body_source['fallback_used'])) if body_source else {})) if body else None,
                                DirectIdentity(projection[0], projection[1]) if projection[0] else None,
                                projection["revision"], collection_record, download_record)
         except ValueError as error:
@@ -617,6 +620,25 @@ class PaperRepository:
             self._changed(connection, paper.id)
             return self._read(connection, paper.id)
 
+    def clear_current_body(self, token: WriteToken, body: BodyReference, *, require_excluded=False) -> PaperRecord:
+        """Clear only a captured association after a separately verified local operation.
+
+        Metadata edits, collection and exclusion are independent of local reading.
+        Neither this transaction nor BodyReference confers filesystem authority.
+        """
+        with self._database.transaction(write=True) as connection:
+            if token.workspace_id != self.workspace_id:
+                raise StaleWriteError('Different Workspace identity')
+            paper = self._read(connection, token.paper_id)
+            if paper.body_generation != token.body_generation or paper.body != body:
+                raise StaleWriteError('Original body association changed')
+            if require_excluded and (not paper.excluded or paper.operation_generation != token.operation_generation):
+                raise StaleWriteError('Original Trash qualification changed')
+            connection.execute('DELETE FROM paper_body WHERE paper_id = ?', (str(paper.id),))
+            connection.execute('UPDATE paper_core SET body_generation = body_generation + 1 WHERE paper_id = ?', (str(paper.id),))
+            self._changed(connection, paper.id)
+            return self._read(connection, paper.id)
+
     @staticmethod
     def _body_key(token):
         return (token.workspace_id, token.paper_id, token.metadata_generation,
@@ -683,6 +705,21 @@ class PaperRepository:
                 (output.model_dump_json() if output else None, str(paper.id)))
             self._changed(connection, paper.id)
 
+    def adopt_native_output(self, token, expected, actual):
+        """Persist one observed inode under the original native-directory capability."""
+        expected, actual = OutputOwnership.model_validate(expected), OutputOwnership.model_validate(actual)
+        if (expected.native_directory is None or expected.file is not None or actual.file is None
+                or actual.model_copy(update={'file': None}) != expected):
+            raise InvalidPaperState('Native output proof changed')
+        with self._database.transaction(write=True) as connection:
+            paper = self._require_download(connection, token, settlement=True)
+            if paper.download.output == actual:
+                return
+            if paper.download.status == 'completed' or paper.download.output != expected:
+                raise InvalidPaperState('Native output no longer belongs to this attempt')
+            connection.execute("UPDATE paper_download SET output=? WHERE paper_id=?", (actual.model_dump_json(), str(paper.id)))
+            self._changed(connection, paper.id)
+
     def finish_download(self, token, *, status, reason=None):
         if status not in {'failed', 'cancelled'}:
             raise ValueError('Only actual failure/cancellation settlement is permitted')
@@ -697,18 +734,27 @@ class PaperRepository:
                 self._changed(connection, paper.id)
             return self._read(connection, paper.id)
 
-    def complete_download(self, token, *, size_bytes, source_url=None):
+    def complete_download(self, token, *, size_bytes, source_url=None, pdf_source=None, fallback_used=None,
+                          direct_identities=None):
         with self._database.transaction(write=True) as connection:
             paper = self._require_download(connection, token, settlement=True)
             if paper.download.status == 'completed':
                 return paper
             self._require_download(connection, token)
+            if direct_identities is not None and tuple((item.namespace, item.value) for item in paper.identities) != direct_identities:
+                raise StaleWriteError('Original Paper identity closure changed')
             output = paper.download.output
             if output is None:
                 raise InvalidPaperState('No proven download output')
-            body = BodyReference(relative_path=output.target, source_url=source_url, size_bytes=size_bytes)
+            body = BodyReference(relative_path=output.target, source_url=source_url, size_bytes=size_bytes,
+                pdf_source=pdf_source, fallback_used=fallback_used)
+            if (pdf_source is None) != (fallback_used is None):
+                raise ValueError('Successful provenance is either finite and complete or unknown')
             connection.execute('INSERT INTO paper_body VALUES (?, ?, ?, ?)',
                 (str(paper.id), body.relative_path, body.source_url, body.size_bytes))
+            if pdf_source is not None:
+                connection.execute('INSERT INTO paper_body_source VALUES (?, ?, ?)',
+                    (str(paper.id), body.pdf_source, int(body.fallback_used)))
             connection.execute('UPDATE paper_core SET body_generation=body_generation+1 WHERE paper_id=?', (str(paper.id),))
             connection.execute("UPDATE paper_download SET status='completed', reason=NULL, output=NULL WHERE paper_id=?", (str(paper.id),))
             self._changed(connection, paper.id)

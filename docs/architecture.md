@@ -77,7 +77,7 @@ Same-Document precollection never follows a PDF candidate. PDF-only refresh and
 known-reader parsing reuse native access, physical quotas and cleanup. Subsequent
 Download can use the core after collection completes without restarting that
 collection. WF08 installs production collection orchestration; WF09 supplies the internal
-[Session/file completion service](body-downloads.md); WF10 owns public Download and native action adoption. The [adopted specification and fixed source catalogue](pdf-source-discovery.md)
+[Session/file completion service](body-downloads.md); this WF10 branch connects public Download, qualified original DownloadItem responses and local body management. Native output uses private attempt staging with an explicitly accepted [cancellation limitation](body-downloads.md#native-output-and-accepted-cancellation-risk). The [adopted specification and fixed source catalogue](pdf-source-discovery.md)
 retain all platform/input/access conditions and historical exclusions.
 The immutable discovery target includes the saved direct-identity closure, so
 complete DOI-free Work facts can be reused without a new lookup or native
@@ -206,7 +206,7 @@ identities, explicit primary identity, metadata, exclusions and one optional bod
 association at `Workspace/papers.sqlite`. HTTP handlers and workers open separate
 thread-confined connections. Read-only uninitialized views create nothing; Run
 performs explicit initialization. Paper storage supports only its current schema; corruption and
-unknown schemas fail without replacement. Current-attempt, branch and body-output facts are bounded. Exactly valid v3 has a transactional forward change to v4; retired/unknown formats and Markdown shadow/fallback remain refused.
+unknown schemas fail without replacement. Current-attempt, branch and body-output facts are bounded. Schema v5 transactionally advances exactly valid v4 and the supported v3 entry path, preserving current content and unknown historical body provenance; retired/unknown formats and Markdown shadow/fallback remain refused.
 
 Workspace UI uses separate library revisions for response order. WriteToken
 remains captured asynchronous eligibility, with separate abstract generation.
@@ -291,7 +291,9 @@ and Info display these new library projections without old event/source columns
 or active Enrich buttons. WF05 provides internal background scheduling. WF06 adds
 internal Date/Abstract and purpose-driven API/Preprint services through those task
 interfaces. WF08 uses both branches in production. WF07 supplies PDF clues/source
-discovery; transfer, permanent files and public Download remain WF09/WF10.
+discovery, WF09 supplies stream/files, and the public body service drives that
+same lazy coordinator inside one body reservation. It never nests the read-only
+discovery reservation or recollects completed metadata.
 
 ## Workspace collection runtime
 
@@ -331,8 +333,10 @@ cover the base-commit/register window before external authority initialization.
 Failed access/startup preserves base metadata and independent branch results.
 Branch-local access changes drain only affected work; Workspace/Reject revocation
 still ends the whole Paper. Explicit Retry checks only unfinished dependencies
-and retains successful branch facts. Public Retry is available; Download and body
-operations remain deferred. See [runtime interfaces](collection-runtime.md).
+and retains successful branch facts. Public Retry and single-Paper Download use
+their own shared qualifications. Host-visible local file leases protect actual
+body operations and maintenance without granting Service/Prepare authority or
+blocking local reading on collection. See [runtime interfaces](collection-runtime.md).
 
 ## Physical Browser resource lifetime
 

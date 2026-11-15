@@ -248,6 +248,10 @@ def create_app(config_path: Path, *, electron_bridge: ElectronBridge, diagnostic
     app.state.workspace_tasks.initialize()
     from allfold.application.collection_planner import ProductionCollectionService
     app.state.collection_service = ProductionCollectionService(app.state.workspace_tasks)
+    from allfold.application.body_downloads import BodyDownloadService
+    from allfold.application.local_body import LocalBodyService
+    app.state.local_body = LocalBodyService(app.state.workspace_tasks)
+    app.state.body_downloads = BodyDownloadService(app.state.workspace_tasks, local_body=app.state.local_body)
     app.state.run_coordinator.workspace_tasks = app.state.workspace_tasks
     app.state.run_coordinator.collection_service = app.state.collection_service
     app.state.preprint_lookup = PreprintLookup(resolved_config_path, app.state.browser_task_lock,
@@ -368,7 +372,7 @@ def create_app(config_path: Path, *, electron_bridge: ElectronBridge, diagnostic
                     paper, revision, fields = edit_paper_fields(workspace, body.workspace_id, paper_id, body.revision, **changes)
                     cleanup = app.state.workspace_tasks.cleanup_pending(paper.id, paper.workspace_id)
                 payload = paper_payload(WorkspacePaper(paper), cleanup_pending=cleanup,
-                    collection_service=app.state.collection_service)
+                    collection_service=app.state.collection_service, body_downloads=app.state.body_downloads)
             return JSONResponse(jsonable_encoder(dict(saved=True, workspace_id=paper.workspace_id,
                 revision=revision, paper=payload, fields=fields)))
         except (ConfigurationError, LibraryError, ValueError, OSError, ContentChangedError) as error:

@@ -458,7 +458,7 @@ const operations={
       return !/supplement|supporting|appendix|whole issue|entire issue|issue pdf|other article/i.test(label)
         && (!identity || !!targetDoi && identity===targetDoi) && (attribute===null || sameArticle(value));
     };
-    const explicit=(selector,attribute='href',extra={})=>{for(const node of document.querySelectorAll(selector)){guard();if(bodyEntry(node,attribute))add(node.getAttribute(attribute),'P4',extra);}};
+    const explicit=(selector,attribute='href',extra={},allowNavigation=false)=>{for(const node of document.querySelectorAll(selector)){guard();if(bodyEntry(node,attribute,allowNavigation))add(node.getAttribute(attribute),'P4',extra);}};
     const addId=(kind,value)=>{if(typeof value==='string' && /^[A-Za-z0-9_.:/-]{1,256}$/.test(value) && !identifiers.some(item=>item.kind===kind&&item.value===value)) {
       const identifier={kind,value,rule_id};
       if(identifiers.length>=16 || JSON.stringify({identifiers:[...identifiers,identifier],candidates}).length>fieldsLimit)throw Error('pdf_budget_exceeded');
@@ -477,7 +477,7 @@ const operations={
         if(platform==='emerald'){explicit('a.intent_pdf_link[href]');if(/\/full\/pdf$/.test(path))add(landing_url);}
         if(platform==='optica')explicit('a#link-pdf[href]');
         if(platform==='elife')for(const node of document.querySelectorAll('.article-download-list a[href]'))if(bodyEntry(node) && /\bpdf\b/i.test(node.textContent+' '+node.getAttribute('title')))add(node.getAttribute('href'));
-        if(platform==='microbiology')explicit('.download-pdf form.ft-download-content__form--pdf[action]','action',{action:'refresh_form'});
+        if(platform==='microbiology')explicit('.download-pdf form.ft-download-content__form--pdf[action]','action',{action:'refresh_form'},true);
         if(['atypon','siam'].includes(platform))for(const node of document.querySelectorAll('a[href]')){const target=url(node.getAttribute('href'));if(target && new URL(target).hostname===host && /\/doi\/(?:pdf|epdf|pdfplus)\//.test(new URL(target).pathname) && targetDoi && bodyEntry(node))add(target);}
         if(['acs','oup'].includes(platform)) {
           const resourceIds=new Set();
@@ -593,4 +593,85 @@ ipcRenderer.on('document:operation',async(_event,{id,action,expectedDocumentId,e
     if(location.href!==url)throw Error('document_changed');
     ipcRenderer.send('document:result',{id,result,documentId,url});
   }catch {ipcRenderer.send('document:result',{id,error:'document_operation_failed'});}
+});
+
+// Only the authenticated body workflow invokes these fixed actions. No code,
+// selector, form body or headers are accepted from a renderer or the host.
+let pendingBodyAction;
+function bodyAction(candidate,subject,id,dispatch=false,doi=null,doiCasefold={}) {
+  const state=globalThis.__allfoldBodyAction;
+  if(dispatch) {
+    if(!state || state.id!==id || state.url!==location.href || state.subject!==subject
+      || !state.node.isConnected || (state.node.target||'')!==state.target || (state.kind==='form'
+        ?state.node.action!==state.action || state.node.method.toUpperCase()!==state.method
+        :state.node!==document.body&&state.node.href!==state.action))throw Error('document_changed');
+    delete globalThis.__allfoldBodyAction;
+    if(state.kind==='navigation') {
+      if(state.node===document.body)location.assign(state.action);else state.node.click();
+    }else if(state.submitter)state.submitter.click();else state.node.requestSubmit();
+    return;
+  }
+  const target=node=>{
+    const name=node.target||'',special=name.toLowerCase();
+    return {target_name:name,target:special==='_blank'?'popup':!name||['_self','_parent','_top'].includes(special)?'self':'frame'};
+  };
+  if(!candidate.action&&candidate.platform==='sciencedirect'&&candidate.rule_id==='R024'
+    &&/^(?:www\.)?sciencedirect\.com$/.test(location.hostname)) {
+    const pii=location.pathname.match(/\/science\/article\/pii\/([SB][0-9X]{16})(?:\/|$)/i)?.[1],next=new URL(candidate.url);
+    if(!pii||!(next.origin===location.origin&&['/science/article/pii/'+pii+'/pdfft','/science/article/pii/'+pii+'/pdf'].includes(next.pathname)
+      ||next.protocol==='https:'&&next.hostname==='pdf.sciencedirectassets.com'&&next.pathname.endsWith('/1-s2.0-'+pii+'/main.pdf')))throw Error('body_action_identity');
+    const links=[...document.querySelectorAll('a[href]')].filter(node=>node.href===candidate.url);
+    if(links.length>1)throw Error('body_action_ambiguous');
+    const node=links[0]||document.body;
+    globalThis.__allfoldBodyAction={id,node,kind:'navigation',url:location.href,subject,action:candidate.url,target:node.target||''};
+    return {url:candidate.url,request_url:candidate.url,method:'GET',...target(node)};
+  }
+  if(candidate.action!=='refresh_form' || candidate.platform!=='microbiology' || candidate.rule_id!=='R059'
+    || !/(^|\.)microbiologyresearch\.org$/.test(location.hostname))throw Error('unsupported_body_action');
+  const excludedForm=node=>{
+    for(let owner=node;owner;owner=owner.parentElement)if(owner.matches('footer,aside,[role="doc-bibliography"],[role="doc-endnotes"],[data-related],[hidden],[aria-hidden="true"]')
+      ||/references|related|recommend|supplement/i.test(owner.id+' '+(owner.getAttribute('class') || ''))
+      ||/(?:^|;)\s*display\s*:\s*none\s*(?:!important\s*)?(?:;|$)/i.test(owner.getAttribute('style') || ''))return true;
+    if(/supplement|supporting|appendix|whole issue|entire issue|issue pdf|other article/i.test(node.textContent+' '+(node.getAttribute('title') || '')+' '+(node.getAttribute('action') || '')))return true;
+    const raw=node.closest('[data-doi]')?.getAttribute('data-doi');
+    const scope=typeof raw==='string'?raw.trim().replace(/^(?:https?:\/\/(?:dx\.)?doi\.org\/|doi:\s*)/i,'').trim().toLowerCase().replace(/[^\x00-\x7f]/gu,char=>doiCasefold[char] || char):'';
+    return /^10\.\d{4,9}\/[^\s]+$/u.test(scope)&&scope!==doi;
+  };
+  const forms=[...document.querySelectorAll('.download-pdf form.ft-download-content__form--pdf[action]')]
+    .filter(node=>node.action===candidate.url && !excludedForm(node));
+  if(forms.length!==1)throw Error('body_action_ambiguous');
+  const node=forms[0],method=node.method.toUpperCase();
+  if(!['GET','POST'].includes(method))throw Error('body_action_method');
+  const submitters=[...node.querySelectorAll('button:not([type]),button[type="submit"],input[type="submit"]')].filter(item=>!item.disabled);
+  if(submitters.length>1)throw Error('body_action_ambiguous');
+  let request_url=node.action;
+  if(method==='GET') {
+    // Native GET submission replaces the action's query with successful controls,
+    // including the clicked submitter. This only predicts the exact request: the
+    // original click still submits it, without a fetch or copied POST body.
+    const data=new FormData(node,submitters[0]);
+    const newline=value=>value.replace(/\r\n|\r|\n/g,'\r\n');
+    const query=new URLSearchParams();
+    for(const [name,value] of data)query.append(newline(name),newline(typeof value==='string'?value:value.name));
+    const next=new URL(node.action);next.search=query.toString();request_url=next.href;
+  }
+  globalThis.__allfoldBodyAction={id,node,kind:'form',submitter:submitters[0],url:location.href,subject,action:node.action,method,target:node.target||''};
+  return {url:node.action,request_url,method,...target(node)};
+}
+ipcRenderer.on('body:prepare',async(_event,{id,candidate,documentId:expected,url,subject,doi,doiCasefold})=>{
+  try {
+    if(expected!==documentId || location.href!==url || !/^[a-f0-9]{48}$/.test(id))throw Error('document_changed');
+    const code='(()=>{const subject=('+documentSubject.toString()+')();if(subject!=='+JSON.stringify(subject)+')throw Error("document_changed");return ('+bodyAction.toString()+')('+JSON.stringify(candidate)+',subject,'+JSON.stringify(id)+',false,'+JSON.stringify(doi)+','+JSON.stringify(doiCasefold)+');})()';
+    const plan=await webFrame.executeJavaScriptInIsolatedWorld(999,[{code}]);
+    if(location.href!==url)throw Error('document_changed');
+    pendingBodyAction={id,url,subject};ipcRenderer.send('body:prepared',{id,plan});
+  }catch {ipcRenderer.send('body:prepared',{id,error:'document_changed'});}
+});
+ipcRenderer.on('body:dispatch',async(_event,{id})=>{
+  const action=pendingBodyAction;pendingBodyAction=null;
+  if(!action || action.id!==id || action.url!==location.href)return;
+  // Main checks the captured Document immediately before this one-shot action.
+  if(ipcRenderer.sendSync('body:dispatching',{id})!==true)return;
+  const code='(()=>{const subject=('+documentSubject.toString()+')();if(subject!=='+JSON.stringify(action.subject)+')throw Error("document_changed");('+bodyAction.toString()+')(null,subject,'+JSON.stringify(id)+',true);})()';
+  try {await webFrame.executeJavaScriptInIsolatedWorld(999,[{code}],true);}catch {ipcRenderer.send('body:action-error',{id});}
 });

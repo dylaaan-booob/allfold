@@ -1,10 +1,11 @@
 'use strict';
-const {app, WebContentsView, session, webFrameMain, Menu, clipboard} = require('electron');
+const {app, WebContentsView, session, webFrameMain, Menu, clipboard, ipcMain} = require('electron');
 const {BrowserPresentation}=require('./browser-presentation.cjs');
 const {BrowserFailure,checkPage}=require('./browser-errors.cjs');
 const {configureBrowserIdentity} = require('./browser-identity.cjs');
 const {validDOI,articleURL,articleIdentity}=require('./article-identity.cjs');
 const {DocumentRuntime}=require('./document-runtime.cjs');
+const {BodyActionRuntime}=require('./body-action-runtime.cjs');
 const {qualifyReader,publicClueURL}=require('./pdf-clues.cjs');
 const {EventEmitter}=require('node:events');
 const {AsyncLocalStorage}=require('node:async_hooks');
@@ -70,6 +71,7 @@ class BrowserRuntime {
     this.failedCreations=new Set();
     this.carsiVisitOrigins=new Map();
     this.documents=new DocumentRuntime(this);
+    this.bodyActions=new BodyActionRuntime(this,{ipc:ipcMain});
     this.events = new EventEmitter();
     this.selected = null;
     this.operationContext=new AsyncLocalStorage();
@@ -109,13 +111,14 @@ class BrowserRuntime {
     const inheriting=opener && owner && this.ownsPage(owner,opener.id);
     const tab = {id:contents.id, view, resource,resourceOwner:execution || {kind:'user'},status:null, error:null, opener,managed:options.managed===true,
       pageAttempt:inheriting?opener.pageAttempt:options.pageAttempt,documentGeneration:0,documentIds:new Map(),
-      taskOwner:owner || null,taskSignal:inheriting?opener.taskSignal:owner?.signal || null,
+      taskOwner:owner || null,taskSignal:inheriting?opener.taskSignal:owner?.signal || null,popupFrameName:options.popupFrameName,
       authContext:inheriting?opener.authContext:undefined,loadOwner:inheriting?opener.loadOwner:null,
       loadAllowed:inheriting?opener.loadAllowed:false};
     this.tabs.set(tab.id, tab);
     if(owner)this.trackTaskDownloads(tab,owner);
-    contents.setWindowOpenHandler(({url}) => {
+    contents.setWindowOpenHandler(({url,frameName}) => {
       if(tab.pageAttempt?.retired || contents.isDestroyed() || tab.closing)return {action:'deny'};
+      if(tab.bodyAction && !tab.bodyAction.acceptPopup(url,frameName))return {action:'deny'};
       const popupOwner=tab.taskOwner;
       if(popupOwner && !this.ownsPage(popupOwner,tab.id) || !popupOwner && tab.resourceOwner.kind!=='user')return {action:'deny'};
       if (url !== 'about:blank') {
@@ -128,7 +131,7 @@ class BrowserRuntime {
         sandbox:true, contextIsolation:true, nodeIntegration:false, nodeIntegrationInSubFrames:true}},
         createWindow:options => {
           if(popupOwner && !this.ownsPage(popupOwner,tab.id) || tab.closing || contents.isDestroyed())throw new BrowserFailure('navigation','canceled');
-          return this.createTab({...options,present:false,user:!popupOwner,pageTicket:popupTicket},tab).view.webContents;
+          return this.createTab({...options,present:false,user:!popupOwner,pageTicket:popupTicket,popupFrameName:frameName},tab).view.webContents;
         }};
     });
     const guard = (event, url) => {
@@ -235,6 +238,7 @@ class BrowserRuntime {
     if(options.present!==false)this.select(tab);
     else this.publish();
     this.events.emit('tab-created',null,tab);
+    opener?.bodyAction?.addPopup(tab);
     return tab;
   }
   beginAuthentication(tab,signal,{institution=true}={}) {
@@ -784,7 +788,18 @@ class BrowserRuntime {
     return {...binding,...result,status:tab.status};
   }
   documentBinding(tab=this.taskTab,options={}) {return this.readDocument(tab,'binding',options);}
-  accessState(tab=this.taskTab,options={}) {return this.readDocument(tab,'access',options);}
+  async accessState(tab=this.taskTab,options={}) {
+    const doc=await this.readDocument(tab,'access',options);
+    // Native frame ancestry includes Turnstile inside a closed shadow root.
+    // This is evidence for an already detected challenge, never a challenge by itself.
+    const frame=this.documentFrame(doc);
+    const cloudflareFrame=(frame?.framesInSubtree || []).some(child=>{
+      if(child===frame || !URL.canParse(child.url))return false;
+      const url=new URL(child.url);
+      return url.origin==='https://challenges.cloudflare.com' && url.pathname.startsWith('/cdn-cgi/challenge-platform/');
+    });
+    return {...doc,cloudflareFrame};
+  }
   async confirmArticlePage(target,doc,{signal,deadline=Infinity}={}) {
     checkCanceled(signal);
     const tab=this.tabs.get(doc.pageId);
@@ -1112,7 +1127,7 @@ class BrowserRuntime {
       await this.sessionEvents.waitForDownloads();
       await this.ready.catch(()=>{});
       this.presentation.dispose();this.selected=null;
-      this.documents.dispose();this.identity?.dispose();this.identity=null;
+      this.documents.dispose();this.bodyActions.dispose();this.identity?.dispose();this.identity=null;
       this.sessionEvents.dispose();this.closed=true;
     })();
     return this.closing;

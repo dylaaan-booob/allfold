@@ -281,6 +281,7 @@ class WorkspaceRegistry:
         self._stopped = False
         self._shutdown_started = False
         self._tasks, self._reservations, self._faults = {}, {}, []
+        self._local_operations = {}
         self._settled_condition = threading.Condition(self._gate)
         with PaperRepository.open(self.workspace) as repository:
             self.workspace_id = repository.workspace_id
@@ -320,7 +321,7 @@ class WorkspaceRegistry:
     @property
     def active(self):
         with self._gate:
-            return bool(self._tasks or self._reservations)
+            return bool(self._tasks or self._reservations or self._local_operations)
 
     @property
     def browser_owner_ids(self):
@@ -331,11 +332,20 @@ class WorkspaceRegistry:
     def _branch_tasks(self):
         return tuple(branch for task in self._tasks.values() for branch in task.branch_tasks)
 
-    def busy(self, paper_id, workspace_id=None):
+    def _local_blocks_collection(self, paper_id):
+        # Ordinary reads coexist with collection. A retained ended lease means
+        # native cleanup is unconfirmed and still excludes work.
+        return any(owner.paper_id == paper_id and (owner.destructive or owner.cleanup_failed or owner.cleanup_ended)
+            for owner in self._local_operations.values())
+
+    def busy(self, paper_id, workspace_id=None, *, include_local_reads=True):
         if workspace_id is not None and UUID(str(workspace_id)) != self.workspace_id:
             return False
+        paper_id = UUID(str(paper_id))
         with self._gate:
-            return UUID(str(paper_id)) in self._tasks or UUID(str(paper_id)) in self._reservations
+            local = (any(owner.paper_id == paper_id for owner in self._local_operations.values())
+                if include_local_reads else self._local_blocks_collection(paper_id))
+            return paper_id in self._tasks or paper_id in self._reservations or local
 
     cleanup_pending = busy
 
@@ -413,6 +423,8 @@ class WorkspaceRegistry:
     def _guard(self, handle, repository=None):
         try:
             handle.authority.verify()
+            if getattr(handle, 'pdf_provider_authority', None) is not None:
+                handle.pdf_provider_authority.verify()
         except Exception as error:
             raise StaleWriteError('Captured access authority was revoked') from error
         with self._gate:
@@ -437,6 +449,9 @@ class WorkspaceRegistry:
         deferred = self._tasks.get(handle.paper_id)
         waiting = deferred is not None and deferred.waiting_on is handle
         if handle.kind == 'body':
+            direct = getattr(handle.body_request, 'direct', ())
+            if direct and direct != tuple((identity.namespace, identity.value) for identity in paper.identities):
+                raise StaleWriteError('Original Paper identity closure changed')
             return repository.require_download(handle.download_token)
         if (handle.kind == 'download' and paper.token != handle.token
                 or paper.metadata_generation != handle.token.metadata_generation
@@ -497,6 +512,8 @@ class WorkspaceRegistry:
             self._require_open()
             with self._repository() as repository:
                 paper = repository.match(direct_ids, additional_identities=additional_identities)
+                if paper and self._local_blocks_collection(paper.id):
+                    return paper
                 reservation = self._reservations.get(paper.id) if paper else None
                 if reservation is not None and reservation.kind == 'body':
                     # A reliable match that is busy stays that same Paper. No
@@ -558,7 +575,7 @@ class WorkspaceRegistry:
         paper_id = UUID(str(paper_id))
         with self._gate:
             self._require_open()
-            if paper_id in self._tasks or paper_id in self._reservations:
+            if self.busy(paper_id, include_local_reads=False):
                 raise InvalidPaperState('Previous Paper resources have not settled')
             with self._repository() as repository:
                 paper = repository.get(paper_id)
@@ -593,7 +610,7 @@ class WorkspaceRegistry:
             self._require_open()
             for authority in authorities.values():
                 self._check_admission(authority)
-            if paper.id in self._tasks or paper.id in self._reservations:
+            if self.busy(paper.id, include_local_reads=False):
                 raise InvalidPaperState('Previous Paper resources have not settled')
             with self._repository() as repository:
                 current = repository.get(paper.id)
@@ -628,7 +645,7 @@ class WorkspaceRegistry:
             existing = self._reservations.get(paper_id)
             if existing is not None and kind == existing.kind and kind in {'download', 'body'}:
                 return existing
-            if existing is not None or paper_id in self._tasks:
+            if self.busy(paper_id):
                 raise InvalidPaperState('Another operation owns this Paper')
             with self._repository() as repository:
                 paper = repository.get(paper_id)
@@ -643,6 +660,10 @@ class WorkspaceRegistry:
                 if kind == 'body':
                     if paper.primary_identity != body_request.primary:
                         raise StaleWriteError('Captured primary Paper identity changed')
+                    if (paper.download.token.attempt if paper.download else 0) != body_request.prior_attempt:
+                        raise StaleWriteError('Captured Download attempt changed')
+                    if getattr(body_request, 'direct', ()) != tuple((identity.namespace, identity.value) for identity in paper.identities):
+                        raise StaleWriteError('Captured Paper identity closure changed')
                     if paper.download is not None and paper.download.output is not None:
                         from allfold.persistence.body_files import ManagedBodyFiles
                         with ManagedBodyFiles(self.workspace, paper.id, paper.download.token.attempt,
@@ -1025,8 +1046,14 @@ class WorkspaceRegistry:
             self._shutdown_started = True
             self._stopped = True
             tasks, reservations = tuple(self._tasks.values()), tuple(self._reservations.values())
+            local_operations = tuple(self._local_operations.values())
         for target in (*tasks, *reservations):
             self._cancel_target(target)
+        for owner in local_operations:
+            try:
+                owner.cancel_native()
+            except Exception as error:
+                self._fault(owner, 'local-body-cancel-signal', error)
         for task in tasks:
             with self._gate:
                 if task.registered:
@@ -1041,4 +1068,5 @@ class WorkspaceRegistry:
         self._branch_scheduler.join()
         with self._settled_condition:
             self._settled_condition.wait_for(lambda: all(reservation.cleanup_ended
-                                                       for reservation in self._reservations.values()))
+                                                       for reservation in self._reservations.values())
+                and all(owner.cleanup_ended for owner in self._local_operations.values()))

@@ -95,7 +95,7 @@ Arbitrary strings are excluded rather than merely truncated.
 | `page_id`, `source_page_id`, `role`, `generation` | Descriptive page association and navigation generation |
 | `stage`, `step`, `code`, `status`, `net_error` | Reviewed operation stage, stable failure code and bounded network evidence |
 | `imperva_edet`, `imperva_incident_id` | Optional numeric code and support reference from a recognized Imperva response. The event's UTC time records when Allfold reported restricted access or began waiting for verification. |
-| `outcome`, `parent`, `pdf` | Business/native result, parent-save evidence and separate PDF evidence |
+| `outcome` | Explicit business, native or transport result; native/transport completion does not establish a durable body association |
 
 Default diagnostics exclude credentials, Cookie/Authorization, request and response
 bodies, full URLs, research content, DOM/HTML, screenshots, raw Console output,
@@ -131,8 +131,10 @@ AI. The manifest's `collection_range` states the intentional recent-export windo
 `time_range` states the actual included event range. `range_excluded_history` and
 `range_excluded_events` count intentional range exclusions separately from
 rotation, capacity omissions and writing failures that limit completeness. Task
-exports do not apply the seven-day window. Missing or rotated evidence is disclosed; a confirmed parent remains separate
-from PDF persistence. Export creates a local download only. Users decide whether
+exports do not apply the seven-day window. Missing or rotated evidence is disclosed.
+Native or transport completion remains separate from durable body completion in
+the Paper library; filenames and response observations do not establish it.
+Export creates a local download only. Users decide whether
 to share it, and Reset never deletes previously downloaded packages.
 
 ## Reset boundaries
@@ -219,6 +221,23 @@ Logs Reset protects queued, API-only, writing and cleaning collection work even
 when no native Browser owner exists.
 
 
-## WF09 internal body service
+## Body state and local operations
 
-WF09 admits `stream_paper_body` in the shared native/Python diagnostic action allowlist and uses explicit native `stream_complete`, which means only PDF transport plus closed writer. Only the later repository transaction means body completed/Downloaded. Public download state exposes bounded state/attempt/reason; absolute roots, output capabilities, raw response content and signed URLs remain private. Durable source projection keeps only origin. It adds no public Download history/control. See [the complete contract](body-downloads.md).
+`stream_paper_body`, `native_paper_body` and fixed `local_paper_body` use the common native/
+Python operation ledger. `stream_complete` means PDF transport and closed writer;
+only the later repository transaction means body completed/Downloaded. Local
+open/locate/delete retain bounded outcomes and actual maintenance visibility,
+without declaring a shell error to be missing or manufacturing file-manager
+completion.
+
+Public download state exposes finite status, task/attempt, byte progress,
+sequence, cleanup and successful source/fallback. Absolute roots, output proofs,
+raw responses, secrets, signatures and exception stacks remain private. Durable
+source URL remains origin-only; successful provenance is stored independently,
+with unknown values for old bodies. Progress does not write every byte or create
+a separate history product. Native transport completion reports the original
+response and actual item terminal; only the common repository completion means
+Downloaded. The documented native cancellation risk is not hidden by a successful
+task result or a claim that `done(cancelled)` closes every file worker. Retired Translator/parent-item saving
+enums and producer-less inference are removed; generic parent task ownership,
+WoS and current body diagnostics remain. See [the complete contract](body-downloads.md).

@@ -165,6 +165,19 @@ app.whenReady().then(async()=>{
       const confirmed=await browser.confirmArticlePage({doi:'10.5555/target'},ready,{signal});
       assert.equal(confirmed.identity.outcome,'confirmed');
     });
+    // Publisher-owned robot copy can wrap a genuine Turnstile in a closed shadow root.
+    const frameURL='https://challenges.cloudflare.com/cdn-cgi/challenge-platform/h/g/turnstile/if/fixture';
+    routes.set(frameURL,{body:html('<input type="checkbox">')});
+    routes.set(destination,{body:html('<h1>Are you a robot?</h1><p>Please confirm you are a human by completing the captcha challenge</p>'
+      +'<div id="widget"></div><script>document.getElementById("widget").attachShadow({mode:"closed"}).innerHTML='
+      +JSON.stringify('<iframe src="'+frameURL+'"></iframe>')+'</script>',meta('10.5555/target'))});
+    await wc.loadURL(destination);
+    assert.equal((await browser.accessState(tab)).cloudflareFrame,true);
+    assert.equal((await browser.inspectPage(tab,{signal})).recheck,true);
+    assert.equal(solved,2);
+    await wc.executeJavaScript('document.querySelector("h1").remove();document.querySelector("p").remove()');
+    assert.equal((await browser.inspectPage(tab,{signal})).waiting,false);
+    assert.equal(solved,2,'a Cloudflare iframe alone does not invoke Solver');
     });
     assert.equal(browser.paperPages.size,0);assert.equal(browser.tabs.size,1,'only explicit user duplicate remains');
     assert.equal(browser.documents.pending.size,0);

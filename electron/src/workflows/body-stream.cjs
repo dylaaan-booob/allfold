@@ -69,6 +69,20 @@ async function target(url,resolver=dns.lookup) {
   if(!addresses.length||addresses.some(item=>!publicAddress(item.address)))throw Error('unsafe-target');
   return parsed;
 }
+const API_SCOPES={
+  elsevier:['api.elsevier.com','/content/article/','X-ELS-APIKey'],
+  wiley_tdm:['api.wiley.com','/onlinelibrary/tdm/v1/articles/','Wiley-TDM-Client-Token'],
+  aps_harvest:['harvest.aps.org','/v2/journals/articles/','X-API-Key'],
+};
+function credentialHeaders(credential,url) {
+  if(credential===undefined)return {};
+  const scope=API_SCOPES[credential?.kind],parsed=new URL(url),value=credential?.value;
+  if(!scope||Object.keys(credential).sort().join(',')!=='kind,value'||typeof value!=='string'||!value
+    ||value.length>16384||/[\x00-\x1f\x7f]/.test(value)||parsed.protocol!=='https:'
+    ||parsed.hostname!==scope[0]||(parsed.port&&parsed.port!=='443')||!parsed.pathname.startsWith(scope[1]))
+    throw Error('credential-scope');
+  return {[scope[2]]:value};
+}
 async function boundedResponse(response,signal) {
   const reader=response.body?.getReader();if(!reader)return '';
   const decoder=new TextDecoder();let text='',bytes=0;
@@ -99,11 +113,12 @@ async function executeBodyStream(browser,data,{signal,progress=()=>{}}={}) {
     const validateRequest=details=>{
       validate();
       if(!publicClueURL(details.url)||new URL(details.url).origin!==initial.origin)throw Error('redirect-scope');
+      credentialHeaders(data.pdf_credential,details.url);
       if(details.redirectURL && publicClueURL(details.redirectURL)
         && new URL(details.redirectURL).origin!==initial.origin)
         redirect={url:details.url,status:details.statusCode,location:details.redirectURL};
     };
-    const headers={Accept:'application/pdf'};
+    const headers={Accept:'application/pdf',...credentialHeaders(data.pdf_credential,data.url)};
     if(data.referer) {
       if(!publicClueURL(data.referer))throw Error('unsafe-referer');
       const referrer=new URL(data.referer);referrer.hash='';
@@ -176,4 +191,4 @@ async function executeBodyStream(browser,data,{signal,progress=()=>{}}={}) {
     }catch(_){return {outcome:'local_failure',kind:'local_failure',diagnostic_code:'resource-close',resource_closed:false};}
   }
 }
-module.exports={executeBodyStream,openOutput,publicAddress};
+module.exports={executeBodyStream,openOutput,publicAddress,target,directories,credentialHeaders};

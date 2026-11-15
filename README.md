@@ -26,12 +26,13 @@ Setup installs locked dependencies and builds the UI. It creates a missing local
 3. In **Workflows → Discover**, set keywords and publication months, then select PubMed, Web of Science and OpenAlex as needed. WoS uses its prepared Service page when available. After manual confirmation without a prepared page, Discover opens the official WoS query page in the shared Browser session. API discovery continues if WoS needs Login. Run resolves necessary direct identities, establishes readable basic Papers and registers their complete collection plans. Workspace continues collection after Run finishes, while another Run can start. See [Provider roles and query limits](docs/providers.md).
 4. Review **Candidate**, **Downloaded** and **Trash** in **Workspace / ARRAY**. Reject persists exclusion and moves the Paper to Trash. Restore keeps its UUID and existing content. In Trash, clearing metadata removes bibliography, dates, abstract, sources and notes while retaining reliable identities, exclusion and any body association. An identity-only entry can be unexcluded locally; only a later actual Run hit rebuilds its metadata.
 5. Read Papers while their dates, abstract, Preprint proof and collection state update. Retry an eligible failed/cancelled Paper after its resources finish cleaning up. In **Info**, explicitly query linked preprints for a complete, unexcluded formal article; different Papers have independent requests. Reader displays the ordinary date set and independent verified Preprint date. Developer Mode retains local field clearing and empty-abstract input.
+6. Select **Download** for one eligible Candidate; its independent task discovers sources and uses a reusable Session stream or the qualified original browser response while the reader stays usable. Cancel addresses that exact attempt. Only file publication and SQLite completion move it to Downloaded. Open or locate an existing body locally, including identity-only and Trash entries. Trash can independently delete the PDF after this Paper's work finishes; metadata and exclusion remain. Confirmed absence clears only its current association; permission/system failures preserve it.
 
 `Workspace/papers.sqlite` is the sole production Paper store. Run/WoS, Reader,
 search, local edits, Preprint and Trash share the same repository. An unopened,
 uninitialized Workspace reads as empty without silently creating a library; the
 first Run initializes it explicitly. Corrupt or unsupported libraries report an
-error. Paper storage uses schema v4 with a transactional forward change from exactly valid v3; retired and unknown formats remain refused.
+error. Paper storage uses schema v5 with transactional forward changes from exactly valid v4 and the supported v3 entry path; retired and unknown formats remain refused. Existing body provenance remains unknown rather than invented.
 Paper Markdown is no longer created, scanned or read back; old Workspace data is
 not migrated or deleted automatically. Repeat Run hits preserve complete saved
 records. A complete `not_started` Paper is registered on its next actual Run hit;
@@ -40,9 +41,12 @@ single-Paper retry. Stable direct identities also support DOI-free Papers.
 
 Keep, Import to Zotero, Last Import and active webpage Enrich are retired.
 Workspace owns bounded collection and explicit Preprint operations across Runs.
-An existing body association only classifies a Paper as Downloaded; there is no public
-PDF download, physical delete, open or locate action. WF09 supplies the internal
-[Session/file completion service](docs/body-downloads.md). Foreground Run finish means
+Public single-Paper Download/Cancel and local body operations use the shared
+[Session/file completion service](docs/body-downloads.md). Original-response saving
+retains the documented [native cancellation limitation](docs/body-downloads.md#native-output-and-accepted-cancellation-risk):
+if another program replaces its private temporary file or directory during a
+download, Chromium's cancellation cleanup can delete the replacement. Final body
+publication remains no-clobber. Foreground Run finish means
 retrieval, base admission and its own cleanup have ended; each Paper's collection
 and cleanup status remain independent. Cancelling Run leaves accepted Paper work
 running. Restart fails interrupted attempts without replaying requests or pages.
@@ -77,7 +81,7 @@ See [Document access](docs/browser-documents.md).
 
 WF07 provides internal lazy PDF-source discovery and bounded, deletable source
 facts. Candidate URLs and reader entrances do not mark a Paper as Downloaded.
-WF08 connects source-fact collection to production; WF09 supplies internal Session transfer/files, while public Download remains deferred to WF10;
+WF08 connects source-fact collection to production; merged WF09 supplies Session transfer/files, and this WF10 branch connects public lazy Download, original DownloadItem responses and local file management;
 see the [component scope and fixed rules](docs/pdf-source-discovery.md).
 
 ## Local data and privacy
@@ -91,7 +95,7 @@ see the [component scope and fixed rules](docs/pdf-source-discovery.md).
 | `.allfold/resources.sqlite` | Shared GOKB and official CARSI resource cache | No |
 | `journal-lists/journal-registry.sqlite` | Read-only Journal Registry | Yes |
 | `workspace/papers.sqlite` | Paper identity, metadata, dates, exclusions and body associations | No |
-| `workspace/Documents/`, Run snapshots | Managed body associations and Last Run results | No |
+| `workspace/Documents/`, Run snapshots | Managed body files/staging and Last Run results | No |
 | `journal-assets/` | Journal covers | No |
 | Electron application logs directory | Bounded configuration-scoped run history and structured diagnostics | No |
 | `*.openalex-secrets.json`, `*.pubmed-secrets.json` | Optional API keys beside the configuration | No |

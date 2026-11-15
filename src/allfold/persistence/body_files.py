@@ -109,9 +109,28 @@ class ManagedBodyFiles:
 
     def _validate_names(self, proof):
         temporary, target = self._names()
+        if proof.native_directory is not None:
+            temporary = f'{self.paper_id}.{self.attempt}.native/body.part'
         if (proof.temporary != f'Documents/.downloads/{temporary}' or proof.target != f'Documents/{target}'):
             raise UnsafeLibraryPath('Output does not belong to this Paper/attempt')
         return temporary, target
+
+    def _native(self, staging, proof):
+        name = f'{self.paper_id}.{self.attempt}.native'
+        descriptor = self._directory(name, staging)
+        info = os.fstat(descriptor)
+        live = os.stat(name, dir_fd=staging, follow_symlinks=False)
+        if (identity(info) != proof.native_directory or identity(live) != proof.native_directory
+                or not stat.S_ISDIR(live.st_mode) or info.st_uid != os.getuid()
+                or stat.S_IMODE(info.st_mode) != 0o700):
+            raise UnsafeLibraryPath('Native output directory changed')
+        return descriptor
+
+    def _location(self, staging, proof):
+        temporary, _ = self._validate_names(proof)
+        if proof.native_directory is None:
+            return temporary, staging
+        return 'body.part', self._native(staging, proof)
 
     @staticmethod
     def _owned(name, directory, proof, *, missing=False):
@@ -149,18 +168,64 @@ class ManagedBodyFiles:
         finally:
             os.close(descriptor)
 
-    def publish(self, proof):
-        temporary, target = self._validate_names(proof)
+    def prepare_native(self):
+        """Reserve a private, never-reused directory, leaving Chromium's leaf absent.
+
+        Electron 45 replaces an existing save leaf, and can remove a cancelled
+        leaf after done. A native attempt therefore never shares its pathname
+        with either a placeholder or a later attempt.
+        """
+        documents, staging, disposal = self._directories()
+        _, target = self._names()
+        try:
+            os.stat(target, dir_fd=documents, follow_symlinks=False)
+        except FileNotFoundError:
+            pass
+        else:
+            raise FileExistsError('Managed body target already exists')
+        name = f'{self.paper_id}.{self.attempt}.native'
+        os.mkdir(name, mode=0o700, dir_fd=staging)
+        descriptor = self._directory(name, staging)
+        proof = OutputOwnership(temporary=f'Documents/.downloads/{name}/body.part', target=f'Documents/{target}',
+            workspace=identity(os.fstat(self.root)), documents=identity(os.fstat(documents)),
+            staging=identity(os.fstat(staging)), disposal=identity(os.fstat(disposal)),
+            native_directory=identity(os.fstat(descriptor)))
+        self._live(documents, staging, disposal)
+        self._native(staging, proof)
+        return proof
+
+    def adopt_native(self, proof, observed_file):
+        """Qualify Main's observed native inode, never a planned filename alone."""
+        if proof.native_directory is None or proof.file is not None:
+            raise UnsafeLibraryPath('A pending native capability is required')
+        self._validate_names(proof)
         documents, staging, disposal = self._directories(proof)
-        info = self._owned(temporary, staging, proof)
+        directory = self._native(staging, proof)
+        if os.listdir(directory) != ['body.part']:
+            raise UnsafeLibraryPath('Native output contains unknown objects')
+        actual = proof.model_copy(update={'file': tuple(observed_file)})
+        info = self._owned('body.part', directory, actual)
+        if info.st_nlink != 1:
+            raise UnsafeLibraryPath('Native output has an unrelated link')
+        self._live(documents, staging, disposal)
+        self._native(staging, proof)
+        return actual
+
+    def publish(self, proof):
+        _, target = self._validate_names(proof)
+        documents, staging, disposal = self._directories(proof)
+        temporary, source = self._location(staging, proof)
+        info = self._owned(temporary, source, proof)
         if info.st_nlink != 1:
             raise UnsafeLibraryPath('Temporary output has an external link')
         self._live(documents, staging, disposal)
         # linkat is atomic no-clobber, including a target that appeared after
         # prepare. Both fds remain pinned; no path-based rename/replace occurs.
-        os.link(temporary, target, src_dir_fd=staging, dst_dir_fd=documents, follow_symlinks=False)
+        os.link(temporary, target, src_dir_fd=source, dst_dir_fd=documents, follow_symlinks=False)
         self._owned(target, documents, proof)
-        self._retire(temporary, staging, disposal, proof)
+        self._retire(temporary, source, disposal, proof)
+        if proof.native_directory is not None:
+            self._remove_native(staging, disposal, proof)
 
         os.fsync(documents)
         self._live(documents, staging, disposal)
@@ -194,10 +259,39 @@ class ManagedBodyFiles:
         os.unlink(slot, dir_fd=disposal)
 
     def cleanup(self, proof, *, associated=False):
-        temporary, target = self._validate_names(proof)
+        _, target = self._validate_names(proof)
         documents, staging, disposal = self._directories(proof)
+        try:
+            temporary, source = self._location(staging, proof)
+        except FileNotFoundError:
+            if proof.native_directory is None:
+                raise
+            temporary, source = None, None
         # A completed association protects the final inode even if later
         # notification, stale guards or cancellation fail.
-        for name, descriptor in [(temporary, staging)] + ([] if associated else [(target, documents)]):
+        for name, descriptor in ([(temporary, source)] if source is not None else []) + ([] if associated or proof.file is None else [(target, documents)]):
             self._live(documents, staging, disposal)
-            self._retire(name, descriptor, disposal, proof)
+            if proof.file is None:
+                if os.listdir(source):
+                    raise UnsafeLibraryPath('Unobserved native output remains unknown')
+            else:
+                self._retire(name, descriptor, disposal, proof)
+        if proof.native_directory is not None and source is not None:
+            self._remove_native(staging, disposal, proof)
+
+    def _remove_native(self, staging, disposal, proof):
+        name = f'{self.paper_id}.{self.attempt}.native'
+        directory = self._native(staging, proof)
+        if os.listdir(directory):
+            raise UnsafeLibraryPath('Native output contains unknown objects')
+        slot = f'{self.paper_id}.{self.attempt}.native.removed'
+        _move_exclusive(name, slot, staging, disposal)
+        moved = os.stat(slot, dir_fd=disposal, follow_symlinks=False)
+        if not stat.S_ISDIR(moved.st_mode) or identity(moved) != proof.native_directory:
+            _move_exclusive(slot, name, disposal, staging)
+            raise UnsafeLibraryPath('Native directory was replaced during cleanup')
+        try:
+            os.rmdir(slot, dir_fd=disposal)
+        except BaseException:
+            _move_exclusive(slot, name, disposal, staging)
+            raise

@@ -1,5 +1,12 @@
 # Browser pages and physical capacity
 
+The public body service reuses these physical quotas for necessary reader and
+solver pages. Pure Session streams and local open/locate/delete create no blank
+WebContents. Qualified original DownloadItem body saving holds its source and
+action-created child pages through actual item terminal and owned destruction.
+The accepted [native cancellation limitation](body-downloads.md#native-output-and-accepted-cancellation-risk)
+does not relax Document ownership or release page slots on a cancellation flag.
+
 BrowserRuntime owns one page ledger for the `allfold` Session. Execution ownership
 and physical resource ownership are separate. Tab selection, hiding, a renderer
 crash, task cancellation, removing an association and requesting close do not
@@ -159,7 +166,8 @@ A separate regression records BrowserRuntime's current main-frame form POST
 boundary: starting that navigation invalidates the captured WF03 navigation
 generation, so strict current-Document validation refuses the item, cancels it to
 actual terminal, writes no managed file and sends no replacement GET. This entry
-is **not supported by production BrowserRuntime**. The independent
+remains refused by that ordinary Document registration. WF10's separate fixed
+body-action handoff supports only its qualified request/frame chain. The independent
 [shared Session fixture](browser-session.md) proves original POST and inline
 response capability at its tested Session registration seam; it does not establish
 that every BrowserRuntime entry meets Document authority.

@@ -33,7 +33,7 @@ The Electron window minimum is 600 × 480 logical pixels. The Chromium fixtures 
 - Hover opens a flyout after 160 ms; leaving its trigger and content closes after 280 ms. Crossing into the content cancels dismissal. Focus and click open it; arrow keys enter and move list focus, Enter applies selection. HTML drag hover also opens a Directory so existing Journal assignment/reordering remains available. Escape closes and restores the trigger without reopening. The host saves each Directory scope and Candidate/Downloaded/Trash Index scroll before hiding or changing preview, then restores it after showing the list.
 - Journals previews a `directoryScope` without changing the Controller's active scope/filter. Clicking a category activates it and restores its group. Choosing a group closes Details; **Edit** opens that group's existing editor. ARRAY/GRID changes only the list rendering, leaving the editor DOM intact.
 - Tool icons open on click, toggle the current view closed, or switch an open view. Journal selection opens Details. ARRAY selection updates Info without changing expansion. Each workspace retains its host and expansion while away. Browser presentation retains the mounted business DOM.
-- ARRAY Reject/Restore and Trash metadata clearing remain in Content. Workflows contains Login and Discover. Task-page handoff opens the shared Browser while workflow status and controls stay in their original surface.
+- ARRAY Reject/Restore, single-Paper Download/Cancel, local open/locate and Trash PDF/metadata actions remain in Content. Workflows contains Login and Discover. Task-page handoff opens the shared Browser while workflow status and controls stay in their original surface.
 - Layout targets use the independent localStorage key `allfold.workbench-layout`. Developer inputs preview live; SAVE stores all targets, RESET restores that baseline, ORIGIN uses source defaults without replacing the baseline. Ordinary pointer/keyboard Sidebar resize persists only its new preferred width on completion. Shrinking and host Zoom never write effective dimensions back into preferences.
 - Invalid current values fall back independently to source defaults. The layout reads only `allfold.workbench-layout`; no historical preference migration is provided. Archive and other UI preferences keep their own keys.
 - The developer/status strip stays one row and scrolls horizontally. Messages have bounded internal scrolling. Window-level overlays and dialogs retain viewport bounds.
@@ -44,6 +44,15 @@ Workspace reads and edits the production [SQLite Paper library](paper-library.md
 Candidate retains Journal filtering; Downloaded and Trash list actual Paper UUIDs.
 Identity-only records display reliable IDs and have no field/Preprint actions.
 Updates with unchanged classification preserve selection, filter and Reader scroll.
+Download acceptance releases the short request lock; it does not hold
+`decisionPending` for the transfer. One refresh loop observes collection, download
+queue/progress and actual cleanup. Task/attempt progress never revives a terminal
+spinner. Candidate→Downloaded retains the same UUID/Reader and moves to its real
+classification; leaving a classification resets its old reader-mount flag so
+returning correctly mounts that record again. Counts follow current body/metadata
+and exclusion, with Trash first. Historical completed without a body is not a
+download-button gate. Identity-only bodies retain open/locate; identity-only with
+no body has no fabricated Candidate or retry action.
 A stable Workspace UUID, persisted revision and response ordering reject late GET,
 Preprint and action results. Successful local actions apply the returned persisted
 record before any later read; failed responses do not move the row.
@@ -67,7 +76,7 @@ The following real-UI checks are a reference for changes affecting those behavio
 1. Real pointer hover across trigger/flyout boundaries, delayed dismissal, touch activation, Tab/Shift-Tab and Escape. Drag/keyboard-resize Sidebar at wide/narrow bounds; inspect clipping and focus with long Directory and Details content.
 2. At 600 × 480 and larger sizes, check Reader, list, flyout, forms and workflow scroll regions; vary host zoom, display scale, low height, messages and developer controls. Verify preferred width after repeated narrow/wide changes and restart.
 3. Real-data Group/Service/Label edits, destructive confirmations and Cover upload/crop/search. Isolated tests cover ordinary autosave, error/conflict recovery and assignment Undo; real covers and user data are outside those fixtures.
-4. Native Browser pages and Session across Allfold return, tasks and dialog suspension; Login and Discover handoff, task-page association, polling, Cancel and completion. No Download/PDF operation is exposed.
+4. Native Browser pages and Session across Allfold return, tasks and dialog suspension; Login and Discover handoff, task-page association, polling, Cancel and completion. Real publisher PDFs and OS default-app/file-manager effects remain separate acceptance; select only the affected [body workflow checks](body-downloads.md#scoped-manual-acceptance) for WF10.
 5. Re-enable Archive and verify actual Canvas inspection/return, shared Reader, Archive layout/debug preferences, and recovery from both enabled and disabled states. The DOM test proves restoration mechanics, not the full animated Archive experience.
 
 ## Task Browser synthetic acceptance
@@ -139,5 +148,10 @@ tools refresh their editable snapshot after Abstract/Authors/Date changes, while
 open drafts and pending saves retain their captured revision until they settle.
 Archive rows patch title/date text and date attributes in place, including REST
 on the last Paper of a Journal. These rendered/synthetic results do not establish real
-Provider/Session acceptance. Download and PDF file actions remain deferred.
+Provider/Session acceptance. The WF10 rendered fixture additionally checks
+Download/progress without locking Reject/Run, same-UUID classification migration,
+Reader scroll and remounting after returning. Public stream mechanism evidence
+and qualified original DownloadItem adoption with its accepted cancellation risk
+are documented in [body downloads](body-downloads.md); these are separate from
+real-site acceptance.
 See [Provider contracts](providers.md).

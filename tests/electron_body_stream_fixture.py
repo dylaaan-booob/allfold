@@ -62,6 +62,90 @@ async def main():
     host = application.state.workspace_tasks
     client = httpx.AsyncClient(transport=httpx.ASGITransport(app=application), base_url='http://localhost')
     try:
+        # Formal public identity-only entry, through the same authenticated
+        # Bridge/Main Session, managed files, SQLite and Workspace projection.
+        from datetime import datetime, timezone
+        from allfold.pdf_facts import PdfDiscoveryFacts, PdfCandidateFact
+        with PaperRepository.open(workspace) as repo:
+            public = repo.create_or_match(repo.workspace_id, direct_ids=ExternalIds(openalex='W777'),
+                metadata=PaperMetadata(title='Public PDF', discovery_facts=(PdfDiscoveryFacts(
+                    source='document', capability='document-pdf', status='complete',
+                    observed_at=datetime.now(timezone.utc), target_openalex='W777', landing_url=origin+'/article',
+                    candidates=(PdfCandidateFact(stage='P3', rule_id='GENERIC', url=origin+'/public',
+                        referer=origin+'/article', field='citation_pdf_url'),)),))).paper
+        state = (await client.get('/api/ui-next/workspace')).json()
+        public_projection = next(paper for group in state['subjects'] for journal in group['journals'] for paper in journal['papers'] if paper['id']==str(public.id))
+        public_request = dict(csrf_token=state['csrf_token'], workspace_id=str(public.workspace_id),
+            qualification=public_projection['download']['qualification'])
+        accepted = await client.post(f'/api/papers/{public.id}/body/download', json=public_request)
+        assert accepted.status_code == 200, accepted.text
+        current = host.current()
+        with current.paper_gate():
+            public_task = current._reservations[public.id]
+        assert (await asyncio.to_thread(public_task.future.result, 8)).status == 'completed'
+        projection = (await client.get('/api/ui-next/workspace')).json()
+        projected = next(entry['paper'] for entry in projection['downloaded']['papers'] if entry['paper']['id'] == str(public.id))
+        assert projected['download']['pdf_source'] == 'P3' and projected['download']['fallback_used'] is False
+        assert projected['body_present'] and projection['counts']['downloaded'] == 1
+        assert not projected['download']['active'] and not projected['cleanup_pending']
+        print(json.dumps({'type':'fixture_public','status':'completed','paper':str(public.id)}), flush=True)
+        local_request = dict(csrf_token=state['csrf_token'], workspace_id=str(public.workspace_id),
+            body_generation=projected['download']['qualification']['body_generation'])
+        # Existing-body Download uses local authority before discovery or Prepare.
+        opened = await client.post(f'/api/papers/{public.id}/body/download', json={key:value for key,value in local_request.items() if key != 'body_generation'})
+        assert opened.status_code == 200 and opened.json()['outcome'] == 'opened', opened.text
+        located = await client.post(f'/api/papers/{public.id}/body/locate', json=local_request)
+        assert located.status_code == 200 and located.json()['outcome'] == 'locate_requested', located.text
+        shell_failed = await client.post(f'/api/papers/{public.id}/body/open', json=local_request)
+        assert shell_failed.status_code == 409 and shell_failed.json()['paper']['body_present'], shell_failed.text
+        # Local reading remains available while this Paper's collection owns work.
+        from allfold.application.collection_runtime import BranchSpec
+        entered, release = threading.Event(), threading.Event()
+        def held_branch(context):
+            entered.set()
+            assert release.wait(4)
+        collected = await asyncio.to_thread(current.submit, direct_ids=ExternalIds(openalex='W777'),
+            metadata=public.metadata, branches=(BranchSpec('held', held_branch),))
+        assert await asyncio.to_thread(entered.wait, 2)
+        reading = await client.post(f'/api/papers/{public.id}/body/open', json=local_request)
+        assert reading.status_code == 200 and reading.json()['outcome'] == 'opened', reading.text
+        release.set()
+        await asyncio.to_thread(collected.future.result, 3)
+        rejected = await client.post(f'/api/ui-next/papers/{public.id}/reject', json={key:value for key,value in local_request.items() if key != 'body_generation'})
+        assert rejected.status_code == 200, rejected.text
+        deleted = await client.post(f'/api/papers/{public.id}/body/delete', json=local_request)
+        assert deleted.status_code == 200 and deleted.json()['outcome'] == 'deleted', deleted.text
+        assert not (workspace/'Documents'/f'{public.id}.pdf').exists()
+        restored = await client.post(f'/api/ui-next/papers/{public.id}/restore', json={key:value for key,value in local_request.items() if key != 'body_generation'})
+        assert restored.status_code == 200 and restored.json()['paper']['download']['available'], restored.text
+        # A historical completed record is not a new-download gate.
+        retried = await client.post(f'/api/papers/{public.id}/body/download', json=dict(
+            csrf_token=state['csrf_token'], workspace_id=str(public.workspace_id),
+            qualification=restored.json()['paper']['download']['qualification']))
+        assert retried.status_code == 200, retried.text
+        with current.paper_gate():
+            retry_task = current._reservations[public.id]
+        assert (await asyncio.to_thread(retry_task.future.result, 8)).status == 'completed'
+        assert retry_task.download_token.attempt == public_task.download_token.attempt + 1
+        # Identity-only Trash has an actual legal nested current body, with zero
+        # discovery/Session dependency. The fixture shell never opens a real app.
+        from allfold.persistence.paper_repository import BodyReference
+        retained = workspace/'Documents'/'retained'/'nested.pdf'
+        retained.parent.mkdir(); retained.write_bytes(b'local identity-only body')
+        with PaperRepository.open(workspace) as repo:
+            identity_only = repo.create_or_match(repo.workspace_id, direct_ids=ExternalIds(openalex='W778'),
+                metadata=PaperMetadata(title='Local identity-only')).paper
+            identity_only = repo.complete_body(identity_only.token, BodyReference(relative_path='Documents/retained/nested.pdf'))
+            identity_only = repo.exclude(identity_only.token)
+            identity_only = repo.clear_metadata(identity_only.token)
+        identity_request = dict(csrf_token=state['csrf_token'], workspace_id=str(public.workspace_id), body_generation=identity_only.body_generation)
+        identity_read = await client.post(f'/api/papers/{identity_only.id}/body/open', json=identity_request)
+        assert identity_read.status_code == 200 and identity_read.json()['outcome'] == 'opened', identity_read.text
+        retained.unlink()
+        missing = await client.post(f'/api/papers/{identity_only.id}/body/locate', json=identity_request)
+        assert missing.status_code == 200 and missing.json()['outcome'] == 'missing', missing.text
+        assert missing.json()['paper']['body_present'] is False and missing.json()['paper']['metadata_present'] is False
+        print(json.dumps({'type':'fixture_local','status':'settled','retry_attempt':retry_task.download_token.attempt}), flush=True)
         cases=[(path,origin+'/'+path,None) for path in ['redirect?Signature=A%2FB', 'encoded', 'chunked', 'html.pdf', 'unknown', 'truncated', 'cancel', 'expiry', 'cross', 'challenge', 'disk-write', 'disk-flush', 'slow-writer', 'cross-referer']]
         cases.extend([
             ('background-cloudflare',origin+'/background-cloudflare',None),
@@ -112,8 +196,11 @@ async def main():
             with PaperRepository.open(workspace) as repo:
                 saved = repo.get(paper.id)
             if path.startswith('disk-'):assert result.status=='local_failure'
-            if path=='challenge':assert result.candidate_result.response.access=='challenge'
-            if path=='html.pdf':assert result.candidate_result.response.access=='login'
+            if path in {'challenge', 'html.pdf'}:
+                reason = 'access-challenge' if path == 'challenge' else 'access-login'
+                assert result.status == 'failed' and result.candidate_result.kind == 'failed'
+                assert result.candidate_result.diagnostic == reason
+                assert saved.download.reason == reason
             if path=='background-cloudflare':assert result.candidate_result.response.access is None
             success = path in {'redirect?Signature=A%2FB','encoded','chunked','slow-writer','cross-referer','oxford-cdn','ieee-reader'}
             assert (result.status == 'completed') == success, (path,result)

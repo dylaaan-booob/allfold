@@ -47,7 +47,7 @@ let loginState={active:false,phase:'idle',services:[]};
 const mimes={'.html':'text/html','.js':'text/javascript','.css':'text/css','.json':'application/json','.woff2':'font/woff2','.ttf':'font/ttf','.otf':'font/otf','.png':'image/png','.mp4':'video/mp4'};
 let rejectAutosave=false,holdWorkspaceResponse,holdPaperActionResponse,resolveInitialCAS,credentialState={ok:false,error:'cas_store_unreadable',configured:false,username:'',revision:'d'.repeat(64)};
 const credentialWrites=[];
-const preprintStarts=[],collectionRetries=[],fieldWrites=[];
+const preprintStarts=[],collectionRetries=[],fieldWrites=[],bodyActions=[];
 let holdFieldResponse,holdPreprintStart;
 let preprintState={phase:'Idle',saved_fields:[]};
 const server=http.createServer((req,res)=>{
@@ -73,6 +73,20 @@ const server=http.createServer((req,res)=>{
     const send=()=>{res.writeHead(200,{'Content-Type':'application/json'});res.end(body);};
     if(holdPaperActionResponse){const release=holdPaperActionResponse;holdPaperActionResponse=null;release(send);}else send();
     return;
+  }
+  const bodyAction=route.match(/^\/api\/papers\/([^/]+)\/body\/(download|cancel|open|locate|delete)$/);
+  if(bodyAction){
+    let text='';req.on('data',chunk=>{text+=chunk;});req.on('end',()=>{
+      const body=JSON.parse(text),item=[...records.flatMap(journal=>journal.papers),...workspace.downloaded.papers.map(entry=>entry.paper),...workspace.trash.papers.map(entry=>entry.paper)].find(paper=>paper.id===bodyAction[1]);
+      bodyActions.push({id:bodyAction[1],action:bodyAction[2],body});
+      if(bodyAction[2]==='download')item.download={...item.download,status:'running',attempt:1,task_id:'body-fixture-1',active:true,
+        available:false,cancel_available:true,received_bytes:2048,total_bytes:null,progress_sequence:1,deadline_ms:Date.now()+30000};
+      else if(bodyAction[2]==='cancel')Object.assign(item.download,{cleaning_up:true,cancel_available:false});
+      else if(bodyAction[2]==='delete'){item.body_present=false;item.download.qualification.body_generation++;}
+      item.revision++;workspace.revision++;
+      res.writeHead(200,{'Content-Type':'application/json'});res.end(JSON.stringify({workspace_id:workspace.workspace_id,revision:workspace.revision,paper:item,
+        outcome:{open:'opened',locate:'locate_requested',delete:'deleted'}[bodyAction[2]] || 'accepted'}));
+    });return;
   }
   const retry=route.match(/^\/api\/papers\/([^/]+)\/collection\/retry$/);
   if(retry){
@@ -345,6 +359,70 @@ app.whenReady().then(async()=>{
     await js('window.uiWorkspace.refresh()');
     await js(`(()=>{if(document.getElementById('paper-collection-status').textContent!=='采集完成' || !document.getElementById('paper-collection-retry').hidden)throw Error('empty completed collection still loads or retries');})()`);
     await capture('wf08-collection-completed');
+    // Collection is finished: public Download alone drives ongoing polling,
+    // while Reader, Reject and unrelated Run navigation stay available.
+    const bodyPaper=records[0].papers[0];
+    bodyPaper.download={status:'not_started',active:false,available:true,cancel_available:false,attempt:0,
+      qualification:{metadata_generation:1,operation_generation:1,body_generation:1,attempt:0}};
+    bodyPaper.body_present=false;bodyPaper.revision++;workspace.revision++;
+    await js('window.uiWorkspace.refresh()');
+    await js("document.getElementById('paper-download').click()");
+    await ready("!window.inboxKept.busy() && document.getElementById('paper-download-status').textContent.includes('2 KB')");
+    if(bodyActions.length!==1 || Object.keys(bodyActions[0].body).sort().join(',')!=='csrf_token,qualification,workspace_id')throw Error('Download request supplied network/file capabilities');
+    await js(`(()=>{if(document.getElementById('reject-paper').disabled || !window.inboxRun.available())throw Error('Download locked unrelated reader or Run controls');})()`);
+    let deliverBodyPoll;
+    const bodyPollHeld=new Promise(resolve=>{holdWorkspaceResponse=send=>{deliverBodyPoll=send;resolve();};});
+    await bodyPollHeld;deliverBodyPoll();
+    await js("document.getElementById('paper-detail').scrollTop=0");
+    await capture('wf10-download-progress');
+    await js(`(()=>{document.getElementById('paper-detail').scrollTop=160;window.wf10BodyScroll=document.getElementById('paper-detail').scrollTop;})()`);
+    records[0].papers=records[0].papers.filter(item=>item.id!==bodyPaper.id);
+    Object.assign(bodyPaper,{status:'downloaded',body_present:true,cleanup_pending:false,
+      download:{...bodyPaper.download,status:'completed',active:false,cancel_available:false,pdf_source:'P3',fallback_used:false,
+        qualification:{metadata_generation:1,operation_generation:1,body_generation:2,attempt:1}}});
+    workspace.downloaded.papers.push({paper:bodyPaper,journal:records[0]});bodyPaper.revision++;workspace.revision++;
+    await js('window.uiWorkspace.refresh()');
+    await js(`(()=>{
+      const $=id=>document.getElementById(id);
+      if($('kept-view').dataset.status!=='downloaded' || $('view-paper-title').textContent!=='Synthetic Paper 0' ||
+        $('paper-detail').scrollTop!==wf10BodyScroll || $('paper-download').textContent!=='打开 PDF' || !$('paper-download-cancel').hidden)
+        throw Error('Completed body did not preserve the same Reader in Downloaded');
+    })()`);
+    await js("document.getElementById('paper-detail').scrollTop=0");
+    await capture('wf10-download-completed');
+    await js("document.getElementById('paper-locate').click()");
+    await ready("!document.getElementById('paper-locate').disabled");
+    if(bodyActions.at(-1)?.action!=='locate' || Object.keys(bodyActions.at(-1).body).sort().join(',')!=='body_generation,csrf_token,workspace_id' || bodyActions.at(-1).body.body_generation!==2)
+      throw Error('Locate did not carry only the current body qualification');
+    await js("document.getElementById('paper-download').click()");
+    await ready("!document.getElementById('paper-download').disabled");
+    if(bodyActions.at(-1)?.action!=='open')throw Error('Existing body did not use explicit local open');
+    const beforeLocal=structuredClone(bodyPaper);
+    workspace.downloaded.papers=workspace.downloaded.papers.filter(entry=>entry.paper.id!==bodyPaper.id);
+    Object.assign(bodyPaper,{title:null,abstract:null,notes:null,authors:[],ordinary_dates:[],preprints:[],preprint_evidence:[],
+      publication_date:null,first_public_at:null,sources:[],indexed_terms:[],author_keywords:[],journal_issns:[],
+      journal:null,conference:null,publication_type:null,preprint_lookup_available:false,
+      metadata_present:false,excluded:true,status:'trash',cleanup_pending:true});
+    workspace.trash.papers.push({paper:bodyPaper,journal:records[0]});bodyPaper.revision++;workspace.revision++;
+    await js('window.uiWorkspace.refresh()');
+    await js(`(()=>{const $=id=>document.getElementById(id);
+      if($('paper-locate').hidden || $('paper-download').disabled || $('paper-delete-body').hidden || !$('paper-delete-body').disabled)
+        throw Error('Identity-only Trash local actions or actual cleanup gate missing');})()`);
+    bodyPaper.cleanup_pending=false;bodyPaper.revision++;workspace.revision++;
+    await js('window.uiWorkspace.refresh()');
+    await capture('wf10-local-body-trash');
+    await js("document.getElementById('paper-delete-body').click()");
+    await ready("document.getElementById('paper-body-actions').hidden");
+    if(bodyActions.at(-1)?.action!=='delete' || bodyActions.at(-1).body.body_generation!==2 || bodyPaper.download.qualification.body_generation!==3)
+      throw Error('Trash deletion did not address the captured body generation');
+    // Restore the controlled fixture for the remaining independent UI scenarios.
+    workspace.trash.papers=workspace.trash.papers.filter(entry=>entry.paper.id!==bodyPaper.id);
+    Object.assign(bodyPaper,beforeLocal);
+    workspace.downloaded.papers=workspace.downloaded.papers.filter(entry=>entry.paper.id!==bodyPaper.id);
+    Object.assign(bodyPaper,{status:'candidate',body_present:false,download:{status:'not_started',active:false,available:true,attempt:0}});
+    records[0].papers.unshift(bodyPaper);bodyPaper.revision++;workspace.revision++;
+    await js("window.uiWorkspace.refresh().then(()=>window.workspaceArray.openPaper('paper-0'))");
+
     // Background fields/status cannot replace an open Abstract draft or a pending save.
     const originalAbstract=records[0].papers[0].abstract,originalDates=[...records[0].papers[0].ordinary_dates];
     records[0].papers[0].abstract=null;records[0].papers[0].revision++;workspace.revision++;

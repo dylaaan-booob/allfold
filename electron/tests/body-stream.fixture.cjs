@@ -5,6 +5,8 @@ const assert=require('node:assert/strict'),{spawn}=require('node:child_process')
 const {gzipSync}=require('node:zlib');
 const {BrowserRuntime}=require('../src/browser/browser-runtime.cjs');
 const {executeBodyStream}=require('../src/workflows/body-stream.cjs');
+const {executeLocalBody}=require('../src/workflows/local-body.cjs');
+const {validateRecovery,settleRecoveryAuthority}=require('../src/workflows/recovery-authority.cjs');
 const {BrowserFailure,diagnosticFor}=require('../src/browser/browser-errors.cjs');
 const {invocationRecovery}=require('../src/shared/recovery-summary.cjs');
 const profile=process.argv[2],root=path.resolve(__dirname,'../..');
@@ -12,7 +14,7 @@ app.setPath('userData',profile);app.setPath('sessionData',profile);
 app.commandLine.appendSwitch('host-resolver-rules','MAP *.example.org 127.0.0.1, MAP academic.oup.com 127.0.0.1, MAP watermark02.silverchair.com 127.0.0.1, MAP ieeexplore.ieee.org 127.0.0.1');
 app.commandLine.appendSwitch('no-proxy-server');app.on('window-all-closed',()=>{});
 app.whenReady().then(async()=>{
-  const requests=[],cases=[],pairs=[],drains=[],resolved=[],payload=Buffer.alloc(2*1024*1024,71);let origin,slowProduced=0;
+  const requests=[],cases=[],pairs=[],drains=[],publicCases=[],localCases=[],shellCalls=[],resolved=[],payload=Buffer.alloc(2*1024*1024,71);let origin,slowProduced=0;
   const server=http.createServer(async(req,res)=>{
     requests.push({url:req.url,method:req.method,headers:req.headers});
     if(req.headers.host.startsWith('academic.oup.com:')){res.writeHead(302,{location:origin.replace('pdf.example.org','watermark02.silverchair.com')+'/'+req.url.split('/').at(-1)+'?Signature=synthetic'});res.end();return;}
@@ -42,7 +44,10 @@ app.whenReady().then(async()=>{
     {cwd:root,env:{...process.env,PYTHONPATH:path.join(root,'src')+':'+path.join(root,'tests')},stdio:['pipe','pipe','pipe']});
   let stderr='';python.stderr.on('data',data=>{stderr+=data;});
   const send=message=>python.stdin.write(JSON.stringify(message)+'\n');
-  const context=vm.createContext({browser,send,executeBodyStream,operations:new Map(),exiting:false,AbortController,WebSocket,
+  let opened=0;
+  const shell={openPath:async filename=>{assert.ok(fs.statSync(filename).isFile());shellCalls.push('open');return ++opened===2?'synthetic no default application':'';},
+    showItemInFolder:filename=>{assert.ok(fs.statSync(filename).isFile());shellCalls.push('locate');}};
+  const context=vm.createContext({browser,send,executeBodyStream,executeLocalBody,shell,validateRecovery,operations:new Map(),exiting:false,AbortController,WebSocket,
     CONTROL_ACTIONS:new Set(['cas_credentials','diagnostics_reset']),RESOURCE_ACTIONS:new Set(['invalidate_access','release_workflow_pages']),
     BrowserFailure,diagnosticFor,invocationRecovery,Date,Number,Promise,
     operationAssociation:require('../src/browser/page-association.cjs').operationAssociation,
@@ -83,12 +88,17 @@ app.whenReady().then(async()=>{
       const message=JSON.parse(line);
       if(message.type==='ready')return;
       if(message.type==='execute') {
-        faultKind=new URL(message.data.url).pathname.slice(1);if(faultKind==='slow-writer')slowOperation=message;
-        faultTarget=path.join(message.data.workspace_root,message.data.output.temporary);
+        if(message.action==='stream_paper_body'){
+          faultKind=new URL(message.data.url).pathname.slice(1);if(faultKind==='slow-writer')slowOperation=message;
+          faultTarget=path.join(message.data.workspace_root,message.data.output.temporary);
+        }
         void context.execute(message).catch(error=>{dispatchError=error;python.kill();});
       }
       else if(message.type==='cancel')context.operations.get(message.id)?.controller.abort();
+      else if(message.type==='verify_recovery_authority_result')settleRecoveryAuthority(context.operations.get(message.id),message);
       else if(message.type==='fixture_case'){cases.push(message);console.log('BODY CASE '+message.path+' '+message.status);}
+      else if(message.type==='fixture_public')publicCases.push(message);
+      else if(message.type==='fixture_local')localCases.push(message);
       else if(message.type==='fixture_pair')pairs.push(message);
       else if(message.type==='fixture_drain')drains.push(message);
       else if(message.type==='fixture_complete'){complete=true;python.stdin.end();}
@@ -99,6 +109,11 @@ app.whenReady().then(async()=>{
   try {
     if(dispatchError)throw dispatchError;
     assert.equal(code,0,stderr);assert.equal(complete,true,stderr);assert.equal(cases.length,18);assert.equal(slowWitness,true);assert.deepEqual(pairs,[{type:'fixture_pair',statuses:['cancelled','completed']}]);
+    assert.equal(publicCases.length,1);assert.equal(publicCases[0].status,'completed');
+    assert.deepEqual(localCases,[{type:'fixture_local',status:'settled',retry_attempt:2}]);
+    assert.deepEqual(shellCalls,['open','locate','open','open','open']);
+    assert.equal(requests.filter(r=>r.url==='/public').length,2,'local reads add no network; explicit deletion permits one new public attempt');
+    assert.deepEqual(fs.readFileSync(path.join(profile,'workspace/Documents',publicCases[0].paper+'.pdf')),payload);
     assert.equal(requests.filter(r=>r.url==='/same').length,2);assert.equal(requests.filter(r=>r.url==='/leak').length,0);
     assert.deepEqual(drains,[{type:'fixture_drain',status:'settled'}]);
     assert.equal(browser.tabs.size,0,'pure stream must create no pages');

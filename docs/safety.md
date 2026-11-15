@@ -12,7 +12,7 @@ execution context. Short rollback-safe transactions contain no network/browser
 wait. Library schema, integrity, UUID and live directory/database identity are
 validated. Symlinks and multiple-link main/sidecar paths are refused. Missing,
 corrupt, unknown-schema, unsafe-path and busy/commit failures remain distinct;
-none authorizes replacement or clearing. Paper storage has schema v4 and one verified transactional forward change from valid v3, without retired/unknown format compatibility.
+none authorizes replacement or clearing. Paper storage has schema v5 with strict transactional forward changes from valid v4 and the supported v3 path, preserving current data and unknown historical provenance without retired/unknown format compatibility.
 
 Async writes use eligibility captured when the Paper is first claimed, including
 Workspace UUID and metadata/operation generations. Results cannot reread current
@@ -34,9 +34,25 @@ Restore/unexclude never fetches or recreates deleted content. Exclusion has no
 expiry or ordinary bulk-clear action.
 
 A body association classifies Downloaded but grants no physical file authority.
-WF02 does not download, delete, open or locate PDF files. `Documents/` relative
-paths reject traversal/absolute paths; WF09 validates actual directory/file identities
-and performs no-clobber publication through the [body lifecycle service](body-downloads.md). Clearing metadata leaves associated file bytes intact.
+`Documents/` relative paths reject traversal/absolute paths. The [body lifecycle
+service](body-downloads.md) validates actual directory/file identities for stream
+publication and current local-file operations. Open/locate captures the current
+body generation and regular object without requiring metadata, Prepare or
+network. Only confirmed absence conditionally clears that association; permission,
+shell and unsafe-path failures preserve it. Trash deletion waits for actual Paper
+cleanup, safely removes only the captured file, then conditionally clears SQLite;
+file and DB operations are not atomic. Clearing metadata leaves body bytes intact.
+
+Original DownloadItem output has an accepted [native cancellation limitation](body-downloads.md#native-output-and-accepted-cancellation-risk).
+The pinned Chromium cancels asynchronously by saved pathname after
+`done(cancelled)`. If another process replaces that attempt's private temporary
+file or directory during transfer, Chromium's cleanup can remove the replacement
+despite Main detecting the change and refusing it. The application cannot promise
+that replacement survives. Exclusive private staging, unique attempt paths,
+object/path refusal, scoped application cleanup and no-clobber final publication
+remain required; stream, local open/locate and Trash deletion protections are
+unchanged. Do not treat `done(cancelled)` or a fixed delay as proof that the
+Chromium file worker has finished deleting. No POST-to-GET replay is permitted.
 
 Shutdown stops admission and waits for Run, Preprint, WoS, Login, Covers and
 in-flight native bridge results before closing their owned connections. Teardown

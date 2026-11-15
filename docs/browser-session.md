@@ -7,6 +7,11 @@ subscribe to that entry; WoS registers an attempt before its export action.
 Finishing a task disposes its registrations, never the Session listeners.
 Shutdown drains owned work, pages and native items before disposing the entry.
 
+Public reusable-PDF and qualified original-response Download consume this Session
+through the shared body owner; see [body downloads](body-downloads.md), including
+the accepted native cancellation limitation. The Session-level capabilities below
+remain mechanism evidence; production body composition is tested separately.
+
 Request handlers run synchronously in registration order. Each sees the headers
 already composed by the preceding handler and returns the next header state.
 The entry strips private markers last and calls Electron's callback exactly once.
@@ -110,21 +115,32 @@ that sample. Inline override is opt-in to an exact registered source/frame and
 the response's declared MIME type; unrelated pages' responses are unchanged.
 These fixtures establish mechanisms, not PDF validation or a permanent-file/UI
 product. Real CARSI/WoS/accounts and CAPTCHA remain separately authorized live
-acceptance. WF09/WF10 own the later PDF transport and product behavior.
+acceptance. WF09's stream and the current public stream/local-body services have
+separate file/database/UI evidence. Native original-response saving is not
+accepted merely because these Session cases complete.
 
 The interruption fixture also checks native stderr for Chromium assertion
 failures. Electron 45's DownloadItem observer list rejects reentrant cancellation
 inside `updated`; the router defers that cancel to the next event-loop turn and
 continues retaining the item until real `done`.
 
-## BrowserRuntime entry limitation
+## BrowserRuntime Document handoff
+
+WF10 adds a separate fixed body-action capability for qualified R059 current
+forms and R024 ScienceDirect article/reader entries. Before dispatch it transfers
+the verified Document's authority to the exact controlled request/frame and
+original item; action-created child sources register before their first PDF
+headers. It does not globally relax current-Document checks or make read-only
+probes execute actions. The [accepted cancellation risk](body-downloads.md#native-output-and-accepted-cancellation-risk)
+concerns Chromium's temporary pathname cleanup, not Document authority.
 
 The separate `page-resources.fixture.cjs` uses the production Runtime and its WF03
 Document generation checks. A main-frame form POST download invalidates its
 captured navigation generation; current-Document validation therefore refuses
 that registration and cancels the original item to actual terminal. The local
 server observes exactly one POST, no extra GET, and no managed file. This entry
-is not supported by BrowserRuntime. Its slow source-lifetime case uses one
+remains refused by that ordinary Document registration; only the dedicated body
+handoff supports the qualified action. Its slow source-lifetime case uses one
 same-Document `<a download>` GET, held through real `done`. These results and the
 Session-level original-POST success above have different seams; neither grants
 permission to weaken Document authority. [Browser pages](browser-pages.md) records
@@ -156,4 +172,11 @@ No byte receiver, original-response replay or permanent PDF behavior is added.
 
 ## WF09 internal body service
 
-WF09 adds internal `stream_paper_body` as a second host-fetch consumer. It waits for business Session identity, pins applicable prepared access, uses Chromium credentials and current native response/redirect facts, then awaits backpressured pipeline, flush and writer close. It does not reuse Cover omission or aggregate PDF bytes. Parent stop controls the entire body. Pure streams create no page; original DownloadItem listeners remain unchanged. See [file lifecycle and current redirect scope](body-downloads.md).
+Merged WF09 adds `stream_paper_body` as a second host-fetch consumer, now used by
+public Download's single body owner. It waits for business Session identity,
+pins applicable prepared access, uses Chromium credentials and native response/
+redirect facts, then awaits backpressured pipeline, flush and writer close.
+It does not reuse Cover omission or aggregate PDF bytes. Parent stop controls
+the entire body. Pure streams and local file actions create no Browser page;
+original DownloadItem listeners remain unchanged. See [file lifecycle, optional
+fixed API credentials and current redirect scope](body-downloads.md).
