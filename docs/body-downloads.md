@@ -124,6 +124,10 @@ The fixed R059 form may live in the article navigation toolbar. Its exact
 `.download-pdf form.ft-download-content__form--pdf[action]` selector remains
 qualified there; related, reference, supplementary and foreign-identity controls
 stay excluded. The action still uses the unique current form and its original fields.
+Its original POST may return one observed 303 from `/deliver/fulltext/...` to
+the same origin's `/docserver/fulltext/...` with the identical pathname suffix.
+Only the response's exact Location GET on the same native request and frame is
+accepted; another origin/path, a new request or a further redirect gains no authority.
 
 ScienceDirect's original `/pdfft` or `/pdf` response may be an HTML reader that
 navigates its same-PII reader entry once, then navigates itself to the same PII's

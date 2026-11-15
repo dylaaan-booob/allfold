@@ -68,11 +68,12 @@ app.whenReady().then(async()=>{
         kind==='unrelated'?`onsubmit="event.preventDefault();location.assign('/unrelated')"`:'';
       res.writeHead(200,{'content-type':'text/html'});
       const getForm=['get-form','get-changed'].includes(kind);
+      const formAction=kind.startsWith('microbiology-redirect')?'/deliver/fulltext/micro/170/9/fixture.pdf':'/once';
       res.end(`<!doctype html><html><head><meta charset="utf-8"><title>Original response</title>${kind==='inline'?'<meta name="citation_doi" content="10.5555/strasse">':''}</head><body><article><h1>Original response</h1>
         ${['existing-iframe','existing-target-changed'].includes(kind)?'<iframe name="body" src="/frame"></iframe>':''}
         ${background?`<iframe id="background" name="background" src="/frame"></iframe><script>fetch('/child-ready?case=${kind}').then(()=>{${kind==='iframe-replaced'?`document.querySelector('iframe[name="new-body"]').remove();const replacement=document.createElement('iframe');replacement.name='new-body';replacement.src='/source-replaced?case=${kind}';document.body.appendChild(replacement)`:
           kind==='popup-source-replaced'?`location.assign('/source-replaced?case=${kind}')`:`document.getElementById('background').src='/unrelated?case=${kind}'`}})</script>`:''}
-        ${kind==='inline'?'<nav aria-label="Article navigation">':''}<div class="download-pdf"><form class="ft-download-content__form--pdf" ${['inline','url-doi-form'].includes(kind)?'data-doi="https://doi.org/10.5555/STRAẞE"':''} method="${getForm?'GET':'POST'}" action="/once?${getForm?'discard=old-action-query&':''}case=${kind}" ${popup?'target="_blank"':kind.startsWith('predeclared-')||kind.startsWith('named-popup')?'target="new-body"':['existing-iframe','existing-target-changed'].includes(kind)?'target="body"':''} ${setup}>
+        ${kind==='inline'?'<nav aria-label="Article navigation">':''}<div class="download-pdf"><form class="ft-download-content__form--pdf" ${['inline','url-doi-form'].includes(kind)?'data-doi="https://doi.org/10.5555/STRAẞE"':''} method="${getForm?'GET':'POST'}" action="${formAction}?${getForm?'discard=old-action-query&':''}case=${kind}" ${popup?'target="_blank"':kind.startsWith('predeclared-')||kind.startsWith('named-popup')||kind.startsWith('microbiology-redirect')?'target="new-body"':['existing-iframe','existing-target-changed'].includes(kind)?'target="body"':''} ${setup}>
         ${getForm?`<input name="case" value="${kind}"><input name="once" value="fixture + &"><input name="tag" value="one"><input name="tag" value="two"><input disabled name="ignored" value="disabled"><input type="checkbox" name="ignored" value="unchecked">`:`<input name="once" value="${kind==='current-form'?'current-document':'fixture'}">`}
         <button type="submit" ${getForm?'name="download" value="PDF now"':''}>Download PDF</button></form></div>${kind==='inline'?'<div class="related"><div class="download-pdf"><form class="ft-download-content__form--pdf" method="POST" action="/once?case=inline"><input name="once" value="related"><button>Download PDF</button></form></div></div><div hidden class="download-pdf"><form class="ft-download-content__form--pdf" action="/once?case=inline"></form></div><div class="download-pdf"><form data-doi="10.5555/foreign" class="ft-download-content__form--pdf" action="/once?case=inline"></form></div><div class="download-pdf"><form class="ft-download-content__form--pdf" action="/once?case=inline"><button>Supporting PDF</button></form></div></nav>':''}</article></body></html>`);return;
     }
@@ -89,6 +90,20 @@ app.whenReady().then(async()=>{
       const native=bodyResponses.get(kind);assert.ok(native&&!native.destroyed&&!native.writableEnded,'original item remains active at child settlement');
       res.writeHead(200,{'content-type':'text/html'});res.end('<title>Child settled</title>');
       native.end(payload.subarray(65536));return;
+    }
+    if(url.pathname.startsWith('/deliver/fulltext/')) {
+      assert.equal(req.method,'POST');assert.equal(body,'once=fixture');
+      let location=origin+'/docserver/fulltext/micro/170/9/fixture.pdf?case='+kind;
+      if(kind==='microbiology-redirect-path')location=location.replace('/fixture.pdf','/other.pdf');
+      if(kind==='microbiology-redirect-origin')location=location.replace('www.microbiologyresearch.org','www.sciencedirect.com');
+      res.writeHead(kind==='microbiology-redirect-status'?302:303,{'content-type':'application/pdf',location});res.end();return;
+    }
+    if(url.pathname.startsWith('/docserver/fulltext/')) {
+      assert.equal(req.method,'GET');assert.equal(body,'');
+      if(kind==='microbiology-redirect-twice'){
+        res.writeHead(303,{location:origin+req.url});res.end();return;
+      }
+      res.writeHead(200,{'content-type':'application/pdf'});res.end(payload);return;
     }
     if(url.pathname==='/once') {
       if(req.method!=='POST'&&kind!=='get-form'){res.writeHead(200,{'content-type':'text/html'});res.end('<title>Craft GET refused</title>');return;}
@@ -201,7 +216,7 @@ app.whenReady().then(async()=>{
       const terminal=new Promise(resolve=>messages.set(id,resolve));
       await context.execute({id,action:'native_paper_body',data});const result=await terminal;
       cases.push({kind,result});console.log('NATIVE CASE '+kind+' '+JSON.stringify(result));
-      const success=['attachment','inline','url-doi-form','iframe','popup','named-popup','popup-reservation','sciencedirect','sciencedirect-direct-cdn-unavailable','sciencedirect-reader','sciencedirect-reader-self','sciencedirect-reader-reload'].includes(kind);
+      const success=['attachment','inline','url-doi-form','microbiology-redirect','iframe','popup','named-popup','popup-reservation','sciencedirect','sciencedirect-direct-cdn-unavailable','sciencedirect-reader','sciencedirect-reader-self','sciencedirect-reader-reload'].includes(kind);
       if(success) {
         assert.equal(result.outcome,'native_complete');assert.equal(result.resource_closed,true);assert.deepEqual(result.output_file,observed);
         const leaf=path.join(data.workspace_root,data.output.temporary);assert.deepEqual(fs.readFileSync(leaf),payload);assert.deepEqual(identity(leaf),observed);
@@ -212,6 +227,8 @@ app.whenReady().then(async()=>{
         assert.equal(foreign.view.webContents.mainFrame.name,'new-body');
         assert.equal(requests.filter(request=>request.url==='/once?case='+kind).length,0);
         await browser.closePage(foreign,'fixture_cleanup');
+      } else if(kind.startsWith('microbiology-redirect')) {
+        assert.equal(result.kind,'stale');assert.equal(result.output_file,undefined);
       } else if(kind.startsWith('sciencedirect-reader')) {
         assert.equal(result.kind,kind==='sciencedirect-reader-challenge'?'failed':kind==='sciencedirect-reader-cancel'?'cancelled':'stale');
         assert.equal(result.output_file,undefined);
@@ -248,7 +265,7 @@ app.whenReady().then(async()=>{
       python.stdin.write(JSON.stringify({type:'hello',token:'fixture-only'})+'\n');
       const code=await new Promise(resolve=>python.once('exit',resolve));python=null;
       if(dispatchError)throw dispatchError;
-      assert.equal(code,0,stderr);assert.equal(complete,true,stderr);assert.equal(publicCases.length,27);
+      assert.equal(code,0,stderr);assert.equal(complete,true,stderr);assert.equal(publicCases.length,28);
       for(const item of publicCases)if(item.status==='completed')assert.deepEqual(fs.readFileSync(path.join(profile,'workspace/Documents',item.paper+'.pdf')),payload);
       assert.equal(browser.tabs.size,0);assert.equal(browser.sessionEvents.downloads.size,0);assert.equal(browser.sessionEvents.items.size,0);
       for(const kind of ['attachment','inline','url-doi-form','iframe','predeclared-iframe','predeclared-popup-guard','existing-iframe','iframe-background','popup-background','iframe-replaced','popup-source-replaced','popup','named-popup','action-blocked','action-challenge','action-challenge-iframe','action-challenge-popup','action-html','cancel','drain'])assert.deepEqual(requests.filter(request=>request.url==='/once?case='+kind),
@@ -272,6 +289,15 @@ app.whenReady().then(async()=>{
       assert.deepEqual(seen,[{url:'/once?case='+kind,method:'POST',body:'once=fixture'}]);
     }
     assert.equal(requests.filter(request=>request.url==='/once?case=no-item').length,0);
+    const redirects=new Set(caseNames.filter(kind=>kind.startsWith('microbiology-redirect')));
+    if(caseNames.includes('public'))redirects.add('microbiology-redirect');
+    for(const kind of redirects) {
+      assert.deepEqual(requests.filter(request=>request.url==='/deliver/fulltext/micro/170/9/fixture.pdf?case='+kind),
+        [{url:'/deliver/fulltext/micro/170/9/fixture.pdf?case='+kind,method:'POST',body:'once=fixture'}]);
+      assert.deepEqual(requests.filter(request=>request.url.startsWith('/docserver/')&&request.url.endsWith('?case='+kind)),
+        ['microbiology-redirect','microbiology-redirect-twice'].includes(kind)
+          ?[{url:'/docserver/fulltext/micro/170/9/fixture.pdf?case='+kind,method:'GET',body:''}]:[]);
+    }
     assert.equal(requests.filter(request=>request.url.endsWith('/pdfft')).length,caseNames.includes('sciencedirect')||caseNames.includes('public')?1:0,'ScienceDirect original navigation must never be replayed');
     for(const kind of caseNames.filter(kind=>kind.startsWith('sciencedirect-reader'))) {
       assert.equal(requests.filter(request=>request.url==='/science/article/pii/S1234567890123456/pdfft?case='+kind).length,1);

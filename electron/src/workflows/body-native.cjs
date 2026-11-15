@@ -175,7 +175,10 @@ class OriginalNavigation {
       this.valid();
       if(!this.bound&&this.targetName&&!this.targetFrame)throw failure('document_changed');
       if(!this.bound&&this.targetFrame&&!sameFrame(this.targetFrame,details.frame))throw failure('document_changed');
-      if(!this.dispatched||!entry||!sameFrame(entry.frame,details.frame)||!this.acceptsURL(details.url)
+      const redirect=this.formRedirect;
+      const redirected=redirect&&redirect.source===source&&redirect.entry===entry&&redirect.id===details.id
+        &&redirect.url===details.url&&details.method==='GET';
+      if(!this.dispatched||!entry||!sameFrame(entry.frame,details.frame)||!(this.acceptsURL(details.url)||redirected)
         ||!['GET','POST'].includes(details.method)||this.primary)throw failure('document_changed');
       if(entry.request) {
         if(entry.request.id!==details.id)throw failure('document_changed');
@@ -203,7 +206,22 @@ class OriginalNavigation {
       this.valid();
       const status=details.statusCode;
       if([401,403,407,418,429].includes(status))throw new BrowserFailure('navigation','http_error',status);
-      if(status>=300&&status<400)return; // the same request ID may redirect
+      if(status>=300&&status<400) {
+        if(this.formRedirect?.entry===entry)throw failure('document_changed');
+        // R059's original POST can return its same-origin docserver URL. Only
+        // this observed 303 can carry the same native request/frame to that GET.
+        if(status===303&&!this.formRedirect&&this.method==='POST'&&details.method==='POST'
+          &&this.candidate.platform==='microbiology'&&details.url===this.requestURL) {
+          const location=Object.entries(details.responseHeaders || {}).find(([name])=>name.toLowerCase()==='location')?.[1];
+          if(location?.length===1) {
+            const source=new URL(details.url),next=new URL(location[0],source);
+            if(source.pathname.startsWith('/deliver/fulltext/')&&publicClueURL(next.href)&&!next.hash
+              &&next.origin===source.origin&&next.pathname===source.pathname.replace(/^\/deliver\//,'/docserver/'))
+              this.formRedirect={source:this.boundSource,entry,id:details.id,url:next.href};
+          }
+        }
+        return; // redirects still keep the exact original native request ID
+      }
       const contentType=Object.entries(details.responseHeaders || {}).find(([name])=>name.toLowerCase()==='content-type')?.[1];
       const type=contentType?.length===1?contentType[0].split(';')[0].trim().toLowerCase():'';
       if(type==='application/pdf'&&status>=200&&status<300)return;
