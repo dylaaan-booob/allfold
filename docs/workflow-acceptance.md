@@ -1,6 +1,9 @@
 # WF01–WF11 acceptance index
 
-WF11 is the final task, from main `229b6fb157bf2cb8d993c2cbb3b458240a507417`.
+WF11 was the final task, from main `229b6fb157bf2cb8d993c2cbb3b458240a507417`.
+It merged in [PR #122](https://github.com/dylaaan-booob/allfold/pull/122) at
+`c0599aa7aa590863b27a3923a3e782c0a35a5fa8` on 2026-11-15; the merged main's
+[Safety checks / safety](https://github.com/dylaaan-booob/allfold/actions/runs/43697788889) passed.
 This index records current callers and observable assertions, not 72 new tests.
 The execution ledger separates completed source/fixture checks from historical
 samples and remaining human conditions. No real account, personal profile/library
@@ -167,3 +170,25 @@ See [third-party sources](third-party.md) and [Electron NOTICE](../electron/NOTI
 Dependency versions/locks, native page/solver ownership, schema v5, no-clobber and
 all data-protection boundaries are retained. No automated report, environment,
 generated UI or private state is part of the source candidate.
+
+## Recovery issue closure and remaining external evidence
+
+[Issue #72](https://github.com/dylaaan-booob/allfold/issues/72) is complete in its
+implementation scope: [PR #76](https://github.com/dylaaan-booob/allfold/pull/76)
+merged bounded Provider/browser/PDF recovery and diagnostics, closing tickets
+#73–75. The retained navigation/reentry and Provider deadline/cooldown contracts
+are documented in [Document access](browser-documents.md) and [HTTP](http.md).
+Later WF tasks explicitly retired Translator, ordinary Completion and Zotero
+saving; their old acceptance entries are not pending current-product work.
+
+This closure does not establish universal external-service reliability. PR #76's
+historical 12-service batch reached 10 Opened, one WoS connection failure and one
+manual Needs attention; the intermittent disconnect cause remains undetermined,
+and that whole batch has not been revalidated on the merged WF11 main.
+[PR #107](https://github.com/dylaaan-booob/allfold/pull/107) recorded Optica clues
+but Radware HTML for its PDF candidates, without successful PDF-transfer evidence.
+These limit the corresponding remote access/download claims, not local library
+or Reader operation; they are not proof that the same failures persist on main.
+The accepted native cancellation risk (L), per-row human boundaries (H) and
+[source-only delivery](release.md#current-delivery) remain unchanged. No further
+refactoring phase or additional acceptance gate is introduced.
