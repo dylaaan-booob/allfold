@@ -23,7 +23,7 @@ async def drain_application(application):
             application.state.browser_task_lock.close_admission()
             application.state.workspace_tasks.close_admission()
     await asyncio.to_thread(close_admission)
-    workers = (application.state.workspace_tasks, application.state.run_coordinator, application.state.preprint_lookup,
+    workers = (application.state.workspace_tasks, application.state.run_coordinator,
                application.state.journal_cover_search, application.state.wos_coordinator, application.state.login)
     # Requests can still deliver bridge results while shutdown and joins run off
     # the receive loop. Repeated calls observe the same settled owners.

@@ -80,7 +80,7 @@ locked AnyIO [shared blocking portal](https://anyio.readthedocs.io/en/stable/thr
 
 ## Journal Run and native preprint APIs
 
-Run, the Info preprint lookup and independent collection attempts use owned
+Run and independent necessary collection attempts use owned
 clients over the shared HTTP policy and application-owned pacing. The application
 injects the same pacing state into each creation path; another Run, client or
 attempt does not reset the actual-origin spacing. Request and adapter caches stay
@@ -212,7 +212,7 @@ Login and Covers continue to require their captured workflow/request identities.
 Ordinary settings autosave preserves revision checks and retained drafts. An
 independent Browser owner no longer blocks unrelated patches. Foreground
 Run/WoS snapshot writers and conflicting controls return `TASK_ACTIVE`.
-Background collection and explicit Preprint permit unrelated ordinary input edits.
+Background collection permits unrelated ordinary input edits.
 An accepted registry-only access change reserves its affected scope, revokes old
 attempt authority and drains those captured tasks outside configuration locks
 before revalidating and saving; unrelated tasks continue. Saved access changes clean only captured old native
@@ -244,8 +244,8 @@ host epochs before external initialization; `register` uses that captured owner.
 Production Run registers the complete Document/API plan and ends after foreground
 cleanup, without waiting for Paper Futures. Each branch declares actual
 Providers/Service; its thread opens independent connection/client/cache scopes.
-The application shares pacing with Run and explicit Preprint without borrowing
-their snapshots, clients or cancellation signals.
+The application shares pacing with Run without borrowing its snapshots, clients
+or cancellation signals.
 
 `POST /api/papers/{paper_uuid}/collection/retry` retains CSRF and exact
 Workspace/Paper/attempt association. The current payload also carries a full
@@ -254,16 +254,9 @@ qualification, pending-only retry and the planned simplification are owned by
 [Workspace runtime](collection-runtime.md#explicit-retry), not a second HTTP policy.
 There is no public collection-start or batch-retry route.
 
-Explicit Preprint status uses
-`GET /api/papers/{paper_uuid}/preprint-lookup/state?workspace_id=...&request_id=...`.
-Workspace identity is required; an optional request ID selects the exact request.
-Start and cancel retain CSRF and Workspace/Paper identity, and cancel requires the
-captured request ID. Different Papers are independent. A repeated active start
-returns its existing operation; a new manual click does not queue behind another
-kind of Paper work. After actual cleanup, explicit repeat queries remain allowed
-without changing completed collection facts. The standalone Info operation is
-scheduled for retirement; necessary background Preprint evidence remains. See
-[Providers](providers.md#info-preprint-lookup).
+The standalone Info Preprint state/start/cancel routes are removed. Old paths
+receive the ordinary unmatched-API response. Necessary background evidence and
+existing read-only history remain; see [Providers](providers.md#preprint-evidence).
 
 Workspace Paper responses project durable `collection_status` and runtime
 `cleanup_pending`, with library revisions ordering collection and occupancy

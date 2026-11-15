@@ -324,7 +324,8 @@ class DiagnosticStore:
             os.close(descriptor)
 
     def _record(self, value):
-        if (not isinstance(value, dict) or not _enum(value.get('kind'), KINDS)
+        # Retired Preprint records are readable; begin() admits only current kinds.
+        if (not isinstance(value, dict) or not _enum(value.get('kind'), KINDS | {'preprint'})
                 or not _identifier(value.get('task_id')) or not _identifier(value.get('workflow_id'))
                 or not _identifier(value.get('runtime_id')) or not _time(value.get('started_at'))
                 or not _enum(value.get('outcome'), OUTCOMES | {'running'})

@@ -42,7 +42,7 @@ The Electron window minimum is 600 × 480 logical pixels. The Chromium fixtures 
 
 Workspace reads and edits the production [SQLite Paper library](paper-library.md).
 Candidate retains Journal filtering; Downloaded and Trash list actual Paper UUIDs.
-Identity-only records display reliable IDs and have no field/Preprint actions.
+Identity-only records display reliable IDs and have no field-edit actions.
 Updates with unchanged classification preserve selection, filter and Reader scroll.
 Download acceptance releases the short request lock; it does not hold
 `decisionPending` for the transfer. One refresh loop observes collection, download
@@ -53,9 +53,8 @@ returning correctly mounts that record again. Counts follow current body/metadat
 and exclusion, with Trash first. Historical completed without a body is not a
 download-button gate. Identity-only bodies retain open/locate; identity-only with
 no body has no fabricated Candidate or retry action.
-A stable Workspace UUID, persisted revision and response ordering reject late GET,
-Preprint and action results. Successful local actions apply the returned persisted
-record before any later read; failed responses do not move the row.
+A stable Workspace UUID, persisted revision and response ordering reject late GET
+and action results. Successful local actions apply the returned persisted record before any later read; failed responses do not move the row.
 
 | Area | Container behavior / compatibility | Acceptance boundary |
 | --- | --- | --- |
@@ -116,8 +115,10 @@ Journals manages followed journals. Reader shows the bibliographic source,
 ordinary date set and independent verified Preprint date. Info retains authors,
 publication date, reliable identities, source provenance and Preprint version-family
 proof. No Received/Accepted/Published columns or Enrich question buttons remain.
-The current Preprint query requires complete, unexcluded formal metadata and a
-valid primary DOI; DOI-free complete Papers retain reading and local field tools.
+The standalone Info Preprint query is retired, including its cancel and status
+controls. Opening, switching or closing Reader and refreshing Workspace start no
+query. DOI-free complete Papers retain reading and local field tools; saved
+Preprint dates, version evidence and sources remain visible.
 
 The layout DOM wrapper also exports one fresh Date/Abstract envelope from actual
 isolated Main→Browser→DocumentRuntime→preload execution, after normal work-page
@@ -135,7 +136,7 @@ them afterward. It adds no HTTP payload fields, UI controls or HTML rendering.
 Run result fixtures retain selected-source counts, failures and WoS batch/date
 hints. WF08 keeps foreground busy/Last Run separate from continuing Paper work.
 Collection status and single-Paper Retry use the shared Reader and server
-qualification; explicit Preprint requests are keyed by Workspace/Paper/request.
+qualification.
 Login/Prepare state changes refresh Retry qualification even when Paper and
 Workspace content revisions stay unchanged.
 Background revision updates patch changed Paper fields without rebuilding the

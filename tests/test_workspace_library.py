@@ -109,7 +109,6 @@ def test_corrupt_library_get_returns_error_without_overwrite(tmp_path):
 
 
 def test_workspace_projection_uses_saved_primary_doi_with_multiple_direct_aliases(tmp_path):
-    from allfold.application.preprint_lookup import require_lookup_doi
     from allfold.persistence.library_models import DirectIdentity
     from allfold.web.ui_next import paper_payload
     workspace = tmp_path / 'workspace'
@@ -121,8 +120,58 @@ def test_workspace_projection_uses_saved_primary_doi_with_multiple_direct_aliase
     projected, = load_workspace(workspace).inbox
     assert projected.paper_id == paper.id and projected.external_ids.doi == '10.5555/zzz'
     assert projected.identity_label == 'doi:10.5555/zzz'
-    assert require_lookup_doi(projected.record) == paper_payload(projected)['doi'] == '10.5555/zzz'
-    assert paper_payload(projected)['preprint_lookup_available']
+    assert paper_payload(projected)['doi'] == '10.5555/zzz'
+
+
+def test_saved_preprint_proof_reopens_without_queries_and_old_routes_are_unmatched(tmp_path, monkeypatch):
+    from datetime import datetime, timezone
+    import pytest
+    from fastapi.testclient import TestClient
+    from allfold.models import EvidenceDate, MetadataSource, ProviderRecordRef
+    from allfold.persistence.library_models import PreprintResult
+    from allfold.web.app import create_app
+    from electron_test_helpers import OfflineBridge
+    from library_application_helpers import create_paper, read_paper
+
+    url = 'https://arxiv.org/abs/2204.12345'
+    proof = EvidenceDate(kind='preprint', provider='arxiv', record_id='2204.12345',
+        year=2022, month=4, day=2, version='v1', version_family='arxiv:2204.12345',
+        first_version=True, publication_type='preprint', url=url)
+    relation = ProviderRecordRef(provider='arxiv', record_id='2204.12345', relation='preprint')
+    source = MetadataSource(provider='arxiv', record_id='2204.12345', url=url,
+        retrieved_at=datetime(2026, 1, 1, tzinfo=timezone.utc), role='supplement')
+    config, workspace, paper = create_paper(tmp_path, notes='Saved notes', abstract='Saved abstract',
+        ordinary_dates=('2026-01-02',), first_public_at='2022-04-02',
+        preprints=(PreprintResult(provider='arxiv', identifier='2204.12345', date='2022-04-03',
+            version='v2', url=url),), preprint_evidence=(proof,), preprint_relations=(relation,), sources=(source,))
+    body = workspace / 'Documents' / 'saved.pdf'
+    body.parent.mkdir()
+    body.write_bytes(b'%PDF-isolated-saved-body')
+    with PaperRepository.open(workspace) as repository:
+        paper = repository.complete_body(paper.token, BodyReference(relative_path='Documents/saved.pdf'))
+    monkeypatch.setattr('allfold.providers.provider_http.create_http_client',
+        lambda **_: pytest.fail('Reading saved evidence dispatched a Provider request'))
+    for _ in range(2):
+        app = create_app(config, electron_bridge=OfflineBridge(), diagnostics_root=tmp_path / 'logs')
+        with TestClient(app, base_url='http://localhost') as client:
+            snapshot = client.get('/api/ui-next/workspace').json()
+            item = snapshot['downloaded']['papers'][0]['paper']
+            assert item['id'] == str(paper.id) and item['first_public_at'] == '2022-04-02'
+            assert item['ordinary_dates'] == ['2026-01-02']
+            assert {entry['date'] for entry in item['preprints']} == {'2022-04-02', '2022-04-03'}
+            assert all(entry['url'] == url for entry in item['preprints'])
+            assert item['preprint_relations'] == [relation.model_dump(mode='json', exclude_none=True)]
+            assert item['notes'] == 'Saved notes' and item['abstract'] == 'Saved abstract' and item['body_present']
+            assert item['sources'][0]['url'] == url
+            for method, action in [('GET', 'state'), ('POST', 'start'), ('POST', 'cancel')]:
+                retired = client.request(method, f'/api/papers/{paper.id}/preprint-lookup/{action}')
+                unmatched = client.request(method, f'/api/papers/{paper.id}/unknown-operation')
+                assert retired.status_code == unmatched.status_code == 404
+                assert retired.json() == unmatched.json()
+        current = read_paper(workspace, paper.id)
+        assert current.metadata == paper.metadata and current.body == paper.body
+        assert current.identities == paper.identities and current.collection_status == paper.collection_status
+    assert body.read_bytes() == b'%PDF-isolated-saved-body'
 
 
 def test_trash_retains_authoritative_journal_group_until_metadata_is_cleared(tmp_path):

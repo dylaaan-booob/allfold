@@ -48,7 +48,7 @@ def test_retry_projection_and_http_share_exact_settled_paper_qualification(tmp_p
             items = [paper for group in snapshot['subjects'] for journal in group['journals'] for paper in journal['papers']]
             items += [entry['paper'] for entry in snapshot['downloaded']['papers']]
             return snapshot, items[0]
-        reservation = registry.reserve(paper.id, kind='legacy')
+        reservation = registry.reserve(paper.id)
         try:
             snapshot, occupied = projected()
             assert occupied['cleanup_pending'] and not occupied['collection']['retry_available']

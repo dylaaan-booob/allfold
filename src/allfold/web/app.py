@@ -55,7 +55,6 @@ from allfold.application.coordinators.journal_covers import JournalCoverSearch
 from allfold.providers.openalex import OpenAlexError
 from allfold.persistence.safe_write import CompareReadError
 from allfold.persistence.safe_write import ContentChangedError, WorkspaceOperationLock, TextWriteCommittedError
-from allfold.application.coordinators.preprint_lookup import PreprintLookup
 from allfold.application.coordinators.wos_coordinator import WoSCoordinator
 from allfold.application.coordinators.run_coordinator import CoordinatorStatus, RunCoordinator
 from allfold.web.settings_api import install_settings_api, settings_response, settings_error
@@ -85,13 +84,6 @@ from allfold.application.paper_fields import read_paper_fields, edit_paper_field
 from allfold.application.workspace import WorkspacePaper
 from allfold.persistence.paper_repository import LibraryError
 from allfold.web.ui_next import paper_payload
-
-
-class _PreprintLookupAction(BaseModel):
-    model_config = ConfigDict(extra='forbid')
-    csrf_token: str
-    workspace_id: UUID
-    request_id: str | None = None
 
 
 class _PaperFieldEdit(BaseModel):
@@ -254,8 +246,6 @@ def create_app(config_path: Path, *, electron_bridge: ElectronBridge, diagnostic
     app.state.body_downloads = BodyDownloadService(app.state.workspace_tasks, local_body=app.state.local_body)
     app.state.run_coordinator.workspace_tasks = app.state.workspace_tasks
     app.state.run_coordinator.collection_service = app.state.collection_service
-    app.state.preprint_lookup = PreprintLookup(resolved_config_path, app.state.browser_task_lock,
-        workspace_tasks=app.state.workspace_tasks)
     electron_bridge.access_pages_closed = app.state.login.invalidate_pages
     def page_limits():
         from allfold.config import WorkflowConfig
@@ -323,32 +313,6 @@ def create_app(config_path: Path, *, electron_bridge: ElectronBridge, diagnostic
     )
     app.mount("/static", _UIStaticFiles(directory=_STATIC_DIR), name="static")
 
-
-    @app.get('/api/papers/{paper_id}/preprint-lookup/state')
-    def preprint_lookup_state(paper_id: UUID, workspace_id: UUID, request_id: str | None = None):
-        try:
-            return JSONResponse(app.state.preprint_lookup.state(paper_id, request_id, workspace_id),
-                                headers={'Cache-Control': 'no-store'})
-        except (ConfigurationError, LibraryError, ValueError, OSError) as error:
-            return JSONResponse({'error': str(error)}, status_code=409)
-
-    @app.post('/api/papers/{paper_id}/preprint-lookup/start')
-    def preprint_lookup_start(paper_id: UUID, body: _PreprintLookupAction):
-        if not _csrf_valid(body.csrf_token, csrf_token):
-            return JSONResponse({'error': 'Invalid CSRF token'}, status_code=403)
-        try:
-            with app.state.settings_write_lock, app.state.reset_lock:
-                return JSONResponse(app.state.preprint_lookup.start(paper_id, body.workspace_id))
-        except (ConfigurationError, LibraryError, ValueError, OSError, ContentChangedError, CompareReadError) as error:
-            return JSONResponse({'error': str(error)}, status_code=409)
-
-    @app.post('/api/papers/{paper_id}/preprint-lookup/cancel')
-    def preprint_lookup_cancel(paper_id: UUID, body: _PreprintLookupAction):
-        if not _csrf_valid(body.csrf_token, csrf_token):
-            return JSONResponse({'error': 'Invalid CSRF token'}, status_code=403)
-        accepted = app.state.preprint_lookup.cancel(paper_id, body.request_id, body.workspace_id)
-        return JSONResponse({'accepted': True} if accepted else {'error': 'Preprint lookup is no longer active'},
-                            status_code=200 if accepted else 409)
 
     @app.get('/api/papers/{paper_id}/fields')
     def paper_field_snapshot(paper_id: UUID, workspace_id: UUID | None = None):

@@ -13,7 +13,7 @@ from allfold.providers.integrated import DISCOVERY_PROVIDERS, PROVIDERS
 
 
 def new_provider_pacing():
-    """Create one host pacing state; pass it to Run, Preprint and this factory."""
+    """Create one host pacing state shared by Run and independent clients."""
     return {'lock': Lock()}
 
 

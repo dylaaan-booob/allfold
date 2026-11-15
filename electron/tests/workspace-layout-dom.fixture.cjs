@@ -32,7 +32,7 @@ const paper=(i,status='candidate')=>({
   external_ids:{openalex:'W123'},indexed_terms:[{value:'statistics',kind:'topic',source:'openalex'}],
   sources:[{provider:'openalex',record_id:'W123',role:'discovery'}],
   abstract:('An isolated synthetic paragraph for reader scroll verification. '.repeat(12)+'\n\n').repeat(24),
-  authors:['Synthetic Author'],doi:i===0?null:'10.5555/layout-'+i,preprint_lookup_available:i!==0,discovered_at:'2026-10-01T00:00:00Z',status,
+  authors:['Synthetic Author'],doi:i===0?null:'10.5555/layout-'+i,discovered_at:'2026-10-01T00:00:00Z',status,
 });
 const records=journals.map((j,i)=>({key:j.issn,issn:j.issn,name:j.name,group:j.group,labels:[],cover:null,papers:[paper(i*2),paper(i*2+1)]}));
 const extractedPapers=process.argv[2]?JSON.parse(fs.readFileSync(process.argv[2],'utf8')).papers:[];
@@ -46,12 +46,12 @@ const run={active:false,snapshot:{status:'IDLE',provider:null},providers:Object.
 let loginState={active:false,phase:'idle',services:[]};
 const mimes={'.html':'text/html','.js':'text/javascript','.css':'text/css','.json':'application/json','.woff2':'font/woff2','.ttf':'font/ttf','.otf':'font/otf','.png':'image/png','.mp4':'video/mp4'};
 let rejectAutosave=false,holdWorkspaceResponse,holdPaperActionResponse,resolveInitialCAS,credentialState={ok:false,error:'cas_store_unreadable',configured:false,username:'',revision:'d'.repeat(64)};
-const credentialWrites=[];
-const preprintStarts=[],collectionRetries=[],fieldWrites=[],bodyActions=[];
-let holdFieldResponse,holdPreprintStart;
-let preprintState={phase:'Idle',saved_fields:[]};
+const credentialWrites=[],apiRequests=[],rendererErrors=[];
+const collectionRetries=[],fieldWrites=[],bodyActions=[];
+let holdFieldResponse;
 const server=http.createServer((req,res)=>{
   const route=new URL(req.url,'http://fixture').pathname;
+  if(route.startsWith('/api/'))apiRequests.push(route);
   const action=route.match(/^\/api\/ui-next\/papers\/([^/]+)\/(reject|restore|unexclude|clear-metadata)$/);
   if(action){
     const [,id,kind]=action;
@@ -63,7 +63,7 @@ const server=http.createServer((req,res)=>{
       workspace.downloaded.papers=workspace.downloaded.papers.filter(item=>item.paper.id!==id);
       entry.paper.excluded=true;entry.paper.status='trash';workspace.trash.papers.push(entry);
     }else if(kind==='clear-metadata'){
-      Object.assign(entry.paper,{title:null,metadata_present:false,abstract:null,authors:[],ordinary_dates:[],preprints:[],preprint_evidence:[],first_public_at:null,sources:[],indexed_terms:[],publication_date:null,preprint_lookup_available:false});
+      Object.assign(entry.paper,{title:null,metadata_present:false,abstract:null,authors:[],ordinary_dates:[],preprints:[],preprint_evidence:[],first_public_at:null,sources:[],indexed_terms:[],publication_date:null});
     }else {
       workspace.trash.papers=workspace.trash.papers.filter(item=>item.paper.id!==id);
       entry.paper.excluded=false;entry.paper.status='candidate';if(entry.paper.metadata_present)entry.journal.papers.push(entry.paper);
@@ -101,7 +101,7 @@ const server=http.createServer((req,res)=>{
   }
   const field=route.match(/^\/api\/papers\/([^/]+)\/(fields|fields\/reset|abstract\/input)$/);
   if(field){
-    const item=records.flatMap(journal=>journal.papers).find(paper=>paper.id===field[1]);
+    const item=[...records.flatMap(journal=>journal.papers),...workspace.downloaded.papers.map(entry=>entry.paper),...workspace.trash.papers.map(entry=>entry.paper)].find(paper=>paper.id===field[1]);
     const fields=()=>({workspace_id:workspace.workspace_id,snapshot_revision:workspace.revision,
       revision:JSON.stringify([item.abstract,item.authors,item.publication_date]),
       abstract:item.abstract,authors:item.authors,publication_date:item.publication_date});
@@ -117,37 +117,6 @@ const server=http.createServer((req,res)=>{
       const value={saved:true,workspace_id:workspace.workspace_id,revision:workspace.revision,paper:{...item},fields:fields()};
       const deliver=()=>send(value);
       if(holdFieldResponse){const hold=holdFieldResponse;holdFieldResponse=null;hold(deliver);}else deliver();
-    });return;
-  }
-  const preprint=route.match(/^\/api\/papers\/([^/]+)\/preprint-lookup\/(state|start|cancel)$/);
-  if(preprint){
-    const [,id,action]=preprint;
-    const send=(data,status=200)=>{res.writeHead(status,{'Content-Type':'application/json'});res.end(JSON.stringify(data));};
-    if(action==='state'){
-      send({workspace_id:workspace.workspace_id,revision:workspace.revision,
-        ...(preprintStarts.at(-1)?.id===id ? preprintState : {phase:'Idle',saved_fields:[]})});return;
-    }
-    let text='';req.on('data',chunk=>{text+=chunk;});req.on('end',()=>{
-      const body=JSON.parse(text);
-      const perform=()=>{
-        const item=records.flatMap(journal=>journal.papers).find(paper=>paper.id===id);
-        if(action==='start'){
-          preprintStarts.push({id,body});
-          preprintState={phase:'Running',request_id:'fixture-preprint',message:'Looking up…',saved_fields:[]};
-          if(id==='paper-2'){
-            item.sources.push({provider:'biorxiv',record_id:'10.1101/fixture:publication',role:'supplement'});
-            preprintState={...preprintState,phase:'Completed',message:'Preprint evidence saved',saved_fields:['sources']};
-          }
-          // Production reservations and metadata commits advance projection revisions.
-          item.revision++;workspace.revision++;
-          send({workspace_id:workspace.workspace_id,revision:workspace.revision,...preprintState});
-        }else if(id===preprintStarts.at(-1)?.id && body.request_id===preprintState.request_id){
-          preprintState={...preprintState,phase:'Cancelled',message:'Preprint lookup cancelled'};
-          item.revision++;workspace.revision++;
-          send({accepted:true});
-        }else send({error:'Unexpected preprint target'},409);
-      };
-      if(action==='start' && holdPreprintStart){const hold=holdPreprintStart;holdPreprintStart=null;hold(perform);}else perform();
     });return;
   }
   if(route==='/api/ui-next/settings/credentials'){
@@ -186,7 +155,7 @@ async function js(code){
 async function capture(name){if(process.env.ALLFOLD_LAYOUT_SCREENSHOTS){await wait(50);fs.mkdirSync(process.env.ALLFOLD_LAYOUT_SCREENSHOTS,{recursive:true});fs.writeFileSync(path.join(process.env.ALLFOLD_LAYOUT_SCREENSHOTS,name+'.png'),(await win.webContents.capturePage()).toPNG());}}
 async function ready(condition){
   for(let i=0;i<150;i++){if(await js(condition))return;await wait(50);}
-  const actual=await js(`({width:innerWidth,height:innerHeight,workspace:window.workspaceNavigation?.current(),preprintStatus:document.getElementById('preprint-lookup-status')?.textContent,arrayMode:document.getElementById('kept-view')?.dataset.sidebarMode,arrayWidth:document.getElementById('kept-view')?.getBoundingClientRect().width,journalMode:document.getElementById('s-journals-page')?.dataset.sidebarMode})`);
+  const actual=await js(`({width:innerWidth,height:innerHeight,workspace:window.workspaceNavigation?.current(),arrayMode:document.getElementById('kept-view')?.dataset.sidebarMode,arrayWidth:document.getElementById('kept-view')?.getBoundingClientRect().width,journalMode:document.getElementById('s-journals-page')?.dataset.sidebarMode})`);
   throw Error('UI readiness timeout: '+condition+'; native='+JSON.stringify(win.getBounds())+'; DOM='+JSON.stringify(actual));
 }
 async function size(width,height,condition){win.setSize(width,height);await ready(`innerWidth===${width} && (${condition})`);}
@@ -213,7 +182,7 @@ app.whenReady().then(async()=>{
       firstCAS=false;return new Promise(resolve=>{resolveInitialCAS=()=>resolve(credentialState);});
     });
     win=new BrowserWindow({width:1200,height:800,show:false,webPreferences:{sandbox:true,contextIsolation:true,backgroundThrottling:false,partition:'layout-test',preload:path.join(__dirname,'workspace-layout-preload.fixture.cjs')}});
-    win.webContents.on('console-message',event=>{if(event.level==='error')console.error('RENDERER',event.message,event.lineNumber,event.sourceId);});
+    win.webContents.on('console-message',event=>{if(event.level==='error'){rendererErrors.push(event.message);console.error('RENDERER',event.message,event.lineNumber,event.sourceId);}});
     await win.loadURL(`http://127.0.0.1:${server.address().port}/`);
     await ready("window.uiWorkspace?.ready() && !document.getElementById('array-candidates').disabled && document.querySelectorAll('#s-journals [data-journal]').length===24");
     for(const actual of extractedPapers) {
@@ -401,7 +370,7 @@ app.whenReady().then(async()=>{
     workspace.downloaded.papers=workspace.downloaded.papers.filter(entry=>entry.paper.id!==bodyPaper.id);
     Object.assign(bodyPaper,{title:null,abstract:null,notes:null,authors:[],ordinary_dates:[],preprints:[],preprint_evidence:[],
       publication_date:null,first_public_at:null,sources:[],indexed_terms:[],author_keywords:[],journal_issns:[],
-      journal:null,conference:null,publication_type:null,preprint_lookup_available:false,
+      journal:null,conference:null,publication_type:null,
       metadata_present:false,excluded:true,status:'trash',cleanup_pending:true});
     workspace.trash.papers.push({paper:bodyPaper,journal:records[0]});bodyPaper.revision++;workspace.revision++;
     await js('window.uiWorkspace.refresh()');
@@ -487,40 +456,11 @@ app.whenReady().then(async()=>{
     Object.assign(records[0].papers[0],{collection_status:'completed',collection:{status:'completed',attempt:2,retry_available:false}});
     // No explicit refresh: Paper polling continues independently after the foreground is idle.
     await ready("document.getElementById('paper-collection-status').textContent==='采集完成' && document.getElementById('paper-collection-retry').hidden");
-    if(preprintStarts.length)throw Error('Viewing results automatically started a preprint lookup');
     await check(()=>{
       const $=id=>document.getElementById(id);
-      if($('array-api-completion-open') || $('api-completion-dialog') || $('api-completion-open'))throw Error('Retired completion UI is still present');
+      if($('array-api-completion-open') || $('api-completion-dialog') || $('api-completion-open') || $('paper-preprint-lookup'))throw Error('Retired action UI is still present');
       if($('array-sidebar').hidden)document.querySelector('#kept-view [data-sidebar-view=info]').click();
-      if($('paper-preprint-lookup').closest('[hidden]') || !$('preprint-lookup-start').disabled ||
-         !$('preprint-lookup-status').textContent.includes('正式论文 DOI'))throw Error('DOI-free Paper can dispatch a lookup or lacks a reason');
       window.workspaceArray.openPaper('paper-1');
-    });
-    await ready("document.getElementById('paper-detail').dataset.paperId==='paper-1' && !document.getElementById('preprint-lookup-start').disabled");
-    await js("document.getElementById('preprint-lookup-start').click()");
-    await ready("!document.getElementById('preprint-lookup-cancel').hidden");
-    await capture('paper-preprint-lookup');
-    await check(()=>{
-      window.workspaceArray.openPaper('paper-0');
-      if(!document.getElementById('preprint-lookup-cancel').hidden)throw Error('A different Paper acquired the active lookup');
-      window.workspaceArray.openPaper('paper-1');
-      document.getElementById('preprint-lookup-cancel').click();
-    });
-    await ready("document.getElementById('preprint-lookup-status').textContent==='Preprint lookup cancelled'");
-    if(preprintStarts.length!==1 || preprintStarts[0].id!=='paper-1' || preprintStarts[0].body.workspace_id!==workspace.workspace_id)throw Error('Lookup dispatch was not limited to the selected Paper');
-    let deliverPreprintStart;
-    const preprintStartHeld=new Promise(resolve=>{holdPreprintStart=deliver=>{deliverPreprintStart=deliver;resolve();};});
-    await check(()=>{
-      window.workspaceArray.openPaper('paper-2');
-      document.getElementById('preprint-lookup-start').click();
-    });
-    await preprintStartHeld;
-    // Another Paper's poll may refresh the old projection before this admission commits.
-    await js('window.uiWorkspace.refresh()');
-    deliverPreprintStart();
-    await ready("document.getElementById('preprint-lookup-status').textContent==='Preprint evidence saved' && document.getElementById('paper-providers').textContent.includes('10.1101/fixture:publication')");
-    if(preprintStarts.length!==2 || preprintStarts[1].id!=='paper-2')throw Error('Second lookup used the wrong Paper');
-    await check(()=>{
       window.workspaceArray.openPaper('paper-0');
       document.querySelector('#array-sidebar [data-sidebar-close]').click();
     });
@@ -883,7 +823,7 @@ $('s-run-overview-open').click();
     const pendingReject=new Promise(resolve=>{holdPaperActionResponse=resolve;});
     await js("document.getElementById('reject-paper').click()");
     const releaseReject=await pendingReject;
-    await js("uiNext.request('/api/papers/paper-1/preprint-lookup/state')");
+    await js("uiNext.request('/api/papers/paper-1/fields')");
     releaseReject();
     await ready("!window.inboxKept.candidates().some(entry=>entry.paper.id==='paper-1') && window.inboxKept.entries('trash').some(entry=>entry.paper.id==='paper-1')");
     await js("document.getElementById('array-trash').click()");
@@ -897,7 +837,7 @@ $('s-run-overview-open').click();
     await js("document.getElementById('array-trash').click(),window.workspaceArray.openPaper('paper-0')");
     await ready("!document.getElementById('clear-paper-metadata').disabled");
     await js("document.getElementById('clear-paper-metadata').click()");
-    await ready("document.getElementById('view-paper-title').textContent==='openalex: W123' && document.getElementById('paper-preprint-lookup').hidden && document.getElementById('paper-dev-tools').hidden");
+    await ready("document.getElementById('view-paper-title').textContent==='openalex: W123' && document.getElementById('paper-dev-tools').hidden");
     await check(()=>{
       if(document.getElementById('paper-date-evidence').children.length || [...document.querySelectorAll('#paper-dates dd')].some(node=>node.textContent!=='—'))throw Error('Cleared metadata reappeared');
     });
@@ -933,6 +873,8 @@ $('s-run-overview-open').click();
       const journal=window.inboxKept.entries('trash').find(entry=>entry.paper.id==='paper-9').journal;
       if(journal.source_type!=='unmapped' || journal.issn!==null || journal.group!==null)throw Error('Cleared Paper retained its former Journal grouping');
     });
+    if(apiRequests.some(route=>route.includes('/preprint-lookup/')))throw Error('Reader lifecycle called a retired query API');
+    if(rendererErrors.length)throw Error('Renderer errors: '+rendererErrors.join(' | '));
     console.log('LAYOUT DOM PASS');
   }catch(error){console.error(error.stack);process.exitCode=1;}
   finally {ipcMain.removeHandler('layout:cas-status');win?.destroy();server.close();fs.rmSync(temp,{recursive:true,force:true});app.exit(process.exitCode || 0);}

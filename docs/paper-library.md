@@ -1,7 +1,8 @@
 # SQLite Paper library
 
 `Workspace/papers.sqlite` is the only production Paper store. Current Run/WoS,
-Workspace/Reader/search, local fields, Preprint and Trash share `PaperRepository`.
+Workspace/Reader/search, local fields, background evidence and Trash share
+`PaperRepository`.
 Uninitialized read-only Workspace views remain empty without creating a database;
 the first Run explicitly initializes one. Corruption, unsafe paths, unsupported
 schemas and database failures are errors, never an empty or recreated library.
@@ -116,7 +117,7 @@ attempt after Reject/Restore, without renewing execution authority. These cannot
 write content or touch a later attempt/lifetime. Successful facts and committed
 fields survive failure, cancellation and explicit retry. Metadata clearing and
 body completion reject active collection in their own transaction. The application
-also serializes download/explicit-Preprint occupation and admission under one Paper gate.
+also serializes discovery/body occupation and admission under one Paper gate.
 
 `open()` never interrupts tasks. The Workspace lifecycle owner explicitly calls
 `interrupt_collections` before first admission; ordinary worker/reader connections
@@ -197,7 +198,7 @@ own repository, client/cache scope and native owner; thread checking remains
 enabled. Actual client/native/page lifetime determines resource ownership; current
 terminal-write/fault handling and its planned correction belong to the runtime guide.
 The [runtime contract](collection-runtime.md) documents Run admission, original
-snapshot/rebuild qualification, deferred intent behind manual work, exact scoped
+snapshot/rebuild qualification, exact scoped
 maintenance and pending-only explicit retry.
 
 The earlier Reader pipeline fixture remains component evidence for API-first,
@@ -251,7 +252,7 @@ metadata removes every discovery fact. Identity, body and manual text/date/
 Preprint contracts remain independent. The complete rules and evidence are in
 the [adopted discovery specification](pdf-source-discovery.md).
 
-HTTP handlers and Run/Preprint workers open, use and close repositories in their
+HTTP handlers and Run/collection workers open, use and close repositories in their
 own execution thread. Network/browser waits never occur in a database transaction.
 Workspace/database identities and short commit eligibility prevent results from
 writing after Reset, path replacement or output-directory switching. Shutdown
@@ -277,7 +278,7 @@ Workspace owns branch resources after foreground completion. Public single-Paper
 retry uses the same eligibility service as its projection and preserves successful
 branch facts; public Download uses one independent body reservation and the same
 lazy discovery core. Local file services do not acquire download/Prepare authority. Application/API fixtures exercise
-production adoption, fields, Preprint and recycling; Electron fixtures exercise
+production adoption, fields, saved Preprint evidence and recycling; Electron fixtures exercise
 projections, response ordering and the existing layout. None establishes real
 provider, institution, user-library or actual-PDF acceptance.
 

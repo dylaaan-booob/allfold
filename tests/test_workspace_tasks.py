@@ -51,39 +51,6 @@ def test_host_binds_existing_lifetime_once_and_never_creates_missing_library(tmp
         host.shutdown(); host.join()
 
 
-def test_manual_claim_and_deferred_collection_share_original_tokens_until_actual_release(tmp_path):
-    config, workspace, paper = library(tmp_path)
-    host = WorkspaceTaskHost(config)
-    claim = None
-    try:
-        registry = host.current()
-        claim = registry.reserve(paper.id, kind='legacy', expected_token=paper.token, cancel=lambda: None)
-        args = dict(direct_ids=ExternalIds(doi='10.5555/host'), metadata=paper.metadata,
-                    branches=(BranchSpec('date', lambda context: MetadataDelta(ordinary_dates=('2026-11',))),))
-        task = registry.submit(**args)
-        assert registry.submit(**args) is task
-        assert task.waiting_on is claim and not task.future.done()
-        with PaperRepository.open(workspace) as repository:
-            assert repository.get(paper.id).collection_status == 'queued'
-            # The accepted manual operation retains its exact original write authority.
-            repository.merge_metadata(claim.token, MetadataDelta(abstract='Manual result'))
-        claim.guard()
-        with pytest.raises(InvalidPaperState):
-            registry.reserve(paper.id, kind='download')
-        with pytest.raises(InvalidPaperState):
-            registry.reserve(paper.id, kind='legacy', expected_token=paper.token, cancel=lambda: None)
-        assert host.cleanup_pending(paper.id, paper.workspace_id)
-        registry.release(claim)
-        finished = task.future.result(3)
-        assert finished.collection_status == 'completed'
-        assert finished.metadata.abstract == 'Manual result'
-        assert finished.metadata.ordinary_dates == ('2026-11',)
-        assert not host.cleanup_pending(paper.id, paper.workspace_id)
-    finally:
-        if claim is not None and not claim.released:
-            registry.release(claim)
-        host.shutdown(); host.join()
-
 
 def test_app_projects_queued_running_cleanup_and_rejects_before_worker_finishes(tmp_path):
     from fastapi.testclient import TestClient
@@ -199,44 +166,6 @@ def test_delayed_http_reject_cannot_cancel_restored_paper_retry(tmp_path, monkey
         finally:
             finish_old.set(); finish_retry.set(); resume_reject.set()
 
-
-def test_preprint_claim_survives_client_cleanup_and_submission_failure_rolls_back(tmp_path):
-    from allfold.application.browser_runtime import BrowserTaskLock
-    from allfold.application.coordinators.preprint_lookup import PreprintLookup
-    from test_preprint_lookup import create_paper
-    config, workspace, paper = create_paper(tmp_path)
-    entered, cleaning, finish = threading.Event(), threading.Event(), threading.Event()
-    class Client:
-        def __init__(self, *args, **kwargs): pass
-        def __enter__(self): return self
-        def lookup_published_preprints(self, doi):
-            entered.set()
-            return []
-        def __exit__(self, *args):
-            cleaning.set()
-            assert finish.wait(3)
-    host = WorkspaceTaskHost(config)
-    lookup = PreprintLookup(config, BrowserTaskLock(), client_factory=Client, workspace_tasks=host)
-    try:
-        lookup.start(paper.id, paper.workspace_id)
-        assert entered.wait(2) and cleaning.wait(2)
-        registry = host.current()
-        with pytest.raises(InvalidPaperState):
-            registry.reserve(paper.id)
-        assert host.cleanup_pending(paper.id, paper.workspace_id)
-        finish.set(); lookup.join()
-        assert not host.cleanup_pending(paper.id, paper.workspace_id)
-        with PaperRepository.open(workspace) as repository:
-            assert repository.get(paper.id).collection_status == 'not_started'
-        registry._scheduler.close()
-        with pytest.raises(RuntimeError, match='closed'):
-            lookup.start(paper.id, paper.workspace_id)
-        lookup.join()
-        assert not host.cleanup_pending(paper.id, paper.workspace_id)
-        claim = registry.reserve(paper.id)
-        registry.release(claim)
-    finally:
-        finish.set(); lookup.shutdown(); lookup.join(); host.shutdown(); host.join()
 
 
 def test_actual_application_drain_waits_client_and_native_terminal_before_factory_close(tmp_path):
@@ -640,39 +569,6 @@ def test_provider_key_change_drains_only_declared_provider_attempts(tmp_path):
         finally:
             release.set(); finish_other.set()
 
-
-def test_preprint_cleanup_exception_preserves_occupancy_and_refuses_maintenance(tmp_path):
-    from allfold.application.browser_runtime import BrowserTaskLock
-    from allfold.application.coordinators.preprint_lookup import PreprintLookup
-    from allfold.application.decisions import apply_paper_action
-    from test_preprint_lookup import create_paper
-    config, workspace, paper = create_paper(tmp_path)
-    class BrokenClose:
-        def __init__(self, *args, **kwargs): pass
-        def __enter__(self): return self
-        def lookup_published_preprints(self, doi): return []
-        def __exit__(self, *args): raise RuntimeError('Synthetic unconfirmed client close')
-    host = WorkspaceTaskHost(config)
-    lookup = PreprintLookup(config, BrowserTaskLock(), client_factory=BrokenClose, workspace_tasks=host)
-    lookup.start(paper.id, paper.workspace_id)
-    lookup.join()
-    registry = host.current()
-    assert lookup.state(paper.id)['phase'] == 'Failed'
-    assert host.cleanup_pending(paper.id, paper.workspace_id)
-    assert registry.faults[-1]['reason'] == 'RuntimeError'
-    with pytest.raises(InvalidPaperState):
-        registry.reserve(paper.id)
-    with pytest.raises(InvalidPaperState):
-        apply_paper_action(workspace, paper.workspace_id, paper.id, 'clear-metadata', workspace_registry=registry)
-    with PaperRepository.open(workspace) as repository:
-        assert repository.get(paper.id).collection_status == 'not_started'
-    change = host.begin_change(whole=True)
-    with pytest.raises(RuntimeError, match='settled'):
-        host.drain_change(change)
-    host.finish_change(change)
-    lookup.shutdown(); host.shutdown()
-    with pytest.raises(RuntimeError, match='settled'):
-        host.join()
 
 
 def test_workspace_get_does_not_initialize_or_interrupt_a_late_appearing_library(tmp_path):

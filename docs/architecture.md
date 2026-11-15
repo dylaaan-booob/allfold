@@ -35,7 +35,7 @@ Main starts one Python process. The HTTP origin remains loopback-only on port 18
 | `electron/src/workflows/` | Login, Service preparation, Covers and WoS native page operations |
 | `electron/src/preload/`, `native-ui/` | Restricted capabilities and local native-window UI |
 
-Models, configuration definitions, identifiers and query primitives remain shared Python modules. Application code does not depend on Web adapters; its BrowserGateway exposes connected/execute and exact cancel_workflow/cancel_task interfaces. ElectronBridge adapts it to transport. Each Request ID owns its operation context, progress, cancellation and Solver replies, page claims and terminal result. BrowserTaskLock admits explicit shared saved-Service data use while keeping overlapping controls and exact physical Page claims exclusive. Login, Covers and WoS each retain one active coordinator state; Browser admission is separate from the Workspace collection registry. Native operations settle before their Futures release ownership. WoS keeps its captured workflow/task loan across Query→Export gaps; a finally-issued release_workflow_pages maintenance request releases that same loan only after native settlement, including cancellation and input loss. Shutdown stops admission and drains Run, Preprint, WoS, Login, Covers and the Workspace host before closing common client resources.
+Models, configuration definitions, identifiers and query primitives remain shared Python modules. Application code does not depend on Web adapters; its BrowserGateway exposes connected/execute and exact cancel_workflow/cancel_task interfaces. ElectronBridge adapts it to transport. Each Request ID owns its operation context, progress, cancellation and Solver replies, page claims and terminal result. BrowserTaskLock admits explicit shared saved-Service data use while keeping overlapping controls and exact physical Page claims exclusive. Login, Covers and WoS each retain one active coordinator state; Browser admission is separate from the Workspace collection registry. Native operations settle before their Futures release ownership. WoS keeps its captured workflow/task loan across Query→Export gaps; a finally-issued release_workflow_pages maintenance request releases that same loan only after native settlement, including cancellation and input loss. Shutdown stops admission and drains Run, WoS, Login, Covers and the Workspace host before closing common client resources.
 
 Journal lookup and remote fallback belong to the application layer; persistence only reads the local Registry. WoS export parsing continues to reuse safe file-reading helpers.
 
@@ -107,7 +107,7 @@ responses acknowledge the submitted snapshot without replacing later edits.
 Server-side admission coordinates writes with task starts, retaining the existing
 Compare-and-Write and Workspace lock protections. Active tasks continue using
 their captured inputs. Foreground Run/WoS snapshot writers currently keep ordinary
-edits Pending until settlement; independent Preprint uses its Paper reservation, and independent Browser owners allow unrelated input,
+edits Pending until settlement; independent Browser owners allow unrelated input,
 Journal and Service edits. A change overlapping an executing Service waits for its
 owner to settle. Saved access changes invalidate captured old preparation/authentication
 keys and await their scoped native cleanup outside the configuration write lock.
@@ -151,7 +151,7 @@ labels. Unassigned and shared pages use explicit roles and recorded provenance.
 The directory uses the shared layout controller for flyout size, focus and scroll.
 Grouping grants no task, document or authentication authority.
 
-Archive availability and fullscreen task presentation are local UI preferences, outside YAML Save and business SQLite. Archive defaults disabled while its existing resources and layout preference remain available. Legacy Paper links resolve against the current ARRAY Candidate/Downloaded/Trash projection or report a missing Paper. Login, Discover and Preprint keep their existing coordinators. Discover captures its display preference at start. Login retains their progress and controls in Workflows independently of Browser visibility.
+Archive availability and fullscreen task presentation are local UI preferences, outside YAML Save and business SQLite. Archive defaults disabled while its existing resources and layout preference remain available. Legacy Paper links resolve against the current ARRAY Candidate/Downloaded/Trash projection or report a missing Paper. Login and Discover keep their existing coordinators. Discover captures its display preference at start. Login retains their progress and controls in Workflows independently of Browser visibility.
 
 ## Resources and third-party code
 
@@ -187,7 +187,7 @@ The two application-level databases live outside Workspace; the independent Pape
 The Python application process owns Provider cooldowns across clients, keyed by
 actual HTTP origin and authentication context. Short-lived clients retain active
 cooldowns until they expire or the process exits. Application-owned pacing is
-injected into current Run, manual Preprint and independent attempt clients;
+injected into current Run and independent attempt clients;
 request/response caches and mutable client state remain operation-local.
 
 Provider adapters emit operation-local `ProviderWorkEvidence`; canonicalization groups
@@ -235,24 +235,14 @@ records, complete/partial capability facts and required purposes. They transfer
 immutable evidence, never Run clients/caches or replay callbacks. Base metadata
 cannot seal partial native proof; truly complete foreground proof may be reused.
 
-The Info Preprint coordinator tracks independent Workspace/Paper/request
-operations and verifies native bioRxiv/medRxiv publication and version responses.
-It uses the registry's bounded scheduler and original Paper reservation/token,
-without a Run slot or full Run input snapshot. Network work holds no write lock.
-The guarded commit checks metadata/operation and narrow Provider eligibility
-before merging proof. Explicit repeat queries do not modify completed collection
-facts. A first collection intent can wait behind an already accepted query;
-actual client/repository/owner cleanup makes it ready. New manual clicks do not
-queue behind other work on the same Paper.
-
 Ordinary dates are independent normalized month/day sets. Bibliographic
 publication date retains its explicit source. Preprint evidence preserves version
 families, verified first-version proof and unresolved relations; it never becomes
 a formal direct identity or an ordinary date solely through association. Reader
 and Info display these new library projections without old event/source columns
 or active Enrich buttons. Production collection uses Document and necessary API
-branches. Info's standalone Preprint operation is scheduled for retirement while
-background necessary proof remains; see [Providers](providers.md#info-preprint-lookup).
+branches. Info's standalone query is retired; saved proof and read-only historical
+results remain. See [Providers](providers.md#preprint-evidence).
 
 ## Workspace collection runtime
 
@@ -270,7 +260,7 @@ queued collection admission commit together before registration. Parent and leaf
 schedulers permit independent Paper and same-Paper branch execution. Each leaf
 owns its thread-confined repository, client/cache scope and native identity.
 
-One Paper gate coordinates collection, body work, explicit Preprint and destructive
+One Paper gate coordinates collection, body work and destructive
 local actions. Run cancellation does not cancel transferred Paper tasks; reader
 selection has no ownership effect. Startup marks interrupted attempts without
 queue/network replay. Retry preserves successful branch facts. Current full-token

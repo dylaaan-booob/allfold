@@ -30,7 +30,6 @@
   <script defer src="paragraph-layout.js"></script>
   <script defer src="assets/vendor/cropperjs-1.7.0/cropper.min.js"></script>
   <script defer src="paper-dates.js"></script>
-  <script defer src="preprint-lookup.js"></script>
   <script defer src="app.js"></script>
   <script defer src="workbench.js"></script>
   <script type="module" src="run.js"></script>
@@ -177,11 +176,6 @@
       <div class="sidebar-heading"><span>INFO</span><button data-sidebar-close aria-label="Close Info">×</button></div>
       <div class="array-context-scroll sidebar-scroll" data-functional-view="info">
       <section id="array-journal-profile"><h2 id="array-journal-name"></h2><dl class="array-profile"><div><dt>ISSN</dt><dd id="array-journal-issn"></dd></div><div><dt>eISSN</dt><dd id="array-journal-eissn"></dd></div><div><dt>SUBJECT</dt><dd id="array-journal-subject"></dd></div><div><dt>LABEL</dt><dd id="array-journal-labels"></dd></div></dl></section>
-      <div id="paper-preprint-lookup" hidden>
-        <button id="preprint-lookup-start" class="s-button" type="button" aria-describedby="preprint-lookup-status">查询关联预印本</button>
-        <button id="preprint-lookup-cancel" class="s-button" type="button" hidden>取消查询</button>
-        <p id="preprint-lookup-status" role="status" aria-live="polite" hidden></p>
-      </div>
       <div id="array-candidate-infos" class="array-paper-infos"></div>
 
       <div id="array-kept-infos" class="array-paper-infos"></div>

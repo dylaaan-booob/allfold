@@ -589,12 +589,11 @@ def test_final_database_failure_cleans_output_without_fallback_or_success(tmp_pa
     finally:host.shutdown();host.join()
 
 
-@pytest.mark.parametrize('kind',['legacy','download'])
-def test_mutually_exclusive_reservations_and_submission_failure_settle_attempt(tmp_path,kind,monkeypatch):
+def test_mutually_exclusive_reservations_and_submission_failure_settle_attempt(tmp_path,monkeypatch):
     from allfold.application.body_downloads import submit_body_download
     host,workspace,paper,bridge,candidate=application_host(tmp_path)
     try:
-        registry=host.current();other=registry.reserve(paper.id,kind=kind)
+        registry=host.current();other=registry.reserve(paper.id)
         with pytest.raises(Exception,match='owns'):submit_body_download(host,paper,candidates=(candidate,))
         registry.release(other)
         with monkeypatch.context() as patch:

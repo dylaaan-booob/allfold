@@ -27,13 +27,12 @@ Admission uses the current host, Paper gate and bounded scheduler:
 | A current body exists | Capture its local-file qualification before candidate construction, Prepare or new-download checks. Existing identity-only and Trash bodies can be read locally. |
 | A real body owner is queued, running or still cleaning up | Return its original task/attempt, progress and deadline; do not change sources, Service or writer. |
 | Full unexcluded metadata, no body and no conflicting work or cleanup | Recheck the captured generations/observed attempt, resolve actual access and admit one body attempt. A complete idle `not_started` collection needs no invented completed-history prerequisite. |
-| Durable collection intent/queued/running work, manual Preprint, read-only discovery or unsettled cleanup | Refuse new body work until actual settlement. No-worker-in-memory is not an eligibility shortcut. |
+| Durable collection intent/queued/running work, read-only discovery or unsettled cleanup | Refuse new body work until actual settlement. No-worker-in-memory is not an eligibility shortcut. |
 | Failed/cancelled/interrupted download explicitly retried | First dispose only recorded, proven old output; then create a new attempt and run applicable sources from the start. Completed metadata is not recollected. |
 | Excluded or metadata-free Paper without a body | Do not start a new download, restore content or prepare access. |
 
-`body` reservations remain distinct from read-only discovery's `download` and
-manual Preprint's `legacy` reservations. Production Download does not nest a
-read-only reservation inside its body owner. A matching new Run reuses the UUID
+`body` reservations remain distinct from read-only discovery's `download`
+reservations. Production Download does not nest a read-only reservation inside its body owner. A matching new Run reuses the UUID
 and current facts without registering collection intent that revokes the body
 attempt. Foreground Run cancellation and reader selection do not own the body.
 

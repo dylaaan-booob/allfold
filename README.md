@@ -25,11 +25,12 @@ Setup installs locked dependencies and builds the UI. It creates a missing local
 2. In **Workflows → Login**, authenticate CARSI once and prepare every saved Access Service. Manual Services offer a Visit action. Complete verification in the corresponding Browser group while the task waits. Temporary pages close when the task ends; if a Service still needs attention, retry Visit or Login as needed. Select **Manual confirmation of login** only after confirming all saved Services are available.
 3. In **Workflows → Discover**, set keywords and publication months, then select PubMed, Web of Science and OpenAlex as needed. WoS uses its prepared Service page when available. After manual confirmation without a prepared page, Discover opens the official WoS query page in the shared Browser session. API discovery continues if WoS needs Login. Run resolves necessary direct identities, establishes readable basic Papers and registers their complete collection plans. Workspace continues collection after Run finishes, while another Run can start. See [Provider roles and query limits](docs/providers.md).
 4. Review **Candidate**, **Downloaded** and **Trash** in **Workspace / ARRAY**. Reject persists exclusion and moves the Paper to Trash. Restore keeps its UUID and existing content. In Trash, clearing metadata removes bibliography, dates, abstract, sources and notes while retaining reliable identities, exclusion and any body association. An identity-only entry can be unexcluded locally; only a later actual Run hit rebuilds its metadata.
-5. Read Papers while their dates, abstract, Preprint proof and collection state update. Retry an eligible failed/cancelled Paper after its resources finish cleaning up. In **Info**, explicitly query linked preprints for a complete, unexcluded formal article; different Papers have independent requests. Reader displays the ordinary date set and independent verified Preprint date. Developer Mode retains local field clearing and empty-abstract input.
+5. Read Papers while their dates, abstract, Preprint proof and collection state update. Retry an eligible failed/cancelled Paper after its resources finish cleaning up. Reader displays the ordinary date set and independent verified Preprint date. Developer Mode retains local field clearing and empty-abstract input.
 6. Select **Download** for one eligible Candidate; its independent task discovers sources and uses a reusable Session stream or the qualified original browser response while the reader stays usable. Cancel addresses that exact attempt. Only file publication and SQLite completion move it to Downloaded. Open or locate an existing body locally, including identity-only and Trash entries. Trash can independently delete the PDF after this Paper's work finishes; metadata and exclusion remain. Confirmed absence clears only its current association; permission/system failures preserve it.
 
 `Workspace/papers.sqlite` is the sole production Paper store. Run/WoS, Reader,
-search, local edits, Preprint and Trash share the same repository. An unopened,
+search, local edits, background evidence collection and Trash share the same
+repository. An unopened,
 uninitialized Workspace reads as empty without silently creating a library; the
 first Run initializes it explicitly. Corrupt or unsupported libraries report an
 error. Paper storage uses schema v5 with transactional forward changes from exactly valid v4 and the supported v3 entry path; retired and unknown formats remain refused. Existing body provenance remains unknown rather than invented.
@@ -40,7 +41,7 @@ completed Papers are not recollected, and failed/cancelled Papers require explic
 single-Paper retry. Stable direct identities also support DOI-free Papers.
 
 Keep, Import to Zotero, Last Import and active webpage Enrich are retired.
-Workspace owns bounded collection and explicit Preprint operations across Runs.
+Workspace owns bounded collection across Runs.
 Public single-Paper Download/Cancel and local body operations use the shared
 [Session/file completion service](docs/body-downloads.md). Original-response saving
 retains the documented [native cancellation limitation](docs/body-downloads.md#native-output-and-accepted-cancellation-risk):
@@ -80,8 +81,10 @@ trigger generic Completion requests.
 PDF discovery follows the [P1–P5 source rules](docs/pdf-source-discovery.md).
 Candidates are not completed bodies; public Download uses the shared
 [body service](docs/body-downloads.md) for transfer, publication and local files.
-Info's standalone Preprint query still exists, but is scheduled for retirement;
-necessary background Preprint evidence collection remains. See [Providers](docs/providers.md#info-preprint-lookup).
+Info's standalone Preprint query is retired. Necessary background relationship
+and native-version evidence collection remains; opening a Paper starts no query.
+Saved Preprint proof and sources remain visible, and existing Preprint History
+records remain readable and exportable. See [Providers](docs/providers.md#preprint-evidence).
 
 ## Local data and privacy
 

@@ -1158,7 +1158,6 @@ function renderPaper(previous=null) {
   text('paper-providers',(paper.sources || []).map(source=>`${source.provider}${source.role?` (${source.role})`:''}: ${source.record_id}${source.version?` · ${source.version}`:''}`).join('; ') || '—');
   text('paper-doi',paper.doi || 'DOI unavailable');
   if (paper.doi) $('paper-doi').href=`https://doi.org/${encodeURI(paper.doi)}`; else $('paper-doi').removeAttribute('href');
-  window.allfoldPreprintLookup.select(readerContext ? paper : null);
   detail.dataset.paperId=paper.id;
   detail.classList.toggle('abstract-locked', !paper.abstract?.trim());
   if (changed) detail.scrollTop=0;
@@ -1782,7 +1781,6 @@ function closeArrayReader(snapshot=false) {
   if(readerContext){
     paragraphLayout?.clear();
     readerContext=null;state.pendingPaper=null;
-    window.allfoldPreprintLookup.select(null);
     window.allfoldPaperDates.render(null,$('paper-dates'),$('paper-date-evidence'));
     $('paper-detail').prepend(paperMetadata);
     $('paper-detail').prepend(paperTitle);
