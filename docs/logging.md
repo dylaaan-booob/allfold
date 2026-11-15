@@ -217,14 +217,20 @@ credential cleanup. Authentication/preparation keys, private headers and page
 contents are never diagnostic fields. Closed-page history does not imply that a
 live task or prepared context still owns that Page.
 
-Collection emits bounded `workflow_started`/`workflow_finished` events with
+Collection emits bounded `workflow_started` admission events with
 `kind` and `stage` equal to `collection`, captured workflow/task/Workspace/Paper
-identity, attempt and durable collection state. It adds no task-history replay or
+identity, attempt and durable queued state. SQLite is the collection terminal
+record. The duplicate synchronous `workflow_finished` write is removed: even
+after publishing a Future it could block the bounded worker via synchronous
+completion callbacks. No asynchronous logging framework or diagnostic retry
+queue replaces it. Existing historical terminal events remain readable.
+It adds no task-history replay or
 background management UI. Source Run identity does not imply cancellation
 ownership. Runtime fault evidence keeps bounded phase/type information; raw
 exceptions, Provider results and credential/Prepare keys stay outside diagnostics.
-Logs Reset protects queued, API-only, writing and cleaning collection work even
-when no native Browser owner exists.
+Logs Reset protects actual queued, API-only, writing and unsettled-resource work
+even when no native Browser owner exists. Ended work with recorded faults is no
+longer active merely to protect a final log write.
 
 
 ## Body state and local operations
@@ -235,6 +241,18 @@ only the later repository transaction means body completed/Downloaded. Local
 open/locate/delete retain bounded outcomes and actual maintenance visibility,
 without declaring a shell error to be missing or manufacturing file-manager
 completion.
+
+Main logs successful stream/native/Open/Locate outcomes according to their actual
+result, even when an abort arrives later. Main sends that terminal result before
+the synchronous final diagnostic write, so Python settlement does not wait for it.
+Auxiliary native cleanup uses the bounded
+`task_cleanup_failed` event and does not rewrite a successful outcome. The Python
+bridge does not duplicate Paper native terminal logs or native-sink status writes
+on the result receive path; initial native status and the existing diagnostic
+file read remain available. Python records local missing/deletion/failure outcomes
+after host lease release; successful Open/Locate already have Main's terminal.
+Body/collection projections expose fixed
+storage/file/cleanup explanations, never raw exception text or request contents.
 
 Public download state exposes finite status, task/attempt, byte progress,
 sequence, cleanup and successful source/fallback. Absolute roots, output proofs,

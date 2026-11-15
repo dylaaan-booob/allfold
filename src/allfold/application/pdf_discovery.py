@@ -29,7 +29,6 @@ class PdfDiscoveryContext:
         self.cancel_event, self.deadline = reservation.cancel_event, reservation.deadline
         self.workflow_id, self.task_id = reservation.workflow_id, reservation.task_id
         self.native = []
-        self.native_started = False
         self._oce_access = None
 
     def guard(self):
@@ -60,7 +59,6 @@ class PdfDiscoveryContext:
         with self.registry.paper_gate():
             self.registry._require_live(self.reservation)
             self.registry._require_reservation(self.reservation, self.repository)
-            self.native_started = True
             future = self.registry.bridge.execute(action,
                 dict(data) | {'workflow_id': self.workflow_id, 'task_id': self.task_id}, progress,
                 verify_recovery=lambda: self.registry._guard(self.reservation))
@@ -94,17 +92,19 @@ class PdfDiscoveryContext:
         return self._oce_access
 
     def close_native(self):
-        cancelled = False
+        from allfold.application.collection_runtime import _CleanupUnconfirmed
+        unconfirmed = False
         for future in self.native:
             try:
-                future.result()  # A cancellation request never proves physical exit.
+                value = future.result()  # A cancellation request never proves physical exit.
+                unconfirmed = unconfirmed or isinstance(value, dict) and value.get('resource_closed') is False
             except BaseException:
-                cancelled = cancelled or future.cancelled()
-        if cancelled:
-            raise RuntimeError('Cancelled native Future does not prove resource settlement')
-        if self.native_started:
-            self.registry.bridge.execute('release_workflow_pages', {
-                'workflow_id': self.workflow_id, 'task_id': self.task_id}).result()
+                unconfirmed = unconfirmed or future.cancelled()
+        if unconfirmed:
+            raise _CleanupUnconfirmed('Native resource settlement is unconfirmed')
+        # Main's request terminal already follows its actual item/page cleanup.
+        # Paper probes never borrow a retained page across native requests; the
+        # extra WoS loan-release round trip has no resource to release here.
 
 
 def _run(reservation, target, facts, inputs, transfer, http_options):
@@ -147,20 +147,22 @@ def _run(reservation, target, facts, inputs, transfer, http_options):
             return DiscoveryResult('cancelled')
         raise
     finally:
+        from allfold.application.collection_runtime import _CleanupUnconfirmed
         try:
             if context is not None:
                 try:
                     context.close_native()
                 except BaseException as error:
-                    registry.fail_reservation(reservation, phase='discovery-native-cleanup', error=error)
-                    raise
+                    registry.fail_reservation(reservation, phase='discovery-native-cleanup', error=error,
+                        unconfirmed=isinstance(error, _CleanupUnconfirmed))
+                    if isinstance(error, _CleanupUnconfirmed):
+                        raise
         finally:
             try:
                 try:
                     resources.close()
                 except BaseException as error:
                     registry.fail_reservation(reservation, phase='discovery-client-cleanup', error=error)
-                    raise
             finally:
                 timer.cancel()
                 timer.join()
@@ -170,7 +172,6 @@ def _run(reservation, target, facts, inputs, transfer, http_options):
                         reservation.browser_owner = None
                     except BaseException as error:
                         registry.fail_reservation(reservation, phase='discovery-owner-cleanup', error=error)
-                        raise
 
 
 def _settled(reservation, actual):
@@ -183,7 +184,10 @@ def _settled(reservation, actual):
         try:
             reservation.registry.release(reservation)
         except BaseException as failure:
-            error = failure
+            reservation.registry._fault(reservation, 'discovery-owner-cleanup', failure)
+    reservation.cleanup_ended = True
+    with reservation.registry._settled_condition:
+        reservation.registry._settled_condition.notify_all()
     if error is not None:
         reservation.future.set_exception(error)
     else:

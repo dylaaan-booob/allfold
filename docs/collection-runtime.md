@@ -77,12 +77,33 @@ snapshots, HTTP clients and mutable request caches are not inherited.
 Branches use `context.read_paper()`, `context.emit(delta, sequence=...)`, declared
 `context.provider(name)` and captured `native_payload`/`execute_native`. These
 operations retain the original collection token. Each branch has its own exact
-native workflow/task identity. All native Futures, client closes and captured
-page releases must actually settle before the parent can release Paper occupancy.
+native workflow/task identity. All native Futures and client closes must actually
+settle before the parent can release Paper occupancy. A Paper native request's
+terminal already follows Main's actual DownloadItem/page cleanup. Paper work does
+not issue an additional `release_workflow_pages` request: that operation releases
+WoS's cross-request retained-page loan, which Paper probes and transfers never create.
 Cancellation flags and a returning callback do not prove actual resource cleanup.
-Current fault paths can also retain occupancy after terminal-record or auxiliary
-cleanup failure; releasing already-finished work in those cases is a planned fix,
-not a requirement to preserve indefinite occupancy.
+A client close that has returned with an error or a failed auxiliary native
+notification records its fault without retaining finished Paper work. Cancelled
+native Futures and explicitly unconfirmed resources remain owned. Independent
+cleanup continues even when another auxiliary step fails.
+
+Once actual workers/resources end, owner and scheduler slots are released even if
+a terminal database write fails. The public Future reports that storage error.
+The registry keeps only the exact ended attempt token for the next explicit
+operation on that Paper: it finishes unresolved branches using their original
+sequence/token and calls the existing terminal transaction. It never scans the
+Workspace, retries on a timer, renews authority or replays successful increments.
+Continued storage failure fails the explicit operation; replacement Workspaces
+and newer attempts are protected. Read projections can show this known failure
+and permit an otherwise eligible Retry/Download without pretending the durable
+write succeeded or changing revision.
+
+Release performs no `touch_projection` transaction. Same-revision snapshots use
+the existing response order. Collection's duplicate synchronous terminal log was
+removed: it cannot occupy an executor thread through Future callbacks. SQLite
+owns the collection terminal, while admission and native diagnostics retain their
+captured identities; see [logging](logging.md).
 
 ## Reservations and maintenance
 
@@ -146,7 +167,7 @@ cancellation risk is documented in [body downloads](body-downloads.md).
 Local file operations capture their own current body proof and host-visible
 lifetime. Open/locate can coexist with collection and require no Service/Prepare;
 they remain visible to maintenance without blocking first Run admission or an
-eligible explicit Retry. Destructive or unconfirmed local cleanup blocks both,
+eligible explicit Retry. Destructive work or genuinely unconfirmed native local work blocks both,
 including Retry's final admission check.
 Destructive Trash PDF/metadata operations remain unavailable until actual Paper
 work and cleanup end. Whole-Workspace maintenance stops admission, drains owned

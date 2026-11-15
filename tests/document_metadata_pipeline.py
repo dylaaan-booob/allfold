@@ -41,14 +41,11 @@ class NativeResult:
     def execute(self, action, data, *args, **kwargs):
         self.calls.append((get_ident(), action, data))
         future = Future()
-        if action == 'release_workflow_pages':
-            future.set_result({'released': True})
-        else:
-            assert action == 'extract_paper_metadata'
-            result = deepcopy(self.envelope)
-            if not data['wantAbstract']:
-                result['metadata']['abstract'] = None
-            future.set_result(result)
+        assert action == 'extract_paper_metadata'
+        result = deepcopy(self.envelope)
+        if not data['wantAbstract']:
+            result['metadata']['abstract'] = None
+        future.set_result(result)
         return future
 
     def cancel_task(self, *_):

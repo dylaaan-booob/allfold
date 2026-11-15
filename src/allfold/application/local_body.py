@@ -11,6 +11,7 @@ from allfold.persistence.paper_repository import InvalidPaperState, StaleWriteEr
 @dataclass(frozen=True)
 class LocalBodyResult:
     status: str
+    warning: str | None = None
 
     @property
     def failed(self):
@@ -46,43 +47,59 @@ class LocalBodyService:
                 result = LocalBodyResult('stale')
             except OSError:
                 result = LocalBodyResult('file_failure')
-            finally:
-                observe(self.host.diagnostics, 'event', 'task_finished', context | dict(outcome=result.status))
-            return result
+        # The host lease covers actual native/filesystem work, not diagnostics.
+        if result.status not in {'opened', 'locate_requested'}:
+            observe(self.host.diagnostics, 'event', 'task_finished', context | dict(outcome=result.status))
+        return result
 
     @staticmethod
     def _use(owner, action):
         registry, paper = owner.registry, owner.paper
-        with CurrentBodyFile(registry.workspace, paper.body, expected_workspace=registry._identity[0]) as file:
-            owner.guard()
-            if not file.verify():
-                return LocalBodyService._missing(owner, file)
-            if action == 'delete':
-                with registry.paper_gate():
-                    owner.guard()
-                    file.delete(owner.guard)
-                    return LocalBodyService._missing(owner, file, status='deleted')
+        result = None
+        try:
+            with CurrentBodyFile(registry.workspace, paper.body, expected_workspace=registry._identity[0]) as file:
+                result = LocalBodyService._apply(owner, action, file)
+        except OSError as error:
+            if result is None:
+                raise
+            registry._fault(owner, 'local-body-file-cleanup', error)
+            result = LocalBodyResult(result.status, '本地操作已结束，但辅助文件清理失败。')
+        return result
+
+    @staticmethod
+    def _apply(owner, action, file):
+        registry, paper = owner.registry, owner.paper
+        owner.guard()
+        if not file.verify():
+            return LocalBodyService._missing(owner, file)
+        if action == 'delete':
             with registry.paper_gate():
                 owner.guard()
-                future = registry.bridge.execute('local_paper_body', dict(action=action,
-                    workspace_root=str(registry.workspace), workspace_id=str(paper.workspace_id),
-                    paper_id=str(paper.id), body_generation=paper.body_generation, body=file.payload(),
-                    workflow_id='local-body', task_id=owner.task_id), verify_recovery=owner.guard)
-                if not isinstance(future, Future):
-                    raise TypeError('Local body operation requires a native terminal Future')
-                owner.native_future = future
-            result = future.result()
-            if isinstance(result, dict) and result.get('resource_closed') is False:
+                file.delete(owner.guard)
+                return LocalBodyService._missing(owner, file, status='deleted')
+        with registry.paper_gate():
+            owner.guard()
+            future = registry.bridge.execute('local_paper_body', dict(action=action,
+                workspace_root=str(registry.workspace), workspace_id=str(paper.workspace_id),
+                paper_id=str(paper.id), body_generation=paper.body_generation, body=file.payload(),
+                workflow_id='local-body', task_id=owner.task_id), verify_recovery=owner.guard)
+            if not isinstance(future, Future):
+                raise TypeError('Local body operation requires a native terminal Future')
+            owner.native_future = future
+        result = future.result()
+        outcome = result.get('outcome') if isinstance(result, dict) else None
+        warning = None
+        if isinstance(result, dict) and result.get('resource_closed') is False:
+            registry._fault(owner, 'local-body-native-cleanup', RuntimeError('Native descriptor close failed'))
+            if outcome not in {'opened', 'locate_requested'}:
                 owner.cleanup_failed = True
                 return LocalBodyResult('local_failure')
-            owner.guard()
-            present = file.verify()
-            outcome = result.get('outcome') if isinstance(result, dict) else None
-            if outcome == 'missing' and not present:
-                return LocalBodyService._missing(owner, file)
-            if not present or outcome != ('opened' if action == 'open' else 'locate_requested'):
-                return LocalBodyResult('local_failure')
-            return LocalBodyResult(outcome)
+            warning = 'PDF 操作已完成，但辅助文件清理失败。'
+        if outcome == ('opened' if action == 'open' else 'locate_requested'):
+            return LocalBodyResult(outcome, warning)
+        if outcome == 'missing':
+            return LocalBodyService._missing(owner, file)
+        return LocalBodyResult('local_failure')
 
     @staticmethod
     def _missing(owner, file, *, status='missing'):

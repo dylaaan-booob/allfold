@@ -189,7 +189,9 @@ class PdfDiscovery:
         except BaseException:
             self.check()  # A retry's prior remote failure must not hide revocation/expiry.
             raise
-        self.check()
+        if not (isinstance(value, CandidateResult) and value.kind == 'pdf'
+                and value.pdf_type and value.transfer_complete):
+            self.check()
         return value
 
     def _fallback_io(self, function, *args):

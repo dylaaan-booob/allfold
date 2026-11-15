@@ -101,11 +101,14 @@ from accepted Paper collection. Branch-specific access failure must not revoke
 unrelated work. Successful increments survive a later failure; startup records
 interrupted attempts without replaying queues, network or page actions.
 
-Actual unfinished I/O still needs an owner. Logging, terminal-record or auxiliary
-cleanup faults alone are not a design requirement to retain a finished Paper
-indefinitely; current fault handling is a follow-up implementation concern.
-Successful transport/open/locate results must not be revoked by redundant post-success
-checks. This direction introduces no local completion phase, state or extra deadline.
+Actual unfinished I/O still needs its original owner. Finished work is released
+despite logging, terminal-record or auxiliary cleanup faults. A failed required
+terminal transaction remains a storage error; only its exact ended token is kept
+for settlement on the next explicit Paper operation, never for automatic replay
+or whole-Workspace recovery. Successful transport/open/locate results are not
+revoked by late cancellation, expiry or repeated qualification. Original-target
+protection remains at actual file/SQLite writes. There is no local completion
+phase, state or extra deadline.
 
 [Logging](logging.md) owns diagnostic privacy and retention. Logging failure cannot
 change business results. Use isolated SQLite, files, HTTP and Electron profiles;

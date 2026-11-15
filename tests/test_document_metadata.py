@@ -28,15 +28,13 @@ def envelope(*, abstract='Background\nA short result.', dates=None, diagnostics=
 
 class Bridge:
     def __init__(self):
-        self.started, self.cleaning = Event(), Event()
-        self.operation, self.cleanup = Future(), Future()
+        self.started = Event()
+        self.operation = Future()
         self.calls = []
 
     def execute(self, action, data, *args, **kwargs):
         self.calls.append((action, data, kwargs))
-        if action == 'release_workflow_pages':
-            self.cleaning.set()
-            return self.cleanup
+        assert action != 'release_workflow_pages'
         self.started.set()
         return self.operation
 
@@ -65,8 +63,6 @@ def start(tmp_path, bridge, **kwargs):
 def settle(registry, bridge):
     if not bridge.operation.done():
         bridge.operation.set_result(envelope())
-    if not bridge.cleanup.done():
-        bridge.cleanup.set_result({'released': True})
     registry.shutdown()
     registry.join()
 
@@ -87,15 +83,13 @@ def test_real_registry_native_payload_and_normal_page_close_preserve_verified_re
         assert not set(payload) & {'service_scope', 'service_id', 'preparation_key', 'target_page_id'}
         options['verify_recovery']()
         # Main returns this small evidence only after its actual work-page close.
-        bridge.operation.set_result(envelope())
-        assert bridge.cleaning.wait(2)
         assert not task.future.done() and registry.active
-        bridge.cleanup.set_result({'released': True})
+        bridge.operation.set_result(envelope())
         paper = task.future.result(3)
         assert paper.collection_status == 'completed'
         assert paper.metadata.abstract == 'Background\nA short result.'
         assert paper.metadata.ordinary_dates == ('2020-05-02',)
-        assert [item[0] for item in bridge.calls] == ['extract_paper_metadata', 'release_workflow_pages']
+        assert [item[0] for item in bridge.calls] == ['extract_paper_metadata']
     finally:
         settle(registry, bridge)
 
@@ -107,7 +101,6 @@ def test_partial_abstract_saves_dates_but_branch_remains_failed(tmp_path, diagno
     try:
         assert bridge.started.wait(2)
         bridge.operation.set_result(envelope(abstract=None, diagnostics=(diagnostic,)))
-        bridge.cleanup.set_result({'released': True})
         paper = task.future.result(3)
         assert paper.collection_status == 'failed'
         assert paper.metadata.ordinary_dates == ('2020-05-02',)
@@ -132,7 +125,6 @@ def test_failed_or_invalid_native_result_never_becomes_empty_success(tmp_path, b
     try:
         assert bridge.started.wait(2)
         bridge.operation.set_result(bad)
-        bridge.cleanup.set_result({'released': True})
         paper = task.future.result(3)
         assert paper.collection_status == 'failed'
         assert paper.metadata.abstract is None and paper.metadata.ordinary_dates == ()
@@ -151,7 +143,6 @@ def test_current_read_skips_abstract_without_renewing_manual_generation(tmp_path
         assert bridge.started.wait(2)
         assert bridge.calls[0][1]['wantAbstract'] is False
         bridge.operation.set_result(envelope())
-        bridge.cleanup.set_result({'released': True})
         paper = task.future.result(3)
         assert paper.metadata.abstract == edited
         assert paper.metadata.notes == 'Keep notes'
@@ -166,7 +157,6 @@ def test_legal_empty_and_json_ld_warning_are_completed_not_failed(tmp_path):
     try:
         assert bridge.started.wait(2)
         bridge.operation.set_result(envelope(abstract=None, dates=[], diagnostics=('json_ld_invalid',)))
-        bridge.cleanup.set_result({'released': True})
         paper = task.future.result(3)
         assert paper.collection_status == 'completed'
         assert paper.metadata.abstract is None and paper.metadata.ordinary_dates == ()
@@ -195,7 +185,6 @@ def test_doi_free_native_task_requires_explicit_upstream_article_confirmation(tm
             assert bridge.started.wait(2)
             assert bridge.calls[0][1]['identity'] == {'confirmed_article_url': confirmed}
             bridge.operation.set_result(envelope())
-        bridge.cleanup.set_result({'released': True})
         paper = task.future.result(3)
         assert paper.collection_status == ('completed' if confirmed else 'failed')
         assert paper.metadata.abstract == ('Background\nA short result.' if confirmed else None)
@@ -216,7 +205,6 @@ def test_reject_restore_refuses_old_native_result_and_recovery_without_reopening
         with pytest.raises(StaleWriteError):
             bridge.calls[0][2]['verify_recovery']()
         bridge.operation.set_result(envelope())
-        bridge.cleanup.set_result({'released': True})
         paper = task.future.result(3)
         assert paper.collection_status == 'cancelled'
         assert paper.metadata.abstract is None and paper.metadata.ordinary_dates == ()
@@ -255,15 +243,12 @@ def test_host_forwards_captured_service_binding_and_revokes_original_access(tmp_
         with pytest.raises(StaleWriteError):
             bridge.calls[0][2]['verify_recovery']()
         bridge.operation.set_result(envelope())
-        bridge.cleanup.set_result({'released': True})
         paper = task.future.result(3)
         assert paper.collection_status == 'cancelled'
         assert paper.metadata.abstract is None and paper.metadata.ordinary_dates == ()
     finally:
         if not bridge.operation.done():
             bridge.operation.set_result(envelope())
-        if not bridge.cleanup.done():
-            bridge.cleanup.set_result({'released': True})
         host.shutdown()
         host.join()
 
@@ -277,7 +262,6 @@ def test_composite_document_saves_bounded_pdf_facts_once_under_original_attempt(
         value['pdf_clues'] = pdf_clues(candidates=[{'stage': 'P3', 'rule_id': 'R037',
             'field': 'citation_pdf_url', 'url': 'https://cdn.example/Paper.PDF?signature=temporary'}])
         bridge.operation.set_result(value)
-        bridge.cleanup.set_result({'released': True})
         paper = task.future.result(3)
         assert paper.collection_status == 'completed'
         facts, = paper.metadata.discovery_facts
@@ -303,7 +287,6 @@ def test_independent_document_failure_preserves_other_success(tmp_path, failed):
         else:
             value['pdf_clues'] = pdf_clues(status='failed', diagnostics=['pdf_parse_failed'])
         bridge.operation.set_result(value)
-        bridge.cleanup.set_result({'released': True})
         paper = task.future.result(3)
         assert paper.collection_status == 'failed'
         if failed == 'metadata':
@@ -361,7 +344,6 @@ def test_invalid_pdf_contract_invalidates_composite_before_any_emit(tmp_path, ch
         value = envelope()
         value['pdf_clues'] = pdf_clues(**change)
         bridge.operation.set_result(value)
-        bridge.cleanup.set_result({'released': True})
         paper = task.future.result(3)
         assert paper.collection_status == 'failed'
         assert paper.metadata.abstract is None and not paper.metadata.discovery_facts

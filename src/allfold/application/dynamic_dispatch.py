@@ -95,14 +95,13 @@ class DynamicScheduler:
     def _completed(self, item, actual):
         # The callable has really returned, including every context-manager exit.
         # Public completion callbacks may now settle durable state/resources.
+        self._returned(item)
         try:
             result = actual.result()
         except BaseException as error:
             item.future.set_exception(error)
         else:
             item.future.set_result(result)
-        finally:
-            self._returned(item)
 
     def _dispatch(self):
         while True:

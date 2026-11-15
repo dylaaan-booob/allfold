@@ -64,3 +64,14 @@ test('a superseded successful field save retains only its acknowledgement and or
   await assert.rejects(save,error=>error.stale===true && error.state.saved===true && error.workspaceEpoch===api.workspaceEpoch);
   assert.deepEqual(api.data.subjects,['newer snapshot']);
 });
+
+for(const outcome of ['opened','locate_requested'])test(`a late ${outcome} receipt keeps success without replacing newer Paper state`,async()=>{
+  const {api,requests}=fixture();
+  const initial=api.workspace();requests.shift()({workspace_id:'library-a',revision:3});await initial;
+  const action=api.request('/api/papers/paper/body/'+(outcome==='opened'?'open':'locate'),{}),snapshot=api.workspace();
+  requests[1]({workspace_id:'library-a',revision:4,subjects:['new body']});await snapshot;
+  requests[0]({workspace_id:'library-a',revision:3,outcome,paper:{id:'paper',body_generation:1}});
+  const receipt=await action;
+  assert.equal(receipt.outcome,outcome);assert.equal(receipt.paper,undefined);assert.equal(receipt.revision,undefined);
+  assert.deepEqual(api.data.subjects,['new body']);assert.equal(api.libraryRevision,4);
+});

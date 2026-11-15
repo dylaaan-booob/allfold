@@ -98,9 +98,10 @@ async function boundedResponse(response,signal) {
 async function executeBodyStream(browser,data,{signal,progress=()=>{}}={}) {
   const output=capability(data);
   const controller=new AbortController();
-  const bounded=AbortSignal.timeout(Math.max(1,Math.ceil(data.deadline_ms-Date.now())));
+  const deadlineController=new AbortController(),bounded=deadlineController.signal;
+  const timer=setTimeout(()=>deadlineController.abort(),Math.max(1,Math.ceil(data.deadline_ms-Date.now())));
   const stop=AbortSignal.any([signal,controller.signal,bounded].filter(Boolean));
-  let fd,writer,response,localError,requests=[],size=0,lastProgress=0,closeError,redirect;
+  let fd,writer,response,localError,requests=[],size=0,lastProgress=0,closeError,redirect,completed=false;
   try {
     await waitFor(()=>browser.ready,stop,data.deadline_ms);checkCanceled(stop);
     const verify=browser.pinPreparedPaperAccess(data);
@@ -109,7 +110,7 @@ async function executeBodyStream(browser,data,{signal,progress=()=>{}}={}) {
     try{fd=openOutput(data.workspace_root,output);}catch(error){error.bodyLocal=true;throw error;}
     const initial=await waitFor(()=>target(data.url,browser.bodyTargetResolver),stop,data.deadline_ms);
     const owner=browser.operation;
-    const validate=()=>{checkCanceled(stop);verify();if(Date.now()>=data.deadline_ms)throw Error('expired');};
+    const validate=()=>{if(completed)return;checkCanceled(stop);verify();if(Date.now()>=data.deadline_ms)throw Error('expired');};
     const validateRequest=details=>{
       validate();
       if(!publicClueURL(details.url)||new URL(details.url).origin!==initial.origin)throw Error('redirect-scope');
@@ -152,9 +153,8 @@ async function executeBodyStream(browser,data,{signal,progress=()=>{}}={}) {
         }catch(error){controller.abort(error);callback(error);}
       }});
       await pipeline(Readable.fromWeb(response.body),meter,writer,{signal:stop});
-      validate();
-      directories(data.workspace_root,output);
-      progress({received_bytes:size});
+      completed=true;clearTimeout(timer);
+      try{progress({received_bytes:size});}catch(_){}
       return {outcome:'stream_complete',kind:'pdf',pdf_type:true,transfer_complete:true,
         size_bytes:size,output_file:output.file,final_url:final.url};
     }
@@ -180,10 +180,11 @@ async function executeBodyStream(browser,data,{signal,progress=()=>{}}={}) {
     if(redirect)return {outcome:'response',kind:'redirect',response:redirect};
     return {outcome:'failed',kind:'failed',diagnostic_code:'source-failed'};
   }finally {
+    clearTimeout(timer);
     // pipeline is awaited, then writer/fd close before the native result exists.
     // Cancellation of a response is also awaited; an expired timer never races cleanup.
     try {
-      try {if(response?.body&&!response.body.locked)await response.body.cancel();}
+      try {if(!completed&&response?.body&&!response.body.locked)await response.body.cancel();}
       finally {
         if(writer&&!writer.closed){const closed=new Promise(resolve=>writer.once('close',resolve));writer.destroy();await closed;}
         if(fd!==undefined)fs.closeSync(fd);

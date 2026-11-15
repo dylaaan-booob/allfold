@@ -43,7 +43,13 @@ app.whenReady().then(async()=>{
   const python=spawn(path.join(root,'.venv/bin/python'),['-u',path.join(root,'tests/electron_body_stream_fixture.py'),profile,origin],
     {cwd:root,env:{...process.env,PYTHONPATH:path.join(root,'src')+':'+path.join(root,'tests')},stdio:['pipe','pipe','pipe']});
   let stderr='';python.stderr.on('data',data=>{stderr+=data;});
-  const send=message=>python.stdin.write(JSON.stringify(message)+'\n');
+  let lateClosed=false,lateMessage,logAcknowledged=false;
+  const terminalAck=path.join(profile,'terminal-before-main-log');
+  const send=message=>{
+    if(message.type==='progress'&&lateClosed&&message.id===lateMessage?.id)
+      context.operations.get(message.id)?.controller.abort();
+    return python.stdin.write(JSON.stringify(message)+'\n');
+  };
   let opened=0;
   const shell={openPath:async filename=>{assert.ok(fs.statSync(filename).isFile());shellCalls.push('open');return ++opened===2?'synthetic no default application':'';},
     showItemInFolder:filename=>{assert.ok(fs.statSync(filename).isFile());shellCalls.push('locate');}};
@@ -51,7 +57,16 @@ app.whenReady().then(async()=>{
     CONTROL_ACTIONS:new Set(['cas_credentials','diagnostics_reset']),RESOURCE_ACTIONS:new Set(['invalidate_access','release_workflow_pages']),
     BrowserFailure,diagnosticFor,invocationRecovery,Date,Number,Promise,
     operationAssociation:require('../src/browser/page-association.cjs').operationAssociation,
-    associationLogContext:()=>({}),setLogLevel(){},withLogContext:(_context,run)=>run(),log(){},diagnosticsStatus:()=>({available:true})});
+    associationLogContext:()=>({}),setLogLevel(){},withLogContext:(_context,run)=>run(),log(_level,event,data){
+      if(event==='task_finished'&&data.request_id===lateMessage?.id){
+        // Hold Main synchronously at its terminal diagnostic boundary. The
+        // real Python host must finish publication/association and release its
+        // Future/owner before this log returns; no extra bridge round trip.
+        const wait=new Int32Array(new SharedArrayBuffer(4)),until=Date.now()+3000;
+        while(!fs.existsSync(terminalAck)&&Date.now()<until)Atomics.wait(wait,0,0,10);
+        logAcknowledged=fs.existsSync(terminalAck);
+      }
+    },diagnosticsStatus:()=>({available:true})});
   const source=fs.readFileSync(path.join(root,'electron/src/main.cjs'),'utf8');
   vm.runInContext(source.slice(source.indexOf('async function execute(message)'),source.indexOf('async function startPython(')),context);
   // Inject actual writer-boundary errors, without stubbing transfer or completion.
@@ -60,6 +75,11 @@ app.whenReady().then(async()=>{
   Readable.fromWeb=(...args)=>{const readable=realFromWeb(...args);if(faultKind==='slow-writer')readable.on('data',chunk=>{slowBytes+=chunk.length;slowReadEvents++;});return readable;};
   const faults=new Map(),realOpen=fs.openSync,realWrite=fs.write,realFsync=fs.fsync,realClose=fs.close;
   let faultTarget,faultKind;
+  const pin=browser.pinPreparedPaperAccess.bind(browser);
+  browser.pinPreparedPaperAccess=data=>{
+    const verify=pin(data);
+    return ()=>{if(lateClosed&&data===lateMessage?.data)throw Error('Late Prepare change');verify();};
+  };
   fs.openSync=(filename,...args)=>{const fd=realOpen(filename,...args);if(filename===faultTarget)faults.set(fd,faultKind);return fd;};
   fs.write=(fd,...args)=>{
     if(faults.get(fd)==='disk-write')return setImmediate(()=>args.at(-1)(Object.assign(Error('fixture ENOSPC'),{code:'ENOSPC'})));
@@ -74,6 +94,11 @@ app.whenReady().then(async()=>{
   fs.fsync=(fd,callback)=>faults.get(fd)==='disk-flush'?setImmediate(()=>callback(Object.assign(Error('fixture EIO'),{code:'EIO'}))):realFsync(fd,callback);
   fs.close=(fd,callback)=>{
     const mode=faults.get(fd);faults.delete(fd);
+    if(mode==='completed-late-signals')return realClose(fd,error=>{
+      lateClosed=true;lateMessage.data.deadline_ms=Date.now()-1;
+      for(const owner of browser.operations)owner.resourceFailure=new BrowserFailure('navigation','document_changed');
+      callback(error);
+    });
     if(mode==='slow-writer') {
       send({type:'progress',id:slowOperation.id,action:slowOperation.action,data:{fixture_close_pending:true}});
       assert.ok(fs.fstatSync(fd).isFile());
@@ -90,6 +115,7 @@ app.whenReady().then(async()=>{
       if(message.type==='execute') {
         if(message.action==='stream_paper_body'){
           faultKind=new URL(message.data.url).pathname.slice(1);if(faultKind==='slow-writer')slowOperation=message;
+          if(faultKind==='completed-late-signals'){lateMessage=message;lateClosed=false;}
           faultTarget=path.join(message.data.workspace_root,message.data.output.temporary);
         }
         void context.execute(message).catch(error=>{dispatchError=error;python.kill();});
@@ -108,7 +134,9 @@ app.whenReady().then(async()=>{
   const code=await new Promise(resolve=>python.once('exit',resolve));
   try {
     if(dispatchError)throw dispatchError;
-    assert.equal(code,0,stderr);assert.equal(complete,true,stderr);assert.equal(cases.length,18);assert.equal(slowWitness,true);assert.deepEqual(pairs,[{type:'fixture_pair',statuses:['cancelled','completed']}]);
+    assert.equal(code,0,stderr);assert.equal(complete,true,stderr);assert.equal(cases.length,19);assert.equal(slowWitness,true);
+    assert.equal(logAcknowledged,true,'Python terminal/owner release must not wait for Main final logging');
+    assert.deepEqual(pairs,[{type:'fixture_pair',statuses:['cancelled','completed']}]);
     assert.equal(publicCases.length,1);assert.equal(publicCases[0].status,'completed');
     assert.deepEqual(localCases,[{type:'fixture_local',status:'settled',retry_attempt:2}]);
     assert.deepEqual(shellCalls,['open','locate','open','open','open']);

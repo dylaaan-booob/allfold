@@ -39,6 +39,12 @@ Models, configuration definitions, identifiers and query primitives remain share
 
 Journal lookup and remote fallback belong to the application layer; persistence only reads the local Registry. WoS export parsing continues to reuse safe file-reading helpers.
 
+Paper native requests release their temporary pages/items before Main sends the
+terminal DTO. Their Python owners await that actual terminal and do not send a
+second workflow-loan release; only WoS retains a loan across requests. Main sends
+Paper results before final diagnostic I/O, and Python does not duplicate those
+terminal logs on its receive loop.
+
 FastAPI composes these implementations. Workspace UUIDs and captured Paper eligibility belong to the application; HTTP accepts UUIDs and Workspace identity rather than arbitrary paths. Provider normalization uses shared identifiers rather than application workflow helpers.
 
 ## Browser Service associations

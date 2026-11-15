@@ -155,8 +155,9 @@ app.whenReady().then(async()=>{
   await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));origin=`http://www.microbiologyresearch.org:${server.address().port}`;
   const window=new BrowserWindow({show:false,webPreferences:{sandbox:true}}),browser=new BrowserRuntime({hostWindow:window,pageLimits:{global_limit:4,service_limit:3}});
   browser.bodyTargetResolver=async()=>[{address:'93.184.216.34'}];await browser.ready;
-  const messages=new Map(),progresses=new Map(),nativeCases=new Map();let python;
+  const messages=new Map(),progresses=new Map(),nativeCases=new Map(),events=[],sentResults=new Set(),prematureLogs=[];let python;
   const send=message=>{
+    if(message.type==='result')sentResults.add(message.id);
     const kind=nativeCases.get(message.id);
     if(message.type==='progress'&&message.data.native_output_file&&['iframe-background','popup-background','iframe-replaced','popup-source-replaced'].includes(kind)) {
       activeBodies.add(kind);childBarriers.get(kind)?.end('go');
@@ -169,7 +170,10 @@ app.whenReady().then(async()=>{
     CONTROL_ACTIONS:new Set(['cas_credentials','diagnostics_reset']),RESOURCE_ACTIONS:new Set(['invalidate_access','release_workflow_pages']),
     BrowserFailure,diagnosticFor,invocationRecovery,Date,Number,Promise,
     operationAssociation:require('../src/browser/page-association.cjs').operationAssociation,
-    associationLogContext:()=>({}),setLogLevel(){},withLogContext:(_context,run)=>run(),log(){},diagnosticsStatus:()=>({available:true})});
+    associationLogContext:()=>({}),setLogLevel(){},withLogContext:(_context,run)=>run(),log:(_level,event,data)=>{
+      if(event==='task_finished'&&!sentResults.has(data.request_id))prematureLogs.push(data.request_id);
+      events.push({event,...data});
+    },diagnosticsStatus:()=>({available:true})});
   const source=fs.readFileSync(path.join(root,'electron/src/main.cjs'),'utf8');
   vm.runInContext(source.slice(source.indexOf('async function execute(message)'),source.indexOf('async function startPython(')),context);
   function capability(paper) {
@@ -210,6 +214,21 @@ app.whenReady().then(async()=>{
         }finally{fs.closeSync(fd);}
       }
       let observed,replaced=false;
+      const reportPage=browser.reportPage;
+      if(kind==='completed-late-signals')browser.partition.once('will-download',(_event,item)=>{
+        item.prependOnceListener('done',(_done,state)=>{
+          assert.equal(state,'completed');
+          item.emit('updated',{},'interrupted');
+        });
+        item.once('done',()=>{
+          context.operations.get(id).controller.abort();
+          for(const owner of browser.operations)owner.resourceFailure=new BrowserFailure('navigation','document_changed');
+          browser.reportPage=function(level,event,...args){
+            if(['page_association_released','page_closed'].includes(event))throw Error('Controlled terminal observation failure');
+            return reportPage.call(this,level,event,...args);
+          };
+        });
+      });
       progresses.set(id,value=>{
         if(value.native_output_file){observed=value.native_output_file;assert.deepEqual(observed,identity(path.join(data.workspace_root,data.output.temporary)));}
         if(['cancel','sciencedirect-reader-cancel'].includes(kind)&&value.received_bytes>0)context.operations.get(id).controller.abort();
@@ -221,11 +240,12 @@ app.whenReady().then(async()=>{
       const terminal=new Promise(resolve=>messages.set(id,resolve));
       await context.execute({id,action:'native_paper_body',data});const result=await terminal;
       cases.push({kind,result});console.log('NATIVE CASE '+kind+' '+JSON.stringify(result));
-      const success=['attachment','inline','url-doi-form','microbiology-redirect','iframe','popup','named-popup','popup-reservation','sciencedirect','sciencedirect-direct-cdn-unavailable','sciencedirect-reader','sciencedirect-reader-self','sciencedirect-reader-reload'].includes(kind);
+      const success=['attachment','inline','url-doi-form','microbiology-redirect','iframe','popup','named-popup','popup-reservation','completed-late-signals','sciencedirect','sciencedirect-direct-cdn-unavailable','sciencedirect-reader','sciencedirect-reader-self','sciencedirect-reader-reload'].includes(kind);
       if(success) {
         assert.equal(result.outcome,'native_complete');assert.equal(result.resource_closed,true);assert.deepEqual(result.output_file,observed);
         const leaf=path.join(data.workspace_root,data.output.temporary);assert.deepEqual(fs.readFileSync(leaf),payload);assert.deepEqual(identity(leaf),observed);
         if(kind==='popup-reservation')assert.equal(reservations.get(leaf)?.observed,true);
+        if(kind==='completed-late-signals')assert.equal(events.findLast(event=>event.request_id===id&&event.event==='task_finished').outcome,'native_complete');
       } else if(kind==='named-popup-collision') {
         assert.equal(result.kind,'stale');assert.equal(result.output_file,undefined);
         assert.equal(foreign.view.webContents.getURL(),origin+'/frame');
@@ -247,6 +267,8 @@ app.whenReady().then(async()=>{
       } else assert.equal(result.kind,kind==='no-item'?'expired':kind==='unrelated'?'stale':'cancelled');
       assert.equal(browser.tabs.size,0,'source pages retain quota through terminal and then close');
       assert.equal(browser.sessionEvents.downloads.size,0);assert.equal(browser.sessionEvents.items.size,0);
+      assert.deepEqual(prematureLogs,[],'native result must be sent before terminal diagnostic IO');
+      browser.reportPage=reportPage;
     }
     if(caseNames.includes('public')) {
       browser.bodyTargetResolver=async()=>[{address:'93.184.216.34'}];

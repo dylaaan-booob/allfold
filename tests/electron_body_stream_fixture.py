@@ -146,7 +146,7 @@ async def main():
         assert missing.status_code == 200 and missing.json()['outcome'] == 'missing', missing.text
         assert missing.json()['paper']['body_present'] is False and missing.json()['paper']['metadata_present'] is False
         print(json.dumps({'type':'fixture_local','status':'settled','retry_attempt':retry_task.download_token.attempt}), flush=True)
-        cases=[(path,origin+'/'+path,None) for path in ['redirect?Signature=A%2FB', 'encoded', 'chunked', 'html.pdf', 'unknown', 'truncated', 'cancel', 'expiry', 'cross', 'challenge', 'disk-write', 'disk-flush', 'slow-writer', 'cross-referer']]
+        cases=[(path,origin+'/'+path,None) for path in ['redirect?Signature=A%2FB', 'encoded', 'chunked', 'html.pdf', 'unknown', 'truncated', 'cancel', 'expiry', 'cross', 'challenge', 'disk-write', 'disk-flush', 'slow-writer', 'cross-referer', 'completed-late-signals']]
         cases.extend([
             ('background-cloudflare',origin+'/background-cloudflare',None),
             ('oxford-cdn',origin.replace('pdf.example.org','academic.oup.com')+'/nar/article-pdf/51/2/870/123/body.pdf',None),
@@ -202,7 +202,7 @@ async def main():
                 assert result.candidate_result.diagnostic == reason
                 assert saved.download.reason == reason
             if path=='background-cloudflare':assert result.candidate_result.response.access is None
-            success = path in {'redirect?Signature=A%2FB','encoded','chunked','slow-writer','cross-referer','oxford-cdn','ieee-reader'}
+            success = path in {'redirect?Signature=A%2FB','encoded','chunked','slow-writer','cross-referer','completed-late-signals','oxford-cdn','ieee-reader'}
             assert (result.status == 'completed') == success, (path,result)
             assert (saved.body is not None) == success
             if success:
@@ -211,6 +211,8 @@ async def main():
                 again = await asyncio.to_thread(submit_body_download, host, saved, candidates=(candidate,))
                 assert isinstance(again,BodyResult) and again.paper.body == saved.body
             assert not host.active
+            if path == 'completed-late-signals':
+                (root/'terminal-before-main-log').touch()
             projection = (await client.get('/api/ui-next/workspace')).json()
             encoded = json.dumps(projection)
             assert str(workspace) not in encoded and 'Signature' not in encoded and 'output_file' not in encoded

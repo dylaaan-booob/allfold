@@ -91,6 +91,49 @@ def test_retry_projection_and_http_share_exact_settled_paper_qualification(tmp_p
         assert client.post(endpoint, json={**body, **final['collection']['retry']}).status_code == 409
 
 
+def test_known_ended_collection_projects_storage_error_and_explicit_retry_recovers(tmp_path, monkeypatch):
+    from allfold.persistence.paper_repository import LibraryError
+    config, workspace, paper = create_paper(tmp_path)
+    attempts = []
+    def api(_):
+        attempts.append(True)
+        if len(attempts) == 1:
+            raise RuntimeError('controlled branch failure')
+        return MetadataDelta(abstract='Recovered explicitly')
+    monkeypatch.setattr('allfold.application.collection_planner.document_metadata_branch',
+        lambda: BranchSpec('document', lambda _: MetadataDelta(ordinary_dates=('2026-11-15',))))
+    monkeypatch.setattr('allfold.application.collection_planner.necessary_metadata_branch',
+        lambda **_: BranchSpec('necessary-api', api))
+    app = create_app(config, electron_bridge=OfflineBridge(), diagnostics_root=tmp_path/'logs')
+    with TestClient(app, base_url='http://localhost') as client:
+        registry = app.state.workspace_tasks.current()
+        with monkeypatch.context() as patch:
+            def failed_finish(*args, **kwargs):
+                raise LibraryError('controlled terminal store failure')
+            patch.setattr(PaperRepository, 'finish_collection', failed_finish)
+            task = registry.submit(direct_ids=ExternalIds(doi='10.5555/decision'), metadata=paper.metadata,
+                branches=app.state.collection_service.plan(paper=paper))
+            with pytest.raises(LibraryError):
+                task.future.result(3)
+        assert not registry.active
+        snapshot = client.get('/api/ui-next/workspace').json()
+        item = snapshot['subjects'][0]['journals'][0]['papers'][0]
+        assert item['collection_status'] == 'failed' and item['collection']['reason'] == 'storage-error'
+        assert not item['cleanup_pending'] and item['collection']['retry_available']
+        request = dict(csrf_token=snapshot['csrf_token'], workspace_id=snapshot['workspace_id'], **item['collection']['retry'])
+        response = client.post(f'/api/papers/{paper.id}/collection/retry', json=request)
+        assert response.status_code == 200, response.text
+        until = monotonic()+3
+        while registry.busy(paper.id) and monotonic() < until:
+            sleep(.005)
+        with PaperRepository.open(workspace) as repository:
+            saved = repository.get(paper.id)
+        assert saved.collection_status == 'completed' and saved.collection.attempt == 2
+        assert saved.metadata.abstract == 'Recovered explicitly' and saved.metadata.ordinary_dates == ('2026-11-15',)
+        assert len(attempts) == 2
+        assert client.post(f'/api/papers/{paper.id}/collection/retry', json=request).status_code == 409
+
+
 def test_projection_of_a_later_external_library_never_binds_or_normalizes_it(tmp_path):
     from test_web_app import write_valid_config
     config, workspace = write_valid_config(tmp_path)

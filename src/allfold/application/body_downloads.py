@@ -40,20 +40,20 @@ class _BodyAccessBlocked(Exception):
 
 
 def complete_attempt(reservation, repository, files, output, *, source_url=None, pdf_source=None, fallback_used=None):
-    """Common closed-transport completion; original qualification at both commits.
+    """Publish the closed transport and associate its exact original attempt.
 
     The caller must already have awaited the actual transport/writer terminal.
     No SQLite write transaction surrounds filesystem publication.
     """
     registry = reservation.registry
-    registry._guard(reservation, repository)
     size_bytes = files.publish(output)
-    registry._guard(reservation, repository)
+    for error in files.cleanup_errors:
+        registry._fault(reservation, 'body-file-cleanup', error)
     with registry.paper_gate():
-        registry._require_live(reservation)
-        # Short inode qualification at the final boundary, independent of PDF
-        # content/length validation and after any publication interleaving.
-        size_bytes = files.verify_published(output)
+        # Filesystem/SQLite are separate operations. Check the original library
+        # identity here; the transaction owns Paper/attempt eligibility.
+        if registry._identity != registry._path_identity():
+            raise StaleWriteError('Workspace path or database was replaced')
         return repository.complete_download(reservation.download_token, size_bytes=size_bytes, source_url=source_url,
             pdf_source=pdf_source, fallback_used=fallback_used, direct_identities=reservation.body_request.direct)
 
@@ -73,6 +73,7 @@ def _consume(reservation, repository, files, candidate, progress):
         if not (native.result.pdf_type and native.result.transfer_complete) and native.output is not None:
             files.cleanup(native.output)
             repository.record_download_output(reservation.download_token, None)
+            reservation.output = None
             if native.result.diagnostic == 'access-blocked':
                 raise _BodyAccessBlocked()
             return native.result, None, native.final_url
@@ -92,6 +93,7 @@ def _consume(reservation, repository, files, candidate, progress):
             return CandidateResult.failed('credential-scope'), None, ''
         credential = dict(kind=candidate.credential, value=secret)
     output = files.prepare()
+    reservation.output = output
     try:
         repository.record_download_output(reservation.download_token, output)
     except BaseException:
@@ -124,7 +126,7 @@ def _consume(reservation, repository, files, candidate, progress):
         raise ValueError('Invalid body transport result')
     if value.get('resource_closed') is False:
         error = RuntimeError('Native writer close is unconfirmed')
-        registry.fail_reservation(reservation, phase='body-native-cleanup', error=error)
+        registry.fail_reservation(reservation, phase='body-native-cleanup', error=error, unconfirmed=True)
         raise error
     kind = value.get('kind')
     if (kind == 'pdf' and value.get('outcome') == 'stream_complete' and value.get('pdf_type') is True
@@ -149,6 +151,7 @@ def _consume(reservation, repository, files, candidate, progress):
     # Never start the next candidate until this writer/output actually settled.
     files.cleanup(output)
     repository.record_download_output(reservation.download_token, None)
+    reservation.output = None
     return result, None, ''
 
 
@@ -182,7 +185,9 @@ def _document_candidates(reservation, repository, candidate, response=None):
         try:
             context.close_native()
         except BaseException as error:
-            reservation.registry.fail_reservation(reservation, phase='body-reader-cleanup', error=error)
+            from allfold.application.collection_runtime import _CleanupUnconfirmed
+            reservation.registry.fail_reservation(reservation, phase='body-reader-cleanup', error=error,
+                unconfirmed=isinstance(error, _CleanupUnconfirmed))
             raise
     if time.monotonic() >= reservation.deadline:
         raise TimeoutError('Body reader parent deadline expired')
@@ -274,17 +279,17 @@ class _BodyDiscoveryIO:
         return ()
 
     def close(self):
+        from allfold.application.collection_runtime import _CleanupUnconfirmed
         try:
             self.context.close_native()
         except BaseException as error:
-            self.reservation.registry.fail_reservation(self.reservation, phase='body-native-cleanup', error=error)
-            raise
+            self.reservation.registry.fail_reservation(self.reservation, phase='body-native-cleanup', error=error,
+                unconfirmed=isinstance(error, _CleanupUnconfirmed))
         finally:
             try:
                 self.resources.close()
             except BaseException as error:
                 self.reservation.registry.fail_reservation(self.reservation, phase='discovery-client-cleanup', error=error)
-                raise
 
 
 def _run(reservation, request, progress):
@@ -314,6 +319,9 @@ def _run(reservation, request, progress):
                         result = BodyResult(candidate_result.kind, candidate_result=candidate_result)
                         if output is not None:
                             transferred.update(output=output, final_url=final_url)
+                        if candidate_result.pdf_type and candidate_result.transfer_complete:
+                            timer.cancel()
+                            timer.join()
                         return candidate_result
                     discovery = PdfDiscovery(request.target, facts=request.facts, inputs=selected, io=io,
                         candidates=request.candidates, guard=lambda: registry._guard(reservation, repository),
@@ -345,33 +353,40 @@ def _run(reservation, request, progress):
                 result = BodyResult('cancelled' if reservation.cancel_event.is_set() or registry.stopped else 'stale')
             except FileExistsError:
                 result = BodyResult('local_failure', candidate_result=CandidateResult('local_failure', diagnostic='path-conflict'))
+            except LibraryError:
+                if result.status != 'completed':
+                    result = BodyResult('local_failure', candidate_result=CandidateResult('local_failure', diagnostic='storage-error'))
             except Exception:
-                result = BodyResult('local_failure', candidate_result=CandidateResult('local_failure', diagnostic='local-completion'))
+                if result.status != 'completed':
+                    result = BodyResult('local_failure', candidate_result=CandidateResult('local_failure', diagnostic='local-completion'))
             finally:
                 # Native uncertainty is resource uncertainty, unlike a closed
                 # output whose unlink failed. Preserve occupancy in the former.
                 native = getattr(reservation, 'native_future', None)
                 if native is not None and (not native.done() or native.cancelled()):
                     error = RuntimeError('Native body resource settlement is unconfirmed')
-                    registry.fail_reservation(reservation, phase='body-native-cleanup', error=error)
+                    registry.fail_reservation(reservation, phase='body-native-cleanup', error=error, unconfirmed=True)
                     raise error
-                current = repository.get(reservation.paper_id)
-                if current.download.status == 'completed':
-                    result = BodyResult('completed', current, CandidateResult.pdf(transfer_complete=True))
-                elif not reservation.cleanup_failed:
+                if result.status != 'completed' and not reservation.cleanup_failed:
                     cleanup_reason = None
-                    if current.download.output is not None:
+                    if reservation.output is not None:
                         try:
                             with ManagedBodyFiles(registry.workspace, reservation.paper_id, reservation.download_token.attempt,
                                     expected_workspace=registry._identity[0]) as files:
-                                files.cleanup(current.download.output)
+                                files.cleanup(reservation.output)
                             repository.record_download_output(reservation.download_token, None)
-                        except (OSError, ValueError, LibraryError):
-                            result = BodyResult('local_failure')
+                            reservation.output = None
+                        except (OSError, ValueError, LibraryError) as error:
+                            registry._fault(reservation, 'body-file-cleanup', error)
                             cleanup_reason = 'output-cleanup'
+                            result = BodyResult('local_failure', candidate_result=CandidateResult('local_failure', diagnostic=cleanup_reason))
                     repository.finish_download(reservation.download_token,
                         status='cancelled' if result.status in {'cancelled','stale','expired'} else 'failed',
                         reason=cleanup_reason or (result.candidate_result.diagnostic if result.candidate_result else None) or result.status)
+    except Exception as error:
+        if result.status != 'completed':
+            raise
+        registry._fault(reservation, 'body-owner-cleanup', error)
     finally:
         timer.cancel()
         timer.join()
@@ -381,20 +396,38 @@ def _run(reservation, request, progress):
                 reservation.browser_owner = None
             except BaseException as error:
                 registry.fail_reservation(reservation, phase='body-owner-cleanup', error=error)
-                raise
     return result
 
 
 def _settled(reservation, actual):
     registry = reservation.registry
+    if reservation.future.done():
+        return
     try:
         result = actual.result()
-        if not reservation.cleanup_failed:
-            registry.release(reservation)
-        reservation.future.set_result(result)
     except BaseException as error:
         registry.fail_reservation(reservation, phase='body-terminal-write', error=error)
-        reservation.future.set_exception(error)
+        if not reservation.cleanup_failed:
+            with registry.paper_gate():
+                if registry._reservations.get(reservation.paper_id) is reservation:
+                    registry._ended_attempts[reservation.paper_id] = reservation.download_token
+        result, failure = None, error
+    else:
+        failure = None
+    finally:
+        reservation.cleanup_ended = True
+        if not reservation.cleanup_failed:
+            try:
+                registry.release(reservation)
+            except Exception as error:
+                registry._fault(reservation, 'body-owner-cleanup', error)
+        else:
+            with registry._settled_condition:
+                registry._settled_condition.notify_all()
+    if failure is not None:
+        reservation.future.set_exception(failure)
+    else:
+        reservation.future.set_result(result)
 
 
 def _discard(reservation, reason):
@@ -470,13 +503,20 @@ def submit_body_download(host, paper, *, candidates=None, service_id=None, deadl
                 deadline=reservation.deadline, discarded=lambda reason: _discard(reservation, reason))
             reservation.scheduled.add_done_callback(lambda actual: _settled(reservation, actual))
         except BaseException:
-            _discard(reservation, 'submission-failed')
-            registry.release(reservation)
+            actual = Future()
+            try:
+                result = _discard(reservation, 'submission-failed')
+            except BaseException as error:
+                actual.set_exception(error)
+                _settled(reservation, actual)
+                raise
+            actual.set_result(result)
+            _settled(reservation, actual)
             raise
     return reservation
 
 
-def body_qualification(paper, *, occupied=False, connected=False, available=True):
+def body_qualification(paper, *, occupied=False, connected=False, available=True, ended=None):
     """The same finite Paper rule drives both UI and server admission."""
     if paper.body is not None:
         return False, 'local-body'
@@ -486,7 +526,8 @@ def body_qualification(paper, *, occupied=False, connected=False, available=True
         return False, 'metadata-required'
     if paper.metadata.publication_type == 'preprint':
         return False, 'unsupported-content-type'
-    if occupied or paper.collection is not None and paper.collection.active or paper.download is not None and paper.download.active:
+    if (occupied or paper.collection is not None and paper.collection.active and ended != 'collection'
+            or paper.download is not None and paper.download.active and ended != 'body'):
         return False, 'paper-busy'
     if not connected or not available:
         return False, 'access-unavailable'
@@ -547,13 +588,24 @@ class BodyDownloadService:
                 self.host._capture_authority(self._service(paper), ())
             except (OSError, ValueError, RuntimeError, LibraryError):
                 access = False
-        permitted, reason = body_qualification(paper, occupied=cleanup_pending,
+        ended = registry.ended_kind(paper) if registry else None
+        permitted, reason = body_qualification(paper, occupied=cleanup_pending, ended=ended,
             connected=bool(self.host.bridge and self.host.bridge.connected), available=access)
         saved = paper.download
         active = owner is not None
+        warning = None
+        if registry is not None and saved and not active:
+            messages = {'body-file-cleanup':'下载已结束，但临时文件清理失败。',
+                'body-native-cleanup':'下载已结束，但辅助页面清理失败。',
+                'discovery-client-cleanup':'下载已结束，但客户端关闭时发生错误。',
+                'body-owner-cleanup':'下载已结束，但浏览器占用释放通知失败。'}
+            warning = next((messages[fault['phase']] for fault in reversed(registry.faults)
+                if fault['paper_id'] == str(paper.id) and fault['attempt'] == saved.token.attempt
+                and fault['phase'] in messages), None)
         progress = dict(getattr(owner, 'progress', {})) if owner else {}
-        return dict(status=saved.status if saved else 'not_started',
-            attempt=saved.token.attempt if saved else 0, reason=saved.reason if saved else None,
+        return dict(status='failed' if ended == 'body' else saved.status if saved else 'not_started',
+            attempt=saved.token.attempt if saved else 0, reason='storage-error' if ended == 'body' else saved.reason if saved else None,
+            warning=warning,
             active=active, cleaning_up=bool(active and (owner.cancel_event.is_set() or saved and not saved.active)),
             available=permitted, unavailable_reason=reason,
             task_id=owner.task_id if owner else None,
@@ -573,6 +625,7 @@ class BodyDownloadService:
         if registry.workspace_id != UUID(str(workspace_id)):
             raise StaleWriteError('Different Workspace')
         with registry.paper_gate():
+            registry.settle_ended(paper_id)
             with registry._repository() as repository:
                 paper = repository.get(paper_id)
             if paper.body is not None:

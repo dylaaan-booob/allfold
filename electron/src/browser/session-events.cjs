@@ -136,11 +136,12 @@ class SharedSessionEvents {
     const registration={...options,active:true,item:null};this.downloads.add(registration);
     const retire=()=>{registration.active=false;if(registration.item)this.cancelItem(registration.item);};
     const timer=setTimeout(retire,Math.max(1,options.deadline-Date.now()));timer.unref?.();
+    registration.stopCancellation=()=>{clearTimeout(timer);options.signal?.removeEventListener('abort',retire);};
     options.signal?.addEventListener('abort',retire,{once:true});
     if(options.signal?.aborted)retire();
     const dispose=({dispatched=false}={})=>{
       if(!this.downloads.delete(registration))return;
-      clearTimeout(timer);options.signal?.removeEventListener('abort',retire);registration.active=false;
+      registration.stopCancellation();registration.active=false;
       if(dispatched && !registration.item)this.guardDownload(registration);
     };registration.dispose=dispose;
     const bindRequest=details=>{
@@ -188,6 +189,7 @@ class SharedSessionEvents {
   }
   cancelItem(item) {
     const tracked=[...this.items].find(entry=>entry.item===item);
+    if(!tracked)return;
     if(tracked?.updating) {setImmediate(()=>{if(this.items.has(tracked))item.cancel();});return;}
     item.cancel();
   }
@@ -245,6 +247,7 @@ class SharedSessionEvents {
     registration.item=item;
     // The staging path was prepared before dispatch. Never await in this callback.
     const tracked=this.trackItem(item,contents);
+    item.once('done',registration.stopCancellation);
     try {
       registration.beforeSave?.();
       item.setSavePath(registration.filename);

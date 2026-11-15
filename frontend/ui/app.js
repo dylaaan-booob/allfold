@@ -1225,6 +1225,8 @@ function renderReadingControls() {
   const collectionLabels={not_started:'尚未采集',queued:'等待采集',running:'正在采集',completed:'采集完成',failed:'采集未完成',cancelled:'采集已取消'};
   $('paper-collection-status').textContent=['queued','running'].includes(collection?.status)?collectionLabels[collection.status]:
     collection?.cleaning_up?'正在清理 Paper 资源…':collectionLabels[collection?.status] || '';
+  if(collection?.status==='failed' && collection.reason==='storage-error')$('paper-collection-status').textContent='采集已结束，但数据库终态保存失败；存储恢复后可重试。';
+  else if(collection?.warning)$('paper-collection-status').textContent=collection.warning;
   $('paper-collection-retry').hidden=paper.excluded || !['failed','cancelled'].includes(collection?.status);
   $('paper-collection-retry').disabled=busy || !collection?.retry_available;
   renderBodyControls(paper);
@@ -1250,6 +1252,13 @@ function renderBodyControls(paper) {
     text=download.cleaning_up?'正在清理下载资源…':download.status==='queued'?'等待下载':'正在下载';
     if(download.received_bytes>0)text+=' · '+bytes(download.received_bytes)+(download.total_bytes?' / '+bytes(download.total_bytes):'');
   }else if(!paper.body_present && ['failed','cancelled'].includes(download?.status))text=download.status==='cancelled'?'下载已取消':'下载未完成';
+  if(!active && !paper.body_present && download?.reason){
+    const reasons={'storage-error':'数据库写入失败；存储恢复后可重新下载。','path-conflict':'目标 PDF 已存在，未覆盖文件。',
+      'output-cleanup':'下载已结束，但临时文件清理失败。','file-io':'正文文件写入失败。',
+      'native-output':'原生下载输出文件无法安全使用。','local-completion':'正文文件发布或关联失败。'};
+    text=reasons[download.reason] || text;
+  }
+  if(!active && download?.warning)text=[text,download.warning].filter(Boolean).join(' ');
   $('paper-download-status').textContent=text;
   $('paper-download-status').hidden=!text;
 }
@@ -1262,7 +1271,12 @@ async function bodyAction(action) {
   bodyRequests.add(id);renderBodyControls(paper);
   try {
     const result=await uiNext.request(`/api/papers/${id}/body/${action}`,{workspace_id:workspace,...qualification});
-    await applyPaperResponse(result);
+    try{await applyPaperResponse(result);}catch(error){
+      if(!['opened','locate_requested'].includes(result.outcome))throw error;
+      if(epoch===uiNext.workspaceEpoch)uiNext.notice('PDF 操作已完成，但界面状态刷新失败；无需重复操作。');
+    }
+    if(result.refresh_error && epoch===uiNext.workspaceEpoch)uiNext.notice(result.refresh_error);
+    else if(result.warning && epoch===uiNext.workspaceEpoch)uiNext.notice(result.warning);
     if(result.outcome==='missing')uiNext.notice('PDF 文件已缺失，已移除当前正文关联。');
   }catch(error){if(epoch===uiNext.workspaceEpoch && !error.stale)uiNext.notice(error.message);}
   finally {
@@ -1632,7 +1646,7 @@ function snapshotStructure(data) {
 let appliedStructure=null, collectionTimer=null;
 function scheduleCollectionPoll(){
   clearTimeout(collectionTimer);
-  const working=[...paperObjects().values()].some(paper=>['queued','running'].includes(paper.collection_status) ||
+  const working=[...paperObjects().values()].some(paper=>['queued','running'].includes(paper.collection?.status || paper.collection_status) ||
     paper.download?.active || ['queued','running'].includes(paper.download?.status) || paper.cleanup_pending);
   if(working)collectionTimer=setTimeout(async()=>{
     try{await refreshWorkspace(undefined,{background:true});}catch(error){if(!error.stale)collectionTimer=setTimeout(scheduleCollectionPoll,1500);}
