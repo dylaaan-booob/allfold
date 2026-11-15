@@ -207,18 +207,16 @@ class OriginalNavigation {
       const status=details.statusCode;
       if([401,403,407,418,429].includes(status))throw new BrowserFailure('navigation','http_error',status);
       if(status>=300&&status<400) {
-        if(this.formRedirect?.entry===entry)throw failure('document_changed');
         // R059's original POST can return its same-origin docserver URL. Only
         // this observed 303 can carry the same native request/frame to that GET.
-        if(status===303&&!this.formRedirect&&this.method==='POST'&&details.method==='POST'
-          &&this.candidate.platform==='microbiology'&&details.url===this.requestURL) {
+        if(this.candidate.platform==='microbiology'&&this.method==='POST') {
+          if(status!==303||this.formRedirect||details.method!=='POST'||details.url!==this.requestURL)throw failure('document_changed');
           const location=Object.entries(details.responseHeaders || {}).find(([name])=>name.toLowerCase()==='location')?.[1];
-          if(location?.length===1) {
-            const source=new URL(details.url),next=new URL(location[0],source);
-            if(source.pathname.startsWith('/deliver/fulltext/')&&publicClueURL(next.href)&&!next.hash
-              &&next.origin===source.origin&&next.pathname===source.pathname.replace(/^\/deliver\//,'/docserver/'))
-              this.formRedirect={source:this.boundSource,entry,id:details.id,url:next.href};
-          }
+          if(location?.length!==1)throw failure('document_changed');
+          const source=new URL(details.url),next=new URL(location[0],source);
+          if(!source.pathname.startsWith('/deliver/fulltext/')||!publicClueURL(next.href)||next.hash
+            ||next.origin!==source.origin||next.pathname!==source.pathname.replace(/^\/deliver\//,'/docserver/'))throw failure('document_changed');
+          this.formRedirect={source:this.boundSource,entry,id:details.id,url:next.href};
         }
         return; // redirects still keep the exact original native request ID
       }

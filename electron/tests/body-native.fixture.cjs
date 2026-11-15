@@ -92,11 +92,16 @@ app.whenReady().then(async()=>{
       native.end(payload.subarray(65536));return;
     }
     if(url.pathname.startsWith('/deliver/fulltext/')) {
+      if(requests.filter(request=>request.url===req.url).length>1) {
+        res.writeHead(200,{'content-type':'application/pdf'});res.end(payload);return;
+      }
       assert.equal(req.method,'POST');assert.equal(body,'once=fixture');
       let location=origin+'/docserver/fulltext/micro/170/9/fixture.pdf?case='+kind;
       if(kind==='microbiology-redirect-path')location=location.replace('/fixture.pdf','/other.pdf');
       if(kind==='microbiology-redirect-origin')location=location.replace('www.microbiologyresearch.org','www.sciencedirect.com');
-      res.writeHead(kind==='microbiology-redirect-status'?302:303,{'content-type':'application/pdf',location});res.end();return;
+      const selfStatus=kind.match(/^microbiology-redirect-self-(302|303|307)$/)?.[1];
+      if(selfStatus)location=origin+req.url;
+      res.writeHead(selfStatus?Number(selfStatus):kind==='microbiology-redirect-status'?302:303,{'content-type':'application/pdf',location});res.end();return;
     }
     if(url.pathname.startsWith('/docserver/fulltext/')) {
       assert.equal(req.method,'GET');assert.equal(body,'');
