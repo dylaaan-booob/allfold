@@ -211,6 +211,8 @@ async def main():
                 again = await asyncio.to_thread(submit_body_download, host, saved, candidates=(candidate,))
                 assert isinstance(again,BodyResult) and again.paper.body == saved.body
             assert not host.active
+            if path == 'completed-late-signals':
+                (root/'terminal-before-main-log').touch()
             projection = (await client.get('/api/ui-next/workspace')).json()
             encoded = json.dumps(projection)
             assert str(workspace) not in encoded and 'Signature' not in encoded and 'output_file' not in encoded

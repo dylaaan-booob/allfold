@@ -239,7 +239,7 @@ class BranchContext:
         if self._registry.bridge is None:
             raise RuntimeError('No native bridge is available')
         if action == 'release_workflow_pages':
-            raise ValueError('Workflow cleanup is owned by the registry')
+            raise ValueError('Paper native resources settle in their original request')
         self._registry._ensure_browser_owner(self._handle)
         with self._registry.paper_gate():
             self._registry._require_live(self._handle)
@@ -892,27 +892,18 @@ class WorkspaceRegistry:
                 'storage-error' if isinstance(error, LibraryError) else type(error).__name__)
         finally:
             try:
-                native_cancelled = False
+                native_unconfirmed = False
                 for future in native:
                     try:
                         value = future.result()
                         if isinstance(value, dict) and value.get('resource_closed') is False:
-                            native_cancelled = True
+                            native_unconfirmed = True
                     except BaseException:
-                        native_cancelled = native_cancelled or future.cancelled()
-                if native_cancelled:
-                    raise _CleanupUnconfirmed('Native Future cancellation is not resource settlement')
-                if native and self.bridge is not None:
-                    release = self.bridge.execute('release_workflow_pages', {
-                        'workflow_id': child.workflow_id, 'task_id': child.task_id})
-                    try:
-                        value = release.result()
-                    except BaseException:
-                        if release.cancelled():
-                            raise _CleanupUnconfirmed('Native page release was cancelled before settlement') from None
-                        raise
-                    if isinstance(value, dict) and value.get('resource_closed') is False:
-                        raise _CleanupUnconfirmed('Native page release is unconfirmed')
+                        native_unconfirmed = native_unconfirmed or future.cancelled()
+                if native_unconfirmed:
+                    raise _CleanupUnconfirmed('Native resource settlement is unconfirmed')
+                # Paper requests include actual item/page cleanup in their Main
+                # terminal. Only foreground WoS uses cross-request page loans.
             except Exception as error:
                 self._fault(child, 'native-cleanup', error)
                 if isinstance(error, _CleanupUnconfirmed):

@@ -77,10 +77,13 @@ snapshots, HTTP clients and mutable request caches are not inherited.
 Branches use `context.read_paper()`, `context.emit(delta, sequence=...)`, declared
 `context.provider(name)` and captured `native_payload`/`execute_native`. These
 operations retain the original collection token. Each branch has its own exact
-native workflow/task identity. All native Futures, client closes and captured
-page releases must actually settle before the parent can release Paper occupancy.
+native workflow/task identity. All native Futures and client closes must actually
+settle before the parent can release Paper occupancy. A Paper native request's
+terminal already follows Main's actual DownloadItem/page cleanup. Paper work does
+not issue an additional `release_workflow_pages` request: that operation releases
+WoS's cross-request retained-page loan, which Paper probes and transfers never create.
 Cancellation flags and a returning callback do not prove actual resource cleanup.
-A client close that has returned with an error or a failed auxiliary page-release
+A client close that has returned with an error or a failed auxiliary native
 notification records its fault without retaining finished Paper work. Cancelled
 native Futures and explicitly unconfirmed resources remain owned. Independent
 cleanup continues even when another auxiliary step fails.

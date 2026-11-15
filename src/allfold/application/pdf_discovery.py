@@ -29,7 +29,6 @@ class PdfDiscoveryContext:
         self.cancel_event, self.deadline = reservation.cancel_event, reservation.deadline
         self.workflow_id, self.task_id = reservation.workflow_id, reservation.task_id
         self.native = []
-        self.native_started = False
         self._oce_access = None
 
     def guard(self):
@@ -60,7 +59,6 @@ class PdfDiscoveryContext:
         with self.registry.paper_gate():
             self.registry._require_live(self.reservation)
             self.registry._require_reservation(self.reservation, self.repository)
-            self.native_started = True
             future = self.registry.bridge.execute(action,
                 dict(data) | {'workflow_id': self.workflow_id, 'task_id': self.task_id}, progress,
                 verify_recovery=lambda: self.registry._guard(self.reservation))
@@ -104,17 +102,9 @@ class PdfDiscoveryContext:
                 unconfirmed = unconfirmed or future.cancelled()
         if unconfirmed:
             raise _CleanupUnconfirmed('Native resource settlement is unconfirmed')
-        if self.native_started:
-            release = self.registry.bridge.execute('release_workflow_pages', {
-                'workflow_id': self.workflow_id, 'task_id': self.task_id})
-            try:
-                value = release.result()
-            except BaseException:
-                if release.cancelled():
-                    raise _CleanupUnconfirmed('Native page release was cancelled before settlement') from None
-                raise
-            if isinstance(value, dict) and value.get('resource_closed') is False:
-                raise _CleanupUnconfirmed('Native page release is unconfirmed')
+        # Main's request terminal already follows its actual item/page cleanup.
+        # Paper probes never borrow a retained page across native requests; the
+        # extra WoS loan-release round trip has no resource to release here.
 
 
 def _run(reservation, target, facts, inputs, transfer, http_options):

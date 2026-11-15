@@ -157,15 +157,13 @@ def test_cancelled_http_worker_keeps_occupancy_until_owned_clients_really_close(
 
 class NativeBridge:
     def __init__(self):
-        self.operation, self.cleanup = Future(), Future()
-        self.started, self.cleaning = threading.Event(), threading.Event()
+        self.operation = Future()
+        self.started = threading.Event()
         self.calls, self.cancellations = [], []
 
     def execute(self, action, data, *args, **kwargs):
         self.calls.append((action, data, kwargs))
-        if action == 'release_workflow_pages':
-            self.cleaning.set()
-            return self.cleanup
+        assert action != 'release_workflow_pages', 'Paper probes have no cross-request page loans'
         self.started.set()
         return self.operation
 
@@ -175,8 +173,6 @@ class NativeBridge:
     def finish(self):
         if not self.operation.done():
             self.operation.set_result(native_envelope())
-        if not self.cleanup.done():
-            self.cleanup.set_result({'released': True})
 
 
 @pytest.mark.parametrize('oce_access', [False, True])
@@ -277,17 +273,15 @@ def test_pdf_only_native_pipeline_uses_captured_identity_and_waits_exact_page_cl
         assert (payload['workflow_id'], payload['task_id']) == (task.workflow_id, task.task_id)
         assert len(payload['workspace_identity']) == 64 and 'wantAbstract' not in payload
         callbacks['verify_recovery']()
-        bridge.operation.set_result(native_envelope())
-        assert bridge.cleaning.wait(2)
-        assert requests == ['https://www.mdpi.com/1/2/3/pdf']
         assert host.browser_owner_ids and host.active and not task.future.done()
-        bridge.cleanup.set_result({'released': True})
+        bridge.operation.set_result(native_envelope())
         assert task.future.result(3).status == 'transferred'
+        assert requests == ['https://www.mdpi.com/1/2/3/pdf']
         assert not host.active and not browser_lock.owners
         with PaperRepository.open(workspace) as repository:
             after = repository.get(paper.id)
         assert after.metadata == paper.metadata and after.collection == paper.collection and after.token == paper.token
-        assert [call[0] for call in bridge.calls] == ['extract_paper_pdf_clues', 'release_workflow_pages']
+        assert [call[0] for call in bridge.calls] == ['extract_paper_pdf_clues']
     finally:
         bridge.finish(); host.shutdown(); host.join()
 
@@ -468,14 +462,12 @@ def test_whole_workspace_maintenance_waits_native_cleanup_before_rebinding(tmp_p
         with ThreadPoolExecutor(max_workers=1) as pool:
             draining = pool.submit(host.drain_change, change)
             assert task.cancel_event.wait(2)
-            bridge.operation.set_result(native_envelope())
-            assert bridge.cleaning.wait(2)
             assert not draining.done() and workspace.exists() and lock.owners
             assert host.settings_lock.acquire(timeout=1)
             host.settings_lock.release()
             with PaperRepository.open(workspace) as repository:
                 assert repository.get(paper.id).metadata == paper.metadata
-            bridge.cleanup.set_result({'released': True}); draining.result(3)
+            bridge.operation.set_result(native_envelope()); draining.result(3)
         assert task.future.result(3).status == 'cancelled' and not requests
         if operation == 'reset':
             shutil.rmtree(workspace)
@@ -506,10 +498,8 @@ def test_shutdown_waits_real_native_terminal_and_cleanup_before_closing_factory(
         assert task.cancel_event.is_set()
         with ThreadPoolExecutor(max_workers=1) as pool:
             joining = pool.submit(host.join)
-            bridge.operation.set_result(native_envelope())
-            assert bridge.cleaning.wait(2)
             assert not task.future.done() and not joining.done() and host.active
-            bridge.cleanup.set_result({'released': True}); joining.result(3)
+            bridge.operation.set_result(native_envelope()); joining.result(3)
         assert task.future.result(3).status == 'cancelled' and not host.active
         assert bridge.cancellations == [(task.workflow_id, task.task_id)]
         with pytest.raises(RuntimeError, match='closed'):
@@ -520,14 +510,13 @@ def test_shutdown_waits_real_native_terminal_and_cleanup_before_closing_factory(
         bridge.finish(); host.shutdown(); host.join()
 
 
-def test_native_unclosed_result_retains_owner_despite_successful_loan_release(tmp_path):
+def test_native_unclosed_result_retains_owner_without_a_loan_release_shortcut(tmp_path):
     bridge, lock = NativeBridge(), BrowserTaskLock()
     host, _, paper, options = setup_host(tmp_path,
         lambda _: httpx.Response(404, json={}), bridge=bridge, browser_lock=lock)
     task = submit_pdf_discovery(host, paper, target=native_target(paper), http_options=options)
     try:
         assert bridge.started.wait(2)
-        bridge.cleanup.set_result({'released': False})
         bridge.operation.set_result({'diagnostic': {'code': 'document_operation_failed', 'stage': 'navigation'},
             'resource_closed': False})
         with pytest.raises(RuntimeError, match='settlement'):
@@ -544,25 +533,17 @@ def test_native_unclosed_result_retains_owner_despite_successful_loan_release(tm
             host.join()
 
 
-@pytest.mark.parametrize('resource', ['client', 'native'])
-def test_finished_cleanup_fault_is_reported_without_retaining_paper(tmp_path, resource):
-    bridge = NativeBridge() if resource == 'native' else None
+def test_finished_client_cleanup_fault_is_reported_without_retaining_paper(tmp_path):
     host, _, paper, options = setup_host(tmp_path,
-        lambda _: httpx.Response(200, headers={'content-type': 'application/pdf'}), bridge=bridge)
-    if resource == 'client':
-        transport = ClosingTransport(lambda _: httpx.Response(200, headers={'content-type': 'application/pdf'}), failure=True)
-        transport.finish.set(); options['transport'] = transport
-    task = submit_pdf_discovery(host, paper, target=native_target(paper) if bridge else target(paper), http_options=options)
-    if bridge:
-        assert bridge.started.wait(2)
-        bridge.operation.set_result(native_envelope())
-        assert bridge.cleaning.wait(2)
-        bridge.cleanup.set_exception(RuntimeError('Controlled native page cleanup failure'))
+        lambda _: httpx.Response(200, headers={'content-type': 'application/pdf'}))
+    transport = ClosingTransport(lambda _: httpx.Response(200, headers={'content-type': 'application/pdf'}), failure=True)
+    transport.finish.set(); options['transport'] = transport
+    task = submit_pdf_discovery(host, paper, target=target(paper), http_options=options)
     result = task.future.result(3)
     assert result.status in {'pending', 'exhausted'}
     registry = host.current()
     assert not registry.busy(paper.id) and not task.cleanup_failed and task.cleanup_ended
-    assert registry.faults[-1]['phase'] == f'discovery-{resource}-cleanup'
+    assert registry.faults[-1]['phase'] == 'discovery-client-cleanup'
     next_owner = registry.reserve(paper.id)
     registry.release(next_owner)
     host.shutdown()

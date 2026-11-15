@@ -43,8 +43,8 @@ def test_public_lww_empty_viewer_uses_only_its_captured_oce_capability(tmp_path,
     class OceBodyBridge:
         connected, closing = True, False
         def __init__(self):
-            self.calls, self.first, self.cleanup = [], Future(), Future()
-            self.started, self.cleaning = Event(), Event()
+            self.calls, self.first, self.body_terminal = [], Future(), Future()
+            self.started, self.body_written = Event(), Event()
             self.used_oce = False
 
         def execute(self, action, data, progress=None, *, verify_recovery=None):
@@ -53,11 +53,6 @@ def test_public_lww_empty_viewer_uses_only_its_captured_oce_capability(tmp_path,
             result = Future()
             if action == 'visit_manual_service':
                 result.set_result(opened(17))
-            elif action == 'release_workflow_pages':
-                if self.used_oce:
-                    self.cleaning.set()
-                    return self.cleanup
-                result.set_result({'released': True})
             elif action == 'extract_paper_pdf_clues':
                 assert 'wantAbstract' not in data
                 if data.get('reader_access_only'):
@@ -77,8 +72,10 @@ def test_public_lww_empty_viewer_uses_only_its_captured_oce_capability(tmp_path,
                 assert data['url'] == pdf
                 output = data['output']
                 (Path(data['workspace_root'])/output['temporary']).write_bytes(b'OCE body')
-                result.set_result(dict(kind='pdf', outcome='stream_complete', pdf_type=True, transfer_complete=True,
-                    size_bytes=8, output_file=output['file'], final_url=pdf))
+                self.body_result = dict(kind='pdf', outcome='stream_complete', pdf_type=True, transfer_complete=True,
+                    size_bytes=8, output_file=output['file'], final_url=pdf)
+                self.body_written.set()
+                return self.body_terminal
             return result
 
         def cancel_task(self, *_): pass
@@ -108,11 +105,12 @@ def test_public_lww_empty_viewer_uses_only_its_captured_oce_capability(tmp_path,
             bridge.first.set_result(dict(kind='response', outcome='response', response=dict(url=first['url'],
                 content_type='text/html', status=200, body='<body>Empty viewer</body>', access=None)))
             if oce_context == 'permitted':
-                assert bridge.cleaning.wait(2), 'The public body owner must enter its qualified OCE branch'
+                assert bridge.body_written.wait(2), 'The public body owner must enter its qualified OCE branch'
                 assert not task.future.done() and app.state.workspace_tasks.active
-                assert read_paper(workspace, paper.id).download.status == 'completed'
+                assert read_paper(workspace, paper.id).download.status == 'running'
         finally:
-            bridge.cleanup.set_result({'released': True})
+            if oce_context == 'permitted':
+                bridge.body_terminal.set_result(bridge.body_result)
         result = task.future.result(3)
         body_calls = [(action, data) for action, data in bridge.calls if action in {'stream_paper_body', 'extract_paper_pdf_clues'}]
         readers = [data['reader']['platform'] for _, data in body_calls if 'reader' in data]

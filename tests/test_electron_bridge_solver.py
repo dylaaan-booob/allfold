@@ -44,6 +44,30 @@ def test_parallel_requests_receive_results_and_cancel_only_their_owner():
         assert progress == [[{'message': '0'}], [{'message': '1'}]]
 
 
+def test_paper_terminal_delivery_does_not_repeat_blocking_native_diagnostics():
+    entered, release = threading.Event(), threading.Event()
+    class Sink:
+        level = 'info'
+        def native_status(self, *_):
+            pass
+        def event(self, name, details):
+            if name == 'task_finished':
+                entered.set()
+                assert release.wait(3)
+    bridge = ElectronBridge('secret', 'testserver', diagnostics=Sink())
+    with TestClient(application(bridge)) as client, client.websocket_connect('/ws') as socket:
+        socket.send_json({'token': 'secret'}); socket.receive_json()
+        future = bridge.execute('local_paper_body', {'workflow_id': 'local-body', 'task_id': 'opened'})
+        request = socket.receive_json()
+        try:
+            socket.send_json({'type': 'result', 'id': request['id'], 'action': request['action'],
+                'data': {'outcome': 'opened', 'resource_closed': True}})
+            assert future.result(.5)['outcome'] == 'opened'
+            assert not entered.is_set()
+        finally:
+            release.set()
+
+
 def test_normal_shutdown_keeps_captured_resource_cleanup_transport_open():
     from allfold.application.browser_runtime import ElectronDisconnected
     bridge = ElectronBridge('secret', 'testserver')

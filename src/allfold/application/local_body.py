@@ -48,7 +48,8 @@ class LocalBodyService:
             except OSError:
                 result = LocalBodyResult('file_failure')
         # The host lease covers actual native/filesystem work, not diagnostics.
-        observe(self.host.diagnostics, 'event', 'task_finished', context | dict(outcome=result.status))
+        if result.status not in {'opened', 'locate_requested'}:
+            observe(self.host.diagnostics, 'event', 'task_finished', context | dict(outcome=result.status))
         return result
 
     @staticmethod

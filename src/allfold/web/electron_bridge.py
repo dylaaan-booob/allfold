@@ -25,6 +25,7 @@ from allfold.integrations.cloudflare_solver import solve_cloudflare
 
 _CONTROL_ACTIONS = {"diagnostics_reset", "cas_credentials"}
 _RESOURCE_ACTIONS = {"invalidate_access", "release_workflow_pages"}
+_PAPER_ACTIONS = {"extract_paper_metadata", "extract_paper_pdf_clues", "stream_paper_body", "native_paper_body", "local_paper_body"}
 _BUSINESS_ACTIONS = {"login_carsi", "prepare_service", "visit_manual_service", "search_journal_cover", "wos_query", "wos_export", "invalidate_access", "release_workflow_pages", "extract_paper_metadata", "extract_paper_pdf_clues", "stream_paper_body", "native_paper_body", "local_paper_body"}
 _RECOVERY_ACTIONS = {"prepare_service", "extract_paper_metadata", "extract_paper_pdf_clues", "native_paper_body", "local_paper_body"}
 _CONTEXT_FIELDS = ("workflow_id", "task_id", "parent_task_id", "service_id", "paper_id")
@@ -179,7 +180,11 @@ class ElectronBridge:
                 elif kind == "result":
                     if 'recovery' in data:
                         data = {**data, 'recovery': normalize_recovery(data['recovery'])}
-                    self._observe_result(pending, data)
+                    # Main already records these terminal outcomes. Repeating
+                    # synchronous diagnostics on the receive loop would keep
+                    # the completed native Future and its Paper occupied.
+                    if pending.action not in _PAPER_ACTIONS:
+                        self._observe_result(pending, data)
                     pending.stop_callbacks()
                     pending.result.set_result(data)
                 else:

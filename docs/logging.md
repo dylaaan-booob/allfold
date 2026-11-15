@@ -246,8 +246,12 @@ Main logs successful stream/native/Open/Locate outcomes according to their actua
 result, even when an abort arrives later. Main sends that terminal result before
 the synchronous final diagnostic write, so Python settlement does not wait for it.
 Auxiliary native cleanup uses the bounded
-`task_cleanup_failed` event and does not rewrite a successful outcome. Local Python
-observations follow host lease release. Body/collection projections expose fixed
+`task_cleanup_failed` event and does not rewrite a successful outcome. The Python
+bridge does not duplicate Paper native terminal logs or native-sink status writes
+on the result receive path; initial native status and the existing diagnostic
+file read remain available. Python records local missing/deletion/failure outcomes
+after host lease release; successful Open/Locate already have Main's terminal.
+Body/collection projections expose fixed
 storage/file/cleanup explanations, never raw exception text or request contents.
 
 Public download state exposes finite status, task/attempt, byte progress,

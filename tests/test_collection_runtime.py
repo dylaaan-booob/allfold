@@ -71,10 +71,7 @@ def test_native_branch_failure_remains_retryable_after_callback_returns(tmp_path
             self.started, self.operation = Event(), Future()
 
         def execute(self, action, data, *args, **kwargs):
-            if action == 'release_workflow_pages':
-                released = Future()
-                released.set_result({'released': True})
-                return released
+            assert action != 'release_workflow_pages'
             self.started.set()
             return self.operation
 
@@ -199,7 +196,7 @@ def test_admitted_before_registration_is_atomic_against_download(tmp_path):
 
 def test_failure_retains_incremental_results_and_occupancy_until_cleanup_then_retries_only_failed(tmp_path):
     path = workspace(tmp_path)
-    entered, release, success_closed, failure_settled = Event(), Event(), Event(), Event()
+    entered, release, success_closed = Event(), Event(), Event()
     factory = IndependentClientFactory(tmp_path / 'config.yaml')
 
     class OwnedScopes:
@@ -214,13 +211,9 @@ def test_failure_retains_incremental_results_and_occupancy_until_cleanup_then_re
 
     class NativeFailure:
         def execute(self, action, data, *args, **kwargs):
+            assert action != 'release_workflow_pages'
             done = Future()
-            if action == 'release_workflow_pages':
-                done.set_result({'released': True})
-                # Failed outcome and HTTP close precede owned native cleanup.
-                failure_settled.set()
-            else:
-                done.set_exception(ValueError('controlled failure'))
+            done.set_exception(ValueError('controlled failure'))
             return done
 
         def cancel_task(self, *_):
@@ -245,8 +238,12 @@ def test_failure_retains_incremental_results_and_occupancy_until_cleanup_then_re
         task = submit(registry, 'failed', [BranchSpec('success', success, providers=('crossref',)),
             BranchSpec('failure', failure), BranchSpec('cleanup', cleanup)])
         assert entered.wait(2)
-        assert success_closed.wait(2) and failure_settled.wait(2)
+        assert success_closed.wait(2)
         with PaperRepository.open(path) as repository:
+            until = time.monotonic()+2
+            while next(b for b in repository.get(task.paper_id).collection.branches if b.name == 'failure').state != 'failed':
+                assert time.monotonic() < until
+                time.sleep(.005)
             paper = repository.get(task.paper_id)
             assert paper.metadata.abstract == 'Kept after failure'
             assert paper.collection_status == 'running'
@@ -464,15 +461,13 @@ class NativeBridge:
     connected = True
 
     def __init__(self):
-        self.operation, self.release = Future(), Future()
-        self.started, self.cancelled, self.releasing = Event(), Event(), Event()
+        self.operation = Future()
+        self.started, self.cancelled = Event(), Event()
         self.identities = []
 
     def execute(self, action, data, progress=None, **kwargs):
         self.identities.append((action, data['workflow_id'], data['task_id']))
-        if action == 'release_workflow_pages':
-            self.releasing.set()
-            return self.release
+        assert action != 'release_workflow_pages'
         self.started.set()
         return self.operation
 
@@ -481,7 +476,7 @@ class NativeBridge:
         self.cancelled.set()
 
 
-def test_parent_deadline_cancels_exact_native_task_but_waits_terminal_and_page_release(tmp_path):
+def test_parent_deadline_cancels_exact_native_task_but_waits_actual_request_terminal(tmp_path):
     path = workspace(tmp_path)
     bridge, lock = NativeBridge(), BrowserTaskLock()
     registry = WorkspaceRegistry(path, factory=IndependentClientFactory(tmp_path / 'config.yaml'),
@@ -502,14 +497,12 @@ def test_parent_deadline_cancels_exact_native_task_but_waits_terminal_and_page_r
         assert not task.future.done()
         assert registry.busy(task.paper_id)
         assert lock.acquire('login', scopes=('config/service/a',)) is None
-        bridge.operation.set_result({'ok': True})
-        assert bridge.releasing.wait(2)
         assert not task.future.done()
         registry.shutdown()
         waiter = Thread(target=lambda: (registry.join(), join_finished.set()))
         waiter.start()
         assert not join_finished.wait(.03)
-        bridge.release.set_result({'ok': True})
+        bridge.operation.set_result({'ok': True})
         waiter.join(3)
         assert join_finished.is_set()
         assert task.future.result(3).collection_status == 'cancelled'
@@ -522,8 +515,6 @@ def test_parent_deadline_cancels_exact_native_task_but_waits_terminal_and_page_r
     finally:
         if not bridge.operation.done():
             bridge.operation.set_result({'ok': True})
-        if not bridge.release.done():
-            bridge.release.set_result({'ok': True})
         registry.shutdown()
         registry.join()
 
@@ -913,7 +904,6 @@ def test_reservation_projection_and_prepare_cancel_are_atomic_without_native_cal
 def test_api_work_acquires_browser_owner_only_when_it_actually_dispatches_native(tmp_path):
     path = workspace(tmp_path)
     bridge, lock, entered, proceed = NativeBridge(), BrowserTaskLock(), Event(), Event()
-    bridge.release.set_result({'ok': True})
     registry = WorkspaceRegistry(path, factory=IndependentClientFactory(tmp_path / 'config.yaml'), bridge=bridge, browser_lock=lock)
 
     def collect(context):

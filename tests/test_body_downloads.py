@@ -182,8 +182,7 @@ class ControlledNative:
     def execute(self,action,data,progress=None,**kwargs):
         from concurrent.futures import Future
         self.calls.append((action,data))
-        if action=='release_workflow_pages':
-            done=Future();done.set_result({});return done
+        assert action != 'release_workflow_pages'
         self.result=Future();self.started.set();return self.result
     def cancel_task(self,workflow,task):self.cancels.append((workflow,task))
     def finish(self,kind='pdf'):
@@ -466,7 +465,7 @@ def test_known_reader_cancellation_retains_its_terminal_after_native_cleanup(tmp
             saved=repo.get(paper.id)
             assert saved.download.status=='cancelled' and saved.download.reason==reason
             assert saved.body is None and saved.download.output is None
-        assert not host.active and bridge.calls[-1][0]=='release_workflow_pages'
+        assert not host.active and bridge.calls[-1][0]=='extract_paper_pdf_clues'
     finally:
         if hasattr(bridge,'result') and not bridge.result.done():bridge.result.set_result(dict(kind='cancelled',outcome='cancelled'))
         host.shutdown();host.join()
@@ -492,7 +491,7 @@ def test_native_document_access_barrier_stops_queued_body_alternatives(tmp_path,
         while not task.future.done() and time.monotonic()<until:time.sleep(.005)
         assert task.future.done(), 'Document access denial must not start the queued source'
         assert task.future.result().status=='failed'
-        assert [a for a,_ in bridge.calls]==['stream_paper_body','extract_paper_pdf_clues','release_workflow_pages']
+        assert [a for a,_ in bridge.calls]==['stream_paper_body','extract_paper_pdf_clues']
     finally:
         if hasattr(bridge,'result') and not bridge.result.done():bridge.result.set_result(dict(kind='cancelled',outcome='cancelled'))
         host.shutdown();host.join()
