@@ -7,8 +7,8 @@ const {checkCanceled,waitFor,pause}=require('../browser/browser-task.cjs');
 const sameFrame=(a,b)=>!!a&&!!b&&a.processId===b.processId&&a.frameToken===b.frameToken;
 const failure=code=>new BrowserFailure('navigation',code);
 class OriginalNavigation {
-  constructor(browser,doc,candidate,{output,signal,deadline,verify,progress}) {
-    Object.assign(this,{browser,doc,candidate,output,signal,deadline,verify,progress});
+  constructor(browser,doc,candidate,{output,signal,deadline,verify,progress,cdnAllowed=false}) {
+    Object.assign(this,{browser,doc,candidate,output,signal,deadline,verify,progress,cdnAllowed});
     this.sciencePII=candidate.platform==='sciencedirect'?new URL(doc.url).pathname.match(/\/science\/article\/pii\/([SB][0-9X]{16})/i)?.[1]:null;
     this.owner=browser.operation;this.sources=new Map();this.registrations=[];this.tracked=new Set();this.probes=new Set();this.dispatched=false;
     this.received=new Promise((resolve,reject)=>{this.resolve=resolve;this.reject=reject;});this.received.catch(()=>{});
@@ -36,7 +36,7 @@ class OriginalNavigation {
       ||this.scienceAsset(url));
   }
   scienceAsset(url) {
-    if(!this.sciencePII||!publicClueURL(url))return false;
+    if(!this.cdnAllowed||!this.sciencePII||!publicClueURL(url))return false;
     const next=new URL(url);
     return next.protocol==='https:'&&next.hostname==='pdf.sciencedirectassets.com'&&next.pathname.endsWith('/1-s2.0-'+this.sciencePII+'/main.pdf');
   }
@@ -279,9 +279,12 @@ async function executeBodyNative(browser,data,{signal,progress=()=>{}}={}) {
         identifier:pii,target:data.identity},data.identity);
     }
     await waitFor(()=>target(candidate.url,browser.bodyTargetResolver),stop,data.deadline_ms);
-    if(requested.platform==='sciencedirect')await waitFor(()=>target('https://pdf.sciencedirectassets.com/',browser.bodyTargetResolver),stop,data.deadline_ms);
+    let cdnAllowed=false;
+    if(requested.platform==='sciencedirect')try {
+      await waitFor(()=>target('https://pdf.sciencedirectassets.com/',browser.bodyTargetResolver),stop,data.deadline_ms);cdnAllowed=true;
+    }catch(error) {checkCanceled(stop);if(Date.now()>=data.deadline_ms)throw error;}
     await browser.confirmArticlePage(data.identity,doc,{signal:stop,deadline:data.deadline_ms});verify();
-    operation=new OriginalNavigation(browser,doc,candidate,{output,signal:stop,deadline:data.deadline_ms,verify,progress});
+    operation=new OriginalNavigation(browser,doc,candidate,{output,signal:stop,deadline:data.deadline_ms,verify,progress,cdnAllowed});
     prepared=await browser.bodyActions.prepare(doc,{url:candidate.url,action:candidate.action,platform:candidate.platform,rule_id:candidate.rule_id},
       {signal:stop,deadline:data.deadline_ms});
     operation.method=prepared.plan.method;operation.requestURL=prepared.plan.request_url;

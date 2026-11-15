@@ -127,8 +127,9 @@ stay excluded. The action still uses the unique current form and its original fi
 
 ScienceDirect's original `/pdfft` or `/pdf` response may be an HTML reader that
 navigates itself to the same PII's `pdf.sciencedirectassets.com/.../main.pdf`.
-One such native main-frame continuation is permitted after the fixed CDN DNS
-preflight, binding the committed HTML response, its actual native initiator,
+The fixed CDN DNS preflight gates that one continuation; a failed check disables
+CDN handoff while allowing the original endpoint to return its PDF directly.
+The handoff binds the committed HTML response, its actual native initiator,
 destination FrameTreeNode and exact next GET. `did-start-navigation` can retire
 the superseded read probe but grants no request authority; `will-frame-navigate`
 must qualify the handoff before registration and the actual request. No response

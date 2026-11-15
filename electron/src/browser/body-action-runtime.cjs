@@ -5,6 +5,8 @@ const {randomBytes}=require('node:crypto');
 const {BrowserFailure}=require('./browser-errors.cjs');
 const {waitFor}=require('./browser-task.cjs');
 const {publicClueURL}=require('./pdf-clues.cjs');
+const {validDOI}=require('./article-identity.cjs');
+const doiCasefold=require('./doi-casefold.json');
 class BodyActionRuntime {
   constructor(browser,{ipc=ipcMain}={}) {
     this.browser=browser;this.pending=new Map();this.ipc=ipc;
@@ -50,8 +52,9 @@ class BodyActionRuntime {
     let entry;
     const response=new Promise((resolve,reject)=>{entry={doc,candidate,contents,resolve,reject};this.pending.set(id,entry);});
     try {
+      const doi=validDOI(doc.identity?.doi) || doc.article?.values?.map(validDOI).find(Boolean) || null;
       const plan=await waitFor(()=>{frame.send('body:prepare',{id,candidate,documentId:doc.documentId,url:doc.url,
-        subject:doc.article.subject});return response;},signal,Math.min(deadline,Date.now()+15000));
+        subject:doc.article.subject,doi,doiCasefold});return response;},signal,Math.min(deadline,Date.now()+15000));
       // Resolve only the controlled action's named destination, never grant the
       // current frame inventory native output authority.
       const matches=plan.target==='frame'?contents.mainFrame.framesInSubtree.filter(item=>item.name===plan.target_name):[];

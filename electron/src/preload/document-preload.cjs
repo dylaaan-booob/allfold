@@ -598,7 +598,7 @@ ipcRenderer.on('document:operation',async(_event,{id,action,expectedDocumentId,e
 // Only the authenticated body workflow invokes these fixed actions. No code,
 // selector, form body or headers are accepted from a renderer or the host.
 let pendingBodyAction;
-function bodyAction(candidate,subject,id,dispatch=false) {
+function bodyAction(candidate,subject,id,dispatch=false,doi=null,doiCasefold={}) {
   const state=globalThis.__allfoldBodyAction;
   if(dispatch) {
     if(!state || state.id!==id || state.url!==location.href || state.subject!==subject
@@ -628,8 +628,16 @@ function bodyAction(candidate,subject,id,dispatch=false) {
   }
   if(candidate.action!=='refresh_form' || candidate.platform!=='microbiology' || candidate.rule_id!=='R059'
     || !/(^|\.)microbiologyresearch\.org$/.test(location.hostname))throw Error('unsupported_body_action');
+  const excludedForm=node=>{
+    for(let owner=node;owner;owner=owner.parentElement)if(owner.matches('footer,aside,[role="doc-bibliography"],[role="doc-endnotes"],[data-related],[hidden],[aria-hidden="true"]')
+      ||/references|related|recommend|supplement/i.test(owner.id+' '+(owner.getAttribute('class') || ''))
+      ||/(?:^|;)\s*display\s*:\s*none\s*(?:!important\s*)?(?:;|$)/i.test(owner.getAttribute('style') || ''))return true;
+    const raw=node.closest('[data-doi]')?.getAttribute('data-doi');
+    const scope=typeof raw==='string'?raw.trim().replace(/^(?:https?:\/\/(?:dx\.)?doi\.org\/|doi:\s*)/i,'').trim().toLowerCase().replace(/[^\x00-\x7f]/gu,char=>doiCasefold[char] || char):'';
+    return /^10\.\d{4,9}\/[^\s]+$/u.test(scope)&&scope!==doi;
+  };
   const forms=[...document.querySelectorAll('.download-pdf form.ft-download-content__form--pdf[action]')]
-    .filter(node=>node.action===candidate.url && !node.closest('aside,.supplementary-material,.references'));
+    .filter(node=>node.action===candidate.url && !excludedForm(node));
   if(forms.length!==1)throw Error('body_action_ambiguous');
   const node=forms[0],method=node.method.toUpperCase();
   if(!['GET','POST'].includes(method))throw Error('body_action_method');
@@ -649,10 +657,10 @@ function bodyAction(candidate,subject,id,dispatch=false) {
   globalThis.__allfoldBodyAction={id,node,kind:'form',submitter:submitters[0],url:location.href,subject,action:node.action,method,target:node.target||''};
   return {url:node.action,request_url,method,...target(node)};
 }
-ipcRenderer.on('body:prepare',async(_event,{id,candidate,documentId:expected,url,subject})=>{
+ipcRenderer.on('body:prepare',async(_event,{id,candidate,documentId:expected,url,subject,doi,doiCasefold})=>{
   try {
     if(expected!==documentId || location.href!==url || !/^[a-f0-9]{48}$/.test(id))throw Error('document_changed');
-    const code='(()=>{const subject=('+documentSubject.toString()+')();if(subject!=='+JSON.stringify(subject)+')throw Error("document_changed");return ('+bodyAction.toString()+')('+JSON.stringify(candidate)+',subject,'+JSON.stringify(id)+');})()';
+    const code='(()=>{const subject=('+documentSubject.toString()+')();if(subject!=='+JSON.stringify(subject)+')throw Error("document_changed");return ('+bodyAction.toString()+')('+JSON.stringify(candidate)+',subject,'+JSON.stringify(id)+',false,'+JSON.stringify(doi)+','+JSON.stringify(doiCasefold)+');})()';
     const plan=await webFrame.executeJavaScriptInIsolatedWorld(999,[{code}]);
     if(location.href!==url)throw Error('document_changed');
     pendingBodyAction={id,url,subject};ipcRenderer.send('body:prepared',{id,plan});

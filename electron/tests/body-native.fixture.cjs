@@ -68,13 +68,13 @@ app.whenReady().then(async()=>{
         kind==='unrelated'?`onsubmit="event.preventDefault();location.assign('/unrelated')"`:'';
       res.writeHead(200,{'content-type':'text/html'});
       const getForm=['get-form','get-changed'].includes(kind);
-      res.end(`<!doctype html><html><head><meta charset="utf-8"><title>Original response</title></head><body><article><h1>Original response</h1>
+      res.end(`<!doctype html><html><head><meta charset="utf-8"><title>Original response</title>${kind==='inline'?'<meta name="citation_doi" content="10.5555/strasse">':''}</head><body><article><h1>Original response</h1>
         ${['existing-iframe','existing-target-changed'].includes(kind)?'<iframe name="body" src="/frame"></iframe>':''}
         ${background?`<iframe id="background" name="background" src="/frame"></iframe><script>fetch('/child-ready?case=${kind}').then(()=>{${kind==='iframe-replaced'?`document.querySelector('iframe[name="new-body"]').remove();const replacement=document.createElement('iframe');replacement.name='new-body';replacement.src='/source-replaced?case=${kind}';document.body.appendChild(replacement)`:
           kind==='popup-source-replaced'?`location.assign('/source-replaced?case=${kind}')`:`document.getElementById('background').src='/unrelated?case=${kind}'`}})</script>`:''}
-        ${kind==='inline'?'<nav aria-label="Article navigation">':''}<div class="download-pdf"><form class="ft-download-content__form--pdf" method="${getForm?'GET':'POST'}" action="/once?${getForm?'discard=old-action-query&':''}case=${kind}" ${popup?'target="_blank"':kind.startsWith('predeclared-')?'target="new-body"':['existing-iframe','existing-target-changed'].includes(kind)?'target="body"':''} ${setup}>
+        ${kind==='inline'?'<nav aria-label="Article navigation">':''}<div class="download-pdf"><form class="ft-download-content__form--pdf" ${kind==='inline'?'data-doi="https://doi.org/10.5555/STRAẞE"':''} method="${getForm?'GET':'POST'}" action="/once?${getForm?'discard=old-action-query&':''}case=${kind}" ${popup?'target="_blank"':kind.startsWith('predeclared-')?'target="new-body"':['existing-iframe','existing-target-changed'].includes(kind)?'target="body"':''} ${setup}>
         ${getForm?`<input name="case" value="${kind}"><input name="once" value="fixture + &"><input name="tag" value="one"><input name="tag" value="two"><input disabled name="ignored" value="disabled"><input type="checkbox" name="ignored" value="unchecked">`:`<input name="once" value="${kind==='current-form'?'current-document':'fixture'}">`}
-        <button type="submit" ${getForm?'name="download" value="PDF now"':''}>Download PDF</button></form></div>${kind==='inline'?'</nav>':''}</article></body></html>`);return;
+        <button type="submit" ${getForm?'name="download" value="PDF now"':''}>Download PDF</button></form></div>${kind==='inline'?'<div class="related"><div class="download-pdf"><form class="ft-download-content__form--pdf" method="POST" action="/once?case=inline"><input name="once" value="related"><button>Download PDF</button></form></div></div><div hidden class="download-pdf"><form class="ft-download-content__form--pdf" action="/once?case=inline"></form></div><div class="download-pdf"><form data-doi="10.5555/foreign" class="ft-download-content__form--pdf" action="/once?case=inline"></form></div></nav>':''}</article></body></html>`);return;
     }
     if(url.pathname==='/frame') {res.writeHead(200,{'content-type':'text/html'});res.end('<title>Existing target</title>');return;}
     if(url.pathname==='/child-ready') {
@@ -154,6 +154,10 @@ app.whenReady().then(async()=>{
   }
   try {
     for(const kind of caseNames.filter(kind=>kind!=='public')) {
+      browser.bodyTargetResolver=async hostname=>{
+        if(hostname==='pdf.sciencedirectassets.com'&&kind.endsWith('cdn-unavailable'))throw Object.assign(Error('fixture DNS unavailable'),{code:'ENOTFOUND'});
+        return [{address:'93.184.216.34'}];
+      };
       const science=kind.startsWith('sciencedirect');
       const paper=randomUUID(),id=randomUUID(),output=capability(paper),article=science?
         origin.replace('www.microbiologyresearch.org','www.sciencedirect.com')+'/science/article/pii/S1234567890123456'+(kind==='sciencedirect'?'':'?case='+kind):origin+'/article?case='+kind;
@@ -184,7 +188,7 @@ app.whenReady().then(async()=>{
       const terminal=new Promise(resolve=>messages.set(id,resolve));
       await context.execute({id,action:'native_paper_body',data});const result=await terminal;
       cases.push({kind,result});console.log('NATIVE CASE '+kind+' '+JSON.stringify(result));
-      const success=['attachment','inline','iframe','popup','popup-reservation','sciencedirect','sciencedirect-reader','sciencedirect-reader-self'].includes(kind);
+      const success=['attachment','inline','iframe','popup','popup-reservation','sciencedirect','sciencedirect-direct-cdn-unavailable','sciencedirect-reader','sciencedirect-reader-self'].includes(kind);
       if(success) {
         assert.equal(result.outcome,'native_complete');assert.equal(result.resource_closed,true);assert.deepEqual(result.output_file,observed);
         const leaf=path.join(data.workspace_root,data.output.temporary);assert.deepEqual(fs.readFileSync(leaf),payload);assert.deepEqual(identity(leaf),observed);
@@ -204,6 +208,7 @@ app.whenReady().then(async()=>{
       assert.equal(browser.sessionEvents.downloads.size,0);assert.equal(browser.sessionEvents.items.size,0);
     }
     if(caseNames.includes('public')) {
+      browser.bodyTargetResolver=async()=>[{address:'93.184.216.34'}];
       python=spawn(path.join(root,'.venv/bin/python'),['-u',path.join(root,'tests/electron_body_native_fixture.py'),profile,origin],
         {cwd:root,env:{...process.env,PYTHONPATH:path.join(root,'src')+':'+path.join(root,'tests')},stdio:['pipe','pipe','pipe']});
       let stderr='',dispatchError,complete=false;const publicCases=[];
