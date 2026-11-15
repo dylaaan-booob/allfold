@@ -134,13 +134,15 @@ prefixes and the redirect's applied authorization policy. Counts include each
 physical dispatch, including redirects and the final check. Cache hits and
 attempts stopped before dispatch add no requests.
 
-Recognized verification pages stop the client. OpenAlex explicit authorization
-and quota errors stop the standalone client. Ordinary 429 responses remain
+Current verification-page predicates can stop the client. Weak page strings and
+client-wide failure propagation are limitations to revise with the affected tests;
+a local access failure is not a requirement to stop unrelated requests. OpenAlex
+explicit authorization and quota errors currently stop the standalone client. Ordinary 429 responses remain
 transient. Invalid envelopes, Entrez application errors, wrong identities and
 shortened pages are explicit failures or incomplete results. Valid empty exact
 responses count as no-match.
 
-WF07 discovery requests have their own task-scoped capability rather than new
+PDF discovery requests have their own task-scoped capability rather than new
 Run Provider IDs. They reuse host pacing/cooldown and the captured guard,
 cancellation and absolute parent deadline. P2 queries only missing identifiers or
 fields at the reached stage. Typed existing Crossref landing/resource fields can
@@ -245,18 +247,12 @@ Providers/Service; its thread opens independent connection/client/cache scopes.
 The application shares pacing with Run and explicit Preprint without borrowing
 their snapshots, clients or cancellation signals.
 
-`POST /api/papers/{paper_uuid}/collection/retry` requires CSRF, Workspace UUID,
-strict positive `attempt`, current Paper `revision`, and `token` containing the
-captured metadata/operation/abstract/body generations. The server reconstructs
-the original WriteToken and uses the same `collection_service.check_retry` /
-`retry` qualification as the UI projection. Current revision is rechecked at
-admission. Complete unexcluded metadata, failed/cancelled state, actual cleanup,
-no conflicting operation and available pending dependencies are required.
-Completed/empty, `not_started`, excluded and identity-only records cannot force
-collection. Successful/skipped branches survive; only pending branches execute.
-The result is a safe `{workspace_id, revision, paper}` projection. There is no
-public collection-start or batch-retry route. Independent body actions use their
-own qualification and do not acquire collection authority.
+`POST /api/papers/{paper_uuid}/collection/retry` retains CSRF and exact
+Workspace/Paper/attempt association. The current payload also carries a full
+revision/token and the response is `{workspace_id, revision, paper}`. Current
+qualification, pending-only retry and the planned simplification are owned by
+[Workspace runtime](collection-runtime.md#explicit-retry), not a second HTTP policy.
+There is no public collection-start or batch-retry route.
 
 Explicit Preprint status uses
 `GET /api/papers/{paper_uuid}/preprint-lookup/state?workspace_id=...&request_id=...`.
@@ -265,7 +261,9 @@ Start and cancel retain CSRF and Workspace/Paper identity, and cancel requires t
 captured request ID. Different Papers are independent. A repeated active start
 returns its existing operation; a new manual click does not queue behind another
 kind of Paper work. After actual cleanup, explicit repeat queries remain allowed
-without changing completed collection facts.
+without changing completed collection facts. The standalone Info operation is
+scheduled for retirement; necessary background Preprint evidence remains. See
+[Providers](providers.md#info-preprint-lookup).
 
 Workspace Paper responses project durable `collection_status` and runtime
 `cleanup_pending`, with library revisions ordering collection and occupancy
@@ -279,8 +277,8 @@ Workspace switching and confirmed Workspace Reset stop and drain the old
 lifecycle before save/deletion, then bind only the actually saved path. Invalid
 drafts, unapproved deletion previews and stale Reset confirmations do not drain
 work. Logs Reset refuses active registry work, including API-only and queued
-attempts; native Reset waits hold no configuration/reset lock. Explicit Preprint
-cleanup uncertainty retains Paper occupancy and reports a bounded fault.
+attempts; native Reset waits hold no configuration/reset lock. Current fault-related occupancy and its planned correction are described in
+[Workspace runtime](collection-runtime.md).
 During normal exit, authenticated `invalidate_access` and
 `release_workflow_pages` may still settle captured resources after execution
 admission closes. They grant no new navigation or credential authority.

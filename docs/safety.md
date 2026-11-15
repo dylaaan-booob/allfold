@@ -1,210 +1,113 @@
 # Data and execution safety
 
+This guide owns cross-runtime data and authority boundaries. Module guides describe
+current interfaces and known limitations; historical implementation checks are not
+requirements to preserve when those modules change.
+
+## Library and user data
+
 Production Paper reads and writes use one [SQLite library](paper-library.md),
-with stable Workspace/Paper UUIDs and reliable direct identity uniqueness. A Run
-uses the repository-returned UUID. Full repeat matches preserve their saved metadata;
+with stable Workspace/Paper UUIDs and reliable direct-identity uniqueness. A Run
+uses the repository-returned UUID. Repeat full matches preserve saved metadata;
 excluded records stay excluded; only an actual Run hit can rebuild an unexcluded
-identity placeholder. Different direct-identity owners are an explicit conflict.
-No Markdown fallback, shadow store, dual write or old Workspace migration exists.
+identity placeholder. Conflicting identity owners remain explicit failures.
 
 Each HTTP handler/worker owns a thread-confined connection and closes it in that
-execution context. Short rollback-safe transactions contain no network/browser
-wait. Library schema, integrity, UUID and live directory/database identity are
-validated. Symlinks and multiple-link main/sidecar paths are refused. Missing,
-corrupt, unknown-schema, unsafe-path and busy/commit failures remain distinct;
-none authorizes replacement or clearing. Paper storage has schema v5 with strict transactional forward changes from valid v4 and the supported v3 path, preserving current data and unknown historical provenance without retired/unknown format compatibility.
+context. Short rollback-safe transactions contain no network/browser wait.
+Unsafe paths, missing/corrupt/unsupported libraries and busy/commit failures do
+not authorize replacement or clearing. Schema v5 supports the documented v4/v3
+forward changes without retired-format or Markdown fallback. Database-open
+validation and transaction scope are implementation details scheduled for later
+revision, not a requirement for a full integrity check/write transaction on every open.
 
-Async writes use eligibility captured when the Paper is first claimed, including
-Workspace UUID and metadata/operation generations. Results cannot reread current
-tokens to renew old authority. Manual abstract edits/clears invalidate only older
-automatic abstract candidates; legal date/source increments remain eligible.
-Library revision and response ordering separately prevent stale UI snapshots.
+Async writes retain the original Workspace/Paper/attempt and relevant field
+eligibility. A late result cannot obtain fresh authority by rereading current
+tokens. Manual abstract edits/clears protect that field independently of legal
+date/source increments. Library revision and response ordering prevent stale UI
+snapshots; they are distinct from task authority.
 
-Reject persists exclusion and invalidates tokens before exact-Paper cancellation.
-The same Paper gate captures and locally revokes the current attempt and any
-explicit Preprint/download reservation. Deferred signals retain those exact targets. If none
-exists at Reject, they cannot cancel a later owner after Restore.
-The transaction and Workspace write lock are released before cancellation or
-worker join. Shared Run requests keep serving other Papers. Restore is local and
-may precede cleanup, but old tokens stay invalid and new mutually exclusive work
-cannot overlap it. Destructive metadata clearing waits for real Paper cleanup.
-Clearing deletes bibliography, abstract, dates, Preprint proof, notes, ISSNs and
-sources; UUID, reliable identities, exclusion and body association survive.
-Restore/unexclude never fetches or recreates deleted content. Exclusion has no
-expiry or ordinary bulk-clear action.
-
-A body association classifies Downloaded but grants no physical file authority.
-`Documents/` relative paths reject traversal/absolute paths. The [body lifecycle
-service](body-downloads.md) validates actual directory/file identities for stream
-publication and current local-file operations. Open/locate captures the current
-body generation and regular object without requiring metadata, Prepare or
-network. Only confirmed absence conditionally clears that association; permission,
-shell and unsafe-path failures preserve it. Trash deletion waits for actual Paper
-cleanup, safely removes only the captured file, then conditionally clears SQLite;
-file and DB operations are not atomic. Clearing metadata leaves body bytes intact.
-
-Original DownloadItem output has an accepted [native cancellation limitation](body-downloads.md#native-output-and-accepted-cancellation-risk).
-The pinned Chromium cancels asynchronously by saved pathname after
-`done(cancelled)`. If another process replaces that attempt's private temporary
-file or directory during transfer, Chromium's cleanup can remove the replacement
-despite Main detecting the change and refusing it. The application cannot promise
-that replacement survives. Exclusive private staging, unique attempt paths,
-object/path refusal, scoped application cleanup and no-clobber final publication
-remain required; stream, local open/locate and Trash deletion protections are
-unchanged. Do not treat `done(cancelled)` or a fixed delay as proof that the
-Chromium file worker has finished deleting. No POST-to-GET replay is permitted.
-
-Shutdown stops admission and waits for Run, Preprint, WoS, Login, Covers and
-in-flight native bridge results before closing their owned connections. Teardown
-is idempotent. Switching output directories drains and invalidates old work;
-connections are never retargeted to a new path. Workspace Reset remains an
-explicit preview/confirm deletion of the entire verified Workspace, including
-library, exclusions, Documents and snapshots. Its path/replacement/concurrency
-protections remain. Logs Reset removes only owned history/diagnostics and keeps
-library, configuration, Session and credentials.
-
-Reset accepts configured custom Workspace directories within the project; it does
-not require the directory to be named `workspace`. Project source/runtime trees,
-shared UserState, Registry/covers and active configuration/Journal inputs remain
-protected, including their ancestors and case variants. Directory identity,
-symlink refusal and preview/confirmation checks still apply before deletion.
+Reject persists exclusion before exact-Paper cancellation outside write locks.
+Deferred signals retain their captured task, so they cannot cancel a replacement
+after Restore. Restore is local and does not renew old write authority or fetch
+content. Clearing metadata waits for actual conflicting work and preserves UUID,
+reliable identities, exclusion and body association. Exclusion has no expiry.
 
 Journals/Groups/Labels/Services live in canonical-configuration-scoped UserState.
-Compare-and-write revisions preserve newer edits; corrupt state is not replaced
-by defaults. Research Scope Markdown exchange and its first-migration seed remain
-separate from retired per-Paper Markdown. Resource cache refresh replaces only
-validated complete snapshots and never user Service choices. Setup preserves
+Compare-and-write protects newer edits; corrupt state is not replaced by defaults.
+First-configuration `list.md` initialization and explicit Research Scope exchange
+remain separate from retired per-Paper Markdown. Resource refresh replaces only
+validated complete cache snapshots, never user Service choices. Setup preserves
 configuration, credentials and existing vendor trees.
 
-Native operations remain bound to exact request, task, Page and Document.
-Selecting a Browser tab never retargets a task. Prepare retains scoped recovery,
-manual verification and Session behavior. Cloudflare uses the owning CDP target;
-hCaptcha/MFA keep their manual boundary. CARSI credential authority applies only
-to the saved institution and attributable authentication chain. Remote pages have
-no Node or host IPC capabilities. Trusted UI IPC, main-frame sender checks and
-isolated Document preload stay active. Fixed binding/access/article probes and the
-strict-boolean Date/Abstract extraction action return bounded DTOs, never whole
-page text, HTML or arbitrary scripts/forms/frame inventories. WF07 permits only
-fixed qualified PDF fields and known-reader next-hop observations. Sender/frame, random
-Document ID, navigation generation and current URL are checked across async calls.
-Extraction reads a single verified live Document without navigation, requests or
-page mutation. Its final Document/body/identity check precedes owned page cleanup;
-normal destruction cannot revoke already verified content. Unexpected navigation,
-replacement, cancellation or failed final confirmation invalidates the whole read.
-Python still checks the original Workspace/Paper/attempt and field generations
-when committing the result. Paper identity is rechecked independently at use boundaries after access checks;
-it grants no task or institutional authority. Overflow, absent and conflicting
-evidence cannot confirm a Paper. Solver attempts remain operation/Document scoped,
-and queue cancellation/shutdown joins actual workers. Covers/Export share absolute
-parent deadlines; original DownloadItem ownership outlives cancellation until
-actual terminal. See [controlled Documents](browser-documents.md). Dedicated Keep/Import/Enrich/Local API
-business paths are retired; no native fallback can dispatch them.
+## Files and destructive operations
 
-Independent Browser admission is scoped by canonical configuration and saved
-Service ID. Reprepare cannot replace a context while an executing owner uses it;
-credentials, Workspace Reset and Logs Reset retain control exclusivity. Config and
-User State revisions remain Compare-and-Write/diagnostic facts, while Prepare
-access checks capture institution, credential epoch and the selected Service.
-Unrelated edits preserve that captured access. Foreground Run/WoS keeps its input
-snapshot, commit checks and single Run slot. Explicit Preprint requests have
-independent Paper tokens and narrow Provider authority, without a Run snapshot or slot.
+A body association classifies Downloaded but grants no physical file authority.
+[Body downloads](body-downloads.md) owns managed path/object checks, no-clobber
+publication, local open/locate and Trash deletion. Relative body paths reject
+traversal and absolute paths. Only confirmed absence clears the captured current
+association; permission, shell and unsafe-path errors preserve it. Filesystem and
+SQLite changes are not one atomic transaction. Clearing metadata leaves bytes intact.
 
-Settings access cleanup carries captured old preparation/authentication keys and
-waits outside the configuration write lock, holding only its affected admission
-owner until actual settlement. It cannot close a new-key context. Actual native
-retained-Page destruction revokes matching prepared authority; an in-flight Login
-result cannot restore an already closed Page. Covers final saves verify the target
-Journal and captured managed asset identity/record under the final write guards,
-allowing unrelated User State edits and refusing deleted/replaced targets.
-A saved cover whose image was already missing may be repaired by Search only if
-the captured manifest record and missing-file state still match at final save;
-a newly appeared file, replacement, unsafe path or changed target is refused.
+Original DownloadItem output retains the measured
+[native cancellation limitation](body-downloads.md#native-output-and-accepted-cancellation-risk).
+Chromium may delete an externally replaced private staging pathname after
+`done(cancelled)`; item terminal is not proof of file-worker closure. Application
+cleanup touches only proven owned output, and final publication stays no-clobber.
 
-Ordinary Login, Covers and WoS cancellation uses the workflow/task ID captured at
-start. Public Run cancellation carries the UI-captured task ID through HTTP; the
-coordinator compares and sets its signal atomically, then forwards that same
-captured ID to WoS outside its lock. Old cancellation cannot target a replacement
-Run. Cancellation signals do not release native Futures, workflow admission or
-solver slots before actual settlement. Shutdown closes admission, joins business
-workers and waits remaining credential/access-cleanup owners while the bridge can
-still deliver native terminal results.
+Workspace switching stops admission and drains owned work before rebinding.
+Workspace Reset is explicit preview/confirm deletion of the verified Workspace,
+including library, exclusions, Documents and snapshots. Custom Workspace paths
+inside the project are supported; project/runtime trees, UserState, Registry,
+covers, configuration/Journal inputs and their ancestors remain protected.
+Directory identity and symlink checks apply before deletion. Logs Reset removes
+only owned history/diagnostics, preserving library, configuration, Session and
+credentials. Neither operation silently resets corrupt data.
 
-Diagnostics use strict allowlists and bounded local storage. Credentials,
-Authorization/Cookie values, raw pages and signed URLs stay out of exports.
-Logging failure cannot change business results. [Logging](logging.md) defines
-retention and Reset. Tests use isolated SQLite, files, HTTP and Electron profiles;
-source checks and synthetic fixtures do not prove real provider, institution,
-user-library or actual-PDF behavior. See [development](development.md).
+## Native requests and access
 
-WF04 page admission is Session-wide and jointly reserves both managed dimensions
-before native creation, including popups. Close requests, retired flags, crashes
-and cancellation do not return slots. Cleanup uses captured resource ownership
-even after execution authority is revoked, waits actual DownloadItem terminal
-and WebContents destruction, and touches no other task/user resources. Successful
-Portal/targets transfer ownership without releasing physical counts; stale-key
-cleanup and physical-close feedback cannot invalidate a newer context. Lowered
-limits revoke unused headroom and defer new creation without forcing active pages
-closed. Normal exit disposes common Session listeners only after physical cleanup.
-See [exact counts and rollback](browser-pages.md).
+IPC messages and native responses stay associated with the actual request, target,
+frame and resource owner. Selecting a Browser tab never retargets a task. Remote
+pages have no Node or host IPC capability. Trusted UI sender checks and the
+sandboxed, isolated Document preload remain in use. CARSI credential authority
+applies only to the saved institution and attributable authentication chain.
 
-WF05 collection qualification is committed with identity creation/rebuild in one
-transaction. Persistent queued/running state blocks competing work before any
-worker exists. Captured lifecycle/attempt/branch sequence augments the existing
-field generations; manual editing keeps its separate field contract. Successful
-branch facts survive explicit retries, while failed/cancelled records do not
-retry on a new source or Run. Startup interruption is explicit and once per bound
-lifecycle, without network or queue replay. Runtime client/native/terminal-write
-faults keep conservative Paper occupancy rather than interpreting no worker as
-permission for Download or clearing.
+[Document access](browser-documents.md) owns page reading and Solver behavior.
+Current fixed probes still have extra URL/subject/identity checks; their planned
+replacement does not remove request correlation or credential protection. Capturing
+rendered HTML for independent parsing is an agreed follow-up, not a current
+capability or a reason to restore Translator Runtime. Raw pages and credentials
+stay out of diagnostics and public projections.
 
-Paper reservations include manual Preprint through its actual worker exit,
-without declaring collection completed. Occupancy changes advance projection
-revision without changing content generations. Service data use is shared only
-with explicit captured scope; controls and physical pages remain exclusive.
-Accepted maintenance reserves new admission before old owners drain outside
-configuration, Workspace and SQLite write locks. Only captured resource cleanup
-continues through Bridge/Main after normal execution closes; new business work
-and credential mutations remain refused. Common Provider pacing outlives clients,
-while cancellation, guards, caches and absolute deadlines stay operation-owned.
+Saved Service and captured access dependencies determine access authority;
+configuration revisions also serve compare-and-write and diagnostic purposes.
+Access cleanup carries captured old keys, waits outside configuration write locks
+and cannot close a new context. Retained-page destruction revokes that page's
+preparation; a late Login result cannot restore a closed page. Covers final saves
+protect the captured Journal and managed asset while allowing unrelated edits.
+The Download-wide Prepare admission policy remains unresolved; see
+[body admission](body-downloads.md#public-input-and-admission).
 
-WF08 production Run establishes basic metadata and the entire queued plan in one
-short transaction, under its original Run snapshot and initial identity token.
-All confirmed direct aliases survive; clearing metadata during an older Run
-cannot grant that Run new rebuild authority. Registry ownership and original host
-epochs cover admission through registration before external access initialization.
-Service/credential/startup failure retains the base Paper and explicit failed
-branch facts; it cannot become skipped/empty or cancel independent branches.
+## Cancellation and task release
 
-A bounded leaf scheduler gives each branch its own connection, client/cache and
-native identities. Branch-specific access revocation leaves unrelated branches
-running; Reject and whole-Workspace invalidation revoke the complete Paper.
-Foreground cancellation never follows source Run IDs into accepted Paper work.
-The Run slot releases only after foreground queries, native work, clients and
-snapshot end; Paper occupancy lasts through its separate actual cleanup.
+Run, Login, Covers and Paper cancellation address the captured task/attempt.
+Cancellation and shutdown join actual workers and native resources before their
+owners disappear. Shared Run requests and independent branches keep serving
+unaffected work. Page capacity follows actual resource ownership; see
+[Browser pages](browser-pages.md) and [Session events](browser-session.md).
 
-An accepted manual query on a `not_started` Paper keeps its captured token while
-the first complete collection intent waits in the same registry. Durable queued
-facts and host ownership block competing operations; the intent starts only after
-actual reservation release, or settles cancelled/expired without execution.
-Explicit collection retry requires current full unexcluded metadata, a settled
-failed/cancelled attempt, no competing owner and available pending dependencies.
-It preserves completed/skipped branches and never retries normal completed/empty
-work. Restore does not renew old tokens or trigger collection. No queue replays
-after restart, and no collection/retry action grants PDF/body authority.
+[Workspace runtime](collection-runtime.md) owns atomic base/queued admission,
+independent branch resources, retry and maintenance. Foreground Run ends separately
+from accepted Paper collection. Branch-specific access failure must not revoke
+unrelated work. Successful increments survive a later failure; startup records
+interrupted attempts without replaying queues, network or page actions.
 
-WF07 discovery facts belong to deletable metadata, with exact target binding and
-finite capability/completeness. Their presence confers no Session, collection or
-body authority. A candidate, Meta tag, extension or HTTP 200 never establishes
-Downloaded or successful PDF provenance. Only downstream PDF-type plus normal
-transfer confirmation stops source discovery; local association/file failure
-ends the task without another network source. The discovery core captures no
-new collection token and writes no body. Signed/session values stay within the
-current task; persistence uses stable facts or typed refresh locators and public
-projections/diagnostics omit private context. Every new request and next hop must
-pass the discovery transport's target checks; the shared offline URL validator
-alone is not DNS validation. [Discovery rules](pdf-source-discovery.md) specify
-the lazy order, bounded parsing and platform-specific access conditions.
-Independent content survives a local PDF scanner/size failure only after the
-same final live Document, subject and article-identity check. OCE's conditional
-reader requires an independently captured retained OCE target and its own
-Host recheck at use; a boolean observation and LWW access cannot renew authority.
+Actual unfinished I/O still needs an owner. Logging, terminal-record or auxiliary
+cleanup faults alone are not a design requirement to retain a finished Paper
+indefinitely; current fault handling is a follow-up implementation concern.
+Successful transport/open/locate results must not be revoked by redundant post-success
+checks. This direction introduces no local completion phase, state or extra deadline.
+
+[Logging](logging.md) owns diagnostic privacy and retention. Logging failure cannot
+change business results. Use isolated SQLite, files, HTTP and Electron profiles;
+source/fixture checks do not prove live-provider, institution, user-library or
+system-PDF behavior. Select verification through [development](development.md#checks).

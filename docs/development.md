@@ -23,9 +23,8 @@ and local HTTP/DOM fixtures. Create current-format v5 databases for acceptance; 
 uv run --locked pytest tests/test_paper_repository.py tests/test_paper_repository_safety.py tests/test_run_commit.py tests/test_preprint_lookup.py
 ```
 
-Paper MD/Inbox authority, Keep/Import, active Enrich and their dedicated tests have
-been replaced or removed. [Task tracking](workflow-refactor-tasks.md) records the
-current adoption and later responsibility; no dependency upgrade is involved.
+Paper MD/Inbox authority, Keep/Import and active Enrich are retired. Current
+production collection is described in [Workspace runtime](collection-runtime.md).
 
 ## Start and stop
 
@@ -62,8 +61,8 @@ against its own local HTTP server and normal quit. Profile/Session/logs and a
 QA screenshot belong to this disposable copy. It adds no product configuration
 or port policy. If a personal instance occupies 18767, leave it running and
 defer this smoke. The complete collection/stream/original-item compositions run
-separately in the standard suites. [Final acceptance](workflow-acceptance.md)
-records actual versions, commands and the remaining real-service/OS boundaries.
+separately in the standard suites. Record actual versions and results in the PR;
+real-service and OS evidence remains separate from source startup.
 
 Fixture-only `--fail-after-ready` and `--timeout-after-ready` exercise assertion
 and watchdog failure after Python has started. Both must return status 1 only
@@ -90,48 +89,83 @@ application; see [release preparation](release.md).
 
 ## Checks
 
+Local validation follows the changed behavior. Use the existing file/name selectors
+for relevant checks and regression tests. Cross-Python/Electron protocols,
+persistence or task-lifecycle changes need the corresponding combined fixtures
+and both sides of the interface. Existing behavior tests stay active until their
+own implementation changes; a retired requirement alone is not grounds to hide
+or delete a test that still covers production code.
+
+From the repository root, for example:
+
+```sh
+# Python: file selection, then a narrower existing test name.
+uv run --locked pytest tests/test_ci_scope.py tests/test_pdf_rules.py
+uv run --locked pytest tests/test_pdf_rules.py -k adoption_catalogue
+
+# Electron/Node: select files; keep native fixture processes serial.
+node --test --test-concurrency=1 electron/tests/setup.test.cjs electron/tests/ui-build.test.cjs
+node --test --test-concurrency=1 --test-name-pattern='repeated setup' electron/tests/setup.test.cjs
+```
+
+After UI source changes, build with `node tools/build-ui-next.mjs` before rendered
+fixtures. Pick related files from the component guide below; these examples are
+not a compulsory list for every edit. Unrun relevant checks must be identified
+with their reason and impact. Live-site and large Zotero comparisons are outside
+routine offline validation and require separately scoped work/authorization.
+
+The complete offline suite remains explicitly available:
+
 ```sh
 npm --prefix electron run check
 uv run --locked pytest
 npm --prefix electron test
 ```
 
-`check` discovers project-owned JS/CJS/MJS in Electron sources and scripts, the UI and tools. It excludes dependencies, third-party assets and generated output; tests parse their own files.
+`check` discovers owned JS/CJS/MJS in Electron sources/scripts, UI and tools. It
+excludes dependencies, third-party assets and generated output; tests parse their
+own files. Full Python and Electron suites are not mandatory after every local
+edit, and a local full pass need not be repeated unconditionally when relevant
+latest-PR CI already supplies that evidence. CI/test-entry changes themselves
+require the latest PR's actual full offline CI, even when local validation is targeted.
 
-Repository/API checks exercise real temporary libraries, thread ownership,
-Run/WoS commits, local fields, Preprint proof and exact-Paper cancellation.
-Rendered Electron fixtures use local HTTP and temporary profiles for
-Candidate/Downloaded/Trash, identity-only Reader, ordinary/Preprint dates,
-Reject/Restore/metadata clearing, late response guards and retained layout.
-They contact no personal library, account, institution or PDF.
-
-The retained suite covers data preservation, path/identity safety, authority, cancellation, concurrent settlement and uncertainty, configuration and source ownership. Tests use isolated fixtures and transport doubles. UI build and module dependency checks cover the directory layout. Use [package scripts](../electron/package.json), the [UI build tool](../tools/build-ui-next.mjs) and [CI](../.github/workflows/ci.yml) as the executable command definitions.
-
-CI starts from a fresh checkout without Vendor caches, runs Setup and the offline checks on macOS. It does not publish or use real credentials. A local pass does not prove that GitHub Actions ran, that the UI is visually correct or that real institutional access works. Changes to those paths need relevant manual acceptance with explicit browser authorization.
-
-The Electron test command runs files serially. Its native input fixtures briefly
-show their own windows, and Electron's
+The Electron entry stays serial: native input fixtures briefly show their own
+windows, and Electron's
 [`sendInputEvent()`](https://www.electronjs.org/docs/latest/api/web-contents#contentssendinputeventinputevent)
-requires the containing window to have focus. Concurrent fixture processes can
-otherwise steal that focus and invalidate mouse/keyboard acceptance.
+requires focus. Parallel native processes can steal that focus. Use isolated
+files, SQLite, local HTTP and temporary profiles, never personal configuration,
+Workspace, covers, accounts or Zotero. Source/build, rendered fixtures, live-service
+acceptance and GitHub CI are distinct evidence.
 
-The shipped Browser fixture retains Login/Discover handoff, task/Page identity,
-focus and Session assertions. The Library/layout fixture checks the built Reader
-and Trash projection independently of a Run. Dedicated Import/Enrich fixtures
-are removed; their former product operations cannot be dispatched.
+### GitHub Actions scope
 
-`document-probes.test.cjs` covers real BrowserRuntime/DocumentRuntime/preload
-and the internal Paper entry, bounded sender/Document tests, neutral Bridge queue
-regressions and production-dispatch/Bridge/Pydoll/CDP recheck in the existing
-Cloudflare native fixture. Covers and WoS Export expiry tests retain real-terminal
-ownership. See [controlled Documents](browser-documents.md) for payload limits,
-identity evidence and fixture/live-service boundaries.
+[Safety checks](../.github/workflows/ci.yml) runs on PRs, pushes to `main` and manual
+`workflow_dispatch`. New versions of the same PR cancel its obsolete runs;
+different PRs and main/manual runs have separate groups. The required
+`Safety checks / safety` job always runs to a result. It has no workflow path filter.
 
-The normal serial Electron entry also runs `session-downloads.test.cjs`: a real
-Electron 45.0.0/local-HTTP fixture for original POST/inline/frame/popup downloads,
-same-URL isolation, expiry/late/ambiguous events, cancellation/interruption,
-source-close stages and controlled host-fetch association. See the measured
-[capability boundary](browser-session.md#electron-4500-capability-evidence).
+Before setup, [ci_scope.py](../tools/ci_scope.py) uses the event's commit SHAs and
+local Git history. PRs compare their merge base to head, covering the whole PR;
+pushes compare `before` to `after`, covering the whole push. Rename detection is
+disabled so both paths count, including deletions. Missing history, ambiguous or
+empty diffs, unrecognized events and unclassified paths choose full validation.
+
+Only a complete diff consisting of the explicitly listed explanatory documents
+skips dependency installation, UI build and heavy Python/Electron checks.
+`README.md` is Python build metadata, `list.md` is a runtime/test seed, and UI
+notices are build assets: Markdown is not automatically documentation-only.
+New documentation paths need an input-usage review before joining the allowlist.
+Any code, test/fixture, CI, script, dependency, lock or runtime-configuration change
+runs existing locked setup plus all three commands above. Mixed changes do too.
+Manual dispatch always runs full validation. Scope and reason appear in the log
+and Job summary; failures in executed steps remain failures.
+
+This keeps the required workflow present as described by GitHub's
+[required-status guidance](https://docs.github.com/en/pull-requests/how-tos/merge-and-close-pull-requests/troubleshooting-required-status-checks)
+and isolates cancellation using [concurrency groups](https://docs.github.com/en/actions/how-tos/write-workflows/choose-when-workflows-run/control-workflow-concurrency).
+Verify the latest PR-associated check and run link, including GitHub's test-merge
+commit when used; a prior push success is not evidence for the current PR version.
+Do not change branch protection or create temporary PRs to exercise event variants.
 
 ### Workbench manual acceptance reference
 
@@ -172,118 +206,31 @@ Chromium authentication remains a separate manual acceptance boundary.
 
 See [architecture](architecture.md) before changing ownership and [safety](safety.md) before changing data, authorization or settlement paths.
 
-### Integrated discovery acceptance
+### Component selection
 
-The [Provider guide](providers.md) describes foreground Discovery/identity work,
-Workspace collection, the Info Preprint lookup and change-scoped acceptance. HTTP fixtures and rendered
-Electron tests use synthetic data and isolated configurations. Real Provider
-compatibility and institution/publisher access require separate verification.
+Use actual package scripts and test selectors; no separate scheduler or test
+classification framework is needed. The following entry points help select
+related verification without turning every row into a requirement for every PR.
 
-Focused application regressions use the Run, Run commit, Paper repository,
-Preprint lookup, local-field and Workspace API suites. They verify actual SQLite
-reopen/classification, stable UUIDs, bounded short commits, cancellation and
-captured generations. The Electron fixture renders ordinary dates and separate
-Preprint proof and checks local recycling without file operations. Source/build,
-rendered fixture, live-service and latest PR CI outcomes remain distinct evidence.
+| Changed area | Existing focused verification |
+| --- | --- |
+| CI scope | `tests/test_ci_scope.py`: disposable Git histories and workflow-command outputs, including full PR/push, docs, mixed, deletion/rename and unavailable diff |
+| Paper storage / Run admission | `test_paper_repository.py`, `test_paper_repository_safety.py`, `test_run_commit.py`, `test_run_library.py`; actual temporary SQLite reopen and ownership |
+| Collection / retry / lifecycle | `test_collection_repository.py`, `test_collection_runtime.py`, `test_collection_planner.py`, `test_collection_http.py`, `test_task_clients.py`, `test_task_authority.py`; real workers with isolated transports |
+| Provider queries / HTTP | `test_necessary_metadata.py`, `test_preprint_lookup.py`, `test_integrated_discovery.py`, `test_http_client.py`, `test_provider_resilience.py`; independent clients and synthetic responses |
+| Document extraction / PDF sources | `test_document_metadata.py`, `test_pdf_rules.py`, `test_pdf_source_facts.py`, `test_pdf_discovery.py`, `test_pdf_http.py`; serial `document-probes`, `document-extraction`, `pdf-clues` Electron tests |
+| Native IPC / resources / Solver | `test_electron_bridge_solver.py`, `test_browser_services.py`, `test_login.py`; serial `cloudflare-solver`, `session-downloads`, `page-resources`, `browser-workspaces-dom` Electron tests |
+| Download / local files | `test_body_downloads.py`, `test_body_download_http.py`, `test_native_body_downloads.py`, `test_local_body.py`; serial `body-stream`, `body-native`, `local-body`, `native-output` Electron tests |
+| Reader / layout | `workspace-layout-dom.test.cjs`, `browser-presentation-dom.test.cjs`; built UI and temporary profiles, with `document_metadata_pipeline.py` for real cross-language extraction/persistence composition |
 
-Collection component regressions use `test_collection_repository.py`,
-`test_dynamic_dispatch.py`, `test_collection_runtime.py`, `test_task_clients.py`
-and `test_task_authority.py`. They exercise current-format SQLite storage contention and
-rollback, real worker Futures and cleanup barriers, queued/expired work, branch
-idempotence and retry, loopback HTTP with independent clients, common pacing and
-narrow access revocation. Scheduler limits count executing Paper jobs, not native
-WebContents. WF08 connects this runtime to production and single-Paper Retry;
-WF10's public body service reuses the host/gate with its separate reservation.
-Existing bounded dispatcher and foreground Run
-tests remain applicable.
-
-The registry runs same-Paper branches on a separate bounded leaf scheduler.
-Each branch constructs its own `BranchContext`, repository connection and client/
-cache scope in its execution thread; sharing them across threads is unsupported.
-Parent scheduling and physical Browser quotas remain separate. Explicit Events,
-actual Futures and client/native cleanup barriers verify overlap and settlement.
-
-PDF-source component checks use actual normalizer/records/Run and necessary-query
-source-fact persistence, disk reopen, independent
-connection races, cleanup and safe public projection in
-`tests/test_pdf_source_facts.py`. Pure rule fixtures exercise adopted expressions
-and applicability rather than only catalogue counts. The temporary-profile
-`pdf-clues` Electron fixture uses production Main/Browser/Document/preload for
-same-page composition, PDF-only reads, known reader access, relative final URLs,
-Referer, bounded state fields and final Document/subject rejection. Controlled
-fixtures also cover ambiguous LWW ANs, platform-selector exclusions, aggregate
-PDF budgets through the actual Python validator, independent scanner failure,
-and the own-preparation OCE capability and fixed viewer carrier (including non-OCE,
-revoked and closed contexts). Controlled
-downstream outcomes verify the coordinator's lazy stop/fallback protocol; they
-are not actual PDF transfer/file acceptance. Existing native DownloadItem and
-WoS fixtures remain active. Full rules and the original evidence strength are
-retained in [the adopted specification](pdf-source-discovery.md).
-
-`tests/test_pdf_discovery_tasks.py` exercises the internal read-only adapter on
-completed collection, actual worker Futures/owned clients, PDF-only native
-results, captured primary identity, cancellation/replacement and maintenance/
-shutdown cleanup. Controlled downstream results in `test_pdf_discovery.py` and
-`test_pdf_http.py` verify T01–T24 without a byte receiver, writer or public
-Download.
-The focused facts/HTTP suites also exercise a real SQLite merge whose individually
-valid snapshots exceed the combined byte budget, finite response-stream failures,
-terminal cancellation/expiry/revocation during reads, captured actual-Host routing,
-known Crossref signature refresh and newly resolved Host templates. They assert
-actual source/fallback results and absence of unnecessary queries.
-Python HTTP checks include DNS preflight at dispatch/redirect; they do
-not claim address pinning or DNS validation by the native static URL gate.
-
-`test_necessary_metadata.py` covers purpose-driven requests through actual
-registry branches, controlled Provider transports/parsers, immutable capability
-handoff, full batch/pagination draining, partial results and complete native
-first-version proof. Run identity/registration and public Preprint regressions remain;
-the retired ordinary Completion driver and its exclusive fixtures are removed.
-`document-extraction.test.cjs` uses production Main dispatch, BrowserRuntime,
-DocumentRuntime and its isolated preload in Electron 45 with local HTTP and a
-temporary profile. It covers the complete fixed Date/Abstract algorithms,
-strict parameters/DTOs, legal empty results, bounded local diagnostics, live
-Document/body validation, captured Service binding and actual cleanup.
-The rendered Workspace fixture also consumes a fresh real Main extraction DTO
-through `tests/document_metadata_pipeline.py`: captured API/DOM task services,
-independent SQLite connection/client races, disk reopen and the actual Workspace
-HTTP projection feed the built Reader. It checks structured text, exact copied
-selection, incremental date refresh and retained reading position. This is
-isolated native/component evidence. Production Run and same-Paper orchestration
-are additionally exercised through the real HTTP planner/registry path below.
-
-In a separate worktree, ensure Python imports resolve to that worktree's `src`
-before relying on test evidence. A shared editable environment can still point
-at another checkout; use an isolated environment or explicit `PYTHONPATH=src`.
-
-`test_workspace_tasks.py` exercises the actual application host, HTTP projection,
-bounded manual reservations, signal/join/factory shutdown order, selective credential and
-Service invalidation, accepted switch/Reset, partial save and same-path rebind,
-refusal before drain and Logs protection with real disposable libraries. The
-`page-resources` Electron fixture separately verifies parallel same-Service
-physical work pages; it remains a native resource seam rather than a real-site test.
-
-`tests/test_two_stage_run.py` uses controlled Events/Futures to prove overlapping
-PubMed/WoS/OpenAlex producers, Work lookup before producer completion, deduplication
-and tail drain, fixed helper roles, unknown-only identity lookup, relation-only date
-folding, formal/preprint identity isolation, physical request counts, failure
-isolation, global dispatch revocation, native-disconnect settlement and parent
-shutdown/join. `tests/test_incremental_discovery.py` retains parent slot/partial
-export checks, verified-batch refusal for count/path/duplicate-UT failures,
-late conflict quarantine, >200 unordered Work IDs, whole-author full-detail
-fallback and ambiguous-owner isolation. `electron/tests/task-presentation.test.cjs` covers unified browser-stage recovery and parent cancellation without opening native windows. History keeps sanitized source totals and WoS batch/journal/date hint counts; actual Custom controls and downloaded exports remain a separately authorized live acceptance boundary.
-
-`test_collection_planner.py` runs actual `create_app` HTTP Run admission through
-the production planner, registry, controlled Provider/native transports and real
-SQLite. With Document and API responses blocked, base Papers remain readable and
-foreground Run finishes; later API-only and WoS Runs execute, and cancelling B
-leaves A running. It also covers complete/partial capability handoff, First public
-coverage, retained UUID/aliases and pending-only retry dependencies.
-`test_collection_http.py` covers the shared HTTP/UI Retry qualification, original
-Workspace/token/attempt/revision, occupied/finished refusal and safe projections.
-Rendered fixtures exercise incremental fields/state, unsaved and in-flight edits,
-scroll/selection/filter retention and per-Paper manual queries. Their local
-temporary-profile results are distinct from actual institution/publisher acceptance.
+Python names are under `tests/`; Electron names are under `electron/tests/` and
+end in `.test.cjs`. Combined body fixtures exercise public HTTP → Main/Session →
+managed files → SQLite → Workspace. Document/Reader fixtures exercise actual
+native DTOs, independent connections, incremental updates and retained selection.
+Their source code defines the assertions; module guides define supported behavior.
+Real institutions, publishers, default PDF apps and file managers require separate
+acceptance. The [body matrix](body-downloads.md#scoped-manual-acceptance) and
+[workspace layout](workspace-layout.md) describe relevant human checks.
 
 ## One-time retired scope cleanup
 
@@ -311,83 +258,3 @@ SQLite's backup API from that backup into the original database; preserve the
 original and any sidecars until recovery is verified. Never copy over a database
 while the application is running. Paper data is untouched. Per-Paper Markdown is no longer read or migrated; the
 SQLite library and explicit Workspace Reset follow [Paper identity](paper-identity.md).
-
-
-### Scoped Browser authority regressions
-
-`tests/test_browser_services.py`, `tests/test_login.py` and
-`tests/test_settings_autosave.py` use temporary configuration/User State and explicit
-native transports. They cover independent workflow owners, overlapping Service and
-control refusal, unrelated input edits, captured recovery authority, exact
-cancellation, actual-close notifications and old-key access cleanup without a held
-configuration lock. `tests/test_cover_authority.py` exercises final image saving
-across unrelated edits and refuses replaced Journal/cover targets.
-`tests/test_run_cancel_identity.py` covers required HTTP task identity, late old
-cancellation and the lock-outside WoS handoff race. Existing Run commit,
-Workspace/diagnostic Reset, Preprint and shutdown checks retain their protections.
-The autosave and task-presentation Node fixtures verify draft acknowledgement and
-UI-captured parent Run cancellation. These tests do not use real accounts or
-establish native/live Service acceptance.
-
-`page-resources.test.cjs` runs in the normal serial Electron test command.
-It checks real WebContents at minimum capacities, native popup/opener lifetime,
-multiple temporary batches, retained Portal reuse across unrelated revisions,
-queued cancellation, original native-item source retention and user-page bounds.
-The existing Document fixture keeps independent cases within separate task
-lifetimes and closes dependent-case pages promptly. Delayed-destroy and quota
-update checks use BrowserRuntime; configuration/API tests use temporary YAML and
-UserState. The rendered layout fixture verifies the visible page-limit controls
-and keeps inactive PDF controls absent. [Browser pages](browser-pages.md) records
-counts, live effect timing, configuration limits and the Runtime form-POST
-limitation; [Session evidence](browser-session.md) has its separate capability scope.
-
-
-## Public body service and native output
-
-Run `test_body_downloads.py`, `test_body_download_http.py` and the serial
-`body-stream.test.cjs` composition fixture for body qualification, lazy P1/P2/P3,
-fixed secret scope, exact cancel/progress, inode/no-clobber, v4/v3→v5 preservation,
-transactions and original-generation races. The real Electron composition adds
-public HTTP→Main Session→file→SQLite→Workspace evidence to the retained internal
-stream cases. Local HTTP, temporary profile/library and synthetic Cookie/DNS
-routing isolate all data. The rendered layout fixture checks ongoing download
-refresh, usable Reject/Run, classification/remount and retained reading scroll;
-`ALLFOLD_LAYOUT_SCREENSHOTS` captures optional local QA images.
-
-`tests/test_local_body.py` uses actual temporary managed files, independent
-SQLite/HTTP operations and controlled errors for missing/permission/object
-replacement, Trash preservation, DB-after-unlink failure and maintenance drain.
-`electron/tests/local-body.test.cjs` tests the fixed shell adapter, and the same
-real `body-stream` composition additionally runs existing-body Download/open/
-locate, non-empty `openPath` errors, reading during collection, Trash deletion,
-explicit new attempt and identity-only nested-path cases through authenticated
-Bridge/Main. The built Reader fixture checks local buttons with a valid
-metadata-free DTO. No default viewer or file manager is launched by those tests.
-
-The serial `body-native.test.cjs` fixture uses actual Electron45, production
-Main/Runtime and local HTTP to exercise original POST/inline, existing named form
-targets and action-created iframe/popup first responses. Native-output barriers
-exercise unrelated child navigation during an active item and refusal when its
-actual action frame or source Document is replaced. Public composition must
-additionally pass through the HTTP service, managed publication, SQLite and Workspace projection, rather
-than stopping at a transport helper. Native output reserves an exclusive private
-directory with an absent leaf, then qualifies Chromium's actual output inode;
-stream placeholders are not reused for native output. Application replacement
-refusal and no-clobber final publication remain active.
-The native fixture replays a real unlinked empty reservation stat at the Main
-filesystem boundary while the original popup item completes its actual output.
-`native-output.test.cjs` separately refuses that state at final/owned capture,
-empty hardlinks/symlinks and replacement of an adopted inode. Fixture-only failure
-observations retain the output phase and bounded error site before Main maps it
-to the private native-output result.
-
-Chromium's asynchronous cancellation unlink may delete an externally replaced
-temporary file after `done(cancelled)`. This measured limitation is accepted and
-documented; it is not a required replacement-survival assertion or proof of a
-fully closed file worker. Failed `/dev/fd` probes remain historical evidence,
-not an alternative sink. Do not use fixed sleeps, extra helper downloads, resume
-or POST-to-GET replay to claim cleanup guarantees. See [the native boundary](body-downloads.md#native-output-and-accepted-cancellation-risk).
-
-For human acceptance, use only the [affected body workflow matrix](body-downloads.md#scoped-manual-acceptance),
-not the whole Workbench reference above. Publisher/OS effects remain unverified
-until actually exercised with separately authorized test accounts/data.

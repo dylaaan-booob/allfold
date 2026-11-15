@@ -17,7 +17,7 @@ Allfold is an Electron-managed Python application with a Web UI. Keep changes wi
 
 - Use isolated test files and transports. Preserve local configuration, credentials, Workspace, covers and Zotero data unless the user explicitly authorizes their modification.
 - Keep official vendor sources pristine. Adapt in host code; generate UI through its build script. The retired Translator Runtime is not a build input.
-- For changed behavior, update callers and focused safety checks. Run checks appropriate to the change and distinguish source/build evidence from rendered UI and real-site/system PDF acceptance. Browser control requires task-specific user consent.
+- For changed behavior, update callers and focused safety checks. Select local checks by changed behavior using [development](docs/development.md#checks); full offline commands remain available. Distinguish source/build evidence from rendered UI and real-site/system PDF acceptance. Browser control requires task-specific user consent.
 - Include source, necessary helpers and non-sensitive fixtures; keep generated resources, environments, local data, credentials and reports out of public candidates.
 - Keep dependency pins and product scope unless their change is authorized. Repository initialization, commits, push, tags, publishing and deployment require explicit authorization for the action; existing authorization remains valid within its scope.
 
@@ -32,7 +32,3 @@ Use GitHub Issues for adopted specs and tickets that need persistent tracking. S
 ### Triage labels
 
 Use the default five triage labels. See docs/agents/triage-labels.md.
-
-### Domain docs
-
-Use the single-context domain layout. See docs/agents/domain.md.

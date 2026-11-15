@@ -27,8 +27,10 @@ transaction callbacks: network, page and file work finishes before repository
 calls. No lock spans those operations.
 
 The application ID identifies an Allfold library, `PRAGMA user_version` records
-schema version 5, and `library_info` stores the Workspace UUID. Opening checks
-the version, expected table/index definitions, integrity and references. Missing,
+schema version 5, and `library_info` stores the Workspace UUID. Current opening
+performs extensive schema/integrity/reference validation and may take a write
+transaction. That per-open work is scheduled for revision, not an invariant;
+content preservation and explicit unsupported/corrupt errors remain. Missing,
 corrupt, unsafe and unsupported-schema libraries raise distinct errors. Existing
 content is never overwritten or rebuilt implicitly. Exactly valid v4 and the supported v3 entry path have transactional forward changes to v5; unknown,
 corrupt and retired v1/v2 formats remain refused. Acceptance uses isolated data. Failed initialization preserves its
@@ -186,14 +188,14 @@ The native adapter distinguishes empty success, whole failure and an explicitly
 partial abstract result. Candidate/budget failures retain qualified dates and a
 failed branch, with fixed diagnostics in the operation-local service report;
 JSON-LD-only warnings can complete. Document/recovery/diagnostic annotations do
-not enter persistent metadata. Final native live verification precedes normal
-owned-page cleanup; repository commit then rechecks captured task authority
-without revisiting the closed Document.
+not enter persistent metadata. Repository commit checks captured task authority
+without revisiting a closed Document. Current native reading limitations belong to [Document access](browser-documents.md).
 
 The registry now executes applicable same-Paper branches concurrently using a
 bounded leaf scheduler separate from its parent Paper pool. Each leaf opens its
 own repository, client/cache scope and native owner; thread checking remains
-enabled. Actual client/native/page cleanup and final writes gate Paper release.
+enabled. Actual client/native/page lifetime determines resource ownership; current
+terminal-write/fault handling and its planned correction belong to the runtime guide.
 The [runtime contract](collection-runtime.md) documents Run admission, original
 snapshot/rebuild qualification, deferred intent behind manual work, exact scoped
 maintenance and pending-only explicit retry.
@@ -228,7 +230,7 @@ system errors preserve it. Physical unlink followed by DB clearing is not atomic
 
 ## Production lifecycle and projections
 
-WF07 adds bounded `discovery_facts` inside the deletable `PaperMetadata` payload
+The library stores bounded `discovery_facts` inside the deletable `PaperMetadata` payload
 and `MetadataDelta`; it does not reuse `BodyReference`. Each version-1 snapshot
 names its exact target, source/capability, observation time and completeness, with
 typed stable PDF/landing/XML facts or fixed refresh locators. No snapshot means
@@ -282,5 +284,6 @@ provider, institution, user-library or actual-PDF acceptance.
 `touch_projection(paper_id)` advances only the Paper/library response revisions
 for a runtime reservation change. It grants no metadata/operation/abstract/body
 qualification. The application holds the same Paper gate and captured reservation
-identity through that commit and runtime ownership change; failed persistence
-cannot silently release the reservation.
+identity through that commit and runtime ownership change. Current failure-related
+occupancy is an implementation limitation, not a requirement to keep finished work
+reserved indefinitely; see [Workspace runtime](collection-runtime.md).

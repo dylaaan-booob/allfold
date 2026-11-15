@@ -26,7 +26,7 @@ BrowserRuntime records workflow/task/request/attempt and Page/native-frame facts
 when a real native request begins; a known preload Document ID is included when
 available. Absence remains absence. Host fetches use `sessionEvents.fetch` with
 an explicit owner, attempt, parent deadline, signal and authority validator.
-Covers is the public production host-fetch consumer and keeps
+Covers is one host-fetch consumer and keeps
 `credentials: 'omit'`. A random marker associates a fetch with Chromium's request
 ID at `onBeforeSendHeaders`, then is removed before consumers or the network see
 it. Redirects retain that native request association. Returned request facts
@@ -39,8 +39,8 @@ One `BrowserCooldown` belongs to this Session lifetime. Main-frame responses and
 explicitly associated requests observe actual response origins: 429 uses valid
 Retry-After or the existing one-second default; 503 requires valid Retry-After.
 Unowned subresources retain the existing exclusion. Active waits can only extend,
-are bounded by 30 seconds and the parent deadline, and recheck cancellation and
-authority after waiting. Independent origins remain independent. Chromium's
+currently have a 30-second ceiling and the parent deadline. That arbitrary
+ceiling is a current limit to revise, not a general Retry-After requirement. Independent origins remain independent. Chromium's
 existing redirect/authentication chain proceeds without host action replay.
 
 ## Managed download contract
@@ -115,7 +115,7 @@ that sample. Inline override is opt-in to an exact registered source/frame and
 the response's declared MIME type; unrelated pages' responses are unchanged.
 These fixtures establish mechanisms, not PDF validation or a permanent-file/UI
 product. Real CARSI/WoS/accounts and CAPTCHA remain separately authorized live
-acceptance. WF09's stream and the current public stream/local-body services have
+acceptance. The stream and public local-body services have
 separate file/database/UI evidence. Native original-response saving is not
 accepted merely because these Session cases complete.
 
@@ -126,7 +126,7 @@ continues retaining the item until real `done`.
 
 ## BrowserRuntime Document handoff
 
-WF10 adds a separate fixed body-action capability for qualified R059 current
+Public Download uses a separate fixed body-action capability for qualified R059 current
 forms and R024 ScienceDirect article/reader entries. Before dispatch it transfers
 the verified Document's authority to the exact controlled request/frame and
 original item; action-created child sources register before their first PDF
@@ -134,7 +134,7 @@ headers. It does not globally relax current-Document checks or make read-only
 probes execute actions. The [accepted cancellation risk](body-downloads.md#native-output-and-accepted-cancellation-risk)
 concerns Chromium's temporary pathname cleanup, not Document authority.
 
-The separate `page-resources.fixture.cjs` uses the production Runtime and its WF03
+The separate `page-resources.fixture.cjs` uses the production Runtime and its current
 Document generation checks. A main-frame form POST download invalidates its
 captured navigation generation; current-Document validation therefore refuses
 that registration and cancels the original item to actual terminal. The local
@@ -142,11 +142,10 @@ server observes exactly one POST, no extra GET, and no managed file. This entry
 remains refused by that ordinary Document registration; only the dedicated body
 handoff supports the qualified action. Its slow source-lifetime case uses one
 same-Document `<a download>` GET, held through real `done`. These results and the
-Session-level original-POST success above have different seams; neither grants
-permission to weaken Document authority. [Browser pages](browser-pages.md) records
+Session-level original-POST success above have different seams; neither establishes a permanent requirement to cancel a bound item on page changes. [Browser pages](browser-pages.md) records
 physical counts and retention.
 
-WF07 source discovery consumes bounded clues and existing response facts; it does
+PDF source discovery consumes bounded clues and existing response facts; it does
 not replace the original DownloadItem mechanisms above. Relative next hops use
 the actual final carrier URL. A controlled `session.fetch` caller must retain
 the associated request's redirect/final-response evidence: Electron 45 does not
@@ -162,17 +161,16 @@ OCE navigation revalidates that exact prepared context. LWW authority alone does
 not enable it. The known OCE viewer's `file` field supplies a current signed
 assets candidate without a new native listener or PDF-byte receiver.
 
-WF08 production collection uses the same Session, origin cooldown and physical
+Production collection uses the same Session, origin cooldown and physical
 page ledger across foreground Runs and Workspace tasks. Run cancellation carries
 only its captured parent identity; it cannot cancel transferred Paper native
 requests. Each branch retains its own workflow/task through actual Future/page
 cleanup. Switching the displayed Reader/Browser surface does not end that lifetime.
-No byte receiver, original-response replay or permanent PDF behavior is added.
 
 
-## WF09 internal body service
+## Body service
 
-Merged WF09 adds `stream_paper_body` as a second host-fetch consumer, now used by
+`stream_paper_body` is another host-fetch consumer, used by
 public Download's single body owner. It waits for business Session identity,
 pins applicable prepared access, uses Chromium credentials and native response/
 redirect facts, then awaits backpressured pipeline, flush and writer close.
