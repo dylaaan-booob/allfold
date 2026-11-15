@@ -120,6 +120,22 @@ return to the same source coordinator after that output has settled.
 
 ## Native output and accepted cancellation risk
 
+The fixed R059 form may live in the article navigation toolbar. Its exact
+`.download-pdf form.ft-download-content__form--pdf[action]` selector remains
+qualified there; related, reference, supplementary and foreign-identity controls
+stay excluded. The action still uses the unique current form and its original fields.
+
+ScienceDirect's original `/pdfft` or `/pdf` response may be an HTML reader that
+navigates itself to the same PII's `pdf.sciencedirectassets.com/.../main.pdf`.
+One such native main-frame continuation is permitted after the fixed CDN DNS
+preflight, binding the committed HTML response, its actual native initiator,
+destination FrameTreeNode and exact next GET. `did-start-navigation` can retire
+the superseded read probe but grants no request authority; `will-frame-navigate`
+must qualify the handoff before registration and the actual request. No response
+is copied or replayed. A second continuation, another PII/source, static access
+challenge or ordinary unrelated HTML remains refused. The original deadline,
+owner, output, progress and actual-item terminal still govern completion.
+
 `native_paper_body` uses a separate fixed action capability in Main/BrowserRuntime
 and the isolated Document preload. It opens and verifies the current article,
 reads its live R059 form or R024 ScienceDirect entry, then registers before the

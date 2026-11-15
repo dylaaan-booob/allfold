@@ -9,6 +9,7 @@ const failure=code=>new BrowserFailure('navigation',code);
 class OriginalNavigation {
   constructor(browser,doc,candidate,{output,signal,deadline,verify,progress}) {
     Object.assign(this,{browser,doc,candidate,output,signal,deadline,verify,progress});
+    this.sciencePII=candidate.platform==='sciencedirect'?new URL(doc.url).pathname.match(/\/science\/article\/pii\/([SB][0-9X]{16})/i)?.[1]:null;
     this.owner=browser.operation;this.sources=new Map();this.registrations=[];this.tracked=new Set();this.probes=new Set();this.dispatched=false;
     this.received=new Promise((resolve,reject)=>{this.resolve=resolve;this.reject=reject;});this.received.catch(()=>{});
     this.hook=browser.sessionEvents.subscribe('beforeRequest',details=>this.request(details));
@@ -30,11 +31,36 @@ class OriginalNavigation {
     if(!publicClueURL(url))return false;
     if(url===(this.requestURL || this.candidate.url))return true;
     if(this.candidate.platform!=='sciencedirect')return false;
-    const source=new URL(this.doc.url),next=new URL(url),pii=source.pathname.match(/\/science\/article\/pii\/([SB][0-9X]{16})/i)?.[1];
+    const source=new URL(this.doc.url),next=new URL(url),pii=this.sciencePII;
     return !!pii && (next.origin===source.origin&&['/science/article/pii/'+pii+'/pdfft','/science/article/pii/'+pii+'/pdf'].includes(next.pathname)
-      ||next.protocol==='https:'&&next.hostname==='pdf.sciencedirectassets.com'&&next.pathname.endsWith('/1-s2.0-'+pii+'/main.pdf'));
+      ||this.scienceAsset(url));
   }
-  acceptPopup(url) {return !this.targetName&&this.dispatched&&!this.error&&!this.primary&&(url==='about:blank'||this.acceptsURL(url));}
+  scienceAsset(url) {
+    if(!this.sciencePII||!publicClueURL(url))return false;
+    const next=new URL(url);
+    return next.protocol==='https:'&&next.hostname==='pdf.sciencedirectassets.com'&&next.pathname.endsWith('/1-s2.0-'+this.sciencePII+'/main.pdf');
+  }
+  scienceReader(source,entry,frame) {
+    if(!this.sciencePII||!entry?.response||entry.continued||source!==this.boundSource||entry!==this.boundEntry
+      ||entry.response.status<200||entry.response.status>=300
+      ||frame.frameTreeNodeId!==entry.request.frameTreeNodeId||frame.url!==entry.response.url)return false;
+    const url=new URL(frame.url),article=new URL(this.doc.url);
+    return url.origin===article.origin&&['/science/article/pii/'+this.sciencePII+'/pdfft','/science/article/pii/'+this.sciencePII+'/pdf'].includes(url.pathname);
+  }
+  continueScienceReader(source,event) {
+    const frame=source.contents.mainFrame,previous=this.boundEntry;
+    if(!this.dispatched||this.error||this.primary||this.continuation||!event.isMainFrame
+      ||event.frame?.frameTreeNodeId!==frame.frameTreeNodeId||!sameFrame(event.initiator,frame)||!this.scienceAsset(event.url)
+      ||!this.scienceReader(source,previous,frame))return;
+    this.valid();
+    // The committed HTML response cannot later become an item. Transfer only
+    // its own native navigation to the one same-PII CDN request, without replay.
+    previous.continued=true;previous.registration.dispose();source.frames.delete(previous.frame.frameToken);
+    const entry=this.addFrame(source,event.frame);
+    if(!entry)throw failure('document_changed');
+    this.continuation={source,entry,url:event.url,frameTreeNodeId:frame.frameTreeNodeId,used:false};
+  }
+  acceptPopup(url) {return !this.targetName&&!this.continuation&&this.dispatched&&!this.error&&!this.primary&&(url==='about:blank'||this.acceptsURL(url));}
   addPopup(tab) {
     if(!this.acceptPopup('about:blank'))return;
     if(tab.opener?.bodyAction!==this||tab.taskOwner!==this.owner)return;
@@ -51,6 +77,7 @@ class OriginalNavigation {
     };
     contents.on('frame-created',source.created);
     source.targetNavigation=event=>{
+      try {this.continueScienceReader(source,event);}catch(error){this.fail(error);}
       const frame=event.frame;
       if(!this.dispatched||this.bound||this.primary||this.error||event.isMainFrame||!frame)return;
       if(!source.createdFrames.has(frame.frameToken)||!sameFrame(event.initiator,this.doc)
@@ -66,6 +93,10 @@ class OriginalNavigation {
       if(!(event.isMainFrame ?? main))return;
       url=event.url ?? url;
       if(url==='about:blank'&&tab.id!==this.doc.pageId)return;
+      // did-start-navigation precedes will-frame-navigate. Retire only the old
+      // read probe here; native initiator/destination checks still gate the request.
+      if(!this.continuation&&this.scienceAsset(url)&&this.scienceReader(source,this.boundEntry,contents.mainFrame))
+        this.boundEntry.pendingContinuation=true;
       if(!this.dispatched||!this.acceptsURL(url)||this.primary)this.fail(failure('document_changed'));
     };
     source.replaced=(_event,_url,main,processId,routingId)=>{
@@ -76,7 +107,7 @@ class OriginalNavigation {
       if(this.error||this.primary)return;
       const frame=source.contents.mainFrame.framesInSubtree.find(item=>item.processId===processId&&item.routingId===routingId);
       if(!frame)return;
-      for(const entry of source.frames.values())if(entry.response&&!entry.probing&&entry.request.frameTreeNodeId===frame.frameTreeNodeId) {
+      for(const entry of source.frames.values())if(entry.response&&!entry.continued&&!entry.probing&&entry.request.frameTreeNodeId===frame.frameTreeNodeId) {
         entry.probing=true;
         const probe=this.browser.runInOperation(this.owner,()=>this.inspectResponse(source,entry,frame));this.probes.add(probe);
         probe.catch(error=>this.fail(error)).finally(()=>this.probes.delete(probe));
@@ -113,6 +144,7 @@ class OriginalNavigation {
       onRejected:tracked=>{this.tracked.add(tracked);this.fail(tracked.error || failure('download_not_attributable'));},
       onAmbiguous:()=>this.fail(failure('download_not_attributable'))});
     this.registrations.push(entry.registration);
+    return entry;
   }
   request(details) {
     const source=this.sources.get(details.webContentsId);
@@ -137,11 +169,16 @@ class OriginalNavigation {
         if(entry.request.id!==details.id)throw failure('document_changed');
         return;
       }
-      if(!this.bound && (details.url!==(this.requestURL || this.candidate.url)||details.method!==this.method))throw failure('document_changed');
+      const continuation=this.continuation;
+      const continuing=continuation&&!continuation.used&&continuation.source===source&&continuation.entry===entry;
+      if(continuing) {
+        if(details.url!==continuation.url||details.method!=='GET'||details.frame.frameTreeNodeId!==continuation.frameTreeNodeId)throw failure('document_changed');
+      }else if(!this.bound && (details.url!==(this.requestURL || this.candidate.url)||details.method!==this.method))throw failure('document_changed');
       // Redirects keep the bound request ID. A new request after the one-shot
       // dispatch cannot borrow the action merely because its URL looks related.
-      if(this.bound)throw failure('document_changed');
+      if(this.bound&&!continuing)throw failure('document_changed');
       this.bound=true;this.boundSource=source;this.boundEntry=entry;
+      if(continuing)continuation.used=true;
       entry.request={id:details.id,frameTreeNodeId:details.frame.frameTreeNodeId,
         frame:{processId:details.frame.processId,frameToken:details.frame.frameToken}};
       entry.registration.bindRequest(details);
@@ -171,11 +208,18 @@ class OriginalNavigation {
     if(frame.frameTreeNodeId!==entry.request.frameTreeNodeId||frame.url!==response.url)throw failure('document_changed');
     const binding={pageId:source.tab.id,processId:frame.processId,frameToken:frame.frameToken,url:response.url,
       navigationGeneration:source.tab.documentGeneration,rootProcessId:root.processId,rootFrameToken:root.frameToken};
-    const access=await this.browser.documents.call(binding,'access',{}, {signal:this.signal,deadline:this.deadline});
+    let access;
+    try {access=await this.browser.documents.call(binding,'access',{}, {signal:this.signal,deadline:this.deadline});}
+    catch(error) {
+      if(!(entry.continued||entry.pendingContinuation)||error.diagnostic?.code!=='document_changed')throw error;
+      this.valid();return;
+    }
     this.valid();
-    if(entry.response!==response||!this.browser.documentCurrent(binding))throw failure('document_changed');
     checkPage(response.status,access);
     if(access.markers.login)throw new BrowserFailure('navigation','content_access_blocked',response.status);
+    if(entry.continued)return;
+    if(entry.response!==response||!this.browser.documentCurrent(binding))throw failure('document_changed');
+    if(this.scienceReader(source,entry,frame))return;
     // A dispatched one-shot action with ordinary HTML is a finite local failure,
     // never a new source, copied body, solver action or replayed request.
     throw failure('download_not_attributable');
@@ -235,6 +279,7 @@ async function executeBodyNative(browser,data,{signal,progress=()=>{}}={}) {
         identifier:pii,target:data.identity},data.identity);
     }
     await waitFor(()=>target(candidate.url,browser.bodyTargetResolver),stop,data.deadline_ms);
+    if(requested.platform==='sciencedirect')await waitFor(()=>target('https://pdf.sciencedirectassets.com/',browser.bodyTargetResolver),stop,data.deadline_ms);
     await browser.confirmArticlePage(data.identity,doc,{signal:stop,deadline:data.deadline_ms});verify();
     operation=new OriginalNavigation(browser,doc,candidate,{output,signal:stop,deadline:data.deadline_ms,verify,progress});
     prepared=await browser.bodyActions.prepare(doc,{url:candidate.url,action:candidate.action,platform:candidate.platform,rule_id:candidate.rule_id},

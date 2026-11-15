@@ -458,7 +458,7 @@ const operations={
       return !/supplement|supporting|appendix|whole issue|entire issue|issue pdf|other article/i.test(label)
         && (!identity || !!targetDoi && identity===targetDoi) && (attribute===null || sameArticle(value));
     };
-    const explicit=(selector,attribute='href',extra={})=>{for(const node of document.querySelectorAll(selector)){guard();if(bodyEntry(node,attribute))add(node.getAttribute(attribute),'P4',extra);}};
+    const explicit=(selector,attribute='href',extra={},allowNavigation=false)=>{for(const node of document.querySelectorAll(selector)){guard();if(bodyEntry(node,attribute,allowNavigation))add(node.getAttribute(attribute),'P4',extra);}};
     const addId=(kind,value)=>{if(typeof value==='string' && /^[A-Za-z0-9_.:/-]{1,256}$/.test(value) && !identifiers.some(item=>item.kind===kind&&item.value===value)) {
       const identifier={kind,value,rule_id};
       if(identifiers.length>=16 || JSON.stringify({identifiers:[...identifiers,identifier],candidates}).length>fieldsLimit)throw Error('pdf_budget_exceeded');
@@ -477,7 +477,7 @@ const operations={
         if(platform==='emerald'){explicit('a.intent_pdf_link[href]');if(/\/full\/pdf$/.test(path))add(landing_url);}
         if(platform==='optica')explicit('a#link-pdf[href]');
         if(platform==='elife')for(const node of document.querySelectorAll('.article-download-list a[href]'))if(bodyEntry(node) && /\bpdf\b/i.test(node.textContent+' '+node.getAttribute('title')))add(node.getAttribute('href'));
-        if(platform==='microbiology')explicit('.download-pdf form.ft-download-content__form--pdf[action]','action',{action:'refresh_form'});
+        if(platform==='microbiology')explicit('.download-pdf form.ft-download-content__form--pdf[action]','action',{action:'refresh_form'},true);
         if(['atypon','siam'].includes(platform))for(const node of document.querySelectorAll('a[href]')){const target=url(node.getAttribute('href'));if(target && new URL(target).hostname===host && /\/doi\/(?:pdf|epdf|pdfplus)\//.test(new URL(target).pathname) && targetDoi && bodyEntry(node))add(target);}
         if(['acs','oup'].includes(platform)) {
           const resourceIds=new Set();
@@ -629,7 +629,7 @@ function bodyAction(candidate,subject,id,dispatch=false) {
   if(candidate.action!=='refresh_form' || candidate.platform!=='microbiology' || candidate.rule_id!=='R059'
     || !/(^|\.)microbiologyresearch\.org$/.test(location.hostname))throw Error('unsupported_body_action');
   const forms=[...document.querySelectorAll('.download-pdf form.ft-download-content__form--pdf[action]')]
-    .filter(node=>node.action===candidate.url && !node.closest('nav,aside,[role="navigation"],.supplementary-material,.references'));
+    .filter(node=>node.action===candidate.url && !node.closest('aside,.supplementary-material,.references'));
   if(forms.length!==1)throw Error('body_action_ambiguous');
   const node=forms[0],method=node.method.toUpperCase();
   if(!['GET','POST'].includes(method))throw Error('body_action_method');
