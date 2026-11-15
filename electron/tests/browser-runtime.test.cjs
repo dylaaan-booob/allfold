@@ -705,6 +705,33 @@ test('supported Cloudflare challenges invoke Solver while hCaptcha remains manua
   }
 });
 
+test('publisher robot pages use Solver only with current Cloudflare challenge evidence',async t=>{
+  const {BrowserRuntime}=fixture(t),solved=[];
+  const browser=new BrowserRuntime({solveCloudflare:async doc=>{solved.push(doc.pageId);return {outcome:'clicked'};}});
+  t.after(()=>browser.close());await browser.ready;
+  const challenge='https://challenges.cloudflare.com/cdn-cgi/challenge-platform/h/g/turnstile/if/fixture';
+  for(const [name,markers,frameURL,expected] of [
+    ['publisher',{robot:true},challenge,true],
+    ['unidentified',{robot:true},null,false],
+    ['wrong-host',{robot:true},challenge.replace('.com/','.com.example.org/'),false],
+    ['insecure',{robot:true},challenge.replace('https:','http:'),false],
+    ['background',{},challenge,false],
+    ['hcaptcha',{robot:true,hcaptcha:true},challenge,false],
+    ['cloudflare-title',{robot:true,cloudflareTitle:true},null,true],
+  ]) {
+    const signal=new AbortController().signal;
+    await browser.runTask(signal,{request_id:name},async()=>{
+      const tab=browser.createTab({present:false});browser.bindTaskPage(tab);
+      const wc=tab.view.webContents;wc.access={markers};
+      await wc.loadURL('https://example.org/'+name);
+      wc.mainFrame.framesInSubtree=[wc.mainFrame,...(frameURL?[{url:frameURL}]:[])];
+      const before=solved.length,result=await browser.inspectPage(tab,{signal});
+      assert.equal(solved.length-before,Number(expected),name);
+      assert.equal(result.waiting,!!markers.robot,name);
+    });
+  }
+});
+
 test('Article pages are reused only within their active operation and close on cancellation failure and completion',async t=>{
   const {BrowserRuntime}=fixture(t),browser=new BrowserRuntime();t.after(()=>browser.close());await browser.ready;
   const data={workspace_identity:'a'.repeat(64),paper_id:'fd8460a2-7cf1-4f02-b346-cbcbd2fe6e45'},doi='10.5555/fixture';

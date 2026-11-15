@@ -52,7 +52,10 @@ or a bare 403/503, do not identify an automatic main challenge. Hidden hCaptcha
 resources on an ordinary page do not themselves require verification; recognized
 main challenge pages with hCaptcha retain the manual boundary. Existing title
 rules and localized page-options plus challenge-page orchestrator combinations
-remain. HTTP errors, 418, CPE00001 and Imperva denial remain failures; hCaptcha,
+remain. A recognized publisher robot challenge also uses Solver when the current
+native frame subtree contains an HTTPS `challenges.cloudflare.com/cdn-cgi/challenge-platform/`
+frame, including one inside a closed shadow root. That frame alone does not mark
+an ordinary article as a challenge. HTTP errors, 418, CPE00001 and Imperva denial remain failures; hCaptcha,
 Imperva CAPTCHA (`edet=12`), institution login and MFA retain manual waiting.
 Only validated fixed fields enter diagnostics, never raw queries or page content.
 

@@ -357,7 +357,8 @@ async function inspectPage({probe,current,authentication,inspectAuthentication,s
       if(!authWaiting && !auth.waiting)throw error;
     } else {
       const hcaptcha=doc.markers.hcaptcha;
-      if(doc.imperva || hcaptcha || doc.markers.robot)return {doc,waiting:true,diagnostic:error.diagnostic};
+      const cloudflare=doc.markers.cloudflareTitle || doc.markers.cloudflareOptions && doc.markers.cloudflareOrchestrator || doc.cloudflareFrame;
+      if(doc.imperva || hcaptcha || !cloudflare)return {doc,waiting:true,diagnostic:error.diagnostic};
       const key=JSON.stringify([doc.pageId,doc.processId,doc.frameToken,doc.documentId]);
       const attempt=solveCloudflare?solverDocuments.get(key):null;
       if(solveCloudflare && (!attempt || attempt.attempts<2 && attempt.retryable)) {

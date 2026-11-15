@@ -788,7 +788,18 @@ class BrowserRuntime {
     return {...binding,...result,status:tab.status};
   }
   documentBinding(tab=this.taskTab,options={}) {return this.readDocument(tab,'binding',options);}
-  accessState(tab=this.taskTab,options={}) {return this.readDocument(tab,'access',options);}
+  async accessState(tab=this.taskTab,options={}) {
+    const doc=await this.readDocument(tab,'access',options);
+    // Native frame ancestry includes Turnstile inside a closed shadow root.
+    // This is evidence for an already detected challenge, never a challenge by itself.
+    const frame=this.documentFrame(doc);
+    const cloudflareFrame=(frame?.framesInSubtree || []).some(child=>{
+      if(child===frame || !URL.canParse(child.url))return false;
+      const url=new URL(child.url);
+      return url.origin==='https://challenges.cloudflare.com' && url.pathname.startsWith('/cdn-cgi/challenge-platform/');
+    });
+    return {...doc,cloudflareFrame};
+  }
   async confirmArticlePage(target,doc,{signal,deadline=Infinity}={}) {
     checkCanceled(signal);
     const tab=this.tabs.get(doc.pageId);
