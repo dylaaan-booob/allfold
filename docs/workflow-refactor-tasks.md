@@ -4,7 +4,7 @@ Each task has one PR targeting `main`. The user accepts and merges the current P
 before a separately requested prompt starts the next task. Any temporary integration branch/ticket graph is scoped to the current WF task;
 it does not authorize later tasks.
 
-WF01–WF10 boundary sections below record those PRs at their merged versions.
+WF01–WF11 are merged. The boundary sections below record those PRs at their merged versions.
 WF08 supersedes their then-deferred production registration, serial branches and
 global Preprint admission. Current public stream/original-response/local-body
 operation and the accepted native cancellation risk are described in the WF10 section and
@@ -22,7 +22,7 @@ operation and the accepted native cancellation risk are described in the WF10 se
 | WF08 | Connect new Run and Workspace background collection | Whole-batch Run gates, Completion, Preprint double locking, busy/exit contracts | Merged in PR #114 at `1af11e3c3f0eb0ae893c6a3e2e5ade550a81a19d`; spec #109 / tickets #110–113; source/fixture and live evidence remain distinct |
 | WF09 | Session stream, managed file landing, database association service | Current-response streaming, actual file ownership, no-clobber and unique completion | Merged in PR #116 at `029bc9a148170c699dbbe43f63885fc9718656e6`; spec #115; internal stream/file/SQLite service |
 | WF10 | Original DownloadItem, complete Download UI, local PDF actions | Cancel-and-GET replay, old download/UI states, PDF action contracts | Merged in PR #121 at `229b6fb157bf2cb8d993c2cbb3b458240a507417`; spec #117, tickets #118–120 closed by merge. Public stream, qualified original responses and local body management; measured native cancellation risk accepted and documented. Scoped real-site/OS evidence remains separate |
-| WF11 | Clean install, dependencies/licenses, whole regression and residual cleanup | Uncalled Runtime/build dependencies, installation/license docs, cross-task leftovers | In progress on `codex/wf11-clean-install-regression`; [final acceptance index](workflow-acceptance.md) |
+| WF11 | Clean install, dependencies/licenses, whole regression and residual cleanup | Uncalled Runtime/build dependencies, installation/license docs, cross-task leftovers | Merged in PR #122 at `c0599aa7aa590863b27a3923a3e782c0a35a5fa8`; [final acceptance index](workflow-acceptance.md) |
 
 ## WF01 implementation boundary
 
@@ -350,12 +350,17 @@ See the [affected body paths](body-downloads.md#scoped-manual-acceptance).
 
 ## WF11 final regression
 
-This is the final WF01–WF11 task, on `codex/wf11-clean-install-regression` from
+This was the final WF01–WF11 task, on `codex/wf11-clean-install-regression` from
 `229b6fb157bf2cb8d993c2cbb3b458240a507417`. No later phase is created. The
 [final acceptance index](workflow-acceptance.md) maps every A01–A72 entry to current
 production callers, executed tests and explicit remaining human boundaries.
 Retired diagnostic/save/UI residues are removed; retained host/identity sources,
 locks, schema v5 and the accepted native cancellation risk remain. Clean source
 setup and normal Main startup are verified independently of live-service evidence.
-WF11 is not merged; latest Head and PR CI belong in the PR/hand-off, avoiding a
-self-referential documentation commit loop.
+PR #122 merged on 2026-11-15 at `c0599aa7aa590863b27a3923a3e782c0a35a5fa8`.
+The merged main passed [Safety checks / safety](https://github.com/dylaaan-booob/allfold/actions/runs/43697788889).
+Scoped manual acceptance passed for complete/empty abstract rendering, Info and
+Browser round trips, narrowing/restoring the window and recent-diagnostics ZIP
+export. Archive was disabled and skipped under the agreed conditional scope.
+Unchanged external-service/OS workflows were not repeated by WF11; the index's
+remaining human boundaries and the accepted native cancellation risk still apply.
