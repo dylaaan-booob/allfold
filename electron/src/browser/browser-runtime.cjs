@@ -111,14 +111,14 @@ class BrowserRuntime {
     const inheriting=opener && owner && this.ownsPage(owner,opener.id);
     const tab = {id:contents.id, view, resource,resourceOwner:execution || {kind:'user'},status:null, error:null, opener,managed:options.managed===true,
       pageAttempt:inheriting?opener.pageAttempt:options.pageAttempt,documentGeneration:0,documentIds:new Map(),
-      taskOwner:owner || null,taskSignal:inheriting?opener.taskSignal:owner?.signal || null,
+      taskOwner:owner || null,taskSignal:inheriting?opener.taskSignal:owner?.signal || null,popupFrameName:options.popupFrameName,
       authContext:inheriting?opener.authContext:undefined,loadOwner:inheriting?opener.loadOwner:null,
       loadAllowed:inheriting?opener.loadAllowed:false};
     this.tabs.set(tab.id, tab);
     if(owner)this.trackTaskDownloads(tab,owner);
-    contents.setWindowOpenHandler(({url}) => {
+    contents.setWindowOpenHandler(({url,frameName}) => {
       if(tab.pageAttempt?.retired || contents.isDestroyed() || tab.closing)return {action:'deny'};
-      if(tab.bodyAction && !tab.bodyAction.acceptPopup(url))return {action:'deny'};
+      if(tab.bodyAction && !tab.bodyAction.acceptPopup(url,frameName))return {action:'deny'};
       const popupOwner=tab.taskOwner;
       if(popupOwner && !this.ownsPage(popupOwner,tab.id) || !popupOwner && tab.resourceOwner.kind!=='user')return {action:'deny'};
       if (url !== 'about:blank') {
@@ -131,7 +131,7 @@ class BrowserRuntime {
         sandbox:true, contextIsolation:true, nodeIntegration:false, nodeIntegrationInSubFrames:true}},
         createWindow:options => {
           if(popupOwner && !this.ownsPage(popupOwner,tab.id) || tab.closing || contents.isDestroyed())throw new BrowserFailure('navigation','canceled');
-          return this.createTab({...options,present:false,user:!popupOwner,pageTicket:popupTicket},tab).view.webContents;
+          return this.createTab({...options,present:false,user:!popupOwner,pageTicket:popupTicket,popupFrameName:frameName},tab).view.webContents;
         }};
     });
     const guard = (event, url) => {

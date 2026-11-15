@@ -68,11 +68,15 @@ class OriginalNavigation {
     if(kind==='reader')this.readerRefreshed=true;else this.cdnContinued=true;
     this.continuation={source,entry,url:event.url,frameTreeNodeId:frame.frameTreeNodeId,used:false};
   }
-  acceptPopup(url) {return !this.targetName&&!this.continuation&&this.dispatched&&!this.error&&!this.primary&&(url==='about:blank'||this.acceptsURL(url));}
+  acceptPopup(url,frameName) {
+    if(this.targetName&&(this.targetFrame||this.namedPopup||frameName!==this.targetName))return false;
+    return !this.continuation&&this.dispatched&&!this.error&&!this.primary&&(url==='about:blank'||this.acceptsURL(url));
+  }
   addPopup(tab) {
-    if(!this.acceptPopup('about:blank'))return;
+    if(!this.acceptPopup('about:blank',tab.popupFrameName))return;
     if(tab.opener?.bodyAction!==this||tab.taskOwner!==this.owner)return;
     this.addSource(tab);
+    if(this.targetName){this.namedPopup=tab;this.targetFrame=tab.view.webContents.mainFrame;}
   }
   addSource(tab) {
     if(!tab||this.sources.has(tab.id))return;
@@ -299,7 +303,8 @@ async function executeBodyNative(browser,data,{signal,progress=()=>{}}={}) {
     operation.targetName=prepared.plan.target==='frame'?prepared.plan.target_name:null;
     operation.targetFrame=prepared.targetFrame;
     if(prepared.targetFrame)operation.addFrame(operation.sources.get(doc.pageId),prepared.targetFrame);
-    if(prepared.plan.target==='popup')await browser.reserveChildPage({signal:stop,deadline:data.deadline_ms});
+    if(prepared.plan.target==='popup'||prepared.plan.target==='frame'&&!prepared.targetFrame)
+      await browser.reserveChildPage({signal:stop,deadline:data.deadline_ms});
     await prepared.dispatch(()=>operation.dispatch(),error=>operation.fail(error));
     primary=await waitFor(()=>operation.received,stop,Math.min(data.deadline_ms,Date.now()+15000));
     const terminal=await primary.terminal; // actual done is never raced with timeout/cancellation

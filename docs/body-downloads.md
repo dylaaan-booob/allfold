@@ -143,8 +143,10 @@ and the isolated Document preload. It opens and verifies the current article,
 reads its live R059 form or R024 ScienceDirect entry, then registers before the
 controlled action. A one-shot handoff binds the verified Document to the exact
 original navigation request, frame, owner and item. A named existing form target
-is resolved to its unique native frame before dispatch. A predeclared target
-absent before dispatch waits for a newly created frame with that exact name.
+is resolved to its unique native frame before dispatch. A matching name in
+another Page is refused before action. An absent named target reserves child
+capacity and accepts only a new iframe or popup with that exact native name;
+an unrelated `_blank` popup cannot consume it.
 Every new iframe destination must have the original Document as its native
 navigation initiator; creating a child alone grants no download registration. An action-created iframe or
 popup registers before its first PDF response; child pages use the same physical

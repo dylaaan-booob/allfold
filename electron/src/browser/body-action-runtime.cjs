@@ -59,9 +59,13 @@ class BodyActionRuntime {
       // current frame inventory native output authority.
       const matches=plan.target==='frame'?contents.mainFrame.framesInSubtree.filter(item=>item.name===plan.target_name):[];
       if(matches.length>1)throw new BrowserFailure('navigation','document_changed');
-      // No match can be the fixed action's not-yet-created named iframe.
+      const foreignTarget=()=>plan.target==='frame'&&[...this.browser.tabs.values()].some(tab=>tab.id!==doc.pageId
+        &&!tab.view.webContents.isDestroyed()&&tab.view.webContents.mainFrame.framesInSubtree.some(frame=>frame.name===plan.target_name));
+      if(foreignTarget())throw new BrowserFailure('navigation','document_changed');
+      // No match can be the fixed action's not-yet-created named destination.
       const targetFrame=matches[0];
       return {plan,targetFrame,dispatch:(beforeDispatch,onError)=>this.dispatch(entry,id,()=>{
+        if(foreignTarget())throw new BrowserFailure('navigation','document_changed');
         if(targetFrame&&!contents.mainFrame.framesInSubtree.some(item=>item.processId===targetFrame.processId
           &&item.frameToken===targetFrame.frameToken&&item.name===plan.target_name))throw new BrowserFailure('navigation','document_changed');
         beforeDispatch();
