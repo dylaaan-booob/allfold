@@ -32,7 +32,7 @@ def test_pubmed_run_sources_survive_restart_and_export_without_credentials(tmp_p
     assert 'PRIVATE_QUERY' not in ''.join(exported.values())
 
 
-def test_history_survives_restart_and_never_promotes_an_unknown_import(tmp_path):
+def test_history_survives_restart_and_never_promotes_an_unfinished_prepare(tmp_path):
     config = tmp_path / 'monitor.yaml'
     config.write_text('keyword_expression: synthetic\n')
     root = tmp_path / 'logs'
@@ -40,7 +40,7 @@ def test_history_survives_restart_and_never_promotes_an_unknown_import(tmp_path)
     store.begin('run', 'run_1', provider='crossref')
     store.finish('run_1', 'partial', statistics={'retrieved': 12, 'created': 3})
     store.finish('run_1', 'completed')  # A terminal result is immutable.
-    store.begin('prepare', 'save_1', workflow_id='kept_1')
+    store.begin('prepare', 'save_1', workflow_id='login_1')
     restarted = DiagnosticStore(config, root=root, runtime_id='runtime_second')
     records = {record['task_id']: record for record in restarted.history()['records']}
     assert records['run_1']['outcome'] == 'partial'
@@ -60,10 +60,11 @@ def test_export_revalidates_native_records_and_preserves_exact_associations(tmp_
     native = store.root / 'scopes' / store.scope_id / 'electron'
     native.mkdir(mode=0o700)
     shared = dict(schema_version=1, time='2026-11-03T01:00:00Z', source='electron',
-        runtime_id='native_1', scope_id=store.scope_id, level='error', event='attachment_failed',
+        runtime_id='native_1', scope_id=store.scope_id, level='error', event='task_finished',
         workflow_id='workflow_one', task_id='paper_task', page_id=17, source_page_id=9,
-        action='prepare_service', stage='attachment', code='timeout', status=504,
-        attachment_phase='desktop_attachment', parent='confirmed', pdf='unverified')
+        parent_task_id='paper_parent', request_id='native_request',
+        action='native_paper_body', stage='navigation', code='timeout', status=504,
+        role='article', parent='confirmed', pdf='unverified')
     records = [dict(shared, cookie='SESSION=secret', authorization='Bearer private',
                     url='https://private.invalid/?token=secret', body='private document',
                     reason='PASSWORD=secret'),
@@ -79,9 +80,12 @@ def test_export_revalidates_native_records_and_preserves_exact_associations(tmp_
     assert len(native_events) == 1
     assert native_events[0]['page_id'] == 17
     assert native_events[0]['source_page_id'] == 9
-    assert native_events[0]['stage'] == 'attachment'
+    assert native_events[0]['stage'] == 'navigation'
+    assert native_events[0]['action'] == 'native_paper_body'
+    assert native_events[0]['request_id'] == 'native_request'
+    assert native_events[0]['parent_task_id'] == 'paper_parent'
+    assert native_events[0]['role'] == 'article'
     assert 'parent' not in native_events[0] and 'pdf' not in native_events[0]
-    assert native_events[0]['attachment_phase'] == 'desktop_attachment'
     assert json.loads(exported['manifest.json'])['integrity']['invalid_records'] == 2
 
 
@@ -91,12 +95,15 @@ def test_retired_native_events_are_revalidated_without_rewriting_retained_files(
     native.mkdir(mode=0o700)
     records = [dict(schema_version=1, time='2026-11-03T01:00:00Z', source='electron', runtime_id='old',
         scope_id=store.scope_id, level='info', event=name, parent_task_id='retained-parent')
-        for name in ('translation_completed', 'parent_save_result', 'item_save_result')]
+        for name in ('translation_completed', 'parent_save_result', 'item_save_result',
+                     'zotero_request_failed', 'attachment_bypass', 'attachment_failed',
+                     'attachment_failure', 'attachment_http', 'attachment_inventory',
+                     'attachment_request_failed', 'metadata_selected')]
     path = native/'events.0.jsonl'
     original = '\n'.join(map(json.dumps, records))+'\n'
     path.write_text(original)
     exported = bundle(store)
-    assert json.loads(exported['manifest.json'])['integrity']['invalid_records'] == 3
+    assert json.loads(exported['manifest.json'])['integrity']['invalid_records'] == len(records)
     assert all(event['source'] == 'python' for event in map(json.loads, exported['events.jsonl'].splitlines()))
     assert path.read_text() == original
 

@@ -73,7 +73,7 @@ window.allfoldWorkbench=(()=>{
           && (!parentTaskId || association?.parent_task_id===parentTaskId);
       });
       const score=page=>(page.association?.active?100:0)+(page.id===snapshot.taskPageId?20:0)
-        +({attachment:40,popup:30}[page.association?.role] || 0);
+        +({popup:30}[page.association?.role] || 0);
       pages.sort((a,b)=>score(b)-score(a) || b.id-a.id);
       if(!pages.length){window.uiNext.notice('当前任务尚无可查看的网页，或页面已关闭。');return false;}
       // Selecting a Page controls presentation only.

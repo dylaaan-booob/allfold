@@ -4,7 +4,7 @@ Each task has one PR targeting `main`. The user accepts and merges the current P
 before a separately requested prompt starts the next task. Any temporary integration branch/ticket graph is scoped to the current WF task;
 it does not authorize later tasks.
 
-WF01–WF09 boundary sections below record those PRs at their merged versions.
+WF01–WF10 boundary sections below record those PRs at their merged versions.
 WF08 supersedes their then-deferred production registration, serial branches and
 global Preprint admission. Current public stream/original-response/local-body
 operation and the accepted native cancellation risk are described in the WF10 section and
@@ -21,8 +21,8 @@ operation and the accepted native cancellation risk are described in the WF10 se
 | WF07 | PDF source rules, candidates, same-page Meta/DOM hints | Source order, candidate success, URLs and request context contracts | Merged in PR #107 at `4d0d22bbda02d9fc173175fa8346813752e84204`; spec #102 / tickets #103–106, #108; [adopted request and fixed evidence](pdf-source-discovery.md) |
 | WF08 | Connect new Run and Workspace background collection | Whole-batch Run gates, Completion, Preprint double locking, busy/exit contracts | Merged in PR #114 at `1af11e3c3f0eb0ae893c6a3e2e5ade550a81a19d`; spec #109 / tickets #110–113; source/fixture and live evidence remain distinct |
 | WF09 | Session stream, managed file landing, database association service | Current-response streaming, actual file ownership, no-clobber and unique completion | Merged in PR #116 at `029bc9a148170c699dbbe43f63885fc9718656e6`; spec #115; internal stream/file/SQLite service |
-| WF10 | Original DownloadItem, complete Download UI, local PDF actions | Cancel-and-GET replay, old download/UI states, PDF action contracts | Implementation in PR #121; spec #117, tickets #118–120. Public stream, qualified original responses and local body management; measured native cancellation risk accepted and documented. Issues stay open until merge; real-site/OS evidence remains separate |
-| WF11 | Clean install, dependencies/licenses, whole regression and residual cleanup | Uncalled Runtime/build dependencies, installation/license docs, cross-task leftovers | Not started |
+| WF10 | Original DownloadItem, complete Download UI, local PDF actions | Cancel-and-GET replay, old download/UI states, PDF action contracts | Merged in PR #121 at `229b6fb157bf2cb8d993c2cbb3b458240a507417`; spec #117, tickets #118–120 closed by merge. Public stream, qualified original responses and local body management; measured native cancellation risk accepted and documented. Scoped real-site/OS evidence remains separate |
+| WF11 | Clean install, dependencies/licenses, whole regression and residual cleanup | Uncalled Runtime/build dependencies, installation/license docs, cross-task leftovers | In progress on `codex/wf11-clean-install-regression`; [final acceptance index](workflow-acceptance.md) |
 
 ## WF01 implementation boundary
 
@@ -252,8 +252,8 @@ acceptance; executed checks and latest CI are recorded on the PR.
 
 ## WF08 production boundary
 
-PR #114 implements spec #109 and tickets #110–113 on one integration branch; it
-is not merged. Run performs selected retrieval, necessary Work/direct DOI→PMID
+PR #114 merged spec #109 and tickets #110–113 on 2026-11-14 at
+`1af11e3c3f0eb0ae893c6a3e2e5ade550a81a19d`. Run performs selected retrieval, necessary Work/direct DOI→PMID
 confirmation and conflict/exclusion checks, then atomically admits basic metadata
 and the complete `document` / `necessary-api` plan. All confirmed direct aliases
 and the stable UUID survive. Original initial-Paper tokens prevent an old Run
@@ -338,7 +338,24 @@ acceptance. This is a changed contract, not a fix to Chromium. Unique private
 attempt staging, actual output proof, application-level replacement refusal,
 no-clobber final publication and stream/local-file/Trash protections remain.
 
-PR #121 and #117/#118 record the updated boundary; Issues stay open until merge.
-Latest PR CI is distinct from real institutions/publishers and OS default-app/
-file-manager acceptance. Human checks are limited to the [affected body paths](body-downloads.md#scoped-manual-acceptance).
-WF11 remains unstarted; no dependency or runtime upgrade is introduced.
+PR #121 merged on 2026-11-15 at `229b6fb157bf2cb8d993c2cbb3b458240a507417`,
+closing #117–120. Its final Head `48f43a43edc338be82724df7e15bf52623d0d44d`
+passed [pull_request CI](https://github.com/dylaaan-booob/allfold/actions/runs/43679649066).
+The PR records scoped disposable-profile ScienceDirect original-response and
+Microbiology R059 POST→303→PDF samples, retained IEEE/Oxford paths, Reader
+switch/cancel/retry and OS open/locate/independent Trash deletion. R059's earlier
+P5 fallback is separate evidence. Live versions were `6bfdab0`, `ead4909` and
+`175df8c`; no blanket Login/CARSI/WoS or installation acceptance was claimed.
+See the [affected body paths](body-downloads.md#scoped-manual-acceptance).
+
+## WF11 final regression
+
+This is the final WF01–WF11 task, on `codex/wf11-clean-install-regression` from
+`229b6fb157bf2cb8d993c2cbb3b458240a507417`. No later phase is created. The
+[final acceptance index](workflow-acceptance.md) maps every A01–A72 entry to current
+production callers, executed tests and explicit remaining human boundaries.
+Retired diagnostic/save/UI residues are removed; retained host/identity sources,
+locks, schema v5 and the accepted native cancellation risk remain. Clean source
+setup and normal Main startup are verified independently of live-service evidence.
+WF11 is not merged; latest Head and PR CI belong in the PR/hand-off, avoiding a
+self-referential documentation commit loop.

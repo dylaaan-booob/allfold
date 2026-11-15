@@ -43,6 +43,33 @@ explicit Preprint and native operations to actually settle before closing owned
 connections and the shared factory/Session. Restart fails interrupted attempts
 without replaying the queue or opening pages.
 
+### Isolated source-startup smoke
+
+In a disposable source copy with no environments, dependencies, generated UI,
+Workspace or local configuration, run setup above. Its first configuration is
+inside that copy. With port 18767 free, create a profile there and run:
+
+```sh
+mkdir -p "$PWD/.startup-smoke/profile"
+electron/node_modules/.bin/electron electron/tests/source-startup.fixture.cjs \
+  "$PWD/.startup-smoke/profile" --config "$PWD/config.example.yaml"
+```
+
+The opt-in fixture requires the normal Main entry without replacing its Python
+bootstrap, HTTP origin, bridge or shutdown. It checks an uninitialized empty
+Workspace, built UI, authenticated bridge, native Browser navigation/closure
+against its own local HTTP server and normal quit. Profile/Session/logs and a
+QA screenshot belong to this disposable copy. It adds no product configuration
+or port policy. If a personal instance occupies 18767, leave it running and
+defer this smoke. The complete collection/stream/original-item compositions run
+separately in the standard suites. [Final acceptance](workflow-acceptance.md)
+records actual versions, commands and the remaining real-service/OS boundaries.
+
+Fixture-only `--fail-after-ready` and `--timeout-after-ready` exercise assertion
+and watchdog failure after Python has started. Both must return status 1 only
+after normal Main shutdown; verify the reported Python PID has exited and 18767
+is free. They never change production configuration or bypass Main drain.
+
 ## Build resources
 
 Editable UI files are in [frontend/ui](../frontend/ui/). Build the complete delivery tree with:
@@ -80,7 +107,7 @@ They contact no personal library, account, institution or PDF.
 
 The retained suite covers data preservation, path/identity safety, authority, cancellation, concurrent settlement and uncertainty, configuration and source ownership. Tests use isolated fixtures and transport doubles. UI build and module dependency checks cover the directory layout. Use [package scripts](../electron/package.json), the [UI build tool](../tools/build-ui-next.mjs) and [CI](../.github/workflows/ci.yml) as the executable command definitions.
 
-CI starts from a fresh checkout without Vendor caches, runs Setup and the offline checks on macOS. It does not publish or use real credentials. A local pass does not prove that GitHub Actions ran, that the UI is visually correct or that real institutional access work. Changes to those paths need relevant manual acceptance with explicit browser authorization.
+CI starts from a fresh checkout without Vendor caches, runs Setup and the offline checks on macOS. It does not publish or use real credentials. A local pass does not prove that GitHub Actions ran, that the UI is visually correct or that real institutional access works. Changes to those paths need relevant manual acceptance with explicit browser authorization.
 
 The Electron test command runs files serially. Its native input fixtures briefly
 show their own windows, and Electron's
@@ -93,14 +120,14 @@ focus and Session assertions. The Library/layout fixture checks the built Reader
 and Trash projection independently of a Run. Dedicated Import/Enrich fixtures
 are removed; their former product operations cannot be dispatched.
 
-WF03 adds `document-probes.test.cjs` (real BrowserRuntime/DocumentRuntime/preload
-and internal Paper entry), bounded sender/Document tests, neutral Bridge queue
+`document-probes.test.cjs` covers real BrowserRuntime/DocumentRuntime/preload
+and the internal Paper entry, bounded sender/Document tests, neutral Bridge queue
 regressions and production-dispatch/Bridge/Pydoll/CDP recheck in the existing
 Cloudflare native fixture. Covers and WoS Export expiry tests retain real-terminal
 ownership. See [controlled Documents](browser-documents.md) for payload limits,
 identity evidence and fixture/live-service boundaries.
 
-WF04's normal Electron entry also runs `session-downloads.test.cjs`: a real
+The normal serial Electron entry also runs `session-downloads.test.cjs`: a real
 Electron 45.0.0/local-HTTP fixture for original POST/inline/frame/popup downloads,
 same-URL isolation, expiry/late/ambiguous events, cancellation/interruption,
 source-close stages and controlled host-fetch association. See the measured
@@ -110,7 +137,7 @@ source-close stages and controlled host-fetch association. See the measured
 
 ARRAY/Journals rails, Sidebar allocation, the isolated rendered DOM test and remaining pointer/touch/low-height checks are documented in [workspace layout](workspace-layout.md). The full Electron test command includes its hidden-window fixture after UI build; it uses synthetic HTTP responses and a temporary profile.
 
-Select checks from this matrix according to the changed behavior and gaps in automated coverage; the full matrix is not a prerequisite for every PR. In particular, result-contract cleanup does not require unrelated real WoS, CARSI, Zotero, PDF or complete Browser workflows.
+Select checks from this matrix according to the changed behavior and gaps in automated coverage; the full matrix is not a prerequisite for every PR. In particular, result-contract cleanup does not require unrelated real WoS, CARSI, system PDF or complete Browser workflows.
 
 Use a disposable configuration and Workspace. Browser control, external accounts and real data operations require task-specific authorization beyond isolated test fixtures. Offline tests do not establish the following real-workflow results:
 
@@ -150,7 +177,7 @@ See [architecture](architecture.md) before changing ownership and [safety](safet
 The [Provider guide](providers.md) describes foreground Discovery/identity work,
 Workspace collection, the Info Preprint lookup and change-scoped acceptance. HTTP fixtures and rendered
 Electron tests use synthetic data and isolated configurations. Real Provider
-compatibility and Zotero acceptance require separate verification.
+compatibility and institution/publisher access require separate verification.
 
 Focused application regressions use the Run, Run commit, Paper repository,
 Preprint lookup, local-field and Workspace API suites. They verify actual SQLite
@@ -159,7 +186,7 @@ captured generations. The Electron fixture renders ordinary dates and separate
 Preprint proof and checks local recycling without file operations. Source/build,
 rendered fixture, live-service and latest PR CI outcomes remain distinct evidence.
 
-WF05 component regressions additionally use `test_collection_repository.py`,
+Collection component regressions use `test_collection_repository.py`,
 `test_dynamic_dispatch.py`, `test_collection_runtime.py`, `test_task_clients.py`
 and `test_task_authority.py`. They exercise current-format SQLite storage contention and
 rollback, real worker Futures and cleanup barriers, queued/expired work, branch
@@ -176,7 +203,7 @@ cache scope in its execution thread; sharing them across threads is unsupported.
 Parent scheduling and physical Browser quotas remain separate. Explicit Events,
 actual Futures and client/native cleanup barriers verify overlap and settlement.
 
-WF07 component checks add actual normalizer/records/Run and necessary-query
+PDF-source component checks use actual normalizer/records/Run and necessary-query
 source-fact persistence, disk reopen, independent
 connection races, cleanup and safe public projection in
 `tests/test_pdf_source_facts.py`. Pure rule fixtures exercise adopted expressions
@@ -207,7 +234,7 @@ actual source/fallback results and absence of unnecessary queries.
 Python HTTP checks include DNS preflight at dispatch/redirect; they do
 not claim address pinning or DNS validation by the native static URL gate.
 
-WF06 adds `test_necessary_metadata.py` for purpose-driven requests through actual
+`test_necessary_metadata.py` covers purpose-driven requests through actual
 registry branches, controlled Provider transports/parsers, immutable capability
 handoff, full batch/pagination draining, partial results and complete native
 first-version proof. Run identity/registration and public Preprint regressions remain;
@@ -302,7 +329,7 @@ The autosave and task-presentation Node fixtures verify draft acknowledgement an
 UI-captured parent Run cancellation. These tests do not use real accounts or
 establish native/live Service acceptance.
 
-WF04 adds `page-resources.test.cjs` to the normal serial Electron test command.
+`page-resources.test.cjs` runs in the normal serial Electron test command.
 It checks real WebContents at minimum capacities, native popup/opener lifetime,
 multiple temporary batches, retained Portal reuse across unrelated revisions,
 queued cancellation, original native-item source retention and user-page bounds.

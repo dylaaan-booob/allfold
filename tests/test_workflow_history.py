@@ -6,7 +6,7 @@ import pytest
 
 
 def test_attachment_diagnostic_preserves_cross_runtime_evidence():
-    value = dict(stage='attachment', step='hidden_iframe', code='timeout', net_error='ERR_ABORTED', status=403, message='secret')
+    value = dict(stage='attachment', step='request', code='timeout', net_error='ERR_ABORTED', status=403, message='secret')
     assert normalize_browser_diagnostic(value) == {k: value[k] for k in ('stage', 'step', 'code', 'net_error', 'status')}
     assert '附件操作超时' in format_browser_diagnostic(value)
 
@@ -77,7 +77,7 @@ def test_bridge_logs_actual_envelope_and_safe_native_result(tmp_path):
             envelope = socket.receive_json()
             assert envelope['id'] != 'business'
             assert envelope['data']['log_level'] == 'error'
-            result = {'diagnostic':{'stage':'attachment','step':'hidden_iframe','code':'timeout','net_error':'ERR_ABORTED'},
+            result = {'diagnostic':{'stage':'attachment','step':'request','code':'timeout','net_error':'ERR_ABORTED'},
                 'diagnostics_status':{'available':True, 'incomplete':False, 'rotations':0,'write_failures':0,'omitted':0}, 'item':{'title':'SECRET TITLE'}}
             socket.send_json({'type':'result','id':envelope['id'],'action':envelope['action'],'data':result})
             assert pending.result(2) == result
@@ -202,9 +202,7 @@ def test_native_reset_control_does_not_mutate_python_preview_identity(tmp_path):
 
 
 @pytest.mark.parametrize('code,text', [
-    ('no_resolver','未找到可用的附件来源'), ('mime_mismatch','返回内容不是预期附件类型'),
-    ('empty_response','附件响应为空'), ('network_error','附件网络请求失败'),
-    ('redirect_rejected','附件重定向未被接受'), ('attachment_rejected','附件保存请求未被接受'),
+    ('network_error','附件网络请求失败'), ('redirect_rejected','附件重定向未被接受'),
     ('timeout','附件操作超时'),
 ])
 def test_attachment_message_describes_failure_without_inventing_body_state(code, text):

@@ -7,7 +7,8 @@ file publication, the SQLite completion transaction and actual cleanup. There is
 one current body per Paper and no separate save, receive or commit task.
 
 WF09 merged in [PR #116](https://github.com/dylaaan-booob/allfold/pull/116) at
-`029bc9a148170c699dbbe43f63885fc9718656e6`. This branch implements public Download,
+`029bc9a148170c699dbbe43f63885fc9718656e6`. WF10 merged in [PR #121](https://github.com/dylaaan-booob/allfold/pull/121) at
+`229b6fb157bf2cb8d993c2cbb3b458240a507417`, adding public Download,
 qualified original responses and local-file work from
 [WF10 #117](https://github.com/dylaaan-booob/allfold/issues/117). The accepted native
 boundary below permits Chromium's measured cancellation limitation; it does not

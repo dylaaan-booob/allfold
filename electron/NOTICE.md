@@ -5,10 +5,13 @@ Python package. This directory's host adapters and retained adapted Browser/Docu
 distributed under AGPL-3.0-or-later; see [COPYING](COPYING). Electron itself and
 other third-party dependencies retain their upstream licenses and notices.
 
-Official source pins:
+Retained sources and historical pins:
 
-- Zotero Connectors, the three required pinned Translate/Utilities/Schema submodules and complete Translators: [upstream.lock](upstream.lock).
-  This lock records historical source attribution for retained adaptations.
+- [upstream.lock](upstream.lock) records historical Zotero Connectors,
+  Translate/Utilities/Schema and Translators revisions used in prior work. These
+  repositories/submodules are not setup downloads or current Runtime inputs.
+  Retained adapted Browser/Document/host source is included under `src/` with
+  this directory's AGPL notice; the lock does not replace corresponding source.
 - Browser identity: UserAgent-Switcher v3 commit
   `ebef999b5996778c0d5a25ced1c45501ceae9437`, retained unmodified under
   [third-party/useragent-switcher](third-party/useragent-switcher/SOURCE.md).

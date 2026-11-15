@@ -7,8 +7,11 @@ Dependencies and assets retain their individual terms.
 
 - Frontend assets and complete notices: [SOURCES](../frontend/ui/SOURCES.md) and
   [licenses](../frontend/ui/licenses/).
-- Browser identity: unmodified UserAgent-Switcher and embedded UAParser notices
-  under [third-party](../electron/third-party/useragent-switcher/SOURCE.md).
+- Browser identity: `browser-identity.cjs` reads the tracked unmodified
+  UserAgent-Switcher Agent/Network/override and embedded UAParser files. Their
+  notices, full UAParser corresponding source and MPL license remain under
+  [third-party](../electron/third-party/useragent-switcher/SOURCE.md); the host
+  AGPL COPYING remains included.
 - Python/npm locks: `uv.lock`, `electron/package-lock.json`, `tools/package-lock.json`.
 - Pydoll 3.0.0: the Python adapter uses public APIs; retain its MIT notice from
   Electron NOTICE. No additional Chromium is supplied by that integration.

@@ -11,7 +11,7 @@ _STEPS = frozenset({'request', 'page_load', 'resource_ready', 'resource_filter',
                     'controlReady', 'plainText', 'dialog', 'configure', 'contentReady',
                     'openContent', 'customReady', 'configureCustom', 'verifyCustom', 'saveCustom',
                     'selectContent', 'export', 'arm', 'links', 'download',
-                    'document_operation', 'dom_observer', 'hidden_iframe',
+                    'document_operation', 'dom_observer',
                     'recovery_authority', 'page_admission', 'child_page'})
 _CODES = frozenset({'failed', 'canceled', 'timeout', 'site_restricted', 'verification_page',
     'content_access_blocked', 'http_error', 'load_failed', 'renderer_gone', 'page_closed',
@@ -26,10 +26,8 @@ _CODES = frozenset({'failed', 'canceled', 'timeout', 'site_restricted', 'verific
     'dom_step_failed', 'download_interrupted', 'download_cancelled', 'download_incomplete',
     'download_failed', 'download_ambiguous', 'download_not_attributable',
     'authorization_required', 'authorization_denied', 'access_denied', 'rate_limited', 'connection_lost',
-    'invalid_target', 'invalid_response', 'response_too_large', 'unsafe_url', 'conflict', 'invalid_local_path',
-    'openalex_no_pdf', 'openalex_not_found', 'openalex_lookup_failed', 'openalex_authorization_required',
-    'openalex_quota', 'openalex_credential_unavailable',
-    'no_resolver', 'mime_mismatch', 'empty_response', 'network_error', 'redirect_rejected', 'attachment_rejected',
+    'invalid_target', 'invalid_response', 'response_too_large', 'unsafe_url', 'conflict',
+    'network_error', 'redirect_rejected',
     'cooldown_budget', 'page_capacity', 'page_capacity_changed'})
 
 
@@ -66,15 +64,7 @@ def format_browser_diagnostic(value: object) -> str:
         return 'Browser operation failed.'
     if diagnostic.get('stage') == 'attachment':
         reasons = {
-            'openalex_no_pdf':'OpenAlex 没有可用的直接公开 PDF',
-            'openalex_not_found':'OpenAlex 未收录此 DOI',
-            'openalex_lookup_failed':'OpenAlex 查询失败',
-            'openalex_authorization_required':'OpenAlex 凭据未被接受',
-            'openalex_quota':'OpenAlex 查询额度已用尽',
-            'openalex_credential_unavailable':'OpenAlex 本地凭据无法读取',
-            'no_resolver':'未找到可用的附件来源', 'mime_mismatch':'返回内容不是预期附件类型',
-            'empty_response':'附件响应为空', 'network_error':'附件网络请求失败',
-            'redirect_rejected':'附件重定向未被接受', 'attachment_rejected':'附件保存请求未被接受',
+            'network_error':'附件网络请求失败', 'redirect_rejected':'附件重定向未被接受',
             'timeout':'附件操作超时', 'http_error':'附件请求失败',
             'document_changed':'附件来源页面已变化', 'page_closed':'附件来源页面已关闭',
             'canceled':'附件操作已取消', 'unsafe_url':'附件地址未通过安全检查',

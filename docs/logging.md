@@ -81,7 +81,11 @@ interrupted, never inferred successful.
 The versioned, data-only [schema](../src/allfold/diagnostic_schema.json) defines the
 allowed field names, types, enums and identifier formats. Producers validate
 before persistence; the exporter independently validates stored records again.
-Arbitrary strings are excluded rather than merely truncated.
+Arbitrary strings are excluded rather than merely truncated. Retired Zotero/
+attachment-save events and their dedicated fields are no longer accepted by
+either producer or export validation; existing files remain untouched and
+invalid records are counted. Current `article` page roles, native request IDs,
+parent task relations and local-body `attachment` stage remain valid.
 
 | Field | Meaning |
 | --- | --- |

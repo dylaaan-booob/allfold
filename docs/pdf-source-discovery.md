@@ -7,7 +7,7 @@ The following records the adopted WF07 request with the current storage policy a
 WF07 merged in PR #107 at `4d0d22bbda02d9fc173175fa8346813752e84204`.
 WF08 connects same-Document clues and necessary-response facts to production
 collection. WF09 merged in PR #116 and supplies Session/file/SQLite completion;
-the current WF10 branch runs the existing lazy coordinator inside a public body
+the public body service (merged in PR #121) runs the existing lazy coordinator inside a public body
 owner and adds local body management. Qualified current-form/ScienceDirect entries
 consume their original DownloadItem response under the same owner, subject to the
 documented [native cancellation limitation](body-downloads.md#native-output-and-accepted-cancellation-risk).

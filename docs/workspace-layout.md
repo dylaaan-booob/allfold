@@ -71,7 +71,7 @@ record before any later read; failed responses do not move the row.
 
 Limited computer-use acceptance with synthetic data checked Index/Info, Journal selection across ARRAY/GRID, group filtering and Details collapse, Escape focus return, Service chooser cancellation, and empty synthetic Browser return. It did not establish native page Session behavior, pointer dragging, exact hover timing, touch or reliable independent scroll behavior.
 
-The following real-UI checks are a reference for changes affecting those behaviors, not requirements for every PR. Existing Electron/Chromium fixtures already establish the synthetic results described above and below. Select additional real-UI checks only for affected behavior the fixtures cannot cover. Browser control, external accounts, real user-data edits, Zotero and PDF operations require separate task-specific authorization:
+The following real-UI checks are a reference for changes affecting those behaviors, not requirements for every PR. Existing Electron/Chromium fixtures already establish the synthetic results described above and below. Select additional real-UI checks only for affected behavior the fixtures cannot cover. Browser control, external accounts, real user-data edits and system PDF operations require separate task-specific authorization:
 
 1. Real pointer hover across trigger/flyout boundaries, delayed dismissal, touch activation, Tab/Shift-Tab and Escape. Drag/keyboard-resize Sidebar at wide/narrow bounds; inspect clipping and focus with long Directory and Details content.
 2. At 600 × 480 and larger sizes, check Reader, list, flyout, forms and workflow scroll regions; vary host zoom, display scale, low height, messages and developer controls. Verify preferred width after repeated narrow/wide changes and restart.
@@ -107,7 +107,8 @@ The fixtures use real Chromium input for checkbox, keyboard, scroll and submit
 interactions and retain the Page ID, Session, cookie, load token and task identity
 across presentation changes. Host reload clears presentation at navigation start
 and when the replacement document commits. Real institution login, hCaptcha/MFA,
-Zotero writes and PDFs require separate acceptance.
+Publisher permissions and OS PDF effects require separate acceptance; Zotero
+attachment import is retired.
 
 ## Source categories and Paper dates
 
