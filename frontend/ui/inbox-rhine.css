@@ -93,6 +93,7 @@
 .array-paper-infos .paper-metadata>div{display:block;margin:12px 0}
 .array-paper-infos .paper-metadata dd{margin:4px 0 0}
 .array-paper-infos #paper-metadata-summary{display:none}
+#kept-view[data-status=candidates] .array-context-scroll{flex:1;min-height:0;overflow:auto;overscroll-behavior:contain;scrollbar-width:thin}
 #kept-reading-tools{display:flex;flex-direction:column;flex-shrink:0;align-items:stretch;min-height:28px;margin-bottom:12px}
 #kept-reader-body .abstract-heading .paper-navigation{flex:0 1 180px;min-width:0;min-height:28px;margin:0 0 0 auto;padding:0;border:0}
 #kept-reader-body .abstract-heading .paper-stepper{width:100%;justify-content:space-between;gap:6px}

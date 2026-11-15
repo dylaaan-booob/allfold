@@ -11,8 +11,19 @@ assert.ok(profile.startsWith(root+path.sep),'Profile must belong to this source 
 app.setPath('userData',profile);app.setPath('sessionData',profile);app.setAppLogsPath(path.join(profile,'logs'));
 process.env.ALLFOLD_DIAGNOSTICS_ROOT=path.join(profile,'diagnostics');
 const errors=[];
-let checked=false,server;
-const deadline=setTimeout(()=>{console.error('SOURCE STARTUP TIMEOUT');app.exit(1);},45000);
+let checked=false,failed=false,server,serverClosed;
+function closeServer() {
+  serverClosed ??= server?new Promise(resolve=>server.close(resolve)):Promise.resolve();
+  return serverClosed;
+}
+function fail(error) {
+  if(failed)return;
+  failed=true;console.error(error);clearTimeout(deadline);
+  // Main must drain/receive Python's terminal before will-quit sets failure status.
+  void closeServer().then(()=>app.quit());
+}
+const startupTimedOut=()=>fail(Error('SOURCE STARTUP TIMEOUT'));
+const deadline=setTimeout(startupTimedOut,45000);
 async function until(read,accept) {
   for(let i=0;i<200;i++) {
     const value=await read();if(accept(value))return value;
@@ -28,6 +39,11 @@ app.on('browser-window-created',(_event,window)=>{
     assert.equal(window.webContents.getURL(),'http://127.0.0.1:18767/');
     const health=await (await fetch('http://127.0.0.1:18767/api/electron/health')).json();
     assert.deepEqual(health,{runtime:'electron',connected:true});
+    // Fixture-only fault injection verifies both failure exits after Python starts.
+    if(process.argv.includes('--fail-after-ready'))throw Error('Intentional WF11 startup failure');
+    if(process.argv.includes('--timeout-after-ready')){
+      clearTimeout(deadline);setTimeout(startupTimedOut,0);return;
+    }
     const evaluate=source=>window.webContents.executeJavaScript(source);
     await until(()=>evaluate('Boolean(window.allfoldWorkbench && window.allfoldDesktop && document.querySelector("#array-index"))'),Boolean);
     await evaluate('document.fonts.ready.then(()=>true)');
@@ -52,13 +68,17 @@ app.on('browser-window-created',(_event,window)=>{
     assert.equal((await evaluate('fetch("/api/ui-next/workspace").then(r=>r.json())')).initialized,false);
     assert.deepEqual(errors,[]);
     fs.writeFileSync(path.join(profile,'main.png'),(await window.webContents.capturePage()).toPNG());
-    await new Promise(resolve=>server.close(resolve));
+    await closeServer();
     checked=true;app.quit();
-  })().catch(error=>{console.error(error);server?.close();app.exit(1);});});
+  })().catch(fail);});
 });
-app.on('will-quit',()=>{
+app.on('will-quit',event=>{
   clearTimeout(deadline);
-  assert.ok(checked,'Main must finish the observations before orderly quit');
+  if(failed || !checked){
+    event.preventDefault();
+    void closeServer().then(()=>app.exit(1));
+    return;
+  }
   assert.ok(!server.listening);
   console.log('SOURCE STARTUP PASS: Main → Python health → authenticated bridge → built UI → BrowserRuntime → normal quit');
 });

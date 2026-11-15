@@ -14,8 +14,8 @@ const noticePopover=index.match(/<section id="app-notice-popover"[\s\S]*?<\/sect
 const browserMessage=index.match(/<p id="browser-message"[^>]*><\/p>/)[0];
 const shell=`<!doctype html><html><head><meta charset="utf-8"><link rel="stylesheet" href="/style.css"><link rel="stylesheet" href="/kept.css"><link rel="stylesheet" href="/notifications.css"><link rel="stylesheet" href="/workbench.css"><link rel="stylesheet" href="/workspace-layout.css">
 <style>.masthead{height:56px;display:flex;align-items:center;gap:12px;padding:8px 12px}#kept-workspace{flex:1}#kept-main{display:flex;flex-direction:column;overflow:hidden}#kept-queue-body{overflow:auto;padding:12px}#kept-queue-body button{border:1px solid;padding:8px}footer{margin:0;min-height:35px}#run-page{padding:16px}dialog{max-width:90vw;max-height:85vh}.sidebar-scroll button{padding:8px;border:1px solid}</style></head>
-<body data-workbench="allfold"><header class="masthead"><b>ALLFOLD</b><button id="browser-open">BROWSER</button><button id="fixture-kept">IMPORT</button><button id="fixture-run">RUN</button><button id="fixture-dialog">DIALOG</button><button id="fixture-popover-open">POPOVER</button></header>
-<div id="workbench-content"><div id="allfold-pane"><section id="kept-workspace"><div id="kept-queue-body"><p>Import to Zotero</p><input id="fixture-import-draft" value="preserved"></div></section>
+<body data-workbench="allfold"><header class="masthead"><b>ALLFOLD</b><button id="browser-open">BROWSER</button><button id="fixture-kept">WORKSPACE</button><button id="fixture-run">RUN</button><button id="fixture-dialog">DIALOG</button><button id="fixture-popover-open">POPOVER</button></header>
+<div id="workbench-content"><div id="allfold-pane"><section id="kept-workspace"><div id="kept-queue-body"><p>Workspace collection</p><input id="fixture-workspace-draft" value="preserved"></div></section>
 <section id="run-page" hidden><h2>Run · Web of Science</h2><input id="fixture-run-draft" value="immutable query"><button id="fixture-task-page">查看任务页面</button><p id="fixture-run-progress">run-a · prepare-a · waiting</p></section></div>${pane}</div>
 <footer><span id="browser-status"></span>${browserMessage}${notice}${debug}</footer>${noticePopover}<div id="fixture-popover" popover="manual" style="position:fixed;inset:190px auto auto 60px;width:280px;height:100px;margin:0;background:var(--paper)">Trusted Popover<button id="fixture-popover-close">Close Popover</button></div><dialog id="fixture-modal"><h2>Trusted dialog</h2><input id="fixture-dialog-input"><button id="fixture-dialog-close">Close</button></dialog><dialog id="run-view"></dialog>
 <script src="/api.js"></script><script>window.workspaceNavigation={current:()=>window.fixtureWorkspace||'kept'};window.workspaceSearch={register(){},registerCommand(){},refresh(){}};uiNext.request=async()=>({scope:{scope_id:'fixture'},services:[{id:'service-a',name:'Service A'}]});</script><script src="/workspace-layout-model.js"></script><script src="/workspace-layout.js"></script><script src="/workbench.js"></script>
@@ -104,8 +104,8 @@ app.whenReady().then(async()=>{
       await click(win.webContents,'#browser-tabs-toggle');
       await click(win.webContents,selector);assert(browser.selected===tab,'page restore');
       await click(win.webContents,'#browser-return');
-      assert(await host("document.activeElement.id==='browser-open'&&$('fixture-import-draft').value==='preserved'"),'Import draft and focus return');
-      assert(!browser.presentation.mounted,'Import intercepted by native view');
+      assert(await host("document.activeElement.id==='browser-open'&&$('fixture-workspace-draft').value==='preserved'"),'Workspace draft and focus return');
+      assert(!browser.presentation.mounted,'Workspace intercepted by native view');
       await click(win.webContents,'#fixture-run');await host("(()=>{const dialog=document.getElementById('run-view');dialog.append(document.getElementById('fixture-task-page'));dialog.show()})()");
       await click(win.webContents,'#fixture-task-page');const run=await bounds('Run task Focus');assert(browser.selected===tab,'Run selected unrelated page');
       for(let attempt=0;attempt<3;attempt++){

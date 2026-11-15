@@ -536,7 +536,6 @@ app.whenReady().then(async()=>{
       assert($('paper-identifiers').textContent==='openalex: W123','Paper direct identity was changed');
       assert($('paper-indexed-terms').textContent.includes('topic · openalex'),'indexed term type/source was lost');
       assert($('paper-doi').textContent==='DOI unavailable' && !$('paper-doi').hasAttribute('href'),'DOI-free paper acquired a DOI link');
-      assert([...$('paper-metadata-details').querySelectorAll('[data-enrich]')].every(node=>node.disabled),'DOI-free external Enrich was enabled');
       window.layoutReader=$('paper-detail');window.layoutParent=layoutReader.parentElement;
       window.layoutOpenCount=0;window.layoutCloseCount=0;
       const open=window.inboxKept.openReader,close=window.inboxKept.closeReader;

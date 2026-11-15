@@ -57,7 +57,6 @@
 :is(#configuration-workspace,#settings-shell) :is(.s-primary,[data-run-provider]){background:var(--ink);color:var(--paper)}
 :is(#configuration-workspace,#settings-shell) :is(.s-primary,[data-run-provider]):hover:not(:disabled){background:var(--orange);color:var(--ink)}
 .left-review-actions>button{height:auto;min-height:40px;border:1px solid var(--ink);background:var(--paper);padding:0 14px;font:600 11px/38px var(--font);letter-spacing:.1em;text-align:left;max-width:100%;white-space:normal;overflow-wrap:anywhere}
-#cancel-enrich{height:22px;padding:0 10px;border:1px solid var(--ink);background:var(--paper);font:500 9px/20px var(--font);letter-spacing:.14em}
 /* style.js::cardFrame selection, 4px outer frame and 6px registration marks. */
 :is(.s-journal-card,.s-journal-row):hover{border-color:var(--orange)}
 :is(.s-journal-card,.s-journal-row)[data-current=true]{border-color:transparent;outline:none}
