@@ -150,7 +150,11 @@ Native output reserves an exclusive `0700` directory at
 `Documents/.downloads/<paper UUID>.<attempt>.native/` and initially leaves
 `body.part` absent. Chromium does not promise to reuse a precreated stream inode;
 Main observes its actual regular-file inode and Python independently checks it
-before publication. Each attempt has a distinct path. Directory/file replacement,
+before publication. Before any inode is adopted, a progress observation may see
+Chromium's empty destination reservation already unlinked (`nlink=0`); it remains
+pending and supplies no output proof. Final output and every observation after
+adoption still require the same regular, singly linked inode. Each attempt has a
+distinct path. Directory/file replacement,
 symlinks, unrelated links and unknown objects still cause application refusal;
 final body publication remains no-clobber. Application cleanup never deliberately
 unlinks an unproved replacement.

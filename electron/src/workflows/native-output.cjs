@@ -38,6 +38,10 @@ class NativeOutput {
     this.check();
     let info;
     try {info=fs.lstatSync(this.filename);}catch(error){if(error.code==='ENOENT'&&missing)return null;throw failure();}
+    // lstat can overlap Chromium unlinking its empty destination reservation.
+    // That unowned object is not output yet; final and owned captures still
+    // require the regular, singly linked inode below.
+    if(missing&&!this.file&&info.isFile()&&info.size===0&&info.nlink===0)return null;
     if(!info.isFile()||info.nlink!==1||this.file&&!same(info,this.file))throw failure();
     // Chromium can briefly reserve a zero-length destination before moving its
     // already-open native file there. Observe a growing inode, or the actual

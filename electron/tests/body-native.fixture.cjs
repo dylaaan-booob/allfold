@@ -5,11 +5,31 @@ const assert=require('node:assert/strict'),{randomUUID}=require('node:crypto');
 const {spawn}=require('node:child_process'),{createInterface}=require('node:readline');
 const {BrowserRuntime}=require('../src/browser/browser-runtime.cjs');
 const {executeBodyNative}=require('../src/workflows/body-native.cjs');
+const {NativeOutput}=require('../src/workflows/native-output.cjs');
 const {BrowserFailure,diagnosticFor}=require('../src/browser/browser-errors.cjs');
 const {invocationRecovery}=require('../src/shared/recovery-summary.cjs');
 const {validateRecovery,settleRecoveryAuthority}=require('../src/workflows/recovery-authority.cjs');
 const profile=process.argv[2],root=path.resolve(__dirname,'../..');
 const caseNames=(process.argv[3]||'attachment,inline,iframe,popup,cancel,interrupted,no-item,replace,sciencedirect').split(',');
+const reservations=new Map();
+for(const method of ['check','absent','capture']) {
+  const run=NativeOutput.prototype[method];
+  NativeOutput.prototype[method]=function(...args) {
+    const reservation=method==='capture'&&args[0]?.missing&&!this.file&&reservations.get(this.filename);
+    const lstat=fs.lstatSync;
+    if(reservation&&!reservation.observed)fs.lstatSync=(filename,...options)=>{
+      if(filename===this.filename&&!reservation.observed){reservation.observed=true;return reservation.info;}
+      return lstat(filename,...options);
+    };
+    try{return run.apply(this,args);}catch(error) {
+      // Main intentionally returns only a bounded native-output code. Preserve
+      // its failing phase here without changing production results or guards.
+      console.error('NATIVE OUTPUT FAILURE '+JSON.stringify({phase:method,code:error.code,
+        syscall:error.syscall,owned_file:!!this.file,site:String(error.stack).split('\n').slice(1,5)}));
+      throw error;
+    }finally{fs.lstatSync=lstat;}
+  };
+}
 app.setPath('userData',profile);app.setPath('sessionData',profile);
 app.commandLine.appendSwitch('host-resolver-rules','MAP *.microbiologyresearch.org 127.0.0.1, MAP www.sciencedirect.com 127.0.0.1');
 app.commandLine.appendSwitch('no-proxy-server');app.on('window-all-closed',()=>{});
@@ -24,7 +44,7 @@ app.whenReady().then(async()=>{
     if(url.pathname==='/article') {
       if(kind==='blocked'){res.writeHead(403,{'content-type':'text/html'});res.end('<title>Login required</title>');return;}
       const background=['iframe-background','popup-background','iframe-replaced','popup-source-replaced'].includes(kind);
-      const popup=['popup','popup-background','popup-source-replaced','action-challenge-popup'].includes(kind);
+      const popup=['popup','popup-reservation','popup-background','popup-source-replaced','action-challenge-popup'].includes(kind);
       const setup=['iframe','predeclared-iframe','predeclared-popup-guard','iframe-background','iframe-replaced','action-challenge-iframe'].includes(kind)?`onsubmit="${kind==='predeclared-popup-guard'?`window.open(this.action,'_blank');`:''}const frame=document.createElement('iframe');frame.name='new-body';document.body.appendChild(frame);${kind.startsWith('predeclared-')?'':'this.target=frame.name'}"`:
         kind==='no-item'?`onsubmit="event.preventDefault()"`:
         kind==='get-changed'?`onsubmit="this.elements.once.value='changed-after-prepare'"`:
@@ -117,6 +137,17 @@ app.whenReady().then(async()=>{
         workflow_id:'body-fixture',task_id:'body-'+id,identity:{confirmed_article_url:article},
         candidate:{url:kind==='sciencedirect'?article+'/pdfft':origin+'/once?case='+kind,action:kind==='sciencedirect'?null:'refresh_form',
           platform:kind==='sciencedirect'?'sciencedirect':'microbiology',rule_id:kind==='sciencedirect'?'R024':'R059'}};
+      if(kind==='popup-reservation') {
+        // lstat can overlap Chromium unlinking its empty destination reservation.
+        // Use an actual unlinked descriptor's stat at that filesystem boundary;
+        // the original DownloadItem still writes and completes its real output.
+        const temporary=path.join(profile,'empty-reservation');fs.writeFileSync(temporary,'');
+        const fd=fs.openSync(temporary,'r');fs.unlinkSync(temporary);
+        try {
+          const info=fs.fstatSync(fd);assert.equal(info.isFile(),true);assert.equal(info.size,0);assert.equal(info.nlink,0);
+          reservations.set(path.join(data.workspace_root,data.output.temporary),{info,observed:false});
+        }finally{fs.closeSync(fd);}
+      }
       let observed,replaced=false;
       progresses.set(id,value=>{
         if(value.native_output_file){observed=value.native_output_file;assert.deepEqual(observed,identity(path.join(data.workspace_root,data.output.temporary)));}
@@ -129,10 +160,11 @@ app.whenReady().then(async()=>{
       const terminal=new Promise(resolve=>messages.set(id,resolve));
       await context.execute({id,action:'native_paper_body',data});const result=await terminal;
       cases.push({kind,result});console.log('NATIVE CASE '+kind+' '+JSON.stringify(result));
-      const success=['attachment','inline','iframe','popup','sciencedirect'].includes(kind);
+      const success=['attachment','inline','iframe','popup','popup-reservation','sciencedirect'].includes(kind);
       if(success) {
         assert.equal(result.outcome,'native_complete');assert.equal(result.resource_closed,true);assert.deepEqual(result.output_file,observed);
         const leaf=path.join(data.workspace_root,data.output.temporary);assert.deepEqual(fs.readFileSync(leaf),payload);assert.deepEqual(identity(leaf),observed);
+        if(kind==='popup-reservation')assert.equal(reservations.get(leaf)?.observed,true);
       } else if(kind==='interrupted')assert.equal(result.diagnostic_code,'interrupted');
       else if(kind==='replace') {
         assert.equal(replaced,true);assert.equal(result.kind,'local_failure');assert.equal(result.output_file,undefined);
@@ -183,7 +215,7 @@ app.whenReady().then(async()=>{
       assert.equal(requests.filter(request=>request.url.endsWith('/pdfft')).length,1);
       console.log('PUBLIC BODY NATIVE PASS');
     }
-    for(const kind of ['attachment','inline','iframe','popup','cancel','interrupted']) {
+    for(const kind of ['attachment','inline','iframe','popup','popup-reservation','cancel','interrupted']) {
       if(!caseNames.includes(kind))continue;
       const seen=requests.filter(request=>request.url==='/once?case='+kind);
       assert.deepEqual(seen,[{url:'/once?case='+kind,method:'POST',body:'once=fixture'}]);

@@ -347,6 +347,12 @@ than stopping at a transport helper. Native output reserves an exclusive private
 directory with an absent leaf, then qualifies Chromium's actual output inode;
 stream placeholders are not reused for native output. Application replacement
 refusal and no-clobber final publication remain active.
+The native fixture replays a real unlinked empty reservation stat at the Main
+filesystem boundary while the original popup item completes its actual output.
+`native-output.test.cjs` separately refuses that state at final/owned capture,
+empty hardlinks/symlinks and replacement of an adopted inode. Fixture-only failure
+observations retain the output phase and bounded error site before Main maps it
+to the private native-output result.
 
 Chromium's asynchronous cancellation unlink may delete an externally replaced
 temporary file after `done(cancelled)`. This measured limitation is accepted and
