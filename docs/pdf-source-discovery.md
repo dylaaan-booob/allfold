@@ -4040,7 +4040,7 @@ Zotero 相关已读文件主要声明 AGPL-3.0-or-later；其他仓库按表中�
 请自主推进到**针对本次变更的一张 PR 已创建或更新、最新 PR 版本对应的 GitHub Actions 检查实际通过**，目标分支为 `main`，**暂不合并**。计划、提交、Review 或 PR 创建本身均不是终点。若存在真实阻塞，则提交已完成工作，并明确给出阻塞和未通过/未验证事项，不得虚报完成。
 
 
-## Current public body consumer and remaining native gate
+## Current public body consumer and original-response adoption
 
 Public `BodyDownloadService` constructs the original target from reliable saved
 identity and target-bound discovery facts, then runs P1–P5 lazily with actual
@@ -4052,11 +4052,14 @@ SQLite completion persists successful source/fallback. Local completion failure
 ends the task. Existing body and real active owner paths precede target creation.
 
 Optional secret capabilities retain fixed HTTPS Host/path/header qualification
-and are absent from public input. Native-dependent action/current-response
-entries currently return a finite skipped condition before dispatch; they do not
-stay pending, consume an actual transfer budget or manufacture fallback, and
-legitimate later stream sources remain available. This is an explicit blocker,
-not completed native support. The core's standalone HTTP consumer can still
-return pending when no downstream transfer is provided; that component contract
-is not the public product path. The complete historical request below retains
-its WF07 scope. See [the current body contract](body-downloads.md).
+and are absent from public input. Qualified current R059 forms and R024
+ScienceDirect reader entries now adopt the original navigation/POST response and
+DownloadItem, without replay or replacement GET. Other unsupported native entries
+return a finite skipped condition before dispatch; legitimate later stream
+sources remain available. A dispatched native action settles terminally rather
+than replaying or falling back after an unknown response. Native staging retains
+the [accepted Chromium cancellation risk](body-downloads.md#native-output-and-accepted-cancellation-risk).
+The core's standalone HTTP consumer can still return pending when no downstream
+transfer is provided; that component contract is not the public product path.
+The historical rule catalogue and WF07 evidence above retain their original
+scope. See [the current body contract](body-downloads.md).

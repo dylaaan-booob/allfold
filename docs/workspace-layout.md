@@ -151,6 +151,7 @@ on the last Paper of a Journal. These rendered/synthetic results do not establis
 Provider/Session acceptance. The WF10 rendered fixture additionally checks
 Download/progress without locking Reject/Run, same-UUID classification migration,
 Reader scroll and remounting after returning. Public stream mechanism evidence
-and the original DownloadItem output blocker are documented in
-[body downloads](body-downloads.md); these are separate from real-site acceptance.
+and qualified original DownloadItem adoption with its accepted cancellation risk
+are documented in [body downloads](body-downloads.md); these are separate from
+real-site acceptance.
 See [Provider contracts](providers.md).

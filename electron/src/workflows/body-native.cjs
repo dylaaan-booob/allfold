@@ -2,16 +2,17 @@
 const {NativeOutput}=require('./native-output.cjs');
 const {target}=require('./body-stream.cjs');
 const {publicClueURL,qualifyReader}=require('../browser/pdf-clues.cjs');
-const {BrowserFailure}=require('../browser/browser-errors.cjs');
+const {BrowserFailure,checkPage}=require('../browser/browser-errors.cjs');
 const {checkCanceled,waitFor,pause}=require('../browser/browser-task.cjs');
 const sameFrame=(a,b)=>!!a&&!!b&&a.processId===b.processId&&a.frameToken===b.frameToken;
 const failure=code=>new BrowserFailure('navigation',code);
 class OriginalNavigation {
   constructor(browser,doc,candidate,{output,signal,deadline,verify,progress}) {
     Object.assign(this,{browser,doc,candidate,output,signal,deadline,verify,progress});
-    this.owner=browser.operation;this.sources=new Map();this.registrations=[];this.tracked=new Set();this.dispatched=false;
+    this.owner=browser.operation;this.sources=new Map();this.registrations=[];this.tracked=new Set();this.probes=new Set();this.dispatched=false;
     this.received=new Promise((resolve,reject)=>{this.resolve=resolve;this.reject=reject;});this.received.catch(()=>{});
     this.hook=browser.sessionEvents.subscribe('beforeRequest',details=>this.request(details));
+    this.responseHook=browser.sessionEvents.subscribe('headersReceived',details=>this.response(details));
     this.addSource(browser.tabs.get(doc.pageId));
   }
   valid() {
@@ -25,7 +26,7 @@ class OriginalNavigation {
   dispatch() {this.valid();if(this.dispatched)throw failure('document_changed');this.dispatched=true;this.owner.phase='body';}
   acceptsURL(url) {
     if(!publicClueURL(url))return false;
-    if(url===this.candidate.url)return true;
+    if(url===(this.requestURL || this.candidate.url))return true;
     if(this.candidate.platform!=='sciencedirect')return false;
     const source=new URL(this.doc.url),next=new URL(url),pii=source.pathname.match(/\/science\/article\/pii\/([SB][0-9X]{16})/i)?.[1];
     return !!pii && (next.origin===source.origin&&['/science/article/pii/'+pii+'/pdfft','/science/article/pii/'+pii+'/pdf'].includes(next.pathname)
@@ -54,7 +55,18 @@ class OriginalNavigation {
       if(!this.dispatched||!this.acceptsURL(url)||this.primary)this.fail(failure('document_changed'));
     };
     source.replaced=()=>this.fail(failure('document_changed'));
+    source.loaded=(_event,_main,processId,routingId)=>{
+      if(this.error||this.primary)return;
+      const frame=source.contents.mainFrame.framesInSubtree.find(item=>item.processId===processId&&item.routingId===routingId);
+      if(!frame)return;
+      for(const entry of source.frames.values())if(entry.response&&!entry.probing&&entry.request.frameTreeNodeId===frame.frameTreeNodeId) {
+        entry.probing=true;
+        const probe=this.browser.runInOperation(this.owner,()=>this.inspectResponse(source,entry,frame));this.probes.add(probe);
+        probe.catch(error=>this.fail(error)).finally(()=>this.probes.delete(probe));
+      }
+    };
     contents.on('did-start-navigation',source.navigation);contents.on('did-navigate-in-page',source.replaced);
+    contents.on('did-frame-finish-load',source.loaded);
   }
   addFrame(source,frame) {
     if(!frame||source.frames.has(frame.frameToken)||source.frames.size>=8)return;
@@ -97,24 +109,61 @@ class OriginalNavigation {
         if(entry.request.id!==details.id)throw failure('document_changed');
         return;
       }
-      if(!this.bound && (details.url!==this.candidate.url||details.method!==this.method))throw failure('document_changed');
+      if(!this.bound && (details.url!==(this.requestURL || this.candidate.url)||details.method!==this.method))throw failure('document_changed');
       // Redirects keep the bound request ID. A new request after the one-shot
       // dispatch cannot borrow the action merely because its URL looks related.
       if(this.bound)throw failure('document_changed');
-      this.bound=true;entry.request={id:details.id};entry.registration.bindRequest(details);
+      this.bound=true;entry.request={id:details.id,frameTreeNodeId:details.frame.frameTreeNodeId,
+        frame:{processId:details.frame.processId,frameToken:details.frame.frameToken}};
+      entry.registration.bindRequest(details);
     } catch(error){this.fail(error);return {cancel:true};}
   }
+  response(details) {
+    const source=this.sources.get(details.webContentsId),entry=source?.frames.get(details.frame?.frameToken);
+    if(!entry?.request||entry.request.id!==details.id||!sameFrame(entry.request.frame,details.frame))return;
+    try {
+      this.valid();
+      const status=details.statusCode;
+      if([401,403,407,418,429].includes(status))throw new BrowserFailure('navigation','http_error',status);
+      if(status>=300&&status<400)return; // the same request ID may redirect
+      const contentType=Object.entries(details.responseHeaders || {}).find(([name])=>name.toLowerCase()==='content-type')?.[1];
+      const type=contentType?.length===1?contentType[0].split(';')[0].trim().toLowerCase():'';
+      if(type==='application/pdf'&&status>=200&&status<300)return;
+      if(!['text/html','application/xhtml+xml'].includes(type))throw failure('download_not_attributable');
+      entry.response={url:details.url,status};
+    }catch(error){this.fail(error);return {cancel:true};}
+  }
+  async inspectResponse(source,entry,frame) {
+    this.valid();
+    const response=entry.response,root=source.contents.mainFrame;
+    // A committed HTML response can replace its renderer frame token. Its
+    // non-reused FrameTreeNode ID connects that successor to the exact request;
+    // every new navigation request is still refused by the one-shot guard.
+    if(frame.frameTreeNodeId!==entry.request.frameTreeNodeId||frame.url!==response.url)throw failure('document_changed');
+    const binding={pageId:source.tab.id,processId:frame.processId,frameToken:frame.frameToken,url:response.url,
+      navigationGeneration:source.tab.documentGeneration,rootProcessId:root.processId,rootFrameToken:root.frameToken};
+    const access=await this.browser.documents.call(binding,'access',{}, {signal:this.signal,deadline:this.deadline});
+    this.valid();
+    if(entry.response!==response||!this.browser.documentCurrent(binding))throw failure('document_changed');
+    checkPage(response.status,access);
+    if(access.markers.login)throw new BrowserFailure('navigation','content_access_blocked',response.status);
+    // A dispatched one-shot action with ordinary HTML is a finite local failure,
+    // never a new source, copied body, solver action or replayed request.
+    throw failure('download_not_attributable');
+  }
   dispose() {
-    this.hook.dispose();
+    this.hook.dispose();this.responseHook.dispose();
     for(const registration of this.registrations)registration.dispose({dispatched:this.dispatched});
     for(const source of this.sources.values()) {
       source.contents.removeListener('frame-created',source.created);
       source.contents.removeListener('did-start-navigation',source.navigation);source.contents.removeListener('did-navigate-in-page',source.replaced);
+      source.contents.removeListener('did-frame-finish-load',source.loaded);
       if(source.tab.bodyAction===this)source.tab.bodyAction=null;
     }
   }
   async settle() {
     if(this.signal?.aborted||this.error)for(const entry of this.tracked)this.browser.sessionEvents.cancelItem(entry.item);
+    await Promise.all([...this.probes].map(probe=>probe.catch(()=>{})));
     await Promise.all([...this.tracked].map(entry=>entry.terminal));
     await Promise.all([...this.sources.values()].map(source=>this.browser.sessionEvents.waitForDownloads(source.contents)));
   }
@@ -160,7 +209,7 @@ async function executeBodyNative(browser,data,{signal,progress=()=>{}}={}) {
     operation=new OriginalNavigation(browser,doc,candidate,{output,signal:stop,deadline:data.deadline_ms,verify,progress});
     prepared=await browser.bodyActions.prepare(doc,{url:candidate.url,action:candidate.action,platform:candidate.platform,rule_id:candidate.rule_id},
       {signal:stop,deadline:data.deadline_ms});
-    operation.method=prepared.plan.method;
+    operation.method=prepared.plan.method;operation.requestURL=prepared.plan.request_url;
     if(prepared.plan.target==='popup')await browser.reserveChildPage({signal:stop,deadline:data.deadline_ms});
     await prepared.dispatch(()=>operation.dispatch(),error=>operation.fail(error));
     primary=await waitFor(()=>operation.received,stop,Math.min(data.deadline_ms,Date.now()+15000));

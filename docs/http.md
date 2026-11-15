@@ -306,9 +306,11 @@ Reusable PDF requests begin in the selected Chromium Session through authenticat
 `stream_paper_body`. Python HTTPX never probes that PDF first; bounded API/JSON/
 HTML discovery remains valid. Scoped observed publisher continuations and optional
 fixed API-secret contracts are defined in the [body lifecycle](body-downloads.md).
-Current Document/POST/one-shot body adoption is explicitly unsupported before
-dispatch until the pinned native output safety gate is resolved; it is never
-converted into a replacement GET or indefinite pending task.
+Qualified current R059 forms and R024 ScienceDirect reader actions use
+`native_paper_body` to adopt the original navigation/POST response and DownloadItem.
+Other unsupported native entries are skipped before dispatch. Dispatched actions
+are never replayed or converted into replacement GETs. Native output retains the
+[accepted Chromium cancellation risk](body-downloads.md#native-output-and-accepted-cancellation-risk).
 
 `POST /api/papers/{paper_uuid}/body/open`, `body/locate` and `body/delete`
 carry CSRF, Workspace identity and captured `body_generation`. Delete requires

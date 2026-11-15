@@ -4,6 +4,7 @@ const {ipcMain}=require('electron');
 const {randomBytes}=require('node:crypto');
 const {BrowserFailure}=require('./browser-errors.cjs');
 const {waitFor}=require('./browser-task.cjs');
+const {publicClueURL}=require('./pdf-clues.cjs');
 class BodyActionRuntime {
   constructor(browser,{ipc=ipcMain}={}) {
     this.browser=browser;this.pending=new Map();this.ipc=ipc;
@@ -13,9 +14,15 @@ class BodyActionRuntime {
         || event.senderFrame?.frameToken!==entry.doc.frameToken)return;
       if(message.error){entry.reject(new BrowserFailure('navigation','document_operation_failed'));return;}
       const plan=message.plan;
-      if(!this.browser.documentCurrent(entry.doc) || !plan || Object.keys(plan).sort().join(',')!=='method,target,url'
+      if(!this.browser.documentCurrent(entry.doc) || !plan || Object.keys(plan).sort().join(',')!=='method,request_url,target,url'
         || !['GET','POST'].includes(plan.method) || plan.url!==entry.candidate.url
+        || !publicClueURL(plan.request_url)
         || !['self','frame','popup'].includes(plan.target)) {
+        entry.reject(new BrowserFailure('navigation','document_changed'));return;
+      }
+      const action=new URL(plan.url),request=new URL(plan.request_url);
+      if(plan.request_url!==plan.url && (entry.candidate.action!=='refresh_form' || plan.method!=='GET'
+        || request.origin!==action.origin || request.pathname!==action.pathname || request.hash!==action.hash)) {
         entry.reject(new BrowserFailure('navigation','document_changed'));return;
       }
       entry.resolve({...plan,id:message.id});

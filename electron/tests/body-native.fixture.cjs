@@ -23,16 +23,23 @@ app.whenReady().then(async()=>{
     const url=new URL(req.url,origin),kind=url.searchParams.get('case');
     if(url.pathname==='/article') {
       if(kind==='blocked'){res.writeHead(403,{'content-type':'text/html'});res.end('<title>Login required</title>');return;}
-      const setup=kind==='iframe'?`onsubmit="const frame=document.createElement('iframe');frame.name='new-body';document.body.appendChild(frame);this.target=frame.name"`:
+      const setup=['iframe','action-challenge-iframe'].includes(kind)?`onsubmit="const frame=document.createElement('iframe');frame.name='new-body';document.body.appendChild(frame);this.target=frame.name"`:
         kind==='no-item'?`onsubmit="event.preventDefault()"`:
+        kind==='get-changed'?`onsubmit="this.elements.once.value='changed-after-prepare'"`:
         kind==='unrelated'?`onsubmit="event.preventDefault();location.assign('/unrelated')"`:'';
       res.writeHead(200,{'content-type':'text/html'});
-      res.end(`<!doctype html><html><head><title>Original response</title></head><body><article><h1>Original response</h1>
-        <div class="download-pdf"><form class="ft-download-content__form--pdf" method="POST" action="/once?case=${kind}" ${kind==='popup'?'target="_blank"':''} ${setup}>
-        <input name="once" value="${kind==='current-form'?'current-document':'fixture'}"><button type="submit">Download PDF</button></form></div></article></body></html>`);return;
+      const getForm=['get-form','get-changed'].includes(kind);
+      res.end(`<!doctype html><html><head><meta charset="utf-8"><title>Original response</title></head><body><article><h1>Original response</h1>
+        <div class="download-pdf"><form class="ft-download-content__form--pdf" method="${getForm?'GET':'POST'}" action="/once?${getForm?'discard=old-action-query&':''}case=${kind}" ${['popup','action-challenge-popup'].includes(kind)?'target="_blank"':''} ${setup}>
+        ${getForm?`<input name="case" value="${kind}"><input name="once" value="fixture + &"><input name="tag" value="one"><input name="tag" value="two"><input disabled name="ignored" value="disabled"><input type="checkbox" name="ignored" value="unchecked">`:`<input name="once" value="${kind==='current-form'?'current-document':'fixture'}">`}
+        <button type="submit" ${getForm?'name="download" value="PDF now"':''}>Download PDF</button></form></div></article></body></html>`);return;
     }
     if(url.pathname==='/once') {
-      if(req.method!=='POST'){res.writeHead(200,{'content-type':'text/html'});res.end('<title>Craft GET refused</title>');return;}
+      if(req.method!=='POST'&&kind!=='get-form'){res.writeHead(200,{'content-type':'text/html'});res.end('<title>Craft GET refused</title>');return;}
+      if(['action-blocked','action-html'].includes(kind)||kind?.startsWith('action-challenge')) {
+        res.writeHead(kind==='action-blocked'?403:200,{'content-type':'text/html'});
+        res.end(kind.startsWith('action-challenge')?'<title>Just a moment...</title>':'<title>Body unavailable</title>');return;
+      }
       res.writeHead(200,{'content-type':'application/pdf',...(kind==='attachment'?{'content-disposition':'attachment; filename="body.pdf"'}:{})});
       if(['cancel','drain','interrupted','replace'].includes(kind)) {
         res.write(payload.subarray(0,65536));
@@ -128,13 +135,16 @@ app.whenReady().then(async()=>{
       python.stdin.write(JSON.stringify({type:'hello',token:'fixture-only'})+'\n');
       const code=await new Promise(resolve=>python.once('exit',resolve));python=null;
       if(dispatchError)throw dispatchError;
-      assert.equal(code,0,stderr);assert.equal(complete,true,stderr);assert.equal(publicCases.length,9);
+      assert.equal(code,0,stderr);assert.equal(complete,true,stderr);assert.equal(publicCases.length,16);
       for(const item of publicCases)if(item.status==='completed')assert.deepEqual(fs.readFileSync(path.join(profile,'workspace/Documents',item.paper+'.pdf')),payload);
       assert.equal(browser.tabs.size,0);assert.equal(browser.sessionEvents.downloads.size,0);assert.equal(browser.sessionEvents.items.size,0);
-      for(const kind of ['attachment','inline','iframe','popup','cancel','drain'])assert.deepEqual(requests.filter(request=>request.url==='/once?case='+kind),
+      for(const kind of ['attachment','inline','iframe','popup','action-blocked','action-challenge','action-challenge-iframe','action-challenge-popup','action-html','cancel','drain'])assert.deepEqual(requests.filter(request=>request.url==='/once?case='+kind),
         [{url:'/once?case='+kind,method:'POST',body:'once=fixture'}]);
       assert.deepEqual(requests.filter(request=>request.url==='/once?case=current-form'),
         [{url:'/once?case=current-form',method:'POST',body:'once=current-document'}]);
+      assert.deepEqual(requests.filter(request=>request.url.startsWith('/once?')&&request.url.includes('get-form')),
+        [{url:'/once?case=get-form&once=fixture+%2B+%26&tag=one&tag=two&download=PDF+now',method:'GET',body:''}]);
+      assert.equal(requests.filter(request=>request.url.startsWith('/once?')&&request.url.includes('get-changed')).length,0);
       assert.equal(requests.filter(request=>request.url.startsWith('/expired-action')).length,0);
       assert.equal(requests.filter(request=>request.url==='/once?case=blocked').length,0);
       assert.equal(requests.filter(request=>request.url.endsWith('/pdfft')).length,1);

@@ -67,12 +67,14 @@ async def main():
     host = application.state.workspace_tasks
     client = httpx.AsyncClient(transport=httpx.ASGITransport(app=application), base_url='http://localhost')
     try:
-        for index, kind in enumerate(('attachment', 'inline', 'iframe', 'popup', 'current-form', 'sciencedirect', 'blocked', 'cancel', 'drain')):
+        for index, kind in enumerate(('attachment', 'inline', 'iframe', 'popup', 'current-form', 'get-form', 'get-changed', 'sciencedirect', 'blocked',
+                                      'action-blocked', 'action-challenge', 'action-challenge-iframe', 'action-challenge-popup', 'action-html', 'cancel', 'drain')):
             science = kind == 'sciencedirect'
+            access_blocked = kind in {'blocked', 'action-blocked'} or kind.startswith('action-challenge')
             article = (origin.replace('www.microbiologyresearch.org', 'www.sciencedirect.com') + '/science/article/pii/S1234567890123456'
                 if science else origin + '/article?case=' + kind)
             candidate = PdfCandidateFact(stage='P4', rule_id='R024' if science else 'R059',
-                url=article + '/pdfft' if science else origin + ('/expired-action' if kind == 'current-form' else '/once') + '?case=' + kind,
+                url=article + '/pdfft' if science else origin + ('/expired-action' if kind == 'current-form' else '/once') + '?' + ('discard=old-action-query&' if kind in {'get-form', 'get-changed'} else '') + 'case=' + kind,
                 reader_kind='sciencedirect' if science else None, action=None if science else 'refresh_form', referer=article)
             identity = 'W' + str(88000 + index)
             with PaperRepository.open(workspace) as repo:
@@ -109,8 +111,9 @@ async def main():
                 else:
                     from allfold.web.electron_server import drain_application
                     await drain_application(application)
-            result = await asyncio.to_thread(task.future.result, 10)
-            expected = 'cancelled' if stopping else 'failed' if kind == 'blocked' else 'completed'
+            result = await asyncio.to_thread(task.future.result, 20 if kind.startswith('action-') else 10)
+            expected = ('cancelled' if stopping else 'stale' if kind == 'get-changed' else 'local_failure' if kind == 'action-html'
+                        else 'failed' if access_blocked else 'completed')
             assert result.status == expected, (kind, result)
             projected = paper_projection((await client.get('/api/ui-next/workspace')).json(), paper.id)
             assert projected['body_present'] is (expected == 'completed')
@@ -118,13 +121,15 @@ async def main():
             assert not host.active
             with PaperRepository.open(workspace) as repo:
                 stored = repo.get(paper.id)
-                assert stored.download.status == expected
+                assert stored.download.status == ('failed' if expected == 'local_failure' else 'cancelled' if expected == 'stale' else expected)
                 assert stored.collection is None
                 if expected == 'completed':
                     assert stored.body.pdf_source == 'P4' and stored.body.fallback_used is False
                     assert stored.body.size_bytes == 256 * 1024
-                elif kind == 'blocked':
+                elif access_blocked:
                     assert stored.download.reason == 'access-blocked'
+                elif kind in {'action-html', 'get-changed'}:
+                    assert stored.download.reason == 'native-action'
             print(json.dumps({'type': 'fixture_public_native', 'case': kind, 'status': result.status, 'paper': str(paper.id)}), flush=True)
         print(json.dumps({'type': 'fixture_complete'}), flush=True)
     finally:

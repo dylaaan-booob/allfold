@@ -304,9 +304,12 @@ bound to the original target. It keeps exact frame/Document/URL/subject, access,
 prepared Service, cancellation and cleanup checks even when article DOI/h1 proof
 is absent. This does not weaken `openPaperPage`/`confirmArticlePage` for articles.
 Challenges still use the shared access/solver boundary. Actions and one-time
-responses remain typed refresh facts; production native action execution/transfer
-is still the explicitly blocked portion of WF10. Public reusable-URL transfer
-uses the Session body service and its separate completion transaction.
+responses remain typed refresh facts. The separate fixed body action capability
+submits qualified live R059 forms and follows R024 ScienceDirect entries once,
+binding the original response to the exact request/frame/DownloadItem. Public
+reusable-URL transfer uses the Session body service; both paths share managed
+publication and SQLite completion. Native staging retains the
+[accepted Chromium cancellation risk](body-downloads.md#native-output-and-accepted-cancellation-risk).
 See the [complete adopted rules](pdf-source-discovery.md).
 
 The same internal `extract_paper_pdf_clues` action accepts the fixed

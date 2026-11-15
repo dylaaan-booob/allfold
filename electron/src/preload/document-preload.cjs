@@ -620,7 +620,7 @@ function bodyAction(candidate,subject,id,dispatch=false) {
     if(links.length>1)throw Error('body_action_ambiguous');
     const node=links[0]||document.body;
     globalThis.__allfoldBodyAction={id,node,kind:'navigation',url:location.href,subject,action:candidate.url};
-    return {url:candidate.url,method:'GET',target:node.target==='_blank'?'popup':node.target&&node.target!=='_self'?'frame':'self'};
+    return {url:candidate.url,request_url:candidate.url,method:'GET',target:node.target==='_blank'?'popup':node.target&&node.target!=='_self'?'frame':'self'};
   }
   if(candidate.action!=='refresh_form' || candidate.platform!=='microbiology' || candidate.rule_id!=='R059'
     || !/(^|\.)microbiologyresearch\.org$/.test(location.hostname))throw Error('unsupported_body_action');
@@ -631,8 +631,19 @@ function bodyAction(candidate,subject,id,dispatch=false) {
   if(!['GET','POST'].includes(method))throw Error('body_action_method');
   const submitters=[...node.querySelectorAll('button:not([type]),button[type="submit"],input[type="submit"]')].filter(item=>!item.disabled);
   if(submitters.length>1)throw Error('body_action_ambiguous');
+  let request_url=node.action;
+  if(method==='GET') {
+    // Native GET submission replaces the action's query with successful controls,
+    // including the clicked submitter. This only predicts the exact request: the
+    // original click still submits it, without a fetch or copied POST body.
+    const data=new FormData(node,submitters[0]);
+    const newline=value=>value.replace(/\r\n|\r|\n/g,'\r\n');
+    const query=new URLSearchParams();
+    for(const [name,value] of data)query.append(newline(name),newline(typeof value==='string'?value:value.name));
+    const next=new URL(node.action);next.search=query.toString();request_url=next.href;
+  }
   globalThis.__allfoldBodyAction={id,node,kind:'form',submitter:submitters[0],url:location.href,subject,action:node.action,method};
-  return {url:node.action,method,target:node.target==='_blank'?'popup':node.target&&node.target!=='_self'?'frame':'self'};
+  return {url:node.action,request_url,method,target:node.target==='_blank'?'popup':node.target&&node.target!=='_self'?'frame':'self'};
 }
 ipcRenderer.on('body:prepare',async(_event,{id,candidate,documentId:expected,url,subject})=>{
   try {
