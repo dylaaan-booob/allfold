@@ -37,11 +37,14 @@ class CurrentResponse:
     redirect_url: str | None = field(default=None, repr=False)
     partial: bool = False
     context_changed: bool = False
+    context_key: str | None = field(default=None, repr=False)
 
     def __post_init__(self):
         normalize_public_http_url(self.url)
         if (not isinstance(self.url, str) or len(self.url) > 8192 or not isinstance(self.body, bytes)
-                or type(self.partial) is not bool or type(self.context_changed) is not bool):
+                or type(self.partial) is not bool or type(self.context_changed) is not bool
+                or self.context_key is not None and (not isinstance(self.context_key, str)
+                    or not re.fullmatch(r'[a-f0-9]{64}', self.context_key))):
             raise ValueError('Current response exceeds the finite parse budget')
         if len(self.body) > RESPONSE_SAMPLE_BYTES:
             object.__setattr__(self, 'body', self.body[:RESPONSE_SAMPLE_BYTES])
@@ -436,7 +439,7 @@ class PdfDiscovery:
         # Identical response/edge observations stop loops; byte capacity bounds
         # retained response state independently of the captured parent deadline.
         pending = [(original, None, object())]
-        edges, responses, state_bytes, context_generation = set(), set(), 0, 0
+        edges, responses, state_bytes, context_key = set(), set(), 0, None
         while pending:
             candidate, evidence, lineage = pending.pop()
             self._current_candidate = candidate
@@ -497,10 +500,11 @@ class PdfDiscovery:
             fresh_reader = False
             if result.kind == 'response' and result.response is not None:
                 response = result.response
-                if response.context_changed:
-                    context_generation += 1
+                # A -> B -> A is a repeated access state, not a third advance.
+                if response.context_key is not None:
+                    context_key = response.context_key
                 observation = (response.url, response.status, response.content_type, response.body,
-                    response.redirect_url, response.access, context_generation)
+                    response.redirect_url, response.access, context_key)
                 if observation in responses:
                     self._note(original.stage, original.rule_id, 'response-loop')
                     self._failed = True
@@ -533,8 +537,7 @@ class PdfDiscovery:
                             for c in parsed.current_candidates)
                         navigation = getattr(parsed, 'reader_result', None)
                         if navigation is not None:
-                            if navigation.context_changed:
-                                context_generation += 1
+                            context_key = navigation.context_key
                             if not following and (navigation.url != response.url
                                     or navigation.context_changed or access_limited(response)):
                                 following = (replace(candidate, url=navigation.url, referer=navigation.referer,

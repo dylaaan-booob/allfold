@@ -1,6 +1,6 @@
 'use strict';
 const {BrowserCooldown}=require('./browser-recovery.cjs');
-const {randomBytes}=require('node:crypto');
+const {randomBytes,createHmac}=require('node:crypto');
 const {checkCanceled,timeoutFailure}=require('./browser-task.cjs');
 const {BrowserFailure}=require('./browser-errors.cjs');
 
@@ -18,6 +18,7 @@ class SharedSessionEvents {
   constructor(session,timing) {
     this.session=session;this.cooldown=new BrowserCooldown(timing);this.handlers=new Map();this.closed=false;
     this.requests=new Map();this.fetches=new Map();
+    this.cookieContextSecret=randomBytes(32);
     this.downloads=new Set();this.downloadGuards=new Map();this.items=new Set();this.taskPages=new Set();
     this.installed=[];
     for(const [native,event,callback] of [['onBeforeRequest','beforeRequest',true],
@@ -104,9 +105,12 @@ class SharedSessionEvents {
     if(request && !request.identity)request.identity=Object.freeze({...identity});
   }
   async cookieContext(url) {
-    return JSON.stringify((await this.session.cookies.get({url}))
+    const cookies=JSON.stringify((await this.session.cookies.get({url}))
       .map(({domain,path,name,value})=>[domain,path,name,value])
       .sort((a,b)=>JSON.stringify(a.slice(0,3)).localeCompare(JSON.stringify(b.slice(0,3)))));
+    // Equality across owned Reader/stream operations, without sending Cookie
+    // values or a guessable credential digest to Python. Never persisted/logged.
+    return createHmac('sha256',this.cookieContextSecret).update(cookies).digest('hex');
   }
   async fetch(url,options={},context={}) {
     const {owner,attemptId,document,deadline,validate=()=>{}}=context;

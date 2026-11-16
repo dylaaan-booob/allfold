@@ -283,10 +283,11 @@ publication and SQLite completion. Native staging retains the
 [accepted Chromium cancellation risk](body-downloads.md#native-output-and-accepted-cancellation-risk).
 After initial Reader qualification, actual owned main-frame GET navigation can
 return a final body/CDN URL outside the starting Reader template. An operation-local
-`reader_result` contains that URL, observed Referer and a Cookie-context-change
-bit, separately from persistable facts. It carries no Cookie values. Session can
+`reader_result` contains that URL, observed Referer (or null) and Cookie-context
+change with a Session-keyed opaque equality key, separately from persistable facts.
+It carries no Cookie values. Session can
 continue after actual navigation/access progress without a new DOM link; unchanged
-responses/edges stop. Current signatures stay in the operation, and actual Service
+responses/edges and previously seen Cookie states stop. Current signatures stay in the operation, and actual Service
 authority follows dependent candidates. No original form/POST is reconstructed.
 See the [complete adopted rules](pdf-source-discovery.md).
 

@@ -93,7 +93,8 @@ async def main():
                                       'action-blocked', 'action-challenge', 'action-challenge-iframe', 'action-challenge-popup', 'action-html',
                                       'institution-complete', 'institution-revoked', 'institution-unprepared',
                                       'sciencedirect-html-no-item', 'sciencedirect-xhtml-no-item',
-                                      'sciencedirect-reader-navigation', 'sciencedirect-reader-cookie', 'sciencedirect-reader-stalled',
+                                      'sciencedirect-reader-navigation', 'sciencedirect-reader-private-navigation',
+                                      'sciencedirect-reader-cookie', 'sciencedirect-reader-stalled', 'sciencedirect-reader-cycle',
                                       'cancel', 'drain')):
             science = kind.startswith('sciencedirect')
             no_item = kind in {'sciencedirect-html-no-item', 'sciencedirect-xhtml-no-item'}
@@ -121,7 +122,7 @@ async def main():
                 article = lww+'/fixture/fulltext/2026/paper.aspx'
                 candidate = PdfCandidateFact(stage='P4', rule_id='R060', reader_kind='lww',
                     url=lww+'/fixture/_layouts/15/oaks.journals/downloadpdf.aspx?an='+institution_ids[kind])
-            fallback = kind in {'interrupted', 'institution-revoked', 'institution-unprepared', 'sciencedirect-reader-stalled'}
+            fallback = kind in {'interrupted', 'institution-revoked', 'institution-unprepared', 'sciencedirect-reader-stalled', 'sciencedirect-reader-cycle'}
             fallback_url = (origin.replace('www.microbiologyresearch.org', 'repository.example.org')+'/oa.pdf?case='+kind
                 if institutional else origin+'/fallback.pdf')
             identity = 'W' + str(88000 + index)
@@ -226,7 +227,7 @@ async def main():
                     if fallback:
                         observations=projected['download']['source_observations']
                         reason = {'institution-revoked': 'service-invalidated', 'institution-unprepared': 'service-unprepared',
-                            'sciencedirect-reader-stalled': 'no-pdf-entry'}.get(kind, 'interrupted')
+                            'sciencedirect-reader-stalled': 'no-pdf-entry', 'sciencedirect-reader-cycle': 'response-loop'}.get(kind, 'interrupted')
                         assert any(item['pdf_reason'] == reason and (not institutional or item['service_id'] == service.id) for item in observations)
                     assert 'Signature' not in str(projected)
                     assert stored.body.size_bytes == 256 * 1024

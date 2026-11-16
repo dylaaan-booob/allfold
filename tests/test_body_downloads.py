@@ -522,7 +522,7 @@ def test_reader_navigation_or_access_progress_returns_to_session_without_dom_lin
         dispatched(2)
         assert bridge.calls[-1][0]=='extract_paper_pdf_clues'
         bridge.result.set_result(envelope() | {'pdf_clues':pdf_clues(platform='sciencedirect',landing_url=url),
-            'reader_result':dict(url=url,referer=candidate.url,context_changed=destination=='same')})
+            'reader_result':dict(url=url,referer=candidate.url,context_changed=destination=='same',context_key='a'*64)})
         dispatched(3)
         assert bridge.calls[-1][0]=='stream_paper_body'
         assert (bridge.calls[-1][1]['url'],bridge.calls[-1][1]['referer'])==(url,candidate.url)

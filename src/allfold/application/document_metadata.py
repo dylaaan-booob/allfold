@@ -1,5 +1,5 @@
 """Guarded fixed Document operation; native evidence is consumed after normal cleanup."""
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 import re
 from urllib.parse import urlsplit
 
@@ -90,6 +90,7 @@ class ReaderResult:
     url: str
     referer: str | None
     context_changed: bool
+    context_key: str = field(repr=False)
 
 
 @dataclass(frozen=True)
@@ -167,8 +168,9 @@ def validate_document_pdf_clues(value, *, target_doi=None):
     reader = value.get('reader_result')
     if reader is not None:
         try:
-            if (not isinstance(reader, dict) or set(reader) != {'url', 'referer', 'context_changed'}
-                    or type(reader['context_changed']) is not bool):
+            if (not isinstance(reader, dict) or set(reader) != {'url', 'referer', 'context_changed', 'context_key'}
+                    or type(reader['context_changed']) is not bool
+                    or not isinstance(reader['context_key'], str) or not re.fullmatch(r'[a-f0-9]{64}', reader['context_key'])):
                 raise ValueError('Invalid Reader result')
             for key in ('url', 'referer'):
                 url = reader[key]

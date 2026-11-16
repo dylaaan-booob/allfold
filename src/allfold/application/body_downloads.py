@@ -223,7 +223,7 @@ def _consume(reservation, repository, files, candidate, progress):
             access = {'cloudflare': 'challenge', 'login': 'login'}.get(detected)
         result = CandidateResult('response', response=CurrentResponse(url=current['url'], content_type=current['content_type'],
             status=current['status'], body=current['body'].encode(), access=access, partial=current.get('partial', False),
-            context_changed=current.get('context_changed', False)),
+            context_changed=current.get('context_changed', False), context_key=current.get('context_key')),
             diagnostic='access-'+access if access in {'challenge','login','authorization'} else None)
     else:
         result = CandidateResult(kind if kind in {'pending','failed','local_failure','cancelled','stale','expired'} else 'failed',

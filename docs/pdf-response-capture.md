@@ -11,10 +11,13 @@ writer completion precede the existing publication/SQLite association.
 Already received HTML/JSON is parsed before opening a Reader. When execution or
 access recovery is necessary, the fixed Browser/Reader/Solver operation returns
 current candidates and an operation-local navigation/access result. Its actual
-main-frame GET URL, Referer and Cookie progress can resume Session, including a
+main-frame GET URL, actual Referer (including absence) and Cookie progress can resume Session, including a
 final CDN outside the starting Reader template or the same URL without a DOM
 link. Signed values bypass durable-fact projection. Unchanged observations stop
-loops; subsequent ordinary GETs after genuine access progress are allowed.
+loops, including cycles back to a previously seen Cookie state. An opaque key
+under a Session-local secret permits equality checks without exposing Cookie
+values or persisting/logging the key; subsequent ordinary GETs after genuine
+access progress are allowed.
 Observed public HTTP redirects use the same chain with URL/DNS and scoped-secret
 checks; they are not limited to the former Oxford/ScienceDirect CDN pairs.
 
@@ -29,7 +32,8 @@ Controlled production regressions use actual locked Electron, temporary profiles
 and isolated Workspace. Public Download completes HTML/XHTML mislabeled PDFs in
 one body request with no item, matching permanent bytes and reopened original
 Paper/attempt SQLite association. Reader cases cover signed final navigation,
-repeated Cookie progress without links and no-progress independent fallback.
+repeated Cookie progress without links, Cookie-cycle/no-progress independent
+fallback and preservation of `no-referrer` navigation.
 Session fixtures cover public cross-origin redirects, private/illegal target
 refusal, ordinary and close-delimited completion, broken transfer/decode errors,
 backpressure, writer errors and late signals. Run serially:

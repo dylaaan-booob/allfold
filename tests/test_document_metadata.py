@@ -344,11 +344,12 @@ def test_reader_navigation_keeps_signed_url_and_access_progress_out_of_durable_f
     value = envelope()
     value['pdf_clues'] = pdf_clues()
     value['reader_result'] = {'url': 'https://cdn.example/Case.PDF?Signature=A%2Fb&Expires=2',
-        'referer': 'https://reader.example/current?token=CuR%2Brent', 'context_changed': True}
+        'referer': 'https://reader.example/current?token=CuR%2Brent', 'context_changed': True, 'context_key': 'a'*64}
     result = validate_document_pdf_clues(value)
     assert result.reader_result.url == value['reader_result']['url']
     assert result.reader_result.referer == value['reader_result']['referer']
     assert result.reader_result.context_changed
+    assert result.reader_result.context_key == 'a'*64
     assert not result.current_candidates and not result.facts.candidates
 
 
@@ -357,13 +358,14 @@ def test_reader_navigation_keeps_signed_url_and_access_progress_out_of_durable_f
     {'url': 'ftp://cdn.example/main.pdf'},
     {'referer': 'https://user:password@reader.example/'},
     {'context_changed': 1},
+    {'context_key': 'raw Cookie'},
     {'cookie': 'private'},
 ])
 def test_reader_navigation_rejects_unsafe_or_unbounded_context(change):
     from allfold.application.document_metadata import DocumentMetadataFailed, validate_document_pdf_clues
     value = envelope()
     value['reader_result'] = {'url': 'https://cdn.example/main.pdf',
-        'referer': None, 'context_changed': False, **change}
+        'referer': None, 'context_changed': False, 'context_key': 'a'*64, **change}
     with pytest.raises(DocumentMetadataFailed):
         validate_document_pdf_clues(value)
 

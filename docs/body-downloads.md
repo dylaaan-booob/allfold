@@ -132,12 +132,15 @@ request markers leave no outbound header. Renderer cannot configure API secrets.
 
 Already received bounded HTML/JSON is parsed for qualified next hops first.
 Only a necessary fixed Reader executes in Browser/Solver. Its operation-local
-`reader_result` carries the actual owned main-frame GET URL, observed Referer and
-Cookie-context change separately from persistable facts. Final body/CDN navigation
+`reader_result` carries the actual owned main-frame GET URL, observed Referer
+(including absence), Cookie-context change and an opaque equality key separately
+from persistable facts. Main keys Cookie states with a Session-local secret;
+neither Cookie values nor these keys enter durable facts or diagnostics. Final body/CDN navigation
 does not have to retain the starting Reader template. New navigation, changed
 access context or a completed access barrier can permit Session continuation,
 including the same URL without a new DOM link. Repeated unchanged responses/edges
-stop; actual Cookie progress remains distinguishable without a fixed hop count.
+stop, including a cycle back to a previously seen Cookie state; actual new Cookie
+progress remains distinguishable without a fixed hop count.
 Reader, stream and subsequent redirects retain the captured access binding;
 independent sources start without it. No Cookie values cross the bridge.
 

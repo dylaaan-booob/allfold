@@ -147,10 +147,12 @@ probes execute actions. The [accepted cancellation risk](body-downloads.md#nativ
 concerns Chromium's temporary pathname cleanup, not Document authority.
 
 Ordinary R024 GETs use the existing Session stream without an article pre-read.
-A necessary Reader can return its actual owned main-frame GET URL, Referer and
-Cookie-progress bit for a subsequent Session request, even outside its starting
+A necessary Reader can return its actual owned main-frame GET URL, Referer
+(including absence), Cookie-progress bit and opaque context key for a subsequent
+Session request, even outside its starting
 template or without a new DOM link. Those operation-local values do not pass
-through durable facts or include Cookie values. Repeated unchanged observations
+through durable facts or include Cookie values. The key uses a Session-local
+secret and never enters logs. Repeated unchanged observations or Cookie states
 stop; real access progress retains the parent budget and operation binding.
 
 The separate `page-resources.fixture.cjs` uses the production Runtime and its current

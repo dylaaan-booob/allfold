@@ -186,13 +186,14 @@ async function executeBodyStream(browser,data,{signal,progress=()=>{}}={}) {
         size_bytes:size,output_file:output.file,final_url:final.url};
     }
     const sampled=await boundedResponse({body},stop);
-    const contextChanged=priorCookies!==await waitFor(cookieState,stop,data.deadline_ms);
+    const currentCookies=await waitFor(cookieState,stop,data.deadline_ms);
     // Only native response facts are assigned here. The existing bounded HTML
     // carrier is classified by Python's shared contextual response parser.
     const access=response.headers.get('cf-mitigated')?.trim().toLowerCase()==='challenge'?'challenge':
       [401,403,407].includes(response.status)?'authorization':null;
     return {outcome:'response',kind:'response',
-      response:{url:final.url,content_type:contentType,status:response.status,...sampled,access,context_changed:contextChanged}};
+      response:{url:final.url,content_type:contentType,status:response.status,...sampled,access,
+        context_changed:priorCookies!==currentCookies,context_key:currentCookies}};
   }catch(error) {
     if(localError||error.bodyLocal)return {outcome:'local_failure',kind:'local_failure',diagnostic_code:'file-io',resource_closed:!closeError};
     if(stop.aborted)return {outcome:bounded.aborted?'expired':'cancelled',kind:bounded.aborted?'expired':'cancelled'};
