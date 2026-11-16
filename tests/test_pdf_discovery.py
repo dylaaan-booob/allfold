@@ -763,6 +763,26 @@ def test_reader_progress_keeps_distinct_entry_and_reader_cookie_contexts():
     assert (result.status, result.pdf_source, result.fallback_used) == ('transferred', 'P2', False)
 
 
+def test_observed_redirect_keeps_cookie_progress_when_it_has_no_context_key():
+    from allfold.pdf_rules import PdfCandidate
+    paper = target('publisher.example.org')
+    entry, hop = 'https://publisher.example.org/entry', 'https://download.example.org/hop'
+    html = ('<head><meta name="citation_doi" content="'+paper.doi+'">'
+        '<meta name="citation_pdf_url" content="'+hop+'"></head>').encode()
+    calls, contexts = [], iter(['1'*64, '2'*64])
+    def consume(item):
+        calls.append(item.url)
+        if item.url == hop:
+            return CandidateResult.current(CurrentResponse(hop, '', status=302, redirect_url=entry))
+        if len(calls) == 5:
+            return CandidateResult.pdf(transfer_complete=True)
+        return CandidateResult.current(CurrentResponse(entry, 'text/html', html,
+            context_changed=True, context_key=next(contexts)))
+    result = PdfDiscovery(paper, candidates=(PdfCandidate(paper, 'P3', 'GENERIC', 'generic', entry),)).run(consume)
+    assert calls == [entry, hop, entry, hop, entry]
+    assert (result.status, result.pdf_source, result.fallback_used) == ('transferred', 'P3', False)
+
+
 def test_optica_known_reader_skips_first_frame_and_preserves_meta_source():
     paper = target('opg.optica.org', article_url='https://opg.optica.org/abstract.cfm?uri=ol-1-2-3')
     facts = document(paper, [PdfCandidateFact(stage='P3', rule_id='R053',

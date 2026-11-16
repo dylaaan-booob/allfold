@@ -439,7 +439,8 @@ class PdfDiscovery:
         # Identical response/edge observations stop loops; byte capacity bounds
         # retained response state independently of the captured parent deadline.
         pending = [(original, None, object())]
-        edges, responses, state_bytes, reader_context_key = set(), set(), 0, None
+        edges, responses, state_bytes = set(), set(), 0
+        request_context_key, reader_context_key = None, None
         while pending:
             candidate, evidence, lineage = pending.pop()
             self._current_candidate = candidate
@@ -502,8 +503,10 @@ class PdfDiscovery:
                 response = result.response
                 # Entry and Reader can have different Cookie paths. Keep both
                 # observations; either can advance, while A -> B -> A repeats.
+                if response.context_key is not None:
+                    request_context_key = response.context_key
                 observation = (response.url, response.status, response.content_type, response.body,
-                    response.redirect_url, response.access, response.context_key, reader_context_key)
+                    response.redirect_url, response.access, request_context_key, reader_context_key)
                 if observation in responses:
                     self._note(original.stage, original.rule_id, 'response-loop')
                     self._failed = True

@@ -17,6 +17,15 @@ app.whenReady().then(async()=>{
   const requests=[],cases=[],pairs=[],drains=[],publicCases=[],localCases=[],shellCalls=[],resolved=[],payload=Buffer.alloc(2*1024*1024,71);let origin,slowProduced=0;payload.write('%PDF-');
   const server=http.createServer(async(req,res)=>{
     requests.push({url:req.url,method:req.method,headers:req.headers});
+    const input=new URL(req.url,origin);
+    if(input.pathname==='/cookie-return') {
+      res.writeHead(302,{location:origin+'/cookie-progress'+input.search});res.end();return;
+    }
+    if(input.pathname==='/cookie-progress'&&!req.headers.cookie?.includes('cookie_progress=two')) {
+      const step=req.headers.cookie?.includes('cookie_progress=one')?'two':'one';
+      res.writeHead(200,{'content-type':'text/html','set-cookie':'cookie_progress='+step+'; Path=/cookie-progress'});
+      res.end('<head><meta name="citation_doi" content="'+input.searchParams.get('doi')+'"><meta name="citation_pdf_url" content="'+origin.replace('pdf.','other.')+'/cookie-return'+input.search+'"></head>');return;
+    }
     if(req.headers.host.startsWith('academic.oup.com:')){res.writeHead(302,{location:origin.replace('pdf.example.org','watermark02.silverchair.com')+'/'+req.url.split('/').at(-1)+'?Signature=synthetic'});res.end();return;}
     if(req.url.startsWith('/stamp/stamp.jsp')){res.writeHead(200,{'content-type':'text/html'});res.end('<iframe src="/stampPDF/getPDF.jsp?arnumber=12345"></iframe>');return;}
     if(req.url==='/cross'){res.writeHead(302,{location:origin.replace('pdf.','other.')+'/leak'});res.end();return;}
@@ -142,7 +151,7 @@ app.whenReady().then(async()=>{
   const code=await new Promise(resolve=>python.once('exit',resolve));
   try {
     if(dispatchError)throw dispatchError;
-    assert.equal(code,0,stderr);assert.equal(complete,true,stderr);assert.equal(cases.length,28);assert.equal(slowWitness,true);
+    assert.equal(code,0,stderr);assert.equal(complete,true,stderr);assert.equal(cases.length,29);assert.equal(slowWitness,true);
     assert.equal(logAcknowledged,true,'Python terminal/owner release must not wait for Main final logging');
     assert.deepEqual(pairs,[{type:'fixture_pair',statuses:['cancelled','completed']}]);
     assert.equal(publicCases.length,1);assert.equal(publicCases[0].status,'completed');
@@ -151,10 +160,17 @@ app.whenReady().then(async()=>{
     assert.equal(requests.filter(r=>r.url==='/public').length,2,'local reads add no network; explicit deletion permits one new public attempt');
     assert.deepEqual(fs.readFileSync(path.join(profile,'workspace/Documents',publicCases[0].paper+'.pdf')),payload);
     assert.equal(requests.filter(r=>r.url==='/same').length,2);assert.equal(requests.filter(r=>r.url==='/leak').length,1);
+    const cookieRequests=requests.filter(r=>r.url.startsWith('/cookie-progress'));
+    assert.deepEqual(cookieRequests.map(r=>r.headers.cookie.split('; ').sort()),[
+      ['fixture_session=selected-session'],['cookie_progress=one','fixture_session=selected-session'],
+      ['cookie_progress=two','fixture_session=selected-session']]);
+    assert.deepEqual(cookieRequests.map(r=>r.headers.referer),Array.from({length:3},()=>origin+'/article'));
+    assert.equal(requests.filter(r=>r.url.startsWith('/cookie-return')).length,2);
     assert.equal(requests.filter(r=>r.url==='/private-leak'||r.url==='/unsafe-leak').length,0);
     assert.deepEqual(drains,[{type:'fixture_drain',status:'settled'}]);
     assert.equal(browser.tabs.size,0,'pure stream must create no pages');
     for(const request of requests){assert.equal(request.method,'GET');assert.equal(request.headers['x-allfold-request-context'],undefined);
+      if(request.url.startsWith('/cookie-progress'))continue; // Exact evolving values checked above.
       const cookie=request.headers.host.startsWith('academic.')?'publisher_only':request.headers.host.startsWith('watermark02.')?'cdn_only':request.headers.host.startsWith('ieeexplore.')?'reader_only':request.headers.host.startsWith('other.')?'fallback_only':'fixture_session';
       assert.equal(request.headers.cookie,cookie+'=selected-session');
       assert.equal(request.headers.referer,cookie==='fixture_session'&&request.url!=='/cross-referer'?origin+'/article':request.url==='/cross-referer'?origin.replace('pdf.','other.')+'/':origin+'/');}
