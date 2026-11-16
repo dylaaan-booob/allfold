@@ -137,7 +137,7 @@ def test_public_lww_empty_viewer_uses_only_its_captured_oce_capability(tmp_path,
     '<body><iframe src="/_Incapsula_Resource?edet=15&incident_id=123-456">Request unsuccessful. Incapsula incident ID: 123-456</iframe></body>',
     '<html><title>Verify you are human</title><body><iframe src="https://newassets.hcaptcha.com/captcha"></iframe></body></html>',
 ], ids=['visible-cpe', 'imperva-shell', 'challenge'])
-def test_public_bounded_html_access_barrier_persists_its_reason_without_fallback(tmp_path, html):
+def test_public_access_barrier_preserves_reason_and_continues_to_later_source(tmp_path, html):
     import httpx
     from allfold.pdf_facts import PdfCandidateFact, openalex_discovery_facts
     from library_application_helpers import read_paper
@@ -154,7 +154,7 @@ def test_public_bounded_html_access_barrier_persists_its_reason_without_fallback
     bridge = PendingBridge()
     app = create_app(config, electron_bridge=bridge, diagnostics_root=tmp_path/'logs')
     app.state.body_downloads.http_options = {'transport': httpx.MockTransport(
-        lambda _: pytest.fail('Access refusal must not start another discovery request'))}
+        lambda _: pytest.fail('Saved qualified sources need no metadata request'))}
     with TestClient(app, base_url='http://localhost') as client:
         snapshot = client.get('/api/ui-next/workspace').json()
         item = snapshot['subjects'][0]['journals'][0]['papers'][0]
@@ -166,17 +166,25 @@ def test_public_bounded_html_access_barrier_persists_its_reason_without_fallback
         data = bridge.calls[0][1]
         bridge.future.set_result(dict(kind='response', outcome='response', response=dict(url=data['url'],
             content_type='text/html', status=200, body=html, access=None)))
-        result = task.future.result(3)
-        assert result.status == 'failed' and result.candidate_result.diagnostic == 'access-blocked'
-        saved = read_paper(workspace, paper.id)
-        assert saved.download.status == 'failed' and saved.download.reason == 'access-blocked'
-        assert saved.body is None and saved.download.output is None and saved.metadata == paper.metadata
-        assert [action for action, _ in bridge.calls] == ['stream_paper_body']
-        assert not list((workspace/'Documents').rglob('*.part')) and not app.state.workspace_tasks.active
-        projection = client.get('/api/ui-next/workspace').json()
-        current = projection['subjects'][0]['journals'][0]['papers'][0]
-        assert current['download']['reason'] == 'access-blocked'
-        assert projection['counts']['candidates'] == 1 and projection['counts']['downloaded'] == 0
+        import time
+        until=time.monotonic()+2
+        while len(bridge.calls)<2 and not task.future.done() and time.monotonic()<until:time.sleep(.005)
+        assert len(bridge.calls)==2 and bridge.calls[-1][1]['url']=='https://cdn.example.org/Alternative.PDF'
+        data=bridge.calls[-1][1]
+        (Path(data['workspace_root'])/data['output']['temporary']).write_bytes(b'%PDF-fixture')
+        bridge.future.set_result(dict(kind='pdf',outcome='stream_complete',pdf_type=True,transfer_complete=True,
+            size_bytes=12,output_file=data['output']['file'],final_url=data['url']))
+        result=task.future.result(3)
+        assert result.status=='completed'
+        saved=read_paper(workspace,paper.id)
+        assert saved.body.pdf_source=='P3' and saved.body.fallback_used and saved.metadata==paper.metadata
+        assert saved.download.output is None and not app.state.workspace_tasks.active
+        assert not list((workspace/'Documents').rglob('*.part'))
+        projection=client.get('/api/ui-next/workspace').json()
+        current=projection['downloaded']['papers'][0]['paper']
+        observations=current['download']['source_observations']
+        assert any(item['pdf_reason']=='access-blocked' and item['subsequent_attempted'] for item in observations)
+        assert projection['counts']['candidates']==0 and projection['counts']['downloaded']==1
 
 
 def test_public_download_reuses_exact_attempt_and_projects_durable_completion(tmp_path):

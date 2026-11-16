@@ -14,7 +14,7 @@ app.setPath('userData',profile);app.setPath('sessionData',profile);
 app.commandLine.appendSwitch('host-resolver-rules','MAP *.example.org 127.0.0.1, MAP academic.oup.com 127.0.0.1, MAP watermark02.silverchair.com 127.0.0.1, MAP ieeexplore.ieee.org 127.0.0.1');
 app.commandLine.appendSwitch('no-proxy-server');app.on('window-all-closed',()=>{});
 app.whenReady().then(async()=>{
-  const requests=[],cases=[],pairs=[],drains=[],publicCases=[],localCases=[],shellCalls=[],resolved=[],payload=Buffer.alloc(2*1024*1024,71);let origin,slowProduced=0;
+  const requests=[],cases=[],pairs=[],drains=[],publicCases=[],localCases=[],shellCalls=[],resolved=[],payload=Buffer.alloc(2*1024*1024,71);let origin,slowProduced=0;payload.write('%PDF-');
   const server=http.createServer(async(req,res)=>{
     requests.push({url:req.url,method:req.method,headers:req.headers});
     if(req.headers.host.startsWith('academic.oup.com:')){res.writeHead(302,{location:origin.replace('pdf.example.org','watermark02.silverchair.com')+'/'+req.url.split('/').at(-1)+'?Signature=synthetic'});res.end();return;}
@@ -24,9 +24,12 @@ app.whenReady().then(async()=>{
     if(req.url==='/background-cloudflare'){res.writeHead(200,{'content-type':'text/html'});res.end('<html><title>View PDF</title><article><h1>View PDF</h1><p>access denied and captcha research</p></article><input type="password"><iframe hidden src="https://newassets.hcaptcha.com/captcha"></iframe><nav><a href="/login">Sign in</a></nav><script src="/cdn-cgi/challenge-platform/scripts/jsd/main.js"></script></html>');return;}
     if(req.url.startsWith('/redirect')){res.writeHead(302,{location:'/body?Signature=A%2FB'});res.end();return;}
     if(req.url==='/html.pdf'){res.writeHead(200,{'content-type':'text/html','content-disposition':'attachment; filename=body.pdf'});res.end('<html><title>Login required</title><form><input type="password"></form></html>');return;}
+    if(['/octet','/missing-mime','/wrong-mime','/split-prefix'].includes(req.url)){res.writeHead(200,req.url==='/missing-mime'?{}:{'content-type':req.url==='/octet'?'application/octet-stream':'text/plain'});if(req.url==='/split-prefix'){for(let i=0;i<5;i++){res.write(payload.subarray(i,i+1));await new Promise(resolve=>setTimeout(resolve,2));}res.end(payload.subarray(5));}else res.end(payload);return;}
+    if(req.url==='/fake-pdf'){res.writeHead(200,{'content-type':'application/pdf'});res.end('<html><title>Login required</title><form><input type="password"></form></html>');return;}
     if(req.url==='/unknown'){res.writeHead(200,{'content-type':'application/octet-stream'});res.end('unknown');return;}
     if(req.url==='/encoded'){const data=gzipSync(payload);res.writeHead(200,{'content-type':'application/pdf','content-encoding':'gzip','content-length':data.length});res.end(data);return;}
     const streamed=req.url==='/slow-writer'?Buffer.alloc(16*1024*1024,71):payload;
+    if(req.url==='/slow-writer')streamed.write('%PDF-');
     res.writeHead(200,{'content-type':'application/pdf',...(req.url==='/truncated'?{'content-length':payload.length*2}:{})});
     res.write(streamed.subarray(0,65536));if(req.url==='/slow-writer')slowProduced=65536;
     if(req.url==='/truncated'){setTimeout(()=>res.destroy(),40);return;}
@@ -38,7 +41,7 @@ app.whenReady().then(async()=>{
   browser.bodyTargetResolver=async host=>{resolved.push(host);return [{address:host==='watermark02.silverchair.com'&&faultKind==='blocked.pdf'?'127.0.0.1':'93.184.216.34'}];};
   await browser.ready;
   await browser.partition.cookies.set({url:origin,name:'fixture_session',value:'selected-session',sameSite:'unspecified'});
-  for(const [host,name] of [['academic.oup.com','publisher_only'],['watermark02.silverchair.com','cdn_only'],['ieeexplore.ieee.org','reader_only']])
+  for(const [host,name] of [['academic.oup.com','publisher_only'],['watermark02.silverchair.com','cdn_only'],['ieeexplore.ieee.org','reader_only'],['other.example.org','fallback_only']])
     await browser.partition.cookies.set({url:origin.replace('pdf.example.org',host),name,value:'selected-session',sameSite:'unspecified'});
   const python=spawn(path.join(root,'.venv/bin/python'),['-u',path.join(root,'tests/electron_body_stream_fixture.py'),profile,origin],
     {cwd:root,env:{...process.env,PYTHONPATH:path.join(root,'src')+':'+path.join(root,'tests')},stdio:['pipe','pipe','pipe']});
@@ -134,7 +137,7 @@ app.whenReady().then(async()=>{
   const code=await new Promise(resolve=>python.once('exit',resolve));
   try {
     if(dispatchError)throw dispatchError;
-    assert.equal(code,0,stderr);assert.equal(complete,true,stderr);assert.equal(cases.length,19);assert.equal(slowWitness,true);
+    assert.equal(code,0,stderr);assert.equal(complete,true,stderr);assert.equal(cases.length,24);assert.equal(slowWitness,true);
     assert.equal(logAcknowledged,true,'Python terminal/owner release must not wait for Main final logging');
     assert.deepEqual(pairs,[{type:'fixture_pair',statuses:['cancelled','completed']}]);
     assert.equal(publicCases.length,1);assert.equal(publicCases[0].status,'completed');
@@ -146,7 +149,7 @@ app.whenReady().then(async()=>{
     assert.deepEqual(drains,[{type:'fixture_drain',status:'settled'}]);
     assert.equal(browser.tabs.size,0,'pure stream must create no pages');
     for(const request of requests){assert.equal(request.method,'GET');assert.equal(request.headers['x-allfold-request-context'],undefined);
-      const cookie=request.headers.host.startsWith('academic.')?'publisher_only':request.headers.host.startsWith('watermark02.')?'cdn_only':request.headers.host.startsWith('ieeexplore.')?'reader_only':'fixture_session';
+      const cookie=request.headers.host.startsWith('academic.')?'publisher_only':request.headers.host.startsWith('watermark02.')?'cdn_only':request.headers.host.startsWith('ieeexplore.')?'reader_only':request.headers.host.startsWith('other.')?'fallback_only':'fixture_session';
       assert.equal(request.headers.cookie,cookie+'=selected-session');
       assert.equal(request.headers.referer,cookie==='fixture_session'&&request.url!=='/cross-referer'?origin+'/article':request.url==='/cross-referer'?origin.replace('pdf.','other.')+'/':origin+'/');}
     assert.equal(requests.filter(r=>r.headers.host.startsWith('academic.oup.com:')).length,2,'one GET to each Oxford source');

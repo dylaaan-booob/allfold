@@ -257,8 +257,7 @@ PDF candidate qualification uses the original Paper DOI when available, otherwis
 unambiguous scholarly Meta or a supported DOI path. These are candidate exclusions,
 not whole-page identity gates. Host-owned Unicode casefold data keeps Meta, control
 DOI and DOI-path comparisons consistent; public arguments cannot supply code or
-normalization data. Existing PDF candidate/count/size limits remain for the later
-Download phase to reassess. Article precollection reads candidates without fetching, probing, clicking
+normalization data. PDF clues use the existing IPC byte capacity and local time budget. Oversized individual fields are skipped with a partial diagnostic while qualified earlier and later values survive; candidate/identifier counts are not separate whole-list gates. Article precollection reads candidates without fetching, probing, clicking
 or submitting them.
 
 `extract_paper_pdf_clues` and Python `read_document_pdf_clues()` provide an
@@ -269,7 +268,7 @@ bound to the original target. It uses the captured request/target, access contex
 article DOI/h1 proof is absent.
 Challenges still use the shared access/solver boundary. Actions and one-time
 responses remain typed refresh facts. The separate fixed body action capability
-submits qualified live R059 forms and follows R024 ScienceDirect entries once,
+submits qualified live R059 forms without replay and follows observed R024 ScienceDirect reader/CDN navigation,
 binding the original response to the exact request/frame/DownloadItem. Public
 reusable-URL transfer uses the Session body service; both paths share managed
 publication and SQLite completion. Native staging retains the

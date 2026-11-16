@@ -287,8 +287,9 @@ def test_inputs_are_bounded_immutable_and_target_binding_cannot_be_replaced():
     paper = target()
     with pytest.raises(ValueError):
         PdfRuleInputs(paper, identifiers=[('pii', 'value')])
-    with pytest.raises(ValueError):
-        PdfRuleInputs(paper, identifiers=tuple(('pii', 'value') for _ in range(25)))
+    assert len(PdfRuleInputs(paper, identifiers=tuple(('pii', str(i)) for i in range(25))).identifiers)==25
+    with pytest.raises(ValueError,match='memory budget'):
+        PdfRuleInputs(paper, alternative_ids=tuple(str(i)+'x'*500 for i in range(2100)))
     with pytest.raises(ValueError):
         PdfRuleInputs(paper, known_pdf_urls=tuple('https://example.org/Paper.pdf' for _ in range(2)))
     with pytest.raises(ValueError):

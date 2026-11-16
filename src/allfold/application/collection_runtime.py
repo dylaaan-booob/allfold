@@ -277,6 +277,7 @@ class WorkspaceRegistry:
         self.workspace = Path(workspace).absolute()
         self.factory, self.browser_lock, self.bridge = factory, browser_lock, bridge
         self.diagnostics = diagnostics
+        self.body_observations = []
         self._gate = admission_lock if admission_lock is not None else threading.RLock()
         self._authority_capture = authority_capture
         self._admission_capture = admission_capture

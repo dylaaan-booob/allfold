@@ -63,7 +63,11 @@ app.whenReady().then(async()=>{
     page=article('','<a href="/supplement.pdf">Supplementary PDF</a><a href="/one.pdf">PDF</a><a href="/two.pdf">PDF</a>');
     const empty=await invoke();assert.deepEqual(empty.pdf_clues.candidates,[]);assert.equal(empty.pdf_clues.status,'complete');
     page=article('<meta name="citation_pdf_url" content="'+('x'.repeat(4097))+'">');
-    const partial=await invoke();assert.equal(partial.metadata.abstract,'A complete result.');assert.equal(partial.pdf_clues.status,'failed');assert.deepEqual(partial.pdf_clues.diagnostics,['pdf_budget_exceeded']);
+    const partial=await invoke();assert.equal(partial.metadata.abstract,'A complete result.');assert.equal(partial.pdf_clues.status,'partial');assert.deepEqual(partial.pdf_clues.diagnostics,['pdf_budget_exceeded']);
+    page=article('<meta name="citation_pdf_url" content="'+('x'.repeat(4097))+'"><meta name="citation_pdf_url" content="https://cdn.example/after-large-field.pdf">');
+    const afterField=await invoke();assert.equal(afterField.pdf_clues.status,'partial');assert.equal(afterField.pdf_clues.candidates[0].url,'https://cdn.example/after-large-field.pdf');
+    page=article(Array.from({length:40},(_,i)=>'<meta name="citation_pdf_url" content="https://cdn.example/body-'+i+'.pdf">').join(''));
+    const manyCandidates=await invoke();assert.equal(manyCandidates.pdf_clues.status,'complete');assert.equal(manyCandidates.pdf_clues.candidates.length,40);
     page=article(Array.from({length:33},(_,i)=>'<meta name="citation_pdf_url" content="https://cdn.example/Body'+i+'/'+('a'.repeat(1900))+'.pdf">').join(''));
     const aggregate=await invoke('extract_paper_metadata',{identity:{confirmed_article_url:'http://www.nature.com:'+port+'/actual/'+('L'.repeat(3900))}});assert.equal(aggregate.outcome,'retrieved',JSON.stringify(aggregate));assert.equal(aggregate.metadata.abstract,'A complete result.');
     assert.notEqual(aggregate.pdf_clues.status,'complete');assert.deepEqual(aggregate.pdf_clues.diagnostics,['pdf_budget_exceeded']);assert.ok(JSON.stringify(aggregate.pdf_clues).length<=65536);

@@ -84,16 +84,37 @@ function credentialHeaders(credential,url) {
   return {[scope[2]]:value};
 }
 async function boundedResponse(response,signal) {
-  const reader=response.body?.getReader();if(!reader)return '';
-  const decoder=new TextDecoder();let text='',bytes=0;
+  const reader=response.body?.getReader();if(!reader)return {body:'',partial:false};
+  const decoder=new TextDecoder();let text='',bytes=0,partial=false;
   try {
     while(true) {
       checkCanceled(signal);const {done,value}=await reader.read();if(done)break;
-      bytes+=value.length;if(bytes>262144)throw Error('response-budget');
-      text+=decoder.decode(value,{stream:true});
+      const available=262144-bytes;
+      text+=decoder.decode(value.subarray(0,available),{stream:true});bytes+=Math.min(value.length,available);
+      if(value.length>available){partial=true;break;}
     }
-    return text+decoder.decode();
+    return {body:text+decoder.decode(),partial};
   }finally {await reader.cancel();reader.releaseLock();}
+}
+async function sniffBody(body,signal) {
+  if(!body)return {pdf:false,body:null};
+  const reader=body.getReader(),chunks=[];let prefix=Buffer.alloc(0),ended=false;
+  try {
+    while(prefix.length<5) {
+      checkCanceled(signal);const {done,value}=await reader.read();
+      if(done){ended=true;reader.releaseLock();break;}
+      chunks.push(value);prefix=Buffer.concat([prefix,Buffer.from(value.subarray(0,5-prefix.length))]);
+    }
+  }catch(error){try{await reader.cancel();}finally{reader.releaseLock();}throw error;}
+  return {pdf:prefix.equals(Buffer.from('%PDF-')),body:new ReadableStream({
+    async pull(controller) {
+      if(chunks.length){controller.enqueue(chunks.shift());return;}
+      if(ended){controller.close();return;}
+      try{const {done,value}=await reader.read();if(done){ended=true;reader.releaseLock();controller.close();}else controller.enqueue(value);}
+      catch(error){ended=true;reader.releaseLock();controller.error(error);}
+    },
+    async cancel(){if(!ended){ended=true;try{await reader.cancel();}finally{reader.releaseLock();}}},
+  },{highWaterMark:0})};
 }
 async function executeBodyStream(browser,data,{signal,progress=()=>{}}={}) {
   const output=capability(data);
@@ -101,7 +122,7 @@ async function executeBodyStream(browser,data,{signal,progress=()=>{}}={}) {
   const deadlineController=new AbortController(),bounded=deadlineController.signal;
   const timer=setTimeout(()=>deadlineController.abort(),Math.max(1,Math.ceil(data.deadline_ms-Date.now())));
   const stop=AbortSignal.any([signal,controller.signal,bounded].filter(Boolean));
-  let fd,writer,response,localError,requests=[],size=0,lastProgress=0,closeError,redirect,completed=false;
+  let fd,writer,response,body,localError,requests=[],size=0,lastProgress=0,closeError,redirect,completed=false;
   try {
     await waitFor(()=>browser.ready,stop,data.deadline_ms);checkCanceled(stop);
     const verify=browser.pinPreparedPaperAccess(data);
@@ -120,6 +141,9 @@ async function executeBodyStream(browser,data,{signal,progress=()=>{}}={}) {
         redirect={url:details.url,status:details.statusCode,location:details.redirectURL};
     };
     const headers={Accept:'application/pdf',...credentialHeaders(data.pdf_credential,data.url)};
+    const cookieState=async()=>JSON.stringify((await browser.partition.cookies.get({url:data.url}))
+      .map(({domain,path,name,value})=>[domain,path,name,value]).sort((a,b)=>JSON.stringify(a.slice(0,3)).localeCompare(JSON.stringify(b.slice(0,3)))));
+    const priorCookies=await waitFor(cookieState,stop,data.deadline_ms);
     if(data.referer) {
       if(!publicClueURL(data.referer))throw Error('unsafe-referer');
       const referrer=new URL(data.referer);referrer.hash='';
@@ -136,7 +160,8 @@ async function executeBodyStream(browser,data,{signal,progress=()=>{}}={}) {
     const facts=requests.flatMap(request=>request.responses),final=facts.at(-1);
     if(!final||!publicClueURL(final.url))throw Error('missing-native-response');
     const contentType=(response.headers.get('content-type')||'').split(';')[0].trim().toLowerCase();
-    if(response.status>=200&&response.status<300&&contentType==='application/pdf'&&response.body) {
+    const sniffed=await sniffBody(response.body,stop);body=sniffed.body;
+    if(response.status>=200&&response.status<300&&sniffed.pdf) {
       const writerFS=Object.create(fs);
       for(const method of ['write','writev','fsync','close'])writerFS[method]=(...args)=>{
         const callback=args.pop();fs[method](...args,(error,...values)=>{
@@ -152,19 +177,20 @@ async function executeBodyStream(browser,data,{signal,progress=()=>{}}={}) {
           callback(null,chunk);
         }catch(error){controller.abort(error);callback(error);}
       }});
-      await pipeline(Readable.fromWeb(response.body),meter,writer,{signal:stop});
+      await pipeline(Readable.fromWeb(body),meter,writer,{signal:stop});
       completed=true;clearTimeout(timer);
       try{progress({received_bytes:size});}catch(_){}
       return {outcome:'stream_complete',kind:'pdf',pdf_type:true,transfer_complete:true,
         size_bytes:size,output_file:output.file,final_url:final.url};
     }
-    const body=await boundedResponse(response,stop);
+    const sampled=await boundedResponse({body},stop);
+    const contextChanged=priorCookies!==await waitFor(cookieState,stop,data.deadline_ms);
     // Only native response facts are assigned here. The existing bounded HTML
     // carrier is classified by Python's shared contextual response parser.
     const access=response.headers.get('cf-mitigated')?.trim().toLowerCase()==='challenge'?'challenge':
       [401,403,407].includes(response.status)?'authorization':null;
-    return {outcome:'response',kind:contentType.includes('html')?'response':'failed',
-      response:{url:final.url,content_type:contentType,status:response.status,body,access}};
+    return {outcome:'response',kind:'response',
+      response:{url:final.url,content_type:contentType,status:response.status,...sampled,access,context_changed:contextChanged}};
   }catch(error) {
     if(localError||error.bodyLocal)return {outcome:'local_failure',kind:'local_failure',diagnostic_code:'file-io',resource_closed:!closeError};
     if(stop.aborted)return {outcome:bounded.aborted?'expired':'cancelled',kind:bounded.aborted?'expired':'cancelled'};
@@ -178,7 +204,7 @@ async function executeBodyStream(browser,data,{signal,progress=()=>{}}={}) {
     // pipeline is awaited, then writer/fd close before the native result exists.
     // Cancellation of a response is also awaited; an expired timer never races cleanup.
     try {
-      try {if(!completed&&response?.body&&!response.body.locked)await response.body.cancel();}
+      try {const current=body||response?.body;if(!completed&&current&&!current.locked)await current.cancel();}
       finally {
         if(writer&&!writer.closed){const closed=new Promise(resolve=>writer.once('close',resolve));writer.destroy();await closed;}
         if(fd!==undefined)fs.closeSync(fd);

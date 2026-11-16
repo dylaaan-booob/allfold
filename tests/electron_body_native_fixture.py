@@ -132,7 +132,7 @@ async def main():
                     await drain_application(application)
             result = await asyncio.to_thread(task.future.result, 20 if kind.startswith('action-') else 10)
             stale = kind in {'get-changed', 'existing-target-changed', 'predeclared-target-changed'}
-            expected = ('cancelled' if stopping else 'stale' if stale else 'local_failure' if kind == 'action-html'
+            expected = ('cancelled' if stopping else 'failed' if stale else 'failed' if kind == 'action-html'
                         else 'failed' if access_blocked else 'completed')
             assert result.status == expected, (kind, result)
             projected = paper_projection((await client.get('/api/ui-next/workspace')).json(), paper.id)
@@ -149,7 +149,7 @@ async def main():
                 elif access_blocked:
                     assert stored.download.reason == 'access-blocked'
                 elif kind == 'action-html' or stale:
-                    assert stored.download.reason == 'native-action'
+                    assert stored.download.reason == ('non-pdf' if kind=='action-html' else 'native-action')
             print(json.dumps({'type': 'fixture_public_native', 'case': kind, 'status': result.status, 'paper': str(paper.id)}), flush=True)
         print(json.dumps({'type': 'fixture_complete'}), flush=True)
     finally:

@@ -37,6 +37,42 @@ def test_fixed_native_classification_preserves_reusable_stream_and_credential_sc
     assert not native_applicable(replace(candidate,action='arbitrary-script'))
 
 
+def test_later_native_candidate_never_reuses_cancelled_items_private_path(tmp_path):
+    import time
+    from allfold.application.body_downloads import submit_body_download
+    from test_body_downloads import application_host
+    host,workspace,paper,bridge,original=application_host(tmp_path)
+    candidate=replace(native_candidate(),target=replace(original.target,article_url=native_candidate().target.article_url))
+    callbacks=[]
+    execute=bridge.execute
+    def capture(action,data,callback=None,**options):
+        callbacks.append(callback)
+        return execute(action,data,callback,**options)
+    bridge.execute=capture
+    try:
+        task=submit_body_download(host,paper,candidates=(candidate,replace(candidate,url=candidate.url.removesuffix('/pdfft')+'/pdf')))
+        assert bridge.started.wait(2)
+        first=workspace/bridge.calls[0][1]['output']['temporary'];first.write_bytes(b'%PDF-first')
+        info=first.stat();callbacks[0](dict(native_output_file=[info.st_dev,info.st_ino]))
+        bridge.result.set_result(dict(kind='failed',outcome='failed',diagnostic_code='native-action'))
+        until=time.monotonic()+2
+        while len(bridge.calls)<2 and not task.future.done() and time.monotonic()<until:time.sleep(.005)
+        assert len(bridge.calls)==2
+        data=bridge.calls[1][1];second=workspace/data['output']['temporary']
+        assert first!=second
+        second.write_bytes(b'%PDF-second');info=second.stat()
+        callbacks[1](dict(native_output_file=[info.st_dev,info.st_ino]))
+        first.unlink(missing_ok=True)  # Chromium's late cleanup must address only the old pathname.
+        bridge.result.set_result(dict(kind='pdf',outcome='native_complete',pdf_type=True,transfer_complete=True,
+            output_file=[info.st_dev,info.st_ino],final_url=data['candidate']['url']))
+        result=task.future.result(2)
+        assert result.status=='completed' and result.paper.body.fallback_used
+        assert (workspace/result.paper.body.relative_path).read_bytes()==b'%PDF-second'
+    finally:
+        if hasattr(bridge,'result') and not bridge.result.done():bridge.result.set_result(dict(kind='cancelled',outcome='cancelled'))
+        host.shutdown();host.join()
+
+
 @pytest.mark.parametrize('signed',[False,True])
 def test_native_attempt_uses_original_bridge_capability_then_shared_completion(tmp_path,signed):
     from allfold.application.body_downloads import submit_body_download
@@ -76,8 +112,8 @@ def test_native_attempt_uses_original_bridge_capability_then_shared_completion(t
 
 
 @pytest.mark.parametrize('kind,diagnostic,expected',[
-    ('local_failure','interrupted','local_failure'),('failed','access-blocked','failed')])
-def test_native_terminal_refusal_stops_sources_and_never_publishes(tmp_path,kind,diagnostic,expected):
+    ('local_failure','interrupted','local_failure'),('failed','access-blocked','completed')])
+def test_native_source_refusal_continues_but_writer_failure_stops(tmp_path,kind,diagnostic,expected):
     from allfold.application.body_downloads import submit_body_download
     from test_body_downloads import application_host
     host,workspace,paper,bridge,original=application_host(tmp_path)
@@ -88,11 +124,20 @@ def test_native_terminal_refusal_stops_sources_and_never_publishes(tmp_path,kind
         assert bridge.calls[0][0]=='native_paper_body'
         bridge.result.set_result(dict(kind=kind,outcome=kind,diagnostic_code=diagnostic,
             native_terminal='cancelled',native_cleanup='asynchronous'))
+        if kind=='failed':
+            import time
+            until=time.monotonic()+2
+            while len(bridge.calls)<2 and not task.future.done() and time.monotonic()<until:time.sleep(.005)
+            assert len(bridge.calls)==2 and bridge.calls[-1][0]=='stream_paper_body'
+            bridge.finish()
         result=task.future.result(2)
-        assert result.status==expected and len(bridge.calls)==1 and not host.active
+        assert result.status==expected and len(bridge.calls)==(2 if kind=='failed' else 1) and not host.active
         with PaperRepository.open(workspace) as repo:
             saved=repo.get(paper.id)
-            assert saved.body is None and saved.download.reason==diagnostic
+            if kind=='failed':
+                assert saved.body is not None and saved.body.fallback_used
+            else:
+                assert saved.body is None and saved.download.reason==diagnostic
             assert saved.download.output is None
     finally:
         if hasattr(bridge,'result') and not bridge.result.done():bridge.result.set_result(dict(kind='cancelled',outcome='cancelled'))

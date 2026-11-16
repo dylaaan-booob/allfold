@@ -9,7 +9,8 @@ class NativeOutput {
     if(!/^[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12}$/.test(data.paper_id)
       ||!Number.isSafeInteger(data.attempt)||data.attempt<1||!Number.isSafeInteger(data.deadline_ms)
       ||!path.isAbsolute(this.root)||path.normalize(this.root)!==this.root||!p||p.file!==null
-      ||p.temporary!==`Documents/.downloads/${data.paper_id}.${data.attempt}.native/body.part`
+      ||typeof p.temporary!=='string'
+      ||!new RegExp(`^Documents/\\.downloads/${data.paper_id}\\.${data.attempt}\\.[a-f0-9]{32}\\.native/body\\.part$`).test(p.temporary)
       ||p.target!==`Documents/${data.paper_id}.pdf`)throw failure();
     this.filename=path.join(this.root,p.temporary);this.directory=path.dirname(this.filename);this.file=null;
     this.check();this.absent();
@@ -34,7 +35,8 @@ class NativeOutput {
     try {fs.lstatSync(this.filename);}catch(error){if(error.code==='ENOENT')return;throw error;}
     throw failure();
   }
-  capture({missing=false}={}) {
+  capture({missing=false,sniff=false}={}) {
+    try {
     this.check();
     let info;
     try {info=fs.lstatSync(this.filename);}catch(error){if(error.code==='ENOENT'&&missing)return null;throw failure();}
@@ -55,8 +57,12 @@ class NativeOutput {
       const actual=fs.fstatSync(fd);
       if(!actual.isFile()||actual.nlink!==1||!same(actual,[info.dev,info.ino]))throw failure();
       this.check();if(!same(fs.lstatSync(this.filename),[actual.dev,actual.ino]))throw failure();
-      this.file ??= [actual.dev,actual.ino];return {file:this.file,size:actual.size};
+      this.file ??= [actual.dev,actual.ino];
+      let pdf;
+      if(sniff){const prefix=Buffer.alloc(5);pdf=fs.readSync(fd,prefix,0,5,0)===5&&prefix.equals(Buffer.from('%PDF-'));}
+      return {file:this.file,size:actual.size,...(sniff?{pdf}:{} )};
     }finally {fs.closeSync(fd);}
+    }catch(error){error.bodyLocal=true;throw error;}
   }
 }
 module.exports={NativeOutput};

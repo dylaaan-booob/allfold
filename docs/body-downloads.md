@@ -69,12 +69,11 @@ Chromium Session receives the first actual reusable PDF request. It does not
 follow an HTTPX PDF GET/HEAD probe. PDF-only refresh uses [Document access](browser-documents.md) and never recollects
 completed Date/Abstract. Known IEEE reader, Oxford same-filename Silverchair CDN
 and ScienceDirect same-PII response/reader rules keep their narrow qualifications.
-Unknown pages are not a crawler, and login/access refusals are not empty
-branches. Only the fixed qualified native entries execute actions; inapplicable
+Unknown pages are not a crawler. Login/access refusals, missing entries and Reader failures are recorded for that source and allow other qualified candidates after actual cleanup. Only the fixed qualified native entries execute actions; inapplicable
 entries are finite condition skips, not pending or successful transfers, and do
 not manufacture `fallback_used`.
 
-Only a normal PDF-type transfer permits completion. Ordinary candidate failures
+Only a normal transfer whose small content prefix identifies PDF permits completion. Ordinary candidate failures
 may advance sources within the same remaining budget; cancellation, revocation,
 expiry and local file/database failure stop the operation. A completed body is
 protected even if a later guard, notification or cleanup reports failure.
@@ -112,18 +111,29 @@ Main uses backpressured `pipeline`, flush and actual writer close. Its
 `stream_complete` reports transport, not Downloaded. Progress is throttled and
 projected as finite received/total bytes with task/attempt/sequence; zero or
 absent total means unknown. File proofs, roots, signed URLs and exceptions stay
-private. No Content-Length equality, minimum size, PDF header/EOF/structure/text/
-identity/hash/version validation is added. Bounded current HTML/access responses
-return to the same source coordinator after that output has settled.
+private. The same response supplies exactly one five-byte `%PDF-` type observation,
+independent of HTTP MIME. The prefix is replayed into the original backpressured
+pipeline without losing bytes or issuing GET/HEAD again. HTML carrying PDF MIME
+cannot become a body. No Content-Length equality, minimum size, EOF/structure/text/
+identity/hash/version validation is added. Non-PDF responses return a finite
+256 KiB observation with `partial` when truncated, after the output has settled.
+Parsers retain qualified links found before local work/field exhaustion; malformed
+JSON fields and unrelated large attributes cannot erase those links.
 Their access classification uses the exact response's Cloudflare mitigation header,
 real authorization/status errors and contextual verification/login/denial structure.
 An optional password field, hidden hCaptcha, background Turnstile/jsd script or
 ordinary `access denied` text is insufficient. Current CPE/Incapsula denial evidence
 remains distinct from auxiliary resources. HTTP/stream responses do not start a
 Solver tab or replay a form. Browser/Reader pages use the common tab-owned observer;
-Solver state cannot revoke a completed transfer. This changes classification only:
-`stop_on_access`, Prepare admission, candidate fallback, MIME and body limits retain
-the existing policies described below.
+Solver state cannot revoke a completed transfer. Access classification remains
+local to the current response. Independent sources continue under the original
+parent deadline; cancellation, invalid task authority, unfinished resources and
+actual file/database failure still stop the task. Missing credentials/native
+capabilities are explicit skips rather than invented cancellation or file errors.
+Shared origin/Session cooldowns retain Retry-After delta/date instructions and use
+the actual supplied parent deadline, without an additional 30-second wait cap.
+Python Provider recovery similarly uses its supplied parent deadline; the existing
+90-second standalone-operation budget applies only when no parent is supplied.
 
 
 Once `pipeline` returns normally, the completed writer result is retained. Its
@@ -176,19 +186,24 @@ The item's deadline timer and abort listener retire at `done`. Actual final
 `completed` outranks an earlier interrupted observation and late page/access/
 deadline signals; the actual owned output must still be obtained. Progress is
 optional: a terminal DTO can supply the first actual inode observation.
-Only a normal completed PDF-type response with a verified actual output enters
-the common publication/SQLite path. A filename, viewer display or `will-download`
+At actual item completion, the verified no-follow output descriptor supplies the
+same single five-byte type observation. MIME and filenames are only hints;
+non-HTML qualified navigation responses may become managed items regardless of
+MIME. Fixed form destinations also retain HTML-mislabeled PDF bytes through the original item; actual Reader HTML remains available to its Browser navigation. A non-PDF item is an owned
+candidate failure and its temporary output is cleaned before another source.
+Only a normal completed PDF item with verified actual output enters the common
+publication/SQLite path. A filename, viewer display or `will-download`
 event alone cannot complete the Paper.
 
 Native output reserves an exclusive `0700` directory at
-`Documents/.downloads/<paper UUID>.<attempt>.native/` and initially leaves
+`Documents/.downloads/<paper UUID>.<attempt>.<physical-output UUID>.native/` and initially leaves
 `body.part` absent. Chromium does not promise to reuse a precreated stream inode;
 Main observes its actual regular-file inode and Python independently checks it
 before publication. Before any inode is adopted, a progress observation may see
 Chromium's empty destination reservation already unlinked (`nlink=0`); it remains
 pending and supplies no output proof. Final output and every observation after
 adoption still require the same regular, singly linked inode. Each attempt has a
-distinct path. Directory/file replacement,
+distinct path for each physical native candidate, so a cancelled item cannot later unlink a fallback candidate's output. Existing recorded temporary capabilities remain eligible only for exact owned cleanup. Directory/file replacement,
 symlinks, unrelated links and unknown objects still cause application refusal;
 final body publication remains no-clobber. Application cleanup never deliberately
 unlinks an unproved replacement.
@@ -323,12 +338,37 @@ persistent replay queue or resume engine.
 
 ### Current limitations and follow-up
 
-Current code can stop all sources on a candidate access refusal; response readers
-still enforce exact PDF MIME, a 256 KiB HTML ceiling and a 30-second Retry-After
-ceiling. Native handoff and discovery also have fixed continuation/count/length
-limits. These are not permanent source requirements. Follow-up changes will
-separate candidate-local access failure from task cancellation and reassess limits
-against actual needs, while preserving request/target and credential association.
+
+R024 still has one unresolved original-response case: real PDF bytes declared as
+HTML/XHTML without a Chromium DownloadItem. Reader HTML must remain renderable
+for its legitimate navigation; the current header-only admission cannot also
+identify those hidden PDF bytes. Fixed form destinations and existing items,
+and the Session stream, accept misleading MIME through actual prefix checks.
+A completed empty Reader now ends that source rather than waiting for the whole
+parent deadline. Full R024 coverage requires a separately resolved original-body
+capture boundary; changing MIME globally, replaying the request or buffering the
+whole PDF is not an implemented solution. This remains a stage-seven blocker.
+The [response-capture investigation](pdf-response-capture.md) records current
+community guidance, Zotero's actual save boundaries and isolated mechanism probes;
+it does not substitute for a working original-response implementation.
+
+Source failures do not stop independent candidates. P1–P5 remains lazy and stops
+at the first actual PDF completion. OpenAlex preserves best-first deterministic
+order across all qualified distinct locations, and IEEE/Springer/Elsevier records
+are matched and deduplicated without whole-list count rejection. Current facts
+still have a 64 KiB persistence/IPC byte capacity: qualified increments are retained
+and overflow is partial, allowing a current source refresh instead of false
+complete-empty data. Discovery's retained candidate/response state has a 1 MiB
+memory budget and the original parent deadline; there is no separate operation,
+hop or transfer-count expiry.
+
+ScienceDirect reader/CDN continuations follow observed same-PII navigation from
+the bound committed response. Identical navigation edges stop loops; changed
+response/Cookie evidence permits legitimate returns. Session HTML may revisit its
+own URL only after an actual Cookie-context change or a qualified fresh Reader
+observation. Neither condition permits a POST replay or unrelated frame/origin.
+HTTP redirects within an already bound request retain its authority; unchanged
+credentials on another hop are not a repeated navigation action.
 
 Completed transport/local actions survive late signals and auxiliary failures.
 Actual unfinished I/O retains its original owner; a cancelled Future or returning
@@ -341,7 +381,14 @@ temporary-profile Electron, controlled HTTP and shell adapters. Public stream,
 public original-item composition and rendered reader evidence are distinct from
 real-site and OS effects. Actual default-app/file-manager effects, real
 publishers/institution sessions/proxies/CDNs and manual challenges require
-separate acceptance and task-specific authorization. Latest PR CI and remaining
+separate acceptance and task-specific authorization. Source observations expose only phase/rule, fixed reason, origin, physical candidate-path
+index and whether a later candidate was actually attempted. Reader/redirect continuation
+and same-candidate retries retain the same index. The current registry
+retains 64 recent observations; diagnostics retains 256 in-memory validated
+observations for explicit recent export, without blocking the worker on diagnostic
+file I/O. These extra observations expire on restart/Logs Reset; normal native
+request records and the final SQLite reason/provenance keep their existing
+lifetimes. No signed URL, HTML, request body or Cookie is exported. Latest PR CI and remaining
 unverified effects are reported in the PR; neither old live samples nor a PDF
 viewer display establish success of the current public path.
 [PR #107](https://github.com/dylaaan-booob/allfold/pull/107) found Optica clues but
@@ -367,3 +414,16 @@ changes, SQLite failures and maintenance interleavings belong to isolated
 automated tests. Do not manually replace active temporary files to reproduce the
 accepted deletion race. No blanket Login/CARSI, WoS Run, Zotero, Settings, Journal,
 Cover, installer or all-workspace navigation acceptance is implied by a body change.
+
+For separately authorized Allfold/Zotero paired acceptance, use the same DOI,
+platform and access/authentication state, fresh disposable libraries and the exact
+reviewed software versions. Record each application's observed source order,
+actual PDF receipt, file placement/association, elapsed time, manual intervention
+and failure point. Select ordinary OA, institutional full text, misleading MIME,
+HTML Reader, repeated navigation, challenge and failed-source/later-success cases
+where available. Run each application's ordinary UI once, then its local open/
+locate/Trash equivalents; record a visible viewer without saved association as
+incomplete. Use explicit retry only after actual cancellation cleanup. Live
+publisher/CARSI/institution, user Zotero and default PDF applications require
+separate task-specific consent. A blank paired result is pending acceptance;
+isolated servers and upstream implementation statements are not paired live data.

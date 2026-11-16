@@ -163,10 +163,11 @@ class SharedSessionEvents {
       && this.matchesDownload(entry,entry.contents,details.frame) && (!entry.requireRequest || entry.request?.id===details.id));
     if(candidates.length!==1)return;
     const entry=candidates[0];
-    if(!entry.active || entry.signal?.aborted || Date.now()>=entry.deadline || !entry.inlineMimeTypes)return;
+    if(!entry.active || entry.signal?.aborted || Date.now()>=entry.deadline || !entry.inlineMimeTypes&&!entry.bodyContent)return;
     try{if(entry.validate()===false)return;}catch(_){return;}
     const type=Object.entries(state.responseHeaders || {}).find(([name])=>name.toLowerCase()==='content-type')?.[1];
-    if(!Array.isArray(type) || type.length!==1 || !entry.inlineMimeTypes.includes(type[0].split(';')[0].trim().toLowerCase()))return;
+    const mime=Array.isArray(type)&&type.length===1?type[0].split(';')[0].trim().toLowerCase():'';
+    if(entry.bodyContent ? entry.htmlReader&&['text/html','application/xhtml+xml'].includes(mime) : !entry.inlineMimeTypes.includes(mime))return;
     state.responseHeaders={...Object.fromEntries(Object.entries(state.responseHeaders)
       .filter(([name])=>name.toLowerCase()!=='content-disposition')),'Content-Disposition':['attachment']};
   }

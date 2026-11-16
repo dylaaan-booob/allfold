@@ -38,6 +38,7 @@ class Socket:
 async def main():
     root, origin = Path(sys.argv[1]), sys.argv[2]
     config, _, _, service = current_mapping_document(root)
+    config.write_text(config.read_text()+'enabled_providers: [openalex]\n')
     workspace = root / 'workspace'
     workspace.mkdir()
     with PaperRepository.create(workspace):
@@ -66,13 +67,51 @@ async def main():
         # Bridge/Main Session, managed files, SQLite and Workspace projection.
         from datetime import datetime, timezone
         from allfold.pdf_facts import PdfDiscoveryFacts, PdfCandidateFact
+        from allfold.application.integrated_run import run_integrated
+        from allfold.application.collection_planner import ProductionCollectionService
+        from allfold.application.collection_runtime import BranchSpec
+        from allfold.persistence.paper_repository import MetadataDelta
+        from allfold.models import ProviderWorkEvidence, MetadataSource
+        from allfold.config import load_config
+        from test_integrated_run import client_for
+        from integrated_run_helpers import EmptyLookup
+        collected, release_collection = threading.Event(), threading.Event()
+        facts=PdfDiscoveryFacts(source='document',capability='document-pdf',status='complete',
+            observed_at=datetime.now(timezone.utc),target_openalex='W777',landing_url=origin+'/article',
+            candidates=(PdfCandidateFact(stage='P3',rule_id='GENERIC',url=origin.replace('pdf.','other.')+'/challenge',
+                referer=origin+'/article',field='citation_pdf_url'),
+                PdfCandidateFact(stage='P4',rule_id='GENERIC',url=origin+'/public',referer=origin+'/article')))
+        collection_calls=[]
+        class Collection(ProductionCollectionService):
+            def plan(self,**kwargs):
+                def collect(context):
+                    collection_calls.append(context)
+                    collected.set()
+                    assert release_collection.wait(5)
+                    context.emit(MetadataDelta(abstract='Collected abstract.',ordinary_dates=('2026-01-02',),
+                        discovery_facts=(facts,)),sequence=1)
+                return (BranchSpec('document',collect,service_id=None),)
+        row=ProviderWorkEvidence(title='Public PDF',journal='Biometrics',publication_type='journal',
+            external_ids=ExternalIds(openalex='W777'),provenance=MetadataSource(provider='openalex',
+                record_id='W777',retrieved_at=datetime.now(timezone.utc)))
+        planner=Collection(host)
+        run_options=dict(loaded_config=load_config(config),
+            client_factory=client_for((row,)),lookup_factory=EmptyLookup,workspace_tasks=host,collection_service=planner)
+        run=await asyncio.to_thread(run_integrated,config,**run_options)
+        assert run.facts.created_papers==1, run.facts
+        assert collected.wait(2), (run.facts,host.current().faults)
         with PaperRepository.open(workspace) as repo:
-            public = repo.create_or_match(repo.workspace_id, direct_ids=ExternalIds(openalex='W777'),
-                metadata=PaperMetadata(title='Public PDF', discovery_facts=(PdfDiscoveryFacts(
-                    source='document', capability='document-pdf', status='complete',
-                    observed_at=datetime.now(timezone.utc), target_openalex='W777', landing_url=origin+'/article',
-                    candidates=(PdfCandidateFact(stage='P3', rule_id='GENERIC', url=origin+'/public',
-                        referer=origin+'/article', field='citation_pdf_url'),)),))).paper
+            public,=repo.list_papers()
+            assert public.collection.active and public.metadata.abstract is None and public.body is None
+        collection_task=host.current()._tasks[public.id]
+        release_collection.set()
+        await asyncio.to_thread(collection_task.future.result,5)
+        with PaperRepository.open(workspace) as repo:
+            public=repo.get(public.id)
+            assert public.collection_status=='completed' and public.metadata.abstract=='Collected abstract.'
+            assert public.metadata.ordinary_dates==('2026-01-02',) and public.metadata.discovery_facts==(facts,)
+        repeat=await asyncio.to_thread(run_integrated,config,**run_options)
+        assert repeat.facts.existing_papers==1 and len(collection_calls)==1
         state = (await client.get('/api/ui-next/workspace')).json()
         public_projection = next(paper for group in state['subjects'] for journal in group['journals'] for paper in journal['papers'] if paper['id']==str(public.id))
         public_request = dict(csrf_token=state['csrf_token'], workspace_id=str(public.workspace_id),
@@ -85,7 +124,9 @@ async def main():
         assert (await asyncio.to_thread(public_task.future.result, 8)).status == 'completed'
         projection = (await client.get('/api/ui-next/workspace')).json()
         projected = next(entry['paper'] for entry in projection['downloaded']['papers'] if entry['paper']['id'] == str(public.id))
-        assert projected['download']['pdf_source'] == 'P3' and projected['download']['fallback_used'] is False
+        assert projected['download']['pdf_source'] == 'P4' and projected['download']['fallback_used'] is True
+        observations=projected['download']['source_observations']
+        assert any(item['pdf_reason']=='access-challenge' and item['subsequent_attempted'] for item in observations)
         assert projected['body_present'] and projection['counts']['downloaded'] == 1
         assert not projected['download']['active'] and not projected['cleanup_pending']
         print(json.dumps({'type':'fixture_public','status':'completed','paper':str(public.id)}), flush=True)
@@ -98,19 +139,13 @@ async def main():
         assert located.status_code == 200 and located.json()['outcome'] == 'locate_requested', located.text
         shell_failed = await client.post(f'/api/papers/{public.id}/body/open', json=local_request)
         assert shell_failed.status_code == 409 and shell_failed.json()['paper']['body_present'], shell_failed.text
-        # Local reading remains available while this Paper's collection owns work.
-        from allfold.application.collection_runtime import BranchSpec
-        entered, release = threading.Event(), threading.Event()
-        def held_branch(context):
-            entered.set()
-            assert release.wait(4)
+        # A completed Paper remains complete; local reads cannot restart collection.
+        from allfold.persistence.paper_repository import PaperRecord
         collected = await asyncio.to_thread(current.submit, direct_ids=ExternalIds(openalex='W777'),
-            metadata=public.metadata, branches=(BranchSpec('held', held_branch),))
-        assert await asyncio.to_thread(entered.wait, 2)
+            metadata=public.metadata, branches=(BranchSpec('document',lambda _: (_ for _ in ()).throw(AssertionError('Completed Paper recollected')),service_id=None),))
+        assert isinstance(collected,PaperRecord) and collected.collection_status=='completed'
         reading = await client.post(f'/api/papers/{public.id}/body/open', json=local_request)
         assert reading.status_code == 200 and reading.json()['outcome'] == 'opened', reading.text
-        release.set()
-        await asyncio.to_thread(collected.future.result, 3)
         rejected = await client.post(f'/api/ui-next/papers/{public.id}/reject', json={key:value for key,value in local_request.items() if key != 'body_generation'})
         assert rejected.status_code == 200, rejected.text
         deleted = await client.post(f'/api/papers/{public.id}/body/delete', json=local_request)
@@ -146,7 +181,7 @@ async def main():
         assert missing.status_code == 200 and missing.json()['outcome'] == 'missing', missing.text
         assert missing.json()['paper']['body_present'] is False and missing.json()['paper']['metadata_present'] is False
         print(json.dumps({'type':'fixture_local','status':'settled','retry_attempt':retry_task.download_token.attempt}), flush=True)
-        cases=[(path,origin+'/'+path,None) for path in ['redirect?Signature=A%2FB', 'encoded', 'chunked', 'html.pdf', 'unknown', 'truncated', 'cancel', 'expiry', 'cross', 'challenge', 'disk-write', 'disk-flush', 'slow-writer', 'cross-referer', 'completed-late-signals']]
+        cases=[(path,origin+'/'+path,None) for path in ['redirect?Signature=A%2FB', 'encoded', 'chunked', 'html.pdf', 'unknown', 'truncated', 'cancel', 'expiry', 'cross', 'challenge', 'disk-write', 'disk-flush', 'slow-writer', 'cross-referer', 'completed-late-signals', 'octet', 'missing-mime', 'wrong-mime', 'split-prefix', 'fake-pdf']]
         cases.extend([
             ('background-cloudflare',origin+'/background-cloudflare',None),
             ('oxford-cdn',origin.replace('pdf.example.org','academic.oup.com')+'/nar/article-pdf/51/2/870/123/body.pdf',None),
@@ -201,8 +236,8 @@ async def main():
                 assert result.status == 'failed' and result.candidate_result.kind == 'failed'
                 assert result.candidate_result.diagnostic == reason
                 assert saved.download.reason == reason
-            if path=='background-cloudflare':assert result.candidate_result.response.access is None
-            success = path in {'redirect?Signature=A%2FB','encoded','chunked','slow-writer','cross-referer','completed-late-signals','oxford-cdn','ieee-reader'}
+            if path=='background-cloudflare':assert not saved.download.reason.startswith('access-')
+            success = path in {'redirect?Signature=A%2FB','encoded','chunked','slow-writer','cross-referer','completed-late-signals','oxford-cdn','ieee-reader','octet','missing-mime','wrong-mime','split-prefix'}
             assert (result.status == 'completed') == success, (path,result)
             assert (saved.body is not None) == success
             if success:

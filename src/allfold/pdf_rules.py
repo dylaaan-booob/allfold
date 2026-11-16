@@ -217,7 +217,7 @@ class PdfRuleInputs:
     def __post_init__(self) -> None:
         if not isinstance(self.target, PdfTarget):
             raise ValueError('original PDF target binding is required')
-        if not isinstance(self.identifiers, tuple) or len(self.identifiers) > 24:
+        if not isinstance(self.identifiers, tuple):
             raise ValueError('identifiers must be a bounded immutable tuple')
         for pair in self.identifiers:
             if not isinstance(pair, tuple) or len(pair) != 2:
@@ -229,14 +229,16 @@ class PdfRuleInputs:
             raise ValueError('conditions must be a bounded immutable set')
         for condition in self.conditions:
             _bounded(condition, 64, 'condition', required=True)
-        if not isinstance(self.alternative_ids, tuple) or len(self.alternative_ids) > 24:
+        if not isinstance(self.alternative_ids, tuple):
             raise ValueError('alternative IDs must be a bounded immutable tuple')
         for value in self.alternative_ids:
             _bounded(value, 512, 'alternative ID', required=True)
-        if not isinstance(self.known_pdf_urls, tuple) or len(self.known_pdf_urls) > 16:
+        if not isinstance(self.known_pdf_urls, tuple):
             raise ValueError('PDF URLs must be a bounded immutable tuple')
         if any(not isinstance(item, KnownPdfUrl) for item in self.known_pdf_urls):
             raise ValueError('PDF URLs must have an explicit source field')
+        if sum(len(v.encode()) for pair in self.identifiers for v in pair) + sum(len(v.encode()) for v in self.alternative_ids) + sum(len(v.url.encode()) for v in self.known_pdf_urls) > 1048576:
+            raise ValueError('PDF inputs exceed the memory budget')
         _bounded(self.clinicalkey_query, 1024, 'ClinicalKey query')
         if self.clinicalkey_query and any(c in self.clinicalkey_query for c in '#?\\'):
             raise ValueError('invalid ClinicalKey query')

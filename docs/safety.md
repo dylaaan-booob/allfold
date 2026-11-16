@@ -56,6 +56,13 @@ Original DownloadItem output retains the measured
 Chromium may delete an externally replaced private staging pathname after
 `done(cancelled)`; item terminal is not proof of file-worker closure. Application
 cleanup touches only proven owned output, and final publication stays no-clobber.
+Actual transport/output type identification reads one five-byte `%PDF-` prefix,
+independent of MIME. The stream reuses its original bytes/pipeline; native output
+uses its verified no-follow descriptor after actual completion. Source-local
+access, parsing and entry failures may advance only after that source's resources
+settle. Cancellation, stale authority, unfinished writers and actual file/SQLite
+failure retain their task boundaries. Shared cooldowns never dispatch early and
+use the real parent's remaining deadline; waiting holds no SQLite write lock.
 
 Workspace switching stops admission and drains owned work before rebinding.
 Workspace Reset is explicit preview/confirm deletion of the verified Workspace,

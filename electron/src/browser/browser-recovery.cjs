@@ -5,7 +5,6 @@ const {checkCanceled,pause}=require('./browser-task.cjs');
 const PAGE_RECOVERY_MS=180000;
 const REFRESH_LIMIT=2;
 const REFRESH_DELAY_MS=350;
-const MAX_COOLDOWN_WAIT_MS=30000;
 const RATE_LIMIT_DELAY_MS=1000;
 const TRANSIENT_NETWORK=new Map([
   [-7,'ERR_TIMED_OUT'],
@@ -76,7 +75,7 @@ class BrowserCooldown {
   }
   async wait(url,{signal,deadline=Infinity,validate=()=>{},authorize,report,stage='navigation',step,pageId}={}) {
     const keys=[...new Set([].concat(url).map(origin).filter(Boolean))];
-    const limit=Math.min(deadline,this.now()+MAX_COOLDOWN_WAIT_MS);
+    const limit=deadline;
     let waited=false,last,authorized=!authorize;
     try {
       while(true) {
@@ -111,7 +110,7 @@ class BrowserCooldown {
         }
         reportRecovery(report,'service_cooldown_started',{...last,waiting:true});
         waited=true;authorized=!authorize;
-        try {await this.pause(signal,wait);}
+        try {await this.pause(signal,Math.min(wait,2147483647));}
         catch(error){checkCanceled(signal);throw error;}
       }
     } catch(error) {

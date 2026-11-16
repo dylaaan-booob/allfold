@@ -36,11 +36,14 @@ app.commandLine.appendSwitch('no-proxy-server');app.on('window-all-closed',()=>{
 const identity=file=>{const info=fs.lstatSync(file);return [info.dev,info.ino];};
 app.whenReady().then(async()=>{
   assert.equal(process.versions.electron,'45.0.0');
-  const requests=[],payload=Buffer.alloc(256*1024,71),cases=[],childBarriers=new Map(),bodyResponses=new Map(),activeBodies=new Set();let origin;
+  const requests=[],payload=Buffer.alloc(256*1024,71),cases=[],childBarriers=new Map(),bodyResponses=new Map(),activeBodies=new Set();let origin;payload.write('%PDF-');
   const certificate=fs.readFileSync(path.join(root,'tests/fixtures/http/localhost-cert.pem'),'utf8');
   const cdn=https.createServer({cert:certificate,key:fs.readFileSync(path.join(root,'tests/fixtures/http/localhost-key.pem'))},(req,res)=>{
     requests.push({url:req.url,method:req.method,body:'',cdn:true});
     const kind=new URL(req.url,'https://pdf.sciencedirectassets.com').searchParams.get('case');
+    if(kind==='sciencedirect-reader-redirect'&&!req.url.includes('final=1')) {
+      res.writeHead(302,{location:req.url+'&final=1'});res.end();return;
+    }
     if(kind==='sciencedirect-reader-twice'&&!req.url.includes('next=1')) {
       res.writeHead(200,{'content-type':'text/html'});res.end('<script>location.replace('+JSON.stringify(req.url+'&next=1')+')</script>');return;
     }
@@ -118,6 +121,7 @@ app.whenReady().then(async()=>{
         res.writeHead(kind==='action-blocked'?403:200,{'content-type':'text/html',...(kind.startsWith('action-challenge')?{'cf-mitigated':'challenge'}:{})});
         res.end(kind.startsWith('action-challenge')?'<title>Just a moment...</title>':'<title>Body unavailable</title>');return;
       }
+      if(kind?.startsWith('mime-')){res.writeHead(200,kind==='mime-missing'?{}:{'content-type':kind==='mime-octet'?'application/octet-stream':kind==='mime-wrong'?'text/plain':kind==='mime-html'?'text/html':kind==='mime-xhtml'?'application/xhtml+xml':'application/pdf'});res.end(kind==='mime-fake'?Buffer.from('<html>Login required</html>'):payload);return;}
       res.writeHead(200,{'content-type':'application/pdf',...(kind==='attachment'?{'content-disposition':'attachment; filename="body.pdf"'}:{})});
       if(['iframe-background','popup-background','iframe-replaced','popup-source-replaced'].includes(kind)) {
         bodyResponses.set(kind,res);res.write(payload.subarray(0,65536));return;
@@ -133,9 +137,13 @@ app.whenReady().then(async()=>{
     }
     if(url.pathname.startsWith('/science/article/pii/')) {
       if(url.pathname.endsWith('/pdfft')) {
+        if(kind==='sciencedirect-reader-auth-return'){const state=req.headers.cookie?.includes('reader_auth=two')?'two':req.headers.cookie?.includes('reader_auth=one')?'one':'';if(state!=='two'){res.writeHead(200,{'content-type':'text/html'});res.end('<script>document.cookie="reader_auth='+ (state==='one'?'two':'one')+'; Path=/";location.reload()</script>');}else{res.writeHead(200,{'content-type':'application/pdf'});res.end(payload);}return;}
+        if(kind==='sciencedirect-reader-cycle'){res.writeHead(200,{'content-type':'text/html'});res.end('<script>location.reload()</script>');return;}
+        if(kind==='sciencedirect-reader-cookie-cycle'){const next=req.headers.cookie?.includes('reader_loop=one')?'two':'one';res.writeHead(200,{'content-type':'text/html'});res.end('<script>document.cookie="reader_loop='+next+'; Path=/";location.reload()</script>');return;}
         if(kind?.startsWith('sciencedirect-reader')) {
           res.writeHead(kind==='sciencedirect-reader-http-error'?500:200,{'content-type':'text/html',...(kind==='sciencedirect-reader-challenge'?{'cf-mitigated':'challenge'}:{})});
           if(kind==='sciencedirect-reader-challenge'){res.end('<title>Just a moment...</title>');return;}
+          if(kind==='sciencedirect-reader-empty'){res.end('<title>Reader</title><p>No body entry</p>');return;}
           if(['sciencedirect-reader-reload','sciencedirect-reader-loop'].includes(kind)) {
             const step=Number(url.searchParams.get('reader')||'0');
             if(step===0||kind==='sciencedirect-reader-loop'&&step===1) {
@@ -181,8 +189,8 @@ app.whenReady().then(async()=>{
   function capability(paper) {
     const workspace=path.join(profile,'workspace'),documents=path.join(workspace,'Documents'),staging=path.join(documents,'.downloads'),disposal=path.join(staging,'.cleanup');
     fs.mkdirSync(disposal,{recursive:true,mode:0o700});
-    const directory=path.join(staging,paper+'.1.native');fs.mkdirSync(directory,{mode:0o700});
-    return {workspace_root:workspace,output:{temporary:`Documents/.downloads/${paper}.1.native/body.part`,target:`Documents/${paper}.pdf`,
+    const nativeName=paper+'.1.'+randomUUID().replaceAll('-','')+'.native',directory=path.join(staging,nativeName);fs.mkdirSync(directory,{mode:0o700});
+    return {workspace_root:workspace,output:{temporary:`Documents/.downloads/${nativeName}/body.part`,target:`Documents/${paper}.pdf`,
       workspace:identity(workspace),documents:identity(documents),staging:identity(staging),disposal:identity(disposal),native_directory:identity(directory),file:null}};
   }
   try {
@@ -253,7 +261,7 @@ app.whenReady().then(async()=>{
       const terminal=new Promise(resolve=>messages.set(id,resolve));
       await context.execute({id,action:'native_paper_body',data});const result=await terminal;browser.bodyActions.prepare=prepare;
       cases.push({kind,result});console.log('NATIVE CASE '+kind+' '+JSON.stringify(result));
-      const success=['form-replaced','get-replaced','sciencedirect-replaced','attachment','inline','url-doi-form','microbiology-redirect','iframe','popup','named-popup','popup-reservation','completed-late-signals','sciencedirect','sciencedirect-direct-cdn-unavailable','sciencedirect-reader','sciencedirect-reader-self','sciencedirect-reader-reload'].includes(kind);
+      const success=['form-replaced','get-replaced','sciencedirect-replaced','attachment','inline','url-doi-form','microbiology-redirect','iframe','popup','named-popup','popup-reservation','completed-late-signals','sciencedirect','sciencedirect-direct-cdn-unavailable','sciencedirect-reader','sciencedirect-reader-self','sciencedirect-reader-reload','sciencedirect-reader-loop','sciencedirect-reader-twice','sciencedirect-reader-redirect','sciencedirect-reader-auth-return','mime-octet','mime-missing','mime-wrong','mime-html','mime-xhtml'].includes(kind);
       if(success) {
         assert.equal(result.outcome,'native_complete');assert.equal(result.resource_closed,true);assert.deepEqual(result.output_file,observed);
         const leaf=path.join(data.workspace_root,data.output.temporary);assert.deepEqual(fs.readFileSync(leaf),payload);assert.deepEqual(identity(leaf),observed);
@@ -263,16 +271,17 @@ app.whenReady().then(async()=>{
         assert.equal(result.diagnostic_code,'entry-unavailable');assert.equal(result.output_file,undefined);
         assert.equal(requests.filter(request=>request.url.includes('case='+kind)&&(/\/once\?/.test(request.url)||/\/pdfft/.test(request.url))).length,0);
       } else if(kind==='named-popup-collision') {
-        assert.equal(result.kind,'stale');assert.equal(result.output_file,undefined);
+        assert.equal(result.kind,'failed');assert.equal(result.output_file,undefined);
         assert.equal(foreign.view.webContents.getURL(),origin+'/frame');
         assert.equal(foreign.view.webContents.mainFrame.name,'new-body');
         assert.equal(requests.filter(request=>request.url.includes('case='+kind)&&(/\/once\?/.test(request.url)||/\/pdfft/.test(request.url))).length,0);
         await browser.closePage(foreign,'fixture_cleanup');
       } else if(kind.startsWith('microbiology-redirect')) {
-        assert.equal(result.kind,'stale');assert.equal(result.output_file,undefined);
+        assert.equal(result.kind,'failed');assert.equal(result.output_file,undefined);
       } else if(kind.startsWith('sciencedirect-reader')) {
-        assert.equal(result.kind,kind==='sciencedirect-reader-challenge'?'failed':kind==='sciencedirect-reader-cancel'?'cancelled':'stale');
+        assert.equal(result.kind,['sciencedirect-reader-challenge','sciencedirect-reader-cycle','sciencedirect-reader-cookie-cycle'].includes(kind)?'failed':kind==='sciencedirect-reader-cancel'?'cancelled':'failed');
         assert.equal(result.output_file,undefined);
+      } else if(kind==='mime-fake'){assert.equal(result.kind,'failed');assert.equal(result.diagnostic_code,'non-pdf');
       } else if(kind==='interrupted')assert.equal(result.diagnostic_code,'interrupted');
       else if(kind==='replace') {
         assert.equal(replaced,true);assert.equal(result.kind,'local_failure');assert.equal(result.output_file,undefined);
@@ -280,7 +289,7 @@ app.whenReady().then(async()=>{
         if(exists)assert.equal(fs.readFileSync(leaf,'utf8'),'unknown replacement');
         console.log('NATIVE ACCEPTED RISK '+JSON.stringify({replacement_exists_at_terminal:exists,
           cancellation_file_tasks_acknowledged:false}));
-      } else assert.equal(result.kind,kind==='no-item'?'expired':kind==='unrelated'?'stale':'cancelled');
+      } else assert.equal(result.kind,kind==='no-item'?'expired':kind==='unrelated'?'failed':'cancelled');
       assert.equal(browser.tabs.size,0,'source pages retain quota through terminal and then close');
       assert.equal(browser.sessionEvents.downloads.size,0);assert.equal(browser.sessionEvents.items.size,0);
       assert.deepEqual(prematureLogs,[],'native result must be sent before terminal diagnostic IO');
@@ -345,13 +354,14 @@ app.whenReady().then(async()=>{
     }
     assert.equal(requests.filter(request=>request.url.endsWith('/pdfft')).length,caseNames.includes('sciencedirect')||caseNames.includes('public')?1:0,'ScienceDirect original navigation must never be replayed');
     for(const kind of caseNames.filter(kind=>kind.startsWith('sciencedirect-reader'))) {
-      assert.equal(requests.filter(request=>request.url==='/science/article/pii/S1234567890123456/pdfft?case='+kind).length,1);
+      assert.equal(requests.filter(request=>request.url==='/science/article/pii/S1234567890123456/pdfft?case='+kind).length,['sciencedirect-reader-auth-return','sciencedirect-reader-cookie-cycle'].includes(kind)?3:kind==='sciencedirect-reader-cycle'?2:1);
       assert.equal(requests.filter(request=>request.cdn&&request.url.endsWith('?case='+kind)).length,
-        ['sciencedirect-reader','sciencedirect-reader-self','sciencedirect-reader-reload','sciencedirect-reader-twice','sciencedirect-reader-cancel'].includes(kind)?1:0,kind);
-      assert.equal(requests.filter(request=>request.cdn&&request.url.endsWith('?case='+kind+'&next=1')).length,0,'a second HTML continuation is refused');
+        ['sciencedirect-reader','sciencedirect-reader-self','sciencedirect-reader-reload','sciencedirect-reader-loop','sciencedirect-reader-twice','sciencedirect-reader-redirect','sciencedirect-reader-cancel'].includes(kind)?1:0,kind);
+      assert.equal(requests.filter(request=>request.cdn&&request.url.endsWith('?case='+kind+'&next=1')).length,kind==='sciencedirect-reader-twice'?1:0,'only the observed CDN continuation is followed');
+      assert.equal(requests.filter(request=>request.cdn&&request.url.endsWith('?case='+kind+'&final=1')).length,kind==='sciencedirect-reader-redirect'?1:0,'a redirect keeps the original continuation request');
       if(['sciencedirect-reader-reload','sciencedirect-reader-loop'].includes(kind)) {
         assert.equal(requests.filter(request=>request.url.endsWith('?case='+kind+'&reader=1')).length,1);
-        assert.equal(requests.filter(request=>request.url.endsWith('?case='+kind+'&reader=2')).length,0,'a second reader refresh is refused');
+        assert.equal(requests.filter(request=>request.url.endsWith('?case='+kind+'&reader=2')).length,kind==='sciencedirect-reader-loop'?1:0,'distinct observed reader responses continue');
       }
     }
     assert.equal(browser.partition.listenerCount('will-download'),1);

@@ -1074,7 +1074,21 @@ test('Paper page-load timeout replaces the provisional page without renewing the
   assert.equal(recovery.at(-1).recovery_stop,'budget');
 });
 
+test('closing a manual page releases its long server cooldown without a new local deadline',async t=>{
+  const {BrowserRuntime}=fixture(t);
+  let waiting;const entered=new Promise(resolve=>{waiting=resolve;});
+  const browser=new BrowserRuntime({recoveryTiming:{now:()=>1000,pause:(signal,ms)=>new Promise((_resolve,reject)=>{
+    waiting(ms);signal.addEventListener('abort',()=>reject(signal.reason),{once:true});
+  })}});
+  t.after(()=>browser.close());await browser.ready;
+  const tab=browser.createTab({user:true});browser.cooldown.observe('https://publisher.example/limited',429,'120');
+  const pending=browser.waitForCooldown('https://publisher.example/limited',{pageId:tab.id});
+  const stopped=assert.rejects(pending,{diagnostic:{stage:'navigation',code:'page_closed'}});
+  assert.equal(await entered,120000);await browser.closePage(tab,'user');await stopped;
+});
+
 test('the existing Session hook gates only matching entry origins and retains an extension after waiter cancellation',async t=>{
+  t.mock.timers.enable({apis:['Date'],now:Date.parse('Tue, 10 Nov 2026 09:00:00 GMT')});
   const {BrowserRuntime,partition}=fixture(t);
   let now=Date.parse('Tue, 10 Nov 2026 09:00:00 GMT');
   const sleepers=[];
@@ -1091,7 +1105,7 @@ test('the existing Session hook gates only matching entry origins and retains an
     responseHeaders:retryAfter?{'Retry-After':[retryAfter]}:{},
   },response=>assert.equal(response.cancel,undefined));
   const run=(id,tab,target,signal=new AbortController().signal)=>browser.runTask(signal,{request_id:id},()=>
-    browser.navigate(target,{tab,signal}));
+    browser.navigate(target,{tab,signal,deadline:now+180000}));
   const tick=()=>new Promise(resolve=>setImmediate(resolve));
   headers('subFrame',429,'3600');
   await run('ignore-subframe',from,url);
@@ -1106,10 +1120,10 @@ test('the existing Session hook gates only matching entry origins and retains an
   headers('mainFrame',503,'Tue, 10 Nov 2026 09:00:05 GMT');
   headers('mainFrame',200);
   stop.abort();await rejected;
-  now+=2000;sleepers[0].release();await tick();
+  now+=2000;t.mock.timers.setTime(now);sleepers[0].release();await tick();
   assert.deepEqual(sleepers.map(({ms})=>ms),[2000,2000,3000]);
   assert.equal(same.view.webContents.getURL(),'');
-  now+=3000;sleepers[2].release();
+  now+=3000;t.mock.timers.setTime(now);sleepers[2].release();
   assert.equal((await pending).pageId,same.id);
   headers('mainFrame',429,'3600');
   await assert.rejects(run('budget',from,url),{diagnostic:{stage:'navigation',step:'page_load',code:'http_error',status:429}});

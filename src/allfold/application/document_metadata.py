@@ -5,7 +5,7 @@ from urllib.parse import urlsplit
 
 from allfold.url_safety import normalize_public_http_url
 from allfold.pdf_facts import (PdfDiscoveryFacts, PdfIdentifier, PdfRefreshLocator,
-    persistent_pdf_candidate, stable_discovery_url)
+    persistent_pdf_candidate, stable_discovery_url, bounded_discovery_facts)
 
 from allfold.application.collection_runtime import BranchSpec
 from allfold.persistence.library_models import MetadataDelta, normalize_ordinary_dates
@@ -112,8 +112,8 @@ def validate_document_pdf_clues(value, *, target_doi=None):
         parsed.port
         if (not isinstance(clues['observed_at'], str) or not re.fullmatch(
                 r'[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}\.[0-9]{3}Z', clues['observed_at'])
-                or not isinstance(clues['candidates'], list) or len(clues['candidates']) > 32
-                or not isinstance(clues['identifiers'], list) or len(clues['identifiers']) > 16
+                or not isinstance(clues['candidates'], list)
+                or not isinstance(clues['identifiers'], list)
                 or not isinstance(clues['diagnostics'], list) or len(clues['diagnostics']) > 2
                 or len(set(clues['diagnostics'])) != len(clues['diagnostics'])
                 or any(code not in {'pdf_parse_failed', 'pdf_budget_exceeded'} for code in clues['diagnostics'])):
@@ -144,7 +144,7 @@ def validate_document_pdf_clues(value, *, target_doi=None):
             persisted.append(persistent_pdf_candidate(refresh_kind='document-pdf', landing_url=landing, **fields))
         if any(not isinstance(item, dict) or set(item) != {'kind', 'value', 'rule_id'} for item in clues['identifiers']):
             raise ValueError('Invalid identifiers')
-        facts = PdfDiscoveryFacts(source='document', capability='document-pdf', status=clues['status'],
+        facts = bounded_discovery_facts(source='document', capability='document-pdf', status=clues['status'],
             observed_at=clues['observed_at'], target_doi=target_doi,
             landing_url=stable_discovery_url(landing), platform=clues['platform'], content_type=clues['content_type'],
             identifiers=tuple(PdfIdentifier(**item) for item in clues['identifiers']), candidates=tuple(persisted),

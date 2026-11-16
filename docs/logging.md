@@ -47,6 +47,15 @@ The PDF-only native action uses the same reviewed operation diagnostics and
 actual settlement boundary; it adds no public Download history product. The
 [discovery specification](pdf-source-discovery.md) defines stop/fallback semantics.
 
+`pdf_source_result` adds fixed source phase/rule/reason, origin-only location,
+physical candidate-path index and known fallback outcome; Reader/redirect continuation retains its index. The current registry exposes
+64 recent observations with whether a later physical candidate was attempted.
+Diagnostics buffers 256 validated observations for explicit export, using a small
+separate memory lock so file/export I/O cannot retain a Download worker. This
+buffer expires on restart and Logs Reset; native request logs and the SQLite
+terminal reason/provenance retain their normal lifetimes. No extra Download
+business state or persistent attempt history is introduced.
+
 ## Storage and limits
 
 Electron initializes a diagnostics directory inside its standard application logs
