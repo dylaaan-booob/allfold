@@ -142,7 +142,7 @@ class PdfHttpClient:
             raise ProviderFailure('PDF current response could not be read', kind='protocol', code='response-read-failed') from None
         # HTTPX response.request.url is the real final request after redirects.
         return CurrentResponse(str(response.request.url), response.headers.get('content-type', ''),
-            bytes(body), response.status_code)
+            bytes(body), response.status_code, access='challenge' if response.headers.get('cf-mitigated', '').strip().lower()=='challenge' else None)
 
     def consume(self, candidate, *, transfer=None):
         if candidate.action:

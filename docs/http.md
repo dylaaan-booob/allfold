@@ -134,7 +134,14 @@ prefixes and the redirect's applied authorization policy. Counts include each
 physical dispatch, including redirects and the final check. Cache hits and
 attempts stopped before dispatch add no requests.
 
-Current verification-page predicates reject the current invalid response without
+Access classification prefers the current response's `cf-mitigated: challenge`.
+Without it, HTML needs contextual challenge/login structure, such as an explicit
+verification page with its controls or an Anubis challenge envelope. HTTP 202,
+the word `captcha`, hidden resources and background scripts are not Cloudflare
+proof. Ordinary unexpected HTML remains a protocol failure; actual authorization
+errors, HTTP failures and 429 cooldown retain their semantics. API/stream responses
+never open a browser authentication page or replay POST/login actions for Solver.
+Verification-page predicates reject the current invalid response without
 latching an access failure onto the client. Later independent identifier requests
 can proceed under their own captured authority and request budget. OpenAlex
 explicit authorization and quota errors currently stop the standalone client. Ordinary 429 responses remain

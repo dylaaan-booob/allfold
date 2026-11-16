@@ -5,6 +5,7 @@ import json
 import re
 from urllib.parse import parse_qs, unquote, urljoin, urlsplit
 
+from allfold.http_access import html_access
 from allfold.identifiers import valid_doi
 from allfold.url_safety import normalize_public_http_url
 
@@ -100,12 +101,7 @@ def access_limited(response):
     if response.access or response.status in {401, 403, 407, 418, 429}:
         return True
     text = response.body.decode('utf-8', errors='replace').lower()
-    cloudflare = (re.search(r'<title\b[^>]*>\s*(?:just a moment|attention required)', text)
-        or re.search(r'\b_cf_chl_opt\s*=\s*\{', text)
-            and re.search(r'/cdn-cgi/challenge-platform/[^\s"\'<>]*orchestrate/chl_page/', text))
-    if bool(cloudflare) or any(marker in text for marker in ('g-recaptcha',
-        'hcaptcha', 'verify you are human', 'checking your browser', 'access denied',
-        'name="password"', "name='password'")):
+    if html_access(text, response.status):
         return True
     if 'cpe00001' not in text and '_incapsula_resource' not in text:
         return False
@@ -116,7 +112,7 @@ def access_limited(response):
         # An incomplete scan is not proof of an access barrier. Only visible
         # paired denial evidence already observed can retain that conclusion.
         return parser.has_cpe and parser.has_denial
-    if parser.has_cpe and parser.has_denial:
+    if parser.has_cpe and parser.has_denial and not any(node['tag']=='article' for node in parser.nodes):
         return True
     root = next((node for node in parser.nodes if node['tag']=='body'), None)
     if root is None:

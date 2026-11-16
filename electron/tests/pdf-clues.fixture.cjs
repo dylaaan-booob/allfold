@@ -9,7 +9,7 @@ const profile=process.argv[2];app.setPath('userData',profile);app.setPath('sessi
 require('../src/shared/logging.cjs').initializeLogging({stderr(){}});
 const {BrowserRuntime}=require('../src/browser/browser-runtime.cjs');
 app.whenReady().then(async()=>{
-  let page='',requests=[],delayedPDF;
+  let page='',requests=[],delayedPDF,challengeResponse=false;
   const server=http.createServer((request,response)=>{requests.push({url:request.url,referer:request.headers.referer});
     if(request.url==='/snapshot-resource'){response.writeHead(200,{'content-type':'text/plain','cache-control':'no-store'});response.end('resource');return;}
     if(request.url==='/snapshot-script'){response.end('');return;}
@@ -19,7 +19,7 @@ app.whenReady().then(async()=>{
     if(request.url.startsWith('/pdfviewer/web/viewer.html')||request.url.startsWith('/arbitrary?')){response.setHeader('content-type','text/html');response.end('<body>Fixed viewer fixture</body>');return;}
     if(request.url.includes('/reader-next/')){response.setHeader('content-type','text/plain');response.end('controlled reader carrier');return;}
     if(request.url==='/redirect'){response.writeHead(302,{location:'/actual/Article'});response.end();return;}
-    response.setHeader('content-type','text/html');response.end(page);});
+    response.setHeader('content-type','text/html');if(challengeResponse)response.setHeader('cf-mitigated','challenge');response.end(page);});
   await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));
   const port=server.address().port,url='http://www.nature.com:'+port+'/redirect';
   const host=new BrowserWindow({show:false}),browser=new BrowserRuntime({hostWindow:host});
@@ -205,8 +205,8 @@ app.whenReady().then(async()=>{
     page='<!doctype html><frameset><frame src="/reader-next/first"><frame src="/reader-next/Second.PDF?sig=2"></frameset>';
     const opticaReader={target:data.identity,rule_id:'R053',platform:'optica',url:'http://opg.optica.org:'+port+'/viewmedia.cfm?uri=ao-10-1-1',identifier:'ao-10-1-1',source_url:'https://opg.optica.org/abstract.cfm?uri=ao-10-1-1',stage:'P3'};
     const optica=await invoke('extract_paper_pdf_clues',{reader:opticaReader});assert.equal(optica.pdf_clues.candidates.length,1);assert.equal(optica.pdf_clues.candidates[0].url,'http://opg.optica.org:'+port+'/reader-next/Second.PDF?sig=2');assert.equal(optica.pdf_clues.candidates[0].stage,'P3');
-    page='<!doctype html><title>Just a moment</title><body><iframe src="/reader-next/fake.pdf"></iframe></body>';
-    const refused=await invoke('extract_paper_pdf_clues',{reader,deadline_ms:Date.now()+500});assert.ok(refused.diagnostic);assert.ok(!refused.pdf_clues);
+    challengeResponse=true;page='<!doctype html><title>Just a moment</title><body><iframe src="/reader-next/fake.pdf"></iframe></body>';
+    const refused=await invoke('extract_paper_pdf_clues',{reader,deadline_ms:Date.now()+500});assert.ok(refused.diagnostic);assert.ok(!refused.pdf_clues);challengeResponse=false;
     assert.ok((await invoke('extract_paper_pdf_clues',{reader:{...reader,identifier:'wrong'}})).diagnostic);
     // OCE uses its own prepared retained target, including when preparation
     // originally entered through CARSI. Capability reads never navigate.

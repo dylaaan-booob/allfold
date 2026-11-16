@@ -19,6 +19,12 @@ def effective_log_level(saved: str = "INFO") -> str:
 
 
 def configure_logging(level: str = "INFO") -> logging.Logger:
+    # Third-party transport logs can contain URLs and raw protocol failures.
+    # Set this once as application policy, never per concurrent solver invocation.
+    for name in ('pydoll', 'websockets.client'):
+        transport = logging.getLogger(name)
+        transport.handlers = [logging.NullHandler()]
+        transport.propagate = False
     logger = logging.getLogger(LOGGER_NAME)
     for handler in tuple(logger.handlers):
         if getattr(handler, _HANDLER_MARKER, False):

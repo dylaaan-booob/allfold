@@ -30,7 +30,7 @@ function fixture(){
 }
 test('a stale cancel cannot abort another request or action', () => {
   const start = source.indexOf("else if(message.type === 'cancel') {") + "else if(message.type === 'cancel') {".length;
-  const end = source.indexOf("else if(message.type === 'solve_cloudflare_result')", start);
+  const end = source.indexOf("else if(['solve_cloudflare_result'", start);
   assert.ok(start>0 && end>start,'cancel branch boundaries must exist');
   const body = source.slice(start, end).replace(/}\s*$/, '');
   const controller=new AbortController(),other=new AbortController();
@@ -100,51 +100,48 @@ test('quit confirmation occurs before aborting an active task and cancelling lea
   assert.equal(controller.signal.aborted,false);assert.equal(quitCalls,0);
 });
 
-for(const sameDocument of [false,true])test(`same-URL challenges ignore stale replies after ${sameDocument?'same-document':'full'} navigation`,{timeout:5000},async()=>{
+test('Main routes tab challenges without pending operations and preserves them across navigation',{timeout:5000},async()=>{
   const {EventEmitter}=require('node:events');
-  const f=fixture(),sent=deferred(),results=new Map();
+  const f=fixture(),sent=deferred(),results=new Map(),progress=[];
   class Socket extends EventEmitter {
     constructor(){super();Socket.instance=this;}
     addEventListener(...args){this.on(...args);}
     close(){throw Error('unexpected bridge close');}
   }
-  let challengeCount=0;
-  f.context.onSend=message=>{
-    if(message.type==='solve_cloudflare' && ++challengeCount===2)sent.resolve();
-  };
+  let count=0;
+  f.context.onSend=message=>{if(message.type==='solve_cloudflare' && ++count===2)sent.resolve();};
   Object.assign(f.context,{WebSocket:Socket,bridgeReady:false,base:'http://127.0.0.1:18767',token:'fixture'});
   vm.runInContext(source.slice(source.indexOf('async function connect('),source.indexOf('async function main(')),f.context);
   const connected=f.context.connect();
   const reply=message=>Socket.instance.emit('message',{data:JSON.stringify(message)});
-  reply({type:'ready',log_level:'warn'});
-  await connected;
-
-  f.context.browser.ownsPage=(owner,pageId)=>owner.taskTab.id===pageId;
-  f.context.browser.navigate=async function(url) {
-    const pageId=this.taskTab.id;
+  reply({type:'ready',log_level:'warn'});await connected;
+  const browser=f.context.browser;browser.partition={};
+  const controllers=[new AbortController(),new AbortController()];
+  const work=[1,2].map(pageId=>{
     const contents=new EventEmitter();
-    Object.assign(contents,{getURL:()=>url,isLoadingMainFrame:()=>false,getOrCreateDevToolsTargetId:()=>String(pageId).repeat(32)});
-    this.tabs.set(pageId,{view:{webContents:contents}});
-    const doc={pageId,url,frameToken:'document_'+pageId,processId:42};
-    results.set(pageId,await f.context.solveCloudflare(doc,{signal:this.operation.signal}));
-    return doc;
-  };
-  const first=f.run('first'),second=f.run('second');
-  await sent.promise;
+    Object.assign(contents,{session:browser.partition,isDestroyed:()=>false,isCrashed:()=>false,
+      getURL:()=> 'https://same.example/page',getOrCreateDevToolsTargetId:()=>String(pageId).repeat(32)});
+    const tab={id:pageId,view:{webContents:contents}};browser.tabs.set(pageId,tab);
+    return f.context.solveCloudflare(tab,{signal:controllers[pageId-1].signal,onProgress:data=>progress.push([pageId,data])})
+      .then(result=>results.set(pageId,result));
+  });
+  await sent.promise;assert.equal(f.context.operations.size,0);
   const [a,b]=f.messages.filter(message=>message.type==='solve_cloudflare');
-  assert.equal(a.data.url,b.data.url);
-  assert.notEqual(a.data.target_id,b.data.target_id);
-  const response=message=>({...message,type:'solve_cloudflare_result',data:{outcome:'clicked',reason:'checkbox_clicked'}});
-  reply(response({...b,id:a.id}));
-  await Promise.resolve();
-  assert.equal(results.size,0);
-  f.context.browser.tabs.get(1).view.webContents.emit('did-start-navigation',{isMainFrame:true,isSameDocument:sameDocument});
-  reply(response(a));reply(response(b));
-  await Promise.all([first,second]);
-  assert.equal(results.get(1).reason,'canceled');
-  assert.equal(results.get(2).outcome,'clicked');
-  assert.ok(f.messages.some(message=>message.type==='cancel_cloudflare' && message.id===a.id));
-  assert.ok(!f.messages.some(message=>message.type==='cancel_cloudflare' && message.id===b.id));
+  assert.notEqual(a.target_id,b.target_id);
+  const response=message=>({...message,type:'solve_cloudflare_result',data:{outcome:'not_executed',reason:'canceled'}});
+  reply(response({...b,page_id:a.page_id}));
+  reply(response({...a,challenge_id:'f'.repeat(32)}));
+  await Promise.resolve();assert.equal(results.size,0);
+  const wc=browser.tabs.get(1).view.webContents;
+  wc.emit('did-start-navigation',{isMainFrame:true,isSameDocument:false});
+  wc.emit('did-start-navigation',{isMainFrame:true,isSameDocument:true});
+  assert.equal(f.messages.filter(item=>item.type==='cancel_cloudflare').length,0);
+  reply({...b,type:'cloudflare_progress',data:{outcome:'clicked',reason:'checkbox_clicked'}});
+  assert.deepEqual(progress,[[2,{outcome:'clicked',reason:'checkbox_clicked'}]]);
+  controllers[0].abort();await Promise.resolve();assert.equal(results.size,0,'cancel waits for worker terminal');
+  reply(response(a));reply(response(b));await Promise.all(work);
+  assert.equal(results.size,2);
+  assert.deepEqual(f.messages.filter(item=>item.type==='cancel_cloudflare').map(item=>item.page_id),[1]);
 });
 
 test('retired Paper Import Enrich and Local API actions cannot enter native Browser work',async()=>{

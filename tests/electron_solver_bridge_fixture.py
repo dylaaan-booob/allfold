@@ -1,17 +1,15 @@
-"""Framed stdio fixture transport around the real Bridge; isolated Electron CDP only."""
+"""Framed stdio transport around the authenticated Bridge; no business operation."""
 import asyncio
 import json
 import sys
 
 from fastapi import WebSocketDisconnect
+from allfold.logging_setup import configure_logging
 from allfold.web.electron_bridge import ElectronBridge
 
 
 class Socket:
     headers = {'host': 'fixture'}
-
-    def __init__(self):
-        self.ready = asyncio.Event()
 
     async def accept(self):
         pass
@@ -27,19 +25,29 @@ class Socket:
 
     async def send_json(self, message):
         print(json.dumps(message), flush=True)
-        if message.get('type') == 'ready':
-            self.ready.set()
 
 
 async def main():
-    socket = Socket()
+    configure_logging()
+    from pydoll.connection.connection_handler import ConnectionHandler
+    execute = ConnectionHandler.execute_command
+    stalled = False
+
+    async def controlled(connection, command, *args, **kwargs):
+        nonlocal stalled
+        # Verify the actual CDP boundary: no full DOM/HTML export through the SDK.
+        assert command.get('method') not in {'DOM.getDocument', 'DOM.getOuterHTML'}
+        assert not (command.get('method') == 'DOM.describeNode' and command.get('params', {}).get('depth') == -1)
+        if command.get('method') == 'Page.createIsolatedWorld' and not stalled:
+            stalled = True
+            await asyncio.sleep(6)  # One real resource timeout must remain recoverable.
+        return await execute(connection, command, *args, **kwargs)
+
+    ConnectionHandler.execute_command = controlled
     bridge = ElectronBridge('fixture-only', 'fixture', cdp_url=sys.argv[1])
-    receiver = asyncio.create_task(bridge.connect(socket))
-    await socket.ready.wait()
-    result = await bridge._execute('prepare_service', {'workflow_id': 'fixture'}, None, None)
-    assert result == {'outcome': 'Opened'}
+    await bridge.connect(Socket())
+    assert not bridge._pending
     print(json.dumps({'type': 'fixture_complete'}), flush=True)
-    await receiver
 
 
 asyncio.run(main())

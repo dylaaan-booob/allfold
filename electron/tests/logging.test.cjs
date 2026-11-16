@@ -109,3 +109,13 @@ test('current native body ownership survives while retired save events are refus
   assert.equal(event.outcome,'native_complete');
   for(const key of ['attachment_phase','attachment_count','pdf_attachment_count','metadata_source','method'])assert.equal(event[key],undefined);
 });
+
+test('page challenge diagnostics need no business request and discard private protocol data',t=>{
+  const {logger}=fixture(t);
+  logger.log('info','page_access',{page_id:7,access_state:'waiting',challenge_type:'cloudflare',code:'checkbox_not_found',
+    challenge_id:'a'.repeat(32),url:'https://private.example/token',cookie:'private',html:'<form>private</form>'});
+  const [event]=logger.readEvents();
+  assert.equal(event.page_id,7);assert.equal(event.request_id,undefined);assert.equal(event.code,'checkbox_not_found');
+  assert.equal(event.access_state,'waiting');assert.equal(event.challenge_type,'cloudflare');
+  assert.equal(JSON.stringify(event).includes('private'),false);assert.equal(event.challenge_id,undefined);
+});

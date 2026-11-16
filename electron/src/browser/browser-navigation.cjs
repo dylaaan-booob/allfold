@@ -341,8 +341,8 @@ class NavigationRecovery {
 }
 
 // One observation shared by all task waits; business controls stay with their workflows.
-async function inspectPage({probe,current,authentication,inspectAuthentication,solveCloudflare,solverDocuments,
-  signal,deadline=Infinity,automaticDeadline=deadline,stage='navigation',step='verification',extraWaiting=()=>false,onWaiting=()=>{},onSolverFailure=()=>{}}) {
+async function inspectPage({probe,current,authentication,inspectAuthentication,
+  signal,deadline=Infinity,automaticDeadline=deadline,stage='navigation',step='verification',extraWaiting=()=>false,onWaiting=()=>{}}) {
   const call=(run,limit=automaticDeadline)=>waitFor(run,signal,limit,stage,step);
   const authWaiting=await call(authentication);
   const auth=await call(inspectAuthentication,authWaiting?deadline:automaticDeadline);
@@ -356,27 +356,10 @@ async function inspectPage({probe,current,authentication,inspectAuthentication,s
     if(error.diagnostic?.code!=='verification_page') {
       if(!authWaiting && !auth.waiting)throw error;
     } else {
-      const hcaptcha=doc.markers.hcaptcha;
-      const cloudflare=doc.markers.cloudflareTitle || doc.markers.cloudflareOptions && doc.markers.cloudflareOrchestrator || doc.cloudflareFrame;
-      if(doc.imperva || hcaptcha || !cloudflare)return {doc,waiting:true,diagnostic:error.diagnostic};
-      const key=JSON.stringify([doc.pageId,doc.processId,doc.frameToken,doc.documentId]);
-      const attempt=solveCloudflare?solverDocuments.get(key):null;
-      if(solveCloudflare && (!attempt || attempt.attempts<2 && attempt.retryable)) {
-        onWaiting(true);
-        const state={attempts:(attempt?.attempts || 0)+1,retryable:false};
-        solverDocuments.set(key,state);
-        let result;
-        try {result=await call(()=>solveCloudflare(doc,{signal,deadline}),deadline);}
-        catch(error){checkCanceled(signal);if(error.diagnostic?.code==='timeout')throw error;onSolverFailure();}
-        checkCanceled(signal);
-        if(!current(doc))return {doc,loading:true,waiting:false,recheck:true};
-        state.retryable=state.attempts===1 && result?.outcome==='not_found';
-        return {doc,waiting:true,recheck:true};
-      }
-      return {doc,waiting:true};
+      return {doc,waiting:true,diagnostic:error.diagnostic};
     }
   }
-  return {doc,waiting:!!waiting || doc.markers.login || !Number.isInteger(doc.status)};
+  return {doc,waiting:!!waiting || (doc.markers.login || doc.markers.mfa) || !Number.isInteger(doc.status)};
 }
 async function waitForPage(observe,{signal,deadline=Infinity,onWaiting,stage='navigation',step='verification'}={}) {
   while(true) {

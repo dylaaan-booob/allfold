@@ -159,16 +159,10 @@ async function executeBodyStream(browser,data,{signal,progress=()=>{}}={}) {
         size_bytes:size,output_file:output.file,final_url:final.url};
     }
     const body=await boundedResponse(response,stop);
-    // Match the existing Document access predicates. Cloudflare's background
-    // jsd script and ordinary Sign in navigation are not main access barriers.
-    const cloudflare=/<title\b[^>]*>\s*(?:Just a moment|Attention Required)/i.test(body)
-      || /\b_cf_chl_opt\s*=\s*\{/.test(body)
-        && /\/cdn-cgi\/challenge-platform\/[^\s"'<>]*orchestrate\/chl_page\//i.test(body);
-    const login=/<title\b[^>]*>\s*(?:sign in|log in|login required)/i.test(body)
-      || /<input\b[^>]*\b(?:type|name)\s*=\s*["']?password\b/i.test(body);
-    const access=cloudflare?'challenge':
-      [401,403,407].includes(response.status)?'authorization':
-      login?'login':null;
+    // Only native response facts are assigned here. The existing bounded HTML
+    // carrier is classified by Python's shared contextual response parser.
+    const access=response.headers.get('cf-mitigated')?.trim().toLowerCase()==='challenge'?'challenge':
+      [401,403,407].includes(response.status)?'authorization':null;
     return {outcome:'response',kind:contentType.includes('html')?'response':'failed',
       response:{url:final.url,content_type:contentType,status:response.status,body,access}};
   }catch(error) {

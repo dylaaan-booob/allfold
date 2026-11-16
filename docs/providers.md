@@ -220,7 +220,7 @@ eligibility and First public rules described above.
 
 ## HTTP and Browser boundary
 
-Run, necessary collection and standalone OpenAlex share the [Provider HTTP policy](http.md#journal-run-and-native-preprint-apis). Recoverable connection failures and temporary HTTP responses can show **Retrying**. An active dependency cooldown can show **Waiting**. Retry-After is enforced across clients for the same origin and authentication context. A request whose remaining budget is shorter ends while the cooldown stays active. A verification page fails its current request; a later independent identifier can still use the client. Current verification-page predicates remain unchanged. Unexpected HTML and invalid envelopes report failures. Only an adapter-confirmed exact no-match is empty; raw service 404 is a failure. arXiv uses three-second pacing, and bioRxiv and medRxiv share their API host pacing.
+Run, necessary collection and standalone OpenAlex share the [Provider HTTP policy](http.md#journal-run-and-native-preprint-apis). Recoverable connection failures and temporary HTTP responses can show **Retrying**. An active dependency cooldown can show **Waiting**. Retry-After is enforced across clients for the same origin and authentication context. A request whose remaining budget is shorter ends while the cooldown stays active. A verification page fails its current request; a later independent identifier can still use the client. Classification uses the current mitigation header or contextual verification/login structure; an ordinary 202, CAPTCHA word or background resource is not Cloudflare evidence. Unexpected HTML and invalid envelopes report failures. Only an adapter-confirmed exact no-match is empty; raw service 404 is a failure. arXiv uses three-second pacing, and bioRxiv and medRxiv share their API host pacing.
 
 Keep/Import and active Enrich have no UI, HTTP or native dispatch path. Their
 Local API, attachment communication, Translator sandbox and generated Runtime
@@ -230,7 +230,7 @@ viewport without selecting or focusing them. Production collection combines
 Date/Abstract, PDF clues and necessary APIs. Public Download already uses shared
 Session/original-response transfer and local-file services; see [body downloads](body-downloads.md).
 
-An Imperva response with the Incapsula incident marker and a single CAPTCHA code (`edet=12`) waits for the user to complete verification in Browser. The existing task resumes when the article loads in the same tab. The Cloudflare Solver is skipped for this challenge. Other recognized Imperva denials are reported as restricted access, including when they return HTTP 200.
+An Imperva response with the Incapsula incident marker and a single CAPTCHA code (`edet=12`) waits for the user to complete verification in Browser. The existing task resumes when the article loads in the same tab. This Imperva challenge remains manual; only independently identified current Cloudflare controls enter the tab-owned Solver. Other recognized Imperva denials are reported as restricted access, including when they return HTTP 200.
 
 ## Current storage and manual acceptance
 

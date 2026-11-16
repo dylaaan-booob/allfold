@@ -61,7 +61,7 @@ function drainDisconnectedPython() {
   });
 }
 const {createCloudflareSolver}=require('./browser/cloudflare-dispatch.cjs');
-const dispatchCloudflare=createCloudflareSolver({getBrowser:()=>browser,operations,send,isBridgeReady:()=>bridgeReady});
+const dispatchCloudflare=createCloudflareSolver({getBrowser:()=>browser,send,isBridgeReady:()=>bridgeReady});
 
 function solveCloudflare(doc,options) {return dispatchCloudflare(doc,options);}
 async function executeControl(message,signal) {
@@ -92,7 +92,7 @@ async function execute(message) {
   if(operations.has(message.id))throw Error('Duplicate native Request ID');
   if(operations.size && (control || [...operations.values()].some(value=>CONTROL_ACTIONS.has(value.action))))
     throw Error('Concurrent dispatch conflicts with an active native control operation');
-  const current={id:message.id,action:message.action,controller:new AbortController(),challenges:new Map()};
+  const current={id:message.id,action:message.action,controller:new AbortController()};
   operations.set(current.id,current);
   current.settlement=Promise.resolve().then(async()=>{
     if(control) {
@@ -182,7 +182,6 @@ async function executeOperation(message,current) {
           return await (message.action==='wos_query'?wosQuery:wosExport)(browser,message.data,{signal:controller.signal,progress});
         } else throw Error('Unsupported Electron operation');
       } finally {
-        for(const challenge of current.challenges.values())try{challenge.cancel();}catch(_){log('warn','task_cleanup_failed',context);}
         resultPageId=browser.taskTab?.id;
       }
     });
@@ -216,6 +215,7 @@ async function startPython(config,cdpURL) {
   });
   python.on('error',()=>{dialog.showErrorBox('Allfold','Python could not start');app.quit();});
   python.on('exit',(code,signal)=>{
+    dispatchCloudflare.drained();
     stopOperations();
     if (!exiting) log('error','python_exited',{exit_code:code});
     if (!exiting && base) dialog.showErrorBox('Allfold','Python exited. Inspect the terminal output before restarting.');
@@ -232,6 +232,7 @@ async function startPython(config,cdpURL) {
       output+=bytes.toString('utf8');
       const match=output.match(/^ELECTRON_PORT=(\d+)\n/);
       if(match){clearTimeout(timer);resolve(Number(match[1]));}
+      if(output.includes('ELECTRON_SOLVERS_DRAINED\n'))dispatchCloudflare.drained();
       if(output.length>128){clearTimeout(timer);reject(Error('Invalid Python bootstrap'));}
     });
   });
@@ -256,12 +257,7 @@ async function connect() {
         else if(message.type === 'cancel') {
           pendingOperation(message)?.controller.abort();
         }
-        else if(message.type === 'solve_cloudflare_result') {
-          const current=pendingOperation(message),challenge=current?.challenges.get(message.challenge_id);
-          if(!challenge || current.controller.signal.aborted)return;
-          if(!message.data || typeof message.data!=='object')throw Error('Invalid challenge result');
-          challenge.resolve(message.data);
-        }
+        else if(['solve_cloudflare_result','cloudflare_progress'].includes(message.type))dispatchCloudflare.receive(message);
         else if(message.type === 'verify_recovery_authority_result')settleRecoveryAuthority(pendingOperation(message),message);
         else if(message.type === 'shutdown_ready') {
           // Python has processed the final result and can now exit gracefully.
@@ -274,6 +270,7 @@ async function connect() {
     });
     socket.addEventListener('close',()=>{
       bridgeReady=false;
+      browser?.stopChallenges();dispatchCloudflare.stop();
       stopOperations();
       if(!exiting) {
         log('error','bridge_disconnected');

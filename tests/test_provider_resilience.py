@@ -284,7 +284,7 @@ def test_api_challenge_does_not_stop_a_later_independent_identifier_request():
         calls.append(request)
         if request.url.path.endswith('/W1'):
             return httpx.Response(202, headers={'content-type': 'text/html'},
-                text='<html>Making sure you are not a bot! Protected by Anubis</html>')
+                text='<html><title>Making sure you’re not a bot!</title><script id="anubis_challenge" type="application/json">{}</script></html>')
         return httpx.Response(200, json={'id': 'https://openalex.org/W2'})
     with DiscoveryClient('openalex', transport=httpx.MockTransport(response), interval=0) as client:
         with pytest.raises(DiscoveryError, match='Anubis'):
@@ -447,3 +447,42 @@ def test_arxiv_wrong_xml_document_is_a_supplement_failure():
         text='<response><version>1</version></response>')), interval=0) as client:
         with pytest.raises(DiscoveryError, match='Atom feed'):
             client.lookup('arxiv', '2201.12345')
+
+
+@pytest.mark.parametrize('status,body,headers,expected', [
+    (200, '<html><article>captcha, Anubis and access denied research</article></html>', {}, 'protocol'),
+    (202, '<html><p>Processing</p></html>', {}, 'remote_service'),
+    (202, '<html><p>captcha example</p></html>', {}, 'remote_service'),
+    (200, '<html><script src="/cdn-cgi/challenge-platform/scripts/jsd/main.js"></script></html>', {}, 'protocol'),
+    (200, '<html><p>Please wait</p></html>', {'cf-mitigated': 'challenge'}, 'access'),
+    (200, '<html><title>Verify you are human</title><iframe src="https://newassets.hcaptcha.com/captcha"></iframe></html>', {}, 'access'),
+])
+def test_api_access_classification_uses_current_response_evidence(status, body, headers, expected):
+    from allfold.providers.provider_http import ProviderFailure
+    def response(request):
+        if request.url.path.endswith('/W2'):
+            return httpx.Response(200, json={'id': 'https://openalex.org/W2'})
+        return httpx.Response(status, headers={'content-type': 'text/html', **headers}, text=body)
+    with DiscoveryClient('openalex', transport=httpx.MockTransport(response), interval=0) as client:
+        with pytest.raises(ProviderFailure) as failed:
+            client.request('/works/W1', {})
+        assert failed.value.kind == expected
+        assert client.request('/works/W2', {}) == {'id': 'https://openalex.org/W2'}
+
+
+@pytest.mark.parametrize('body', [
+    '<title>Verify you are human</title><iframe src="https://newassets.hcaptcha.com/captcha"></iframe>',
+    '<title>Making sure you’re not a bot!</title><script id="anubis_challenge" type="application/json">{}</script>',
+])
+def test_openalex_403_verification_does_not_latch_authorization_failure(body):
+    from allfold.providers.openalex import OpenAlexRequestError
+    calls = []
+    def response(request):
+        calls.append(request)
+        return (httpx.Response(403, headers={'content-type': 'text/html'}, text=body) if len(calls) == 1
+                else httpx.Response(200, json={'id': 'https://openalex.org/W2'}))
+    with OpenAlexClient(transport=httpx.MockTransport(response), interval=0) as client:
+        with pytest.raises(OpenAlexRequestError, match='access limited'):
+            client.get_work_by_doi('10.5555/one')
+        assert client.get_work_by_doi('10.5555/two') == {'id': 'https://openalex.org/W2'}
+    assert len(calls) == 2

@@ -19,6 +19,7 @@ const {PAGE_RECOVERY_MS,reportRecovery,recoveryStop,pageRecoveryDetails,origin,l
 const {sharedSessionEvents}=require('./session-events.cjs');
 const {operationAssociation}=require('./page-association.cjs');
 const {PageBudget}=require('./page-budget.cjs');
+const {PageChallenge}=require('./page-challenge.cjs');
 
 function chromiumUserAgent(userAgent, productName) {
   return userAgent.split(' ').filter(token => !token.startsWith('Electron/')
@@ -50,12 +51,19 @@ class BrowserRuntime {
     this.cooldown=this.sessionEvents.cooldown;
     this.sessionEvents.subscribe('beforeRequest',details=>{
       const tab=this.tabs.get(details.webContentsId);
-      if(details.resourceType==='mainFrame')tab?.navigation.observeRequestStart(details);
+      if(details.resourceType==='mainFrame' && tab){tab.mainRequest=details.id;tab.navigation.observeRequestStart(details);}
       if(tab?.taskOwner && !tab.pageAttempt?.retired) {
         const frame=details.frame;
         this.sessionEvents.associateRequest(details.id,{...tab.taskOwner.association,
           page_id:tab.id,attempt_id:tab.pageAttempt?.id ?? tab.taskOwner.association.request_id,process_id:frame?.processId,frame_token:frame?.frameToken,
           document_id:frame?tab.documentIds.get(frame.frameToken):undefined,navigation_generation:tab.documentGeneration});
+      }
+    });
+    this.sessionEvents.subscribe('headersReceived',details=>{
+      const tab=this.tabs.get(details.webContentsId);
+      if(tab && details.resourceType==='mainFrame' && tab.mainRequest===details.id) {
+        const values=Object.entries(details.responseHeaders || {}).filter(([key])=>key.toLowerCase()==='cf-mitigated').flatMap(([,value])=>value);
+        tab.cfMitigated=values.length===1 && values[0].trim().toLowerCase()==='challenge';
       }
     });
     this.sessionEvents.subscribe('errorOccurred',details=>{
@@ -120,7 +128,7 @@ class BrowserRuntime {
       if(tab.pageAttempt?.retired || contents.isDestroyed() || tab.closing)return {action:'deny'};
       if(tab.bodyAction && !tab.bodyAction.acceptPopup(url,frameName))return {action:'deny'};
       const popupOwner=tab.taskOwner;
-      if(popupOwner && !this.ownsPage(popupOwner,tab.id) || !popupOwner && tab.resourceOwner.kind!=='user')return {action:'deny'};
+      if(popupOwner && !this.ownsPage(popupOwner,tab.id) || !popupOwner && tab.resourceOwner.kind!=='user' && !(tab.resourceOwner.kind==='access' && tab.resourceOwner.valid))return {action:'deny'};
       if (url !== 'about:blank') {
         try {browserURL(url);} catch (_) {return {action:'deny'};}
       }
@@ -146,7 +154,7 @@ class BrowserRuntime {
     contents.on('render-process-gone', (_event, details) => {
       if(this.destroying || tab.pageAttempt?.retired)return;
       if(tab.navigation.current)tab.navigation.current.failure=new BrowserFailure('navigation','renderer_gone');
-      tab.navigation.finish();
+      tab.challenge?.cancel();tab.navigation.finish();
       tab.status=null;tab.paperDocument=null;tab.documentGeneration++;tab.documentIds.clear();
       tab.error={kind:'renderer',reason:details.reason,exitCode:details.exitCode};
       this.reportPage('warn','page_renderer_gone',tab,{reason:details.reason,exit_code:details.exitCode});
@@ -201,6 +209,7 @@ class BrowserRuntime {
     contents.on('did-start-navigation',(event,url,inPlace,main)=>{
       if(event.isMainFrame ?? main) {
         tab.documentGeneration++;tab.documentIds.clear();tab.paperDocument=null;
+        if(!(event.isSameDocument ?? inPlace)){tab.cfMitigated=false;tab.mainRequest=null;tab.challenge?.navigating();}
         publishLoading();
       }
     });
@@ -216,7 +225,7 @@ class BrowserRuntime {
       const access=tab.resourceOwner?.kind==='access'?tab.resourceOwner:null;
       if(access){access.valid=false;if(this.accessContexts.get(access.key)===access)this.accessContexts.delete(access.key);
         this.cleanupStep(()=>this.events.emit('access-pages-closed',[tab.id]),tab.taskOwner);}
-      tab.destroyedCleanup=this.sessionEvents.waitForDownloads(contents).then(()=>resource.release());
+      tab.destroyedCleanup=Promise.all([this.sessionEvents.waitForDownloads(contents),tab.challenge?.close()]).then(()=>resource.release());
       if(this.paperPages.get(tab.paperKey)===tab)this.paperPages.delete(tab.paperKey);
       if (tab.taskOwner?.taskTab === tab)tab.taskOwner.taskTab=null;
       for(const page of this.tabs.values()) {
@@ -238,6 +247,12 @@ class BrowserRuntime {
     if(opener?.association)this.reportPage('info','page_associated',tab);
     if(options.present!==false)this.select(tab);
     else this.publish();
+    tab.challenge=this.runInOperation(null,()=>new PageChallenge({tab,owner,probe:signal=>this.accessState(tab,{signal,independent:true}),
+      solve:options=>this.solveCloudflare?.(tab,options),changed:()=>{
+        this.publish();
+        if(tab.challenge?.state)this.reportPage('info','page_access',tab,{access_state:tab.challenge.state,challenge_type:tab.challenge.kind || 'unknown'});
+      },
+      report:()=>this.reportPage('warn','cloudflare_solver_failed',tab,{code:'solver_failed'})}));
     this.events.emit('tab-created',null,tab);
     opener?.bodyAction?.addPopup(tab);
     return tab;
@@ -406,7 +421,7 @@ class BrowserRuntime {
       tabs:[...this.tabs.values()].filter(tab=>!tab.pageAttempt?.retired).map(tab => {
       const wc=tab.view.webContents;
       return {id:tab.id,title:wc.getTitle() || 'New tab',url:wc.getURL(),loading:wc.isLoadingMainFrame(),
-        busy:this.pageBusy(tab),managed:tab.managed,
+        busy:this.pageBusy(tab),managed:tab.managed,challenge:tab.challenge?.state || null,challengeKind:tab.challenge?.kind || null,
         association:this.pageAssociation(tab.id),openerId:tab.opener?.id || null,
         error:tab.error?{kind:tab.error.kind,code:tab.error.code,reason:tab.error.reason}:null,
         back:wc.navigationHistory.canGoBack(),forward:wc.navigationHistory.canGoForward()};
@@ -515,7 +530,7 @@ class BrowserRuntime {
   get taskActive() {return !!this.operation?.taskTab;}
   async runTask(signal,data,run) {
     if(this.destroying)throw new BrowserFailure('navigation','canceled');
-    const owner={signal,phase:'loading',solverDocuments:new Map(),association:operationAssociation(data),
+    const owner={signal,phase:'loading',association:operationAssociation(data),
       taskTab:null,navigationAbort:null};
     this.operations.add(owner);
     try {
@@ -631,14 +646,13 @@ class BrowserRuntime {
     owner.phase='business';
     for(const tab of this.tabs.values())if(tab.navigation.current?.owner===owner)tab.navigation.finish();
   }
-  async inspectPage(tab,{signal,deadline=Infinity,stage='navigation',step='verification',extraWaiting,onWaiting,automaticDeadline=deadline,solveCloudflare=this.solveCloudflare,
-    solverDocuments=this.operation?.solverDocuments || new Map(),navigationChain}={}) {
+  async inspectPage(tab,{signal,deadline=Infinity,stage='navigation',step='verification',extraWaiting,onWaiting,automaticDeadline=deadline,navigationChain}={}) {
     checkCanceled(signal);this.checkTaskResources();
     if(navigationChain && tab.navigation.current?.chain!==navigationChain)throw new BrowserFailure('navigation','document_changed');
     tab.navigation.check();
     if(tab.view.webContents.isLoadingMainFrame() || (tab.navigation.current?.active && !tab.navigation.current.loaded))
       return {doc:null,waiting:false,loading:true};
-    try {return await inspectPage({signal,deadline,automaticDeadline,stage,step,solverDocuments,onWaiting,
+    try {return await inspectPage({signal,deadline,automaticDeadline,stage,step,onWaiting,
       authentication:()=>this.checkAuthentication(tab),inspectAuthentication:()=>this.inspectAuthentication(tab),
       probe:()=>this.accessState(tab,{signal,deadline}),current:doc=>{
         tab.navigation.check();
@@ -648,9 +662,8 @@ class BrowserRuntime {
       },
       extraWaiting:doc=>!!extraWaiting?.(doc) || !!(tab.authContext?.active && tab.authContext.institution
         && new URL(doc.url).origin!=='https://ds.carsi.edu.cn'),
-      solveCloudflare:this.taskActive && this.ownsPage(this.operation,tab.id)?solveCloudflare:undefined,
-      onSolverFailure:()=>this.reportPage('warn','cloudflare_solver_failed',tab,{code:'solver_failed'})}).then(result=>{
-        if(result.waiting && !result.loading && (result.recheck || result.diagnostic || Number.isInteger(result.doc?.status)))
+      }).then(result=>{
+        if(result.waiting && !result.loading && (result.diagnostic || Number.isInteger(result.doc?.status)))
           tab.navigation.blockReplay();
         return result;
       });
@@ -662,10 +675,9 @@ class BrowserRuntime {
     }
   }
   async waitForPage(tab,{signal,deadline=Infinity,onWaiting,extraWaiting,finish=true,...options}={}) {
-    const solverDocuments=this.operation?.solverDocuments || new Map();
     const chain=options.navigationChain || tab.navigation.current?.chain;
     try {
-      const doc=await waitForPage(()=>this.inspectPage(tab,{signal,deadline,extraWaiting,onWaiting,solverDocuments,...options,navigationChain:chain}),
+      const doc=await waitForPage(()=>this.inspectPage(tab,{signal,deadline,extraWaiting,onWaiting,...options,navigationChain:chain}),
         {signal,deadline,onWaiting,...options});
       if(finish && tab.navigation.current?.chain===chain)this.finishPageLoad(tab);
       return doc;
@@ -742,7 +754,7 @@ class BrowserRuntime {
     }
   }
 
-  async navigate(url,{tab=this.taskTab,signal=this.operation?.signal,deadline=Infinity,onWaiting,solveCloudflare=this.solveCloudflare}={}) {
+  async navigate(url,{tab=this.taskTab,signal=this.operation?.signal,deadline=Infinity,onWaiting}={}) {
     const owner=this.operation;
     if(!this.operations.has(owner))throw new BrowserFailure('navigation','canceled');
     await waitFor(()=>this.ready,signal,deadline);
@@ -770,7 +782,7 @@ class BrowserRuntime {
       chain=tab.navigation.current.chain;
       const navigation=await (tab.authContext?.active
         ?Promise.race([loading,tab.authContext.fatal]):loading);
-      const doc=await this.waitForPage(tab,{signal:bounded,deadline,finish:false,navigationChain:navigation.chain,solveCloudflare,
+      const doc=await this.waitForPage(tab,{signal:bounded,deadline,finish:false,navigationChain:navigation.chain,
         onWaiting:(waiting,diagnostic)=>{if(waiting)onWaiting?.(diagnostic);}});
       this.reportPage('info','navigation_ready',tab,{stage:'navigation',code:'page_ready',status:doc.status});
       return doc;
@@ -788,7 +800,7 @@ class BrowserRuntime {
   async readDocument(tab=this.taskTab,action='binding',options={}) {
     checkCanceled(options.signal);
     if(!tab || !this.tabs.has(tab.id))throw new BrowserFailure('navigation','page_closed');
-    tab.navigation.check();
+    if(!options.independent)tab.navigation.check();
     const frame=tab.view.webContents.mainFrame;
     if(frame.url.length>4096)throw new BrowserFailure('navigation','page_probe_unconfirmed');
     const binding={pageId:tab.id,processId:frame.processId,frameToken:frame.frameToken,
@@ -798,7 +810,7 @@ class BrowserRuntime {
     const result=await this.documents.call(binding,action,options.args || {},options);
     if(action==='extract'||action==='pdf')return result;
     checkCanceled(options.signal);
-    tab.navigation.check();
+    if(!options.independent)tab.navigation.check();
     if(!this.documentCurrent(binding))throw new BrowserFailure('navigation','document_changed');
     tab.documentIds.set(frame.frameToken,result.documentId);
     return {...binding,...result,status:tab.status};
@@ -814,7 +826,9 @@ class BrowserRuntime {
       const url=new URL(child.url);
       return url.origin==='https://challenges.cloudflare.com' && url.pathname.startsWith('/cdn-cgi/challenge-platform/');
     });
-    return {...doc,cloudflareFrame};
+    const access={...doc,cloudflareFrame,cfMitigated:tab.cfMitigated===true};
+    if(!options.independent)tab.challenge?.observe(access);
+    return access;
   }
   async extractPaperMetadata(data,options={}) {
     if(typeof data?.wantAbstract!=='boolean')throw new BrowserFailure('navigation','document_operation_failed');
@@ -1044,8 +1058,9 @@ class BrowserRuntime {
   async closePage(tab,reason='task_complete') {
     if(tab.closing)return tab.closing;
     const contents=tab.view.webContents;
+    const challengeCleanup=tab.challenge?.close();
     tab.closing=(async()=>{
-      await this.sessionEvents.waitForDownloads(contents);
+      await Promise.all([this.sessionEvents.waitForDownloads(contents),challengeCleanup]);
       if(contents.isDestroyed())return;
       const destroyed=new Promise(resolve=>contents.once('destroyed',resolve));
       tab.closeReason=reason;this.cleanupStep(()=>this.reportPage('info','page_close_requested',tab,{reason}),tab.taskOwner);
@@ -1095,7 +1110,8 @@ class BrowserRuntime {
     this.failedCreations.add(cleanup);owner && (owner.creationCleanup ??= new Set()).add(cleanup);
     cleanup.then(()=>{this.failedCreations.delete(cleanup);owner?.creationCleanup?.delete(cleanup);},()=>{});
   }
-  stopAdmission() {this.destroying=true;this.pageBudget.stop();}
+  stopChallenges() {for(const tab of this.tabs.values())void tab.challenge?.close();}
+  stopAdmission() {this.destroying=true;this.pageBudget.stop();this.stopChallenges();}
   close() {
     if(this.closing)return this.closing;
     this.stopAdmission();

@@ -71,7 +71,8 @@ evidence for that workflow. Diagnostic packages are local downloads; sharing the
 is your choice. See [local history and
 diagnostics](docs/logging.md) for retention, privacy and evidence limits.
 
-Supported Cloudflare challenges use the existing Solver; hCaptcha, Imperva CAPTCHA
+Every Allfold Browser tab can handle supported Cloudflare challenges, including
+user pages, retained Services and popups. Normal pages do not start Solver; hCaptcha, Imperva CAPTCHA
 and MFA require manual verification. Current fixed Document probes support combined
 Date/Abstract/PDF-clue collection; [Document access](docs/browser-documents.md)
 records current reading limits and planned changes. Necessary API/Preprint branches

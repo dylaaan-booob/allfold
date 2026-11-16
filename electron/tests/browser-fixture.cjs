@@ -3,7 +3,6 @@
 // NavigationRecovery and Session hooks are exercised through BrowserRuntime.runTask.
 const {inspectPage,waitForPage}=require('../src/browser/browser-navigation.cjs');
 function attachBrowserMechanisms(browser) {
-  const solverDocuments=new Map();
   browser.retainAccessPage=tab=>{tab.resourceOwner={kind:'access'};};
   browser.loanWorkflowPage=(tab,document)=>{tab.workflowLoan=document;};
   browser.bindTaskPage=function(tab,signal){this.taskTab=tab;this.taskActive=true;tab.taskSignal=signal;};
@@ -17,11 +16,10 @@ function attachBrowserMechanisms(browser) {
   browser.enterBusiness=()=>{for(const tab of browser.tabs?.values() || [])browser.finishPageLoad(tab);};
   browser.inspectPage=async(tab,options={})=>{
     if(tab.view.webContents.isLoadingMainFrame())return {loading:true};
-    return inspectPage({...options,solverDocuments,
+    return inspectPage({...options,
       probe:async()=>({...await browser.documentBinding(tab),markers:{},...await browser.accessState?.(tab)}),current:doc=>browser.documentCurrent(doc),
       authentication:()=>browser.checkAuthentication?.(tab) || false,
-      inspectAuthentication:()=>browser.inspectAuthentication?.(tab) || {waiting:false},
-      solveCloudflare:browser.solveCloudflare});
+      inspectAuthentication:()=>browser.inspectAuthentication?.(tab) || {waiting:false}});
   };
   browser.waitForPage=async(tab,options)=>{
     try{return await waitForPage(()=>browser.inspectPage(tab,options),options);}

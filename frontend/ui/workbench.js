@@ -182,7 +182,9 @@ window.allfoldWorkbench=(()=>{
     $('browser-back').disabled=locked || !selected?.back;$('browser-forward').disabled=locked || !selected?.forward;
     $('browser-reload').disabled=!selected || Boolean(selected.busy);
     $('browser-message').textContent=selected?.error?.kind==='load'?`页面加载失败（${selected.error.code || 'load_failed'}），请刷新。`:
-      selected?.error?.kind==='renderer'?'页面渲染进程已退出，请刷新。':selected?.loading?'正在加载…':'';
+      selected?.error?.kind==='renderer'?'页面渲染进程已退出，请刷新。':selected?.loading?'正在加载…':({waiting:'正在等待验证…',handling:'正在处理 Cloudflare…',manual:({mfa:'需要完成 MFA 验证',institution:'需要完成机构认证',login:'需要登录',hcaptcha:'需要完成 hCaptcha 验证',
+          imperva:'需要完成 Imperva 验证'})[selected?.challengeKind] || '需要人工验证',
+        recovered:'访问已恢复',failed:'访问受阻，请检查当前页面'})[selected?.challenge] || '';
     $('browser-empty').hidden=Boolean(selected);
     $('browser-status').textContent=`BROWSER · ${tabs.length} PAGES`;
     window.workspaceSearch.refresh();

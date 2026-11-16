@@ -115,7 +115,7 @@ app.whenReady().then(async()=>{
       if(kind==='form-replaced')assert.match(req.headers.cookie || '',/fixture_session=kept/);
       if(req.method!=='POST'&&!['get-form','get-replaced'].includes(kind)){res.writeHead(200,{'content-type':'text/html'});res.end('<title>Craft GET refused</title>');return;}
       if(['action-blocked','action-html'].includes(kind)||kind?.startsWith('action-challenge')) {
-        res.writeHead(kind==='action-blocked'?403:200,{'content-type':'text/html'});
+        res.writeHead(kind==='action-blocked'?403:200,{'content-type':'text/html',...(kind.startsWith('action-challenge')?{'cf-mitigated':'challenge'}:{})});
         res.end(kind.startsWith('action-challenge')?'<title>Just a moment...</title>':'<title>Body unavailable</title>');return;
       }
       res.writeHead(200,{'content-type':'application/pdf',...(kind==='attachment'?{'content-disposition':'attachment; filename="body.pdf"'}:{})});
@@ -134,7 +134,7 @@ app.whenReady().then(async()=>{
     if(url.pathname.startsWith('/science/article/pii/')) {
       if(url.pathname.endsWith('/pdfft')) {
         if(kind?.startsWith('sciencedirect-reader')) {
-          res.writeHead(kind==='sciencedirect-reader-http-error'?500:200,{'content-type':'text/html'});
+          res.writeHead(kind==='sciencedirect-reader-http-error'?500:200,{'content-type':'text/html',...(kind==='sciencedirect-reader-challenge'?{'cf-mitigated':'challenge'}:{})});
           if(kind==='sciencedirect-reader-challenge'){res.end('<title>Just a moment...</title>');return;}
           if(['sciencedirect-reader-reload','sciencedirect-reader-loop'].includes(kind)) {
             const step=Number(url.searchParams.get('reader')||'0');

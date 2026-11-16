@@ -111,7 +111,8 @@
         "recovery_succeeded",
         "recovery_exhausted",
         "service_cooldown_started",
-        "service_cooldown_ended"
+        "service_cooldown_ended",
+        "page_access"
       ]
     },
     "action": {
@@ -325,7 +326,10 @@
         "unverified_official_page",
         "unverified_results_page",
         "verification_page",
-        "write_stopped"
+        "write_stopped",
+        "checkbox_ambiguous",
+        "checkbox_not_interactable",
+        "target_closed"
       ]
     },
     "net_error": {
@@ -574,6 +578,29 @@
         "failed",
         "cancelled"
       ]
+    },
+    "access_state": {
+      "type": "string",
+      "enum": [
+        "waiting",
+        "handling",
+        "manual",
+        "recovered",
+        "failed"
+      ]
+    },
+    "challenge_type": {
+      "type": "string",
+      "enum": [
+        "cloudflare",
+        "hcaptcha",
+        "imperva",
+        "mfa",
+        "institution",
+        "login",
+        "verification",
+        "unknown"
+      ]
     }
   },
   "optional_detail_events": [
@@ -618,6 +645,11 @@
     "service_cooldown_ended": [
       "recovery_action",
       "stage"
+    ],
+    "page_access": [
+      "page_id",
+      "access_state",
+      "challenge_type"
     ]
   },
   "recovery_evidence_fields": [
