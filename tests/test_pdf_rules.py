@@ -328,6 +328,41 @@ def test_encoded_doi_octets_are_preserved_and_literal_percent_is_escaped_once():
     assert candidate.url == 'https://link.springer.com/content/pdf/10.1234%2FAbC%2fDef%FF%2F100%25.pdf'
 
 
+@pytest.mark.parametrize('host,platform,article_prefix,article_end,pdf_prefix,pdf_end', [
+    ('iopscience.iop.org', 'iop', '/article/', '/meta', '/article/', '/pdf'),
+    ('journals.aps.org', 'aps', '/prl/abstract/', '', '/prl/pdf/', ''),
+    ('ascopubs.org', 'asco', '/doi/full/', '', '/doi/pdfdirect/', ''),
+    ('ahajournals.org', 'aha', '/doi/reader/', '', '/doi/pdf/', ''),
+    ('journals.healio.com', 'healio', '/doi/epdf/', '', '/doi/pdf/', ''),
+    ('journals.uchicago.edu', 'chicago', '/doi/full/', '', '/doi/pdf/', ''),
+])
+@pytest.mark.parametrize('doi_suffix,url_suffix', [
+    ('AbC%2FDef', 'AbC%2fDef'),
+    ('AbC/Def', 'AbC%2fDef'),
+    ('AbC%2FDef', 'AbC/Def'),
+    ('AbC%FFDef', 'AbC%FFDef'),
+])
+def test_article_doi_transform_compares_equal_octets_without_rewriting_the_url(
+        host, platform, article_prefix, article_end, pdf_prefix, pdf_end, doi_suffix, url_suffix):
+    origin = 'https://' + host
+    article = origin + article_prefix + '10.1234/' + url_suffix + article_end + '?mode=Keep'
+    paper = replace(target(host, platform, article_url=article), doi='10.1234/' + doi_suffix)
+    candidate, = iter_p2_candidates(paper)
+    assert candidate.target is paper
+    assert candidate.url == origin + pdf_prefix + '10.1234/' + url_suffix + pdf_end + '?mode=Keep'
+
+
+@pytest.mark.parametrize('suffix,other_suffix', [
+    ('AbC%FFDef', 'AbC%FEDef'),
+    ('AbC%2FDef', 'AbC%252FDef'),
+    ('AbC%20Def', 'AbC%09Def'),
+])
+def test_article_doi_transform_does_not_collapse_different_encoded_octets(suffix, other_suffix):
+    article = 'https://ahajournals.org/doi/reader/10.1234/' + other_suffix
+    paper = replace(target('ahajournals.org', 'aha', article_url=article), doi='10.1234/' + suffix)
+    assert list(iter_p2_candidates(paper)) == []
+
+
 def test_known_fields_do_not_reactivate_historical_or_non_pdf_services():
     for rule in ('R000', 'R021', 'R027', 'R062', 'R063', 'R072', 'API01', 'API05', 'API10', 'API11', 'API14', 'API17'):
         with pytest.raises(ValueError):

@@ -411,7 +411,11 @@ def _article_transform(target: PdfTarget, platform: str | None, inputs: PdfRuleI
                 volume, key = matched.groups()
                 rule, converted = 'R036', f'/v{volume}/{key}/{key}.pdf'
         if converted:
-            if route_doi and target.identity_doi and valid_doi(unquote(route_doi)) != target.identity_doi:
+            # Compare one decoded layer on both sides without losing distinct
+            # non-UTF-8 octets. The request still keeps its original spelling.
+            if (route_doi and target.identity_doi
+                    and unquote(route_doi, errors='surrogateescape').casefold()
+                    != unquote(target.identity_doi, errors='surrogateescape').casefold()):
                 return None
             # Preserve query spelling/order, filename case and existing escapes.
             # Fragment is not part of a request and is not copied to candidates.
