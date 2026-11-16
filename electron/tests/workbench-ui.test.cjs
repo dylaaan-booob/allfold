@@ -133,3 +133,15 @@ test('one grouped list preserves Page identities, scope and managed toolbar cont
   assert.equal(list.children.length,1);assert.equal(list.children[0].children[1].children[0].dataset.pageId,'1');
   assert.equal(f.document.getElementById('browser-reload').disabled,true);
 });
+
+test('Browser status belongs to the selected page and distinguishes verification from business tasks',async()=>{
+  const f=fixture();await f.window.allfoldWorkbench.show();
+  const page={id:1,url:'https://fixture.example',loading:false,challenge:'waiting',challengeKind:'cloudflare'};
+  const other={id:2,url:'https://other.example',loading:false,challenge:'manual',challengeKind:'mfa'};
+  f.setState({selected:1,taskPageId:2,taskRunning:true,tabs:[page,other]});
+  assert.equal(f.document.getElementById('browser-message').textContent,'正在等待验证…');
+  f.setState({selected:2,taskPageId:1,taskRunning:true,tabs:[page,other]});
+  assert.equal(f.document.getElementById('browser-message').textContent,'需要完成 MFA 验证');
+  f.setState({selected:1,tabs:[{...page,challenge:'recovered'}]});
+  assert.equal(f.document.getElementById('browser-message').textContent,'访问已恢复');
+});

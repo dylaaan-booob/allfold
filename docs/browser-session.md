@@ -35,6 +35,14 @@ or a private Electron Response field. Terminal native events remove request-ID
 references; cancellation and failed dispatch remove unused marker registrations.
 No URL, selected tab, Service label or request ordering supplies ownership.
 
+Main-frame `cf-mitigated: challenge` evidence is associated with its native Page
+and request ID through this same event owner, then reset on a new navigation.
+Subresources never assign that state to the whole page. Every managed Page has
+an independent [challenge observer](browser-documents.md#solver-recovery-and-terminal-ownership),
+including idle retained targets and user popups. Solver uses only this Session's
+verified Page/CDP target and never borrows a pending business request or credentials.
+Closing a page waits for its solver cleanup as well as native downloads/destruction.
+
 One `BrowserCooldown` belongs to this Session lifetime. Main-frame responses and
 explicitly associated requests observe actual response origins: 429 uses valid
 Retry-After or the existing one-second default; 503 requires valid Retry-After.

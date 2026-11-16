@@ -8,7 +8,6 @@ import asyncio
 import hmac
 import re
 import threading
-import time
 from collections.abc import Callable
 from concurrent.futures import Future
 from dataclasses import dataclass, field
@@ -42,16 +41,29 @@ class _Operation:
     context: dict
     verify_recovery: Callable[[], None] | None
     stop: threading.Event = field(default_factory=threading.Event)
-    challenges: dict[str, threading.Event] = field(default_factory=dict)
     recovery_check: asyncio.Task | None = None
 
     def stop_callbacks(self) -> None:
         self.stop.set()
-        for stop in self.challenges.values():
-            stop.set()
 
     def envelope(self, message_type, **fields) -> dict:
         return {"type": message_type, "id": self.id, "action": self.action, **fields}
+
+
+@dataclass
+class _Challenge:
+    page_id: int
+    target_id: str
+    challenge_id: str
+    stop: threading.Event = field(default_factory=threading.Event)
+
+    def matches(self, message: dict) -> bool:
+        return (message.get('page_id') == self.page_id and message.get('target_id') == self.target_id
+                and message.get('challenge_id') == self.challenge_id)
+
+    def envelope(self, kind: str, data: dict) -> dict:
+        return {'type': kind, 'page_id': self.page_id, 'target_id': self.target_id,
+                'challenge_id': self.challenge_id, 'data': data}
 
 
 class ElectronBridge:
@@ -63,12 +75,12 @@ class ElectronBridge:
         self._socket: WebSocket | None = None
         self._loop: asyncio.AbstractEventLoop | None = None
         self._pending: dict[str, _Operation] = {}
-        # The Pydoll adapter temporarily suppresses its process-wide raw logging.
-        self._solver_slot = asyncio.Lock()
+        self._challenges: dict[str, _Challenge] = {}
         self._send_lock = asyncio.Lock()
         self.closing = False
         self._native_drained = False
         self.shutdown = None
+        self.solver_drained = None
         self.access_pages_closed = None
         self.page_limits = None
 
@@ -130,38 +142,38 @@ class ElectronBridge:
                         self.closing = True
                         for pending in self._pending.values():
                             pending.stop_callbacks()
+                        for challenge in self._challenges.values():
+                            challenge.stop.set()
                         drain = asyncio.create_task(self._drain(socket, workers))
                     continue
-                request_id = message.get("id")
-                pending = self._pending.get(request_id) if isinstance(request_id, str) else None
-                if kind == "cancel_cloudflare":
-                    challenge_id = message.get("challenge_id")
-                    if (pending is not None and message.get("action") == pending.action
-                            and isinstance(challenge_id, str)):
-                        stop = pending.challenges.get(challenge_id)
-                        if stop is not None:
-                            stop.set()
+                if kind in {'solve_cloudflare', 'cancel_cloudflare'}:
+                    challenge_id = message.get('challenge_id')
+                    if kind == 'cancel_cloudflare':
+                        challenge = self._challenges.get(challenge_id) if isinstance(challenge_id, str) else None
+                        if challenge is not None and challenge.matches(message):
+                            challenge.stop.set()
+                        continue
+                    page_id, target_id = message.get('page_id'), message.get('target_id')
+                    if (set(message) != {'type', 'page_id', 'target_id', 'challenge_id'}
+                            or type(page_id) is not int or page_id <= 0
+                            or not isinstance(target_id, str) or not re.fullmatch(r'[A-Fa-f0-9]{32}', target_id)
+                            or not isinstance(challenge_id, str) or not re.fullmatch(r'[a-f0-9]{32}', challenge_id)
+                            or challenge_id in self._challenges
+                            or any(item.page_id == page_id or item.target_id == target_id for item in self._challenges.values())):
+                        raise ValueError('Invalid challenge request')
+                    if not self.closing:
+                        challenge = _Challenge(page_id, target_id, challenge_id)
+                        self._challenges[challenge_id] = challenge
+                        start_worker(self._solve_cloudflare(socket, challenge))
                     continue
+                request_id = message.get('id')
+                pending = self._pending.get(request_id) if isinstance(request_id, str) else None
                 if pending is None or message.get("action") != pending.action or pending.result.done():
                     raise ValueError("Stale Electron result")
                 data = message.get("data")
                 if not isinstance(data, dict):
                     raise ValueError("Invalid Electron data")
-                if kind == "solve_cloudflare":
-                    challenge_id = message.get("challenge_id")
-                    url = data.get("url")
-                    target_id = data.get("target_id")
-                    deadline_ms = data.get("deadline_ms")
-                    if (not isinstance(challenge_id, str) or not re.fullmatch(r"[a-f0-9]{32}", challenge_id)
-                            or not isinstance(url, str) or not url.startswith(("https://", "http://"))
-                            or not isinstance(target_id, str) or not re.fullmatch(r"[A-Fa-f0-9]{32}", target_id)
-                            or type(deadline_ms) is not int or deadline_ms <= 0
-                            or challenge_id in pending.challenges or pending.action in _CONTROL_ACTIONS):
-                        raise ValueError("Invalid challenge request")
-                    if not self.closing and not pending.stop.is_set():
-                        stop = pending.challenges[challenge_id] = threading.Event()
-                        start_worker(self._solve_cloudflare(socket, pending, challenge_id, url, target_id, stop, deadline_ms))
-                elif kind == "verify_recovery_authority":
+                if kind == "verify_recovery_authority":
                     check_id = message.get("check_id")
                     if (pending.action not in _RECOVERY_ACTIONS or data
                             or not isinstance(check_id, str) or not re.fullmatch(r"[a-f0-9]{32}", check_id)):
@@ -192,8 +204,11 @@ class ElectronBridge:
         except _RECEIVE_ERRORS:
             pass
         finally:
-            if self._socket is socket:
+            owned_connection = self._socket is socket
+            if owned_connection:
                 self._socket = None
+                for challenge in self._challenges.values():
+                    challenge.stop.set()
                 for pending in self._pending.values():
                     pending.stop_callbacks()
                     if pending.result.done():
@@ -212,6 +227,8 @@ class ElectronBridge:
                 pass
             if workers:
                 await asyncio.gather(*workers)
+            if owned_connection and self.solver_drained is not None:
+                self.solver_drained()
             if drain is not None:
                 # Uvicorn waits for this socket handler before lifespan teardown.
                 # Leave pending native results for teardown to mark uncertain once
@@ -254,27 +271,35 @@ class ElectronBridge:
         await self._callback(socket, pending, pending.stop, pending.envelope(
             "verify_recovery_authority_result", check_id=check_id, data={"allowed": allowed}))
 
-    async def _solve_cloudflare(self, socket, pending: _Operation, challenge_id: str,
-                                url: str, target_id: str, stop: threading.Event, deadline_ms: int) -> None:
-        timer = asyncio.get_running_loop().call_later(max(0, deadline_ms / 1000 - time.time()), stop.set)
+    async def _challenge_send(self, socket, challenge: _Challenge, kind: str, data: dict) -> None:
         try:
-            # Wait off the receive loop. Holding the slot until the worker returns
-            # prevents cleanup or logger restoration from crossing another solve.
-            async with self._solver_slot:
-                if stop.is_set() or pending.stop.is_set() or time.time() * 1000 >= deadline_ms:
-                    return
-                worker = asyncio.create_task(asyncio.to_thread(solve_cloudflare, self._cdp_url, url, stop, target_id=target_id))
-                try:
-                    data = await asyncio.shield(worker)
-                except asyncio.CancelledError:
-                    stop.set()
-                    await worker  # The application slot belongs to the actual thread until cleanup ends.
-                    raise
-            await self._callback(socket, pending, stop, pending.envelope(
-                "solve_cloudflare_result", challenge_id=challenge_id, data=data))
+            async with self._send_lock:
+                if (self._socket is socket and (not self.closing or kind == 'solve_cloudflare_result')
+                        and self._challenges.get(challenge.challenge_id) is challenge
+                        and (kind == 'solve_cloudflare_result' or not challenge.stop.is_set())):
+                    await socket.send_json(challenge.envelope(kind, data))
+        except _SOCKET_ERRORS:
+            challenge.stop.set()
+
+    async def _solve_cloudflare(self, socket, challenge: _Challenge) -> None:
+        async def progress(data):
+            await self._challenge_send(socket, challenge, 'cloudflare_progress', data)
+
+        # Pydoll is asynchronous: a waiting tab consumes no global executor slot.
+        worker = asyncio.create_task(solve_cloudflare(self._cdp_url,
+            challenge.stop, target_id=challenge.target_id, progress=progress))
+        try:
+            try:
+                data = await asyncio.shield(worker)
+            except asyncio.CancelledError:
+                challenge.stop.set()
+                await worker  # Cancellation is not resource settlement; await the actual CDP cleanup.
+                raise
+            if challenge.stop.is_set():
+                data = {'outcome': 'not_executed', 'reason': 'canceled'}
+            await self._challenge_send(socket, challenge, 'solve_cloudflare_result', data)
         finally:
-            timer.cancel()
-            pending.challenges.pop(challenge_id, None)
+            self._challenges.pop(challenge.challenge_id, None)
 
     def native_drained(self):
         """Main's fallback shutdown confirms that no issued native write is still active."""

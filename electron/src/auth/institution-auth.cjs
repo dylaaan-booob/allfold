@@ -16,10 +16,14 @@ function institutionAuthPage(action='inspect',credentials=null,expectedStep=null
       ...[...(node.labels || [])].map(text),
       ...(node.getAttribute('aria-labelledby') || '').split(/\s+/).filter(Boolean).map(id=>text(document.getElementById(id))),
       node.name,node.id].filter(Boolean).join(' ');
-    const inputs=[...document.querySelectorAll('input')].filter(visible);
+    const institution=mode==='institution';
+    const readable=!institution && !/^(?:sign in|log in|login|authentication|verify your identity)\b/i.test(document.title)
+      && [...document.querySelectorAll('article,main,[role=main]')].some(node=>visible(node) && text(node)
+        && !/^(?:sign in|log in|login|authentication|verify|verification)\b/i.test(text(node.querySelector('h1,h2'))));
+    const blocking=node=>!readable || !!node.closest('dialog[open],[aria-modal="true"]');
+    const inputs=[...document.querySelectorAll('input')].filter(node=>visible(node) && blocking(node));
     const controls=[...document.querySelectorAll('button,input[type=submit],input[type=button],a,[role=button]')].filter(visible);
     const caption=node=>[text(node),node.getAttribute('aria-label'),node.tagName==='INPUT'?node.value:''].join(' ').trim();
-    const institution=mode==='institution';
     const scope=node=>node.form || node.closest('form,dialog,[role=dialog],fieldset,main,[role=main],section');
     const within=(node,root)=>!!root && (node.form===root || root.contains(node));
     const heading=root=>[root?.getAttribute('aria-label'),
@@ -27,7 +31,7 @@ function institutionAuthPage(action='inspect',credentials=null,expectedStep=null
       ...(institution?[document.title]:[])].filter(Boolean).join(' ');
     const positive=(root,pattern)=>controls.filter(node=>within(node,root)
       && pattern.test(caption(node)) && !/拒绝|取消|不同意|reject|deny|cancel|decline/i.test(caption(node)));
-    const regions=[...document.querySelectorAll('form,dialog,[role=dialog],fieldset,main,[role=main],section')].filter(visible);
+    const regions=[...document.querySelectorAll('form,dialog,[role=dialog],fieldset,main,[role=main],section')].filter(node=>visible(node) && blocking(node));
     const passwords=inputs.filter(node=>node.type==='password');
     const loginPattern=/登录|登陆|sign\s*in|log\s*in|提交|submit/i;
     const loginScopes=new Set(passwords.map(scope).filter(Boolean));
@@ -55,7 +59,7 @@ function institutionAuthPage(action='inspect',credentials=null,expectedStep=null
         && (institution || loginScopes.has(scope(node))
           || /验证|认证|verification|authenticate|identity/i.test(heading(scope(node)))
             && positive(scope(node),/验证|确认|提交|verify|confirm|submit|continue/i).length)))
-      || [...document.querySelectorAll('iframe[src],[class*=captcha],[id*=captcha],[id*=Captcha]')].some(node=>visible(node)
+      || [...document.querySelectorAll('iframe[src],[class*=captcha],[id*=captcha],[id*=Captcha]')].some(node=>visible(node) && blocking(node)
         && (/(?:^|[\/._-])(?:recaptcha|hcaptcha|turnstile)(?:[\/.?_-]|$)/i.test(node.getAttribute('src') || '')
           || node.querySelector('img,canvas,input,iframe')
             && /验证码|滑块|拖动|人机验证|verify (?:that )?you are human|complete (?:the )?captcha/i.test(text(node))))

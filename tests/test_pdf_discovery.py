@@ -138,6 +138,8 @@ def test_sciencedirect_redirect_cannot_change_pii_host_or_protocol(destination):
 
 
 @pytest.mark.parametrize('body',[
+    '<article><h1>Article</h1><p>access denied, captcha and checking your browser are research terms.</p><input name="password" type="password"><iframe hidden src="https://newassets.hcaptcha.com/captcha"></iframe></article>',
+    '<script src="https://www.google.com/recaptcha/api.js"></script><article>Normal content</article>',
     '<script>var errors="CPE00001 There was a problem providing the content you requested";</script><p>Article content</p>',
     '<p>Article content</p><iframe src="/_Incapsula_Resource?edet=15">Request unsuccessful. Incapsula incident ID: 123-456</iframe>',
 ])

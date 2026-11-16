@@ -478,7 +478,7 @@ function turnstileHitFixture(modes=[]) {
   const checkbox={isConnected:true,disabled:false,ownerDocument:document,
     style:{visibility:'visible',display:'block',pointerEvents:'auto',opacity:'1'},
     rect:{x:9,y:20.5,width:130,height:24},children:[],
-    getRootNode(){return this.root;},getBoundingClientRect(){return this.rect;},
+    checkVisibility(){return this.style.opacity!=='0';},getRootNode(){return this.root;},getBoundingClientRect(){return this.rect;},
     contains(node){return node===this || this.children.includes(node);}};
   let enclosing=document;
   for(const mode of modes) {
@@ -684,9 +684,9 @@ test('parallel native tasks keep page navigation, credentials and cleanup with t
   assert.equal(browser.pageAssociation(second.id).active,false);
 });
 
-test('supported Cloudflare challenges invoke Solver while hCaptcha remains manual',async t=>{
+test('hidden hCaptcha does not veto supported Cloudflare challenges',async t=>{
   const {BrowserRuntime}=fixture(t),solved=[];
-  const browser=new BrowserRuntime({solveCloudflare:async doc=>{solved.push(doc.pageId);return {outcome:'clicked'};}});
+  const browser=new BrowserRuntime({solveCloudflare:async tab=>{solved.push(tab.id);return {outcome:'clicked'};}});
   t.after(()=>browser.close());await browser.ready;
   for(const hcaptcha of [false,true]) {
     const signal=new AbortController().signal;
@@ -699,15 +699,15 @@ test('supported Cloudflare challenges invoke Solver while hCaptcha remains manua
       const result=await browser.inspectPage(tab,{signal});
       assert.equal(result.waiting,true);
       if(hcaptcha)assert.equal(result.diagnostic?.code,'verification_page');
-      else assert.deepEqual(solved,[tab.id]);
-      assert.equal(solved.length,1);
+      assert.equal(solved.at(-1),tab.id);
+      assert.equal(solved.length,hcaptcha?2:1);
     });
   }
 });
 
 test('publisher robot pages use Solver only with current Cloudflare challenge evidence',async t=>{
   const {BrowserRuntime}=fixture(t),solved=[];
-  const browser=new BrowserRuntime({solveCloudflare:async doc=>{solved.push(doc.pageId);return {outcome:'clicked'};}});
+  const browser=new BrowserRuntime({solveCloudflare:async tab=>{solved.push(tab.id);return {outcome:'clicked'};}});
   t.after(()=>browser.close());await browser.ready;
   const challenge='https://challenges.cloudflare.com/cdn-cgi/challenge-platform/h/g/turnstile/if/fixture';
   for(const [name,markers,frameURL,expected] of [
@@ -716,8 +716,9 @@ test('publisher robot pages use Solver only with current Cloudflare challenge ev
     ['wrong-host',{robot:true},challenge.replace('.com/','.com.example.org/'),false],
     ['insecure',{robot:true},challenge.replace('https:','http:'),false],
     ['background',{},challenge,false],
-    ['hcaptcha',{robot:true,hcaptcha:true},challenge,false],
-    ['cloudflare-title',{robot:true,cloudflareTitle:true},null,true],
+    ['hidden-hcaptcha',{robot:true,hcaptcha:true},challenge,true],
+    ['title-alone',{robot:true,cloudflareTitle:true},null,false],
+    ['cloudflare-title',{robot:true,cloudflareTitle:true,cloudflareOptions:true},null,true],
   ]) {
     const signal=new AbortController().signal;
     await browser.runTask(signal,{request_id:name},async()=>{
@@ -768,13 +769,9 @@ test('Login opens one managed CARSI Portal and prepares independent Service page
   const searches=[],solved=[],serviceModes=[];
   const browser=new BrowserRuntime({
     readCASCredentials:async()=>{reads++;return {username:'fixture',password:'synthetic'};},
-    solveCloudflare:async doc=>{
-      const owner=browser.operation;
-      assert.equal(browser.ownsPage(owner,doc.pageId),true);
-      assert.equal(browser.documentCurrent(doc),true);
-      solved.push({pageId:doc.pageId,serviceId:owner.association.service_id});
-      const contents=browser.tabs.get(doc.pageId).view.webContents;
-      contents.access={markers:{}};
+    solveCloudflare:async tab=>{
+      solved.push({pageId:tab.id,serviceId:tab.association.service_id});
+      tab.view.webContents.access={markers:{}};
       return {outcome:'clicked'};
     },
   });
@@ -816,7 +813,8 @@ test('Login opens one managed CARSI Portal and prepares independent Service page
         await popup.loadURL('https://publisher.example/unrelated');
         return {status:'pending'};
       }
-      popup.access={markers:{cloudflareTitle:true,cloudflareOptions:true,cloudflareOrchestrator:true,hcaptcha:tab.association.service_id===manualId}};
+      popup.access={markers:tab.association.service_id===manualId?{hcaptcha:true,hcaptchaVisible:true}:
+        {cloudflareTitle:true,cloudflareOptions:true,cloudflareOrchestrator:true}};
       await popup.loadURL(targetURL);
       return {status:'visited_click'};
     };
@@ -1236,26 +1234,47 @@ test('Covers manual waiting cannot renew the absolute parent deadline',async t=>
   assert.equal(browser.operations.size,0);
 });
 
-for(const outcome of ['not_found','clicked','failed'])test(`solver ${outcome} shares the Document attempt ledger across repeated waits`,async t=>{
-  const {BrowserRuntime}=fixture(t);let calls=0;
-  const browser=new BrowserRuntime({solveCloudflare:async()=>{calls++;return {outcome};}});
+test('one tab keeps its active interaction across repeated waits and can recover and handle another challenge',async t=>{
+  const {BrowserRuntime}=fixture(t);let calls=0,stopped=0;
+  const browser=new BrowserRuntime({solveCloudflare:async(tab,{signal,onProgress})=>{
+    calls++;onProgress({outcome:'clicked',reason:'checkbox_clicked'});
+    await new Promise(resolve=>signal.addEventListener('abort',resolve,{once:true}));stopped++;
+    return {outcome:'not_executed',reason:'canceled'};
+  }});
   await browser.ready;t.after(()=>browser.close());
-  const signal=new AbortController().signal,tab=browser.createTab({present:false});
-  tab.view.webContents.access={markers:{cloudflareOptions:true,cloudflareOrchestrator:true}};
-  await tab.view.webContents.loadURL('https://fixture.invalid/challenge');
-  const expected=outcome==='not_found'?2:1;
-  await browser.runTask(signal,{request_id:'attempt-budget'},async()=>{
-    browser.bindTaskPage(tab,signal);
-    for(let index=0;index<4;index++)assert.equal((await browser.inspectPage(tab,{signal})).waiting,true);
-    await assert.rejects(browser.waitForPage(tab,{signal,deadline:Date.now()+20}),/timeout/);
-    assert.equal((await browser.inspectPage(tab,{signal})).waiting,true);
-    assert.equal(calls,expected);
-    await tab.view.webContents.loadURL('https://fixture.invalid/replacement');
-    await browser.inspectPage(tab,{signal});assert.equal(calls,expected+1);
+  const tab=browser.createTab({present:false,user:true}),wc=tab.view.webContents;
+  wc.access={markers:{cloudflareOptions:true,cloudflareOrchestrator:true}};
+  await wc.loadURL('https://fixture.invalid/challenge');
+  for(let index=0;index<4;index++)assert.equal((await browser.inspectPage(tab)).waiting,true);
+  await assert.rejects(browser.waitForPage(tab,{deadline:Date.now()+20}),/timeout/);
+  assert.equal(calls,1);assert.equal(stopped,0,'a business wait expiry does not cancel an independent page');
+  await wc.loadURL('https://fixture.invalid/replacement');
+  await browser.inspectPage(tab);assert.equal(calls,1,'navigation is not solver failure');
+  wc.access={markers:{}};
+  await browser.waitForPage(tab,{deadline:Date.now()+200});
+  await new Promise(setImmediate);assert.equal(stopped,1);
+  wc.access={markers:{cloudflareOptions:true,cloudflareOrchestrator:true}};
+  await new Promise(resolve=>setTimeout(resolve,800));
+  await browser.inspectPage(tab);assert.equal(calls,2);
+  await browser.closePage(tab);assert.equal(stopped,2);
+});
+
+test('temporary task cancellation closes its active solver without canceling an independent user tab',async t=>{
+  const {BrowserRuntime}=fixture(t),stopped=[];
+  const browser=new BrowserRuntime({solveCloudflare:async(tab,{signal})=>{
+    await new Promise(resolve=>signal.addEventListener('abort',resolve,{once:true}));stopped.push(tab.id);
+  }});await browser.ready;t.after(()=>browser.close());
+  const user=browser.createTab({user:true,present:false});
+  user.view.webContents.access={markers:{cloudflareOptions:true,cloudflareOrchestrator:true}};
+  await user.view.webContents.loadURL('https://fixture.invalid/challenge');await browser.inspectPage(user);
+  const stop=new AbortController();let temporary;
+  await browser.runTask(stop.signal,{request_id:'temporary'},async()=>{
+    temporary=browser.createTab({present:false});temporary.view.webContents.access=user.view.webContents.access;
+    await temporary.view.webContents.loadURL('https://fixture.invalid/challenge');await browser.inspectPage(temporary);
+    stop.abort();
   });
-  await browser.runTask(signal,{request_id:'independent-operation'},async()=>{
-    browser.bindTaskPage(tab,signal);await browser.inspectPage(tab,{signal});assert.equal(calls,expected+2);
-  });
+  assert.deepEqual(stopped,[temporary.id]);assert.equal(browser.tabs.has(user.id),true);
+  await browser.closePage(user);assert.deepEqual(stopped,[temporary.id,user.id]);
 });
 
 test('authentication binding replaced during an owned redirect returns loading instead of ending Login',async t=>{

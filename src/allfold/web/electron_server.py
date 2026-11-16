@@ -81,8 +81,11 @@ def main():
 
     signal.signal(signal.SIGUSR1, native_drained)
     bridge.shutdown = drain
+    # The authenticated socket may be gone: the owned child pipe confirms actual
+    # solver cleanup before Main releases native pages and signals application drain.
+    bridge.solver_drained = lambda: print('ELECTRON_SOLVERS_DRAINED', flush=True)
     configure_logging(log_level)
-    # stdout has exactly one bootstrap message; it carries no credentials.
+    # stdout carries only bootstrap and fixed resource-drain acknowledgement.
     print(f"ELECTRON_PORT={port}", flush=True)
     server.run(sockets=[listener])
 

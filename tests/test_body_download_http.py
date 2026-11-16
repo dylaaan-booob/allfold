@@ -135,7 +135,7 @@ def test_public_lww_empty_viewer_uses_only_its_captured_oce_capability(tmp_path,
 @pytest.mark.parametrize('html', [
     '<body><p>CPE00001</p><p>There was a problem providing the content you requested</p></body>',
     '<body><iframe src="/_Incapsula_Resource?edet=15&incident_id=123-456">Request unsuccessful. Incapsula incident ID: 123-456</iframe></body>',
-    '<body><div class="hcaptcha">Verify you are human</div></body>',
+    '<html><title>Verify you are human</title><body><iframe src="https://newassets.hcaptcha.com/captcha"></iframe></body></html>',
 ], ids=['visible-cpe', 'imperva-shell', 'challenge'])
 def test_public_bounded_html_access_barrier_persists_its_reason_without_fallback(tmp_path, html):
     import httpx

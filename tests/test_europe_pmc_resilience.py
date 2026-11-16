@@ -88,7 +88,7 @@ def test_actual_html_challenge_is_never_retried(status):
     calls = []
     with SupplementalClient('europe_pmc', transport=httpx.MockTransport(lambda request:
         calls.append(request) or httpx.Response(status, headers={'content-type': 'text/html'},
-                                                text='<html>Anubis challenge</html>')), interval=0) as client:
+                                                text='<html><title>Making sure you’re not a bot!</title><script id="anubis_challenge" type="application/json">{}</script></html>')), interval=0) as client:
         result = targeted_association(client)
     assert result.status == 'failed' and len(calls) == 1
     assert 'access limited' in result.limitations[0]

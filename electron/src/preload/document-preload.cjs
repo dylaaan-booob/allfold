@@ -6,38 +6,56 @@ const operations={
   binding() {return {type:document.contentType};},
   access() {
     const title=document.title;
-    const markers={unusualTraffic:/Unusual Traffic Detected\s*\(Error 418\)/i.test(title),
-      cloudflareTitle:/^(Just a moment|Attention Required)/i.test(title),
-      cloudflareOptions:false,cloudflareOrchestrator:false,robot:false,contentDenied:false,hcaptcha:false,hcaptchaVisible:false,login:false};
-    // Compute predicates locally; no script/text/URL or proportional collection crosses IPC.
+    const visible=node=>!!node?.isConnected && node.checkVisibility({checkOpacity:true,checkVisibilityCSS:true})
+      && [...node.getClientRects()].some(rect=>rect.width>0 && rect.height>0);
+    const roots=[document];
+    for(const root of roots)for(const host of root.querySelectorAll('*'))if(host.shadowRoot)roots.push(host.shadowRoot);
+    const nodes=selector=>roots.flatMap(root=>[...root.querySelectorAll(selector)]);
+    const heading=[...document.querySelectorAll('h1,h2,[role="heading"]')].filter(visible).map(node=>node.textContent.trim()).join(' ');
+    const challengeTitle=/^(?:Just a moment|Attention Required)(?:[.!…\s]|$)/i.test(title);
+    const authTitle=/^(?:sign in|log in|login|authentication|verify your identity|two.factor|multi.factor)\b/i.test(title);
+    const content=!challengeTitle && !authTitle && nodes('article,main,[role="main"]').some(node=>visible(node)
+      && !!node.textContent.trim() && !/^(?:verify|verification|checking|are you a robot|access denied|sign in|log in|login)\b/i.test(heading));
+    const modal=node=>!!node.closest('[aria-modal="true"],dialog[open]');
+    const markers={unusualTraffic:/^Unusual Traffic Detected\s*\(Error 418\)/i.test(title),
+      cloudflareTitle:challengeTitle,cloudflareOptions:false,cloudflareOrchestrator:false,cloudflareVisible:false,
+      robot:false,contentDenied:false,hcaptcha:false,hcaptchaVisible:false,login:false,mfa:false,content};
+    // Compute fixed predicates locally; no script, text, token or frame URL leaves this world.
     for(const script of document.querySelectorAll('script')) {
       const src=script.getAttribute('src') || '';
       if(/\/cdn-cgi\/challenge-platform\/[^\s"'<>]*orchestrate\/chl_page\//i.test(src))markers.cloudflareOrchestrator=true;
       if(/\b_cf_chl_opt\s*=\s*\{/.test(script.textContent || ''))markers.cloudflareOptions=true;
     }
-    let robot=false,human=false,cpe=false,denied=false;
-    const walker=document.createTreeWalker(document.body || document,NodeFilter.SHOW_TEXT,{
-      acceptNode:node=>node.parentElement?.closest('script,style,template,noscript')?NodeFilter.FILTER_REJECT:NodeFilter.FILTER_ACCEPT,
-    });
-    while(walker.nextNode()) {
-      const text=walker.currentNode.nodeValue || '';
-      robot ||= /Are you a robot\?/.test(text);
-      human ||= /Please confirm you are a human by completing the captcha challenge/i.test(text);
-      cpe ||= /\bCPE00001\b/.test(text);
-      denied ||= /There was a problem providing the content you requested/i.test(text);
+    if(!content) {
+      let human=false,cpe=false,denied=false;
+      const walker=document.createTreeWalker(document.body || document,NodeFilter.SHOW_TEXT,{
+        acceptNode:node=>node.parentElement?.closest('script,style,template,noscript') || !visible(node.parentElement)
+          ?NodeFilter.FILTER_REJECT:NodeFilter.FILTER_ACCEPT,
+      });
+      while(walker.nextNode()) {
+        const text=walker.currentNode.nodeValue || '';
+        human ||= /Please confirm you are a human by completing the captcha challenge/i.test(text);
+        cpe ||= /\bCPE00001\b/.test(text);
+        denied ||= /There was a problem providing the content you requested/i.test(text);
+      }
+      markers.robot=/Are you a robot\?/i.test(heading) && human;
+      markers.contentDenied=cpe && denied;
     }
-    markers.robot=robot && human;markers.contentDenied=cpe && denied;
-    // Resource presence alone never identifies a Cloudflare main challenge.
-    for(const frame of document.querySelectorAll('iframe[src]')) {
+    for(const frame of nodes('iframe[src]')) {
       try {const url=new URL(frame.getAttribute('src'),location.href);
         if(/(^|\.)hcaptcha\.com$/i.test(url.hostname)) {
           markers.hcaptcha=true;
-          const style=getComputedStyle(frame);
-          if(frame.getClientRects().length && style.visibility!=='hidden' && style.visibility!=='collapse')markers.hcaptchaVisible=true;
+          if(visible(frame) && (!content || modal(frame)))markers.hcaptchaVisible=true;
         }
+        if(url.origin==='https://challenges.cloudflare.com' && url.pathname.startsWith('/cdn-cgi/challenge-platform/') && visible(frame))
+          markers.cloudflareVisible=true;
+        if(/(^|\.)(?:google\.com|recaptcha\.net)$/i.test(url.hostname) && url.pathname.startsWith('/recaptcha/')
+          && visible(frame) && (!content || modal(frame)))markers.robot=true;
       } catch { /* No URL evidence. */ }
     }
-    markers.login=[...document.querySelectorAll('input[type="password"],input[autocomplete="one-time-code"]')].some(node=>node.getClientRects().length>0);
+    markers.login=nodes('input[type="password"]').some(node=>visible(node) && (modal(node)
+      || !content && (authTitle || /^(?:sign in|log in|login|authentication)\b/i.test(heading))));
+    markers.mfa=nodes('input[autocomplete="one-time-code"]').some(node=>visible(node) && (!content || modal(node)));
     let imperva=null;
     const children=document.body?.children;
     const shell=children?.length>0 && [...children].every(node=>node.localName==='iframe')

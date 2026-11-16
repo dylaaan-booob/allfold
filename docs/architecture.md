@@ -35,7 +35,7 @@ Main starts one Python process. The HTTP origin remains loopback-only on port 18
 | `electron/src/workflows/` | Login, Service preparation, Covers and WoS native page operations |
 | `electron/src/preload/`, `native-ui/` | Restricted capabilities and local native-window UI |
 
-Models, configuration definitions, identifiers and query primitives remain shared Python modules. Application code does not depend on Web adapters; its BrowserGateway exposes connected/execute and exact cancel_workflow/cancel_task interfaces. ElectronBridge adapts it to transport. Each Request ID owns its operation context, progress, cancellation and Solver replies, page claims and terminal result. BrowserTaskLock admits explicit shared saved-Service data use while keeping overlapping controls and exact physical Page claims exclusive. Login, Covers and WoS each retain one active coordinator state; Browser admission is separate from the Workspace collection registry. Native operations settle before their Futures release ownership. WoS keeps its captured workflow/task loan across Query→Export gaps; a finally-issued release_workflow_pages maintenance request releases that same loan only after native settlement, including cancellation and input loss. Shutdown stops admission and drains Run, WoS, Login, Covers and the Workspace host before closing common client resources.
+Models, configuration definitions, identifiers and query primitives remain shared Python modules. Application code does not depend on Web adapters; its BrowserGateway exposes connected/execute and exact cancel_workflow/cancel_task interfaces. ElectronBridge adapts it to transport. Each Request ID owns its operation context, progress, cancellation, page claims and terminal result. BrowserTaskLock admits explicit shared saved-Service data use while keeping overlapping controls and exact physical Page claims exclusive. Login, Covers and WoS each retain one active coordinator state; Browser admission is separate from the Workspace collection registry. Native operations settle before their Futures release ownership. WoS keeps its captured workflow/task loan across Query→Export gaps; a finally-issued release_workflow_pages maintenance request releases that same loan only after native settlement, including cancellation and input loss. Shutdown stops admission and drains Run, WoS, Login, Covers and the Workspace host before closing common client resources.
 
 Journal lookup and remote fallback belong to the application layer; persistence only reads the local Registry. WoS export parsing continues to reuse safe file-reading helpers.
 
@@ -65,7 +65,8 @@ Selection and presentation are separate from task ownership. DocumentRuntime and
 its isolated preload supply fixed binding/access observations and detached
 extract/pdf snapshots. [Document access](browser-documents.md) owns the local
 rendered-HTML capture, shared Date/Abstract/PDF parsing and request correlation.
-Snapshot results survive later page changes; tab-wide Solver remains follow-up work.
+Snapshot results survive later page changes. Each physical Page separately owns its
+challenge observer and exact-target Solver lifetime, independent of business requests.
 
 PDF discovery separates qualified rules, exact-target source facts and a
 result-driven P1–P5 coordinator. Run and necessary API responses project reusable

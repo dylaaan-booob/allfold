@@ -15,6 +15,7 @@ import time
 import httpx
 
 from allfold.http_client import create_http_client
+from allfold.http_access import html_access
 from allfold.http_deadline import DEADLINE_REMAINING, HTTPDeadlineExceeded
 from allfold.progress import ActivityKind
 
@@ -427,11 +428,14 @@ class ProviderReadClient:
         status = response.status_code
         text = response.text.lstrip().lower()
         html = 'text/html' in response.headers.get('content-type', '').lower() or text.startswith(('<!doctype html', '<html'))
-        challenge = html and (status == 202 or any(marker in text for marker in (
-            'anubis', 'captcha', 'cf-chl-', 'challenge-platform',
-            'verify you are human', 'checking your browser')))
+        # Preserve status/cooldown semantics. HTML classification is local to this response.
+        if status == 429 or status in {401, 403, 407} and response.headers.get('cf-mitigated', '').strip().lower() != 'challenge':
+            raise ProviderHTTPError(self.provider, status)
+        challenge = ('cloudflare' if response.headers.get('cf-mitigated', '').strip().lower() == 'challenge'
+                     else html_access(text, status) if html else None)
         if challenge:
-            kind = 'Anubis verification' if 'anubis' in text else 'an HTML verification page'
+            kind = {'cloudflare': 'Cloudflare verification', 'anubis': 'Anubis verification',
+                    'login': 'a login requirement'}.get(challenge, 'an HTML verification page')
             raise ProviderFailure(
                 f'{self.provider}: access limited by {kind} (HTTP {status})',
                 kind='access', code='http_error', outcome='responded')

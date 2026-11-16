@@ -115,6 +115,16 @@ absent total means unknown. File proofs, roots, signed URLs and exceptions stay
 private. No Content-Length equality, minimum size, PDF header/EOF/structure/text/
 identity/hash/version validation is added. Bounded current HTML/access responses
 return to the same source coordinator after that output has settled.
+Their access classification uses the exact response's Cloudflare mitigation header,
+real authorization/status errors and contextual verification/login/denial structure.
+An optional password field, hidden hCaptcha, background Turnstile/jsd script or
+ordinary `access denied` text is insufficient. Current CPE/Incapsula denial evidence
+remains distinct from auxiliary resources. HTTP/stream responses do not start a
+Solver tab or replay a form. Browser/Reader pages use the common tab-owned observer;
+Solver state cannot revoke a completed transfer. This changes classification only:
+`stop_on_access`, Prepare admission, candidate fallback, MIME and body limits retain
+the existing policies described below.
+
 
 Once `pipeline` returns normally, the completed writer result is retained. Its
 network deadline is retired; late cancellation, Prepare revocation or page

@@ -570,3 +570,12 @@ def test_current_platform_selector_rejects_non_target_body_entries(link):
     response = CurrentResponse(candidate.url, 'text/html',
         ('<head><meta name="citation_doi" content="10.1234/AbC"></head>'+link).encode())
     assert parse_current_response(candidate, response) == ()
+
+
+def test_pdf_current_response_retains_its_own_cloudflare_header():
+    from allfold.pdf_http import PdfHttpClient
+    from allfold.pdf_responses import access_limited
+    response = httpx.Response(200, headers={'content-type': 'text/html', 'cf-mitigated': 'challenge'},
+        content=b'<html><p>Please wait</p></html>', request=httpx.Request('GET', 'https://publisher.example.org/pdf'))
+    current = PdfHttpClient.bounded_response(response)
+    assert current.access == 'challenge' and access_limited(current)

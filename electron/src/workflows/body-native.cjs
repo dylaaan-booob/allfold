@@ -222,7 +222,8 @@ class OriginalNavigation {
       const type=contentType?.length===1?contentType[0].split(';')[0].trim().toLowerCase():'';
       if(type==='application/pdf'&&status>=200&&status<300)return;
       if(!['text/html','application/xhtml+xml'].includes(type))throw failure('download_not_attributable');
-      entry.response={url:details.url,status};
+      const mitigated=Object.entries(details.responseHeaders || {}).filter(([name])=>name.toLowerCase()==='cf-mitigated').flatMap(([,values])=>values);
+      entry.response={url:details.url,status,cfMitigated:mitigated.length===1 && mitigated[0].trim().toLowerCase()==='challenge'};
     }catch(error){this.fail(error);return {cancel:true};}
   }
   async inspectResponse(source,entry,frame) {
@@ -241,8 +242,8 @@ class OriginalNavigation {
       this.valid();return;
     }
     this.valid();
-    checkPage(response.status,access);
-    if(access.markers.login)throw new BrowserFailure('navigation','content_access_blocked',response.status);
+    checkPage(response.status,{...access,cfMitigated:response.cfMitigated});
+    if(access.markers.login || access.markers.mfa)throw new BrowserFailure('navigation','content_access_blocked',response.status);
     if(entry.continued)return;
     if(entry.response!==response||!this.browser.documentCurrent(binding))throw failure('document_changed');
     if(this.scienceReader(source,entry,frame))return;

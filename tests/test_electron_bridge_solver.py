@@ -1,4 +1,5 @@
 """Public multiplexed Bridge and solver queue regressions; no personal services."""
+import asyncio
 import threading
 import time
 
@@ -15,10 +16,8 @@ def application(bridge):
     return app
 
 
-def solve_message(request, target, *, deadline=None):
-    return {**{key: request[key] for key in ('id', 'action')}, 'type': 'solve_cloudflare',
-            'challenge_id': target, 'data': {'url': 'https://fixture.example/challenge',
-            'target_id': target, 'deadline_ms': deadline or int(time.time() * 1000) + 5000}}
+def solve_message(page, target):
+    return {'type': 'solve_cloudflare', 'page_id': page, 'challenge_id': target, 'target_id': target}
 
 
 def test_parallel_requests_receive_results_and_cancel_only_their_owner():
@@ -88,89 +87,102 @@ def test_normal_shutdown_keeps_captured_resource_cleanup_transport_open():
         assert cleanup.result(2) == {'released': True}
 
 
-def test_solver_slot_waits_for_actual_cleanup_and_skips_expired_or_canceled_queue(monkeypatch):
-    started, stopped, release = threading.Event(), threading.Event(), threading.Event()
+def test_user_tab_solver_is_independent_and_cancel_waits_for_actual_cleanup(monkeypatch):
+    started, stopped, release = (threading.Event() for _ in range(3))
     calls = []
 
-    def solve(_endpoint, _url, stop, *, target_id):
+    async def solve(_endpoint, stop, *, target_id, progress):
         calls.append(target_id)
         if target_id == 'a' * 32:
             started.set()
-            assert stop.wait(3)
+            assert await asyncio.to_thread(stop.wait, 3)
             stopped.set()
-            assert release.wait(3)
-        return {'outcome': 'clicked', 'reason': 'checkbox_clicked'}
+            assert await asyncio.to_thread(release.wait, 3)
+        await progress({'outcome': 'clicked', 'reason': 'checkbox_clicked'})
+        return {'outcome': 'not_executed', 'reason': 'canceled'}
 
     monkeypatch.setattr('allfold.web.electron_bridge.solve_cloudflare', solve)
     bridge = ElectronBridge('secret', 'testserver')
     with TestClient(application(bridge)) as client, client.websocket_connect('/ws') as socket:
         socket.send_json({'token': 'secret'}); socket.receive_json()
-        requests, futures = [], []
+        a, b = solve_message(1, 'a' * 32), solve_message(2, 'b' * 32)
         try:
-            for index, target in enumerate('abcd'):
-                futures.append(bridge.execute('prepare_service', {'workflow_id': 'login', 'task_id': target}))
-                request = socket.receive_json(); requests.append(request)
-                socket.send_json(solve_message(request, target * 32,
-                    deadline=int(time.time() * 1000) - 1 if target == 'b' else None))
-                assert started.wait(2)
-            socket.send_json({**{key: requests[2][key] for key in ('id', 'action')},
-                              'type': 'cancel_cloudflare', 'challenge_id': 'c' * 32})
-            assert bridge.cancel_task('login', 'a').result(2)
-            assert socket.receive_json()['id'] == requests[0]['id']
+            socket.send_json(a)
+            assert started.wait(2)
+            socket.send_json(b)
+            assert socket.receive_json() == {**b, 'type': 'cloudflare_progress',
+                'data': {'outcome': 'clicked', 'reason': 'checkbox_clicked'}}
+            assert socket.receive_json() == {**b, 'type': 'solve_cloudflare_result',
+                'data': {'outcome': 'not_executed', 'reason': 'canceled'}}
+            socket.send_json({**a, 'type': 'cancel_cloudflare', 'page_id': 2})
+            assert not stopped.wait(.05)
+            socket.send_json({**a, 'type': 'cancel_cloudflare'})
             assert stopped.wait(2)
-            # A third operation can still settle while the first worker is cleaning up.
-            other = bridge.execute('visit_manual_service', {})
+            future = bridge.execute('prepare_service', {})
             request = socket.receive_json()
-            socket.send_json({'type': 'result', 'id': request['id'], 'action': request['action'], 'data': {'outcome': 'Opened'}})
-            assert other.result(2) == {'outcome': 'Opened'}
-            assert calls == ['a' * 32]
+            socket.send_json({'type': 'result', 'id': request['id'], 'action': request['action'],
+                              'data': {'outcome': 'Opened'}})
+            assert future.result(2)['outcome'] == 'Opened'
             release.set()
-            reply = socket.receive_json()
-            assert reply == {**{key: requests[3][key] for key in ('id', 'action')}, 'type': 'solve_cloudflare_result',
-                             'challenge_id': 'd' * 32, 'data': {'outcome': 'clicked', 'reason': 'checkbox_clicked'}}
-            assert calls == ['a' * 32, 'd' * 32]
-            for future, request in zip(futures, requests):
-                socket.send_json({'type': 'result', 'id': request['id'], 'action': request['action'], 'data': {'outcome': 'Opened'}})
-                assert future.result(2) == {'outcome': 'Opened'}
+            assert socket.receive_json() == {**a, 'type': 'solve_cloudflare_result',
+                'data': {'outcome': 'not_executed', 'reason': 'canceled'}}
+            assert calls == ['a' * 32, 'b' * 32]
         finally:
             release.set()
 
 
 @pytest.mark.parametrize('shutdown', [False, True])
-def test_disconnect_and_shutdown_stop_queue_and_join_workers(monkeypatch, shutdown):
-    started, stopped, release, exited = (threading.Event() for _ in range(4))
-    calls = []
+def test_disconnect_and_shutdown_stop_and_join_all_tab_workers(monkeypatch, shutdown):
+    started = [threading.Event(), threading.Event()]
+    stopped = [threading.Event(), threading.Event()]
+    exited = [threading.Event(), threading.Event()]
+    release = threading.Event()
 
-    def solve(_endpoint, _url, stop, *, target_id):
-        calls.append(target_id); started.set()
-        assert stop.wait(3); stopped.set()
-        assert release.wait(3); exited.set()
-        return {'outcome': 'clicked', 'reason': 'checkbox_clicked'}
+    async def solve(_endpoint, stop, *, target_id, progress):
+        index = int(target_id[0])
+        started[index].set()
+        assert await asyncio.to_thread(stop.wait, 3); stopped[index].set()
+        assert await asyncio.to_thread(release.wait, 3); exited[index].set()
+        return {'outcome': 'not_executed', 'reason': 'canceled'}
 
     monkeypatch.setattr('allfold.web.electron_bridge.solve_cloudflare', solve)
     bridge = ElectronBridge('secret', 'testserver')
     with TestClient(application(bridge)) as client, client.websocket_connect('/ws') as socket:
         socket.send_json({'token': 'secret'}); socket.receive_json()
-        for target in 'ab':
-            bridge.execute('prepare_service', {'task_id': target})
-            request = socket.receive_json()
-            socket.send_json(solve_message(request, target * 32))
-            assert started.wait(2)
+        for index in range(2):
+            socket.send_json(solve_message(index + 1, str(index) * 32))
+            assert started[index].wait(2)
         try:
             if shutdown:
                 socket.send_json({'type': 'shutdown'})
             else:
                 socket.close()
-            assert stopped.wait(2)
-            assert not exited.is_set()
-            assert calls == ['a' * 32]
+            assert all(event.wait(2) for event in stopped)
+            assert not any(event.is_set() for event in exited)
         finally:
             release.set()
         if shutdown:
-            assert socket.receive_json() == {'type': 'shutdown_ready'}
-        assert exited.wait(2)
-        assert calls == ['a' * 32]
-        client.portal.call(bridge.finish_disconnected)
+            replies = [socket.receive_json() for _ in range(3)]
+            assert replies[-1] == {'type': 'shutdown_ready'}
+            assert {item['page_id'] for item in replies[:-1]} == {1, 2}
+        assert all(event.wait(2) for event in exited)
+
+
+@pytest.mark.parametrize('tamper', [lambda value: value.update(page_id=0),
+    lambda value: value.update(target_id='wrong'), lambda value: value.update(challenge_id='old'),
+    lambda value: value.update(id='fake-business', action='prepare_service')])
+def test_solver_rejects_invalid_tab_envelopes(monkeypatch, tamper):
+    calls = []
+    monkeypatch.setattr('allfold.web.electron_bridge.solve_cloudflare', lambda *a, **kw: calls.append(kw))
+    bridge = ElectronBridge('secret', 'testserver')
+    with TestClient(application(bridge)) as client, client.websocket_connect('/ws') as socket:
+        socket.send_json({'token': 'secret'}); socket.receive_json()
+        message = solve_message(1, 'a' * 32); tamper(message)
+        socket.send_json(message)
+        from fastapi import WebSocketDisconnect
+        with pytest.raises(WebSocketDisconnect):
+            socket.receive_json()
+    assert calls == []
 
 
 def test_access_close_events_and_shared_limits_use_the_authenticated_bridge():
@@ -223,3 +235,15 @@ def test_internal_extraction_contract_and_scoped_recovery_preserve_empty_success
                                      'metadata': {'dates': [], 'abstract': None},
                                      'extraction_diagnostics': []}})
         assert future.result(2)['metadata'] == {'dates': [], 'abstract': None}
+
+
+def test_unauthenticated_connection_cannot_report_solver_drain():
+    drained = []
+    bridge = ElectronBridge('secret', 'testserver')
+    bridge.solver_drained = lambda: drained.append(True)
+    with TestClient(application(bridge)) as client, client.websocket_connect('/ws') as socket:
+        socket.send_json({'token': 'wrong'})
+        from fastapi import WebSocketDisconnect
+        with pytest.raises(WebSocketDisconnect):
+            socket.receive_json()
+    assert drained == []

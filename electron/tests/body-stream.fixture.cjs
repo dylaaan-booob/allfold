@@ -20,10 +20,10 @@ app.whenReady().then(async()=>{
     if(req.headers.host.startsWith('academic.oup.com:')){res.writeHead(302,{location:origin.replace('pdf.example.org','watermark02.silverchair.com')+'/'+req.url.split('/').at(-1)+'?Signature=synthetic'});res.end();return;}
     if(req.url.startsWith('/stamp/stamp.jsp')){res.writeHead(200,{'content-type':'text/html'});res.end('<iframe src="/stampPDF/getPDF.jsp?arnumber=12345"></iframe>');return;}
     if(req.url==='/cross'){res.writeHead(302,{location:origin.replace('pdf.','other.')+'/leak'});res.end();return;}
-    if(req.url==='/challenge'){res.writeHead(403,{'content-type':'text/html'});res.end('<html><title>Just a moment...</title></html>');return;}
-    if(req.url==='/background-cloudflare'){res.writeHead(200,{'content-type':'text/html'});res.end('<html><title>View PDF</title><nav><a href="/login">Sign in</a></nav><script src="/cdn-cgi/challenge-platform/scripts/jsd/main.js"></script></html>');return;}
+    if(req.url==='/challenge'){res.writeHead(403,{'content-type':'text/html','cf-mitigated':'challenge'});res.end('<html><title>Just a moment...</title></html>');return;}
+    if(req.url==='/background-cloudflare'){res.writeHead(200,{'content-type':'text/html'});res.end('<html><title>View PDF</title><article><h1>View PDF</h1><p>access denied and captcha research</p></article><input type="password"><iframe hidden src="https://newassets.hcaptcha.com/captcha"></iframe><nav><a href="/login">Sign in</a></nav><script src="/cdn-cgi/challenge-platform/scripts/jsd/main.js"></script></html>');return;}
     if(req.url.startsWith('/redirect')){res.writeHead(302,{location:'/body?Signature=A%2FB'});res.end();return;}
-    if(req.url==='/html.pdf'){res.writeHead(200,{'content-type':'text/html','content-disposition':'attachment; filename=body.pdf'});res.end('<html><title>Login required</title></html>');return;}
+    if(req.url==='/html.pdf'){res.writeHead(200,{'content-type':'text/html','content-disposition':'attachment; filename=body.pdf'});res.end('<html><title>Login required</title><form><input type="password"></form></html>');return;}
     if(req.url==='/unknown'){res.writeHead(200,{'content-type':'application/octet-stream'});res.end('unknown');return;}
     if(req.url==='/encoded'){const data=gzipSync(payload);res.writeHead(200,{'content-type':'application/pdf','content-encoding':'gzip','content-length':data.length});res.end(data);return;}
     const streamed=req.url==='/slow-writer'?Buffer.alloc(16*1024*1024,71):payload;

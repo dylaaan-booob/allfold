@@ -38,12 +38,10 @@ Workspace/Paper/attempt and field generations govern persistence.
 A missing delayed ScienceDirect toolbar can prompt another PDF-only snapshot
 within the existing task window. Previously captured content survives an optional
 read failure. This does not add a replay, recovery state or snapshot identity gate.
-Tab-wide Solver and access-predicate improvements remain later-stage work.
-
-Current access predicates include broad page markers. Weak strings such as a
-password field, CAPTCHA text or `access denied` in otherwise unrelated content
-are insufficient as the future basis for denying article access; access
-classification will be revised with its behavior tests.
+Access classification uses the current main response and live visible structure.
+Hidden CAPTCHA resources, optional sign-in fields in readable content and ordinary
+error words do not independently block access. These observations are separate
+from captured Date/Abstract/PDF results and never invalidate completed snapshots.
 
 ## Current fixed observations
 
@@ -55,7 +53,8 @@ classification will be revised with its behavior tests.
   overlay routes remain refused; the export click is never replayed.
 - `access`: fixed title/challenge/content-denial/login booleans and
   strictly validated Imperva `edet`/incident fields.
-  HTTP status comes from the actual native main-frame navigation. No title,
+  HTTP status and `cf-mitigated: challenge` come from the actual native main request;
+  unrelated iframe/script responses cannot challenge the main page. No title,
   HTML, script, iframe URL, query, form value or page text is returned.
 - `extract`: one detached snapshot for Date/Abstract and PDF facts.
 - `pdf`: one detached snapshot for PDF facts only, optionally for a qualified Reader.
@@ -86,25 +85,53 @@ PDF selection. Reliable Paper creation/merging is separately owned by
 
 ## Solver, recovery and terminal ownership
 
-The current chain is Browser `inspectPage`/`waitForPage` → access preload →
-Main's target dispatcher → ElectronBridge → Pydoll on Electron's CDP endpoint →
-access observation. Exact native targets and owned challenge frames prevent
-same-URL tabs from being confused. A click is an action result, not proof that
-access succeeded.
+Every BrowserRuntime Page installs a current-access observer at creation, including
+user tabs, temporary task pages, retained Service/login targets, Readers and popups.
+Observation runs outside business async context and survives operation completion.
+Ordinary pages do not start Pydoll. `inspectPage`/`waitForPage` consume the same access
+facts and retain their caller's cancellation/deadline; they do not own Solver.
 
-Solver is currently attached to business operations and fixed Documents, with
-navigation invalidation and a limited attempt ledger. Those restrictions are
-scheduled for replacement by tab-wide solving; that capability is not implemented
-yet. Document/URL changes and a fixed order/count are not future Solver constraints.
+A detected supported Cloudflare page or visible widget enters Main's tab dispatcher
+→ authenticated ElectronBridge → Pydoll on the existing Electron CDP endpoint.
+The transient challenge ID, physical Page ID and exact native CDP target correlate
+requests, progress, terminal replies and cancellation. Same-URL tabs cannot substitute
+for each other. The dispatcher verifies that WebContents belongs to the managed
+Session; Python finds frames only from that target, including accessible shadow
+roots and attributable OOPIFs. It never selects a page by URL.
 
-Bridge currently serializes Solver work through an application slot and joins
-actual workers on cancellation/shutdown. Queued cancelled work cannot execute;
-other requests and exact cancellation remain routable. Browser recovery and
-cooldowns currently share the operation deadline. Numeric attempt/refresh limits
-are implementation details, not platform guarantees. Unknown POST/authentication/
-one-time actions are not replayed. Background pages keep a usable viewport without
-selecting or focusing the user's tab. PDF-only ScienceDirect reads currently allow
-its toolbar to hydrate before declaring a complete empty observation.
+The current control must be connected, enabled, visible and hit-testable before
+interaction. Hidden or rebuilding auxiliary frames do not veto a known actionable
+control. Ambiguous actionable controls wait. Pydoll reobserves current controls
+across navigation, history changes and replacement; it does not require a fixed
+Document, title/frame/checkbox order, attempt count or total 30-second window.
+A clicked unchanged node is not clicked repeatedly; a replacement or observed
+return to an actionable state can be handled again. Individual CDP calls have
+resource timeouts, followed by cancelable observation. A click is not passage:
+access waiting ends only when current challenge evidence clears/normal content
+is available. Later challenges on the same live tab remain eligible.
+
+Each tab owns at most one active interaction through actual cleanup. Independent
+Pydoll tasks use async I/O, with no global serial Solver slot or occupied shared
+thread-pool worker during waits. Page destruction, renderer exit, temporary-task
+cleanup, Browser shutdown and Bridge loss stop the corresponding work. Terminal
+replies follow actual CDP cleanup. If the authenticated socket is lost, the owned
+Python child pipe acknowledges the solver drain (or process exit proves it) before
+Main releases waiting page cleanup. This fixed lifecycle acknowledgement carries
+no page data or executable request. Retained user pages do not inherit an ended
+business deadline. Per-solve global logger changes are removed; application startup
+suppresses raw third-party transport logging.
+
+The Browser's existing message area shows page-local waiting, Cloudflare handling,
+manual authentication/verification, restored access or failure. These states and
+bounded diagnostic reasons describe the current Page, not a Paper/Run state or a
+retroactive verdict on completed extraction/download. Login/CARSI still own their
+existing credential/consent actions. Solver never submits credentials, MFA or
+business forms. Other CAPTCHA vendors remain manual. No HTTP API/stream response
+opens an authentication tab or replays a POST for Solver.
+
+Cloudflare's [response header](https://developers.cloudflare.com/cloudflare-challenges/challenge-types/challenge-pages/detect-response/)
+and [widget visibility/execution modes](https://developers.cloudflare.com/turnstile/get-started/client-side-rendering/widget-configurations/)
+inform these predicates. Resource presence alone is not a blocking challenge.
 
 ## Validation and page ownership
 

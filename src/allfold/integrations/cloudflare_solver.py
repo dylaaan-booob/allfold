@@ -6,7 +6,6 @@ from __future__ import annotations
 
 import asyncio
 from contextlib import AsyncExitStack
-import logging
 from threading import Event
 from urllib.parse import urlsplit, urlunsplit
 
@@ -26,7 +25,8 @@ _CHECKBOX_QUERY = """function() {
 
 
 _CHECKBOX_INTERACTABLE = """function() {
-    if (!this.isConnected || this.disabled) return false;
+    if (!this.isConnected || this.disabled || this.checked) return false;
+    if (!this.checkVisibility({checkOpacity: true, checkVisibilityCSS: true})) return false;
     const style = window.getComputedStyle(this);
     const rect = this.getBoundingClientRect();
     if (rect.width <= 0 || rect.height <= 0 || style.visibility === 'hidden'
@@ -65,34 +65,25 @@ async def _checkbox_is_interactable(checkbox) -> bool:
     return bool(response.get('result', {}).get('result', {}).get('value', False))
 
 
-def solve_cloudflare(cdp_url: str, page_url: str, stop: Event, *, target_id: str) -> dict[str, str]:
+async def solve_cloudflare(cdp_url: str, stop: Event, *, target_id: str, progress) -> dict[str, str]:
+    """Observe one verified native target until its owner cancels; never launch Chrome."""
     if stop.is_set():
         return {"outcome": "not_executed", "reason": "canceled"}
     if not cdp_url:
         return {"outcome": "not_executed", "reason": "cdp_unavailable"}
-    # Upstream logs may contain URLs or raw exceptions; Main logs our fixed codes.
-    quiet_loggers = [logging.getLogger(name) for name in ("pydoll", "websockets.client")]
-    previous = [(logger.handlers, logger.propagate) for logger in quiet_loggers]
     try:
-        for logger in quiet_loggers:
-            logger.handlers = [logging.NullHandler()]
-            logger.propagate = False
-        return asyncio.run(_solve_until_canceled(cdp_url, page_url, stop, target_id=target_id))
+        return await _solve_until_canceled(cdp_url, stop, target_id=target_id, progress=progress)
     except Exception:
         return {"outcome": "failed", "reason": "solver_failed"}
-    finally:
-        for logger, (handlers, propagate) in zip(quiet_loggers, previous):
-            logger.handlers = handlers
-            logger.propagate = propagate
 
 
-async def _solve_until_canceled(cdp_url: str, page_url: str, stop: Event, *, target_id: str) -> dict[str, str]:
-    task = asyncio.create_task(_click_turnstile(cdp_url, page_url, stop, target_id=target_id))
+async def _solve_until_canceled(cdp_url: str, stop: Event, *, target_id: str, progress) -> dict[str, str]:
+    task = asyncio.create_task(_watch_turnstile(cdp_url, stop, target_id=target_id, progress=progress))
     while not task.done():
         if stop.is_set():
             task.cancel()
             break
-        await asyncio.wait({task}, timeout=0.02)
+        await asyncio.wait({task}, timeout=0.05)
     try:
         return await task
     except asyncio.CancelledError:
@@ -133,7 +124,7 @@ async def _frame_body(frame, connection, browser, endpoint, resources: AsyncExit
             "expression": 'location.origin === "https://challenges.cloudflare.com" ? document.body : null',
         }})
         object_id = result.get("result", {}).get("result", {}).get("objectId")
-        return WebElement(object_id, connection) if object_id else None
+        return (WebElement(object_id, connection), connection, frame_id) if object_id else None
 
     if not any(target.get("targetId") == frame_id and target.get("type") == "iframe"
                and _challenge_origin(target.get("url", "")) for target in await browser.get_targets()):
@@ -147,104 +138,120 @@ async def _frame_body(frame, connection, browser, endpoint, resources: AsyncExit
         return None
     frame_tab = Tab(browser, target_id=frame_id, ws_address=frame_endpoint,
                     connection_handler=frame_connection)
-    return await frame_tab.query("body", raise_exc=False)
+    body = await frame_tab.query("body", raise_exc=False)
+    return (body, frame_connection, frame_id) if body else None
 
 
-async def _main_document(connection):
-    result = await connection.execute_command({"method": "Page.getFrameTree"})
-    frame = result["result"]["frameTree"]["frame"]
-    return frame["id"], frame["loaderId"], frame["url"] + frame.get("urlFragment", "")
+async def _node_key(node, connection, frame_id):
+    from pydoll.commands import DomCommands
+    reference = await node.execute_script('return this', return_by_value=False)
+    object_id = reference['result']['result'].get('objectId')
+    if not object_id:
+        return None
+    # Node handles are local to the actual frame connection, never a URL lookup.
+    response = await node.execute_script('return this.ownerDocument.defaultView.location.origin', return_by_value=True)
+    if response.get('result', {}).get('result', {}).get('value') != 'https://challenges.cloudflare.com':
+        return None
+    response = await connection.execute_command(DomCommands.describe_node(object_id=object_id))
+    return frame_id, response['result']['node']['backendNodeId']
 
 
-async def _click_turnstile(cdp_url: str, page_url: str, stop: Event, *, target_id: str) -> dict[str, str]:
+async def _scan(tab, connection, browser, endpoint, clicked, stop):
+    from pydoll.exceptions import ShadowRootNotFound
+
+    # Pydoll deep=True enumerates browser-wide OOPIFs. Keep frame discovery rooted
+    # in this target, including its accessible/closed shadow roots.
+    async with asyncio.timeout(5):
+        frames = await tab.query('iframe', find_all=True, raise_exc=False) or []
+        for shadow in await tab.find_shadow_roots():
+            frames.extend(await shadow.query('iframe', find_all=True, raise_exc=False) or [])
+    candidates = []
+    async with AsyncExitStack() as resources:
+        for frame in frames:
+            if not _challenge_origin(frame.get_attribute('src') or ''):
+                continue
+            try:
+                async with asyncio.timeout(5):
+                    if not await _checkbox_is_interactable(frame):
+                        continue
+                    resolved = await _frame_body(frame, connection, browser, endpoint, resources)
+                    if resolved is None:
+                        continue  # An unrelated rebuilding frame cannot veto a valid control.
+                    body, frame_connection, frame_id = resolved
+                    boxes = await body.query_script(_CHECKBOX_QUERY)
+                    try:
+                        shadow = await body.get_shadow_root()
+                    except ShadowRootNotFound:
+                        shadow = None
+                    if shadow is not None:
+                        boxes.extend(await shadow.query_script(_CHECKBOX_QUERY))
+                    for box in boxes:
+                        key = await _node_key(box, frame_connection, frame_id)
+                        if key is None:
+                            continue
+                        usable = await _checkbox_is_interactable(box)
+                        if usable and key not in clicked:
+                            candidates.append((frame, box, key, frame_connection, frame_id))
+                        elif not usable:
+                            clicked.discard(key)  # A real disabled/checked -> ready transition may retry.
+            except Exception:
+                continue  # Stale nodes and local CDP failures are observations, not terminal page failures.
+        # Count currently actionable controls, not every checkbox or frame on the page.
+        unique = {key: (frame, box, frame_connection, frame_id)
+                  for frame, box, key, frame_connection, frame_id in candidates}
+        if len(unique) > 1:
+            return {'outcome': 'waiting', 'reason': 'checkbox_ambiguous'}
+        if not unique:
+            return {'outcome': 'waiting', 'reason': 'checkbox_not_found'}
+        key, (frame, box, frame_connection, frame_id) = next(iter(unique.items()))
+        async with asyncio.timeout(5):
+            # The owner node and control must still be current and hit-testable.
+            # This tolerates same-tab navigation but never retargets another tab.
+            if stop.is_set():
+                raise asyncio.CancelledError()
+            if not await _checkbox_is_interactable(frame) or not await _checkbox_is_interactable(box):
+                return {'outcome': 'waiting', 'reason': 'checkbox_not_interactable'}
+            if await _node_key(box, frame_connection, frame_id) != key:
+                return {'outcome': 'waiting', 'reason': 'checkbox_not_interactable'}
+            await box.click()
+            clicked.add(key)
+            return {'outcome': 'clicked', 'reason': 'checkbox_clicked'}
+
+
+async def _watch_turnstile(cdp_url: str, stop: Event, *, target_id: str, progress) -> dict[str, str]:
     from pydoll import Chrome
     from pydoll.browser.tab import Tab
     from pydoll.connection.connection_handler import ConnectionHandler
-    from pydoll.exceptions import CommandFailed, NoValidTabFound, ShadowRootNotFound
 
-    async with AsyncExitStack() as resources:
-        browser = Chrome()
-        # Browser.close() disconnects; its context manager and stop() close Electron.
-        resources.push_async_callback(browser.close)
+    endpoint = urlsplit(cdp_url)
+    clicked = set()
+    last = None
+    while not stop.is_set():
         try:
-            await browser.connect(cdp_url)
-        except NoValidTabFound:
-            return {"outcome": "not_executed", "reason": "page_not_unique"}
+            async with AsyncExitStack() as resources:
+                browser = Chrome()
+                # close() only disconnects; stop()/the browser context manager would close Electron.
+                resources.push_async_callback(browser.close)
+                async with asyncio.timeout(5):
+                    await browser.connect(cdp_url)
+                    targets = await browser.get_targets()
+                if not any(item.get('targetId') == target_id and item.get('type') == 'page' for item in targets):
+                    return {'outcome': 'not_executed', 'reason': 'target_closed'}
+                page_endpoint = urlunsplit(endpoint._replace(path=f'/devtools/page/{target_id}'))
+                connection = ConnectionHandler(ws_address=page_endpoint)
+                resources.push_async_callback(connection.close)
+                tab = Tab(browser, target_id=target_id, ws_address=page_endpoint, connection_handler=connection)
+                while not stop.is_set():
+                    result = await _scan(tab, connection, browser, endpoint, clicked, stop)
+                    if result != last:
+                        await progress(result)
+                        last = result
+                    # A cancelable observation interval, not an attempt or challenge deadline.
+                    await asyncio.sleep(.5)
         except Exception:
-            return {"outcome": "not_executed", "reason": "cdp_unavailable"}
-        targets = [target for target in await browser.get_targets()
-                   if target.get("targetId") == target_id
-                   and target.get("type") == "page" and target.get("url") == page_url]
-        if len(targets) != 1:
-            return {"outcome": "not_executed", "reason": "page_not_unique"}
-
-        endpoint = urlsplit(cdp_url)
-        page_endpoint = urlunsplit(endpoint._replace(path=f"/devtools/page/{target_id}"))
-        connection = ConnectionHandler(ws_address=page_endpoint)
-        resources.push_async_callback(connection.close)
-        tab = Tab(browser, target_id=target_id, ws_address=page_endpoint,
-                  connection_handler=connection)
-        loop = asyncio.get_running_loop()
-        deadline = loop.time() + 30.0
-        try:
-            async with asyncio.timeout_at(deadline):
-                main_document = await _main_document(connection)
-        except TimeoutError:
-            return {"outcome": "not_found", "reason": "checkbox_not_found"}
-        if main_document[2] != page_url:
-            return {"outcome": "not_executed", "reason": "canceled"}
-        while loop.time() < deadline:
-            if stop.is_set():
-                raise asyncio.CancelledError()
-            async with AsyncExitStack() as scan_resources:
-                # Bound the scans themselves, not just the polling sleeps.
-                discovery = asyncio.timeout_at(deadline)
-                try:
-                    async with discovery:
-                        frames = await tab.query("iframe", find_all=True, raise_exc=False) or []
-                        # deep=True enumerates global OOPIF targets in 3.0.0; stay in this page.
-                        for shadow in await tab.find_shadow_roots():
-                            frames.extend(await shadow.query("iframe", find_all=True,
-                                                             raise_exc=False) or [])
-
-                        checkboxes = []
-                        unresolved = False
-                        for frame in frames:
-                            if not _challenge_origin(frame.get_attribute("src") or ""):
-                                continue
-                            try:
-                                body = await _frame_body(frame, connection, browser, endpoint, scan_resources)
-                            except CommandFailed:
-                                # The iframe can be replaced between finding its owner and connecting.
-                                body = None
-                            if body is None:
-                                unresolved = True
-                                continue
-                            checkboxes.extend(await body.query_script(_CHECKBOX_QUERY))
-                            try:
-                                shadow = await body.get_shadow_root()
-                            except ShadowRootNotFound:
-                                shadow = None
-                            if shadow is not None:
-                                checkboxes.extend(await shadow.query_script(_CHECKBOX_QUERY))
-                        if len(checkboxes) > 1:
-                            return {"outcome": "failed", "reason": "checkbox_not_unique"}
-                        interactable = not unresolved and bool(checkboxes) and await _checkbox_is_interactable(checkboxes[0])
-                        if interactable and main_document != await _main_document(connection):
-                            return {"outcome": "not_executed", "reason": "canceled"}
-                except TimeoutError:
-                    if not discovery.expired():
-                        raise
-                    return {"outcome": "not_found", "reason": "checkbox_not_found"}
-                if loop.time() >= deadline:
-                    return {"outcome": "not_found", "reason": "checkbox_not_found"}
-                if interactable:
-                    if stop.is_set():
-                        raise asyncio.CancelledError()
-                    # Clicking is outside the discovery budget and is never retried.
-                    await checkboxes[0].click()
-                    return {"outcome": "clicked", "reason": "checkbox_clicked"}
-            remaining = deadline - loop.time()
-            if remaining > 0:
-                await asyncio.sleep(min(0.15, remaining))
-        return {"outcome": "not_found", "reason": "checkbox_not_found"}
+            result = {'outcome': 'waiting', 'reason': 'cdp_unavailable'}
+            if result != last:
+                await progress(result)
+                last = result
+            await asyncio.sleep(.5)
+    return {'outcome': 'not_executed', 'reason': 'canceled'}

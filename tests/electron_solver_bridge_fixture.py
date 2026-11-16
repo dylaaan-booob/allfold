@@ -1,17 +1,15 @@
-"""Framed stdio fixture transport around the real Bridge; isolated Electron CDP only."""
+"""Framed stdio transport around the authenticated Bridge; no business operation."""
 import asyncio
 import json
 import sys
 
 from fastapi import WebSocketDisconnect
+from allfold.logging_setup import configure_logging
 from allfold.web.electron_bridge import ElectronBridge
 
 
 class Socket:
     headers = {'host': 'fixture'}
-
-    def __init__(self):
-        self.ready = asyncio.Event()
 
     async def accept(self):
         pass
@@ -27,19 +25,14 @@ class Socket:
 
     async def send_json(self, message):
         print(json.dumps(message), flush=True)
-        if message.get('type') == 'ready':
-            self.ready.set()
 
 
 async def main():
-    socket = Socket()
+    configure_logging()
     bridge = ElectronBridge('fixture-only', 'fixture', cdp_url=sys.argv[1])
-    receiver = asyncio.create_task(bridge.connect(socket))
-    await socket.ready.wait()
-    result = await bridge._execute('prepare_service', {'workflow_id': 'fixture'}, None, None)
-    assert result == {'outcome': 'Opened'}
+    await bridge.connect(Socket())
+    assert not bridge._pending
     print(json.dumps({'type': 'fixture_complete'}), flush=True)
-    await receiver
 
 
 asyncio.run(main())

@@ -7,6 +7,15 @@ class BrowserFailure extends Error {
     if (Number.isInteger(status) && status >= 100 && status <= 599) this.diagnostic.status = status;
   }
 }
+function cloudflareChallenge(access,status=access?.status) {
+  const markers=access?.markers || {};
+  return !!(access?.cfMitigated && !markers.content
+    || markers.cloudflareVisible && !markers.content
+    || markers.robot && access?.cloudflareFrame
+    || markers.cloudflareTitle && status>=400 && !markers.content
+    || markers.cloudflareTitle && (markers.cloudflareOptions || markers.cloudflareOrchestrator || access?.cloudflareFrame)
+    || markers.cloudflareOptions && markers.cloudflareOrchestrator && !markers.content);
+}
 function checkPage(status, access) {
   const markers=access?.markers;
   if(!markers)throw new BrowserFailure('navigation','page_probe_unconfirmed',status);
@@ -19,7 +28,7 @@ function checkPage(status, access) {
     if(typeof incident==='string' && /^[0-9]{1,32}-[0-9]{1,32}$/.test(incident))error.diagnostic.imperva_incident_id=incident;
     throw error;
   }
-  if(markers.cloudflareTitle || markers.cloudflareOptions && markers.cloudflareOrchestrator || markers.robot || markers.hcaptchaVisible)
+  if(cloudflareChallenge(access,status) || markers.robot || markers.hcaptchaVisible)
     throw new BrowserFailure('navigation','verification_page',status);
   if(status>=400)throw new BrowserFailure('navigation','http_error',status);
 }
@@ -29,4 +38,4 @@ function diagnosticFor(error, stage) {
   if (netError) diagnostic.net_error = netError;
   return diagnostic;
 }
-module.exports = {BrowserFailure, checkPage, diagnosticFor};
+module.exports = {BrowserFailure, checkPage, cloudflareChallenge, diagnosticFor};

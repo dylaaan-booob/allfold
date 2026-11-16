@@ -83,6 +83,16 @@ invalidate a captured result. Binding/access probes retain their live Document
 association for Login, CARSI, WoS and access handling. Raw pages and credentials
 stay out of diagnostics and public projections. Translator Runtime remains retired.
 
+Cloudflare messages are page-owned capabilities on the existing authenticated
+Bridge, separate from business requests. Main supplies only a fresh challenge ID,
+Page ID and verified live CDP target; Python never searches by URL. Current native
+frame/Cloudflare-origin and actionable-control checks protect every interaction.
+Navigation does not revoke the tab capability, while true close, renderer exit or
+cancellation stops and drains its work. A stale/cross-target reply cannot update
+another Page. The owned child pipe may acknowledge Solver cleanup after socket
+loss; it cannot start work or carry arbitrary payloads. No system browser, Zotero
+session, site-facing RPC or credential interface is added.
+
 Saved Service and captured access dependencies determine access authority;
 configuration revisions also serve compare-and-write and diagnostic purposes.
 Access cleanup carries captured old keys, waits outside configuration write locks
