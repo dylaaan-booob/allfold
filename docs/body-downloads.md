@@ -141,6 +141,9 @@ access context or a completed access barrier can permit Session continuation,
 including the same URL without a new DOM link. Repeated unchanged responses/edges
 stop, including a cycle back to a previously seen Cookie state; actual new Cookie
 progress remains distinguishable without a fixed hop count.
+Entry-request and Reader context keys remain separate observations, since an HTTP
+redirect can lead to a Reader with a different Cookie path. One cannot overwrite
+the other's progress.
 Reader, stream and subsequent redirects retain the captured access binding;
 independent sources start without it. No Cookie values cross the bridge.
 

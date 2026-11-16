@@ -439,7 +439,7 @@ class PdfDiscovery:
         # Identical response/edge observations stop loops; byte capacity bounds
         # retained response state independently of the captured parent deadline.
         pending = [(original, None, object())]
-        edges, responses, state_bytes, context_key = set(), set(), 0, None
+        edges, responses, state_bytes, reader_context_key = set(), set(), 0, None
         while pending:
             candidate, evidence, lineage = pending.pop()
             self._current_candidate = candidate
@@ -500,11 +500,10 @@ class PdfDiscovery:
             fresh_reader = False
             if result.kind == 'response' and result.response is not None:
                 response = result.response
-                # A -> B -> A is a repeated access state, not a third advance.
-                if response.context_key is not None:
-                    context_key = response.context_key
+                # Entry and Reader can have different Cookie paths. Keep both
+                # observations; either can advance, while A -> B -> A repeats.
                 observation = (response.url, response.status, response.content_type, response.body,
-                    response.redirect_url, response.access, context_key)
+                    response.redirect_url, response.access, response.context_key, reader_context_key)
                 if observation in responses:
                     self._note(original.stage, original.rule_id, 'response-loop')
                     self._failed = True
@@ -537,7 +536,7 @@ class PdfDiscovery:
                             for c in parsed.current_candidates)
                         navigation = getattr(parsed, 'reader_result', None)
                         if navigation is not None:
-                            context_key = navigation.context_key
+                            reader_context_key = navigation.context_key
                             if not following and (navigation.url != response.url
                                     or navigation.context_changed or access_limited(response)):
                                 following = (replace(candidate, url=navigation.url, referer=navigation.referer,

@@ -94,7 +94,8 @@ async def main():
                                       'institution-complete', 'institution-revoked', 'institution-unprepared',
                                       'sciencedirect-html-no-item', 'sciencedirect-xhtml-no-item',
                                       'sciencedirect-reader-navigation', 'sciencedirect-reader-private-navigation',
-                                      'sciencedirect-reader-cookie', 'sciencedirect-reader-stalled', 'sciencedirect-reader-cycle',
+                                      'sciencedirect-reader-cookie', 'sciencedirect-reader-scoped-cookie',
+                                      'sciencedirect-reader-stalled', 'sciencedirect-reader-cycle',
                                       'cancel', 'drain')):
             science = kind.startswith('sciencedirect')
             no_item = kind in {'sciencedirect-html-no-item', 'sciencedirect-xhtml-no-item'}

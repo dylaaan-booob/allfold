@@ -132,7 +132,16 @@ app.whenReady().then(async()=>{
       res.end(payload);return;
     }
     if(url.pathname.startsWith('/science/article/pii/')) {
-      if(url.pathname.endsWith('/pdfft')) {
+      if(url.pathname.endsWith('/pdfft')||url.pathname.endsWith('/pdf')) {
+        if(kind==='sciencedirect-reader-scoped-cookie') {
+          if(url.pathname.endsWith('/pdfft')) {
+            assert.doesNotMatch(req.headers.cookie||'',/reader_scoped=/,'path-scoped Cookie is not sent to the entry');
+            res.writeHead(302,{location:url.pathname.replace(/pdfft$/,'pdf')+url.search});res.end();return;
+          }
+          const ready=req.headers.cookie?.includes('reader_scoped=ready'),entry=url.pathname.replace(/pdf$/,'pdfft');
+          res.writeHead(200,{'content-type':ready?'application/xhtml+xml':'text/html','cache-control':'no-store'});
+          res.end(ready?payload:'<title>Reader access</title><script>document.cookie="reader_scoped="+(document.cookie.includes("reader_scoped=one")?"ready":"one")+"; Path="+location.pathname;var article={pdfDownload:{urlMetadata:'+JSON.stringify(entry)+'}}</script>');return;
+        }
         if(['sciencedirect-reader-navigation','sciencedirect-reader-private-navigation'].includes(kind)) {
           const body=origin.replace('www.microbiologyresearch.org','repository.example.org')+'/reader-body.pdf?Signature=Reader%2FCurrent&case='+kind;
           res.writeHead(200,{'content-type':'text/html','cache-control':'no-store',
@@ -361,7 +370,7 @@ app.whenReady().then(async()=>{
       python.stdin.write(JSON.stringify({type:'hello',token:'fixture-only'})+'\n');
       const code=await new Promise(resolve=>python.once('exit',resolve));python=null;
       if(dispatchError)throw dispatchError;
-      assert.equal(code,0,stderr);assert.equal(complete,true,stderr);assert.equal(publicCases.length,40);
+      assert.equal(code,0,stderr);assert.equal(complete,true,stderr);assert.equal(publicCases.length,41);
       for(const item of publicCases)if(item.status==='completed')assert.deepEqual(fs.readFileSync(path.join(profile,'workspace/Documents',item.paper+'.pdf')),payload);
       assert.equal(browser.tabs.size,0);assert.equal(browser.sessionEvents.downloads.size,0);assert.equal(browser.sessionEvents.items.size,0);
       assert.equal(browser.accessContexts.size,0);assert.equal(browser.pageBudget.usage().total,0);
@@ -391,7 +400,7 @@ app.whenReady().then(async()=>{
           original_terminal:'Session pipeline + writer close; webRequest.completed/net::OK',body_associated:record.body_associated,
           attempt:record.attempt,status:record.status}));
       }
-      for(const kind of ['sciencedirect-reader-navigation','sciencedirect-reader-private-navigation','sciencedirect-reader-cookie','sciencedirect-reader-stalled','sciencedirect-reader-cycle']) {
+      for(const kind of ['sciencedirect-reader-navigation','sciencedirect-reader-private-navigation','sciencedirect-reader-cookie','sciencedirect-reader-scoped-cookie','sciencedirect-reader-stalled','sciencedirect-reader-cycle']) {
         const record=publicCases.find(item=>item.case===kind);
         assert.equal(record.status,'completed');assert.equal(record.body_associated,true);
         const count=requests.filter(request=>scienceCase(request.url)===kind).length;
@@ -399,6 +408,7 @@ app.whenReady().then(async()=>{
       }
       assert.equal(requests.filter(request=>new URL(request.url,origin).pathname==='/reader-body.pdf').length,4,'actual Reader navigation then Session GET, preserving either Referer policy');
       assert.equal(requests.filter(request=>scienceCase(request.url)==='sciencedirect-reader-cookie').length,5,'same HTML with two real Cookie advances, then Session PDF');
+      assert.equal(requests.filter(request=>scienceCase(request.url)==='sciencedirect-reader-scoped-cookie').length,8,'three entry/redirect GETs and two Readers preserve distinct path-scoped progress');
       console.log('PUBLIC BODY NATIVE PASS');
     }
     for(const kind of ['form-replaced','attachment','inline','iframe','popup','named-popup','popup-reservation','cancel','interrupted']) {

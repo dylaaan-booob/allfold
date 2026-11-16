@@ -34,6 +34,8 @@ one body request with no item, matching permanent bytes and reopened original
 Paper/attempt SQLite association. Reader cases cover signed final navigation,
 repeated Cookie progress without links, Cookie-cycle/no-progress independent
 fallback and preservation of `no-referrer` navigation.
+Path-scoped Cookie progress also survives an entry/Reader HTTP redirect and a
+runtime clue returning to the original entry; it is a continuation, not fallback.
 Session fixtures cover public cross-origin redirects, private/illegal target
 refusal, ordinary and close-delimited completion, broken transfer/decode errors,
 backpressure, writer errors and late signals. Run serially:

@@ -736,6 +736,33 @@ def test_oup_qualified_citation_response_eprint_uses_current_url_in_original_sta
     assert (result.pdf_source, result.fallback_used) == ('P2', False)
 
 
+def test_reader_progress_keeps_distinct_entry_and_reader_cookie_contexts():
+    from types import SimpleNamespace
+    from allfold.application.document_metadata import CurrentPdfClue, ReaderResult
+    from allfold.pdf_rules import PdfCandidate
+    article = 'https://www.sciencedirect.com/science/article/pii/S1234567890123456'
+    paper = target('www.sciencedirect.com', article_url=article)
+    entry, final = article+'/pdfft', article+'/pdf'
+    candidate = PdfCandidate(paper, 'P2', 'R024', 'sciencedirect', entry)
+    calls = []
+    class IO:
+        reads = 0
+        def reader(self, item, response):
+            self.reads += 1
+            return SimpleNamespace(current_candidates=(CurrentPdfClue('P2', 'R024', entry),),
+                reader_result=ReaderResult(final, None, True, f'{self.reads:064x}'))
+    io = IO()
+    def consume(item):
+        calls.append(item.url)
+        if io.reads == 2:
+            return CandidateResult.pdf(transfer_complete=True)
+        # Only the redirected Reader path receives the script's Cookie.
+        return CandidateResult.current(CurrentResponse(final, 'text/html', b'<title>Reader</title>', context_key='0'*64))
+    result = PdfDiscovery(paper, io=io, candidates=(candidate,)).run(consume)
+    assert calls == [entry]*3 and io.reads == 2
+    assert (result.status, result.pdf_source, result.fallback_used) == ('transferred', 'P2', False)
+
+
 def test_optica_known_reader_skips_first_frame_and_preserves_meta_source():
     paper = target('opg.optica.org', article_url='https://opg.optica.org/abstract.cfm?uri=ol-1-2-3')
     facts = document(paper, [PdfCandidateFact(stage='P3', rule_id='R053',
