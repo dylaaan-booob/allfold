@@ -9,7 +9,7 @@ class _AccessHTML(HTMLParser):
         super().__init__(convert_charrefs=True)
         self.stack = []
         self.title = self.h1 = self.h2 = ''
-        self.content = self.body_text = False
+        self.content = self.body_text = self.verification_prompt = False
         self.password = self.frame = self.captcha = False
         self.options = self.orchestrator = self.anubis = False
 
@@ -54,6 +54,7 @@ class _AccessHTML(HTMLParser):
         elif 'h2' in tags:
             self.h2 += data
         if data.strip():
+            self.verification_prompt |= bool(re.match(r'^(?:please\s+)?(?:complete (?:the )?(?:security check|captcha)|verify (?:that )?you are human)\b', data.strip(), re.I))
             self.body_text = True
             if 'article' in tags or 'main' in tags:
                 self.content = True
@@ -74,8 +75,9 @@ def html_access(body: str, status: int = 200) -> str | None:
         return 'cloudflare'
     if parser.anubis and named(r'^Making sure you.re not a bot'):
         return 'anubis'
-    verification = named(r'^(Verify you are human|Are you a robot|Human verification)')
-    if parser.frame and verification or parser.captcha and not parser.body_text:
+    verification = named(r'^(Verify you are human|Are you a robot|Human verification|Security check|Checking your browser)')
+    if (parser.frame and verification or parser.captcha
+            and (not parser.body_text or parser.verification_prompt and not parser.content)):
         return 'verification'
     if parser.password and named(r'^(Sign in|Log in|Login|Authentication)\b'):
         return 'login'
