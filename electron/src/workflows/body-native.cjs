@@ -11,7 +11,7 @@ class OriginalNavigation {
     Object.assign(this,{browser,doc,candidate,output,signal,deadline,verify,progress,cdnAllowed});
     this.sciencePII=candidate.platform==='sciencedirect'?new URL(doc.url).pathname.match(/\/science\/article\/pii\/([SB][0-9X]{16})/i)?.[1]:null;
     this.owner=browser.operation;this.sources=new Map();this.registrations=[];this.tracked=new Set();this.probes=new Set();this.dispatched=false;
-    this.continuationEdges=new Set();this.continuationBytes=0;
+    this.continuationEdges=new Set();this.continuationContexts=new Map();this.continuationBytes=0;
     this.received=new Promise((resolve,reject)=>{this.resolve=resolve;this.reject=reject;});this.received.catch(()=>{});
     this.hook=browser.sessionEvents.subscribe('beforeRequest',details=>this.request(details));
     this.headerHook=browser.sessionEvents.subscribe('beforeSendHeaders',details=>this.requestContext(details));
@@ -75,6 +75,7 @@ class OriginalNavigation {
     const entry=this.addFrame(source,event.frame,{...this.doc,url:previous.response.url});
     if(!entry)throw failure('document_changed');
     entry.previousContext=repeated?previous.context:undefined;
+    entry.continuationEdge=edge;
     this.continuation={source,entry,url:event.url,frameTreeNodeId:frame.frameTreeNodeId,used:false};
   }
   acceptPopup(url,frameName) {
@@ -248,6 +249,13 @@ class OriginalNavigation {
         .filter(([name])=>['cookie','authorization'].includes(name.toLowerCase()))
         .map(([name,value])=>[name.toLowerCase(),value]).sort(([a],[b])=>a.localeCompare(b)));
       if(entry.previousContext!==undefined&&entry.previousContext===context)throw failure('download_not_attributable');
+      if(entry.continuationEdge) {
+        const contexts=this.continuationContexts.get(entry.continuationEdge)||new Set();
+        if(contexts.has(context))throw failure('download_not_attributable');
+        this.continuationBytes+=Buffer.byteLength(context);
+        if(this.continuationBytes>1048576)throw failure('download_not_attributable');
+        contexts.add(context);this.continuationContexts.set(entry.continuationEdge,contexts);
+      }
       entry.context=context;
     }catch(error){this.fail(error);return {cancel:true};}
   }
@@ -258,7 +266,7 @@ class OriginalNavigation {
     // non-reused FrameTreeNode ID connects that successor to the exact request;
     // every new navigation request is still refused by the one-shot guard.
     if(frame.frameTreeNodeId!==entry.request.frameTreeNodeId||frame.url!==response.url)throw failure('document_changed');
-    const binding={pageId:source.tab.id,processId:frame.processId,frameToken:frame.frameToken,url:response.url,
+    const binding={pageId:source.tab.id,processId:frame.processId,frameToken:frame.frameToken,url:response.url,identity:this.doc.identity,
       navigationGeneration:source.tab.documentGeneration,rootProcessId:root.processId,rootFrameToken:root.frameToken};
     let access;
     try {access=await this.browser.documents.call(binding,'access',{}, {signal:this.signal,deadline:this.deadline});}
@@ -271,7 +279,16 @@ class OriginalNavigation {
     if(access.markers.login || access.markers.mfa)throw new BrowserFailure('navigation','content_access_blocked',response.status);
     if(entry.continued)return;
     if(entry.response!==response||!this.browser.documentCurrent(binding))throw failure('document_changed');
-    if(this.scienceReader(source,entry,frame))return;
+    if(this.scienceReader(source,entry,frame)) {
+      let parsed;
+      try {parsed=await this.browser.documents.call(binding,'pdf',{readerKind:'sciencedirect'},
+        {signal:this.signal,deadline:this.deadline});}
+      catch(error) {if((entry.continued||entry.pendingContinuation)&&error.diagnostic?.code==='document_changed')return;throw error;}
+      this.valid();
+      if(entry.continued||entry.pendingContinuation)return;
+      if(parsed.clues?.candidates.length)return;
+      throw failure('body_action_unavailable');
+    }
     // A dispatched one-shot action with ordinary HTML is a finite local failure,
     // never a new source, copied body, solver action or replayed request.
     throw failure('download_not_attributable');

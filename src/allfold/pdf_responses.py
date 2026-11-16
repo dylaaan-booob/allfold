@@ -80,7 +80,7 @@ class _SmallHTML(HTMLParser):
         if len(self.nodes) >= 4096 or len(self.stack) >= 64:
             self.partial = True
             raise ValueError('Response parse budget exceeded')
-        unsafe_scope = any(name in {'class', 'id', 'data-doi', 'role', 'style', 'hidden', 'aria-hidden'}
+        unsafe_scope = any(name in {'class', 'id', 'data-doi', 'role', 'style', 'hidden', 'aria-hidden', 'title'}
             and len(value or '') > 8192 for name, value in attrs)
         if any(len(value or '') > 8192 for _, value in attrs):
             self.partial = True
@@ -336,7 +336,8 @@ def parse_current_response(candidate, response, *, report=lambda code: None):
         return tuple(values)
     # HTTP article HTML is eligible only with exact scholarly DOI evidence in
     # this response. Native article reads retain their stronger live binding.
-    dois = {valid_doi(node['attrs'].get('content')) for node in nodes
+    # Unsafe candidate scopes cannot erase already observed conflicting identity.
+    dois = {valid_doi(node['attrs'].get('content')) for node in parser.nodes
         if node['tag'] == 'meta' and (node['attrs'].get('name') or node['attrs'].get('property', '')).lower()
         in {'citation_doi', 'prism.doi', 'dc.identifier.doi'} and any(p['tag'] == 'head' for p in node['parents'])}
     if dois != {candidate.target.identity_doi} or not candidate.target.identity_doi:

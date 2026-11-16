@@ -338,6 +338,17 @@ persistent replay queue or resume engine.
 
 ### Current limitations and follow-up
 
+
+R024 still has one unresolved original-response case: real PDF bytes declared as
+HTML/XHTML without a Chromium DownloadItem. Reader HTML must remain renderable
+for its legitimate navigation; the current header-only admission cannot also
+identify those hidden PDF bytes. Fixed form destinations and existing items,
+and the Session stream, accept misleading MIME through actual prefix checks.
+A completed empty Reader now ends that source rather than waiting for the whole
+parent deadline. Full R024 coverage requires a separately resolved original-body
+capture boundary; changing MIME globally, replaying the request or buffering the
+whole PDF is not an implemented solution. This remains a stage-seven blocker.
+
 Source failures do not stop independent candidates. P1–P5 remains lazy and stops
 at the first actual PDF completion. OpenAlex preserves best-first deterministic
 order across all qualified distinct locations, and IEEE/Springer/Elsevier records

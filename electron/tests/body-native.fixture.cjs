@@ -136,9 +136,11 @@ app.whenReady().then(async()=>{
       if(url.pathname.endsWith('/pdfft')) {
         if(kind==='sciencedirect-reader-auth-return'){const state=req.headers.cookie?.includes('reader_auth=two')?'two':req.headers.cookie?.includes('reader_auth=one')?'one':'';if(state!=='two'){res.writeHead(200,{'content-type':'text/html'});res.end('<script>document.cookie="reader_auth='+ (state==='one'?'two':'one')+'; Path=/";location.reload()</script>');}else{res.writeHead(200,{'content-type':'application/pdf'});res.end(payload);}return;}
         if(kind==='sciencedirect-reader-cycle'){res.writeHead(200,{'content-type':'text/html'});res.end('<script>location.reload()</script>');return;}
+        if(kind==='sciencedirect-reader-cookie-cycle'){const next=req.headers.cookie?.includes('reader_loop=one')?'two':'one';res.writeHead(200,{'content-type':'text/html'});res.end('<script>document.cookie="reader_loop='+next+'; Path=/";location.reload()</script>');return;}
         if(kind?.startsWith('sciencedirect-reader')) {
           res.writeHead(kind==='sciencedirect-reader-http-error'?500:200,{'content-type':'text/html',...(kind==='sciencedirect-reader-challenge'?{'cf-mitigated':'challenge'}:{})});
           if(kind==='sciencedirect-reader-challenge'){res.end('<title>Just a moment...</title>');return;}
+          if(kind==='sciencedirect-reader-empty'){res.end('<title>Reader</title><p>No body entry</p>');return;}
           if(['sciencedirect-reader-reload','sciencedirect-reader-loop'].includes(kind)) {
             const step=Number(url.searchParams.get('reader')||'0');
             if(step===0||kind==='sciencedirect-reader-loop'&&step===1) {
@@ -274,7 +276,7 @@ app.whenReady().then(async()=>{
       } else if(kind.startsWith('microbiology-redirect')) {
         assert.equal(result.kind,'failed');assert.equal(result.output_file,undefined);
       } else if(kind.startsWith('sciencedirect-reader')) {
-        assert.equal(result.kind,['sciencedirect-reader-challenge','sciencedirect-reader-cycle'].includes(kind)?'failed':kind==='sciencedirect-reader-cancel'?'cancelled':'failed');
+        assert.equal(result.kind,['sciencedirect-reader-challenge','sciencedirect-reader-cycle','sciencedirect-reader-cookie-cycle'].includes(kind)?'failed':kind==='sciencedirect-reader-cancel'?'cancelled':'failed');
         assert.equal(result.output_file,undefined);
       } else if(kind==='mime-fake'){assert.equal(result.kind,'failed');assert.equal(result.diagnostic_code,'non-pdf');
       } else if(kind==='interrupted')assert.equal(result.diagnostic_code,'interrupted');
@@ -349,7 +351,7 @@ app.whenReady().then(async()=>{
     }
     assert.equal(requests.filter(request=>request.url.endsWith('/pdfft')).length,caseNames.includes('sciencedirect')||caseNames.includes('public')?1:0,'ScienceDirect original navigation must never be replayed');
     for(const kind of caseNames.filter(kind=>kind.startsWith('sciencedirect-reader'))) {
-      assert.equal(requests.filter(request=>request.url==='/science/article/pii/S1234567890123456/pdfft?case='+kind).length,kind==='sciencedirect-reader-auth-return'?3:kind==='sciencedirect-reader-cycle'?2:1);
+      assert.equal(requests.filter(request=>request.url==='/science/article/pii/S1234567890123456/pdfft?case='+kind).length,['sciencedirect-reader-auth-return','sciencedirect-reader-cookie-cycle'].includes(kind)?3:kind==='sciencedirect-reader-cycle'?2:1);
       assert.equal(requests.filter(request=>request.cdn&&request.url.endsWith('?case='+kind)).length,
         ['sciencedirect-reader','sciencedirect-reader-self','sciencedirect-reader-reload','sciencedirect-reader-loop','sciencedirect-reader-twice','sciencedirect-reader-cancel'].includes(kind)?1:0,kind);
       assert.equal(requests.filter(request=>request.cdn&&request.url.endsWith('?case='+kind+'&next=1')).length,kind==='sciencedirect-reader-twice'?1:0,'only the observed CDN continuation is followed');

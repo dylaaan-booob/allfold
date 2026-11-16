@@ -73,17 +73,27 @@ def test_partial_json_preserves_complete_matching_records_before_unrelated_tail(
         assert inputs.identifiers == (('article_number','123456'),)
 
 
-@pytest.mark.parametrize('attribute',['class','id','data-doi'])
+@pytest.mark.parametrize('attribute',['class','id','data-doi','title'])
 def test_oversized_exclusion_or_identity_attribute_never_qualifies_foreign_pdf(attribute):
     from allfold.pdf_responses import parse_current_response
     paper=target('www.nature.com')
     candidate=PdfCandidate(paper,'P3','GENERIC','nature','https://www.nature.com/articles/target')
-    marker='related ' if attribute!='data-doi' else '10.9999/other'
+    marker='Supplementary ' if attribute=='title' else 'related ' if attribute!='data-doi' else '10.9999/other'
     body=('<head><meta name="citation_doi" content="10.1234/AbC">'
         '<meta name="citation_pdf_url" content="https://cdn.example.org/target.pdf"></head>'
         '<div '+attribute+'="'+marker+'x'*10000+'"><a data-track-action="download pdf" href="https://cdn.example.org/other.pdf">PDF</a></div>').encode()
     result=parse_current_response(candidate,CurrentResponse(candidate.url,'text/html',body))
     assert [item.url for item in result]==['https://cdn.example.org/target.pdf']
+
+
+def test_unsafe_candidate_scope_cannot_erase_observed_conflicting_doi():
+    from allfold.pdf_responses import parse_current_response
+    paper=target('www.nature.com')
+    candidate=PdfCandidate(paper,'P3','GENERIC','nature','https://www.nature.com/articles/target')
+    body=('<head><meta name="citation_doi" content="10.1234/AbC">'
+        '<meta name="citation_doi" content="10.9999/other" class="'+'x'*10000+'">'
+        '<meta name="citation_pdf_url" content="https://cdn.example.org/body.pdf"></head>').encode()
+    assert parse_current_response(candidate,CurrentResponse(candidate.url,'text/html',body))==()
 
 
 @pytest.mark.parametrize('mime',['text/plain','application/x-bibtex'])
