@@ -1,10 +1,101 @@
 {
-  "status": "formal_not_started",
+  "status": "formal_in_progress",
   "manifest": "pdf-pairing-manifest.json",
   "manifest_frozen_at_utc": "2026-11-16T18:40:53.823107+00:00",
   "production_code_sha": "098288ae32e159811b9c49333b386d1533890862",
   "runtime_head_sha": "7c9be1c5e4487087c4dacf0afebd0e7c19b3435b",
-  "pairs": [],
+  "pairs": [
+    {
+      "pair_id": "F01-1",
+      "sample_id": "F01",
+      "order": [
+        "Allfold",
+        "Zotero"
+      ],
+      "production_code_sha": "098288ae32e159811b9c49333b386d1533890862",
+      "runtime_head_sha": "7c9be1c5e4487087c4dacf0afebd0e7c19b3435b",
+      "allfold": {
+        "click_utc": [
+          "2026-11-16T18:42:37.663Z",
+          "2026-11-16T18:42:37.760Z"
+        ],
+        "terminal_observation_utc": [
+          "2026-11-16T18:42:40.613Z",
+          "2026-11-16T18:42:40.908Z"
+        ],
+        "attempt": 1,
+        "result": "failure",
+        "reason": "no-pdf-candidates",
+        "correct_local_pdf": false,
+        "cleanup_complete": true,
+        "sources": [
+          {
+            "stage": "P2",
+            "rule": "R025",
+            "attempts": 2,
+            "outcome": "Non-PDF response; no-pdf-entry"
+          }
+        ],
+        "article_probe_http_status": 202,
+        "diagnostics": "Local raw/f01-a1-diagnostics.zip (private; no response body retained)",
+        "human_intervention": false,
+        "wait_to_failure_seconds": [
+          2.853,
+          3.245
+        ],
+        "cache_context": "First explicit Download for this Paper; no manual Electron article/PDF preload. Existing institution-prepared shared Session from P04; actual target-page access not established before click.",
+        "post_failure_access_diagnostic": {
+          "normal_browser_article_navigation_utc": "2026-11-16T18:53:11.126Z",
+          "observed_by_utc": "2026-11-16T18:53:44.810Z",
+          "state": "Matching title/DOI; Institutional Sign In and no PDF access; no visible challenge; prior homepage Xiamen display was stale or insufficient",
+          "resolution": "Normal Electron CARSI renewal reached official XMU account page at18:55:06UTC; no saved autofill, both fields empty. User asked to complete local login; A2 blocked pending actual target access."
+        }
+      },
+      "zotero": {
+        "result": "automatic_success",
+        "preparation": {
+          "article_open_utc": "2026-11-16T18:49:08.268Z",
+          "new_normal_carsi_entry_utc": "2026-11-16T18:50:09.978Z",
+          "saved_credentials_submitted_utc": "2026-11-16T18:51:00.444Z",
+          "observed_result": "Xiamen institution, matching title/DOI and PDF access restored before save",
+          "machine_only_preparation_seconds": null,
+          "note": "Wall preparation includes operator/tool gaps and is not a pure product wait. No cookie/context copy or manual MFA."
+        },
+        "translator": "IEEE Xplore",
+        "click_utc": [
+          "2026-11-16T18:52:06.108Z",
+          "2026-11-16T18:52:06.148Z"
+        ],
+        "local_pdf_and_association_utc": [
+          "2026-11-16T18:52:19.341Z",
+          "2026-11-16T18:52:19.676Z"
+        ],
+        "wait_seconds": [
+          13.193,
+          13.568
+        ],
+        "parent_key": "YENFVTVW",
+        "attachment_key": "T68BVTVH",
+        "link_mode": "imported_url",
+        "file_bytes": 2420319,
+        "content_check": {
+          "file_exists": true,
+          "file_bytes": 2420319,
+          "pdf_prefix": true,
+          "page_count": 16,
+          "full_title_match": true,
+          "doi_match": true,
+          "publisher_version_evidence": {
+            "ieee": true,
+            "early_access": false
+          }
+        },
+        "human_intervention": false
+      },
+      "comparison": "Zotero correct local PDF; Allfold first attempt failed. Additional failure preserved; Electron HTTP202/access state under investigation, comparison conditions not yet aligned.",
+      "access_comparability": "Not yet established for original A click: institutional homepage had been prepared, but target article was not previsited; Chrome later needed normal SSO renewal. Original failure retained for investigation."
+    }
+  ],
   "coverage_gaps": [],
   "parity_conclusions": "Not assessed before formal observations."
 }

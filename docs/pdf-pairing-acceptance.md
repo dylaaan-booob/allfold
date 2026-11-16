@@ -3,9 +3,9 @@
 Issue: [#140](https://github.com/dylaaan-booob/allfold/issues/140). Baseline:
 `a2e511aa86ab5aa292f224301d6609a59c287fa2`.
 
-**Status: incomplete. These are calibration pilots, not a frozen representative
-cohort or evidence that any platform has reached parity. Workspace is retained
-because diagnosis and real retests remain necessary.**
+**Status: incomplete. The 31-paper representative manifest is now frozen and
+formal pairing has started. Pilot outcomes remain separate. No whole platform is
+yet confirmed at parity. Workspace is retained for required measurements/retests.**
 
 ## Environment and endpoint
 
@@ -19,7 +19,9 @@ sync were disabled. PDFTranslate 2.4.8 and Style 6.0.111 remained enabled.
 
 The configured Workspace initially contained no Paper database. A normal product
 Run created 15 Papers from the existing PU query and configured journals. Original
-provider selections were restored. Collection settled before Download. No direct
+provider selections were restored. A normal OpenAlex-only Bayesian October Run
+then added 57 Papers. The original query, month range and all provider selections
+were restored exactly; all 72 collections settled before formal Download. No direct
 SQLite writes or injected PDF URLs were used. The local obsolete `kept_workflow`
 configuration prevented startup; a private backup was retained and only the local
 configuration was updated to its current `workflow` spelling and supported fields.
@@ -50,7 +52,7 @@ code-version relationships. No pilot contributes to formal aggregate scores.
 | P01 / 10.1093/bioinformatics/btag263 | Oxford/Silverchair, OA | A→Z | 6.874–7.218 s | Not observed | Article verification/save-session issues; no parity conclusion. |
 | P02 / 10.1007/s10618-026-01264-1 | Springer Link, OA | Z→A | 147.498–147.953 s | 151.652–151.975 s | Same published version, 30 pages, 2,728,411 bytes; one pilot pair only. |
 | P03 / 10.1016/j.patcog.2026.114755 | ScienceDirect, institutional | A→Z, diagnostic retries | Initial discovery/Reader failures; fix2 retry 10.455–10.816 s | Parent only; PDF not observed | Correct 13-page PDF after repair; different Session/access/cache conditions prevent a code-only timing attribution. |
-| P04 / 10.1109/tnnls.2026.3706351 | IEEE Xplore, institutional | Z→A; later diagnostic A retries | Initial parent deadline expired, about 600 s; later 20.481–20.887 s and 17.571–17.946 s | 17.829–18.220 s; new paired save awaiting authentication | Access/Session changed before successful retries; no code-benefit or parity claim. |
+| P04 / 10.1109/tnnls.2026.3706351 | IEEE Xplore, institutional | Z→A; diagnostic retries; three complete new balanced pairs | Initial expiry about 600 s; later diagnostic 20.481–20.887 s and 17.571–17.946 s; paired repeats 14.558–15.513 s | Initial 17.829–18.220 s; paired repeats 16.061–16.834 s | New same-version pairs support no observed disadvantage on this paper; original expiry remains unexplained, no platform parity claim. |
 | P05 / 10.1016/j.neunet.2026.109387 | ScienceDirect, institutional | A→Z | 12.929–13.318 s | First save operator-interrupted; fresh retry required verification, no PDF | Unseen repaired-platform article, 12 pages / 7,803,602 bytes. |
 | P06 / 10.1016/j.patcog.2026.114946 | ScienceDirect, institutional | Z→A | 9.532–9.916 s | Verification incomplete; no PDF | Second unseen article, 12 pages / 2,265,082 bytes. |
 
@@ -100,8 +102,9 @@ escaped Paper DOIs. The comparison now decodes one layer symmetrically, preservi
 distinct non-UTF-8 bytes and the original request spelling. Targeted regressions
 also distinguish different escape layers and encoded whitespace. 396 related
 tests pass. Its affected R029–R034 platforms are not among the current real pilots;
-their live-site effect is unverified, and this commit is not loaded in the current
-9383359 process. Full Python checks now pass 1622 tests. Fixed-baseline review of
+their live-site effect is unverified. The actual runtime was subsequently rebuilt
+and restarted at 7c9be1c, containing production code 098288a; process, source path,
+port and runtime versions were checked. Full Python checks pass 1622 tests. Fixed-baseline review of
 all committed changes through 098288a found no Standards issue or implementation
 defect; Spec separately retained four disclosed incomplete categories: formal
 coverage, real paired retests, latest full CI and final Reset. An independent
@@ -117,8 +120,17 @@ byte differences and publisher watermarks. NetLog showed a single R025 GET, HTTP
 first body at about 2.4–2.8 s and stream end at about 17.7–20.6 s. These later
 successes followed normal Session/access preparation; they do not explain the
 first expiry or establish code benefit. A fresh Chrome article lacked the prior
-PDF permission and normal institutional login required the user's QR-code MFA.
-The new Zotero save has not started, so that paired repeat remains incomplete.
+PDF permission. The IdP's default QR page also offered ordinary account login;
+existing saved credentials and a fresh normal resource entry restored access
+without human MFA. The old SAML nonce had expired. Three new complete pilot pairs
+then saved PDFs on both products at the final production code version 098288a.
+Their midpoint medians are 14.838 s (Allfold), 16.491 s (Zotero), with median paired
+difference −1.4985 s and ratio 0.9078. Raw interval points and genuine new-file
+checks are retained. One Allfold repeat was deleted before its individual text
+inspection; its association/PDF prefix/source/size were observed, but version is
+inferred from neighboring inspected copies and strict transfer comparison is
+excluded. All other repeat files were individually checked. One paper cannot
+establish IEEE parity or explain the earlier deadline expiry.
 
 P05's initial unresolved Zotero save was explicitly operator-interrupted by
 reloading only the same Connector version; enabled/pinned/permissions were
@@ -140,9 +152,21 @@ All 68 configured journals were inventoried by their saved Service. Actual scope
 includes Oxford, Annual Reviews, Taylor & Francis, Wiley, ScienceDirect, Springer,
 SIAM, Cambridge, IEEE, EBSCO-mapped journals, Project Euclid, and unmapped journals.
 EBSCO mapping is an access capability, not proof of the actual full-text platform.
-No frozen formal manifest exists yet. Representative platform samples, mechanism
-coverage, matched repeats/controls, completed latest CI, and final
-Workspace Reset remain outstanding. No platform is confirmed at parity.
+The [formal manifest](pdf-pairing-manifest.json) froze 31 untreated distinct Papers
+on 2026-11-16 at 18:40:53.823107 UTC, before the first formal click. It records
+specific DOI/URLs, saved discovery state, configured Service versus actual platform,
+OA/access knowledge, caches, declared orders and preselected repeat controls.
+The [formal results](pdf-pairing-formal-results.json) preserve every observation,
+including F01’s first Allfold no-candidate failure and Zotero’s verified 16-page
+local PDF (13.193–13.568 s). Electron’s subsequent ordinary article visit showed
+no PDF rights; the old institutional homepage was insufficient proof. Normal
+CARSI renewal reached the official account page with empty fields/no autofill;
+user login is pending before a comparable Allfold retest. This original failure
+is retained rather than silently excluded. Formal main pairs, controls,
+mechanism coverage and final Workspace Reset remain incomplete. No platform is
+confirmed at parity. IEEE and Cambridge have two untreated available Papers each;
+ScienceDirect has six; the other seven platforms have three each. Unavailable
+Optica/R059/LWW/OCE paths are not claimed as covered.
 
 The full PR-linked run for 098288a failed in the isolated native Cancel fixture's
 five-second public-progress wait, after the earlier 603f02f full run had passed.
@@ -151,8 +175,11 @@ The original failed run is retained at
 No production timeout or assertion was changed. An isolated local reproduction
 on the same source passed all 41 public native cases in about 12.7 s; full native
 checks also passed all 241 tests on the same 098288a source, with no skips, in
-120.7 s; JavaScript checks passed 63 files. The next latest PR run remains to be
-verified. The failure's cause is not established, so it is not described as repaired.
+120.7 s; JavaScript checks passed 63 files. The subsequent full PR-linked
+[run 43921980119](https://github.com/dylaaan-booob/allfold/actions/runs/43921980119)
+passed every Safety checks step at head 7c9be1c. Later evidence-only commits still
+need their own latest PR-associated check. The earlier failure’s cause is not
+established, so it is not described as repaired.
 
 Raw diagnostics, runtime proofs, click records and local association/file
 observations are retained outside Workspace in the task's private evidence

@@ -384,9 +384,9 @@
           "zotero"
         ],
         "allfold_attempt": 3,
-        "zotero_status": "preparation_requires_user_MFA",
+        "zotero_status": "old_pair_incomplete; access subsequently restored for new R02-R04 pairs",
         "zotero_save_clicked": false,
-        "reason": "Fresh ordinary Chrome article lacked prior PDF access; normal institutional authentication requires a user QR-code login.",
+        "reason": "Default QR option was not mandatory; normal account/saved-credential flow and a fresh resource entry restored institutional access. Old AF attempt3 is not retroactively paired across the long interruption.",
         "pair_complete": false
       }
     },
@@ -594,14 +594,247 @@
       "status": "failure",
       "step": "npm --prefix electron test",
       "failure": "Public native Cancel fixture5-second public progress projection wait expired; original failure retained, cause not established."
+    },
+    "ci_last_checked_success": {
+      "head_sha": "7c9be1c5e4487087c4dacf0afebd0e7c19b3435b",
+      "event": "pull_request",
+      "workflow": "Safety checks",
+      "check": "safety",
+      "status": "success",
+      "url": "https://github.com/dylaaan-booob/allfold/actions/runs/43921980119",
+      "all_required_steps_executed": true
     }
   },
   "remaining": [
     "Frozen formal cohort and representative/mechanism pairs not run",
-    "IEEE repeat awaiting user institutional QR login",
+    "Formal IEEE coverage and preselected control repeats; initial600s expiry retained but not reproduced inR02-R04",
     "ScienceDirect Zotero verification not completed; no successful comparable Zotero PDF",
     "Further normal product collection required for actual platform coverage",
     "Latest full PR CI must pass; current native fixture failure under investigation",
     "Final normal runtime without temporary NetLog, affected checks, and actual product Workspace Reset pending"
-  ]
+  ],
+  "pilot_paired_retests": {
+    "unique_papers": 1,
+    "successful_pairs": 3,
+    "formal_score": false,
+    "initial_expiry": "Retained separately; not reproduced after preparation, no IEEE code change or causal repair claim.",
+    "pairs": [
+      {
+        "pair_id": "P04-R02",
+        "queue": "pilot-retest",
+        "formal_score": false,
+        "doi": "10.1109/tnnls.2026.3706351",
+        "platform": "IEEE Xplore",
+        "access_method": "Institutional shared Session, normal CARSI preparation; ordinary R025 requires no retained Service capability",
+        "order": [
+          "zotero",
+          "allfold"
+        ],
+        "allfold_head_sha": "7c9be1c5e4487087c4dacf0afebd0e7c19b3435b",
+        "production_code_sha": "098288ae32e159811b9c49333b386d1533890862",
+        "allfold": {
+          "attempt": 4,
+          "click_utc": [
+            "2026-11-16T17:59:28.624Z",
+            "2026-11-16T17:59:28.720Z"
+          ],
+          "local_pdf_and_association_utc": [
+            "2026-11-16T17:59:43.278Z",
+            "2026-11-16T17:59:43.562Z"
+          ],
+          "wait_seconds": [
+            14.558,
+            14.938
+          ],
+          "file_bytes": 3459194,
+          "status": "automatic_success",
+          "source": "P2/R025",
+          "fallback_used": false,
+          "content_check": "title/DOI/15pages directly inspected"
+        },
+        "zotero": {
+          "version": "10.0.9",
+          "connector": "5.0.217",
+          "translator": "IEEE Xplore",
+          "click_utc": [
+            "2026-11-16T17:55:24.770Z",
+            "2026-11-16T17:55:24.799Z"
+          ],
+          "local_pdf_and_association_utc": [
+            "2026-11-16T17:55:40.860Z",
+            "2026-11-16T17:55:41.202Z"
+          ],
+          "wait_seconds": [
+            16.061,
+            16.432
+          ],
+          "file_bytes": 3459181,
+          "status": "automatic_success",
+          "link_mode": "imported_url",
+          "content_check": "title/DOI/15pages directly inspected"
+        },
+        "difference_seconds": [
+          -1.874,
+          -1.123
+        ],
+        "ratio": [
+          0.886,
+          0.9301
+        ],
+        "transfer_segment_comparison": false,
+        "cache_context": "R02 fresh Allfold Session, institution homepage only, target article/PDF not preloaded; Chrome normal renewed institutional access. R03/R04 same prepared Sessions and warm repeated visits. Genuine new files/associations after product delete/Restore and fresh Zotero save sessions. Cache equality unproven.",
+        "preparation_context": "Initial QR page had official account login with existing saved credentials; old SAML session expired, fresh normal resource entry restored access without user MFA. Long operator preparation gap not product download time.",
+        "machine_only_preparation_seconds": null,
+        "measurement_note": "Same-machine click bounds and actual file+association poll intervals, not screen/tool turnaround."
+      },
+      {
+        "pair_id": "P04-R03",
+        "queue": "pilot-retest",
+        "formal_score": false,
+        "doi": "10.1109/tnnls.2026.3706351",
+        "platform": "IEEE Xplore",
+        "access_method": "Institutional shared Session, normal CARSI preparation; ordinary R025 requires no retained Service capability",
+        "order": [
+          "allfold",
+          "zotero"
+        ],
+        "allfold_head_sha": "7c9be1c5e4487087c4dacf0afebd0e7c19b3435b",
+        "production_code_sha": "098288ae32e159811b9c49333b386d1533890862",
+        "allfold": {
+          "attempt": 5,
+          "click_utc": [
+            "2026-11-16T18:02:58.268Z",
+            "2026-11-16T18:02:58.418Z"
+          ],
+          "local_pdf_and_association_utc": [
+            "2026-11-16T18:03:13.495Z",
+            "2026-11-16T18:03:13.781Z"
+          ],
+          "wait_seconds": [
+            15.077,
+            15.513
+          ],
+          "file_bytes": 3459200,
+          "status": "automatic_success",
+          "source": "P2/R025",
+          "fallback_used": false,
+          "content_check": "Individual file deleted before text inspection; original target, localPDFprefix, source, association and size verified. Same published version inferred from stable entry/neighboring checked copies; excluded from strict transfer-segment comparison."
+        },
+        "zotero": {
+          "version": "10.0.9",
+          "connector": "5.0.217",
+          "translator": "IEEE Xplore",
+          "click_utc": [
+            "2026-11-16T18:04:28.676Z",
+            "2026-11-16T18:04:28.700Z"
+          ],
+          "local_pdf_and_association_utc": [
+            "2026-11-16T18:04:44.996Z",
+            "2026-11-16T18:04:45.362Z"
+          ],
+          "wait_seconds": [
+            16.296,
+            16.686
+          ],
+          "file_bytes": 3459201,
+          "status": "automatic_success",
+          "link_mode": "imported_url",
+          "content_check": "title/DOI/15pages directly inspected"
+        },
+        "difference_seconds": [
+          -1.609,
+          -0.783
+        ],
+        "ratio": [
+          0.9036,
+          0.952
+        ],
+        "transfer_segment_comparison": false,
+        "cache_context": "R02 fresh Allfold Session, institution homepage only, target article/PDF not preloaded; Chrome normal renewed institutional access. R03/R04 same prepared Sessions and warm repeated visits. Genuine new files/associations after product delete/Restore and fresh Zotero save sessions. Cache equality unproven.",
+        "preparation_context": "Initial QR page had official account login with existing saved credentials; old SAML session expired, fresh normal resource entry restored access without user MFA. Long operator preparation gap not product download time.",
+        "machine_only_preparation_seconds": null,
+        "measurement_note": "Same-machine click bounds and actual file+association poll intervals, not screen/tool turnaround."
+      },
+      {
+        "pair_id": "P04-R04",
+        "queue": "pilot-retest",
+        "formal_score": false,
+        "doi": "10.1109/tnnls.2026.3706351",
+        "platform": "IEEE Xplore",
+        "access_method": "Institutional shared Session, normal CARSI preparation; ordinary R025 requires no retained Service capability",
+        "order": [
+          "zotero",
+          "allfold"
+        ],
+        "allfold_head_sha": "7c9be1c5e4487087c4dacf0afebd0e7c19b3435b",
+        "production_code_sha": "098288ae32e159811b9c49333b386d1533890862",
+        "allfold": {
+          "attempt": 6,
+          "click_utc": [
+            "2026-11-16T18:07:05.670Z",
+            "2026-11-16T18:07:05.771Z"
+          ],
+          "local_pdf_and_association_utc": [
+            "2026-11-16T18:07:20.411Z",
+            "2026-11-16T18:07:20.706Z"
+          ],
+          "wait_seconds": [
+            14.64,
+            15.036
+          ],
+          "file_bytes": 3459198,
+          "status": "automatic_success",
+          "source": "P2/R025",
+          "fallback_used": false,
+          "content_check": "title/DOI/15pages directly inspected"
+        },
+        "zotero": {
+          "version": "10.0.9",
+          "connector": "5.0.217",
+          "translator": "IEEE Xplore",
+          "click_utc": [
+            "2026-11-16T18:05:53.259Z",
+            "2026-11-16T18:05:53.285Z"
+          ],
+          "local_pdf_and_association_utc": [
+            "2026-11-16T18:06:09.713Z",
+            "2026-11-16T18:06:10.093Z"
+          ],
+          "wait_seconds": [
+            16.428,
+            16.834
+          ],
+          "file_bytes": 3459200,
+          "status": "automatic_success",
+          "link_mode": "imported_url",
+          "content_check": "title/DOI/15pages directly inspected"
+        },
+        "difference_seconds": [
+          -2.194,
+          -1.392
+        ],
+        "ratio": [
+          0.8697,
+          0.9153
+        ],
+        "transfer_segment_comparison": false,
+        "cache_context": "R02 fresh Allfold Session, institution homepage only, target article/PDF not preloaded; Chrome normal renewed institutional access. R03/R04 same prepared Sessions and warm repeated visits. Genuine new files/associations after product delete/Restore and fresh Zotero save sessions. Cache equality unproven.",
+        "preparation_context": "Initial QR page had official account login with existing saved credentials; old SAML session expired, fresh normal resource entry restored access without user MFA. Long operator preparation gap not product download time.",
+        "machine_only_preparation_seconds": null,
+        "measurement_note": "Same-machine click bounds and actual file+association poll intervals, not screen/tool turnaround."
+      }
+    ],
+    "descriptive_midpoints_only": {
+      "median_allfold_seconds": 14.838000000000001,
+      "median_zotero_seconds": 16.491,
+      "median_paired_difference_seconds": -1.4984999999999964,
+      "median_paired_ratio": 0.9077647493306252
+    },
+    "parity": "Single-paper pilot supports no disadvantage on observed R025 path; whole-platform parity not established."
+  },
+  "runtime_after_pilots": {
+    "head_sha": "7c9be1c5e4487087c4dacf0afebd0e7c19b3435b",
+    "production_code_sha": "098288ae32e159811b9c49333b386d1533890862",
+    "netlog_flag": false
+  }
 }
