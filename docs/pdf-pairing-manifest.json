@@ -1,0 +1,2252 @@
+{
+  "status": "frozen_before_formal_timing",
+  "proposed_at_utc": "2026-11-16T18:32:05.397203+00:00",
+  "seed": null,
+  "allfold_head_sha": "7c9be1c5e4487087c4dacf0afebd0e7c19b3435b",
+  "production_code_sha": "098288ae32e159811b9c49333b386d1533890862",
+  "sample_count": 31,
+  "platform_counts": {
+    "IEEE Xplore": 2,
+    "Springer Link": 3,
+    "Cambridge Core": 2,
+    "Oxford Academic": 3,
+    "Taylor & Francis": 3,
+    "Wiley": 3,
+    "SIAM": 3,
+    "Project Euclid": 3,
+    "INFORMS PubsOnline": 3,
+    "ScienceDirect": 6
+  },
+  "selection": "68 saved journals/12 Services; original PU Run15 and normal Bayesian2026-10 OpenAlex-only Run57new; inputs restored exactly; pilot6DOIs excluded. No PDF URL injected or database write.",
+  "ordering": "Deterministic declared platform blocks and alternating pair order within each block; full explicit sequence retained, no randomization claimed.",
+  "limits": "IEEE2 andCambridge2 untreated papers available, others3/ScienceDirect6.10 actual configured platforms. Age/size vary where possible; PDF sizes unknown before timing. Mechanisms only count if actually observed.",
+  "samples": [
+    {
+      "sample_id": "F01",
+      "cohort": "representative",
+      "paper_id": "9bc69516-5c44-4ee4-b90d-86ed4a8e883c",
+      "doi": "10.1109/tpami.2026.3712551",
+      "title": "Early Stopping Without Validation Data in Weakly Supervised Learning.",
+      "journal": "IEEE transactions on pattern analysis and machine intelligence",
+      "publication_date": "2026-11",
+      "article_url": "https://ieeexplore.ieee.org/document/11604166/",
+      "platform": "IEEE Xplore",
+      "platform_evidence": "current Document/cached Crossref primary actual host",
+      "configured_service": "IEEE-IET ELECTRONIC LIBRARY-美国电气电子工程师学会数据库",
+      "configured_access_method": "carsi",
+      "service_assignment": "assigned",
+      "download_binding": "ordinary shared Session unless an actual retained capability is consumed; record actual use per attempt",
+      "oa_status_at_selection": "OA status not established from saved facts; normal access to be checked before paired timing",
+      "body_state": "no body; no prior Download attempt",
+      "discovery_facts": [
+        {
+          "source": "openalex",
+          "status": "complete",
+          "candidate_stages": [],
+          "observed_at": "2026-11-16T14:07:07.944704+00:00"
+        },
+        {
+          "source": "crossref",
+          "status": "complete",
+          "candidate_stages": [],
+          "observed_at": "2026-11-16T14:09:15.576912+00:00"
+        }
+      ],
+      "selection_reason": "Untested existing/normal-Run Paper from actual configured platform/journal scope; topic/journal/type diversity selected before outcomes. No replacement after timing starts; book review/obituary/comments omitted by article type/topic before outcomes.",
+      "planned_mechanism_tags": [
+        "R025/IEEE Reader if observed"
+      ],
+      "order": [
+        "allfold",
+        "zotero"
+      ],
+      "control_repeats_preselected": true,
+      "initial_repetitions": 1,
+      "planned_additional_control_pairs": 2,
+      "access_preparation_layer": "not yet measured; no user/token/context copying",
+      "cache_at_selection": {
+        "browser_profile": "existing Chrome Default, ordinary task window; not a clean Session",
+        "electron_session": "normal fresh source instance7c9be1c after pilots/tests, normal preparation retained",
+        "normal_collection_document_read": "no successful saved Document snapshot",
+        "manual_article_preparation": "pending before manifest freeze forScienceDirect; not yet done for other formal samples",
+        "pdf_previsited_or_saved_for_this_paper": false,
+        "shared_proxy_or_server_cache": "unknown, not cleared"
+      }
+    },
+    {
+      "sample_id": "F02",
+      "cohort": "representative",
+      "paper_id": "512c6438-68ed-447e-bc0d-c6d85bb3429b",
+      "doi": "10.1109/tkde.2026.3729880",
+      "title": "EdgeBoost4PAD: An Adaptive Strategy for Enhancing Semi-Supervised Priority-Aware Anomaly Detection",
+      "journal": "IEEE Transactions on Knowledge and Data Engineering",
+      "publication_date": "2026-09-01",
+      "article_url": "https://ieeexplore.ieee.org/document/11673799/",
+      "platform": "IEEE Xplore",
+      "platform_evidence": "current Document/cached Crossref primary actual host",
+      "configured_service": "IEEE-IET ELECTRONIC LIBRARY-美国电气电子工程师学会数据库",
+      "configured_access_method": "carsi",
+      "service_assignment": "assigned",
+      "download_binding": "ordinary shared Session unless an actual retained capability is consumed; record actual use per attempt",
+      "oa_status_at_selection": "OpenAlex OA landing reported; publisher file/version/access not yet confirmed",
+      "body_state": "no body; no prior Download attempt",
+      "discovery_facts": [
+        {
+          "source": "openalex",
+          "status": "complete",
+          "candidate_stages": [],
+          "observed_at": "2026-11-16T14:07:07.965592+00:00"
+        },
+        {
+          "source": "crossref",
+          "status": "complete",
+          "candidate_stages": [],
+          "observed_at": "2026-11-16T14:09:34.083483+00:00"
+        }
+      ],
+      "selection_reason": "Untested existing/normal-Run Paper from actual configured platform/journal scope; topic/journal/type diversity selected before outcomes. No replacement after timing starts; book review/obituary/comments omitted by article type/topic before outcomes.",
+      "planned_mechanism_tags": [
+        "R025/IEEE Reader if observed"
+      ],
+      "order": [
+        "zotero",
+        "allfold"
+      ],
+      "control_repeats_preselected": false,
+      "initial_repetitions": 1,
+      "planned_additional_control_pairs": 0,
+      "access_preparation_layer": "not yet measured; no user/token/context copying",
+      "cache_at_selection": {
+        "browser_profile": "existing Chrome Default, ordinary task window; not a clean Session",
+        "electron_session": "normal fresh source instance7c9be1c after pilots/tests, normal preparation retained",
+        "normal_collection_document_read": "no successful saved Document snapshot",
+        "manual_article_preparation": "pending before manifest freeze forScienceDirect; not yet done for other formal samples",
+        "pdf_previsited_or_saved_for_this_paper": false,
+        "shared_proxy_or_server_cache": "unknown, not cleared"
+      }
+    },
+    {
+      "sample_id": "F03",
+      "cohort": "representative",
+      "paper_id": "94a4309f-e270-4e82-bc7c-71450b456d9e",
+      "doi": "10.1007/s11222-026-10988-5",
+      "title": "Annealed leap-point sampler for multimodal target distributions.",
+      "journal": "Statistics and computing",
+      "publication_date": "2026",
+      "article_url": "https://link.springer.com/article/10.1007/s11222-026-10988-5",
+      "platform": "Springer Link",
+      "platform_evidence": "current Document/cached Crossref primary actual host",
+      "configured_service": "Springer Link",
+      "configured_access_method": "carsi",
+      "service_assignment": "assigned",
+      "download_binding": "ordinary shared Session unless an actual retained capability is consumed; record actual use per attempt",
+      "oa_status_at_selection": "OpenAlex OA landing reported; publisher file/version/access not yet confirmed",
+      "body_state": "no body; no prior Download attempt",
+      "discovery_facts": [
+        {
+          "source": "openalex",
+          "status": "complete",
+          "candidate_stages": [
+            "P5"
+          ],
+          "observed_at": "2026-11-16T18:15:23.099265+00:00"
+        },
+        {
+          "source": "crossref",
+          "status": "complete",
+          "candidate_stages": [
+            "P2"
+          ],
+          "observed_at": "2026-11-16T18:15:31.842703+00:00"
+        },
+        {
+          "source": "document",
+          "status": "complete",
+          "candidate_stages": [
+            "P3"
+          ],
+          "observed_at": "2026-11-16T18:15:32.234000+00:00"
+        }
+      ],
+      "selection_reason": "Untested existing/normal-Run Paper from actual configured platform/journal scope; topic/journal/type diversity selected before outcomes. No replacement after timing starts; book review/obituary/comments omitted by article type/topic before outcomes.",
+      "planned_mechanism_tags": [
+        "normal template/current Document path",
+        "OA fallback if actually observed"
+      ],
+      "order": [
+        "zotero",
+        "allfold"
+      ],
+      "control_repeats_preselected": true,
+      "initial_repetitions": 1,
+      "planned_additional_control_pairs": 2,
+      "access_preparation_layer": "not yet measured; no user/token/context copying",
+      "cache_at_selection": {
+        "browser_profile": "existing Chrome Default, ordinary task window; not a clean Session",
+        "electron_session": "normal fresh source instance7c9be1c after pilots/tests, normal preparation retained",
+        "normal_collection_document_read": "complete",
+        "manual_article_preparation": "pending before manifest freeze forScienceDirect; not yet done for other formal samples",
+        "pdf_previsited_or_saved_for_this_paper": false,
+        "shared_proxy_or_server_cache": "unknown, not cleared"
+      }
+    },
+    {
+      "sample_id": "F04",
+      "cohort": "representative",
+      "paper_id": "c4230f4c-19f6-4bb5-ab48-268e668087f3",
+      "doi": "10.1007/s10618-026-01266-z",
+      "title": "Classifier chains for multi-label learning: a systematic review and taxonomy",
+      "journal": "Data Mining and Knowledge Discovery",
+      "publication_date": "2026-09-17",
+      "article_url": "https://link.springer.com/10.1007/s10618-026-01266-z",
+      "platform": "Springer Link",
+      "platform_evidence": "current Document/cached Crossref primary actual host",
+      "configured_service": "Springer Link",
+      "configured_access_method": "carsi",
+      "service_assignment": "assigned",
+      "download_binding": "ordinary shared Session unless an actual retained capability is consumed; record actual use per attempt",
+      "oa_status_at_selection": "OA status not established from saved facts; normal access to be checked before paired timing",
+      "body_state": "no body; no prior Download attempt",
+      "discovery_facts": [
+        {
+          "source": "openalex",
+          "status": "complete",
+          "candidate_stages": [],
+          "observed_at": "2026-11-16T14:07:07.949421+00:00"
+        },
+        {
+          "source": "crossref",
+          "status": "complete",
+          "candidate_stages": [
+            "P2"
+          ],
+          "observed_at": "2026-11-16T14:09:10.408115+00:00"
+        }
+      ],
+      "selection_reason": "Untested existing/normal-Run Paper from actual configured platform/journal scope; topic/journal/type diversity selected before outcomes. No replacement after timing starts; book review/obituary/comments omitted by article type/topic before outcomes.",
+      "planned_mechanism_tags": [
+        "normal template/current Document path",
+        "OA fallback if actually observed"
+      ],
+      "order": [
+        "allfold",
+        "zotero"
+      ],
+      "control_repeats_preselected": false,
+      "initial_repetitions": 1,
+      "planned_additional_control_pairs": 0,
+      "access_preparation_layer": "not yet measured; no user/token/context copying",
+      "cache_at_selection": {
+        "browser_profile": "existing Chrome Default, ordinary task window; not a clean Session",
+        "electron_session": "normal fresh source instance7c9be1c after pilots/tests, normal preparation retained",
+        "normal_collection_document_read": "no successful saved Document snapshot",
+        "manual_article_preparation": "pending before manifest freeze forScienceDirect; not yet done for other formal samples",
+        "pdf_previsited_or_saved_for_this_paper": false,
+        "shared_proxy_or_server_cache": "unknown, not cleared"
+      }
+    },
+    {
+      "sample_id": "F05",
+      "cohort": "representative",
+      "paper_id": "7e85e521-57e9-4ef0-affd-4d387df7cd95",
+      "doi": "10.1007/s11263-026-03042-4",
+      "title": "Eyegent: Visual Attention Orchestration on Concepts",
+      "journal": "International Journal of Computer Vision",
+      "publication_date": "2026-10-25",
+      "article_url": "https://link.springer.com/article/10.1007/s11263-026-03042-4",
+      "platform": "Springer Link",
+      "platform_evidence": "current Document/cached Crossref primary actual host",
+      "configured_service": "Springer Link",
+      "configured_access_method": "carsi",
+      "service_assignment": "assigned",
+      "download_binding": "ordinary shared Session unless an actual retained capability is consumed; record actual use per attempt",
+      "oa_status_at_selection": "OpenAlex OA landing reported; publisher file/version/access not yet confirmed",
+      "body_state": "no body; no prior Download attempt",
+      "discovery_facts": [
+        {
+          "source": "openalex",
+          "status": "complete",
+          "candidate_stages": [
+            "P5"
+          ],
+          "observed_at": "2026-11-16T18:15:23.054790+00:00"
+        },
+        {
+          "source": "document",
+          "status": "complete",
+          "candidate_stages": [
+            "P3"
+          ],
+          "observed_at": "2026-11-16T18:17:47.445000+00:00"
+        },
+        {
+          "source": "crossref",
+          "status": "complete",
+          "candidate_stages": [
+            "P2"
+          ],
+          "observed_at": "2026-11-16T18:17:51.562447+00:00"
+        }
+      ],
+      "selection_reason": "Untested existing/normal-Run Paper from actual configured platform/journal scope; topic/journal/type diversity selected before outcomes. No replacement after timing starts; book review/obituary/comments omitted by article type/topic before outcomes.",
+      "planned_mechanism_tags": [
+        "normal template/current Document path",
+        "OA fallback if actually observed"
+      ],
+      "order": [
+        "zotero",
+        "allfold"
+      ],
+      "control_repeats_preselected": false,
+      "initial_repetitions": 1,
+      "planned_additional_control_pairs": 0,
+      "access_preparation_layer": "not yet measured; no user/token/context copying",
+      "cache_at_selection": {
+        "browser_profile": "existing Chrome Default, ordinary task window; not a clean Session",
+        "electron_session": "normal fresh source instance7c9be1c after pilots/tests, normal preparation retained",
+        "normal_collection_document_read": "complete",
+        "manual_article_preparation": "pending before manifest freeze forScienceDirect; not yet done for other formal samples",
+        "pdf_previsited_or_saved_for_this_paper": false,
+        "shared_proxy_or_server_cache": "unknown, not cleared"
+      }
+    },
+    {
+      "sample_id": "F06",
+      "cohort": "representative",
+      "paper_id": "ca00d24d-04ca-409f-8afe-485a76ad9a1e",
+      "doi": "10.1017/s0266466626100656",
+      "title": "TRUE AND PSEUDO-TRUE PARAMETERS",
+      "journal": "Econometric Theory",
+      "publication_date": "2026-10-19",
+      "article_url": "https://www.cambridge.org/core/journals/econometric-theory/article/true-and-pseudotrue-parameters/0BA3DBE75EFEFE47660DE30A36590A4D",
+      "platform": "Cambridge Core",
+      "platform_evidence": "current Document/cached Crossref primary actual host",
+      "configured_service": "Cambridge Core",
+      "configured_access_method": "carsi",
+      "service_assignment": "assigned",
+      "download_binding": "ordinary shared Session unless an actual retained capability is consumed; record actual use per attempt",
+      "oa_status_at_selection": "OpenAlex OA landing reported; publisher file/version/access not yet confirmed",
+      "body_state": "no body; no prior Download attempt",
+      "discovery_facts": [
+        {
+          "source": "openalex",
+          "status": "complete",
+          "candidate_stages": [
+            "P5"
+          ],
+          "observed_at": "2026-11-16T18:15:23.063382+00:00"
+        },
+        {
+          "source": "crossref",
+          "status": "complete",
+          "candidate_stages": [],
+          "observed_at": "2026-11-16T18:16:19.671068+00:00"
+        },
+        {
+          "source": "document",
+          "status": "complete",
+          "candidate_stages": [
+            "P3"
+          ],
+          "observed_at": "2026-11-16T18:16:21.418000+00:00"
+        }
+      ],
+      "selection_reason": "Untested existing/normal-Run Paper from actual configured platform/journal scope; topic/journal/type diversity selected before outcomes. No replacement after timing starts; book review/obituary/comments omitted by article type/topic before outcomes.",
+      "planned_mechanism_tags": [
+        "normal template/current Document path",
+        "OA fallback if actually observed"
+      ],
+      "order": [
+        "allfold",
+        "zotero"
+      ],
+      "control_repeats_preselected": true,
+      "initial_repetitions": 1,
+      "planned_additional_control_pairs": 2,
+      "access_preparation_layer": "not yet measured; no user/token/context copying",
+      "cache_at_selection": {
+        "browser_profile": "existing Chrome Default, ordinary task window; not a clean Session",
+        "electron_session": "normal fresh source instance7c9be1c after pilots/tests, normal preparation retained",
+        "normal_collection_document_read": "complete",
+        "manual_article_preparation": "pending before manifest freeze forScienceDirect; not yet done for other formal samples",
+        "pdf_previsited_or_saved_for_this_paper": false,
+        "shared_proxy_or_server_cache": "unknown, not cleared"
+      }
+    },
+    {
+      "sample_id": "F07",
+      "cohort": "representative",
+      "paper_id": "060dc4ef-6991-4918-9d99-b0d7d101da1e",
+      "doi": "10.1017/s0266466626100644",
+      "title": "TESTING FOR ENDOGENEITY: A MOMENT-BASED BAYESIAN APPROACH",
+      "journal": "Econometric Theory",
+      "publication_date": "2026-10-13",
+      "article_url": "https://www.cambridge.org/core/journals/econometric-theory/article/testing-for-endogeneity-a-momentbased-bayesian-approach/E3E3F4C2B362C5CEFF1464C6DBE74E45",
+      "platform": "Cambridge Core",
+      "platform_evidence": "current Document/cached Crossref primary actual host",
+      "configured_service": "Cambridge Core",
+      "configured_access_method": "carsi",
+      "service_assignment": "assigned",
+      "download_binding": "ordinary shared Session unless an actual retained capability is consumed; record actual use per attempt",
+      "oa_status_at_selection": "OpenAlex OA landing reported; publisher file/version/access not yet confirmed",
+      "body_state": "no body; no prior Download attempt",
+      "discovery_facts": [
+        {
+          "source": "openalex",
+          "status": "complete",
+          "candidate_stages": [
+            "P5"
+          ],
+          "observed_at": "2026-11-16T18:15:22.923656+00:00"
+        },
+        {
+          "source": "crossref",
+          "status": "complete",
+          "candidate_stages": [],
+          "observed_at": "2026-11-16T18:16:54.778935+00:00"
+        },
+        {
+          "source": "document",
+          "status": "complete",
+          "candidate_stages": [
+            "P3"
+          ],
+          "observed_at": "2026-11-16T18:16:58.309000+00:00"
+        }
+      ],
+      "selection_reason": "Untested existing/normal-Run Paper from actual configured platform/journal scope; topic/journal/type diversity selected before outcomes. No replacement after timing starts; book review/obituary/comments omitted by article type/topic before outcomes.",
+      "planned_mechanism_tags": [
+        "normal template/current Document path",
+        "OA fallback if actually observed"
+      ],
+      "order": [
+        "zotero",
+        "allfold"
+      ],
+      "control_repeats_preselected": false,
+      "initial_repetitions": 1,
+      "planned_additional_control_pairs": 0,
+      "access_preparation_layer": "not yet measured; no user/token/context copying",
+      "cache_at_selection": {
+        "browser_profile": "existing Chrome Default, ordinary task window; not a clean Session",
+        "electron_session": "normal fresh source instance7c9be1c after pilots/tests, normal preparation retained",
+        "normal_collection_document_read": "complete",
+        "manual_article_preparation": "pending before manifest freeze forScienceDirect; not yet done for other formal samples",
+        "pdf_previsited_or_saved_for_this_paper": false,
+        "shared_proxy_or_server_cache": "unknown, not cleared"
+      }
+    },
+    {
+      "sample_id": "F08",
+      "cohort": "representative",
+      "paper_id": "097c637a-2eee-4b8f-9726-b1242522dba4",
+      "doi": "10.1093/biomet/asag050",
+      "title": "Semiparametrically efficient semi-supervised statistical inference",
+      "journal": "Biometrika",
+      "publication_date": "2026-10-07",
+      "article_url": "https://academic.oup.com/biomet/article/doi/10.1093/biomet/asag050/9004977",
+      "platform": "Oxford Academic",
+      "platform_evidence": "current Document/cached Crossref primary actual host",
+      "configured_service": "OXFORD JOURNALS",
+      "configured_access_method": "carsi",
+      "service_assignment": "assigned",
+      "download_binding": "ordinary shared Session unless an actual retained capability is consumed; record actual use per attempt",
+      "oa_status_at_selection": "OpenAlex OA landing reported; publisher file/version/access not yet confirmed",
+      "body_state": "no body; no prior Download attempt",
+      "discovery_facts": [
+        {
+          "source": "openalex",
+          "status": "complete",
+          "candidate_stages": [
+            "P5"
+          ],
+          "observed_at": "2026-11-16T14:07:07.957010+00:00"
+        },
+        {
+          "source": "crossref",
+          "status": "complete",
+          "candidate_stages": [
+            "P2"
+          ],
+          "observed_at": "2026-11-16T14:07:51.722153+00:00"
+        }
+      ],
+      "selection_reason": "Untested existing/normal-Run Paper from actual configured platform/journal scope; topic/journal/type diversity selected before outcomes. No replacement after timing starts; book review/obituary/comments omitted by article type/topic before outcomes.",
+      "planned_mechanism_tags": [
+        "normal template/current Document path",
+        "OA fallback if actually observed"
+      ],
+      "order": [
+        "zotero",
+        "allfold"
+      ],
+      "control_repeats_preselected": true,
+      "initial_repetitions": 1,
+      "planned_additional_control_pairs": 2,
+      "access_preparation_layer": "not yet measured; no user/token/context copying",
+      "cache_at_selection": {
+        "browser_profile": "existing Chrome Default, ordinary task window; not a clean Session",
+        "electron_session": "normal fresh source instance7c9be1c after pilots/tests, normal preparation retained",
+        "normal_collection_document_read": "no successful saved Document snapshot",
+        "manual_article_preparation": "pending before manifest freeze forScienceDirect; not yet done for other formal samples",
+        "pdf_previsited_or_saved_for_this_paper": false,
+        "shared_proxy_or_server_cache": "unknown, not cleared"
+      }
+    },
+    {
+      "sample_id": "F09",
+      "cohort": "representative",
+      "paper_id": "615dbf3e-07bd-4a09-9154-93d498615567",
+      "doi": "10.1093/jrsssa/qnag113",
+      "title": "Bayesian local clustering of age-period mortality surfaces across multiple countries",
+      "journal": "Journal of the Royal Statistical Society Series A (Statistics in Society)",
+      "publication_date": "2026-10-27",
+      "article_url": "https://academic.oup.com/jrsssa/advance-article/doi/10.1093/jrsssa/qnag113/9003100",
+      "platform": "Oxford Academic",
+      "platform_evidence": "current Document/cached Crossref primary actual host",
+      "configured_service": "OXFORD JOURNALS",
+      "configured_access_method": "carsi",
+      "service_assignment": "assigned",
+      "download_binding": "ordinary shared Session unless an actual retained capability is consumed; record actual use per attempt",
+      "oa_status_at_selection": "OpenAlex OA landing reported; publisher file/version/access not yet confirmed",
+      "body_state": "no body; no prior Download attempt",
+      "discovery_facts": [
+        {
+          "source": "openalex",
+          "status": "complete",
+          "candidate_stages": [
+            "P5"
+          ],
+          "observed_at": "2026-11-16T18:15:22.982907+00:00"
+        },
+        {
+          "source": "crossref",
+          "status": "complete",
+          "candidate_stages": [
+            "P2"
+          ],
+          "observed_at": "2026-11-16T18:16:11.144946+00:00"
+        }
+      ],
+      "selection_reason": "Untested existing/normal-Run Paper from actual configured platform/journal scope; topic/journal/type diversity selected before outcomes. No replacement after timing starts; book review/obituary/comments omitted by article type/topic before outcomes.",
+      "planned_mechanism_tags": [
+        "normal template/current Document path",
+        "OA fallback if actually observed"
+      ],
+      "order": [
+        "allfold",
+        "zotero"
+      ],
+      "control_repeats_preselected": false,
+      "initial_repetitions": 1,
+      "planned_additional_control_pairs": 0,
+      "access_preparation_layer": "not yet measured; no user/token/context copying",
+      "cache_at_selection": {
+        "browser_profile": "existing Chrome Default, ordinary task window; not a clean Session",
+        "electron_session": "normal fresh source instance7c9be1c after pilots/tests, normal preparation retained",
+        "normal_collection_document_read": "no successful saved Document snapshot",
+        "manual_article_preparation": "pending before manifest freeze forScienceDirect; not yet done for other formal samples",
+        "pdf_previsited_or_saved_for_this_paper": false,
+        "shared_proxy_or_server_cache": "unknown, not cleared"
+      }
+    },
+    {
+      "sample_id": "F10",
+      "cohort": "representative",
+      "paper_id": "4744c442-ef2d-4912-9570-0a88b53eac91",
+      "doi": "10.1093/biomtc/ujag187",
+      "title": "An efficient Bayesian data augmentation algorithm for continuous-time stochastic epidemic models fit to partially observed incidence data.",
+      "journal": "Biometrics",
+      "publication_date": "2026-10-07",
+      "article_url": "https://academic.oup.com/biometrics/article/doi/10.1093/biomtc/ujag187/9011581",
+      "platform": "Oxford Academic",
+      "platform_evidence": "current Document/cached Crossref primary actual host",
+      "configured_service": "OXFORD JOURNALS",
+      "configured_access_method": "carsi",
+      "service_assignment": "assigned",
+      "download_binding": "ordinary shared Session unless an actual retained capability is consumed; record actual use per attempt",
+      "oa_status_at_selection": "OpenAlex OA landing reported; publisher file/version/access not yet confirmed",
+      "body_state": "no body; no prior Download attempt",
+      "discovery_facts": [
+        {
+          "source": "openalex",
+          "status": "complete",
+          "candidate_stages": [
+            "P5"
+          ],
+          "observed_at": "2026-11-16T18:15:23.015796+00:00"
+        },
+        {
+          "source": "crossref",
+          "status": "complete",
+          "candidate_stages": [
+            "P2"
+          ],
+          "observed_at": "2026-11-16T18:17:58.826841+00:00"
+        }
+      ],
+      "selection_reason": "Untested existing/normal-Run Paper from actual configured platform/journal scope; topic/journal/type diversity selected before outcomes. No replacement after timing starts; book review/obituary/comments omitted by article type/topic before outcomes.",
+      "planned_mechanism_tags": [
+        "normal template/current Document path",
+        "OA fallback if actually observed"
+      ],
+      "order": [
+        "zotero",
+        "allfold"
+      ],
+      "control_repeats_preselected": false,
+      "initial_repetitions": 1,
+      "planned_additional_control_pairs": 0,
+      "access_preparation_layer": "not yet measured; no user/token/context copying",
+      "cache_at_selection": {
+        "browser_profile": "existing Chrome Default, ordinary task window; not a clean Session",
+        "electron_session": "normal fresh source instance7c9be1c after pilots/tests, normal preparation retained",
+        "normal_collection_document_read": "no successful saved Document snapshot",
+        "manual_article_preparation": "pending before manifest freeze forScienceDirect; not yet done for other formal samples",
+        "pdf_previsited_or_saved_for_this_paper": false,
+        "shared_proxy_or_server_cache": "unknown, not cleared"
+      }
+    },
+    {
+      "sample_id": "F11",
+      "cohort": "representative",
+      "paper_id": "36496812-8626-447d-b3ab-7bd45e776561",
+      "doi": "10.1080/01621459.2026.2735069",
+      "title": "Mixture of Directed Graphical Models for Discrete Spatial Random Fields",
+      "journal": "Journal of the American Statistical Association",
+      "publication_date": "2026-10-05",
+      "article_url": "https://www.tandfonline.com/doi/full/10.1080/01621459.2026.2735069",
+      "platform": "Taylor & Francis",
+      "platform_evidence": "current Document/cached Crossref primary actual host",
+      "configured_service": null,
+      "configured_access_method": null,
+      "service_assignment": "unassigned",
+      "download_binding": "ordinary shared Session unless an actual retained capability is consumed; record actual use per attempt",
+      "oa_status_at_selection": "OpenAlex OA landing reported; publisher file/version/access not yet confirmed",
+      "body_state": "no body; no prior Download attempt",
+      "discovery_facts": [
+        {
+          "source": "openalex",
+          "status": "complete",
+          "candidate_stages": [
+            "P5"
+          ],
+          "observed_at": "2026-11-16T18:15:23.050974+00:00"
+        },
+        {
+          "source": "crossref",
+          "status": "complete",
+          "candidate_stages": [
+            "P2"
+          ],
+          "observed_at": "2026-11-16T18:15:52.577787+00:00"
+        },
+        {
+          "source": "document",
+          "status": "complete",
+          "candidate_stages": [],
+          "observed_at": "2026-11-16T18:15:53.903000+00:00"
+        }
+      ],
+      "selection_reason": "Untested existing/normal-Run Paper from actual configured platform/journal scope; topic/journal/type diversity selected before outcomes. No replacement after timing starts; book review/obituary/comments omitted by article type/topic before outcomes.",
+      "planned_mechanism_tags": [
+        "normal template/current Document path",
+        "OA fallback if actually observed"
+      ],
+      "order": [
+        "allfold",
+        "zotero"
+      ],
+      "control_repeats_preselected": true,
+      "initial_repetitions": 1,
+      "planned_additional_control_pairs": 2,
+      "access_preparation_layer": "not yet measured; no user/token/context copying",
+      "cache_at_selection": {
+        "browser_profile": "existing Chrome Default, ordinary task window; not a clean Session",
+        "electron_session": "normal fresh source instance7c9be1c after pilots/tests, normal preparation retained",
+        "normal_collection_document_read": "complete",
+        "manual_article_preparation": "pending before manifest freeze forScienceDirect; not yet done for other formal samples",
+        "pdf_previsited_or_saved_for_this_paper": false,
+        "shared_proxy_or_server_cache": "unknown, not cleared"
+      }
+    },
+    {
+      "sample_id": "F12",
+      "cohort": "representative",
+      "paper_id": "e67cca0e-5e46-442c-8676-042a6fa14c80",
+      "doi": "10.1080/10618600.2026.2748046",
+      "title": "MCMC using bouncy Hamiltonian dynamics: A unifying framework for Hamiltonian Monte Carlo and piecewise deterministic Markov process samplers",
+      "journal": "Journal of Computational and Graphical Statistics",
+      "publication_date": "2026-10-14",
+      "article_url": "https://www.tandfonline.com/doi/full/10.1080/10618600.2026.2748046",
+      "platform": "Taylor & Francis",
+      "platform_evidence": "current Document/cached Crossref primary actual host",
+      "configured_service": "Taylor & Francis期刊数据库",
+      "configured_access_method": "carsi",
+      "service_assignment": "assigned",
+      "download_binding": "ordinary shared Session unless an actual retained capability is consumed; record actual use per attempt",
+      "oa_status_at_selection": "OpenAlex OA landing reported; publisher file/version/access not yet confirmed",
+      "body_state": "no body; no prior Download attempt",
+      "discovery_facts": [
+        {
+          "source": "openalex",
+          "status": "complete",
+          "candidate_stages": [
+            "P5"
+          ],
+          "observed_at": "2026-11-16T18:15:23.035592+00:00"
+        },
+        {
+          "source": "crossref",
+          "status": "complete",
+          "candidate_stages": [
+            "P2"
+          ],
+          "observed_at": "2026-11-16T18:17:07.833226+00:00"
+        }
+      ],
+      "selection_reason": "Untested existing/normal-Run Paper from actual configured platform/journal scope; topic/journal/type diversity selected before outcomes. No replacement after timing starts; book review/obituary/comments omitted by article type/topic before outcomes.",
+      "planned_mechanism_tags": [
+        "normal template/current Document path",
+        "OA fallback if actually observed"
+      ],
+      "order": [
+        "zotero",
+        "allfold"
+      ],
+      "control_repeats_preselected": false,
+      "initial_repetitions": 1,
+      "planned_additional_control_pairs": 0,
+      "access_preparation_layer": "not yet measured; no user/token/context copying",
+      "cache_at_selection": {
+        "browser_profile": "existing Chrome Default, ordinary task window; not a clean Session",
+        "electron_session": "normal fresh source instance7c9be1c after pilots/tests, normal preparation retained",
+        "normal_collection_document_read": "no successful saved Document snapshot",
+        "manual_article_preparation": "pending before manifest freeze forScienceDirect; not yet done for other formal samples",
+        "pdf_previsited_or_saved_for_this_paper": false,
+        "shared_proxy_or_server_cache": "unknown, not cleared"
+      }
+    },
+    {
+      "sample_id": "F13",
+      "cohort": "representative",
+      "paper_id": "5997a856-bff4-4040-87a8-c8b92fd6c8dc",
+      "doi": "10.1080/10618600.2026.2756966",
+      "title": "Posterior Inference via Flexible Variational Approximations with Conditional Independence Structure",
+      "journal": "Journal of Computational and Graphical Statistics",
+      "publication_date": "2026-10-29",
+      "article_url": "https://www.tandfonline.com/doi/full/10.1080/10618600.2026.2756966",
+      "platform": "Taylor & Francis",
+      "platform_evidence": "current Document/cached Crossref primary actual host",
+      "configured_service": "Taylor & Francis期刊数据库",
+      "configured_access_method": "carsi",
+      "service_assignment": "assigned",
+      "download_binding": "ordinary shared Session unless an actual retained capability is consumed; record actual use per attempt",
+      "oa_status_at_selection": "OpenAlex OA landing reported; publisher file/version/access not yet confirmed",
+      "body_state": "no body; no prior Download attempt",
+      "discovery_facts": [
+        {
+          "source": "openalex",
+          "status": "complete",
+          "candidate_stages": [
+            "P5"
+          ],
+          "observed_at": "2026-11-16T18:15:23.023427+00:00"
+        },
+        {
+          "source": "crossref",
+          "status": "complete",
+          "candidate_stages": [
+            "P2"
+          ],
+          "observed_at": "2026-11-16T18:17:24.985054+00:00"
+        }
+      ],
+      "selection_reason": "Untested existing/normal-Run Paper from actual configured platform/journal scope; topic/journal/type diversity selected before outcomes. No replacement after timing starts; book review/obituary/comments omitted by article type/topic before outcomes.",
+      "planned_mechanism_tags": [
+        "normal template/current Document path",
+        "OA fallback if actually observed"
+      ],
+      "order": [
+        "allfold",
+        "zotero"
+      ],
+      "control_repeats_preselected": false,
+      "initial_repetitions": 1,
+      "planned_additional_control_pairs": 0,
+      "access_preparation_layer": "not yet measured; no user/token/context copying",
+      "cache_at_selection": {
+        "browser_profile": "existing Chrome Default, ordinary task window; not a clean Session",
+        "electron_session": "normal fresh source instance7c9be1c after pilots/tests, normal preparation retained",
+        "normal_collection_document_read": "no successful saved Document snapshot",
+        "manual_article_preparation": "pending before manifest freeze forScienceDirect; not yet done for other formal samples",
+        "pdf_previsited_or_saved_for_this_paper": false,
+        "shared_proxy_or_server_cache": "unknown, not cleared"
+      }
+    },
+    {
+      "sample_id": "F14",
+      "cohort": "representative",
+      "paper_id": "08332c5d-8ad4-4eaa-aabb-60a1ed4779f7",
+      "doi": "10.1002/sim.70757",
+      "title": "Semantic Similarity-Informed Bayesian Borrowing for Quantitative Signal Detection of Adverse Events.",
+      "journal": "Statistics in medicine",
+      "publication_date": "2026-10",
+      "article_url": "https://onlinelibrary.wiley.com/doi/10.1002/sim.70757",
+      "platform": "Wiley",
+      "platform_evidence": "current Document/cached Crossref primary actual host",
+      "configured_service": "WILEY 电子书、电子期刊数据库",
+      "configured_access_method": "carsi",
+      "service_assignment": "assigned",
+      "download_binding": "ordinary shared Session unless an actual retained capability is consumed; record actual use per attempt",
+      "oa_status_at_selection": "OpenAlex OA landing reported; publisher file/version/access not yet confirmed",
+      "body_state": "no body; no prior Download attempt",
+      "discovery_facts": [
+        {
+          "source": "openalex",
+          "status": "complete",
+          "candidate_stages": [
+            "P5"
+          ],
+          "observed_at": "2026-11-16T18:15:22.978722+00:00"
+        },
+        {
+          "source": "crossref",
+          "status": "complete",
+          "candidate_stages": [
+            "P2"
+          ],
+          "observed_at": "2026-11-16T18:16:51.870278+00:00"
+        }
+      ],
+      "selection_reason": "Untested existing/normal-Run Paper from actual configured platform/journal scope; topic/journal/type diversity selected before outcomes. No replacement after timing starts; book review/obituary/comments omitted by article type/topic before outcomes.",
+      "planned_mechanism_tags": [
+        "normal template/current Document path",
+        "OA fallback if actually observed"
+      ],
+      "order": [
+        "zotero",
+        "allfold"
+      ],
+      "control_repeats_preselected": true,
+      "initial_repetitions": 1,
+      "planned_additional_control_pairs": 2,
+      "access_preparation_layer": "not yet measured; no user/token/context copying",
+      "cache_at_selection": {
+        "browser_profile": "existing Chrome Default, ordinary task window; not a clean Session",
+        "electron_session": "normal fresh source instance7c9be1c after pilots/tests, normal preparation retained",
+        "normal_collection_document_read": "no successful saved Document snapshot",
+        "manual_article_preparation": "pending before manifest freeze forScienceDirect; not yet done for other formal samples",
+        "pdf_previsited_or_saved_for_this_paper": false,
+        "shared_proxy_or_server_cache": "unknown, not cleared"
+      }
+    },
+    {
+      "sample_id": "F15",
+      "cohort": "representative",
+      "paper_id": "ab502932-e38b-41b5-bff6-32d34d173f28",
+      "doi": "10.1002/sim.70788",
+      "title": "Multivariable Mendelian Randomization With Weak Instruments: A Comparison of Bayesian and Frequentist Methods.",
+      "journal": "Statistics in medicine",
+      "publication_date": "2026-10",
+      "article_url": "https://onlinelibrary.wiley.com/doi/10.1002/sim.70788",
+      "platform": "Wiley",
+      "platform_evidence": "current Document/cached Crossref primary actual host",
+      "configured_service": "WILEY 电子书、电子期刊数据库",
+      "configured_access_method": "carsi",
+      "service_assignment": "assigned",
+      "download_binding": "ordinary shared Session unless an actual retained capability is consumed; record actual use per attempt",
+      "oa_status_at_selection": "OpenAlex OA landing reported; publisher file/version/access not yet confirmed",
+      "body_state": "no body; no prior Download attempt",
+      "discovery_facts": [
+        {
+          "source": "openalex",
+          "status": "complete",
+          "candidate_stages": [
+            "P5"
+          ],
+          "observed_at": "2026-11-16T18:15:22.958083+00:00"
+        },
+        {
+          "source": "crossref",
+          "status": "complete",
+          "candidate_stages": [
+            "P2"
+          ],
+          "observed_at": "2026-11-16T18:17:20.093570+00:00"
+        }
+      ],
+      "selection_reason": "Untested existing/normal-Run Paper from actual configured platform/journal scope; topic/journal/type diversity selected before outcomes. No replacement after timing starts; book review/obituary/comments omitted by article type/topic before outcomes.",
+      "planned_mechanism_tags": [
+        "normal template/current Document path",
+        "OA fallback if actually observed"
+      ],
+      "order": [
+        "allfold",
+        "zotero"
+      ],
+      "control_repeats_preselected": false,
+      "initial_repetitions": 1,
+      "planned_additional_control_pairs": 0,
+      "access_preparation_layer": "not yet measured; no user/token/context copying",
+      "cache_at_selection": {
+        "browser_profile": "existing Chrome Default, ordinary task window; not a clean Session",
+        "electron_session": "normal fresh source instance7c9be1c after pilots/tests, normal preparation retained",
+        "normal_collection_document_read": "no successful saved Document snapshot",
+        "manual_article_preparation": "pending before manifest freeze forScienceDirect; not yet done for other formal samples",
+        "pdf_previsited_or_saved_for_this_paper": false,
+        "shared_proxy_or_server_cache": "unknown, not cleared"
+      }
+    },
+    {
+      "sample_id": "F16",
+      "cohort": "representative",
+      "paper_id": "632b5e6a-78e0-4a53-9aaa-30b4fef82961",
+      "doi": "10.1002/sim.70808",
+      "title": "Scale-Transformed Power Priors for External Data Integration in Longitudinal Studies.",
+      "journal": "Statistics in medicine",
+      "publication_date": "2026-11",
+      "article_url": "https://onlinelibrary.wiley.com/doi/10.1002/sim.70808",
+      "platform": "Wiley",
+      "platform_evidence": "current Document/cached Crossref primary actual host",
+      "configured_service": "WILEY 电子书、电子期刊数据库",
+      "configured_access_method": "carsi",
+      "service_assignment": "assigned",
+      "download_binding": "ordinary shared Session unless an actual retained capability is consumed; record actual use per attempt",
+      "oa_status_at_selection": "OpenAlex OA landing reported; publisher file/version/access not yet confirmed",
+      "body_state": "no body; no prior Download attempt",
+      "discovery_facts": [
+        {
+          "source": "openalex",
+          "status": "complete",
+          "candidate_stages": [
+            "P5"
+          ],
+          "observed_at": "2026-11-16T18:15:23.111803+00:00"
+        },
+        {
+          "source": "crossref",
+          "status": "complete",
+          "candidate_stages": [
+            "P2"
+          ],
+          "observed_at": "2026-11-16T18:18:07.092569+00:00"
+        }
+      ],
+      "selection_reason": "Untested existing/normal-Run Paper from actual configured platform/journal scope; topic/journal/type diversity selected before outcomes. No replacement after timing starts; book review/obituary/comments omitted by article type/topic before outcomes.",
+      "planned_mechanism_tags": [
+        "normal template/current Document path",
+        "OA fallback if actually observed"
+      ],
+      "order": [
+        "zotero",
+        "allfold"
+      ],
+      "control_repeats_preselected": false,
+      "initial_repetitions": 1,
+      "planned_additional_control_pairs": 0,
+      "access_preparation_layer": "not yet measured; no user/token/context copying",
+      "cache_at_selection": {
+        "browser_profile": "existing Chrome Default, ordinary task window; not a clean Session",
+        "electron_session": "normal fresh source instance7c9be1c after pilots/tests, normal preparation retained",
+        "normal_collection_document_read": "no successful saved Document snapshot",
+        "manual_article_preparation": "pending before manifest freeze forScienceDirect; not yet done for other formal samples",
+        "pdf_previsited_or_saved_for_this_paper": false,
+        "shared_proxy_or_server_cache": "unknown, not cleared"
+      }
+    },
+    {
+      "sample_id": "F17",
+      "cohort": "representative",
+      "paper_id": "4b281f3a-c51a-49af-aaa3-dfdf7216c920",
+      "doi": "10.1137/25m1762725",
+      "title": "Consistency of Variational Inference for Nonlinear Inverse Problems of Partial Differential Equations",
+      "journal": "SIAM/ASA Journal on Uncertainty Quantification",
+      "publication_date": "2026-10-20",
+      "article_url": "https://epubs.siam.org/doi/10.1137/25M1762725",
+      "platform": "SIAM",
+      "platform_evidence": "current Document/cached Crossref primary actual host",
+      "configured_service": "SIAM电子期刊",
+      "configured_access_method": "carsi",
+      "service_assignment": "assigned",
+      "download_binding": "ordinary shared Session unless an actual retained capability is consumed; record actual use per attempt",
+      "oa_status_at_selection": "OpenAlex OA landing reported; publisher file/version/access not yet confirmed",
+      "body_state": "no body; no prior Download attempt",
+      "discovery_facts": [
+        {
+          "source": "openalex",
+          "status": "complete",
+          "candidate_stages": [
+            "P5"
+          ],
+          "observed_at": "2026-11-16T18:15:23.083478+00:00"
+        },
+        {
+          "source": "crossref",
+          "status": "complete",
+          "candidate_stages": [],
+          "observed_at": "2026-11-16T18:15:55.990055+00:00"
+        }
+      ],
+      "selection_reason": "Untested existing/normal-Run Paper from actual configured platform/journal scope; topic/journal/type diversity selected before outcomes. No replacement after timing starts; book review/obituary/comments omitted by article type/topic before outcomes.",
+      "planned_mechanism_tags": [
+        "normal template/current Document path",
+        "OA fallback if actually observed"
+      ],
+      "order": [
+        "allfold",
+        "zotero"
+      ],
+      "control_repeats_preselected": true,
+      "initial_repetitions": 1,
+      "planned_additional_control_pairs": 2,
+      "access_preparation_layer": "not yet measured; no user/token/context copying",
+      "cache_at_selection": {
+        "browser_profile": "existing Chrome Default, ordinary task window; not a clean Session",
+        "electron_session": "normal fresh source instance7c9be1c after pilots/tests, normal preparation retained",
+        "normal_collection_document_read": "no successful saved Document snapshot",
+        "manual_article_preparation": "pending before manifest freeze forScienceDirect; not yet done for other formal samples",
+        "pdf_previsited_or_saved_for_this_paper": false,
+        "shared_proxy_or_server_cache": "unknown, not cleared"
+      }
+    },
+    {
+      "sample_id": "F18",
+      "cohort": "representative",
+      "paper_id": "71b0d682-0b1b-4bca-9d87-b35d8be898a7",
+      "doi": "10.1137/25m1735329",
+      "title": "Subspace Accelerated Measure Transport Methods for Fast and Scalable Sequential Experimental Design, with Application to Photoacoustic Imaging",
+      "journal": "SIAM/ASA Journal on Uncertainty Quantification",
+      "publication_date": "2026-10-15",
+      "article_url": "https://epubs.siam.org/doi/10.1137/25M1735329",
+      "platform": "SIAM",
+      "platform_evidence": "current Document/cached Crossref primary actual host",
+      "configured_service": "SIAM电子期刊",
+      "configured_access_method": "carsi",
+      "service_assignment": "assigned",
+      "download_binding": "ordinary shared Session unless an actual retained capability is consumed; record actual use per attempt",
+      "oa_status_at_selection": "OpenAlex OA landing reported; publisher file/version/access not yet confirmed",
+      "body_state": "no body; no prior Download attempt",
+      "discovery_facts": [
+        {
+          "source": "openalex",
+          "status": "complete",
+          "candidate_stages": [
+            "P5"
+          ],
+          "observed_at": "2026-11-16T18:15:23.067229+00:00"
+        },
+        {
+          "source": "crossref",
+          "status": "complete",
+          "candidate_stages": [],
+          "observed_at": "2026-11-16T18:16:58.035483+00:00"
+        }
+      ],
+      "selection_reason": "Untested existing/normal-Run Paper from actual configured platform/journal scope; topic/journal/type diversity selected before outcomes. No replacement after timing starts; book review/obituary/comments omitted by article type/topic before outcomes.",
+      "planned_mechanism_tags": [
+        "normal template/current Document path",
+        "OA fallback if actually observed"
+      ],
+      "order": [
+        "zotero",
+        "allfold"
+      ],
+      "control_repeats_preselected": false,
+      "initial_repetitions": 1,
+      "planned_additional_control_pairs": 0,
+      "access_preparation_layer": "not yet measured; no user/token/context copying",
+      "cache_at_selection": {
+        "browser_profile": "existing Chrome Default, ordinary task window; not a clean Session",
+        "electron_session": "normal fresh source instance7c9be1c after pilots/tests, normal preparation retained",
+        "normal_collection_document_read": "no successful saved Document snapshot",
+        "manual_article_preparation": "pending before manifest freeze forScienceDirect; not yet done for other formal samples",
+        "pdf_previsited_or_saved_for_this_paper": false,
+        "shared_proxy_or_server_cache": "unknown, not cleared"
+      }
+    },
+    {
+      "sample_id": "F19",
+      "cohort": "representative",
+      "paper_id": "5665a58f-51f0-4a52-9190-dc390ba5e686",
+      "doi": "10.1137/25m1760738",
+      "title": "The Gaussian Latent Machine: Efficient Prior and Posterior Sampling for Inverse Problems",
+      "journal": "SIAM Journal on Imaging Sciences",
+      "publication_date": "2026-10-21",
+      "article_url": "https://epubs.siam.org/doi/10.1137/25M1760738",
+      "platform": "SIAM",
+      "platform_evidence": "current Document/cached Crossref primary actual host",
+      "configured_service": "SIAM电子期刊",
+      "configured_access_method": "carsi",
+      "service_assignment": "assigned",
+      "download_binding": "ordinary shared Session unless an actual retained capability is consumed; record actual use per attempt",
+      "oa_status_at_selection": "OpenAlex OA landing reported; publisher file/version/access not yet confirmed",
+      "body_state": "no body; no prior Download attempt",
+      "discovery_facts": [
+        {
+          "source": "openalex",
+          "status": "complete",
+          "candidate_stages": [
+            "P5"
+          ],
+          "observed_at": "2026-11-16T18:15:23.031601+00:00"
+        },
+        {
+          "source": "crossref",
+          "status": "complete",
+          "candidate_stages": [],
+          "observed_at": "2026-11-16T18:17:25.151587+00:00"
+        }
+      ],
+      "selection_reason": "Untested existing/normal-Run Paper from actual configured platform/journal scope; topic/journal/type diversity selected before outcomes. No replacement after timing starts; book review/obituary/comments omitted by article type/topic before outcomes.",
+      "planned_mechanism_tags": [
+        "normal template/current Document path",
+        "OA fallback if actually observed"
+      ],
+      "order": [
+        "allfold",
+        "zotero"
+      ],
+      "control_repeats_preselected": false,
+      "initial_repetitions": 1,
+      "planned_additional_control_pairs": 0,
+      "access_preparation_layer": "not yet measured; no user/token/context copying",
+      "cache_at_selection": {
+        "browser_profile": "existing Chrome Default, ordinary task window; not a clean Session",
+        "electron_session": "normal fresh source instance7c9be1c after pilots/tests, normal preparation retained",
+        "normal_collection_document_read": "no successful saved Document snapshot",
+        "manual_article_preparation": "pending before manifest freeze forScienceDirect; not yet done for other formal samples",
+        "pdf_previsited_or_saved_for_this_paper": false,
+        "shared_proxy_or_server_cache": "unknown, not cleared"
+      }
+    },
+    {
+      "sample_id": "F20",
+      "cohort": "representative",
+      "paper_id": "c8da868b-5bc1-461b-a96a-5d347f014636",
+      "doi": "10.1214/26-aos2633",
+      "title": "Inferring diffusivity from killed diffusion",
+      "journal": "The Annals of Statistics",
+      "publication_date": "2026-10-01",
+      "article_url": "https://projecteuclid.org/journals/annals-of-statistics/volume-54/issue-5/Inferring-diffusivity-from-killed-diffusion/10.1214/26-AOS2633.full",
+      "platform": "Project Euclid",
+      "platform_evidence": "current Document/cached Crossref primary actual host",
+      "configured_service": "Project Euclid",
+      "configured_access_method": "manual",
+      "service_assignment": "assigned",
+      "download_binding": "ordinary shared Session unless an actual retained capability is consumed; record actual use per attempt",
+      "oa_status_at_selection": "OpenAlex OA landing reported; publisher file/version/access not yet confirmed",
+      "body_state": "no body; no prior Download attempt",
+      "discovery_facts": [
+        {
+          "source": "openalex",
+          "status": "complete",
+          "candidate_stages": [
+            "P5"
+          ],
+          "observed_at": "2026-11-16T18:15:23.079540+00:00"
+        },
+        {
+          "source": "crossref",
+          "status": "complete",
+          "candidate_stages": [],
+          "observed_at": "2026-11-16T18:16:02.011333+00:00"
+        }
+      ],
+      "selection_reason": "Untested existing/normal-Run Paper from actual configured platform/journal scope; topic/journal/type diversity selected before outcomes. No replacement after timing starts; book review/obituary/comments omitted by article type/topic before outcomes.",
+      "planned_mechanism_tags": [
+        "normal template/current Document path",
+        "OA fallback if actually observed"
+      ],
+      "order": [
+        "zotero",
+        "allfold"
+      ],
+      "control_repeats_preselected": true,
+      "initial_repetitions": 1,
+      "planned_additional_control_pairs": 2,
+      "access_preparation_layer": "not yet measured; no user/token/context copying",
+      "cache_at_selection": {
+        "browser_profile": "existing Chrome Default, ordinary task window; not a clean Session",
+        "electron_session": "normal fresh source instance7c9be1c after pilots/tests, normal preparation retained",
+        "normal_collection_document_read": "no successful saved Document snapshot",
+        "manual_article_preparation": "pending before manifest freeze forScienceDirect; not yet done for other formal samples",
+        "pdf_previsited_or_saved_for_this_paper": false,
+        "shared_proxy_or_server_cache": "unknown, not cleared"
+      }
+    },
+    {
+      "sample_id": "F21",
+      "cohort": "representative",
+      "paper_id": "68c0821a-ee41-404e-8ece-91e0ab3d8c0f",
+      "doi": "10.1214/26-aos2645",
+      "title": "Data assimilation with the 2D Navier–Stokes equations: Optimal Gaussian asymptotics for the posterior measure",
+      "journal": "The Annals of Statistics",
+      "publication_date": "2026-10-01",
+      "article_url": "https://projecteuclid.org/journals/annals-of-statistics/volume-54/issue-5/Data-assimilation-with-the-2D-NavierStokes-equations--Optimal-Gaussian/10.1214/26-AOS2645.full",
+      "platform": "Project Euclid",
+      "platform_evidence": "current Document/cached Crossref primary actual host",
+      "configured_service": "Project Euclid",
+      "configured_access_method": "manual",
+      "service_assignment": "assigned",
+      "download_binding": "ordinary shared Session unless an actual retained capability is consumed; record actual use per attempt",
+      "oa_status_at_selection": "OpenAlex OA landing reported; publisher file/version/access not yet confirmed",
+      "body_state": "no body; no prior Download attempt",
+      "discovery_facts": [
+        {
+          "source": "openalex",
+          "status": "complete",
+          "candidate_stages": [
+            "P5"
+          ],
+          "observed_at": "2026-11-16T18:15:23.059168+00:00"
+        },
+        {
+          "source": "crossref",
+          "status": "complete",
+          "candidate_stages": [],
+          "observed_at": "2026-11-16T18:16:36.695712+00:00"
+        }
+      ],
+      "selection_reason": "Untested existing/normal-Run Paper from actual configured platform/journal scope; topic/journal/type diversity selected before outcomes. No replacement after timing starts; book review/obituary/comments omitted by article type/topic before outcomes.",
+      "planned_mechanism_tags": [
+        "normal template/current Document path",
+        "OA fallback if actually observed"
+      ],
+      "order": [
+        "allfold",
+        "zotero"
+      ],
+      "control_repeats_preselected": false,
+      "initial_repetitions": 1,
+      "planned_additional_control_pairs": 0,
+      "access_preparation_layer": "not yet measured; no user/token/context copying",
+      "cache_at_selection": {
+        "browser_profile": "existing Chrome Default, ordinary task window; not a clean Session",
+        "electron_session": "normal fresh source instance7c9be1c after pilots/tests, normal preparation retained",
+        "normal_collection_document_read": "no successful saved Document snapshot",
+        "manual_article_preparation": "pending before manifest freeze forScienceDirect; not yet done for other formal samples",
+        "pdf_previsited_or_saved_for_this_paper": false,
+        "shared_proxy_or_server_cache": "unknown, not cleared"
+      }
+    },
+    {
+      "sample_id": "F22",
+      "cohort": "representative",
+      "paper_id": "b2206f57-c5a5-496f-88c5-0531983abd84",
+      "doi": "10.1214/25-sts990",
+      "title": "The Two Cultures of Prevalence Mapping: Small Area Estimation and Model-Based Geostatistics.",
+      "journal": "Statistical science : a review journal of the Institute of Mathematical Statistics",
+      "publication_date": "2026-11",
+      "article_url": "https://projecteuclid.org/journals/statistical-science/volume-41/issue-4/The-Two-Cultures-of-Prevalence-Mapping--Small-Area-Estimation/10.1214/25-STS990.full",
+      "platform": "Project Euclid",
+      "platform_evidence": "current Document/cached Crossref primary actual host",
+      "configured_service": "Project Euclid",
+      "configured_access_method": "manual",
+      "service_assignment": "assigned",
+      "download_binding": "ordinary shared Session unless an actual retained capability is consumed; record actual use per attempt",
+      "oa_status_at_selection": "OpenAlex OA landing reported; publisher file/version/access not yet confirmed",
+      "body_state": "no body; no prior Download attempt",
+      "discovery_facts": [
+        {
+          "source": "openalex",
+          "status": "complete",
+          "candidate_stages": [
+            "P5"
+          ],
+          "observed_at": "2026-11-16T18:15:23.115364+00:00"
+        },
+        {
+          "source": "crossref",
+          "status": "complete",
+          "candidate_stages": [],
+          "observed_at": "2026-11-16T18:15:34.607274+00:00"
+        }
+      ],
+      "selection_reason": "Untested existing/normal-Run Paper from actual configured platform/journal scope; topic/journal/type diversity selected before outcomes. No replacement after timing starts; book review/obituary/comments omitted by article type/topic before outcomes.",
+      "planned_mechanism_tags": [
+        "normal template/current Document path",
+        "OA fallback if actually observed"
+      ],
+      "order": [
+        "zotero",
+        "allfold"
+      ],
+      "control_repeats_preselected": false,
+      "initial_repetitions": 1,
+      "planned_additional_control_pairs": 0,
+      "access_preparation_layer": "not yet measured; no user/token/context copying",
+      "cache_at_selection": {
+        "browser_profile": "existing Chrome Default, ordinary task window; not a clean Session",
+        "electron_session": "normal fresh source instance7c9be1c after pilots/tests, normal preparation retained",
+        "normal_collection_document_read": "no successful saved Document snapshot",
+        "manual_article_preparation": "pending before manifest freeze forScienceDirect; not yet done for other formal samples",
+        "pdf_previsited_or_saved_for_this_paper": false,
+        "shared_proxy_or_server_cache": "unknown, not cleared"
+      }
+    },
+    {
+      "sample_id": "F23",
+      "cohort": "representative",
+      "paper_id": "233d3bc2-2c0c-4c8e-84c0-60bb8a26f75d",
+      "doi": "10.1287/moor.2024.0601",
+      "title": "Public Signals in Affine Network Congestion Games with Uncertain Free-Flow Times",
+      "journal": "Mathematics of Operations Research",
+      "publication_date": "2026-10-26",
+      "article_url": "https://pubsonline.informs.org/doi/10.1287/moor.2024.0601",
+      "platform": "INFORMS PubsOnline",
+      "platform_evidence": "current Document/cached Crossref primary actual host",
+      "configured_service": "EBSCO",
+      "configured_access_method": "carsi",
+      "service_assignment": "assigned",
+      "download_binding": "ordinary shared Session unless an actual retained capability is consumed; record actual use per attempt",
+      "oa_status_at_selection": "OpenAlex OA landing reported; publisher file/version/access not yet confirmed",
+      "body_state": "no body; no prior Download attempt",
+      "discovery_facts": [
+        {
+          "source": "openalex",
+          "status": "complete",
+          "candidate_stages": [
+            "P5"
+          ],
+          "observed_at": "2026-11-16T18:15:24.670332+00:00"
+        },
+        {
+          "source": "crossref",
+          "status": "complete",
+          "candidate_stages": [],
+          "observed_at": "2026-11-16T18:15:29.326499+00:00"
+        },
+        {
+          "source": "document",
+          "status": "complete",
+          "candidate_stages": [
+            "P4"
+          ],
+          "observed_at": "2026-11-16T18:15:35.084000+00:00"
+        }
+      ],
+      "selection_reason": "Untested existing/normal-Run Paper from actual configured platform/journal scope; topic/journal/type diversity selected before outcomes. No replacement after timing starts; book review/obituary/comments omitted by article type/topic before outcomes.",
+      "planned_mechanism_tags": [
+        "normal template/current Document path",
+        "OA fallback if actually observed"
+      ],
+      "order": [
+        "allfold",
+        "zotero"
+      ],
+      "control_repeats_preselected": true,
+      "initial_repetitions": 1,
+      "planned_additional_control_pairs": 2,
+      "access_preparation_layer": "not yet measured; no user/token/context copying",
+      "cache_at_selection": {
+        "browser_profile": "existing Chrome Default, ordinary task window; not a clean Session",
+        "electron_session": "normal fresh source instance7c9be1c after pilots/tests, normal preparation retained",
+        "normal_collection_document_read": "complete",
+        "manual_article_preparation": "pending before manifest freeze forScienceDirect; not yet done for other formal samples",
+        "pdf_previsited_or_saved_for_this_paper": false,
+        "shared_proxy_or_server_cache": "unknown, not cleared"
+      }
+    },
+    {
+      "sample_id": "F24",
+      "cohort": "representative",
+      "paper_id": "04c9be73-e399-40c0-b07b-a9c774f84867",
+      "doi": "10.1287/opre.2025.1741",
+      "title": "Optimizing Input Data Collection for Ranking and Selection",
+      "journal": "Operations Research",
+      "publication_date": "2026-10-08",
+      "article_url": "https://pubsonline.informs.org/doi/10.1287/opre.2025.1741",
+      "platform": "INFORMS PubsOnline",
+      "platform_evidence": "current Document/cached Crossref primary actual host",
+      "configured_service": "EBSCO",
+      "configured_access_method": "carsi",
+      "service_assignment": "assigned",
+      "download_binding": "ordinary shared Session unless an actual retained capability is consumed; record actual use per attempt",
+      "oa_status_at_selection": "OpenAlex OA landing reported; publisher file/version/access not yet confirmed",
+      "body_state": "no body; no prior Download attempt",
+      "discovery_facts": [
+        {
+          "source": "openalex",
+          "status": "complete",
+          "candidate_stages": [
+            "P5"
+          ],
+          "observed_at": "2026-11-16T18:15:24.666471+00:00"
+        },
+        {
+          "source": "document",
+          "status": "complete",
+          "candidate_stages": [
+            "P4"
+          ],
+          "observed_at": "2026-11-16T18:15:49.600000+00:00"
+        },
+        {
+          "source": "crossref",
+          "status": "complete",
+          "candidate_stages": [],
+          "observed_at": "2026-11-16T18:15:58.494277+00:00"
+        }
+      ],
+      "selection_reason": "Untested existing/normal-Run Paper from actual configured platform/journal scope; topic/journal/type diversity selected before outcomes. No replacement after timing starts; book review/obituary/comments omitted by article type/topic before outcomes.",
+      "planned_mechanism_tags": [
+        "normal template/current Document path",
+        "OA fallback if actually observed"
+      ],
+      "order": [
+        "zotero",
+        "allfold"
+      ],
+      "control_repeats_preselected": false,
+      "initial_repetitions": 1,
+      "planned_additional_control_pairs": 0,
+      "access_preparation_layer": "not yet measured; no user/token/context copying",
+      "cache_at_selection": {
+        "browser_profile": "existing Chrome Default, ordinary task window; not a clean Session",
+        "electron_session": "normal fresh source instance7c9be1c after pilots/tests, normal preparation retained",
+        "normal_collection_document_read": "complete",
+        "manual_article_preparation": "pending before manifest freeze forScienceDirect; not yet done for other formal samples",
+        "pdf_previsited_or_saved_for_this_paper": false,
+        "shared_proxy_or_server_cache": "unknown, not cleared"
+      }
+    },
+    {
+      "sample_id": "F25",
+      "cohort": "representative",
+      "paper_id": "d87a683e-e7ca-47b3-bd7a-564bd7d525ff",
+      "doi": "10.1287/msom.2024.0890",
+      "title": "Enhancing Safety Signaling: Integrating Clinical Trials and Post-Marketing Adverse Event Reports",
+      "journal": "Manufacturing & Service Operations Management",
+      "publication_date": "2026-10-16",
+      "article_url": "https://pubsonline.informs.org/doi/10.1287/msom.2024.0890",
+      "platform": "INFORMS PubsOnline",
+      "platform_evidence": "current Document/cached Crossref primary actual host",
+      "configured_service": "EBSCO",
+      "configured_access_method": "carsi",
+      "service_assignment": "assigned",
+      "download_binding": "ordinary shared Session unless an actual retained capability is consumed; record actual use per attempt",
+      "oa_status_at_selection": "OpenAlex OA landing reported; publisher file/version/access not yet confirmed",
+      "body_state": "no body; no prior Download attempt",
+      "discovery_facts": [
+        {
+          "source": "openalex",
+          "status": "complete",
+          "candidate_stages": [],
+          "observed_at": "2026-11-16T18:15:24.674993+00:00"
+        },
+        {
+          "source": "document",
+          "status": "complete",
+          "candidate_stages": [
+            "P4"
+          ],
+          "observed_at": "2026-11-16T18:16:20.356000+00:00"
+        },
+        {
+          "source": "crossref",
+          "status": "complete",
+          "candidate_stages": [],
+          "observed_at": "2026-11-16T18:16:24.627712+00:00"
+        }
+      ],
+      "selection_reason": "Untested existing/normal-Run Paper from actual configured platform/journal scope; topic/journal/type diversity selected before outcomes. No replacement after timing starts; book review/obituary/comments omitted by article type/topic before outcomes.",
+      "planned_mechanism_tags": [
+        "normal template/current Document path",
+        "OA fallback if actually observed"
+      ],
+      "order": [
+        "allfold",
+        "zotero"
+      ],
+      "control_repeats_preselected": false,
+      "initial_repetitions": 1,
+      "planned_additional_control_pairs": 0,
+      "access_preparation_layer": "not yet measured; no user/token/context copying",
+      "cache_at_selection": {
+        "browser_profile": "existing Chrome Default, ordinary task window; not a clean Session",
+        "electron_session": "normal fresh source instance7c9be1c after pilots/tests, normal preparation retained",
+        "normal_collection_document_read": "complete",
+        "manual_article_preparation": "pending before manifest freeze forScienceDirect; not yet done for other formal samples",
+        "pdf_previsited_or_saved_for_this_paper": false,
+        "shared_proxy_or_server_cache": "unknown, not cleared"
+      }
+    },
+    {
+      "sample_id": "F26",
+      "cohort": "representative",
+      "paper_id": "45151daf-47f1-4e27-a85c-e84b28394e08",
+      "doi": "10.1016/j.neunet.2026.109263",
+      "title": "Unsupervised visible-infrared person re-identification via locally reliable matching and global distribution alignment.",
+      "journal": "Neural networks : the official journal of the International Neural Network Society",
+      "publication_date": "2026-12",
+      "article_url": "https://www.sciencedirect.com/science/article/pii/S0893608026007239",
+      "platform": "ScienceDirect",
+      "platform_evidence": "Normal Chrome DOI navigation actually reached this ScienceDirect article, title/DOI matched before freeze",
+      "configured_service": "SCIENCEDIRECT",
+      "configured_access_method": "carsi",
+      "service_assignment": "assigned",
+      "download_binding": "ordinary shared Session unless an actual retained capability is consumed; record actual use per attempt",
+      "oa_status_at_selection": "Publisher page explicitly Full text access via current legal institution",
+      "body_state": "no body; no prior Download attempt",
+      "discovery_facts": [
+        {
+          "source": "openalex",
+          "status": "complete",
+          "candidate_stages": [],
+          "observed_at": "2026-11-16T14:07:07.972670+00:00"
+        },
+        {
+          "source": "crossref",
+          "status": "complete",
+          "candidate_stages": [],
+          "observed_at": "2026-11-16T14:08:33.082921+00:00"
+        }
+      ],
+      "selection_reason": "Untested existing/normal-Run Paper from actual configured platform/journal scope; topic/journal/type diversity selected before outcomes. No replacement after timing starts; book review/obituary/comments omitted by article type/topic before outcomes.",
+      "planned_mechanism_tags": [
+        "R024",
+        "Reader/CDN if observed"
+      ],
+      "order": [
+        "zotero",
+        "allfold"
+      ],
+      "control_repeats_preselected": true,
+      "initial_repetitions": 1,
+      "planned_additional_control_pairs": 2,
+      "access_preparation_layer": "Chrome article prepared via normal navigation, institutional header present, no PDF/ViewPDF/Connector save triggered",
+      "cache_at_selection": {
+        "browser_profile": "existing Chrome Default, ordinary task window; not a clean Session",
+        "electron_session": "normal fresh source instance7c9be1c after pilots/tests, normal preparation retained",
+        "normal_collection_document_read": "no successful saved Document snapshot",
+        "manual_article_preparation": "Chrome article visited before freeze; actual OA/institution marking recorded. Allfold target article not manually previsited.",
+        "pdf_previsited_or_saved_for_this_paper": false,
+        "shared_proxy_or_server_cache": "unknown, not cleared"
+      },
+      "resolver_article_url": "https://linkinghub.elsevier.com/retrieve/pii/S0893608026007239"
+    },
+    {
+      "sample_id": "F27",
+      "cohort": "representative",
+      "paper_id": "e3d41038-f1b4-4502-8420-07c1ab1c5089",
+      "doi": "10.1016/j.patcog.2026.114572",
+      "title": "Cross-view encoder with pseudo label for incomplete multi-view clustering in postoperative liver diagnosis",
+      "journal": "Pattern Recognition",
+      "publication_date": "2026-08-07",
+      "article_url": "https://www.sciencedirect.com/science/article/pii/S0031320326015360",
+      "platform": "ScienceDirect",
+      "platform_evidence": "Normal Chrome DOI navigation actually reached this ScienceDirect article, title/DOI matched before freeze",
+      "configured_service": "SCIENCEDIRECT",
+      "configured_access_method": "carsi",
+      "service_assignment": "assigned",
+      "download_binding": "ordinary shared Session unless an actual retained capability is consumed; record actual use per attempt",
+      "oa_status_at_selection": "Publisher page explicitly Full text access via current legal institution",
+      "body_state": "no body; no prior Download attempt",
+      "discovery_facts": [
+        {
+          "source": "openalex",
+          "status": "complete",
+          "candidate_stages": [],
+          "observed_at": "2026-11-16T14:07:07.969298+00:00"
+        },
+        {
+          "source": "crossref",
+          "status": "complete",
+          "candidate_stages": [],
+          "observed_at": "2026-11-16T14:09:26.609211+00:00"
+        }
+      ],
+      "selection_reason": "Untested existing/normal-Run Paper from actual configured platform/journal scope; topic/journal/type diversity selected before outcomes. No replacement after timing starts; book review/obituary/comments omitted by article type/topic before outcomes.",
+      "planned_mechanism_tags": [
+        "R024",
+        "Reader/CDN if observed"
+      ],
+      "order": [
+        "allfold",
+        "zotero"
+      ],
+      "control_repeats_preselected": false,
+      "initial_repetitions": 1,
+      "planned_additional_control_pairs": 0,
+      "access_preparation_layer": "Chrome article prepared via normal navigation, institutional header present, no PDF/ViewPDF/Connector save triggered",
+      "cache_at_selection": {
+        "browser_profile": "existing Chrome Default, ordinary task window; not a clean Session",
+        "electron_session": "normal fresh source instance7c9be1c after pilots/tests, normal preparation retained",
+        "normal_collection_document_read": "no successful saved Document snapshot",
+        "manual_article_preparation": "Chrome article visited before freeze; actual OA/institution marking recorded. Allfold target article not manually previsited.",
+        "pdf_previsited_or_saved_for_this_paper": false,
+        "shared_proxy_or_server_cache": "unknown, not cleared"
+      },
+      "resolver_article_url": "https://linkinghub.elsevier.com/retrieve/pii/S0031320326015360"
+    },
+    {
+      "sample_id": "F28",
+      "cohort": "representative",
+      "paper_id": "a08c40f3-4215-458d-a1cd-77b193ccbcb9",
+      "doi": "10.1016/j.csda.2026.108481",
+      "title": "INLA-RF: A hybrid modeling strategy for spatio-temporal environmental data",
+      "journal": "Computational Statistics & Data Analysis",
+      "publication_date": "2026-10-11",
+      "article_url": "https://www.sciencedirect.com/science/article/pii/S0167947326001490",
+      "platform": "ScienceDirect",
+      "platform_evidence": "Normal Chrome DOI navigation actually reached this ScienceDirect article, title/DOI matched before freeze",
+      "configured_service": "SCIENCEDIRECT",
+      "configured_access_method": "carsi",
+      "service_assignment": "assigned",
+      "download_binding": "ordinary shared Session unless an actual retained capability is consumed; record actual use per attempt",
+      "oa_status_at_selection": "Publisher page explicitly Open access",
+      "body_state": "no body; no prior Download attempt",
+      "discovery_facts": [
+        {
+          "source": "openalex",
+          "status": "complete",
+          "candidate_stages": [
+            "P5"
+          ],
+          "observed_at": "2026-11-16T18:15:23.075392+00:00"
+        },
+        {
+          "source": "crossref",
+          "status": "complete",
+          "candidate_stages": [],
+          "observed_at": "2026-11-16T18:16:07.613569+00:00"
+        }
+      ],
+      "selection_reason": "Untested existing/normal-Run Paper from actual configured platform/journal scope; topic/journal/type diversity selected before outcomes. No replacement after timing starts; book review/obituary/comments omitted by article type/topic before outcomes.",
+      "planned_mechanism_tags": [
+        "R024",
+        "Reader/CDN if observed"
+      ],
+      "order": [
+        "zotero",
+        "allfold"
+      ],
+      "control_repeats_preselected": false,
+      "initial_repetitions": 1,
+      "planned_additional_control_pairs": 0,
+      "access_preparation_layer": "Chrome article prepared via normal navigation, institutional header present, no PDF/ViewPDF/Connector save triggered",
+      "cache_at_selection": {
+        "browser_profile": "existing Chrome Default, ordinary task window; not a clean Session",
+        "electron_session": "normal fresh source instance7c9be1c after pilots/tests, normal preparation retained",
+        "normal_collection_document_read": "no successful saved Document snapshot",
+        "manual_article_preparation": "Chrome article visited before freeze; actual OA/institution marking recorded. Allfold target article not manually previsited.",
+        "pdf_previsited_or_saved_for_this_paper": false,
+        "shared_proxy_or_server_cache": "unknown, not cleared"
+      },
+      "resolver_article_url": "https://linkinghub.elsevier.com/retrieve/pii/S0167947326001490"
+    },
+    {
+      "sample_id": "F29",
+      "cohort": "representative",
+      "paper_id": "e188573c-8286-4eb1-bc71-a1e4b40c6fd8",
+      "doi": "10.1016/j.jmva.2026.105715",
+      "title": "Increasing domain asymptotics for covariate-based nonparametric Bayesian intensity estimation with Gaussian and Besov–Laplace priors",
+      "journal": "Journal of Multivariate Analysis",
+      "publication_date": "2026-10-14",
+      "article_url": "https://www.sciencedirect.com/science/article/pii/S0047259X26001211",
+      "platform": "ScienceDirect",
+      "platform_evidence": "Normal Chrome DOI navigation actually reached this ScienceDirect article, title/DOI matched before freeze",
+      "configured_service": "SCIENCEDIRECT",
+      "configured_access_method": "carsi",
+      "service_assignment": "assigned",
+      "download_binding": "ordinary shared Session unless an actual retained capability is consumed; record actual use per attempt",
+      "oa_status_at_selection": "Publisher page explicitly Open access",
+      "body_state": "no body; no prior Download attempt",
+      "discovery_facts": [
+        {
+          "source": "openalex",
+          "status": "complete",
+          "candidate_stages": [
+            "P5"
+          ],
+          "observed_at": "2026-11-16T18:15:23.007005+00:00"
+        },
+        {
+          "source": "crossref",
+          "status": "complete",
+          "candidate_stages": [],
+          "observed_at": "2026-11-16T18:16:49.119798+00:00"
+        }
+      ],
+      "selection_reason": "Untested existing/normal-Run Paper from actual configured platform/journal scope; topic/journal/type diversity selected before outcomes. No replacement after timing starts; book review/obituary/comments omitted by article type/topic before outcomes.",
+      "planned_mechanism_tags": [
+        "R024",
+        "Reader/CDN if observed"
+      ],
+      "order": [
+        "allfold",
+        "zotero"
+      ],
+      "control_repeats_preselected": false,
+      "initial_repetitions": 1,
+      "planned_additional_control_pairs": 0,
+      "access_preparation_layer": "Chrome article prepared via normal navigation, institutional header present, no PDF/ViewPDF/Connector save triggered",
+      "cache_at_selection": {
+        "browser_profile": "existing Chrome Default, ordinary task window; not a clean Session",
+        "electron_session": "normal fresh source instance7c9be1c after pilots/tests, normal preparation retained",
+        "normal_collection_document_read": "no successful saved Document snapshot",
+        "manual_article_preparation": "Chrome article visited before freeze; actual OA/institution marking recorded. Allfold target article not manually previsited.",
+        "pdf_previsited_or_saved_for_this_paper": false,
+        "shared_proxy_or_server_cache": "unknown, not cleared"
+      },
+      "resolver_article_url": "https://linkinghub.elsevier.com/retrieve/pii/S0047259X26001211"
+    },
+    {
+      "sample_id": "F30",
+      "cohort": "representative",
+      "paper_id": "55e70fab-542a-490e-9944-c39e9979a538",
+      "doi": "10.1016/j.jeconom.2026.106349",
+      "title": "Practical estimation methods for high-dimensional multivariate stochastic volatility models",
+      "journal": "Journal of Econometrics",
+      "publication_date": "2026-10-24",
+      "article_url": "https://www.sciencedirect.com/science/article/pii/S0304407626001697",
+      "platform": "ScienceDirect",
+      "platform_evidence": "Normal Chrome DOI navigation actually reached this ScienceDirect article, title/DOI matched before freeze",
+      "configured_service": "SCIENCEDIRECT",
+      "configured_access_method": "carsi",
+      "service_assignment": "assigned",
+      "download_binding": "ordinary shared Session unless an actual retained capability is consumed; record actual use per attempt",
+      "oa_status_at_selection": "Publisher page explicitly Full text access via current legal institution",
+      "body_state": "no body; no prior Download attempt",
+      "discovery_facts": [
+        {
+          "source": "openalex",
+          "status": "complete",
+          "candidate_stages": [],
+          "observed_at": "2026-11-16T18:15:23.107279+00:00"
+        },
+        {
+          "source": "crossref",
+          "status": "complete",
+          "candidate_stages": [],
+          "observed_at": "2026-11-16T18:17:31.727275+00:00"
+        }
+      ],
+      "selection_reason": "Untested existing/normal-Run Paper from actual configured platform/journal scope; topic/journal/type diversity selected before outcomes. No replacement after timing starts; book review/obituary/comments omitted by article type/topic before outcomes.",
+      "planned_mechanism_tags": [
+        "R024",
+        "Reader/CDN if observed"
+      ],
+      "order": [
+        "zotero",
+        "allfold"
+      ],
+      "control_repeats_preselected": false,
+      "initial_repetitions": 1,
+      "planned_additional_control_pairs": 0,
+      "access_preparation_layer": "Chrome article prepared via normal navigation, institutional header present, no PDF/ViewPDF/Connector save triggered",
+      "cache_at_selection": {
+        "browser_profile": "existing Chrome Default, ordinary task window; not a clean Session",
+        "electron_session": "normal fresh source instance7c9be1c after pilots/tests, normal preparation retained",
+        "normal_collection_document_read": "no successful saved Document snapshot",
+        "manual_article_preparation": "Chrome article visited before freeze; actual OA/institution marking recorded. Allfold target article not manually previsited.",
+        "pdf_previsited_or_saved_for_this_paper": false,
+        "shared_proxy_or_server_cache": "unknown, not cleared"
+      },
+      "resolver_article_url": "https://linkinghub.elsevier.com/retrieve/pii/S0304407626001697"
+    },
+    {
+      "sample_id": "F31",
+      "cohort": "representative",
+      "paper_id": "a7a11909-1051-4f72-a715-506674ea40c7",
+      "doi": "10.1016/j.ejor.2026.10.004",
+      "title": "Trustworthy AI and risk-aware planning for global supply chains: A probabilistic framework with knowledge graph constraints",
+      "journal": "European Journal of Operational Research",
+      "publication_date": "2026-10-01",
+      "article_url": "https://www.sciencedirect.com/science/article/pii/S0377221726008192",
+      "platform": "ScienceDirect",
+      "platform_evidence": "Normal Chrome DOI navigation actually reached this ScienceDirect article, title/DOI matched before freeze",
+      "configured_service": "SCIENCEDIRECT",
+      "configured_access_method": "carsi",
+      "service_assignment": "assigned",
+      "download_binding": "ordinary shared Session unless an actual retained capability is consumed; record actual use per attempt",
+      "oa_status_at_selection": "Publisher page explicitly Open access",
+      "body_state": "no body; no prior Download attempt",
+      "discovery_facts": [
+        {
+          "source": "openalex",
+          "status": "complete",
+          "candidate_stages": [
+            "P5"
+          ],
+          "observed_at": "2026-11-16T18:15:24.662307+00:00"
+        },
+        {
+          "source": "crossref",
+          "status": "complete",
+          "candidate_stages": [],
+          "observed_at": "2026-11-16T18:17:26.390841+00:00"
+        }
+      ],
+      "selection_reason": "Untested existing/normal-Run Paper from actual configured platform/journal scope; topic/journal/type diversity selected before outcomes. No replacement after timing starts; book review/obituary/comments omitted by article type/topic before outcomes.",
+      "planned_mechanism_tags": [
+        "R024",
+        "Reader/CDN if observed"
+      ],
+      "order": [
+        "allfold",
+        "zotero"
+      ],
+      "control_repeats_preselected": false,
+      "initial_repetitions": 1,
+      "planned_additional_control_pairs": 0,
+      "access_preparation_layer": "Chrome article prepared via normal navigation, institutional header present, no PDF/ViewPDF/Connector save triggered",
+      "cache_at_selection": {
+        "browser_profile": "existing Chrome Default, ordinary task window; not a clean Session",
+        "electron_session": "normal fresh source instance7c9be1c after pilots/tests, normal preparation retained",
+        "normal_collection_document_read": "no successful saved Document snapshot",
+        "manual_article_preparation": "Chrome article visited before freeze; actual OA/institution marking recorded. Allfold target article not manually previsited.",
+        "pdf_previsited_or_saved_for_this_paper": false,
+        "shared_proxy_or_server_cache": "unknown, not cleared"
+      },
+      "resolver_article_url": "https://linkinghub.elsevier.com/retrieve/pii/S0377221726008192"
+    }
+  ],
+  "execution_sequence": [
+    {
+      "pair_id": "F01-1",
+      "sample_id": "F01",
+      "order": [
+        "allfold",
+        "zotero"
+      ]
+    },
+    {
+      "pair_id": "F02-1",
+      "sample_id": "F02",
+      "order": [
+        "zotero",
+        "allfold"
+      ]
+    },
+    {
+      "pair_id": "F03-1",
+      "sample_id": "F03",
+      "order": [
+        "zotero",
+        "allfold"
+      ]
+    },
+    {
+      "pair_id": "F04-1",
+      "sample_id": "F04",
+      "order": [
+        "allfold",
+        "zotero"
+      ]
+    },
+    {
+      "pair_id": "F05-1",
+      "sample_id": "F05",
+      "order": [
+        "zotero",
+        "allfold"
+      ]
+    },
+    {
+      "pair_id": "F06-1",
+      "sample_id": "F06",
+      "order": [
+        "allfold",
+        "zotero"
+      ]
+    },
+    {
+      "pair_id": "F07-1",
+      "sample_id": "F07",
+      "order": [
+        "zotero",
+        "allfold"
+      ]
+    },
+    {
+      "pair_id": "F08-1",
+      "sample_id": "F08",
+      "order": [
+        "zotero",
+        "allfold"
+      ]
+    },
+    {
+      "pair_id": "F09-1",
+      "sample_id": "F09",
+      "order": [
+        "allfold",
+        "zotero"
+      ]
+    },
+    {
+      "pair_id": "F10-1",
+      "sample_id": "F10",
+      "order": [
+        "zotero",
+        "allfold"
+      ]
+    },
+    {
+      "pair_id": "F11-1",
+      "sample_id": "F11",
+      "order": [
+        "allfold",
+        "zotero"
+      ]
+    },
+    {
+      "pair_id": "F12-1",
+      "sample_id": "F12",
+      "order": [
+        "zotero",
+        "allfold"
+      ]
+    },
+    {
+      "pair_id": "F13-1",
+      "sample_id": "F13",
+      "order": [
+        "allfold",
+        "zotero"
+      ]
+    },
+    {
+      "pair_id": "F14-1",
+      "sample_id": "F14",
+      "order": [
+        "zotero",
+        "allfold"
+      ]
+    },
+    {
+      "pair_id": "F15-1",
+      "sample_id": "F15",
+      "order": [
+        "allfold",
+        "zotero"
+      ]
+    },
+    {
+      "pair_id": "F16-1",
+      "sample_id": "F16",
+      "order": [
+        "zotero",
+        "allfold"
+      ]
+    },
+    {
+      "pair_id": "F17-1",
+      "sample_id": "F17",
+      "order": [
+        "allfold",
+        "zotero"
+      ]
+    },
+    {
+      "pair_id": "F18-1",
+      "sample_id": "F18",
+      "order": [
+        "zotero",
+        "allfold"
+      ]
+    },
+    {
+      "pair_id": "F19-1",
+      "sample_id": "F19",
+      "order": [
+        "allfold",
+        "zotero"
+      ]
+    },
+    {
+      "pair_id": "F20-1",
+      "sample_id": "F20",
+      "order": [
+        "zotero",
+        "allfold"
+      ]
+    },
+    {
+      "pair_id": "F21-1",
+      "sample_id": "F21",
+      "order": [
+        "allfold",
+        "zotero"
+      ]
+    },
+    {
+      "pair_id": "F22-1",
+      "sample_id": "F22",
+      "order": [
+        "zotero",
+        "allfold"
+      ]
+    },
+    {
+      "pair_id": "F23-1",
+      "sample_id": "F23",
+      "order": [
+        "allfold",
+        "zotero"
+      ]
+    },
+    {
+      "pair_id": "F24-1",
+      "sample_id": "F24",
+      "order": [
+        "zotero",
+        "allfold"
+      ]
+    },
+    {
+      "pair_id": "F25-1",
+      "sample_id": "F25",
+      "order": [
+        "allfold",
+        "zotero"
+      ]
+    },
+    {
+      "pair_id": "F26-1",
+      "sample_id": "F26",
+      "order": [
+        "zotero",
+        "allfold"
+      ]
+    },
+    {
+      "pair_id": "F27-1",
+      "sample_id": "F27",
+      "order": [
+        "allfold",
+        "zotero"
+      ]
+    },
+    {
+      "pair_id": "F28-1",
+      "sample_id": "F28",
+      "order": [
+        "zotero",
+        "allfold"
+      ]
+    },
+    {
+      "pair_id": "F29-1",
+      "sample_id": "F29",
+      "order": [
+        "allfold",
+        "zotero"
+      ]
+    },
+    {
+      "pair_id": "F30-1",
+      "sample_id": "F30",
+      "order": [
+        "zotero",
+        "allfold"
+      ]
+    },
+    {
+      "pair_id": "F31-1",
+      "sample_id": "F31",
+      "order": [
+        "allfold",
+        "zotero"
+      ]
+    }
+  ],
+  "preselected_control_schedule": [
+    {
+      "sample_id": "F01",
+      "additional_pairs": [
+        {
+          "pair_id": "F01-2",
+          "order": [
+            "zotero",
+            "allfold"
+          ]
+        },
+        {
+          "pair_id": "F01-3",
+          "order": [
+            "allfold",
+            "zotero"
+          ]
+        }
+      ]
+    },
+    {
+      "sample_id": "F03",
+      "additional_pairs": [
+        {
+          "pair_id": "F03-2",
+          "order": [
+            "allfold",
+            "zotero"
+          ]
+        },
+        {
+          "pair_id": "F03-3",
+          "order": [
+            "zotero",
+            "allfold"
+          ]
+        }
+      ]
+    },
+    {
+      "sample_id": "F06",
+      "additional_pairs": [
+        {
+          "pair_id": "F06-2",
+          "order": [
+            "zotero",
+            "allfold"
+          ]
+        },
+        {
+          "pair_id": "F06-3",
+          "order": [
+            "allfold",
+            "zotero"
+          ]
+        }
+      ]
+    },
+    {
+      "sample_id": "F08",
+      "additional_pairs": [
+        {
+          "pair_id": "F08-2",
+          "order": [
+            "allfold",
+            "zotero"
+          ]
+        },
+        {
+          "pair_id": "F08-3",
+          "order": [
+            "zotero",
+            "allfold"
+          ]
+        }
+      ]
+    },
+    {
+      "sample_id": "F11",
+      "additional_pairs": [
+        {
+          "pair_id": "F11-2",
+          "order": [
+            "zotero",
+            "allfold"
+          ]
+        },
+        {
+          "pair_id": "F11-3",
+          "order": [
+            "allfold",
+            "zotero"
+          ]
+        }
+      ]
+    },
+    {
+      "sample_id": "F14",
+      "additional_pairs": [
+        {
+          "pair_id": "F14-2",
+          "order": [
+            "allfold",
+            "zotero"
+          ]
+        },
+        {
+          "pair_id": "F14-3",
+          "order": [
+            "zotero",
+            "allfold"
+          ]
+        }
+      ]
+    },
+    {
+      "sample_id": "F17",
+      "additional_pairs": [
+        {
+          "pair_id": "F17-2",
+          "order": [
+            "zotero",
+            "allfold"
+          ]
+        },
+        {
+          "pair_id": "F17-3",
+          "order": [
+            "allfold",
+            "zotero"
+          ]
+        }
+      ]
+    },
+    {
+      "sample_id": "F20",
+      "additional_pairs": [
+        {
+          "pair_id": "F20-2",
+          "order": [
+            "allfold",
+            "zotero"
+          ]
+        },
+        {
+          "pair_id": "F20-3",
+          "order": [
+            "zotero",
+            "allfold"
+          ]
+        }
+      ]
+    },
+    {
+      "sample_id": "F23",
+      "additional_pairs": [
+        {
+          "pair_id": "F23-2",
+          "order": [
+            "zotero",
+            "allfold"
+          ]
+        },
+        {
+          "pair_id": "F23-3",
+          "order": [
+            "allfold",
+            "zotero"
+          ]
+        }
+      ]
+    },
+    {
+      "sample_id": "F26",
+      "additional_pairs": [
+        {
+          "pair_id": "F26-2",
+          "order": [
+            "allfold",
+            "zotero"
+          ]
+        },
+        {
+          "pair_id": "F26-3",
+          "order": [
+            "zotero",
+            "allfold"
+          ]
+        }
+      ]
+    }
+  ],
+  "frozen_at_utc": "2026-11-16T18:40:53.823107+00:00",
+  "mechanism_queue_policy": "Reuse representative samples tagged by actual observed path, summarize separately without multiplying daily load. R059/Optica/LWW/OCE not in this saved journal/service pool, unconfirmed unless a lawful supported sample is later added with an explicit supplement.",
+  "measurement_protocol": "One actual normal-UI pair per sample; no simultaneous downloads/build/full tests/large collection. Correct permanent PDF+original association endpoint, actual poll bounds. Confirm file/DOI/title/version before deleting trial body. Separate first access, challenge, manual waiting and warm repeats; unknown timings remain missing. Preselected normal controls get two further exchanged-order pairs. Anomalies require investigation and two repeats with equivalent access, not replacement.",
+  "sequence_policy": "Execute declared first-pair sequence in order where both sides have usable legal access; if a platform has an actual preparation/verification blocker, retain its entries and gap, continue independent prepared platforms, record deviations. No substitute sample after results."
+}

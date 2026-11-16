@@ -1,0 +1,10 @@
+{
+  "status": "formal_not_started",
+  "manifest": "pdf-pairing-manifest.json",
+  "manifest_frozen_at_utc": "2026-11-16T18:40:53.823107+00:00",
+  "production_code_sha": "098288ae32e159811b9c49333b386d1533890862",
+  "runtime_head_sha": "7c9be1c5e4487087c4dacf0afebd0e7c19b3435b",
+  "pairs": [],
+  "coverage_gaps": [],
+  "parity_conclusions": "Not assessed before formal observations."
+}
