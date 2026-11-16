@@ -309,12 +309,16 @@ class _BodyDiscoveryIO:
             raise PdfSourceReadError('Optional PDF Provider is unavailable', diagnostic='provider-unavailable') from None
         try:
             with _access_operation(self.reservation, self.repository, authority) as operation:
-                with self.reservation.registry.factory.open_pdf_discovery(cancel_event=operation.cancel_event,
+                clients = ExitStack()
+                try:
+                    _http, openalex = clients.enter_context(self.reservation.registry.factory.open_pdf_discovery(cancel_event=operation.cancel_event,
                         request_guard=operation.guard, deadline=operation.deadline,
-                        http_options=self.reservation.body_request.http_options) as (_http, openalex):
+                        http_options=self.reservation.body_request.http_options))
                     raw = openalex.get_work_by_doi(doi)
                     operation.guard()
                     return raw
+                finally:
+                    self._close_clients(clients)
         except (BodyAccessRevoked, Cancelled):
             self.reservation.registry._guard(self.reservation, self.repository)
             raise PdfSourceReadError('Optional PDF Provider is unavailable', diagnostic='provider-unavailable') from None
@@ -414,10 +418,13 @@ class _BodyDiscoveryIO:
             self.reservation.registry.fail_reservation(self.reservation, phase='body-native-cleanup', error=error,
                 unconfirmed=isinstance(error, _CleanupUnconfirmed))
         finally:
-            try:
-                self.resources.close()
-            except BaseException as error:
-                self.reservation.registry.fail_reservation(self.reservation, phase='discovery-client-cleanup', error=error)
+            self._close_clients(self.resources)
+
+    def _close_clients(self, resources):
+        try:
+            resources.close()
+        except BaseException as error:
+            self.reservation.registry.fail_reservation(self.reservation, phase='discovery-client-cleanup', error=error)
 
 
 def _run(reservation, request, progress):

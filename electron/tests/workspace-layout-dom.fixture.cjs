@@ -353,10 +353,10 @@ app.whenReady().then(async()=>{
     Object.assign(bodyPaper.download,{reason:'service-unprepared',source_observations:[{pdf_stage:'P4',pdf_rule:'R060',pdf_reason:'service-unprepared',service_id:'svc_'+'1'.repeat(32),subsequent_attempted:true}]});
     await js('window.uiWorkspace.refresh()');
     await js(`(()=>{const status=document.getElementById('paper-download-status');if(!status.textContent.includes('尚未 Prepare') || !status.title.includes('svc_'))throw Error('Missing scoped access reason');})()`);
-    bodyPaper.body_present=true;bodyPaper.download.status='completed';
+    bodyPaper.body_present=true;bodyPaper.download.status='completed';bodyPaper.download.warning='下载已结束，但临时文件清理失败。';
     await js('window.uiWorkspace.refresh()');
-    await js(`(()=>{const status=document.getElementById('paper-download-status');if(status.hidden || !status.textContent.startsWith('下载成功') || !status.title.includes('尚未 Prepare'))throw Error('Later success lost earlier source evidence');})()`);
-    bodyPaper.body_present=false;bodyPaper.download.status='failed';
+    await js(`(()=>{const status=document.getElementById('paper-download-status');if(status.hidden || !status.textContent.startsWith('下载成功') || !status.title.includes('尚未 Prepare') || !status.textContent.includes('临时文件清理失败'))throw Error('Later success lost earlier source evidence or cleanup warning');})()`);
+    bodyPaper.body_present=false;bodyPaper.download.status='failed';bodyPaper.download.warning=null;
     bodyPaper.download.reason=null;
     bodyPaper.download.source_observations=[];
     await js('window.uiWorkspace.refresh()');

@@ -1277,8 +1277,8 @@ function renderBodyControls(paper) {
     text=reasons[download.reason] || text;
   }
   if(!active && !paper.body_present && download?.source_observations?.some(item=>item.subsequent_attempted))text+=' 已尝试后续来源。';
-  if(!active && download?.warning)text=[text,download.warning].filter(Boolean).join(' ');
   if(!active && paper.body_present && download?.status==='completed' && accessIssues.length)text='下载成功。已跳过无法使用的机构访问来源。';
+  if(!active && download?.warning)text=[text,download.warning].filter(Boolean).join(' ');
   $('paper-download-status').textContent=text;
   $('paper-download-status').title=accessIssues
     .map(item=>`${serviceReasons[item.pdf_reason]}${item.service_id?` · ${item.service_id}`:''}`).join('\n');

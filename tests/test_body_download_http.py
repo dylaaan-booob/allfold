@@ -16,7 +16,7 @@ from electron_test_helpers import PendingBridge
 from library_application_helpers import create_paper
 
 
-@pytest.mark.parametrize('mapping', ['unprepared', 'unassigned', 'ambiguous'])
+@pytest.mark.parametrize('mapping', ['unprepared', 'unassigned', 'ambiguous', 'client-close'])
 def test_public_download_keeps_stable_cache_after_optional_refresh_without_prepare(tmp_path, mapping):
     import httpx
     from allfold.config import AccessService, JournalConfig
@@ -44,6 +44,17 @@ def test_public_download_keeps_stable_cache_after_optional_refresh_without_prepa
     app = create_app(config, electron_bridge=bridge, diagnostics_root=tmp_path/'logs')
     app.state.body_downloads.http_options = {'transport': httpx.MockTransport(lambda _: httpx.Response(404, json={})),
         'resolver': lambda *_: ('93.184.216.34',)}
+    if mapping == 'client-close':
+        from contextlib import contextmanager
+        original = app.state.workspace_tasks.factory.open_pdf_discovery
+        @contextmanager
+        def failing_close(**options):
+            try:
+                with original(**options) as clients:
+                    yield clients
+            finally:
+                raise RuntimeError('Injected client close fault after completed request')
+        app.state.workspace_tasks.factory.open_pdf_discovery = failing_close
     with TestClient(app, base_url='http://localhost') as client:
         state = client.get('/api/ui-next/workspace').json()
         # Ambiguity can place a Paper outside its ordinary Journal section.
@@ -64,6 +75,8 @@ def test_public_download_keeps_stable_cache_after_optional_refresh_without_prepa
         assert len(bridge.calls) == 1 and not app.state.workspace_tasks.active
         assert read_paper(workspace, paper.id).download.output is None
         assert (workspace/result.paper.body.relative_path).read_bytes() == b'%PDF-stable'
+        if mapping == 'client-close':
+            assert any(item['phase'] == 'discovery-client-cleanup' for item in task.registry.faults)
 
 
 @pytest.mark.parametrize('oce_context', ['permitted', 'denied', 'unbound', 'unprepared', 'removed', 'ambiguous'])
