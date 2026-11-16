@@ -3,8 +3,8 @@
 **Run** discovers journal Papers, confirms necessary direct identities, establishes
 basic Papers and registers complete collection plans. Workspace continues each
 Paper's combined webpage and necessary API/Preprint branches after foreground
-cleanup. **ARRAY Info** also offers independent explicit bioRxiv/medRxiv queries.
-Ordinary field-gap Completion, active Enrich and Import are retired.
+cleanup. Independent Info Preprint queries, ordinary field-gap Completion, active
+Enrich and Import are retired.
 
 ## Provider roles
 
@@ -18,7 +18,7 @@ Ordinary field-gap Completion, active Enrich and Import are retired.
 | arXiv | None | Known arXiv IDs through batched `id_list`; Atom `published` establishes the first-version date |
 | bioRxiv / medRxiv | None | Native `details` for a known platform and preprint DOI |
 
-Run's `enabled_providers` accepts PubMed, WoS and OpenAlex in any nonempty combination and defaults to PubMed + OpenAlex. WoS never enables institutional Browser access automatically. Discovery selection governs journal searches. Necessary identity and relationship purposes have independent eligibility; no Paper blindly probes all services. OpenAlex collection credentials are declared only for an explicit Work purpose. Provider aliases, ordering, Settings forms, expression previews and runtime dispatch use the same IDs.
+Run's `enabled_providers` accepts PubMed, WoS and OpenAlex in any nonempty combination and defaults to PubMed + OpenAlex. WoS never enables institutional Browser access automatically. Discovery selection governs journal searches. Necessary identity and relationship purposes have independent eligibility; no Paper blindly probes all services. OpenAlex collection credentials are captured only when an explicit Work purpose uses that Provider. Provider aliases, ordering, Settings forms, expression previews and runtime dispatch use the same IDs.
 
 PubMed and OpenAlex keys are optional, explicitly submitted to revision-checked local 0600 secret files beside the YAML; ordinary autosave, draft recovery, snapshots and diagnostics contain no keys. PubMed anonymous pacing is at least 0.35 seconds and keyed pacing at least 0.11 seconds. Keyed Entrez requests use form POST so the key does not enter request URLs. Crossref contact/mailto remains optional. Obsolete PubMed query fields, Europe PMC Discovery selections and old Provider orders are rejected with `config.template.yaml` reconstruction guidance; no startup or validation deletes user data.
 
@@ -162,9 +162,19 @@ pages when a later page fails. Only an adapter-confirmed exact empty result is
 no-match; a raw service 404, malformed envelope, truncated DOI error or identity
 conflict is not silently converted to empty success.
 
+The necessary branch declares supported Provider capabilities for dynamic request
+planning, rather than requiring every possible Provider's credentials at admission.
+Verified earlier responses can introduce later exact Work or native Preprint
+requests. Each `context.provider()` first use captures only that Provider's saved
+authority and credential; repeated uses retain the original capture. An unused
+Provider change does not revoke other work, and used Provider subwork cannot
+silently borrow a replacement key. Its revoked access is an explicit lookup
+failure while independent lookups and valid increments continue. Document Service
+Prepare remains independent. Complete handoff facts need no new client or key.
+
 The service reads the current Paper through guarded `BranchContext.read_paper()`
-without renewing the captured token or abstract generation, uses only declared
-`context.provider()` clients and emits positive branch-local sequences.
+without renewing the captured token or abstract generation and emits positive
+branch-local sequences.
 Same-formal month/day dates and an eligible abstract may arrive incrementally;
 related Preprint bibliography and dates stay outside the ordinary date set.
 Year-only dates gain no invented precision, and database maintenance timestamps
@@ -210,9 +220,7 @@ eligibility and First public rules described above.
 
 ## HTTP and Browser boundary
 
-Run, necessary collection and standalone OpenAlex share the [Provider HTTP policy](http.md#journal-run-and-native-preprint-apis). Recoverable connection failures and temporary HTTP responses can show **Retrying**. An active dependency cooldown can show **Waiting**. Retry-After is enforced across clients for the same origin and authentication context. A request whose remaining budget is shorter ends while the cooldown stays active. Current verification-page classification can stop that Provider client; narrowing
-weak-marker detection and local-failure propagation is follow-up work, not a
-requirement to preserve client-wide failure. Unexpected HTML and invalid envelopes report failures. Only an adapter-confirmed exact no-match is empty; raw service 404 is a failure. arXiv uses three-second pacing, and bioRxiv and medRxiv share their API host pacing.
+Run, necessary collection and standalone OpenAlex share the [Provider HTTP policy](http.md#journal-run-and-native-preprint-apis). Recoverable connection failures and temporary HTTP responses can show **Retrying**. An active dependency cooldown can show **Waiting**. Retry-After is enforced across clients for the same origin and authentication context. A request whose remaining budget is shorter ends while the cooldown stays active. A verification page fails its current request; a later independent identifier can still use the client. Current verification-page predicates remain unchanged. Unexpected HTML and invalid envelopes report failures. Only an adapter-confirmed exact no-match is empty; raw service 404 is a failure. arXiv uses three-second pacing, and bioRxiv and medRxiv share their API host pacing.
 
 Keep/Import and active Enrich have no UI, HTTP or native dispatch path. Their
 Local API, attachment communication, Translator sandbox and generated Runtime
@@ -241,8 +249,7 @@ admission. Exclusions and ownership conflicts are rechecked in that transaction.
 Full matches preserve metadata; `not_started` matches are first collected only
 when hit by this Run. Active attempts are reused; completed/empty do not reopen,
 and failed/cancelled require explicit single-Paper retry after cleanup. Only an
-originally qualified released placeholder can be rebuilt with its UUID. A manual
-query may hold an accepted first-collection intent until real release. Neither
+originally qualified released placeholder can be rebuilt with its UUID. Neither
 startup nor later Runs scan the library to fill gaps or replay work.
 
 Collection projects exact-target OpenAlex/Crossref response facts before ordinary

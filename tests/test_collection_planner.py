@@ -19,8 +19,8 @@ def test_production_plan_has_independent_api_and_explicit_document_access(tmp_pa
     assert all(branch.run is not None for branch in branches)
     assert branches[0].service_id is None
     assert branches[1].service_id is None
-    assert set(branches[1].providers) == {'pubmed', 'crossref', 'europe_pmc', 'arxiv', 'biorxiv', 'medrxiv'}
-    assert 'openalex' not in branches[1].providers
+    assert set(branches[1].providers) == {'pubmed', 'crossref', 'openalex', 'europe_pmc', 'arxiv', 'biorxiv', 'medrxiv'}
+    assert branches[1].dynamic_providers
 
 
 @pytest.mark.parametrize('saved_doi', [None, '10.5555/aaa-original'])
@@ -675,3 +675,114 @@ def test_public_retry_service_checks_exact_attempt_and_only_pending_api_access(t
         assert bridge.document_calls==1 and login.captures==capture_count
     finally:
         host.shutdown();host.join()
+
+
+def test_necessary_branch_discovers_later_native_provider_without_unrelated_credentials(tmp_path):
+    import httpx
+    from allfold.application.collection_planner import ProductionCollectionService
+    from allfold.application.provider_lookup import provider_client
+    from allfold.application.task_clients import IndependentClientFactory
+    from allfold.application.workspace_tasks import WorkspaceTaskHost
+    from test_integrated_run import config
+
+    path, settings = config(tmp_path)
+    settings.output_dir.mkdir()
+    with PaperRepository.create(settings.output_dir):
+        pass
+    path.with_suffix('.pubmed-secrets.json').write_text('invalid unrelated credentials')
+    calls = []
+    def respond(request):
+        calls.append((request.url.host, request.url.path))
+        if request.url.host == 'www.ebi.ac.uk':
+            return httpx.Response(200, json={'hitCount': 0, 'resultList': {'result': []}})
+        if request.url.path.startswith('/details/'):
+            return httpx.Response(200, json={'messages': [{'status': 'ok'}], 'collection': [{
+                'doi': '10.64898/earlier', 'server': 'medrxiv', 'published': '10.5555/formal',
+                'version': '1', 'date': '2019-01-02'}]})
+        selector = request.url.params.get('filter', '')
+        if 'relation.type:' in selector:
+            rows = [{'DOI': '10.64898/earlier', 'type': 'posted-content', 'publisher': 'medrxiv',
+                'relation': {'is-preprint-of': [{'id-type': 'doi', 'id': '10.5555/formal'}]}}]
+        elif selector == 'doi:10.5555/formal':
+            rows = [{'DOI': '10.5555/formal', 'type': 'journal-article',
+                'abstract': 'Verified formal abstract.', 'accepted': {'date-parts': [[2026, 1, 2]]}}]
+        else:
+            rows = [{'DOI': '10.64898/earlier', 'type': 'posted-content', 'publisher': 'medrxiv'}]
+        return httpx.Response(200, json={'message': {'items': rows, 'total-results': len(rows)}})
+    def clients(provider, **kwargs):
+        assert provider in {'crossref', 'europe_pmc', 'medrxiv'}
+        return provider_client(provider, transport=httpx.MockTransport(respond), interval=0, **kwargs)
+    host = WorkspaceTaskHost(path, factory=IndependentClientFactory(path, client_factory=clients))
+    metadata = PaperMetadata(title='Formal', publication_type='journal')
+    plan = ProductionCollectionService(host).plan(metadata=metadata, identities={('doi', '10.5555/formal')}, config=settings)
+    try:
+        task = host.current().submit(direct_ids=ExternalIds(doi='10.5555/formal'), metadata=metadata, branches=(plan[1],))
+        result = task.future.result(3)
+        assert result.collection_status == 'completed', result.collection.branches
+        assert result.metadata.abstract == 'Verified formal abstract.'
+        assert result.metadata.ordinary_dates == ('2026-01-02',)
+        assert result.metadata.first_public_at == '2019-01-02'
+        assert any(host == 'api.biorxiv.org' and path.startswith('/details/medrxiv/') for host, path in calls)
+        assert len(calls) == 5
+    finally:
+        host.shutdown(); host.join()
+
+
+@pytest.mark.parametrize('used_before_change', [False, True])
+def test_necessary_provider_change_is_local_to_original_provider_subwork(tmp_path, used_before_change):
+    from dataclasses import replace
+    import httpx
+    from allfold.application.necessary_metadata import NecessaryRequest, necessary_metadata_branch
+    from allfold.application.provider_lookup import provider_client
+    from allfold.application.task_clients import IndependentClientFactory
+    from allfold.application.workspace_tasks import WorkspaceTaskHost
+    from allfold.integrations.openalex_credentials import read_credential, write_credential
+    from test_integrated_run import config
+
+    path, settings = config(tmp_path)
+    settings.output_dir.mkdir()
+    with PaperRepository.create(settings.output_dir):
+        pass
+    write_credential(path, provider='pubmed', action='replace', key='original-key', revision='missing')
+    calls = []
+    def respond(request):
+        calls.append(request)
+        if request.url.host == 'eutils.ncbi.nlm.nih.gov':
+            return httpx.Response(200, json={'result': {'uids': ['42'], '42': {'uid': '42', 'pubdate': '2026 Feb 3'}}})
+        return httpx.Response(200, json={'message': {'total-results': 1, 'items': [{
+            'DOI': '10.5555/formal', 'type': 'journal-article', 'abstract': 'Independent Crossref evidence.',
+            'accepted': {'date-parts': [[2026, 1, 2]]}}]}})
+    def clients(provider, **kwargs):
+        return provider_client(provider, transport=httpx.MockTransport(respond), interval=0, **kwargs)
+    host = WorkspaceTaskHost(path, factory=IndependentClientFactory(path, client_factory=clients))
+    branch = necessary_metadata_branch(providers=('crossref', 'pubmed'), discover_relations=False,
+        required=(NecessaryRequest('crossref', 'doi', '10.5555/formal', 'exact'),
+                  NecessaryRequest('pubmed', 'pmid', '42', 'summary')))
+    def run(context):
+        if used_before_change:
+            context.provider('pubmed').request('/initial', {})
+        change = host.begin_change(providers=('pubmed',))
+        try:
+            host.drain_change(change)
+            revision = read_credential(path, provider='pubmed')[1]
+            write_credential(path, provider='pubmed', action='replace', key='new-key', revision=revision)
+        finally:
+            host.finish_change(change)
+        assert not context.cancel_event.is_set()
+        branch.run(context)
+    try:
+        task = host.current().submit(direct_ids=ExternalIds(doi='10.5555/formal', pmid='42'),
+            metadata=PaperMetadata(title='Formal', publication_type='journal'), branches=(replace(branch, run=run),))
+        result = task.future.result(3)
+        assert not task.cancel_event.is_set()
+        assert result.collection_status == ('failed' if used_before_change else 'completed')
+        if used_before_change:
+            assert result.collection.branches[0].reason == 'NecessaryLookupFailed'
+        assert result.metadata.abstract == 'Independent Crossref evidence.'
+        assert '2026-01-02' in result.metadata.ordinary_dates
+        pubmed = [request for request in calls if request.url.host == 'eutils.ncbi.nlm.nih.gov']
+        assert len(pubmed) == 1
+        assert (b'api_key=original-key' if used_before_change else b'api_key=new-key') in pubmed[0].content
+        assert ('2026-02-03' in result.metadata.ordinary_dates) is not used_before_change
+    finally:
+        host.shutdown(); host.join()
