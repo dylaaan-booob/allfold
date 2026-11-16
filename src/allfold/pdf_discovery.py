@@ -530,7 +530,7 @@ class PdfDiscovery:
                 following = parse_current_response(candidate, response,
                     report=lambda code: self._note(original.stage, original.rule_id, code))
                 reader = reader_context(candidate, response.url)
-                article = urlsplit(candidate.target.article_url or '')
+                article = urlsplit(self._route.article_url or '')
                 if (reader and reader['platform'] == 'sciencedirect' and article.netloc and following
                         and all((urlsplit(item.url).scheme, urlsplit(item.url).netloc, urlsplit(item.url).path)
                             == (article.scheme, article.netloc, article.path) for item in following)):

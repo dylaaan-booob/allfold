@@ -208,7 +208,8 @@ def test_clinicalkey_requires_its_own_access_and_ready_session():
      'R036', 'https://proceedings.mlr.press/v235/AbC24a/AbC24a.pdf?token=AbC'),
 ])
 def test_each_existing_article_url_transform_preserves_request_spelling(host, platform, article_url, rule, expected):
-    paper = target(host, platform, article_url=article_url)
+    paper = replace(target(host, platform, article_url=article_url),
+        doi='10.1234/AbC/Part2' if rule in {'R029', 'R030'} else '10.1234/AbC')
     candidate, = iter_p2_candidates(paper)
     assert (candidate.rule_id, candidate.url, candidate.target) == (rule, expected, paper)
     assert list(iter_p2_candidates(replace(paper, article_url=article_url.replace(host, 'unrelated.example.org')))) == []

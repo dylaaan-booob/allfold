@@ -379,7 +379,7 @@ def needs_p2_query(target: PdfTarget, inputs: PdfRuleInputs, *, known_refresh=Fa
 def _article_transform(target: PdfTarget, platform: str | None, inputs: PdfRuleInputs | None) -> tuple[str, str] | None:
     if target.article_url:
         url = urlsplit(target.article_url)
-        path, rule, converted = url.path, None, None
+        path, rule, converted, route_doi = url.path, None, None, None
         if platform == 'nature':
             matched = re.fullmatch(r'(/[^/]+/journal/(?:[^/]+/)+)(?:full|abs)/([^/]+)\.html', path)
             if matched:
@@ -388,9 +388,12 @@ def _article_transform(target: PdfTarget, platform: str | None, inputs: PdfRuleI
             if re.fullmatch(r'/article/10\.[0-9]{4,9}/.+', path) or re.fullmatch(r'/[0-9]{4}-[0-9]{3}[0-9X]/[0-9]+/[0-9]+/[^/]+(?:/meta)?', path):
                 base = re.sub(r'/(?:meta|pdf)/?$', '', path.rstrip('/'))
                 rule, converted = 'R029', base + '/pdf'
+                if base.startswith('/article/'):
+                    route_doi = base[len('/article/'):]
         elif platform == 'aps':
             if matched := re.fullmatch(r'/([a-z][a-z0-9-]*)/abstract/(10\.[0-9]{4,9}/.+)', path):
                 rule, converted = 'R030', '/' + matched[1] + '/pdf/' + matched[2]
+                route_doi = matched[2]
         elif platform in {'asco', 'aha', 'healio', 'chicago'}:
             rule, origin, destination = {
                 'asco': ('R031', 'full', 'pdfdirect'), 'aha': ('R032', 'reader', 'pdf'),
@@ -398,6 +401,7 @@ def _article_transform(target: PdfTarget, platform: str | None, inputs: PdfRuleI
             }[platform]
             if matched := re.fullmatch(r'/doi/' + origin + r'/(10\.[0-9]{4,9}/.+)', path):
                 converted = '/doi/' + destination + '/' + matched[1]
+                route_doi = matched[1]
         elif platform == 'jmlr':
             if matched := re.fullmatch(r'/papers/v([0-9]+)/([A-Za-z0-9_-]+)\.html', path):
                 volume, key = matched.groups()
@@ -407,6 +411,8 @@ def _article_transform(target: PdfTarget, platform: str | None, inputs: PdfRuleI
                 volume, key = matched.groups()
                 rule, converted = 'R036', f'/v{volume}/{key}/{key}.pdf'
         if converted:
+            if route_doi and target.identity_doi and valid_doi(unquote(route_doi)) != target.identity_doi:
+                return None
             # Preserve query spelling/order, filename case and existing escapes.
             # Fragment is not part of a request and is not copied to candidates.
             return rule, urlunsplit((url.scheme, url.netloc, converted, url.query, ''))

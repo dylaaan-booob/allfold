@@ -265,6 +265,61 @@ def test_pdf_refresh_uses_observed_content_host_and_ids_before_openalex():
     assert (result.pdf_source, result.fallback_used) == ('P2', False)
 
 
+@pytest.mark.parametrize('landing', [
+    'https://iopscience.iop.org/article/10.1234/other/meta',
+    'https://journals.aps.org/prl/abstract/10.1234/other',
+    'https://ascopubs.org/doi/full/10.1234/other',
+    'https://ahajournals.org/doi/reader/10.1234/other',
+    'https://journals.healio.com/doi/epdf/10.1234/other',
+    'https://journals.uchicago.edu/doi/full/10.1234/other',
+])
+def test_pdf_refresh_does_not_transform_an_explicit_other_doi(landing):
+    from allfold.application.document_metadata import DocumentPdfResult
+    paper = PdfTarget('paper-1', doi='10.1234/original', content_type='journal-article')
+    original_pdf = 'https://repository.example.org/Original.PDF'
+    class IO:
+        def document(self, _):
+            return DocumentPdfResult(PdfDiscoveryFacts(source='document', capability='document-pdf',
+                status='complete', observed_at=datetime.now(timezone.utc), target_doi=paper.identity_doi,
+                landing_url=landing), ())
+        def openalex(self, doi):
+            return {'doi': doi, 'best_oa_location': {'pdf_url': original_pdf}}
+    seen = []
+    result = PdfDiscovery(paper, io=IO()).run(
+        lambda c: seen.append(c.url) or CandidateResult.pdf(transfer_complete=True))
+    assert seen == [original_pdf]
+    assert result.pdf_source == 'P5'
+
+
+def test_refreshed_article_backlink_enters_reader_before_another_article_get():
+    from allfold.application.document_metadata import CurrentPdfClue, DocumentPdfResult
+    article = 'https://www.sciencedirect.com/science/article/pii/S014067362400123X'
+    entry, final = article + '/pdfft', 'https://pdf.sciencedirectassets.com/current.pdf?md5=Keep'
+    paper = PdfTarget('paper-1', doi='10.1016/j.example.2026.123456',
+        article_url='https://linkinghub.elsevier.com/retrieve/pii/S014067362400123X',
+        content_type='journal-article')
+    snapshot = PdfDiscoveryFacts(source='document', capability='document-pdf', status='complete',
+        observed_at=datetime.now(timezone.utc), target_doi=paper.identity_doi,
+        landing_url=article, platform='sciencedirect')
+    calls = []
+    class IO:
+        def document(self, _):
+            return DocumentPdfResult(snapshot, (CurrentPdfClue('P4', 'R024', entry, referer=article),))
+        def reader(self, candidate, response):
+            calls.append('reader')
+            assert candidate.target is paper and response.url == entry
+            return DocumentPdfResult(snapshot, (CurrentPdfClue('P4', 'R024', final),))
+    def consume(candidate):
+        calls.append(candidate.url)
+        if candidate.url == entry:
+            return CandidateResult.current(CurrentResponse(entry, '', status=302, redirect_url=article))
+        assert candidate.url == final, 'The article backlink needs browser execution, not another GET'
+        return CandidateResult.pdf(transfer_complete=True)
+    result = PdfDiscovery(paper, io=IO()).run(consume)
+    assert calls == [entry, 'reader', final]
+    assert (result.pdf_source, result.fallback_used) == ('P4', False)
+
+
 @pytest.mark.parametrize('host,doi', [
     ('ieeexplore.ieee.org', '10.1109/ABC.1234567'),
     ('www.nature.com', '10.1038/s41586.2026.0123'),
