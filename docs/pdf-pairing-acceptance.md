@@ -160,6 +160,8 @@ Two manual inputs block continued meaningful pairing:
   The connected AgentDock `desktop` fallback was found/read but not used for UI:
   current Computer Use documentation permits other technologies only when
   specifically requested by the user. A concrete tool-choice request is pending.
+  A subsequent platform tool update removed `mcp__cua_repl` entirely, so that
+  original UI channel is currently unavailable.
 
 At 20:00:59 UTC the product reported 72 Papers, 10 current bodies, zero active
 Downloads, zero Download cleanup and zero active collection. Original Run inputs

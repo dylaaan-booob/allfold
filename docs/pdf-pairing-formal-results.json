@@ -663,7 +663,7 @@
       "comparable_body_version": true,
       "version_comparison": {
         "version": "Publisher Version of Record",
-        "evidence": "Both title/DOI/29pages/7,842,498B verified; Zotero source link.springer.com. AF first page visually confirms Springer publisher layout, International Journal of Computer Vision134:493(2026), published25Oct2026. No full-byte equality claim."
+        "evidence": "Both title/DOI/29pages/7,842,498B verified; Zotero source link.springer.com. AF first page rendered: International Journal of Computer Vision(2026)134:493, published25Oct2026, Springer layout. No full-byte comparison."
       },
       "difference_seconds": [
         -7.017,
@@ -1087,7 +1087,7 @@
       "comparable_body_version": true,
       "version_comparison": {
         "version": "Publisher Version of Record",
-        "evidence": "Both title/DOI/57pages/5,103,901B verified; Zotero source link.springer.com. Current AF PDF first page visually confirms Springer publisher layout, Data Mining and Knowledge Discovery40:96(2026). No full-byte equality claim."
+        "evidence": "Both title/DOI/57pages/5,103,901B verified; Zotero source link.springer.com. Current AF publisher page rendered: Data Mining and Knowledge Discovery(2026)40:96, Springer copyright/layout. Previous attempt independently checked at same publisher entry; no full-byte comparison."
       },
       "cohort": "anomaly_retest",
       "diagnostic_setting": "Connector Debug checkbox temporarily enabled19:19:21–19:24:38UTC;0linescaptured. RestoredOFF; Desktop debug stayedOFF. Not attributed as a repair.",
@@ -1229,7 +1229,7 @@
       "comparable_body_version": true,
       "version_comparison": {
         "version": "Publisher Version of Record",
-        "evidence": "Both title/DOI/57pages/5,103,901B verified; Zotero source link.springer.com. Current AF PDF first page visually confirms Springer publisher layout, Data Mining and Knowledge Discovery40:96(2026). No full-byte equality claim."
+        "evidence": "Both title/DOI/57pages/5,103,901B verified; Zotero source link.springer.com. Current AF publisher page rendered: Data Mining and Knowledge Discovery(2026)40:96, Springer copyright/layout. Previous attempt independently checked at same publisher entry; no full-byte comparison."
       },
       "cohort": "anomaly_retest",
       "diagnostic_setting": "Connector Debug checkbox temporarily enabled19:19:21–19:24:38UTC;0linescaptured. RestoredOFF; Desktop debug stayedOFF. Not attributed as a repair.",
@@ -1837,6 +1837,9 @@
     },
     {
       "gap": "Optica/IEEE Reader branch/R059/LWW/OCE/stableP4/extra-recovery coverage only when actually observed; fixtures are not live evidence. ScienceDirect formal cohort not started."
+    },
+    {
+      "gap": "Platform tool update subsequently removed mcp__cua_repl; pending explicit user tool choice is required before using the read/discovered AgentDock desktop UI fallback."
     }
   ],
   "parity_conclusions": "No platform confirmed at parity. Full-JSON observer timings are preserved but excluded from strict normal-load conclusions; keys-v2 has no complete same-version pair with reliable two-sided T0 yet.",
