@@ -138,7 +138,9 @@ and the isolated Document preload. It opens the Paper entry through access waiti
 and reads PDF-only snapshot clues. Prepare and dispatch locate the current R059 form
 or R024 ScienceDirect target from that candidate; they cache no DOM node or page
 identity. Equivalent duplicate controls, hydration and same-frame history changes
-do not deny the action. A missing target makes that candidate unavailable. Native
+do not deny the action. Multiple forms must also have equivalent successful
+controls, compared only in the live renderer. A missing current link/form makes
+that candidate unavailable. Native
 forms retain their current successful controls and Session; POST bodies never leave
 the page for reconstruction. The dispatch acknowledgement prepares Main before the
 actual action and binds the exact navigation request, frame, owner and item. A named existing form target

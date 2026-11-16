@@ -601,7 +601,7 @@ function bodyAction(candidate,doi=null,doiCasefold={},dispatchPlan=null) {
     // Re-locate at the actual action boundary. Compare the request being
     // authorized, never the former page URL or a cached node object.
     if(Object.keys(plan).some(key=>plan[key]!==dispatchPlan[key]))throw Error('body_action_unavailable');
-    if(kind==='navigation') {if(node)node.click();else location.assign(plan.url);}
+    if(kind==='navigation')node.click();
     else if(submitter)submitter.click();else node.requestSubmit();
     return plan;
   };
@@ -633,6 +633,7 @@ function bodyAction(candidate,doi=null,doiCasefold={},dispatchPlan=null) {
       ||next.protocol==='https:'&&next.hostname==='pdf.sciencedirectassets.com'&&next.pathname.endsWith('/1-s2.0-'+pii+'/main.pdf')))throw Error('body_action_identity');
     const links=[...document.querySelectorAll('a[href]')].filter(node=>node.href===candidate.url && !excludedEntry(node));
     const node=links[0];
+    if(!node)throw Error('body_action_unavailable');
     if(links.some(link=>(link.target||'')!==(node.target||'')))throw Error('body_action_ambiguous');
     return finish(node,'navigation',{url:candidate.url,request_url:candidate.url,method:'GET',...target(node)});
   }
@@ -641,26 +642,33 @@ function bodyAction(candidate,doi=null,doiCasefold={},dispatchPlan=null) {
   const forms=[...document.querySelectorAll('.download-pdf form.ft-download-content__form--pdf[action]')]
     .filter(node=>node.action===candidate.url && !excludedEntry(node));
   if(!forms.length)throw Error('body_action_unavailable');
-  if(forms.some(node=>node.method!==forms[0].method || node.target!==forms[0].target))throw Error('body_action_ambiguous');
-  const node=forms[0],method=node.method.toUpperCase();
-  if(!['GET','POST'].includes(method))throw Error('body_action_method');
-  const submitters=[...node.querySelectorAll('button:not([type]),button[type="submit"],input[type="submit"]')].filter(item=>!item.disabled);
-  if(submitters.some(item=>item.name!==submitters[0].name || item.value!==submitters[0].value))throw Error('body_action_ambiguous');
-  if(submitters.some(item=>item.hasAttribute('formaction')&&item.formAction!==node.action
-    || item.hasAttribute('formmethod')&&item.formMethod.toUpperCase()!==method
-    || item.hasAttribute('formtarget')&&item.formTarget!==node.target))throw Error('body_action_unavailable');
+  const actions=forms.map(node=>{
+    const method=node.method.toUpperCase();
+    if(!['GET','POST'].includes(method))throw Error('body_action_method');
+    const submitters=[...node.querySelectorAll('button:not([type]),button[type="submit"],input[type="submit"]')].filter(item=>!item.disabled);
+    if(submitters.some(item=>item.name!==submitters[0].name || item.value!==submitters[0].value))throw Error('body_action_ambiguous');
+    if(submitters.some(item=>item.hasAttribute('formaction')&&item.formAction!==node.action
+      || item.hasAttribute('formmethod')&&item.formMethod.toUpperCase()!==method
+      || item.hasAttribute('formtarget')&&item.formTarget!==node.target))throw Error('body_action_unavailable');
+    // Compare successful controls only inside this live renderer invocation.
+    // POST data is never serialized, cached or used to reconstruct a request.
+    return {node,method,submitter:submitters[0],controls:[...new FormData(node,submitters[0])]};
+  });
+  const {node,method,submitter,controls}=actions[0];
+  if(actions.some(other=>other.method!==method || other.node.target!==node.target
+    || other.controls.length!==controls.length || other.controls.some(([name,value],index)=>
+      name!==controls[index][0] || value!==controls[index][1])))throw Error('body_action_ambiguous');
   let request_url=node.action;
   if(method==='GET') {
     // Native GET submission replaces the action's query with successful controls,
     // including the clicked submitter. This only predicts the exact request: the
     // original click still submits it, without a fetch or copied POST body.
-    const data=new FormData(node,submitters[0]);
     const newline=value=>value.replace(/\r\n|\r|\n/g,'\r\n');
     const query=new URLSearchParams();
-    for(const [name,value] of data)query.append(newline(name),newline(typeof value==='string'?value:value.name));
+    for(const [name,value] of controls)query.append(newline(name),newline(typeof value==='string'?value:value.name));
     const next=new URL(node.action);next.search=query.toString();request_url=next.href;
   }
-  return finish(node,'form',{url:node.action,request_url,method,...target(node)},submitters[0]);
+  return finish(node,'form',{url:node.action,request_url,method,...target(node)},submitter);
 }
 ipcRenderer.on('body:prepare',async(_event,{id,candidate,doi,doiCasefold})=>{
   try {
