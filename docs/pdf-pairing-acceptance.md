@@ -4,8 +4,10 @@ Issue: [#140](https://github.com/dylaaan-booob/allfold/issues/140). Baseline:
 `a2e511aa86ab5aa292f224301d6609a59c287fa2`.
 
 **Status: incomplete. The 31-paper representative manifest is now frozen and
-formal pairing has started. Pilot outcomes remain separate. No whole platform is
-yet confirmed at parity. Workspace is retained for required measurements/retests.**
+formal pairing has started. Seven Papers have observations; the remaining 24
+are unstarted. Reliable paired timing and the IEEE access retest are blocked on
+manual inputs described below. No platform is confirmed at parity. Workspace is
+retained for required measurements/retests.**
 
 ## Environment and endpoint
 
@@ -69,6 +71,103 @@ preparation; that assistance is retained separately from PDF saving. Allfold's
 Cancel→cleanup→Retry was exercised on P03. P01/P02 Open and Locate pointed to the
 same managed file. P02's disposable trial PDF was then removed through the
 product's Reject/delete/Restore flow; metadata and Download availability survived.
+
+## Formal checkpoint, measurement defect and blockers
+
+The immutable [31-paper manifest](pdf-pairing-manifest.json) was committed before
+the first formal click; all original samples remain. The
+[formal result table](pdf-pairing-formal-results.json) contains 13 observation
+slots across seven distinct Papers, including pending/interrupted endpoints.
+Allfold has 11 verified local-PDF successes, one failure, and one unattempted end;
+Zotero has 12 verified local-PDF successes (one submitted preprint), and one
+operator interruption with unknown product terminal state. These are attempt
+counts, not independent-paper success estimates.
+
+| Actual platform | Formal Papers started / planned | Local PDF observations, including repeats | Conclusion |
+| --- | --- | --- | --- |
+| IEEE Xplore | 2 / 2 | Allfold 0 success, 1 failure, 1 end pending; Zotero 2 successes | Same-access retry blocked on Electron institution login; no parity confirmation. |
+| Springer Link | 3 / 3 | Allfold 7 successes; Zotero 6 successes, 1 operator interruption | Files verified; timing evidence affected by measurement load, normal-load controls pending. |
+| Cambridge Core | 2 / 2 | Both 4 successes; Zotero includes one arXiv submitted version | One version-divergent pair and two missing Zotero click times; no parity confirmation. |
+| Oxford Academic | 0 / 3 | Not started | Not confirmed. |
+| Taylor & Francis | 0 / 3 | Not started | Not confirmed. |
+| Wiley | 0 / 3 | Not started | Not confirmed. |
+| SIAM | 0 / 3 | Not started | Not confirmed. |
+| Project Euclid | 0 / 3 | Not started | Not confirmed. |
+| INFORMS PubsOnline | 0 / 3 | Not started; configured EBSCO capability is not a platform result | Not confirmed. |
+| ScienceDirect | 0 / 6 | Formal cohort not started; repaired-path pilots retained separately | Not confirmed. |
+
+**Measurement-load defect:** the original task-local observer repeatedly requested
+full JSON for the newest 20 Zotero items at nominal 250 ms. A no-download A/B check
+measured Zotero CPU at 20.9–26.6% with this observer and 0% when paused. It was
+replaced at 19:40:20 UTC with a keys query and individual metadata reads only for
+new/pending items; two steady observations were 1.3% and 1.5%. No product setting,
+timeout, source code or outcome criterion changed. File/association observations
+remain valid, but all older timings, including pilots, are retained as
+measurement-affected evidence and **do not establish normal-load parity**. No
+numerical correction is subtracted. Repeated warm controls under the lighter
+observer remain necessary; their cache state must stay explicit.
+
+Nine successful pairs have comparable publisher versions. Seven have raw paired
+timings from the older observer; two Cambridge repeats lack a reliable Zotero T0.
+There is currently **zero** complete same-version, two-sided timed pair eligible
+for a normal-load parity decision after the observer correction. Raw intervals,
+differences and ratios remain in the table, with eligibility false. No p95,
+pooled daily-load average, tolerance percentage or non-significance argument is used.
+
+F03's publisher PDF is 22 pages / 2,636,871 bytes; F04's is 57 pages / 5,103,901
+bytes; F05's is 29 pages / 7,842,498 bytes. Titles/DOIs/pages and parent/Paper
+relations were inspected. F03's rendered publisher first page and normalized
+first-page text in Zotero match. F04's original Zotero save produced only a parent;
+after evidence and no visible activity/temporary storage, only its trial tab was
+closed at 19:11:53 UTC. This is an operator interruption, with no invented failure
+or timeout endpoint. Two fresh saves later obtained the publisher PDF. Connector
+Debug was temporarily enabled for those diagnostic retries, logged zero lines,
+and restored off without clearing or submitting output; Desktop debug stayed off.
+Neither the new session nor the logging toggle is claimed as the cause of recovery.
+
+F06's publisher FirstView is 33 pages; personalized download-time watermarks and
+small byte differences were retained. F07 differs materially: Allfold obtained
+the Cambridge publisher FirstView, 42 pages / 572,214 bytes, with the correct DOI;
+Zotero obtained arXiv 2603.07780v1, 109 pages / 1,146,058 bytes. The submitted
+version has no publisher DOI in its body, but its exact title, all three authors
+and the original Paper's explicit preprint relationship match. Both are valid
+local full-text outcomes. Their observed access states and versions differ;
+no same-version timing or transfer-efficiency comparison is made.
+
+Actual diagnostics show a single P1/R001 native request/stream for successful
+Springer trials (first-pair combined durations 2.117, 4.921 and 2.602 s). These
+figures combine request/transfer handling, not a separately measured transfer
+segment. Cambridge used cached P3 discovery clues. The source-event/operation
+fields retain actual rules and durations; missing first-byte, exact association
+and UI-render times are explicit. Existing collection/Document/API clues and
+article/Translator preparation are part of each starting context, not silently
+claimed to be identical network preprocessing. The representative and warm
+control/anomaly observations remain separately tagged. ScienceDirect's targeted
+Reader/CDN pilots do not enter representative statistics. IEEE Reader, Optica,
+R059, LWW/OCE and other unobserved mechanisms are not treated as covered.
+
+Two manual inputs block continued meaningful pairing:
+
+- F01's normal Electron CARSI renewal reached the official institution account
+  page with empty fields and no visible saved autofill. Local user login is
+  pending; Chrome's successful login is not copied to Electron. The original
+  no-candidate/HTTP202 failure remains unresolved until a same-access retry.
+- Chrome/CUA repeatedly returned `noWindowsAvailable`/`timeoutReached` around
+  normal Connector clicks. F06's two later PDFs prove saving occurred, but no
+  accurate click time survived. Tool waits are not product waits. Chrome's high
+  CPU was observed and recovered without restarting it; its cause is not proved.
+  The connected AgentDock `desktop` fallback was found/read but not used for UI:
+  current Computer Use documentation permits other technologies only when
+  specifically requested by the user. A concrete tool-choice request is pending.
+
+At 20:00:59 UTC the product reported 72 Papers, 10 current bodies, zero active
+Downloads, zero Download cleanup and zero active collection. Original Run inputs
+and providers were restored exactly; temporary Connector debugging is off. This
+idle checkpoint is **not** permission to Reset while required retests remain.
+Workspace Reset has not been attempted, trial data and authentication page remain,
+and temporary trial windows are retained for continuation. Annual Reviews had no
+eligible Paper in the existing/normal-Run pool; unmapped/other absent platforms
+and unavailable mechanisms receive no inferred parity result.
 
 ## Diagnosed changes and remaining work
 
@@ -177,8 +276,10 @@ on the same source passed all 41 public native cases in about 12.7 s; full nativ
 checks also passed all 241 tests on the same 098288a source, with no skips, in
 120.7 s; JavaScript checks passed 63 files. The subsequent full PR-linked
 [run 43921980119](https://github.com/dylaaan-booob/allfold/actions/runs/43921980119)
-passed every Safety checks step at head 7c9be1c. Later evidence-only commits still
-need their own latest PR-associated check. The earlier failure’s cause is not
+passed every Safety checks step at head 7c9be1c. The subsequent full PR-linked
+[run43934292137](https://github.com/dylaaan-booob/allfold/actions/runs/43934292137)
+also passed every step for fb7fdbd. Latest-head verification is recorded in the
+PR checks and PR Evidence; earlier green runs are not substitutes for it. The earlier failure’s cause is not
 established, so it is not described as repaired.
 
 Raw diagnostics, runtime proofs, click records and local association/file

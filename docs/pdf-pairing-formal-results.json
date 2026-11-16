@@ -1,5 +1,5 @@
 {
-  "status": "formal_in_progress",
+  "status": "blocked_pending_user_inputs",
   "manifest": "pdf-pairing-manifest.json",
   "manifest_frozen_at_utc": "2026-11-16T18:40:53.823107+00:00",
   "production_code_sha": "098288ae32e159811b9c49333b386d1533890862",
@@ -47,8 +47,82 @@
         "post_failure_access_diagnostic": {
           "normal_browser_article_navigation_utc": "2026-11-16T18:53:11.126Z",
           "observed_by_utc": "2026-11-16T18:53:44.810Z",
-          "state": "Matching title/DOI; Institutional Sign In and no PDF access; no visible challenge; prior homepage Xiamen display was stale or insufficient",
-          "resolution": "Normal Electron CARSI renewal reached official XMU account page at18:55:06UTC; no saved autofill, both fields empty. User asked to complete local login; A2 blocked pending actual target access."
+          "state": "Matching title/DOI; Institutional Sign In and no PDF access; no visible challenge; prior homepage configured institution display was stale or insufficient",
+          "resolution": "Normal Electron CARSI renewal reached official configured institution account page at18:55:06UTC; no saved autofill, both fields empty. User asked to complete local login; A2 blocked pending actual target access."
+        },
+        "measurement_revision": "full-json-v1",
+        "timing_eligible_for_parity": false,
+        "native_operations": [
+          {
+            "time": "2026-11-16T18:42:38.826Z",
+            "action": "stream_paper_body",
+            "stage": "navigation",
+            "outcome": "response",
+            "duration_ms": 1030
+          },
+          {
+            "time": "2026-11-16T18:42:39.633Z",
+            "action": "stream_paper_body",
+            "stage": "navigation",
+            "outcome": "response",
+            "duration_ms": 741
+          },
+          {
+            "time": "2026-11-16T18:42:40.862Z",
+            "action": "extract_paper_pdf_clues",
+            "stage": "navigation",
+            "outcome": "retrieved",
+            "duration_ms": 1220
+          }
+        ],
+        "source_events": [
+          {
+            "time": "2026-11-16T18:42:38.841Z",
+            "pdf_stage": "P2",
+            "pdf_rule": "R025",
+            "pdf_reason": "response-observed",
+            "pdf_attempt": 1,
+            "source_origin": "https://ieeexplore.ieee.org/",
+            "fallback_used": false
+          },
+          {
+            "time": "2026-11-16T18:42:38.848Z",
+            "pdf_stage": "P2",
+            "pdf_rule": "R025",
+            "pdf_reason": "no-pdf-entry",
+            "pdf_attempt": 1,
+            "source_origin": "https://ieeexplore.ieee.org/",
+            "fallback_used": false
+          },
+          {
+            "time": "2026-11-16T18:42:39.636Z",
+            "pdf_stage": "P2",
+            "pdf_rule": "R025",
+            "pdf_reason": "response-observed",
+            "pdf_attempt": 2,
+            "source_origin": "https://ieeexplore.ieee.org/",
+            "fallback_used": true
+          },
+          {
+            "time": "2026-11-16T18:42:39.638Z",
+            "pdf_stage": "P2",
+            "pdf_rule": "R025",
+            "pdf_reason": "no-pdf-entry",
+            "pdf_attempt": 2,
+            "source_origin": "https://ieeexplore.ieee.org/",
+            "fallback_used": true
+          }
+        ],
+        "phase_timing_gaps": [
+          "first byte not separately observed",
+          "exact file-finalize/association timestamp bounded by local observer",
+          "UI-render completion not timed"
+        ],
+        "qualification": {
+          "attempt": 1,
+          "metadata_generation": 1,
+          "operation_generation": 1,
+          "body_generation": 1
         }
       },
       "zotero": {
@@ -57,7 +131,7 @@
           "article_open_utc": "2026-11-16T18:49:08.268Z",
           "new_normal_carsi_entry_utc": "2026-11-16T18:50:09.978Z",
           "saved_credentials_submitted_utc": "2026-11-16T18:51:00.444Z",
-          "observed_result": "Xiamen institution, matching title/DOI and PDF access restored before save",
+          "observed_result": "configured institution institution, matching title/DOI and PDF access restored before save",
           "machine_only_preparation_seconds": null,
           "note": "Wall preparation includes operator/tool gaps and is not a pure product wait. No cookie/context copy or manual MFA."
         },
@@ -90,12 +164,1706 @@
             "early_access": false
           }
         },
-        "human_intervention": false
+        "human_intervention": false,
+        "measurement_revision": "full-json-v1",
+        "timing_eligible_for_parity": false
       },
       "comparison": "Zotero correct local PDF; Allfold first attempt failed. Additional failure preserved; Electron HTTP202/access state under investigation, comparison conditions not yet aligned.",
-      "access_comparability": "Not yet established for original A click: institutional homepage had been prepared, but target article was not previsited; Chrome later needed normal SSO renewal. Original failure retained for investigation."
+      "access_comparability": "Not yet established for original A click: institutional homepage had been prepared, but target article was not previsited; Chrome later needed normal SSO renewal. Original failure retained for investigation.",
+      "timing_comparison_eligible": false
+    },
+    {
+      "pair_id": "F02-1",
+      "sample_id": "F02",
+      "order": [
+        "Zotero",
+        "Allfold"
+      ],
+      "production_code_sha": "098288ae32e159811b9c49333b386d1533890862",
+      "runtime_head_sha": "7c9be1c5e4487087c4dacf0afebd0e7c19b3435b",
+      "allfold": {
+        "result": "pending",
+        "reason": "Electron institutional local login pending; no Download yet",
+        "measurement_revision": "full-json-v1",
+        "timing_eligible_for_parity": false
+      },
+      "zotero": {
+        "result": "automatic_success",
+        "translator": "IEEE Xplore",
+        "article_navigation_utc": "2026-11-16T18:57:49.305Z",
+        "access_at_save": "configured institution institution and PDF access visible; matching title/DOI",
+        "click_utc": [
+          "2026-11-16T18:58:02.566Z",
+          "2026-11-16T18:58:02.596Z"
+        ],
+        "local_pdf_and_association_utc": [
+          "2026-11-16T18:58:21.007Z",
+          "2026-11-16T18:58:21.456Z"
+        ],
+        "wait_seconds": [
+          18.411,
+          18.89
+        ],
+        "parent_key": "GL3WDWC9",
+        "attachment_key": "NYF7ZMYG",
+        "link_mode": "imported_url",
+        "file_bytes": 3732577,
+        "content_check": {
+          "file_exists": true,
+          "file_bytes": 3732577,
+          "pdf_prefix": true,
+          "page_count": 14,
+          "full_title_match": true,
+          "doi_match": true,
+          "publisher_indicators": {
+            "IEEE": true,
+            "Springer": false,
+            "Scientific Reports": false,
+            "Creative Commons": false,
+            "Accepted Manuscript": false,
+            "arXiv:": false,
+            "All rights reserved": true
+          }
+        },
+        "human_intervention": false,
+        "ui_preparation": "New Chrome tab 18:57:49.305Z; configured institution access and PDF link visible; target collection Allfold PDF acceptance 2026-11-16",
+        "measurement_revision": "full-json-v1",
+        "timing_eligible_for_parity": false,
+        "human_intervention_note": "none for this article"
+      },
+      "comparison": "AF end pending legal institutional renewal; no parity or matched latency comparison.",
+      "platform": "IEEE Xplore",
+      "configured_service": "IEEE-IET ELECTRONIC LIBRARY-美国电气电子工程师学会数据库",
+      "timing_comparison_eligible": false
+    },
+    {
+      "pair_id": "F03-1",
+      "sample_id": "F03",
+      "order": [
+        "zotero",
+        "allfold"
+      ],
+      "production_code_sha": "098288ae32e159811b9c49333b386d1533890862",
+      "runtime_head_sha": "7c9be1c5e4487087c4dacf0afebd0e7c19b3435b",
+      "allfold": {
+        "result": "automatic_success",
+        "click_utc": [
+          "2026-11-16T19:01:49.653Z",
+          "2026-11-16T19:01:49.776Z"
+        ],
+        "ui_preparation": "Existing Paper Reader, collection complete, Download available; no Allfold article previsit",
+        "human_intervention": false,
+        "local_pdf_and_association_utc": [
+          "2026-11-16T19:01:51.814Z",
+          "2026-11-16T19:01:52.153Z"
+        ],
+        "wait_seconds": [
+          2.038,
+          2.5
+        ],
+        "file_bytes": 2636871,
+        "attempt": 1,
+        "source": "P1",
+        "fallback_used": 0,
+        "content_check": {
+          "file_exists": true,
+          "file_bytes": 2636871,
+          "pdf_prefix": true,
+          "page_count": 22,
+          "full_title_match": true,
+          "doi_match": true,
+          "publisher_indicators": {
+            "IEEE": false,
+            "Springer": false,
+            "Scientific Reports": false,
+            "Creative Commons": false,
+            "Accepted Manuscript": false,
+            "arXiv:": false,
+            "All rights reserved": false
+          }
+        },
+        "source_observations": [
+          {
+            "pdf_stage": "P1",
+            "pdf_rule": "R001",
+            "pdf_reason": "transferred",
+            "pdf_attempt": 1,
+            "fallback_used": false,
+            "source_origin": "https://link.springer.com/",
+            "subsequent_attempted": false
+          }
+        ],
+        "cleanup_complete": true,
+        "measurement_revision": "full-json-v1",
+        "timing_eligible_for_parity": false,
+        "human_intervention_note": "none",
+        "native_operations": [
+          {
+            "time": "2026-11-16T19:01:51.946Z",
+            "action": "stream_paper_body",
+            "stage": "navigation",
+            "outcome": "stream_complete",
+            "duration_ms": 2117
+          }
+        ],
+        "source_events": [
+          {
+            "time": "2026-11-16T19:01:51.972Z",
+            "pdf_stage": "P1",
+            "pdf_rule": "R001",
+            "pdf_reason": "transferred",
+            "pdf_attempt": 1,
+            "source_origin": "https://link.springer.com/",
+            "fallback_used": false
+          }
+        ],
+        "phase_timing_gaps": [
+          "first byte not separately observed",
+          "exact file-finalize/association timestamp bounded by local observer",
+          "UI-render completion not timed"
+        ],
+        "qualification": {
+          "attempt": 1,
+          "metadata_generation": 1,
+          "operation_generation": 1,
+          "body_generation": 1
+        }
+      },
+      "zotero": {
+        "result": "automatic_success",
+        "click_utc": [
+          "2026-11-16T19:00:40.377Z",
+          "2026-11-16T19:00:40.412Z"
+        ],
+        "ui_preparation": "New Chrome tab 18:58:53.206Z; article open access and full access visible; Chrome tip delayed UI observation",
+        "human_intervention": false,
+        "translator": "Springer Link",
+        "local_pdf_and_association_utc": [
+          "2026-11-16T19:00:46.602Z",
+          "2026-11-16T19:00:47.028Z"
+        ],
+        "wait_seconds": [
+          6.19,
+          6.651
+        ],
+        "file_bytes": 2636871,
+        "parent_key": "JWAFJPGN",
+        "attachment_key": "BR8N3KMV",
+        "link_mode": "imported_url",
+        "content_check": {
+          "file_exists": true,
+          "file_bytes": 2636871,
+          "pdf_prefix": true,
+          "page_count": 22,
+          "full_title_match": true,
+          "doi_match": true,
+          "publisher_indicators": {
+            "IEEE": false,
+            "Springer": false,
+            "Scientific Reports": false,
+            "Creative Commons": false,
+            "Accepted Manuscript": false,
+            "arXiv:": false,
+            "All rights reserved": false
+          }
+        },
+        "measurement_revision": "full-json-v1",
+        "timing_eligible_for_parity": false,
+        "human_intervention_note": "none"
+      },
+      "platform": "Springer Link",
+      "configured_service": "Springer Link",
+      "comparable_body_version": true,
+      "version_comparison": {
+        "sample_id": "F03",
+        "same_page_count": true,
+        "same_file_size": true,
+        "same_first_page_normalized_text": true,
+        "visual_check": "AF first page rendered and inspected: Statistics and Computing36:239(2026), exact DOI/title, publication17Oct2026, Springer publisher layout. Z first-page text matches; both22pages/2,636,871B.",
+        "version": "Publisher Version of Record"
+      },
+      "cache_context": "Z→A; Chrome article/translator prepared, AF normal collection Document complete but target article not manually preloaded. Existing profiles/proxy/cache not cleared; shared proxy/server cache unknown, Z-first body warming may favor second transfer; control inversions pending.",
+      "difference_seconds": [
+        -4.613,
+        -3.69
+      ],
+      "ratio": [
+        0.3064,
+        0.4039
+      ],
+      "timing_comparison_eligible": false
+    },
+    {
+      "pair_id": "F04-1",
+      "sample_id": "F04",
+      "order": [
+        "allfold",
+        "zotero"
+      ],
+      "production_code_sha": "098288ae32e159811b9c49333b386d1533890862",
+      "runtime_head_sha": "7c9be1c5e4487087c4dacf0afebd0e7c19b3435b",
+      "allfold": {
+        "result": "automatic_success",
+        "click_utc": [
+          "2026-11-16T19:02:48.517Z",
+          "2026-11-16T19:02:48.652Z"
+        ],
+        "ui_preparation": "Existing Paper Reader, collection incomplete, Download available; no Allfold article previsit",
+        "human_intervention": false,
+        "local_pdf_and_association_utc": [
+          "2026-11-16T19:02:53.381Z",
+          "2026-11-16T19:02:53.700Z"
+        ],
+        "wait_seconds": [
+          4.729,
+          5.183
+        ],
+        "file_bytes": 5103901,
+        "attempt": 1,
+        "source": "P1",
+        "fallback_used": 0,
+        "content_check": {
+          "file_exists": true,
+          "file_bytes": 5103901,
+          "pdf_prefix": true,
+          "page_count": 57,
+          "full_title_match": true,
+          "doi_match": true,
+          "publisher_indicators": {
+            "IEEE": false,
+            "Springer": true,
+            "Scientific Reports": false,
+            "Creative Commons": false,
+            "Accepted Manuscript": false,
+            "arXiv:": false,
+            "All rights reserved": false
+          }
+        },
+        "source_observations": [
+          {
+            "pdf_stage": "P1",
+            "pdf_rule": "R001",
+            "pdf_reason": "transferred",
+            "pdf_attempt": 1,
+            "fallback_used": false,
+            "source_origin": "https://link.springer.com/",
+            "subsequent_attempted": false
+          }
+        ],
+        "cleanup_complete": true,
+        "measurement_revision": "full-json-v1",
+        "timing_eligible_for_parity": false,
+        "human_intervention_note": "none",
+        "native_operations": [
+          {
+            "time": "2026-11-16T19:02:53.627Z",
+            "action": "stream_paper_body",
+            "stage": "navigation",
+            "outcome": "stream_complete",
+            "duration_ms": 4921
+          }
+        ],
+        "source_events": [
+          {
+            "time": "2026-11-16T19:02:53.631Z",
+            "pdf_stage": "P1",
+            "pdf_rule": "R001",
+            "pdf_reason": "transferred",
+            "pdf_attempt": 1,
+            "source_origin": "https://link.springer.com/",
+            "fallback_used": false
+          }
+        ],
+        "phase_timing_gaps": [
+          "first byte not separately observed",
+          "exact file-finalize/association timestamp bounded by local observer",
+          "UI-render completion not timed"
+        ],
+        "qualification": {
+          "attempt": 1,
+          "metadata_generation": 1,
+          "operation_generation": 1,
+          "body_generation": 1
+        }
+      },
+      "zotero": {
+        "result": "operator_interrupted",
+        "click_utc": [
+          "2026-11-16T19:03:50.077Z",
+          "2026-11-16T19:03:50.138Z"
+        ],
+        "ui_preparation": "New Chrome article tab 19:03:31.942Z; Access provided by configured institution and PDF link; target dedicated collection",
+        "human_intervention": false,
+        "translator": "Springer Link",
+        "terminal_state": "unknown; no PDF observed",
+        "interruption_utc": [
+          "2026-11-16T19:11:53.365Z",
+          "2026-11-16T19:11:53.391Z"
+        ],
+        "action": "Closed only this trial article tab after evidence; no extension/global browser/Desktop reset",
+        "known_state_before_interruption": "Parent33S8T7EI, zero attachments; no visible activity; Desktop temporary storage empty asof19:06:55.816Z and later UI check. No exact product failure time.",
+        "wait_seconds": null,
+        "reason": "Final product state could not be confirmed; original save retained separately from failures/timeouts.",
+        "post_interruption_file_observation": {
+          "observed_utc": [
+            "2026-11-16T19:19:55.296Z",
+            "2026-11-16T19:19:55.819Z"
+          ],
+          "file_bytes": 5103901
+        },
+        "measurement_revision": "full-json-v1",
+        "timing_eligible_for_parity": false,
+        "human_intervention_note": "none"
+      },
+      "platform": "Springer Link",
+      "configured_service": "Springer Link",
+      "comparison": "AF correct local publisher PDF; Zotero operator interruption with terminal state unknown, no paired latency comparison.",
+      "timing_comparison_eligible": false
+    },
+    {
+      "pair_id": "F05-1",
+      "sample_id": "F05",
+      "order": [
+        "zotero",
+        "allfold"
+      ],
+      "production_code_sha": "098288ae32e159811b9c49333b386d1533890862",
+      "runtime_head_sha": "7c9be1c5e4487087c4dacf0afebd0e7c19b3435b",
+      "allfold": {
+        "result": "automatic_success",
+        "click_utc": [
+          "2026-11-16T19:13:28.306Z",
+          "2026-11-16T19:13:28.446Z"
+        ],
+        "ui_preparation": "Original Paper Reader collection complete, Download available; no AF article previsit",
+        "human_intervention": false,
+        "local_pdf_and_association_utc": [
+          "2026-11-16T19:13:30.775Z",
+          "2026-11-16T19:13:31.109Z"
+        ],
+        "wait_seconds": [
+          2.329,
+          2.803
+        ],
+        "file_bytes": 7842498,
+        "attempt": 1,
+        "source": "P1",
+        "fallback_used": 0,
+        "content_check": {
+          "file_exists": true,
+          "file_bytes": 7842498,
+          "pdf_prefix": true,
+          "page_count": 29,
+          "full_title_match": true,
+          "doi_match": true,
+          "publisher_indicators": {
+            "IEEE": false,
+            "Springer": false,
+            "Scientific Reports": false,
+            "Creative Commons": false,
+            "Accepted Manuscript": false,
+            "arXiv:": false,
+            "All rights reserved": false
+          }
+        },
+        "source_observations": [
+          {
+            "pdf_stage": "P1",
+            "pdf_rule": "R001",
+            "pdf_reason": "transferred",
+            "pdf_attempt": 1,
+            "fallback_used": false,
+            "source_origin": "https://link.springer.com/",
+            "subsequent_attempted": false
+          }
+        ],
+        "cleanup_complete": true,
+        "measurement_revision": "full-json-v1",
+        "timing_eligible_for_parity": false,
+        "body_version": "Publisher Version of Record,29pages",
+        "human_intervention_note": "none",
+        "native_operations": [
+          {
+            "time": "2026-11-16T19:13:31.099Z",
+            "action": "stream_paper_body",
+            "stage": "navigation",
+            "outcome": "stream_complete",
+            "duration_ms": 2602
+          }
+        ],
+        "source_events": [
+          {
+            "time": "2026-11-16T19:13:31.104Z",
+            "pdf_stage": "P1",
+            "pdf_rule": "R001",
+            "pdf_reason": "transferred",
+            "pdf_attempt": 1,
+            "source_origin": "https://link.springer.com/",
+            "fallback_used": false
+          }
+        ],
+        "phase_timing_gaps": [
+          "first byte not separately observed",
+          "exact file-finalize/association timestamp bounded by local observer",
+          "UI-render completion not timed"
+        ],
+        "qualification": {
+          "attempt": 1,
+          "metadata_generation": 1,
+          "operation_generation": 1,
+          "body_generation": 1
+        }
+      },
+      "zotero": {
+        "result": "automatic_success",
+        "click_utc": [
+          "2026-11-16T19:12:26.795Z",
+          "2026-11-16T19:12:26.830Z"
+        ],
+        "ui_preparation": "New article tab 19:12:13.524Z; open access full access and PDF entry visible; dedicated collection selected",
+        "human_intervention": false,
+        "translator": "Springer Link",
+        "local_pdf_and_association_utc": [
+          "2026-11-16T19:12:35.400Z",
+          "2026-11-16T19:12:36.141Z"
+        ],
+        "wait_seconds": [
+          8.57,
+          9.346
+        ],
+        "file_bytes": 7842498,
+        "parent_key": "ENMPD6VL",
+        "attachment_key": "KF39VEXY",
+        "link_mode": "imported_url",
+        "content_check": {
+          "file_exists": true,
+          "file_bytes": 7842498,
+          "pdf_prefix": true,
+          "page_count": 29,
+          "full_title_match": true,
+          "doi_match": true,
+          "publisher_indicators": {
+            "IEEE": false,
+            "Springer": false,
+            "Scientific Reports": false,
+            "Creative Commons": false,
+            "Accepted Manuscript": false,
+            "arXiv:": false,
+            "All rights reserved": false
+          }
+        },
+        "measurement_revision": "full-json-v1",
+        "timing_eligible_for_parity": false,
+        "body_version": "Publisher Version of Record,29pages",
+        "human_intervention_note": "none"
+      },
+      "platform": "Springer Link",
+      "configured_service": "Springer Link",
+      "timing_comparison_eligible": false,
+      "comparable_body_version": true,
+      "version_comparison": {
+        "version": "Publisher Version of Record / FirstView",
+        "evidence": "Actual title/DOI/page counts checked in both files. Same publisher source. Cambridge download-time watermarks and byte sizes vary; hashes are not required."
+      },
+      "difference_seconds": [
+        -7.017,
+        -5.767
+      ],
+      "ratio": [
+        0.2492,
+        0.3271
+      ]
+    },
+    {
+      "pair_id": "F03-2",
+      "sample_id": "F03",
+      "order": [
+        "allfold",
+        "zotero"
+      ],
+      "production_code_sha": "098288ae32e159811b9c49333b386d1533890862",
+      "runtime_head_sha": "7c9be1c5e4487087c4dacf0afebd0e7c19b3435b",
+      "allfold": {
+        "result": "automatic_success",
+        "click_utc": [
+          "2026-11-16T19:15:09.831Z",
+          "2026-11-16T19:15:09.940Z"
+        ],
+        "ui_preparation": "Original body QA passed; UI Reject, delete trial PDF, Restore; metadata retained and Download available",
+        "human_intervention": false,
+        "local_pdf_and_association_utc": [
+          "2026-11-16T19:15:10.809Z",
+          "2026-11-16T19:15:11.133Z"
+        ],
+        "wait_seconds": [
+          0.869,
+          1.302
+        ],
+        "file_bytes": 2636871,
+        "attempt": 2,
+        "source": "P1",
+        "fallback_used": 0,
+        "content_check": {
+          "file_exists": true,
+          "file_bytes": 2636871,
+          "pdf_prefix": true,
+          "page_count": 22,
+          "full_title_match": true,
+          "doi_match": true,
+          "publisher_indicators": {
+            "IEEE": false,
+            "Springer": false,
+            "Scientific Reports": false,
+            "Creative Commons": false,
+            "Accepted Manuscript": false,
+            "arXiv:": false,
+            "All rights reserved": false
+          }
+        },
+        "measurement_revision": "full-json-v1",
+        "timing_eligible_for_parity": false,
+        "human_intervention_note": "none",
+        "native_operations": [
+          {
+            "time": "2026-11-16T19:15:11.020Z",
+            "action": "stream_paper_body",
+            "stage": "navigation",
+            "outcome": "stream_complete",
+            "duration_ms": 1045
+          }
+        ],
+        "source_events": [
+          {
+            "time": "2026-11-16T19:15:11.030Z",
+            "pdf_stage": "P1",
+            "pdf_rule": "R001",
+            "pdf_reason": "transferred",
+            "pdf_attempt": 1,
+            "source_origin": "https://link.springer.com/",
+            "fallback_used": false
+          }
+        ],
+        "phase_timing_gaps": [
+          "first byte not separately observed",
+          "exact file-finalize/association timestamp bounded by local observer",
+          "UI-render completion not timed"
+        ],
+        "qualification": {
+          "attempt": 2,
+          "metadata_generation": 1,
+          "operation_generation": 3,
+          "body_generation": 3
+        }
+      },
+      "zotero": {
+        "result": "automatic_success",
+        "click_utc": [
+          "2026-11-16T19:16:10.574Z",
+          "2026-11-16T19:16:10.605Z"
+        ],
+        "ui_preparation": "Fresh article tab 19:15:57.475Z, OA full access; dedicated collection",
+        "human_intervention": false,
+        "translator": "Springer Link",
+        "local_pdf_and_association_utc": [
+          "2026-11-16T19:16:11.911Z",
+          "2026-11-16T19:16:12.683Z"
+        ],
+        "wait_seconds": [
+          1.306,
+          2.109
+        ],
+        "file_bytes": 2636871,
+        "parent_key": "RV9V6RBD",
+        "attachment_key": "CHXM7UU6",
+        "link_mode": "imported_url",
+        "content_check": {
+          "file_exists": true,
+          "file_bytes": 2636871,
+          "pdf_prefix": true,
+          "page_count": 22,
+          "full_title_match": true,
+          "doi_match": true,
+          "publisher_indicators": {
+            "IEEE": false,
+            "Springer": false,
+            "Scientific Reports": false,
+            "Creative Commons": false,
+            "Accepted Manuscript": false,
+            "arXiv:": false,
+            "All rights reserved": false
+          }
+        },
+        "measurement_revision": "full-json-v1",
+        "timing_eligible_for_parity": false,
+        "human_intervention_note": "none"
+      },
+      "platform": "Springer Link",
+      "configured_service": "Springer Link",
+      "cohort": "preselected_representative_control_repeat",
+      "cache_context": "Repeated warm visit; actual new managed body after product Reject/delete/Restore and new Connector save session; no cache clearing. Unknown browser/proxy/server cache split.",
+      "comparable_body_version": true,
+      "version_comparison": {
+        "version": "Publisher Version of Record",
+        "evidence": "Both exact title/DOI/22pages/2,636,871B; same stable publisher entry and inspected original publication layout."
+      },
+      "difference_seconds": [
+        -1.24,
+        -0.004
+      ],
+      "ratio": [
+        0.412,
+        0.9969
+      ],
+      "timing_comparison_eligible": false
+    },
+    {
+      "pair_id": "F03-3",
+      "sample_id": "F03",
+      "order": [
+        "zotero",
+        "allfold"
+      ],
+      "production_code_sha": "098288ae32e159811b9c49333b386d1533890862",
+      "runtime_head_sha": "7c9be1c5e4487087c4dacf0afebd0e7c19b3435b",
+      "allfold": {
+        "result": "automatic_success",
+        "click_utc": [
+          "2026-11-16T19:18:29.426Z",
+          "2026-11-16T19:18:29.528Z"
+        ],
+        "ui_preparation": "Prior AF attempt2 QA passed; UI Reject, delete trial PDF, Restore, retained metadata; Download available",
+        "human_intervention": false,
+        "local_pdf_and_association_utc": [
+          "2026-11-16T19:18:30.020Z",
+          "2026-11-16T19:18:30.346Z"
+        ],
+        "wait_seconds": [
+          0.492,
+          0.92
+        ],
+        "file_bytes": 2636871,
+        "attempt": 3,
+        "source": "P1",
+        "fallback_used": 0,
+        "content_check": {
+          "file_exists": true,
+          "file_bytes": 2636871,
+          "pdf_prefix": true,
+          "page_count": 22,
+          "full_title_match": true,
+          "doi_match": true,
+          "publisher_indicators": {
+            "IEEE": false,
+            "Springer": false,
+            "Scientific Reports": false,
+            "Creative Commons": false,
+            "Accepted Manuscript": false,
+            "arXiv:": false,
+            "All rights reserved": false
+          }
+        },
+        "measurement_revision": "full-json-v1",
+        "timing_eligible_for_parity": false,
+        "human_intervention_note": "none",
+        "native_operations": [
+          {
+            "time": "2026-11-16T19:18:30.151Z",
+            "action": "stream_paper_body",
+            "stage": "navigation",
+            "outcome": "stream_complete",
+            "duration_ms": 582
+          }
+        ],
+        "source_events": [
+          {
+            "time": "2026-11-16T19:18:30.156Z",
+            "pdf_stage": "P1",
+            "pdf_rule": "R001",
+            "pdf_reason": "transferred",
+            "pdf_attempt": 1,
+            "source_origin": "https://link.springer.com/",
+            "fallback_used": false
+          }
+        ],
+        "phase_timing_gaps": [
+          "first byte not separately observed",
+          "exact file-finalize/association timestamp bounded by local observer",
+          "UI-render completion not timed"
+        ],
+        "qualification": {
+          "attempt": 3,
+          "metadata_generation": 1,
+          "operation_generation": 5,
+          "body_generation": 5
+        }
+      },
+      "zotero": {
+        "result": "automatic_success",
+        "click_utc": [
+          "2026-11-16T19:17:11.297Z",
+          "2026-11-16T19:17:11.323Z"
+        ],
+        "ui_preparation": "Fresh article tab 19:16:58.734Z, same OA article, dedicated collection",
+        "human_intervention": false,
+        "translator": "Springer Link",
+        "local_pdf_and_association_utc": [
+          "2026-11-16T19:17:12.224Z",
+          "2026-11-16T19:17:12.772Z"
+        ],
+        "wait_seconds": [
+          0.901,
+          1.475
+        ],
+        "file_bytes": 2636871,
+        "parent_key": "TVIAP5WB",
+        "attachment_key": "7GARCIPK",
+        "link_mode": "imported_url",
+        "content_check": {
+          "file_exists": true,
+          "file_bytes": 2636871,
+          "pdf_prefix": true,
+          "page_count": 22,
+          "full_title_match": true,
+          "doi_match": true,
+          "publisher_indicators": {
+            "IEEE": false,
+            "Springer": false,
+            "Scientific Reports": false,
+            "Creative Commons": false,
+            "Accepted Manuscript": false,
+            "arXiv:": false,
+            "All rights reserved": false
+          }
+        },
+        "measurement_revision": "full-json-v1",
+        "timing_eligible_for_parity": false,
+        "human_intervention_note": "none"
+      },
+      "platform": "Springer Link",
+      "configured_service": "Springer Link",
+      "cohort": "preselected_representative_control_repeat",
+      "cache_context": "Repeated warm visit; actual new managed body after product Reject/delete/Restore and new Connector save session; no cache clearing. Unknown browser/proxy/server cache split.",
+      "comparable_body_version": true,
+      "version_comparison": {
+        "version": "Publisher Version of Record",
+        "evidence": "Both exact title/DOI/22pages/2,636,871B; same stable publisher entry and inspected original publication layout."
+      },
+      "difference_seconds": [
+        -0.983,
+        0.019
+      ],
+      "ratio": [
+        0.3336,
+        1.0211
+      ],
+      "timing_comparison_eligible": false
+    },
+    {
+      "pair_id": "F04-2",
+      "sample_id": "F04",
+      "order": [
+        "zotero",
+        "allfold"
+      ],
+      "production_code_sha": "098288ae32e159811b9c49333b386d1533890862",
+      "runtime_head_sha": "7c9be1c5e4487087c4dacf0afebd0e7c19b3435b",
+      "allfold": {
+        "result": "automatic_success",
+        "click_utc": [
+          "2026-11-16T19:21:13.811Z",
+          "2026-11-16T19:21:13.920Z"
+        ],
+        "ui_preparation": "Prior AF body QA passed; normal Reject/delete trial PDF/Restore; metadata retained; Download available",
+        "human_intervention": false,
+        "local_pdf_and_association_utc": [
+          "2026-11-16T19:21:14.777Z",
+          "2026-11-16T19:21:15.110Z"
+        ],
+        "wait_seconds": [
+          0.857,
+          1.299
+        ],
+        "file_bytes": 5103901,
+        "attempt": 2,
+        "source": "P1",
+        "fallback_used": 0,
+        "content_check": {
+          "file_exists": true,
+          "file_bytes": 5103901,
+          "pdf_prefix": true,
+          "page_count": 57,
+          "full_title_match": true,
+          "doi_match": true,
+          "publisher_indicators": {
+            "IEEE": false,
+            "Springer": true,
+            "Scientific Reports": false,
+            "Creative Commons": false,
+            "Accepted Manuscript": false,
+            "arXiv:": false,
+            "All rights reserved": false
+          }
+        },
+        "measurement_revision": "full-json-v1",
+        "timing_eligible_for_parity": false,
+        "human_intervention_note": "none",
+        "native_operations": [
+          {
+            "time": "2026-11-16T19:21:15.022Z",
+            "action": "stream_paper_body",
+            "stage": "navigation",
+            "outcome": "stream_complete",
+            "duration_ms": 1067
+          }
+        ],
+        "source_events": [
+          {
+            "time": "2026-11-16T19:21:15.033Z",
+            "pdf_stage": "P1",
+            "pdf_rule": "R001",
+            "pdf_reason": "transferred",
+            "pdf_attempt": 1,
+            "source_origin": "https://link.springer.com/",
+            "fallback_used": false
+          }
+        ],
+        "phase_timing_gaps": [
+          "first byte not separately observed",
+          "exact file-finalize/association timestamp bounded by local observer",
+          "UI-render completion not timed"
+        ],
+        "qualification": {
+          "attempt": 2,
+          "metadata_generation": 1,
+          "operation_generation": 3,
+          "body_generation": 3
+        }
+      },
+      "zotero": {
+        "result": "automatic_success",
+        "click_utc": [
+          "2026-11-16T19:19:50.225Z",
+          "2026-11-16T19:19:50.255Z"
+        ],
+        "ui_preparation": "New article tab 19:19:36.045Z, configured institution access; Connector debug enabled temporarily; dedicated collection",
+        "human_intervention": false,
+        "translator": "Springer Link",
+        "local_pdf_and_association_utc": [
+          "2026-11-16T19:19:55.296Z",
+          "2026-11-16T19:19:55.819Z"
+        ],
+        "wait_seconds": [
+          5.041,
+          5.594
+        ],
+        "file_bytes": 5103901,
+        "parent_key": "B3TNHTAF",
+        "attachment_key": "SZBZ5LB8",
+        "link_mode": "imported_url",
+        "content_check": {
+          "file_exists": true,
+          "file_bytes": 5103901,
+          "pdf_prefix": true,
+          "page_count": 57,
+          "full_title_match": true,
+          "doi_match": true,
+          "publisher_indicators": {
+            "IEEE": false,
+            "Springer": true,
+            "Scientific Reports": false,
+            "Creative Commons": false,
+            "Accepted Manuscript": false,
+            "arXiv:": false,
+            "All rights reserved": false
+          }
+        },
+        "measurement_revision": "full-json-v1",
+        "timing_eligible_for_parity": false,
+        "human_intervention_note": "none"
+      },
+      "platform": "Springer Link",
+      "configured_service": "Springer Link",
+      "timing_comparison_eligible": false,
+      "comparable_body_version": true,
+      "version_comparison": {
+        "version": "Publisher Version of Record / FirstView",
+        "evidence": "Actual title/DOI/page counts checked in both files. Same publisher source. Cambridge download-time watermarks and byte sizes vary; hashes are not required."
+      },
+      "cohort": "anomaly_retest",
+      "diagnostic_setting": "Connector Debug checkbox temporarily enabled19:19:21–19:24:38UTC;0linescaptured. RestoredOFF; Desktop debug stayedOFF. Not attributed as a repair.",
+      "difference_seconds": [
+        -4.737,
+        -3.742
+      ],
+      "ratio": [
+        0.1532,
+        0.2577
+      ]
+    },
+    {
+      "pair_id": "F04-3",
+      "sample_id": "F04",
+      "order": [
+        "allfold",
+        "zotero"
+      ],
+      "production_code_sha": "098288ae32e159811b9c49333b386d1533890862",
+      "runtime_head_sha": "7c9be1c5e4487087c4dacf0afebd0e7c19b3435b",
+      "allfold": {
+        "result": "automatic_success",
+        "click_utc": [
+          "2026-11-16T19:22:37.735Z",
+          "2026-11-16T19:22:37.840Z"
+        ],
+        "ui_preparation": "Attempt2 QA passed; UI Reject/delete trial PDF/Restore; metadata retained",
+        "human_intervention": false,
+        "local_pdf_and_association_utc": [
+          "2026-11-16T19:22:38.361Z",
+          "2026-11-16T19:22:38.700Z"
+        ],
+        "wait_seconds": [
+          0.521,
+          0.965
+        ],
+        "file_bytes": 5103901,
+        "attempt": 3,
+        "source": "P1",
+        "fallback_used": 0,
+        "content_check": {
+          "file_exists": true,
+          "file_bytes": 5103901,
+          "pdf_prefix": true,
+          "page_count": 57,
+          "full_title_match": true,
+          "doi_match": true,
+          "publisher_indicators": {
+            "IEEE": false,
+            "Springer": true,
+            "Scientific Reports": false,
+            "Creative Commons": false,
+            "Accepted Manuscript": false,
+            "arXiv:": false,
+            "All rights reserved": false
+          }
+        },
+        "measurement_revision": "full-json-v1",
+        "timing_eligible_for_parity": false,
+        "human_intervention_note": "none",
+        "native_operations": [
+          {
+            "time": "2026-11-16T19:22:38.617Z",
+            "action": "stream_paper_body",
+            "stage": "navigation",
+            "outcome": "stream_complete",
+            "duration_ms": 738
+          }
+        ],
+        "source_events": [
+          {
+            "time": "2026-11-16T19:22:38.622Z",
+            "pdf_stage": "P1",
+            "pdf_rule": "R001",
+            "pdf_reason": "transferred",
+            "pdf_attempt": 1,
+            "source_origin": "https://link.springer.com/",
+            "fallback_used": false
+          }
+        ],
+        "phase_timing_gaps": [
+          "first byte not separately observed",
+          "exact file-finalize/association timestamp bounded by local observer",
+          "UI-render completion not timed"
+        ],
+        "qualification": {
+          "attempt": 3,
+          "metadata_generation": 1,
+          "operation_generation": 5,
+          "body_generation": 5
+        }
+      },
+      "zotero": {
+        "result": "automatic_success",
+        "click_utc": [
+          "2026-11-16T19:23:41.206Z",
+          "2026-11-16T19:23:41.258Z"
+        ],
+        "ui_preparation": "New article tab 19:23:27.179Z; configured institution access; temporary debug on; dedicated collection",
+        "human_intervention": false,
+        "translator": "Springer Link",
+        "local_pdf_and_association_utc": [
+          "2026-11-16T19:23:42.534Z",
+          "2026-11-16T19:23:43.293Z"
+        ],
+        "wait_seconds": [
+          1.276,
+          2.087
+        ],
+        "file_bytes": 5103901,
+        "parent_key": "L9ZPS3PQ",
+        "attachment_key": "DVEALH9S",
+        "link_mode": "imported_url",
+        "content_check": {
+          "file_exists": true,
+          "file_bytes": 5103901,
+          "pdf_prefix": true,
+          "page_count": 57,
+          "full_title_match": true,
+          "doi_match": true,
+          "publisher_indicators": {
+            "IEEE": false,
+            "Springer": true,
+            "Scientific Reports": false,
+            "Creative Commons": false,
+            "Accepted Manuscript": false,
+            "arXiv:": false,
+            "All rights reserved": false
+          }
+        },
+        "measurement_revision": "full-json-v1",
+        "timing_eligible_for_parity": false,
+        "human_intervention_note": "none"
+      },
+      "platform": "Springer Link",
+      "configured_service": "Springer Link",
+      "timing_comparison_eligible": false,
+      "comparable_body_version": true,
+      "version_comparison": {
+        "version": "Publisher Version of Record / FirstView",
+        "evidence": "Actual title/DOI/page counts checked in both files. Same publisher source. Cambridge download-time watermarks and byte sizes vary; hashes are not required."
+      },
+      "cohort": "anomaly_retest",
+      "diagnostic_setting": "Connector Debug checkbox temporarily enabled19:19:21–19:24:38UTC;0linescaptured. RestoredOFF; Desktop debug stayedOFF. Not attributed as a repair.",
+      "difference_seconds": [
+        -1.566,
+        -0.311
+      ],
+      "ratio": [
+        0.2496,
+        0.7563
+      ]
+    },
+    {
+      "pair_id": "F06-1",
+      "sample_id": "F06",
+      "order": [
+        "allfold",
+        "zotero"
+      ],
+      "production_code_sha": "098288ae32e159811b9c49333b386d1533890862",
+      "runtime_head_sha": "7c9be1c5e4487087c4dacf0afebd0e7c19b3435b",
+      "allfold": {
+        "result": "automatic_success",
+        "click_utc": [
+          "2026-11-16T19:25:11.157Z",
+          "2026-11-16T19:25:11.305Z"
+        ],
+        "ui_preparation": "Original Reader collection complete, Download available, no AF article previsit; actual access not yet established",
+        "human_intervention": false,
+        "local_pdf_and_association_utc": [
+          "2026-11-16T19:25:13.100Z",
+          "2026-11-16T19:25:13.452Z"
+        ],
+        "wait_seconds": [
+          1.795,
+          2.295
+        ],
+        "file_bytes": 357746,
+        "attempt": 1,
+        "source": "P3",
+        "fallback_used": 0,
+        "content_check": {
+          "file_exists": true,
+          "file_bytes": 357746,
+          "pdf_prefix": true,
+          "page_count": 33,
+          "full_title_match": true,
+          "doi_match": true,
+          "publisher_indicators": {
+            "IEEE": false,
+            "Springer": false,
+            "Scientific Reports": false,
+            "Creative Commons": false,
+            "Accepted Manuscript": false,
+            "arXiv:": false,
+            "All rights reserved": false
+          }
+        },
+        "measurement_revision": "full-json-v1",
+        "timing_eligible_for_parity": false,
+        "body_version": "Cambridge FirstView publisher PDF,33pages; download watermark varies",
+        "human_intervention_note": "none",
+        "native_operations": [
+          {
+            "time": "2026-11-16T19:25:13.279Z",
+            "action": "stream_paper_body",
+            "stage": "navigation",
+            "outcome": "stream_complete",
+            "duration_ms": 1505
+          }
+        ],
+        "source_events": [
+          {
+            "time": "2026-11-16T19:25:13.298Z",
+            "pdf_stage": "P3",
+            "pdf_rule": "R051",
+            "pdf_reason": "transferred",
+            "pdf_attempt": 1,
+            "source_origin": "https://www.cambridge.org/",
+            "fallback_used": false
+          }
+        ],
+        "phase_timing_gaps": [
+          "first byte not separately observed",
+          "exact file-finalize/association timestamp bounded by local observer",
+          "UI-render completion not timed"
+        ],
+        "qualification": {
+          "attempt": 1,
+          "metadata_generation": 1,
+          "operation_generation": 1,
+          "body_generation": 1
+        }
+      },
+      "zotero": {
+        "result": "automatic_success",
+        "click_utc": [
+          "2026-11-16T19:26:36.603Z",
+          "2026-11-16T19:26:36.645Z"
+        ],
+        "ui_preparation": "New article tab 19:25:58.714Z, title DOI match, You have Access and Save PDF; initially Web Page then identified Cambridge Core",
+        "human_intervention": false,
+        "translator": "Cambridge Core",
+        "local_pdf_and_association_utc": [
+          "2026-11-16T19:26:40.691Z",
+          "2026-11-16T19:26:41.100Z"
+        ],
+        "wait_seconds": [
+          4.046,
+          4.497
+        ],
+        "file_bytes": 358106,
+        "parent_key": "HJJXX3IQ",
+        "attachment_key": "NJSLGK5Q",
+        "link_mode": "imported_url",
+        "content_check": {
+          "file_exists": true,
+          "file_bytes": 358106,
+          "pdf_prefix": true,
+          "page_count": 33,
+          "full_title_match": true,
+          "doi_match": true,
+          "publisher_indicators": {
+            "IEEE": false,
+            "Springer": false,
+            "Scientific Reports": false,
+            "Creative Commons": false,
+            "Accepted Manuscript": false,
+            "arXiv:": false,
+            "All rights reserved": false
+          }
+        },
+        "measurement_revision": "full-json-v1",
+        "timing_eligible_for_parity": false,
+        "body_version": "Cambridge FirstView publisher PDF,33pages; download watermark varies",
+        "human_intervention_note": "none"
+      },
+      "platform": "Cambridge Core",
+      "configured_service": "Cambridge Core",
+      "timing_comparison_eligible": false,
+      "comparable_body_version": true,
+      "version_comparison": {
+        "version": "Publisher Version of Record / FirstView",
+        "evidence": "Actual title/DOI/page counts checked in both files. Same publisher source. Cambridge download-time watermarks and byte sizes vary; hashes are not required."
+      },
+      "difference_seconds": [
+        -2.702,
+        -1.751
+      ],
+      "ratio": [
+        0.3992,
+        0.5672
+      ]
+    },
+    {
+      "pair_id": "F07-1",
+      "sample_id": "F07",
+      "order": [
+        "zotero",
+        "allfold"
+      ],
+      "production_code_sha": "098288ae32e159811b9c49333b386d1533890862",
+      "runtime_head_sha": "7c9be1c5e4487087c4dacf0afebd0e7c19b3435b",
+      "allfold": {
+        "result": "automatic_success",
+        "click_utc": [
+          "2026-11-16T19:28:53.619Z",
+          "2026-11-16T19:28:53.818Z"
+        ],
+        "ui_preparation": "Original Reader collection complete, Download available; no AF article previsit; actual publisher access unknown",
+        "human_intervention": false,
+        "local_pdf_and_association_utc": [
+          "2026-11-16T19:28:55.052Z",
+          "2026-11-16T19:28:55.411Z"
+        ],
+        "wait_seconds": [
+          1.234,
+          1.792
+        ],
+        "file_bytes": 572214,
+        "attempt": 1,
+        "source": "P3",
+        "fallback_used": 0,
+        "content_check": {
+          "file_exists": true,
+          "file_bytes": 572214,
+          "pdf_prefix": true,
+          "page_count": 42,
+          "full_title_match": true,
+          "doi_match": true,
+          "publisher_indicators": {
+            "IEEE": false,
+            "Springer": false,
+            "Scientific Reports": false,
+            "Creative Commons": false,
+            "Accepted Manuscript": false,
+            "arXiv:": false,
+            "All rights reserved": false
+          }
+        },
+        "body_version": "Cambridge publisher PDF,42pages, correct DOI/title",
+        "measurement_revision": "full-json-v1",
+        "timing_eligible_for_parity": false,
+        "human_intervention_note": "none",
+        "native_operations": [
+          {
+            "time": "2026-11-16T19:28:55.348Z",
+            "action": "stream_paper_body",
+            "stage": "navigation",
+            "outcome": "stream_complete",
+            "duration_ms": 965
+          }
+        ],
+        "source_events": [
+          {
+            "time": "2026-11-16T19:28:55.374Z",
+            "pdf_stage": "P3",
+            "pdf_rule": "R051",
+            "pdf_reason": "transferred",
+            "pdf_attempt": 1,
+            "source_origin": "https://www.cambridge.org/",
+            "fallback_used": false
+          }
+        ],
+        "phase_timing_gaps": [
+          "first byte not separately observed",
+          "exact file-finalize/association timestamp bounded by local observer",
+          "UI-render completion not timed"
+        ],
+        "qualification": {
+          "attempt": 1,
+          "metadata_generation": 1,
+          "operation_generation": 1,
+          "body_generation": 1
+        }
+      },
+      "zotero": {
+        "result": "automatic_success",
+        "click_utc": [
+          "2026-11-16T19:27:54.543Z",
+          "2026-11-16T19:27:54.714Z"
+        ],
+        "ui_preparation": "New tab 19:27:26.183Z, title DOI match, /abs page says recognized institution lacks access, Get access shown; no PDF entry; dedicated collection",
+        "human_intervention": false,
+        "translator": "Cambridge Core",
+        "local_pdf_and_association_utc": [
+          "2026-11-16T19:28:03.723Z",
+          "2026-11-16T19:28:04.282Z"
+        ],
+        "wait_seconds": [
+          9.009,
+          9.739
+        ],
+        "file_bytes": 1146058,
+        "parent_key": "I5ICT97H",
+        "attachment_key": "MMRMUPLR",
+        "link_mode": "imported_url",
+        "content_check": {
+          "file_exists": true,
+          "file_bytes": 1146058,
+          "pdf_prefix": true,
+          "page_count": 109,
+          "full_title_match": true,
+          "doi_match": false,
+          "publisher_indicators": {
+            "IEEE": false,
+            "Springer": false,
+            "Scientific Reports": false,
+            "Creative Commons": false,
+            "Accepted Manuscript": false,
+            "arXiv:": true,
+            "All rights reserved": false
+          },
+          "manual_identity_verified": true,
+          "manual_identity_evidence": "Exact title and all3authors verified on rendered PDF; arxiv2603.07780v1(8Mar2026) matches original Paper explicit preprint relationship. No publisher DOI is printed in this submitted version.",
+          "body_version": "arxiv:2603.07780v1 submitted preprint,109pages; first-page manuscript dated10Mar2026",
+          "alternative_full_text": true
+        },
+        "body_version": "arxiv2603.07780v1 submitted preprint,109pages, no publisher DOI in body; exact title/authors and original Paper explicit relation verified",
+        "source_origin": "https://arxiv.org",
+        "alternative_full_text": true,
+        "measurement_revision": "full-json-v1",
+        "timing_eligible_for_parity": false,
+        "human_intervention_note": "none"
+      },
+      "platform": "Cambridge Core",
+      "configured_service": "Cambridge Core",
+      "comparable_body_version": false,
+      "comparison": "Different body versions; retained task successes, excluded same-version timing/transfer comparison.",
+      "timing_comparison_eligible": false
+    },
+    {
+      "pair_id": "F06-2",
+      "sample_id": "F06",
+      "order": [
+        "zotero",
+        "allfold"
+      ],
+      "production_code_sha": "098288ae32e159811b9c49333b386d1533890862",
+      "runtime_head_sha": "7c9be1c5e4487087c4dacf0afebd0e7c19b3435b",
+      "allfold": {
+        "result": "automatic_success",
+        "click_utc": [
+          "2026-11-16T19:35:55.245Z",
+          "2026-11-16T19:35:55.442Z"
+        ],
+        "ui_preparation": "Original AF publisher PDF QA passed; UI Reject/delete trial PDF/Restore; metadata retained",
+        "human_intervention": false,
+        "local_pdf_and_association_utc": [
+          "2026-11-16T19:35:57.120Z",
+          "2026-11-16T19:35:57.470Z"
+        ],
+        "wait_seconds": [
+          1.678,
+          2.225
+        ],
+        "file_bytes": 357850,
+        "attempt": 2,
+        "source": "P3",
+        "fallback_used": 0,
+        "content_check": {
+          "file_exists": true,
+          "file_bytes": 357850,
+          "pdf_prefix": true,
+          "page_count": 33,
+          "full_title_match": true,
+          "doi_match": true,
+          "publisher_indicators": {
+            "IEEE": false,
+            "Springer": false,
+            "Scientific Reports": false,
+            "Creative Commons": false,
+            "Accepted Manuscript": false,
+            "arXiv:": false,
+            "All rights reserved": false
+          }
+        },
+        "measurement_revision": "full-json-v1",
+        "timing_eligible_for_parity": false,
+        "body_version": "Cambridge FirstView publisher PDF,33pages; download watermark varies",
+        "human_intervention_note": "none",
+        "native_operations": [
+          {
+            "time": "2026-11-16T19:35:57.181Z",
+            "action": "stream_paper_body",
+            "stage": "navigation",
+            "outcome": "stream_complete",
+            "duration_ms": 1377
+          }
+        ],
+        "source_events": [
+          {
+            "time": "2026-11-16T19:35:57.211Z",
+            "pdf_stage": "P3",
+            "pdf_rule": "R051",
+            "pdf_reason": "transferred",
+            "pdf_attempt": 1,
+            "source_origin": "https://www.cambridge.org/",
+            "fallback_used": false
+          }
+        ],
+        "phase_timing_gaps": [
+          "first byte not separately observed",
+          "exact file-finalize/association timestamp bounded by local observer",
+          "UI-render completion not timed"
+        ],
+        "qualification": {
+          "attempt": 2,
+          "metadata_generation": 1,
+          "operation_generation": 3,
+          "body_generation": 3
+        }
+      },
+      "zotero": {
+        "result": "automatic_success",
+        "translator": "Cambridge Core",
+        "click_utc": null,
+        "wait_seconds": null,
+        "timing_missing_reason": "CUA returned noWindowsAvailable/timeout; actual click dispatch time not observable. Late new parent/PDF prove save eventually triggered, not when.",
+        "local_pdf_and_association_utc": [
+          "2026-11-16T19:33:14.075Z",
+          "2026-11-16T19:33:14.566Z"
+        ],
+        "parent_key": "LJCYTW54",
+        "attachment_key": "ETIIBXS8",
+        "file_bytes": 357980,
+        "link_mode": "imported_url",
+        "content_check": {
+          "sample_id": "F06",
+          "side": "zotero",
+          "expected_doi": "10.1017/s0266466626100656",
+          "attachment_key": "ETIIBXS8",
+          "parent_key": "LJCYTW54",
+          "link_mode": "imported_url",
+          "file_exists": true,
+          "file_bytes": 357980,
+          "pdf_prefix": true,
+          "page_count": 33,
+          "full_title_match": true,
+          "doi_match": true,
+          "publisher_indicators": {
+            "IEEE": false,
+            "Springer": false,
+            "Scientific Reports": false,
+            "Creative Commons": false,
+            "Accepted Manuscript": false,
+            "arXiv:": false,
+            "All rights reserved": false
+          }
+        },
+        "human_intervention": false,
+        "measurement_revision": "full-json-v1",
+        "timing_eligible_for_parity": false,
+        "body_version": "Cambridge FirstView publisher PDF,33pages; download watermark varies"
+      },
+      "platform": "Cambridge Core",
+      "configured_service": "Cambridge Core",
+      "comparison": "Both local publisher PDFs; Zotero click timing missing, no paired latency estimate.",
+      "timing_comparison_eligible": false,
+      "comparable_body_version": true,
+      "version_comparison": {
+        "version": "Publisher Version of Record / FirstView",
+        "evidence": "Actual title/DOI/page counts checked in both files. Same publisher source. Cambridge download-time watermarks and byte sizes vary; hashes are not required."
+      },
+      "cohort": "preselected_control_repeat"
+    },
+    {
+      "pair_id": "F06-3",
+      "sample_id": "F06",
+      "order": [
+        "allfold",
+        "zotero"
+      ],
+      "production_code_sha": "098288ae32e159811b9c49333b386d1533890862",
+      "runtime_head_sha": "7c9be1c5e4487087c4dacf0afebd0e7c19b3435b",
+      "allfold": {
+        "result": "automatic_success",
+        "click_utc": [
+          "2026-11-16T19:42:30.432Z",
+          "2026-11-16T19:42:30.655Z"
+        ],
+        "ui_preparation": "Prior attempt2 QA passed; UI Reject/delete trial PDF/Restore; low-load observer keys-v2",
+        "human_intervention": false,
+        "local_pdf_and_association_utc": [
+          "2026-11-16T19:42:32.871Z",
+          "2026-11-16T19:42:33.130Z"
+        ],
+        "wait_seconds": [
+          2.216,
+          2.698
+        ],
+        "file_bytes": 357907,
+        "attempt": 3,
+        "source": "P3",
+        "fallback_used": 0,
+        "content_check": {
+          "file_exists": true,
+          "file_bytes": 357907,
+          "pdf_prefix": true,
+          "page_count": 33,
+          "full_title_match": true,
+          "doi_match": true,
+          "publisher_indicators": {
+            "IEEE": false,
+            "Springer": false,
+            "Scientific Reports": false,
+            "Creative Commons": false,
+            "Accepted Manuscript": false,
+            "arXiv:": false,
+            "All rights reserved": false
+          }
+        },
+        "measurement_revision": "keys-v2",
+        "timing_eligible_for_parity": true,
+        "body_version": "Cambridge FirstView publisher PDF,33pages; download watermark varies",
+        "human_intervention_note": "none",
+        "native_operations": [
+          {
+            "time": "2026-11-16T19:42:33.093Z",
+            "action": "stream_paper_body",
+            "stage": "navigation",
+            "outcome": "stream_complete",
+            "duration_ms": 1768
+          }
+        ],
+        "source_events": [
+          {
+            "time": "2026-11-16T19:42:33.123Z",
+            "pdf_stage": "P3",
+            "pdf_rule": "R051",
+            "pdf_reason": "transferred",
+            "pdf_attempt": 1,
+            "source_origin": "https://www.cambridge.org/",
+            "fallback_used": false
+          }
+        ],
+        "phase_timing_gaps": [
+          "first byte not separately observed",
+          "exact file-finalize/association timestamp bounded by local observer",
+          "UI-render completion not timed"
+        ],
+        "qualification": {
+          "attempt": 3,
+          "metadata_generation": 1,
+          "operation_generation": 5,
+          "body_generation": 5
+        }
+      },
+      "zotero": {
+        "result": "automatic_success",
+        "measurement_revision": "keys-v2",
+        "timing_eligible_for_parity": false,
+        "translator": "Cambridge Core",
+        "click_utc": null,
+        "wait_seconds": null,
+        "timing_missing_reason": "CUA click invocation timed out and reset; no reliable actual click interval. File and parent observed independently.",
+        "local_pdf_and_association_utc": [
+          "2026-11-16T19:47:14.662Z",
+          "2026-11-16T19:47:15.214Z"
+        ],
+        "parent_key": "5A7CM5D3",
+        "attachment_key": "AZBSDF2Q",
+        "file_bytes": 357958,
+        "link_mode": "imported_url",
+        "content_check": {
+          "sample_id": "F06",
+          "side": "zotero",
+          "expected_doi": "10.1017/s0266466626100656",
+          "attachment_key": "AZBSDF2Q",
+          "parent_key": "5A7CM5D3",
+          "link_mode": "imported_url",
+          "file_exists": true,
+          "file_bytes": 357958,
+          "pdf_prefix": true,
+          "page_count": 33,
+          "full_title_match": true,
+          "doi_match": true,
+          "publisher_indicators": {
+            "IEEE": false,
+            "Springer": false,
+            "Scientific Reports": false,
+            "Creative Commons": false,
+            "Accepted Manuscript": false,
+            "arXiv:": false,
+            "All rights reserved": false
+          }
+        },
+        "human_intervention": false,
+        "body_version": "Cambridge FirstView publisher PDF,33pages; download watermark varies"
+      },
+      "platform": "Cambridge Core",
+      "configured_service": "Cambridge Core",
+      "timing_comparison_eligible": false,
+      "comparison": "Both local publisher PDFs; missing Zotero T0 prevents paired latency comparison.",
+      "comparable_body_version": true,
+      "version_comparison": {
+        "version": "Publisher Version of Record / FirstView",
+        "evidence": "Actual title/DOI/page counts checked in both files. Same publisher source. Cambridge download-time watermarks and byte sizes vary; hashes are not required."
+      },
+      "cohort": "preselected_control_repeat"
     }
   ],
-  "coverage_gaps": [],
-  "parity_conclusions": "Not assessed before formal observations."
+  "coverage_gaps": [
+    {
+      "samples": [
+        "F01",
+        "F02"
+      ],
+      "gap": "Electron normal institutional login awaits local user credentials; same-access IEEE retest incomplete. Chrome PDF success preserved."
+    },
+    {
+      "samples": [
+        "F06"
+      ],
+      "gap": "Two CUA click failures lost T0; successful files retained, replacement timed controls pending reliable UI channel."
+    },
+    {
+      "samples": [
+        "F08",
+        "F09",
+        "F10",
+        "F11",
+        "F12",
+        "F13",
+        "F14",
+        "F15",
+        "F16",
+        "F17",
+        "F18",
+        "F19",
+        "F20",
+        "F21",
+        "F22",
+        "F23",
+        "F24",
+        "F25",
+        "F26",
+        "F27",
+        "F28",
+        "F29",
+        "F30",
+        "F31"
+      ],
+      "gap": "Not started; Chrome/CUA input/clock reliability blocks normal paired timing. No sample replaced."
+    },
+    {
+      "gap": "Optica/IEEE Reader branch/R059/LWW/OCE/stableP4/extra-recovery coverage only when actually observed; fixtures are not live evidence. ScienceDirect formal cohort not started."
+    }
+  ],
+  "parity_conclusions": "No platform confirmed at parity. Full-JSON observer timings are preserved but excluded from strict normal-load conclusions; keys-v2 has no complete same-version pair with reliable two-sided T0 yet.",
+  "environment": {
+    "macos": "27.2.1 (26B131)",
+    "electron": "45.0.0",
+    "chromium": "156.0.8078.48",
+    "chrome": "157.0.8103.51 Default profile",
+    "zotero_desktop": "10.0.9",
+    "zotero_connector": "5.0.217",
+    "nominal_endpoint_poll_ms": 250,
+    "timing": "Actual click bounds and preceding file+association observation, not screen/tool turnaround; actual intervals retained per event."
+  },
+  "measurement_revisions": [
+    {
+      "id": "full-json-v1",
+      "ended_before_utc": "2026-11-16T19:40:21.341Z",
+      "limitation": "Repeated full-item JSON LocalAPI polling caused measured Zotero CPU20.9–26.6%; paused0%. Prior timings retained but not used as strict normal-load parity evidence; success/file observations remain valid."
+    },
+    {
+      "id": "keys-v2",
+      "started_at_utc": "2026-11-16T19:40:21.341Z",
+      "method": "250ms keys list, fetch metadata only for new/pending items; same actual local-file and parent-link endpoint. No product setting or timeout change.",
+      "observed_zotero_cpu_percent": [
+        1.3,
+        1.5
+      ]
+    }
+  ]
 }
