@@ -29,9 +29,9 @@ retrieval. An old Run must never reread a current placeholder token to authorize
 reconstruction. A placeholder rebuild requires both its original unchanged token
 and explicit rebuild eligibility. A new identity can create a Paper without an
 expected token; a new identity that now matches an existing placeholder cannot
-silently rebuild it. The current Run snapshot also checks configuration, cancellation and
-Workspace/database identity. Whole-file configuration equality is a current
-restriction scheduled for revision, not a permanent admission requirement.
+silently rebuild it. The Run snapshot checks consumed search inputs, cancellation
+and Workspace/database identity. Comments, formatting and unrelated settings do
+not revoke it; the captured search scope remains in use throughout the Run.
 
 Admission stores base metadata, all reliable direct identities (including extra
 values in one namespace), the complete branch plan and queued attempt in one short
@@ -56,11 +56,12 @@ branches or legal prior increments.
 
 ## Complete plans and independent branches
 
-`BranchSpec(name, run=None, skip_reason=None, providers=(), service_id=..., mailto='')`
+`BranchSpec(name, run=None, skip_reason=None, providers=(), service_id=..., mailto='', dynamic_providers=False)`
 uses unique bounded names. An omitted `service_id` inherits the admission's legacy
 Service argument; explicit `None` declares independent API/public work. Declare
-only the Providers a fixed branch actually uses. The necessary branch's supported
-Provider choices describe discovery capabilities, not a fixed authority prerequisite.
+only the Providers a fixed branch actually uses. With `dynamic_providers=True`,
+the necessary branch's supported choices describe discovery capabilities, not a
+fixed authority prerequisite.
 A skipped branch has an explicit applicability reason and no runner. An empty
 plan requires `no_applicable=True`.
 The production necessary branch captures saved `crossref_mailto` for its own
