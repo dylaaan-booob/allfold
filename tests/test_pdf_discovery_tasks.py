@@ -183,7 +183,7 @@ def test_lww_empty_viewer_uses_only_independent_captured_oce_preparation(tmp_pat
     from allfold.pdf_facts import PdfDiscoveryFacts, PdfIdentifier, openalex_discovery_facts
     from datetime import datetime, timezone
     from test_login import Native, opened
-    from test_document_metadata import envelope, pdf_clues
+    from test_document_metadata import pdf_clues
     class OceBridge:
         calls = []
         def execute(self, action, data, *args, **kwargs):
@@ -195,7 +195,7 @@ def test_lww_empty_viewer_uses_only_independent_captured_oce_preparation(tmp_pat
                 value = {'outcome': 'retrieved', 'reader_access': {'oce': oce_access}}
             else:
                 platform = data['reader']['platform']
-                value = envelope() | {'pdf_clues': pdf_clues(platform=platform, landing_url=data['reader']['url'],
+                value = {'outcome': 'retrieved', 'pdf_clues': pdf_clues(platform=platform, landing_url=data['reader']['url'],
                     candidates=[] if platform == 'lww' else [{'stage': 'P4', 'rule_id': 'R060',
                         'url': 'https://assets.ovid.com/Body.PDF?Signature=A%2FB&key=Keep'}])}
             future.set_result(value)
@@ -249,8 +249,8 @@ def native_target(paper):
 
 
 def native_envelope():
-    from test_document_metadata import envelope, pdf_clues
-    return envelope() | {'pdf_clues': pdf_clues(platform='mdpi', landing_url='https://www.mdpi.com/1/2/3',
+    from test_document_metadata import pdf_clues
+    return {'outcome': 'retrieved', 'pdf_clues': pdf_clues(platform='mdpi', landing_url='https://www.mdpi.com/1/2/3',
         candidates=[{'stage': 'P3', 'rule_id': 'GENERIC', 'url': 'https://www.mdpi.com/1/2/3/pdf',
                      'field': 'citation_pdf_url'}])}
 

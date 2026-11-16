@@ -1,9 +1,9 @@
 'use strict';
 const {app, WebContentsView, session, webFrameMain, Menu, clipboard, ipcMain} = require('electron');
 const {BrowserPresentation}=require('./browser-presentation.cjs');
-const {BrowserFailure,checkPage}=require('./browser-errors.cjs');
+const {BrowserFailure}=require('./browser-errors.cjs');
 const {configureBrowserIdentity} = require('./browser-identity.cjs');
-const {validDOI,articleURL,articleIdentity}=require('./article-identity.cjs');
+const {validDOI,articleURL}=require('./article-identity.cjs');
 const {DocumentRuntime}=require('./document-runtime.cjs');
 const {BodyActionRuntime}=require('./body-action-runtime.cjs');
 const {qualifyReader,publicClueURL}=require('./pdf-clues.cjs');
@@ -683,7 +683,7 @@ class BrowserRuntime {
     let tab=this.paperPages.get(key),firstFailure,sourcePageId,previousOrigin;
     const paperIdentity=typeof identity==='string'?{doi:identity}:{doi:identity?.doi,confirmed_article_url:identity?.confirmed_article_url};
     const doi=validDOI(paperIdentity.doi),established=articleURL(paperIdentity.confirmed_article_url);
-    if(paperIdentity.doi && !doi || !doi && !established)throw new BrowserFailure('navigation','article_identity_unconfirmed');
+    if(paperIdentity.doi && !doi || !doi && !established)throw new BrowserFailure('navigation','document_operation_failed');
     const target=doi?'https://doi.org/'+encodeURIComponent(doi):established.href;
     const identityKey=JSON.stringify([doi,established?.href]);
     const record=(event,error,fields={})=>reportRecovery(owner.recordRecovery,event,pageRecoveryDetails(error,'paper_reopen',{
@@ -718,13 +718,13 @@ class BrowserRuntime {
           const doc=await this.waitForPage(tab,{signal:attempt.signal,deadline,
             onWaiting:(waiting,diagnostic)=>{if(waiting)onWaiting?.(diagnostic);}});
           if(tab.paperDocument===previous && matches(previous.doc) && doc.url===previous.doc.url)
-            return this.confirmArticlePage(paperIdentity,doc,{signal:attempt.signal,deadline});
+            return {...doc,identity:paperIdentity};
         }
         tab.paperDocument=null;
         const doc=await this.navigate(target,{tab,signal:attempt.signal,deadline,onWaiting});
         if(!matches(doc) || this.paperPages.get(key)!==tab)throw new BrowserFailure('navigation','document_changed');
         this.finishPageLoad(tab);
-        const confirmed=await this.confirmArticlePage(paperIdentity,doc,{signal:attempt.signal,deadline});
+        const confirmed={...doc,identity:paperIdentity};
         tab.paperDocument={identityKey,doc:confirmed};
         if(index)record('recovery_succeeded',firstFailure,{page_id:tab.id,dispatch_outcome:'confirmed'});
         return confirmed;
@@ -792,10 +792,11 @@ class BrowserRuntime {
     const frame=tab.view.webContents.mainFrame;
     if(frame.url.length>4096)throw new BrowserFailure('navigation','page_probe_unconfirmed');
     const binding={pageId:tab.id,processId:frame.processId,frameToken:frame.frameToken,
-      url:frame.url,navigationGeneration:tab.documentGeneration};
+      url:frame.url,navigationGeneration:tab.documentGeneration,...(options.identity?{identity:options.identity}:{})};
     const known=tab.documentIds.get(frame.frameToken);
     if(known)binding.documentId=known;
     const result=await this.documents.call(binding,action,options.args || {},options);
+    if(action==='extract'||action==='pdf')return result;
     checkCanceled(options.signal);
     tab.navigation.check();
     if(!this.documentCurrent(binding))throw new BrowserFailure('navigation','document_changed');
@@ -814,25 +815,6 @@ class BrowserRuntime {
       return url.origin==='https://challenges.cloudflare.com' && url.pathname.startsWith('/cdn-cgi/challenge-platform/');
     });
     return {...doc,cloudflareFrame};
-  }
-  async confirmArticlePage(target,doc,{signal,deadline=Infinity}={}) {
-    checkCanceled(signal);
-    const tab=this.tabs.get(doc.pageId);
-    if(!this.documentCurrent(doc))throw new BrowserFailure('navigation','document_changed');
-    // No cached DOI or earlier navigation authorizes this use boundary.
-    const access=await this.waitForPage(tab,{signal,deadline});
-    if(!this.documentCurrent(doc) || access.documentId!==doc.documentId)throw new BrowserFailure('navigation','document_changed');
-    const evidence=await this.readDocument(tab,'article',{signal,deadline});
-    if(!this.documentCurrent(doc))throw new BrowserFailure('navigation','document_changed');
-    checkPage(evidence.status,evidence.access);
-    if(evidence.access.markers.login)throw new BrowserFailure('navigation','article_identity_unconfirmed');
-    const identity=articleIdentity(target,evidence,evidence.article);
-    if(identity.outcome!=='confirmed') {
-      const error=new BrowserFailure('navigation',identity.outcome==='conflict'?'article_identity_conflict':'article_identity_unconfirmed');
-      error.identity=identity;throw error;
-    }
-    checkCanceled(signal);
-    return {...evidence,identity};
   }
   async extractPaperMetadata(data,options={}) {
     if(typeof data?.wantAbstract!=='boolean')throw new BrowserFailure('navigation','document_operation_failed');
@@ -871,53 +853,29 @@ class BrowserRuntime {
         doc=await this.navigate(data.reader.url,{tab,signal,deadline,onWaiting});this.finishPageLoad(tab);
         // A redirect may preserve the source chain only inside this fixed reader's qualification.
         qualifyReader({...data.reader,url:doc.url},data.identity);
-        const bound=await this.readDocument(tab,'article',{signal,deadline});
-        checkPage(bound.status,bound.access);if(bound.access.markers.login)throw new BrowserFailure('navigation','article_identity_unconfirmed');
-        doc={...bound};
       } else doc=await this.openPaperPage(data,data.identity,{role:'article',signal,deadline,onWaiting});
-      const tab=this.tabs.get(doc.pageId),subject=doc.article.subject;
-      if(!subject)throw new BrowserFailure('navigation','page_probe_unconfirmed');
-      let result=null,metadata_status='complete';
-      if(metadata)try {result=await this.readDocument(tab,'extract',{signal,deadline,args:{wantAbstract:data.wantAbstract}});
-        if(result.diagnostics.some(code=>['abstract_candidate_failed','abstract_budget_exceeded'].includes(code)))metadata_status='partial';}
-      catch(error){if(error.diagnostic?.code!=='document_operation_failed')throw error;metadata_status='failed';}
-      let pdf;
-      try {
-        pdf=await this.readDocument(tab,'pdf',{signal,deadline,args:{readerKind}});
-        // ScienceDirect hydrates its current-article toolbar after the first
-        // usable Document. Give that fixed read a short window within the
-        // original task deadline; do not navigate or renew identity/authority.
-        const hydrationEnd=Math.min(deadline,Date.now()+2000);
-        while(!metadata && !readerKind && pdf.clues.platform==='sciencedirect'
-          && pdf.clues.status==='complete' && !pdf.clues.candidates.length && Date.now()<hydrationEnd) {
-          if(!this.documentCurrent(doc)||pdf.documentId!==doc.documentId||pdf.subject!==subject)
-            throw new BrowserFailure('navigation','document_changed');
+      const tab=this.tabs.get(doc.pageId);
+      const result=await this.readDocument(tab,metadata?'extract':'pdf',{signal,deadline,identity:data.identity,
+        args:metadata?{wantAbstract:data.wantAbstract}:{readerKind}});
+      let pdf=result.clues;
+      // Only a missing, delayed toolbar needs another snapshot. An optional
+      // observation cannot erase content already captured by the original read.
+      const hydrationEnd=Math.min(deadline,Date.now()+2000);
+      while(!readerKind && pdf.platform==='sciencedirect' && pdf.status==='complete'
+        && !pdf.candidates.length && Date.now()<hydrationEnd) {
+        try {
           await waitFor(()=>pause(signal,Math.min(200,hydrationEnd-Date.now())),signal,deadline,'navigation','document_operation');
-          pdf=await this.readDocument(tab,'pdf',{signal,deadline,args:{readerKind}});
-        }
+          const next=await this.readDocument(tab,'pdf',{signal,deadline,identity:data.identity,args:{readerKind:null}});
+          if(next.clues.candidates.length)pdf=next.clues;
+          else if(next.clues.status!=='complete')break;
+        }catch(error){checkCanceled(signal);break;}
       }
-      catch(error) {
-        if(error.diagnostic?.code!=='document_operation_failed')throw error;
-        // A local PDF scanner/DTO failure does not discard independent content.
-        // The original live Document, subject and identity are still checked
-        // below; this empty failure envelope cannot authorize a changed page.
-        pdf={documentId:doc.documentId,subject,clues:{status:'failed',landing_url:doc.url,
-          observed_at:new Date().toISOString(),platform:readerKind || 'generic',content_type:'unknown',
-          identifiers:[],candidates:[],diagnostics:['pdf_parse_failed']}};
-      }
-      checkCanceled(signal);
-      if(!this.documentCurrent(doc)||pdf.documentId!==doc.documentId||pdf.subject!==subject
-        ||result&&(result.documentId!==doc.documentId||result.subject!==subject))throw new BrowserFailure('navigation','document_changed');
-      // Revalidate the exact live subject after both independent reads, before normal cleanup.
-      const verified=readerKind?await this.readDocument(tab,'article',{signal,deadline}):await this.confirmArticlePage(data.identity,doc,{signal,deadline});
-      if(readerKind){checkPage(verified.status,verified.access);if(verified.access.markers.login)throw new BrowserFailure('navigation','article_identity_unconfirmed');qualifyReader({...data.reader,url:verified.url},data.identity);}
-      if(!this.documentCurrent(doc)||verified.documentId!==doc.documentId||verified.article.subject!==subject)throw new BrowserFailure('navigation','document_changed');
       checkCanceled(signal);verifyAccess();
-      if(Date.now()>=deadline)throw timeoutFailure('navigation','document_operation');
-      return {outcome:'retrieved',...(metadata?{metadata:result?.metadata || null,metadata_status,
-          extraction_diagnostics:result?.diagnostics || ['metadata_extraction_failed']} : {}),pdf_clues:readerKind?{...pdf.clues,candidates:pdf.clues.candidates.map(candidate=>({...candidate,stage:data.reader.stage,rule_id:data.reader.rule_id}))}:pdf.clues,
-        document:{pageId:doc.pageId,processId:doc.processId,frameToken:doc.frameToken,
-          documentId:doc.documentId,navigationGeneration:doc.navigationGeneration}};
+      const metadata_status=!result.metadata?'failed':result.diagnostics?.some(code=>
+        ['date_scan_failed','abstract_candidate_failed','abstract_budget_exceeded'].includes(code))?'partial':'complete';
+      return {outcome:'retrieved',...(metadata?{metadata:result.metadata,metadata_status,
+          extraction_diagnostics:result.diagnostics} : {}),
+        pdf_clues:readerKind?{...pdf,candidates:pdf.candidates.map(candidate=>({...candidate,stage:data.reader.stage,rule_id:data.reader.rule_id}))}:pdf};
     } catch(error){throw readerFailure || error;}
     finally {requestGuard?.dispose();owner.validateRecovery=validateRecovery;}
   }

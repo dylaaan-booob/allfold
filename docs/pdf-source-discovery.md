@@ -14,7 +14,7 @@ policy belongs to the linked module guides, not the historical research process.
 
 | Entry | Responsibility |
 | --- | --- |
-| `document_metadata_branch()` / `collect_document_metadata()` | One captured collection branch reads independent Date/Abstract and PDF clues in the same current Document, emits one increment, and settles partial failure explicitly. |
+| `document_metadata_branch()` / `collect_document_metadata()` | One captured collection branch reads independent Date/Abstract and PDF clues in one detached snapshot, emits one increment, and settles partial failure explicitly. |
 | `read_document_pdf_clues(context, ...)` | PDF-only article/qualified-reader refresh; returns current candidates and separately persistable facts without emitting or restarting collection. |
 | `iter_p1_candidates()` / `iter_p2_candidates()` | Pure Host/type/input-qualified lazy rules; no requests or completion claims. |
 | `PdfDiscovery(...).run(consume)` | P1–P5 coordination with downstream `CandidateResult` feedback, source/fallback semantics and captured cancellation/authority. |
@@ -96,7 +96,7 @@ PDF Source Discovery 不运行 Zotero Translator、Zotero Translate 或 Zotero U
 
 不进行 PDF 版本识别、版本评分、全文语义比对、PDF/OCR 元数据提取或跨版本替换；不增加 Unpaywall、Semantic Scholar 等新的外部全文回退服务；不建立 LLM 网页决策或新的登录/验证码处理系统。现有 Prepare 和 Cloudflare solver 由统一网页访问层接入，发现器不自行实现挑战处理。
 
-当前 Workspace 已使用 SQLite 与独立正文文件。页面采集的当前接口和后续快照解析方向见 [Document access](browser-documents.md)；本目录不限定页面采集载体。
+当前 Workspace 已使用 SQLite 与独立正文文件。页面采集的固定快照接口和独立 Document 解析见 [Document access](browser-documents.md)；本目录不限定页面采集载体。
 
 <a id="pipeline"></a>
 
@@ -353,7 +353,7 @@ Meta 值指向 HTML 下载器时进入适用的中间页规则。不能因为 UR
 
 #### F6.4 与 Date + Abstract 的边界
 
-由 Run 注册、Workspace 持有的 Paper 网页采集在同一有效 Document 内分别调用 Date/Abstract 与 PDF Meta/DOM 信息提取，复用页面获取和必要读取。PDF 信息采集不自动触发下载。
+由 Run 注册、Workspace 持有的 Paper 网页采集一次捕获已渲染 HTML、实际 URL 和必要运行态值，在同一独立 Document 上完成 Date/Abstract 与 PDF 线索解析。PDF-only 刷新与 Reader 续读各自读取新快照，不重新采集字段；局部解析失败保留其他有效输出，后续活页面变化不撤销已捕获结果。候选自身的正文/补充资料/推荐条目与 URL 安全规则继续适用，PDF 信息采集不自动触发下载。
 
 小型结果保存后释放工作页面。之后下载重新开页，仅执行 PDF 必需的读取/动作，不再次运行已完成的 Date/Abstract。独立提取函数的结果由外层任务包装，不能合并成负责网络、采集、下载和持久化的巨型模块。
 

@@ -66,8 +66,9 @@ app.whenReady().then(async()=>{
         kind==='get-changed'?`onsubmit="this.elements.once.value='changed-after-prepare'"`:
         ['existing-target-changed','predeclared-target-changed'].includes(kind)?`onsubmit="this.target='_self'"`:
         kind==='unrelated'?`onsubmit="event.preventDefault();location.assign('/unrelated')"`:'';
+      if(kind==='form-replaced')res.setHeader('set-cookie','fixture_session=kept; Path=/; HttpOnly');
       res.writeHead(200,{'content-type':'text/html'});
-      const getForm=['get-form','get-changed'].includes(kind);
+      const getForm=['get-form','get-changed','get-replaced'].includes(kind);
       const formAction=kind.startsWith('microbiology-redirect')?'/deliver/fulltext/micro/170/9/fixture.pdf':'/once';
       res.end(`<!doctype html><html><head><meta charset="utf-8"><title>Original response</title>${kind==='inline'?'<meta name="citation_doi" content="10.5555/strasse">':''}</head><body><article><h1>Original response</h1>
         ${['existing-iframe','existing-target-changed'].includes(kind)?'<iframe name="body" src="/frame"></iframe>':''}
@@ -111,7 +112,8 @@ app.whenReady().then(async()=>{
       res.writeHead(200,{'content-type':'application/pdf'});res.end(payload);return;
     }
     if(url.pathname==='/once') {
-      if(req.method!=='POST'&&kind!=='get-form'){res.writeHead(200,{'content-type':'text/html'});res.end('<title>Craft GET refused</title>');return;}
+      if(kind==='form-replaced')assert.match(req.headers.cookie || '',/fixture_session=kept/);
+      if(req.method!=='POST'&&!['get-form','get-replaced'].includes(kind)){res.writeHead(200,{'content-type':'text/html'});res.end('<title>Craft GET refused</title>');return;}
       if(['action-blocked','action-html'].includes(kind)||kind?.startsWith('action-challenge')) {
         res.writeHead(kind==='action-blocked'?403:200,{'content-type':'text/html'});
         res.end(kind.startsWith('action-challenge')?'<title>Just a moment...</title>':'<title>Body unavailable</title>');return;
@@ -237,15 +239,27 @@ app.whenReady().then(async()=>{
           fs.renameSync(directory,directory+'.old');fs.mkdirSync(directory,{mode:0o700});fs.writeFileSync(path.join(directory,'body.part'),'unknown replacement');
         }
       });
+      const prepare=browser.bodyActions.prepare.bind(browser.bodyActions);
+      if(['form-replaced','form-missing','get-replaced','sciencedirect-replaced'].includes(kind))browser.bodyActions.prepare=async(...args)=>{
+        const result=await prepare(...args),tab=browser.tabs.get(args[0].pageId);
+        const mutation=kind==='form-missing'?'document.querySelector("form").remove()':kind==='sciencedirect-replaced'
+          ?'const link=document.querySelector("a");link.replaceWith(link.cloneNode(true));document.querySelector("article").appendChild(document.querySelector("a").cloneNode(true))'
+          :'const form=document.querySelector("form");form.replaceWith(form.cloneNode(true));document.querySelector("form").appendChild(document.querySelector("button").cloneNode(true));document.querySelector(".download-pdf").appendChild(document.querySelector("form").cloneNode(true))';
+        await tab.view.webContents.executeJavaScript(mutation+(kind==='get-replaced'?';for(const form of document.querySelectorAll("form"))form.elements.once.value="current controls"':'')+';history.pushState({},"",location.pathname+location.search+"#redrawn")');
+        return result;
+      };
       const terminal=new Promise(resolve=>messages.set(id,resolve));
-      await context.execute({id,action:'native_paper_body',data});const result=await terminal;
+      await context.execute({id,action:'native_paper_body',data});const result=await terminal;browser.bodyActions.prepare=prepare;
       cases.push({kind,result});console.log('NATIVE CASE '+kind+' '+JSON.stringify(result));
-      const success=['attachment','inline','url-doi-form','microbiology-redirect','iframe','popup','named-popup','popup-reservation','completed-late-signals','sciencedirect','sciencedirect-direct-cdn-unavailable','sciencedirect-reader','sciencedirect-reader-self','sciencedirect-reader-reload'].includes(kind);
+      const success=['form-replaced','get-replaced','sciencedirect-replaced','attachment','inline','url-doi-form','microbiology-redirect','iframe','popup','named-popup','popup-reservation','completed-late-signals','sciencedirect','sciencedirect-direct-cdn-unavailable','sciencedirect-reader','sciencedirect-reader-self','sciencedirect-reader-reload'].includes(kind);
       if(success) {
         assert.equal(result.outcome,'native_complete');assert.equal(result.resource_closed,true);assert.deepEqual(result.output_file,observed);
         const leaf=path.join(data.workspace_root,data.output.temporary);assert.deepEqual(fs.readFileSync(leaf),payload);assert.deepEqual(identity(leaf),observed);
         if(kind==='popup-reservation')assert.equal(reservations.get(leaf)?.observed,true);
         if(kind==='completed-late-signals')assert.equal(events.findLast(event=>event.request_id===id&&event.event==='task_finished').outcome,'native_complete');
+      } else if(kind==='form-missing') {
+        assert.equal(result.diagnostic_code,'entry-unavailable');assert.equal(result.output_file,undefined);
+        assert.equal(requests.filter(request=>request.url==='/once?case='+kind).length,0);
       } else if(kind==='named-popup-collision') {
         assert.equal(result.kind,'stale');assert.equal(result.output_file,undefined);
         assert.equal(foreign.view.webContents.getURL(),origin+'/frame');
@@ -310,12 +324,14 @@ app.whenReady().then(async()=>{
       assert.equal(requests.filter(request=>request.url.endsWith('/pdfft')).length,1);
       console.log('PUBLIC BODY NATIVE PASS');
     }
-    for(const kind of ['attachment','inline','iframe','popup','named-popup','popup-reservation','cancel','interrupted']) {
+    for(const kind of ['form-replaced','attachment','inline','iframe','popup','named-popup','popup-reservation','cancel','interrupted']) {
       if(!caseNames.includes(kind))continue;
       const seen=requests.filter(request=>request.url==='/once?case='+kind);
       assert.deepEqual(seen,[{url:'/once?case='+kind,method:'POST',body:'once=fixture'}]);
     }
     assert.equal(requests.filter(request=>request.url==='/once?case=no-item').length,0);
+    if(caseNames.includes('get-replaced'))assert.deepEqual(requests.filter(request=>request.url.startsWith('/once?')&&request.url.includes('get-replaced')),
+      [{url:'/once?case=get-replaced&once=current+controls&tag=one&tag=two&download=PDF+now',method:'GET',body:''}]);
     const redirects=new Set(caseNames.filter(kind=>kind.startsWith('microbiology-redirect')));
     if(caseNames.includes('public'))redirects.add('microbiology-redirect');
     for(const kind of redirects) {

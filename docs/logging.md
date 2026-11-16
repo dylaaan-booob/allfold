@@ -192,11 +192,11 @@ Source created/existing counts overlap and must not be summed as global Paper
 counts. No request URL, response body, API key, relation identifier or arbitrary
 Provider error payload is added to persistent History diagnostics.
 
-Current page checks emit the fixed `page_probe_unconfirmed`,
-`article_identity_unconfirmed` and `article_identity_conflict` codes. Probe limits,
-missing evidence and identity conflicts remain distinct from HTTP/access failure.
-These codes describe current observations, not a requirement to preserve repeated
-page-identity checks. The reading changes are owned by [Document access](browser-documents.md).
+Fixed binding/access probes retain `page_probe_unconfirmed` and native lifecycle
+errors. Snapshot parsing reports bounded local metadata/PDF diagnostics and keeps
+successful channels. Whole-page article reauthentication codes are retired;
+HTTP/access failures still describe actual pre-read availability. The reading
+contract is owned by [Document access](browser-documents.md).
 Internal evidence values, HTML, scripts and URL query parameters are not diagnostic
 fields. Imperva continues to emit only strictly validated `imperva_edet` and
 `imperva_incident_id`; see [controlled Documents](browser-documents.md).

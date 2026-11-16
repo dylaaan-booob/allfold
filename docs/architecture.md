@@ -62,10 +62,10 @@ Login runs one CARSI institution flow. Each subsequent CARSI preparation opens i
 
 Browser Runtime uses one business Session from `session.fromPartition('allfold')`.
 Selection and presentation are separate from task ownership. DocumentRuntime and
-its isolated preload currently supply fixed binding/access/article/extract/pdf
-observations. [Document access](browser-documents.md) owns current interfaces,
-reading limits and the planned rendered-HTML/independent-Document path. Snapshot
-parsing and tab-wide Solver are follow-up work, not current capabilities.
+its isolated preload supply fixed binding/access observations and detached
+extract/pdf snapshots. [Document access](browser-documents.md) owns the local
+rendered-HTML capture, shared Date/Abstract/PDF parsing and request correlation.
+Snapshot results survive later page changes; tab-wide Solver remains follow-up work.
 
 PDF discovery separates qualified rules, exact-target source facts and a
 result-driven P1–P5 coordinator. Run and necessary API responses project reusable

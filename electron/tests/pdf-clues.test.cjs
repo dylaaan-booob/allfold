@@ -2,7 +2,7 @@
 const test=require('node:test'),assert=require('node:assert/strict');
 const fs=require('node:fs'),os=require('node:os'),path=require('node:path');
 const {execFile}=require('node:child_process'),{promisify}=require('node:util');
-test('actual composite and PDF-only Document clues preserve binding and cleanup',{timeout:60000},async t=>{
+test('actual composite and PDF-only Document clues preserve snapshot facts and cleanup',{timeout:60000},async t=>{
   const profile=fs.mkdtempSync(path.join(os.tmpdir(),'allfold-pdf-clues-'));
   t.after(()=>fs.rmSync(profile,{recursive:true,force:true}));
   const aggregate=path.join(profile,'aggregate.json'),root=path.resolve(__dirname,'../..');

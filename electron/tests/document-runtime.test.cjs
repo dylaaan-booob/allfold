@@ -15,9 +15,9 @@ function fixture(t) {
     require:name=>name==='electron'?{ipcMain:ipc}:hostRequire(name)});
   vm.runInContext(fs.readFileSync(path.join(__dirname,'../src/browser/document-runtime.cjs'),'utf8'),context);
   const runtime=new context.module.exports.DocumentRuntime(browser);t.after(()=>runtime.dispose());
-  const reply=(result,{sender=contents,processId=2,frameToken='frame',documentId='1-2-3-4',url=doc.url}={})=>{
+  const reply=(result,{id=messages.at(-1).id,sender=contents,processId=2,frameToken='frame',documentId='1-2-3-4',url=doc.url}={})=>{
     ipc.emit('document:result',{sender,senderFrame:{processId,frameToken}},
-      {id:messages.at(-1).id,result,documentId,url});
+      {id,result,documentId,url});
   };
   return {runtime,doc,contents,frame,messages,reply,changed(){current=false;contents.emit('did-frame-navigate');}};
 }
@@ -44,16 +44,26 @@ test('navigation, crash and cancellation end pending probes and clean listeners'
       assert.equal(f.contents.listenerCount(event),0);
   }
 });
-test('unbounded evidence, replaced URLs and unsupported operations fail closed',async t=>{
+test('replaced binding URLs and unsupported operations fail closed',async t=>{
   const f=fixture(t);
-  const pending=f.runtime.call(f.doc,'article');
-  f.reply({article:{values:Array(33).fill('10.5555/target'),limited:false,multiple:false,article:true}});
-  await assert.rejects(pending,/page_probe_unconfirmed/);
+  await assert.rejects(f.runtime.call(f.doc,'article'),/document_operation_failed/);
   const replaced=f.runtime.call(f.doc,'binding');f.reply({type:'text/html'},{url:'https://fixture.invalid/replaced'});
   await assert.rejects(replaced,/document_changed/);
   await assert.rejects(f.runtime.call(f.doc,'execute',{code:'arbitrary'}),/document_operation_failed/);
   await assert.rejects(f.runtime.call(f.doc,'pdf',{readerKind:null,doiCasefold:{}}),/document_operation_failed/);
-  assert.equal(f.messages.length,2);
+  assert.equal(f.messages.length,1);
+});
+const clues={status:'complete',landing_url:'https://journal.example/article',observed_at:'2026-11-16T00:00:00.000Z',
+  platform:'generic',content_type:'unknown',identifiers:[],candidates:[],diagnostics:[]};
+test('snapshot replies stay with the original request across navigation and later destruction',async t=>{
+  const f=fixture(t),pending=f.runtime.call(f.doc,'extract',{wantAbstract:true});
+  f.changed();
+  f.reply({metadata:{dates:[],abstract:'Captured text.'},diagnostics:[],clues},{sender:{}});
+  f.reply({metadata:{dates:[],abstract:'Captured text.'},diagnostics:[],clues},
+    {url:'https://journal.example/article#current',documentId:'9-8-7-6'});
+  f.contents.emit('destroyed');
+  assert.equal((await pending).metadata.abstract,'Captured text.');
+  assert.equal(f.runtime.pending.size,0);
 });
 test('fixed extraction forwards only boolean qualification and accepts legal empty metadata',async t=>{
   const f=fixture(t);
@@ -62,10 +72,10 @@ test('fixed extraction forwards only boolean qualification and accepts legal emp
   assert.equal(f.messages.length,0);
   const pending=f.runtime.call(f.doc,'extract',{wantAbstract:false});
   assert.deepEqual(JSON.parse(JSON.stringify(f.messages.at(-1).args)),{wantAbstract:false});
-  f.reply({metadata:{dates:[],abstract:null},diagnostics:[],subject:'1:2:3'});
-  assert.deepEqual(JSON.parse(JSON.stringify(await pending)),{metadata:{dates:[],abstract:null},diagnostics:[],subject:'1:2:3',documentId:'1-2-3-4'});
+  f.reply({metadata:{dates:[],abstract:null},diagnostics:[],clues});
+  assert.deepEqual(JSON.parse(JSON.stringify(await pending)),{metadata:{dates:[],abstract:null},diagnostics:[],clues});
 });
-test('extraction refuses malformed calendar, precision, ordering, size and unwanted abstract',async t=>{
+test('malformed metadata cannot discard independent PDF clues; unwanted abstract is refused',async t=>{
   for(const metadata of [
     {dates:[{value:'2020-02-30',precision:'day'}],abstract:null},
     {dates:[{value:'2020-02',precision:'day'}],abstract:null},
@@ -76,7 +86,28 @@ test('extraction refuses malformed calendar, precision, ordering, size and unwan
     {dates:[],abstract:'must remain null'},
   ]) {
     const f=fixture(t),pending=f.runtime.call(f.doc,'extract',{wantAbstract:false});
-    f.reply({metadata,diagnostics:[],subject:'1:2:3'});
-    await assert.rejects(pending,/page_probe_unconfirmed/);assert.equal(f.runtime.pending.size,0);
+    f.reply({metadata,diagnostics:[],clues});
+    if(metadata.abstract==='must remain null')await assert.rejects(pending,/page_probe_unconfirmed/);
+    else {const result=await pending;assert.equal(result.metadata,null);assert.equal(result.clues.status,'complete');}
+    assert.equal(f.runtime.pending.size,0);
   }
+});
+
+test('snapshot requests still fail on cancellation, closure or renderer exit before a reply',async t=>{
+  for(const reason of ['destroyed','render-process-gone','cancel']) {
+    const f=fixture(t),controller=new AbortController();
+    const pending=f.runtime.call(f.doc,'pdf',{readerKind:null},{signal:controller.signal});
+    if(reason==='cancel')controller.abort();else f.contents.emit(reason);
+    await assert.rejects(pending,/page_closed|canceled/);
+    assert.equal(f.runtime.pending.size,0);
+  }
+});
+test('old and duplicate snapshot replies cannot settle another request',async t=>{
+  const f=fixture(t),first=f.runtime.call(f.doc,'pdf',{readerKind:null}),id=f.messages.at(-1).id;
+  f.reply({clues});await first;
+  const second=f.runtime.call(f.doc,'pdf',{readerKind:null});
+  const stale={clues:{...clues,landing_url:'https://journal.example/old'}};
+  f.reply(stale,{id});f.reply(stale,{processId:99});f.reply(stale,{frameToken:'another-frame'});
+  assert.equal(f.runtime.pending.size,1);
+  f.reply({clues});assert.equal((await second).clues.landing_url,clues.landing_url);
 });

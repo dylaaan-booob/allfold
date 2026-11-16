@@ -11,6 +11,8 @@ const {BrowserRuntime}=require('../src/browser/browser-runtime.cjs');
 app.whenReady().then(async()=>{
   let page='',requests=[],delayedPDF;
   const server=http.createServer((request,response)=>{requests.push({url:request.url,referer:request.headers.referer});
+    if(request.url==='/snapshot-resource'){response.writeHead(200,{'content-type':'text/plain','cache-control':'no-store'});response.end('resource');return;}
+    if(request.url==='/snapshot-script'){response.end('');return;}
     if(request.url==='/hydrated-pdf'){delayedPDF=response;return;}
     if(request.url.includes('redirect-reader=1')){response.writeHead(302,{location:request.url.replace('redirect-reader=1','final=1')});response.end();return;}
     if(request.url.includes('internal-redirect=1')){response.writeHead(302,{location:'http://127.0.0.1:'+server.address().port+'/forbidden'});response.end();return;}
@@ -45,6 +47,14 @@ app.whenReady().then(async()=>{
       ['P3','R037','http://www.nature.com:'+port+'/actual/Case.PDF?sig=A%2FB&k=2'],['P3','R037','http://www.nature.com:'+port+'/Full.pdf'],['P4','R037','http://www.nature.com:'+port+'/platform.PDF']]);
     assert.equal(composite.pdf_clues.status,'complete');assert.ok(Date.parse(composite.pdf_clues.observed_at));
     assert.deepEqual(requests.map(item=>item.url),['/actual/Article'],'precollection does not request candidates');
+    page=article('<base href="../assets/"><meta name="citation_pdf_url" content="Body.PDF">',
+      '<script>fetch("/snapshot-script");document.querySelector(".abstract").textContent="Rendered abstract.";</script>'+
+      '<iframe src="/snapshot-resource"></iframe><img src="/snapshot-resource">');
+    const rendered=await invoke();
+    assert.equal(rendered.metadata.abstract,'Rendered abstract.');assert.equal(rendered.pdf_clues.landing_url,'http://www.nature.com:'+port+'/actual/Article');
+    assert.equal(rendered.pdf_clues.candidates[0].url,'http://www.nature.com:'+port+'/assets/Body.PDF');
+    assert.equal(requests.filter(item=>item.url==='/snapshot-script').length,1,'snapshot scripts are inert');
+    assert.equal(requests.filter(item=>item.url==='/snapshot-resource').length,2,'snapshot never loads image/frame resources again');
     const read=browser.readDocument.bind(browser);let scans=[];
     browser.readDocument=async(...args)=>{scans.push(args[1]);return read(...args);};
     const only=await invoke('extract_paper_pdf_clues');
@@ -58,14 +68,10 @@ app.whenReady().then(async()=>{
     const aggregate=await invoke('extract_paper_metadata',{identity:{confirmed_article_url:'http://www.nature.com:'+port+'/actual/'+('L'.repeat(3900))}});assert.equal(aggregate.outcome,'retrieved',JSON.stringify(aggregate));assert.equal(aggregate.metadata.abstract,'A complete result.');
     assert.notEqual(aggregate.pdf_clues.status,'complete');assert.deepEqual(aggregate.pdf_clues.diagnostics,['pdf_budget_exceeded']);assert.ok(JSON.stringify(aggregate.pdf_clues).length<=65536);
     if(process.argv[3])fs.writeFileSync(process.argv[3],JSON.stringify(aggregate));
-    const originalRead=browser.readDocument.bind(browser);let localPdfFault=false;
-    browser.readDocument=async(...args)=>{if(args[1]==='pdf'&&!localPdfFault){localPdfFault=true;throw new (require('../src/browser/browser-errors.cjs').BrowserFailure)('navigation','document_operation_failed');}return originalRead(...args);};
-    page=article();const localPdf=await invoke();assert.equal(localPdf.outcome,'retrieved',JSON.stringify(localPdf));assert.equal(localPdf.metadata.abstract,'A complete result.');assert.deepEqual(localPdf.pdf_clues.diagnostics,['pdf_parse_failed']);browser.readDocument=originalRead;
-    browser.readDocument=async(...args)=>{if(args[1]==='pdf'){await args[0].view.webContents.executeJavaScript('document.body.replaceWith(document.body.cloneNode(true))');throw new (require('../src/browser/browser-errors.cjs').BrowserFailure)('navigation','document_operation_failed');}return originalRead(...args);};
-    assert.equal((await invoke()).diagnostic.code,'document_changed','local PDF failure never saves independent content from a replaced subject');browser.readDocument=originalRead;
     page=article('<meta name="citation_pdf_url" content="https://cdn.example/Paper.PDF">');
-    let changed=false;browser.readDocument=async(...args)=>{const result=await read(...args);if(args[1]==='pdf'&&!changed){changed=true;await args[0].view.webContents.executeJavaScript('document.body.replaceWith(document.body.cloneNode(true))');}return result;};
-    assert.equal((await invoke()).diagnostic.code,'document_changed');browser.readDocument=read;
+    let changed=false;browser.readDocument=async(...args)=>{const result=await read(...args);if(args[1]==='extract'&&!changed){changed=true;await args[0].view.webContents.executeJavaScript('document.body.replaceWith(document.body.cloneNode(true));history.replaceState({},"","?changed=1")');}return result;};
+    const captured=await invoke();assert.equal(captured.outcome,'retrieved');assert.equal(captured.metadata.abstract,'A complete result.');
+    assert.equal(captured.pdf_clues.candidates[0].url,'https://cdn.example/Paper.PDF');browser.readDocument=read;
     // Every enabled P3/P4 host mapping goes through the real Main/preload seam.
     const metaRules=[['x.biomedcentral.com','R038'],['pubs.rsc.org','R040'],['journals.plos.org','R041'],['www.mdpi.com','R042'],['x.copernicus.org','R043'],['www.cambridge.org','R051'],['www.bmj.com','R052'],['brill.com','R056'],['www.thieme-connect.com','R058']];
     const forHost=async(host,body,head='',route='/article')=>{page=article(head,body);return invoke('extract_paper_metadata',{identity:{confirmed_article_url:(host==='elifesciences.org'?'https':'http')+'://'+host+':'+port+route}});};
@@ -85,7 +91,8 @@ app.whenReady().then(async()=>{
     const duplicateDoi=await forHost('pubs.acs.org','<a class="article-pdfLink" href="/doi/pdf/10.5555/target">PDF</a>','<meta name="citation_doi" content="10.5555/target"><meta name="prism.doi" content="https://doi.org/10.5555/TARGET">');
     assert.equal(duplicateDoi.pdf_clues.candidates[0]?.rule_id,'R044','duplicate equivalent DOI fields retain the current article entry');
     const conflictingDoi=await forHost('pubs.acs.org','<a class="article-pdfLink" href="/doi/pdf/10.5555/target">PDF</a>','<meta name="citation_doi" content="10.5555/target"><meta name="prism.doi" content="10.5555/other">');
-    assert.ok(conflictingDoi.diagnostic);assert.ok(!conflictingDoi.pdf_clues,'conflicting article identity cannot escape as partial clues');
+    assert.equal(conflictingDoi.outcome,'retrieved');assert.equal(conflictingDoi.metadata.abstract,'A complete result.');
+    assert.deepEqual(conflictingDoi.pdf_clues.candidates,[],'ambiguous DOI-scoped candidate alone is excluded');
     for(const [host,rule] of [['onlinelibrary.wiley.com','R039'],['epubs.siam.org','R061']]){
       const out=await forHost(host,'<a href="/doi/epdf/10.5555/target">Read</a><a href="/doi/pdf/10.5555/other">Other</a>','<meta name="citation_doi" content="10.5555/target">','/doi/full/10.5555/target');
       assert.equal(out.pdf_clues.candidates.length,1);assert.equal(out.pdf_clues.candidates[0].rule_id,rule);assert.match(out.pdf_clues.candidates[0].url,/epdf/);
@@ -100,6 +107,10 @@ app.whenReady().then(async()=>{
       const nonArticle=await forHost(host,'<a href="/Citation/Download?resourceId=99993&amp;resourceType=2">Book cite</a><a href="/Citation/Download?resourceId=12345">Unknown type</a>');assert.deepEqual(nonArticle.pdf_clues.identifiers,[]);
     }
     const sd=await forHost('www.sciencedirect.com','<script>var article={pdfDownload:{urlMetadata:"https://cdn.example/sd.PDF"}};</script>','','/science/article/pii/S1234567812345678');assert.equal(sd.pdf_clues.identifiers[0].kind,'pii');assert.equal(sd.pdf_clues.candidates[0].reader_kind,'sciencedirect');
+    const stateFault=await forHost('www.sciencedirect.com','<script>Object.defineProperty(window,"article",{get(){throw Error("unavailable state")}})</script>',
+      '<meta name="citation_pdf_url" content="https://cdn.example/Kept.PDF">');
+    assert.equal(stateFault.metadata.abstract,'A complete result.');assert.equal(stateFault.pdf_clues.status,'partial');
+    assert.equal(stateFault.pdf_clues.candidates[0].url,'https://cdn.example/Kept.PDF');
     const currentPii='S0047259X2400006X',currentPDF='/science/article/pii/'+currentPii+'/pdfft?md5=synthetic';
     const toolbar=await forHost('www.sciencedirect.com','<nav><a href="'+currentPDF+'">View PDF</a><a href="https://pdf.sciencedirectassets.com/1-s2.0-'+currentPii+'/main.pdf?token=synthetic">View PDF</a><a href="https://pdf.sciencedirectassets.com/1-s2.0-S1234567812345678/main.pdf">View PDF</a><a href="/science/article/pii/S1234567812345678/pdfft">View PDF</a><a href="'+currentPDF+'&amp;supplement=1">Supplement PDF</a></nav><aside><a href="'+currentPDF+'&amp;related=1">View PDF</a></aside>','','/science/article/pii/'+currentPii);
     assert.equal(toolbar.pdf_clues.candidates.length,2,'only current PII toolbar entrances are body clues');
@@ -134,7 +145,7 @@ app.whenReady().then(async()=>{
       const head='<meta name="'+key+'" content="https://doi.org/10.5555/TARGET"><meta name="'+key+'" content="10.5555/target">';
       const body='<button data-doi="10.5555/target" onclick="PDFDownloadInit(\''+an+'\')">PDF</button>';
       const aliasAn=await forHost('journals.lww.com',body,head,'/journal/fulltext/2026/paper.aspx');
-      assert.deepEqual(aliasAn.pdf_clues.identifiers.map(item=>item.value),[an],key+' accepted by article identity also binds its own AN');
+      assert.deepEqual(aliasAn.pdf_clues.identifiers.map(item=>item.value),[an],key+' qualifies its own AN');
       const foreignAn=await forHost('journals.lww.com',body.replace('data-doi="10.5555/target"','data-doi="10.5555/other"'),head,'/journal/fulltext/2026/paper.aspx');
       assert.deepEqual(foreignAn.pdf_clues.identifiers,[],key+' still rejects a foreign AN control');
     }
@@ -157,7 +168,7 @@ app.whenReady().then(async()=>{
     assert.deepEqual(unicodePath.pdf_clues.candidates.map(item=>item.url),['http://onlinelibrary.wiley.com:'+port+'/doi/pdf/10.5555/STRASSE']);
     const conflictingUnicode=await forHost('journals.lww.com','<button data-doi="10.5555/Straße" onclick="PDFDownloadInit(\''+an+'\')">PDF</button>',
       '<meta charset="utf-8"><meta name="citation_doi" content="10.5555/Straße"><meta name="dc.identifier" content="10.5555/other">','/journal/fulltext/2026/paper.aspx');
-    assert.equal(conflictingUnicode.diagnostic.code,'article_identity_conflict');
+    assert.equal(conflictingUnicode.outcome,'retrieved');assert.deepEqual(conflictingUnicode.pdf_clues.identifiers,[]);
     const peripheralAn=await forHost('journals.lww.com','<section id="relatedContent"><button onclick="PDFDownloadInit(\''+otherAn+'\')">PDF</button></section><section id="supplementary-files"><button onclick="PDFDownloadInit(\''+otherAn+'\')">PDF</button></section><button onclick="PDFDownloadInit(\''+an+'\')">PDF</button>','','/journal/fulltext/2026/paper.aspx');
     assert.deepEqual(peripheralAn.pdf_clues.identifiers.map(item=>item.value),[an]);
     const ambiguousAn=await forHost('journals.lww.com','<button onclick="PDFDownloadInit(\''+otherAn+'\')">PDF</button><button onclick="PDFDownloadInit(\''+an+'\')">PDF</button>','','/journal/fulltext/2026/paper.aspx');

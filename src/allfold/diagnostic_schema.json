@@ -239,8 +239,6 @@
         "access_denied",
         "action_expired",
         "ambiguous_resource",
-        "article_identity_conflict",
-        "article_identity_unconfirmed",
         "auth_action_dispatched",
         "auth_action_unconfirmed",
         "auth_execution_failed",

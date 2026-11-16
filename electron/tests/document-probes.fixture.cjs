@@ -26,70 +26,32 @@ app.whenReady().then(async()=>{
       const route=routes.get(request.url.split('#')[0]);
       return new Response(route?.body || article(),{status:route?.status || 200,headers:{'content-type':'text/html'}});
     });
-    // Identity confirmation is independent of Date/Abstract extraction on these pages.
-    for(const key of ['citation_doi','bepress_citation_doi','prism.doi','dc.identifier','dc.identifier.doi','dcterms.identifier']) {
-      const doc=await open(article(meta(' DOI: 10.5555/TARGET ',key)));
-      assert.equal(doc.identity.outcome,'confirmed');assert.equal(doc.identity.doi,'10.5555/target');
-      assert.equal(doc.html,undefined);assert.equal(typeof doc.documentId,'string');
+    // Run supplies the Paper identity; page metadata is not a second admission gate.
+    for(const body of [article(),article(meta('10.5555/other')),article(meta('10.5555/target')+meta('10.5555/other')),
+      html('<article></article><article></article>',meta('10.5555/target')),article(meta('10.5555/target').repeat(33))]) {
+      const doc=await open(body);
+      assert.equal(doc.identity.doi,'10.5555/target');assert.equal(doc.html,undefined);
     }
-    for(const [body,code] of [
-      [article(meta('10.5555/other')),'article_identity_conflict'],
-      [article(meta('10.5555/target')+meta('10.5555/other')),'article_identity_conflict'],
-      [html('<article></article><article></article>',meta('10.5555/target')),'article_identity_unconfirmed'],
-      [article(meta('ISSN 1234-5678','dc.identifier')),'article_identity_unconfirmed'],
-      [html('<article><section id="references">10.5555/target</section><iframe src="https://frame.invalid/"></iframe></article>'),'article_identity_unconfirmed'],
-      [article(meta('10.5555/target').repeat(33)),'article_identity_unconfirmed'],
-      [article(),'article_identity_unconfirmed'],
-      [html('<p>CPE00001</p><p>There was a problem providing the content you requested</p>',meta('10.5555/target')),'content_access_blocked'],
-      [html('<div><span>CPE00001</span><div>There was a problem providing the content you requested</div></div>',meta('10.5555/target')),'content_access_blocked'],
-      [html('<p>'+('x'.repeat(3000))+' CPE00001 There was a problem providing the content you requested</p>',meta('10.5555/target')),'content_access_blocked'],
-    ])await assert.rejects(open(body),error=>error.diagnostic?.code===code);
+    for(const body of [html('<p>CPE00001</p><p>There was a problem providing the content you requested</p>'),
+      html('<div><span>CPE00001</span><div>There was a problem providing the content you requested</div></div>'),
+      html('<p>'+('x'.repeat(3000))+' CPE00001 There was a problem providing the content you requested</p>')])
+      await assert.rejects(open(body),error=>error.diagnostic?.code==='content_access_blocked');
     for(const body of [html('<input type="password">',meta('10.5555/target')),html('<h1>Are you a robot?</h1><p>Please confirm you are a human by completing the captcha challenge</p>',meta('10.5555/target'))])
       await assert.rejects(open(body,'10.5555/target',{deadline:Date.now()+200}),error=>error.diagnostic?.code==='timeout');
-    destination='https://article.invalid/doi/10.1214/aos/1176342506';routes.set(destination,{body:article()});
-    const multiDOI=await task(()=>browser.openPaperPage({workspace_identity:'a'.repeat(64),paper_id:randomUUID()},'10.1214/aos/1176342506',{signal}));
-    assert.equal(multiDOI.identity.outcome,'confirmed');
-    destination='https://iopscience.iop.org/article/10.1088/0022-3727/34/10/311/meta';
-    routes.set(destination,{body:article(meta('10.1088/0022-3727/34/10/311'))});
-    const iop=await task(()=>browser.openPaperPage({workspace_identity:'a'.repeat(64),paper_id:randomUUID()},'10.1088/0022-3727/34/10/311',{signal}));
-    assert.equal(iop.identity.outcome,'confirmed');
-    // A resolver URL (the requested DOI) never proves the redirected article.
-    destination='https://article.invalid/path/10.5555/target';routes.set(destination,{body:article()});
-    for(const [url,body] of [
-      ['https://projecteuclid.org/journals/example/10.5555/target.full',article()],
-      ['https://www.scielo.br/j/example/a/fixture',html('<article><a class="_doi" href="https://doi.org/10.5555/target">DOI</a></article>')],
-      ['https://journals.plos.org/plosone/article?doi=10.5555%2Ftarget',article()],
-    ]) {
-      destination=url;routes.set(url,{body});
-      const located=await task(()=>browser.openPaperPage({workspace_identity:'a'.repeat(64),paper_id:randomUUID()},'10.5555/target',{signal}));
-      assert.equal(located.identity.outcome,'confirmed');
-    }
-    for(const [url,body,code] of [
-      ['https://article.invalid/article?doi=10.5555%2Ftarget&id=10.5555%2Fother',article(),'article_identity_conflict'],
-      ['https://article.invalid/?doi=10.5555%2Ftarget',html('<p>Generic redirect</p>'),'article_identity_unconfirmed'],
-      ['https://article.invalid/search?doi=10.5555%2Ftarget',html('<main><h1>Search results</h1></main>'),'article_identity_unconfirmed'],
-      ['https://article.invalid/search?doi=10.5555%2Ftarget',html('<main><article>Recommended target</article></main>'),'article_identity_unconfirmed'],
-      ['https://article.invalid/10.5555/other/part',html('<div>Article</div>',meta('10.5555/target')),'article_identity_conflict'],
-      ['https://article.invalid/10.5555/other',html('<div>Article</div>',meta('10.5555/target')),'article_identity_conflict'],
-      ['https://article.invalid/native',html('<a class="_doi" href="https://doi.org/10.5555/target">DOI</a>'),'article_identity_unconfirmed'],
-    ]) {
-      destination=url;routes.set(url,{body});
-      await assert.rejects(task(()=>browser.openPaperPage({workspace_identity:'a'.repeat(64),paper_id:randomUUID()},'10.5555/target',{signal})),error=>error.diagnostic?.code===code);
-    }
     destination='https://article.invalid/path/10.5555/target';routes.set(destination,{body:article()});
     await task(async()=>{
     const data={workspace_identity:'a'.repeat(64),paper_id:randomUUID()};
     const doc=await task(()=>browser.openPaperPage(data,'https://dx.doi.org/10.5555/TARGET',{signal}));
-    assert.equal(doc.identity.reason,'doi');
+    assert.equal(doc.identity.doi,'https://dx.doi.org/10.5555/TARGET');
     const tab=browser.tabs.get(doc.pageId),wc=tab.view.webContents;
     assert.ok(tab.view.getBounds().width>0 && tab.view.getBounds().height>0);
     assert.equal(browser.selected,null);assert.equal(browser.presentation.visible,false);
     const duplicate=browser.createTab({present:false,user:true});await duplicate.view.webContents.loadURL(doc.url);
     const other=await browser.runInOperation(null,()=>browser.documentBinding(duplicate));
     assert.notEqual(other.documentId,doc.documentId);assert.notEqual(other.pageId,doc.pageId);
-    // Same native Document, changed primary object: the cached input cannot bypass confirmation.
+    // Reuse of a Paper page does not reauthenticate its metadata.
     await wc.executeJavaScript('document.head.insertAdjacentHTML("beforeend",\'<meta name="citation_doi" content="10.5555/other">\')');
-    await assert.rejects(task(()=>browser.openPaperPage(data,'10.5555/target',{signal})),error=>error.diagnostic?.code==='article_identity_conflict');
+    assert.equal((await task(()=>browser.openPaperPage(data,'10.5555/target',{signal}))).pageId,doc.pageId);
     await wc.executeJavaScript('history.pushState({},"","/changed")');
     assert.equal(browser.documentCurrent(doc),false);
     const before=await browser.documentBinding(tab);
@@ -103,9 +65,9 @@ app.whenReady().then(async()=>{
     // Explicit upstream article relation is necessary for DOI-free access.
     destination='https://article.invalid/native/42';routes.set(destination,{body:article()});
     const noDOI=await task(()=>browser.openPaperPage({...data,paper_id:randomUUID()},{confirmed_article_url:destination},{signal}));
-    assert.equal(noDOI.identity.reason,'established_article_url');
+    assert.equal(noDOI.identity.confirmed_article_url,destination);
     await browser.closePage(browser.tabs.get(noDOI.pageId));
-    await assert.rejects(task(()=>browser.openPaperPage(data,{}, {signal})),/article_identity_unconfirmed/);
+    await assert.rejects(task(()=>browser.openPaperPage(data,{}, {signal})),/document_operation_failed/);
     const fragmentTarget='https://article.invalid/#/article/one';
     const fragment=await task(()=>browser.openPaperPage({...data,paper_id:randomUUID()},{confirmed_article_url:fragmentTarget},{signal}));
     assert.equal(fragment.url,fragmentTarget);
@@ -113,7 +75,7 @@ app.whenReady().then(async()=>{
       const page=browser.tabs.get(fragment.pageId);browser.bindTaskPage(page,signal);
       await page.view.webContents.executeJavaScript('history.replaceState({},"","/#/article/two")');
       const current=await browser.documentBinding(page);
-      await assert.rejects(browser.confirmArticlePage({confirmed_article_url:fragmentTarget},current,{signal}),/article_identity_unconfirmed/);
+      assert.equal(current.url,'https://article.invalid/#/article/two');
     });
     await browser.closePage(browser.tabs.get(fragment.pageId));
     // Large unrelated DOM never leaves the preload. Resource-only CAPTCHA/CDN is not a challenge.
@@ -148,7 +110,7 @@ app.whenReady().then(async()=>{
     await task(async()=>{
       browser.bindTaskPage(tab,signal);
       const normal=await browser.waitForPage(tab,{signal,deadline:Date.now()+1000});
-      assert.equal((await browser.confirmArticlePage({doi:'10.5555/target'},normal,{signal})).identity.outcome,'confirmed');
+      assert.equal(normal.status,200);
     });
     assert.equal(solved,0);
     // Click is not completion; same-operation repeats cannot replenish the attempt budget.
@@ -162,8 +124,6 @@ app.whenReady().then(async()=>{
       await wc.executeJavaScript('document.body.innerHTML="<article></article>"');
       const ready=await browser.waitForPage(tab,{signal,deadline:Date.now()+1000});
       assert.equal(ready.status,200);
-      const confirmed=await browser.confirmArticlePage({doi:'10.5555/target'},ready,{signal});
-      assert.equal(confirmed.identity.outcome,'confirmed');
     });
     // Publisher-owned robot copy can wrap a genuine Turnstile in a closed shadow root.
     const frameURL='https://challenges.cloudflare.com/cdn-cgi/challenge-platform/h/g/turnstile/if/fixture';

@@ -12,8 +12,8 @@ from allfold.persistence.library_models import MetadataDelta, normalize_ordinary
 
 
 _DIAGNOSTICS = frozenset({'json_ld_invalid', 'json_ld_ambiguous',
-    'abstract_candidate_failed', 'abstract_budget_exceeded', 'metadata_extraction_failed'})
-_PARTIAL = frozenset({'abstract_candidate_failed', 'abstract_budget_exceeded', 'metadata_extraction_failed',
+    'abstract_candidate_failed', 'abstract_budget_exceeded', 'date_scan_failed', 'metadata_extraction_failed'})
+_PARTIAL = frozenset({'abstract_candidate_failed', 'abstract_budget_exceeded', 'date_scan_failed', 'metadata_extraction_failed',
     'pdf_parse_failed', 'pdf_budget_exceeded'})
 
 
@@ -38,14 +38,14 @@ class DocumentMetadataResult:
 
 
 def _validate_content_metadata(value):
-    """Strict small content/binding contract, allowing Main's outer annotations."""
+    """Strict structured content contract, allowing Main's outer annotations."""
     if not isinstance(value, dict) or value.get('outcome') != 'retrieved' or value.get('diagnostic') or value.get('error'):
         raise DocumentMetadataFailed('Document extraction failed')
-    metadata, document, diagnostics = (value.get(key) for key in ('metadata', 'document', 'extraction_diagnostics'))
+    metadata, diagnostics = (value.get(key) for key in ('metadata', 'extraction_diagnostics'))
     if not isinstance(metadata, dict) or set(metadata) != {'dates', 'abstract'}:
         raise DocumentMetadataFailed('Invalid Document metadata')
     dates, abstract = metadata['dates'], metadata['abstract']
-    if not isinstance(dates, list) or len(dates) > 256:
+    if not isinstance(dates, list):
         raise DocumentMetadataFailed('Invalid Document dates')
     values = []
     for item in dates:
@@ -64,19 +64,10 @@ def _validate_content_metadata(value):
             or len(abstract.encode('utf-16-le', errors='surrogatepass')) // 2 > 65536
             or re.search(r'[\x00-\x08\x0b\x0c\x0e-\x1f]', abstract)):
         raise DocumentMetadataFailed('Invalid Document abstract')
-    if (not isinstance(diagnostics, list) or len(diagnostics) > 4
+    if (not isinstance(diagnostics, list) or len(diagnostics) > len(_DIAGNOSTICS)
             or any(not isinstance(code, str) or code not in _DIAGNOSTICS for code in diagnostics)
             or len(set(diagnostics)) != len(diagnostics)):
         raise DocumentMetadataFailed('Invalid Document extraction diagnostics')
-    if not isinstance(document, dict) or set(document) != {
-            'pageId', 'processId', 'frameToken', 'documentId', 'navigationGeneration'}:
-        raise DocumentMetadataFailed('Invalid Document binding')
-    for key in ('pageId', 'processId', 'navigationGeneration'):
-        if type(document[key]) is not int or not 0 <= document[key] <= 2**53 - 1:
-            raise DocumentMetadataFailed('Invalid Document binding')
-    for key in ('frameToken', 'documentId'):
-        if not isinstance(document[key], str) or not re.fullmatch(r'[A-Za-z0-9_-]{1,128}', document[key]):
-            raise DocumentMetadataFailed('Invalid Document binding')
     return DocumentMetadataResult(MetadataDelta(ordinary_dates=tuple(values), abstract=abstract), tuple(diagnostics),
         recovery=value.get('recovery'), diagnostics_status=value.get('diagnostics_status'))
 
@@ -105,8 +96,6 @@ def validate_document_pdf_clues(value, *, target_doi=None):
     """Validate fixed native evidence; build a separate persistable projection."""
     if not isinstance(value, dict) or value.get('outcome') != 'retrieved' or value.get('diagnostic') or value.get('error'):
         raise DocumentMetadataFailed('Document PDF extraction failed')
-    # Reuse the exact native envelope validation without requiring content scanning.
-    _validate_content_metadata(value | {'metadata': {'dates': [], 'abstract': None}, 'extraction_diagnostics': []})
     clues = value.get('pdf_clues')
     if not isinstance(clues, dict) or set(clues) != {'status', 'landing_url', 'observed_at',
             'platform', 'content_type', 'identifiers', 'candidates', 'diagnostics'}:
@@ -170,7 +159,7 @@ def validate_document_pdf_clues(value, *, target_doi=None):
 
 
 def validate_document_metadata(value, *, target_doi=None):
-    """Keep Date/Abstract and PDF outcomes independent under one final binding."""
+    """Keep Date/Abstract and PDF outcomes independent from the captured page."""
     if not isinstance(value, dict) or value.get('metadata_status') not in {'complete', 'partial', 'failed'}:
         raise DocumentMetadataFailed('Invalid Document metadata status')
     status = value['metadata_status']
@@ -225,7 +214,7 @@ def collect_document_metadata(context, *, confirmed_article_url=None):
     payload = context.native_payload() | dict(identity=identity,
         wantAbstract=not paper.metadata.abstract and paper.abstract_generation == context.token.write.abstract_generation)
     result = validate_document_metadata(context.execute_native('extract_paper_metadata', payload).result(), target_doi=identity.get('doi'))
-    # Native has already revalidated the live Document and closed its owned page.
+    # Native parsed a detached snapshot and closed its owned page.
     # Only the original attempt/field authority is rechecked by emit, never the page.
     context.emit(result.delta, sequence=1)
     return result

@@ -15,7 +15,7 @@ _STEPS = frozenset({'request', 'page_load', 'resource_ready', 'resource_filter',
                     'recovery_authority', 'page_admission', 'child_page'})
 _CODES = frozenset({'failed', 'canceled', 'timeout', 'site_restricted', 'verification_page',
     'content_access_blocked', 'http_error', 'load_failed', 'renderer_gone', 'page_closed',
-    'page_probe_unconfirmed', 'article_identity_unconfirmed', 'article_identity_conflict',
+    'page_probe_unconfirmed',
     'document_changed', 'navigation_active', 'document_operation_failed', 'doi_mismatch',
     'institution_credentials_rejected', 'carsi_session_expired', 'resource_not_found',
     'ambiguous_resource', 'unverified_official_page', 'unverified_results_page',

@@ -20,8 +20,8 @@ class OriginalNavigation {
     checkCanceled(this.signal);this.verify();
     if(Date.now()>=this.deadline)throw failure('timeout');
     if(!this.browser.operations.has(this.owner))throw failure('document_changed');
-    if(!this.dispatched&&!this.browser.documentCurrent(this.doc))throw failure('document_changed');
-    if(this.boundEntry&&!this.boundSource.contents.mainFrame.framesInSubtree.some(frame=>
+    if(!this.dispatched&&!this.browser.documentFrame({pageId:this.doc.pageId,processId:this.doc.processId,frameToken:this.doc.frameToken}))throw failure('document_changed');
+    if(!this.primary&&this.boundEntry&&!this.boundSource.contents.mainFrame.framesInSubtree.some(frame=>
       frame.frameTreeNodeId===this.boundEntry.request.frameTreeNodeId))throw failure('document_changed');
     if(this.error)throw this.error;
   }
@@ -102,18 +102,14 @@ class OriginalNavigation {
     };
     contents.on('will-frame-navigate',source.targetNavigation);
     source.navigation=(event,url,_inPlace,main)=>{
-      if(!(event.isMainFrame ?? main))return;
+      if(this.primary || event.isInPlace || _inPlace || !(event.isMainFrame ?? main))return;
       url=event.url ?? url;
       if(url==='about:blank'&&tab.id!==this.doc.pageId)return;
       // did-start-navigation precedes will-frame-navigate. Retire only the old
       // read probe here; native initiator/destination checks still gate the request.
       if((!this.continuation||this.continuation.used)&&this.scienceContinuation(url)&&this.scienceReader(source,this.boundEntry,contents.mainFrame))
         this.boundEntry.pendingContinuation=true;
-      if(!this.dispatched||!this.acceptsURL(url)||this.primary)this.fail(failure('document_changed'));
-    };
-    source.replaced=(_event,_url,main,processId,routingId)=>{
-      if(main||this.boundSource===source&&this.boundEntry?.frame.processId===processId
-        &&this.boundEntry.frame.routingId===routingId)this.fail(failure('document_changed'));
+      if(!this.dispatched||!this.acceptsURL(url))this.fail(failure('document_changed'));
     };
     source.loaded=(_event,_main,processId,routingId)=>{
       if(this.error||this.primary)return;
@@ -125,7 +121,7 @@ class OriginalNavigation {
         probe.catch(error=>this.fail(error)).finally(()=>this.probes.delete(probe));
       }
     };
-    contents.on('did-start-navigation',source.navigation);contents.on('did-navigate-in-page',source.replaced);
+    contents.on('did-start-navigation',source.navigation);
     contents.on('did-frame-finish-load',source.loaded);
   }
   addFrame(source,frame) {
@@ -161,6 +157,7 @@ class OriginalNavigation {
   }
   request(details) {
     const source=this.sources.get(details.webContentsId);
+    if(this.primary)return; // A bound DownloadItem owns the transfer, not later page navigation.
     if(!source||!['mainFrame','subFrame'].includes(details.resourceType))return;
     if(details.url==='about:blank')return;
     const entry=source.frames.get(details.frame?.frameToken);
@@ -259,7 +256,7 @@ class OriginalNavigation {
     for(const source of this.sources.values()) {
       source.contents.removeListener('frame-created',source.created);
       source.contents.removeListener('will-frame-navigate',source.targetNavigation);
-      source.contents.removeListener('did-start-navigation',source.navigation);source.contents.removeListener('did-navigate-in-page',source.replaced);
+      source.contents.removeListener('did-start-navigation',source.navigation);
       source.contents.removeListener('did-frame-finish-load',source.loaded);
       if(source.tab.bodyAction===this)source.tab.bodyAction=null;
     }
@@ -283,20 +280,18 @@ async function executeBodyNative(browser,data,{signal,progress=()=>{}}={}) {
     if(!(requested.action==='refresh_form'&&requested.platform==='microbiology'&&requested.rule_id==='R059'
       ||!requested.action&&requested.platform==='sciencedirect'&&requested.rule_id==='R024'))throw failure('document_operation_failed');
     await waitFor(()=>browser.ready,stop,data.deadline_ms);verify=browser.pinPreparedPaperAccess(data);verify();
-    const doc=await browser.openPaperPage(data,data.identity,{role:'article',signal:stop,deadline:data.deadline_ms});
+    let doc=await browser.openPaperPage(data,data.identity,{role:'article',signal:stop,deadline:data.deadline_ms});
     const tab=browser.tabs.get(doc.pageId);
-    let pdf=await browser.readDocument(tab,'pdf',{signal:stop,deadline:data.deadline_ms,args:{readerKind:null}});
+    let pdf=await browser.readDocument(tab,'pdf',{signal:stop,deadline:data.deadline_ms,identity:data.identity,args:{readerKind:null}});
     const hydrationEnd=Math.min(data.deadline_ms,Date.now()+2000);
     while(requested.platform==='sciencedirect'&&pdf.clues.status==='complete'&&!pdf.clues.candidates.length&&Date.now()<hydrationEnd) {
-      if(!browser.documentCurrent(doc)||pdf.documentId!==doc.documentId||pdf.subject!==doc.article.subject)throw failure('document_changed');
       await waitFor(()=>pause(stop,Math.min(200,hydrationEnd-Date.now())),stop,data.deadline_ms);
-      pdf=await browser.readDocument(tab,'pdf',{signal:stop,deadline:data.deadline_ms,args:{readerKind:null}});
+      pdf=await browser.readDocument(tab,'pdf',{signal:stop,deadline:data.deadline_ms,identity:data.identity,args:{readerKind:null}});
     }
-    if(!browser.documentCurrent(doc)||pdf.documentId!==doc.documentId||pdf.subject!==doc.article.subject)throw failure('document_changed');
     let candidate=pdf.clues.candidates.find(item=>item.url===requested.url&&item.action===requested.action&&item.rule_id===requested.rule_id);
     if(!candidate&&requested.action==='refresh_form') {
-      // A stored action is a refresh locator. Only this verified current
-      // Document supplies the unique form, its present action and original body.
+      // A stored action is a refresh locator. This Paper snapshot supplies
+      // the current candidate; dispatch locates its native form and controls.
       const forms=pdf.clues.candidates.filter(item=>item.rule_id==='R059'&&item.action==='refresh_form');
       if(forms.length===1)candidate=forms[0];
     }
@@ -313,7 +308,11 @@ async function executeBodyNative(browser,data,{signal,progress=()=>{}}={}) {
     if(requested.platform==='sciencedirect')try {
       await waitFor(()=>target('https://pdf.sciencedirectassets.com/',browser.bodyTargetResolver),stop,data.deadline_ms);cdnAllowed=true;
     }catch(error) {checkCanceled(stop);if(Date.now()>=data.deadline_ms)throw error;}
-    await browser.confirmArticlePage(data.identity,doc,{signal:stop,deadline:data.deadline_ms});verify();
+    verify();
+    // The action uses its current native source frame; candidate qualification
+    // above remains tied to this Paper's PDF snapshot.
+    const frame=tab.view.webContents.mainFrame;
+    doc={pageId:tab.id,processId:frame.processId,frameToken:frame.frameToken,url:pdf.clues.landing_url,identity:data.identity};
     operation=new OriginalNavigation(browser,doc,candidate,{output,signal:stop,deadline:data.deadline_ms,verify,progress,cdnAllowed});
     prepared=await browser.bodyActions.prepare(doc,{url:candidate.url,action:candidate.action,platform:candidate.platform,rule_id:candidate.rule_id},
       {signal:stop,deadline:data.deadline_ms});
@@ -323,7 +322,7 @@ async function executeBodyNative(browser,data,{signal,progress=()=>{}}={}) {
     if(prepared.targetFrame)operation.addFrame(operation.sources.get(doc.pageId),prepared.targetFrame);
     if(prepared.plan.target==='popup'||prepared.plan.target==='frame'&&!prepared.targetFrame)
       await browser.reserveChildPage({signal:stop,deadline:data.deadline_ms});
-    await prepared.dispatch(()=>operation.dispatch(),error=>operation.fail(error));
+    await prepared.dispatch(plan=>{operation.requestURL=plan.request_url;operation.dispatch();},error=>operation.fail(error));
     primary=await waitFor(()=>operation.received,stop,Math.min(data.deadline_ms,Date.now()+15000));
     const terminal=await primary.terminal; // actual done is never raced with timeout/cancellation
     clearTimeout(timer);
@@ -347,9 +346,10 @@ async function executeBodyNative(browser,data,{signal,progress=()=>{}}={}) {
       const kind=bounded.aborted||Date.now()>=data.deadline_ms?'expired':'cancelled';return {outcome:kind,kind};
     }
     const code=error.diagnostic?.code;
-    if(['verification_page','content_access_blocked','site_restricted','article_identity_conflict','article_identity_unconfirmed'].includes(code)
+    if(['verification_page','content_access_blocked','site_restricted'].includes(code)
       ||code==='http_error'&&[401,403,407,418,429].includes(error.diagnostic.status))
       return {outcome:'failed',kind:'failed',diagnostic_code:'access-blocked',diagnostic:error.diagnostic};
+    if(code==='body_action_unavailable')return {outcome:'failed',kind:'failed',diagnostic_code:'entry-unavailable'};
     const kind=code==='document_changed'?'stale':operation?.dispatched?'local_failure':'failed';
     return {outcome:kind,kind,diagnostic_code:'native-action',diagnostic:error.diagnostic};
   }finally {
