@@ -81,7 +81,7 @@ This copies static assets into ignored `src/allfold/web/static/ui_next/`. The se
 
 The full Translator Runtime has no current production caller and is not assembled.
 Setup and CI no longer fetch vendor sources or assert that retired inventory.
-DocumentRuntime, the isolated Document preload, Browser identity, Prepare and
+DocumentRuntime, the isolated snapshot/Document preload, native frame ownership, Prepare and
 Cloudflare are still used by the native application. Do not remove those helpers
 because a similarly named translation fixture was retired. Existing vendor trees
 and historical source pins remain untouched. Building UI does not package an

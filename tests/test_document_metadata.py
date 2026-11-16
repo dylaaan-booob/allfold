@@ -18,11 +18,9 @@ def pdf_clues(**changes):
         identifiers=[], candidates=[], diagnostics=[]) | changes
 
 def envelope(*, abstract='Background\nA short result.', dates=None, diagnostics=()):
-    return {'outcome': 'retrieved', 'metadata_status': 'partial' if set(diagnostics) & {'abstract_candidate_failed', 'abstract_budget_exceeded'} else 'complete', 'pdf_clues': pdf_clues(), 'metadata': {'dates': dates if dates is not None else [
+    return {'outcome': 'retrieved', 'metadata_status': 'partial' if set(diagnostics) & {'abstract_candidate_failed', 'abstract_budget_exceeded', 'date_scan_failed'} else 'complete', 'pdf_clues': pdf_clues(), 'metadata': {'dates': dates if dates is not None else [
         {'value': '2020-05-02', 'precision': 'day'}], 'abstract': abstract},
         'extraction_diagnostics': list(diagnostics),
-        'document': {'pageId': 2, 'processId': 5, 'frameToken': 'native-token',
-                     'documentId': 'opaque-document', 'navigationGeneration': 1},
         'diagnostics_status': {'available': False, 'incomplete': True}}
 
 
@@ -94,8 +92,8 @@ def test_real_registry_native_payload_and_normal_page_close_preserve_verified_re
         settle(registry, bridge)
 
 
-@pytest.mark.parametrize('diagnostic', ['abstract_candidate_failed', 'abstract_budget_exceeded'])
-def test_partial_abstract_saves_dates_but_branch_remains_failed(tmp_path, diagnostic):
+@pytest.mark.parametrize('diagnostic', ['abstract_candidate_failed', 'abstract_budget_exceeded', 'date_scan_failed'])
+def test_partial_scanner_saves_dates_but_branch_remains_failed(tmp_path, diagnostic):
     bridge = Bridge()
     path, registry, task = start(tmp_path, bridge)
     try:
@@ -349,3 +347,13 @@ def test_invalid_pdf_contract_invalidates_composite_before_any_emit(tmp_path, ch
         assert paper.metadata.abstract is None and not paper.metadata.discovery_facts
     finally:
         settle(registry, bridge)
+
+
+def test_snapshot_dates_have_no_old_count_veto_or_document_envelope():
+    from allfold.application.document_metadata import validate_document_metadata
+    dates = [{'value': f'{year}-01-02', 'precision': 'day'} for year in range(1700, 2000)]
+    value = envelope(dates=dates)
+    assert 'document' not in value
+    result = validate_document_metadata(value)
+    assert len(result.delta.ordinary_dates) == 300
+    assert result.delta.abstract == 'Background\nA short result.'

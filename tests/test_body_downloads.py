@@ -471,7 +471,7 @@ def test_known_reader_cancellation_retains_its_terminal_after_native_cleanup(tmp
         host.shutdown();host.join()
 
 
-@pytest.mark.parametrize('code',['content_access_blocked','site_restricted','article_identity_unconfirmed','article_identity_conflict'])
+@pytest.mark.parametrize('code',['content_access_blocked','site_restricted'])
 def test_native_document_access_barrier_stops_queued_body_alternatives(tmp_path,code):
     from dataclasses import replace
     import time

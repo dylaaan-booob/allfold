@@ -74,8 +74,7 @@ app.whenReady().then(async()=>{
           browser.beginPageLoad(tab,controller.signal,Date.now()+6000);
           const doc=await browser.waitForPage(tab,{signal:controller.signal,deadline:Date.now()+6000});
           assert.equal(replies.length,1);assert.equal(replies[0].outcome,'clicked');
-          const article=await browser.confirmArticlePage({doi:'10.5555/fixture'},doc,{signal:controller.signal,deadline:Date.now()+1000});
-          assert.equal(article.identity.outcome,'confirmed');
+          assert.equal(doc.status,200,'access wait completes after the controlled challenge clears');
           assert.equal(await tabs[0].view.webContents.mainFrame.framesInSubtree.find(frame=>frame.url===frameURL)
             .executeJavaScript('document.querySelector("input").checked'),false);
           send({type:'result',id:current.id,action:current.action,data:{outcome:'Opened'}});

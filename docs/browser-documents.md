@@ -2,7 +2,7 @@
 
 `BrowserRuntime` owns Page/WebContents, task claims and navigation.
 `DocumentRuntime` and its sandboxed, context-isolated preload currently expose
-fixed `binding`, `access`, `article`, `extract` and `pdf` observations. Main checks
+fixed `binding`/`access` observations and `extract`/`pdf` snapshot reads. Main checks
 reply/request, sender and native frame association. No site-facing host IPC,
 Node capability or caller-supplied evaluator is exposed. Selecting a tab does not
 choose a task target. Cancellation, destruction and pending-call cleanup remain
@@ -12,16 +12,33 @@ Public Download uses PDF-only refresh without recollecting Date/Abstract. A
 separate fixed body action hands the original request/item to the body service
 for qualified current forms and ScienceDirect readers. See [body downloads](body-downloads.md).
 
-## Current reading limits and planned changes
+## Detached page snapshots
 
-Current code still rejects same-document URL changes, replaced body/h1/article
-objects and failed repeated article/final-read checks. These are existing
-limitations, not conditions future implementations must preserve. A confirmed
-Paper does not need repeated identity proof at every page-reading boundary.
-The chosen follow-up captures the current rendered HTML, URL and needed values,
-then parses an independent Document. That snapshot path is not implemented here;
-Translator Runtime remains retired. Request/target correlation, cancellation and
-protected Paper writes continue to apply.
+After navigation and access waiting, a fixed controlled read captures the current
+rendered HTML, its URL and the supported ScienceDirect/LWW runtime PDF values in
+one synchronous turn. The isolated preload builds an inert `DOMParser` Document,
+resolves its first `<base href>` against the captured URL (or installs that URL as
+the base), and runs Allfold's fixed rules there. Date/Abstract and PDF clues share
+that input. PDF-only reads skip Date/Abstract entirely. Reader pages capture their
+own snapshots after their source-chain qualification.
+
+HTML and runtime values stay within the renderer/preload. No HTML, cookies,
+site scripts or authentication material crosses host IPC, enters storage or
+appears in diagnostics. The detached Document has no browsing context or host API;
+it neither executes its scripts nor loads resources. No caller evaluator or
+selector is accepted, and Translator Runtime remains retired.
+
+Main accepts a reply only for its pending request and captured sender/process/frame.
+It does not reread the page or compare URL, navigation generation, Document ID or
+DOM node identity after parsing. Later hydration, history changes, reload or page
+closure cannot revoke a received snapshot result. Closure, renderer exit or
+cancellation before a result still fails the pending operation. The original
+Workspace/Paper/attempt and field generations govern persistence.
+
+A missing delayed ScienceDirect toolbar can prompt another PDF-only snapshot
+within the existing task window. Previously captured content survives an optional
+read failure. This does not add a replay, recovery state or snapshot identity gate.
+Tab-wide Solver and access-predicate improvements remain later-stage work.
 
 Current access predicates include broad page markers. Weak strings such as a
 password field, CAPTCHA text or `access denied` in otherwise unrelated content
@@ -40,10 +57,8 @@ classification will be revised with its behavior tests.
   strictly validated Imperva `edet`/incident fields.
   HTTP status comes from the actual native main-frame navigation. No title,
   HTML, script, iframe URL, query, form value or page text is returned.
-- `article`: access markers and limited main-article evidence from one synchronous
-  DOM turn, using scholarly head Meta
-  keys and the scoped SciELO article DOI link locator. Multiple main articles or
-  evidence overflow is unconfirmed; a matching subset never defeats a conflict.
+- `extract`: one detached snapshot for Date/Abstract and PDF facts.
+- `pdf`: one detached snapshot for PDF facts only, optionally for a qualified Reader.
 
 Current probes return typed observations and sanitized diagnostic codes.
 Supported Cloudflare challenges can use the existing Solver; hCaptcha, Imperva
@@ -56,22 +71,18 @@ live-site compatibility guarantee.
 
 `openPaperPage(data, identity, options)` is an internal capability used by
 production metadata/PDF operations, without a standalone public IPC/button. A DOI string or `{doi}` starts
-at `doi.org`; it does not establish the redirected article's identity. DOI-free
+at `doi.org`; Run has already established the Paper identity. DOI-free
 callers must supply an upstream-established `{confirmed_article_url}` relation.
 A request URL alone is insufficient. Established article URLs retain their
-fragment routes during navigation and identity comparison. The owning Workspace
+fragment routes during navigation. The owning Workspace
 branch settles collection; this page helper does not write it.
 
-Current callers navigate through access handling and the article probe before
-reading. `confirmArticlePage` is an existing recheck helper; its repeated use is
-part of the reading limitation above, not a permanent design obligation.
-
-The current article probe uses reliable head Meta and qualified article URLs,
-with explicit platform routing for multi-segment DOI paths. It excludes references,
-recommendations and unrelated frames. Missing/conflicting observations currently
-return `article_identity_unconfirmed` / `article_identity_conflict`; this describes
-the helper, not a requirement to rerun it for an already-confirmed Paper. Reliable
-Paper creation/merging is separately owned by [Paper identity](paper-identity.md).
+Callers navigate through access handling before the fixed snapshot read. Missing,
+repeated or conflicting page DOI Meta and multiple article elements do not deny
+collection. There is no article reauthentication action or final page recheck.
+Candidate-specific DOI/URL, supplement and recommendation exclusions still protect
+PDF selection. Reliable Paper creation/merging is separately owned by
+[Paper identity](paper-identity.md).
 
 ## Solver, recovery and terminal ownership
 
@@ -108,10 +119,10 @@ has not been established, and that old sample is not proof of a current failure.
 
 [Browser Session](browser-session.md) owns original-response routing;
 [Browser pages](browser-pages.md) owns temporary pages, retained access targets
-and WoS Query→Export loans. An ordinary Document registration currently refuses
+and WoS Query→Export loans. An ordinary Document registration refuses
 main-frame form-download navigation; the separate body action supplies supported
-original-response handoff. That limitation is not a requirement to invalidate
-already-bound DownloadItems on incidental page changes.
+original-response handoff. Already-bound DownloadItems follow actual request/item
+results across incidental source-page changes.
 
 Retained host adaptations keep their [third-party notices](third-party.md).
 
@@ -120,7 +131,7 @@ Retained host adaptations keep their [third-party notices](third-party.md).
 The internal authenticated Bridge action is `extract_paper_metadata`, called by a
 captured Workspace branch through `BranchContext.execute_native()` after base
 Paper admission. It has no standalone public extraction button. Date/Abstract and
-independent PDF clues share the current page. The parallel necessary-API branch
+independent PDF clues share one detached snapshot. The parallel necessary-API branch
 has separate resources; only all planned branch results and actual cleanup settle the Paper.
 Foreground Run has its own serial slot and ends independently.
 
@@ -140,8 +151,8 @@ policy. No Service fields are needed for public access.
 The runtime action is `extract` with exactly `{wantAbstract:boolean}`. Other args,
 unknown actions and non-booleans fail before dispatch; the sandboxed preload
 validates them again. `readDocument` forwards these fixed args. It accepts no
-caller-supplied evaluator, selector or webpage request. The pure DOM observation only reads the current Document: no network, page creation,
-navigation, API lookup, click, source-DOM modification or Paper write.
+caller-supplied evaluator, selector or webpage request. The fixed snapshot parser only reads its detached Document: no network, page creation,
+navigation, API lookup, click, live-DOM modification or Paper write.
 
 Successful Main results use:
 
@@ -160,35 +171,29 @@ Successful Main results use:
     "identifiers": [],
     "candidates": [],
     "diagnostics": []
-  },
-  "document": {
-    "pageId": 1,
-    "processId": 2,
-    "frameToken": "opaque-native-token",
-    "documentId": "preload-generated-id",
-    "navigationGeneration": 1
   }
 }
 ```
 
 `metadata` has two fields: valid sorted unique month/day `dates` and a plain-text
 `abstract` or null. Same-month qualified day records suppress the month; distinct
-days remain. The document envelope carries native evidence, without credentials
-or new task/storage authority. Current validators enforce field/count/size budgets;
-those arbitrary numeric caps are not extraction rules to perpetuate.
+days remain. There is no terminal Document binding envelope. Validators check
+structured content and PDF facts; request correlation remains inside Main. Date
+traversal has a local work budget and retains dates found before exhaustion, with
+`date_scan_failed`; it does not discard all dates at a count threshold. Abstract
+size/work failures and malformed JSON-LD remain local diagnostics.
 
 A valid empty DTO is `retrieved`. Fixed local diagnostics distinguish JSON-LD or
 abstract failure from empty success. An independent PDF-reader failure can leave
 valid Date/Abstract data and vice versa; the collection branch reports partial
-failure explicitly. Current final-read/subject validation is covered by the
-limitation above. Normal owned-page cleanup does not retroactively revoke a
-returned result; Python commits using original Workspace/Paper/attempt eligibility.
+failure explicitly. Page changes and normal owned-page cleanup do not
+retroactively revoke a returned result; Python commits using original Workspace/Paper/attempt eligibility.
 
 ### Independent PDF clues and refresh
 
 The Date/Abstract `metadata` contract above stays unchanged. The native envelope
 additionally carries `metadata_status` and independent `pdf_clues` containing
-the actual final `landing_url`, `observed_at`, platform/content type, bounded
+the captured `landing_url`, `observed_at`, platform/content type, bounded
 identifiers, ordered P3/P4 candidates and finite diagnostics. A local metadata
 failure can leave valid PDF facts, and a local PDF failure can leave valid
 Date/Abstract values. Failure remains explicit; a legal complete-empty PDF read
@@ -200,18 +205,17 @@ The fixed runtime `pdf` action accepts only a validated reader kind, never a
 caller-supplied selector/evaluator. It reads Meta in citation-then-fulltext order,
 qualified platform selectors and unambiguous article PDF entrances, with explicit
 supplement/reference/recommendation exclusions. Known ScienceDirect/LWW state
-uses fixed bounded read-only fields; it does not assume isolated world 999 sees
-main-world variables. Explicit platform selectors retain the same supplement,
+uses two fixed read-only main-world fields captured alongside HTML and URL;
+a failed field read cannot erase other snapshot clues. Explicit platform selectors retain the same supplement,
 whole-issue and conflicting article-DOI exclusions as generic entrances. LWW AN
 is taken only from the current article outside peripheral regions and must be
 unique; an ambiguous stored AN set cannot select a reader.
-PDF entry identity reuses the fixed article probe's bounded DOI values and
-recognized scholarly metadata sources, including equivalent duplicate fields.
-The private fixed PDF message carries the existing host-owned Unicode casefold
-data used by article identity; Meta, control DOI and DOI-path comparisons share
-those semantics. Public operation arguments cannot supply normalization data.
-Current validators report overflow rather than returning truncated successful
-facts. Article precollection reads candidates without fetching, probing, clicking
+PDF candidate qualification uses the original Paper DOI when available, otherwise
+unambiguous scholarly Meta or a supported DOI path. These are candidate exclusions,
+not whole-page identity gates. Host-owned Unicode casefold data keeps Meta, control
+DOI and DOI-path comparisons consistent; public arguments cannot supply code or
+normalization data. Existing PDF candidate/count/size limits remain for the later
+Download phase to reassess. Article precollection reads candidates without fetching, probing, clicking
 or submitting them.
 
 `extract_paper_pdf_clues` and Python `read_document_pdf_clues()` provide an
@@ -252,8 +256,7 @@ An article-internal footer remains eligible for dates. The DOM root is the sole
 legal top-level article only when it contains the first legal h1; no article,
 multiple articles or an outside h1 falls back to legal body. Abstract additionally
 excludes explicit recommendations and peripheral UI in that same root. Head Meta
-and JSON-LD remain independent of this root. The host identity probe currently has a separate multiple-article refusal,
-covered by the reading limitation above.
+and JSON-LD remain independent of this root.
 
 Date matching follows source order and preserves continuous inline text. Complete
 li/tr records are indivisible, including nested p/div/td; semantic p/headings,

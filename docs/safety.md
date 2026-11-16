@@ -75,11 +75,13 @@ sandboxed, isolated Document preload remain in use. CARSI credential authority
 applies only to the saved institution and attributable authentication chain.
 
 [Document access](browser-documents.md) owns page reading and Solver behavior.
-Current fixed probes still have extra URL/subject/identity checks; their planned
-replacement does not remove request correlation or credential protection. Capturing
-rendered HTML for independent parsing is an agreed follow-up, not a current
-capability or a reason to restore Translator Runtime. Raw pages and credentials
-stay out of diagnostics and public projections.
+Fixed page extraction captures rendered HTML, URL and the necessary runtime PDF
+values locally, then parses an inert independent Document. Only validated fields
+and PDF facts cross IPC. Request ID, sender/process/frame and original task
+ownership remain enforced; page URL, node replacement and later destruction do not
+invalidate a captured result. Binding/access probes retain their live Document
+association for Login, CARSI, WoS and access handling. Raw pages and credentials
+stay out of diagnostics and public projections. Translator Runtime remains retired.
 
 Saved Service and captured access dependencies determine access authority;
 configuration revisions also serve compare-and-write and diagnostic purposes.

@@ -90,7 +90,7 @@ app.whenReady().then(async()=>{
     const broken=await extract(article('<p>2020-05-02</p>','<script type="application/ld+json">{broken</script>'+ld(scholarly)),false);
     assert.deepEqual(broken.metadata.dates,[{value:'2020-04-02',precision:'day'},{value:'2020-05-02',precision:'day'}]);
     assert.deepEqual(broken.extraction_diagnostics,['json_ld_invalid']);
-    // Algorithm-only layer deliberately bypasses the host article identity gate.
+    // The same fixed snapshot rule handles body fallback through normal Main dispatch.
     const raw=async body=>{page=body;return browser.runTask(signal,{request_id:randomUUID()},async()=>{
       const tab=await browser.newTaskPage({signal,deadline:Date.now()+4000,managed:true});browser.bindTaskPage(tab,signal);
       await browser.navigate(url,{tab,signal,deadline:Date.now()+4000});
@@ -98,7 +98,8 @@ app.whenReady().then(async()=>{
     });};
     assert.deepEqual((await raw(html('<article><p>2020-01-02</p></article><article><p>2020-02-02</p></article>'))).metadata.dates,
       [{value:'2020-01-02',precision:'day'},{value:'2020-02-02',precision:'day'}],'multiple article algorithm falls back to body');
-    await assert.rejects(extract(html('<article><p>2020-01-02</p></article><article><p>2020-02-02</p></article>')),/article_identity_unconfirmed/);
+    assert.deepEqual((await extract(html('<article><p>2020-01-02</p></article><article><p>2020-02-02</p></article>'))).metadata.dates,
+      [{value:'2020-01-02',precision:'day'},{value:'2020-02-02',precision:'day'}]);
     assert.deepEqual((await raw(html('<h1>Outside</h1><p>2020-01-02</p><article><h1>Inside</h1><p>2020-02-02</p></article>'))).metadata.dates,
       [{value:'2020-01-02',precision:'day'},{value:'2020-02-02',precision:'day'}],'first h1 outside article forces body');
     const summary=async(name,body,expected,meta='')=>{
@@ -194,20 +195,42 @@ app.whenReady().then(async()=>{
       };
       try{return await extract(body,wantAbstract);}finally{browser.readDocument=originalRead;}
     };
-    await assert.rejects(changedRead('article',tab=>tab.view.webContents.executeJavaScript('location.reload()')),/document_changed|page_probe_unconfirmed|load_failed/);
-    await assert.rejects(changedRead('extract',tab=>tab.view.webContents.executeJavaScript('document.body.replaceWith(document.body.cloneNode(true))')),/document_changed/);
-    await assert.rejects(changedRead('extract',tab=>tab.view.webContents.loadURL(url)),/document_changed/,'same URL replacement is a different Document');
+    for(const mutate of [
+      tab=>tab.view.webContents.executeJavaScript('document.body.replaceWith(document.body.cloneNode(true));history.pushState({},"","?route=changed#new")'),
+      tab=>tab.view.webContents.executeJavaScript('document.querySelector("h1").replaceWith(document.querySelector("h1").cloneNode(true));document.querySelector("article").replaceWith(document.querySelector("article").cloneNode(true))'),
+      tab=>tab.view.webContents.loadURL(url),
+      tab=>browser.closePage(tab),
+    ]) {
+      const saved=await changedRead('extract',mutate);
+      assert.deepEqual(saved.metadata,{dates:[{value:'2020-05-02',precision:'day'}],abstract:'Verified text.'},
+        'captured fields survive later page changes');
+    }
     await assert.rejects(changedRead('extract',async()=>{for(const operation of native.operations.values())operation.controller.abort();}),/canceled/);
-    const localFault=await changedRead('article',tab=>tab.view.webContents.executeJavaScriptInIsolatedWorld(999,[{code:'Object.defineProperty(Element.prototype,"classList",{get(){throw Error("local fixture fault");}});undefined'}]));
+    const localFault=await changedRead('access',tab=>tab.view.webContents.executeJavaScriptInIsolatedWorld(999,[{code:'Object.defineProperty(Element.prototype,"classList",{get(){throw Error("local fixture fault");}});undefined'}]));
     assert.deepEqual(localFault.metadata,{dates:[{value:'2020-05-02',precision:'day'}],abstract:null});
     assert.deepEqual(localFault.extraction_diagnostics,['abstract_candidate_failed'],'local abstract failure preserves dates');
-    const noAbstractFault=await changedRead('article',tab=>tab.view.webContents.executeJavaScriptInIsolatedWorld(999,[{code:'Object.defineProperty(Element.prototype,"classList",{get(){throw Error("must not scan");}});undefined'}]),article('<p>2020-05-02</p>'),false);
+    const noAbstractFault=await changedRead('access',tab=>tab.view.webContents.executeJavaScriptInIsolatedWorld(999,[{code:'Object.defineProperty(Element.prototype,"classList",{get(){throw Error("must not scan");}});undefined'}]),article('<p>2020-05-02</p>'),false);
     assert.deepEqual(noAbstractFault.metadata,{dates:[{value:'2020-05-02',precision:'day'}],abstract:null});
     assert.deepEqual(noAbstractFault.extraction_diagnostics,[],'false avoids even the failing abstract scanner');
-    await assert.rejects(changedRead('article',tab=>tab.view.webContents.executeJavaScriptInIsolatedWorld(999,[{code:'Document.prototype.querySelectorAll=()=>{throw Error("whole read fixture fault")};undefined'}])),/document_operation_failed/);
-    const scanFailure=await changedRead('article',tab=>tab.view.webContents.executeJavaScriptInIsolatedWorld(999,[{code:'Date.now=(()=>{let n=0;return ()=>n++?6000:0;})();undefined'}]));
-    assert.equal(scanFailure.metadata,null);assert.equal(scanFailure.metadata_status,'failed');
-    assert.deepEqual(scanFailure.extraction_diagnostics,['metadata_extraction_failed']);assert.equal(scanFailure.pdf_clues.status,'complete','independent PDF read survives a failed Date/Abstract scanner');
+    const scanFailure=await changedRead('access',tab=>tab.view.webContents.executeJavaScriptInIsolatedWorld(999,[{code:'Date.now=(()=>{let n=0;return ()=>n++<6?0:6000;})();undefined'}]));
+    assert.equal(scanFailure.metadata_status,'partial');assert.deepEqual(scanFailure.extraction_diagnostics,['date_scan_failed']);
+    assert.deepEqual(scanFailure.metadata,{dates:[{value:'2020-05-02',precision:'day'}],abstract:'Verified text.'},'a local date scan timeout preserves captured dates and independent abstract');
+    assert.equal(scanFailure.pdf_clues.status,'complete','independent PDF read survives a failed date scanner');
+    const manyDates=await extract(article(Array.from({length:300},(_,i)=>'<p>'+String(1700+i)+'-01-02</p>').join('')));
+    assert.equal(manyDates.metadata.dates.length,300,'valid dates are not discarded at the old 256 value boundary');
+    const detached=await changedRead('access',tab=>tab.view.webContents.executeJavaScriptInIsolatedWorld(999,[{code:`
+      const parse=DOMParser.prototype.parseFromString;
+      DOMParser.prototype.parseFromString=function(...args){
+        document.body.innerHTML='<article><h1>Later hydration</h1><p>2022-01-01</p><div class="abstract">Later content.</div></article>';
+        history.replaceState({},'', '?after-capture=1');
+        return parse.apply(this,args);
+      };undefined`}]),article('<p>2020-05-02</p><div class="abstract">Captured text.</div>',
+        '<base href="/assets/"><meta name="citation_pdf_url" content="Body.PDF">'));
+    assert.deepEqual(detached.metadata,{dates:[{value:'2020-05-02',precision:'day'}],abstract:'Captured text.'},'rules read the detached snapshot, not live hydration');
+    assert.equal(detached.pdf_clues.landing_url,url);
+    browser.readDocument=async(tab,action,options)=>{if(action==='extract')await browser.closePage(tab);return originalRead(tab,action,options);};
+    try {await assert.rejects(extract(article('<p>2020-05-02</p>')),/page_closed/,'no successful read exists before capture');}
+    finally {browser.readDocument=originalRead;}
     const empty=await extract(article(''),false);assert.deepEqual(empty.metadata,{dates:[],abstract:null});
     const publicPage=browser.createTab({present:false,user:true});await publicPage.view.webContents.loadURL(url);
     await extract(article('<p>2020-01-02</p>'),false);

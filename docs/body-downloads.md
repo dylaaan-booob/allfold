@@ -69,7 +69,7 @@ Chromium Session receives the first actual reusable PDF request. It does not
 follow an HTTPX PDF GET/HEAD probe. PDF-only refresh uses [Document access](browser-documents.md) and never recollects
 completed Date/Abstract. Known IEEE reader, Oxford same-filename Silverchair CDN
 and ScienceDirect same-PII response/reader rules keep their narrow qualifications.
-Unknown pages are not a crawler, and login/identity/access refusals are not empty
+Unknown pages are not a crawler, and login/access refusals are not empty
 branches. Only the fixed qualified native entries execute actions; inapplicable
 entries are finite condition skips, not pending or successful transfers, and do
 not manufacture `fallback_used`.
@@ -134,10 +134,16 @@ no response is copied or replayed. These platform paths are narrow current
 implementations, not general permission to follow unrelated requests.
 
 `native_paper_body` uses a separate fixed action capability in Main/BrowserRuntime
-and the isolated Document preload. It opens and verifies the current article,
-reads its live R059 form or R024 ScienceDirect entry, then registers before the
-controlled action. A one-shot handoff binds the verified Document to the exact
-original navigation request, frame, owner and item. A named existing form target
+and the isolated Document preload. It opens the Paper entry through access waiting
+and reads PDF-only snapshot clues. Prepare and dispatch locate the current R059 form
+or R024 ScienceDirect target from that candidate; they cache no DOM node or page
+identity. Equivalent duplicate controls, hydration and same-frame history changes
+do not deny the action. Multiple forms must also have equivalent successful
+controls, compared only in the live renderer. A missing current link/form makes
+that candidate unavailable. Native
+forms retain their current successful controls and Session; POST bodies never leave
+the page for reconstruction. The dispatch acknowledgement prepares Main before the
+actual action and binds the exact navigation request, frame, owner and item. A named existing form target
 is resolved to its unique native frame before dispatch. A matching name in
 another Page is refused before action. An absent named target reserves child
 capacity and accepts only a new iframe or popup with that exact native name;
@@ -147,9 +153,9 @@ navigation initiator; creating a child alone grants no download registration. An
 popup registers before its first PDF response; child pages use the same physical
 quotas. The scoped attachment override changes only the qualified navigation's
 headers and retains its response body. Read-only probes stay read-only, and
-unrelated frame activity has no file authority. The current action-frame/source-
-Document invalidation behavior is one of the limitations below; an already-bound
-item need not inherit incidental page changes as a permanent cancellation rule.
+unrelated frame activity has no file authority. Once a DownloadItem is bound, its transfer follows the actual item/request result;
+subsequent source-page navigation or control removal cannot revoke it. New requests
+cannot acquire the item by reusing a URL or frame name.
 
 The unique Session listener synchronously sets the managed save path, reports
 bounded progress and waits for actual DownloadItem terminal. Interrupted updates

@@ -178,8 +178,7 @@ def _document_candidates(reservation, repository, candidate, response=None):
             value = context.native[-1].result() if context.native else None
             diagnostic = value.get('diagnostic', {}) if isinstance(value, dict) else {}
             if isinstance(diagnostic, dict):
-                blocked = (diagnostic.get('code') in {'verification_page','content_access_blocked','site_restricted',
-                        'article_identity_unconfirmed','article_identity_conflict'}
+                blocked = (diagnostic.get('code') in {'verification_page','content_access_blocked','site_restricted'}
                     or diagnostic.get('code') == 'http_error' and diagnostic.get('status') in {401,403,407,418,429})
     finally:
         try:
@@ -259,8 +258,7 @@ class _BodyDiscoveryIO:
             value = self.context.native[-1].result() if self.context.native else None
             diagnostic = value.get('diagnostic', {}) if isinstance(value, dict) else {}
             if isinstance(diagnostic, dict) and (diagnostic.get('code') in {
-                    'verification_page', 'content_access_blocked', 'site_restricted',
-                    'article_identity_unconfirmed', 'article_identity_conflict'}
+                    'verification_page', 'content_access_blocked', 'site_restricted'}
                     or diagnostic.get('code') == 'http_error' and diagnostic.get('status') in {401,403,407,418,429}):
                 raise _BodyAccessBlocked() from None
             raise
