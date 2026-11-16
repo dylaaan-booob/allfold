@@ -511,7 +511,14 @@ class BrowserRuntime {
       throw new BrowserFailure('navigation','navigation_active');
   }
   waitForCooldown(url,options={}) {
-    return this.cooldown.wait(url,{report:this.operation?.recordRecovery,...options});
+    const contents=this.tabs.get(options.pageId)?.view.webContents;
+    if(!contents)return this.cooldown.wait(url,{report:this.operation?.recordRecovery,...options});
+    const closed=new AbortController(),stop=()=>closed.abort(new BrowserFailure('navigation','page_closed'));
+    contents.once('destroyed',stop);
+    if(contents.isDestroyed())stop();
+    return this.cooldown.wait(url,{report:this.operation?.recordRecovery,...options,
+      signal:AbortSignal.any([options.signal,closed.signal].filter(Boolean))})
+      .finally(()=>contents.removeListener('destroyed',stop));
   }
   reportPage(level,event,tab,details={}) {
     const snapshot=associationLogContext(tab.association,tab.id,tab.navigation?.generation);

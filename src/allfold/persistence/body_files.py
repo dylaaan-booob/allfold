@@ -6,11 +6,12 @@ write is allowed until its descriptor and directory identities match.
 """
 from contextlib import ExitStack
 import os
+import re
 import ctypes
 import sys
 from pathlib import Path
 import stat
-from uuid import UUID
+from uuid import UUID, uuid4
 
 from allfold.persistence.library_models import OutputOwnership
 from allfold.persistence.library_database import UnsafeLibraryPath
@@ -117,13 +118,18 @@ class ManagedBodyFiles:
     def _validate_names(self, proof):
         temporary, target = self._names()
         if proof.native_directory is not None:
-            temporary = f'{self.paper_id}.{self.attempt}.native/body.part'
+            match = re.fullmatch(r'Documents/\.downloads/(' + re.escape(f'{self.paper_id}.{self.attempt}')
+                + r'(?:\.[a-f0-9]{32})?\.native/body\.part)', proof.temporary)
+            if match is None:
+                raise UnsafeLibraryPath('Native output does not belong to this Paper/attempt')
+            temporary = match[1]
         if (proof.temporary != f'Documents/.downloads/{temporary}' or proof.target != f'Documents/{target}'):
             raise UnsafeLibraryPath('Output does not belong to this Paper/attempt')
         return temporary, target
 
     def _native(self, staging, proof):
-        name = f'{self.paper_id}.{self.attempt}.native'
+        temporary, _ = self._validate_names(proof)
+        name = temporary.split('/')[0]
         descriptor = self._directory(name, staging)
         info = os.fstat(descriptor)
         live = os.stat(name, dir_fd=staging, follow_symlinks=False)
@@ -180,7 +186,7 @@ class ManagedBodyFiles:
 
         Electron 45 replaces an existing save leaf, and can remove a cancelled
         leaf after done. A native attempt therefore never shares its pathname
-        with either a placeholder or a later attempt.
+        with a placeholder, later candidate or later attempt.
         """
         documents, staging, disposal = self._directories()
         _, target = self._names()
@@ -190,7 +196,7 @@ class ManagedBodyFiles:
             pass
         else:
             raise FileExistsError('Managed body target already exists')
-        name = f'{self.paper_id}.{self.attempt}.native'
+        name = f'{self.paper_id}.{self.attempt}.{uuid4().hex}.native'
         os.mkdir(name, mode=0o700, dir_fd=staging)
         descriptor = self._directory(name, staging)
         proof = OutputOwnership(temporary=f'Documents/.downloads/{name}/body.part', target=f'Documents/{target}',
@@ -287,11 +293,11 @@ class ManagedBodyFiles:
             self._remove_native(staging, disposal, proof)
 
     def _remove_native(self, staging, disposal, proof):
-        name = f'{self.paper_id}.{self.attempt}.native'
         directory = self._native(staging, proof)
+        name = proof.temporary.split('/')[-2]
         if os.listdir(directory):
             raise UnsafeLibraryPath('Native output contains unknown objects')
-        slot = f'{self.paper_id}.{self.attempt}.native.removed'
+        slot = name + '.removed'
         _move_exclusive(name, slot, staging, disposal)
         moved = os.stat(slot, dir_fd=disposal, follow_symlinks=False)
         if not stat.S_ISDIR(moved.st_mode) or identity(moved) != proof.native_directory:

@@ -337,37 +337,30 @@ def _run(reservation, request, progress):
                     capabilities = frozenset(name for name, secret in dict(options.get('credentials', ())).items() if secret)
                     selected = PdfRuleInputs(request.target, credentials=capabilities)
                     transferred = {}
-                    physical_attempts = 0
                     def consume(candidate):
-                        nonlocal result, physical_attempts
+                        nonlocal result
                         candidate_result, output, final_url = _consume(reservation, repository, files, candidate, progress)
                         result = BodyResult(candidate_result.kind, candidate_result=candidate_result)
-                        if candidate_result.kind != 'skipped':
-                            physical_attempts += 1
-                        reason = candidate_result.diagnostic or ('transferred' if candidate_result.transfer_complete
-                            else 'access-blocked' if candidate_result.response is not None and access_limited(candidate_result.response)
-                            else 'response-observed' if candidate_result.kind == 'response' else candidate_result.kind)
-                        if not candidate_result.transfer_complete:
-                            _record_source(reservation, candidate.stage, candidate.rule_id, reason, physical_attempts,
-                                origin=candidate.url)
                         if output is not None:
                             transferred.update(output=output, final_url=final_url)
                         if candidate_result.pdf_type and candidate_result.transfer_complete:
                             timer.cancel()
                             timer.join()
                         return candidate_result
-                    discovery = PdfDiscovery(request.target, facts=request.facts, inputs=selected, io=io,
+                    coordinator = PdfDiscovery(request.target, facts=request.facts, inputs=selected, io=io,
                         candidates=request.candidates, guard=lambda: registry._guard(reservation, repository),
-                        cancel_event=reservation.cancel_event, deadline=reservation.deadline).run(consume)
-                    for stage, rule, reason in discovery.diagnostics:
-                        _record_source(reservation, stage, rule, reason, physical_attempts, fallback=discovery.fallback_used)
+                        cancel_event=reservation.cancel_event, deadline=reservation.deadline,
+                        observe=lambda value: _record_source(reservation, value['stage'], value['rule'], value['reason'],
+                            value['attempt'], origin=value['origin'], fallback=value['fallback']))
+                    discovery = coordinator.run(consume)
                     if discovery.status == 'transferred':
                         saved = complete_attempt(reservation, repository, files, transferred['output'],
                             source_url=_source_projection(transferred['final_url']), pdf_source=discovery.pdf_source,
                             fallback_used=discovery.fallback_used)
                         result = BodyResult('completed', saved, CandidateResult.pdf(transfer_complete=True))
                         _record_source(reservation, discovery.pdf_source, discovery.candidate.rule_id, 'transferred',
-                            physical_attempts, origin=transferred['final_url'], fallback=discovery.fallback_used)
+                            coordinator.source_attempt,
+                            origin=transferred['final_url'], fallback=discovery.fallback_used)
                     elif discovery.status in {'cancelled', 'stale', 'expired', 'local-failure'}:
                         result = BodyResult(discovery.status.replace('-', '_'), candidate_result=result.candidate_result)
                     elif discovery.status == 'exhausted' and any(reason == 'native-unsupported'

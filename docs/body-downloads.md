@@ -189,21 +189,21 @@ optional: a terminal DTO can supply the first actual inode observation.
 At actual item completion, the verified no-follow output descriptor supplies the
 same single five-byte type observation. MIME and filenames are only hints;
 non-HTML qualified navigation responses may become managed items regardless of
-MIME, while HTML remains available to the Reader. A non-PDF item is an owned
+MIME. Fixed form destinations also retain HTML-mislabeled PDF bytes through the original item; actual Reader HTML remains available to its Browser navigation. A non-PDF item is an owned
 candidate failure and its temporary output is cleaned before another source.
 Only a normal completed PDF item with verified actual output enters the common
 publication/SQLite path. A filename, viewer display or `will-download`
 event alone cannot complete the Paper.
 
 Native output reserves an exclusive `0700` directory at
-`Documents/.downloads/<paper UUID>.<attempt>.native/` and initially leaves
+`Documents/.downloads/<paper UUID>.<attempt>.<physical-output UUID>.native/` and initially leaves
 `body.part` absent. Chromium does not promise to reuse a precreated stream inode;
 Main observes its actual regular-file inode and Python independently checks it
 before publication. Before any inode is adopted, a progress observation may see
 Chromium's empty destination reservation already unlinked (`nlink=0`); it remains
 pending and supplies no output proof. Final output and every observation after
 adoption still require the same regular, singly linked inode. Each attempt has a
-distinct path. Directory/file replacement,
+distinct path for each physical native candidate, so a cancelled item cannot later unlink a fallback candidate's output. Existing recorded temporary capabilities remain eligible only for exact owned cleanup. Directory/file replacement,
 symlinks, unrelated links and unknown objects still cause application refusal;
 final body publication remains no-clobber. Application cleanup never deliberately
 unlinks an unproved replacement.
@@ -365,8 +365,9 @@ temporary-profile Electron, controlled HTTP and shell adapters. Public stream,
 public original-item composition and rendered reader evidence are distinct from
 real-site and OS effects. Actual default-app/file-manager effects, real
 publishers/institution sessions/proxies/CDNs and manual challenges require
-separate acceptance and task-specific authorization. Source observations expose only phase/rule, fixed reason, origin, physical attempt
-index and whether a later candidate was actually attempted. The current registry
+separate acceptance and task-specific authorization. Source observations expose only phase/rule, fixed reason, origin, physical candidate-path
+index and whether a later candidate was actually attempted. Reader/redirect continuation
+and same-candidate retries retain the same index. The current registry
 retains 64 recent observations; diagnostics retains 256 in-memory validated
 observations for explicit recent export, without blocking the worker on diagnostic
 file I/O. These extra observations expire on restart/Logs Reset; normal native

@@ -5,7 +5,7 @@ from urllib.parse import urlsplit
 
 from allfold.url_safety import normalize_public_http_url
 from allfold.pdf_facts import (PdfDiscoveryFacts, PdfIdentifier, PdfRefreshLocator,
-    persistent_pdf_candidate, stable_discovery_url)
+    persistent_pdf_candidate, stable_discovery_url, bounded_discovery_facts)
 
 from allfold.application.collection_runtime import BranchSpec
 from allfold.persistence.library_models import MetadataDelta, normalize_ordinary_dates
@@ -144,7 +144,7 @@ def validate_document_pdf_clues(value, *, target_doi=None):
             persisted.append(persistent_pdf_candidate(refresh_kind='document-pdf', landing_url=landing, **fields))
         if any(not isinstance(item, dict) or set(item) != {'kind', 'value', 'rule_id'} for item in clues['identifiers']):
             raise ValueError('Invalid identifiers')
-        facts = PdfDiscoveryFacts(source='document', capability='document-pdf', status=clues['status'],
+        facts = bounded_discovery_facts(source='document', capability='document-pdf', status=clues['status'],
             observed_at=clues['observed_at'], target_doi=target_doi,
             landing_url=stable_discovery_url(landing), platform=clues['platform'], content_type=clues['content_type'],
             identifiers=tuple(PdfIdentifier(**item) for item in clues['identifiers']), candidates=tuple(persisted),

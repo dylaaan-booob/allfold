@@ -65,7 +65,7 @@ def json_sample(body, *, partial=False, report=lambda code: None):
 
 def _hidden_markup(node):
     attrs = node['attrs']
-    return ('hidden' in attrs or (attrs.get('aria-hidden') or '').strip().lower() == 'true'
+    return (node.get('unsafe_scope') or 'hidden' in attrs or (attrs.get('aria-hidden') or '').strip().lower() == 'true'
         or re.search(r'(?:^|;)\s*(?:display\s*:\s*none|visibility\s*:\s*(?:hidden|collapse))\b', attrs.get('style') or '', re.I))
 
 
@@ -80,10 +80,12 @@ class _SmallHTML(HTMLParser):
         if len(self.nodes) >= 4096 or len(self.stack) >= 64:
             self.partial = True
             raise ValueError('Response parse budget exceeded')
+        unsafe_scope = any(name in {'class', 'id', 'data-doi', 'role', 'style', 'hidden', 'aria-hidden'}
+            and len(value or '') > 8192 for name, value in attrs)
         if any(len(value or '') > 8192 for _, value in attrs):
             self.partial = True
             attrs = [(name, value) for name, value in attrs if len(value or '') <= 8192]
-        node = {'tag': tag, 'attrs': dict(attrs), 'text': '', 'parents': tuple(self.stack)}
+        node = {'tag': tag, 'attrs': dict(attrs), 'text': '', 'parents': tuple(self.stack), 'unsafe_scope': unsafe_scope}
         self.nodes.append(node)
         if tag not in {'meta', 'link', 'img', 'br', 'hr', 'input', 'embed', 'source', 'base', 'area', 'wbr', 'param', 'col', 'frame'}:
             self.stack.append(node)
@@ -105,6 +107,8 @@ class _SmallHTML(HTMLParser):
                 remaining = 131072 - len(node['text'])
                 node['text'] += data[:remaining]
                 self.partial |= len(data) > remaining
+                if len(data) > remaining:
+                    node['unsafe_scope'] = True
 
 
 def _reader_kind(candidate, actual):
@@ -222,6 +226,14 @@ def _body_entry(node, base, doi, attribute='href'):
     return not matched or valid_doi(matched[1]) == doi
 
 
+def oxford_citation(url):
+    actual = urlsplit(url)
+    query = parse_qs(actual.query)
+    return (actual.hostname == 'academic.oup.com' and actual.path == '/Citation/Download'
+        and query.get('resourceType') == ['3'] and re.fullmatch(r'[0-9]{1,16}',
+            next(iter(query.get('resourceId', ())), '')) is not None)
+
+
 def parse_current_response(candidate, response, *, report=lambda code: None):
     if response.partial:
         report('partial-response')
@@ -265,9 +277,7 @@ def parse_current_response(candidate, response, *, report=lambda code: None):
         except (ValueError, AttributeError, TypeError):
             return ()
     # This citation behavior belongs exclusively to Oxford's qualified endpoint.
-    if (actual.hostname == 'academic.oup.com' and actual.path == '/Citation/Download'
-            and parse_qs(actual.query).get('resourceType') == ['3']
-            and re.fullmatch(r'[0-9]{1,16}', next(iter(parse_qs(actual.query).get('resourceId', ())), ''))):
+    if oxford_citation(response.url):
         match = re.search(r'\beprint\s*=\s*(?:\{([^{}]+)\}|"([^"]+)")', text, re.I)
         value = (match[1] or match[2]).strip() if match else None
         # Explicit eprint must be a PDF entry, not the citation's article URL.
@@ -284,6 +294,7 @@ def parse_current_response(candidate, response, *, report=lambda code: None):
         parser.partial = True
     if parser.partial:
         report('partial-response')
+    nodes = [node for node in parser.nodes if not any(owner.get('unsafe_scope') for owner in (*node['parents'], node))]
     kind = _reader_kind(candidate, response.url)
     values = []
     def add(value, **extra):
@@ -291,8 +302,8 @@ def parse_current_response(candidate, response, *, report=lambda code: None):
         if item and all(item.url != old.url for old in values):
             values.append(item)
     if kind:
-        frames = [node for node in parser.nodes if node['tag'] == 'frame']
-        for node in parser.nodes:
+        frames = [node for node in nodes if node['tag'] == 'frame']
+        for node in nodes:
             tag, attrs = node['tag'], node['attrs']
             if tag == 'meta' and attrs.get('http-equiv', '').lower() == 'refresh' and kind in {'sciencedirect', 'ieee'}:
                 match = re.fullmatch(r'\s*\d+(?:\.\d+)?\s*;\s*url\s*=\s*[\'"]?([^\'"]+)[\'"]?\s*', attrs.get('content', ''), re.I)
@@ -318,20 +329,20 @@ def parse_current_response(candidate, response, *, report=lambda code: None):
                         if kind == 'sciencedirect' else data.get('pdfDownloadDetails', {}).get('pdfUrl'))
                     if isinstance(value, str):
                         add(value, **({'referer': response.url} if kind == 'lww' else {}))
-                except (ValueError, AttributeError, TypeError):
-                    pass
+                except (ValueError, AttributeError, TypeError, RecursionError):
+                    report('parse-failed')
         if kind == 'optica':
             add(next(iter(parse_qs(actual.query).get('gotourl', ())), None))
         return tuple(values)
     # HTTP article HTML is eligible only with exact scholarly DOI evidence in
     # this response. Native article reads retain their stronger live binding.
-    dois = {valid_doi(node['attrs'].get('content')) for node in parser.nodes
+    dois = {valid_doi(node['attrs'].get('content')) for node in nodes
         if node['tag'] == 'meta' and (node['attrs'].get('name') or node['attrs'].get('property', '')).lower()
         in {'citation_doi', 'prism.doi', 'dc.identifier.doi'} and any(p['tag'] == 'head' for p in node['parents'])}
     if dois != {candidate.target.identity_doi} or not candidate.target.identity_doi:
         return ()
     for name in ('citation_pdf_url', 'fulltext_pdf_url'):
-        for node in parser.nodes:
+        for node in nodes:
             if (node['tag'] == 'meta' and any(p['tag'] == 'head' for p in node['parents'])
                     and (node['attrs'].get('name') or node['attrs'].get('property', '')).lower() == name):
                 add(node['attrs'].get('content'))
@@ -341,7 +352,7 @@ def parse_current_response(candidate, response, *, report=lambda code: None):
             for root in ('rupress.org', 'ashpublications.org', 'arvojournals.org'))
     atypon = host in {'onlinelibrary.wiley.com', 'journals.sagepub.com', 'www.tandfonline.com',
         'www.annualreviews.org', 'pubs.aiaa.org', 'www.liebertpub.com', 'www.worldscientific.com', 'epubs.siam.org'}
-    for node in parser.nodes:
+    for node in nodes:
         tag, attrs = node['tag'], node['attrs']
         label = node['text'] + ' ' + attrs.get('title', '') + ' ' + attrs.get('href', '')
         if not _body_entry(node, response.url, candidate.target.identity_doi,
@@ -373,7 +384,7 @@ def parse_current_response(candidate, response, *, report=lambda code: None):
     # Only one unambiguous main-article PDF entrance. Other article/issue and
     # supplement links are excluded before deciding ambiguity.
     generic = []
-    for node in parser.nodes:
+    for node in nodes:
         if node['tag'] != 'a' or not _body_entry(node, response.url, candidate.target.identity_doi) or not any(p['tag'] in {'article', 'main'} for p in node['parents']):
             continue
         attrs = node['attrs']

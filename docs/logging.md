@@ -48,7 +48,7 @@ actual settlement boundary; it adds no public Download history product. The
 [discovery specification](pdf-source-discovery.md) defines stop/fallback semantics.
 
 `pdf_source_result` adds fixed source phase/rule/reason, origin-only location,
-physical attempt index and known fallback outcome. The current registry exposes
+physical candidate-path index and known fallback outcome; Reader/redirect continuation retains its index. The current registry exposes
 64 recent observations with whether a later physical candidate was attempted.
 Diagnostics buffers 256 validated observations for explicit export, using a small
 separate memory lock so file/export I/O cannot retain a Download worker. This

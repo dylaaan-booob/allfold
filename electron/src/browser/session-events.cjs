@@ -167,7 +167,7 @@ class SharedSessionEvents {
     try{if(entry.validate()===false)return;}catch(_){return;}
     const type=Object.entries(state.responseHeaders || {}).find(([name])=>name.toLowerCase()==='content-type')?.[1];
     const mime=Array.isArray(type)&&type.length===1?type[0].split(';')[0].trim().toLowerCase():'';
-    if(entry.bodyContent ? ['text/html','application/xhtml+xml'].includes(mime) : !entry.inlineMimeTypes.includes(mime))return;
+    if(entry.bodyContent ? entry.htmlReader&&['text/html','application/xhtml+xml'].includes(mime) : !entry.inlineMimeTypes.includes(mime))return;
     state.responseHeaders={...Object.fromEntries(Object.entries(state.responseHeaders)
       .filter(([name])=>name.toLowerCase()!=='content-disposition')),'Content-Disposition':['attachment']};
   }

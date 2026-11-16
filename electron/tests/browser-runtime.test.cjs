@@ -1074,6 +1074,19 @@ test('Paper page-load timeout replaces the provisional page without renewing the
   assert.equal(recovery.at(-1).recovery_stop,'budget');
 });
 
+test('closing a manual page releases its long server cooldown without a new local deadline',async t=>{
+  const {BrowserRuntime}=fixture(t);
+  let waiting;const entered=new Promise(resolve=>{waiting=resolve;});
+  const browser=new BrowserRuntime({recoveryTiming:{now:()=>1000,pause:(signal,ms)=>new Promise((_resolve,reject)=>{
+    waiting(ms);signal.addEventListener('abort',()=>reject(signal.reason),{once:true});
+  })}});
+  t.after(()=>browser.close());await browser.ready;
+  const tab=browser.createTab({user:true});browser.cooldown.observe('https://publisher.example/limited',429,'120');
+  const pending=browser.waitForCooldown('https://publisher.example/limited',{pageId:tab.id});
+  const stopped=assert.rejects(pending,{diagnostic:{stage:'navigation',code:'page_closed'}});
+  assert.equal(await entered,120000);await browser.closePage(tab,'user');await stopped;
+});
+
 test('the existing Session hook gates only matching entry origins and retains an extension after waiter cancellation',async t=>{
   t.mock.timers.enable({apis:['Date'],now:Date.parse('Tue, 10 Nov 2026 09:00:00 GMT')});
   const {BrowserRuntime,partition}=fixture(t);

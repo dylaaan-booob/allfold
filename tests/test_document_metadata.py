@@ -24,6 +24,20 @@ def envelope(*, abstract='Background\nA short result.', dates=None, diagnostics=
         'diagnostics_status': {'available': False, 'incomplete': True}}
 
 
+def test_pdf_persistence_capacity_keeps_fields_and_partial_candidates():
+    from allfold.application.document_metadata import validate_document_metadata
+    value=envelope(abstract='Observed abstract.')
+    value['pdf_clues']['candidates']=[{'stage':'P3','rule_id':'GENERIC','field':'citation_pdf_url',
+        'url':f'https://cdn.example.org/body-{index}.pdf'} for index in range(400)]
+    assert len(__import__('json').dumps(value['pdf_clues']).encode())<65536
+    result=validate_document_metadata(value,target_doi='10.5555/formal')
+    facts,=result.delta.discovery_facts
+    assert result.delta.abstract=='Observed abstract.' and result.delta.ordinary_dates
+    assert facts.status=='partial' and 'overflow' in facts.diagnostics
+    assert facts.candidates and len(facts.model_dump_json().encode())<=65536
+    assert len(facts.candidates)<400
+
+
 class Bridge:
     def __init__(self):
         self.started = Event()

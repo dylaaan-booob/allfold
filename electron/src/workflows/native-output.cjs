@@ -9,7 +9,8 @@ class NativeOutput {
     if(!/^[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12}$/.test(data.paper_id)
       ||!Number.isSafeInteger(data.attempt)||data.attempt<1||!Number.isSafeInteger(data.deadline_ms)
       ||!path.isAbsolute(this.root)||path.normalize(this.root)!==this.root||!p||p.file!==null
-      ||p.temporary!==`Documents/.downloads/${data.paper_id}.${data.attempt}.native/body.part`
+      ||typeof p.temporary!=='string'
+      ||!new RegExp(`^Documents/\\.downloads/${data.paper_id}\\.${data.attempt}\\.[a-f0-9]{32}\\.native/body\\.part$`).test(p.temporary)
       ||p.target!==`Documents/${data.paper_id}.pdf`)throw failure();
     this.filename=path.join(this.root,p.temporary);this.directory=path.dirname(this.filename);this.file=null;
     this.check();this.absent();

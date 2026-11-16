@@ -73,6 +73,35 @@ def test_partial_json_preserves_complete_matching_records_before_unrelated_tail(
         assert inputs.identifiers == (('article_number','123456'),)
 
 
+@pytest.mark.parametrize('attribute',['class','id','data-doi'])
+def test_oversized_exclusion_or_identity_attribute_never_qualifies_foreign_pdf(attribute):
+    from allfold.pdf_responses import parse_current_response
+    paper=target('www.nature.com')
+    candidate=PdfCandidate(paper,'P3','GENERIC','nature','https://www.nature.com/articles/target')
+    marker='related ' if attribute!='data-doi' else '10.9999/other'
+    body=('<head><meta name="citation_doi" content="10.1234/AbC">'
+        '<meta name="citation_pdf_url" content="https://cdn.example.org/target.pdf"></head>'
+        '<div '+attribute+'="'+marker+'x'*10000+'"><a data-track-action="download pdf" href="https://cdn.example.org/other.pdf">PDF</a></div>').encode()
+    result=parse_current_response(candidate,CurrentResponse(candidate.url,'text/html',body))
+    assert [item.url for item in result]==['https://cdn.example.org/target.pdf']
+
+
+@pytest.mark.parametrize('mime',['text/plain','application/x-bibtex'])
+def test_oxford_citation_text_is_parsed_before_actual_pdf_transfer(mime):
+    seen=[]
+    def handle(request):
+        seen.append(str(request.url))
+        if len(seen)==1:return httpx.Response(200,headers={'content-type':mime},text='@article{x, eprint={https://cdn.example.org/body.pdf}}')
+        return httpx.Response(200,headers={'content-type':'application/octet-stream'},content=b'%PDF-fixture')
+    paper=target('academic.oup.com')
+    candidate=PdfCandidate(paper,'P2','R020','oup','https://academic.oup.com/Citation/Download?resourceId=123&resourceType=3&citationFormat=2')
+    with client(handle) as http:
+        result=PdfDiscovery(paper,candidates=(candidate,)).run(lambda c:http.consume(c,
+            transfer=lambda response,_:CandidateResult.pdf(transfer_complete=response.read().startswith(b'%PDF-'))))
+    assert result.status=='transferred' and result.pdf_source=='P2' and not result.fallback_used
+    assert seen==[candidate.url,'https://cdn.example.org/body.pdf']
+
+
 @pytest.mark.parametrize('mime',['application/pdf','application/octet-stream','','text/plain'])
 def test_read_only_possible_pdf_does_not_consume_body_for_type_identification(mime):
     class Stream(httpx.SyncByteStream):

@@ -235,6 +235,10 @@ def test_current_ieee_reader_response_finishes_the_same_body_attempt(tmp_path):
         assert result.status=='completed'
         assert (workspace/result.paper.body.relative_path).read_bytes()==b'body'
         assert result.paper.collection_status=='not_started'
+        from allfold.application.body_downloads import BodyDownloadService
+        observations=BodyDownloadService(host).projection(result.paper)['source_observations']
+        assert {item['pdf_attempt'] for item in observations}=={1}
+        assert not any(item['subsequent_attempted'] for item in observations)
     finally:
         if hasattr(bridge,'result') and not bridge.result.done():
             bridge.result.set_result(dict(kind='cancelled',outcome='cancelled'))

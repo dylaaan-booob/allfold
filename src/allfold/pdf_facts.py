@@ -211,7 +211,7 @@ def merge_discovery_facts(existing, incoming):
             candidates = tuple(unique)
         identifiers = _ordered(preferred.identifiers, other.identifiers)
         links = _ordered(preferred.links, other.links)
-        merged = _snapshot(**({name: getattr(preferred, name) for name in type(preferred).model_fields} | {
+        merged = bounded_discovery_facts(**({name: getattr(preferred, name) for name in type(preferred).model_fields} | {
             'candidates': candidates, 'identifiers': identifiers, 'links': links,
             'landing_url': preferred.landing_url or other.landing_url,
             'target_doi': preferred.target_doi or other.target_doi,
@@ -223,7 +223,7 @@ def merge_discovery_facts(existing, incoming):
     return tuple(output.values())
 
 
-def _snapshot(**values):
+def bounded_discovery_facts(**values):
     groups = {name: values.pop(name, ()) for name in ('candidates', 'identifiers', 'links')}
     snapshot = PdfDiscoveryFacts(**values)
     overflow = False
@@ -331,7 +331,7 @@ def openalex_discovery_facts(raw, observed_at):
             diagnostics.append('invalid-url')
     if not complete:
         diagnostics.append('incomplete-response')
-    return _snapshot(source='openalex', capability='openalex-locations',
+    return bounded_discovery_facts(source='openalex', capability='openalex-locations',
         status='complete' if complete else 'partial', observed_at=observed_at,
         target_doi=normalize_external_id('doi', raw.get('doi')),
         target_openalex=normalize_external_id('openalex', raw.get('id')),
@@ -401,7 +401,7 @@ def crossref_discovery_facts(raw, observed_at):
             diagnostics.append('invalid-url')
     if not complete:
         diagnostics.append('incomplete-response')
-    return _snapshot(source='crossref', capability='crossref-links',
+    return bounded_discovery_facts(source='crossref', capability='crossref-links',
         status='complete' if complete else 'partial', observed_at=observed_at,
         target_doi=normalize_external_id('doi', raw.get('DOI')),
         content_type={'journal-article': 'journal-article', 'proceedings-article': 'conference-paper',

@@ -152,7 +152,7 @@ class PdfDiscovery:
     """
     def __init__(self, target, *, facts=(), inputs=None, io=None, cancel_event=None,
                  guard=lambda: None, deadline=None, monotonic=time.monotonic,
-                 max_retries=1, candidates=None):
+                 max_retries=1, candidates=None, observe=None):
         if not isinstance(target, PdfTarget) or inputs is not None and inputs.target != target:
             raise ValueError('Original PDF target binding is required')
         if not isinstance(facts, tuple) or any(not isinstance(f, PdfDiscoveryFacts) for f in facts):
@@ -179,6 +179,32 @@ class PdfDiscovery:
         self._document_attempted = False
         self._initial = tuple(candidates) if candidates is not None else None
         self._consumed = 0
+        self._observe = observe
+        self._source_attempt, self._lineage = 0, None
+        self._current_candidate = None
+
+    @property
+    def source_attempt(self):
+        return self._source_attempt
+
+    def _observation(self, stage, rule, reason, candidate=None):
+        if self._observe is None:
+            return
+        if candidate is None and self._current_candidate is not None:
+            current = self._current_candidate
+            if (current.stage, current.rule_id) == (stage, rule):
+                candidate = current
+        value = dict(stage=stage, rule=rule, reason=reason, attempt=self._source_attempt,
+            fallback=self._fallback, origin=candidate.url if candidate is not None else None)
+        try:
+            self._observe(value)
+        except Exception:
+            # Telemetry alone cannot change source/transport outcomes.
+            pass
+
+    def _note(self, stage, rule, reason):
+        self._diagnostics.append((stage, rule, reason))
+        self._observation(stage, rule, reason)
 
     def check(self):
         if self._cancel.is_set():
@@ -299,7 +325,7 @@ class PdfDiscovery:
         try:
             result = self._call(self.io.document, self.target)
         except PdfSourceReadError as error:
-            self._diagnostics.append(('P3', 'DOCUMENT', error.diagnostic))
+            self._note('P3', 'DOCUMENT', error.diagnostic)
             return ()
         if result is None:
             return ()
@@ -336,7 +362,7 @@ class PdfDiscovery:
                     if resolved.article_url:
                         self._route = replace(self.target, article_url=resolved.article_url)
                     if resolved.diagnostic:
-                        self._diagnostics.append(('P2', 'QUERY', resolved.diagnostic))
+                        self._note('P2', 'QUERY', resolved.diagnostic)
                 else:
                     updated = resolved
                 if updated.target != query_target:
@@ -380,13 +406,13 @@ class PdfDiscovery:
         try:
             raw = self._call(self.io.openalex, self.target.identity_doi)
         except PdfSourceReadError as error:
-            self._diagnostics.append(('P5', 'OPENALEX', error.diagnostic))
+            self._note('P5', 'OPENALEX', error.diagnostic)
             return
         except OpenAlexNotFoundError:
-            self._diagnostics.append(('P5', 'OPENALEX', 'not-found'))
+            self._note('P5', 'OPENALEX', 'not-found')
             return
         except OpenAlexRequestError as error:
-            self._diagnostics.append(('P5', 'OPENALEX', error.kind.value))
+            self._note('P5', 'OPENALEX', error.kind.value)
             return
         for url in openalex_pdf_urls(raw, self.target.identity_doi):
             yield PdfCandidate(self.target, 'P5', 'OPENALEX', 'openalex', url)
@@ -396,10 +422,11 @@ class PdfDiscovery:
         # Explicit next-hop relationships, not an expected publisher hop count.
         # Identical response/edge observations stop loops; byte capacity bounds
         # retained response state independently of the captured parent deadline.
-        pending = [(original, None)]
+        pending = [(original, None, object())]
         edges, responses, prepared, state_bytes = set(), set(), set(), 0
         while pending:
-            candidate, evidence = pending.pop()
+            candidate, evidence, lineage = pending.pop()
+            self._current_candidate = candidate
             self.check()
             if candidate.target != self.target:
                 raise ValueError('Candidate target changed')
@@ -414,23 +441,24 @@ class PdfDiscovery:
             edges.add(edge)
             state_bytes += len(candidate.url.encode()) + 64
             if state_bytes > 1048576:
-                self._diagnostics.append((original.stage, original.rule_id, 'response-state-budget'))
+                self._note(original.stage, original.rule_id, 'response-state-budget')
                 return None
             if key not in prepared and callable(getattr(type(self.io), 'prepare', None)):
                 prepared.add(key)
                 try:
                     following = self._call(self.io.prepare, candidate)
                 except PdfSourceReadError as error:
-                    self._diagnostics.append((original.stage, original.rule_id, error.diagnostic))
+                    self._note(original.stage, original.rule_id, error.diagnostic)
                     following = ()
                 if following:
-                    pending.extend((item, ('prepared', key)) for item in reversed(following))
+                    pending.extend((item, ('prepared', key), lineage if index == 0 else object())
+                        for index, item in reversed(tuple(enumerate(following))))
                     continue
             if key not in self._seen:
                 self._seen_bytes += sys.getsizeof(key) + sum(sys.getsizeof(value) for value in key)
                 if self._seen_bytes > 1048576:
                     self._state_full = True
-                    self._diagnostics.append((original.stage, original.rule_id, 'candidate-state-budget'))
+                    self._note(original.stage, original.rule_id, 'candidate-state-budget')
                     return None
                 self._seen.add(key)
             result = self._call(consume, candidate)
@@ -441,11 +469,18 @@ class PdfDiscovery:
             if not isinstance(result, CandidateResult):
                 raise TypeError('Consumer must report a CandidateResult')
             if result.kind == 'skipped':
-                self._diagnostics.append((original.stage, original.rule_id, result.diagnostic or 'condition-unavailable'))
+                self._note(original.stage, original.rule_id, result.diagnostic or 'condition-unavailable')
                 continue
             self._consumed += retries + 1
+            if lineage is not self._lineage:
+                self._source_attempt += 1
+                self._lineage = lineage
             if self._failed:
                 self._fallback = True
+            if not result.transfer_complete:
+                reason = result.diagnostic or ('access-blocked' if result.response is not None and access_limited(result.response)
+                    else 'response-observed' if result.kind == 'response' else result.kind)
+                self._observation(original.stage, original.rule_id, reason, candidate)
             if result.kind == 'local_failure':
                 return DiscoveryResult('local-failure', fallback_used=self._fallback,
                     candidate=candidate, diagnostics=tuple(self._diagnostics))
@@ -463,17 +498,17 @@ class PdfDiscovery:
                 observation = (response.url, response.status, response.content_type, response.body,
                     response.redirect_url, response.access, self._consumed if response.context_changed else 0)
                 if observation in responses:
-                    self._diagnostics.append((original.stage, original.rule_id, 'response-loop'))
+                    self._note(original.stage, original.rule_id, 'response-loop')
                     self._failed = True
                     continue
                 state_bytes += len(response.body)
                 if state_bytes > 1048576:
-                    self._diagnostics.append((original.stage, original.rule_id, 'response-state-budget'))
+                    self._note(original.stage, original.rule_id, 'response-state-budget')
                     self._failed = True
                     continue
                 responses.add(observation)
                 following = parse_current_response(candidate, response,
-                    report=lambda code: self._diagnostics.append((original.stage, original.rule_id, code)))
+                    report=lambda code: self._note(original.stage, original.rule_id, code))
                 reader = reader_context(candidate, response.url)
                 article = urlsplit(candidate.target.article_url or '')
                 if (reader and reader['platform'] == 'sciencedirect' and article.netloc and following
@@ -484,7 +519,7 @@ class PdfDiscovery:
                     try:
                         parsed = self._call(self.io.reader, candidate, response)
                     except PdfSourceReadError as error:
-                        self._diagnostics.append((original.stage, original.rule_id, error.diagnostic))
+                        self._note(original.stage, original.rule_id, error.diagnostic)
                         parsed = None
                     if parsed is not None:
                         fresh_reader = True
@@ -503,16 +538,21 @@ class PdfDiscovery:
                                     referer=c.referer, action=c.action, credential=None, accept=None)
                                     for c in parsed.current_candidates)
                     except PdfSourceReadError as error:
-                        self._diagnostics.append((original.stage, original.rule_id, error.diagnostic))
+                        self._note(original.stage, original.rule_id, error.diagnostic)
                 if access_limited(response):
-                    self._diagnostics.append((original.stage, original.rule_id, result.diagnostic or 'access-blocked'))
+                    self._note(original.stage, original.rule_id, result.diagnostic or 'access-blocked')
             if not following:
-                self._diagnostics.append((original.stage, original.rule_id, result.diagnostic or 'no-pdf-entry'))
+                self._note(original.stage, original.rule_id, result.diagnostic or 'no-pdf-entry')
                 self._failed = True
             else:
-                pending.extend((item, observation) for item in reversed(following)
+                eligible = tuple(item for item in following
                     if (urldefrag(item.url)[0], item.action) != key or fresh_reader
                     or result.response is not None and result.response.context_changed)
+                if not eligible:
+                    self._note(original.stage, original.rule_id, 'response-loop')
+                    self._failed = True
+                pending.extend((item, observation, lineage if index == 0 else object())
+                    for index, item in reversed(tuple(enumerate(eligible))))
         return None
 
     def run(self, consume):

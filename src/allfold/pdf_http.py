@@ -167,8 +167,10 @@ class PdfHttpClient:
                 return CandidateResult.failed('credential-scope')
             credential = (candidate.credential, host, prefix, header, self._credentials[candidate.credential])
         def decode(response):
+            from allfold.pdf_responses import oxford_citation
             content = response.headers.get('content-type', '').partition(';')[0].strip().lower()
-            if content not in {'text/html', 'application/xhtml+xml', 'application/json'} and not content.endswith('+json'):
+            if content == 'application/pdf' or (not oxford_citation(str(response.request.url))
+                    and content not in {'text/html', 'application/xhtml+xml', 'application/json'} and not content.endswith('+json')):
                 # Metadata discovery must not consume a possible PDF to sniff it.
                 # Only the actual transfer owner can identify and save its bytes.
                 return transfer(response, candidate) if transfer is not None else CandidateResult('pending')

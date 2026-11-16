@@ -14,6 +14,7 @@ class OriginalNavigation {
     this.continuationEdges=new Set();this.continuationBytes=0;
     this.received=new Promise((resolve,reject)=>{this.resolve=resolve;this.reject=reject;});this.received.catch(()=>{});
     this.hook=browser.sessionEvents.subscribe('beforeRequest',details=>this.request(details));
+    this.headerHook=browser.sessionEvents.subscribe('beforeSendHeaders',details=>this.requestContext(details));
     this.responseHook=browser.sessionEvents.subscribe('headersReceived',details=>this.response(details));
     this.addSource(browser.tabs.get(doc.pageId));
   }
@@ -61,16 +62,19 @@ class OriginalNavigation {
       ||!this.scienceReader(source,previous,frame))return;
     this.valid();
     const edge=JSON.stringify([previous.response.url,event.url,previous.response.state]);
-    if(this.continuationEdges.has(edge))throw failure('download_not_attributable');
-    this.continuationBytes+=Buffer.byteLength(edge);
+    const repeated=this.continuationEdges.has(edge);
+    if(repeated&&typeof previous.context!=='string')throw failure('download_not_attributable');
+    if(!repeated)this.continuationBytes+=Buffer.byteLength(edge);
     if(this.continuationBytes>1048576)throw failure('download_not_attributable');
     this.continuationEdges.add(edge);
     // Only this committed response's observed main-frame continuation inherits
     // the action. Repeated identical edges stop; changed response/Cookie evidence
     // may permit a legitimate same-URL authentication return.
     previous.continued=true;previous.registration.dispose();source.frames.delete(previous.frame.frameToken);
+    this.registrations=this.registrations.filter(registration=>registration!==previous.registration);
     const entry=this.addFrame(source,event.frame,{...this.doc,url:previous.response.url});
     if(!entry)throw failure('document_changed');
+    entry.previousContext=repeated?previous.context:undefined;
     this.continuation={source,entry,url:event.url,frameTreeNodeId:frame.frameTreeNodeId,used:false};
   }
   acceptPopup(url,frameName) {
@@ -134,12 +138,13 @@ class OriginalNavigation {
     const entry={frame,request:null};source.frames.set(frame.frameToken,entry);
     entry.registration=this.browser.sessionEvents.registerDownload({owner:this.owner,attemptId:this.owner.association.request_id,
       contents:source.contents,frame,document,requireRequest:true,filename:this.output.filename,
-      deadline:this.deadline,signal:this.signal,bodyContent:true,
+      deadline:this.deadline,signal:this.signal,bodyContent:true,htmlReader:!this.candidate.action,
       validate:()=>{this.valid();return !!entry.request;},beforeSave:()=>this.output.absent(),
       onItem:tracked=>{
         this.tracked.add(tracked);
         if(this.primary||!tracked.response||tracked.response.status<200||tracked.response.status>=300){this.fail(failure('download_not_attributable'));tracked.item.cancel();return;}
         this.primary=tracked;
+        this.accessBlocked=entry.response?.cfMitigated===true;
         let last=0;
         const update=()=>{
           try {
@@ -231,6 +236,21 @@ class OriginalNavigation {
       entry.response={url:details.url,status,state,cfMitigated:mitigated.length===1 && mitigated[0].trim().toLowerCase()==='challenge'};
     }catch(error){this.fail(error);return {cancel:true};}
   }
+  requestContext(details) {
+    const source=this.sources.get(details.webContentsId),entry=source?.frames.get(details.frame?.frameToken);
+    if(!entry?.request||entry.request.id!==details.id||!sameFrame(entry.request.frame,details.frame))return;
+    try {
+      this.valid();
+      // These exact outgoing credentials stay ephemeral in Main. They permit
+      // a repeated observed edge only when its actual authentication changed,
+      // including document.cookie changes without a Set-Cookie response header.
+      const context=JSON.stringify(Object.entries(details.requestHeaders||{})
+        .filter(([name])=>['cookie','authorization'].includes(name.toLowerCase()))
+        .map(([name,value])=>[name.toLowerCase(),value]).sort(([a],[b])=>a.localeCompare(b)));
+      if(entry.previousContext!==undefined&&entry.previousContext===context)throw failure('download_not_attributable');
+      entry.context=context;
+    }catch(error){this.fail(error);return {cancel:true};}
+  }
   async inspectResponse(source,entry,frame) {
     this.valid();
     const response=entry.response,root=source.contents.mainFrame;
@@ -257,7 +277,7 @@ class OriginalNavigation {
     throw failure('download_not_attributable');
   }
   dispose() {
-    this.hook.dispose();this.responseHook.dispose();
+    this.hook.dispose();this.headerHook.dispose();this.responseHook.dispose();
     for(const registration of this.registrations)registration.dispose({dispatched:this.dispatched});
     for(const source of this.sources.values()) {
       source.contents.removeListener('frame-created',source.created);
@@ -344,7 +364,7 @@ async function executeBodyNative(browser,data,{signal,progress=()=>{}}={}) {
     const observed=output.capture({sniff:true});
     if(!operation.observed){operation.observed=observed.file;try{progress({native_output_file:observed.file});}catch(_){}}
     try{progress({received_bytes:observed.size,total_bytes:primary.item.getTotalBytes()>0?primary.item.getTotalBytes():null});}catch(_){}
-    if(!observed.pdf)return {outcome:'failed',kind:'failed',diagnostic_code:'non-pdf',output_file:observed.file,resource_closed:true};
+    if(!observed.pdf)return {outcome:'failed',kind:'failed',diagnostic_code:operation.accessBlocked?'access-blocked':'non-pdf',output_file:observed.file,resource_closed:true};
     return {outcome:'native_complete',kind:'pdf',pdf_type:true,transfer_complete:true,output_file:observed.file,
       size_bytes:observed.size,final_url:primary.response.url,resource_closed:true};
   }catch(error) {

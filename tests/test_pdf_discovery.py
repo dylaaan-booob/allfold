@@ -594,6 +594,37 @@ def test_partial_openalex_retains_qualified_increment_before_refresh():
     assert result.status=='transferred' and result.pdf_source=='P5' and not result.fallback_used
 
 
+def test_unrelated_deep_reader_json_cannot_erase_a_qualified_link():
+    from allfold.pdf_rules import PdfCandidate
+    paper=target('www.sciencedirect.com',article_url='https://www.sciencedirect.com/science/article/pii/S014067362400123X')
+    candidate=PdfCandidate(paper,'P2','R024','sciencedirect',paper.article_url+'/pdfft')
+    seen=[]
+    def consume(item):
+        seen.append(item.url)
+        if len(seen)>1:return CandidateResult.pdf(transfer_complete=True)
+        body=(b'<div class="PdfEmbed"><object data="https://cdn.example.org/body.pdf"></object></div>'
+            b'<script type="application/json">'+b'['*10000+b'0'+b']'*10000+b'</script>')
+        return CandidateResult.current(CurrentResponse(item.url,'text/html',body))
+    result=PdfDiscovery(paper,candidates=(candidate,)).run(consume)
+    assert result.status=='transferred' and seen[-1]=='https://cdn.example.org/body.pdf'
+    assert ('P2','R024','parse-failed') in result.diagnostics
+
+
+def test_reader_self_loop_failure_then_alternative_reports_actual_fallback():
+    from allfold.pdf_rules import PdfCandidate
+    paper=target('ieeexplore.ieee.org',article_url='https://ieeexplore.ieee.org/document/123')
+    reader='https://ieeexplore.ieee.org/stamp/stamp.jsp?arnumber=123'
+    bad=reader+'&step=bad';good='https://cdn.example.org/good.pdf'
+    candidate=PdfCandidate(paper,'P2','R025','ieee',reader)
+    def consume(item):
+        if item.url==good:return CandidateResult.pdf(transfer_complete=True)
+        links=[bad,good] if item.url==reader else [bad]
+        return CandidateResult.current(CurrentResponse(item.url,'text/html',
+            ''.join('<iframe src="'+url+'"></iframe>' for url in links).encode()))
+    result=PdfDiscovery(paper,candidates=(candidate,)).run(consume)
+    assert result.status=='transferred' and result.fallback_used and result.candidate.url==good
+
+
 def test_distinct_response_candidates_count_fallback_after_first_path_failure():
     paper = target('unknown.example.org')
     inputs = PdfRuleInputs(paper, known_pdf_urls=(KnownPdfUrl('https://unknown.example.org/download', 'API02', 'link'),))
