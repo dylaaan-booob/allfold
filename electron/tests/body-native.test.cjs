@@ -64,7 +64,7 @@ test('native popup completes after an unlinked empty destination reservation',{t
     {timeout:10000,maxBuffer:1024*1024,env:{...process.env,ELECTRON_RUN_AS_NODE:''}});
   assert.match(stdout,/BODY NATIVE PASS/);assert.doesNotMatch(stderr,/Check failed|NATIVE OUTPUT FAILURE/);t.diagnostic(stdout.trim());
 });
-test('public native Download publishes original response through SQLite and Workspace',{timeout:65000},async t=>{
+test('public native Download publishes original items through SQLite and records the R024 no-item gap',{timeout:65000},async t=>{
   const profile=fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(),'allfold-public-native-')));
   t.after(()=>fs.rmSync(profile,{recursive:true,force:true}));
   const {stdout,stderr}=await promisify(execFile)(require('electron'),[path.join(__dirname,'body-native.fixture.cjs'),profile,'public'],

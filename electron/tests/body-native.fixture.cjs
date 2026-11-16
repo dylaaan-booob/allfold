@@ -148,6 +148,10 @@ app.whenReady().then(async()=>{
     }
     if(url.pathname.startsWith('/science/article/pii/')) {
       if(url.pathname.endsWith('/pdfft')) {
+        if(['sciencedirect-html-no-item','sciencedirect-xhtml-no-item'].includes(kind)) {
+          res.writeHead(200,{'content-type':kind.includes('xhtml')?'application/xhtml+xml':'text/html',
+            'cache-control':'no-store','x-content-type-options':'nosniff'});res.end(payload);return;
+        }
         if(kind==='sciencedirect-reader-auth-return'){const state=req.headers.cookie?.includes('reader_auth=two')?'two':req.headers.cookie?.includes('reader_auth=one')?'one':'';if(state!=='two'){res.writeHead(200,{'content-type':'text/html'});res.end('<script>document.cookie="reader_auth='+ (state==='one'?'two':'one')+'; Path=/";location.reload()</script>');}else{res.writeHead(200,{'content-type':'application/pdf'});res.end(payload);}return;}
         if(kind==='sciencedirect-reader-cycle'){res.writeHead(200,{'content-type':'text/html'});res.end('<script>location.reload()</script>');return;}
         if(kind==='sciencedirect-reader-cookie-cycle'){const next=req.headers.cookie?.includes('reader_loop=one')?'two':'one';res.writeHead(200,{'content-type':'text/html'});res.end('<script>document.cookie="reader_loop='+next+'; Path=/";location.reload()</script>');return;}
@@ -178,6 +182,21 @@ app.whenReady().then(async()=>{
   const window=new BrowserWindow({show:false,webPreferences:{sandbox:true}}),browser=new BrowserRuntime({hostWindow:window,pageLimits:{global_limit:4,service_limit:3}});
   browser.bodyTargetResolver=async()=>[{address:'93.184.216.34'}];await browser.ready;
   const messages=new Map(),progresses=new Map(),nativeCases=new Map(),boundTransfers=new Map(),events=[],sentResults=new Set(),prematureLogs=[];let python;
+  const noItemKinds=['sciencedirect-html-no-item','sciencedirect-xhtml-no-item'],noItemEvidence=new Map(noItemKinds.map(kind=>[kind,{items:0,requests:new Map()}]));
+  const routeDownload=browser.sessionEvents.routeDownload;
+  browser.sessionEvents.routeDownload=function(event,item,...args) {
+    const evidence=noItemEvidence.get(new URL(item.getURL()).searchParams.get('case'));
+    if(evidence)evidence.items++;
+    return routeDownload.call(this,event,item,...args);
+  };
+  const responseEvidence=browser.sessionEvents.subscribe('headersReceived',details=>{
+    const evidence=noItemEvidence.get(new URL(details.url).searchParams.get('case'));
+    if(evidence&&new URL(details.url).pathname.endsWith('/pdfft'))evidence.requests.set(details.id,{terminal:null});
+  });
+  const terminalEvidence=['completed','errorOccurred'].map(event=>browser.sessionEvents.subscribe(event,details=>{
+    for(const evidence of noItemEvidence.values())if(evidence.requests.has(details.id))
+      evidence.requests.get(details.id).terminal={event,error:details.error};
+  }));
   const send=message=>{
     if(message.type==='result')sentResults.add(message.id);
     const kind=nativeCases.get(message.id);
@@ -359,7 +378,7 @@ app.whenReady().then(async()=>{
       python.stdin.write(JSON.stringify({type:'hello',token:'fixture-only'})+'\n');
       const code=await new Promise(resolve=>python.once('exit',resolve));python=null;
       if(dispatchError)throw dispatchError;
-      assert.equal(code,0,stderr);assert.equal(complete,true,stderr);assert.equal(publicCases.length,33);
+      assert.equal(code,0,stderr);assert.equal(complete,true,stderr);assert.equal(publicCases.length,35);
       for(const item of publicCases)if(item.status==='completed')assert.deepEqual(fs.readFileSync(path.join(profile,'workspace/Documents',item.paper+'.pdf')),payload);
       assert.equal(browser.tabs.size,0);assert.equal(browser.sessionEvents.downloads.size,0);assert.equal(browser.sessionEvents.items.size,0);
       assert.equal(browser.accessContexts.size,0);assert.equal(browser.pageBudget.usage().total,0);
@@ -379,6 +398,18 @@ app.whenReady().then(async()=>{
       assert.equal(requests.filter(request=>request.url.startsWith('/expired-action')).length,0);
       assert.equal(requests.filter(request=>request.url==='/once?case=blocked').length,0);
       assert.equal(requests.filter(request=>request.url.endsWith('/pdfft')).length,1);
+      for(const kind of noItemKinds) {
+        const evidence=noItemEvidence.get(kind),record=publicCases.find(item=>item.case===kind),count=kind.includes('xhtml')?1:3;
+        // This is the existing failed-source baseline, including its later
+        // candidate attempts. It is not the required one-request successful save.
+        assert.equal(evidence.items,0);assert.equal(evidence.requests.size,count);
+        assert.deepEqual([...evidence.requests.values()].map(item=>item.terminal),Array.from({length:count},()=>({event:'completed',error:'net::OK'})));
+        assert.equal(requests.filter(request=>request.url.endsWith('/pdfft?case='+kind)).length,count);
+        assert.equal(record.status,kind.includes('xhtml')?'expired':'failed');assert.equal(record.body_associated,false);
+        console.log('R024 PRODUCTION GAP '+JSON.stringify({case:kind,requests:count,download_items:0,
+          original_terminal:'webRequest.completed/net::OK (no Fetch interception)',body_associated:record.body_associated,
+          attempt:record.attempt,status:record.status}));
+      }
       console.log('PUBLIC BODY NATIVE PASS');
     }
     for(const kind of ['form-replaced','attachment','inline','iframe','popup','named-popup','popup-reservation','cancel','interrupted']) {
@@ -413,6 +444,7 @@ app.whenReady().then(async()=>{
     assert.equal(browser.partition.listenerCount('will-download'),1);
     console.log('BODY NATIVE PASS');
   }finally {
+    responseEvidence.dispose();terminalEvidence.forEach(hook=>hook.dispose());browser.sessionEvents.routeDownload=routeDownload;
     await browser.close();window.destroy();server.closeAllConnections();cdn.closeAllConnections();
     await Promise.all([new Promise(resolve=>server.close(resolve)),new Promise(resolve=>cdn.close(resolve))]);
   }

@@ -215,9 +215,13 @@ same single five-byte type observation. MIME and filenames are only hints;
 non-HTML qualified navigation responses may become managed items regardless of
 MIME. Fixed form destinations also retain HTML-mislabeled PDF bytes through the original item; actual Reader HTML remains available to its Browser navigation. A non-PDF item is an owned
 candidate failure and its temporary output is cleaned before another source.
-Only a normal completed PDF item with verified actual output enters the common
-publication/SQLite path. A filename, viewer display or `will-download`
-event alone cannot complete the Paper.
+In the current item implementation, only a normal completed PDF item with verified
+actual output enters the common publication/SQLite path. The private success DTO
+requires `native_complete`, `pdf_type`, `transfer_complete`, actual `output_file`
+identity and `final_url`; it does not require a DownloadItem or a prior progress
+event. A future original-response stream must prove its own upstream terminal and
+writer close before using that same contract. A filename, viewer display,
+`will-download` or stream EOF alone cannot complete the Paper.
 
 Native output reserves an exclusive `0700` directory at
 `Documents/.downloads/<paper UUID>.<attempt>.<physical-output UUID>.native/` and initially leaves
@@ -370,8 +374,14 @@ identify those hidden PDF bytes. Fixed form destinations and existing items,
 and the Session stream, accept misleading MIME through actual prefix checks.
 A completed empty Reader now ends that source rather than waiting for the whole
 parent deadline. Full R024 coverage requires a separately resolved original-body
-capture boundary; changing MIME globally, replaying the request or buffering the
-whole PDF is not an implemented solution. This remains a stage-seven blocker.
+capture boundary. The pinned-runtime Response-stage Fetch fixture now proves
+bounded sequential PDF reads and complete HTML fulfillment, including successful
+Reader script/Cookie continuation beyond the observation limit. Its blocking
+gap is original upstream completion: protocol-invalid chunked truncation gives
+the same EOF and post-fulfillment success events as a normal response. No stream
+capture or managed native writer is enabled in production. Changing MIME globally,
+replaying the request or buffering the whole PDF is not an implemented solution.
+This remains a stage-seven blocker and prevents closing #136.
 The [response-capture investigation](pdf-response-capture.md) records current
 community guidance, Zotero's actual save boundaries and isolated mechanism probes;
 it does not substitute for a working original-response implementation.

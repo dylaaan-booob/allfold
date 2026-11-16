@@ -4,8 +4,11 @@ from dataclasses import replace
 from datetime import datetime, timezone
 import json
 from functools import wraps
+from contextlib import nullcontext
 from pathlib import Path
 import sys
+import time
+from unittest.mock import patch
 
 import httpx
 from fastapi import WebSocketDisconnect
@@ -91,8 +94,10 @@ async def main():
     try:
         for index, kind in enumerate(('attachment', 'inline', 'url-doi-form', 'microbiology-redirect', 'interrupted', 'iframe', 'iframe-many', 'predeclared-iframe', 'predeclared-target-changed', 'predeclared-popup-guard', 'existing-iframe', 'existing-target-changed', 'iframe-background', 'popup-background', 'iframe-replaced', 'popup-source-replaced', 'popup', 'named-popup', 'current-form', 'get-form', 'get-changed', 'sciencedirect', 'blocked',
                                       'action-blocked', 'action-challenge', 'action-challenge-iframe', 'action-challenge-popup', 'action-html',
-                                      'institution-complete', 'institution-revoked', 'institution-unprepared', 'cancel', 'drain')):
-            science = kind == 'sciencedirect'
+                                      'institution-complete', 'institution-revoked', 'institution-unprepared',
+                                      'sciencedirect-html-no-item', 'sciencedirect-xhtml-no-item', 'cancel', 'drain')):
+            science = kind.startswith('sciencedirect')
+            no_item = kind in {'sciencedirect-html-no-item', 'sciencedirect-xhtml-no-item'}
             institutional = kind in institution_ids
             prepared = None
             if institutional and kind != 'institution-unprepared':
@@ -102,10 +107,12 @@ async def main():
                 prepared = application.state.login.prepared_authority(access, service.id)
                 assert prepared is not None and prepared.page_id is not None
             access_blocked = kind in {'blocked', 'action-blocked'} or kind.startswith('action-challenge')
-            article = (origin.replace('www.microbiologyresearch.org', 'www.sciencedirect.com') + '/science/article/pii/S1234567890123456'
+            science_article = origin.replace('www.microbiologyresearch.org', 'www.sciencedirect.com') + '/science/article/pii/S1234567890123456'
+            science_query = '?case=' + kind if no_item else ''
+            article = (science_article + science_query
                 if science else origin + ('/doi/10.5555/STRA%C3%9FE' if kind == 'url-doi-form' else '/article') + '?case=' + kind)
             candidate = PdfCandidateFact(stage='P4', rule_id='R024' if science else 'R059',
-                url=article + '/pdfft' if science else origin + ('/expired-action' if kind == 'current-form' else '/once') + '?' + ('discard=old-action-query&' if kind in {'get-form', 'get-changed'} else '') + 'case=' + kind,
+                url=science_article + '/pdfft' + science_query if science else origin + ('/expired-action' if kind == 'current-form' else '/once') + '?' + ('discard=old-action-query&' if kind in {'get-form', 'get-changed'} else '') + 'case=' + kind,
                 reader_kind='sciencedirect' if science else None, action=None if science else 'refresh_form', referer=article)
             if institutional:
                 lww = origin.replace('www.microbiologyresearch.org', 'journals.lww.com')
@@ -131,7 +138,12 @@ async def main():
             projected = paper_projection(state, paper.id)
             assert projected['download']['available'], kind
             request = dict(csrf_token=state['csrf_token'], workspace_id=str(paper.workspace_id), qualification=projected['download']['qualification'])
-            accepted = await client.post(f'/api/papers/{paper.id}/body/download', json=request)
+            # Bound only the XHTML no-item probe by the existing parent
+            # deadline. XHTML's XML error page can otherwise await that full
+            # deadline; this fixture never installs a second product timer.
+            current = host.current()
+            with (patch.object(current, '_deadline', return_value=time.monotonic() + 3) if kind == 'sciencedirect-xhtml-no-item' else nullcontext()):
+                accepted = await client.post(f'/api/papers/{paper.id}/body/download', json=request)
             assert accepted.status_code == 200, accepted.text
             current = host.current()
             with current.paper_gate():
@@ -194,7 +206,8 @@ async def main():
                     await drain_application(application)
             result = await asyncio.to_thread(task.future.result, 20 if kind.startswith('action-') else 10)
             stale = kind in {'get-changed', 'existing-target-changed', 'predeclared-target-changed'}
-            expected = ('cancelled' if stopping else 'failed' if stale else 'failed' if kind == 'action-html'
+            expected = ('cancelled' if stopping else 'expired' if kind == 'sciencedirect-xhtml-no-item'
+                        else 'failed' if stale or no_item else 'failed' if kind == 'action-html'
                         else 'failed' if access_blocked else 'completed')
             assert result.status == expected, (kind, result)
             projected = paper_projection((await client.get('/api/ui-next/workspace')).json(), paper.id)
@@ -203,8 +216,14 @@ async def main():
             assert not host.active
             with PaperRepository.open(workspace) as repo:
                 stored = repo.get(paper.id)
-                assert stored.download.status == ('failed' if expected == 'local_failure' else 'cancelled' if expected == 'stale' else expected)
+                assert stored.download.status == ('failed' if expected == 'local_failure' else 'cancelled' if expected in {'stale', 'expired'} else expected)
                 assert stored.collection is None
+                if no_item:
+                    # Characterize the unresolved capability through public HTTP,
+                    # real Main and a reopened SQLite database; never fake completion.
+                    assert stored.body is None
+                    assert stored.download.token == task.download_token
+                    assert not (workspace / 'Documents' / f'{paper.id}.pdf').exists()
                 if expected == 'completed':
                     assert stored.body.pdf_source == ('P5' if fallback else 'P2' if science else 'P4')
                     assert stored.body.fallback_used is (fallback or institutional), kind
@@ -222,7 +241,8 @@ async def main():
                 await invalidate_prepared(access, prepared)
             if institutional:
                 assert task.access_operation is None and not host.browser_lock.owners
-            print(json.dumps({'type': 'fixture_public_native', 'case': kind, 'status': result.status, 'paper': str(paper.id)}), flush=True)
+            print(json.dumps({'type': 'fixture_public_native', 'case': kind, 'status': result.status, 'paper': str(paper.id),
+                **({'body_associated': stored.body is not None, 'attempt': stored.download.token.attempt} if no_item else {})}), flush=True)
         print(json.dumps({'type': 'fixture_complete'}), flush=True)
     finally:
         await client.aclose()
