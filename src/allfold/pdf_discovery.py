@@ -237,9 +237,9 @@ class PdfDiscovery:
         for candidate in generator(self._route, inputs):
             yield replace(candidate, target=self.target)
 
-    def _facts_inputs(self, initial):
+    def _facts_inputs(self, initial, snapshots=None):
         identifiers, alternatives, known = list(initial.identifiers), list(initial.alternative_ids), list(initial.known_pdf_urls)
-        for snapshot in self.facts:
+        for snapshot in self.facts if snapshots is None else snapshots:
             for item in snapshot.identifiers:
                 if item.kind == 'alternative-id':
                     if item.value not in alternatives:
@@ -336,6 +336,9 @@ class PdfDiscovery:
         if result is None:
             return ()
         self._document_attempted = True
+        self.inputs = self._facts_inputs(self.inputs, (result.facts,))
+        if result.facts.landing_url:
+            self._route = replace(self.target, article_url=result.facts.landing_url)
         # Native's current candidates preserve signed values. Only the adapter
         # validates the live Document; this core never holds a Page or persists it.
         values = getattr(result, 'current_candidates', ())
@@ -399,6 +402,13 @@ class PdfDiscovery:
         yield from sorted((c for c in current if c.stage == 'P3'),
             key=lambda c: 0 if c.field == 'citation_pdf_url' else 1)
         yield from sorted((c for c in current if c.stage == 'P4'), key=lambda c: c.rule_id == 'GENERIC')
+        if self._document_attempted:
+            # A resolved content page can qualify a previously unavailable
+            # template. Keep current links first and never replay a tried URL
+            # or restart the missing-input API queries.
+            for stage in ('P1', 'P2'):
+                yield from (c for c in self._rules(stage)
+                    if (urldefrag(c.url)[0], c.action) not in self._seen)
         cached = next((f for f in self.facts if f.source == 'openalex'), None)
         refreshed = False
         if cached and cached.status in {'complete', 'partial'}:

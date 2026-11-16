@@ -46,9 +46,10 @@ Closing a page waits for its solver cleanup as well as native downloads/destruct
 One `BrowserCooldown` belongs to this Session lifetime. Main-frame responses and
 explicitly associated requests observe actual response origins: 429 uses valid
 Retry-After or the existing one-second default; 503 requires valid Retry-After.
-Unowned subresources retain the existing exclusion. Active waits can only extend,
-currently have a 30-second ceiling and the parent deadline. That arbitrary
-ceiling is a current limit to revise, not a general Retry-After requirement. Independent origins remain independent. Chromium's
+Unowned subresources retain the existing exclusion. Active waits can only extend
+and use the parent's remaining deadline, without a separate 30-second ceiling.
+Expiry ends the operation rather than dispatching before Retry-After permits it.
+Independent origins remain independent. Chromium's
 existing redirect/authentication chain proceeds without host action replay.
 
 ## Managed download contract

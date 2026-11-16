@@ -82,8 +82,11 @@ saved P3 Meta and stable saved P4 URLs. Existing P4 URLs need no article reload 
 a partial snapshot, missing Meta field or unrelated refresh locator. After
 failure/missing or a dynamic entry requirement, PDF-only refresh supplies its own
 P3 before its P4; exact-target OpenAlex P5 remains last. P1 success makes later
-queries/pages zero. Refresh never restarts failed P1/P2 or turns an action/refresh
-locator into a stable GET.
+queries/pages zero. Refresh never repeats tried P1/P2 URLs, restarts the
+missing-input API sequence or turns an action/refresh locator into a stable GET.
+It retains the current Document's observed content URL and identifiers. After
+its current P3/P4 clues, these may qualify previously unavailable templates before
+P5, still bound to the original Paper.
 The [source catalogue](pdf-source-discovery.md) owns rule applicability. Conditional interfaces are skipped when their actual prerequisites
 are absent; no publisher-key settings product or generic header capability is
 added.

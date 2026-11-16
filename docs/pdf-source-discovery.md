@@ -122,7 +122,7 @@ PDF Source Discovery 不运行 Zotero Translator、Zotero Translate 或 Zotero U
 - P1 下载完成时，本次 PDF 操作不再请求 Handle/Crossref、不额外加载文章 HTML，也不调用 OpenAlex；不否定此前 Run 已完成的网页/API 采集。
 - P1 不适用时，直接进入第一个适用阶段；不对所有平台试探 `/doi/pdf/`。
 - P2 的 Handle、Crossref 和官方 API 不是固定串联步骤。按缺少的信息选择相应来源，前一次结果足够时停止补查。
-- P1/P2 及已有 P3 之后，稳定的已有 P4 URL 可直接进入 Session；partial 快照、可能补出的 P3 或无关刷新线索不强制先重开文章。已有候选失败、缺失或动态入口确需更新时，再按需执行 PDF-only 取页；该次实际读取的 P3 仍先于其 P4，不重跑已失败的 P1/P2，不把动作/刷新定位信息当 GET。
+- P1/P2 及已有 P3 之后，稳定的已有 P4 URL 可直接进入 Session；partial 快照、可能补出的 P3 或无关刷新线索不强制先重开文章。已有候选失败、缺失或动态入口确需更新时，再按需执行 PDF-only 取页；该次实际读取的 P3 仍先于其 P4，不重发已试 P1/P2 URL 或重启缺失输入的 API 查询，不把动作/刷新定位信息当 GET。保留本次 Document 实际观察的正文 Host 与标识；当前 P3/P4 之后、P5 之前，可尝试因此新获得资格的模板，仍绑定原 Paper。
 - 规则在某个阶段取得新的 ID 或明确下载地址，可以就地完成其依赖链。无需为了阶段编号重新开始整个流程。
 
 #### F2.3 中间页面随候选处理

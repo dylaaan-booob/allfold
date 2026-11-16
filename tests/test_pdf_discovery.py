@@ -232,6 +232,39 @@ def test_t05_all_crossref_alternative_ids_are_qualified_before_use():
     assert result.pdf_source == 'P2'
 
 
+def test_pdf_refresh_uses_observed_content_host_and_ids_before_openalex():
+    from allfold.application.document_metadata import DocumentPdfResult
+    from allfold.pdf_facts import PdfIdentifier, crossref_discovery_facts
+    paper = PdfTarget('paper-1', doi='10.1016/j.example.2026.123456',
+        article_url='https://linkinghub.elsevier.com/retrieve/pii/S014067362400123X',
+        content_type='journal-article')
+    facts = crossref_discovery_facts({'DOI': paper.doi,
+        'alternative-id': ['S014067362400123X'],
+        'resource': {'primary': {'URL': paper.article_url}}}, datetime.now(timezone.utc))
+    calls, seen = [], []
+    class IO:
+        def query_missing(self, *_):
+            return iter(())
+        def document(self, _):
+            calls.append('document')
+            return DocumentPdfResult(PdfDiscoveryFacts(source='document', capability='document-pdf',
+                status='complete', observed_at=datetime.now(timezone.utc), target_doi=paper.identity_doi,
+                landing_url='https://www.sciencedirect.com/science/article/pii/S014067362400123X',
+                platform='sciencedirect', identifiers=(
+                    PdfIdentifier(kind='pii', value='S014067362400123X', rule_id='R024'),)), ())
+        def openalex(self, doi):
+            calls.append('openalex')
+            return {'doi': doi, 'locations': []}
+    result = PdfDiscovery(paper, facts=(facts,), io=IO()).run(
+        lambda c: seen.append(c) or CandidateResult.pdf(transfer_complete=True))
+    assert result.status == 'transferred'
+    assert calls == ['document']
+    assert len(seen) == 1 and seen[0].target is paper
+    assert (seen[0].stage, seen[0].rule_id, seen[0].url) == ('P2', 'R024',
+        'https://www.sciencedirect.com/science/article/pii/S014067362400123X/pdfft')
+    assert (result.pdf_source, result.fallback_used) == ('P2', False)
+
+
 @pytest.mark.parametrize('host,doi', [
     ('ieeexplore.ieee.org', '10.1109/ABC.1234567'),
     ('www.nature.com', '10.1038/s41586.2026.0123'),
