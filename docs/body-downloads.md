@@ -348,6 +348,9 @@ A completed empty Reader now ends that source rather than waiting for the whole
 parent deadline. Full R024 coverage requires a separately resolved original-body
 capture boundary; changing MIME globally, replaying the request or buffering the
 whole PDF is not an implemented solution. This remains a stage-seven blocker.
+The [response-capture investigation](pdf-response-capture.md) records current
+community guidance, Zotero's actual save boundaries and isolated mechanism probes;
+it does not substitute for a working original-response implementation.
 
 Source failures do not stop independent candidates. P1–P5 remains lazy and stops
 at the first actual PDF completion. OpenAlex preserves best-first deterministic
@@ -364,6 +367,8 @@ the bound committed response. Identical navigation edges stop loops; changed
 response/Cookie evidence permits legitimate returns. Session HTML may revisit its
 own URL only after an actual Cookie-context change or a qualified fresh Reader
 observation. Neither condition permits a POST replay or unrelated frame/origin.
+HTTP redirects within an already bound request retain its authority; unchanged
+credentials on another hop are not a repeated navigation action.
 
 Completed transport/local actions survive late signals and auxiliary failures.
 Actual unfinished I/O retains its original owner; a cancelled Future or returning

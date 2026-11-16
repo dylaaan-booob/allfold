@@ -248,8 +248,11 @@ class OriginalNavigation {
       const context=JSON.stringify(Object.entries(details.requestHeaders||{})
         .filter(([name])=>['cookie','authorization'].includes(name.toLowerCase()))
         .map(([name,value])=>[name.toLowerCase(),value]).sort(([a],[b])=>a.localeCompare(b)));
-      if(entry.previousContext!==undefined&&entry.previousContext===context)throw failure('download_not_attributable');
-      if(entry.continuationEdge) {
+      // Chromium emits this hook again for redirects within the same bound
+      // request. Only the first hop is a new continuation; later hops retain
+      // that request's authority and may carry the same credentials.
+      if(entry.context===undefined&&entry.previousContext!==undefined&&entry.previousContext===context)throw failure('download_not_attributable');
+      if(entry.context===undefined&&entry.continuationEdge) {
         const contexts=this.continuationContexts.get(entry.continuationEdge)||new Set();
         if(contexts.has(context))throw failure('download_not_attributable');
         this.continuationBytes+=Buffer.byteLength(context);

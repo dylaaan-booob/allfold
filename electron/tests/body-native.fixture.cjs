@@ -41,6 +41,9 @@ app.whenReady().then(async()=>{
   const cdn=https.createServer({cert:certificate,key:fs.readFileSync(path.join(root,'tests/fixtures/http/localhost-key.pem'))},(req,res)=>{
     requests.push({url:req.url,method:req.method,body:'',cdn:true});
     const kind=new URL(req.url,'https://pdf.sciencedirectassets.com').searchParams.get('case');
+    if(kind==='sciencedirect-reader-redirect'&&!req.url.includes('final=1')) {
+      res.writeHead(302,{location:req.url+'&final=1'});res.end();return;
+    }
     if(kind==='sciencedirect-reader-twice'&&!req.url.includes('next=1')) {
       res.writeHead(200,{'content-type':'text/html'});res.end('<script>location.replace('+JSON.stringify(req.url+'&next=1')+')</script>');return;
     }
@@ -258,7 +261,7 @@ app.whenReady().then(async()=>{
       const terminal=new Promise(resolve=>messages.set(id,resolve));
       await context.execute({id,action:'native_paper_body',data});const result=await terminal;browser.bodyActions.prepare=prepare;
       cases.push({kind,result});console.log('NATIVE CASE '+kind+' '+JSON.stringify(result));
-      const success=['form-replaced','get-replaced','sciencedirect-replaced','attachment','inline','url-doi-form','microbiology-redirect','iframe','popup','named-popup','popup-reservation','completed-late-signals','sciencedirect','sciencedirect-direct-cdn-unavailable','sciencedirect-reader','sciencedirect-reader-self','sciencedirect-reader-reload','sciencedirect-reader-loop','sciencedirect-reader-twice','sciencedirect-reader-auth-return','mime-octet','mime-missing','mime-wrong','mime-html','mime-xhtml'].includes(kind);
+      const success=['form-replaced','get-replaced','sciencedirect-replaced','attachment','inline','url-doi-form','microbiology-redirect','iframe','popup','named-popup','popup-reservation','completed-late-signals','sciencedirect','sciencedirect-direct-cdn-unavailable','sciencedirect-reader','sciencedirect-reader-self','sciencedirect-reader-reload','sciencedirect-reader-loop','sciencedirect-reader-twice','sciencedirect-reader-redirect','sciencedirect-reader-auth-return','mime-octet','mime-missing','mime-wrong','mime-html','mime-xhtml'].includes(kind);
       if(success) {
         assert.equal(result.outcome,'native_complete');assert.equal(result.resource_closed,true);assert.deepEqual(result.output_file,observed);
         const leaf=path.join(data.workspace_root,data.output.temporary);assert.deepEqual(fs.readFileSync(leaf),payload);assert.deepEqual(identity(leaf),observed);
@@ -353,8 +356,9 @@ app.whenReady().then(async()=>{
     for(const kind of caseNames.filter(kind=>kind.startsWith('sciencedirect-reader'))) {
       assert.equal(requests.filter(request=>request.url==='/science/article/pii/S1234567890123456/pdfft?case='+kind).length,['sciencedirect-reader-auth-return','sciencedirect-reader-cookie-cycle'].includes(kind)?3:kind==='sciencedirect-reader-cycle'?2:1);
       assert.equal(requests.filter(request=>request.cdn&&request.url.endsWith('?case='+kind)).length,
-        ['sciencedirect-reader','sciencedirect-reader-self','sciencedirect-reader-reload','sciencedirect-reader-loop','sciencedirect-reader-twice','sciencedirect-reader-cancel'].includes(kind)?1:0,kind);
+        ['sciencedirect-reader','sciencedirect-reader-self','sciencedirect-reader-reload','sciencedirect-reader-loop','sciencedirect-reader-twice','sciencedirect-reader-redirect','sciencedirect-reader-cancel'].includes(kind)?1:0,kind);
       assert.equal(requests.filter(request=>request.cdn&&request.url.endsWith('?case='+kind+'&next=1')).length,kind==='sciencedirect-reader-twice'?1:0,'only the observed CDN continuation is followed');
+      assert.equal(requests.filter(request=>request.cdn&&request.url.endsWith('?case='+kind+'&final=1')).length,kind==='sciencedirect-reader-redirect'?1:0,'a redirect keeps the original continuation request');
       if(['sciencedirect-reader-reload','sciencedirect-reader-loop'].includes(kind)) {
         assert.equal(requests.filter(request=>request.url.endsWith('?case='+kind+'&reader=1')).length,1);
         assert.equal(requests.filter(request=>request.url.endsWith('?case='+kind+'&reader=2')).length,kind==='sciencedirect-reader-loop'?1:0,'distinct observed reader responses continue');
