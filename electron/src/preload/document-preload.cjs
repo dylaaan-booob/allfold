@@ -17,7 +17,7 @@ const operations={
     const reading=node=>{
       if(!visible(node))return false;
       const primary=[...node.querySelectorAll('h1,h2')].filter(item=>visible(item) && !item.closest('form,aside,nav,footer'));
-      if(primary.some(item=>/^(?:welcome back|sign in|log in|login|authentication|verify|verification)\b/i.test(item.textContent.trim())))return false;
+      if(/^(?:welcome back|sign in|log in|login|authentication|are you a robot\?|checking your browser|verify (?:your identity|you are human)|verification(?: required| needed)?$)/i.test(primary[0]?.textContent.trim() || ''))return false;
       const walker=document.createTreeWalker(node,NodeFilter.SHOW_TEXT);
       while(walker.nextNode()) {
         const parent=walker.currentNode.parentElement,value=walker.currentNode.nodeValue.trim();

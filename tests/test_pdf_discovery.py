@@ -718,6 +718,7 @@ def test_auxiliary_captcha_does_not_block_readable_http_content(extra):
 
 @pytest.mark.parametrize('body', [
     '<title>Publisher</title><p>Please complete the security check to continue.</p><iframe src="https://newassets.hcaptcha.com/captcha/v1"></iframe>',
+    '<main><h1>Sign in</h1><p>Sign in to view this article</p><form><input type="password"></form></main>',
     '<title>Publisher</title><h1>Sign in</h1><form><input type="password"></form>',
     '<title>Just a moment...</title><article>Checking your browser</article>'
     '<script>window._cf_chl_opt = {};</script><script src="/cdn-cgi/challenge-platform/h/g/orchestrate/chl_page/v1"></script>',

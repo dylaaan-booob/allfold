@@ -8,7 +8,7 @@ class _AccessHTML(HTMLParser):
     def __init__(self):
         super().__init__(convert_charrefs=True)
         self.stack = []
-        self.title = self.h1 = self.h2 = ''
+        self.title = self.h1 = self.h2 = self.primary_h1 = self.primary_h2 = ''
         self.content = self.body_text = self.verification_prompt = False
         self.password = self.modal_password = self.frame = self.captcha = False
         self.options = self.orchestrator = self.anubis = False
@@ -51,10 +51,15 @@ class _AccessHTML(HTMLParser):
             self.title += data
         if any(item[1] for item in self.stack) or any(tag in tags for tag in ('style', 'head', 'title', 'iframe')):
             return
+        primary = not any(tag in tags for tag in ('form', 'aside', 'nav', 'footer', 'dialog'))
         if 'h1' in tags:
             self.h1 += data
+            if primary:
+                self.primary_h1 += data
         elif 'h2' in tags:
             self.h2 += data
+            if primary:
+                self.primary_h2 += data
         if data.strip():
             self.verification_prompt |= bool(re.match(r'^(?:please\s+)?(?:complete (?:the )?(?:security check|captcha)|verify (?:that )?you are human)\b', data.strip(), re.I))
             self.body_text = True
@@ -82,6 +87,9 @@ def html_access(body: str, status: int = 200) -> str | None:
     if (parser.frame and verification or parser.captcha
             and (not parser.body_text or parser.verification_prompt and not parser.content)):
         return 'verification'
-    if parser.password and (not parser.content or parser.modal_password) and named(r'^(Sign in|Log in|Login|Authentication)\b'):
+    login_pattern = r'^(Sign in|Log in|Login|Authentication)\b'
+    primary_login = re.match(login_pattern, (parser.primary_h1 or parser.primary_h2).strip(), re.I)
+    login = any(re.match(login_pattern, value.strip(), re.I) for value in (parser.title, parser.h1, parser.h2))
+    if parser.password and login and (primary_login or not parser.content or parser.modal_password):
         return 'login'
     return None
