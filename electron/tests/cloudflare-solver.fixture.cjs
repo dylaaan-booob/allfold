@@ -45,10 +45,16 @@ app.whenReady().then(async()=>{
       'from allfold.logging_setup import configure_logging','configure_logging()',
       'from allfold.integrations.cloudflare_solver import solve_cloudflare','stop=Event()',
       'async def progress(result):',' if result["outcome"]=="clicked": print(json.dumps(result),flush=True); stop.set()',
-      'timer=Timer(8,stop.set)','timer.start()',
+      'timer=Timer(float(sys.argv[3]),stop.set)','timer.start()',
       'try: asyncio.run(solve_cloudflare(sys.argv[1],stop,target_id=sys.argv[2],progress=progress))',
       'finally: timer.cancel()',
     ].join('\n');
+    const runSolver=async(tab,seconds=8)=>{
+      const {stdout}=await promisify(execFile)(python,['-c',script,cdp,
+        tab.view.webContents.getOrCreateDevToolsTargetId(),String(seconds)],
+        {timeout:10000,env:{...process.env,PYTHONPATH:path.join(PROJECT_ROOT,'src')}});
+      return stdout.trim();
+    };
     // Exact target isolation for native/styled controls in same-process and OOPIF frames.
     for(const page of pages) {
       for(const styled of [false,true]) {
@@ -56,16 +62,36 @@ app.whenReady().then(async()=>{
         if(styled)await tabs[1].view.webContents.executeJavaScript(`document.body.insertAdjacentHTML('beforeend',
           '<div style="position:fixed;left:190px;top:110px;width:40px;height:40px;background:red;z-index:10"></div>')`);
         await until(()=>tabs.every(tab=>tab.view.webContents.mainFrame.framesInSubtree.some(item=>item.url===frameURL+(styled?'':'?native'))),'control frame loaded');
-        const target=tabs[1].view.webContents.getOrCreateDevToolsTargetId();
-        const {stdout}=await promisify(execFile)(python,['-c',script,cdp,target],
-          {timeout:10000,env:{...process.env,PYTHONPATH:path.join(PROJECT_ROOT,'src')}});
-        assert.ok(stdout.trim(),'the owned Cloudflare control must be clicked');
+        const stdout=await runSolver(tabs[1]);
+        assert.ok(stdout,'the owned Cloudflare control must be clicked');
         assert.deepEqual(JSON.parse(stdout),{outcome:'clicked',reason:'checkbox_clicked'});
         const checked=await Promise.all(tabs.map(tab=>tab.view.webContents.mainFrame.framesInSubtree.find(item=>item.url===frameURL+(styled?'':'?native'))
           .executeJavaScript('document.querySelector("input").checked')));
         assert.deepEqual(checked,[false,true]);
       }
     }
+    // Content-box and border-box centers can differ. A sibling in this same
+    // challenge frame must not receive the click merely because frameId matches.
+    await tabs[1].view.webContents.loadURL(pages[0]);
+    const controlFrame=tabs[1].view.webContents.mainFrame.framesInSubtree.find(item=>item.url===frameURL);
+    await controlFrame.executeJavaScript(`document.body.innerHTML='<style>body{margin:0}</style><label style="display:block;position:absolute;left:10px;top:30px;width:100px;height:60px;padding-left:100px"><input type="checkbox" style="opacity:0">Verify</label><button id="cover" style="position:absolute;left:150px;top:50px;width:20px;height:20px;z-index:10" onclick="this.dataset.clicked=1">Cover</button>'`);
+    assert.equal(await runSolver(tabs[1],2),'','same-frame sibling occlusion waits');
+    assert.deepEqual(await controlFrame.executeJavaScript('[document.querySelector("input").checked,!!document.querySelector("#cover").dataset.clicked]'),[false,false]);
+    // The checked point is visible near the viewport edge. Implicit scrolling
+    // after validation would move it under this fixed sibling.
+    await controlFrame.executeJavaScript(`document.body.innerHTML='<style>body{margin:0;height:1000px}</style><label style="display:block;position:absolute;left:10px;top:200px;width:180px;height:60px"><input type="checkbox" style="opacity:0">Verify</label><button id="cover" style="position:fixed;left:10px;top:0;width:180px;height:229px;z-index:10" onclick="this.dataset.clicked=1">Cover</button>'`);
+    assert.deepEqual(JSON.parse(await runSolver(tabs[1])),{outcome:'clicked',reason:'checkbox_clicked'});
+    assert.deepEqual(await controlFrame.executeJavaScript('[document.querySelector("input").checked,!!document.querySelector("#cover").dataset.clicked,scrollY]'),[true,false,0]);
+    // A non-overlay scrollbar changes clientWidth, not the iframe viewport's
+    // coordinate width. The true parent click point must remain blocked.
+    await controlFrame.executeJavaScript(`document.body.innerHTML='<style>body{margin:0;height:1000px}html{overflow-y:scroll}::-webkit-scrollbar{width:15px}</style><label style="display:block;position:absolute;left:240px;top:50px;width:20px;height:20px"><input type="checkbox" style="opacity:0">Verify</label>'`);
+    await tabs[1].view.webContents.executeJavaScript(`document.body.insertAdjacentHTML('beforeend','<button id="scrollbar-cover" style="position:fixed;left:257px;top:67px;width:6px;height:6px;padding:0;border:0;z-index:10" onclick="this.dataset.clicked=1">X</button>')`);
+    assert.equal(await runSolver(tabs[1],2),'','scrollbar does not displace the checked parent point');
+    assert.deepEqual(await controlFrame.executeJavaScript('[document.querySelector("input").checked,innerWidth,document.documentElement.clientWidth]'),[false,400,385]);
+    assert.equal(await tabs[1].view.webContents.executeJavaScript('!!document.querySelector("#scrollbar-cover").dataset.clicked'),false);
+    await tabs[1].view.webContents.executeJavaScript('document.querySelector("#scrollbar-cover").remove()');
+    assert.deepEqual(JSON.parse(await runSolver(tabs[1])),{outcome:'clicked',reason:'checkbox_clicked'});
+    assert.equal(await controlFrame.executeJavaScript('document.querySelector("input").checked'),true);
     await Promise.all(tabs.map(tab=>tab.view.webContents.loadURL('https://fixture.invalid/normal')));
     const requests=[],replies=[],progress=[];
     worker=spawn(python,[path.join(PROJECT_ROOT,'tests/electron_solver_bridge_fixture.py'),cdp],
