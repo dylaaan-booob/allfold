@@ -60,7 +60,8 @@ class PdfDiscoveryContext:
             self.registry._require_live(self.reservation)
             self.registry._require_reservation(self.reservation, self.repository)
             future = self.registry.bridge.execute(action,
-                dict(data) | {'workflow_id': self.workflow_id, 'task_id': self.task_id}, progress,
+                dict(data) | {'workflow_id': self.workflow_id, 'task_id': self.task_id,
+                    'parent_task_id': getattr(self.reservation, 'parent_task_id', None)}, progress,
                 verify_recovery=lambda: self.registry._guard(self.reservation))
             if not isinstance(future, Future):
                 raise TypeError('Native discovery requires a real Future')

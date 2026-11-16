@@ -76,7 +76,9 @@ candidates. PDF-only refresh lets Download reuse the coordinator without reopeni
 completed metadata collection. [Source rules](pdf-source-discovery.md) own platform
 applicability and research evidence; [body downloads](body-downloads.md) owns public
 Session/original-response transfer, files, local operations and the accepted native
-cancellation limit. The Download-wide Prepare entry policy remains unresolved.
+cancellation limit. Download binds Service access only on the operation that
+actually uses that context; its parent retains Workspace/Paper/attempt authority
+while independent candidates use the normal Session.
 
 [One Session event owner](browser-session.md) composes native hooks for Browser,
 identity, Covers, WoS and body transfer. Request association, shared cooldown and

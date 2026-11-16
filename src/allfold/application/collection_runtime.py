@@ -141,6 +141,7 @@ class PaperReservation:
     download_token: object = None
     body_request: object = field(default=None, repr=False)
     output: object = field(default=None, repr=False)
+    access_operation: object = field(default=None, repr=False)
 
     def guard(self):
         """Verify this exact reservation without capturing a replacement token."""
@@ -167,6 +168,56 @@ class _LocalAuthority:
 
 class _CleanupUnconfirmed(RuntimeError):
     """Execution stopped, but real resource disposal could not be established."""
+
+
+class BodyAccessRevoked(RuntimeError):
+    """Only the current Download access operation lost its Service context."""
+
+
+@dataclass(eq=False)
+class BodyAccessOperation:
+    """Temporary native owner under the original Paper reservation.
+
+    Uses the same cancellation, authority and settlement paths as other owners;
+    it never admits another Paper attempt or retains a Service on the parent.
+    """
+    parent: PaperReservation
+    authority: object
+    cancel_event: threading.Event = field(default_factory=threading.Event)
+    future: Future = field(default_factory=SettledFuture)
+    task_id: str = field(default_factory=lambda: uuid4().hex)
+    browser_owner: object = None
+    native_future: Future | None = None
+
+    @property
+    def workflow_id(self):
+        return self.parent.workflow_id
+
+    @property
+    def parent_task_id(self):
+        return self.parent.task_id
+
+    def __getattr__(self, name):
+        return getattr(self.parent, name)
+
+    def guard(self):
+        self.registry._guard(self)
+
+    @property
+    def service_id(self):
+        return self.authority.service_id
+
+    @property
+    def providers(self):
+        return getattr(self.authority, 'providers', ())
+
+    @property
+    def output(self):
+        return self.parent.output
+
+    @output.setter
+    def output(self, value):
+        self.parent.output = value
 
 
 class BranchContext:
@@ -334,7 +385,8 @@ class WorkspaceRegistry:
     @property
     def browser_owner_ids(self):
         with self._gate:
-            return frozenset(task.browser_owner.id for task in (*self._branch_tasks(), *self._reservations.values())
+            accesses = tuple(item.access_operation for item in self._reservations.values() if item.access_operation is not None)
+            return frozenset(task.browser_owner.id for task in (*self._branch_tasks(), *self._reservations.values(), *accesses)
                              if task.browser_owner is not None)
 
     def _branch_tasks(self):
@@ -447,6 +499,15 @@ class WorkspaceRegistry:
             check()
 
     def _require_live(self, handle):
+        if isinstance(handle, BodyAccessOperation):
+            self._require_live(handle.parent)
+            try:
+                self._check_admission(handle.authority)
+            except Exception as error:
+                raise BodyAccessRevoked('Download Service access was revoked') from error
+            if handle.parent.access_operation is not handle or handle.cancel_event.is_set():
+                raise BodyAccessRevoked('Download access operation was stopped')
+            return
         self._require_open()
         self._check_admission(handle.authority)
         if isinstance(handle, _BranchTask) and handle.admission_check is not None:
@@ -460,10 +521,17 @@ class WorkspaceRegistry:
             raise TimeoutError('Paper task parent deadline expired')
 
     def _guard(self, handle, repository=None):
+        if isinstance(handle, BodyAccessOperation):
+            self._guard(handle.parent, repository)
+            try:
+                handle.authority.verify()
+            except Exception as error:
+                raise BodyAccessRevoked('Download Service access was revoked') from error
+            with self._gate:
+                self._require_live(handle)
+            return
         try:
             handle.authority.verify()
-            if getattr(handle, 'pdf_provider_authority', None) is not None:
-                handle.pdf_provider_authority.verify()
         except Exception as error:
             raise StaleWriteError('Captured access authority was revoked') from error
         with self._gate:
@@ -484,6 +552,8 @@ class WorkspaceRegistry:
                     current.require_collection(handle.token)
 
     def _require_reservation(self, handle, repository):
+        if isinstance(handle, BodyAccessOperation):
+            handle = handle.parent
         paper = repository.get(handle.paper_id)
         if handle.kind == 'body':
             direct = getattr(handle.body_request, 'direct', ())
@@ -672,6 +742,10 @@ class WorkspaceRegistry:
         providers = tuple(sorted(set(providers)))
         if not set(providers) <= set(PROVIDERS):
             raise ValueError('Unknown reservation Provider')
+        # A body attempt binds only Workspace/Paper. Its actual access operations
+        # acquire Service authority separately; collection/read-only rules stay strict.
+        if kind == 'body':
+            service_id = None
         authority = (self._authority(service_id, (BranchSpec('pdf-discovery', providers=providers),))
                      if service_id is not None or providers or kind == 'body' else _LocalAuthority())
         reservation_deadline = self._deadline(deadline) if deadline is not None else float('inf')
@@ -736,6 +810,8 @@ class WorkspaceRegistry:
         if phase not in {'discovery-client-cleanup', 'discovery-native-cleanup', 'discovery-owner-cleanup',
                          'body-native-cleanup', 'body-reader-cleanup', 'body-file-cleanup', 'body-owner-cleanup', 'body-terminal-write'}:
             raise ValueError('Unknown reservation cleanup phase')
+        if isinstance(reservation, BodyAccessOperation):
+            reservation = reservation.parent
         with self._gate:
             if reservation.registry is not self:
                 raise InvalidPaperState('Reservation belongs to another Workspace registry')
@@ -980,7 +1056,9 @@ class WorkspaceRegistry:
     def _signal(self, target):
         target.cancel_event.set()
         try:
-            if isinstance(target, TaskHandle):
+            if isinstance(target, PaperReservation) and target.access_operation is not None:
+                self._signal(target.access_operation)
+            elif isinstance(target, TaskHandle):
                 for child in target.branch_tasks:
                     child.cancel_event.set()
                     if self.bridge is not None:
@@ -993,6 +1071,12 @@ class WorkspaceRegistry:
 
     def _prepare_cancel_target(self, target, reason='cancelled'):
         with self._gate:
+            if isinstance(target, BodyAccessOperation):
+                if (self._reservations.get(target.paper_id) is not target.parent
+                        or target.parent.access_operation is not target):
+                    return False
+                target.cancel_event.set()
+                return True
             current = self._tasks.get(target.paper_id) if isinstance(target, (TaskHandle, _BranchTask)) else self._reservations.get(target.paper_id)
             if current is not (target.parent if isinstance(target, _BranchTask) else target):
                 return False
@@ -1056,6 +1140,8 @@ class WorkspaceRegistry:
                 return (all_access and task.service_id is not None or task.service_id in selected
                         or bool(providers.intersection(task.providers)))
             targets = [reservation for reservation in self._reservations.values() if affected(reservation)]
+            targets.extend(reservation.access_operation for reservation in self._reservations.values()
+                if reservation.access_operation is not None and affected(reservation.access_operation))
             for task in self._tasks.values():
                 children = tuple(child for child in task.branch_tasks if child.branch.skip_reason is None
                                  and affected(child) and not child.future.done())

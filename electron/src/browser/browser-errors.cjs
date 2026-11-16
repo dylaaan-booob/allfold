@@ -9,7 +9,7 @@ class BrowserFailure extends Error {
 }
 function cloudflareChallenge(access,status=access?.status) {
   const markers=access?.markers || {};
-  return !!(access?.cfMitigated && !markers.content
+  return !!(markers.cloudflareBlocking || access?.cfMitigated && !markers.content
     || markers.cloudflareVisible && !markers.content
     || markers.robot && access?.cloudflareFrame
     || markers.cloudflareTitle && status>=400 && !markers.content

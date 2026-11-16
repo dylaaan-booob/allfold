@@ -44,7 +44,7 @@ function boundedResult(action,value) {
     if(typeof value.type!=='string' || value.type.length>128)invalid();
     return {type:value.type};
   }
-  const names=['unusualTraffic','cloudflareTitle','cloudflareOptions','cloudflareOrchestrator','robot','contentDenied','hcaptcha','hcaptchaVisible','login','mfa','content','cloudflareVisible'];
+  const names=['unusualTraffic','cloudflareTitle','cloudflareOptions','cloudflareOrchestrator','robot','contentDenied','hcaptcha','hcaptchaVisible','login','mfa','content','cloudflareVisible','cloudflareBlocking'];
   if(!value.markers || !names.every(key=>typeof value.markers[key]==='boolean'))invalid();
   const markers=Object.fromEntries(names.map(key=>[key,value.markers[key]]));
   let imperva=null;

@@ -98,9 +98,11 @@ class P2Resolution:
 class PdfSourceReadError(RuntimeError):
     """A finite source read failed after task authority was independently checked."""
 
-    def __init__(self, message, *, diagnostic='parse-failed'):
+    def __init__(self, message, *, diagnostic='parse-failed', service_id=None, service_ids=()):
         super().__init__(message)
         self.diagnostic = diagnostic
+        self.service_id = service_id
+        self.service_ids = service_ids
 
 
 def _eligible(candidate):
@@ -187,7 +189,7 @@ class PdfDiscovery:
     def source_attempt(self):
         return self._source_attempt
 
-    def _observation(self, stage, rule, reason, candidate=None):
+    def _observation(self, stage, rule, reason, candidate=None, service_id=None):
         if self._observe is None:
             return
         if candidate is None and self._current_candidate is not None:
@@ -195,16 +197,17 @@ class PdfDiscovery:
             if (current.stage, current.rule_id) == (stage, rule):
                 candidate = current
         value = dict(stage=stage, rule=rule, reason=reason, attempt=self._source_attempt,
-            fallback=self._fallback, origin=candidate.url if candidate is not None else None)
+            fallback=self._fallback, origin=candidate.url if candidate is not None else None,
+            service_id=service_id or getattr(getattr(candidate, 'access', None), 'service_id', None))
         try:
             self._observe(value)
         except Exception:
             # Telemetry alone cannot change source/transport outcomes.
             pass
 
-    def _note(self, stage, rule, reason):
+    def _note(self, stage, rule, reason, service_id=None):
         self._diagnostics.append((stage, rule, reason))
-        self._observation(stage, rule, reason)
+        self._observation(stage, rule, reason, service_id=service_id)
 
     def check(self):
         if self._cancel.is_set():
@@ -390,15 +393,21 @@ class PdfDiscovery:
         p4 = [*(c for c in current if c.stage == 'P4'), *self._saved('P4')]
         yield from sorted(p4, key=lambda c: c.rule_id == 'GENERIC')
         cached = next((f for f in self.facts if f.source == 'openalex'), None)
-        refresh = cached and any(c.refresh for c in cached.candidates)
+        refreshed = False
         if cached and cached.status in {'complete', 'partial'}:
             for item in cached.candidates:
-                if item.refresh:
-                    break  # Requery only after earlier stable candidates fail.
+                if item.refresh and not refreshed:
+                    # Refresh at its best-first position, then retain every
+                    # stable cached location even if that optional read fails.
+                    refreshed = True
+                    yield from self._openalex_candidates()
                 if item.url:
                     yield PdfCandidate(self.target, 'P5', 'OPENALEX', 'openalex', item.url, field=item.field)
-            if not refresh and cached.status == 'complete':
+            if refreshed or cached.status == 'complete':
                 return
+        yield from self._openalex_candidates()
+
+    def _openalex_candidates(self):
         if not self.target.identity_doi or self.io is None or not callable(getattr(type(self.io), 'openalex', None)):
             return
         if getattr(self.io, 'openalex_available', True) is False:
@@ -524,7 +533,8 @@ class PdfDiscovery:
                     if parsed is not None:
                         fresh_reader = True
                         following = tuple(replace(candidate, url=c.url, reader_kind=c.reader_kind,
-                            referer=c.referer, action=c.action, credential=None, accept=None)
+                            referer=c.referer, action=c.action, credential=None, accept=None,
+                            access=getattr(c, 'access', candidate.access))
                             for c in parsed.current_candidates)
                 if (not following and self.io is not None and (reader or {}).get('platform') == 'lww'
                         and callable(getattr(type(self.io), 'oce_access', None))
@@ -535,10 +545,12 @@ class PdfDiscovery:
                             parsed = self._call(self.io.oce_reader, candidate, response)
                             if parsed is not None:
                                 following = tuple(replace(candidate, url=c.url, platform='oce', reader_kind=c.reader_kind,
-                                    referer=c.referer, action=c.action, credential=None, accept=None)
+                                    referer=c.referer, action=c.action, credential=None, accept=None,
+                                    access=getattr(c, 'access', candidate.access))
                                     for c in parsed.current_candidates)
                     except PdfSourceReadError as error:
-                        self._note(original.stage, original.rule_id, error.diagnostic)
+                        for service_id in error.service_ids or (error.service_id,):
+                            self._note(original.stage, original.rule_id, error.diagnostic, service_id)
                 if access_limited(response):
                     self._note(original.stage, original.rule_id, result.diagnostic or 'access-blocked')
             if not following:

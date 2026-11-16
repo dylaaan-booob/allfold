@@ -16,10 +16,60 @@ from electron_test_helpers import PendingBridge
 from library_application_helpers import create_paper
 
 
-@pytest.mark.parametrize('oce_context', ['permitted', 'denied', 'unbound'])
+@pytest.mark.parametrize('mapping', ['unprepared', 'unassigned', 'ambiguous'])
+def test_public_download_keeps_stable_cache_after_optional_refresh_without_prepare(tmp_path, mapping):
+    import httpx
+    from allfold.config import AccessService, JournalConfig
+    from allfold.pdf_facts import openalex_discovery_facts
+    from allfold.persistence.user_state import load_user_state, compare_write_user_state
+    from library_application_helpers import read_paper
+    stable = 'https://repository.example.org/Body.PDF'
+    fact = openalex_discovery_facts({'doi': '10.5555/decision',
+        'best_oa_location': {'pdf_url': 'https://publisher.example.org/old.pdf?token=old'},
+        'locations': [{'pdf_url': stable}]}, datetime.now(timezone.utc))
+    config, workspace, paper = create_paper(tmp_path, discovery_facts=(
+        PdfDiscoveryFacts(source='document', capability='document-pdf', status='complete',
+            observed_at=datetime.now(timezone.utc), target_doi='10.5555/decision'), fact))
+    with PaperRepository.open(workspace) as repository:
+        paper = repository.edit_metadata(paper.token, {'journal_issns': ('0006-341X', '0090-5364')})
+    first = AccessService.create('Unprepared', 'https://library.example.org')
+    second = AccessService.create('Other Service', 'https://other.example.org')
+    saved = load_user_state(config)
+    journals = tuple(journal.model_copy(update={'access_service_id': None if mapping == 'unassigned' else first.id})
+        for journal in saved.state.journals)
+    if mapping == 'ambiguous':
+        journals += (JournalConfig(name='Another Journal', issn='0090-5364', access_service_id=second.id),)
+    compare_write_user_state(config, replace(saved.state, access_services=(first, second), journals=journals), saved.revision)
+    bridge = PendingBridge()
+    app = create_app(config, electron_bridge=bridge, diagnostics_root=tmp_path/'logs')
+    app.state.body_downloads.http_options = {'transport': httpx.MockTransport(lambda _: httpx.Response(404, json={})),
+        'resolver': lambda *_: ('93.184.216.34',)}
+    with TestClient(app, base_url='http://localhost') as client:
+        state = client.get('/api/ui-next/workspace').json()
+        # Ambiguity can place a Paper outside its ordinary Journal section.
+        projection = app.state.body_downloads.projection(paper)
+        assert projection['available']
+        started = client.post(f'/api/papers/{paper.id}/body/download', json=dict(csrf_token=state['csrf_token'],
+            workspace_id=str(paper.workspace_id), qualification=projection['qualification']))
+        assert started.status_code == 200, started.text
+        assert bridge.dispatched.wait(2)
+        task = app.state.workspace_tasks.current()._reservations[paper.id]
+        data = bridge.calls[-1][1]
+        assert data['url'] == stable and 'service_id' not in data and 'preparation_key' not in data
+        (workspace/data['output']['temporary']).write_bytes(b'%PDF-stable')
+        bridge.future.set_result(dict(kind='pdf', outcome='stream_complete', pdf_type=True, transfer_complete=True,
+            output_file=data['output']['file'], size_bytes=11, final_url=stable))
+        result = task.future.result(3)
+        assert result.status == 'completed' and result.paper.body.pdf_source == 'P5'
+        assert len(bridge.calls) == 1 and not app.state.workspace_tasks.active
+        assert read_paper(workspace, paper.id).download.output is None
+        assert (workspace/result.paper.body.relative_path).read_bytes() == b'%PDF-stable'
+
+
+@pytest.mark.parametrize('oce_context', ['permitted', 'denied', 'unbound', 'unprepared', 'removed', 'ambiguous'])
 def test_public_lww_empty_viewer_uses_only_its_captured_oce_capability(tmp_path, oce_context):
     import httpx
-    from allfold.config import AccessService
+    from allfold.config import AccessService, JournalConfig
     from allfold.pdf_facts import PdfIdentifier, openalex_discovery_facts
     from allfold.persistence.user_state import load_user_state, compare_write_user_state
     from library_application_helpers import read_paper
@@ -28,10 +78,13 @@ def test_public_lww_empty_viewer_uses_only_its_captured_oce_capability(tmp_path,
 
     article = 'https://journals.lww.com/journal/fulltext/2026/paper.aspx'
     pdf = 'https://assets.ovid.com/Body.PDF?Signature=A%2FB&key=Keep'
+    oa = 'https://repository.example.org/Body.PDF'
+    fallback = oce_context in {'unprepared', 'removed', 'ambiguous'}
     fact = PdfDiscoveryFacts(source='document', capability='document-pdf', status='complete',
         observed_at=datetime.now(timezone.utc), target_doi='10.5555/decision', landing_url=article,
         platform='lww', identifiers=(PdfIdentifier(kind='an', value='22222222-222222222-22222', rule_id='R060'),))
-    empty = openalex_discovery_facts({'doi': '10.5555/decision', 'best_oa_location': None, 'locations': []},
+    empty = openalex_discovery_facts({'doi': '10.5555/decision',
+        'best_oa_location': {'pdf_url': oa} if fallback else None, 'locations': []},
         datetime.now(timezone.utc))
     config, workspace, paper = create_paper(tmp_path, discovery_facts=(fact, empty))
     service = AccessService.create('Prepared reader', 'https://ds.carsi.edu.cn/resource/entry', access_method='manual')
@@ -39,6 +92,13 @@ def test_public_lww_empty_viewer_uses_only_its_captured_oce_capability(tmp_path,
         saved = load_user_state(config)
         compare_write_user_state(config, replace(saved.state, access_services=(service,), journals=tuple(
             journal.model_copy(update={'access_service_id': service.id}) for journal in saved.state.journals)), saved.revision)
+    if oce_context == 'ambiguous':
+        other = AccessService.create('Other institution', 'https://other.example.org')
+        saved = load_user_state(config)
+        compare_write_user_state(config, replace(saved.state, access_services=(service, other),
+            journals=(*saved.state.journals, JournalConfig(name='Other Journal', issn='0090-5364', access_service_id=other.id))), saved.revision)
+        with PaperRepository.open(workspace) as repository:
+            paper = repository.edit_metadata(paper.token, {'journal_issns': ('0006-341X', '0090-5364')})
 
     class OceBodyBridge:
         connected, closing = True, False
@@ -69,6 +129,12 @@ def test_public_lww_empty_viewer_uses_only_its_captured_oce_capability(tmp_path,
                 if data['url'].startswith('https://journals.lww.com/'):
                     self.started.set()
                     return self.first
+                if data['url'] == oa:
+                    assert 'service_id' not in data and 'preparation_key' not in data
+                    (Path(data['workspace_root'])/data['output']['temporary']).write_bytes(b'OA body')
+                    result.set_result(dict(kind='pdf', outcome='stream_complete', pdf_type=True, transfer_complete=True,
+                        size_bytes=7, output_file=data['output']['file'], final_url=oa))
+                    return result
                 assert data['url'] == pdf
                 output = data['output']
                 (Path(data['workspace_root'])/output['temporary']).write_bytes(b'OCE body')
@@ -89,17 +155,25 @@ def test_public_lww_empty_viewer_uses_only_its_captured_oce_capability(tmp_path,
     app.state.body_downloads.http_options = {'transport': httpx.MockTransport(unavailable_api),
         'resolver': lambda *_: ('93.184.216.34',)}
     with TestClient(app, base_url='http://localhost') as client:
-        if oce_context != 'unbound':
+        if oce_context in {'permitted', 'denied'}:
             app.state.login.start(config, manual_service_id=service.id)
             app.state.login.join()
         snapshot = client.get('/api/ui-next/workspace').json()
-        item = snapshot['subjects'][0]['journals'][0]['papers'][0]
+        item = {'download': app.state.body_downloads.projection(paper)}
         response = client.post(f'/api/papers/{paper.id}/body/download', json=dict(csrf_token=snapshot['csrf_token'],
             workspace_id=snapshot['workspace_id'], qualification=item['download']['qualification']))
         assert response.status_code == 200, response.text
         assert bridge.started.wait(2)
         registry = app.state.workspace_tasks.current()
         task = registry._reservations[paper.id]
+        if oce_context == 'removed':
+            change = app.state.workspace_tasks.begin_change(services=(service.id,))
+            assert not change.targets
+            app.state.workspace_tasks.drain_change(change)
+            saved = load_user_state(config)
+            compare_write_user_state(config, replace(saved.state, access_services=(), journals=tuple(
+                journal.model_copy(update={'access_service_id': None}) for journal in saved.state.journals)), saved.revision)
+            app.state.workspace_tasks.finish_change(change)
         first = next(data for action, data in bridge.calls if action == 'stream_paper_body')
         try:
             bridge.first.set_result(dict(kind='response', outcome='response', response=dict(url=first['url'],
@@ -115,18 +189,29 @@ def test_public_lww_empty_viewer_uses_only_its_captured_oce_capability(tmp_path,
         body_calls = [(action, data) for action, data in bridge.calls if action in {'stream_paper_body', 'extract_paper_pdf_clues'}]
         readers = [data['reader']['platform'] for _, data in body_calls if 'reader' in data]
         assert readers == (['lww', 'oce'] if oce_context == 'permitted' else ['lww'])
-        assert sum(bool(data.get('reader_access_only')) for _, data in body_calls) == (oce_context != 'unbound')
-        assert all((data['workflow_id'], data['task_id']) == (task.workflow_id, task.task_id) for _, data in body_calls)
-        if oce_context != 'unbound':
-            assert all(data['service_id'] == service.id and data['target_page_id'] == 17 for _, data in body_calls)
+        assert sum(bool(data.get('reader_access_only')) for _, data in body_calls) == (oce_context in {'permitted', 'denied'})
+        assert all(data['workflow_id'] == task.workflow_id and data['task_id'] != task.task_id
+            and data['parent_task_id'] == task.task_id for _, data in body_calls)
+        for _, data in body_calls:
+            bound = data.get('reader_access_only') or data.get('reader', {}).get('platform') == 'oce' or data.get('url') == pdf
+            if bound:
+                assert data['service_id'] == service.id and data['target_page_id'] == 17
+            else:
+                assert 'service_id' not in data and 'preparation_key' not in data
+        assert task.service_id is None and task.access_operation is None and not task.authority.native_access().payload()
         saved = read_paper(workspace, paper.id)
         assert saved.metadata == paper.metadata and saved.collection_status == 'not_started'
         projection = client.get('/api/ui-next/workspace').json()
-        if oce_context == 'permitted':
-            assert result.status == 'completed' and saved.body.pdf_source == 'P4' and saved.body.fallback_used
-            assert (workspace/saved.body.relative_path).read_bytes() == b'OCE body'
+        if oce_context == 'permitted' or fallback:
+            assert result.status == 'completed' and saved.body.pdf_source == ('P5' if fallback else 'P4') and saved.body.fallback_used
+            assert (workspace/saved.body.relative_path).read_bytes() == (b'OA body' if fallback else b'OCE body')
             assert saved.download.output is None and projection['counts']['downloaded'] == 1
             assert 'Signature' not in str(saved.body) and 'Signature' not in str(projection)
+            if fallback:
+                observations = app.state.body_downloads.projection(saved)['source_observations']
+                reason = {'removed': 'service-missing', 'ambiguous': 'service-ambiguous'}.get(oce_context, 'service-unprepared')
+                related = {item.get('service_id') for item in observations if item['pdf_reason'] == reason}
+                assert related == ({service.id, other.id} if oce_context == 'ambiguous' else {service.id})
         else:
             assert saved.body is None and saved.download.status == 'failed' and projection['counts']['downloaded'] == 0
         assert not app.state.workspace_tasks.active

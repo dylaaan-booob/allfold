@@ -78,15 +78,10 @@ async def main():
     application = create_app(config, electron_bridge=bridge, diagnostics_root=root / 'logs')
     receiver = asyncio.create_task(bridge.connect(socket))
     await socket.ready.wait()
-    login = application.state.login
-    login.start(config)
-    await asyncio.to_thread(login.join)
-    access = BrowserServiceSnapshot.read(config)
-    login.confirm_all(access, login.snapshot(access)['confirmation_workflow_id'])
     host = application.state.workspace_tasks
     client = httpx.AsyncClient(transport=httpx.ASGITransport(app=application), base_url='http://localhost')
     try:
-        for index, kind in enumerate(('attachment', 'inline', 'url-doi-form', 'microbiology-redirect', 'iframe', 'predeclared-iframe', 'predeclared-target-changed', 'predeclared-popup-guard', 'existing-iframe', 'existing-target-changed', 'iframe-background', 'popup-background', 'iframe-replaced', 'popup-source-replaced', 'popup', 'named-popup', 'current-form', 'get-form', 'get-changed', 'sciencedirect', 'blocked',
+        for index, kind in enumerate(('attachment', 'inline', 'url-doi-form', 'microbiology-redirect', 'interrupted', 'iframe', 'iframe-many', 'predeclared-iframe', 'predeclared-target-changed', 'predeclared-popup-guard', 'existing-iframe', 'existing-target-changed', 'iframe-background', 'popup-background', 'iframe-replaced', 'popup-source-replaced', 'popup', 'named-popup', 'current-form', 'get-form', 'get-changed', 'sciencedirect', 'blocked',
                                       'action-blocked', 'action-challenge', 'action-challenge-iframe', 'action-challenge-popup', 'action-html', 'cancel', 'drain')):
             science = kind == 'sciencedirect'
             access_blocked = kind in {'blocked', 'action-blocked'} or kind.startswith('action-challenge')
@@ -95,15 +90,20 @@ async def main():
             candidate = PdfCandidateFact(stage='P4', rule_id='R024' if science else 'R059',
                 url=article + '/pdfft' if science else origin + ('/expired-action' if kind == 'current-form' else '/once') + '?' + ('discard=old-action-query&' if kind in {'get-form', 'get-changed'} else '') + 'case=' + kind,
                 reader_kind='sciencedirect' if science else None, action=None if science else 'refresh_form', referer=article)
+            fallback = kind == 'interrupted'
             identity = 'W' + str(88000 + index)
             with PaperRepository.open(workspace) as repo:
                 paper = repo.create_or_match(repo.workspace_id, direct_ids=ExternalIds(openalex=identity),
-                    metadata=PaperMetadata(title='Public original body', discovery_facts=(PdfDiscoveryFacts(
+                    metadata=PaperMetadata(title='Public original body', publication_type='journal', journal='Biometrics',
+                        journal_issns=('0006-341X',), discovery_facts=(PdfDiscoveryFacts(
                         source='document', capability='document-pdf', status='complete', observed_at=datetime.now(timezone.utc),
                         target_openalex=identity, landing_url=article, platform='sciencedirect' if science else 'microbiology',
-                        candidates=(candidate,)),))).paper
+                        candidates=(candidate,)), *((PdfDiscoveryFacts(source='openalex', capability='openalex-locations',
+                            status='complete', observed_at=datetime.now(timezone.utc), target_openalex=identity,
+                            candidates=(PdfCandidateFact(stage='P5',rule_id='OPENALEX',url=origin+'/fallback.pdf'),)),) if fallback else ()) ))).paper
             state = (await client.get('/api/ui-next/workspace')).json()
             projected = paper_projection(state, paper.id)
+            assert projected['download']['available'], kind
             request = dict(csrf_token=state['csrf_token'], workspace_id=str(paper.workspace_id), qualification=projected['download']['qualification'])
             accepted = await client.post(f'/api/papers/{paper.id}/body/download', json=request)
             assert accepted.status_code == 200, accepted.text
@@ -144,7 +144,10 @@ async def main():
                 assert stored.download.status == ('failed' if expected == 'local_failure' else 'cancelled' if expected == 'stale' else expected)
                 assert stored.collection is None
                 if expected == 'completed':
-                    assert stored.body.pdf_source == 'P4' and stored.body.fallback_used is False
+                    assert stored.body.pdf_source == ('P5' if fallback else 'P2' if science else 'P4') and stored.body.fallback_used is fallback, kind
+                    if fallback:
+                        observations=projected['download']['source_observations']
+                        assert any(item['pdf_reason']=='interrupted' for item in observations)
                     assert stored.body.size_bytes == 256 * 1024
                 elif access_blocked:
                     assert stored.download.reason == 'access-blocked'

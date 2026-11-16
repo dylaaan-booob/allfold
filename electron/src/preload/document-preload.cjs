@@ -29,7 +29,7 @@ const operations={
     const content=!challengeTitle && !authTitle && nodes('article,main,[role="main"]').some(reading);
     const modal=node=>!!node.closest('[aria-modal="true"],dialog[open]');
     const markers={unusualTraffic:/^Unusual Traffic Detected\s*\(Error 418\)/i.test(title),
-      cloudflareTitle:challengeTitle,cloudflareOptions:false,cloudflareOrchestrator:false,cloudflareVisible:false,
+      cloudflareTitle:challengeTitle,cloudflareOptions:false,cloudflareOrchestrator:false,cloudflareVisible:false,cloudflareBlocking:false,
       robot:false,contentDenied:false,hcaptcha:false,hcaptchaVisible:false,login:false,mfa:false,content};
     // Compute fixed predicates locally; no script, text, token or frame URL leaves this world.
     for(const script of document.querySelectorAll('script')) {
@@ -58,8 +58,13 @@ const operations={
           markers.hcaptcha=true;
           if(visible(frame) && (!content || modal(frame)))markers.hcaptchaVisible=true;
         }
-        if(url.origin==='https://challenges.cloudflare.com' && url.pathname.startsWith('/cdn-cgi/challenge-platform/') && visible(frame))
+        if(url.origin==='https://challenges.cloudflare.com' && url.pathname.startsWith('/cdn-cgi/challenge-platform/') && visible(frame)) {
           markers.cloudflareVisible=true;
+          // A visible access modal remains blocking even with readable content
+          // behind it. Optional widgets and hidden validation frames do not.
+          const blocker=frame.closest('[aria-modal="true"],dialog:modal');
+          if(visible(blocker))markers.cloudflareBlocking=true;
+        }
         if(/(^|\.)(?:google\.com|recaptcha\.net)$/i.test(url.hostname) && url.pathname.startsWith('/recaptcha/')
           && visible(frame) && (!content || modal(frame)))markers.robot=true;
       } catch { /* No URL evidence. */ }

@@ -103,6 +103,10 @@ shadow-root enumeration or whole-page HTML read is used. It never selects a page
 by URL.
 The observer and business waits use the same access evidence. A visible optional
 Turnstile alongside readable content does not independently start interaction.
+One access observation includes background readability, current frame visibility
+and modal evidence. A visible Cloudflare frame in a visible blocking modal
+overrides readable background content; hidden frames and validation scripts alone
+do not. The common Page observer remains responsible for every tab type.
 
 The current control must be connected, enabled, visible and hit-testable before
 interaction. A transparent native checkbox can use its explicitly associated,
@@ -117,8 +121,11 @@ Hidden or rebuilding auxiliary frames do not veto a known actionable control.
 Ambiguous actionable controls wait. Pydoll reobserves current controls
 across navigation, history changes and replacement; it does not require a fixed
 Document, title/frame/checkbox order, attempt count or total 30-second window.
-A clicked unchanged node is not clicked repeatedly; a replacement or observed
-return to an actionable state can be handled again. Individual CDP calls have
+A scan deduplicates each current control and the cancelable observation interval
+spaces input. If a click is ignored, a later scan can relocate and try the same
+continuously actionable unchecked checkbox again. No node replacement or prior
+disabled/checked transition is required. Checked, disabled, obscured and ambiguous
+controls remain ineligible. Individual CDP calls have
 resource timeouts, followed by cancelable observation. A click is not passage:
 access waiting ends only when current challenge evidence clears/normal content
 is available. Later challenges on the same live tab remain eligible.

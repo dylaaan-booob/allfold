@@ -1,6 +1,6 @@
 """One Paper owner coordinates lazy discovery, Session transport and completion."""
 from concurrent.futures import Future
-from contextlib import ExitStack
+from contextlib import ExitStack, contextmanager
 from dataclasses import dataclass, replace, field
 import threading
 import time
@@ -26,6 +26,9 @@ class _BodyRequest:
     direct: tuple = ()
     provider_authority: object = field(default=None, repr=False)
     prior_attempt: int = 0
+    service_id: str | None = None
+    service_reason: str | None = None
+    service_ids: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -60,12 +63,14 @@ def _source_projection(url):
     return urlunsplit((parsed.scheme, parsed.netloc, '/', '', ''))[:2048]
 
 
-def _record_source(reservation, stage, rule, reason, attempt, *, origin=None, fallback=None):
+def _record_source(reservation, stage, rule, reason, attempt, *, origin=None, fallback=None, service_id=None):
     from allfold.application.history import observe
     from allfold.recovery_diagnostics import SCHEMA
     if reason not in SCHEMA['fields']['pdf_reason']['enum']:
         reason = 'source-failed'
     value = dict(pdf_stage=stage, pdf_rule=rule, pdf_reason=reason, pdf_attempt=attempt)
+    if service_id is not None:
+        value['service_id'] = service_id
     if fallback is not None:
         value['fallback_used'] = fallback
     if origin:
@@ -78,6 +83,61 @@ def _record_source(reservation, stage, rule, reason, attempt, *, origin=None, fa
     observe(registry.diagnostics, 'record_pdf_source', dict(record,
         workflow_id=reservation.workflow_id, task_id=reservation.task_id,
         workspace_id=str(reservation.workspace_id)))
+
+
+@contextmanager
+def _access_operation(reservation, repository, authority=None):
+    """Release one access binding only after its original native resources end."""
+    from allfold.application.collection_runtime import BodyAccessOperation, _CleanupUnconfirmed
+    registry = reservation.registry
+    registry._guard(reservation, repository)
+    operation = BodyAccessOperation(reservation, authority or reservation.authority)
+    with registry.paper_gate():
+        registry._require_live(reservation)
+        if reservation.access_operation is not None:
+            raise InvalidPaperState('Another access operation owns this Download')
+        reservation.access_operation = operation
+    try:
+        registry._guard(operation, repository)
+        yield operation
+    finally:
+        native = operation.native_future
+        if native is not None and (not native.done() or native.cancelled()):
+            error = _CleanupUnconfirmed('Download access resource settlement is unconfirmed')
+            registry.fail_reservation(reservation, phase='body-native-cleanup', error=error, unconfirmed=True)
+        if not reservation.cleanup_failed:
+            if operation.browser_owner is not None:
+                try:
+                    registry.browser_lock.release(operation.browser_owner)
+                    operation.browser_owner = None
+                except BaseException as error:
+                    registry.fail_reservation(reservation, phase='body-owner-cleanup', error=error)
+            with registry.paper_gate():
+                reservation.access_operation = None
+            operation.future.set_result(None)
+        else:
+            error = _CleanupUnconfirmed('Download access cleanup is unconfirmed')
+            operation.future.set_exception(error)
+            raise error
+
+
+def _consume_access(reservation, repository, files, candidate, progress):
+    from allfold.application.collection_runtime import BodyAccessRevoked
+    try:
+        with _access_operation(reservation, repository, candidate.access) as operation:
+            value = _consume(operation, repository, files, candidate, progress)
+            if not (value[0].pdf_type and value[0].transfer_complete) and value[0].kind != 'local_failure':
+                reservation.registry._guard(operation, repository)
+            return value
+    except BodyAccessRevoked:
+        # Recheck only the parent: user cancel/expiry/stale Paper must still end
+        # the whole attempt. Service loss ends just this already settled access.
+        reservation.registry._guard(reservation, repository)
+        if reservation.output is not None:
+            files.cleanup(reservation.output)
+            repository.record_download_output(reservation.download_token, None)
+            reservation.output = None
+        return CandidateResult.failed('service-invalidated'), None, ''
 
 
 def _consume(reservation, repository, files, candidate, progress):
@@ -122,7 +182,8 @@ def _consume(reservation, repository, files, candidate, progress):
         output=output.model_dump(mode='json'), attempt=reservation.download_token.attempt,
         attempt_id=f'{reservation.lifecycle_id}:{reservation.download_token.attempt}',
         url=candidate.url, referer=candidate.referer, deadline_ms=int((time.time()+remaining)*1000),
-        workflow_id=reservation.workflow_id, task_id=reservation.task_id)
+        workflow_id=reservation.workflow_id, task_id=reservation.task_id,
+        parent_task_id=reservation.parent_task_id)
     if credential is not None:
         payload['pdf_credential'] = credential
     with registry.paper_gate():
@@ -227,6 +288,7 @@ class _BodyDiscoveryIO:
         self.io = PdfDiscoveryIO(None, document_context=self.context)
         self.resources = ExitStack()
         self.prepared = set()
+        self.oce_authority = None
         self.openalex_available = reservation.body_request.candidates is None
 
     def _http(self):
@@ -241,53 +303,95 @@ class _BodyDiscoveryIO:
         yield from self._http().query_missing(*args)
 
     def openalex(self, doi):
+        from allfold.application.collection_runtime import BodyAccessRevoked
         authority = self.reservation.body_request.provider_authority
         if isinstance(authority, Exception):
             raise PdfSourceReadError('Optional PDF Provider is unavailable', diagnostic='provider-unavailable') from None
-        if authority is not None:
-            authority.verify()
-            with self.reservation.registry.paper_gate():
-                self.reservation.registry._check_admission(authority)
-                self.reservation.providers = ('openalex',)
-                self.reservation.pdf_provider_authority = authority
-        return self._http().openalex(doi)
+        try:
+            with _access_operation(self.reservation, self.repository, authority) as operation:
+                with self.reservation.registry.factory.open_pdf_discovery(cancel_event=operation.cancel_event,
+                        request_guard=operation.guard, deadline=operation.deadline,
+                        http_options=self.reservation.body_request.http_options) as (_http, openalex):
+                    raw = openalex.get_work_by_doi(doi)
+                    operation.guard()
+                    return raw
+        except (BodyAccessRevoked, Cancelled):
+            self.reservation.registry._guard(self.reservation, self.repository)
+            raise PdfSourceReadError('Optional PDF Provider is unavailable', diagnostic='provider-unavailable') from None
 
     def document(self, target):
-        return self._read(lambda: self.io.document(target))
+        return self._read(lambda operation, io: io.document(target))
 
     def reader(self, candidate, response):
         # The same live parser also handles a ScienceDirect article fallback.
-        values = _document_candidates(self.reservation, self.repository, candidate, response)
+        values = self._read(lambda operation, io: _document_candidates(operation, self.repository, candidate, response),
+            candidate.access)
         if values:
             from types import SimpleNamespace
             return SimpleNamespace(current_candidates=values)
         return None
 
     def oce_access(self, candidate, response):
-        return self._read(lambda: self.io.oce_access(candidate, response))
+        if response.status != 200 or access_limited(response):
+            return False
+        from allfold.application.task_authority import ServiceAccessUnavailable
+        request = self.reservation.body_request
+        if request.service_reason:
+            raise PdfSourceReadError('Institutional Reader needs an unambiguous saved Service',
+                diagnostic=request.service_reason, service_id=request.service_id, service_ids=request.service_ids)
+        if self.oce_authority is None:
+            try:
+                self.oce_authority = self.reservation.registry._authority(request.service_id, ())
+            except ServiceAccessUnavailable as error:
+                raise PdfSourceReadError('Institutional Reader access is unavailable',
+                    diagnostic=error.diagnostic, service_id=request.service_id) from None
+            except (OSError, ValueError, RuntimeError):
+                raise PdfSourceReadError('Institutional Reader access changed',
+                    diagnostic='service-invalidated', service_id=request.service_id) from None
+        return self._read(lambda operation, io: io.oce_access(candidate, response), self.oce_authority)
 
     def oce_reader(self, candidate, response):
-        return self._read(lambda: self.io.oce_reader(candidate, response))
+        parsed = self._read(lambda operation, io: io.oce_reader(candidate, response), self.oce_authority)
+        if parsed is not None:
+            # The retained institution capability also owns its observed PDF,
+            # including HTTPS/CDN continuations. P5 starts independently.
+            parsed = replace(parsed, current_candidates=tuple(replace(candidate,
+                url=item.url, referer=item.referer, action=item.action, reader_kind=item.reader_kind,
+                access=self.oce_authority) for item in parsed.current_candidates))
+        return parsed
 
-    def _read(self, read):
+    def _read(self, read, authority=None):
+        from allfold.application.collection_runtime import BodyAccessRevoked, _CleanupUnconfirmed
+        from allfold.application.pdf_discovery import PdfDiscoveryContext
+        from allfold.pdf_http import PdfDiscoveryIO
         try:
-            return read()
-        except PdfSourceReadError:
-            value = self.context.native[-1].result() if self.context.native else None
-            diagnostic = value.get('diagnostic', {}) if isinstance(value, dict) else {}
-            if isinstance(diagnostic, dict) and (diagnostic.get('code') in {
-                    'verification_page', 'content_access_blocked', 'site_restricted'}
-                    or diagnostic.get('code') == 'http_error' and diagnostic.get('status') in {401,403,407,418,429}):
-                raise PdfSourceReadError('Document access refused', diagnostic='access-blocked') from None
-            raise
-        finally:
-            try:
-                self.context.close_native()
-            except BaseException as error:
-                from allfold.application.collection_runtime import _CleanupUnconfirmed
-                self.reservation.registry.fail_reservation(self.reservation, phase='body-reader-cleanup', error=error,
-                    unconfirmed=isinstance(error, _CleanupUnconfirmed))
-                raise
+            with _access_operation(self.reservation, self.repository, authority) as operation:
+                context = PdfDiscoveryContext(operation, self.repository)
+                try:
+                    try:
+                        parsed = read(operation, PdfDiscoveryIO(None, document_context=context))
+                        context.guard()
+                        return parsed
+                    except PdfSourceReadError:
+                        context.guard()
+                        value = context.native[-1].result() if context.native else None
+                        diagnostic = value.get('diagnostic', {}) if isinstance(value, dict) else {}
+                        if isinstance(diagnostic, dict) and (diagnostic.get('code') in {
+                                'verification_page', 'content_access_blocked', 'site_restricted'}
+                                or diagnostic.get('code') == 'http_error' and diagnostic.get('status') in {401,403,407,418,429}):
+                            raise PdfSourceReadError('Document access refused', diagnostic='access-blocked') from None
+                        raise
+                finally:
+                    try:
+                        context.close_native()
+                    except BaseException as error:
+                        self.reservation.registry.fail_reservation(self.reservation, phase='body-reader-cleanup', error=error,
+                            unconfirmed=isinstance(error, _CleanupUnconfirmed))
+                        raise
+        except BodyAccessRevoked:
+            self.reservation.registry._guard(self.reservation, self.repository)
+            raise PdfSourceReadError('Institutional Reader access changed', diagnostic='service-invalidated',
+                service_id=authority.service_id if authority else None) from None
 
     def prepare(self, candidate):
         from allfold.application.native_body_downloads import native_applicable
@@ -299,7 +403,7 @@ class _BodyDiscoveryIO:
                 and not candidate.action and not candidate.credential
                 and not parse_qs(urlsplit(candidate.url).query).get('md5') and key not in self.prepared):
             self.prepared.add(key)
-            return _document_candidates(self.reservation, self.repository, candidate)
+            return self._read(lambda operation, io: _document_candidates(operation, self.repository, candidate), candidate.access)
         return ()
 
     def close(self):
@@ -339,7 +443,7 @@ def _run(reservation, request, progress):
                     transferred = {}
                     def consume(candidate):
                         nonlocal result
-                        candidate_result, output, final_url = _consume(reservation, repository, files, candidate, progress)
+                        candidate_result, output, final_url = _consume_access(reservation, repository, files, candidate, progress)
                         result = BodyResult(candidate_result.kind, candidate_result=candidate_result)
                         if output is not None:
                             transferred.update(output=output, final_url=final_url)
@@ -351,7 +455,7 @@ def _run(reservation, request, progress):
                         candidates=request.candidates, guard=lambda: registry._guard(reservation, repository),
                         cancel_event=reservation.cancel_event, deadline=reservation.deadline,
                         observe=lambda value: _record_source(reservation, value['stage'], value['rule'], value['reason'],
-                            value['attempt'], origin=value['origin'], fallback=value['fallback']))
+                            value['attempt'], origin=value['origin'], fallback=value['fallback'], service_id=value.get('service_id')))
                     discovery = coordinator.run(consume)
                     if discovery.status == 'transferred':
                         saved = complete_attempt(reservation, repository, files, transferred['output'],
@@ -466,7 +570,7 @@ def _discard(reservation, reason):
 
 
 def submit_body_download(host, paper, *, candidates=None, service_id=None, deadline=None, progress=None,
-                         target=None, facts=(), http_options=None, provider_authority=None):
+                         target=None, facts=(), http_options=None, provider_authority=None, service_reason=None, service_ids=()):
     """Trusted composition entry; public callers supply identities through the service."""
     registry = host.current()
     if registry.workspace_id != paper.workspace_id:
@@ -502,7 +606,9 @@ def submit_body_download(host, paper, *, candidates=None, service_id=None, deadl
     reservation = registry.reserve(paper.id, kind='body', expected_token=paper.token,
         service_id=service_id, deadline=registry._deadline(deadline),
         body_request=_BodyRequest(primary, candidates, progress, target, tuple(facts), http_options, direct, provider_authority,
-            paper.download.token.attempt if paper.download else 0))
+            paper.download.token.attempt if paper.download else 0, service_id,
+            service_reason or ('service-unassigned' if service_id is None else None),
+            tuple(service_ids or ((service_id,) if service_id else ()))))
     if isinstance(reservation, PaperRecord):
         return BodyResult('completed', reservation)
     with registry.paper_gate():
@@ -596,12 +702,13 @@ class BodyDownloadService:
         self.host, self.local_body, self.http_options = host, local_body, http_options
 
     def _service(self, paper):
-        from allfold.application.workspace import paper_service_assignment
+        from allfold.application.workspace import paper_service_assignment, journals_for_paper
         from allfold.config import load_config
-        service_id, assignment = paper_service_assignment(paper.metadata, load_config(self.host.config_path).journals)
-        if assignment == 'ambiguous':
-            raise InvalidPaperState('Paper Access Service assignment is ambiguous')
-        return service_id
+        journals = load_config(self.host.config_path).journals
+        service_id, assignment = paper_service_assignment(paper.metadata, journals)
+        related = tuple(sorted({journal.access_service_id for journal in journals_for_paper(paper.metadata, journals)
+            if journal.access_service_id}))
+        return service_id, {'ambiguous': 'service-ambiguous', 'unassigned': 'service-unassigned'}.get(assignment), related
 
     def projection(self, paper, *, cleanup_pending=False):
         registry = self.host.peek()
@@ -612,11 +719,6 @@ class BodyDownloadService:
                 if item is not None and item.kind == 'body' and paper.download is not None and item.download_token == paper.download.token:
                     owner = item
         access = not self.host.changing and registry is not None and not registry.stopped
-        if access and paper.body is None and owner is None and paper.metadata is not None and not paper.excluded:
-            try:
-                self.host._capture_authority(self._service(paper), ())
-            except (OSError, ValueError, RuntimeError, LibraryError):
-                access = False
         ended = registry.ended_kind(paper) if registry else None
         permitted, reason = body_qualification(paper, occupied=cleanup_pending, ended=ended,
             connected=bool(self.host.bridge and self.host.bridge.connected), available=access)
@@ -685,7 +787,7 @@ class BodyDownloadService:
                     raise StaleWriteError('Original Download qualification changed')
         if local:
             return self.local_body(paper, action='open') if self.local_body is not None else BodyResult('local-body', paper)
-        service_id = self._service(paper)
+        service_id, service_reason, service_ids = self._service(paper)
         # Keep the original optional Provider epoch without making an earlier
         # successful P1/native path depend on that unused credential.
         try:
@@ -694,7 +796,7 @@ class BodyDownloadService:
             provider_authority = error
         target, facts = saved_pdf_target(paper)
         return submit_body_download(self.host, paper, target=target, facts=facts, service_id=service_id,
-            provider_authority=provider_authority, http_options=self.http_options)
+            service_reason=service_reason, service_ids=service_ids, provider_authority=provider_authority, http_options=self.http_options)
 
     def cancel(self, paper_id, workspace_id, task_id, attempt):
         from uuid import UUID

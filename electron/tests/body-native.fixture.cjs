@@ -5,6 +5,7 @@ const assert=require('node:assert/strict'),{randomUUID}=require('node:crypto');
 const {spawn}=require('node:child_process'),{createInterface}=require('node:readline');
 const {BrowserRuntime}=require('../src/browser/browser-runtime.cjs');
 const {executeBodyNative}=require('../src/workflows/body-native.cjs');
+const {executeBodyStream}=require('../src/workflows/body-stream.cjs');
 const {NativeOutput}=require('../src/workflows/native-output.cjs');
 const {BrowserFailure,diagnosticFor}=require('../src/browser/browser-errors.cjs');
 const {invocationRecovery}=require('../src/shared/recovery-summary.cjs');
@@ -64,7 +65,7 @@ app.whenReady().then(async()=>{
       if(kind==='blocked'){res.writeHead(403,{'content-type':'text/html'});res.end('<title>Login required</title>');return;}
       const background=['iframe-background','popup-background','iframe-replaced','popup-source-replaced'].includes(kind);
       const popup=['popup','popup-reservation','popup-background','popup-source-replaced','action-challenge-popup'].includes(kind);
-      const setup=['iframe','predeclared-iframe','predeclared-popup-guard','iframe-background','iframe-replaced','action-challenge-iframe'].includes(kind)?`onsubmit="${kind==='predeclared-popup-guard'?`window.open(this.action,'_blank');`:''}const frame=document.createElement('iframe');frame.name='new-body';document.body.appendChild(frame);${kind.startsWith('predeclared-')?'':'this.target=frame.name'}"`:
+      const setup=['iframe','iframe-many','predeclared-iframe','predeclared-popup-guard','iframe-background','iframe-replaced','action-challenge-iframe'].includes(kind)?`onsubmit="${kind==='predeclared-popup-guard'?`window.open(this.action,'_blank');`:''}${kind==='iframe-many'?`for(let i=0;i<8;i++){const unrelated=document.createElement('iframe');unrelated.name='ad-'+i;document.body.appendChild(unrelated);}`:''}const frame=document.createElement('iframe');frame.name='new-body';document.body.appendChild(frame);${kind.startsWith('predeclared-')?'':'this.target=frame.name'}"`:
         kind==='no-item'?`onsubmit="event.preventDefault()"`:
         kind==='get-changed'?`onsubmit="this.elements.once.value='changed-after-prepare'"`:
         ['existing-target-changed','predeclared-target-changed'].includes(kind)?`onsubmit="this.target='_self'"`:
@@ -160,6 +161,7 @@ app.whenReady().then(async()=>{
       }
       res.writeHead(200,{'content-type':'text/html'});res.end(`<html><head><meta name="citation_doi" content="10.5555/science"><meta name="citation_pdf_url" content="${url.pathname}/pdfft${url.search}"></head><body><article><h1>ScienceDirect original</h1><div class="PdfEmbed"><a class="link-button" ${kind?.startsWith('sciencedirect-reader')&&kind!=='sciencedirect-reader-self'?'target="_blank" rel="opener"':''} href="${url.pathname}/pdfft${url.search}">Download PDF</a></div></article></body></html>`);return;
     }
+    if(url.pathname==='/fallback.pdf'){res.writeHead(200,{'content-type':'application/pdf'});res.end(payload);return;}
     res.writeHead(404);res.end();
   });
   await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));origin=`http://www.microbiologyresearch.org:${server.address().port}`;
@@ -176,7 +178,7 @@ app.whenReady().then(async()=>{
     if(message.type==='progress')progresses.get(message.id)?.(message.data);
     if(message.type==='result')messages.get(message.id)?.(message.data);
   };
-  const context=vm.createContext({browser,send,executeBodyNative,validateRecovery,operations:new Map(),exiting:false,AbortController,WebSocket,
+  const context=vm.createContext({browser,send,executeBodyNative,executeBodyStream,validateRecovery,operations:new Map(),exiting:false,AbortController,WebSocket,
     CONTROL_ACTIONS:new Set(['cas_credentials','diagnostics_reset']),RESOURCE_ACTIONS:new Set(['invalidate_access','release_workflow_pages']),
     BrowserFailure,diagnosticFor,invocationRecovery,Date,Number,Promise,
     operationAssociation:require('../src/browser/page-association.cjs').operationAssociation,
@@ -223,7 +225,10 @@ app.whenReady().then(async()=>{
           reservations.set(path.join(data.workspace_root,data.output.temporary),{info,observed:false});
         }finally{fs.closeSync(fd);}
       }
-      let observed,replaced=false;
+      let observed,replaced=false,interruptedOutput=false;
+      if(kind==='replace')browser.partition.once('will-download',(_event,item)=>{
+        item.on('updated',()=>{if(replaced&&!interruptedOutput){interruptedOutput=true;item.emit('updated',{},'interrupted');}});
+      });
       const reportPage=browser.reportPage;
       if(kind==='completed-late-signals')browser.partition.once('will-download',(_event,item)=>{
         item.prependOnceListener('done',(_done,state)=>{
@@ -261,7 +266,7 @@ app.whenReady().then(async()=>{
       const terminal=new Promise(resolve=>messages.set(id,resolve));
       await context.execute({id,action:'native_paper_body',data});const result=await terminal;browser.bodyActions.prepare=prepare;
       cases.push({kind,result});console.log('NATIVE CASE '+kind+' '+JSON.stringify(result));
-      const success=['form-replaced','get-replaced','sciencedirect-replaced','attachment','inline','url-doi-form','microbiology-redirect','iframe','popup','named-popup','popup-reservation','completed-late-signals','sciencedirect','sciencedirect-direct-cdn-unavailable','sciencedirect-reader','sciencedirect-reader-self','sciencedirect-reader-reload','sciencedirect-reader-loop','sciencedirect-reader-twice','sciencedirect-reader-redirect','sciencedirect-reader-auth-return','mime-octet','mime-missing','mime-wrong','mime-html','mime-xhtml'].includes(kind);
+      const success=['form-replaced','get-replaced','sciencedirect-replaced','attachment','inline','url-doi-form','microbiology-redirect','iframe','iframe-many','popup','named-popup','popup-reservation','completed-late-signals','sciencedirect','sciencedirect-direct-cdn-unavailable','sciencedirect-reader','sciencedirect-reader-self','sciencedirect-reader-reload','sciencedirect-reader-loop','sciencedirect-reader-twice','sciencedirect-reader-redirect','sciencedirect-reader-auth-return','mime-octet','mime-missing','mime-wrong','mime-html','mime-xhtml'].includes(kind);
       if(success) {
         assert.equal(result.outcome,'native_complete');assert.equal(result.resource_closed,true);assert.deepEqual(result.output_file,observed);
         const leaf=path.join(data.workspace_root,data.output.temporary);assert.deepEqual(fs.readFileSync(leaf),payload);assert.deepEqual(identity(leaf),observed);
@@ -282,9 +287,10 @@ app.whenReady().then(async()=>{
         assert.equal(result.kind,['sciencedirect-reader-challenge','sciencedirect-reader-cycle','sciencedirect-reader-cookie-cycle'].includes(kind)?'failed':kind==='sciencedirect-reader-cancel'?'cancelled':'failed');
         assert.equal(result.output_file,undefined);
       } else if(kind==='mime-fake'){assert.equal(result.kind,'failed');assert.equal(result.diagnostic_code,'non-pdf');
-      } else if(kind==='interrupted')assert.equal(result.diagnostic_code,'interrupted');
+      } else if(kind==='interrupted'){assert.equal(result.kind,'failed');assert.equal(result.diagnostic_code,'interrupted');}
       else if(kind==='replace') {
-        assert.equal(replaced,true);assert.equal(result.kind,'local_failure');assert.equal(result.output_file,undefined);
+        assert.equal(replaced,true);assert.equal(interruptedOutput,true);assert.equal(result.kind,'local_failure');
+        assert.equal(result.diagnostic_code,'native-output','interruption cannot mask the observed local output error');assert.equal(result.output_file,undefined);
         const leaf=path.join(data.workspace_root,data.output.temporary),exists=fs.existsSync(leaf);
         if(exists)assert.equal(fs.readFileSync(leaf,'utf8'),'unknown replacement');
         console.log('NATIVE ACCEPTED RISK '+JSON.stringify({replacement_exists_at_terminal:exists,
@@ -317,10 +323,10 @@ app.whenReady().then(async()=>{
       python.stdin.write(JSON.stringify({type:'hello',token:'fixture-only'})+'\n');
       const code=await new Promise(resolve=>python.once('exit',resolve));python=null;
       if(dispatchError)throw dispatchError;
-      assert.equal(code,0,stderr);assert.equal(complete,true,stderr);assert.equal(publicCases.length,28);
+      assert.equal(code,0,stderr);assert.equal(complete,true,stderr);assert.equal(publicCases.length,30);
       for(const item of publicCases)if(item.status==='completed')assert.deepEqual(fs.readFileSync(path.join(profile,'workspace/Documents',item.paper+'.pdf')),payload);
       assert.equal(browser.tabs.size,0);assert.equal(browser.sessionEvents.downloads.size,0);assert.equal(browser.sessionEvents.items.size,0);
-      for(const kind of ['attachment','inline','url-doi-form','iframe','predeclared-iframe','predeclared-popup-guard','existing-iframe','iframe-background','popup-background','iframe-replaced','popup-source-replaced','popup','named-popup','action-blocked','action-challenge','action-challenge-iframe','action-challenge-popup','action-html','cancel','drain'])assert.deepEqual(requests.filter(request=>request.url==='/once?case='+kind),
+      for(const kind of ['attachment','inline','url-doi-form','interrupted','iframe','iframe-many','predeclared-iframe','predeclared-popup-guard','existing-iframe','iframe-background','popup-background','iframe-replaced','popup-source-replaced','popup','named-popup','action-blocked','action-challenge','action-challenge-iframe','action-challenge-popup','action-html','cancel','drain'])assert.deepEqual(requests.filter(request=>request.url==='/once?case='+kind),
         [{url:'/once?case='+kind,method:'POST',body:'once=fixture'}]);
       for(const kind of ['iframe-background','popup-background'])assert.equal(requests.filter(request=>request.url==='/unrelated?case='+kind).length,1);
       assert.deepEqual(requests.filter(request=>request.url==='/once?case=current-form'),
