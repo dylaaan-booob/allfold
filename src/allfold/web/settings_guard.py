@@ -104,7 +104,9 @@ def record_settings_effects(app, effects, invalidation, before, after):
         keys = {key: value for key, value in invalidation['preparation_keys'].items() if key in affected}
         authentication = invalidation['authentication_key'] if authentication_changed else None
         invalidation = {**invalidation, 'preparation_keys': keys, 'authentication_key': authentication} if keys or authentication else None
-    effects.update(invalidation=invalidation, page_limits=before.workflow != after.workflow)
+    limits = ('managed_page_global_limit', 'managed_page_service_limit')
+    effects.update(invalidation=invalidation, page_limits=any(
+        getattr(before.workflow, field) != getattr(after.workflow, field) for field in limits))
 
 
 def settle_settings_effects(app, effects):

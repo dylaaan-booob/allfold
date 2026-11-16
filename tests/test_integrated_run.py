@@ -182,3 +182,42 @@ def test_snapshot_failure_reports_actual_created_papers(tmp_path):
     assert result.facts.created_papers==1 and any(issue.stage=='snapshot_write' for issue in result.warnings)
     summary=build_run_result_summary(result)
     assert summary['created_papers']==1 and summary['status']=='completed_with_notices'
+
+
+@pytest.mark.parametrize('edit', ['unrelated', 'keyword', 'date', 'sources'])
+def test_api_run_guard_uses_effective_inputs_during_response(tmp_path, edit):
+    import httpx
+    from allfold.providers.integrated import DiscoveryClient
+    from allfold.persistence.safe_write import ContentChangedError
+    from test_pubmed_discovery import article
+
+    path, _ = config(tmp_path)
+    path.write_text(path.read_text() + 'enabled_providers: [pubmed]\n')
+    requests = []
+    def handler(request):
+        requests.append(request.url.path)
+        if request.url.path.endswith('esearch.fcgi'):
+            text = path.read_text()
+            if edit == 'keyword':
+                text = text.replace('keyword_expression: learning', 'keyword_expression: inference')
+            elif edit == 'date':
+                text = text.replace('to_month: 2026-03', 'to_month: 2026-04')
+            elif edit == 'sources':
+                text = text.replace('enabled_providers: [pubmed]', 'enabled_providers: [openalex]')
+            else:
+                text += '\n# changed during native response\nlog_level: DEBUG\nworkflow:\n  managed_page_global_limit: 8\n'
+            path.write_text(text)
+            return httpx.Response(200, json={'esearchresult': {'count': '1', 'idlist': ['42'],
+                'webenv': 'fixture', 'querykey': '1'}})
+        return httpx.Response(200, text='<PubmedArticleSet>' + article('42', '0006-341X') + '</PubmedArticleSet>')
+    factory = lambda provider, **kwargs: DiscoveryClient(provider,
+        transport=httpx.MockTransport(handler), interval=0, **kwargs)
+    if edit == 'unrelated':
+        result = run_integrated(path, client_factory=factory)
+        assert result.facts.created_papers == 1
+        assert len(requests) == 2
+    else:
+        with pytest.raises(ContentChangedError):
+            run_integrated(path, client_factory=factory)
+        assert not read_papers(tmp_path / 'workspace')
+        assert len(requests) == 1

@@ -22,10 +22,10 @@ from allfold.application.run_state import (
 from allfold.application.runtime_metadata import metadata_directory
 from allfold.application.browser_services import BrowserServiceSnapshot
 from allfold.config import ConfigurationError, load_config
-from allfold.persistence.user_state import load_user_state, read_user_state
+from allfold.persistence.user_state import load_user_state
 from allfold.persistence.journal_registry import local_candidates
 from allfold.date_range import resolve_date_range
-from allfold.persistence.safe_write import CompareReadError, ContentChangedError, read_text_exact, workspace_operation_lock, workspace_text_directory
+from allfold.persistence.safe_write import CompareReadError, ContentChangedError, read_text_exact, workspace_text_directory
 from allfold.providers.wos import WoSRecords, compile_wos_query, combined_query, match_journal, record_paper, record_evidence, parse_tagged, read_export
 
 
@@ -49,19 +49,21 @@ class WoSCoordinator:
         return self.bridge.connected
 
 
-    def _configuration(self):
-        config = load_config(self.path)
+    def _configuration(self, config=None, saved=None):
+        config = config or load_config(self.path)
         compiled = compile_wos_query(config.keyword_ast)
-        snapshot = load_user_state(self.path, config.venue_whitelist)
-        if snapshot.revision.digest != config.user_state_revision:
-            raise ContentChangedError('User state changed while reading Run WoS configuration')
-        services = snapshot.state.access_services
-        matches = [service for service in services if service.name == 'Web of Science']
+        if saved is None:
+            state = load_user_state(self.path, config.venue_whitelist)
+            if tuple((j.issn, j.eissn) for j in state.state.journals) != tuple((j.issn, j.eissn) for j in config.journals):
+                raise ContentChangedError('Journal scope changed while reading Run WoS configuration')
+            saved = BrowserServiceSnapshot(self.path.resolve(), read_text_exact(self.path), state.revision,
+                state.state.journals, state.state.access_services, config.institution)
+        matches = [service for service in saved.services if service.name == 'Web of Science']
         if len(matches) != 1:
             raise ValueError('Save one Web of Science Service in ACCESS, then open Workflows → Login')
         service = matches[0]
         dates = resolve_date_range(config.date_spec)
-        return config, compiled, service, dates
+        return config, compiled, service, dates, saved
 
     def _latest(self):
         try:
@@ -91,11 +93,11 @@ class WoSCoordinator:
             task = self.task
             enabled, message = False, ''
             try:
-                _, _, service, _ = self._configuration()
+                _, _, service, _, saved = self._configuration()
                 enabled = self._browser_available()
                 if not enabled:
                     message = 'Browser runtime unavailable'
-                elif self.login.prepared_authority(BrowserServiceSnapshot.read(self.path), service.id) is None:
+                elif self.login.prepared_authority(saved, service.id) is None:
                     enabled = False
                     message = 'Prepare Web of Science in Workflows → Login'
             except (ValueError, OSError, ContentChangedError) as error:
@@ -142,9 +144,12 @@ class WoSCoordinator:
                 raise ValueError('WoS is already active or cleaning up')
             if cancel_event is not None and cancel_event.is_set():
                 raise InterruptedError('Run cancelled before native start')
-            config, compiled, service, dates = self._configuration()
-            if parent_snapshot is not None and (config != parent_snapshot.config or self.path.read_bytes() != parent_snapshot.configuration):
-                raise ContentChangedError('Configuration changed before WoS stage')
+            if parent_snapshot is not None:
+                with commit_run_workspace(parent_snapshot, cancel_event=cancel_event):
+                    pass
+                config, compiled, service, dates, saved = self._configuration(parent_snapshot.config, parent_snapshot.wos_access)
+            else:
+                config, compiled, service, dates, saved = self._configuration()
             if not self._browser_available():
                 raise ValueError('Electron browser runtime is unavailable')
             workspace_identity = None
@@ -169,13 +174,6 @@ class WoSCoordinator:
             except ConfigurationError as error:
                 not_listed = []
                 warnings.append(f'无法核对本地 WoS 来源清单；仍使用保存的标识检索：{error}')
-            config_text = read_text_exact(self.path)
-            state_revision = read_user_state(self.path).revision
-            if state_revision.digest != config.user_state_revision or load_config(self.path) != config:
-                raise ContentChangedError('Configuration changed before Run WoS start')
-            saved = BrowserServiceSnapshot.read(self.path)
-            if saved.config_contents != config_text or saved.revision != state_revision:
-                raise ContentChangedError('Configuration changed before Run WoS start')
             prepared = self.login.prepared_authority(saved, service.id)
             if prepared is None:
                 raise ValueError('Prepare Web of Science in Workflows → Login')
@@ -192,9 +190,15 @@ class WoSCoordinator:
                 if parent_snapshot is None:
                     self.run_slot.release()
                 raise ValueError('Prepare Web of Science in Workflows → Login')
+            own_snapshot = None
             try:
-                own_snapshot = capture_run_workspace(self.path, config) if parent_snapshot is None else None
+                if parent_snapshot is None:
+                    own_snapshot = capture_run_workspace(self.path, config, wos_only=True)
+                    if tuple(s for s in own_snapshot.wos_access.services if s.name == 'Web of Science') != (service,):
+                        raise ContentChangedError('WoS access changed before Run WoS start')
             except BaseException:
+                if own_snapshot is not None:
+                    own_snapshot.close()
                 self._release_owner(owner)
                 if parent_snapshot is None:
                     self.run_slot.release()
@@ -206,7 +210,7 @@ class WoSCoordinator:
                 parent_snapshot=parent_snapshot, own_snapshot=own_snapshot, progress_callback=progress_callback, records_callback=records_callback, evidence=[],
                 compiled=compiled, service=service, dates=dates,
                 service_scope=saved.scope, preparation_key=prepared.key, manually_confirmed=prepared.manually_confirmed,
-                config_text=config_text, state_revision=state_revision,
+                saved=saved, prepared=prepared,
                 workspace_identity=workspace_identity, status='RUNNING', stage='WoS Query',
                 message='Using prepared WoS page' if page is not None else 'Opening WoS in the shared Browser session',
                 started_at=datetime.now(timezone.utc).isoformat(), started_clock=time.monotonic(),
@@ -266,11 +270,14 @@ class WoSCoordinator:
             raise
 
     def _assert_current(self, task, *, workspace_checked=False):
-        if not workspace_checked and (snapshot := task.get('parent_snapshot') or task.get('own_snapshot')):
+        snapshot = task.get('parent_snapshot') or task.get('own_snapshot')
+        if not workspace_checked and snapshot:
             with commit_run_workspace(snapshot, cancel_event=task['cancelled']):
                 pass
-        if read_text_exact(self.path) != task['config_text'] or read_user_state(self.path).revision != task['state_revision']:
-            raise ContentChangedError('Saved configuration changed during Run WoS')
+        if workspace_checked and snapshot:
+            snapshot.verify_configuration()
+        if self.login.prepared_authority(task['saved'], task['service'].id) != task['prepared']:
+            raise ContentChangedError('Prepared WoS access context changed during Run WoS')
         path = task['config'].output_dir
         if task['workspace_identity'] is not None:
             info = path.lstat()

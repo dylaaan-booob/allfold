@@ -1338,27 +1338,51 @@ test('managed popup consumes reserved capacity and retained target survives temp
   assert.equal(browser.tabs.size,1);assert.equal(parent.view.webContents.popup({url:'https://late.example/'}).action,'deny');
 });
 
-test('saved lower limits revoke unused popup reservations and queued cancellation never creates a page',async t=>{
+test('lower limits preserve granted popup and page tickets while new requests wait and cancel',async t=>{
   const {BrowserRuntime}=fixture(t),browser=new BrowserRuntime({pageLimits:{global_limit:8,service_limit:6}});
   t.after(()=>browser.close());await browser.ready;
   const signal=new AbortController().signal,data={request_id:'limits',service_scope:serviceScope,service_id:serviceId};
-  let parent;
-  await assert.rejects(browser.runTask(signal,data,async()=>{
-    await browser.reserveTaskPages(5,{signal,deadline:Date.now()+1000});
-    parent=await browser.newTaskPage({signal});
-    browser.updatePageLimits({global_limit:4,service_limit:3});
-    assert.equal(parent.view.webContents.popup({url:'https://unreserved.example/'}).action,'deny');
-    assert.equal(browser.tabs.size,1);
-  }),/page_capacity/);
-  assert.equal(parent.view.webContents.isDestroyed(),true);assert.equal(browser.tabs.size,0);
   let ready,finish;const started=new Promise(resolve=>{ready=resolve;});
-  const first=browser.runTask(signal,{...data,request_id:'fill'},async()=>{
-    for(let i=0;i<3;i++)await browser.newTaskPage({signal});ready();await new Promise(resolve=>{finish=resolve;});
+  const first=browser.runTask(signal,data,async()=>{
+    await browser.reserveTaskPages(5,{signal,deadline:Date.now()+1000});
+    const parent=await browser.newTaskPage({signal});
+    const early=parent.view.webContents.popup({url:'https://already-split.example/'});
+    assert.equal(early.action,'allow');
+    browser.updatePageLimits({global_limit:4,service_limit:3});early.createWindow({});
+    const popup=parent.view.webContents.popup({url:'https://reserved.example/'});
+    assert.equal(popup.action,'allow');popup.createWindow({});
+    for(let i=0;i<2;i++)await browser.newTaskPage({signal});
+    assert.equal(browser.tabs.size,5);ready();await new Promise(resolve=>{finish=resolve;});
   });
   await started;const abort=new AbortController();let admitted=false;
   const waiting=browser.runTask(abort.signal,{...data,request_id:'queued'},async()=>{await browser.newTaskPage({signal:abort.signal,deadline:Date.now()+1000});admitted=true;});
-  await new Promise(setImmediate);abort.abort();await assert.rejects(waiting,/canceled/);
-  assert.equal(admitted,false);assert.equal(browser.tabs.size,3);finish();await first;assert.equal(browser.tabs.size,0);
+  await new Promise(setImmediate);assert.equal(admitted,false);assert.equal(browser.tabs.size,5);
+  abort.abort();await assert.rejects(waiting,/canceled/);
+  assert.equal(admitted,false);assert.equal(browser.tabs.size,5);finish();await first;assert.equal(browser.tabs.size,0);
+});
+
+test('unchanged limits keep owner reservations and increased limits wake queued owners',async t=>{
+  const {BrowserRuntime}=fixture(t),browser=new BrowserRuntime({pageLimits:{global_limit:4,service_limit:4}});
+  t.after(()=>browser.close());await browser.ready;
+  const signal=new AbortController().signal,data={service_scope:serviceScope,service_id:serviceId};
+  let ready,finish,admitted=false;const started=new Promise(resolve=>{ready=resolve;});
+  const first=browser.runTask(signal,{...data,request_id:'owner'},async()=>{
+    await browser.reserveTaskPages(4,{signal,deadline:Date.now()+1000});
+    const parent=await browser.newTaskPage({signal});ready();await new Promise(resolve=>{finish=resolve;});
+    const popup=parent.view.webContents.popup({url:'https://reserved.example/'});
+    assert.equal(popup.action,'allow');popup.createWindow({});
+    for(let i=0;i<2;i++)await browser.newTaskPage({signal});
+    assert.equal(browser.tabs.size,4);
+  });
+  await started;
+  const waiting=browser.runTask(signal,{...data,request_id:'waiter'},async()=>{
+    await browser.newTaskPage({signal,deadline:Date.now()+1000});admitted=true;
+  });
+  await new Promise(setImmediate);assert.equal(admitted,false);
+  browser.updatePageLimits({global_limit:4,service_limit:4});
+  await new Promise(setImmediate);assert.equal(admitted,false);
+  browser.updatePageLimits({global_limit:8,service_limit:6});await waiting;
+  assert.equal(admitted,true);finish();await first;assert.equal(browser.tabs.size,0);
 });
 
 test('late access invalidation closes only the captured old key and reports actual retained Page destruction',async t=>{

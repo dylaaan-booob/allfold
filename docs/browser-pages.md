@@ -115,7 +115,8 @@ source reusable; its owner-free late-item guard leaves only on actual destructio
 Retained access validity uses scope and captured authentication/preparation keys.
 Unrelated configuration/UserState revision changes do not invalidate it. Native
 Prepare still checks its original Portal/frame and actual CARSI route. WoS retains
-the stricter same-Query→Export snapshot and supported overlay checks. The
+the same native Query→Export Document binding and supported overlay checks;
+YAML formatting and unrelated saved revisions do not revoke that binding. The
 `invalidate_access` maintenance action matches **old captured keys**, so a late
 cleanup cannot close a new-key context. Actual retained-page destruction sends
 only its exact Page ID to Python; Login clears matching preparation state and
@@ -131,16 +132,21 @@ exclusive control and waits for retained access cleanup before success returns.
 | `managed_page_service_limit` | 4 | 3–16 | Managed pages in one trusted Service/public bucket |
 
 The authenticated bridge sends one initial limit pair with `ready`. Successful
-Settings saves publish an explicit `page_limits` pair to Main's existing ledger;
+Settings saves publish an explicit `page_limits` pair to Main's existing ledger
+only when either managed page limit actually changes;
 business requests cannot create or raise their own limits. The visible Browser
 pages controls use these names and ranges. Inactive PDF controls remain hidden.
 Ordinary drafts, validation failures and Compare-and-Write conflicts retain their
 existing behavior.
 
-The current implementation revokes unconsumed reservations on any limit update.
-That broad invalidation is scheduled for revision; future implementations need not
-preserve it. Existing physical pages are not force-closed. New creation still uses
-the effective capacity and actual page ownership.
+Saving the same pair is a no-op. An increase wakes eligible queued admissions.
+A decrease preserves existing physical pages and all already-granted unconsumed
+tickets, including a popup ticket split before or after the update. Those tickets
+remain with their original owners through consumption, cancellation, owner exit
+or Session close. Usage may temporarily exceed a lowered limit; only new ticket
+requests must fit the effective global and Service caps. Queue deadlines, owner
+validation and cancellation still apply, and every created page consumes a real
+grant.
 
 ## Native evidence and limits
 
@@ -148,8 +154,9 @@ the effective capacity and actual page ownership.
 local HTTP and a controlled CARSI HTTPS protocol. It proves actual business
 Session WebContents counts at global 4/Service 3, real popup transfer surviving
 opener destruction, six temporary batches returning to Portal/target baseline,
-queued cancellation without creation, original slow-download source retention to
-actual `done`, user limit 16, and final close to zero before Session disposal.
+queued cancellation without creation, previously granted popup/page tickets
+surviving a live limit decrease while new work waits, original slow-download
+source retention to actual `done`, user limit 16, and final close to zero before Session disposal.
 The fixture also tests two simultaneous same-Service Paper owners,
 independent navigated work pages and a shared Portal pin at the same minimum
 capacity. Actual cleanup destroys A's page while B remains live, then returns to

@@ -124,7 +124,10 @@ def config_files(tmp_path):
 
 
 @pytest.mark.parametrize(('change_after_query', 'prepared_page', 'manually_confirmed'),
-    [(False, 71, False), (True, 71, False), (False, None, True), (False, 42, True)])
+    [(None, 71, False), ('comment', 71, False), ('unrelated', 71, False),
+     ('journal_display', 71, False), ('unused_service', 71, False),
+     ('keyword', 71, False), ('date', 71, False), ('journal_scope', 71, False),
+     ('access', 71, False), ('prepared', 71, False), (None, None, True), (None, 42, True)])
 def test_coordinator_preserves_saved_service_scope_and_prepared_page_across_batches(
     tmp_path, change_after_query, prepared_page, manually_confirmed,
 ):
@@ -144,12 +147,15 @@ def test_coordinator_preserves_saved_service_scope_and_prepared_page_across_batc
         AccessService.create('Web of Science', 'https://www.webofscience.com/'))), initial.revision)
     saved = BrowserServiceSnapshot.read(path)
 
+    prepared_key = 'e' * 64
+    refused = change_after_query in {'keyword', 'date', 'journal_scope', 'access', 'prepared'}
+
     class Login:
         def prepared_page(self, saved, service_id):
             assert any(service.id == service_id and service.name == "Web of Science" for service in saved.services)
             return prepared_page
         def prepared_authority(self, saved, service_id):
-            return PreparedService(self.prepared_page(saved, service_id), 'e' * 64, manually_confirmed)
+            return PreparedService(self.prepared_page(saved, service_id), prepared_key, manually_confirmed)
 
 
     recovery = [{'recovery_action': 'page_refresh', 'count': 1, 'outcome': 'recovered',
@@ -162,14 +168,39 @@ def test_coordinator_preserves_saved_service_scope_and_prepared_page_across_batc
         cleanup_dispatched = threading.Event()
         cleanup_result = Future()
         def execute(self, action, data, progress=None):
+            nonlocal prepared_key
             self.calls.append((action, data))
             future = Future()
             if action == 'release_workflow_pages':
                 self.cleanup_dispatched.set()
                 return self.cleanup_result
             elif action == 'wos_query':
-                if change_after_query:
-                    path.write_text(path.read_text() + '\n# changed during Query\n')
+                if change_after_query == 'prepared':
+                    prepared_key = 'f' * 64
+                elif change_after_query in {'journal_display', 'unused_service', 'journal_scope', 'access'}:
+                    current = load_user_state(path)
+                    if change_after_query == 'unused_service':
+                        state = replace(current.state, access_services=(*current.state.access_services,
+                            AccessService.create('Unrelated', 'https://unrelated.example/')))
+                    elif change_after_query == 'access':
+                        state = replace(current.state, access_services=tuple(s.model_copy(update={
+                            'access_url': 'https://changed.example/'}) if s.name == 'Web of Science' else s
+                            for s in current.state.access_services))
+                    else:
+                        update = {'name': 'Display alias'} if change_after_query == 'journal_display' else {'issn': '0090-5364'}
+                        state = replace(current.state, journals=tuple(j.model_copy(update=update) for j in current.state.journals))
+                    compare_write_user_state(path, state, current.revision)
+                elif change_after_query:
+                    text = path.read_text()
+                    if change_after_query == 'keyword':
+                        text = text.replace('keyword_expression: causal', 'keyword_expression: inference')
+                    elif change_after_query == 'date':
+                        text = text.replace('to_month: 2026-01', 'to_month: 2026-02')
+                    elif change_after_query == 'unrelated':
+                        text += '\nlog_level: DEBUG\nworkflow:\n  managed_page_global_limit: 8\n'
+                    else:
+                        text += '\n# changed during Query\n'
+                    path.write_text(text)
                 result = dict(page_id=71, total=2, batch_limit=1, recovery=recovery)
             else:
                 assert action == 'wos_export'
@@ -192,7 +223,7 @@ def test_coordinator_preserves_saved_service_scope_and_prepared_page_across_batc
     finally:
         bridge.cleanup_result.set_result({'released': True})
         coordinator.join()
-    assert [action for action, _ in bridge.calls] == (['wos_query', 'release_workflow_pages'] if change_after_query else
+    assert [action for action, _ in bridge.calls] == (['wos_query', 'release_workflow_pages'] if refused else
                                                      ['wos_query', 'wos_export', 'wos_export', 'release_workflow_pages'])
     assert bridge.calls[-1][1] == {'workflow_id': start['snapshot']['task_id'], 'task_id': start['snapshot']['task_id']}
     query = bridge.calls[0][1]
@@ -204,11 +235,11 @@ def test_coordinator_preserves_saved_service_scope_and_prepared_page_across_batc
     assert len({data['task_id'] for _, data in bridge.calls}) == 1
     assert all(data['workflow_id'] == start['snapshot']['task_id'] for _,data in bridge.calls)
     assert store.history()['records'][0]['task_id'] == start['snapshot']['task_id']
-    assert store.history()['records'][0]['outcome'] == ('failed' if change_after_query else 'completed')
+    assert store.history()['records'][0]['outcome'] == ('failed' if refused else 'completed')
     assert store.history()['records'][0]['details']['recovery'] == recovery
     assert coordinator.state()['snapshot']['status'] == 'FINISHED'
     assert lock.owner is None
-    if not change_after_query:
+    if not refused:
         import json
         from allfold.application.run_state import (
             INTEGRATED_RUN_SCHEMA_VERSION, LastRunSnapshot, RecordedRunOutcome, RunFacts,
@@ -238,3 +269,74 @@ def test_coordinator_preserves_saved_service_scope_and_prepared_page_across_batc
         assert [action for action, _ in bridge.calls] == ['wos_query', 'wos_export', 'wos_export', 'release_workflow_pages']
 
 
+
+
+@pytest.mark.parametrize('edit', ['comment', 'journal_display', 'keyword', 'access', 'read_interleave'])
+def test_wos_retains_original_run_scope_across_unrelated_edits(tmp_path, monkeypatch, edit):
+    from concurrent.futures import Future
+    from allfold.application.browser_runtime import BrowserTaskLock
+    from allfold.application.coordinators.login import PreparedService
+    from allfold.application.coordinators.wos_coordinator import WoSCoordinator
+    from allfold.application.run_commit import capture_run_workspace
+    from allfold.config import AccessService
+    from allfold.persistence.safe_write import ContentChangedError
+    from allfold.persistence.user_state import load_user_state, compare_write_user_state
+    from safety_config_helpers import current_mapping_document
+
+    path, _, _, _ = current_mapping_document(tmp_path)
+    path.write_text(path.read_text() + '\nenabled_providers: [wos]\n')
+    state = load_user_state(path)
+    wos = AccessService.create('Web of Science', 'https://www.webofscience.com/')
+    compare_write_user_state(path, replace(state.state, access_services=(*state.state.access_services, wos)), state.revision)
+    class Login:
+        def prepared_authority(self, saved, service_id):
+            return PreparedService(71, 'e' * 64, False)
+    class Bridge:
+        connected = True
+        calls = []
+        def execute(self, action, data, progress=None):
+            self.calls.append((action, data))
+            future = Future()
+            future.set_result(dict(page_id=71, total=0, batch_limit=0) if action == 'wos_query' else {'released': True})
+            return future
+    bridge = Bridge()
+    coordinator = WoSCoordinator(path, Login(), threading.Lock(), bridge=bridge, browser_lock=BrowserTaskLock())
+    if edit == 'read_interleave':
+        from allfold.application.coordinators import wos_coordinator
+        original_load = wos_coordinator.load_config
+        edited = False
+        def read_then_edit(config_path):
+            nonlocal edited
+            loaded = original_load(config_path)
+            if not edited:
+                edited = True
+                current = load_user_state(config_path)
+                compare_write_user_state(config_path, replace(current.state,
+                    groups=(*current.state.groups, 'Unrelated group')), current.revision)
+            return loaded
+        # Schedule an actual independent DB edit between the two admission reads.
+        monkeypatch.setattr(wos_coordinator, 'load_config', read_then_edit)
+        coordinator.start()
+        coordinator.join()
+        assert not coordinator.task['result']['issues']
+        assert coordinator.task['config'].user_state_revision != load_user_state(path).revision.digest
+        assert [action for action, _ in bridge.calls] == ['wos_query', 'release_workflow_pages']
+        return
+    with capture_run_workspace(path) as snapshot:
+        if edit in {'journal_display', 'access'}:
+            saved = load_user_state(path)
+            update = replace(saved.state, journals=tuple(j.model_copy(update={'name': 'Display alias'}) for j in saved.state.journals)) if edit == 'journal_display' else replace(saved.state,
+                access_services=tuple(s.model_copy(update={'access_url': 'https://changed.example/'}) if s.id == wos.id else s
+                    for s in saved.state.access_services))
+            compare_write_user_state(path, update, saved.revision)
+        else:
+            path.write_text(path.read_text().replace('keyword_expression: causal', 'keyword_expression: inference')
+                if edit == 'keyword' else path.read_text() + '\n# changed before parent native stage\n')
+        if edit in {'keyword', 'access'}:
+            with pytest.raises(ContentChangedError):
+                coordinator.execute_stage(snapshot, cancel_event=threading.Event())
+            assert not bridge.calls
+        else:
+            assert coordinator.execute_stage(snapshot, cancel_event=threading.Event()).status == 'empty'
+            assert coordinator.task['config'] is snapshot.config
+            assert [action for action, _ in bridge.calls] == ['wos_query', 'release_workflow_pages']

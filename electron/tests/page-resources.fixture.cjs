@@ -41,6 +41,30 @@ app.whenReady().then(async()=>{
         for(const [key,fn] of handlers)if(key.startsWith('ajaxSuccess'))fn({},xhr,settings,[]);
         for(const [key,fn] of handlers)if(key.startsWith('ajaxComplete'))fn({},xhr,settings);};</script></body></html>`;
     browser.partition.protocol.handle('https',()=>new Response(resourceHTML,{headers:{'Content-Type':'text/html'}}));
+    // A saved reduction affects new grants, not existing popup/page headroom.
+    browser.updatePageLimits({global_limit:8,service_limit:6});
+    const reducedReady=deferred(),reducedFinish=deferred();
+    const granted=task(service,async()=>{
+      await browser.reserveTaskPages(5,{signal,deadline:Date.now()+3000});
+      const parent=await page('auxiliary');
+      await browser.navigate(origin+'/limit-opener',{tab:parent,signal,deadline:Date.now()+3000});
+      browser.updatePageLimits({global_limit:4,service_limit:3});
+      const created=deferred();browser.events.once('tab-created',(_event,tab)=>created.resolve(tab));
+      await parent.view.webContents.executeJavaScript('void window.open('+JSON.stringify(origin+'/limit-child')+',"_blank")',true);
+      await created.promise;
+      for(let index=0;index<3;index++)await page('auxiliary');
+      assert.equal(physical(),5);reducedReady.resolve();await reducedFinish.promise;
+    });
+    try {
+      await reducedReady.promise;
+      const abort=new AbortController();let admitted=false;
+      const waiting=task(other,async()=>{
+        await browser.newTaskPage({signal:abort.signal,deadline:Date.now()+3000});admitted=true;
+      },abort.signal);
+      await delay(30);assert.equal(admitted,false);assert.equal(physical(),5);
+      abort.abort();await assert.rejects(waiting,/canceled/);
+      reducedFinish.resolve();await granted;assert.equal(physical(),0);
+    }finally {reducedFinish.resolve();await Promise.allSettled([granted]);}
     let portal,target,opener,openerContents,targetContents;
     await task(saved,async()=>{portal=await page('carsi-portal');await browser.navigate('https://ds.carsi.edu.cn/resource/resource.php',{tab:portal,signal,deadline:Date.now()+3000});portal.carsiSessionReady=true;browser.retainAccessPage(portal,saved,'portal');});
     assert.equal(physical(),1);

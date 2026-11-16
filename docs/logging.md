@@ -210,7 +210,9 @@ records. Authentication/preparation keys and native Page-close events are privat
 authority transport, not additional diagnostic export fields.
 
 Native maintenance retains fixed `invalidate_access`/`release_workflow_pages` action names and
-`page_capacity`/`page_capacity_changed` failure codes. `page_admission`/`child_page`
+the `page_capacity` failure code. The retained `page_capacity_changed` diagnostic
+value describes historical records; current limit updates preserve granted tickets.
+`page_admission`/`child_page`
 identify bounded capacity waits or refusals. Page-close reasons distinguish normal
 task completion, retired attempts, context replacement/eviction/invalidation and
 credential cleanup. Authentication/preparation keys, private headers and page

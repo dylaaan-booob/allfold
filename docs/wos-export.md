@@ -1,7 +1,21 @@
 # WoS Plain Text export
 
 Discover uses the saved Web of Science Access Service and its Core Collection page from Login. The export content is a fixed business selection, not a user
-field editor in Allfold:
+field editor in Allfold.
+
+Run and standalone WoS retain the query AST, publication months, effective ISSN
+scope and output Workspace captured at admission. Integrated WoS uses the parent's
+original configuration and selected WoS access record. Before later dispatches and
+writes, the existing snapshot checks these consumed inputs, selected Service,
+institution and original prepared binding. A real change refuses later work;
+comments, YAML formatting, log level, page quotas, Journal display names/Groups/Labels
+and unrelated Services or UserState revisions do not revoke captured results.
+Integrated Run additionally checks selected Discovery sources/order, Journal
+Service allocations and the request contact consumed by collection plans.
+Standalone WoS does not consume those API/collection settings. Native page,
+Document, cancellation and Workspace/database identity checks remain in force.
+
+The export fields are fixed:
 
 | Group | Selected fields |
 | --- | --- |
