@@ -253,10 +253,11 @@ The application shares pacing with Run without borrowing its snapshots, clients
 or cancellation signals.
 
 `POST /api/papers/{paper_uuid}/collection/retry` retains CSRF and exact
-Workspace/Paper/attempt association. The current payload also carries a full
-revision/token and the response is `{workspace_id, revision, paper}`. Current
-qualification, pending-only retry and the planned simplification are owned by
-[Workspace runtime](collection-runtime.md#explicit-retry), not a second HTTP policy.
+Workspace/Paper/attempt association. Its request carries `workspace_id`, `attempt`
+and a token containing only `metadata_generation` and `operation_generation`,
+alongside CSRF. The response is `{workspace_id, revision, paper}`; its projection
+revision is not Retry authority. Qualification and pending-only retry are owned by
+[Workspace runtime](collection-runtime.md#explicit-retry).
 There is no public collection-start or batch-retry route.
 
 The standalone Info Preprint state/start/cancel routes are removed. Old paths
@@ -275,8 +276,11 @@ Workspace switching and confirmed Workspace Reset stop and drain the old
 lifecycle before save/deletion, then bind only the actually saved path. Invalid
 drafts, unapproved deletion previews and stale Reset confirmations do not drain
 work. Logs Reset refuses active registry work, including API-only and queued
-attempts; native Reset waits hold no configuration/reset lock. Current fault-related occupancy and its planned correction are described in
-[Workspace runtime](collection-runtime.md).
+attempts; native Reset waits hold no configuration/reset lock. Actual unfinished
+resources drain before their owner is released. Finished work releases Paper
+occupancy even if logging, terminal-record or auxiliary cleanup fails; a failed
+required terminal write remains an explicit storage error. See
+[resource cleanup and fault settlement](collection-runtime.md#complete-plans-and-independent-branches).
 During normal exit, authenticated `invalidate_access` and
 `release_workflow_pages` may still settle captured resources after execution
 admission closes. They grant no new navigation or credential authority.
