@@ -85,11 +85,20 @@ class CurrentPdfClue:
 
 
 @dataclass(frozen=True)
+class ReaderResult:
+    """Operation-local navigation/access result, never a durable PDF fact."""
+    url: str
+    referer: str | None
+    context_changed: bool
+
+
+@dataclass(frozen=True)
 class DocumentPdfResult:
     facts: PdfDiscoveryFacts
     current_candidates: tuple[CurrentPdfClue, ...]
     recovery: object = None
     diagnostics_status: object = None
+    reader_result: ReaderResult | None = None
 
 
 def validate_document_pdf_clues(value, *, target_doi=None):
@@ -155,7 +164,22 @@ def validate_document_pdf_clues(value, *, target_doi=None):
             raise ValueError('Parse failures cannot become complete empty success')
     except (TypeError, ValueError) as error:
         raise DocumentMetadataFailed('Invalid Document PDF clues') from error
-    return DocumentPdfResult(facts, tuple(current), value.get('recovery'), value.get('diagnostics_status'))
+    reader = value.get('reader_result')
+    if reader is not None:
+        try:
+            if (not isinstance(reader, dict) or set(reader) != {'url', 'referer', 'context_changed'}
+                    or type(reader['context_changed']) is not bool):
+                raise ValueError('Invalid Reader result')
+            for key in ('url', 'referer'):
+                url = reader[key]
+                if key == 'referer' and url is None:
+                    continue
+                if not isinstance(url, str) or len(url) > 4096 or not normalize_public_http_url(url):
+                    raise ValueError('Invalid Reader URL')
+            reader = ReaderResult(**reader)
+        except (TypeError, ValueError) as error:
+            raise DocumentMetadataFailed('Invalid Reader result') from error
+    return DocumentPdfResult(facts, tuple(current), value.get('recovery'), value.get('diagnostics_status'), reader)
 
 
 def validate_document_metadata(value, *, target_doi=None):

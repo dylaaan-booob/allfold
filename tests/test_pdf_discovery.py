@@ -144,13 +144,15 @@ def test_sciencedirect_background_cloudflare_script_does_not_block_current_pdf_l
     'https://pdf.sciencedirectassets.com.evil.example/1-s2.0-S014067362400123X/main.pdf',
     'http://pdf.sciencedirectassets.com/1-s2.0-S014067362400123X/main.pdf',
 ])
-def test_sciencedirect_redirect_cannot_change_pii_host_or_protocol(destination):
+def test_observed_get_redirect_is_not_limited_by_pii_host_or_filename(destination):
     from allfold.pdf_rules import PdfCandidate
     from allfold.pdf_responses import parse_current_response
     url='https://www.sciencedirect.com/science/article/pii/S014067362400123X/pdfft'
     candidate=PdfCandidate(target(),'P1','R024','sciencedirect',url)
     response=CurrentResponse(url,'',status=302,redirect_url=destination)
-    assert parse_current_response(candidate,response)==()
+    following,=parse_current_response(candidate,response)
+    assert following.url==destination and following.stage==candidate.stage
+    assert following.credential is None and following.access is candidate.access
 
 
 @pytest.mark.parametrize('body',[
@@ -689,6 +691,35 @@ def test_partial_document_known_p3_can_finish_before_missing_fields_are_refreshe
             pytest.fail('Existing P3 candidate already finished')
     result = PdfDiscovery(paper, facts=(facts,), io=IO()).run(lambda _: CandidateResult.pdf(transfer_complete=True))
     assert (result.pdf_source, result.fallback_used) == ('P3', False)
+
+
+@pytest.mark.parametrize('stable', ['success', 'failed', 'failed-complete', 'absent'])
+def test_saved_acs_p4_precedes_optional_refresh_and_refresh_remains_available(stable):
+    from types import SimpleNamespace
+    from allfold.application.document_metadata import CurrentPdfClue
+    from allfold.pdf_facts import PdfRefreshLocator
+    paper = target('pubs.acs.org')
+    url = 'https://pubs.acs.org/journal/article-pdf/Body.PDF'
+    candidates = [PdfCandidateFact(stage='P4', rule_id='R044',
+        refresh=PdfRefreshLocator(kind='document-pdf', landing_url='https://pubs.acs.org/article'))]
+    if stable != 'absent':
+        candidates.insert(0, PdfCandidateFact(stage='P4', rule_id='R044', url=url))
+    facts = document(paper, candidates[:1] if stable == 'failed-complete' else candidates,
+        status='complete' if stable == 'failed-complete' else 'partial')
+    calls = []
+    class IO:
+        def document(self, _):
+            calls.append('document')
+            return SimpleNamespace(facts=document(paper), current_candidates=(
+                CurrentPdfClue('P3', 'GENERIC', 'https://cdn.example.org/fresh-meta.pdf', field='citation_pdf_url'),
+                CurrentPdfClue('P4', 'R044', 'https://cdn.example.org/fresh-entry.pdf')))
+    def consume(candidate):
+        calls.append(candidate.url)
+        return CandidateResult.failed() if candidate.url == url and stable.startswith('failed') else CandidateResult.pdf(transfer_complete=True)
+    result = PdfDiscovery(paper, facts=(facts,), io=IO()).run(consume)
+    assert calls == ([url] if stable == 'success' else
+        ([url] if stable.startswith('failed') else []) + ['document', 'https://cdn.example.org/fresh-meta.pdf'])
+    assert (result.pdf_source, result.fallback_used) == ('P4' if stable == 'success' else 'P3', stable.startswith('failed'))
 
 
 def test_oup_qualified_citation_response_eprint_uses_current_url_in_original_stage():

@@ -358,6 +358,8 @@ def test_current_ieee_reader_response_finishes_the_same_body_attempt(tmp_path):
         'https://watermark02.silverchair.com/gkac1225.pdf?token=transient','https://watermark02.silverchair.com/'),
     ('https://www.sciencedirect.com/science/article/pii/S0047259X2400006X/pdfft?md5=transient',
         'https://pdf.sciencedirectassets.com/272481/1-s2.0-S0047259X2400006X/main.pdf?token=transient','https://pdf.sciencedirectassets.com/'),
+    ('https://publisher.example.org/body', 'https://files.example.net/Changed/Body.PDF?Signature=A%2FB',
+        'https://files.example.net/'),
 ])
 def test_observed_publisher_cdn_redirect_is_requalified_before_the_next_get(tmp_path,url,location,source):
     from dataclasses import replace
@@ -373,16 +375,42 @@ def test_observed_publisher_cdn_redirect_is_requalified_before_the_next_get(tmp_
         until=time.monotonic()+2
         while len(bridge.calls)<2 and not task.future.done() and time.monotonic()<until:
             time.sleep(.005)
-        assert len(bridge.calls)==2, 'The observed Oxford CDN needs a newly checked request'
+        assert len(bridge.calls)==2, 'An observed public redirect needs a newly checked request'
         assert bridge.calls[-1][1]['url']==location
         bridge.finish()
         result=task.future.result(2)
         assert result.status=='completed'
+        assert result.paper.body.pdf_source==candidate.stage and not result.paper.body.fallback_used
         assert result.paper.body.source_url==source
         assert 'transient' not in str(result.paper.body)
     finally:
         if hasattr(bridge,'result') and not bridge.result.done():
             bridge.result.set_result(dict(kind='cancelled',outcome='cancelled'))
+        host.shutdown();host.join()
+
+
+@pytest.mark.parametrize('location', ['https://files.example.net/body.pdf', 'https://api.elsevier.com/unscoped/body.pdf'])
+def test_observed_api_redirect_retains_source_without_forwarding_scoped_key(tmp_path,location):
+    from dataclasses import replace
+    import time
+    from allfold.application.body_downloads import submit_body_download
+    host,workspace,paper,bridge,candidate=application_host(tmp_path)
+    candidate=replace(candidate,url='https://api.elsevier.com/content/article/doi/10.5555/body',
+        stage='P2',rule_id='API06',platform='sciencedirect',credential='elsevier')
+    try:
+        task=submit_body_download(host,paper,candidates=(candidate,),http_options={'credentials':(('elsevier','fixture-key'),)})
+        assert bridge.started.wait(2)
+        assert bridge.calls[-1][1]['pdf_credential']=={'kind':'elsevier','value':'fixture-key'}
+        bridge.result.set_result(dict(kind='redirect',response=dict(url=candidate.url,status=302,location=location)))
+        until=time.monotonic()+2
+        while len(bridge.calls)<2 and not task.future.done() and time.monotonic()<until:time.sleep(.005)
+        assert len(bridge.calls)==2 and bridge.calls[-1][1]['url']==location
+        assert 'pdf_credential' not in bridge.calls[-1][1]
+        bridge.finish()
+        result=task.future.result(2)
+        assert result.status=='completed' and result.paper.body.pdf_source=='P2' and not result.paper.body.fallback_used
+    finally:
+        if hasattr(bridge,'result') and not bridge.result.done():bridge.result.set_result(dict(kind='cancelled',outcome='cancelled'))
         host.shutdown();host.join()
 
 
@@ -419,33 +447,28 @@ def test_sciencedirect_article_return_refreshes_current_signed_pdf_from_document
 
 
 @pytest.mark.parametrize('signed',[True,False])
-def test_unsigned_sciencedirect_reader_qualifies_current_link_before_any_stream(tmp_path,signed):
+def test_ordinary_sciencedirect_get_streams_before_any_article_or_reader_read(tmp_path,signed):
     from dataclasses import replace
-    import time
-    from test_document_metadata import envelope,pdf_clues
     from allfold.application.body_downloads import submit_body_download
     host,workspace,paper,bridge,candidate=application_host(tmp_path)
     article='https://www.sciencedirect.com/science/article/pii/S0047259X2400006X'
-    candidate=replace(candidate,target=replace(candidate.target,article_url=article),url=article+'/pdfft')
+    url=article+'/pdfft'+('?md5=CuR%2Brent&Expires=9999999999' if signed else '')
+    candidate=replace(candidate,target=replace(candidate.target,article_url=article),url=url,
+        platform='sciencedirect',rule_id='R024',referer=article)
     try:
         task=submit_body_download(host,paper,candidates=(candidate,))
         assert bridge.started.wait(2)
-        assert bridge.calls[-1][0]=='extract_paper_pdf_clues'
-        assert not list((workspace/'Documents/.downloads').glob('*.part'))
-        pdf=article+'/pdfft'+('?md5=current' if signed else '')
-        bridge.result.set_result(envelope() | {'pdf_clues':pdf_clues(platform='sciencedirect',landing_url=article,
-            candidates=[dict(stage='P4',rule_id='R024',url=pdf,referer=article)])})
-        until=time.monotonic()+2
-        while bridge.calls[-1][0]!='stream_paper_body' and not task.future.done() and time.monotonic()<until:time.sleep(.005)
-        assert bridge.calls[-1][0]=='stream_paper_body' and bridge.calls[-1][1]['url']==pdf
+        assert bridge.calls[-1][0]=='stream_paper_body'
+        assert bridge.calls[-1][1]['url']==url and bridge.calls[-1][1]['referer']==article
         bridge.finish()
         assert task.future.result(2).status=='completed'
+        assert len(bridge.calls)==1
     finally:
         if hasattr(bridge,'result') and not bridge.result.done():bridge.result.set_result(dict(kind='cancelled',outcome='cancelled'))
         host.shutdown();host.join()
 
 
-def test_sciencedirect_article_backlink_does_not_skip_its_native_reader(tmp_path):
+def test_sciencedirect_article_backlink_uses_reader_then_session(tmp_path):
     from dataclasses import replace
     import time
     from test_document_metadata import envelope,pdf_clues
@@ -476,13 +499,48 @@ def test_sciencedirect_article_backlink_does_not_skip_its_native_reader(tmp_path
         host.shutdown();host.join()
 
 
+@pytest.mark.parametrize('destination', ['same', 'https://files.example.net/Body.PDF?Signature=A%2FB'])
+def test_reader_navigation_or_access_progress_returns_to_session_without_dom_links(tmp_path,destination):
+    from dataclasses import replace
+    import time
+    from test_document_metadata import envelope,pdf_clues
+    from allfold.application.body_downloads import submit_body_download
+    host,workspace,paper,bridge,candidate=application_host(tmp_path)
+    article='https://www.sciencedirect.com/science/article/pii/S0047259X2400006X'
+    candidate=replace(candidate,target=replace(candidate.target,article_url=article),url=article+'/pdfft',
+        rule_id='R024',platform='sciencedirect')
+    url=candidate.url if destination=='same' else destination
+    def dispatched(count):
+        until=time.monotonic()+2
+        while len(bridge.calls)<count and not task.future.done() and time.monotonic()<until:time.sleep(.005)
+        assert len(bridge.calls)==count
+    try:
+        task=submit_body_download(host,paper,candidates=(candidate,))
+        assert bridge.started.wait(2)
+        bridge.result.set_result(dict(kind='response',outcome='response',response=dict(
+            url=candidate.url,content_type='text/html',status=200,body='<title>Reader</title>')))
+        dispatched(2)
+        assert bridge.calls[-1][0]=='extract_paper_pdf_clues'
+        bridge.result.set_result(envelope() | {'pdf_clues':pdf_clues(platform='sciencedirect',landing_url=url),
+            'reader_result':dict(url=url,referer=candidate.url,context_changed=destination=='same')})
+        dispatched(3)
+        assert bridge.calls[-1][0]=='stream_paper_body'
+        assert (bridge.calls[-1][1]['url'],bridge.calls[-1][1]['referer'])==(url,candidate.url)
+        bridge.finish()
+        result=task.future.result(2)
+        assert result.status=='completed' and result.paper.body.pdf_source==candidate.stage
+        assert not result.paper.body.fallback_used
+    finally:
+        if hasattr(bridge,'result') and not bridge.result.done():bridge.result.set_result(dict(kind='cancelled',outcome='cancelled'))
+        host.shutdown();host.join()
+
+
 @pytest.mark.parametrize('location',[
-    'https://watermark02.silverchair.com/other.pdf',
-    'https://watermark02.silverchair.com.evil.example/gkac1225.pdf',
-    'https://other.example.org/gkac1225.pdf',
-    'http://watermark02.silverchair.com/gkac1225.pdf',
+    'ftp://files.example.net/body.pdf',
+    'http://127.0.0.1/private.pdf',
+    'https://username:fixture@files.example.net/body.pdf',
 ])
-def test_unqualified_body_redirect_never_starts_another_request(tmp_path,location):
+def test_invalid_native_redirect_dto_never_starts_another_request(tmp_path,location):
     from dataclasses import replace
     from allfold.application.body_downloads import submit_body_download
     host,workspace,paper,bridge,candidate=application_host(tmp_path)
@@ -493,7 +551,9 @@ def test_unqualified_body_redirect_never_starts_another_request(tmp_path,locatio
         bridge.result.set_result(dict(kind='redirect',outcome='response',response=dict(
             url=url,status=302,location=location)))
         result=task.future.result(2)
-        assert result.status=='failed' and len(bridge.calls)==1
+        # Main must refuse these targets itself. A malformed trusted bridge DTO
+        # is also refused before it can become a new network capability.
+        assert result.status=='local_failure' and len(bridge.calls)==1
         with PaperRepository.open(workspace) as repo:
             assert repo.get(paper.id).body is None and repo.get(paper.id).download.output is None
     finally:

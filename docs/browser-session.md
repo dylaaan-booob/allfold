@@ -139,12 +139,19 @@ continues retaining the item until real `done`.
 ## BrowserRuntime Document handoff
 
 Public Download uses a separate fixed body-action capability for qualified R059 current
-forms and R024 ScienceDirect article/reader entries. Before dispatch it transfers
+forms, including GET forms. Before dispatch it transfers
 the verified Document's authority to the exact controlled request/frame and
 original item; action-created child sources register before their first PDF
 headers. It does not globally relax current-Document checks or make read-only
 probes execute actions. The [accepted cancellation risk](body-downloads.md#native-output-and-accepted-cancellation-risk)
 concerns Chromium's temporary pathname cleanup, not Document authority.
+
+Ordinary R024 GETs use the existing Session stream without an article pre-read.
+A necessary Reader can return its actual owned main-frame GET URL, Referer and
+Cookie-progress bit for a subsequent Session request, even outside its starting
+template or without a new DOM link. Those operation-local values do not pass
+through durable facts or include Cookie values. Repeated unchanged observations
+stop; real access progress retains the parent budget and operation binding.
 
 The separate `page-resources.fixture.cjs` uses the production Runtime and its current
 Document generation checks. A main-frame form POST download invalidates its

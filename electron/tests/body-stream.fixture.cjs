@@ -20,6 +20,8 @@ app.whenReady().then(async()=>{
     if(req.headers.host.startsWith('academic.oup.com:')){res.writeHead(302,{location:origin.replace('pdf.example.org','watermark02.silverchair.com')+'/'+req.url.split('/').at(-1)+'?Signature=synthetic'});res.end();return;}
     if(req.url.startsWith('/stamp/stamp.jsp')){res.writeHead(200,{'content-type':'text/html'});res.end('<iframe src="/stampPDF/getPDF.jsp?arnumber=12345"></iframe>');return;}
     if(req.url==='/cross'){res.writeHead(302,{location:origin.replace('pdf.','other.')+'/leak'});res.end();return;}
+    if(req.url==='/cross-private'){res.writeHead(302,{location:origin.replace('pdf.','private.')+'/private-leak'});res.end();return;}
+    if(req.url==='/cross-unsafe'){res.writeHead(302,{location:'ftp://other.example.org/unsafe-leak'});res.end();return;}
     if(req.url==='/challenge'){res.writeHead(403,{'content-type':'text/html','cf-mitigated':'challenge'});res.end('<html><title>Just a moment...</title></html>');return;}
     if(req.url==='/background-cloudflare'){res.writeHead(200,{'content-type':'text/html'});res.end('<html><title>View PDF</title><article><h1>View PDF</h1><p>access denied and captcha research</p></article><input type="password"><iframe hidden src="https://newassets.hcaptcha.com/captcha"></iframe><nav><a href="/login">Sign in</a></nav><script src="/cdn-cgi/challenge-platform/scripts/jsd/main.js"></script></html>');return;}
     if(req.url.startsWith('/redirect')){res.writeHead(302,{location:'/body?Signature=A%2FB'});res.end();return;}
@@ -28,9 +30,12 @@ app.whenReady().then(async()=>{
     if(req.url==='/fake-pdf'){res.writeHead(200,{'content-type':'application/pdf'});res.end('<html><title>Login required</title><form><input type="password"></form></html>');return;}
     if(req.url==='/unknown'){res.writeHead(200,{'content-type':'application/octet-stream'});res.end('unknown');return;}
     if(req.url==='/encoded'){const data=gzipSync(payload);res.writeHead(200,{'content-type':'application/pdf','content-encoding':'gzip','content-length':data.length});res.end(data);return;}
+    if(req.url==='/bad-encoding'){res.writeHead(200,{'content-type':'application/pdf','content-encoding':'gzip'});res.end('not a gzip stream');return;}
     const streamed=req.url==='/slow-writer'?Buffer.alloc(16*1024*1024,71):payload;
     if(req.url==='/slow-writer')streamed.write('%PDF-');
-    res.writeHead(200,{'content-type':'application/pdf',...(req.url==='/truncated'?{'content-length':payload.length*2}:{})});
+    if(req.url==='/close-delimited')res.useChunkedEncodingByDefault=false;
+    res.writeHead(200,{'content-type':'application/pdf',...(req.url==='/truncated'?{'content-length':payload.length*2}:{}),
+      ...(req.url==='/close-delimited'?{connection:'close'}:{})});
     res.write(streamed.subarray(0,65536));if(req.url==='/slow-writer')slowProduced=65536;
     if(req.url==='/truncated'){setTimeout(()=>res.destroy(),40);return;}
     for(let n=65536;n<streamed.length&&!res.destroyed;n+=65536){if(req.url!=='/slow-writer')await new Promise(r=>setTimeout(r,req.url==='/expiry'?40:8));if(req.url==='/slow-writer')slowProduced+=65536;if(!res.write(streamed.subarray(n,n+65536)))await new Promise(r=>{const done=()=>{res.removeListener('drain',done);res.removeListener('close',done);r();};res.once('drain',done);res.once('close',done);});}
@@ -38,7 +43,7 @@ app.whenReady().then(async()=>{
   });
   await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));origin=`http://pdf.example.org:${server.address().port}`;
   const window=new BrowserWindow({show:false,webPreferences:{sandbox:true}}),browser=new BrowserRuntime({hostWindow:window});
-  browser.bodyTargetResolver=async host=>{resolved.push(host);return [{address:host==='watermark02.silverchair.com'&&faultKind==='blocked.pdf'?'127.0.0.1':'93.184.216.34'}];};
+  browser.bodyTargetResolver=async host=>{resolved.push(host);return [{address:host==='private.example.org'||host==='watermark02.silverchair.com'&&faultKind==='blocked.pdf'?'127.0.0.1':'93.184.216.34'}];};
   await browser.ready;
   await browser.partition.cookies.set({url:origin,name:'fixture_session',value:'selected-session',sameSite:'unspecified'});
   for(const [host,name] of [['academic.oup.com','publisher_only'],['watermark02.silverchair.com','cdn_only'],['ieeexplore.ieee.org','reader_only'],['other.example.org','fallback_only']])
@@ -137,7 +142,7 @@ app.whenReady().then(async()=>{
   const code=await new Promise(resolve=>python.once('exit',resolve));
   try {
     if(dispatchError)throw dispatchError;
-    assert.equal(code,0,stderr);assert.equal(complete,true,stderr);assert.equal(cases.length,24);assert.equal(slowWitness,true);
+    assert.equal(code,0,stderr);assert.equal(complete,true,stderr);assert.equal(cases.length,28);assert.equal(slowWitness,true);
     assert.equal(logAcknowledged,true,'Python terminal/owner release must not wait for Main final logging');
     assert.deepEqual(pairs,[{type:'fixture_pair',statuses:['cancelled','completed']}]);
     assert.equal(publicCases.length,1);assert.equal(publicCases[0].status,'completed');
@@ -145,7 +150,8 @@ app.whenReady().then(async()=>{
     assert.deepEqual(shellCalls,['open','locate','open','open','open']);
     assert.equal(requests.filter(r=>r.url==='/public').length,2,'local reads add no network; explicit deletion permits one new public attempt');
     assert.deepEqual(fs.readFileSync(path.join(profile,'workspace/Documents',publicCases[0].paper+'.pdf')),payload);
-    assert.equal(requests.filter(r=>r.url==='/same').length,2);assert.equal(requests.filter(r=>r.url==='/leak').length,0);
+    assert.equal(requests.filter(r=>r.url==='/same').length,2);assert.equal(requests.filter(r=>r.url==='/leak').length,1);
+    assert.equal(requests.filter(r=>r.url==='/private-leak'||r.url==='/unsafe-leak').length,0);
     assert.deepEqual(drains,[{type:'fixture_drain',status:'settled'}]);
     assert.equal(browser.tabs.size,0,'pure stream must create no pages');
     for(const request of requests){assert.equal(request.method,'GET');assert.equal(request.headers['x-allfold-request-context'],undefined);

@@ -15,7 +15,7 @@ policy belongs to the linked module guides, not the historical research process.
 | Entry | Responsibility |
 | --- | --- |
 | `document_metadata_branch()` / `collect_document_metadata()` | One captured collection branch reads independent Date/Abstract and PDF clues in one detached snapshot, emits one increment, and settles partial failure explicitly. |
-| `read_document_pdf_clues(context, ...)` | PDF-only article/qualified-reader refresh; returns current candidates and separately persistable facts without emitting or restarting collection. |
+| `read_document_pdf_clues(context, ...)` | PDF-only article/qualified-reader refresh; returns current candidates, operation-local navigation/access and separately persistable facts without emitting or restarting collection. |
 | `iter_p1_candidates()` / `iter_p2_candidates()` | Pure Host/type/input-qualified lazy rules; no requests or completion claims. |
 | `PdfDiscovery(...).run(consume)` | P1–P5 coordination with downstream `CandidateResult` feedback, source/fallback semantics and captured cancellation/authority. |
 | `PdfHttpClient` / `PdfDiscoveryIO` | Independent paced HTTP, bounded current response/API parsing and optional fixed native reads; no temporary downloader. |
@@ -122,12 +122,14 @@ PDF Source Discovery 不运行 Zotero Translator、Zotero Translate 或 Zotero U
 - P1 下载完成时，本次 PDF 操作不再请求 Handle/Crossref、不额外加载文章 HTML，也不调用 OpenAlex；不否定此前 Run 已完成的网页/API 采集。
 - P1 不适用时，直接进入第一个适用阶段；不对所有平台试探 `/doi/pdf/`。
 - P2 的 Handle、Crossref 和官方 API 不是固定串联步骤。按缺少的信息选择相应来源，前一次结果足够时停止补查。
-- P3、P4 复用同一轮取得的目标文章信息；Meta 候选失败不要求无条件重载。后台工作页已释放而动态入口需要更新时，按需重新取页，只执行 PDF 所需读取。
+- P1/P2 及已有 P3 之后，稳定的已有 P4 URL 可直接进入 Session；partial 快照、可能补出的 P3 或无关刷新线索不强制先重开文章。已有候选失败、缺失或动态入口确需更新时，再按需执行 PDF-only 取页；该次实际读取的 P3 仍先于其 P4，不重跑已失败的 P1/P2，不把动作/刷新定位信息当 GET。
 - 规则在某个阶段取得新的 ID 或明确下载地址，可以就地完成其依赖链。无需为了阶段编号重新开始整个流程。
 
 #### F2.3 中间页面随候选处理
 
 中间页面解析不是所有论文必经的第六阶段。P1、P2、P3 或 P4 的候选返回已知结构的 HTML 时，可就地执行对应解析，取得下一跳后继续尝试。
+
+普通 R024（包括带签名 GET）先走业务 Session；缺少 `md5` 不触发文章预读。HTML/JSON 先利用当前响应解析；必要 Reader 执行后，实际导航 URL 或访问进展可返回 Session，不要求最终正文仍满足起始 Reader 模板。普通 GET 的实际 HTTP 重定向可跨 origin，逐请求保留 URL/DNS、凭证作用域与实际 access 绑定；不局限于两组出版商 CDN 关系，也不计为换来源。原表单/一次性动作另保留原请求语义。
 
 例如，ScienceDirect 的 `/pdfft` 返回可识别的 Meta Refresh 页面，可以直接跟进；IEEE 已有 `arnumber` 时先尝试 `getPDF.jsp`，失败后才考虑 `stamp.jsp`。只有当前路径无法继续时，才进入后续来源。[R024](#r024)、[R025](#r025)
 
@@ -261,7 +263,7 @@ Handle、Crossref 和官方 API 的响应按用途解释。登记 URL 不等于 
 https://www.sciencedirect.com/science/article/pii/{PII}/pdfft
 ```
 
-`?download=true` 作为该平台已有依据的变体处理。如果已取得的 Elsevier API 响应包含 `coredata.link` 中的 `rel=scidir-pdf`，直接使用该候选，不再要求 DOI → PII → URL。[S109](#s109)
+已有可信文章 URL 时保留其实际 origin（协议及端口）和必要 Referer，不把文章查询参数当作 PDF 签名生成。已取得的正文 URL 原样使用。`?download=true` 作为该平台已有依据的变体处理。如果已取得的 Elsevier API 响应包含 `coredata.link` 中的 `rel=scidir-pdf`，直接使用该候选，不再要求 DOI → PII → URL。[S109](#s109)
 
 Cell Press 的 [R023](#r023) 使用 `https://www.cell.com/action/showPdf?pii={pii}`，输入可来自 `fulltext`、`pdfExtended` 或 `showPdf` URL。保留其有标点 PII/端点条件，不把 ScienceDirect 的规范化与 Host 直接套到 Cell。
 

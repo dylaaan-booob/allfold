@@ -10,7 +10,8 @@ associated with their actual owner.
 
 Public Download uses PDF-only refresh without recollecting Date/Abstract. A
 separate fixed body action hands the original request/item to the body service
-for qualified current forms and ScienceDirect readers. See [body downloads](body-downloads.md).
+for qualified current forms. Ordinary ScienceDirect GETs and Reader continuations
+use the Session stream. See [body downloads](body-downloads.md).
 
 ## Detached page snapshots
 
@@ -275,11 +276,18 @@ bound to the original target. It uses the captured request/target, access contex
 article DOI/h1 proof is absent.
 Challenges still use the shared access/solver boundary. Actions and one-time
 responses remain typed refresh facts. The separate fixed body action capability
-submits qualified live R059 forms without replay and follows observed R024 ScienceDirect reader/CDN navigation,
-binding the original response to the exact request/frame/DownloadItem. Public
-reusable-URL transfer uses the Session body service; both paths share managed
+submits qualified live R059 forms without replay, binding the original response to
+the exact request/frame/DownloadItem. Ordinary R024 and other qualified URL
+transfer use the Session body service; both paths share managed
 publication and SQLite completion. Native staging retains the
 [accepted Chromium cancellation risk](body-downloads.md#native-output-and-accepted-cancellation-risk).
+After initial Reader qualification, actual owned main-frame GET navigation can
+return a final body/CDN URL outside the starting Reader template. An operation-local
+`reader_result` contains that URL, observed Referer and a Cookie-context-change
+bit, separately from persistable facts. It carries no Cookie values. Session can
+continue after actual navigation/access progress without a new DOM link; unchanged
+responses/edges stop. Current signatures stay in the operation, and actual Service
+authority follows dependent candidates. No original form/POST is reconstructed.
 See the [complete adopted rules](pdf-source-discovery.md).
 
 The same internal `extract_paper_pdf_clues` action accepts the fixed

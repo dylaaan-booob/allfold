@@ -116,6 +116,13 @@ def test_pii_can_only_be_extracted_from_explicit_platform_paths():
     assert list(iter_p2_candidates(replace(paper, article_url='https://www.sciencedirect.com/search/S014067362400123X'))) == []
 
 
+def test_sciencedirect_template_retains_the_actual_article_origin_and_referer():
+    article='http://www.sciencedirect.com:12345/science/article/pii/S014067362400123X'
+    paper=target('www.sciencedirect.com','sciencedirect',article_url=article)
+    candidate=next(iter_p2_candidates(paper))
+    assert candidate.url==article+'/pdfft' and candidate.referer==article
+
+
 @pytest.mark.parametrize('article_url', [
     'https://www.cell.com/cell/fulltext/S0092-8674(24)00123-4',
     'https://www.cell.com/cell/pdfExtended/S0092-8674(24)00123-4',

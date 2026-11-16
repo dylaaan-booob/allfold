@@ -7,7 +7,6 @@ import time
 from allfold.application.browser_services import browser_workspace_identity
 from allfold.application.document_metadata import _paper_identity
 from allfold.pdf_discovery import CandidateResult
-from allfold.pdf_responses import reader_context
 from allfold.persistence.body_files import ManagedBodyFiles
 
 
@@ -19,15 +18,9 @@ class NativeTransferResult:
 
 
 def native_applicable(candidate):
-    """Select fixed action/current-reader contexts, never arbitrary URL likeness."""
-    if candidate.credential:
-        return False
-    if candidate.action:
-        return (candidate.action == 'refresh_form' and candidate.platform == 'microbiology'
-            and candidate.rule_id == 'R059')
-    if candidate.platform != 'sciencedirect' or candidate.rule_id != 'R024':
-        return False
-    return (reader_context(candidate) or {}).get('platform') == 'sciencedirect'
+    """Keep actual form actions native; qualified ordinary URLs use Session."""
+    return (not candidate.credential and candidate.action == 'refresh_form'
+        and candidate.platform == 'microbiology' and candidate.rule_id == 'R059')
 
 
 def transfer_native(reservation, repository, files, candidate, progress=None):

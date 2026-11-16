@@ -1,20 +1,17 @@
 'use strict';
 const {NativeOutput}=require('./native-output.cjs');
 const {target}=require('./body-stream.cjs');
-const {publicClueURL,qualifyReader}=require('../browser/pdf-clues.cjs');
-const {BrowserFailure,checkPage}=require('../browser/browser-errors.cjs');
-const {checkCanceled,waitFor,pause}=require('../browser/browser-task.cjs');
+const {publicClueURL}=require('../browser/pdf-clues.cjs');
+const {BrowserFailure}=require('../browser/browser-errors.cjs');
+const {checkCanceled,waitFor}=require('../browser/browser-task.cjs');
 const sameFrame=(a,b)=>!!a&&!!b&&a.processId===b.processId&&a.frameToken===b.frameToken;
 const failure=code=>new BrowserFailure('navigation',code);
 class OriginalNavigation {
-  constructor(browser,doc,candidate,{output,signal,deadline,verify,progress,cdnAllowed=false}) {
-    Object.assign(this,{browser,doc,candidate,output,signal,deadline,verify,progress,cdnAllowed});
-    this.sciencePII=candidate.platform==='sciencedirect'?new URL(doc.url).pathname.match(/\/science\/article\/pii\/([SB][0-9X]{16})/i)?.[1]:null;
-    this.owner=browser.operation;this.sources=new Map();this.registrations=[];this.tracked=new Set();this.probes=new Set();this.dispatched=false;
-    this.continuationEdges=new Set();this.continuationContexts=new Map();this.continuationBytes=0;
+  constructor(browser,doc,candidate,{output,signal,deadline,verify,progress}) {
+    Object.assign(this,{browser,doc,candidate,output,signal,deadline,verify,progress});
+    this.owner=browser.operation;this.sources=new Map();this.registrations=[];this.tracked=new Set();this.dispatched=false;
     this.received=new Promise((resolve,reject)=>{this.resolve=resolve;this.reject=reject;});this.received.catch(()=>{});
     this.hook=browser.sessionEvents.subscribe('beforeRequest',details=>this.request(details));
-    this.headerHook=browser.sessionEvents.subscribe('beforeSendHeaders',details=>this.requestContext(details));
     this.responseHook=browser.sessionEvents.subscribe('headersReceived',details=>this.response(details));
     this.addSource(browser.tabs.get(doc.pageId));
   }
@@ -29,58 +26,10 @@ class OriginalNavigation {
   }
   fail(error) {this.error ??= error;this.reject(this.error);for(const entry of this.tracked)this.browser.sessionEvents.cancelItem(entry.item);}
   dispatch() {this.valid();if(this.dispatched)throw failure('document_changed');this.dispatched=true;this.owner.phase='body';}
-  acceptsURL(url) {
-    if(!publicClueURL(url))return false;
-    if(url===(this.requestURL || this.candidate.url))return true;
-    if(this.candidate.platform!=='sciencedirect')return false;
-    return this.scienceReaderURL(url)||this.scienceAsset(url);
-  }
-  scienceReaderURL(url) {
-    if(!this.sciencePII||!publicClueURL(url))return false;
-    const source=new URL(this.doc.url),next=new URL(url);
-    return next.origin===source.origin&&['/science/article/pii/'+this.sciencePII+'/pdfft','/science/article/pii/'+this.sciencePII+'/pdf'].includes(next.pathname);
-  }
-  scienceAsset(url) {
-    if(!this.cdnAllowed||!this.sciencePII||!publicClueURL(url))return false;
-    const next=new URL(url);
-    return next.protocol==='https:'&&next.hostname==='pdf.sciencedirectassets.com'&&next.pathname.endsWith('/1-s2.0-'+this.sciencePII+'/main.pdf');
-  }
-  scienceReader(source,entry,frame) {
-    if(!this.sciencePII||!entry?.response||entry.continued||source!==this.boundSource||entry!==this.boundEntry
-      ||entry.response.status<200||entry.response.status>=300
-      ||frame.frameTreeNodeId!==entry.request.frameTreeNodeId||frame.url!==entry.response.url)return false;
-    return this.scienceReaderURL(frame.url)||this.scienceAsset(frame.url);
-  }
-  scienceContinuation(url) {
-    if(this.scienceAsset(url))return 'cdn';
-    return this.scienceReaderURL(url)?'reader':null;
-  }
-  continueScienceReader(source,event) {
-    const frame=source.contents.mainFrame,previous=this.boundEntry,kind=this.scienceContinuation(event.url);
-    if(!this.dispatched||this.error||this.primary||this.continuation&&!this.continuation.used||!event.isMainFrame
-      ||event.frame?.frameTreeNodeId!==frame.frameTreeNodeId||!sameFrame(event.initiator,frame)||!kind
-      ||!this.scienceReader(source,previous,frame))return;
-    this.valid();
-    const edge=JSON.stringify([previous.response.url,event.url,previous.response.state]);
-    const repeated=this.continuationEdges.has(edge);
-    if(repeated&&typeof previous.context!=='string')throw failure('download_not_attributable');
-    if(!repeated)this.continuationBytes+=Buffer.byteLength(edge);
-    if(this.continuationBytes>1048576)throw failure('download_not_attributable');
-    this.continuationEdges.add(edge);
-    // Only this committed response's observed main-frame continuation inherits
-    // the action. Repeated identical edges stop; changed response/Cookie evidence
-    // may permit a legitimate same-URL authentication return.
-    previous.continued=true;previous.registration.dispose();source.frames.delete(previous.frame.frameToken);
-    this.registrations=this.registrations.filter(registration=>registration!==previous.registration);
-    const entry=this.addFrame(source,event.frame,{...this.doc,url:previous.response.url});
-    if(!entry)throw failure('document_changed');
-    entry.previousContext=repeated?previous.context:undefined;
-    entry.continuationEdge=edge;
-    this.continuation={source,entry,url:event.url,frameTreeNodeId:frame.frameTreeNodeId,used:false};
-  }
+  acceptsURL(url) {return !!publicClueURL(url)&&url===(this.requestURL || this.candidate.url);}
   acceptPopup(url,frameName) {
     if(this.targetName&&(this.targetFrame||this.namedPopup||frameName!==this.targetName))return false;
-    return !this.continuation&&this.dispatched&&!this.error&&!this.primary&&(url==='about:blank'||this.acceptsURL(url));
+    return this.dispatched&&!this.error&&!this.primary&&(url==='about:blank'||this.acceptsURL(url));
   }
   addPopup(tab) {
     if(!this.acceptPopup('about:blank',tab.popupFrameName))return;
@@ -99,7 +48,6 @@ class OriginalNavigation {
     };
     contents.on('frame-created',source.created);
     source.targetNavigation=event=>{
-      try {this.continueScienceReader(source,event);}catch(error){this.fail(error);}
       const frame=event.frame;
       if(!this.dispatched||this.bound||this.primary||this.error||event.isMainFrame||!frame)return;
       if(!source.createdFrames.has(frame.frameToken)||!sameFrame(event.initiator,this.doc)
@@ -115,31 +63,16 @@ class OriginalNavigation {
       if(this.primary || event.isInPlace || _inPlace || !(event.isMainFrame ?? main))return;
       url=event.url ?? url;
       if(url==='about:blank'&&tab.id!==this.doc.pageId)return;
-      // did-start-navigation precedes will-frame-navigate. Retire only the old
-      // read probe here; native initiator/destination checks still gate the request.
-      if((!this.continuation||this.continuation.used)&&this.scienceContinuation(url)&&this.scienceReader(source,this.boundEntry,contents.mainFrame))
-        this.boundEntry.pendingContinuation=true;
       if(!this.dispatched||!this.acceptsURL(url))this.fail(failure('document_changed'));
     };
-    source.loaded=(_event,_main,processId,routingId)=>{
-      if(this.error||this.primary)return;
-      const frame=source.contents.mainFrame.framesInSubtree.find(item=>item.processId===processId&&item.routingId===routingId);
-      if(!frame)return;
-      for(const entry of source.frames.values())if(entry.response&&!entry.continued&&!entry.probing&&entry.request.frameTreeNodeId===frame.frameTreeNodeId) {
-        entry.probing=true;
-        const probe=this.browser.runInOperation(this.owner,()=>this.inspectResponse(source,entry,frame));this.probes.add(probe);
-        probe.catch(error=>this.fail(error)).finally(()=>this.probes.delete(probe));
-      }
-    };
     contents.on('did-start-navigation',source.navigation);
-    contents.on('did-frame-finish-load',source.loaded);
   }
   addFrame(source,frame,document=this.doc) {
     if(!frame||source.frames.has(frame.frameToken))return;
     const entry={frame,request:null};source.frames.set(frame.frameToken,entry);
     entry.registration=this.browser.sessionEvents.registerDownload({owner:this.owner,attemptId:this.owner.association.request_id,
       contents:source.contents,frame,document,requireRequest:true,filename:this.output.filename,
-      deadline:this.deadline,signal:this.signal,bodyContent:true,htmlReader:!this.candidate.action,
+      deadline:this.deadline,signal:this.signal,bodyContent:true,htmlReader:false,
       validate:()=>{this.valid();return !!entry.request;},beforeSave:()=>this.output.absent(),
       onItem:tracked=>{
         this.tracked.add(tracked);
@@ -192,16 +125,8 @@ class OriginalNavigation {
         if(entry.request.id!==details.id)throw failure('document_changed');
         return;
       }
-      const continuation=this.continuation;
-      const continuing=continuation&&!continuation.used&&continuation.source===source&&continuation.entry===entry;
-      if(continuing) {
-        if(details.url!==continuation.url||details.method!=='GET'||details.frame.frameTreeNodeId!==continuation.frameTreeNodeId)throw failure('document_changed');
-      }else if(!this.bound && (details.url!==(this.requestURL || this.candidate.url)||details.method!==this.method))throw failure('document_changed');
-      // Redirects keep the bound request ID. A new request after the one-shot
-      // dispatch cannot borrow the action merely because its URL looks related.
-      if(this.bound&&!continuing)throw failure('document_changed');
+      if(this.bound || details.url!==(this.requestURL || this.candidate.url)||details.method!==this.method)throw failure('document_changed');
       this.bound=true;this.boundSource=source;this.boundEntry=entry;
-      if(continuing)continuation.used=true;
       entry.request={id:details.id,frameTreeNodeId:details.frame.frameTreeNodeId,
         frame:{processId:details.frame.processId,frameToken:details.frame.frameToken}};
       entry.registration.bindRequest(details);
@@ -233,83 +158,21 @@ class OriginalNavigation {
       if(!['text/html','application/xhtml+xml'].includes(type)&&status>=200&&status<300)return;
       if(!['text/html','application/xhtml+xml'].includes(type))throw failure('download_not_attributable');
       const mitigated=Object.entries(details.responseHeaders || {}).filter(([name])=>name.toLowerCase()==='cf-mitigated').flatMap(([,values])=>values);
-      const state=Object.entries(details.responseHeaders||{}).filter(([name])=>['etag','last-modified','set-cookie'].includes(name.toLowerCase()));
-      entry.response={url:details.url,status,state,cfMitigated:mitigated.length===1 && mitigated[0].trim().toLowerCase()==='challenge'};
+      entry.response={url:details.url,status,cfMitigated:mitigated.length===1 && mitigated[0].trim().toLowerCase()==='challenge'};
     }catch(error){this.fail(error);return {cancel:true};}
-  }
-  requestContext(details) {
-    const source=this.sources.get(details.webContentsId),entry=source?.frames.get(details.frame?.frameToken);
-    if(!entry?.request||entry.request.id!==details.id||!sameFrame(entry.request.frame,details.frame))return;
-    try {
-      this.valid();
-      // These exact outgoing credentials stay ephemeral in Main. They permit
-      // a repeated observed edge only when its actual authentication changed,
-      // including document.cookie changes without a Set-Cookie response header.
-      const context=JSON.stringify(Object.entries(details.requestHeaders||{})
-        .filter(([name])=>['cookie','authorization'].includes(name.toLowerCase()))
-        .map(([name,value])=>[name.toLowerCase(),value]).sort(([a],[b])=>a.localeCompare(b)));
-      // Chromium emits this hook again for redirects within the same bound
-      // request. Only the first hop is a new continuation; later hops retain
-      // that request's authority and may carry the same credentials.
-      if(entry.context===undefined&&entry.previousContext!==undefined&&entry.previousContext===context)throw failure('download_not_attributable');
-      if(entry.context===undefined&&entry.continuationEdge) {
-        const contexts=this.continuationContexts.get(entry.continuationEdge)||new Set();
-        if(contexts.has(context))throw failure('download_not_attributable');
-        this.continuationBytes+=Buffer.byteLength(context);
-        if(this.continuationBytes>1048576)throw failure('download_not_attributable');
-        contexts.add(context);this.continuationContexts.set(entry.continuationEdge,contexts);
-      }
-      entry.context=context;
-    }catch(error){this.fail(error);return {cancel:true};}
-  }
-  async inspectResponse(source,entry,frame) {
-    this.valid();
-    const response=entry.response,root=source.contents.mainFrame;
-    // A committed HTML response can replace its renderer frame token. Its
-    // non-reused FrameTreeNode ID connects that successor to the exact request;
-    // every new navigation request is still refused by the one-shot guard.
-    if(frame.frameTreeNodeId!==entry.request.frameTreeNodeId||frame.url!==response.url)throw failure('document_changed');
-    const binding={pageId:source.tab.id,processId:frame.processId,frameToken:frame.frameToken,url:response.url,identity:this.doc.identity,
-      navigationGeneration:source.tab.documentGeneration,rootProcessId:root.processId,rootFrameToken:root.frameToken};
-    let access;
-    try {access=await this.browser.documents.call(binding,'access',{}, {signal:this.signal,deadline:this.deadline});}
-    catch(error) {
-      if(!(entry.continued||entry.pendingContinuation)||error.diagnostic?.code!=='document_changed')throw error;
-      this.valid();return;
-    }
-    this.valid();
-    checkPage(response.status,{...access,cfMitigated:response.cfMitigated});
-    if(access.markers.login || access.markers.mfa)throw new BrowserFailure('navigation','content_access_blocked',response.status);
-    if(entry.continued)return;
-    if(entry.response!==response||!this.browser.documentCurrent(binding))throw failure('document_changed');
-    if(this.scienceReader(source,entry,frame)) {
-      let parsed;
-      try {parsed=await this.browser.documents.call(binding,'pdf',{readerKind:'sciencedirect'},
-        {signal:this.signal,deadline:this.deadline});}
-      catch(error) {if((entry.continued||entry.pendingContinuation)&&error.diagnostic?.code==='document_changed')return;throw error;}
-      this.valid();
-      if(entry.continued||entry.pendingContinuation)return;
-      if(parsed.clues?.candidates.length)return;
-      throw failure('body_action_unavailable');
-    }
-    // A dispatched one-shot action with ordinary HTML is a finite local failure,
-    // never a new source, copied body, solver action or replayed request.
-    throw failure('download_not_attributable');
   }
   dispose() {
-    this.hook.dispose();this.headerHook.dispose();this.responseHook.dispose();
+    this.hook.dispose();this.responseHook.dispose();
     for(const registration of this.registrations)registration.dispose({dispatched:this.dispatched});
     for(const source of this.sources.values()) {
       source.contents.removeListener('frame-created',source.created);
       source.contents.removeListener('will-frame-navigate',source.targetNavigation);
       source.contents.removeListener('did-start-navigation',source.navigation);
-      source.contents.removeListener('did-frame-finish-load',source.loaded);
       if(source.tab.bodyAction===this)source.tab.bodyAction=null;
     }
   }
   async settle() {
     if(this.signal?.aborted||this.error)for(const entry of this.tracked)this.browser.sessionEvents.cancelItem(entry.item);
-    await Promise.all([...this.probes].map(probe=>probe.catch(()=>{})));
     await Promise.all([...this.tracked].map(entry=>entry.terminal));
     await Promise.all([...this.sources.values()].map(source=>this.browser.sessionEvents.waitForDownloads(source.contents)));
   }
@@ -323,17 +186,11 @@ async function executeBodyNative(browser,data,{signal,progress=()=>{}}={}) {
     output=new NativeOutput(data);
     if(!data.candidate||Object.keys(data.candidate).some(key=>!['url','action','platform','rule_id'].includes(key)))throw failure('document_operation_failed');
     const requested=data.candidate;
-    if(!(requested.action==='refresh_form'&&requested.platform==='microbiology'&&requested.rule_id==='R059'
-      ||!requested.action&&requested.platform==='sciencedirect'&&requested.rule_id==='R024'))throw failure('document_operation_failed');
+    if(!(requested.action==='refresh_form'&&requested.platform==='microbiology'&&requested.rule_id==='R059'))throw failure('document_operation_failed');
     await waitFor(()=>browser.ready,stop,data.deadline_ms);verify=browser.pinPreparedPaperAccess(data);verify();
     let doc=await browser.openPaperPage(data,data.identity,{role:'article',signal:stop,deadline:data.deadline_ms});
     const tab=browser.tabs.get(doc.pageId);
     let pdf=await browser.readDocument(tab,'pdf',{signal:stop,deadline:data.deadline_ms,identity:data.identity,args:{readerKind:null}});
-    const hydrationEnd=Math.min(data.deadline_ms,Date.now()+2000);
-    while(requested.platform==='sciencedirect'&&pdf.clues.status==='complete'&&!pdf.clues.candidates.length&&Date.now()<hydrationEnd) {
-      await waitFor(()=>pause(stop,Math.min(200,hydrationEnd-Date.now())),stop,data.deadline_ms);
-      pdf=await browser.readDocument(tab,'pdf',{signal:stop,deadline:data.deadline_ms,identity:data.identity,args:{readerKind:null}});
-    }
     let candidate=pdf.clues.candidates.find(item=>item.url===requested.url&&item.action===requested.action&&item.rule_id===requested.rule_id);
     if(!candidate&&requested.action==='refresh_form') {
       // A stored action is a refresh locator. This Paper snapshot supplies
@@ -341,25 +198,15 @@ async function executeBodyNative(browser,data,{signal,progress=()=>{}}={}) {
       const forms=pdf.clues.candidates.filter(item=>item.rule_id==='R059'&&item.action==='refresh_form');
       if(forms.length===1)candidate=forms[0];
     }
-    if(!candidate&&requested.platform==='sciencedirect')candidate=pdf.clues.candidates.find(item=>item.rule_id==='R024'&&!item.action);
     if(!candidate)return {outcome:'failed',kind:'failed',diagnostic_code:'entry-unavailable'};
     candidate={...candidate,platform:requested.platform};
-    if(requested.platform==='sciencedirect') {
-      const source=new URL(doc.url),pii=source.pathname.match(/\/science\/article\/pii\/([SB][0-9X]{16})/i)?.[1];
-      qualifyReader({stage:'P4',rule_id:'R024',platform:'sciencedirect',url:candidate.url,source_url:doc.url,
-        identifier:pii,target:data.identity},data.identity);
-    }
     await waitFor(()=>target(candidate.url,browser.bodyTargetResolver),stop,data.deadline_ms);
-    let cdnAllowed=false;
-    if(requested.platform==='sciencedirect')try {
-      await waitFor(()=>target('https://pdf.sciencedirectassets.com/',browser.bodyTargetResolver),stop,data.deadline_ms);cdnAllowed=true;
-    }catch(error) {checkCanceled(stop);if(Date.now()>=data.deadline_ms)throw error;}
     verify();
     // The action uses its current native source frame; candidate qualification
     // above remains tied to this Paper's PDF snapshot.
     const frame=tab.view.webContents.mainFrame;
     doc={pageId:tab.id,processId:frame.processId,frameToken:frame.frameToken,url:pdf.clues.landing_url,identity:data.identity};
-    operation=new OriginalNavigation(browser,doc,candidate,{output,signal:stop,deadline:data.deadline_ms,verify,progress,cdnAllowed});
+    operation=new OriginalNavigation(browser,doc,candidate,{output,signal:stop,deadline:data.deadline_ms,verify,progress});
     prepared=await browser.bodyActions.prepare(doc,{url:candidate.url,action:candidate.action,platform:candidate.platform,rule_id:candidate.rule_id},
       {signal:stop,deadline:data.deadline_ms});
     operation.method=prepared.plan.method;operation.requestURL=prepared.plan.request_url;

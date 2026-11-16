@@ -136,13 +136,15 @@ async function executeBodyStream(browser,data,{signal,progress=()=>{}}={}) {
       validate();
       if(!publicClueURL(details.url)||new URL(details.url).origin!==initial.origin)throw Error('redirect-scope');
       credentialHeaders(data.pdf_credential,details.url);
-      if(details.redirectURL && publicClueURL(details.redirectURL)
-        && new URL(details.redirectURL).origin!==initial.origin)
-        redirect={url:details.url,status:details.statusCode,location:details.redirectURL};
+      if(details.redirectURL && publicClueURL(details.redirectURL)) {
+        let scoped=true;
+        try{credentialHeaders(data.pdf_credential,details.redirectURL);}catch(_){scoped=false;}
+        if(new URL(details.redirectURL).origin!==initial.origin || !scoped)
+          redirect={url:details.url,status:details.statusCode,location:details.redirectURL};
+      }
     };
     const headers={Accept:'application/pdf',...credentialHeaders(data.pdf_credential,data.url)};
-    const cookieState=async()=>JSON.stringify((await browser.partition.cookies.get({url:data.url}))
-      .map(({domain,path,name,value})=>[domain,path,name,value]).sort((a,b)=>JSON.stringify(a.slice(0,3)).localeCompare(JSON.stringify(b.slice(0,3)))));
+    const cookieState=()=>browser.sessionEvents.cookieContext(data.url);
     const priorCookies=await waitFor(cookieState,stop,data.deadline_ms);
     if(data.referer) {
       if(!publicClueURL(data.referer))throw Error('unsafe-referer');
@@ -194,9 +196,9 @@ async function executeBodyStream(browser,data,{signal,progress=()=>{}}={}) {
   }catch(error) {
     if(localError||error.bodyLocal)return {outcome:'local_failure',kind:'local_failure',diagnostic_code:'file-io',resource_closed:!closeError};
     if(stop.aborted)return {outcome:bounded.aborted?'expired':'cancelled',kind:bounded.aborted?'expired':'cancelled'};
-    // Chromium's synchronous request guard blocks the origin escape. Return
-    // only the observed redirect; Python qualifies the fixed CDN relationship,
-    // then a new request performs DNS checks before any CDN headers are sent.
+    // Stop before an origin/credential-scope escape. Return that actual HTTP
+    // redirect to the same candidate chain; the next Session request repeats
+    // URL/DNS validation and uses destination cookies without source API keys.
     if(redirect)return {outcome:'response',kind:'redirect',response:redirect};
     return {outcome:'failed',kind:'failed',diagnostic_code:'source-failed'};
   }finally {
@@ -204,7 +206,21 @@ async function executeBodyStream(browser,data,{signal,progress=()=>{}}={}) {
     // pipeline is awaited, then writer/fd close before the native result exists.
     // Cancellation of a response is also awaited; an expired timer never races cleanup.
     try {
-      try {const current=body||response?.body;if(!completed&&current&&!current.locked)await current.cancel();}
+      try {
+        const current=body||response?.body;
+        if(!completed&&current&&!current.locked) {
+          const reader=current.getReader();
+          const closed=reader.closed.then(()=>({failed:false}),error=>({failed:true,error}));
+          try {await reader.cancel();}
+          catch(error) {
+            // An already errored Fetch body rejects cancel with its stored
+            // terminal error. That closed stream is distinct from a live
+            // source whose cancellation actually failed.
+            const terminal=await closed;
+            if(!terminal.failed||terminal.error!==error)throw error;
+          }finally {reader.releaseLock();}
+        }
+      }
       finally {
         if(writer&&!writer.closed){const closed=new Promise(resolve=>writer.once('close',resolve));writer.destroy();await closed;}
         if(fd!==undefined)fs.closeSync(fd);

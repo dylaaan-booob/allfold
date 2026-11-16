@@ -103,6 +103,11 @@ class SharedSessionEvents {
     const request=this.requests.get(id);
     if(request && !request.identity)request.identity=Object.freeze({...identity});
   }
+  async cookieContext(url) {
+    return JSON.stringify((await this.session.cookies.get({url}))
+      .map(({domain,path,name,value})=>[domain,path,name,value])
+      .sort((a,b)=>JSON.stringify(a.slice(0,3)).localeCompare(JSON.stringify(b.slice(0,3)))));
+  }
   async fetch(url,options={},context={}) {
     const {owner,attemptId,document,deadline,validate=()=>{}}=context;
     if(!owner || !attemptId || !Number.isFinite(deadline))throw Error('Controlled request owner, attempt and deadline required');
