@@ -165,3 +165,37 @@ def test_captured_guard_and_deadline_still_apply_to_lazy_clients(tmp_path, monke
                 expired.provider('crossref').request('/expired', {})
         factory.close()
         assert origin.requests == []
+
+
+def test_unused_provider_credentials_are_captured_at_use_and_used_keys_never_renew(tmp_path):
+    import httpx
+    from allfold.application.provider_lookup import provider_client
+    from allfold.integrations.openalex_credentials import read_credential, write_credential
+    from allfold.persistence.safe_write import ContentChangedError
+
+    config, calls = tmp_path / 'config.yaml', []
+    write_credential(config, provider='pubmed', action='replace', key='original-key', revision='missing')
+    def respond(request):
+        calls.append(request)
+        return httpx.Response(200, json={'ok': True})
+    def clients(provider, **kwargs):
+        return provider_client(provider, transport=httpx.MockTransport(respond), interval=0, **kwargs)
+    factory = IndependentClientFactory(config, client_factory=clients)
+    try:
+        with factory.open(cancel_event=Event(), request_guard=lambda: None,
+                          deadline=time.monotonic() + 5) as attempt:
+            revision = read_credential(config, provider='pubmed')[1]
+            write_credential(config, provider='pubmed', action='replace', key='used-key', revision=revision)
+            pubmed = attempt.provider('pubmed')
+            assert pubmed.request('/esummary.fcgi', {'id': '42'}) == {'ok': True}
+            revision = read_credential(config, provider='pubmed')[1]
+            write_credential(config, provider='pubmed', action='replace', key='new-key', revision=revision)
+            with pytest.raises(ContentChangedError):
+                pubmed.request('/esummary.fcgi', {'id': '43'})
+            with pytest.raises(ContentChangedError):
+                attempt.provider('pubmed')
+            assert attempt.provider('crossref').request('/public', {}) == {'ok': True}
+        assert b'api_key=used-key' in calls[0].content
+        assert len(calls) == 2
+    finally:
+        factory.close()

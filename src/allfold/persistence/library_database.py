@@ -189,8 +189,16 @@ class LibraryDatabase:
                     connection.execute("INSERT INTO library_state VALUES (1, 0)")
                     connection.execute(f"PRAGMA application_id = {APPLICATION_ID}")
                     connection.execute(f"PRAGMA user_version = {SCHEMA_VERSION}")
-            with self.transaction(write=True) as connection:
-                self.workspace_id = self._validate_schema(connection)
+                    self.workspace_id = self._validate_schema(connection)
+            else:
+                with self.transaction() as connection:
+                    version = self._schema_version(connection)
+                    self.workspace_id = self._workspace_identity(connection)
+                if version in {3, 4}:
+                    # Revalidate the supported old format after obtaining the
+                    # short migration write transaction, never upgrade on a read.
+                    with self.transaction(write=True) as connection:
+                        self.workspace_id = self._validate_schema(connection)
         except BaseException as error:
             self.close()
             if isinstance(error, sqlite3.Error):
@@ -200,10 +208,25 @@ class LibraryDatabase:
     def _identity(self):
         return tuple((info.st_dev, info.st_ino) for info in (self.workspace.stat(), self.path.stat()))
 
-    def _validate_schema(self, connection):
+    def _schema_version(self, connection):
         if connection.execute("PRAGMA application_id").fetchone()[0] != APPLICATION_ID:
             raise LibraryCorruptError("Not an Allfold Paper library")
         version = connection.execute("PRAGMA user_version").fetchone()[0]
+        if version not in {3, 4, SCHEMA_VERSION}:
+            raise UnsupportedLibrarySchema(f"Unsupported library schema {version}; supported version is {SCHEMA_VERSION}")
+        return version
+
+    def _workspace_identity(self, connection):
+        try:
+            rows = connection.execute("SELECT workspace_id FROM library_info WHERE singleton = 1").fetchall()
+            if len(rows) != 1:
+                raise ValueError("Missing Workspace identity")
+            return UUID(rows[0][0])
+        except (ValueError, sqlite3.Error) as error:
+            raise LibraryCorruptError("Invalid library schema or Workspace identity") from error
+
+    def _validate_schema(self, connection):
+        version = self._schema_version(connection)
         if version in {3, 4}:
             # Only the exact formerly-current structure is eligible. The owning
             # BEGIN IMMEDIATE includes validation, DDL and version update.
@@ -214,22 +237,19 @@ class LibraryDatabase:
             for statement in (*(DOWNLOAD_SCHEMA if version == 3 else ()), *BODY_SOURCE_SCHEMA):
                 connection.execute(statement)
             connection.execute(f"PRAGMA user_version = {SCHEMA_VERSION}")
-            version = SCHEMA_VERSION
-        if version != SCHEMA_VERSION:
-            raise UnsupportedLibrarySchema(f"Unsupported library schema {version}; supported version is {SCHEMA_VERSION}")
         if _schema_definitions(connection) != _expected_schema(SCHEMA):
             raise LibraryCorruptError("Library schema does not match its recorded version")
         if connection.execute("PRAGMA quick_check").fetchall()[0][0] != "ok":
             raise LibraryCorruptError("Library integrity check failed")
         if connection.execute("PRAGMA foreign_key_check").fetchone() is not None:
             raise LibraryCorruptError("Library contains broken references")
-        try:
-            rows = connection.execute("SELECT workspace_id FROM library_info WHERE singleton = 1").fetchall()
-            if len(rows) != 1:
-                raise ValueError("Missing Workspace identity")
-            return UUID(rows[0][0])
-        except (ValueError, sqlite3.Error) as error:
-            raise LibraryCorruptError("Invalid library schema or Workspace identity") from error
+        return self._workspace_identity(connection)
+
+    def validate(self):
+        """Explicit full diagnostic; ordinary current-format opens only read identity."""
+        with self.transaction(write=True) as connection:
+            if self._validate_schema(connection) != self.workspace_id:
+                raise LibraryCorruptError("Workspace identity changed after opening")
 
     @contextmanager
     def transaction(self, *, write=False):

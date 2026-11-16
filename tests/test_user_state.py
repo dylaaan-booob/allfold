@@ -224,8 +224,11 @@ def test_covers_use_saved_db_journal_identifiers_without_markdown(tmp_path):
         upload_cover(legacy, journal.key, output.getvalue(), config_path=config)
 
 
-@pytest.mark.parametrize("change_state", [None, "groups", "journals", "access_services"])
-def test_wos_uses_independent_sqlite_service_and_detects_changes(tmp_path, change_state):
+@pytest.mark.parametrize(("change_state", "expected_outcome"), [
+    (None, "Completed"), ("groups", "Completed"), ("journal_display", "Completed"),
+    ("journal_scope", "Failed"), ("access_services", "Failed"),
+])
+def test_wos_uses_independent_sqlite_service_and_detects_changes(tmp_path, change_state, expected_outcome):
     import threading
     from allfold.config import AccessService
     from allfold.application.browser_runtime import BrowserTaskLock
@@ -255,19 +258,22 @@ def test_wos_uses_independent_sqlite_service_and_detects_changes(tmp_path, chang
     assert bridge.dispatched.wait(2)
     if change_state:
         changes = {
-            "groups": ("Statistics", "Added"),
-            "journals": (journal.model_copy(update={"name": "Updated journal"}),),
-            "access_services": (service, wos.model_copy(update={"access_url": "https://www.webofscience.com/"})),
+            "groups": {"groups": ("Statistics", "Added")},
+            "journal_display": {"journals": (journal.model_copy(update={"name": "Updated journal"}),)},
+            "journal_scope": {"journals": (journal.model_copy(update={"issn": "0090-5364"}),)},
+            "access_services": {"access_services": (
+                service, wos.model_copy(update={"access_url": "https://www.webofscience.com/"}))},
         }
-        compare_write_user_state(config, replace(saved.state, **{change_state: changes[change_state]}), saved.revision)
+        compare_write_user_state(config, replace(saved.state, **changes[change_state]), saved.revision)
     bridge.future.set_result({"page_id": 71, "total": 0, "batch_limit": 100})
     coordinator.join()
     result = coordinator.state()["snapshot"]["result"]
-    if change_state:
-        assert any("configuration changed" in text for text in result["issues"]), result["issues"]
-        assert result["outcome"] == "Failed"
+    assert result["outcome"] == expected_outcome
+    if expected_outcome == "Failed":
+        assert len(result["issues"]) == 1
+        assert [issue["category"] for issue in result["facts"]["issues"] if issue["severity"] == "error"] == ["retrieval"]
     else:
-        assert result["outcome"] == "Completed"
+        assert result["issues"] == []
     assert [action for action, _ in bridge.calls] == ["wos_query", "release_workflow_pages"]
     assert not slot.locked() and browser_lock.owner is None
     with PaperRepository.open(tmp_path / "workspace") as repository:

@@ -207,8 +207,13 @@ formal bibliography, dates, abstracts and source facts. Ordinary missing fields
 never schedule a generic Completion request. Retained client/lookup/batch/binding
 helpers live in `application/provider_lookup.py`.
 Native publication-date filters determine its range; subsequent evidence never
-rejudges inclusion. Commit rechecks captured configuration, source revision,
-Workspace/database identity and the complete identity index before atomic creates.
+rejudges inclusion. Commit rechecks the captured query AST, publication months,
+enabled Discovery source sequence, Journal ISSN scope/Service allocation, request
+contact and output Workspace. Selected WoS access and its original prepared binding
+remain captured through the parent stage. YAML bytes, log level, display metadata,
+page quotas and unrelated UserState revisions are not Run authority. Standalone
+WoS checks only its consumed query/date/ISSN/access/output inputs. Workspace/database
+identity and the complete identity index remain checked before atomic creates.
 Existing full matches preserve their metadata and acquire any new verified direct
 aliases. Excluded matches stop avoidable follow-up
 work; a cleared unexcluded placeholder can be rebuilt only from a real Run hit,
@@ -269,9 +274,11 @@ owns its thread-confined repository, client/cache scope and native identity.
 One Paper gate coordinates collection, body work and destructive
 local actions. Run cancellation does not cancel transferred Paper tasks; reader
 selection has no ownership effect. Startup marks interrupted attempts without
-queue/network replay. Retry preserves successful branch facts. Current full-token
-retry, broad Provider dependencies and fault-related occupancy are documented as
-limitations in [runtime interfaces](collection-runtime.md), with fixes deferred.
+queue/network replay. Retry retains successful branch facts and checks only the
+original Paper lifetime and failed attempt at admission. Necessary API work binds
+each Provider when used; unrelated credential changes leave other sources running.
+Finished work releases occupancy even when terminal storage or diagnostics fail.
+See [runtime interfaces](collection-runtime.md).
 
 ## Physical Browser resource lifetime
 

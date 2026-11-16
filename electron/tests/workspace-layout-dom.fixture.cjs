@@ -98,7 +98,8 @@ const server=http.createServer((req,res)=>{
     let text='';req.on('data',chunk=>{text+=chunk;});req.on('end',()=>{
       const body=JSON.parse(text),item=records.flatMap(journal=>journal.papers).find(paper=>paper.id===retry[1]);
       collectionRetries.push({id:retry[1],body});
-      const valid=body.workspace_id===workspace.workspace_id && body.attempt===item.collection.attempt && body.revision===item.revision;
+      const valid=body.workspace_id===workspace.workspace_id && body.attempt===item.collection.attempt && body.token.metadata_generation===1 && body.token.operation_generation===1 &&
+        Object.keys(body.token).sort().join(',')==='metadata_generation,operation_generation' && !Object.hasOwn(body,'revision');
       if(valid){item.collection_status='running';item.collection={...item.collection,status:'running',reason:null,attempt:body.attempt+1,retry_available:false};item.revision++;workspace.revision++;}
       res.writeHead(valid?200:409,{'Content-Type':'application/json'});res.end(JSON.stringify(valid?
         {workspace_id:workspace.workspace_id,revision:workspace.revision,paper:item}:{message:'stale retry'}));
@@ -451,9 +452,9 @@ app.whenReady().then(async()=>{
     await js(`(()=>{if(!document.getElementById('paper-collection-retry').disabled || !document.getElementById('paper-collection-status').textContent.includes('清理'))throw Error('Retry was available before cleanup');})()`);
     const retryRevision=++records[0].papers[0].revision;workspace.revision++;
     Object.assign(records[0].papers[0],{cleanup_pending:false,collection:{status:'failed',attempt:1,cleaning_up:false,
-      retry_available:false,retry_reason:'unavailable',retry:{attempt:1,revision:retryRevision,token:{metadata_generation:1,operation_generation:1,abstract_generation:1,body_generation:0}}}});
+      retry_available:false,retry_reason:'access_unavailable',retry:{attempt:1,token:{metadata_generation:1,operation_generation:1}}}});
     await js('window.uiWorkspace.refresh()');
-    await js(`(()=>{if(!document.getElementById('paper-collection-retry').disabled)throw Error('Retry ignored unavailable access');})()`);
+    await js(`(()=>{if(!document.getElementById('paper-collection-retry').disabled || !document.getElementById('paper-collection-retry').title.includes('访问条件'))throw Error('Retry ignored unavailable access');})()`);
     // Prepare changes access qualification without changing Paper/Workspace content revisions.
     const preparedWorkspaceRevision=workspace.revision;
     loginState={active:true,phase:'preparing',workflow_id:'wf08-prepare-retry',services:[
@@ -471,7 +472,7 @@ app.whenReady().then(async()=>{
     await capture('wf08-retry-ready');
     await js("document.getElementById('paper-collection-retry').click()");
     await ready("document.getElementById('paper-collection-status').textContent==='正在采集' && !window.inboxKept.busy()");
-    if(collectionRetries.length!==1 || collectionRetries[0].id!=='paper-0' || collectionRetries[0].body.revision!==retryRevision ||
+    if(collectionRetries.length!==1 || collectionRetries[0].id!=='paper-0' || Object.hasOwn(collectionRetries[0].body,'revision') || Object.keys(collectionRetries[0].body.token).length!==2 ||
       collectionRetries[0].body.workspace_id!==workspace.workspace_id || collectionRetries[0].body.attempt!==1)throw Error('Retry did not dispatch the captured Paper qualification');
     records[0].papers[0].revision++;workspace.revision++;
     Object.assign(records[0].papers[0],{collection_status:'completed',collection:{status:'completed',attempt:2,retry_available:false}});

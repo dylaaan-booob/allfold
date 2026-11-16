@@ -127,7 +127,7 @@ def test_config_revocation_stops_all_later_helper_dispatch(tmp_path):
             self.request_guard()
             dispatched.append(self.provider)
             if self.provider=='openalex':
-                path.write_text(path.read_text()+'# changed during Work lookup\n')
+                path.write_text(path.read_text().replace('keyword_expression: learning', 'keyword_expression: inference'))
                 self.request_guard()
             return super().lookup_many(namespace,ids,**kwargs)
     with pytest.raises(ContentChangedError):
@@ -267,7 +267,7 @@ def test_work_guard_settles_native_before_parent_cancel_or_authority_error(tmp_p
                 if revocation == 'disconnect':
                     bridge.connected = False
                 else:
-                    path.write_text(path.read_text() + '# changed before Work guard\n')
+                    path.write_text(path.read_text().replace('keyword_expression: causal', 'keyword_expression: inference'))
                 revoked.set()
                 records_callback(rows)
             return super().discover_many(scopes, *args, records_callback=verified)

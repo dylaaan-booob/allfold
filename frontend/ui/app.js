@@ -1229,6 +1229,10 @@ function renderReadingControls() {
   else if(collection?.warning)$('paper-collection-status').textContent=collection.warning;
   $('paper-collection-retry').hidden=paper.excluded || !['failed','cancelled'].includes(collection?.status);
   $('paper-collection-retry').disabled=busy || !collection?.retry_available;
+  const retryReasons={cleanup_pending:'Paper 资源尚未结束',workspace_unbound:'Workspace 采集尚未绑定',
+    stale:'Paper 或采集 attempt 已变化',ineligible:'Paper 尚不具备重试资格',
+    access_unavailable:'所需配置或访问条件不可用',storage_busy:'Paper 数据库正忙',storage_error:'Paper 数据库读写失败'};
+  $('paper-collection-retry').title=retryReasons[collection?.retry_reason] || '';
   renderBodyControls(paper);
   fillAbstractPlaceholder();
 }

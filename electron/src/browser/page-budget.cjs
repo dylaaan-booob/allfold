@@ -22,17 +22,20 @@ class PageBudget {
     const used=this.usage(bucket,user);
     if(user?used.total+count>USER_PAGE_LIMIT:
       used.total+count>this.limits.global_limit || used.scoped+count>this.limits.service_limit)return null;
+    return this.reserve(owner,bucket,count,user);
+  }
+  reserve(owner,bucket,count,user) {
     const ticket={owner,bucket,user,remaining:count,revoked:false};
     ticket.split=()=>{
-      if(ticket.revoked || !ticket.remaining)throw new BrowserFailure('navigation','page_capacity_changed');
+      if(ticket.revoked || this.closed)throw new BrowserFailure('navigation','canceled');
+      if(!ticket.remaining)throw new BrowserFailure('navigation','page_capacity');
       ticket.remaining--;if(!ticket.remaining)this.reservations.delete(ticket);
       // Transfer one reserved unit without changing either count.
-      const child=this.tryAcquire(owner,bucket,1,user);
-      if(!child)throw new BrowserFailure('navigation','page_capacity_changed');
-      return child;
+      return this.reserve(owner,bucket,1,user);
     };
     ticket.take=()=>{
-      if(ticket.revoked || !ticket.remaining || this.closed)throw new BrowserFailure('navigation','page_capacity_changed');
+      if(ticket.revoked || this.closed)throw new BrowserFailure('navigation','canceled');
+      if(!ticket.remaining)throw new BrowserFailure('navigation','page_capacity');
       ticket.remaining--;if(!ticket.remaining)this.reservations.delete(ticket);
       const claim={owner,bucket,user};this.claims.add(claim);
       claim.release=()=>{if(this.claims.delete(claim)){this.drain();this.onBlocked?.();}};
@@ -68,10 +71,11 @@ class PageBudget {
   }
   releaseUnused(owner) {for(const ticket of [...this.reservations])if(ticket.owner===owner)ticket.release();}
   update(limits) {
-    this.limits=pageLimits(limits);
-    // Old headroom is not permission to exceed a newly saved limit.
-    for(const ticket of [...this.reservations])ticket.release();
-    this.drain();return this.limits;
+    const next=pageLimits(limits);
+    if(next.global_limit===this.limits.global_limit && next.service_limit===this.limits.service_limit)return this.limits;
+    // Existing grants belong to their owners through consumption or cleanup.
+    // Only admission of new tickets uses the newly saved capacity.
+    this.limits=next;this.drain();return this.limits;
   }
   stop() {this.closed=true;for(const ticket of [...this.reservations])ticket.release();this.drain();}
 }

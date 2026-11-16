@@ -48,8 +48,15 @@ def test_page_limit_autosave_preserves_services_and_publishes_one_effective_pair
         assert saved['values']['access_services'] == opened['values']['access_services']
         assert saved['values']['access_services'][0]['id'] == service.id
         assert bridge.published == [{'global_limit': 4, 'service_limit': 3}]
+        unchanged = client.post('/api/ui-next/settings/autosave', json=patch_body(
+            saved, managed_page_global_limit='4', managed_page_service_limit='3')).json()
+        assert unchanged['saved']
+        unrelated = client.post('/api/ui-next/settings/autosave', json=patch_body(
+            unchanged, prepare_service_concurrency='2')).json()
+        assert unrelated['saved']
+        assert bridge.published == [{'global_limit': 4, 'service_limit': 3}]
         refused = client.post('/api/ui-next/settings/autosave', json=patch_body(
-            saved, managed_page_global_limit='3')).json()
+            unrelated, managed_page_global_limit='3')).json()
         assert refused['outcome'] == 'INVALID_DRAFT'
         assert bridge.published == [{'global_limit': 4, 'service_limit': 3}]
         actual = client.get('/api/ui-next/settings').json()

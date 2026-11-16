@@ -92,13 +92,13 @@ def test_cancel_waits_for_settlement_then_retry_preserves_success_and_refuses_ol
             repository.commit_collection_branch(first.token, "preprint", sequence=1,
                                                delta=MetadataDelta(abstract="Late result"), outcome="completed")
         with pytest.raises(InvalidPaperState):
-            repository.retry_collection(cancelled.token, lifecycle_id=uuid4(), branches=("api", "preprint"))
+            repository.retry_collection(cancelled.token, expected_attempt=cancelled.collection.attempt, lifecycle_id=uuid4(), branches=("api", "preprint"))
         # Cleanup may record its captured terminal fact after execution was revoked.
         repository.commit_collection_branch(first.token, "preprint", sequence=1, outcome="cancelled")
         finished = repository.finish_collection(first.token)
         assert finished.collection_status == "cancelled"
         assert not admit(repository, uuid4()).admitted  # Failed/cancelled never auto-retry.
-        retried = repository.retry_collection(finished.token, lifecycle_id=uuid4(), branches=("api", "preprint"))
+        retried = repository.retry_collection(finished.token, expected_attempt=finished.collection.attempt, lifecycle_id=uuid4(), branches=("api", "preprint"))
         assert retried.token.attempt == first.token.attempt + 1
         assert [branch.state for branch in retried.paper.collection.branches] == ["completed", "queued"]
         for action in (
@@ -113,7 +113,7 @@ def test_cancel_waits_for_settlement_then_retry_preserves_success_and_refuses_ol
         assert completed.collection_status == "completed"
         assert completed.metadata.ordinary_dates == ("2026-11-01",)
         with pytest.raises(InvalidPaperState):
-            repository.retry_collection(completed.token, lifecycle_id=uuid4(), branches=("api", "preprint"))
+            repository.retry_collection(completed.token, expected_attempt=completed.collection.attempt, lifecycle_id=uuid4(), branches=("api", "preprint"))
 
 
 def test_restart_interruption_is_explicit_and_preserves_successful_branch_facts(tmp_path):
@@ -140,7 +140,7 @@ def test_restart_interruption_is_explicit_and_preserves_successful_branch_facts(
         with pytest.raises(StaleWriteError):
             repository.commit_collection_branch(first.token, "preprint", sequence=1,
                                                delta=MetadataDelta(abstract="Late"), outcome="completed")
-        retry = repository.retry_collection(interrupted.token, lifecycle_id=next_lifecycle, branches=("api", "preprint"))
+        retry = repository.retry_collection(interrupted.token, expected_attempt=interrupted.collection.attempt, lifecycle_id=next_lifecycle, branches=("api", "preprint"))
         assert retry.paper.collection.branches[0].state == "completed"
 
 
@@ -208,7 +208,7 @@ def test_cleanup_failure_retains_success_but_group_fails_until_explicit_retry(tm
         failed = repository.finish_collection(admission.token, failed=True, reason="cleanup_failed")
         assert failed.collection_status == "failed"
         assert failed.collection.branches[0].state == "completed"
-        retry = repository.retry_collection(failed.token, lifecycle_id=uuid4(), branches=("api",))
+        retry = repository.retry_collection(failed.token, expected_attempt=failed.collection.attempt, lifecycle_id=uuid4(), branches=("api",))
         assert retry.paper.collection.branches[0].state == "completed"
         assert repository.finish_collection(retry.token).collection_status == "completed"
 

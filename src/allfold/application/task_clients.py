@@ -8,8 +8,10 @@ from pathlib import Path
 from threading import Condition, Lock
 
 from allfold.application.provider_lookup import provider_client
+from allfold.application.task_authority import TaskAuthority
 from allfold.integrations.openalex_credentials import read_credential
-from allfold.providers.integrated import DISCOVERY_PROVIDERS, PROVIDERS
+from allfold.persistence.safe_write import ContentChangedError
+from allfold.providers.integrated import PROVIDERS
 
 
 def new_provider_pacing():
@@ -26,7 +28,7 @@ class AttemptClients:
     """
 
     def __init__(self, factory, *, cancel_event, request_guard, deadline,
-                 mailto, progress_callback, recovery_observer, providers):
+                 mailto, progress_callback, recovery_observer, providers, provider_authority):
         self.cancel_event, self.deadline = cancel_event, deadline
         self.request_cache = {}
         self._factory, self._guard = factory, request_guard
@@ -36,10 +38,21 @@ class AttemptClients:
         self._providers = frozenset(PROVIDERS if providers is None else providers)
         if not self._providers <= set(PROVIDERS):
             raise ValueError('Unknown declared Provider')
+        self._capture_provider = provider_authority or (
+            lambda name: TaskAuthority.capture(factory.config_path, None, None, (name,)))
+        self._authorities, self._credentials = {}, {}
         request_guard()
-        self._credentials = {name: read_credential(factory.config_path, provider=name)[0]
-                             for name in self._providers if name in DISCOVERY_PROVIDERS}
-        request_guard()
+
+    def _provider_guard(self, name):
+        self._guard()
+        authority = self._authorities[name]
+        try:
+            if isinstance(authority, Exception):
+                raise authority
+            authority.verify()
+        except Exception as error:
+            raise ContentChangedError('Captured Provider authority changed') from error
+        self._guard()
 
     def provider(self, name):
         if self._closed:
@@ -47,12 +60,25 @@ class AttemptClients:
         if name not in self._providers:
             raise ValueError('Provider was not declared for this attempt')
         self._guard()
+        if name not in self._authorities:
+            try:
+                self._authorities[name] = self._capture_provider(name)
+                self._provider_guard(name)
+                self._credentials[name] = (read_credential(self._factory.config_path, provider=name)[0]
+                    if name in {'openalex', 'pubmed'} else None)
+                self._provider_guard(name)
+            except Exception as error:
+                # A failed original use must not borrow credentials from a later
+                # configuration when another purpose reaches the same Provider.
+                self._authorities[name] = error
+                raise ContentChangedError('Captured Provider authority changed') from error
+        self._provider_guard(name)
         if name not in self._clients:
             client = self._factory.client_factory(name,
                 api_key=self._credentials.get(name), mailto=self._mailto,
                 cancel_event=self.cancel_event, pacing_state=self._factory.pacing_state,
                 deadline=self.deadline, progress_callback=self._progress)
-            client.request_guard = self._guard
+            client.request_guard = lambda: self._provider_guard(name)
             if self._observer is not None:
                 client.recovery_observer = self._observer
             self._clients[name] = self._stack.enter_context(client)
@@ -77,7 +103,7 @@ class IndependentClientFactory:
 
     @contextmanager
     def open(self, *, cancel_event, request_guard, deadline, mailto='',
-             progress_callback=None, recovery_observer=None, providers=None):
+             progress_callback=None, recovery_observer=None, providers=None, provider_authority=None):
         with self._condition:
             if self._closed:
                 raise RuntimeError('Independent client factory is closed')
@@ -85,7 +111,7 @@ class IndependentClientFactory:
         try:
             clients = AttemptClients(self, cancel_event=cancel_event, request_guard=request_guard,
                 deadline=deadline, mailto=mailto, progress_callback=progress_callback,
-                recovery_observer=recovery_observer, providers=providers)
+                recovery_observer=recovery_observer, providers=providers, provider_authority=provider_authority)
             try:
                 yield clients
             finally:
