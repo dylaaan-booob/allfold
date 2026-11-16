@@ -222,6 +222,44 @@
             1054,
             5202
           ]
+        },
+        {
+          "attempt": 5,
+          "allfold_sha": "9383359e05a625e027f228873a847b15196e02fa",
+          "click_utc_lower": "2026-11-16T16:58:14.992Z",
+          "click_utc_upper": "2026-11-16T16:58:15.078Z",
+          "completed_utc_lower": "2026-11-16T16:58:25.533Z",
+          "completed_utc_upper": "2026-11-16T16:58:25.808Z",
+          "waiting_seconds_lower": 10.455,
+          "waiting_seconds_upper": 10.816,
+          "status": "automatic_success",
+          "pdf_source": "P4",
+          "rule": "R024",
+          "fallback_used": false,
+          "file_bytes": 3784880,
+          "pages": 13,
+          "version": "ScienceDirect published Pattern Recognition article; first-page title and DOI verified.",
+          "source_origin": "https://pdf.sciencedirectassets.com",
+          "access_cache_context": "Same process as IEEE trials, new normal institutional access established for this platform and original article visibly entitled before Download. Warm article, no prior PDF success. No code-only speedup attribution across Session/access/cache changes.",
+          "native_operations": [
+            {
+              "action": "document",
+              "duration_ms": 5123
+            },
+            {
+              "action": "stream_response",
+              "duration_ms": 157
+            },
+            {
+              "action": "reader_document",
+              "duration_ms": 2240
+            },
+            {
+              "action": "closed_pdf_stream",
+              "duration_ms": 1966
+            }
+          ],
+          "native_download_item_observed": false
         }
       ],
       "zotero": {
@@ -237,7 +275,7 @@
         "failure_reason": "PDF not observed; exact terminal failure time/cause unconfirmed.",
         "human_intervention": "User completed Chrome Cloudflare checkbox during article preparation. Duration missing, inclusive preparation total unavailable."
       },
-      "repair_relationship": "fix1 enabled actual P4/R024 and P2/R024 requests but no successful PDF. Reader backlink fix2 not yet retested."
+      "repair_relationship": "After fix2, original article saved correctly via current Document → R024 response → native Reader extraction → existing Session stream from ScienceDirect assets. Before-fix failures remain. Session/access/cache differed across source restarts, so no isolated causal timing gain is claimed. Unseen same-platform samples and matching Zotero PDF remain pending."
     },
     {
       "sample_id": "P04",
@@ -351,6 +389,147 @@
         "reason": "Fresh ordinary Chrome article lacked prior PDF access; normal institutional authentication requires a user QR-code login.",
         "pair_complete": false
       }
+    },
+    {
+      "sample_id": "P05",
+      "doi": "10.1016/j.neunet.2026.109387",
+      "article_entry": "https://doi.org/10.1016/j.neunet.2026.109387",
+      "reason": "Unseen repaired-platform sample, different journal from original P03; exercise discovery without opening its Allfold article/PDF before Download.",
+      "planned_order": [
+        "allfold",
+        "zotero"
+      ],
+      "existing_clues": "Normal Run OpenAlex and Crossref facts, alternative-id PII S0893608026008452; no manual PDF URL",
+      "initial_body": "none; attempt0; Download available; cleanup inactive",
+      "planned_mechanism_tags": [
+        "current-route discovery",
+        "R024",
+        "Reader/CDN if actually observed"
+      ],
+      "queue": "pilot-post-fix",
+      "formal_score": false,
+      "platform": "ScienceDirect",
+      "access_method": "Institutional / configured ScienceDirect CARSI Service; actual publisher article entitlement confirmed on Chrome",
+      "allfold_sha": "9383359e05a625e027f228873a847b15196e02fa",
+      "version_comparable": false,
+      "allfold": {
+        "attempt": 1,
+        "click_utc_lower": "2026-11-16T17:05:21.477Z",
+        "click_utc_upper": "2026-11-16T17:05:21.590Z",
+        "completed_utc_lower": "2026-11-16T17:05:34.519Z",
+        "completed_utc_upper": "2026-11-16T17:05:34.795Z",
+        "waiting_seconds_lower": 12.929,
+        "waiting_seconds_upper": 13.318,
+        "status": "automatic_success",
+        "file_bytes": 7803602,
+        "pages": 12,
+        "pdf_source": "P4",
+        "rule": "R024",
+        "fallback_used": false,
+        "source_origin": "https://pdf.sciencedirectassets.com",
+        "version": "Published Neural Networks PDF; full normalized title/DOI matched.",
+        "cache_context": "Same prepared platform Session as P03; first article/PDF operation for this Paper, no Allfold article preload."
+      },
+      "zotero_trials": [
+        {
+          "trial_id": "P05-Z1",
+          "click_utc_lower": "2026-11-16T17:08:23.761Z",
+          "click_utc_upper": "2026-11-16T17:08:23.784Z",
+          "parent_utc_lower": "2026-11-16T17:08:24.907Z",
+          "parent_utc_upper": "2026-11-16T17:08:25.204Z",
+          "status": "operator_interrupted",
+          "operator_action_utc": "2026-11-16T17:19:08.884Z",
+          "operator_action": "Normal Connector disable/enable to recover unresolved save context. Same version, enable/pin/permissions restored.",
+          "local_pdf": false,
+          "completed_utc_lower": null,
+          "completed_utc_upper": null,
+          "failure_time": null,
+          "translator": "ScienceDirect"
+        },
+        {
+          "trial_id": "P05-Z2",
+          "click_utc_lower": "2026-11-16T17:19:58.043Z",
+          "click_utc_upper": "2026-11-16T17:19:58.068Z",
+          "parent_utc_lower": "2026-11-16T17:19:59.011Z",
+          "parent_utc_upper": "2026-11-16T17:19:59.313Z",
+          "status": "no_local_pdf_challenge_unresolved",
+          "local_pdf": false,
+          "completed_utc_lower": null,
+          "completed_utc_upper": null,
+          "failure_time": null,
+          "translator": "ScienceDirect",
+          "human_action_requested": true,
+          "human_action_observed": false,
+          "challenge_first_observed_utc": "2026-11-16T17:20:12Z",
+          "challenge_later_state": "Verification popup no longer listed; disappearance time/cause unknown. No agent interaction/close.",
+          "diagnostics": "Connector saveAttachmentFromResolver communication error after this single fresh save; no reliable error timestamp or final Desktop failure time. Desktop parent has zero attachments; actual temporary storage empty.",
+          "debug_setting": "Temporary on at17:19:24.756, restored original off at17:24:28.219; not cleared/submitted.",
+          "inclusive_wait_seconds": null,
+          "machine_only_seconds": null
+        }
+      ]
+    },
+    {
+      "sample_id": "P06",
+      "doi": "10.1016/j.patcog.2026.114946",
+      "article_entry": "https://doi.org/10.1016/j.patcog.2026.114946",
+      "reason": "Second unseen repaired-platform sample selected before outcomes; another article in P03 journal, not a debug DOI.",
+      "planned_order": [
+        "zotero",
+        "allfold"
+      ],
+      "existing_clues": "Normal Run OpenAlex and Crossref facts, alternative-id PII S0031320326019102; no manual PDF URL",
+      "initial_body": "none; attempt0; Download available; cleanup inactive",
+      "planned_mechanism_tags": [
+        "current-route discovery",
+        "R024",
+        "Reader/CDN if actually observed"
+      ],
+      "queue": "pilot-post-fix",
+      "formal_score": false,
+      "platform": "ScienceDirect",
+      "access_method": "Institutional / configured ScienceDirect CARSI Service; actual publisher article entitlement confirmed on Chrome",
+      "allfold_sha": "9383359e05a625e027f228873a847b15196e02fa",
+      "version_comparable": false,
+      "allfold": {
+        "attempt": 1,
+        "click_utc_lower": "2026-11-16T17:34:06.959Z",
+        "click_utc_upper": "2026-11-16T17:34:07.065Z",
+        "completed_utc_lower": "2026-11-16T17:34:16.597Z",
+        "completed_utc_upper": "2026-11-16T17:34:16.875Z",
+        "waiting_seconds_lower": 9.532,
+        "waiting_seconds_upper": 9.916,
+        "status": "automatic_success",
+        "file_bytes": 2265082,
+        "pages": 12,
+        "pdf_source": "P4",
+        "rule": "R024",
+        "fallback_used": false,
+        "source_origin": "https://pdf.sciencedirectassets.com",
+        "version": "Published Pattern Recognition PDF; full normalized title/DOI matched.",
+        "cache_context": "Same prepared platform Session; first article/PDF operation for this Paper, no Allfold article preload."
+      },
+      "zotero_trials": [
+        {
+          "trial_id": "P06-Z1",
+          "click_utc_lower": "2026-11-16T17:29:44.885Z",
+          "click_utc_upper": "2026-11-16T17:29:44.915Z",
+          "status": "no_local_pdf_challenge_unresolved",
+          "local_pdf": false,
+          "completed_utc_lower": null,
+          "completed_utc_upper": null,
+          "failure_time": null,
+          "translator": "ScienceDirect",
+          "human_action_requested": true,
+          "human_action_observed": false,
+          "challenge_observed_by_utc": "2026-11-16T17:30:33Z",
+          "challenge_first_observed_absent_utc": "2026-11-16T17:32:25.219Z",
+          "diagnostics_observed_utc": "2026-11-16T17:32:57.014Z",
+          "diagnostics": "Desktop parent has zero attachment children; temporary storage empty. No visible active download. Popup disappearance alone is not a PDF or exact failure endpoint.",
+          "inclusive_wait_seconds": null,
+          "machine_only_seconds": null
+        }
+      ]
     }
   ],
   "platform_parity": {
@@ -362,5 +541,67 @@
   "workspace_reset": {
     "executed": false,
     "reason": "Diagnosis and real retests outstanding."
-  }
+  },
+  "source_followup": {
+    "sha": "098288ae32e159811b9c49333b386d1533890862",
+    "change": "Compare escaped DOI spellings symmetrically and losslessly, preserving request URL spelling.",
+    "focused_tests_passed": 396,
+    "live_process_still": "9383359e05a625e027f228873a847b15196e02fa",
+    "affected_rules": [
+      "R029",
+      "R030",
+      "R031",
+      "R032",
+      "R033",
+      "R034"
+    ],
+    "affected_real_site_tests": "not_run; not among current pilot platforms"
+  },
+  "validation": {
+    "javascript": "npm --prefix electron run check:63 project files passed on098288a",
+    "python": {
+      "command": "uv run --locked pytest",
+      "sha": "098288ae32e159811b9c49333b386d1533890862",
+      "passed": 1622,
+      "warnings": 2,
+      "seconds": 49.76
+    },
+    "electron_local": {
+      "command": "npm --prefix electron test",
+      "sha": "098288ae32e159811b9c49333b386d1533890862",
+      "passed": 241,
+      "skipped": 0,
+      "seconds": 120.676,
+      "isolated_failure_reproduction": {
+        "command": "node --test --test-name-pattern='public Download' electron/tests/body-native.test.cjs",
+        "status": "passed",
+        "seconds": 12.653,
+        "public_cases": 41
+      },
+      "ci_failure_cause": "not established; no production timeout or required assertion changed"
+    },
+    "two_axis_review": {
+      "baseline_sha": "a2e511aa86ab5aa292f224301d6609a59c287fa2",
+      "target_sha": "098288ae32e159811b9c49333b386d1533890862",
+      "standards_findings": 0,
+      "spec_findings": "4 disclosed incomplete requirement categories; no code defect/scope creep found"
+    },
+    "native_affected_review": "098288a no actionable defect,99 isolated checks; no live-site claim",
+    "ci": {
+      "pr": 141,
+      "head_sha": "098288ae32e159811b9c49333b386d1533890862",
+      "run": "https://github.com/dylaaan-booob/allfold/actions/runs/43912807839",
+      "status": "failure",
+      "step": "npm --prefix electron test",
+      "failure": "Public native Cancel fixture5-second public progress projection wait expired; original failure retained, cause not established."
+    }
+  },
+  "remaining": [
+    "Frozen formal cohort and representative/mechanism pairs not run",
+    "IEEE repeat awaiting user institutional QR login",
+    "ScienceDirect Zotero verification not completed; no successful comparable Zotero PDF",
+    "Further normal product collection required for actual platform coverage",
+    "Latest full PR CI must pass; current native fixture failure under investigation",
+    "Final normal runtime without temporary NetLog, affected checks, and actual product Workspace Reset pending"
+  ]
 }
