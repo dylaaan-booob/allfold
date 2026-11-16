@@ -177,7 +177,6 @@ class ProviderReadClient:
         self._cooldowns = cooldowns if cooldowns is not None else (
             _APPLICATION_COOLDOWNS if transport is None else ProviderCooldowns())
         self._trace = local()
-        self._access_failure = None
         self.request_count = 0
         self.http = create_http_client(transport=transport, timeout=timeout, deadline_reads=True, event_hooks={
             'request': [self._before_request], 'response': [self._observe_response],
@@ -273,8 +272,6 @@ class ProviderReadClient:
         reported = False
         while True:
             self.check_authority()
-            if self._access_failure is not None:
-                raise self._access_failure
             now = self._now()
             remaining = operation.deadline - now
             status, delay = self._cooldowns.remaining(scope, now)
@@ -366,8 +363,6 @@ class ProviderReadClient:
             self._trace.status = None
             try:
                 self.check_authority()
-                if self._access_failure is not None:
-                    raise self._access_failure
                 try:
                     request = operation.request if final else prepare()
                     response = self.http.send(request, follow_redirects=follow_redirects, stream=stream)
@@ -437,10 +432,9 @@ class ProviderReadClient:
             'verify you are human', 'checking your browser')))
         if challenge:
             kind = 'Anubis verification' if 'anubis' in text else 'an HTML verification page'
-            self._access_failure = ProviderFailure(
-                f'{self.provider}: access limited by {kind} (HTTP {status}); further automatic requests stopped for this client',
+            raise ProviderFailure(
+                f'{self.provider}: access limited by {kind} (HTTP {status})',
                 kind='access', code='http_error', outcome='responded')
-            raise self._access_failure
         if status != 200:
             raise ProviderHTTPError(self.provider, status)
         if html:

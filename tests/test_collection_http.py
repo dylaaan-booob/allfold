@@ -1,4 +1,5 @@
 """Public retry qualification with the production service and real Workspace registry."""
+import sqlite3
 from threading import Event
 from time import monotonic, sleep
 from uuid import uuid4
@@ -10,12 +11,13 @@ from allfold.application.collection_runtime import BranchSpec
 from allfold.persistence.paper_repository import MetadataDelta, PaperRepository, PaperMetadata, BodyReference
 from allfold.models import ExternalIds
 from allfold.web.app import create_app
+from allfold.web.ui_next import collection_payload
 from electron_test_helpers import OfflineBridge
 from library_application_helpers import create_paper
 
 
-@pytest.mark.parametrize('with_body', [False, True])
-def test_retry_projection_and_http_share_exact_settled_paper_qualification(tmp_path, monkeypatch, with_body):
+@pytest.mark.parametrize('edit', ['notes', 'abstract', 'body', 'abstract-clear-during'])
+def test_retry_projection_and_http_retain_original_qualification_after_unrelated_edits(tmp_path, monkeypatch, edit):
     config, workspace, paper = create_paper(tmp_path)
     entered, release = Event(), Event()
     attempts = []
@@ -40,9 +42,6 @@ def test_retry_projection_and_http_share_exact_settled_paper_qualification(tmp_p
             metadata=paper.metadata, branches=app.state.collection_service.plan(paper=paper))
         failed = task.future.result(3)
         assert failed.collection_status == 'failed'
-        if with_body:
-            with PaperRepository.open(workspace) as repository:
-                repository.complete_body(failed.token, BodyReference(relative_path='Documents/associated.pdf'))
         def projected():
             snapshot = client.get('/api/ui-next/workspace').json()
             items = [paper for group in snapshot['subjects'] for journal in group['journals'] for paper in journal['papers']]
@@ -65,13 +64,34 @@ def test_retry_projection_and_http_share_exact_settled_paper_qualification(tmp_p
         body = dict(workspace_id=snapshot['workspace_id'], **item['collection']['retry'])
         assert client.post(endpoint, json=body).status_code == 403
         body['csrf_token'] = snapshot['csrf_token']
-        assert client.post(endpoint, json={**body, 'workspace_id': str(uuid4())}).status_code == 409
-        assert client.post(endpoint, json={**body, 'attempt': 99}).status_code == 409
-        assert client.post(endpoint, json={**body, 'revision': item['revision'] - 1}).status_code == 409
+        stale = client.post(endpoint, json={**body, 'workspace_id': str(uuid4())})
+        assert stale.status_code == 409 and stale.json()['code'] == 'stale'
+        stale = client.post(endpoint, json={**body, 'attempt': 99})
+        assert stale.status_code == 409 and stale.json()['code'] == 'stale'
+        assert set(body) == {'csrf_token', 'workspace_id', 'attempt', 'token'}
+        assert set(body['token']) == {'metadata_generation', 'operation_generation'}
+        with PaperRepository.open(workspace) as repository:
+            current = repository.get(paper.id)
+            if edit == 'body':
+                current = repository.complete_body(current.token, BodyReference(relative_path='Documents/associated.pdf'))
+                repository.clear_body(current.token)
+            elif edit != 'abstract-clear-during':
+                repository.edit_metadata(current.token, {edit: 'Manual value'})
+        assert collection_payload(failed, collection_service=app.state.collection_service)['retry_available']
+        if edit == 'notes':
+            with sqlite3.connect(workspace / 'papers.sqlite') as blocker:
+                blocker.execute('BEGIN IMMEDIATE')
+                blocked = client.post(endpoint, json=body)
+                assert blocked.status_code == 409 and blocked.json()['code'] == 'storage_busy'
+                blocker.rollback()
         try:
             started = client.post(endpoint, json=body)
             assert started.status_code == 200, started.text
             assert entered.wait(2)
+            if edit == 'abstract-clear-during':
+                with PaperRepository.open(workspace) as repository:
+                    current = repository.get(paper.id)
+                    repository.edit_metadata(current.token, {'abstract': None})
             assert started.json()['paper']['collection']['attempt'] == 2
             assert not started.json()['paper']['collection']['retry_available']
             assert client.post(endpoint, json=body).status_code == 409
@@ -84,7 +104,10 @@ def test_retry_projection_and_http_share_exact_settled_paper_qualification(tmp_p
                 break
             assert monotonic() < deadline, final
             sleep(.01)
-        assert final['abstract'] == 'Retry result'
+        expected_abstract = {'abstract': 'Manual value', 'abstract-clear-during': None}.get(edit, 'Retry result')
+        assert final['abstract'] == expected_abstract
+        if edit == 'notes':
+            assert final['notes'] == 'Manual value'
         assert final['ordinary_dates'] == ['2026-11-14']
         assert final['collection_status'] == 'completed'
         assert not final['collection']['retry_available']
@@ -185,3 +208,33 @@ def test_retry_never_forces_not_started_excluded_or_identity_only_metadata(tmp_p
         item = snapshot['downloaded']['papers'][0]['paper']
         assert not item['metadata_present']
         denied(item, snapshot)
+
+
+def test_captured_retry_after_workspace_reset_cannot_rebind_to_a_recreated_library(tmp_path, monkeypatch):
+    config, workspace, paper = create_paper(tmp_path)
+    def failed(_):
+        raise RuntimeError('Controlled branch failure')
+    monkeypatch.setattr('allfold.application.collection_planner.document_metadata_branch',
+        lambda: BranchSpec('document', failed))
+    monkeypatch.setattr('allfold.application.collection_planner.necessary_metadata_branch',
+        lambda **_: BranchSpec('necessary-api', skip_reason='Not applicable'))
+    app = create_app(config, electron_bridge=OfflineBridge(), diagnostics_root=tmp_path / 'logs')
+    with TestClient(app, base_url='http://localhost') as client:
+        registry = app.state.workspace_tasks.current()
+        registry.submit(direct_ids=ExternalIds(doi='10.5555/decision'), metadata=paper.metadata,
+            branches=app.state.collection_service.plan(paper=paper)).future.result(3)
+        snapshot = client.get('/api/ui-next/workspace').json()
+        item = snapshot['subjects'][0]['journals'][0]['papers'][0]
+        request = dict(csrf_token=snapshot['csrf_token'], workspace_id=snapshot['workspace_id'], **item['collection']['retry'])
+        preview = client.get('/api/ui-next/settings/reset-preview').json()
+        reset = client.post('/settings/workspace-reset', data=dict(csrf_token=snapshot['csrf_token'], reset_token=preview['reset_token']))
+        assert reset.status_code == 200, reset.text
+        assert not workspace.exists()
+        workspace.mkdir()
+        with PaperRepository.create(workspace) as repository:
+            replacement_id = repository.workspace_id
+            replacement = repository.snapshot()
+        response = client.post(f'/api/papers/{paper.id}/collection/retry', json=request)
+        assert response.status_code == 409 and response.json()['code'] == 'stale'
+        with PaperRepository.open(workspace, expected_workspace_id=replacement_id) as repository:
+            assert repository.snapshot() == replacement

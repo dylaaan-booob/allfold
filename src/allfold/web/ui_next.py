@@ -23,8 +23,8 @@ from allfold.persistence.user_state import load_user_state, read_user_state
 from allfold.config import ConfigurationError, load_config
 from allfold.paper_dates import date_value
 from allfold.models import EvidenceDate
-from allfold.persistence.paper_repository import InvalidPaperState, LibraryError, PaperRepository, StaleWriteError
-from allfold.persistence.library_models import WriteToken
+from allfold.persistence.paper_repository import InvalidPaperState, LibraryBusyError, LibraryError, PaperRepository, StaleWriteError
+from allfold.persistence.library_models import RetryToken
 from allfold.url_safety import normalize_public_http_url
 from allfold.pdf_facts import stable_discovery_url
 from allfold.keywords import parse_keyword_expression
@@ -75,16 +75,13 @@ class _Decision(_Action):
 
 class _RetryToken(BaseModel):
     model_config = ConfigDict(extra='forbid')
-    metadata_generation: StrictInt = Field(ge=0)
-    operation_generation: StrictInt = Field(ge=0)
-    abstract_generation: StrictInt | None = Field(ge=0)
-    body_generation: StrictInt = Field(ge=0)
+    metadata_generation: StrictInt = Field(ge=1)
+    operation_generation: StrictInt = Field(ge=1)
 
 
 class _CollectionRetry(_Action):
     workspace_id: UUID
     attempt: StrictInt = Field(ge=1)
-    revision: StrictInt = Field(ge=0)
     token: _RetryToken
 
 
@@ -111,6 +108,18 @@ class _LocalBody(_Action):
     body_generation: StrictInt = Field(ge=1)
 
 
+def _retry_failure(error):
+    if isinstance(error, StaleWriteError):
+        return 'stale', 'Paper 或采集 attempt 已变化；请刷新后重试。'
+    if isinstance(error, InvalidPaperState):
+        return 'ineligible', 'Paper 仍有未结束的工作，或尚不具备重试资格。'
+    if isinstance(error, LibraryBusyError):
+        return 'storage_busy', 'Paper 数据库正忙；当前写入结束后可重试。'
+    if isinstance(error, LibraryError):
+        return 'storage_error', 'Paper 数据库读写失败；存储恢复后可重试采集。'
+    return 'access_unavailable', '采集所需的配置或访问条件不可用；请检查后重试。'
+
+
 def collection_payload(record, *, collection_service=None, cleanup_pending=False):
     if collection_service is not None:
         cleanup_pending = collection_service.cleanup_pending(record.id, record.workspace_id)
@@ -125,20 +134,19 @@ def collection_payload(record, *, collection_service=None, cleanup_pending=False
         warning = next((messages[fault['phase']] for fault in reversed(registry.faults)
             if fault['paper_id'] == str(record.id) and fault['attempt'] == saved.attempt and fault['phase'] in messages), None)
     token = record.token
-    retry = dict(attempt=saved.attempt if saved else 0, revision=record.revision,
-        token={name: getattr(token, name) for name in ('metadata_generation', 'operation_generation',
-            'abstract_generation', 'body_generation')})
+    retry = dict(attempt=saved.attempt if saved else 0,
+        token={name: getattr(token, name) for name in ('metadata_generation', 'operation_generation')})
     available = False
     reason = None
     if record.metadata is not None and not record.excluded and status in {'failed', 'cancelled'}:
-        reason = 'cleanup_pending' if cleanup_pending else 'unavailable'
+        reason = 'cleanup_pending' if cleanup_pending else 'workspace_unbound'
         if not cleanup_pending and collection_service is not None:
             try:
-                qualified = collection_service.check_retry(record.id, workspace_id=record.workspace_id,
-                    expected_token=token, expected_attempt=saved.attempt, expected_revision=record.revision)
-                available = qualified.revision == record.revision
-            except (LibraryError, ConfigurationError, ValueError, OSError, RuntimeError):
-                pass  # Public projections never include authority/transport exception text.
+                collection_service.check_retry(record.id, workspace_id=record.workspace_id,
+                    expected_token=token, expected_attempt=saved.attempt)
+                available = True
+            except (LibraryError, ConfigurationError, ContentChangedError, ValueError, OSError, RuntimeError) as error:
+                reason, _ = _retry_failure(error)  # Never include authority/transport exception text.
         if available:
             reason = None
     return dict(status=status, attempt=saved.attempt if saved else 0,
@@ -391,15 +399,10 @@ def install_ui_next(app: FastAPI, config_path: Path, csrf_token: str) -> None:
                 if app.state.workspace_tasks.changing:
                     raise StaleWriteError('Workspace maintenance is in progress')
                 # Construct authority from the caller's captured generations, never a renewed token.
-                token = WriteToken(body.workspace_id, paper_id, **body.token.model_dump())
-                workspace = load_config(config_path).output_dir
-                with PaperRepository.open(workspace, expected_workspace_id=body.workspace_id) as repository:
-                    captured = repository.get(paper_id)
-                if captured.revision != body.revision:
-                    raise StaleWriteError('Paper changed; refresh before retrying')
+                token = RetryToken(body.workspace_id, paper_id, **body.token.model_dump())
                 registry = app.state.workspace_tasks.current()
                 app.state.collection_service.retry(paper_id, workspace_id=body.workspace_id,
-                    expected_token=token, expected_attempt=body.attempt, expected_revision=body.revision)
+                    expected_token=token, expected_attempt=body.attempt)
                 with registry.paper_gate():
                     with PaperRepository.open(registry.workspace, expected_workspace_id=body.workspace_id) as repository:
                         paper, revision = repository.get(paper_id), repository.revision
@@ -407,10 +410,9 @@ def install_ui_next(app: FastAPI, config_path: Path, csrf_token: str) -> None:
                 payload = paper_payload(WorkspacePaper(paper), cleanup_pending=cleanup,
                     collection_service=app.state.collection_service, body_downloads=app.state.body_downloads)
             return response(dict(workspace_id=paper.workspace_id, revision=revision, paper=payload))
-        except (StaleWriteError, InvalidPaperState, ConfigurationError, ContentChangedError, ValueError, OSError, RuntimeError):
-            return response({'message': 'Paper 重试资格已变化，或所需访问条件不可用；请刷新后检查。'}, 409)
-        except LibraryError:
-            return response({'message': 'Paper 数据库读写失败；存储恢复后可重试采集。'}, 409)
+        except (LibraryError, ConfigurationError, ContentChangedError, ValueError, OSError, RuntimeError) as error:
+            code, message = _retry_failure(error)
+            return response({'code': code, 'message': message}, 409)
 
     def run_data(start=None):
         snapshot = app.state.run_coordinator.snapshot()

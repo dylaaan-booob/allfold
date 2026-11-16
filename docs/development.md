@@ -126,7 +126,7 @@ npm --prefix electron test
 excludes dependencies, third-party assets and generated output; tests parse their
 own files. Full Python and Electron suites are not mandatory after every local
 edit, and a local full pass need not be repeated unconditionally when relevant
-latest-PR CI already supplies that evidence. CI/test-entry changes themselves
+latest-PR CI already supplies that evidence. Production-code, test and CI changes
 require the latest PR's actual full offline CI, even when local validation is targeted.
 
 The Electron entry stays serial: native input fixtures briefly show their own
@@ -216,8 +216,10 @@ related verification without turning every row into a requirement for every PR.
 | --- | --- |
 | CI scope | `tests/test_ci_scope.py`: disposable Git histories and workflow-command outputs, including full PR/push, docs, mixed, deletion/rename and unavailable diff |
 | Paper storage / Run admission | `test_paper_repository.py`, `test_paper_repository_safety.py`, `test_run_commit.py`, `test_run_library.py`; actual temporary SQLite reopen and ownership |
+| Run / WoS inputs | `test_run_commit.py`, `test_two_stage_run.py`, `test_wos.py`; captured search semantics, unrelated settings edits, actual input revocation and Workspace replacement |
 | Collection / retry / lifecycle | `test_collection_repository.py`, `test_collection_runtime.py`, `test_collection_planner.py`, `test_collection_http.py`, `test_task_clients.py`, `test_task_authority.py`; real workers with isolated transports |
 | Provider queries / HTTP | `test_necessary_metadata.py`, `test_integrated_discovery.py`, `test_http_client.py`, `test_provider_resilience.py`; independent clients and synthetic responses |
+| Page limits / settings effects | `test_page_limits.py` and `browser-runtime.test.cjs`; unchanged limits, granted tickets across decreases, queue wakeup and actual cancellation |
 | Document extraction / PDF sources | `test_document_metadata.py`, `test_pdf_rules.py`, `test_pdf_source_facts.py`, `test_pdf_discovery.py`, `test_pdf_http.py`; serial `document-probes`, `document-extraction`, `pdf-clues` Electron tests |
 | Native IPC / resources / Solver | `test_electron_bridge_solver.py`, `test_browser_services.py`, `test_login.py`; serial `cloudflare-solver`, `session-downloads`, `page-resources`, `browser-workspaces-dom` Electron tests |
 | Download / local files | `test_body_downloads.py`, `test_body_download_http.py`, `test_native_body_downloads.py`, `test_local_body.py`; serial `body-stream`, `body-native`, `local-body`, `native-output` Electron tests |

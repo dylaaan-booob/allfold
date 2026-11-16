@@ -134,9 +134,9 @@ prefixes and the redirect's applied authorization policy. Counts include each
 physical dispatch, including redirects and the final check. Cache hits and
 attempts stopped before dispatch add no requests.
 
-Current verification-page predicates can stop the client. Weak page strings and
-client-wide failure propagation are limitations to revise with the affected tests;
-a local access failure is not a requirement to stop unrelated requests. OpenAlex
+Current verification-page predicates reject the current invalid response without
+latching an access failure onto the client. Later independent identifier requests
+can proceed under their own captured authority and request budget. OpenAlex
 explicit authorization and quota errors currently stop the standalone client. Ordinary 429 responses remain
 transient. Invalid envelopes, Entrez application errors, wrong identities and
 shortened pages are explicit failures or incomplete results. Valid empty exact
@@ -186,9 +186,13 @@ See [Provider contracts and limits](providers.md).
 clients, request cache, captured cancellation/authority and absolute deadline.
 The runtime owns the corresponding thread-confined repository connections and
 Workspace/Paper/attempt checks; the HTTP factory never borrows a returned Run's
-snapshot, connection, cancellation event or `ExitStack`. Provider credentials are
-captured when the context opens, and the supplied guard runs before client use
-and every physical request. Existing adapter selection, request budgets,
+snapshot, connection, cancellation event or `ExitStack`. Each Provider's credentials
+and authority are captured at its first client use, checked before and after
+reading the key, then retained for every later request in that context. The
+supplied Workspace/Paper guard runs independently of Provider-specific checks.
+A necessary branch's capability list does not itself require or revoke unused
+Provider credentials. Related credential/epoch changes fail the original Provider
+subwork without replacing its key or cancelling independent Providers. Existing adapter selection, request budgets,
 Retry-After, redirects and cooldown authentication scopes remain unchanged.
 Injected transports keep their existing isolated cooldown state unless a test
 explicitly shares it. Factory close stops new contexts and waits for existing
@@ -242,8 +246,9 @@ inputs, never diagnostic fields. See [resource limits and rollback](browser-page
 `WorkspaceRegistry.admit` commits the complete Paper/queued decision and original
 host epochs before external initialization; `register` uses that captured owner.
 Production Run registers the complete Document/API plan and ends after foreground
-cleanup, without waiting for Paper Futures. Each branch declares actual
-Providers/Service; its thread opens independent connection/client/cache scopes.
+cleanup, without waiting for Paper Futures. Each branch declares its Service and
+Provider capabilities; the necessary branch captures actual Provider authority on
+use. Its thread opens independent connection/client/cache scopes.
 The application shares pacing with Run without borrowing its snapshots, clients
 or cancellation signals.
 

@@ -38,6 +38,9 @@ class BranchSpec:
     # Omitted inherits the legacy plan Service; explicit None is independent API.
     service_id: object = _INHERIT_SERVICE
     mailto: str = ''
+    # Capability choices can be discovered from earlier API responses. Their
+    # individual authority is captured on use, not as one branch prerequisite.
+    dynamic_providers: bool = False
 
 
 @dataclass(eq=False)
@@ -72,7 +75,8 @@ class TaskHandle:
 
     @property
     def providers(self):
-        return tuple(sorted({provider for branch in self.branches for provider in branch.providers}))
+        return tuple(sorted({provider for branch in self.branches if not branch.dynamic_providers
+                             for provider in branch.providers}))
 
 
 @dataclass(eq=False)
@@ -111,7 +115,7 @@ class _BranchTask:
         return self.branch.service_id
     @property
     def providers(self):
-        return self.branch.providers
+        return () if self.branch.dynamic_providers else self.branch.providers
 
 
 @dataclass(eq=False)
@@ -405,10 +409,11 @@ class WorkspaceRegistry:
         return tuple(BranchSpec(branch.name, branch.run, branch.skip_reason,
                                 tuple(sorted(set(branch.providers))),
                                 service_id if branch.service_id is _INHERIT_SERVICE else branch.service_id,
-                                branch.mailto) for branch in plan)
+                                branch.mailto, branch.dynamic_providers) for branch in plan)
 
     def _authority(self, service_id, plan):
-        providers = tuple(sorted({provider for branch in plan for provider in branch.providers}))
+        providers = tuple(sorted({provider for branch in plan if not branch.dynamic_providers
+                                  for provider in branch.providers}))
         if self._authority_capture is None:
             if service_id is not None or providers:
                 raise InvalidPaperState('Service/Provider work requires captured authority')
@@ -596,7 +601,7 @@ class WorkspaceRegistry:
                 self._settle_unscheduled(handle, 'submission_failed')
         return handle
 
-    def _retry_qualification(self, paper_id, branches, service_id, expected_token, expected_attempt, expected_revision=None, *, settle=False):
+    def _retry_qualification(self, paper_id, branches, service_id, expected_token, expected_attempt, *, settle=False):
         plan = self._plan(branches, no_applicable=True, service_id=service_id)
         paper_id = UUID(str(paper_id))
         with self._gate:
@@ -608,12 +613,13 @@ class WorkspaceRegistry:
             ended = self.ended_kind(paper) == 'collection'
             if paper.excluded or paper.metadata is None or (not ended and paper.collection_status not in {'failed', 'cancelled'}):
                 raise InvalidPaperState('Retry requires a settled failed or cancelled full Paper')
-            if expected_token is not None and paper.token != expected_token:
+            if expected_token is not None and (expected_token.workspace_id != self.workspace_id
+                    or expected_token.paper_id != paper_id
+                    or expected_token.metadata_generation != paper.metadata_generation
+                    or expected_token.operation_generation != paper.operation_generation):
                 raise StaleWriteError('Captured Paper authority changed')
             if expected_attempt is not None and paper.collection.attempt != expected_attempt:
                 raise StaleWriteError('Captured collection attempt changed')
-            if expected_revision is not None and paper.revision != expected_revision:
-                raise StaleWriteError('Captured Paper revision changed')
             if settle and ended:
                 self.settle_ended(paper_id)
                 with self._repository() as repository:
@@ -627,16 +633,16 @@ class WorkspaceRegistry:
                        for branch in pending if branch.skip_reason is None}
         return paper, plan, pending, authorities
 
-    def check_retry(self, paper_id, *, branches, service_id=None, expected_token=None, expected_attempt=None, expected_revision=None):
+    def check_retry(self, paper_id, *, branches, service_id=None, expected_token=None, expected_attempt=None):
         """Read-only public retry eligibility, including only pending access dependencies."""
-        paper, _, _, _ = self._retry_qualification(paper_id, branches, service_id, expected_token, expected_attempt, expected_revision)
+        paper, _, _, _ = self._retry_qualification(paper_id, branches, service_id, expected_token, expected_attempt)
         return paper
 
     def retry(self, paper_id, *, branches, service_id=None, deadline=None,
-              expected_token=None, expected_attempt=None, expected_revision=None):
+              expected_token=None, expected_attempt=None):
         deadline = self._deadline(deadline)
         paper, plan, pending, authorities = self._retry_qualification(
-            paper_id, branches, service_id, expected_token, expected_attempt, expected_revision, settle=True)
+            paper_id, branches, service_id, expected_token, expected_attempt, settle=True)
         with self._gate:
             self._require_open()
             for authority in authorities.values():
@@ -644,11 +650,9 @@ class WorkspaceRegistry:
             if self.busy(paper.id, include_local_reads=False):
                 raise InvalidPaperState('Previous Paper resources have not settled')
             with self._repository() as repository:
-                current = repository.get(paper.id)
-                if current.collection != paper.collection or current.revision != paper.revision:
-                    raise StaleWriteError('Captured Paper or collection attempt changed')
-                admission = repository.retry_collection(paper.token, lifecycle_id=self.lifecycle_id,
-                    branches=tuple(branch.name for branch in plan))
+                admission = repository.retry_collection(expected_token if expected_token is not None else paper.token,
+                    expected_attempt=expected_attempt if expected_attempt is not None else paper.collection.attempt,
+                    lifecycle_id=self.lifecycle_id, branches=tuple(branch.name for branch in plan))
             handle = self._new_handle(admission, pending, deadline, service_id)
             for child in handle.branch_tasks:
                 if child.branch.name in authorities:
@@ -927,9 +931,14 @@ class WorkspaceRegistry:
         try:
             branch = getattr(handle, 'branch', None)
             options = {'mailto': branch.mailto} if branch is not None and branch.mailto else {}
+            providers = handle.providers
+            if branch is not None and branch.dynamic_providers:
+                providers = branch.providers
+                options['provider_authority'] = lambda name: self._authority(None,
+                    (BranchSpec('provider-use', providers=(name,)),))
             clients = resources.enter_context(self.factory.open(cancel_event=handle.cancel_event,
                 request_guard=lambda: self._guard(handle, repository), deadline=handle.deadline,
-                providers=handle.providers, **options))
+                providers=providers, **options))
             yield clients
         finally:
             try:

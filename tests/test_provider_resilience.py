@@ -278,15 +278,19 @@ def test_cooldown_wait_rechecks_cancellation_and_request_authority(revoked):
     assert calls == [100]
 
 
-def test_api_challenge_stops_later_requests_in_the_same_run_client():
+def test_api_challenge_does_not_stop_a_later_independent_identifier_request():
     calls = []
-    with DiscoveryClient('openalex', transport=httpx.MockTransport(lambda request:
-        calls.append(request) or httpx.Response(202, headers={'content-type': 'text/html'},
-            text='<html>Making sure you are not a bot! Protected by Anubis</html>')), interval=0) as client:
-        for identifier in ('W1', 'W2'):
-            with pytest.raises(DiscoveryError, match='Anubis'):
-                client.request('/works/' + identifier, {})
-    assert len(calls) == 1
+    def response(request):
+        calls.append(request)
+        if request.url.path.endswith('/W1'):
+            return httpx.Response(202, headers={'content-type': 'text/html'},
+                text='<html>Making sure you are not a bot! Protected by Anubis</html>')
+        return httpx.Response(200, json={'id': 'https://openalex.org/W2'})
+    with DiscoveryClient('openalex', transport=httpx.MockTransport(response), interval=0) as client:
+        with pytest.raises(DiscoveryError, match='Anubis'):
+            client.request('/works/W1', {})
+        assert client.request('/works/W2', {}) == {'id': 'https://openalex.org/W2'}
+    assert [request.url.path for request in calls] == ['/works/W1', '/works/W2']
 
 
 def test_api_default_spacing_is_applied():

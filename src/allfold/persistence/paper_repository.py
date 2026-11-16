@@ -16,7 +16,7 @@ from allfold.persistence.library_database import (
 )
 from allfold.persistence.library_models import (
     BodyReference, CollectionAdmission, CollectionBranch, CollectionRecord, CollectionToken,
-    DownloadToken, DownloadRecord, OutputOwnership, CreationResult, DirectIdentity, MetadataDelta, PaperMetadata, PaperRecord, PreprintResult, WriteToken,
+    DownloadToken, DownloadRecord, OutputOwnership, CreationResult, DirectIdentity, MetadataDelta, PaperMetadata, PaperRecord, PreprintResult, RetryToken, WriteToken,
 )
 from allfold.pdf_facts import discovery_target_matches, merge_discovery_facts
 
@@ -42,7 +42,7 @@ __all__ = [
     "CollectionAdmission", "CollectionBranch", "CollectionRecord", "CollectionToken",
     "LibraryBusyError", "LibraryCorruptError", "LibraryError", "LibraryExistsError", "LibraryMissingError",
     "MetadataDelta", "PaperMetadata", "PaperNotFoundError", "PaperRecord", "PaperRepository",
-    "PreprintResult", "StaleWriteError", "UnsafeLibraryPath", "UnsupportedLibrarySchema", "WriteToken",
+    "PreprintResult", "RetryToken", "StaleWriteError", "UnsafeLibraryPath", "UnsupportedLibrarySchema", "WriteToken",
 ]
 
 
@@ -94,6 +94,10 @@ class PaperRepository:
 
     def close(self):
         self._database.close()
+
+    def validate(self):
+        """Run explicit full schema/integrity/reference diagnostics without repair."""
+        self._database.validate()
 
     def _read(self, connection, paper_id: UUID) -> PaperRecord:
         row = connection.execute("SELECT * FROM paper_core WHERE paper_id = ?", (str(paper_id),)).fetchone()
@@ -302,13 +306,17 @@ class PaperRepository:
                 return CollectionAdmission(paper, token, False, result.created)
             return self._queue_collection(connection, paper, lifecycle_id, branches, created=result.created)
 
-    def retry_collection(self, token: WriteToken, *, lifecycle_id: UUID,
+    def retry_collection(self, token: WriteToken | RetryToken, *, expected_attempt: int, lifecycle_id: UUID,
                          branches: tuple[str, ...]) -> CollectionAdmission:
         """Explicit retry only; the application also holds its shared Paper occupation gate."""
         lifecycle_id = UUID(str(lifecycle_id))
         branches = self._collection_branches(branches)
+        if type(expected_attempt) is not int or expected_attempt < 1:
+            raise StaleWriteError("Retry requires the captured collection attempt")
         with self._database.transaction(write=True) as connection:
             paper = self._require_token(connection, token, automatic=True)
+            if paper.collection is not None and paper.collection.attempt != expected_attempt:
+                raise StaleWriteError("Captured collection attempt changed")
             if paper.collection is None or paper.collection.status not in {"failed", "cancelled"}:
                 raise InvalidPaperState("Retry requires a settled failed or cancelled collection")
             if not {branch.name for branch in paper.collection.branches} <= set(branches):

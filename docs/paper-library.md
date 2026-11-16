@@ -28,12 +28,15 @@ transaction callbacks: network, page and file work finishes before repository
 calls. No lock spans those operations.
 
 The application ID identifies an Allfold library, `PRAGMA user_version` records
-schema version 5, and `library_info` stores the Workspace UUID. Current opening
-performs extensive schema/integrity/reference validation and may take a write
-transaction. That per-open work is scheduled for revision, not an invariant;
-content preservation and explicit unsupported/corrupt errors remain. Missing,
-corrupt, unsafe and unsupported-schema libraries raise distinct errors. Existing
-content is never overwritten or rebuilt implicitly. Exactly valid v4 and the supported v3 entry path have transactional forward changes to v5; unknown,
+schema version 5, and `library_info` stores the Workspace UUID. Ordinary current-format
+open checks the file/Workspace identity, application ID, supported version and
+Workspace UUID in a read transaction. It enables foreign keys without taking
+`BEGIN IMMEDIATE`, traversing the schema or running integrity/reference scans.
+`validate()` explicitly runs full schema, `quick_check` and `foreign_key_check`
+diagnostics under a write transaction; creation and supported migrations retain
+that full validation. Missing, corrupt, unsafe and unsupported-schema libraries
+raise distinct errors; ordinary open does not certify every saved row or table.
+Existing content is never overwritten or rebuilt implicitly. Exactly valid v4 and the supported v3 entry path have transactional forward changes to v5; unknown,
 corrupt and retired v1/v2 formats remain refused. Acceptance uses isolated data. Failed initialization preserves its
 exclusively created file for inspection rather than deleting it.
 
@@ -68,7 +71,7 @@ and connection safety. These helpers are not alternate application writers.
 
 | Interface | Result and conditions |
 | --- | --- |
-| `create`, `open`, `close` | Explicit lifecycle; optional expected Workspace UUID on open |
+| `create`, `open`, `close`, `validate` | Explicit lifecycle; optional expected Workspace UUID on open; `validate` requests full diagnostics |
 | `get(paper_id)`, `list_papers()` | Immutable `PaperRecord` projections, including excluded and cleared records |
 | `match(direct_ids, additional_identities=...)` | Match saved direct identities; different owners raise `IdentityConflict` |
 | `create_or_match(workspace_id, direct_ids=..., metadata=...)` | `CreationResult(paper, created)`; a new full record requires title and reliable direct identity. Matches return the existing record unchanged in every state |
@@ -87,7 +90,7 @@ and connection safety. These helpers are not alternate application writers.
 | `commit_collection_branch(token, branch, sequence=..., delta=..., outcome=..., reason=..., direct_ids=...)` | Atomically merge an increment and its branch fact; duplicate/older sequences never reapply content |
 | `request_collection_cancel(token, reason=...)` | Revoke writes immediately; preserve active occupancy through actual cleanup |
 | `finish_collection(token, reason=..., failed=False)` | Aggregate settled branches after actual cleanup; optional cleanup failure prevents completion |
-| `retry_collection(write_token, lifecycle_id=..., branches=...)` | Explicit retry of settled failed/cancelled full, unexcluded Papers; preserve successful/skipped branch facts |
+| `retry_collection(token, expected_attempt=..., lifecycle_id=..., branches=...)` | Atomically qualify the original Workspace/Paper, metadata/operation generations and failed/cancelled attempt; preserve successful/skipped branch facts |
 | `interrupt_collections(lifecycle_id)` | Explicit lifecycle initialization; fail other lifecycles' queued/running work as interrupted, without replay |
 
 Returned records include `.token`. `WriteToken` binds Workspace UUID, Paper UUID,
@@ -102,6 +105,12 @@ from renewing old authority after Reject/Restore or a manual abstract edit.
 when absent. Task facts advance the same library/record revisions as metadata.
 Existing full completed, failed and cancelled records are reused without automatic
 collection; queued/running returns the same attempt. Explicit retry increments it.
+`RetryToken` contains only Workspace/Paper UUIDs and metadata/operation generations.
+Its captured attempt is checked in the same transaction that creates the next one.
+Notes/abstract/body edits and projection revisions do not revoke Retry; excluded,
+cleared/rebuilt or restored metadata, superseded attempts and Workspace replacement
+do. New attempts capture current field generations without renewing old attempts'
+automatic write authority.
 
 Branches use bounded names and `queued/running/completed/skipped/failed/cancelled`
 facts. Each attempt's positive monotonic sequence deduplicates callbacks without
@@ -270,8 +279,9 @@ cleanup; old tokens remain invalid. Clearing metadata waits for that Paper's rea
 cleanup to finish. Shared Run discovery remains available to other Papers.
 
 `test_paper_repository.py`, `test_collection_repository.py` and `test_paper_repository_safety.py` use real temporary
-SQLite databases for reopening, contention, identity conflicts, dates, generations,
-rollback, paths, concurrent admission, captured branch writes,
+SQLite databases for lightweight reopening under a reserved writer, explicit full
+diagnostics, supported migration validation, identity/version refusal, dates,
+generations, rollback, paths, concurrent admission, captured branch writes,
 cancellation, retry and explicit interruption. Production Run now uses atomic
 base/queued admission with original token/rebuild qualification and complete plans.
 Workspace owns branch resources after foreground completion. Public single-Paper

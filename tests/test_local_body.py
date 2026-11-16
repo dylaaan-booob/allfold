@@ -307,7 +307,7 @@ def test_public_collection_retry_remains_available_while_native_read_is_pending(
             assert item['cleanup_pending'] and not item['collection']['cleaning_up']
             assert item['collection']['retry_available']
             assert registry.check_retry(paper.id, branches=plan, expected_token=failed.token,
-                expected_attempt=1, expected_revision=failed.revision) == failed
+                expected_attempt=1) == failed
             response = client.post(f'/api/papers/{paper.id}/collection/retry', json=dict(
                 csrf_token=snapshot['csrf_token'], workspace_id=snapshot['workspace_id'], **item['collection']['retry']))
             assert response.status_code == 200, response.text
@@ -445,7 +445,7 @@ def test_retry_rechecks_native_uncertainty_captured_after_initial_qualification(
         inject_local_failure = True
         with pytest.raises(InvalidPaperState, match='resources have not settled'):
             registry.retry(paper.id, branches=(BranchSpec('controlled', lambda _: None),),
-                expected_token=failed.token, expected_attempt=1, expected_revision=failed.revision)
+                expected_token=failed.token, expected_attempt=1)
         assert len(bridge.calls) == 1 and host.active
         assert read_paper(workspace, paper.id) == failed and path.read_bytes() == b'normal transfer bytes'
     finally:
