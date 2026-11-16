@@ -662,8 +662,8 @@
       "timing_comparison_eligible": false,
       "comparable_body_version": true,
       "version_comparison": {
-        "version": "Publisher Version of Record / FirstView",
-        "evidence": "Actual title/DOI/page counts checked in both files. Same publisher source. Cambridge download-time watermarks and byte sizes vary; hashes are not required."
+        "version": "Publisher Version of Record",
+        "evidence": "Both title/DOI/29pages/7,842,498B verified; Zotero source link.springer.com. AF first page visually confirms Springer publisher layout, International Journal of Computer Vision134:493(2026), published25Oct2026. No full-byte equality claim."
       },
       "difference_seconds": [
         -7.017,
@@ -1086,8 +1086,8 @@
       "timing_comparison_eligible": false,
       "comparable_body_version": true,
       "version_comparison": {
-        "version": "Publisher Version of Record / FirstView",
-        "evidence": "Actual title/DOI/page counts checked in both files. Same publisher source. Cambridge download-time watermarks and byte sizes vary; hashes are not required."
+        "version": "Publisher Version of Record",
+        "evidence": "Both title/DOI/57pages/5,103,901B verified; Zotero source link.springer.com. Current AF PDF first page visually confirms Springer publisher layout, Data Mining and Knowledge Discovery40:96(2026). No full-byte equality claim."
       },
       "cohort": "anomaly_retest",
       "diagnostic_setting": "Connector Debug checkbox temporarily enabled19:19:21–19:24:38UTC;0linescaptured. RestoredOFF; Desktop debug stayedOFF. Not attributed as a repair.",
@@ -1228,8 +1228,8 @@
       "timing_comparison_eligible": false,
       "comparable_body_version": true,
       "version_comparison": {
-        "version": "Publisher Version of Record / FirstView",
-        "evidence": "Actual title/DOI/page counts checked in both files. Same publisher source. Cambridge download-time watermarks and byte sizes vary; hashes are not required."
+        "version": "Publisher Version of Record",
+        "evidence": "Both title/DOI/57pages/5,103,901B verified; Zotero source link.springer.com. Current AF PDF first page visually confirms Springer publisher layout, Data Mining and Knowledge Discovery40:96(2026). No full-byte equality claim."
       },
       "cohort": "anomaly_retest",
       "diagnostic_setting": "Connector Debug checkbox temporarily enabled19:19:21–19:24:38UTC;0linescaptured. RestoredOFF; Desktop debug stayedOFF. Not attributed as a repair.",

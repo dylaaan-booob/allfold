@@ -110,7 +110,8 @@ observer remain necessary; their cache state must stay explicit.
 Nine successful pairs have comparable publisher versions. Seven have raw paired
 timings from the older observer; two Cambridge repeats lack a reliable Zotero T0.
 There is currently **zero** complete same-version, two-sided timed pair eligible
-for a normal-load parity decision after the observer correction. Raw intervals,
+for a normal-load parity decision after the observer correction. Normal-load
+medians and dispersion are therefore not estimable (N=0). Raw intervals,
 differences and ratios remain in the table, with eligibility false. No p95,
 pooled daily-load average, tolerance percentage or non-significance argument is used.
 
@@ -263,7 +264,7 @@ CARSI renewal reached the official account page with empty fields/no autofill;
 user login is pending before a comparable Allfold retest. This original failure
 is retained rather than silently excluded. Formal main pairs, controls,
 mechanism coverage and final Workspace Reset remain incomplete. No platform is
-confirmed at parity. IEEE and Cambridge have two untreated available Papers each;
+confirmed at parity. At manifest freeze, IEEE and Cambridge each had two eligible untreated Papers;
 ScienceDirect has six; the other seven platforms have three each. Unavailable
 Optica/R059/LWW/OCE paths are not claimed as covered.
 
