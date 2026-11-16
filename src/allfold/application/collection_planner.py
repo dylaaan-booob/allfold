@@ -4,27 +4,10 @@ from uuid import UUID
 
 from allfold.application.collection_runtime import BranchSpec
 from allfold.application.document_metadata import document_metadata_branch
-from allfold.application.necessary_metadata import NecessaryRequest, necessary_metadata_branch, necessary_requests
+from allfold.application.necessary_metadata import necessary_metadata_branch, necessary_requests, necessary_work_requests
 from allfold.config import load_config
-from allfold.identifiers import related_identifiers
 from allfold.persistence.paper_repository import InvalidPaperState, PaperRepository, StaleWriteError
-
-
-NECESSARY_PROVIDERS = ('pubmed', 'crossref', 'europe_pmc', 'arxiv', 'biorxiv', 'medrxiv')
-
-
-def _required_purposes(records, required=()):
-    purposes = set(required)
-    for record in records:
-        primary = set(record.external_ids.model_dump(exclude_none=True).items())
-        purposes.update(NecessaryRequest('openalex', namespace, value, 'work')
-            for namespace, value in related_identifiers(record) - primary if namespace == 'openalex')
-    return tuple(sorted(purposes))
-
-
-def _providers(purposes):
-    return (*NECESSARY_PROVIDERS, *(('openalex',) if any(
-        request.provider == 'openalex' for request in purposes) else ()))
+from allfold.providers.integrated import PROVIDERS
 
 
 class ProductionCollectionService:
@@ -44,8 +27,7 @@ class ProductionCollectionService:
             from allfold.application.necessary_metadata import paper_evidence_records
             records = paper_evidence_records(paper)
         # A declared related Work is a purpose; an ordinary field gap is not.
-        required = _required_purposes(records, required)
-        providers = _providers(required)
+        required = tuple(sorted(set(required) | necessary_work_requests(records)))
         if any(namespace == 'doi' for namespace, _ in identities):
             from allfold.application.workspace import paper_service_assignment
             service_id, assignment = paper_service_assignment(metadata, config.journals)
@@ -57,7 +39,7 @@ class ProductionCollectionService:
                 document = replace(document_metadata_branch(), service_id=service_id)
         else:
             document = BranchSpec('document', skip_reason='No reliable DOI or confirmed article entrance', service_id=None)
-        api = replace(necessary_metadata_branch(providers=providers, records=records, facts=facts,
+        api = replace(necessary_metadata_branch(providers=PROVIDERS, records=records, facts=facts,
             required=tuple(sorted(required))), service_id=None, mailto=config.crossref_mailto)
         return document, api
 
@@ -69,8 +51,9 @@ class ProductionCollectionService:
         satisfies the family heuristic. Existing qualified saved values survive.
         """
         from allfold.persistence.run_library import metadata_from_run
-        purposes = _required_purposes(records, (*required, *(fact.request for fact in facts if not fact.complete)))
-        complete = not necessary_requests(records, root_ids=set(identities), providers=_providers(purposes),
+        purposes = tuple(sorted(set(required) | necessary_work_requests(records)
+            | {fact.request for fact in facts if not fact.complete}))
+        complete = not necessary_requests(records, root_ids=set(identities), providers=PROVIDERS,
             facts=facts, required=purposes)
         return metadata_from_run(canonical, records=records, first_public_complete=complete)
 

@@ -38,6 +38,9 @@ class BranchSpec:
     # Omitted inherits the legacy plan Service; explicit None is independent API.
     service_id: object = _INHERIT_SERVICE
     mailto: str = ''
+    # Capability choices can be discovered from earlier API responses. Their
+    # individual authority is captured on use, not as one branch prerequisite.
+    dynamic_providers: bool = False
 
 
 @dataclass(eq=False)
@@ -72,7 +75,8 @@ class TaskHandle:
 
     @property
     def providers(self):
-        return tuple(sorted({provider for branch in self.branches for provider in branch.providers}))
+        return tuple(sorted({provider for branch in self.branches if not branch.dynamic_providers
+                             for provider in branch.providers}))
 
 
 @dataclass(eq=False)
@@ -111,7 +115,7 @@ class _BranchTask:
         return self.branch.service_id
     @property
     def providers(self):
-        return self.branch.providers
+        return () if self.branch.dynamic_providers else self.branch.providers
 
 
 @dataclass(eq=False)
@@ -405,10 +409,11 @@ class WorkspaceRegistry:
         return tuple(BranchSpec(branch.name, branch.run, branch.skip_reason,
                                 tuple(sorted(set(branch.providers))),
                                 service_id if branch.service_id is _INHERIT_SERVICE else branch.service_id,
-                                branch.mailto) for branch in plan)
+                                branch.mailto, branch.dynamic_providers) for branch in plan)
 
     def _authority(self, service_id, plan):
-        providers = tuple(sorted({provider for branch in plan for provider in branch.providers}))
+        providers = tuple(sorted({provider for branch in plan if not branch.dynamic_providers
+                                  for provider in branch.providers}))
         if self._authority_capture is None:
             if service_id is not None or providers:
                 raise InvalidPaperState('Service/Provider work requires captured authority')
@@ -926,9 +931,14 @@ class WorkspaceRegistry:
         try:
             branch = getattr(handle, 'branch', None)
             options = {'mailto': branch.mailto} if branch is not None and branch.mailto else {}
+            providers = handle.providers
+            if branch is not None and branch.dynamic_providers:
+                providers = branch.providers
+                options['provider_authority'] = lambda name: self._authority(None,
+                    (BranchSpec('provider-use', providers=(name,)),))
             clients = resources.enter_context(self.factory.open(cancel_event=handle.cancel_event,
                 request_guard=lambda: self._guard(handle, repository), deadline=handle.deadline,
-                providers=handle.providers, **options))
+                providers=providers, **options))
             yield clients
         finally:
             try:

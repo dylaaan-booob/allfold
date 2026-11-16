@@ -119,6 +119,14 @@ def _qualified_direct_records(records, root_ids):
     return tuple(output)
 
 
+def necessary_work_requests(records):
+    """Only explicitly related Works are location purposes, never root gaps."""
+    return {NecessaryRequest('openalex', namespace, value, 'work')
+        for record in records
+        for namespace, value in related_identifiers(record) - strong_identifiers(record.external_ids)
+        if namespace == 'openalex'}
+
+
 def necessary_requests(records, *, root_ids, providers, facts=(), required=(),
                        discover_relations=True, first_public_saved=False):
     """Plan only unfinished identity/relationship/native purposes, never field gaps.
@@ -127,7 +135,7 @@ def necessary_requests(records, *, root_ids, providers, facts=(), required=(),
     Direct DOI→PMID closure belongs to the separate precreation service.
     """
     records = _qualified_direct_records(records, root_ids)
-    requests = set(required)
+    requests = set(required) | necessary_work_requests(records)
     if discover_relations and not first_public_saved:
         _, answered = preprint_date_coverage(records)
         formal_ids = {key for item in formal_records(records, root_ids)
@@ -396,12 +404,18 @@ def collect_necessary_metadata(context, *, records=(), facts=(), required=(), pr
         linked = {key for item in output for key in related_identifiers(item)}
         if any((item.namespace, item.identifier) not in linked for item in group):
             raise IdentityMismatch('Necessary target lacks a verified Paper identity or relation')
-        client = context.provider(first.provider)
-        if hasattr(client, 'begin_completion'):
-            client.begin_completion()
         values, settlement = {}, LookupSettlement()
-        values.update(settlement.capture(client, lambda: _lookup_group(context, group), values.update))
-        settlement.settle(context.cancel_event)
+        try:
+            client = context.provider(first.provider)
+            if hasattr(client, 'begin_completion'):
+                client.begin_completion()
+            values.update(settlement.capture(client, lambda: _lookup_group(context, group), values.update))
+            settlement.settle(context.cancel_event)
+        except (ValueError, OSError, RuntimeError, TypeError, AttributeError) as error:
+            # Access belongs to this Provider's original subwork. Other sources
+            # and already-emitted increments keep their independent authority.
+            for request in group:
+                values.setdefault(request.identifier, error)
         for request in group:
             context.guard()
             absorb(request, values[request.identifier])
@@ -435,4 +449,4 @@ def necessary_metadata_branch(*, name='necessary-api', providers=(), records=(),
         if result.issues:
             raise NecessaryLookupFailed(result)
         # All content has already been emitted with explicit branch sequences.
-    return BranchSpec(name, run, providers=providers)
+    return BranchSpec(name, run, providers=providers, dynamic_providers=True)

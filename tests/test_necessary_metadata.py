@@ -709,3 +709,15 @@ def test_necessary_transient_failure_keeps_one_final_check_and_full_capability(t
     assert paper.collection_status == 'completed'
     assert paper.metadata.ordinary_dates == ('2026-01-02',)
     assert len(calls) == 5
+
+
+def test_necessary_requests_follow_a_later_related_work_without_probing_root_openalex():
+    from allfold.application.necessary_metadata import NecessaryRequest, VerifiedResponse, necessary_requests
+    from allfold.models import ProviderRecordRef
+    root = {('doi', '10.5555/formal')}
+    settled = (VerifiedResponse(NecessaryRequest('crossref', 'doi', '10.5555/formal', 'exact'), ()),
+        VerifiedResponse(NecessaryRequest('crossref', 'doi', '10.5555/formal', 'reverse'), ()))
+    assert necessary_requests((record(),), root_ids=root, providers=('crossref', 'openalex'), facts=settled) == ()
+    linked = record(related_ids=(ProviderRecordRef(provider='openalex', record_id='W123'),))
+    assert necessary_requests((linked,), root_ids=root, providers=('crossref', 'openalex'), facts=settled) == (
+        NecessaryRequest('openalex', 'openalex', 'W123', 'work'),)
