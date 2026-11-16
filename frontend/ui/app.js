@@ -1259,9 +1259,19 @@ function renderBodyControls(paper) {
   if(!active && !paper.body_present && download?.reason){
     const reasons={'storage-error':'数据库写入失败；存储恢复后可重新下载。','path-conflict':'目标 PDF 已存在，未覆盖文件。',
       'output-cleanup':'下载已结束，但临时文件清理失败。','file-io':'正文文件写入失败。',
-      'native-output':'原生下载输出文件无法安全使用。','local-completion':'正文文件发布或关联失败。'};
+      'native-output':'原生下载输出文件无法安全使用。','local-completion':'正文文件发布或关联失败。',
+      'access-blocked':'当前来源访问受阻。','access-challenge':'当前来源需要完成验证。',
+      'access-login':'当前来源需要登录。','access-authorization':'当前来源拒绝访问。',
+      'entry-unavailable':'当前来源的下载入口不可用。','reader-unavailable':'当前来源的 Reader 不可用。',
+      'native-action':'当前来源未取得正文。','parse-failed':'当前来源解析失败。',
+      'partial-response':'当前来源只取得部分解析结果。','non-pdf':'当前响应不是 PDF。',
+      'source-failed':'当前来源请求失败。','no-pdf-entry':'当前来源没有可用正文入口。',
+      'no-pdf-candidates':'没有剩余的合格 PDF 候选。','provider-unavailable':'后续 PDF 来源不可用。',
+      'response-loop':'当前来源重复返回相同响应。','expired':'下载已到达父任务期限。',
+      'cancelled':'下载已取消。','stale':'本次下载的 Paper 或任务资格已失效。'};
     text=reasons[download.reason] || text;
   }
+  if(!active && !paper.body_present && download?.source_observations?.some(item=>item.subsequent_attempted))text+=' 已尝试后续来源。';
   if(!active && download?.warning)text=[text,download.warning].filter(Boolean).join(' ');
   $('paper-download-status').textContent=text;
   $('paper-download-status').hidden=!text;

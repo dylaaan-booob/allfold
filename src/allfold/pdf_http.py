@@ -9,14 +9,13 @@ from __future__ import annotations
 
 from dataclasses import replace
 import ipaddress
-import json
 import socket
 from urllib.parse import parse_qs, quote, urlencode, urlsplit
 
 import httpx
 
 from allfold.identifiers import valid_doi
-from allfold.pdf_discovery import CandidateResult, CurrentResponse, P2Resolution, PdfSourceReadError
+from allfold.pdf_discovery import CandidateResult, CurrentResponse, P2Resolution, PdfSourceReadError, RESPONSE_SAMPLE_BYTES
 from allfold.pdf_facts import crossref_pdf_refresh_required
 from allfold.pdf_rules import KnownPdfUrl, PdfRuleInputs, content_platform, needs_p2_query
 from allfold.providers.provider_http import (ProviderReadClient, ProviderFailure,
@@ -28,8 +27,8 @@ class UnsafePdfTarget(ValueError):
     pass
 
 
-class PdfResponseTooLarge(ValueError):
-    pass
+class _JsonSample(dict):
+    partial = False
 
 
 def public_dns_addresses(host, port):
@@ -131,18 +130,22 @@ class PdfHttpClient:
     @staticmethod
     def bounded_response(response):
         body = bytearray()
+        partial = False
         try:
             for chunk in response.iter_bytes():
-                if len(body) + len(chunk) > 262144:
-                    raise PdfResponseTooLarge('Discovery response exceeds read-only parse budget')
-                body.extend(chunk)
+                available = RESPONSE_SAMPLE_BYTES - len(body)
+                body.extend(chunk[:available])
+                if len(chunk) > available:
+                    partial = True
+                    break
         except (httpx.TransportError, httpx.DecodingError):
             # Only this owned metadata/HTML read is a source failure. Exceptions
             # from the downstream PDF consumer remain outside this boundary.
             raise ProviderFailure('PDF current response could not be read', kind='protocol', code='response-read-failed') from None
         # HTTPX response.request.url is the real final request after redirects.
         return CurrentResponse(str(response.request.url), response.headers.get('content-type', ''),
-            bytes(body), response.status_code, access='challenge' if response.headers.get('cf-mitigated', '').strip().lower()=='challenge' else None)
+            bytes(body), response.status_code, partial=partial,
+            access='challenge' if response.headers.get('cf-mitigated', '').strip().lower()=='challenge' else None)
 
     def consume(self, candidate, *, transfer=None):
         if candidate.action:
@@ -164,25 +167,32 @@ class PdfHttpClient:
                 return CandidateResult.failed('credential-scope')
             credential = (candidate.credential, host, prefix, header, self._credentials[candidate.credential])
         def decode(response):
-            if response.headers.get('content-type', '').partition(';')[0].strip().lower() == 'application/pdf':
-                return transfer(response, candidate) if transfer is not None else CandidateResult.pdf()
+            content = response.headers.get('content-type', '').partition(';')[0].strip().lower()
+            if content not in {'text/html', 'application/xhtml+xml', 'application/json'} and not content.endswith('+json'):
+                # Metadata discovery must not consume a possible PDF to sniff it.
+                # Only the actual transfer owner can identify and save its bytes.
+                return transfer(response, candidate) if transfer is not None else CandidateResult('pending')
             return CandidateResult.current(self.bounded_response(response))
         try:
             return self._read(candidate.url, decode, headers=headers, credential=credential)
         except ProviderHTTPError as error:
             return CandidateResult.failed({401: 'authorization', 403: 'authorization', 402: 'quota',
                 404: 'not-found'}.get(error.status, 'source-failed'))
-        except (ProviderFailure, UnsafePdfTarget, PdfResponseTooLarge):
+        except (ProviderFailure, UnsafePdfTarget):
             return CandidateResult.failed('source-failed')
 
     def json(self, url, *, credential=None):
         def decode(response):
+            from allfold.pdf_responses import json_sample
             current = self.bounded_response(response)
             try:
-                result = json.loads(current.body)
+                issues = []
+                result = json_sample(current.body, partial=current.partial, report=issues.append)
                 if not isinstance(result, dict):
                     raise ValueError('Expected an object')
-                return result
+                sampled = _JsonSample(result)
+                sampled.partial = bool(issues)
+                return sampled
             except (ValueError, UnicodeDecodeError):
                 raise ProviderFailure('PDF API returned invalid JSON', kind='protocol', code='invalid-json') from None
         return self._read(url, decode, headers={'Accept': 'application/json'}, credential=credential)
@@ -202,7 +212,7 @@ class PdfHttpClient:
 def _qualified_known(inputs, url, rule, field):
     try:
         known = KnownPdfUrl(url, rule, field)
-        return replace(inputs, known_pdf_urls=tuple(dict.fromkeys((*inputs.known_pdf_urls, known)))[:16])
+        return replace(inputs, known_pdf_urls=tuple(dict.fromkeys((*inputs.known_pdf_urls, known))))
     except ValueError:
         return inputs
 
@@ -212,23 +222,22 @@ def ieee_metadata_inputs(raw, target, inputs, *, rule='API03'):
     if rule not in {'API03', 'API04'}:
         raise ValueError('Unsupported IEEE metadata response')
     rows = raw.get('articles') if isinstance(raw, dict) else None
-    if not isinstance(rows, list) or len(rows) > 25:
+    if not isinstance(rows, list):
         return inputs
     for row in rows:
         if not isinstance(row, dict) or valid_doi(row.get('doi')) != target.identity_doi:
             continue
         number = str(row.get('article_number', ''))
         if number.isascii() and number.isdecimal() and 1 <= len(number) <= 16:
-            inputs = replace(inputs, identifiers=tuple(dict.fromkeys((*inputs.identifiers, ('article_number', number))))[:24])
+            inputs = replace(inputs, identifiers=tuple(dict.fromkeys((*inputs.identifiers, ('article_number', number)))))
         if isinstance(row.get('pdf_url'), str):
             inputs = _qualified_known(inputs, row['pdf_url'], rule, 'pdf_url')
-        break
     return inputs
 
 
 def springer_metadata_inputs(raw, target, inputs):
     rows = raw.get('records') if isinstance(raw, dict) else None
-    if not isinstance(rows, list) or len(rows) > 25:
+    if not isinstance(rows, list):
         return inputs
     for row in rows:
         if not isinstance(row, dict) or valid_doi(row.get('doi')) != target.identity_doi:
@@ -236,7 +245,6 @@ def springer_metadata_inputs(raw, target, inputs):
         for entry in row.get('url', ()) if isinstance(row.get('url'), list) else ():
             if isinstance(entry, dict) and entry.get('format', '').lower() == 'pdf' and isinstance(entry.get('value'), str):
                 inputs = _qualified_known(inputs, entry['value'], 'API09', 'url.pdf')
-        break
     return inputs
 
 
@@ -267,10 +275,10 @@ class PdfDiscoveryIO:
                 if url:
                     route = replace(target, article_url=url)
                     platform = content_platform(route)
-                yield P2Resolution(inputs, url)
+                yield P2Resolution(inputs, url, diagnostic='partial-response' if getattr(raw, 'partial', False) else None)
                 if not needs_p2_query(route, replace(inputs, target=route)):
                     return
-            except (ProviderFailure, UnsafePdfTarget, PdfResponseTooLarge) as error:
+            except (ProviderFailure, UnsafePdfTarget) as error:
                 yield P2Resolution(inputs, diagnostic=_failure_code(error))
         # Only the known platforms requiring these fields, or an unresolved
         # target, need Crossref; not every publisher after a template failure.
@@ -284,7 +292,7 @@ class PdfDiscoveryIO:
                     alternatives = row.get('alternative-id', ())
                     if isinstance(alternatives, list):
                         inputs = replace(inputs, alternative_ids=tuple(dict.fromkeys((*inputs.alternative_ids,
-                            *(v for v in alternatives if isinstance(v, str) and len(v) <= 512))))[:24])
+                            *(v for v in alternatives if isinstance(v, str) and len(v) <= 512)))))
                     for entry in row.get('link', ()) if isinstance(row.get('link'), list) else ():
                         if isinstance(entry, dict) and entry.get('content-type', '').partition(';')[0].lower() == 'application/pdf' and isinstance(entry.get('URL'), str):
                             inputs = _qualified_known(inputs, entry['URL'], 'API02', 'link')
@@ -293,10 +301,10 @@ class PdfDiscoveryIO:
                     if url and _public_url(url):
                         route = replace(target, article_url=url)
                         platform = content_platform(route)
-                yield P2Resolution(inputs, route.article_url)
+                yield P2Resolution(inputs, route.article_url, diagnostic='partial-response' if getattr(raw, 'partial', False) else None)
                 if not needs_p2_query(route, replace(inputs, target=route)):
                     return
-            except (ProviderFailure, UnsafePdfTarget, PdfResponseTooLarge) as error:
+            except (ProviderFailure, UnsafePdfTarget) as error:
                 yield P2Resolution(inputs, diagnostic=_failure_code(error))
         if platform == 'ieee' and 'ieee' in self.http.capabilities:
             try:
@@ -305,16 +313,16 @@ class PdfDiscoveryIO:
                 url = ('https://ieeexploreapi.ieee.org/api/v1/articles/doi/' + quote(doi, safe='') + '?' + urlencode({'apikey': key})
                     if rule == 'API04' else 'https://ieeexploreapi.ieee.org/api/v1/search/articles?' + urlencode({'doi': doi, 'apikey': key}))
                 raw = self.http.json(url, credential=('ieee', 'ieeexploreapi.ieee.org', '/api/v1/', None, key))
-                yield P2Resolution(ieee_metadata_inputs(raw, target, inputs, rule=rule), route.article_url)
-            except (ProviderFailure, UnsafePdfTarget, PdfResponseTooLarge) as error:
+                yield P2Resolution(ieee_metadata_inputs(raw, target, inputs, rule=rule), route.article_url, diagnostic='partial-response' if getattr(raw, 'partial', False) else None)
+            except (ProviderFailure, UnsafePdfTarget) as error:
                 yield P2Resolution(inputs, diagnostic=_failure_code(error))
         if platform == 'springer' and 'springer_metadata' in self.http.capabilities:
             try:
                 key = self.http._credentials['springer_metadata']
                 raw = self.http.json('https://api.springernature.com/meta/v2/json?' + urlencode(
                     {'q': 'doi:' + doi, 'api_key': key}), credential=('springer_metadata', 'api.springernature.com', '/meta/v2/', None, key))
-                yield P2Resolution(springer_metadata_inputs(raw, target, inputs), route.article_url)
-            except (ProviderFailure, UnsafePdfTarget, PdfResponseTooLarge) as error:
+                yield P2Resolution(springer_metadata_inputs(raw, target, inputs), route.article_url, diagnostic='partial-response' if getattr(raw, 'partial', False) else None)
+            except (ProviderFailure, UnsafePdfTarget) as error:
                 yield P2Resolution(inputs, diagnostic=_failure_code(error))
 
     def document(self, target):

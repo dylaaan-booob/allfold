@@ -10,6 +10,59 @@ from allfold.identifiers import valid_doi
 from allfold.url_safety import normalize_public_http_url
 
 
+def json_sample(body, *, partial=False, report=lambda code: None):
+    """Keep complete fields/array members from one bounded JSON observation."""
+    text = body.decode('utf-8', errors='replace')
+    decoder = json.JSONDecoder()
+    missing = object()
+    def read(position, depth=0):
+        while position < len(text) and text[position].isspace():
+            position += 1
+        try:
+            value, end = decoder.raw_decode(text, position)
+            return value, end, True
+        except (ValueError, RecursionError):
+            pass
+        if depth >= 64 or position >= len(text) or text[position] not in '[{':
+            return missing, position, False
+        mapping = text[position] == '{'
+        value = {} if mapping else []
+        position += 1
+        while position < len(text):
+            while position < len(text) and text[position].isspace():
+                position += 1
+            if mapping:
+                try:
+                    key, position = decoder.raw_decode(text, position)
+                except (ValueError, RecursionError):
+                    break
+                if not isinstance(key, str):
+                    break
+                while position < len(text) and text[position].isspace():
+                    position += 1
+                if position >= len(text) or text[position] != ':':
+                    break
+                position += 1
+            item, position, complete = read(position, depth + 1)
+            if item is not missing:
+                if mapping:
+                    value[key] = item
+                else:
+                    value.append(item)
+            if not complete:
+                break
+            while position < len(text) and text[position].isspace():
+                position += 1
+            if position >= len(text) or text[position] != ',':
+                break
+            position += 1
+        return value, position, False
+    value, _, complete = read(0)
+    if partial or not complete:
+        report('partial-response')
+    return value if value is not missing else None
+
+
 def _hidden_markup(node):
     attrs = node['attrs']
     return ('hidden' in attrs or (attrs.get('aria-hidden') or '').strip().lower() == 'true'
@@ -21,10 +74,15 @@ class _SmallHTML(HTMLParser):
         super().__init__(convert_charrefs=True)
         self.nodes, self.stack = [], []
         self.has_cpe, self.has_denial, self.shell_text = False, False, False
+        self.partial = False
 
     def handle_starttag(self, tag, attrs):
-        if len(self.nodes) >= 4096 or len(self.stack) >= 64 or any(len(value or '') > 8192 for _, value in attrs):
+        if len(self.nodes) >= 4096 or len(self.stack) >= 64:
+            self.partial = True
             raise ValueError('Response parse budget exceeded')
+        if any(len(value or '') > 8192 for _, value in attrs):
+            self.partial = True
+            attrs = [(name, value) for name, value in attrs if len(value or '') <= 8192]
         node = {'tag': tag, 'attrs': dict(attrs), 'text': '', 'parents': tuple(self.stack)}
         self.nodes.append(node)
         if tag not in {'meta', 'link', 'img', 'br', 'hr', 'input', 'embed', 'source', 'base', 'area', 'wbr', 'param', 'col', 'frame'}:
@@ -44,9 +102,9 @@ class _SmallHTML(HTMLParser):
                 self.shell_text = True
         for node in self.stack:
             if node['tag'] in {'a', 'script', 'title', 'iframe'}:
-                node['text'] += data
-                if len(node['text']) > 131072:
-                    raise ValueError('Response field budget exceeded')
+                remaining = 131072 - len(node['text'])
+                node['text'] += data[:remaining]
+                self.partial |= len(data) > remaining
 
 
 def _reader_kind(candidate, actual):
@@ -164,7 +222,9 @@ def _body_entry(node, base, doi, attribute='href'):
     return not matched or valid_doi(matched[1]) == doi
 
 
-def parse_current_response(candidate, response):
+def parse_current_response(candidate, response, *, report=lambda code: None):
+    if response.partial:
+        report('partial-response')
     if response.status in {301, 302, 303, 307, 308} and response.redirect_url:
         source, destination = urlsplit(response.url), urlsplit(response.redirect_url)
         filename = re.fullmatch(r'/[^/]+/article-pdf/(?:[^/]+/)*([^/]+\.pdf)', source.path, re.I)
@@ -189,11 +249,11 @@ def parse_current_response(candidate, response):
     if (candidate.rule_id == 'API06' and actual.hostname == 'api.elsevier.com'
             and actual.path.startswith('/content/article/') and content in {'application/json', 'application/vnd.elsevier.article+json'}):
         try:
-            data = json.loads(text).get('full-text-retrieval-response', {}).get('coredata', {})
+            data = json_sample(response.body, partial=response.partial, report=report).get('full-text-retrieval-response', {}).get('coredata', {})
             if valid_doi(data.get('prism:doi')) != candidate.target.identity_doi or not candidate.target.identity_doi:
                 return ()
             entries = data.get('link')
-            if not isinstance(entries, list) or len(entries) > 16:
+            if not isinstance(entries, list):
                 return ()
             result = []
             for entry in entries:
@@ -215,18 +275,20 @@ def parse_current_response(candidate, response):
             item = _safe_next(candidate, response.url, value)
             return (item,) if item else ()
         return ()
-    if content not in {'text/html', 'application/xhtml+xml'}:
+    if content not in {'text/html', 'application/xhtml+xml'} and not text.lstrip().startswith('<'):
         return ()
     parser = _SmallHTML()
     try:
         parser.feed(text)
     except (ValueError, RecursionError):
-        return ()
+        parser.partial = True
+    if parser.partial:
+        report('partial-response')
     kind = _reader_kind(candidate, response.url)
     values = []
     def add(value, **extra):
         item = _safe_next(candidate, response.url, value, **extra)
-        if item and all(item.url != old.url for old in values) and len(values) < 16:
+        if item and all(item.url != old.url for old in values):
             values.append(item)
     if kind:
         frames = [node for node in parser.nodes if node['tag'] == 'frame']
@@ -322,6 +384,6 @@ def parse_current_response(candidate, response):
             item = _safe_next(candidate, response.url, attrs.get('href'))
             if item and item.url not in generic:
                 generic.append(item.url)
-    if len(generic) == 1:
+    if len(generic) == 1 and not (response.partial or parser.partial):
         add(generic[0])
     return tuple(values)

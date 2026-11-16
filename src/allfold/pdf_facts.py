@@ -132,9 +132,9 @@ class PdfDiscoveryFacts(_Fact):
     landing_url: str | None = None
     platform: Token | None = None
     content_type: Literal['journal-article', 'conference-paper', 'preprint', 'unknown'] = 'unknown'
-    identifiers: tuple[PdfIdentifier, ...] = Field(default=(), max_length=16)
-    candidates: tuple[PdfCandidateFact, ...] = Field(default=(), max_length=32)
-    links: tuple[PdfLinkFact, ...] = Field(default=(), max_length=16)
+    identifiers: tuple[PdfIdentifier, ...] = Field(default=())
+    candidates: tuple[PdfCandidateFact, ...] = Field(default=())
+    links: tuple[PdfLinkFact, ...] = Field(default=())
     diagnostics: tuple[DiscoveryDiagnostic, ...] = Field(default=(), max_length=8)
 
     _url = field_validator('landing_url')(_stable_url)
@@ -165,8 +165,6 @@ class PdfDiscoveryFacts(_Fact):
             raise ValueError('A Provider snapshot requires its exact response target')
         if self.status == 'failed' and (self.candidates or self.links or self.identifiers):
             raise ValueError('Positive failed-read facts require partial status')
-        if self.source == 'openalex' and len(self.candidates) > 4:
-            raise ValueError('OpenAlex discovery is bounded to four PDF candidates')
         if len(self.model_dump_json().encode('utf-8')) > _MAX_SNAPSHOT_BYTES:
             raise ValueError('Discovery snapshot exceeds payload budget')
         return self
@@ -210,29 +208,41 @@ def merge_discovery_facts(existing, incoming):
                 if identity not in seen:
                     seen.add(identity)
                     unique.append(item)
-            candidates = tuple(unique[:4])
+            candidates = tuple(unique)
         identifiers = _ordered(preferred.identifiers, other.identifiers)
         links = _ordered(preferred.links, other.links)
-        overflow = len(candidates) > 32 or len(identifiers) > 16 or len(links) > 16
-        merged = preferred.model_copy(update={
+        merged = _snapshot(**({name: getattr(preferred, name) for name in type(preferred).model_fields} | {
             'candidates': candidates, 'identifiers': identifiers, 'links': links,
             'landing_url': preferred.landing_url or other.landing_url,
             'target_doi': preferred.target_doi or other.target_doi,
             'target_openalex': preferred.target_openalex or other.target_openalex,
-            'platform': preferred.platform or other.platform,
-            'diagnostics': _ordered(preferred.diagnostics)})
-        overflow = overflow or len(merged.model_dump_json().encode('utf-8')) > _MAX_SNAPSHOT_BYTES
-        # Count and byte capacities use the same preferred-snapshot policy.
-        # No identity/other validation failure is suppressed to retain content.
-        if overflow:
-            merged = preferred.model_copy(update={'diagnostics': _ordered(preferred.diagnostics, ('overflow',))})
-            if len(merged.model_dump_json().encode('utf-8')) > _MAX_SNAPSHOT_BYTES:
-                # An exactly full trusted snapshot outranks adding a reason code.
-                merged = preferred
+            'platform': preferred.platform or other.platform}))
         output[key] = PdfDiscoveryFacts.model_validate(merged)
     if len(output) > 3:
         raise ValueError('Too many PDF discovery capability snapshots')
     return tuple(output.values())
+
+
+def _snapshot(**values):
+    groups = {name: values.pop(name, ()) for name in ('candidates', 'identifiers', 'links')}
+    snapshot = PdfDiscoveryFacts(**values)
+    overflow = False
+    for name, items in groups.items():
+        kept = []
+        for item in items:
+            if item in kept:
+                continue
+            proposed = snapshot.model_copy(update={name: (*kept, item)})
+            # Reserve a little room for the explicit partial-observation reason.
+            if len(proposed.model_dump_json().encode('utf-8')) > _MAX_SNAPSHOT_BYTES - 128:
+                overflow = True
+                continue
+            kept.append(item)
+            snapshot = proposed
+    if overflow:
+        snapshot = snapshot.model_copy(update={'status': 'partial',
+            'diagnostics': _ordered(snapshot.diagnostics, ('overflow',))})
+    return PdfDiscoveryFacts.model_validate(snapshot)
 
 
 def discovery_target_matches(facts, root_ids):
@@ -296,7 +306,7 @@ def openalex_discovery_facts(raw, observed_at):
             complete = False
             continue
         landing = stable_discovery_url(location.get('landing_page_url'))
-        if landing and len(links) < 16:
+        if landing:
             link = PdfLinkFact(kind='landing', url=landing, field=field + '.landing_page_url')
             if link not in links:
                 links.append(link)
@@ -315,14 +325,13 @@ def openalex_discovery_facts(raw, observed_at):
             if value in seen:
                 continue
             seen.add(value)
-            if len(candidates) < 4:
-                candidates.append(persistent_pdf_candidate(stage='P5', rule_id='OPENALEX', url=value,
+            candidates.append(persistent_pdf_candidate(stage='P5', rule_id='OPENALEX', url=value,
                     field=field + '.pdf_url', refresh_kind='openalex-work', landing_url=landing))
         except ValueError:
             diagnostics.append('invalid-url')
     if not complete:
         diagnostics.append('incomplete-response')
-    return PdfDiscoveryFacts(source='openalex', capability='openalex-locations',
+    return _snapshot(source='openalex', capability='openalex-locations',
         status='complete' if complete else 'partial', observed_at=observed_at,
         target_doi=normalize_external_id('doi', raw.get('doi')),
         target_openalex=normalize_external_id('openalex', raw.get('id')),
@@ -341,10 +350,6 @@ def crossref_discovery_facts(raw, observed_at):
         try:
             identifier = PdfIdentifier(kind='alternative-id', value=value, rule_id='API02')
             if identifier not in identifiers:
-                if len(identifiers) == 16:
-                    complete = False
-                    diagnostics.append('overflow')
-                    break
                 identifiers.append(identifier)
         except ValueError:
             complete = False
@@ -386,25 +391,17 @@ def crossref_discovery_facts(raw, observed_at):
                 candidate = persistent_pdf_candidate(stage='P2', rule_id='API02', url=normalized,
                     field='link', refresh_kind='crossref-work')
                 if candidate not in candidates:
-                    if len(candidates) == 16:
-                        complete = False
-                        diagnostics.append('overflow')
-                        break
                     candidates.append(candidate)
             if stable_discovery_url(normalized):
                 link = PdfLinkFact(kind=kind, url=normalized, field='link', content_type=content_type)
                 if link not in links:
-                    if len(links) == 16:
-                        complete = False
-                        diagnostics.append('overflow')
-                        break
                     links.append(link)
         except (ValueError, TypeError, AttributeError):
             complete = False
             diagnostics.append('invalid-url')
     if not complete:
         diagnostics.append('incomplete-response')
-    return PdfDiscoveryFacts(source='crossref', capability='crossref-links',
+    return _snapshot(source='crossref', capability='crossref-links',
         status='complete' if complete else 'partial', observed_at=observed_at,
         target_doi=normalize_external_id('doi', raw.get('DOI')),
         content_type={'journal-article': 'journal-article', 'proceedings-article': 'conference-paper',

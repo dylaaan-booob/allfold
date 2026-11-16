@@ -112,8 +112,8 @@ def validate_document_pdf_clues(value, *, target_doi=None):
         parsed.port
         if (not isinstance(clues['observed_at'], str) or not re.fullmatch(
                 r'[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}\.[0-9]{3}Z', clues['observed_at'])
-                or not isinstance(clues['candidates'], list) or len(clues['candidates']) > 32
-                or not isinstance(clues['identifiers'], list) or len(clues['identifiers']) > 16
+                or not isinstance(clues['candidates'], list)
+                or not isinstance(clues['identifiers'], list)
                 or not isinstance(clues['diagnostics'], list) or len(clues['diagnostics']) > 2
                 or len(set(clues['diagnostics'])) != len(clues['diagnostics'])
                 or any(code not in {'pdf_parse_failed', 'pdf_budget_exceeded'} for code in clues['diagnostics'])):

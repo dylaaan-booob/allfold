@@ -196,9 +196,7 @@ class ProviderReadClient:
             raise ProviderBudgetExceeded(f'{self.provider}: parent request deadline expired')
 
     def operation(self, activity=None):
-        deadline = self._now() + RECOVERY_SECONDS
-        if self._deadline is not None:
-            deadline = min(deadline, self._deadline)
+        deadline = self._deadline if self._deadline is not None else self._now() + RECOVERY_SECONDS
         return ReadOperation(deadline, activity)
 
     def _scope(self, request):
@@ -382,6 +380,7 @@ class ProviderReadClient:
                     if stream:
                         response.close()
             except ProviderBudgetExceeded:
+                self.check_parent_deadline()
                 operation.exhausted = True
                 if attempt > 1:
                     self._event('recovery_exhausted', operation, action, failure=operation.failure, stop='budget')
@@ -412,6 +411,7 @@ class ProviderReadClient:
                     if delay:
                         self._wait(operation, delay)
                 except ProviderBudgetExceeded:
+                    self.check_parent_deadline()
                     operation.exhausted = True
                     self._event('recovery_exhausted', operation, action, failure=failure, stop='budget')
                     raise failure from None

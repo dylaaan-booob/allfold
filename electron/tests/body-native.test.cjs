@@ -35,15 +35,15 @@ test('native body actions preserve original POST/navigation and first-response f
   const profile=fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(),'allfold-body-native-')));
   t.after(()=>fs.rmSync(profile,{recursive:true,force:true}));
   const {stdout,stderr}=await promisify(execFile)(require('electron'),[path.join(__dirname,'body-native.fixture.cjs'),profile,
-    'sciencedirect-missing,ambiguous-form,ambiguous-get,form-replaced,form-missing,get-replaced,sciencedirect-replaced,microbiology-redirect,microbiology-redirect-path,microbiology-redirect-origin,microbiology-redirect-twice,microbiology-redirect-status,microbiology-redirect-self-302,microbiology-redirect-self-303,microbiology-redirect-self-307,url-doi-form,named-popup,named-popup-collision,attachment,inline,iframe,popup,cancel,interrupted,no-item,unrelated,sciencedirect,completed-late-signals'],
+    'mime-octet,mime-missing,mime-wrong,mime-fake,sciencedirect-missing,ambiguous-form,ambiguous-get,form-replaced,form-missing,get-replaced,sciencedirect-replaced,microbiology-redirect,microbiology-redirect-path,microbiology-redirect-origin,microbiology-redirect-twice,microbiology-redirect-status,microbiology-redirect-self-302,microbiology-redirect-self-303,microbiology-redirect-self-307,url-doi-form,named-popup,named-popup-collision,attachment,inline,iframe,popup,cancel,interrupted,no-item,unrelated,sciencedirect,completed-late-signals'],
     {timeout:60000,maxBuffer:1024*1024,env:{...process.env,ELECTRON_RUN_AS_NODE:''}});
   assert.match(stdout,/BODY NATIVE PASS/);assert.doesNotMatch(stderr,/Check failed/);t.diagnostic(stdout.trim());
 });
-test('ScienceDirect original HTML reader hands off once to its own same-PII CDN navigation',{timeout:45000},async t=>{
+test('ScienceDirect original HTML reader follows observed same-PII reader and CDN continuations',{timeout:45000},async t=>{
   const profile=fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(),'allfold-native-reader-')));
   t.after(()=>fs.rmSync(profile,{recursive:true,force:true}));
   const {stdout,stderr}=await promisify(execFile)(require('electron'),[path.join(__dirname,'body-native.fixture.cjs'),profile,
-    'sciencedirect-reader,sciencedirect-reader-self,sciencedirect-reader-reload,sciencedirect-reader-loop,sciencedirect-reader-wrong-pii,sciencedirect-reader-wrong-origin,sciencedirect-reader-wrong-source,sciencedirect-reader-twice,sciencedirect-reader-challenge,sciencedirect-reader-http-error,sciencedirect-reader-cancel,sciencedirect-reader-cdn-unavailable,sciencedirect-direct-cdn-unavailable'],
+    'sciencedirect-reader,sciencedirect-reader-self,sciencedirect-reader-auth-return,sciencedirect-reader-cycle,sciencedirect-reader-reload,sciencedirect-reader-loop,sciencedirect-reader-wrong-pii,sciencedirect-reader-wrong-origin,sciencedirect-reader-wrong-source,sciencedirect-reader-twice,sciencedirect-reader-challenge,sciencedirect-reader-http-error,sciencedirect-reader-cancel,sciencedirect-reader-cdn-unavailable,sciencedirect-direct-cdn-unavailable'],
     {timeout:40000,maxBuffer:1024*1024,env:{...process.env,ELECTRON_RUN_AS_NODE:''}});
   assert.match(stdout,/BODY NATIVE PASS/);assert.doesNotMatch(stderr,/Check failed/);t.diagnostic(stdout.trim());
 });

@@ -110,7 +110,7 @@ def transfer_native(reservation, repository, files, candidate, progress=None):
     completed = (value.get('kind') == 'pdf' and value.get('outcome') == 'native_complete'
         and value.get('pdf_type') is True and value.get('transfer_complete') is True
         and isinstance(value.get('final_url'), str))
-    if completed and output.file is None:
+    if (completed or value.get('output_file') is not None) and output.file is None:
         # Progress is optional. The actual terminal DTO carries the same inode
         # observation and can supply the first output proof for this attempt.
         pair = value.get('output_file')
@@ -125,6 +125,6 @@ def transfer_native(reservation, repository, files, candidate, progress=None):
     if kind not in {'failed', 'local_failure', 'cancelled', 'stale', 'expired'}:
         kind = 'local_failure'
     diagnostic = value.get('diagnostic_code')
-    if diagnostic not in {'interrupted', 'native-interrupted', 'native-output', 'entry-unavailable', 'native-action', 'access-blocked'}:
+    if diagnostic not in {'interrupted', 'native-interrupted', 'native-output', 'entry-unavailable', 'native-action', 'access-blocked', 'non-pdf'}:
         diagnostic = 'native-action'
     return NativeTransferResult(CandidateResult(kind, diagnostic=diagnostic), output)

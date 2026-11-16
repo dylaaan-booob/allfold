@@ -14,6 +14,16 @@ function capability(t) {
     output:{temporary,target:`Documents/${paper}.pdf`,file:null,workspace:identity(root),documents:identity(documents),
       staging:identity(staging),disposal:identity(disposal),native_directory:identity(directory)}})};
 }
+test('actual native output uses one small prefix read and read failures stay local I/O',t=>{
+  const {filename,output}=capability(t);fs.writeFileSync(filename,'%PDF-fixture');
+  const read=fs.readSync,calls=[];
+  const probe=t.mock.method(fs,'readSync',(...args)=>{calls.push([args[3],args[4]]);return read(...args);});
+  assert.equal(output.capture({sniff:true}).pdf,true);assert.deepEqual(calls,[[5,0]]);probe.mock.restore();
+  fs.writeFileSync(filename,'<html>not PDF</html>');assert.equal(output.capture({sniff:true}).pdf,false);
+  t.mock.method(fs,'readSync',()=>{throw Object.assign(Error('fixture read failed'),{code:'EIO'});});
+  assert.throws(()=>output.capture({sniff:true}),error=>error.bodyLocal===true&&error.code==='EIO');
+  assert.equal(fs.statSync(filename).size,20);
+});
 test('unlinked empty reservations never qualify final or already owned output',t=>{
   const {root,filename,output}=capability(t),reservation=path.join(root,'reservation');
   fs.writeFileSync(reservation,'');const fd=fs.openSync(reservation,'r');fs.unlinkSync(reservation);

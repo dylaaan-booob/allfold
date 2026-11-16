@@ -186,6 +186,8 @@ class DiagnosticStore:
         self._identities = None
         self._files = {}
         self._records = []
+        self._pdf_observations = []
+        self._pdf_lock = threading.Lock()
         self._generation = 0
         self._integrity = {'write_failed': False, 'rotated_files': 0, 'omitted_events': 0,
                            'evicted_history': 0, 'invalid_records': 0, 'history_recovered': False,
@@ -440,6 +442,17 @@ class DiagnosticStore:
             self.event('workflow_finished', {**record, **(normalized or {}), 'counts': record['statistics']})
             return self._save()
 
+    def record_pdf_source(self, details):
+        """Bounded process observations; Download never waits for diagnostic I/O."""
+        value = validate_event(dict(details, schema_version=1, time=_now(), source='python',
+            scope_id=self.scope_id, runtime_id=self.runtime_id, event='pdf_source_result', level='info'))
+        if value is None:
+            return False
+        with self._pdf_lock:
+            self._pdf_observations.append(value)
+            del self._pdf_observations[:-256]
+        return True
+
     def event(self, event, details=None, *, level='info'):
         with self._lock:
             value = dict(details) if isinstance(details, dict) else {}
@@ -537,7 +550,8 @@ class DiagnosticStore:
                     key=lambda value: datetime.fromisoformat(value.replace('Z', '+00:00'))))]
                 excluded_history = len(records) - len(recent)
                 records = recent
-            events = []
+            with self._pdf_lock:
+                events = list(self._pdf_observations)
             roots_valid = True
             try:
                 with self._directory():
@@ -718,6 +732,8 @@ class DiagnosticStore:
                     self._failure()
                     return dict(success=False, partial=deleted > 0, deleted=deleted, failed=failed)
                 self._records = []
+                with self._pdf_lock:
+                    self._pdf_observations.clear()
                 self._integrity = {'write_failed': False, 'rotated_files': 0, 'omitted_events': 0,
                     'evicted_history': 0, 'invalid_records': 0, 'history_recovered': False,
                            'metadata_missing': False}

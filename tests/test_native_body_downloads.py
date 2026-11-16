@@ -76,8 +76,8 @@ def test_native_attempt_uses_original_bridge_capability_then_shared_completion(t
 
 
 @pytest.mark.parametrize('kind,diagnostic,expected',[
-    ('local_failure','interrupted','local_failure'),('failed','access-blocked','failed')])
-def test_native_terminal_refusal_stops_sources_and_never_publishes(tmp_path,kind,diagnostic,expected):
+    ('local_failure','interrupted','local_failure'),('failed','access-blocked','completed')])
+def test_native_source_refusal_continues_but_writer_failure_stops(tmp_path,kind,diagnostic,expected):
     from allfold.application.body_downloads import submit_body_download
     from test_body_downloads import application_host
     host,workspace,paper,bridge,original=application_host(tmp_path)
@@ -88,11 +88,20 @@ def test_native_terminal_refusal_stops_sources_and_never_publishes(tmp_path,kind
         assert bridge.calls[0][0]=='native_paper_body'
         bridge.result.set_result(dict(kind=kind,outcome=kind,diagnostic_code=diagnostic,
             native_terminal='cancelled',native_cleanup='asynchronous'))
+        if kind=='failed':
+            import time
+            until=time.monotonic()+2
+            while len(bridge.calls)<2 and not task.future.done() and time.monotonic()<until:time.sleep(.005)
+            assert len(bridge.calls)==2 and bridge.calls[-1][0]=='stream_paper_body'
+            bridge.finish()
         result=task.future.result(2)
-        assert result.status==expected and len(bridge.calls)==1 and not host.active
+        assert result.status==expected and len(bridge.calls)==(2 if kind=='failed' else 1) and not host.active
         with PaperRepository.open(workspace) as repo:
             saved=repo.get(paper.id)
-            assert saved.body is None and saved.download.reason==diagnostic
+            if kind=='failed':
+                assert saved.body is not None and saved.body.fallback_used
+            else:
+                assert saved.body is None and saved.download.reason==diagnostic
             assert saved.download.output is None
     finally:
         if hasattr(bridge,'result') and not bridge.result.done():bridge.result.set_result(dict(kind='cancelled',outcome='cancelled'))

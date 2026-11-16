@@ -106,7 +106,7 @@ def test_facts_cannot_be_attached_to_a_different_paper_or_merged_across_works(tm
         merge_discovery_facts((facts,), (wrong_work,))
 
 
-def test_openalex_capability_empty_partial_and_best_first_four_candidate_boundary():
+def test_openalex_capability_empty_partial_and_best_first_candidates():
     from datetime import timedelta
     from allfold.pdf_facts import merge_discovery_facts, openalex_discovery_facts
 
@@ -123,11 +123,11 @@ def test_openalex_capability_empty_partial_and_best_first_four_candidate_boundar
     first = openalex_discovery_facts(raw, NOW)
     assert [item.url for item in first.candidates] == [
         'https://repository.example/Best.PDF?version=2',
-        'https://repository.example/0.PDF', 'https://repository.example/1.PDF', 'https://repository.example/2.PDF']
+        *(f'https://repository.example/{index}.PDF' for index in range(8))]
     raw['best_oa_location'] = {'pdf_url': 'https://repository.example/NewBest.PDF'}
     second = openalex_discovery_facts(raw, NOW + timedelta(seconds=1))
     merged, = merge_discovery_facts((first,), (second,))
-    assert len(merged.candidates) == 4
+    assert len(merged.candidates) == 10
     assert merged.candidates[0].url == 'https://repository.example/NewBest.PDF'
     retained, = merge_discovery_facts((first,), (empty, partial))
     assert retained.status == 'complete' and retained.candidates == first.candidates
@@ -156,7 +156,8 @@ def test_sqlite_fact_merge_size_overflow_preserves_preferred_snapshot_and_indepe
         reopened = repository.get(saved.id)
         facts, = reopened.metadata.discovery_facts
         assert reopened.metadata.abstract == 'Independent abstract.' and reopened.metadata.ordinary_dates == ('2026-01-02',)
-        assert facts.candidates == preferred.candidates and facts.status == preferred.status
+        assert facts.candidates[:len(preferred.candidates)] == preferred.candidates and facts.status == 'partial'
+        assert len(facts.candidates) > len(preferred.candidates)
         assert 'overflow' in facts.diagnostics and len(facts.model_dump_json().encode()) <= 65536
 
 

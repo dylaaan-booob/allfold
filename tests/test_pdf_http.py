@@ -19,6 +19,69 @@ def target(host='www.sciencedirect.com', **values):
     return PdfTarget('paper-1', doi='10.1234/AbC', content_type='journal-article', content_host=host, **values)
 
 
+@pytest.mark.parametrize('tail', [b'x' * 300000, b'<div></div>' * 5000,
+    b'<div>' * 70, b'<span data-unused="' + b'x' * 9000 + b'"></span>',
+    b'<script type="application/ld+json">' + b'x' * 140000 + b'</script>'],
+    ids=['response-prefix','nodes','depth','attribute','script'])
+def test_partial_html_retains_already_qualified_pdf_link(tail):
+    seen=[]
+    def handle(request):
+        seen.append(str(request.url))
+        if len(seen)==1:
+            return httpx.Response(200, headers={'content-type':'text/html'}, content=(
+                b'<head><meta name="citation_doi" content="10.1234/AbC">'
+                b'<meta name="citation_pdf_url" content="https://cdn.example.org/body.pdf"></head>' + tail))
+        return httpx.Response(200,headers={'content-type':'application/pdf'})
+    from allfold.pdf_rules import KnownPdfUrl
+    paper=target('publisher.example.org')
+    inputs=PdfRuleInputs(paper,known_pdf_urls=(KnownPdfUrl('https://publisher.example.org/article','API02','link'),))
+    with client(handle) as http:
+        result=PdfDiscovery(paper,inputs=inputs).run(lambda c:http.consume(c,transfer=lambda *_:CandidateResult.pdf(transfer_complete=True)))
+    assert result.status=='transferred' and result.fallback_used is False
+    assert seen==['https://publisher.example.org/article','https://cdn.example.org/body.pdf']
+    assert any(reason=='partial-response' for _,_,reason in result.diagnostics)
+
+
+def test_api_record_lists_match_target_after_old_count_limits():
+    from allfold.pdf_http import springer_metadata_inputs
+    paper=target('ieeexplore.ieee.org')
+    rows=[{'doi':'10.9999/unrelated'}]*30+[{'doi':paper.doi,'article_number':'123456','pdf_url':'https://cdn.example.org/ieee.pdf'}]
+    ieee=ieee_metadata_inputs({'articles':rows},paper,PdfRuleInputs(paper))
+    assert ieee.identifiers == (('article_number','123456'),)
+    springer=springer_metadata_inputs({'records':[{'doi':'10.9999/other'}]*30+[
+        {'doi':paper.doi,'url':[{'format':'pdf','value':'https://cdn.example.org/springer.pdf'}]}]},paper,PdfRuleInputs(paper))
+    assert [item.url for item in springer.known_pdf_urls]==['https://cdn.example.org/springer.pdf']
+
+
+def test_elsevier_links_after_unrelated_entries_remain_available():
+    import json
+    from allfold.pdf_responses import parse_current_response
+    paper=target()
+    candidate=PdfCandidate(paper,'P2','API06','sciencedirect','https://api.elsevier.com/content/article/doi/'+paper.doi)
+    body=json.dumps({'full-text-retrieval-response':{'coredata':{'prism:doi':paper.doi,'link':
+        [{'@rel':'unrelated'}]*25+[{'@rel':'scidir-pdf','@href':'https://cdn.example.org/elsevier.pdf'}]}}}).encode()
+    parsed=parse_current_response(candidate,CurrentResponse(candidate.url,'application/json',body))
+    assert [item.url for item in parsed]==['https://cdn.example.org/elsevier.pdf']
+
+
+def test_partial_json_preserves_complete_matching_records_before_unrelated_tail():
+    body=(b'{"articles":[{"doi":"10.1234/AbC","article_number":"123456"}],"unused":"'+b'x'*300000+b'"}')
+    with client(lambda _:httpx.Response(200,headers={'content-type':'application/json'},content=body)) as http:
+        raw=http.json('https://ieeexploreapi.ieee.org/api/v1/search/articles')
+        assert raw.partial
+        inputs=ieee_metadata_inputs(raw,target(),PdfRuleInputs(target()))
+        assert inputs.identifiers == (('article_number','123456'),)
+
+
+@pytest.mark.parametrize('mime',['application/pdf','application/octet-stream','','text/plain'])
+def test_read_only_possible_pdf_does_not_consume_body_for_type_identification(mime):
+    class Stream(httpx.SyncByteStream):
+        def __iter__(self):pytest.fail('Only the real transfer may consume possible PDF bytes')
+    with client(lambda _:httpx.Response(200,headers={'content-type':mime},stream=Stream())) as http:
+        result=PdfDiscovery(target('onlinelibrary.wiley.com')).run(http.consume)
+        assert result.status=='pending' and result.pdf_source is None
+
+
 def test_actual_http_redirect_final_url_is_relative_base_and_no_probe():
     seen = []
     def handle(request):

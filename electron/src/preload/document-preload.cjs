@@ -457,13 +457,13 @@ const operations={
     const unsupported=/book|chapter|supplement/i.test(type) || /\/(?:chapter|chapter-abstract|books|book)\//i.test(path);
     const content_type=unsupported?'unknown':/conference|proceeding/i.test(type)?'conference-paper':/journal|article/i.test(type)?'journal-article':'unknown';
     const guard=()=>{if(Date.now()>end)throw Error('pdf_budget_exceeded');};
-    const url=value=>{if(typeof value!=='string'||!value.trim())return null;if(value.length>4096)throw Error('pdf_budget_exceeded');
+    const url=value=>{if(typeof value!=='string'||!value.trim())return null;if(value.length>4096){status='partial';diagnostics.add('pdf_budget_exceeded');return null;}
       try{if(/[\s\x00-\x1f\x7f\\]/.test(value))return null;const out=new URL(value,document.baseURI),hostname=out.hostname.toLowerCase().replace(/\.$/,'');
         if(!['http:','https:'].includes(out.protocol)||out.username||out.password||!hostname.includes('.')||/(?:^|\.)(?:localhost|local|internal|invalid|test|corp|lan|home|intranet)$/.test(hostname))return null;
         if(/^\d+\.\d+\.\d+\.\d+$/.test(hostname)||hostname.includes(':'))return null;return out.href;}catch{return null;}};
     const add=(value,stage='P4',extra={})=>{guard();const resolved=url(value);if(!resolved||seen.has(resolved))return;
       const candidate={stage,rule_id,url:resolved,...extra};
-      if(candidates.length>=32 || JSON.stringify({identifiers,candidates:[...candidates,candidate]}).length>fieldsLimit)throw Error('pdf_budget_exceeded');
+      if(JSON.stringify({identifiers,candidates:[...candidates,candidate]}).length>fieldsLimit){status='partial';diagnostics.add('pdf_budget_exceeded');return;}
       seen.add(resolved);candidates.push(candidate);};
     const excluded=(node,allowNavigation=false)=>{for(let owner=node;owner;owner=owner.parentElement) {
       if(owner.matches('footer,aside,[role="doc-bibliography"],[role="doc-endnotes"],[data-related],[hidden],[aria-hidden="true"]') || !allowNavigation && owner.matches('nav')
@@ -481,7 +481,7 @@ const operations={
     const explicit=(selector,attribute='href',extra={},allowNavigation=false)=>{for(const node of document.querySelectorAll(selector)){guard();if(bodyEntry(node,attribute,allowNavigation))add(node.getAttribute(attribute),'P4',extra);}};
     const addId=(kind,value)=>{if(typeof value==='string' && /^[A-Za-z0-9_.:/-]{1,256}$/.test(value) && !identifiers.some(item=>item.kind===kind&&item.value===value)) {
       const identifier={kind,value,rule_id};
-      if(identifiers.length>=16 || JSON.stringify({identifiers:[...identifiers,identifier],candidates}).length>fieldsLimit)throw Error('pdf_budget_exceeded');
+      if(JSON.stringify({identifiers:[...identifiers,identifier],candidates}).length>fieldsLimit){status='partial';diagnostics.add('pdf_budget_exceeded');return;}
       identifiers.push(identifier);
     }};
     let status='complete';

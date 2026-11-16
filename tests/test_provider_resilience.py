@@ -93,6 +93,17 @@ def test_long_retry_after_survives_operation_budget_without_early_dispatch():
     assert calls == [100, 220] and clock.waits == [60]
 
 
+def test_long_retry_after_uses_available_parent_deadline():
+    clock, calls = Clock(), []
+    def respond(request):
+        calls.append(clock.now)
+        return httpx.Response(503,headers={'Retry-After':'120'}) if len(calls)==1 else httpx.Response(200,json={'ok':True})
+    with DiscoveryClient('crossref',transport=httpx.MockTransport(respond),interval=0,
+            deadline=clock.now+180,**clock.options()) as client:
+        assert client.request('/works/10.5555/known',{})=={'ok':True}
+    assert calls==[100,220] and clock.waits==[120]
+
+
 @pytest.mark.parametrize('streamed', [False, True])
 def test_provider_deadline_stops_a_late_response_without_another_dispatch(streamed):
     clock, calls, chunks = Clock(), [], []
@@ -172,11 +183,9 @@ def test_provider_deadline_interrupts_a_blocked_body_read(monkeypatch, route, st
         try:
             with DiscoveryClient('crossref', interval=0, cooldowns=cooldowns,
                                  deadline=time.monotonic() + 0.8) as client:
-                expected = ProviderHTTPError if status == 503 else ProviderBudgetExceeded
+                expected = ProviderBudgetExceeded
                 with pytest.raises(expected) as stopped:
                     client.request('/fixture', {})
-                if status == 503:
-                    assert stopped.value.status == 503
                 assert client.request_count == 1
                 assert body_started.is_set()
                 assert not tail_released.is_set(), 'read returned only after the server released its final chunk'

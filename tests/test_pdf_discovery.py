@@ -15,6 +15,22 @@ def target(host='onlinelibrary.wiley.com', **values):
         content_type='journal-article', **values)
 
 
+@pytest.mark.parametrize('cached',[False,True])
+def test_openalex_later_distinct_locations_remain_eligible(cached):
+    from allfold.pdf_facts import openalex_discovery_facts
+    paper=target('unrecognised.example.org')
+    urls=['https://repository.example.org/'+str(n)+'.pdf' for n in range(20)]
+    raw={'doi':paper.doi,'best_oa_location':{'pdf_url':urls[0]},'locations':[
+        {'pdf_url':url} for url in [urls[0],*urls]]}
+    class IO:
+        def openalex(self,doi):return raw
+    seen=[]
+    result=PdfDiscovery(paper,io=IO(),facts=(openalex_discovery_facts(raw,datetime.now(timezone.utc)),) if cached else ()).run(
+        lambda c:seen.append(c.url) or (CandidateResult.pdf(transfer_complete=True) if c.url==urls[-1] else CandidateResult.failed()))
+    assert result.status=='transferred' and result.pdf_source=='P5' and result.fallback_used
+    assert seen==urls
+
+
 def document(paper, candidates=(), status='complete'):
     return PdfDiscoveryFacts(source='document', capability='document-pdf', status=status,
         observed_at=datetime.now(timezone.utc), target_doi=paper.identity_doi,
@@ -473,7 +489,7 @@ def test_p5_signed_persisted_locator_is_requeried_and_current_raw_query_is_prese
     assert result.pdf_source == 'P5'
 
 
-def test_p5_historical_best_first_dedup_four_and_exact_doi_are_unchanged():
+def test_p5_best_first_dedup_and_exact_doi():
     paper = target('unknown.example.org')
     class IO:
         doi = paper.doi
@@ -486,18 +502,18 @@ def test_p5_historical_best_first_dedup_four_and_exact_doi_are_unchanged():
     io, seen = IO(), []
     result = PdfDiscovery(paper, io=io).run(lambda c: seen.append(c) or CandidateResult.failed())
     assert [c.url for c in seen] == ['https://repository.example.org/Best.PDF?x=AbC',
-        'https://cdn.example.org/2.pdf', 'https://cdn.example.org/3.pdf', 'https://cdn.example.org/4.pdf']
+        'https://cdn.example.org/2.pdf', 'https://cdn.example.org/3.pdf', 'https://cdn.example.org/4.pdf', 'https://cdn.example.org/5.pdf']
     assert result.pdf_source is None and result.fallback_used
     io.doi = '10.9999/other'
     assert PdfDiscovery(paper, io=io).run(lambda _: pytest.fail('Wrong exact Work')).status == 'exhausted'
 
 
-def test_failed_path_then_empty_p5_is_still_observable_fallback():
+def test_empty_p5_does_not_invent_another_physical_attempt():
     class IO:
         def openalex(self, doi):
             return {'doi': doi, 'best_oa_location': None, 'locations': []}
     result = PdfDiscovery(target(), io=IO()).run(lambda _: CandidateResult.failed())
-    assert result.status == 'exhausted' and result.fallback_used and result.pdf_source is None
+    assert result.status == 'exhausted' and not result.fallback_used and result.pdf_source is None
 
 
 def test_sciencedirect_md5_current_url_stays_intact_but_durable_fact_requires_refresh():
@@ -536,18 +552,23 @@ def test_p5_candidate_can_resolve_known_ieee_reader_without_losing_original_sour
     assert (result.pdf_source, result.fallback_used) == ('P5', False)
 
 
-def test_global_operation_and_known_chain_hop_budgets_are_finite():
+def test_long_known_chain_uses_parent_deadline_instead_of_hop_or_operation_counts():
     from allfold.providers.provider_http import ProviderBudgetExceeded
-    paper = target('ieeexplore.ieee.org', article_url='https://ieeexplore.ieee.org/document/123')
-    seen = []
+    paper=target('ieeexplore.ieee.org',article_url='https://ieeexplore.ieee.org/document/123')
+    seen=[]
     def consume(c):
         seen.append(c)
-        return CandidateResult.current(CurrentResponse(c.url, 'text/html',
-            ('<iframe src="https://ieeexplore.ieee.org/stamp/stamp.jsp?arnumber=123&hop=' + str(len(seen)) + '"></iframe>').encode()))
-    result = PdfDiscovery(paper, max_hops=1).run(consume)
-    assert len(seen) <= 4 and result.status == 'exhausted'
+        if len(seen)==60:return CandidateResult.pdf(transfer_complete=True)
+        return CandidateResult.current(CurrentResponse(c.url,'text/html',
+            ('<iframe src="https://ieeexplore.ieee.org/stamp/stamp.jsp?arnumber=123&hop='+str(len(seen))+'"></iframe>').encode()))
+    result=PdfDiscovery(paper).run(consume)
+    assert result.status=='transferred' and len(seen)==60 and not result.fallback_used
+    clock=[0]
+    def timed(c):
+        clock[0]+=1
+        return consume(c)
     with pytest.raises(ProviderBudgetExceeded):
-        PdfDiscovery(paper, max_operations=1).run(consume)
+        PdfDiscovery(paper,deadline=3,monotonic=lambda:clock[0]).run(timed)
 
 
 def test_cached_p5_stable_best_stops_before_later_signed_locator_requires_refresh():
@@ -560,6 +581,17 @@ def test_cached_p5_stable_best_stops_before_later_signed_locator_requires_refres
             pytest.fail('First stable candidate succeeded before refresh was needed')
     result = PdfDiscovery(paper, facts=(facts,), io=IO()).run(lambda _: CandidateResult.pdf(transfer_complete=True))
     assert result.pdf_source == 'P5'
+
+
+def test_partial_openalex_retains_qualified_increment_before_refresh():
+    from allfold.pdf_facts import openalex_discovery_facts
+    paper=target('unknown.example.org')
+    fact=openalex_discovery_facts({'doi':paper.doi,'best_oa_location':{'pdf_url':'https://repository.example.org/body.pdf'}},datetime.now(timezone.utc))
+    assert fact.status=='partial'
+    class IO:
+        def openalex(self,_):pytest.fail('A qualified retained increment can finish before refresh')
+    result=PdfDiscovery(paper,facts=(fact,),io=IO()).run(lambda _:CandidateResult.pdf(transfer_complete=True))
+    assert result.status=='transferred' and result.pdf_source=='P5' and not result.fallback_used
 
 
 def test_distinct_response_candidates_count_fallback_after_first_path_failure():
@@ -698,7 +730,7 @@ def test_unavailable_condition_continues_without_creating_fallback(preceded_by_f
         if preceded_by_failure and len(seen)==1:return CandidateResult.failed('source-failed')
         if candidate is candidates[-1]:return CandidateResult.pdf(transfer_complete=True)
         return CandidateResult('skipped',diagnostic='native-unsupported')
-    result=PdfDiscovery(paper,candidates=candidates,max_transfers=2 if preceded_by_failure else 1).run(consume)
+    result=PdfDiscovery(paper,candidates=candidates).run(consume)
     assert result.status=='transferred' and result.fallback_used is preceded_by_failure
     assert ('P2' if preceded_by_failure else 'P1','GENERIC','native-unsupported') in result.diagnostics
 

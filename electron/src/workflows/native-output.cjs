@@ -34,7 +34,8 @@ class NativeOutput {
     try {fs.lstatSync(this.filename);}catch(error){if(error.code==='ENOENT')return;throw error;}
     throw failure();
   }
-  capture({missing=false}={}) {
+  capture({missing=false,sniff=false}={}) {
+    try {
     this.check();
     let info;
     try {info=fs.lstatSync(this.filename);}catch(error){if(error.code==='ENOENT'&&missing)return null;throw failure();}
@@ -55,8 +56,12 @@ class NativeOutput {
       const actual=fs.fstatSync(fd);
       if(!actual.isFile()||actual.nlink!==1||!same(actual,[info.dev,info.ino]))throw failure();
       this.check();if(!same(fs.lstatSync(this.filename),[actual.dev,actual.ino]))throw failure();
-      this.file ??= [actual.dev,actual.ino];return {file:this.file,size:actual.size};
+      this.file ??= [actual.dev,actual.ino];
+      let pdf;
+      if(sniff){const prefix=Buffer.alloc(5);pdf=fs.readSync(fd,prefix,0,5,0)===5&&prefix.equals(Buffer.from('%PDF-'));}
+      return {file:this.file,size:actual.size,...(sniff?{pdf}:{} )};
     }finally {fs.closeSync(fd);}
+    }catch(error){error.bodyLocal=true;throw error;}
   }
 }
 module.exports={NativeOutput};

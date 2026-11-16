@@ -7,7 +7,7 @@ import time
 from urllib.parse import parse_qs, urldefrag, urlsplit, urlunsplit
 
 from allfold.application.browser_services import browser_workspace_identity
-from allfold.pdf_discovery import CandidateResult, CurrentResponse, PdfDiscovery, SUPPORTED_PDF_TARGET_TYPES
+from allfold.pdf_discovery import CandidateResult, CurrentResponse, PdfDiscovery, PdfSourceReadError, SUPPORTED_PDF_TARGET_TYPES
 from allfold.pdf_rules import PdfCandidate, PdfTarget, PdfRuleInputs
 from allfold.pdf_responses import access_limited, parse_current_response, reader_context
 from allfold.persistence.body_files import ManagedBodyFiles
@@ -35,10 +35,6 @@ class BodyResult:
     candidate_result: CandidateResult | None = None
 
 
-class _BodyAccessBlocked(Exception):
-    """A verified native access refusal is terminal, not an empty source."""
-
-
 def complete_attempt(reservation, repository, files, output, *, source_url=None, pdf_source=None, fallback_used=None):
     """Publish the closed transport and associate its exact original attempt.
 
@@ -64,6 +60,26 @@ def _source_projection(url):
     return urlunsplit((parsed.scheme, parsed.netloc, '/', '', ''))[:2048]
 
 
+def _record_source(reservation, stage, rule, reason, attempt, *, origin=None, fallback=None):
+    from allfold.application.history import observe
+    from allfold.recovery_diagnostics import SCHEMA
+    if reason not in SCHEMA['fields']['pdf_reason']['enum']:
+        reason = 'source-failed'
+    value = dict(pdf_stage=stage, pdf_rule=rule, pdf_reason=reason, pdf_attempt=attempt)
+    if fallback is not None:
+        value['fallback_used'] = fallback
+    if origin:
+        value['source_origin'] = _source_projection(origin)
+    registry = reservation.registry
+    record = dict(value, paper_id=str(reservation.paper_id), attempt=reservation.download_token.attempt)
+    with registry.paper_gate():
+        registry.body_observations.append(record)
+        del registry.body_observations[:-64]
+    observe(registry.diagnostics, 'record_pdf_source', dict(record,
+        workflow_id=reservation.workflow_id, task_id=reservation.task_id,
+        workspace_id=str(reservation.workspace_id)))
+
+
 def _consume(reservation, repository, files, candidate, progress):
     registry = reservation.registry
     registry._guard(reservation, repository)
@@ -74,12 +90,10 @@ def _consume(reservation, repository, files, candidate, progress):
             files.cleanup(native.output)
             repository.record_download_output(reservation.download_token, None)
             reservation.output = None
-            if native.result.diagnostic == 'access-blocked':
-                raise _BodyAccessBlocked()
             return native.result, None, native.final_url
         return native.result, native.output, native.final_url
     if candidate.action:
-        return CandidateResult.failed('native-unavailable'), None, ''
+        return CandidateResult('skipped', diagnostic='native-unavailable'), None, ''
     credential = None
     if candidate.credential:
         from allfold.pdf_http import _API_SCOPES
@@ -87,7 +101,7 @@ def _consume(reservation, repository, files, candidate, progress):
         scope = _API_SCOPES.get(candidate.credential)
         url = urlsplit(candidate.url)
         if not secret or not scope:
-            return CandidateResult.failed('credential-unavailable'), None, ''
+            return CandidateResult('skipped', diagnostic='credential-unavailable'), None, ''
         if (url.scheme != 'https' or url.hostname != scope[0] or (url.port or 443) != 443
                 or not url.path.startswith(scope[1])):
             return CandidateResult.failed('credential-scope'), None, ''
@@ -147,7 +161,8 @@ def _consume(reservation, repository, files, candidate, progress):
             detected = html_access(current['body'], current['status'])
             access = {'cloudflare': 'challenge', 'login': 'login'}.get(detected)
         result = CandidateResult('response', response=CurrentResponse(url=current['url'], content_type=current['content_type'],
-            status=current['status'], body=current['body'].encode(), access=access),
+            status=current['status'], body=current['body'].encode(), access=access, partial=current.get('partial', False),
+            context_changed=current.get('context_changed', False)),
             diagnostic='access-'+access if access in {'challenge','login','authorization'} else None)
     else:
         result = CandidateResult(kind if kind in {'pending','failed','local_failure','cancelled','stale','expired'} else 'failed',
@@ -196,7 +211,7 @@ def _document_candidates(reservation, repository, candidate, response=None):
         raise TimeoutError('Body reader parent deadline expired')
     context.guard()
     if blocked:
-        raise _BodyAccessBlocked()
+        raise PdfSourceReadError('Reader access refused', diagnostic='access-blocked')
     return tuple(replace(candidate, url=item.url, reader_kind=item.reader_kind,
         referer=item.referer, action=item.action, credential=None, accept=None)
         for item in parsed.current_candidates) if parsed is not None else ()
@@ -228,7 +243,7 @@ class _BodyDiscoveryIO:
     def openalex(self, doi):
         authority = self.reservation.body_request.provider_authority
         if isinstance(authority, Exception):
-            raise InvalidPaperState('Optional PDF Provider is unavailable') from None
+            raise PdfSourceReadError('Optional PDF Provider is unavailable', diagnostic='provider-unavailable') from None
         if authority is not None:
             authority.verify()
             with self.reservation.registry.paper_gate():
@@ -255,7 +270,6 @@ class _BodyDiscoveryIO:
         return self._read(lambda: self.io.oce_reader(candidate, response))
 
     def _read(self, read):
-        from allfold.pdf_discovery import PdfSourceReadError
         try:
             return read()
         except PdfSourceReadError:
@@ -264,8 +278,16 @@ class _BodyDiscoveryIO:
             if isinstance(diagnostic, dict) and (diagnostic.get('code') in {
                     'verification_page', 'content_access_blocked', 'site_restricted'}
                     or diagnostic.get('code') == 'http_error' and diagnostic.get('status') in {401,403,407,418,429}):
-                raise _BodyAccessBlocked() from None
+                raise PdfSourceReadError('Document access refused', diagnostic='access-blocked') from None
             raise
+        finally:
+            try:
+                self.context.close_native()
+            except BaseException as error:
+                from allfold.application.collection_runtime import _CleanupUnconfirmed
+                self.reservation.registry.fail_reservation(self.reservation, phase='body-reader-cleanup', error=error,
+                    unconfirmed=isinstance(error, _CleanupUnconfirmed))
+                raise
 
     def prepare(self, candidate):
         from allfold.application.native_body_downloads import native_applicable
@@ -315,10 +337,19 @@ def _run(reservation, request, progress):
                     capabilities = frozenset(name for name, secret in dict(options.get('credentials', ())).items() if secret)
                     selected = PdfRuleInputs(request.target, credentials=capabilities)
                     transferred = {}
+                    physical_attempts = 0
                     def consume(candidate):
-                        nonlocal result
+                        nonlocal result, physical_attempts
                         candidate_result, output, final_url = _consume(reservation, repository, files, candidate, progress)
                         result = BodyResult(candidate_result.kind, candidate_result=candidate_result)
+                        if candidate_result.kind != 'skipped':
+                            physical_attempts += 1
+                        reason = candidate_result.diagnostic or ('transferred' if candidate_result.transfer_complete
+                            else 'access-blocked' if candidate_result.response is not None and access_limited(candidate_result.response)
+                            else 'response-observed' if candidate_result.kind == 'response' else candidate_result.kind)
+                        if not candidate_result.transfer_complete:
+                            _record_source(reservation, candidate.stage, candidate.rule_id, reason, physical_attempts,
+                                origin=candidate.url)
                         if output is not None:
                             transferred.update(output=output, final_url=final_url)
                         if candidate_result.pdf_type and candidate_result.transfer_complete:
@@ -327,24 +358,27 @@ def _run(reservation, request, progress):
                         return candidate_result
                     discovery = PdfDiscovery(request.target, facts=request.facts, inputs=selected, io=io,
                         candidates=request.candidates, guard=lambda: registry._guard(reservation, repository),
-                        cancel_event=reservation.cancel_event, deadline=reservation.deadline, stop_on_access=True).run(consume)
+                        cancel_event=reservation.cancel_event, deadline=reservation.deadline).run(consume)
+                    for stage, rule, reason in discovery.diagnostics:
+                        _record_source(reservation, stage, rule, reason, physical_attempts, fallback=discovery.fallback_used)
                     if discovery.status == 'transferred':
                         saved = complete_attempt(reservation, repository, files, transferred['output'],
                             source_url=_source_projection(transferred['final_url']), pdf_source=discovery.pdf_source,
                             fallback_used=discovery.fallback_used)
                         result = BodyResult('completed', saved, CandidateResult.pdf(transfer_complete=True))
+                        _record_source(reservation, discovery.pdf_source, discovery.candidate.rule_id, 'transferred',
+                            physical_attempts, origin=transferred['final_url'], fallback=discovery.fallback_used)
                     elif discovery.status in {'cancelled', 'stale', 'expired', 'local-failure'}:
                         result = BodyResult(discovery.status.replace('-', '_'), candidate_result=result.candidate_result)
-                    elif discovery.status == 'blocked':
-                        result = BodyResult('failed', candidate_result=CandidateResult.failed(
-                            (result.candidate_result.diagnostic if result.candidate_result else None) or 'access-blocked'))
                     elif discovery.status == 'exhausted' and any(reason == 'native-unsupported'
                             for _, _, reason in discovery.diagnostics):
                         result = BodyResult('failed', candidate_result=CandidateResult('skipped', diagnostic='native-unsupported'))
                     elif result.status == 'skipped':
                         result = BodyResult('failed', candidate_result=result.candidate_result)
-            except _BodyAccessBlocked:
-                result = BodyResult('failed', candidate_result=CandidateResult.failed('access-blocked'))
+                    else:
+                        reason = (result.candidate_result.diagnostic if result.candidate_result else None) or next((code
+                            for _, _, code in reversed(discovery.diagnostics) if code not in {'partial-response','no-pdf-entry'}), None)
+                        result = BodyResult('failed', candidate_result=CandidateResult.failed(reason or 'no-pdf-candidates'))
             except (TimeoutError, ProviderBudgetExceeded):
                 result = BodyResult('expired')
             except Cancelled:
@@ -457,8 +491,8 @@ def submit_body_download(host, paper, *, candidates=None, service_id=None, deadl
     direct = tuple((item.namespace, item.value) for item in paper.identities)
     if candidates is not None:
         candidates = tuple(candidates)
-        if not 1 <= len(candidates) <= 16:
-            raise ValueError('A bounded set of confirmed candidates is required')
+        if not candidates or sum(len(item.url.encode()) for item in candidates) > 1048576:
+            raise ValueError('Confirmed candidates must fit the task memory budget')
         target = candidates[0].target
         for candidate in candidates:
             if (not isinstance(candidate, PdfCandidate) or candidate.target != target
@@ -605,9 +639,17 @@ class BodyDownloadService:
                 if fault['paper_id'] == str(paper.id) and fault['attempt'] == saved.token.attempt
                 and fault['phase'] in messages), None)
         progress = dict(getattr(owner, 'progress', {})) if owner else {}
+        observations = []
+        if registry is not None and saved:
+            with registry.paper_gate():
+                records = [item for item in registry.body_observations
+                    if item['paper_id'] == str(paper.id) and item['attempt'] == saved.token.attempt]
+            for index, item in enumerate(records):
+                observations.append({key: value for key, value in item.items() if key not in {'paper_id','attempt'}} | {
+                    'subsequent_attempted': any(later['pdf_attempt'] > item['pdf_attempt'] for later in records[index+1:])})
         return dict(status='failed' if ended == 'body' else saved.status if saved else 'not_started',
             attempt=saved.token.attempt if saved else 0, reason='storage-error' if ended == 'body' else saved.reason if saved else None,
-            warning=warning,
+            warning=warning, source_observations=observations,
             active=active, cleaning_up=bool(active and (owner.cancel_event.is_set() or saved and not saved.active)),
             available=permitted, unavailable_reason=reason,
             task_id=owner.task_id if owner else None,

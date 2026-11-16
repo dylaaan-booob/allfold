@@ -11,6 +11,7 @@ class OriginalNavigation {
     Object.assign(this,{browser,doc,candidate,output,signal,deadline,verify,progress,cdnAllowed});
     this.sciencePII=candidate.platform==='sciencedirect'?new URL(doc.url).pathname.match(/\/science\/article\/pii\/([SB][0-9X]{16})/i)?.[1]:null;
     this.owner=browser.operation;this.sources=new Map();this.registrations=[];this.tracked=new Set();this.probes=new Set();this.dispatched=false;
+    this.continuationEdges=new Set();this.continuationBytes=0;
     this.received=new Promise((resolve,reject)=>{this.resolve=resolve;this.reject=reject;});this.received.catch(()=>{});
     this.hook=browser.sessionEvents.subscribe('beforeRequest',details=>this.request(details));
     this.responseHook=browser.sessionEvents.subscribe('headersReceived',details=>this.response(details));
@@ -47,12 +48,11 @@ class OriginalNavigation {
     if(!this.sciencePII||!entry?.response||entry.continued||source!==this.boundSource||entry!==this.boundEntry
       ||entry.response.status<200||entry.response.status>=300
       ||frame.frameTreeNodeId!==entry.request.frameTreeNodeId||frame.url!==entry.response.url)return false;
-    return this.scienceReaderURL(frame.url);
+    return this.scienceReaderURL(frame.url)||this.scienceAsset(frame.url);
   }
   scienceContinuation(url) {
-    if(this.cdnContinued)return null;
     if(this.scienceAsset(url))return 'cdn';
-    return !this.readerRefreshed&&this.scienceReaderURL(url)?'reader':null;
+    return this.scienceReaderURL(url)?'reader':null;
   }
   continueScienceReader(source,event) {
     const frame=source.contents.mainFrame,previous=this.boundEntry,kind=this.scienceContinuation(event.url);
@@ -60,12 +60,17 @@ class OriginalNavigation {
       ||event.frame?.frameTreeNodeId!==frame.frameTreeNodeId||!sameFrame(event.initiator,frame)||!kind
       ||!this.scienceReader(source,previous,frame))return;
     this.valid();
-    // The committed HTML response cannot later become an item. Transfer only
-    // its own native navigation: at most one reader refresh and one CDN GET.
+    const edge=JSON.stringify([previous.response.url,event.url,previous.response.state]);
+    if(this.continuationEdges.has(edge))throw failure('download_not_attributable');
+    this.continuationBytes+=Buffer.byteLength(edge);
+    if(this.continuationBytes>1048576)throw failure('download_not_attributable');
+    this.continuationEdges.add(edge);
+    // Only this committed response's observed main-frame continuation inherits
+    // the action. Repeated identical edges stop; changed response/Cookie evidence
+    // may permit a legitimate same-URL authentication return.
     previous.continued=true;previous.registration.dispose();source.frames.delete(previous.frame.frameToken);
-    const entry=this.addFrame(source,event.frame);
+    const entry=this.addFrame(source,event.frame,{...this.doc,url:previous.response.url});
     if(!entry)throw failure('document_changed');
-    if(kind==='reader')this.readerRefreshed=true;else this.cdnContinued=true;
     this.continuation={source,entry,url:event.url,frameTreeNodeId:frame.frameTreeNodeId,used:false};
   }
   acceptPopup(url,frameName) {
@@ -124,17 +129,16 @@ class OriginalNavigation {
     contents.on('did-start-navigation',source.navigation);
     contents.on('did-frame-finish-load',source.loaded);
   }
-  addFrame(source,frame) {
+  addFrame(source,frame,document=this.doc) {
     if(!frame||source.frames.has(frame.frameToken)||source.frames.size>=8)return;
     const entry={frame,request:null};source.frames.set(frame.frameToken,entry);
     entry.registration=this.browser.sessionEvents.registerDownload({owner:this.owner,attemptId:this.owner.association.request_id,
-      contents:source.contents,frame,document:this.doc,requireRequest:true,filename:this.output.filename,
-      deadline:this.deadline,signal:this.signal,inlineMimeTypes:['application/pdf'],
+      contents:source.contents,frame,document,requireRequest:true,filename:this.output.filename,
+      deadline:this.deadline,signal:this.signal,bodyContent:true,
       validate:()=>{this.valid();return !!entry.request;},beforeSave:()=>this.output.absent(),
       onItem:tracked=>{
         this.tracked.add(tracked);
-        if(this.primary||tracked.response?.contentType!=='application/pdf'||tracked.item.getMimeType()!=='application/pdf'
-          ||tracked.response.status<200||tracked.response.status>=300){this.fail(failure('download_not_attributable'));tracked.item.cancel();return;}
+        if(this.primary||!tracked.response||tracked.response.status<200||tracked.response.status>=300){this.fail(failure('download_not_attributable'));tracked.item.cancel();return;}
         this.primary=tracked;
         let last=0;
         const update=()=>{
@@ -220,10 +224,11 @@ class OriginalNavigation {
       }
       const contentType=Object.entries(details.responseHeaders || {}).find(([name])=>name.toLowerCase()==='content-type')?.[1];
       const type=contentType?.length===1?contentType[0].split(';')[0].trim().toLowerCase():'';
-      if(type==='application/pdf'&&status>=200&&status<300)return;
+      if(!['text/html','application/xhtml+xml'].includes(type)&&status>=200&&status<300)return;
       if(!['text/html','application/xhtml+xml'].includes(type))throw failure('download_not_attributable');
       const mitigated=Object.entries(details.responseHeaders || {}).filter(([name])=>name.toLowerCase()==='cf-mitigated').flatMap(([,values])=>values);
-      entry.response={url:details.url,status,cfMitigated:mitigated.length===1 && mitigated[0].trim().toLowerCase()==='challenge'};
+      const state=Object.entries(details.responseHeaders||{}).filter(([name])=>['etag','last-modified','set-cookie'].includes(name.toLowerCase()));
+      entry.response={url:details.url,status,state,cfMitigated:mitigated.length===1 && mitigated[0].trim().toLowerCase()==='challenge'};
     }catch(error){this.fail(error);return {cancel:true};}
   }
   async inspectResponse(source,entry,frame) {
@@ -324,7 +329,7 @@ async function executeBodyNative(browser,data,{signal,progress=()=>{}}={}) {
     if(prepared.plan.target==='popup'||prepared.plan.target==='frame'&&!prepared.targetFrame)
       await browser.reserveChildPage({signal:stop,deadline:data.deadline_ms});
     await prepared.dispatch(plan=>{operation.requestURL=plan.request_url;operation.dispatch();},error=>operation.fail(error));
-    primary=await waitFor(()=>operation.received,stop,Math.min(data.deadline_ms,Date.now()+15000));
+    primary=await waitFor(()=>operation.received,stop,data.deadline_ms);
     const terminal=await primary.terminal; // actual done is never raced with timeout/cancellation
     clearTimeout(timer);
     if(terminal!=='completed') {
@@ -336,9 +341,10 @@ async function executeBodyNative(browser,data,{signal,progress=()=>{}}={}) {
       native_terminal:terminal,native_cleanup:'asynchronous'};
     }
     if(operation.outputError)throw operation.outputError;
-    const observed=output.capture();
+    const observed=output.capture({sniff:true});
     if(!operation.observed){operation.observed=observed.file;try{progress({native_output_file:observed.file});}catch(_){}}
     try{progress({received_bytes:observed.size,total_bytes:primary.item.getTotalBytes()>0?primary.item.getTotalBytes():null});}catch(_){}
+    if(!observed.pdf)return {outcome:'failed',kind:'failed',diagnostic_code:'non-pdf',output_file:observed.file,resource_closed:true};
     return {outcome:'native_complete',kind:'pdf',pdf_type:true,transfer_complete:true,output_file:observed.file,
       size_bytes:observed.size,final_url:primary.response.url,resource_closed:true};
   }catch(error) {
@@ -351,8 +357,10 @@ async function executeBodyNative(browser,data,{signal,progress=()=>{}}={}) {
       ||code==='http_error'&&[401,403,407,418,429].includes(error.diagnostic.status))
       return {outcome:'failed',kind:'failed',diagnostic_code:'access-blocked',diagnostic:error.diagnostic};
     if(code==='body_action_unavailable')return {outcome:'failed',kind:'failed',diagnostic_code:'entry-unavailable'};
-    const kind=code==='document_changed'?'stale':operation?.dispatched?'local_failure':'failed';
-    return {outcome:kind,kind,diagnostic_code:'native-action',diagnostic:error.diagnostic};
+    // A source frame/navigation refusal is local after its items/pages settle.
+    // Python independently rechecks the captured Workspace/Paper/attempt before
+    // dispatching any later candidate; that is the task's stale boundary.
+    return {outcome:'failed',kind:'failed',diagnostic_code:'native-action',diagnostic:error.diagnostic};
   }finally {
     clearTimeout(timer);
     // Keep registrations and their physical sources alive until all accepted or

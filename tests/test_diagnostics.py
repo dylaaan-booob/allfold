@@ -11,6 +11,19 @@ def bundle(store, task_id=None):
         return {name: archive.read(name).decode() for name in archive.namelist()}
 
 
+def test_pdf_source_observations_export_without_worker_file_io_or_private_data(tmp_path, monkeypatch):
+    store=DiagnosticStore(tmp_path/'config.yaml',root=tmp_path/'logs')
+    monkeypatch.setattr(store,'event',lambda *_args,**_kwargs: (_ for _ in ()).throw(AssertionError('No worker diagnostic file I/O')))
+    assert store.record_pdf_source(dict(paper_id='11111111-1111-4111-8111-111111111111',attempt=1,
+        pdf_stage='P3',pdf_rule='GENERIC',pdf_reason='access-blocked',pdf_attempt=1,
+        source_origin='https://publisher.example.org/',url='https://publisher.example.org/body?Signature=PRIVATE',
+        cookie='PRIVATE',html='<html>PRIVATE</html>'))
+    exported=bundle(store)
+    assert 'pdf_source_result' in exported['events.jsonl'] and 'access-blocked' in exported['events.jsonl']
+    assert 'PRIVATE' not in ''.join(exported.values())
+    assert 'pdf_source_result' not in bundle(DiagnosticStore(tmp_path/'config.yaml',root=tmp_path/'logs'))['events.jsonl']
+
+
 def test_pubmed_run_sources_survive_restart_and_export_without_credentials(tmp_path):
     config, root = tmp_path / 'config.yaml', tmp_path / 'logs'
     store = DiagnosticStore(config, root=root, runtime_id='first')

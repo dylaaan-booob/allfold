@@ -17,7 +17,7 @@ function boundedPdfClues(value) {
     || typeof value.observed_at!=='string' || !/^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d\.\d{3}Z$/.test(value.observed_at) || !Number.isFinite(Date.parse(value.observed_at))
     || typeof value.platform!=='string'||!/^[a-z][a-z0-9-]{0,63}$/.test(value.platform)
     || !['journal-article','conference-paper','unknown'].includes(value.content_type)
-    || !Array.isArray(value.identifiers)||value.identifiers.length>16||!Array.isArray(value.candidates)||value.candidates.length>32
+    || !Array.isArray(value.identifiers)||!Array.isArray(value.candidates)
     || !Array.isArray(value.diagnostics)||value.diagnostics.length>2||value.diagnostics.some(code=>!['pdf_budget_exceeded','pdf_parse_failed'].includes(code)))invalid();
   const identifiers=value.identifiers.map(item=>{if(!item || Object.keys(item).sort().join(',')!=='kind,rule_id,value'
       || !/^[a-z][a-z0-9_]{0,63}$/.test(item.kind)||typeof item.value!=='string'||!/^[A-Za-z0-9_.:/-]{1,256}$/.test(item.value)||!/^R\d{3}$/.test(item.rule_id))invalid();return {...item};});

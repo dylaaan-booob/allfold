@@ -347,7 +347,11 @@ app.whenReady().then(async()=>{
       !document.getElementById('paper-download-status').textContent.includes('数据库'))throw Error('Ended storage failure retained Download busy state');})()`);
     await js("document.getElementById('paper-detail').scrollTop=0");
     await capture('stage3-download-storage-error');
+    Object.assign(bodyPaper.download,{reason:'access-blocked',source_observations:[{pdf_stage:'P1',pdf_rule:'R002',pdf_reason:'access-blocked',subsequent_attempted:true}]});
+    await js('window.uiWorkspace.refresh()');
+    await js(`(()=>{const status=document.getElementById('paper-download-status').textContent;if(!status.includes('当前来源访问受阻') || !status.includes('已尝试后续来源'))throw Error('Source failure or actual continuation is missing');})()`);
     bodyPaper.download.reason=null;
+    bodyPaper.download.source_observations=[];
     await js("document.getElementById('paper-download').click()");
     await ready("!window.inboxKept.busy() && document.getElementById('paper-download-status').textContent.includes('2 KB')");
     if(bodyActions.length!==1 || Object.keys(bodyActions[0].body).sort().join(',')!=='csrf_token,qualification,workspace_id')throw Error('Download request supplied network/file capabilities');

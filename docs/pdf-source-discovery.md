@@ -38,12 +38,12 @@ formal target Work's own repository/Preprint PDF locations remain eligible.
 
 Only a downstream PDF-type result with normal transfer completion sets a
 successful `pdf_source`. A PDF response without that consumer remains pending;
-the discovery HTTP client does not read its body or claim transfer. A local
+the discovery HTTP client does not read a possible PDF body to identify its type or claim transfer. MIME is only a discovery hint; byte identification belongs to the actual transfer owner. A local
 failure ends the task. Current signed URLs/Referer stay operation-local; stored
 facts contain stable fields or explicit refresh locators. Same-reader parsing
 keeps its original discovery phase and ordinary redirects/retries are not
 fallbacks. Current implementation limits and response handling are not additional
-source-rule requirements; see [body downloads](body-downloads.md).
+source-rule requirements. Lists are matched and deduplicated before byte capacity is applied; partial observations preserve qualified increments. OpenAlex uses all eligible distinct locations, best first. The parent deadline, memory capacity, exact response/edge loop guards and ordinary transient retry policy bound work; arbitrary operation/hop/transfer counts do not. See [body downloads](body-downloads.md).
 
 Python discovery HTTP validates each actual request/redirect and checks resolved
 addresses before dispatch. This is a DNS preflight, not transport-level address
@@ -133,7 +133,7 @@ PDF Source Discovery 不运行 Zotero Translator、Zotero Translate 或 Zotero U
 
 #### F2.4 唯一成功停止条件
 
-候选成功构造、HTTP 200、发现 `citation_pdf_url` 或取得一个阅读器 URL，都不是最终成功。**当前响应/Chromium 类型确认是 PDF，且下载传输正常完成后，立即停止后续发现。** 不另设 PDF Validation；具体传输与终态见[body downloads](body-downloads.md)。
+候选成功构造、HTTP 200、发现 `citation_pdf_url` 或取得一个阅读器 URL，都不是最终成功。**真实传输方用当前响应或已归属输出的五字节 `%PDF-` 前缀确认类型，且传输正常完成后，立即停止后续发现。** 不另设 PDF Validation；具体传输与终态见[body downloads](body-downloads.md)。
 
 不因为取得的 PDF 可能来自其他出版版本而继续寻找；不添加版本字段、版本比较或升级流程。正文链接与补充材料链接仍根据页面上下文区分，这不涉及 PDF 内容或版本核验。
 
@@ -365,15 +365,15 @@ Meta 值指向 HTML 下载器时进入适用的中间页规则。不能因为 UR
 
 | 返回结果 | 发现层行为 |
 |---|---|
-| 当前响应/Chromium 类型为 PDF 且传输完成 | 成功并停止所有后续来源，不做独立内容检查 |
+| 实际前缀辨识为 PDF 且传输完成 | 成功并停止所有后续来源，不做全文或结构检查 |
 | 正常 HTTP 重定向 | 沿既有请求过程处理；不人为插入 DOM 解析步骤 |
 | 匹配已知阅读器或下载中转结构的 HTML | 调用对应的确定性解析规则，保留访问上下文 |
 | 文章 HTML | 按 P3/P4 读取；不将其报告为 PDF |
-| 登录、访问拒绝、安全检查或验证码页面 | 标记访问状态；不得把安全 iframe 当 PDF；统一网页访问层按已支持类型接入 Cloudflare solver 或人工处理 |
+| 登录、访问拒绝、安全检查或验证码页面 | 记录当前来源状态并继续其他合法来源；不得把安全 iframe 当 PDF；页面 Solver/人工验证保持独立 |
 | XML、JATS、JSON 元数据或引文文本 | 只有规则明确支持其中 PDF 字段时继续；本身不作为 PDF |
 | 未识别内容、空结果或失败 | 结束当前路径，继续下一条适用来源 |
 
-候选失败与整个任务取消不同。普通来源失败可触发后续合法来源；取消、任务失效或总预算结束后，不继续发起新请求。
+候选失败与整个任务取消不同。来源访问拒绝、Reader 不可用、无 PDF 或解析失败都只结束当前路径，待其真实资源结束后继续后续合法候选。取消、任务失效、父期限到达或实际本地 I/O 失败后，不继续发起新请求。已确认的合法线索不因响应尾部或无关字段超限而丢弃；部分观察明确记录，不宣称完整读取。
 
 磁盘、权限、文件落位或结果关联等本地失败终止整个下载任务，不属于可改用下一网络来源解决的候选失败。
 
@@ -444,7 +444,7 @@ API 的 HTTP 状态、限流和访问要求以相应官方证据为依据，不�
 1. **身份比较与请求表达式分开。** DOI 比较需要的规范化不应用到整个 PDF URL。保留 Host 之外路径、文件名、大小写及查询值。
 2. **按端点编码。** DOI 放入查询参数时编码整个参数值；路径模板按对应证据决定如何编码。保留 DOI suffix 中可能存在的多级斜杠，不只取最后一段，不重复编码已处理的值。
 3. **保留实际响应地址。** 相对 Meta、anchor、frame 等地址按承载它的实际页面 URL 解析；不能一直使用最初的 DOI resolver 地址作基准。
-4. **有限去重。** 同一候选不因 Meta、DOM 和模板重复发现而再次触发完整尝试。去重不删除有效签名参数，不把不同 token 的地址强行合并；下载方内部重试与来源发现去重分开。
+4. **有限去重。** 同一候选不因 Meta、DOM 和模板重复发现而再次触发完整尝试。已观测的响应/导航关系及实际 Cookie 变化可以允许同 URL 的合法继续；重复相同响应/边和不可重放 POST 仍拒绝。去重不删除有效签名参数，不把不同 token 的地址强行合并；下载方内部重试与来源发现去重分开。
 5. **限制可请求地址。** 只向符合既有 URL 安全边界的 HTTP(S) 目标发起请求；拒绝脚本、文件、本地或内部网络等不合格目标，重定向后的地址也要检查。当前材料未建立 `blob:` 或 `data:` 提取机制，不将其直接加入网络候选。
 
 以上为发现层的共同约束，不规定网络库、代理实现或浏览器进程结构。[S068](#s068)、[S070](#s070)、[S095](#s095)、[S106](#s106)、[S108](#s108)
@@ -478,7 +478,7 @@ API 的 HTTP 状态、限流和访问要求以相应官方证据为依据，不�
 
 **不算回退：** 因输入或凭证不足而跳过不适用规则；从 DOI 查询取得 PII 后首次请求 PDF；正常 HTTP 重定向；同一路径读取已知中间页；下载方对同一候选的受控重试。
 
-**算回退：** 模板失败后尝试另一候选或 HTML；Meta 候选失败后使用 DOM；出版平台路径结束后实际转入 OpenAlex。同一规则明确列出的第二个 URL 在首个失败后被尝试，也属于候选回退。
+**算回退：** 已发生物理候选尝试且失败后，再实际尝试另一合格候选，包括来自 DOM 或 OpenAlex 的候选。只读取元数据、执行资格检查或得到空 OpenAlex 列表不虚构物理回退。同一规则明确列出的第二个 URL 在首个失败后被尝试，也属于候选回退。
 
 例如，无 DOI 模板但已有 `arnumber`，直接取得 PDF 时不记为回退；Wiley 模板失败后 Meta 成功时记录 Meta 来源及回退；仅能适用 OpenAlex 时，最终来源已经清楚表示使用了该服务，不为被跳过的规则伪造失败记录。
 

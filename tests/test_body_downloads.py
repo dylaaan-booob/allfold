@@ -407,7 +407,7 @@ def test_current_reader_cycle_settles_without_repeating_the_request(tmp_path):
 
 
 @pytest.mark.parametrize('access',[None,'challenge'])
-def test_reader_alternatives_continue_only_after_an_ordinary_empty_response(tmp_path,access):
+def test_reader_alternatives_continue_after_empty_or_blocked_response(tmp_path,access):
     from dataclasses import replace
     import time
     from allfold.application.body_downloads import submit_body_download
@@ -427,14 +427,10 @@ def test_reader_alternatives_continue_only_after_an_ordinary_empty_response(tmp_
             url=empty,content_type='text/html',status=200,body='<html>No PDF here</html>',access=access)))
         until=time.monotonic()+2
         while len(bridge.calls)<3 and not task.future.done() and time.monotonic()<until:time.sleep(.005)
-        if access is None:
-            assert len(bridge.calls)==3 and bridge.calls[-1][1]['url']==good
-            bridge.finish()
-            assert task.future.result(2).status=='completed'
-        else:
-            result = task.future.result(2)
-            assert result.status == 'failed' and result.candidate_result.diagnostic == 'access-' + access
-            assert len(bridge.calls) == 2
+        assert len(bridge.calls)==3 and bridge.calls[-1][1]['url']==good
+        bridge.finish()
+        result=task.future.result(2)
+        assert result.status=='completed' and result.paper.body.fallback_used
     finally:
         if hasattr(bridge,'result') and not bridge.result.done():bridge.result.set_result(dict(kind='cancelled',outcome='cancelled'))
         host.shutdown();host.join()
@@ -472,7 +468,7 @@ def test_known_reader_cancellation_retains_its_terminal_after_native_cleanup(tmp
 
 
 @pytest.mark.parametrize('code',['content_access_blocked','site_restricted'])
-def test_native_document_access_barrier_stops_queued_body_alternatives(tmp_path,code):
+def test_native_document_access_barrier_continues_queued_body_alternatives(tmp_path,code):
     from dataclasses import replace
     import time
     from allfold.application.body_downloads import submit_body_download
@@ -488,10 +484,12 @@ def test_native_document_access_barrier_stops_queued_body_alternatives(tmp_path,
         assert len(bridge.calls)==2
         bridge.result.set_result(dict(diagnostic=dict(code=code,stage='navigation')))
         until=time.monotonic()+2
-        while not task.future.done() and time.monotonic()<until:time.sleep(.005)
-        assert task.future.done(), 'Document access denial must not start the queued source'
-        assert task.future.result().status=='failed'
-        assert [a for a,_ in bridge.calls]==['stream_paper_body','extract_paper_pdf_clues']
+        while len(bridge.calls)<3 and not task.future.done() and time.monotonic()<until:time.sleep(.005)
+        assert len(bridge.calls)==3
+        bridge.finish()
+        result=task.future.result(2)
+        assert result.status=='completed' and result.paper.body.fallback_used
+        assert [a for a,_ in bridge.calls]==['stream_paper_body','extract_paper_pdf_clues','stream_paper_body']
     finally:
         if hasattr(bridge,'result') and not bridge.result.done():bridge.result.set_result(dict(kind='cancelled',outcome='cancelled'))
         host.shutdown();host.join()
@@ -502,7 +500,7 @@ def test_native_document_access_barrier_stops_queued_body_alternatives(tmp_path,
     (200,'<p>CPE00001</p><p>There was a problem providing the content you requested</p>'),
     (200,'<iframe src="/_Incapsula_Resource?edet=15&incident_id=123-456">Request unsuccessful. Incapsula incident ID: 123-456</iframe>'),
 ])
-def test_http_access_barriers_stop_queued_body_alternatives(tmp_path,status,body):
+def test_http_access_barriers_continue_queued_body_alternatives(tmp_path,status,body):
     from allfold.application.body_downloads import submit_body_download
     host,workspace,paper,bridge,candidate=application_host(tmp_path)
     from dataclasses import replace
@@ -511,8 +509,13 @@ def test_http_access_barriers_stop_queued_body_alternatives(tmp_path,status,body
         assert bridge.started.wait(2)
         bridge.result.set_result(dict(kind='response',outcome='response',response=dict(
             url=candidate.url,content_type='text/html',status=status,body=body,access=None)))
-        assert task.future.result(2).status!='completed'
-        assert len(bridge.calls)==1
+        import time
+        until=time.monotonic()+2
+        while len(bridge.calls)<2 and not task.future.done() and time.monotonic()<until:time.sleep(.005)
+        assert len(bridge.calls)==2
+        bridge.finish()
+        result=task.future.result(2)
+        assert result.status=='completed' and result.paper.body.fallback_used
     finally:
         if hasattr(bridge,'result') and not bridge.result.done():bridge.result.set_result(dict(kind='cancelled',outcome='cancelled'))
         host.shutdown();host.join()
