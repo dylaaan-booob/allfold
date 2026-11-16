@@ -102,6 +102,17 @@ def _challenge_origin(url: str) -> bool:
             and source.netloc.lower() in {"challenges.cloudflare.com", "challenges.cloudflare.com:443"})
 
 
+async def _disconnect(connection):
+    # A stop can arrive while an ordinary scan is already closing its frame
+    # connection. Do not interrupt that cleanup and report a premature terminal.
+    closing = asyncio.create_task(connection.close())
+    try:
+        await asyncio.shield(closing)
+    except asyncio.CancelledError:
+        await closing
+        raise
+
+
 async def _frame_connection(frame_id, browser_connection, endpoint, resources):
     from pydoll.connection.connection_handler import ConnectionHandler
 
@@ -111,7 +122,7 @@ async def _frame_connection(frame_id, browser_connection, endpoint, resources):
         return None
     address = urlunsplit(endpoint._replace(path=f'/devtools/page/{frame_id}'))
     connection = ConnectionHandler(ws_address=address)
-    resources.push_async_callback(connection.close)
+    resources.push_async_callback(_disconnect, connection)
     tree = (await connection.execute_command({'method': 'Page.getFrameTree'}))['result']['frameTree']
     return (connection, tree) if tree['frame']['id'] == frame_id else None
 
@@ -258,14 +269,14 @@ async def _watch_turnstile(cdp_url: str, stop: Event, *, target_id: str, progres
         try:
             async with AsyncExitStack() as resources:
                 browser_connection = ConnectionHandler(ws_address=cdp_url)
-                resources.push_async_callback(browser_connection.close)
+                resources.push_async_callback(_disconnect, browser_connection)
                 async with asyncio.timeout(5):
                     result = await browser_connection.execute_command({'method': 'Target.getTargetInfo', 'params': {'targetId': target_id}})
                 if result['result']['targetInfo'].get('type') != 'page':
                     return {'outcome': 'not_executed', 'reason': 'target_closed'}
                 page_endpoint = urlunsplit(endpoint._replace(path=f'/devtools/page/{target_id}'))
                 connection = ConnectionHandler(ws_address=page_endpoint)
-                resources.push_async_callback(connection.close)
+                resources.push_async_callback(_disconnect, connection)
                 while not stop.is_set():
                     result = await _scan(connection, browser_connection, endpoint, clicked, stop)
                     if result != last:

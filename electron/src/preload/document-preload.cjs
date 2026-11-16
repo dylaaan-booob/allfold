@@ -14,11 +14,19 @@ const operations={
     const heading=[...document.querySelectorAll('h1,h2,[role="heading"]')].filter(visible).map(node=>node.textContent.trim()).join(' ');
     const challengeTitle=/^(?:Just a moment|Attention Required)(?:[.!…\s]|$)/i.test(title);
     const authTitle=/^(?:sign in|log in|login|authentication|verify your identity|two.factor|multi.factor)\b/i.test(title);
-    const content=!challengeTitle && !authTitle && nodes('article,main,[role="main"]').some(node=>visible(node)
-      && !!node.textContent.trim() && !/^(?:verify|verification|checking|are you a robot|access denied|sign in|log in|login)\b/i.test(heading)
-      && (node.localName==='article' || [...node.querySelectorAll('p')].some(paragraph=>visible(paragraph) && paragraph.textContent.trim()
-        && !paragraph.closest('form,dialog,[role=dialog],header,footer,aside,nav')
-        && !/^(?:please|enter|welcome|sign in|log in|login|verify)\b/i.test(paragraph.textContent.trim()))));
+    const reading=node=>{
+      if(!visible(node))return false;
+      const primary=[...node.querySelectorAll('h1,h2')].filter(item=>visible(item) && !item.closest('form,aside,nav,footer'));
+      if(primary.some(item=>/^(?:welcome back|sign in|log in|login|authentication|verify|verification)\b/i.test(item.textContent.trim())))return false;
+      const walker=document.createTreeWalker(node,NodeFilter.SHOW_TEXT);
+      while(walker.nextNode()) {
+        const parent=walker.currentNode.parentElement,value=walker.currentNode.nodeValue.trim();
+        if(value && visible(parent) && !parent.closest('form,dialog,[role=dialog],header,footer,aside,nav,h1,h2,button,label,script,style,template,noscript')
+          && !/^(?:please|enter|welcome|sign in|log in|login|verify)\b/i.test(value))return true;
+      }
+      return false;
+    };
+    const content=!challengeTitle && !authTitle && nodes('article,main,[role="main"]').some(reading);
     const modal=node=>!!node.closest('[aria-modal="true"],dialog[open]');
     const markers={unusualTraffic:/^Unusual Traffic Detected\s*\(Error 418\)/i.test(title),
       cloudflareTitle:challengeTitle,cloudflareOptions:false,cloudflareOrchestrator:false,cloudflareVisible:false,

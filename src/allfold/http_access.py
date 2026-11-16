@@ -10,11 +10,11 @@ class _AccessHTML(HTMLParser):
         self.stack = []
         self.title = self.h1 = self.h2 = ''
         self.content = self.body_text = self.verification_prompt = False
-        self.password = self.frame = self.captcha = False
+        self.password = self.modal_password = self.frame = self.captcha = False
         self.options = self.orchestrator = self.anubis = False
 
     def handle_starttag(self, tag, attributes):
-        attrs = dict(attributes)
+        attrs = {name: value or '' for name, value in attributes}
         inert = any(item[0] in {'template', 'noscript'} for item in self.stack)
         hidden = (inert or any(item[1] for item in self.stack) or 'hidden' in attrs
             or attrs.get('aria-hidden', '').lower() == 'true'
@@ -27,10 +27,12 @@ class _AccessHTML(HTMLParser):
             url = urlsplit(attrs.get('src', ''))
             self.captcha |= (bool(re.search(r'(^|\.)(hcaptcha\.com|recaptcha\.net|google\.com)$', url.hostname or ''))
                 and 'captcha' in url.path)
+        modal = attrs.get('aria-modal') == 'true' or tag == 'dialog' and 'open' in attrs or any(item[2] for item in self.stack)
         if tag == 'input' and not hidden and attrs.get('type', '').lower() == 'password':
             self.password = True
+            self.modal_password |= modal
         if tag not in {'input', 'meta', 'link', 'img', 'br', 'hr', 'embed', 'source', 'base', 'area', 'wbr', 'param', 'col'}:
-            self.stack.append((tag, hidden))
+            self.stack.append((tag, hidden, modal))
 
     def handle_endtag(self, tag):
         for index in range(len(self.stack) - 1, -1, -1):
@@ -39,7 +41,7 @@ class _AccessHTML(HTMLParser):
                 break
 
     def handle_data(self, data):
-        tags = [tag for tag, _ in self.stack]
+        tags = [item[0] for item in self.stack]
         if any(tag in tags for tag in ('template', 'noscript')):
             return
         if 'script' in tags:
@@ -47,7 +49,7 @@ class _AccessHTML(HTMLParser):
             return
         if 'title' in tags:
             self.title += data
-        if any(hidden for _, hidden in self.stack) or any(tag in tags for tag in ('style', 'head', 'title', 'iframe')):
+        if any(item[1] for item in self.stack) or any(tag in tags for tag in ('style', 'head', 'title', 'iframe')):
             return
         if 'h1' in tags:
             self.h1 += data
@@ -56,7 +58,8 @@ class _AccessHTML(HTMLParser):
         if data.strip():
             self.verification_prompt |= bool(re.match(r'^(?:please\s+)?(?:complete (?:the )?(?:security check|captcha)|verify (?:that )?you are human)\b', data.strip(), re.I))
             self.body_text = True
-            if 'article' in tags or 'main' in tags:
+            if ('article' in tags or 'main' in tags) and not any(tag in tags for tag in (
+                    'h1', 'h2', 'form', 'button', 'label', 'nav', 'aside', 'footer', 'header', 'dialog')):
                 self.content = True
 
 
@@ -79,6 +82,6 @@ def html_access(body: str, status: int = 200) -> str | None:
     if (parser.frame and verification or parser.captcha
             and (not parser.body_text or parser.verification_prompt and not parser.content)):
         return 'verification'
-    if parser.password and named(r'^(Sign in|Log in|Login|Authentication)\b'):
+    if parser.password and (not parser.content or parser.modal_password) and named(r'^(Sign in|Log in|Login|Authentication)\b'):
         return 'login'
     return None

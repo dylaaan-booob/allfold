@@ -17,12 +17,20 @@ function institutionAuthPage(action='inspect',credentials=null,expectedStep=null
       ...(node.getAttribute('aria-labelledby') || '').split(/\s+/).filter(Boolean).map(id=>text(document.getElementById(id))),
       node.name,node.id].filter(Boolean).join(' ');
     const institution=mode==='institution';
+    const reading=node=>{
+      if(!visible(node))return false;
+      const primary=[...node.querySelectorAll('h1,h2')].filter(item=>visible(item) && !item.closest('form,aside,nav,footer'));
+      if(primary.some(item=>/^(?:welcome back|sign in|log in|login|authentication|verify|verification)\b/i.test(text(item))))return false;
+      const walker=document.createTreeWalker(node,NodeFilter.SHOW_TEXT);
+      while(walker.nextNode()) {
+        const parent=walker.currentNode.parentElement,value=walker.currentNode.nodeValue.trim();
+        if(value && visible(parent) && !parent.closest('form,dialog,[role=dialog],header,footer,aside,nav,h1,h2,button,label,script,style,template,noscript')
+          && !/^(?:please|enter|welcome|sign in|log in|login|verify)\b/i.test(value))return true;
+      }
+      return false;
+    };
     const readable=!institution && !/^(?:sign in|log in|login|authentication|verify your identity)\b/i.test(document.title)
-      && [...document.querySelectorAll('article,main,[role=main]')].some(node=>visible(node) && text(node)
-        && !/^(?:sign in|log in|login|authentication|verify|verification)\b/i.test(text(node.querySelector('h1,h2')))
-        && (node.localName==='article' || [...node.querySelectorAll('p')].some(paragraph=>visible(paragraph) && text(paragraph)
-          && !paragraph.closest('form,dialog,[role=dialog],header,footer,aside,nav')
-          && !/^(?:please|enter|welcome|sign in|log in|login|verify)\b/i.test(text(paragraph)))));
+      && [...document.querySelectorAll('article,main,[role=main]')].some(reading);
     const blocking=node=>!readable || !!node.closest('dialog[open],[aria-modal="true"]');
     const inputs=[...document.querySelectorAll('input')].filter(node=>visible(node) && blocking(node));
     const controls=[...document.querySelectorAll('button,input[type=submit],input[type=button],a,[role=button]')].filter(visible);

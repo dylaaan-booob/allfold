@@ -704,6 +704,7 @@ def test_unavailable_condition_continues_without_creating_fallback(preceded_by_f
 
 
 @pytest.mark.parametrize('extra', [
+    '<aside><h2>Sign in to your account</h2><form><input type="password"></form></aside>',
     '<footer><iframe src="https://www.google.com/recaptcha/api2/anchor"></iframe></footer>',
     '<template><iframe src="https://newassets.hcaptcha.com/captcha/v1"></iframe></template>',
     '<noscript><iframe src="https://newassets.hcaptcha.com/captcha/v1"></iframe></noscript>',
