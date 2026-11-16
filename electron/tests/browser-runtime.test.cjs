@@ -1234,6 +1234,20 @@ test('Covers manual waiting cannot renew the absolute parent deadline',async t=>
   assert.equal(browser.operations.size,0);
 });
 
+test('readable content with an optional visible Turnstile does not start page-wide interaction',async t=>{
+  const {BrowserRuntime}=fixture(t);let calls=0;
+  const browser=new BrowserRuntime({solveCloudflare:async(_tab,{signal})=>{
+    calls++;await new Promise(resolve=>signal.addEventListener('abort',resolve,{once:true}));
+  }});
+  await browser.ready;t.after(()=>browser.close());
+  const tab=browser.createTab({user:true,present:false}),wc=tab.view.webContents;
+  wc.access={markers:{content:true,cloudflareVisible:true}};
+  await wc.loadURL('https://fixture.invalid/article');
+  assert.equal((await browser.inspectPage(tab)).waiting,false);assert.equal(calls,0);
+  wc.access={markers:{cloudflareVisible:true}};
+  assert.equal((await browser.inspectPage(tab)).waiting,true);assert.equal(calls,1);
+});
+
 test('one tab keeps its active interaction across repeated waits and can recover and handle another challenge',async t=>{
   const {BrowserRuntime}=fixture(t);let calls=0,stopped=0;
   const browser=new BrowserRuntime({solveCloudflare:async(tab,{signal,onProgress})=>{
@@ -1253,6 +1267,10 @@ test('one tab keeps its active interaction across repeated waits and can recover
   wc.access={markers:{}};
   await browser.waitForPage(tab,{deadline:Date.now()+200});
   await new Promise(setImmediate);assert.equal(stopped,1);
+  assert.equal(tab.challenge.state,'recovered');
+  await wc.loadURL('https://fixture.invalid/another-page');
+  assert.equal(tab.challenge.state,null,'a new page does not inherit the previous page recovery message');
+  await browser.inspectPage(tab);assert.equal(tab.challenge.state,null);
   wc.access={markers:{cloudflareOptions:true,cloudflareOrchestrator:true}};
   await new Promise(resolve=>setTimeout(resolve,800));
   await browser.inspectPage(tab);assert.equal(calls,2);

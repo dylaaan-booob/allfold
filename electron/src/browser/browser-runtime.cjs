@@ -209,7 +209,7 @@ class BrowserRuntime {
     contents.on('did-start-navigation',(event,url,inPlace,main)=>{
       if(event.isMainFrame ?? main) {
         tab.documentGeneration++;tab.documentIds.clear();tab.paperDocument=null;
-        if(!(event.isSameDocument ?? inPlace)){tab.cfMitigated=false;tab.mainRequest=null;}
+        if(!(event.isSameDocument ?? inPlace)){tab.cfMitigated=false;tab.mainRequest=null;tab.challenge?.navigating();}
         publishLoading();
       }
     });
@@ -249,7 +249,8 @@ class BrowserRuntime {
     else this.publish();
     tab.challenge=this.runInOperation(null,()=>new PageChallenge({tab,owner,probe:signal=>this.accessState(tab,{signal,independent:true}),
       solve:options=>this.solveCloudflare?.(tab,options),changed:()=>{
-        this.publish();this.reportPage('info','page_access',tab,{access_state:tab.challenge?.state,challenge_type:tab.challenge?.kind || 'unknown'});
+        this.publish();
+        if(tab.challenge?.state)this.reportPage('info','page_access',tab,{access_state:tab.challenge.state,challenge_type:tab.challenge.kind || 'unknown'});
       },
       report:()=>this.reportPage('warn','cloudflare_solver_failed',tab,{code:'solver_failed'})}));
     this.events.emit('tab-created',null,tab);

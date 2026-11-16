@@ -29,8 +29,10 @@ app.whenReady().then(async()=>{
     const challenge=`<title>Just a moment...</title><script>window._cf_chl_opt={};</script><script src="/cdn-cgi/challenge-platform/h/g/orchestrate/chl_page/v1"></script>`;
     browser.partition.protocol.handle('https',request=>{
       const url=new URL(request.url);
-      const html=pages.includes(url.origin+url.pathname)?`<!doctype html>${widget}`
-        :request.url===frameURL?'<input type="checkbox" style="width:60px;height:60px">'
+      const html=pages.includes(url.origin+url.pathname)?`<!doctype html>${url.searchParams.has('native')?widget.replace(frameURL,frameURL+'?native'):widget}`
+        :url.origin==='https://challenges.cloudflare.com' && url.pathname===new URL(frameURL).pathname?
+          url.searchParams.has('native')?'<input type="checkbox" style="width:60px;height:60px">':
+          '<label style="display:block;width:180px;height:60px;background:#ddd"><input type="checkbox" style="opacity:0;width:30px;height:30px">Verify human</label>'
         :url.pathname==='/normal'?'<article><h1>Normal content</h1></article>':'';
       return new Response(html,{status:html?200:404,headers:{'Content-Type':'text/html'}});
     });
@@ -47,16 +49,22 @@ app.whenReady().then(async()=>{
       'try: asyncio.run(solve_cloudflare(sys.argv[1],stop,target_id=sys.argv[2],progress=progress))',
       'finally: timer.cancel()',
     ].join('\n');
-    // Exact target isolation, including same-origin and OOPIF challenge frames.
+    // Exact target isolation for native/styled controls in same-process and OOPIF frames.
     for(const page of pages) {
-      await Promise.all(tabs.map(tab=>tab.view.webContents.loadURL(page+'#verification')));
-      const target=tabs[1].view.webContents.getOrCreateDevToolsTargetId();
-      const {stdout}=await promisify(execFile)(python,['-c',script,cdp,target],
-        {timeout:10000,env:{...process.env,PYTHONPATH:path.join(PROJECT_ROOT,'src')}});
-      assert.deepEqual(JSON.parse(stdout),{outcome:'clicked',reason:'checkbox_clicked'});
-      const checked=await Promise.all(tabs.map(tab=>tab.view.webContents.mainFrame.framesInSubtree.find(item=>item.url===frameURL)
-        .executeJavaScript('document.querySelector("input").checked')));
-      assert.deepEqual(checked,[false,true]);
+      for(const styled of [false,true]) {
+        await Promise.all(tabs.map(tab=>tab.view.webContents.loadURL(page+(styled?'':'?native')+'#verification')));
+        if(styled)await tabs[1].view.webContents.executeJavaScript(`document.body.insertAdjacentHTML('beforeend',
+          '<div style="position:fixed;left:190px;top:110px;width:40px;height:40px;background:red;z-index:10"></div>')`);
+        await until(()=>tabs.every(tab=>tab.view.webContents.mainFrame.framesInSubtree.some(item=>item.url===frameURL+(styled?'':'?native'))),'control frame loaded');
+        const target=tabs[1].view.webContents.getOrCreateDevToolsTargetId();
+        const {stdout}=await promisify(execFile)(python,['-c',script,cdp,target],
+          {timeout:10000,env:{...process.env,PYTHONPATH:path.join(PROJECT_ROOT,'src')}});
+        assert.ok(stdout.trim(),'the owned Cloudflare control must be clicked');
+        assert.deepEqual(JSON.parse(stdout),{outcome:'clicked',reason:'checkbox_clicked'});
+        const checked=await Promise.all(tabs.map(tab=>tab.view.webContents.mainFrame.framesInSubtree.find(item=>item.url===frameURL+(styled?'':'?native'))
+          .executeJavaScript('document.querySelector("input").checked')));
+        assert.deepEqual(checked,[false,true]);
+      }
     }
     await Promise.all(tabs.map(tab=>tab.view.webContents.loadURL('https://fixture.invalid/normal')));
     const requests=[],replies=[],progress=[];
@@ -81,7 +89,7 @@ app.whenReady().then(async()=>{
     const install=async(tab,body)=>tab.view.webContents.executeJavaScript(`document.head.innerHTML=${JSON.stringify(challenge)};document.body.innerHTML=${JSON.stringify(body)}`);
     const clicked=tab=>progress.filter(item=>item.page_id===tab.id && item.data.outcome==='clicked').length;
     await Promise.all(tabs.map(tab=>tab.view.webContents.loadURL(pages[0])));
-    await install(tabs[0],`<div style="display:none">${widget}</div>`);
+    await install(tabs[0],widget+'<button id="occluder" style="position:fixed;left:90px;top:30px;width:40px;height:40px;z-index:10" onclick="this.dataset.clicked=\'true\'">Cover</button>');
     await install(tabs[1],'');
     await until(()=>requests.filter(item=>item.type==='solve_cloudflare').length===2,'both independent tabs observe challenges without pending operations');
     assert.equal(browser.operations.size,0);
@@ -89,8 +97,11 @@ app.whenReady().then(async()=>{
     await tabs[1].view.webContents.executeJavaScript(`const host=document.createElement('div');document.body.append(host);host.attachShadow({mode:'closed'}).innerHTML=${JSON.stringify(widget)};document.body.insertAdjacentHTML('beforeend','<iframe hidden src="https://newassets.hcaptcha.com/captcha"></iframe>')`);
     await until(()=>clicked(tabs[1])===1,'delayed shadow/OOPIF control clicked');
     assert.equal(clicked(tabs[0]),0,'long waiting tab cannot consume or receive the other target interaction');
+    assert.equal(await tabs[0].view.webContents.executeJavaScript('!!document.querySelector("#occluder").dataset.clicked'),false,'covered controls must not click an unrelated parent button');
     assert.equal((await browser.inspectPage(tabs[1])).waiting,true,'click is not passage');
     await pause(800);assert.equal(clicked(tabs[1]),1,'unchanged control is not repeatedly clicked');
+    await tabs[0].view.webContents.executeJavaScript('document.querySelector("#occluder").remove()');
+    await until(()=>clicked(tabs[0])===1,'uncovering the actual point allows the same waiting control to proceed');
     // A replacement frame and history change stay on the original native target.
     await install(tabs[1],widget+`<iframe hidden src="${frameURL}?rebuilding"></iframe>`);
     await tabs[1].view.webContents.executeJavaScript('history.replaceState({},"","#replacement")');

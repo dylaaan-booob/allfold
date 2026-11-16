@@ -16,6 +16,11 @@ class PageChallenge {
     if(this.state===value && this.kind===kind)return;
     this.state=value;this.kind=kind;this.changed();
   }
+  navigating() {
+    // A completed observation describes the old page, not the next destination.
+    // Active interaction still follows this native tab through challenge redirects.
+    if(!this.active || this.active.controller.signal.aborted)this.setState(null,null);
+  }
   schedule() {
     if(this.lifetime.signal.aborted)return;
     clearTimeout(this.timer);
@@ -33,7 +38,7 @@ class PageChallenge {
     if(this.lifetime.signal.aborted)return;
     let diagnostic;
     try{checkPage(doc.status,doc);}catch(error){diagnostic=error.diagnostic;}
-    const cloudflare=cloudflareChallenge(doc) || doc.markers.cloudflareVisible;
+    const cloudflare=cloudflareChallenge(doc);
     if(!cloudflare) {
       this.active?.controller.abort();
       if(diagnostic?.code==='verification_page' || doc.markers.login || doc.markers.mfa)this.setState('manual',

@@ -91,7 +91,7 @@ Observation runs outside business async context and survives operation completio
 Ordinary pages do not start Pydoll. `inspectPage`/`waitForPage` consume the same access
 facts and retain their caller's cancellation/deadline; they do not own Solver.
 
-A detected supported Cloudflare page or visible widget enters Main's tab dispatcher
+A detected supported Cloudflare page or blocking visible widget enters Main's tab dispatcher
 → authenticated ElectronBridge → Pydoll on the existing Electron CDP endpoint.
 The transient challenge ID, physical Page ID and exact native CDP target correlate
 requests, progress, terminal replies and cancellation. Same-URL tabs cannot substitute
@@ -101,10 +101,16 @@ roots and attributable OOPIFs. Frame-tree/owner IDs establish ancestry; OOPIF
 candidate IDs require a native owner in that parent before attachment. No full-DOM
 shadow-root enumeration or whole-page HTML read is used. It never selects a page
 by URL.
+The observer and business waits use the same access evidence. A visible optional
+Turnstile alongside readable content does not independently start interaction.
 
 The current control must be connected, enabled, visible and hit-testable before
-interaction. Hidden or rebuilding auxiliary frames do not veto a known actionable
-control. Ambiguous actionable controls wait. Pydoll reobserves current controls
+interaction. A transparent native checkbox can use its explicitly associated,
+visible and hit-testable label; the original checkbox and label association are
+rechecked before that click. Native hit-testing follows the actual control point
+through its frame/target ancestry, rather than testing each iframe's center.
+Hidden or rebuilding auxiliary frames do not veto a known actionable control.
+Ambiguous actionable controls wait. Pydoll reobserves current controls
 across navigation, history changes and replacement; it does not require a fixed
 Document, title/frame/checkbox order, attempt count or total 30-second window.
 A clicked unchanged node is not clicked repeatedly; a replacement or observed
@@ -112,6 +118,8 @@ return to an actionable state can be handled again. Individual CDP calls have
 resource timeouts, followed by cancelable observation. A click is not passage:
 access waiting ends only when current challenge evidence clears/normal content
 is available. Later challenges on the same live tab remain eligible.
+Completed access messages clear on navigation to a new page; active challenge
+interaction continues across redirects on the same native tab.
 
 Each tab owns at most one active interaction through actual cleanup. Independent
 Pydoll tasks use async I/O, with no global serial Solver slot or occupied shared

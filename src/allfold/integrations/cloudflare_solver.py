@@ -24,13 +24,14 @@ _CHECKBOX_QUERY = """function() {
 }"""
 
 
-_CHECKBOX_INTERACTABLE = """function() {
+_CHECKBOX_INTERACTABLE = """function(hitTest = true) {
     if (!this.isConnected || this.disabled || this.checked) return false;
     if (!this.checkVisibility({checkOpacity: true, checkVisibilityCSS: true})) return false;
     const style = window.getComputedStyle(this);
     const rect = this.getBoundingClientRect();
     if (rect.width <= 0 || rect.height <= 0 || style.visibility === 'hidden'
             || style.display === 'none' || style.pointerEvents === 'none') return false;
+    if (!hitTest) return true;
     const x = rect.x + rect.width / 2;
     const y = rect.y + rect.height / 2;
     const roots = [];
@@ -55,14 +56,62 @@ _CHECKBOX_INTERACTABLE = """function() {
 }"""
 
 
-async def _checkbox_is_interactable(checkbox) -> bool:
+async def _checkbox_is_interactable(checkbox, *, hit_test=True) -> bool:
     from pydoll.exceptions import CommandFailed
 
     try:
-        response = await checkbox.execute_script(_CHECKBOX_INTERACTABLE, return_by_value=True)
+        response = await checkbox.execute_script(_CHECKBOX_INTERACTABLE,
+            arguments=[{'value': hit_test}], return_by_value=True)
     except CommandFailed:
         return False
     return bool(response.get('result', {}).get('result', {}).get('value', False))
+
+
+_CHECKBOX_LABELS = """function() {
+    if (!this.isConnected || this.localName !== 'input' || this.type !== 'checkbox'
+            || this.disabled || this.checked) return [];
+    return [...(this.labels || [])].filter(label => label.control === this);
+}"""
+
+
+async def _checkbox_target(checkbox):
+    if await _checkbox_is_interactable(checkbox):
+        return checkbox
+    # Turnstile can make the native input transparent and style its associated
+    # label. Only that exact control's visible, hit-testable label may substitute.
+    for label in await checkbox.query_script(_CHECKBOX_LABELS):
+        if await _checkbox_is_interactable(label):
+            return label
+    return None
+
+
+async def _control_path_is_clear(target, connection, frame_id, lineage):
+    # Match Pydoll's native click point, then hit-test through each actual CDP
+    # target boundary. An iframe's center says nothing about its control's point.
+    quad = await target.bounds()
+    point = [sum(quad[axis::2]) / 4 for axis in (0, 1)]
+    expected = {'frameId': frame_id}
+
+    async def hit_matches():
+        hit = (await connection.execute_command({'method': 'DOM.getNodeForLocation', 'params': {
+            'x': int(point[0]), 'y': int(point[1]), 'includeUserAgentShadowDOM': True}}))['result']
+        return all(hit.get(key) == value for key, value in expected.items())
+
+    for frame, parent_connection, owner_id in reversed(lineage):
+        if not await _checkbox_is_interactable(frame, hit_test=False):
+            return False
+        if parent_connection is connection:
+            continue  # Native hit-testing already traverses same-process frames.
+        if not await hit_matches():
+            return False
+        viewport = (await connection.execute_command({'method': 'Page.getLayoutMetrics'}))['result']['cssLayoutViewport']
+        u, v = point[0] / viewport['clientWidth'], point[1] / viewport['clientHeight']
+        quad = await frame.bounds()
+        point = [quad[axis] + u * (quad[axis + 2] - quad[axis])
+                 + v * (quad[axis + 6] - quad[axis]) for axis in (0, 1)]
+        connection = parent_connection
+        expected = {'backendNodeId': owner_id}
+    return await hit_matches()
 
 
 async def solve_cloudflare(cdp_url: str, stop: Event, *, target_id: str, progress) -> dict[str, str]:
@@ -145,7 +194,7 @@ async def _owned_frames(connection, tree, targets, browser_connection, endpoint,
                 owner = (await connection.execute_command({'method': 'DOM.getFrameOwner', 'params': {'frameId': frame_id}}))['result']['backendNodeId']
                 resolved = await connection.execute_command({'method': 'DOM.resolveNode', 'params': {'backendNodeId': owner}})
                 element = WebElement(resolved['result']['object']['objectId'], connection)
-                if not await _checkbox_is_interactable(element):
+                if not await _checkbox_is_interactable(element, hit_test=False):
                     seen.add(frame_id)
                     continue
                 attached = None
@@ -157,7 +206,7 @@ async def _owned_frames(connection, tree, targets, browser_connection, endpoint,
                 seen.add(frame_id)
             # Never keep a timeout context open across yield: it would cancel the
             # consumer's task while that task is inspecting a different CDP control.
-            lineage = (*ancestors, element)
+            lineage = (*ancestors, (element, connection, owner))
             child_connection = attached[0] if attached else connection
             if _challenge_origin(child['frame'].get('url', '')):
                 yield element, frame_id, child_connection, lineage
@@ -230,31 +279,36 @@ async def _scan(connection, browser_connection, endpoint, clicked, stop):
                         key = await _node_key(box, frame_connection, frame_id)
                         if key is None:
                             continue
-                        usable = await _checkbox_is_interactable(box)
-                        if usable and key not in clicked:
-                            candidates.append((lineage, box, key, frame_connection, frame_id))
-                        elif not usable:
+                        target = await _checkbox_target(box)
+                        if target is not None and key not in clicked and await _control_path_is_clear(target, frame_connection, frame_id, lineage):
+                            target_key = await _node_key(target, frame_connection, frame_id)
+                            if target_key is not None:
+                                candidates.append((lineage, box, key, frame_connection, frame_id, target, target_key))
+                        elif target is None:
                             clicked.discard(key)  # A real disabled/checked -> ready transition may retry.
             except Exception:
                 continue  # Stale nodes and local CDP failures are observations, not terminal page failures.
         # Count currently actionable controls, not every checkbox or frame on the page.
-        unique = {key: (lineage, box, frame_connection, frame_id)
-                  for lineage, box, key, frame_connection, frame_id in candidates}
+        unique = {key: (lineage, box, frame_connection, frame_id, target, target_key)
+                  for lineage, box, key, frame_connection, frame_id, target, target_key in candidates}
         if len(unique) > 1:
             return {'outcome': 'waiting', 'reason': 'checkbox_ambiguous'}
         if not unique:
             return {'outcome': 'waiting', 'reason': 'checkbox_not_found'}
-        key, (lineage, box, frame_connection, frame_id) = next(iter(unique.items()))
+        key, (lineage, box, frame_connection, frame_id, target, target_key) = next(iter(unique.items()))
         async with asyncio.timeout(5):
             # The owner node and control must still be current and hit-testable.
             # This tolerates same-tab navigation but never retargets another tab.
             if stop.is_set():
                 raise asyncio.CancelledError()
-            if not all([await _checkbox_is_interactable(frame) for frame in lineage]) or not await _checkbox_is_interactable(box):
-                return {'outcome': 'waiting', 'reason': 'checkbox_not_interactable'}
             if await _node_key(box, frame_connection, frame_id) != key:
                 return {'outcome': 'waiting', 'reason': 'checkbox_not_interactable'}
-            await box.click()
+            current_target = await _checkbox_target(box)
+            if current_target is None or await _node_key(current_target, frame_connection, frame_id) != target_key:
+                return {'outcome': 'waiting', 'reason': 'checkbox_not_interactable'}
+            if not await _control_path_is_clear(current_target, frame_connection, frame_id, lineage):
+                return {'outcome': 'waiting', 'reason': 'checkbox_not_interactable'}
+            await target.click()
             clicked.add(key)
             return {'outcome': 'clicked', 'reason': 'checkbox_clicked'}
 
