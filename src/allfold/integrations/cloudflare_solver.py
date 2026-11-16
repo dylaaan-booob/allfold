@@ -66,7 +66,11 @@ async def _hit_belongs_to_control(connection, hit, key):
                 'backendNodeId': backend_id, 'objectGroup': group, 'executionContextId': context}})
             nodes.append(result['result']['object']['objectId'])
         result = await connection.execute_command({'method': 'Runtime.callFunctionOn', 'params': {
-            'objectId': nodes[0], 'functionDeclaration': 'function(hit) { return this.isConnected && this.contains(hit); }',
+            'objectId': nodes[0], 'functionDeclaration': '''function(hit) {
+                // Chromium exposes hit pseudo-elements as CSSPseudoElement, not Node.
+                if (!(hit instanceof Node)) hit = hit.element;
+                return this.isConnected && hit instanceof Node && this.contains(hit);
+            }''',
             'arguments': [{'objectId': nodes[1]}], 'returnByValue': True}})
         return result['result']['result'].get('value') is True
     finally:
@@ -113,16 +117,21 @@ async def _control_point(target, connection, key, lineage):
 
 
 async def _checkbox_target(checkbox, connection, frame_id, lineage):
+    from pydoll.exceptions import CommandFailed
+
     # Native inputs and their explicit labels are alternative interaction targets
     # for one checkbox. Test each at its actual point before choosing it.
     for target in [checkbox, *await checkbox.query_script(_CHECKBOX_LABELS)]:
-        if not await _checkbox_is_interactable(target):
-            continue
-        key = await _node_key(target, connection, frame_id)
-        if key is not None:
-            point = await _control_point(target, connection, key, lineage)
-            if point is not None:
-                return key, point
+        try:
+            if not await _checkbox_is_interactable(target):
+                continue
+            key = await _node_key(target, connection, frame_id)
+            if key is not None:
+                point = await _control_point(target, connection, key, lineage)
+                if point is not None:
+                    return key, point
+        except CommandFailed:
+            continue  # An offscreen/stale input must not veto its usable label.
     return None
 
 

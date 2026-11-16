@@ -111,6 +111,8 @@ rechecked before that click. Native hit-testing follows the actual control point
 through its frame/target ancestry, rather than testing each iframe's center.
 The point must hit that control or its descendants. Input uses those checked
 coordinates without a later automatic scroll or position recalculation.
+Pseudo-element hits use their originating element for the same ownership check;
+an offscreen/stale native input does not veto its visible associated label.
 Hidden or rebuilding auxiliary frames do not veto a known actionable control.
 Ambiguous actionable controls wait. Pydoll reobserves current controls
 across navigation, history changes and replacement; it does not require a fixed

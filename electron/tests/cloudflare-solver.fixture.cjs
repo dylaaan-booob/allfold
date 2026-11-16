@@ -74,7 +74,17 @@ app.whenReady().then(async()=>{
     // challenge frame must not receive the click merely because frameId matches.
     await tabs[1].view.webContents.loadURL(pages[0]);
     const controlFrame=tabs[1].view.webContents.mainFrame.framesInSubtree.find(item=>item.url===frameURL);
-    await controlFrame.executeJavaScript(`document.body.innerHTML='<style>body{margin:0}</style><label style="display:block;position:absolute;left:10px;top:30px;width:100px;height:60px;padding-left:100px"><input type="checkbox" style="opacity:0">Verify</label><button id="cover" style="position:absolute;left:150px;top:50px;width:20px;height:20px;z-index:10" onclick="this.dataset.clicked=1">Cover</button>'`);
+    for(const body of [
+      '<input id="box" type="checkbox" style="position:absolute;left:-10000px"><label for="box" style="display:block;width:180px;height:60px">Verify</label>',
+      '<style>label::before{content:"";position:absolute;inset:0;background:#ddd}</style><label style="display:block;position:relative;width:180px;height:60px"><input type="checkbox" style="opacity:0">Verify</label>',
+    ]) {
+      await controlFrame.executeJavaScript('document.body.innerHTML='+JSON.stringify(body));
+      const result=await runSolver(tabs[1],2);
+      assert.ok(result,'an offscreen input or label pseudo-element must not veto its actionable associated label');
+      assert.deepEqual(JSON.parse(result),{outcome:'clicked',reason:'checkbox_clicked'});
+      assert.equal(await controlFrame.executeJavaScript('document.querySelector("input").checked'),true);
+    }
+    await controlFrame.executeJavaScript(`document.body.innerHTML='<style>body{margin:0}#cover::before{content:"";position:absolute;inset:0}</style><label style="display:block;position:absolute;left:10px;top:30px;width:100px;height:60px;padding-left:100px"><input type="checkbox" style="opacity:0">Verify</label><button id="cover" style="position:absolute;left:150px;top:50px;width:20px;height:20px;z-index:10" onclick="this.dataset.clicked=1">Cover</button>'`);
     assert.equal(await runSolver(tabs[1],2),'','same-frame sibling occlusion waits');
     assert.deepEqual(await controlFrame.executeJavaScript('[document.querySelector("input").checked,!!document.querySelector("#cover").dataset.clicked]'),[false,false]);
     // The checked point is visible near the viewport edge. Implicit scrolling
