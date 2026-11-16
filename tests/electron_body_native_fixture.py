@@ -91,8 +91,14 @@ async def main():
     try:
         for index, kind in enumerate(('attachment', 'inline', 'url-doi-form', 'microbiology-redirect', 'interrupted', 'iframe', 'iframe-many', 'predeclared-iframe', 'predeclared-target-changed', 'predeclared-popup-guard', 'existing-iframe', 'existing-target-changed', 'iframe-background', 'popup-background', 'iframe-replaced', 'popup-source-replaced', 'popup', 'named-popup', 'current-form', 'get-form', 'get-changed', 'sciencedirect', 'blocked',
                                       'action-blocked', 'action-challenge', 'action-challenge-iframe', 'action-challenge-popup', 'action-html',
-                                      'institution-complete', 'institution-revoked', 'institution-unprepared', 'cancel', 'drain')):
-            science = kind == 'sciencedirect'
+                                      'institution-complete', 'institution-revoked', 'institution-unprepared',
+                                      'sciencedirect-html-no-item', 'sciencedirect-xhtml-no-item',
+                                      'sciencedirect-reader-navigation', 'sciencedirect-reader-private-navigation',
+                                      'sciencedirect-reader-cookie', 'sciencedirect-reader-scoped-cookie',
+                                      'sciencedirect-reader-stalled', 'sciencedirect-reader-cycle',
+                                      'cancel', 'drain')):
+            science = kind.startswith('sciencedirect')
+            no_item = kind in {'sciencedirect-html-no-item', 'sciencedirect-xhtml-no-item'}
             institutional = kind in institution_ids
             prepared = None
             if institutional and kind != 'institution-unprepared':
@@ -102,17 +108,22 @@ async def main():
                 prepared = application.state.login.prepared_authority(access, service.id)
                 assert prepared is not None and prepared.page_id is not None
             access_blocked = kind in {'blocked', 'action-blocked'} or kind.startswith('action-challenge')
-            article = (origin.replace('www.microbiologyresearch.org', 'www.sciencedirect.com') + '/science/article/pii/S1234567890123456'
+            pii = 'S' + str(1234567890123456 + index)
+            if science:
+                print(json.dumps({'type': 'fixture_science_case', 'case': kind, 'pii': pii}), flush=True)
+            science_article = origin.replace('www.microbiologyresearch.org', 'www.sciencedirect.com') + '/science/article/pii/' + pii
+            science_query = '?case=' + kind if no_item else ''
+            article = (science_article + science_query
                 if science else origin + ('/doi/10.5555/STRA%C3%9FE' if kind == 'url-doi-form' else '/article') + '?case=' + kind)
             candidate = PdfCandidateFact(stage='P4', rule_id='R024' if science else 'R059',
-                url=article + '/pdfft' if science else origin + ('/expired-action' if kind == 'current-form' else '/once') + '?' + ('discard=old-action-query&' if kind in {'get-form', 'get-changed'} else '') + 'case=' + kind,
+                url=science_article + '/pdfft' + science_query if science else origin + ('/expired-action' if kind == 'current-form' else '/once') + '?' + ('discard=old-action-query&' if kind in {'get-form', 'get-changed'} else '') + 'case=' + kind,
                 reader_kind='sciencedirect' if science else None, action=None if science else 'refresh_form', referer=article)
             if institutional:
                 lww = origin.replace('www.microbiologyresearch.org', 'journals.lww.com')
                 article = lww+'/fixture/fulltext/2026/paper.aspx'
                 candidate = PdfCandidateFact(stage='P4', rule_id='R060', reader_kind='lww',
                     url=lww+'/fixture/_layouts/15/oaks.journals/downloadpdf.aspx?an='+institution_ids[kind])
-            fallback = kind in {'interrupted', 'institution-revoked', 'institution-unprepared'}
+            fallback = kind in {'interrupted', 'institution-revoked', 'institution-unprepared', 'sciencedirect-reader-stalled', 'sciencedirect-reader-cycle'}
             fallback_url = (origin.replace('www.microbiologyresearch.org', 'repository.example.org')+'/oa.pdf?case='+kind
                 if institutional else origin+'/fallback.pdf')
             identity = 'W' + str(88000 + index)
@@ -203,14 +214,21 @@ async def main():
             assert not host.active
             with PaperRepository.open(workspace) as repo:
                 stored = repo.get(paper.id)
-                assert stored.download.status == ('failed' if expected == 'local_failure' else 'cancelled' if expected == 'stale' else expected)
+                assert stored.download.status == ('failed' if expected == 'local_failure' else 'cancelled' if expected in {'stale', 'expired'} else expected)
                 assert stored.collection is None
+                if no_item:
+                    # Public HTTP, production Session/Main and reopened SQLite
+                    # must retain the exact completed Paper/attempt association.
+                    assert stored.body is not None
+                    assert stored.download.token == task.download_token
+                    assert (workspace / 'Documents' / f'{paper.id}.pdf').is_file()
                 if expected == 'completed':
                     assert stored.body.pdf_source == ('P5' if fallback else 'P2' if science else 'P4')
                     assert stored.body.fallback_used is (fallback or institutional), kind
                     if fallback:
                         observations=projected['download']['source_observations']
-                        reason = {'institution-revoked': 'service-invalidated', 'institution-unprepared': 'service-unprepared'}.get(kind, 'interrupted')
+                        reason = {'institution-revoked': 'service-invalidated', 'institution-unprepared': 'service-unprepared',
+                            'sciencedirect-reader-stalled': 'no-pdf-entry', 'sciencedirect-reader-cycle': 'response-loop'}.get(kind, 'interrupted')
                         assert any(item['pdf_reason'] == reason and (not institutional or item['service_id'] == service.id) for item in observations)
                     assert 'Signature' not in str(projected)
                     assert stored.body.size_bytes == 256 * 1024
@@ -222,7 +240,8 @@ async def main():
                 await invalidate_prepared(access, prepared)
             if institutional:
                 assert task.access_operation is None and not host.browser_lock.owners
-            print(json.dumps({'type': 'fixture_public_native', 'case': kind, 'status': result.status, 'paper': str(paper.id)}), flush=True)
+            print(json.dumps({'type': 'fixture_public_native', 'case': kind, 'status': result.status, 'paper': str(paper.id),
+                **({'body_associated': stored.body is not None, 'attempt': stored.download.token.attempt} if science else {})}), flush=True)
         print(json.dumps({'type': 'fixture_complete'}), flush=True)
     finally:
         await client.aclose()

@@ -4,7 +4,7 @@ from contextlib import ExitStack, contextmanager
 from dataclasses import dataclass, replace, field
 import threading
 import time
-from urllib.parse import parse_qs, urldefrag, urlsplit, urlunsplit
+from urllib.parse import urlsplit, urlunsplit
 
 from allfold.application.browser_services import browser_workspace_identity
 from allfold.pdf_discovery import CandidateResult, CurrentResponse, PdfDiscovery, PdfSourceReadError, SUPPORTED_PDF_TARGET_TYPES
@@ -223,7 +223,7 @@ def _consume(reservation, repository, files, candidate, progress):
             access = {'cloudflare': 'challenge', 'login': 'login'}.get(detected)
         result = CandidateResult('response', response=CurrentResponse(url=current['url'], content_type=current['content_type'],
             status=current['status'], body=current['body'].encode(), access=access, partial=current.get('partial', False),
-            context_changed=current.get('context_changed', False)),
+            context_changed=current.get('context_changed', False), context_key=current.get('context_key')),
             diagnostic='access-'+access if access in {'challenge','login','authorization'} else None)
     else:
         result = CandidateResult(kind if kind in {'pending','failed','local_failure','cancelled','stale','expired'} else 'failed',
@@ -244,7 +244,7 @@ def _document_candidates(reservation, repository, candidate, response=None):
         current = urlsplit(response.url) if response is not None else confirmed
         if (article is None or (current.scheme,current.netloc,current.path) != (confirmed.scheme,confirmed.netloc,confirmed.path)
                 or confirmed.hostname not in {'www.sciencedirect.com', 'sciencedirect.com'}):
-            return ()
+            return None
     from allfold.application.pdf_discovery import PdfDiscoveryContext
     from allfold.application.document_metadata import read_document_pdf_clues, DocumentMetadataFailed
     context = PdfDiscoveryContext(reservation, repository)
@@ -273,9 +273,9 @@ def _document_candidates(reservation, repository, candidate, response=None):
     context.guard()
     if blocked:
         raise PdfSourceReadError('Reader access refused', diagnostic='access-blocked')
-    return tuple(replace(candidate, url=item.url, reader_kind=item.reader_kind,
+    return replace(parsed, current_candidates=tuple(replace(candidate, url=item.url, reader_kind=item.reader_kind,
         referer=item.referer, action=item.action, credential=None, accept=None)
-        for item in parsed.current_candidates) if parsed is not None else ()
+        for item in parsed.current_candidates)) if parsed is not None else None
 
 
 class _BodyDiscoveryIO:
@@ -287,7 +287,6 @@ class _BodyDiscoveryIO:
         self.context = PdfDiscoveryContext(reservation, repository)
         self.io = PdfDiscoveryIO(None, document_context=self.context)
         self.resources = ExitStack()
-        self.prepared = set()
         self.oce_authority = None
         self.openalex_available = reservation.body_request.candidates is None
 
@@ -328,12 +327,8 @@ class _BodyDiscoveryIO:
 
     def reader(self, candidate, response):
         # The same live parser also handles a ScienceDirect article fallback.
-        values = self._read(lambda operation, io: _document_candidates(operation, self.repository, candidate, response),
+        return self._read(lambda operation, io: _document_candidates(operation, self.repository, candidate, response),
             candidate.access)
-        if values:
-            from types import SimpleNamespace
-            return SimpleNamespace(current_candidates=values)
-        return None
 
     def oce_access(self, candidate, response):
         if response.status != 200 or access_limited(response):
@@ -359,9 +354,14 @@ class _BodyDiscoveryIO:
         if parsed is not None:
             # The retained institution capability also owns its observed PDF,
             # including HTTPS/CDN continuations. P5 starts independently.
+            values = parsed.current_candidates
+            if not values and parsed.reader_result is not None:
+                navigation = parsed.reader_result
+                values = (replace(candidate, url=navigation.url, referer=navigation.referer,
+                    action=None, reader_kind=None),)
             parsed = replace(parsed, current_candidates=tuple(replace(candidate,
                 url=item.url, referer=item.referer, action=item.action, reader_kind=item.reader_kind,
-                access=self.oce_authority) for item in parsed.current_candidates))
+                access=self.oce_authority) for item in values))
         return parsed
 
     def _read(self, read, authority=None):
@@ -396,19 +396,6 @@ class _BodyDiscoveryIO:
             self.reservation.registry._guard(self.reservation, self.repository)
             raise PdfSourceReadError('Institutional Reader access changed', diagnostic='service-invalidated',
                 service_id=authority.service_id if authority else None) from None
-
-    def prepare(self, candidate):
-        from allfold.application.native_body_downloads import native_applicable
-        if native_applicable(candidate):
-            return ()
-        key = (urldefrag(candidate.url)[0], candidate.action)
-        reader = reader_context(candidate)
-        if (reader and reader['platform'] == 'sciencedirect' and candidate.target.article_url
-                and not candidate.action and not candidate.credential
-                and not parse_qs(urlsplit(candidate.url).query).get('md5') and key not in self.prepared):
-            self.prepared.add(key)
-            return self._read(lambda operation, io: _document_candidates(operation, self.repository, candidate), candidate.access)
-        return ()
 
     def close(self):
         from allfold.application.collection_runtime import _CleanupUnconfirmed

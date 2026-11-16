@@ -1,17 +1,63 @@
-# Capturing a browser PDF response with misleading MIME
+# PDF saving and historical original-response capture research
 
-A protocol relay can inspect a small prefix before returning the response stream
-to Chromium. The isolated probe below demonstrates one physical HTTP request,
-but does not preserve the required original-request correlation. Real HTML must
-continue as a Document; only proven PDF bytes may become managed download output.
-A header hook alone cannot make that distinction. None of the mechanisms examined
-here completes the remaining ScienceDirect implementation.
+## Current production strategy
 
-The repository pins Electron 45.0.0. Its upstream tag selects Chromium
-156.0.8078.48; API/source observations below use those tags, rather than assuming
-old reports describe the installed runtime. See [Electron DEPS](https://github.com/electron/electron/blob/v45.0.0/DEPS#L3-L5).
-The existing ownership, output and completion contract remains in
-[body downloads](body-downloads.md).
+Ordinary R024 GETs use the existing business Session stream, including signed
+URLs and PDF bytes labeled HTML/XHTML without a DownloadItem. They need no
+article pre-read or original-navigation capture. The actual response supplies the
+existing five-byte discriminator and backpressured pipeline; normal network and
+writer completion precede the existing publication/SQLite association.
+
+Already received HTML/JSON is parsed before opening a Reader. When execution or
+access recovery is necessary, the fixed Browser/Reader/Solver operation returns
+current candidates and an operation-local navigation/access result. Its actual
+main-frame GET URL, actual Referer (including absence) and Cookie progress can resume Session, including a
+final CDN outside the starting Reader template or the same URL without a DOM
+link. Signed values bypass durable-fact projection. Unchanged observations stop
+loops, including cycles back to a previously seen Cookie state. An opaque key
+under a Session-local secret permits equality checks without exposing Cookie
+values or persisting/logging the key; subsequent ordinary GETs after genuine
+access progress are allowed.
+Observed public HTTP redirects use the same chain with URL/DNS and scoped-secret
+checks; they are not limited to the former Oxford/ScienceDirect CDN pairs.
+
+Original R059 forms (including GET forms), POST and explicit one-time actions
+retain their native method/control/request/frame/item semantics. An ordinary URL
+is not a one-time action merely because it contains signatures. No production
+Fetch capture, replay of consumed actions, whole-PDF buffer, new downloader or
+runtime upgrade is introduced. [Body downloads](body-downloads.md) owns access,
+output, completion and the accepted native cancellation limitation.
+
+Controlled production regressions use actual locked Electron, temporary profiles
+and isolated Workspace. Public Download completes HTML/XHTML mislabeled PDFs in
+one body request with no item, matching permanent bytes and reopened original
+Paper/attempt SQLite association. Reader cases cover signed final navigation,
+repeated Cookie progress without links, Cookie-cycle/no-progress independent
+fallback and preservation of `no-referrer` navigation.
+Path-scoped Cookie progress also survives an entry/Reader HTTP redirect and a
+runtime clue returning to the original entry; it is a continuation, not fallback.
+Session fixtures cover public cross-origin redirects, private/illegal target
+refusal, ordinary and close-delimited completion, broken transfer/decode errors,
+backpressure, writer errors and late signals. Run serially:
+
+```sh
+node --test --test-concurrency=1 electron/tests/body-native.test.cjs electron/tests/body-stream.test.cjs
+```
+
+Issue #136 and PR #139 use this Session strategy as the current specification.
+The complete local/CI evidence belongs to the latest PR version. Real publisher,
+institution, system PDF and large Allfold/Zotero paired acceptance remain
+separately authorized follow-up work, not a prerequisite for this GET mechanism
+fix. See [scoped manual acceptance](body-downloads.md#scoped-manual-acceptance).
+
+## Historical strict-original-response research
+
+The sections below retain earlier evidence under the superseded requirement that
+an ordinary R024 GET had to save its browser navigation's original response.
+Those limitations remain relevant to genuinely one-time responses; they do not
+block the adopted ordinary GET strategy. Source observations pin Electron 45.0.0
+and Chromium 156.0.8078.48 ([Electron DEPS](https://github.com/electron/electron/blob/v45.0.0/DEPS#L3-L5)).
+No external source is a live-site acceptance result.
 
 ## Similar reports and actual guidance
 
@@ -32,7 +78,7 @@ documents this forwarding option and says `webRequest` still runs. Using the
 business Session's `fetch` is necessary here; the default Session is not the
 business Session.
 
-## Candidate: prefix inspection before Chromium receives the body
+## Earlier candidate: protocol relay (rejected)
 
 Intercept the admitted browser navigation before its upstream request is sent,
 forward that request once through the same business Session, then read only the
@@ -130,7 +176,7 @@ from `will-download`. Neither API contract promises original-PDF-stream adoption
 | Mechanism | Applicability to this boundary |
 | --- | --- |
 | Header removal, unknown MIME, `application/octet-stream` | Chromium's [matching-version sniffer](https://github.com/chromium/chromium/blob/156.0.8078.48/net/base/mime_sniffer.cc#L659-L808) excludes `text/html`/XHTML from normal sniffable types, honors `nosniff`, and deliberately avoids ordinary magic-number detection for octet-stream. Unknown MIME can allow HTML/PDF sniffing, but inferred PDF can still enter the viewer rather than create an item. Headers alone expose no byte discriminator. |
-| `Fetch.takeResponseBodyAsStream` + sequential `IO.read` | [Fetch](https://github.com/chromium/chromium/blob/156.0.8078.48/third_party/blink/public/devtools_protocol/domains/Fetch.pdl#L184-L234) provides request/frame IDs and a stream; [the pipe reader](https://github.com/chromium/chromium/blob/156.0.8078.48/content/browser/devtools/devtools_stream_pipe.cc#L59-L121) reads on demand. But taking the body consumes Chromium's original response path: [continuation explicitly refuses it](https://github.com/chromium/chromium/blob/156.0.8078.48/content/browser/devtools/devtools_url_loader_interceptor.cc#L1292-L1452). `fulfillRequest` accepts a whole binary body, not a stream handle. Useful for an entry already known not to require HTML continuation; insufficient by itself for ambiguous Reader HTML. |
+| `Fetch.takeResponseBodyAsStream` + sequential `IO.read` | [Fetch](https://github.com/chromium/chromium/blob/156.0.8078.48/third_party/blink/public/devtools_protocol/domains/Fetch.pdl#L184-L234) provides request/frame IDs and a stream; [the pipe reader](https://github.com/chromium/chromium/blob/156.0.8078.48/content/browser/devtools/devtools_stream_pipe.cc#L59-L136) reads on demand. After taking the body, [unmodified continuation is refused](https://github.com/chromium/chromium/blob/156.0.8078.48/content/browser/devtools/devtools_url_loader_interceptor.cc#L1439-L1455). Complete real HTML can instead be collected and fulfilled, as verified below. PDF can be read with bounded buffering, but its original upstream completion is not exposed by Fetch/IO; EOF and replacement-response events are insufficient. |
 | `Network.streamResourceContent` | Can observe an in-flight response without replaying HTTP or stopping the page. In [the current implementation](https://github.com/chromium/chromium/blob/156.0.8078.48/third_party/blink/renderer/core/inspector/inspector_network_agent.cc#L1698-L1752), it copies buffered bytes and pushes subsequent chunks as `dataReceived`; inspector buffering remains active. There is no sink acknowledgement/pull control in this path. It is not an established replacement for the existing backpressured writer. |
 | `Network.getResponseBody` / `Fetch.getResponseBody` | Return the complete body. [chrome-remote-interface #260](https://github.com/cyrus-and/chrome-remote-interface/issues/260) advises waiting for `loadingFinished` and tracking the original ID, with later reports of missing bodies. That timing advice does not provide a bounded stream or remove full-body caching. |
 | Electron `webRequest` response filters | [#36261](https://github.com/electron/electron/issues/36261) clarifies that a purported Chromium implementation was a fork demo, not an upstream API, and rejects whole-body buffering for large responses. [#8374](https://github.com/electron/electron/issues/8374) was closed as unplanned in 2025. The [v45 API](https://github.com/electron/electron/blob/v45.0.0/docs/api/web-request.md) exposes headers/events, not a response-body filter. Firefox extension filters or a custom Electron build cannot be assumed available. |
@@ -200,14 +246,105 @@ enter the original managed output path.
 
 The applicable design lesson is to preserve browser execution and exact resource
 ownership separately from attachment validation. Zotero's inspected saving paths
-do not remove Allfold's remaining requirement to prove original-response capture,
-finite buffering/backpressure and original DownloadItem association together.
+did not satisfy the earlier strict-original-response requirement. The adopted
+ordinary GET strategy instead reuses Allfold's streaming transfer and original
+Paper/attempt association; the Connector's whole-body buffering is not copied.
 No Zotero account, browser, publisher or installed-app acceptance was performed.
+
+## Historical Response-stage Fetch experiment (`406c26c`)
+
+The earlier implementation attempt started from the fetched `origin/main` at
+`9b56aa61c5859b0e5271bb4e4ee023655fa881e8`, after PRs #137/#138.
+The executable [mechanism fixture](../electron/tests/pdf-response-capture.fixture.cjs)
+uses actual Electron **45.0.0 / Chromium 156.0.8078.48**, a temporary profile,
+an isolated Session and a loopback HTTP server. Run serially:
+
+```sh
+node --test --test-concurrency=1 electron/tests/pdf-response-capture.research.cjs
+```
+
+The first test attaches to its own WebContents before navigation and restricts
+Fetch to that navigation's URL, Document resource type and response stage. Its
+own CDP target's root frame maps to that WebContents' Electron main frame;
+`Fetch.networkId` supplies the CDP request association, while Electron request
+IDs are observed separately. Electron frame tokens and CDP frame IDs differ.
+This is a root-frame mechanism check, **not production action attribution**:
+popup/child-frame admission, other simultaneous operations and shared Solver
+connections still need production validation before any capture is enabled.
+
+Observed results (each original response requested once, `Cache-Control: no-store`):
+
+| Case | Before ending the paused request | Result visible to the page/Session |
+| --- | --- | --- |
+| No Fetch, normal chunked or legal close-delimited PDF-as-HTML | Ordinary original response | `completed` / `Network.loadingFinished`; no item |
+| No Fetch, chunked body disconnected without its final chunk | Ordinary original response | `ERR_INCOMPLETE_CHUNKED_ENCODING` through both event surfaces; no item |
+| Fetch stream, complete HTML/XHTML-labeled PDF | All 131,072 bytes, then EOF; no terminal event while held | Explicit empty-body `fulfillRequest` produces `completed` / `loadingFinished`; no item |
+| Fetch stream, the same protocol-invalid disconnect | Only 65,536 bytes, then the same EOF; no terminal event while held | The same empty-body fulfillment produces **the same successful events**; no item |
+| Fetch stream, either normal or broken response, then `failRequest(Aborted)` | Same differing byte counts and common EOF | Both report `ERR_ABORTED`, which is the chosen downstream termination |
+| Fetch stream, then unmodified `continueRequest` | Original bytes consumed once | Rejected: `Unable to continue request as is after body is taken`; the owned probe Page is destroyed |
+| Real gzip HTML Reader, status 203, complete body beyond 256 KiB | Complete decoded HTML collected, including its final script | Fulfillment preserves charset, CSP, Cookie and Referer policy; the permitted script sets a Cookie and navigates to one separate attachment response. That ordinary item completes with matching fixture bytes. A script lacking the CSP nonce does not set its Cookie. |
+
+The PDF discriminator spans the first reads. The same response returns both
+plain and base64 blocks; each is decoded according to its actual flag. One read
+at a time waits for the slow test sink's write callback; the sink compares bytes
+incrementally. No complete PDF is assembled by the consumer. This proves the
+probe's pull discipline and byte preservation, not managed-file publication or
+an overall Chromium memory bound. Only HTML is collected in full for fulfillment;
+decoded gzip bytes are returned without stale Content-Encoding, Content-Length
+or Transfer-Encoding headers. The Reader executes after full collection, so this
+does not establish progressive-loading compatibility with a publisher Reader.
+
+The [historical public test at `406c26c`](https://github.com/dylaaan-booob/allfold/blob/406c26cbcaa1381da03ef82e114f8169b26a71a8/tests/electron_body_native_fixture.py) used **public HTTP → production Bridge/Main →
+native action → isolated Workspace/SQLite** fixture. It characterized the then-current
+gap for HTML and XHTML: real `%PDF-` responses complete normally with no
+DownloadItem or body association. The existing HTML failed-source path makes
+three requests across its candidate attempts and ends failed; XHTML makes one
+and its XML error document waits for parent expiry (the fixture shortens only
+that probe's existing parent deadline). Neither publishes a permanent file.
+These counts do not meet the required single-response successful-save acceptance.
+`R024 PRODUCTION GAP` records request count, item count, original
+terminal basis and reopened SQLite association. This is evidence of the missing
+feature, **not a passing R024 save acceptance**. Current product tests replace those failure assertions with successful Session
+saves; the historical request counts are not current completion expectations.
+
+### Why the visible terminal cannot be used
+
+After body take, [OnComplete stores the original status internally](https://github.com/chromium/chromium/blob/156.0.8078.48/content/browser/devtools/devtools_url_loader_interceptor.cc#L2151-L2182).
+[IO EOF represents pipe closure](https://github.com/chromium/chromium/blob/156.0.8078.48/content/browser/devtools/devtools_stream_pipe.cc#L74-L136).
+[Response replacement constructs new completion metadata](https://github.com/chromium/chromium/blob/156.0.8078.48/content/browser/devtools/devtools_url_loader_interceptor.cc#L1568-L1629).
+These source facts explain the differential runtime result above: the Session and
+Network terminal events observed after replacement describe that downstream
+replacement, not the original HTTP transfer. The byte counts are test evidence,
+not a proposed Content-Length or PDF-integrity success rule.
+
+Source-only checks also reject header-only continuation and Fetch disable as
+completion outlets: [continueResponse delegates to the same continuation](https://github.com/chromium/chromium/blob/156.0.8078.48/content/browser/devtools/protocol/fetch_handler.cc#L498-L528),
+and [Detach attempts unmodified continuation](https://github.com/chromium/chromium/blob/156.0.8078.48/content/browser/devtools/devtools_url_loader_interceptor.cc#L1321-L1336),
+which refuses the taken body. Neither was counted as a separate runtime success.
+The take path also [discards the body-only decoder's error callback](https://github.com/chromium/chromium/blob/156.0.8078.48/content/browser/devtools/devtools_url_loader_interceptor.cc#L2130-L2144).
+The [decoder contract returns errors separately from its pipe](https://github.com/chromium/chromium/blob/156.0.8078.48/services/network/public/cpp/content_decoding_interceptor.h#L157-L174);
+therefore a decoding failure may also reduce to EOF. That last point is a source
+inference; the fixture tests successful gzip HTML, not a corrupt-gzip failure.
+
+### Historical disposition and adopted replacement
+
+The strict Fetch stream path had no supported original-success signal; using its
+EOF or synthetic completion for publication would accept protocol-invalid
+truncation. That finding remains valid for the pinned experiment. The historical
+need to change a runtime API or preserve original navigation bytes is superseded
+for ordinary GET by the adopted Session strategy above. It is not a current
+blocker for Issue #136 and does not authorize replaying one-time actions.
+
+The research wrapper is now `pdf-response-capture.research.cjs`, outside the
+package's default `tests/*.test.cjs` product collection. Its explicit command
+above retains the locked-version, synthetic-terminal and HTML-fulfillment checks
+for historical reproduction only. Product correctness is instead tested through
+Session completion, managed files and original Paper/attempt association.
 
 ## Isolated observations
 
-These are synthetic local Electron 45 / Node probes, not publisher or Zotero
-application acceptance. They tested the candidate mechanisms before integration:
+These earlier synthetic Electron 45 / Node observations remain evidence for their
+own rejected candidates, not publisher or Zotero acceptance:
 
 - Protocol relay: one HTTP GET, a replayed `%PDF-` prefix and one completed real
   DownloadItem produced the exact supplied bytes. The outer navigation had its
@@ -227,8 +364,10 @@ application acceptance. They tested the candidate mechanisms before integration:
   octet-stream MIME was accepted; HTML MIME was rejected. This exercises the
   validator, not the installed Connector, network access or a Zotero library.
 
-The production regression remains in the existing native fixture: a committed
+At the earlier baseline, the production regression was in the native fixture: a committed
 ScienceDirect Reader followed by a CDN HTTP redirect completes once; unchanged
 navigation/Cookie cycles still stop. Restoring the old continuation-context check
 in an in-memory test reproduced `download_not_attributable`; the corrected
-`body-native.test.cjs` passes all six tests, including the public SQLite fixture.
+`body-native.test.cjs` then passed six tests, including its public SQLite fixture.
+The current Session regressions replace R024 native-only cases while retaining
+R059 ownership/output and Service behavior.

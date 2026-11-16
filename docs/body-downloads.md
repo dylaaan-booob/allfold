@@ -2,13 +2,16 @@
 
 `BodyDownloadService` owns the public single-Paper Download/Cancel path. One
 Workspace host reservation owns lazy P1–P5 discovery, the selected Session stream
-or qualified original DownloadItem response,
+or qualified original form DownloadItem response,
 file publication, the SQLite completion transaction and actual cleanup. There is
 one current body per Paper and no separate save, receive or commit task.
 
-A fixed current-form or ScienceDirect action retains its original method/body and
-Session. It does not emulate POST or one-time responses with a GET. Reusable URLs
-use the Session stream consumer. Original output retains the measured
+A fixed current-form action retains its original method/body and Session, including
+GET form submissions. It does not emulate POST or one-time responses with a GET.
+Ordinary URLs, including signed R024 GETs, use the Session stream consumer. Browser
+may establish access or obtain a URL before another ordinary GET; saving that GET
+does not require its navigation's original response or a DownloadItem.
+Original form output retains the measured
 [native cancellation limitation](#native-output-and-accepted-cancellation-risk).
 
 ## Public input and admission
@@ -75,8 +78,12 @@ spelling, multiple DOI path segments, signatures and necessary Referer.
 
 `PdfDiscovery` owns source order, de-duplication, reader/redirect chains and the
 remaining parent budget. P1 templates precede conditional P2 identifiers/APIs,
-P3 Meta, current P4 entries and finally exact-target OpenAlex P5 candidates.
-P1 success makes later queries/pages zero. Saved P3/P4 facts do not reorder it.
+saved P3 Meta and stable saved P4 URLs. Existing P4 URLs need no article reload for
+a partial snapshot, missing Meta field or unrelated refresh locator. After
+failure/missing or a dynamic entry requirement, PDF-only refresh supplies its own
+P3 before its P4; exact-target OpenAlex P5 remains last. P1 success makes later
+queries/pages zero. Refresh never restarts failed P1/P2 or turns an action/refresh
+locator into a stable GET.
 The [source catalogue](pdf-source-discovery.md) owns rule applicability. Conditional interfaces are skipped when their actual prerequisites
 are absent; no publisher-key settings product or generic header capability is
 added.
@@ -84,8 +91,9 @@ added.
 Python may perform bounded API/JSON/HTML discovery reads, but the selected
 Chromium Session receives the first actual reusable PDF request. It does not
 follow an HTTPX PDF GET/HEAD probe. PDF-only refresh uses [Document access](browser-documents.md) and never recollects
-completed Date/Abstract. Known IEEE reader, Oxford same-filename Silverchair CDN
-and ScienceDirect same-PII response/reader rules keep their narrow qualifications.
+completed Date/Abstract. Known Reader entry/HTML parsers retain their platform
+qualification. Actual ordinary GET HTTP redirects use the common Session chain;
+their target need not match a filename, PII or publisher CDN list.
 Unknown pages are not a crawler. Login/access refusals, missing entries and Reader failures are recorded for that source and allow other qualified candidates after actual cleanup. Only the fixed qualified native entries execute actions; inapplicable
 entries are finite condition skips, not pending or successful transfers, and do
 not manufacture `fallback_used`.
@@ -111,18 +119,35 @@ PDF bytes never cross the bridge. Main waits for the existing business Session,
 pins only an explicitly bound access context and uses the unique `SharedSessionEvents.fetch`
 with Chromium credentials. Cover omission and a default Session are not reused.
 
-Stream targets require public URLs and public DNS preflight. Redirects stay
-inside the captured origin. An actually observed Oxford `article-pdf` redirect
-may continue only to matching `watermarkNN.silverchair.com/<same filename>.pdf`;
-ScienceDirect permits only its observed same-PII
-`pdf.sciencedirectassets.com/.../1-s2.0-<PII>/main.pdf` relationship. Each new CDN
-request repeats target checks and uses destination-scoped Chromium cookies,
-never forwarded source credentials. Other origin escapes, protocol downgrades
-and filename/PII changes remain refused. Required Referer uses
-`strict-origin-when-cross-origin`; private request markers leave no outbound
-header. Explicit optional API secrets, when a trusted capability supplies them,
-are constrained by fixed HTTPS Host/path/header contracts and redirects; the
-renderer cannot configure them.
+Stream targets require public URLs and public DNS preflight. Main stops an origin
+or explicit API-credential-scope escape before the next request and returns the
+observed HTTP redirect to Python. The same candidate chain issues the next GET
+after target/DNS checks, retaining source and actual Service authority.
+Destination cookies come from the business Session; explicit source API keys do
+not follow outside their fixed HTTPS Host/path. Ordinary redirects do not count
+as source fallback. Invalid protocols, internal targets and actual loops remain
+refused; no CDN URLs are guessed. Referer uses
+`strict-origin-when-cross-origin`, including HTTPS-to-HTTP suppression. Private
+request markers leave no outbound header. Renderer cannot configure API secrets.
+
+Already received bounded HTML/JSON is parsed for qualified next hops first.
+Only a necessary fixed Reader executes in Browser/Solver. Its operation-local
+`reader_result` carries the actual owned main-frame GET URL, observed Referer
+(including absence), Cookie-context change and an opaque equality key separately
+from persistable facts. Main keys Cookie states with a Session-local secret;
+neither Cookie values nor these keys enter durable facts or diagnostics. Final body/CDN navigation
+does not have to retain the starting Reader template. New navigation, changed
+access context or a completed access barrier can permit Session continuation,
+including the same URL without a new DOM link. Repeated unchanged responses/edges
+stop, including a cycle back to a previously seen Cookie state; actual new Cookie
+progress remains distinguishable without a fixed hop count.
+Entry-request and Reader context keys remain separate observations, since an HTTP
+redirect can lead to a Reader with a different Cookie path. One cannot overwrite
+the other's progress.
+An observed redirect without a context key retains the last known request state;
+absence of new context evidence does not erase actual progress.
+Reader, stream and subsequent redirects retain the captured access binding;
+independent sources start without it. No Cookie values cross the bridge.
 
 Main uses backpressured `pipeline`, flush and actual writer close. Its
 `stream_complete` reports transport, not Downloaded. Progress is throttled and
@@ -164,16 +189,15 @@ and deadlines before following another source or request.
 
 The R059 form selector can identify a download in the article navigation toolbar;
 related, reference, supplementary and foreign-identity controls stay excluded.
-The current form uses its original fields. Its observed POST→303→PDF path and
-ScienceDirect's same-PII reader/CDN path are supported through native request/frame
-handoff. Destination checks and scoped headers preserve the original response;
-no response is copied or replayed. These platform paths are narrow current
-implementations, not general permission to follow unrelated requests.
+The current form uses its original fields. Its observed POST→303→PDF path is
+supported through original request/frame handoff. Destination checks and scoped
+headers preserve that response; no action is copied or replayed. This remains
+separate from ordinary R024 Session GET and Reader continuation.
 
 `native_paper_body` uses a separate fixed action capability in Main/BrowserRuntime
 and the isolated Document preload. It opens the Paper entry through access waiting
 and reads PDF-only snapshot clues. Prepare and dispatch locate the current R059 form
-or R024 ScienceDirect target from that candidate; they cache no DOM node or page
+from that candidate; they cache no DOM node or page
 identity. Equivalent duplicate controls, hydration and same-frame history changes
 do not deny the action. Multiple forms must also have equivalent successful
 controls, compared only in the live renderer. A missing current link/form makes
@@ -213,11 +237,15 @@ optional: a terminal DTO can supply the first actual inode observation.
 At actual item completion, the verified no-follow output descriptor supplies the
 same single five-byte type observation. MIME and filenames are only hints;
 non-HTML qualified navigation responses may become managed items regardless of
-MIME. Fixed form destinations also retain HTML-mislabeled PDF bytes through the original item; actual Reader HTML remains available to its Browser navigation. A non-PDF item is an owned
+MIME. Fixed form destinations also retain HTML-mislabeled PDF bytes through the original item. Ordinary Reader HTML executes through Document access rather than this form capability. A non-PDF item is an owned
 candidate failure and its temporary output is cleaned before another source.
-Only a normal completed PDF item with verified actual output enters the common
-publication/SQLite path. A filename, viewer display or `will-download`
-event alone cannot complete the Paper.
+In the current item implementation, only a normal completed PDF item with verified
+actual output enters the common publication/SQLite path. The private success DTO
+requires `native_complete`, `pdf_type`, `transfer_complete`, actual `output_file`
+identity and `final_url`; it does not require a DownloadItem or a prior progress
+event. Ordinary GET uses the existing `stream_complete` contract and writer close.
+A filename, viewer display,
+`will-download` or stream EOF alone cannot complete the Paper.
 
 Native output reserves an exclusive `0700` directory at
 `Documents/.downloads/<paper UUID>.<attempt>.<physical-output UUID>.native/` and initially leaves
@@ -360,21 +388,22 @@ storage error. Successful increments survive; no new attempt or replacement
 Workspace can be modified by the old token. There is no orphan scan, filename-based ownership recovery,
 persistent replay queue or resume engine.
 
-### Current limitations and follow-up
+### Current evidence and follow-up
 
+R024 ordinary GET uses the production Session pipeline, including real PDF with
+HTML/XHTML MIME and no item. Controlled public Download fixtures verify one body
+request for direct success, exact permanent bytes, reopened SQLite original
+Paper/attempt association and actual resource release. Reader fixtures cover
+signed final navigation outside its starting template, repeated actual Cookie
+progress without a DOM link and no-progress fallback. Other ordinary URLs use the
+same transport; this is not a claim of universal publisher compatibility.
 
-R024 still has one unresolved original-response case: real PDF bytes declared as
-HTML/XHTML without a Chromium DownloadItem. Reader HTML must remain renderable
-for its legitimate navigation; the current header-only admission cannot also
-identify those hidden PDF bytes. Fixed form destinations and existing items,
-and the Session stream, accept misleading MIME through actual prefix checks.
-A completed empty Reader now ends that source rather than waiting for the whole
-parent deadline. Full R024 coverage requires a separately resolved original-body
-capture boundary; changing MIME globally, replaying the request or buffering the
-whole PDF is not an implemented solution. This remains a stage-seven blocker.
-The [response-capture investigation](pdf-response-capture.md) records current
-community guidance, Zotero's actual save boundaries and isolated mechanism probes;
-it does not substitute for a working original-response implementation.
+The earlier strict-original-response Fetch limitation remains historical research
+and can matter for genuinely one-time actions. It does not block ordinary GET
+under the adopted Session strategy. Its explicit opt-in reproduction and original
+evidence remain in the [response-capture investigation](pdf-response-capture.md).
+No production Fetch capture, PDF buffering or runtime upgrade is added. Real
+publisher/Reader timing, institutional and Zotero paired acceptance remain unrun.
 
 Source failures do not stop independent candidates. P1–P5 remains lazy and stops
 at the first actual PDF completion. OpenAlex preserves best-first deterministic
@@ -390,13 +419,10 @@ complete-empty data. Discovery's retained candidate/response state has a 1 MiB
 memory budget and the original parent deadline; there is no separate operation,
 hop or transfer-count expiry.
 
-ScienceDirect reader/CDN continuations follow observed same-PII navigation from
-the bound committed response. Identical navigation edges stop loops; changed
-response/Cookie evidence permits legitimate returns. Session HTML may revisit its
-own URL only after an actual Cookie-context change or a qualified fresh Reader
-observation. Neither condition permits a POST replay or unrelated frame/origin.
-HTTP redirects within an already bound request retain its authority; unchanged
-credentials on another hop are not a repeated navigation action.
+Reader/HTTP continuations use actual operation results, response observations and
+Cookie progress to stop unchanged loops. This does not authorize a form/POST replay
+or give unrelated frames/operations output authority. A signed URL is not
+classified as a one-time action solely because it has signature parameters.
 
 Completed transport/local actions survive late signals and auxiliary failures.
 Actual unfinished I/O retains its original owner; a cancelled Future or returning
@@ -432,7 +458,7 @@ Choose from these effects when a change needs evidence beyond isolated fixtures:
 
 | Affected area | Minimal human check and expected result |
 | --- | --- |
-| Original publisher response | From a ScienceDirect test Paper that needs the original browser response, click **Download** once. If testing the form path, add one accessible R059 Microbiology example. The transfer completes from the original action, the Paper appears once in Downloaded and its PDF opens. A browser viewer alone is not success. Record access denial separately from a transfer failure. |
+| Ordinary GET and original form | From a ScienceDirect test Paper, click **Download** once: direct PDF uses Session, while necessary Reader access may precede another GET. Add an accessible R059 Microbiology example for original-action behavior. The Paper appears once in Downloaded and its managed PDF opens. A viewer alone is not success. Record access denial separately from transfer failure. |
 | Retained reusable publisher paths | Use one known IEEE reader example and one Oxford/Silverchair CDN example, because the unified source coordinator and shared Session hooks affect their routing. Both complete through public Download without a second body or new save step. Do not expand this to every publisher. |
 | Service-scoped access and independent sources | With a disposable Paper whose Service is unprepared, download an ordinary accessible candidate. For an actually institution-bound Reader, use its correct prepared context, then invalidate that Service during unfinished access: only that access stops, cleanup ends, and an independent available source can succeed. Record the skipped Service reason even when the final download succeeds. |
 | Cloudflare modal and ignored input | On an authorized sample with a visible blocking Cloudflare modal over readable content, confirm the common Page solver remains pending until the modal actually clears. A first ignored checkbox click may be tried again while the same unchecked control remains actionable; optional/hidden widgets do not start access handling. Offline fixtures establish mechanics, not live-site success rates. |

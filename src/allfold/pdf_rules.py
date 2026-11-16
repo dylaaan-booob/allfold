@@ -437,9 +437,11 @@ def iter_p2_candidates(target: PdfTarget, inputs: PdfRuleInputs | None = None) -
             yield PdfCandidate(target, 'P2', known.rule_id, platform or target.platform or 'unknown',
                                known.url, known.reader_kind, known.referer, known.field)
     if platform == 'sciencedirect' and (pii := _pii(target, inputs)):
-        url = 'https://' + host + '/science/article/pii/' + pii + '/pdfft'
-        yield PdfCandidate(target, 'P2', 'R024', platform, url)
-        yield PdfCandidate(target, 'P2', 'R024', platform, url + '?download=true')
+        article = urlsplit(target.article_url or '')
+        origin = urlunsplit((article.scheme, article.netloc, '', '', '')) if article.hostname == host else 'https://' + host
+        url = origin + '/science/article/pii/' + pii + '/pdfft'
+        yield PdfCandidate(target, 'P2', 'R024', platform, url, referer=target.article_url)
+        yield PdfCandidate(target, 'P2', 'R024', platform, url + '?download=true', referer=target.article_url)
     elif platform == 'cell' and (pii := _cell_pii(target, inputs)):
         yield PdfCandidate(target, 'P2', 'R023', platform, 'https://' + host + '/action/showPdf?pii=' + _component(pii))
     elif platform == 'ieee' and (number := _ieee_number(target, inputs)):

@@ -37,11 +37,14 @@ class CurrentResponse:
     redirect_url: str | None = field(default=None, repr=False)
     partial: bool = False
     context_changed: bool = False
+    context_key: str | None = field(default=None, repr=False)
 
     def __post_init__(self):
         normalize_public_http_url(self.url)
         if (not isinstance(self.url, str) or len(self.url) > 8192 or not isinstance(self.body, bytes)
-                or type(self.partial) is not bool or type(self.context_changed) is not bool):
+                or type(self.partial) is not bool or type(self.context_changed) is not bool
+                or self.context_key is not None and (not isinstance(self.context_key, str)
+                    or not re.fullmatch(r'[a-f0-9]{64}', self.context_key))):
             raise ValueError('Current response exceeds the finite parse budget')
         if len(self.body) > RESPONSE_SAMPLE_BYTES:
             object.__setattr__(self, 'body', self.body[:RESPONSE_SAMPLE_BYTES])
@@ -387,11 +390,15 @@ class PdfDiscovery:
         # An already qualified P3 clue can finish before refreshing missing
         # fields or a later dynamic P4 entrance in a partial snapshot.
         yield from self._saved('P3')
-        current = self._document() if self._document_needed() else ()
+        saved_p4 = tuple(self._saved('P4'))
+        yield from saved_p4
+        # Stable body URLs already have authority to be tried. A qualified
+        # Reader refreshes its own entry inside the chain, not the article.
+        failed_p4 = any(not c.reader_kind and (urldefrag(c.url)[0], c.action) in self._seen for c in saved_p4)
+        current = self._document() if self._document_needed() or failed_p4 else ()
         yield from sorted((c for c in current if c.stage == 'P3'),
             key=lambda c: 0 if c.field == 'citation_pdf_url' else 1)
-        p4 = [*(c for c in current if c.stage == 'P4'), *self._saved('P4')]
-        yield from sorted(p4, key=lambda c: c.rule_id == 'GENERIC')
+        yield from sorted((c for c in current if c.stage == 'P4'), key=lambda c: c.rule_id == 'GENERIC')
         cached = next((f for f in self.facts if f.source == 'openalex'), None)
         refreshed = False
         if cached and cached.status in {'complete', 'partial'}:
@@ -432,7 +439,8 @@ class PdfDiscovery:
         # Identical response/edge observations stop loops; byte capacity bounds
         # retained response state independently of the captured parent deadline.
         pending = [(original, None, object())]
-        edges, responses, prepared, state_bytes = set(), set(), set(), 0
+        edges, responses, state_bytes = set(), set(), 0
+        request_context_key, reader_context_key = None, None
         while pending:
             candidate, evidence, lineage = pending.pop()
             self._current_candidate = candidate
@@ -452,17 +460,6 @@ class PdfDiscovery:
             if state_bytes > 1048576:
                 self._note(original.stage, original.rule_id, 'response-state-budget')
                 return None
-            if key not in prepared and callable(getattr(type(self.io), 'prepare', None)):
-                prepared.add(key)
-                try:
-                    following = self._call(self.io.prepare, candidate)
-                except PdfSourceReadError as error:
-                    self._note(original.stage, original.rule_id, error.diagnostic)
-                    following = ()
-                if following:
-                    pending.extend((item, ('prepared', key), lineage if index == 0 else object())
-                        for index, item in reversed(tuple(enumerate(following))))
-                    continue
             if key not in self._seen:
                 self._seen_bytes += sys.getsizeof(key) + sum(sys.getsizeof(value) for value in key)
                 if self._seen_bytes > 1048576:
@@ -504,8 +501,12 @@ class PdfDiscovery:
             fresh_reader = False
             if result.kind == 'response' and result.response is not None:
                 response = result.response
+                # Entry and Reader can have different Cookie paths. Keep both
+                # observations; either can advance, while A -> B -> A repeats.
+                if response.context_key is not None:
+                    request_context_key = response.context_key
                 observation = (response.url, response.status, response.content_type, response.body,
-                    response.redirect_url, response.access, self._consumed if response.context_changed else 0)
+                    response.redirect_url, response.access, request_context_key, reader_context_key)
                 if observation in responses:
                     self._note(original.stage, original.rule_id, 'response-loop')
                     self._failed = True
@@ -536,6 +537,13 @@ class PdfDiscovery:
                             referer=c.referer, action=c.action, credential=None, accept=None,
                             access=getattr(c, 'access', candidate.access))
                             for c in parsed.current_candidates)
+                        navigation = getattr(parsed, 'reader_result', None)
+                        if navigation is not None:
+                            reader_context_key = navigation.context_key
+                            if not following and (navigation.url != response.url
+                                    or navigation.context_changed or access_limited(response)):
+                                following = (replace(candidate, url=navigation.url, referer=navigation.referer,
+                                    reader_kind=None, action=None, credential=None, accept=None),)
                 if (not following and self.io is not None and (reader or {}).get('platform') == 'lww'
                         and callable(getattr(type(self.io), 'oce_access', None))
                         and callable(getattr(type(self.io), 'oce_reader', None))):

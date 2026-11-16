@@ -632,13 +632,12 @@ ipcRenderer.on('document:operation',async(_event,{id,action,expectedDocumentId,e
 // selector, form body or headers are accepted from a renderer or the host.
 let pendingBodyAction;
 function bodyAction(candidate,doi=null,doiCasefold={},dispatchPlan=null) {
-  const finish=(node,kind,plan,submitter)=>{
+  const finish=(node,plan,submitter)=>{
     if(!dispatchPlan)return plan;
     // Re-locate at the actual action boundary. Compare the request being
     // authorized, never the former page URL or a cached node object.
     if(Object.keys(plan).some(key=>plan[key]!==dispatchPlan[key]))throw Error('body_action_unavailable');
-    if(kind==='navigation')node.click();
-    else if(submitter)submitter.click();else node.requestSubmit();
+    if(submitter)submitter.click();else node.requestSubmit();
     return plan;
   };
   const target=node=>{
@@ -661,17 +660,6 @@ function bodyAction(candidate,doi=null,doiCasefold={},dispatchPlan=null) {
       .map(node=>node.getAttribute('content').trim().replace(/^(?:https?:\/\/(?:dx\.)?doi\.org\/|doi:\s*)/i,'').trim().toLowerCase().replace(/[^\x00-\x7f]/gu,char=>doiCasefold[char] || char))
       .filter(value=>/^10\.\d{4,9}\/[^\s]+$/u.test(value)));
     if(values.size===1)doi=[...values][0];
-  }
-  if(!candidate.action&&candidate.platform==='sciencedirect'&&candidate.rule_id==='R024'
-    &&/^(?:www\.)?sciencedirect\.com$/.test(location.hostname)) {
-    const pii=location.pathname.match(/\/science\/article\/pii\/([SB][0-9X]{16})(?:\/|$)/i)?.[1],next=new URL(candidate.url);
-    if(!pii||!(next.origin===location.origin&&['/science/article/pii/'+pii+'/pdfft','/science/article/pii/'+pii+'/pdf'].includes(next.pathname)
-      ||next.protocol==='https:'&&next.hostname==='pdf.sciencedirectassets.com'&&next.pathname.endsWith('/1-s2.0-'+pii+'/main.pdf')))throw Error('body_action_identity');
-    const links=[...document.querySelectorAll('a[href]')].filter(node=>node.href===candidate.url && !excludedEntry(node));
-    const node=links[0];
-    if(!node)throw Error('body_action_unavailable');
-    if(links.some(link=>(link.target||'')!==(node.target||'')))throw Error('body_action_ambiguous');
-    return finish(node,'navigation',{url:candidate.url,request_url:candidate.url,method:'GET',...target(node)});
   }
   if(candidate.action!=='refresh_form' || candidate.platform!=='microbiology' || candidate.rule_id!=='R059'
     || !/(^|\.)microbiologyresearch\.org$/.test(location.hostname))throw Error('unsupported_body_action');
@@ -704,7 +692,7 @@ function bodyAction(candidate,doi=null,doiCasefold={},dispatchPlan=null) {
     for(const [name,value] of controls)query.append(newline(name),newline(typeof value==='string'?value:value.name));
     const next=new URL(node.action);next.search=query.toString();request_url=next.href;
   }
-  return finish(node,'form',{url:node.action,request_url,method,...target(node)},submitter);
+  return finish(node,{url:node.action,request_url,method,...target(node)},submitter);
 }
 ipcRenderer.on('body:prepare',async(_event,{id,candidate,doi,doiCasefold})=>{
   try {

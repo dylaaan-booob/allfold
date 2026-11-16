@@ -6,9 +6,9 @@ from allfold.persistence.paper_repository import PaperRepository
 
 
 def native_candidate():
-    article='https://www.sciencedirect.com/science/article/pii/S0047259X2400006X'
+    article='https://www.microbiologyresearch.org/content/journal/fixture'
     target=PdfTarget('paper-1',doi='10.5555/body',article_url=article)
-    return PdfCandidate(target,'P4','R024','sciencedirect',article+'/pdfft',reader_kind='sciencedirect')
+    return PdfCandidate(target,'P4','R059','microbiology','https://www.microbiologyresearch.org/once',action='refresh_form')
 
 
 def test_inapplicable_native_transport_does_not_touch_host_files_bridge_or_progress():
@@ -28,6 +28,8 @@ def test_fixed_native_classification_preserves_reusable_stream_and_credential_sc
     from allfold.application.native_body_downloads import native_applicable
     candidate=native_candidate()
     assert native_applicable(candidate)
+    assert not native_applicable(replace(candidate,platform='sciencedirect',rule_id='R024',action=None,
+        url='https://www.sciencedirect.com/science/article/pii/S0047259X2400006X/pdfft?md5=Current'))
     assert native_applicable(replace(candidate,platform='microbiology',rule_id='R059',action='refresh_form',
         url='https://www.microbiologyresearch.org/once'))
     assert not native_applicable(replace(candidate,platform='generic',rule_id='GENERIC'))
@@ -73,13 +75,12 @@ def test_later_native_candidate_never_reuses_cancelled_items_private_path(tmp_pa
         host.shutdown();host.join()
 
 
-@pytest.mark.parametrize('signed',[False,True])
-def test_native_attempt_uses_original_bridge_capability_then_shared_completion(tmp_path,signed):
+@pytest.mark.parametrize('observe_progress',[False,True])
+def test_native_form_uses_original_bridge_capability_then_shared_completion(tmp_path,observe_progress):
     from allfold.application.body_downloads import submit_body_download
     from test_body_downloads import application_host
     host,workspace,paper,bridge,original=application_host(tmp_path)
     candidate=replace(native_candidate(),target=replace(original.target,article_url=native_candidate().target.article_url))
-    if signed:candidate=replace(candidate,url=candidate.url+'?md5=current')
     progress=[]
     execute=bridge.execute
     def capture(action,data,callback=None,**kwargs):
@@ -96,7 +97,7 @@ def test_native_attempt_uses_original_bridge_capability_then_shared_completion(t
         assert data['output']['file'] is None and not leaf.exists()
         leaf.write_bytes(b'original response')
         info=leaf.stat();file=[info.st_dev,info.st_ino]
-        if signed:
+        if observe_progress:
             bridge.native_progress(dict(native_output_file=file,received_bytes=17,total_bytes=17))
         assert 'native_output_file' not in str(progress)
         bridge.result.set_result(dict(kind='pdf',outcome='native_complete',pdf_type=True,transfer_complete=True,

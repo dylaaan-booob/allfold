@@ -181,7 +181,7 @@ async def main():
         assert missing.status_code == 200 and missing.json()['outcome'] == 'missing', missing.text
         assert missing.json()['paper']['body_present'] is False and missing.json()['paper']['metadata_present'] is False
         print(json.dumps({'type':'fixture_local','status':'settled','retry_attempt':retry_task.download_token.attempt}), flush=True)
-        cases=[(path,origin+'/'+path,None) for path in ['redirect?Signature=A%2FB', 'encoded', 'chunked', 'html.pdf', 'unknown', 'truncated', 'cancel', 'expiry', 'cross', 'challenge', 'disk-write', 'disk-flush', 'slow-writer', 'cross-referer', 'completed-late-signals', 'octet', 'missing-mime', 'wrong-mime', 'split-prefix', 'fake-pdf']]
+        cases=[(path,origin+'/'+path,None) for path in ['redirect?Signature=A%2FB', 'encoded', 'chunked', 'html.pdf', 'unknown', 'truncated', 'cancel', 'expiry', 'cross', 'cross-private', 'cross-unsafe', 'bad-encoding', 'close-delimited', 'challenge', 'disk-write', 'disk-flush', 'slow-writer', 'cross-referer', 'completed-late-signals', 'octet', 'missing-mime', 'wrong-mime', 'split-prefix', 'fake-pdf', 'cookie-progress']]
         cases.extend([
             ('background-cloudflare',origin+'/background-cloudflare',None),
             ('oxford-cdn',origin.replace('pdf.example.org','academic.oup.com')+'/nar/article-pdf/51/2/870/123/body.pdf',None),
@@ -189,6 +189,8 @@ async def main():
             ('ieee-reader',origin.replace('pdf.example.org','ieeexplore.ieee.org')+'/stamp/stamp.jsp?arnumber=12345',
                 origin.replace('pdf.example.org','ieeexplore.ieee.org')+'/document/12345')])
         for index, (path,url,article) in enumerate(cases):
+            if path == 'cookie-progress':
+                url += f'?doi=10.5555/body{index}'
             with PaperRepository.open(workspace) as repo:
                 paper = repo.create_or_match(repo.workspace_id, direct_ids=ExternalIds(doi=f'10.5555/body{index}'),
                     metadata=PaperMetadata(title='Same title')).paper
@@ -237,10 +239,11 @@ async def main():
                 assert result.candidate_result.diagnostic == reason
                 assert saved.download.reason == reason
             if path=='background-cloudflare':assert not saved.download.reason.startswith('access-')
-            success = path in {'redirect?Signature=A%2FB','encoded','chunked','slow-writer','cross-referer','completed-late-signals','oxford-cdn','ieee-reader','octet','missing-mime','wrong-mime','split-prefix'}
+            success = path in {'redirect?Signature=A%2FB','encoded','chunked','cross','close-delimited','slow-writer','cross-referer','completed-late-signals','oxford-cdn','ieee-reader','octet','missing-mime','wrong-mime','split-prefix','cookie-progress'}
             assert (result.status == 'completed') == success, (path,result)
             assert (saved.body is not None) == success
             if success:
+                if path in {'cross','cookie-progress'}:assert saved.body.pdf_source=='P1' and not saved.body.fallback_used
                 assert (workspace / saved.body.relative_path).stat().st_size == saved.body.size_bytes
                 assert 'Signature' not in saved.body.source_url
                 again = await asyncio.to_thread(submit_body_download, host, saved, candidates=(candidate,))

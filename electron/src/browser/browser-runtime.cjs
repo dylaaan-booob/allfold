@@ -859,21 +859,25 @@ class BrowserRuntime {
     const readerKind=data.reader?qualifyReader(data.reader,data.identity):null;
     const verifyAccess=this.pinPreparedPaperAccess(data,readerKind==='oce'?'oce.ovid.com':null),owner=this.operation,validateRecovery=owner.validateRecovery;
     owner.validateRecovery=async options=>{verifyAccess();await validateRecovery?.(options);verifyAccess();};
-    let requestGuard,readerFailure;
+    let requestGuard,headerGuard,readerFailure,readerRequest,priorCookies;
     try {
       let doc;
       if(readerKind) {
         if(!/^[a-f0-9]{64}$/.test(data.workspace_identity)||!/^[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12}$/i.test(data.paper_id))throw new BrowserFailure('navigation','document_operation_failed');
         const tab=await this.newTaskPage({signal,deadline,managed:true});this.bindTaskPage(tab,signal);this.associatePage(tab,{role:'pdf-reader'});
+        priorCookies=await waitFor(()=>this.sessionEvents.cookieContext(data.reader.url),signal,deadline);
         requestGuard=this.sessionEvents.subscribe('beforeRequest',details=>{
           if(details.webContentsId!==tab.id || !['mainFrame','subFrame'].includes(details.resourceType))return;
           if(signal?.aborted || Date.now()>=deadline || !publicClueURL(details.url)) {
             readerFailure=new BrowserFailure('navigation',signal?.aborted?'canceled':'pdf_target_refused');return {cancel:true};
           }
+          if(details.resourceType==='mainFrame')readerRequest={id:details.id,url:details.url,method:details.method,referer:null};
+        });
+        headerGuard=this.sessionEvents.subscribe('beforeSendHeaders',details=>{
+          if(details.webContentsId===tab.id && details.id===readerRequest?.id)
+            readerRequest.referer=Object.entries(details.requestHeaders||{}).find(([name])=>name.toLowerCase()==='referer')?.[1] || null;
         });
         doc=await this.navigate(data.reader.url,{tab,signal,deadline,onWaiting});this.finishPageLoad(tab);
-        // A redirect may preserve the source chain only inside this fixed reader's qualification.
-        qualifyReader({...data.reader,url:doc.url},data.identity);
       } else doc=await this.openPaperPage(data,data.identity,{role:'article',signal,deadline,onWaiting});
       const tab=this.tabs.get(doc.pageId);
       const result=await this.readDocument(tab,metadata?'extract':'pdf',{signal,deadline,identity:data.identity,
@@ -894,11 +898,15 @@ class BrowserRuntime {
       checkCanceled(signal);verifyAccess();
       const metadata_status=!result.metadata?'failed':result.diagnostics?.some(code=>
         ['date_scan_failed','abstract_candidate_failed','abstract_budget_exceeded'].includes(code))?'partial':'complete';
+      const readerCookies=readerKind && readerRequest?.method==='GET'
+        ?await waitFor(()=>this.sessionEvents.cookieContext(data.reader.url),signal,deadline):null;
       return {outcome:'retrieved',...(metadata?{metadata:result.metadata,metadata_status,
           extraction_diagnostics:result.diagnostics} : {}),
+        ...(readerKind && readerRequest?.method==='GET'?{reader_result:{url:readerRequest.url,referer:readerRequest.referer,
+          context_changed:priorCookies!==readerCookies,context_key:readerCookies}}:{}),
         pdf_clues:readerKind?{...pdf,candidates:pdf.candidates.map(candidate=>({...candidate,stage:data.reader.stage,rule_id:data.reader.rule_id}))}:pdf};
     } catch(error){throw readerFailure || error;}
-    finally {requestGuard?.dispose();owner.validateRecovery=validateRecovery;}
+    finally {requestGuard?.dispose();headerGuard?.dispose();owner.validateRecovery=validateRecovery;}
   }
   pinPreparedPaperAccess(data,requiredHost=null) {
     const owner=this.operation;

@@ -144,13 +144,15 @@ def test_sciencedirect_background_cloudflare_script_does_not_block_current_pdf_l
     'https://pdf.sciencedirectassets.com.evil.example/1-s2.0-S014067362400123X/main.pdf',
     'http://pdf.sciencedirectassets.com/1-s2.0-S014067362400123X/main.pdf',
 ])
-def test_sciencedirect_redirect_cannot_change_pii_host_or_protocol(destination):
+def test_observed_get_redirect_is_not_limited_by_pii_host_or_filename(destination):
     from allfold.pdf_rules import PdfCandidate
     from allfold.pdf_responses import parse_current_response
     url='https://www.sciencedirect.com/science/article/pii/S014067362400123X/pdfft'
     candidate=PdfCandidate(target(),'P1','R024','sciencedirect',url)
     response=CurrentResponse(url,'',status=302,redirect_url=destination)
-    assert parse_current_response(candidate,response)==()
+    following,=parse_current_response(candidate,response)
+    assert following.url==destination and following.stage==candidate.stage
+    assert following.credential is None and following.access is candidate.access
 
 
 @pytest.mark.parametrize('body',[
@@ -691,6 +693,35 @@ def test_partial_document_known_p3_can_finish_before_missing_fields_are_refreshe
     assert (result.pdf_source, result.fallback_used) == ('P3', False)
 
 
+@pytest.mark.parametrize('stable', ['success', 'failed', 'failed-complete', 'absent'])
+def test_saved_acs_p4_precedes_optional_refresh_and_refresh_remains_available(stable):
+    from types import SimpleNamespace
+    from allfold.application.document_metadata import CurrentPdfClue
+    from allfold.pdf_facts import PdfRefreshLocator
+    paper = target('pubs.acs.org')
+    url = 'https://pubs.acs.org/journal/article-pdf/Body.PDF'
+    candidates = [PdfCandidateFact(stage='P4', rule_id='R044',
+        refresh=PdfRefreshLocator(kind='document-pdf', landing_url='https://pubs.acs.org/article'))]
+    if stable != 'absent':
+        candidates.insert(0, PdfCandidateFact(stage='P4', rule_id='R044', url=url))
+    facts = document(paper, candidates[:1] if stable == 'failed-complete' else candidates,
+        status='complete' if stable == 'failed-complete' else 'partial')
+    calls = []
+    class IO:
+        def document(self, _):
+            calls.append('document')
+            return SimpleNamespace(facts=document(paper), current_candidates=(
+                CurrentPdfClue('P3', 'GENERIC', 'https://cdn.example.org/fresh-meta.pdf', field='citation_pdf_url'),
+                CurrentPdfClue('P4', 'R044', 'https://cdn.example.org/fresh-entry.pdf')))
+    def consume(candidate):
+        calls.append(candidate.url)
+        return CandidateResult.failed() if candidate.url == url and stable.startswith('failed') else CandidateResult.pdf(transfer_complete=True)
+    result = PdfDiscovery(paper, facts=(facts,), io=IO()).run(consume)
+    assert calls == ([url] if stable == 'success' else
+        ([url] if stable.startswith('failed') else []) + ['document', 'https://cdn.example.org/fresh-meta.pdf'])
+    assert (result.pdf_source, result.fallback_used) == ('P4' if stable == 'success' else 'P3', stable.startswith('failed'))
+
+
 def test_oup_qualified_citation_response_eprint_uses_current_url_in_original_stage():
     paper = target('academic.oup.com', article_url='https://academic.oup.com/journal/article/1/2/3/123')
     seen = []
@@ -703,6 +734,53 @@ def test_oup_qualified_citation_response_eprint_uses_current_url_in_original_sta
     result = PdfDiscovery(paper).run(consume)
     assert [c.url for c in seen][1:] == ['https://academic.oup.com/journal/article-pdf/Body.PDF?sig=Keep']
     assert (result.pdf_source, result.fallback_used) == ('P2', False)
+
+
+def test_reader_progress_keeps_distinct_entry_and_reader_cookie_contexts():
+    from types import SimpleNamespace
+    from allfold.application.document_metadata import CurrentPdfClue, ReaderResult
+    from allfold.pdf_rules import PdfCandidate
+    article = 'https://www.sciencedirect.com/science/article/pii/S1234567890123456'
+    paper = target('www.sciencedirect.com', article_url=article)
+    entry, final = article+'/pdfft', article+'/pdf'
+    candidate = PdfCandidate(paper, 'P2', 'R024', 'sciencedirect', entry)
+    calls = []
+    class IO:
+        reads = 0
+        def reader(self, item, response):
+            self.reads += 1
+            return SimpleNamespace(current_candidates=(CurrentPdfClue('P2', 'R024', entry),),
+                reader_result=ReaderResult(final, None, True, f'{self.reads:064x}'))
+    io = IO()
+    def consume(item):
+        calls.append(item.url)
+        if io.reads == 2:
+            return CandidateResult.pdf(transfer_complete=True)
+        # Only the redirected Reader path receives the script's Cookie.
+        return CandidateResult.current(CurrentResponse(final, 'text/html', b'<title>Reader</title>', context_key='0'*64))
+    result = PdfDiscovery(paper, io=io, candidates=(candidate,)).run(consume)
+    assert calls == [entry]*3 and io.reads == 2
+    assert (result.status, result.pdf_source, result.fallback_used) == ('transferred', 'P2', False)
+
+
+def test_observed_redirect_keeps_cookie_progress_when_it_has_no_context_key():
+    from allfold.pdf_rules import PdfCandidate
+    paper = target('publisher.example.org')
+    entry, hop = 'https://publisher.example.org/entry', 'https://download.example.org/hop'
+    html = ('<head><meta name="citation_doi" content="'+paper.doi+'">'
+        '<meta name="citation_pdf_url" content="'+hop+'"></head>').encode()
+    calls, contexts = [], iter(['1'*64, '2'*64])
+    def consume(item):
+        calls.append(item.url)
+        if item.url == hop:
+            return CandidateResult.current(CurrentResponse(hop, '', status=302, redirect_url=entry))
+        if len(calls) == 5:
+            return CandidateResult.pdf(transfer_complete=True)
+        return CandidateResult.current(CurrentResponse(entry, 'text/html', html,
+            context_changed=True, context_key=next(contexts)))
+    result = PdfDiscovery(paper, candidates=(PdfCandidate(paper, 'P3', 'GENERIC', 'generic', entry),)).run(consume)
+    assert calls == [entry, hop, entry, hop, entry]
+    assert (result.status, result.pdf_source, result.fallback_used) == ('transferred', 'P3', False)
 
 
 def test_optica_known_reader_skips_first_frame_and_preserves_meta_source():
