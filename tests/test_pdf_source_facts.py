@@ -223,7 +223,7 @@ def test_source_facts_cancellation_refuses_a_late_sequence_and_explicit_retry_ke
                 delta=MetadataDelta(discovery_facts=(good.model_copy(update={'status': 'partial'}),)))
         owner.commit_collection_branch(admitted.token, 'api', sequence=1, outcome='cancelled')
         cancelled = owner.finish_collection(admitted.token)
-        retry = owner.retry_collection(cancelled.token, lifecycle_id=uuid4(), branches=('document', 'api'))
+        retry = owner.retry_collection(cancelled.token, expected_attempt=cancelled.collection.attempt, lifecycle_id=uuid4(), branches=('document', 'api'))
         assert retry.paper.metadata.discovery_facts == (good,) and retry.token.attempt == 2
         with pytest.raises(StaleWriteError):
             owner.commit_collection_branch(admitted.token, 'api', sequence=2, delta=MetadataDelta(discovery_facts=(good,)))

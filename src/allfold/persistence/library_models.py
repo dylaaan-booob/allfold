@@ -191,6 +191,15 @@ class WriteToken:
     body_generation: int
 
 
+@dataclass(frozen=True)
+class RetryToken:
+    """Original Paper lifetime authority; field edit generations do not admit Retry."""
+    workspace_id: UUID
+    paper_id: UUID
+    metadata_generation: int
+    operation_generation: int
+
+
 CollectionStatus = Literal["queued", "running", "completed", "failed", "cancelled"]
 CollectionBranchState = Literal["queued", "running", "completed", "skipped", "failed", "cancelled"]
 

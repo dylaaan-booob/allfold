@@ -625,7 +625,7 @@ def test_terminal_storage_fault_releases_work_and_explicit_operation_finishes_or
         registry.release(resumed)
         retried = registry.retry(task.paper_id,
             branches=(BranchSpec('metadata', lambda _: pytest.fail('Completed increment replayed')),),
-            expected_token=saved.token, expected_attempt=saved.collection.attempt, expected_revision=saved.revision)
+            expected_token=saved.token, expected_attempt=saved.collection.attempt)
         assert retried.future.result(3).collection_status == 'completed'
     finally:
         if locker is not None:
@@ -1062,3 +1062,81 @@ def test_same_paper_branches_overlap_with_thread_owned_client_cache_and_sqlite(t
     finally:
         release.set(); finish_close.set()
         registry.shutdown(); registry.join(); real.close()
+
+
+@pytest.mark.parametrize('change', ['notes', 'abstract', 'body', 'reject_restore', 'clear', 'rebuild', 'attempt', 'workspace'])
+def test_retry_final_admission_uses_original_paper_and_attempt_after_access_capture(tmp_path, change):
+    from uuid import uuid4
+    from allfold.persistence.paper_repository import BodyReference
+
+    path = workspace(tmp_path)
+    mutate = None
+    def capture(service_id, providers):
+        nonlocal mutate
+        if mutate is not None:
+            action, mutate = mutate, None
+            action()
+        return Authority(service_id)
+    registry = WorkspaceRegistry(path, factory=IndependentClientFactory(tmp_path / 'config.yaml'),
+        authority_capture=capture)
+    def failure(_):
+        raise RuntimeError('Controlled branch failure')
+    try:
+        task = submit(registry, 'retry-race', [BranchSpec('api', failure)])
+        failed = task.future.result(3)
+        original = failed.token
+        def edit_during_capture():
+            if change == 'workspace':
+                (path / 'papers.sqlite').rename(path / 'retired.sqlite')
+                with PaperRepository.create(path):
+                    pass
+                return
+            with PaperRepository.open(path) as repository:
+                if change in {'notes', 'abstract'}:
+                    repository.edit_metadata(original, {change: 'Manual value'})
+                elif change == 'body':
+                    associated = repository.complete_body(original, BodyReference(relative_path='Documents/existing.pdf'))
+                    repository.clear_body(associated.token)
+                elif change in {'reject_restore', 'clear', 'rebuild'}:
+                    rejected = repository.exclude(original)
+                    if change == 'reject_restore':
+                        repository.restore(rejected.token)
+                    else:
+                        cleared = repository.clear_metadata(rejected.token)
+                        released = repository.unexclude(cleared.token)
+                        if change == 'rebuild':
+                            repository.rebuild_from_run(released.token, direct_ids=ExternalIds(doi='10.1234/retry-race'),
+                                metadata=PaperMetadata(title='Rebuilt metadata'))
+                else:
+                    other = repository.retry_collection(original, expected_attempt=1, lifecycle_id=uuid4(), branches=('api',))
+                    repository.commit_collection_branch(other.token, 'api', sequence=1, outcome='failed')
+                    repository.finish_collection(other.token)
+        mutate = edit_during_capture
+        arguments = dict(branches=[BranchSpec('api', lambda _: MetadataDelta(abstract='Automatic result'))],
+            expected_token=original, expected_attempt=1)
+        if change in {'notes', 'abstract', 'body'}:
+            result = registry.retry(failed.id, **arguments).future.result(3)
+            assert result.collection.attempt == 2 and result.collection_status == 'completed'
+            assert result.metadata.abstract == ('Manual value' if change == 'abstract' else 'Automatic result')
+            if change == 'notes':
+                assert result.metadata.notes == 'Manual value'
+            with PaperRepository.open(path) as repository:
+                with pytest.raises(StaleWriteError):
+                    repository.commit_collection_branch(task.token, 'api', sequence=2,
+                        delta=MetadataDelta(abstract='Late old result'), outcome='completed')
+        else:
+            with pytest.raises(StaleWriteError):
+                registry.retry(failed.id, **arguments)
+            assert not registry.active
+            with PaperRepository.open(path) as repository:
+                if change == 'workspace':
+                    assert repository.workspace_id != failed.workspace_id and repository.list_papers() == ()
+                else:
+                    current = repository.get(failed.id)
+                    if change in {'clear', 'rebuild'}:
+                        assert current.collection is None
+                    else:
+                        assert current.collection.attempt == (2 if change == 'attempt' else 1)
+    finally:
+        registry.shutdown()
+        registry.join()

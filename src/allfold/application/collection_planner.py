@@ -86,19 +86,19 @@ class ProductionCollectionService:
             paper = repository.get(UUID(str(paper_id)))
         return registry, self.plan(paper=paper)
 
-    def check_retry(self, paper_id, *, workspace_id, expected_token, expected_attempt, expected_revision=None):
+    def check_retry(self, paper_id, *, workspace_id, expected_token, expected_attempt):
         """Read-only eligibility; successful branches do not recapture old access."""
         registry, branches = self._retry(paper_id, workspace_id=workspace_id,
             expected_token=expected_token, expected_attempt=expected_attempt, bind=False)
         return registry.check_retry(paper_id, branches=branches, expected_token=expected_token,
-            expected_attempt=expected_attempt, expected_revision=expected_revision)
+            expected_attempt=expected_attempt)
 
     def cleanup_pending(self, paper_id, workspace_id):
         registry = self.host.peek()
         return bool(registry and registry.busy(paper_id, workspace_id, include_local_reads=False))
 
-    def retry(self, paper_id, *, workspace_id, expected_token, expected_attempt, expected_revision=None, deadline=None):
+    def retry(self, paper_id, *, workspace_id, expected_token, expected_attempt, deadline=None):
         registry, branches = self._retry(paper_id, workspace_id=workspace_id,
             expected_token=expected_token, expected_attempt=expected_attempt)
         return registry.retry(paper_id, branches=branches, expected_token=expected_token,
-            expected_attempt=expected_attempt, expected_revision=expected_revision, deadline=deadline)
+            expected_attempt=expected_attempt, deadline=deadline)

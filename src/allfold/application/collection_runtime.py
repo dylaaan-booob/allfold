@@ -596,7 +596,7 @@ class WorkspaceRegistry:
                 self._settle_unscheduled(handle, 'submission_failed')
         return handle
 
-    def _retry_qualification(self, paper_id, branches, service_id, expected_token, expected_attempt, expected_revision=None, *, settle=False):
+    def _retry_qualification(self, paper_id, branches, service_id, expected_token, expected_attempt, *, settle=False):
         plan = self._plan(branches, no_applicable=True, service_id=service_id)
         paper_id = UUID(str(paper_id))
         with self._gate:
@@ -608,12 +608,13 @@ class WorkspaceRegistry:
             ended = self.ended_kind(paper) == 'collection'
             if paper.excluded or paper.metadata is None or (not ended and paper.collection_status not in {'failed', 'cancelled'}):
                 raise InvalidPaperState('Retry requires a settled failed or cancelled full Paper')
-            if expected_token is not None and paper.token != expected_token:
+            if expected_token is not None and (expected_token.workspace_id != self.workspace_id
+                    or expected_token.paper_id != paper_id
+                    or expected_token.metadata_generation != paper.metadata_generation
+                    or expected_token.operation_generation != paper.operation_generation):
                 raise StaleWriteError('Captured Paper authority changed')
             if expected_attempt is not None and paper.collection.attempt != expected_attempt:
                 raise StaleWriteError('Captured collection attempt changed')
-            if expected_revision is not None and paper.revision != expected_revision:
-                raise StaleWriteError('Captured Paper revision changed')
             if settle and ended:
                 self.settle_ended(paper_id)
                 with self._repository() as repository:
@@ -627,16 +628,16 @@ class WorkspaceRegistry:
                        for branch in pending if branch.skip_reason is None}
         return paper, plan, pending, authorities
 
-    def check_retry(self, paper_id, *, branches, service_id=None, expected_token=None, expected_attempt=None, expected_revision=None):
+    def check_retry(self, paper_id, *, branches, service_id=None, expected_token=None, expected_attempt=None):
         """Read-only public retry eligibility, including only pending access dependencies."""
-        paper, _, _, _ = self._retry_qualification(paper_id, branches, service_id, expected_token, expected_attempt, expected_revision)
+        paper, _, _, _ = self._retry_qualification(paper_id, branches, service_id, expected_token, expected_attempt)
         return paper
 
     def retry(self, paper_id, *, branches, service_id=None, deadline=None,
-              expected_token=None, expected_attempt=None, expected_revision=None):
+              expected_token=None, expected_attempt=None):
         deadline = self._deadline(deadline)
         paper, plan, pending, authorities = self._retry_qualification(
-            paper_id, branches, service_id, expected_token, expected_attempt, expected_revision, settle=True)
+            paper_id, branches, service_id, expected_token, expected_attempt, settle=True)
         with self._gate:
             self._require_open()
             for authority in authorities.values():
@@ -644,11 +645,9 @@ class WorkspaceRegistry:
             if self.busy(paper.id, include_local_reads=False):
                 raise InvalidPaperState('Previous Paper resources have not settled')
             with self._repository() as repository:
-                current = repository.get(paper.id)
-                if current.collection != paper.collection or current.revision != paper.revision:
-                    raise StaleWriteError('Captured Paper or collection attempt changed')
-                admission = repository.retry_collection(paper.token, lifecycle_id=self.lifecycle_id,
-                    branches=tuple(branch.name for branch in plan))
+                admission = repository.retry_collection(expected_token if expected_token is not None else paper.token,
+                    expected_attempt=expected_attempt if expected_attempt is not None else paper.collection.attempt,
+                    lifecycle_id=self.lifecycle_id, branches=tuple(branch.name for branch in plan))
             handle = self._new_handle(admission, pending, deadline, service_id)
             for child in handle.branch_tasks:
                 if child.branch.name in authorities:

@@ -46,7 +46,7 @@ def test_corrupt_or_uninitialized_library_is_never_replaced(tmp_path, contents):
     assert path.read_bytes() == contents
 
 
-@pytest.mark.parametrize("version", [SCHEMA_VERSION + 1])
+@pytest.mark.parametrize("version", [1, 2, SCHEMA_VERSION + 1])
 def test_unknown_schema_is_refused_without_modification(tmp_path, version):
     with PaperRepository.create(tmp_path):
         pass
@@ -59,14 +59,15 @@ def test_unknown_schema_is_refused_without_modification(tmp_path, version):
     assert path.read_bytes() == before
 
 
-def test_incomplete_known_schema_is_rejected_at_open(tmp_path):
+def test_explicit_full_validation_refuses_incomplete_current_schema_without_repair(tmp_path):
     with PaperRepository.create(tmp_path):
         pass
     with sqlite3.connect(tmp_path / DATABASE_NAME) as connection:
         connection.execute("DROP TABLE paper_metadata")
     before = (tmp_path / DATABASE_NAME).read_bytes()
-    with pytest.raises(LibraryCorruptError):
-        PaperRepository.open(tmp_path)
+    with PaperRepository.open(tmp_path) as library:
+        with pytest.raises(LibraryCorruptError):
+            library.validate()
     assert (tmp_path / DATABASE_NAME).read_bytes() == before
 
 
@@ -213,3 +214,70 @@ def test_replaced_open_database_is_rejected(tmp_path):
         with pytest.raises(UnsafeLibraryPath):
             library.list_papers()
         assert path.read_bytes() == b"replacement"
+
+
+def test_open_and_reads_do_not_wait_for_another_connection_reserved_write_lock(tmp_path):
+    with PaperRepository.create(tmp_path) as library:
+        paper = library.create_or_match(library.workspace_id, direct_ids=ExternalIds(pmid="123"),
+            metadata=PaperMetadata(title="Available while writer is reserved")).paper
+    with sqlite3.connect(tmp_path / DATABASE_NAME) as blocker:
+        blocker.execute("BEGIN IMMEDIATE")
+        with PaperRepository.open(tmp_path, expected_workspace_id=paper.workspace_id, timeout=0) as reader:
+            assert reader.get(paper.id) == paper
+            with pytest.raises(LibraryBusyError):
+                reader.edit_metadata(paper.token, {"notes": "Still a real write"})
+        blocker.rollback()
+
+
+def test_current_open_qualifies_identity_without_write_or_full_database_scans(tmp_path, monkeypatch):
+    with PaperRepository.create(tmp_path) as library:
+        workspace_id = library.workspace_id
+    statements = []
+    connect = sqlite3.connect
+    def observed_connection(*args, **kwargs):
+        connection = connect(*args, **kwargs)
+        connection.set_trace_callback(statements.append)
+        return connection
+    monkeypatch.setattr(sqlite3, "connect", observed_connection)
+    with PaperRepository.open(tmp_path, expected_workspace_id=workspace_id) as library:
+        assert library.list_papers() == ()
+    sql = "\n".join(statements).lower()
+    assert "pragma foreign_keys = on" in sql
+    assert "pragma application_id" in sql and "pragma user_version" in sql
+    assert "begin immediate" not in sql
+    assert all(value not in sql for value in ("sqlite_schema", "quick_check", "foreign_key_check"))
+
+
+@pytest.mark.parametrize('invalid', ['application', 'workspace_uuid', 'missing_workspace'])
+def test_current_open_refuses_wrong_application_or_invalid_workspace_identity(tmp_path, invalid):
+    with PaperRepository.create(tmp_path):
+        pass
+    path = tmp_path / DATABASE_NAME
+    with sqlite3.connect(path) as connection:
+        if invalid == 'application':
+            connection.execute('PRAGMA application_id = 0')
+        elif invalid == 'workspace_uuid':
+            connection.execute("UPDATE library_info SET workspace_id = 'invalid'")
+        else:
+            connection.execute('DELETE FROM library_info')
+    original = path.read_bytes()
+    with pytest.raises(LibraryCorruptError):
+        PaperRepository.open(tmp_path)
+    assert path.read_bytes() == original
+
+
+@pytest.mark.parametrize('version', [3, 4])
+def test_supported_old_version_still_requires_exact_schema_before_migration(tmp_path, version):
+    with PaperRepository.create(tmp_path):
+        pass
+    path = tmp_path / DATABASE_NAME
+    with sqlite3.connect(path) as connection:
+        connection.execute('DROP TABLE paper_body_source')
+        if version == 3:
+            connection.execute('DROP TABLE paper_download')
+        connection.execute('DROP TABLE paper_metadata')
+        connection.execute(f'PRAGMA user_version = {version}')
+    original = path.read_bytes()
+    with pytest.raises(LibraryCorruptError):
+        PaperRepository.open(tmp_path)
+    assert path.read_bytes() == original

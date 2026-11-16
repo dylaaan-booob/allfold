@@ -16,9 +16,12 @@ Each HTTP handler/worker owns a thread-confined connection and closes it in that
 context. Short rollback-safe transactions contain no network/browser wait.
 Unsafe paths, missing/corrupt/unsupported libraries and busy/commit failures do
 not authorize replacement or clearing. Schema v5 supports the documented v4/v3
-forward changes without retired-format or Markdown fallback. Database-open
-validation and transaction scope are implementation details scheduled for later
-revision, not a requirement for a full integrity check/write transaction on every open.
+forward changes without retired-format or Markdown fallback. Ordinary current-format
+open verifies file/Workspace identity, application ID, supported version and
+Workspace UUID using a read transaction with foreign keys enabled. Creation,
+supported migrations and explicit full diagnostics retain write transactions and
+schema/integrity/reference validation. Actual writes keep short rollback-safe
+transactions and reject replaced files/Workspaces.
 
 Async writes retain the original Workspace/Paper/attempt and relevant field
 eligibility. A late result cannot obtain fresh authority by rereading current
@@ -96,9 +99,14 @@ unaffected work. Page capacity follows actual resource ownership; see
 [Browser pages](browser-pages.md) and [Session events](browser-session.md).
 
 [Workspace runtime](collection-runtime.md) owns atomic base/queued admission,
-independent branch resources, retry and maintenance. Foreground Run ends separately
-from accepted Paper collection. Branch-specific access failure must not revoke
-unrelated work. Successful increments survive a later failure; startup records
+independent branch resources, retry and maintenance. Explicit Retry retains the
+original Workspace/Paper, failed attempt and metadata/operation generations through
+its final Paper gate and SQLite admission transaction. Notes/abstract/body edits
+and projection revisions do not revoke admission; stale attempts, Reject/Restore,
+metadata clear/rebuild, replacement Workspaces and unfinished resources still do.
+Field-specific write generations continue protecting later manual edits. Foreground
+Run ends separately from accepted Paper collection. Branch-specific access failure
+must not revoke unrelated work. Successful increments survive a later failure; startup records
 interrupted attempts without replaying queues, network or page actions.
 
 Actual unfinished I/O still needs its original owner. Finished work is released

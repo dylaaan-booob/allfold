@@ -59,8 +59,10 @@ branches or legal prior increments.
 `BranchSpec(name, run=None, skip_reason=None, providers=(), service_id=..., mailto='')`
 uses unique bounded names. An omitted `service_id` inherits the admission's legacy
 Service argument; explicit `None` declares independent API/public work. Declare
-only the Providers a branch actually uses. A skipped branch has an explicit
-applicability reason and no runner. An empty plan requires `no_applicable=True`.
+only the Providers a fixed branch actually uses. The necessary branch's supported
+Provider choices describe discovery capabilities, not a fixed authority prerequisite.
+A skipped branch has an explicit applicability reason and no runner. An empty
+plan requires `no_applicable=True`.
 The production necessary branch captures saved `crossref_mailto` for its own
 client scope; it does not borrow a Run client, cache or configuration guard.
 
@@ -74,10 +76,15 @@ repository, `BranchContext`, clients and request cache in its execution thread.
 SQLite's thread guard stays enabled. Application-owned pacing is shared; Run
 snapshots, HTTP clients and mutable request caches are not inherited.
 
-Branches use `context.read_paper()`, `context.emit(delta, sequence=...)`, declared
-`context.provider(name)` and captured `native_payload`/`execute_native`. These
-operations retain the original collection token. Each branch has its own exact
-native workflow/task identity. All native Futures and client closes must actually
+Branches use `context.read_paper()`, `context.emit(delta, sequence=...)`,
+`context.provider(name)` and captured `native_payload`/`execute_native`. Necessary
+metadata discovers requests from preceding responses and captures each Provider's
+single retained authority and credential at its first actual use. An unused
+Provider change does not revoke that branch; a used Provider's subwork cannot
+adopt replacement credentials. Provider failure or revocation stays within its
+request group, while independent sources and saved evidence continue. Document
+Service preparation remains independent. These operations retain the original
+collection token. Each branch has its own exact native workflow/task identity. All native Futures and client closes must actually
 settle before the parent can release Paper occupancy. A Paper native request's
 terminal already follows Main's actual DownloadItem/page cleanup. Paper work does
 not issue an additional `release_workflow_pages` request: that operation releases
@@ -113,33 +120,43 @@ the same reservation kind reuses its current owner. A Run match during body work
 returns the saved Paper without registering a new collection intent.
 
 Reject and whole-Workspace maintenance revoke the complete original Paper task
-and its exact reservation before signalling outside write locks. Service or
-Provider maintenance cancels and drains only matching unfinished branches;
-independent branches continue. A captured late cancellation cannot target a later
-owner. Shutdown closes admission and drains parents, leaf branches and actual
+and its exact reservation before signalling outside write locks. Service and fixed
+Provider dependencies cancel and drain only matching unfinished branches. Necessary
+API work instead checks each retained Provider epoch when that Provider's subwork
+is next used; a changed Provider fails its request group without cancelling the
+whole branch. Independent sources and completed work continue. A captured late
+cancellation cannot target a later owner. Shutdown closes admission and drains parents, leaf branches and actual
 reservations before shared factory closure. No standalone Preprint reservation,
 deferred collection intent or scheduler readiness gate remains.
 
 ## Explicit retry
 
 `registry.check_retry` projects eligibility; `registry.retry` admits the explicit
-attempt. Both accept the current Paper/attempt qualification, with `retry` also
-receiving its deadline. Eligible work has full unexcluded metadata, a settled
-failed/cancelled collection, no competing owner and available pending dependencies.
+attempt. Both retain the caller's original Workspace/Paper UUIDs, failed attempt,
+metadata generation and operation generation, with `retry` also receiving its
+deadline. Eligible work has full unexcluded metadata, a settled failed/cancelled
+collection, no competing owner and available pending dependencies.
 Completed/skipped branch facts and saved increments survive. Public requests keep
 CSRF and exact Workspace/Paper/attempt association. Retry grants no body authority.
 
 The production projection uses `host.peek()`; read-only queries cannot bind or
 normalize a library that appeared later. Explicit retry may bind through `current()`.
-The public route is `POST /api/papers/{paper_id}/collection/retry`; its current
-request carries `revision` and the full captured token as well as the attempt.
-Repeated full revision/token checks are a current limitation scheduled for
-simplification alongside callers and behavior tests, not an invariant to retain.
+The public route is `POST /api/papers/{paper_id}/collection/retry`; its request
+carries `workspace_id`, `attempt` and a token containing only `metadata_generation`
+and `operation_generation`, alongside CSRF. Notes, abstract/body edits and Paper
+projection revisions do not revoke admission. The existing Paper gate and short
+SQLite admission transaction recheck the captured metadata/operation lifetime and
+attempt before creating work; neither may replace caller authority with a current
+token. Reject/Restore, metadata clear/rebuild, a superseded attempt, Workspace/database
+replacement and actual unfinished resources still refuse Retry. Only pending
+branches qualify access. Public failures distinguish stale/ineligible, access and
+storage conditions without exposing raw exception text.
 
-The necessary API branch currently declares a Provider set at admission, even
-though individual requests have narrower needs. Follow-up work will narrow those
-dependencies and the propagation of local access failures. Current registration,
-clients and tests remain in place. Successful independent increments must survive.
+Each new attempt captures the current abstract/body field generations for its own
+increments. Older attempts retain their old tokens and cannot write through a
+Retry. A manual abstract edit or clear during the new attempt protects that field
+while valid independent date/source increments can continue. Retry does not change
+ordinary Download qualification.
 
 The public collection projection contains status, attempt, cleanup, branch states
 and retry qualification. Raw failures, clients, lifecycle authority and private
