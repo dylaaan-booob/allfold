@@ -59,7 +59,8 @@ def transfer_native(reservation, repository, files, candidate, progress=None):
         output=pending.model_dump(mode='json'), attempt=reservation.download_token.attempt,
         attempt_id=f'{reservation.lifecycle_id}:{reservation.download_token.attempt}',
         candidate=dict(url=candidate.url, action=candidate.action, platform=candidate.platform, rule_id=candidate.rule_id),
-        deadline_ms=int((time.time() + remaining)*1000), workflow_id=reservation.workflow_id, task_id=reservation.task_id)
+        deadline_ms=int((time.time() + remaining)*1000), workflow_id=reservation.workflow_id, task_id=reservation.task_id,
+        parent_task_id=getattr(reservation, 'parent_task_id', None))
     observed, lock = {'output': pending, 'error': None}, threading.Lock()
 
     def native_progress(value):

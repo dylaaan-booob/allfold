@@ -36,10 +36,27 @@ reservations. Production Download does not nest a read-only reservation inside i
 and current facts without registering collection intent that revokes the body
 attempt. Foreground Run cancellation and reader selection do not own the body.
 
-Current new-download admission resolves the saved Service's Prepare access before
-source discovery. Whether Prepare should gate the whole Download remains
-unresolved; this guide does not prescribe a replacement policy or make the current
-gate permanent. Existing local bodies do not need Prepare.
+Download admission does not require a mapped or prepared Service. Ordinary URLs,
+stable cached candidates and public Reader/native entries use the normal shared
+Session, with its ordinary Cookie behavior. No OA preflight, candidate partition,
+Cookie copying or automatic Login/Prepare is introduced.
+
+Only an operation that actually consumes a retained institutional capability
+captures the Paper's unambiguous saved Service and prepared context. The OCE
+Reader capability check is one such operation. Missing, ambiguous, removed or
+unprepared mappings skip that path with a specific source reason; they never
+select another Service or reject independent sources. Observed descendants of a
+bound Reader/form/request retain its captured binding, including HTTPS/CDN
+continuations. Independent sources start without it.
+
+Each access operation has its own native task identity under the original
+Download workflow. It releases its Browser owner, Service scope and native pins/
+loan after actual item/page settlement. Service changes cancel and drain only
+the currently dependent operation; the parent can continue independent sources
+after cleanup. A previous Service cannot cancel a later OA operation. Workspace,
+Paper/attempt loss, user cancellation and parent expiry still end the Download.
+Completed transfers go directly to the existing publication/association path,
+without a Service post-check. Collection and Run retain their own admission rules.
 
 The captured Workspace root/UUID/lifecycle, direct identity closure and
 metadata/operation/body generations stay authoritative through completion.
@@ -74,7 +91,7 @@ entries are finite condition skips, not pending or successful transfers, and do
 not manufacture `fallback_used`.
 
 Only a normal transfer whose small content prefix identifies PDF permits completion. Ordinary candidate failures
-may advance sources within the same remaining budget; cancellation, revocation,
+may advance sources within the same remaining budget; cancellation, task revocation,
 expiry and local file/database failure stop the operation. A completed body is
 protected even if a later guard, notification or cleanup reports failure.
 `pdf_source` and `fallback_used` are committed with the successful association:
@@ -91,7 +108,7 @@ algorithm, and no public endpoint accepts that input.
 Authenticated Main dispatch alone accepts `stream_paper_body`. Private bridge
 data contains the captured root, output proof and limited candidate context;
 PDF bytes never cross the bridge. Main waits for the existing business Session,
-pins applicable Prepare access and uses the unique `SharedSessionEvents.fetch`
+pins only an explicitly bound access context and uses the unique `SharedSessionEvents.fetch`
 with Chromium credentials. Cover omission and a default Session are not reused.
 
 Stream targets require public URLs and public DNS preflight. Redirects stay
@@ -173,7 +190,9 @@ navigation initiator; creating a child alone grants no download registration. An
 popup registers before its first PDF response; child pages use the same physical
 quotas. The scoped attachment override changes only the qualified navigation's
 headers and retains its response body. Read-only probes stay read-only, and
-unrelated frame activity has no file authority. Once a DownloadItem is bound, its transfer follows the actual item/request result;
+unrelated frame activity has no file authority. Registration has no independent
+frame-count veto: earlier unrelated child frames cannot exclude a later proven
+action target. Once a DownloadItem is bound, its transfer follows the actual item/request result;
 subsequent source-page navigation or control removal cannot revoke it. New requests
 cannot acquire the item by reusing a URL or frame name.
 
@@ -182,6 +201,11 @@ bounded progress and waits for actual DownloadItem terminal. Interrupted updates
 defer cancellation out of Chromium's observer callback and retain the interrupted
 reason; no resume or automatic action replay is added. Sources remain owned until
 item terminal and actual page destruction, including no-item/late-item cleanup.
+A remote interruption is a source failure only after those resources settle and
+the owned private output is cleaned. An observed local output error takes
+precedence, including when the item also reports interrupted. User cancellation,
+parent expiry, stale task authority and unconfirmed resource close retain their
+task boundaries; none is reclassified as a remote failure.
 The item's deadline timer and abort listener retire at `done`. Actual final
 `completed` outranks an earlier interrupted observation and late page/access/
 deadline signals; the actual owned output must still be obtained. Progress is
@@ -354,7 +378,11 @@ it does not substitute for a working original-response implementation.
 
 Source failures do not stop independent candidates. P1–P5 remains lazy and stops
 at the first actual PDF completion. OpenAlex preserves best-first deterministic
-order across all qualified distinct locations, and IEEE/Springer/Elsevier records
+order across all qualified distinct locations. At the first refresh locator it
+can request fresh results, then merges/deduplicates them with the remaining stable
+cached URLs. Provider unavailability, failure, not-found and empty refresh results
+cannot erase those URLs or require a successful API request before consumption.
+IEEE/Springer/Elsevier records
 are matched and deduplicated without whole-list count rejection. Current facts
 still have a 64 KiB persistence/IPC byte capacity: qualified increments are retained
 and overflow is partial, allowing a current source refresh instead of false
@@ -381,7 +409,7 @@ temporary-profile Electron, controlled HTTP and shell adapters. Public stream,
 public original-item composition and rendered reader evidence are distinct from
 real-site and OS effects. Actual default-app/file-manager effects, real
 publishers/institution sessions/proxies/CDNs and manual challenges require
-separate acceptance and task-specific authorization. Source observations expose only phase/rule, fixed reason, origin, physical candidate-path
+separate acceptance and task-specific authorization. Source observations expose only phase/rule, fixed reason, related saved Service ID where applicable, origin, physical candidate-path
 index and whether a later candidate was actually attempted. Reader/redirect continuation
 and same-candidate retries retain the same index. The current registry
 retains 64 recent observations; diagnostics retains 256 in-memory validated
@@ -406,6 +434,8 @@ Choose from these effects when a change needs evidence beyond isolated fixtures:
 | --- | --- |
 | Original publisher response | From a ScienceDirect test Paper that needs the original browser response, click **Download** once. If testing the form path, add one accessible R059 Microbiology example. The transfer completes from the original action, the Paper appears once in Downloaded and its PDF opens. A browser viewer alone is not success. Record access denial separately from a transfer failure. |
 | Retained reusable publisher paths | Use one known IEEE reader example and one Oxford/Silverchair CDN example, because the unified source coordinator and shared Session hooks affect their routing. Both complete through public Download without a second body or new save step. Do not expand this to every publisher. |
+| Service-scoped access and independent sources | With a disposable Paper whose Service is unprepared, download an ordinary accessible candidate. For an actually institution-bound Reader, use its correct prepared context, then invalidate that Service during unfinished access: only that access stops, cleanup ends, and an independent available source can succeed. Record the skipped Service reason even when the final download succeeds. |
+| Cloudflare modal and ignored input | On an authorized sample with a visible blocking Cloudflare modal over readable content, confirm the common Page solver remains pending until the modal actually clears. A first ignored checkbox click may be tried again while the same unchecked control remains actionable; optional/hidden widgets do not start access handling. Offline fixtures establish mechanics, not live-site success rates. |
 | Download interaction and cancellation | On one sufficiently slow test download, switch Papers and return, cancel that exact unfinished attempt, wait for actual settlement, then explicitly retry. Progress follows the right Paper and unrelated work continues. Cancellation before transfer completion creates no Downloaded body; a late cancellation after actual completion preserves it. Reuse this sample for completion/classification/Reader checks. |
 | OS and independent body deletion | On a downloaded test Paper, use **打开 PDF** and **定位 PDF** to verify the default viewer and Finder select the same managed body. Move that test Paper to Trash, select **删除 PDF**, then Restore. Only that PDF/association is removed; metadata survives and the Paper is an eligible Candidate. Offline/zero-network, missing-file and permission behavior already have isolated coverage; no system network or permission changes are required. Do not clear unrelated real files or metadata. |
 

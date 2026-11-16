@@ -8,6 +8,12 @@ from allfold.persistence.safe_write import ContentChangedError
 from allfold.providers.integrated import PROVIDERS
 
 
+class ServiceAccessUnavailable(ValueError):
+    def __init__(self, message, diagnostic):
+        super().__init__(message)
+        self.diagnostic = diagnostic
+
+
 @dataclass(frozen=True)
 class NativeAccessBinding:
     """Captured descriptive association; verification remains with TaskAuthority."""
@@ -48,10 +54,10 @@ class TaskAuthority:
         if service_id is not None:
             saved = BrowserServiceSnapshot.read(config_path)
             if not any(service.id == service_id for service in saved.services):
-                raise ValueError('Collection Service must be a saved Service')
+                raise ServiceAccessUnavailable('Collection Service must be a saved Service', 'service-missing')
             prepared = login.prepared_authority(saved, service_id) if login else None
             if prepared is None:
-                raise ValueError('Collection Service must have a valid prepared context')
+                raise ServiceAccessUnavailable('Collection Service must have a valid prepared context', 'service-unprepared')
             scope = saved.service_scope(service_id)
         authority = cls(config_path, service_id, scope, providers, credentials, saved, prepared, login)
         authority.verify()

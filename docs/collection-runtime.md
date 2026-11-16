@@ -182,6 +182,14 @@ SQLite completion. Inapplicable entries skip without inventing a transfer or
 fallback; exhausted work ends finitely. The accepted native temporary-file
 cancellation risk is documented in [body downloads](body-downloads.md).
 
+Body admission has no global Service Prepare gate. Temporary access owners bind
+only actually needed Service contexts and use their own native cancellation IDs,
+while sharing the original Paper/attempt. Selective Service maintenance drains
+that access owner's real resources and releases its scope before independent
+sources continue; it does not cancel the body reservation. Normal Session reads,
+public Reader/native entries and stable cached URLs need no Service binding.
+Collection branches and foreground Run keep their existing stricter policies.
+
 Local file operations capture their own current body proof and host-visible
 lifetime. Open/locate can coexist with collection and require no Service/Prepare;
 they remain visible to maintenance without blocking first Run admission or an

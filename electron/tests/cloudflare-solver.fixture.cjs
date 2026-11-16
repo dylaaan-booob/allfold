@@ -32,7 +32,7 @@ app.whenReady().then(async()=>{
       const html=pages.includes(url.origin+url.pathname)?`<!doctype html>${url.searchParams.has('native')?widget.replace(frameURL,frameURL+'?native'):widget}`
         :url.origin==='https://challenges.cloudflare.com' && url.pathname===new URL(frameURL).pathname?
           url.searchParams.has('native')?'<input type="checkbox" style="width:60px;height:60px">':
-          '<label style="display:block;width:180px;height:60px;background:#ddd"><input type="checkbox" style="opacity:0;width:30px;height:30px">Verify human</label>'
+          '<label style="display:block;width:180px;height:60px;background:#ddd"><input type="checkbox" '+(url.searchParams.has('ignored')?'onclick="window.attempts=(window.attempts||0)+1;if(window.attempts===1)event.preventDefault()" ':'')+'style="opacity:0;width:30px;height:30px">Verify human</label>'
         :url.pathname==='/normal'?'<article><h1>Normal content</h1></article>':'';
       return new Response(html,{status:html?200:404,headers:{'Content-Type':'text/html'}});
     });
@@ -130,22 +130,25 @@ app.whenReady().then(async()=>{
     await until(()=>requests.filter(item=>item.type==='solve_cloudflare').length===2,'both independent tabs observe challenges without pending operations');
     assert.equal(browser.operations.size,0);
     // First discovery finds nothing, then a delayed closed shadow root and a hidden unrelated hCaptcha appear.
-    await tabs[1].view.webContents.executeJavaScript(`const host=document.createElement('div');document.body.append(host);host.attachShadow({mode:'closed'}).innerHTML=${JSON.stringify(widget)};document.body.insertAdjacentHTML('beforeend','<iframe hidden src="https://newassets.hcaptcha.com/captcha"></iframe>')`);
+    await tabs[1].view.webContents.executeJavaScript(`const host=document.createElement('div');document.body.append(host);host.attachShadow({mode:'closed'}).innerHTML=${JSON.stringify(widget.replace(frameURL,frameURL+'?ignored'))};document.body.insertAdjacentHTML('beforeend','<iframe hidden src="https://newassets.hcaptcha.com/captcha"></iframe>')`);
     await until(()=>clicked(tabs[1])===1,'delayed shadow/OOPIF control clicked');
     assert.equal(clicked(tabs[0]),0,'long waiting tab cannot consume or receive the other target interaction');
     assert.equal(await tabs[0].view.webContents.executeJavaScript('!!document.querySelector("#occluder").dataset.clicked'),false,'covered controls must not click an unrelated parent button');
     assert.equal((await browser.inspectPage(tabs[1])).waiting,true,'click is not passage');
-    await pause(800);assert.equal(clicked(tabs[1]),1,'unchanged control is not repeatedly clicked');
+    await until(()=>clicked(tabs[1])===2,'ignored click retries the same continuously actionable checkbox');
+    const ignoredFrame=tabs[1].view.webContents.mainFrame.framesInSubtree.find(frame=>frame.url===frameURL+'?ignored');
+    assert.deepEqual(await ignoredFrame.executeJavaScript('[window.attempts,document.querySelector("input").checked]'),[2,true]);
+    await pause(800);assert.equal(clicked(tabs[1]),2,'checked control is not clicked again');
     await tabs[0].view.webContents.executeJavaScript('document.querySelector("#occluder").remove()');
     await until(()=>clicked(tabs[0])===1,'uncovering the actual point allows the same waiting control to proceed');
     // A replacement frame and history change stay on the original native target.
     await install(tabs[1],widget+`<iframe hidden src="${frameURL}?rebuilding"></iframe>`);
     await tabs[1].view.webContents.executeJavaScript('history.replaceState({},"","#replacement")');
-    await until(()=>clicked(tabs[1])===2,'replacement frame retried');
+    await until(()=>clicked(tabs[1])===3,'replacement frame retried');
     const recover=tab=>tab.view.webContents.executeJavaScript('document.head.innerHTML="<title>Article</title>";document.body.innerHTML="<article><h1>Accessible content</h1></article>"');
     await recover(tabs[1]);await until(()=>tabs[1].challenge.state==='recovered' && !tabs[1].challenge.active,'passage drains solver');
     assert.equal((await browser.waitForPage(tabs[1],{deadline:Date.now()+1500})).status,200);
-    await install(tabs[1],widget);await until(()=>clicked(tabs[1])===3,'later independent challenge');
+    await install(tabs[1],widget);await until(()=>clicked(tabs[1])===4,'later independent challenge');
     const first=requests.find(item=>item.type==='solve_cloudflare' && item.page_id===tabs[1].id);
     const prior=tabs[1].challenge.state;
     dispatch.receive({...first,type:'cloudflare_progress',target_id:'f'.repeat(32),data:{outcome:'waiting',reason:'checkbox_ambiguous'}});

@@ -21,6 +21,12 @@ def test_pdf_source_observations_export_without_worker_file_io_or_private_data(t
     exported=bundle(store)
     assert 'pdf_source_result' in exported['events.jsonl'] and 'access-blocked' in exported['events.jsonl']
     assert 'PRIVATE' not in ''.join(exported.values())
+    service_id='svc_'+'1'*32
+    assert store.record_pdf_source(dict(paper_id='11111111-1111-4111-8111-111111111111',attempt=1,
+        pdf_stage='P4',pdf_rule='R060',pdf_reason='service-unprepared',pdf_attempt=1,service_id=service_id,
+        cookie='PRIVATE',url='https://publisher.example.org/body?Signature=PRIVATE'))
+    scoped=bundle(store)['events.jsonl']
+    assert 'service-unprepared' in scoped and service_id in scoped and 'PRIVATE' not in scoped
     assert 'pdf_source_result' not in bundle(DiagnosticStore(tmp_path/'config.yaml',root=tmp_path/'logs'))['events.jsonl']
 
 

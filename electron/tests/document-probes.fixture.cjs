@@ -29,6 +29,8 @@ app.whenReady().then(async()=>{
     });
     // Normal content can include optional authentication and verification resources.
     for(const extra of ['<iframe hidden src="https://newassets.hcaptcha.com/captcha/v1"></iframe>',
+      '<iframe src="https://challenges.cloudflare.com/cdn-cgi/challenge-platform/widget"></iframe>',
+      '<div aria-modal="true" hidden><iframe src="https://challenges.cloudflare.com/cdn-cgi/challenge-platform/widget"></iframe></div>',
       '<input type="password"><p>access denied, hcaptcha and g-recaptcha are ordinary text</p>',
       '<script src="https://challenges.cloudflare.com/turnstile/v0/api.js"></script><div class="cf-turnstile"></div>',
       '<script>window._cf_chl_opt = {};</script><script src="/cdn-cgi/challenge-platform/h/g/orchestrate/chl_page/v1"></script>']) {
@@ -155,6 +157,20 @@ app.whenReady().then(async()=>{
     await wc.executeJavaScript('document.querySelector("h1").remove();document.querySelector("p").remove()');
     assert.equal((await browser.inspectPage(tab,{signal})).waiting,false);
     assert.equal((await browser.accessState(tab)).markers.robot,false,'unrelated frame evidence does not keep access blocked');
+    await tab.challenge.active?.done;
+    // One observation sees readable background and the actual blocking modal.
+    await wc.executeJavaScript(`document.head.innerHTML='<title>Paper</title>';document.body.innerHTML=
+      '<article><h1>Paper</h1><p>Readable research</p></article><dialog open aria-modal="true"><iframe src="${frameURL}"></iframe></dialog>'`);
+    const modalAccess=await browser.accessState(tab),beforeModal=solved;
+    assert.equal(modalAccess.markers.content,true);
+    assert.equal(modalAccess.markers.cloudflareBlocking,true);
+    assert.equal((await browser.inspectPage(tab,{signal})).waiting,true);
+    const {waitFor,pause}=require('../src/browser/browser-task.cjs');
+    await waitFor(async()=>{while(!tab.challenge.active){await tab.challenge.read();if(!tab.challenge.active)await pause(signal,25);}},signal,Date.now()+2000);
+    assert.ok(solved>=beforeModal && tab.challenge.active,'blocking modal starts the common page solver');
+    assert.equal((await browser.inspectPage(tab,{signal})).waiting,true,'readable background cannot report passage');
+    await wc.executeJavaScript('document.querySelector("dialog").remove()');
+    assert.equal((await browser.waitForPage(tab,{signal,deadline:Date.now()+1000})).status,200);
     });
     assert.equal(browser.paperPages.size,0);assert.equal(browser.tabs.size,1,'only explicit user duplicate remains');
     assert.equal(browser.documents.pending.size,0);

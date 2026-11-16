@@ -278,7 +278,7 @@ class WorkspaceTaskHost:
                         with registry.paper_gate():
                             parent = getattr(target, 'parent', target)
                             if (registry._tasks.get(target.paper_id) is parent
-                                    or registry._reservations.get(target.paper_id) is target):
+                                    or registry._reservations.get(target.paper_id) is parent):
                                 raise
             if change.whole and registry.active:
                 raise RuntimeError('Workspace task resources or state could not be settled')

@@ -489,6 +489,33 @@ def test_p5_signed_persisted_locator_is_requeried_and_current_raw_query_is_prese
     assert result.pdf_source == 'P5'
 
 
+@pytest.mark.parametrize('refresh', ['unavailable', 'failed', 'not-found', 'empty', 'duplicate'])
+def test_p5_refresh_never_discards_later_stable_cache(refresh):
+    from allfold.pdf_facts import openalex_discovery_facts
+    from allfold.pdf_discovery import PdfSourceReadError
+    from allfold.providers.openalex import OpenAlexNotFoundError
+    paper = target('unknown.example.org')
+    stable = 'https://repository.example.org/Body.PDF'
+    fact = openalex_discovery_facts({'doi': paper.doi,
+        'best_oa_location': {'pdf_url': 'https://publisher.example.org/old.pdf?token=old'},
+        'locations': [{'pdf_url': stable}]}, datetime.now(timezone.utc))
+    class IO:
+        openalex_available = refresh != 'unavailable'
+        def openalex(self, doi):
+            if refresh == 'failed':
+                raise PdfSourceReadError('unavailable', diagnostic='provider-unavailable')
+            if refresh == 'not-found':
+                raise OpenAlexNotFoundError('missing')
+            return {'doi': doi, 'best_oa_location': {'pdf_url': stable} if refresh == 'duplicate' else None,
+                'locations': [{'pdf_url': stable}] if refresh == 'duplicate' else []}
+    seen = []
+    def consume(candidate):
+        seen.append(candidate.url)
+        return CandidateResult.failed()
+    PdfDiscovery(paper, facts=(fact,), io=IO()).run(consume)
+    assert seen == [stable]
+
+
 def test_p5_best_first_dedup_and_exact_doi():
     paper = target('unknown.example.org')
     class IO:

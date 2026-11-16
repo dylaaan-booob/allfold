@@ -272,7 +272,7 @@ async def _node_key(node, connection, frame_id):
     return frame_id, response['result']['node']['backendNodeId']
 
 
-async def _scan(connection, browser_connection, endpoint, clicked, stop):
+async def _scan(connection, browser_connection, endpoint, stop):
     from pydoll.exceptions import ShadowRootNotFound
 
     async with asyncio.timeout(5):
@@ -301,11 +301,9 @@ async def _scan(connection, browser_connection, endpoint, clicked, stop):
                         if key is None:
                             continue
                         current = await _checkbox_target(box, frame_connection, frame_id, lineage)
-                        if current is not None and key not in clicked:
+                        if current is not None:
                             target_key, _point = current
                             candidates.append((lineage, box, key, frame_connection, frame_id, target_key))
-                        elif current is None:
-                            clicked.discard(key)  # A real disabled/checked -> ready transition may retry.
             except Exception:
                 continue  # Stale nodes and local CDP failures are observations, not terminal page failures.
         # Count currently actionable controls, not every checkbox or frame on the page.
@@ -336,7 +334,6 @@ async def _scan(connection, browser_connection, endpoint, clicked, stop):
             finally:
                 await frame_connection.execute_command({'method': 'Input.dispatchMouseEvent', 'params': {
                     **event, 'type': 'mouseReleased', 'buttons': 0}})
-            clicked.add(key)
             return {'outcome': 'clicked', 'reason': 'checkbox_clicked'}
 
 
@@ -344,7 +341,6 @@ async def _watch_turnstile(cdp_url: str, stop: Event, *, target_id: str, progres
     from pydoll.connection.connection_handler import ConnectionHandler
 
     endpoint = urlsplit(cdp_url)
-    clicked = set()
     last = None
     while not stop.is_set():
         try:
@@ -359,11 +355,13 @@ async def _watch_turnstile(cdp_url: str, stop: Event, *, target_id: str, progres
                 connection = ConnectionHandler(ws_address=page_endpoint)
                 resources.push_async_callback(_disconnect, connection)
                 while not stop.is_set():
-                    result = await _scan(connection, browser_connection, endpoint, clicked, stop)
-                    if result != last:
+                    result = await _scan(connection, browser_connection, endpoint, stop)
+                    if result != last or result['outcome'] == 'clicked':
                         await progress(result)
                         last = result
-                    # A cancelable observation interval, not an attempt or challenge deadline.
+                    # De-duplicate controls within each scan and space input by
+                    # this cancelable observation interval. Re-locate even an
+                    # unchanged unchecked control after an ignored click.
                     await asyncio.sleep(.5)
         except Exception:
             result = {'outcome': 'waiting', 'reason': 'cdp_unavailable'}

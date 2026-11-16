@@ -94,7 +94,7 @@ class OriginalNavigation {
     this.addFrame(source,contents.mainFrame);
     source.created=(_event,{frame})=>{
       if(!this.dispatched||!frame||this.primary||this.error)return;
-      if(source.createdFrames.size>=8||!sameFrame(frame.parent,contents.mainFrame))return;
+      if(!sameFrame(frame.parent,contents.mainFrame))return;
       source.createdFrames.add(frame.frameToken);
     };
     contents.on('frame-created',source.created);
@@ -135,7 +135,7 @@ class OriginalNavigation {
     contents.on('did-frame-finish-load',source.loaded);
   }
   addFrame(source,frame,document=this.doc) {
-    if(!frame||source.frames.has(frame.frameToken)||source.frames.size>=8)return;
+    if(!frame||source.frames.has(frame.frameToken))return;
     const entry={frame,request:null};source.frames.set(frame.frameToken,entry);
     entry.registration=this.browser.sessionEvents.registerDownload({owner:this.owner,attemptId:this.owner.association.request_id,
       contents:source.contents,frame,document,requireRequest:true,filename:this.output.filename,
@@ -372,15 +372,17 @@ async function executeBodyNative(browser,data,{signal,progress=()=>{}}={}) {
     primary=await waitFor(()=>operation.received,stop,data.deadline_ms);
     const terminal=await primary.terminal; // actual done is never raced with timeout/cancellation
     clearTimeout(timer);
+    // A remote interruption cannot hide an already observed output failure.
+    if(operation.outputError)throw operation.outputError;
     if(terminal!=='completed') {
-      if(primary.observation.interrupted)return {outcome:'local_failure',kind:'local_failure',diagnostic_code:'interrupted',
-        native_terminal:terminal,native_cleanup:'asynchronous'};
+      if(stop.aborted||Date.now()>=data.deadline_ms)throw failure('timeout');
       if(operation.error)throw operation.error;
+      if(primary.observation.interrupted)return {outcome:'failed',kind:'failed',diagnostic_code:'interrupted',
+        native_terminal:terminal,native_cleanup:'asynchronous'};
       return {outcome:bounded.aborted?'expired':stop.aborted?'cancelled':'local_failure',
       kind:bounded.aborted?'expired':stop.aborted?'cancelled':'local_failure',diagnostic_code:'native-interrupted',
       native_terminal:terminal,native_cleanup:'asynchronous'};
     }
-    if(operation.outputError)throw operation.outputError;
     const observed=output.capture({sniff:true});
     if(!operation.observed){operation.observed=observed.file;try{progress({native_output_file:observed.file});}catch(_){}}
     try{progress({received_bytes:observed.size,total_bytes:primary.item.getTotalBytes()>0?primary.item.getTotalBytes():null});}catch(_){}

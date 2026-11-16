@@ -1,5 +1,6 @@
 """Managed body ownership and durable completion, using disposable real files/SQLite."""
 from uuid import uuid4
+from dataclasses import replace
 import pytest
 from allfold.models import ExternalIds
 from allfold.persistence.paper_repository import PaperRepository, PaperMetadata, BodyReference, StaleWriteError
@@ -206,6 +207,113 @@ def application_host(tmp_path):
     target=PdfTarget(str(paper.id),doi='10.5555/body',direct_identities=tuple((i.namespace,i.value) for i in paper.identities))
     candidate=PdfCandidate(target,'P1','GENERIC','generic','https://publisher.example.org/body')
     return host,workspace,paper,bridge,candidate
+
+
+def prepared_application_host(tmp_path):
+    from allfold.application.browser_runtime import BrowserTaskLock
+    from allfold.application.coordinators.login import LoginCoordinator
+    from allfold.persistence.user_state import load_user_state, compare_write_user_state
+    from test_login import Native, opened
+    host, workspace, paper, bridge, candidate = application_host(tmp_path)
+    saved = load_user_state(host.config_path)
+    service = saved.state.access_services[0].model_copy(update={'access_method': 'manual'})
+    compare_write_user_state(host.config_path, replace(saved.state, access_services=(service,)), saved.revision)
+    native, lock = Native(), BrowserTaskLock()
+    login = LoginCoordinator(native, lock)
+    login.start(host.config_path, manual_service_id=service.id)
+    native.operations.get(timeout=2)[2].set_result(opened(17))
+    login.join()
+    host.login, host.browser_lock = login, lock
+    authority = host._capture_authority(service.id, ())
+    return host, workspace, paper, bridge, replace(candidate, access=authority)
+
+
+def test_service_change_stops_only_active_access_and_releases_scope_before_oa(tmp_path):
+    from threading import Event, Thread
+    from dataclasses import replace
+    from allfold.application.body_downloads import submit_body_download, BodyDownloadService
+    host, workspace, paper, bridge, bound = prepared_application_host(tmp_path)
+    independent = replace(bound, url='https://repository.example.org/body.pdf', stage='P5', access=None)
+    canceled, drained, errors = Event(), Event(), []
+    cancel = bridge.cancel_task
+    def cancel_native(workflow, task):
+        cancel(workflow, task)
+        canceled.set()
+    bridge.cancel_task = cancel_native
+    try:
+        task = submit_body_download(host, paper, candidates=(bound, independent))
+        assert bridge.started.wait(2)
+        operation = task.access_operation
+        data = bridge.calls[-1][1]
+        assert data['service_id'] == bound.access.service_id and data['target_page_id'] == 17
+        assert task.service_id is None and not task.authority.native_access().payload()
+        unrelated = host.begin_change(services=('svc_'+'f'*32,))
+        assert not unrelated.targets
+        host.drain_change(unrelated); host.finish_change(unrelated)
+        operation.guard()
+        assert not canceled.is_set()
+        change = host.begin_change(services=(bound.access.service_id,))
+        assert change.targets == (operation,) and not task.cancel_event.is_set()
+        def drain():
+            try:
+                host.drain_change(change)
+            except BaseException as error:
+                errors.append(error)
+            finally:
+                drained.set()
+        worker = Thread(target=drain); worker.start()
+        assert canceled.wait(2) and not drained.is_set() and not task.future.done()
+        bridge.started.clear()
+        bridge.result.set_result(dict(kind='cancelled', outcome='cancelled', resource_closed=True))
+        assert bridge.started.wait(2) and len(bridge.calls) == 2
+        assert drained.wait(2)
+        worker.join(); assert not errors
+        host.finish_change(change)
+        assert 'service_id' not in bridge.calls[-1][1] and 'preparation_key' not in bridge.calls[-1][1]
+        assert not host.browser_lock.conflicts((bound.access.service_scope,))
+        # Changing the previous Service again cannot address the new OA owner.
+        later = host.begin_change(services=(bound.access.service_id,))
+        assert not later.targets and len(bridge.cancels) == 1
+        host.drain_change(later); host.finish_change(later)
+        bridge.finish()
+        result = task.future.result(3)
+        assert result.status == 'completed' and result.paper.body.pdf_source == 'P5' and result.paper.body.fallback_used
+        sources = BodyDownloadService(host).projection(result.paper)['source_observations']
+        assert any(item['pdf_reason'] == 'service-invalidated' and item['service_id'] == bound.access.service_id for item in sources)
+        assert task.access_operation is None and not task.cancel_event.is_set() and not host.browser_lock.owners
+        assert (workspace/result.paper.body.relative_path).read_bytes() == b'body'
+    finally:
+        if hasattr(bridge, 'result') and not bridge.result.done():
+            bridge.result.set_result(dict(kind='cancelled', outcome='cancelled'))
+        if host._change is not None:
+            host.finish_change(host._change)
+        host.shutdown(); host.join()
+
+
+def test_completed_access_is_released_before_service_change_during_publication(tmp_path, monkeypatch):
+    from allfold.application.body_downloads import submit_body_download
+    host, workspace, paper, bridge, bound = prepared_application_host(tmp_path)
+    publish, changes = ManagedBodyFiles.publish, []
+    def after_transfer(files, output):
+        change = host.begin_change(services=(bound.access.service_id,))
+        changes.append(change)
+        assert not change.targets and not host.browser_lock.owners
+        host.drain_change(change); host.finish_change(change)
+        return publish(files, output)
+    monkeypatch.setattr(ManagedBodyFiles, 'publish', after_transfer)
+    try:
+        task = submit_body_download(host, paper, candidates=(bound,))
+        assert bridge.started.wait(2)
+        bridge.finish()
+        result = task.future.result(3)
+        assert result.status == 'completed' and len(changes) == 1 and result.paper.id == paper.id
+        assert result.paper.download.token == task.download_token and not bridge.cancels and not host.active
+    finally:
+        if hasattr(bridge, 'result') and not bridge.result.done():
+            bridge.result.set_result(dict(kind='cancelled', outcome='cancelled'))
+        if host._change is not None:
+            host.finish_change(host._change)
+        host.shutdown(); host.join()
 
 
 def test_current_ieee_reader_response_finishes_the_same_body_attempt(tmp_path):

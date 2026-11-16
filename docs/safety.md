@@ -106,7 +106,11 @@ Access cleanup carries captured old keys, waits outside configuration write lock
 and cannot close a new context. Retained-page destruction revokes that page's
 preparation; a late Login result cannot restore a closed page. Covers final saves
 protect the captured Journal and managed asset while allowing unrelated edits.
-The Download-wide Prepare admission policy remains unresolved; see
+Download Service changes revoke and drain only the currently dependent access
+operation. Its captured binding follows dependent continuations and is released
+after actual native settlement; independent candidates inherit no Service scope
+or explicit credentials. Workspace/Paper/attempt cancellation remains terminal.
+Completed transfers receive no later Service qualification; see
 [body admission](body-downloads.md#public-input-and-admission).
 
 ## Cancellation and task release

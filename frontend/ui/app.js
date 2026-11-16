@@ -1251,6 +1251,10 @@ function renderBodyControls(paper) {
   $('paper-download-cancel').hidden=!active;
   $('paper-download-cancel').disabled=bodyRequests.has(paper.id) || !download?.cancel_available;
   const bytes=value=>value>=1048576?(value/1048576).toFixed(1)+' MB':value>=1024?Math.round(value/1024)+' KB':value+' B';
+  const serviceReasons={'service-unassigned':'当前机构访问来源没有对应的 Service。','service-ambiguous':'当前机构访问来源的 Service 映射有歧义。',
+    'service-missing':'当前机构访问来源的 Service 已不存在。','service-unprepared':'当前机构访问来源的 Service 尚未 Prepare。',
+    'service-invalidated':'当前来源使用的 Service 访问上下文已失效。'};
+  const accessIssues=(download?.source_observations || []).filter(item=>serviceReasons[item.pdf_reason]);
   let text='';
   if(active){
     text=download.cleaning_up?'正在清理下载资源…':download.status==='queued'?'等待下载':'正在下载';
@@ -1267,13 +1271,17 @@ function renderBodyControls(paper) {
       'partial-response':'当前来源只取得部分解析结果。','non-pdf':'当前响应不是 PDF。',
       'source-failed':'当前来源请求失败。','no-pdf-entry':'当前来源没有可用正文入口。',
       'no-pdf-candidates':'没有剩余的合格 PDF 候选。','provider-unavailable':'后续 PDF 来源不可用。',
+      ...serviceReasons,
       'response-loop':'当前来源重复返回相同响应。','expired':'下载已到达父任务期限。',
       'cancelled':'下载已取消。','stale':'本次下载的 Paper 或任务资格已失效。'};
     text=reasons[download.reason] || text;
   }
   if(!active && !paper.body_present && download?.source_observations?.some(item=>item.subsequent_attempted))text+=' 已尝试后续来源。';
+  if(!active && paper.body_present && download?.status==='completed' && accessIssues.length)text='下载成功。已跳过无法使用的机构访问来源。';
   if(!active && download?.warning)text=[text,download.warning].filter(Boolean).join(' ');
   $('paper-download-status').textContent=text;
+  $('paper-download-status').title=accessIssues
+    .map(item=>`${serviceReasons[item.pdf_reason]}${item.service_id?` · ${item.service_id}`:''}`).join('\n');
   $('paper-download-status').hidden=!text;
 }
 async function bodyAction(action) {
