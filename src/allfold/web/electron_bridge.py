@@ -206,6 +206,7 @@ class ElectronBridge:
         finally:
             owned_connection = self._socket is socket
             if owned_connection:
+                self.closing = True
                 self._socket = None
                 for challenge in self._challenges.values():
                     challenge.stop.set()

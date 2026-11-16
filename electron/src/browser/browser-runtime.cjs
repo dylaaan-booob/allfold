@@ -247,7 +247,7 @@ class BrowserRuntime {
     if(opener?.association)this.reportPage('info','page_associated',tab);
     if(options.present!==false)this.select(tab);
     else this.publish();
-    tab.challenge=this.runInOperation(null,()=>new PageChallenge({tab,probe:signal=>this.accessState(tab,{signal,independent:true}),
+    tab.challenge=this.runInOperation(null,()=>new PageChallenge({tab,owner,probe:signal=>this.accessState(tab,{signal,independent:true}),
       solve:options=>this.solveCloudflare?.(tab,options),changed:()=>{
         this.publish();this.reportPage('info','page_access',tab,{access_state:tab.challenge?.state,challenge_type:tab.challenge?.kind || 'unknown'});
       },

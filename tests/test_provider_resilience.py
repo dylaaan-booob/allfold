@@ -468,3 +468,21 @@ def test_api_access_classification_uses_current_response_evidence(status, body, 
             client.request('/works/W1', {})
         assert failed.value.kind == expected
         assert client.request('/works/W2', {}) == {'id': 'https://openalex.org/W2'}
+
+
+@pytest.mark.parametrize('body', [
+    '<title>Verify you are human</title><iframe src="https://newassets.hcaptcha.com/captcha"></iframe>',
+    '<title>Making sure you’re not a bot!</title><script id="anubis_challenge" type="application/json">{}</script>',
+])
+def test_openalex_403_verification_does_not_latch_authorization_failure(body):
+    from allfold.providers.openalex import OpenAlexRequestError
+    calls = []
+    def response(request):
+        calls.append(request)
+        return (httpx.Response(403, headers={'content-type': 'text/html'}, text=body) if len(calls) == 1
+                else httpx.Response(200, json={'id': 'https://openalex.org/W2'}))
+    with OpenAlexClient(transport=httpx.MockTransport(response), interval=0) as client:
+        with pytest.raises(OpenAlexRequestError, match='access limited'):
+            client.get_work_by_doi('10.5555/one')
+        assert client.get_work_by_doi('10.5555/two') == {'id': 'https://openalex.org/W2'}
+    assert len(calls) == 2

@@ -97,7 +97,10 @@ The transient challenge ID, physical Page ID and exact native CDP target correla
 requests, progress, terminal replies and cancellation. Same-URL tabs cannot substitute
 for each other. The dispatcher verifies that WebContents belongs to the managed
 Session; Python finds frames only from that target, including accessible shadow
-roots and attributable OOPIFs. It never selects a page by URL.
+roots and attributable OOPIFs. Frame-tree/owner IDs establish ancestry; OOPIF
+candidate IDs require a native owner in that parent before attachment. No full-DOM
+shadow-root enumeration or whole-page HTML read is used. It never selects a page
+by URL.
 
 The current control must be connected, enabled, visible and hit-testable before
 interaction. Hidden or rebuilding auxiliary frames do not veto a known actionable
@@ -113,7 +116,8 @@ is available. Later challenges on the same live tab remain eligible.
 Each tab owns at most one active interaction through actual cleanup. Independent
 Pydoll tasks use async I/O, with no global serial Solver slot or occupied shared
 thread-pool worker during waits. Page destruction, renderer exit, temporary-task
-cleanup, Browser shutdown and Bridge loss stop the corresponding work. Terminal
+cancellation immediately stops interaction, independently of slower download cleanup.
+Page cleanup, Browser shutdown and Bridge loss also stop the corresponding work. Terminal
 replies follow actual CDP cleanup. If the authenticated socket is lost, the owned
 Python child pipe acknowledges the solver drain (or process exit proves it) before
 Main releases waiting page cleanup. This fixed lifecycle acknowledgement carries

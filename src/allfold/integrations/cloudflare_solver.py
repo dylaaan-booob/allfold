@@ -79,17 +79,21 @@ async def solve_cloudflare(cdp_url: str, stop: Event, *, target_id: str, progres
 
 async def _solve_until_canceled(cdp_url: str, stop: Event, *, target_id: str, progress) -> dict[str, str]:
     task = asyncio.create_task(_watch_turnstile(cdp_url, stop, target_id=target_id, progress=progress))
-    while not task.done():
-        if stop.is_set():
-            task.cancel()
-            break
-        await asyncio.wait({task}, timeout=0.05)
     try:
-        return await task
-    except asyncio.CancelledError:
-        if not stop.is_set():
-            raise
-        return {"outcome": "not_executed", "reason": "canceled"}
+        while not task.done():
+            if stop.is_set():
+                task.cancel()
+                break
+            await asyncio.wait({task}, timeout=0.05)
+        try:
+            return await task
+        except asyncio.CancelledError:
+            return ({'outcome': 'not_executed', 'reason': 'canceled'} if stop.is_set()
+                    else {'outcome': 'failed', 'reason': 'solver_failed'})
+    finally:
+        if not task.done():
+            task.cancel()
+            await asyncio.gather(task, return_exceptions=True)
 
 
 def _challenge_origin(url: str) -> bool:
@@ -98,52 +102,83 @@ def _challenge_origin(url: str) -> bool:
             and source.netloc.lower() in {"challenges.cloudflare.com", "challenges.cloudflare.com:443"})
 
 
-async def _frame_body(frame, connection, browser, endpoint, resources: AsyncExitStack):
-    from pydoll.browser.tab import Tab
-    from pydoll.commands import DomCommands
+async def _frame_connection(frame_id, browser_connection, endpoint, resources):
     from pydoll.connection.connection_handler import ConnectionHandler
+
+    # Only a frame already discovered under the original target may be attached.
+    info = await browser_connection.execute_command({'method': 'Target.getTargetInfo', 'params': {'targetId': frame_id}})
+    if info['result']['targetInfo'].get('type') != 'iframe':
+        return None
+    address = urlunsplit(endpoint._replace(path=f'/devtools/page/{frame_id}'))
+    connection = ConnectionHandler(ws_address=address)
+    resources.push_async_callback(connection.close)
+    tree = (await connection.execute_command({'method': 'Page.getFrameTree'}))['result']['frameTree']
+    return (connection, tree) if tree['frame']['id'] == frame_id else None
+
+
+async def _owned_frames(connection, tree, targets, browser_connection, endpoint, resources, ancestors=(), seen=None):
     from pydoll.elements.web_element import WebElement
 
-    # Describe the frame element on the bound page. Pydoll's generic iframe
-    # resolver can attach unrelated targets while looking for this document.
-    reference = await frame.execute_script("return this", return_by_value=False)
-    object_id = reference["result"]["result"].get("objectId")
-    if object_id is None:
-        return None
-    response = await connection.execute_command(DomCommands.describe_node(object_id=object_id))
-    node = response["result"]["node"]
-    frame_id = node.get("frameId")
-    if not frame_id:
-        return None
-    if node.get("contentDocument"):
-        result = await connection.execute_command({
-            "method": "Page.createIsolatedWorld", "params": {"frameId": frame_id, "worldName": "AllfoldSolver"}})
-        context = result["result"]["executionContextId"]
-        result = await connection.execute_command({"method": "Runtime.evaluate", "params": {
-            "contextId": context,
-            "expression": 'location.origin === "https://challenges.cloudflare.com" ? document.body : null',
-        }})
-        object_id = result.get("result", {}).get("result", {}).get("objectId")
-        return (WebElement(object_id, connection), connection, frame_id) if object_id else None
+    seen = set() if seen is None else seen
+    children = {item['frame']['id']: item for item in tree.get('childFrames', [])}
+    # Page.getFrameTree omits OOPIFs. A target listing supplies candidate IDs only;
+    # DOM.getFrameOwner on this exact parent must prove membership before use.
+    for info in targets:
+        children.setdefault(info['targetId'], {'frame': {'id': info['targetId'], 'url': info.get('url', '')}})
+    for child in children.values():
+        frame_id = child['frame']['id']
+        if frame_id == tree['frame']['id'] or frame_id in seen:
+            continue
+        try:
+            async with asyncio.timeout(5):
+                owner = (await connection.execute_command({'method': 'DOM.getFrameOwner', 'params': {'frameId': frame_id}}))['result']['backendNodeId']
+                resolved = await connection.execute_command({'method': 'DOM.resolveNode', 'params': {'backendNodeId': owner}})
+                element = WebElement(resolved['result']['object']['objectId'], connection)
+                if not await _checkbox_is_interactable(element):
+                    seen.add(frame_id)
+                    continue
+                attached = None
+                if 'parentId' not in child['frame']:
+                    attached = await _frame_connection(frame_id, browser_connection, endpoint, resources)
+                    if not attached or attached[1]['frame'].get('parentId') != tree['frame']['id']:
+                        continue  # A descendant must be reached through every actual parent.
+                    child = attached[1]
+                seen.add(frame_id)
+            # Never keep a timeout context open across yield: it would cancel the
+            # consumer's task while that task is inspecting a different CDP control.
+            lineage = (*ancestors, element)
+            child_connection = attached[0] if attached else connection
+            if _challenge_origin(child['frame'].get('url', '')):
+                yield element, frame_id, child_connection, lineage
+            else:
+                async for entry in _owned_frames(child_connection, child, targets, browser_connection, endpoint, resources, lineage, seen):
+                    yield entry
+        except Exception:
+            continue  # Detached/hidden auxiliary frames do not veto an actionable sibling.
 
-    if not any(target.get("targetId") == frame_id and target.get("type") == "iframe"
-               and _challenge_origin(target.get("url", "")) for target in await browser.get_targets()):
-        return None
-    frame_endpoint = urlunsplit(endpoint._replace(path=f"/devtools/page/{frame_id}"))
-    frame_connection = ConnectionHandler(ws_address=frame_endpoint)
-    resources.push_async_callback(frame_connection.close)
-    result = await frame_connection.execute_command({"method": "Page.getFrameTree"})
-    current = result["result"]["frameTree"]["frame"]
-    if current["id"] != frame_id or not _challenge_origin(current["url"]):
-        return None
-    frame_tab = Tab(browser, target_id=frame_id, ws_address=frame_endpoint,
-                    connection_handler=frame_connection)
-    body = await frame_tab.query("body", raise_exc=False)
-    return (body, frame_connection, frame_id) if body else None
+
+async def _frame_body(frame_id, connection, browser_connection, endpoint, resources):
+    from pydoll.elements.web_element import WebElement
+    from pydoll.exceptions import CommandFailed
+
+    try:
+        result = await connection.execute_command({'method': 'Page.createIsolatedWorld',
+            'params': {'frameId': frame_id, 'worldName': 'AllfoldSolver'}})
+    except CommandFailed:
+        attached = await _frame_connection(frame_id, browser_connection, endpoint, resources)
+        if not attached or not _challenge_origin(attached[1]['frame'].get('url', '')):
+            return None
+        connection = attached[0]
+        result = await connection.execute_command({'method': 'Page.createIsolatedWorld',
+            'params': {'frameId': frame_id, 'worldName': 'AllfoldSolver'}})
+    result = await connection.execute_command({'method': 'Runtime.evaluate', 'params': {
+        'contextId': result['result']['executionContextId'],
+        'expression': 'location.origin === "https://challenges.cloudflare.com" ? document.body : null'}})
+    object_id = result.get('result', {}).get('result', {}).get('objectId')
+    return (WebElement(object_id, connection), connection) if object_id else None
 
 
 async def _node_key(node, connection, frame_id):
-    from pydoll.commands import DomCommands
     reference = await node.execute_script('return this', return_by_value=False)
     object_id = reference['result']['result'].get('objectId')
     if not object_id:
@@ -152,32 +187,27 @@ async def _node_key(node, connection, frame_id):
     response = await node.execute_script('return this.ownerDocument.defaultView.location.origin', return_by_value=True)
     if response.get('result', {}).get('result', {}).get('value') != 'https://challenges.cloudflare.com':
         return None
-    response = await connection.execute_command(DomCommands.describe_node(object_id=object_id))
+    response = await connection.execute_command({'method': 'DOM.describeNode', 'params': {'objectId': object_id, 'depth': 0}})
     return frame_id, response['result']['node']['backendNodeId']
 
 
-async def _scan(tab, connection, browser, endpoint, clicked, stop):
+async def _scan(connection, browser_connection, endpoint, clicked, stop):
     from pydoll.exceptions import ShadowRootNotFound
 
-    # Pydoll deep=True enumerates browser-wide OOPIFs. Keep frame discovery rooted
-    # in this target, including its accessible/closed shadow roots.
     async with asyncio.timeout(5):
-        frames = await tab.query('iframe', find_all=True, raise_exc=False) or []
-        for shadow in await tab.find_shadow_roots():
-            frames.extend(await shadow.query('iframe', find_all=True, raise_exc=False) or [])
+        tree = (await connection.execute_command({'method': 'Page.getFrameTree'}))['result']['frameTree']
+        targets = (await browser_connection.execute_command({'method': 'Target.getTargets', 'params': {
+            'filter': [{'type': 'iframe'}]}}))['result']['targetInfos']
     candidates = []
     async with AsyncExitStack() as resources:
-        for frame in frames:
-            if not _challenge_origin(frame.get_attribute('src') or ''):
-                continue
+        async for frame, frame_id, parent_connection, lineage in _owned_frames(
+                connection, tree, targets, browser_connection, endpoint, resources):
             try:
                 async with asyncio.timeout(5):
-                    if not await _checkbox_is_interactable(frame):
-                        continue
-                    resolved = await _frame_body(frame, connection, browser, endpoint, resources)
+                    resolved = await _frame_body(frame_id, parent_connection, browser_connection, endpoint, resources)
                     if resolved is None:
-                        continue  # An unrelated rebuilding frame cannot veto a valid control.
-                    body, frame_connection, frame_id = resolved
+                        continue
+                    body, frame_connection = resolved
                     boxes = await body.query_script(_CHECKBOX_QUERY)
                     try:
                         shadow = await body.get_shadow_root()
@@ -191,25 +221,25 @@ async def _scan(tab, connection, browser, endpoint, clicked, stop):
                             continue
                         usable = await _checkbox_is_interactable(box)
                         if usable and key not in clicked:
-                            candidates.append((frame, box, key, frame_connection, frame_id))
+                            candidates.append((lineage, box, key, frame_connection, frame_id))
                         elif not usable:
                             clicked.discard(key)  # A real disabled/checked -> ready transition may retry.
             except Exception:
                 continue  # Stale nodes and local CDP failures are observations, not terminal page failures.
         # Count currently actionable controls, not every checkbox or frame on the page.
-        unique = {key: (frame, box, frame_connection, frame_id)
-                  for frame, box, key, frame_connection, frame_id in candidates}
+        unique = {key: (lineage, box, frame_connection, frame_id)
+                  for lineage, box, key, frame_connection, frame_id in candidates}
         if len(unique) > 1:
             return {'outcome': 'waiting', 'reason': 'checkbox_ambiguous'}
         if not unique:
             return {'outcome': 'waiting', 'reason': 'checkbox_not_found'}
-        key, (frame, box, frame_connection, frame_id) = next(iter(unique.items()))
+        key, (lineage, box, frame_connection, frame_id) = next(iter(unique.items()))
         async with asyncio.timeout(5):
             # The owner node and control must still be current and hit-testable.
             # This tolerates same-tab navigation but never retargets another tab.
             if stop.is_set():
                 raise asyncio.CancelledError()
-            if not await _checkbox_is_interactable(frame) or not await _checkbox_is_interactable(box):
+            if not all([await _checkbox_is_interactable(frame) for frame in lineage]) or not await _checkbox_is_interactable(box):
                 return {'outcome': 'waiting', 'reason': 'checkbox_not_interactable'}
             if await _node_key(box, frame_connection, frame_id) != key:
                 return {'outcome': 'waiting', 'reason': 'checkbox_not_interactable'}
@@ -219,8 +249,6 @@ async def _scan(tab, connection, browser, endpoint, clicked, stop):
 
 
 async def _watch_turnstile(cdp_url: str, stop: Event, *, target_id: str, progress) -> dict[str, str]:
-    from pydoll import Chrome
-    from pydoll.browser.tab import Tab
     from pydoll.connection.connection_handler import ConnectionHandler
 
     endpoint = urlsplit(cdp_url)
@@ -229,20 +257,17 @@ async def _watch_turnstile(cdp_url: str, stop: Event, *, target_id: str, progres
     while not stop.is_set():
         try:
             async with AsyncExitStack() as resources:
-                browser = Chrome()
-                # close() only disconnects; stop()/the browser context manager would close Electron.
-                resources.push_async_callback(browser.close)
+                browser_connection = ConnectionHandler(ws_address=cdp_url)
+                resources.push_async_callback(browser_connection.close)
                 async with asyncio.timeout(5):
-                    await browser.connect(cdp_url)
-                    targets = await browser.get_targets()
-                if not any(item.get('targetId') == target_id and item.get('type') == 'page' for item in targets):
+                    result = await browser_connection.execute_command({'method': 'Target.getTargetInfo', 'params': {'targetId': target_id}})
+                if result['result']['targetInfo'].get('type') != 'page':
                     return {'outcome': 'not_executed', 'reason': 'target_closed'}
                 page_endpoint = urlunsplit(endpoint._replace(path=f'/devtools/page/{target_id}'))
                 connection = ConnectionHandler(ws_address=page_endpoint)
                 resources.push_async_callback(connection.close)
-                tab = Tab(browser, target_id=target_id, ws_address=page_endpoint, connection_handler=connection)
                 while not stop.is_set():
-                    result = await _scan(tab, connection, browser, endpoint, clicked, stop)
+                    result = await _scan(connection, browser_connection, endpoint, clicked, stop)
                     if result != last:
                         await progress(result)
                         last = result

@@ -142,6 +142,10 @@ def _consume(reservation, repository, files, candidate, progress):
     elif kind == 'response':
         current = value.get('response', {})
         access=current.get('access')
+        if access is None:
+            from allfold.http_access import html_access
+            detected = html_access(current['body'], current['status'])
+            access = {'cloudflare': 'challenge', 'login': 'login'}.get(detected)
         result = CandidateResult('response', response=CurrentResponse(url=current['url'], content_type=current['content_type'],
             status=current['status'], body=current['body'].encode(), access=access),
             diagnostic='access-'+access if access in {'challenge','login','authorization'} else None)

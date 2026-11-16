@@ -15,7 +15,10 @@ const operations={
     const challengeTitle=/^(?:Just a moment|Attention Required)(?:[.!…\s]|$)/i.test(title);
     const authTitle=/^(?:sign in|log in|login|authentication|verify your identity|two.factor|multi.factor)\b/i.test(title);
     const content=!challengeTitle && !authTitle && nodes('article,main,[role="main"]').some(node=>visible(node)
-      && !!node.textContent.trim() && !/^(?:verify|verification|checking|are you a robot|access denied|sign in|log in|login)\b/i.test(heading));
+      && !!node.textContent.trim() && !/^(?:verify|verification|checking|are you a robot|access denied|sign in|log in|login)\b/i.test(heading)
+      && (node.localName==='article' || [...node.querySelectorAll('p')].some(paragraph=>visible(paragraph) && paragraph.textContent.trim()
+        && !paragraph.closest('form,dialog,[role=dialog],header,footer,aside,nav')
+        && !/^(?:please|enter|welcome|sign in|log in|login|verify)\b/i.test(paragraph.textContent.trim()))));
     const modal=node=>!!node.closest('[aria-modal="true"],dialog[open]');
     const markers={unusualTraffic:/^Unusual Traffic Detected\s*\(Error 418\)/i.test(title),
       cloudflareTitle:challengeTitle,cloudflareOptions:false,cloudflareOrchestrator:false,cloudflareVisible:false,
@@ -53,8 +56,10 @@ const operations={
           && visible(frame) && (!content || modal(frame)))markers.robot=true;
       } catch { /* No URL evidence. */ }
     }
+    const loginSubmit=node=>node.form && [...node.form.querySelectorAll('button,input[type="submit"]')].some(button=>visible(button)
+      && /登录|登陆|sign\s*in|log\s*in/i.test(button.textContent || button.value || ''));
     markers.login=nodes('input[type="password"]').some(node=>visible(node) && (modal(node)
-      || !content && (authTitle || /^(?:sign in|log in|login|authentication)\b/i.test(heading))));
+      || !content && (authTitle || /^(?:sign in|log in|login|authentication)\b/i.test(heading) || loginSubmit(node))));
     markers.mfa=nodes('input[autocomplete="one-time-code"]').some(node=>visible(node) && (!content || modal(node)));
     let imperva=null;
     const children=document.body?.children;

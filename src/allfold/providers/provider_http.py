@@ -429,7 +429,7 @@ class ProviderReadClient:
         text = response.text.lstrip().lower()
         html = 'text/html' in response.headers.get('content-type', '').lower() or text.startswith(('<!doctype html', '<html'))
         # Preserve status/cooldown semantics. HTML classification is local to this response.
-        if status == 429 or status in {401, 403, 407} and response.headers.get('cf-mitigated', '').strip().lower() != 'challenge':
+        if status == 429:
             raise ProviderHTTPError(self.provider, status)
         challenge = ('cloudflare' if response.headers.get('cf-mitigated', '').strip().lower() == 'challenge'
                      else html_access(text, status) if html else None)

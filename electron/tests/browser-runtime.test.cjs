@@ -1271,7 +1271,9 @@ test('temporary task cancellation closes its active solver without canceling an 
   await browser.runTask(stop.signal,{request_id:'temporary'},async()=>{
     temporary=browser.createTab({present:false});temporary.view.webContents.access=user.view.webContents.access;
     await temporary.view.webContents.loadURL('https://fixture.invalid/challenge');await browser.inspectPage(temporary);
-    stop.abort();
+    stop.abort();await new Promise(setImmediate);
+    assert.deepEqual(stopped,[temporary.id],'cancel stops Solver before the business function/other resources settle');
+    assert.equal(browser.tabs.has(temporary.id),true,'native Page cleanup has not yet started');
   });
   assert.deepEqual(stopped,[temporary.id]);assert.equal(browser.tabs.has(user.id),true);
   await browser.closePage(user);assert.deepEqual(stopped,[temporary.id,user.id]);

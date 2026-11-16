@@ -4,9 +4,12 @@ const {checkPage,cloudflareChallenge}=require('./browser-errors.cjs');
 // One observer per physical Page. Business waits consume the same access facts,
 // but neither own this observer nor lend it their deadlines or credentials.
 class PageChallenge {
-  constructor({tab,probe,solve,changed,report}) {
-    Object.assign(this,{tab,probe,solve,changed,report});
+  constructor({tab,owner,probe,solve,changed,report}) {
+    Object.assign(this,{tab,owner,probe,solve,changed,report});
     this.lifetime=new AbortController();this.state=null;this.active=null;this.reading=null;
+    this.ownerCanceled=()=>{if(tab.resourceOwner===owner)void this.close();};
+    owner?.signal?.addEventListener('abort',this.ownerCanceled,{once:true});
+    if(owner?.signal?.aborted)this.ownerCanceled();
     this.schedule();
   }
   setState(value,kind=this.kind) {
@@ -58,6 +61,7 @@ class PageChallenge {
   cancel() {this.active?.controller.abort();}
   async close() {
     this.lifetime.abort();clearTimeout(this.timer);this.cancel();
+    this.owner?.signal?.removeEventListener('abort',this.ownerCanceled);
     await Promise.allSettled([this.reading,this.active?.done]);
   }
 }

@@ -35,6 +35,8 @@ app.whenReady().then(async()=>{
       const doc=await open(html('<article><h1>Normal content</h1><p>Abstract</p></article>'+extra));
       assert.equal(doc.status,200);
     }
+    await assert.rejects(open(html('<main><h1>Welcome back</h1><form><input name="username"><input type="password"><button>Sign in</button></form></main>','<title>Publisher</title>'),
+      '10.5555/target',{deadline:Date.now()+300}),error=>error.diagnostic?.code==='timeout');
     // Run supplies the Paper identity; page metadata is not a second admission gate.
     for(const body of [article(),article(meta('10.5555/other')),article(meta('10.5555/target')+meta('10.5555/other')),
       html('<article></article><article></article>',meta('10.5555/target')),article(meta('10.5555/target').repeat(33))]) {

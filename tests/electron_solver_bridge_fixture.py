@@ -29,6 +29,21 @@ class Socket:
 
 async def main():
     configure_logging()
+    from pydoll.connection.connection_handler import ConnectionHandler
+    execute = ConnectionHandler.execute_command
+    stalled = False
+
+    async def controlled(connection, command, *args, **kwargs):
+        nonlocal stalled
+        # Verify the actual CDP boundary: no full DOM/HTML export through the SDK.
+        assert command.get('method') not in {'DOM.getDocument', 'DOM.getOuterHTML'}
+        assert not (command.get('method') == 'DOM.describeNode' and command.get('params', {}).get('depth') == -1)
+        if command.get('method') == 'Page.createIsolatedWorld' and not stalled:
+            stalled = True
+            await asyncio.sleep(6)  # One real resource timeout must remain recoverable.
+        return await execute(connection, command, *args, **kwargs)
+
+    ConnectionHandler.execute_command = controlled
     bridge = ElectronBridge('fixture-only', 'fixture', cdp_url=sys.argv[1])
     await bridge.connect(Socket())
     assert not bridge._pending

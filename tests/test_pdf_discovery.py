@@ -701,3 +701,25 @@ def test_unavailable_condition_continues_without_creating_fallback(preceded_by_f
     result=PdfDiscovery(paper,candidates=candidates,max_transfers=2 if preceded_by_failure else 1).run(consume)
     assert result.status=='transferred' and result.fallback_used is preceded_by_failure
     assert ('P2' if preceded_by_failure else 'P1','GENERIC','native-unsupported') in result.diagnostics
+
+
+@pytest.mark.parametrize('extra', [
+    '<footer><iframe src="https://www.google.com/recaptcha/api2/anchor"></iframe></footer>',
+    '<template><iframe src="https://newassets.hcaptcha.com/captcha/v1"></iframe></template>',
+    '<noscript><iframe src="https://newassets.hcaptcha.com/captcha/v1"></iframe></noscript>',
+    '<iframe style="opacity:0" src="https://newassets.hcaptcha.com/captcha/v1"></iframe>',
+])
+def test_auxiliary_captcha_does_not_block_readable_http_content(extra):
+    from allfold.pdf_responses import access_limited
+    body = '<main><h1>Paper title</h1><p>Article text</p><a href="/body.pdf">PDF</a></main>' + extra
+    assert not access_limited(CurrentResponse('https://publisher.example.org/article', 'text/html', body.encode()))
+
+
+@pytest.mark.parametrize('body', [
+    '<title>Publisher</title><h1>Sign in</h1><form><input type="password"></form>',
+    '<title>Just a moment...</title><article>Checking your browser</article>'
+    '<script>window._cf_chl_opt = {};</script><script src="/cdn-cgi/challenge-platform/h/g/orchestrate/chl_page/v1"></script>',
+])
+def test_contextual_login_or_cloudflare_page_remains_access_limited(body):
+    from allfold.pdf_responses import access_limited
+    assert access_limited(CurrentResponse('https://publisher.example.org/article', 'text/html', body.encode()))
