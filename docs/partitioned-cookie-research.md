@@ -42,3 +42,9 @@ Chromium 156.0.8078.48 的 `Network.getCookies` 使用目标页面的 `NetworkIs
 Source `3a551ea` 的 F18（`10.1137/25M1735329`）已单独确认合法权限。Zotero 保存出版社 28 页 PDF，12.713–13.051s；Allfold 在两条出版社入口遇到 access-challenge 后保存相关 arXiv 30 页，23.120–23.480s。随后同一 Electron Session 的正常 Browser ViewPDF → SaveAs 得到出版社 28 页 / 3,814,818 bytes，无可见挑战。它确定了页面与后台请求差异，未确定真实 Cookie 分区；不同版本也不能作传输速度比较。[现场记录](pdf-pairing-acceptance.md)、[正式结果](pdf-pairing-formal-results.json)
 
 建议沿现有受控 Session 请求链，在已有 `onBeforeSendHeaders` 最后阶段验证补充机制：仅使用同 Session、当前授权文档的分区 Cookie，逐跳遵守 domain/path/secure/expiry 和既有跳转约束；保持普通 Cookie 行为，禁止跨产品、跨页面混分区或写回 Cookie jar。此方案由上述版本源码与探针支持，是否解决 F18 仍须正常产品复测。只读研究没有读取真实 Cookie、运行应用或复制 AGPL 源码。
+
+## 发送资格与合并顺序
+
+`Network.getCookies` 内部的 `MakeAllInclusive()` 把 SameSite 上下文设为允许Strict；NIK筛选正确分区并不等于这次请求可发送全部结果。适配因此另行限制：仅已验证顶层文档的同origin请求允许Strict/Lax/未指定值，跨origin仅补明确None；跨origin但同site的Strict/Lax暂保留原Session行为。原生负对照确认查询能读到跨站Strict，而正常Browser fetch和补充后的请求均不发送它。[CookieOptions实现](https://github.com/chromium/chromium/blob/156.0.8078.48/net/cookies/cookie_options.cc#L13)、[协议映射](https://github.com/chromium/chromium/blob/156.0.8078.48/content/browser/devtools/protocol/network_handler.cc#L191)、[原生回归](../electron/tests/request-cookies.fixture.cjs)
+
+独立审查还发现统一前置分区Cookie会打乱同名Cookie的路径优先级。合并现在保持普通jar原有顺序，按查询到的路径信息插入更长路径，等长保留普通Cookie优先；若普通同名值已变化且路径元数据缺失，则不让新补充值覆盖它。双向长路径原生回归在修复前失败、修复后通过。这里不推定查询API提供缺失的创建时间排序。[Chromium路径排序](https://github.com/chromium/chromium/blob/156.0.8078.48/net/cookies/cookie_monster.cc#L720)、[原生回归](../electron/tests/request-cookies.fixture.cjs)

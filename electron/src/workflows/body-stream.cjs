@@ -189,7 +189,7 @@ async function executeBodyStream(browser,data,{signal,progress=()=>{},observe=()
       completed=true;clearTimeout(timer);
       // Relative monotonic marks, published only after the real writer closes.
       // They neither carry response data nor participate in save settlement.
-      try{observe({...partitionCookies && {stream_partition_cookie_count:partitionCookies.length},
+      try{observe({...partitionCookies && {stream_partition_cookie_count:partitionCookies.cookies.length},
         stream_request_ms:Math.round(requestAt-started),stream_response_ms:Math.round(responseAt-started),
         stream_first_byte_ms:Math.round(sniffed.firstByteAt-started),stream_closed_ms:Math.round(performance.now()-started)});}catch(_){}
       try{progress({received_bytes:size});}catch(_){}
@@ -238,7 +238,7 @@ async function executeBodyStream(browser,data,{signal,progress=()=>{},observe=()
         if(fd!==undefined)fs.closeSync(fd);
       }
     }catch(_){return {outcome:'local_failure',kind:'local_failure',diagnostic_code:'resource-close',resource_closed:false};}
-    if(!completed && partitionCookies!==null)try{observe({stream_partition_cookie_count:partitionCookies.length});}catch(_){}
+    if(!completed && partitionCookies!==null)try{observe({stream_partition_cookie_count:partitionCookies.cookies.length});}catch(_){}
   }
 }
 module.exports={executeBodyStream,openOutput,publicAddress,target,directories,credentialHeaders};

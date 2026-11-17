@@ -12,6 +12,10 @@ app.whenReady().then(async()=>{
         '__Host-partition=correct; Secure; HttpOnly; SameSite=None; Path=/; Partitioned',
         'path_partition=path-value; Secure; HttpOnly; SameSite=None; Path=/pdf; Partitioned',
         'regular=kept; Secure; HttpOnly; SameSite=None; Path=/',
+        'sid=pdf; Secure; HttpOnly; SameSite=None; Path=/pdf',
+        'sid=root; Secure; HttpOnly; SameSite=None; Path=/; Partitioned',
+        'inverse=root; Secure; HttpOnly; SameSite=None; Path=/',
+        'inverse=pdf; Secure; HttpOnly; SameSite=None; Path=/pdf; Partitioned',
       ]);
       res.setHeader('Content-Type','text/html');res.end('<title>Isolated source</title>');return;
     }
@@ -29,16 +33,33 @@ app.whenReady().then(async()=>{
   contents.debugger.attach('1.3');
   await contents.debugger.sendCommand('Network.setCookie',{url:base+'/',name:'__Host-partition',value:'wrong-partition',
     path:'/',secure:true,httpOnly:true,sameSite:'None',partitionKey:{topLevelSite:'http://localhost',hasCrossSiteAncestor:false}});
+  const other=base.replace('127.0.0.1','localhost');
+  for(const sameSite of ['Strict','Lax','None'])for(const ancestor of [false,true]) {
+    const set=await contents.debugger.sendCommand('Network.setCookie',{url:other+'/pdf',name:'cross_'+sameSite+'_'+ancestor,
+      value:'isolated',path:'/',secure:true,httpOnly:true,sameSite,
+      partitionKey:{topLevelSite:'http://127.0.0.1',hasCrossSiteAncestor:ancestor}});
+    assert.equal(set.success,true);
+  }
+  const inclusive=await contents.debugger.sendCommand('Network.getCookies',{urls:[other+'/pdf']});
+  assert.ok(inclusive.cookies.some(cookie=>cookie.sameSite==='Strict'),'CDP reads Strict cookies even in this cross-site context');
   contents.debugger.detach();
   const cookies=await readPartitionCookies({partition,tabs:new Map([[tab.id,tab]])},base+'/pdf',base+'/article',{validate:()=>{}});
-  assert.deepEqual(cookies.map(c=>c.name).sort(),['__Host-partition','path_partition']);
-  assert.equal(cookies.some(c=>c.value==='wrong-partition'),false);
+  assert.deepEqual(cookies.cookies.map(c=>c.name).sort(),['__Host-partition','inverse','path_partition','sid']);
+  assert.equal(cookies.cookies.some(c=>c.value==='wrong-partition'),false);
+  const cross=await readPartitionCookies({partition,tabs:new Map([[tab.id,tab]])},other+'/pdf',base+'/article',{validate:()=>{}});
+  assert.ok(cross.cookies.length>0);assert.equal(cross.cookies.every(cookie=>cookie.sameSite==='None'),true);
+  await contents.executeJavaScript('fetch('+JSON.stringify(other+'/pdf?browser-samesite')+',{credentials:"include",mode:"no-cors"}).then(()=>true)');
+  assert.match(requests.at(-1).cookie,/cross_None_/);assert.doesNotMatch(requests.at(-1).cookie,/cross_(Strict|Lax)_/);
   const events=sharedSessionEvents(partition),context={owner:{workflow_id:'fixture'},attemptId:'fixture',deadline:Date.now()+5000,partitionCookies:cookies};
   const plain=await events.fetch(base+'/pdf',{credentials:'include'}, {...context,partitionCookies:undefined});
   assert.equal(plain.response.status,403);await plain.response.text();
   const scoped=await events.fetch(base+'/pdf',{credentials:'include'},context);
   assert.equal(scoped.response.status,200);assert.equal(await scoped.response.text(),'%PDF-isolated');
   assert.match(requests.at(-1).cookie,/regular=kept/);assert.match(requests.at(-1).cookie,/path_partition=path-value/);
+  assert.ok(requests.at(-1).cookie.indexOf('sid=pdf')<requests.at(-1).cookie.indexOf('sid=root'),
+    'An ordinary longer-path cookie must precede a partitioned root cookie');
+  assert.ok(requests.at(-1).cookie.indexOf('inverse=pdf')<requests.at(-1).cookie.indexOf('inverse=root'),
+    'A partitioned longer-path cookie must precede an ordinary root cookie');
   assert.doesNotMatch(requests.at(-1).cookie,/wrong-partition/);
   const otherPath=await events.fetch(base+'/outside',{credentials:'include'},context);await otherPath.response.text();
   assert.doesNotMatch(requests.at(-1).cookie,/path_partition=/);
@@ -48,6 +69,8 @@ app.whenReady().then(async()=>{
   assert.doesNotMatch(requests.at(-1).cookie,/partition=/);
   const otherHost=await events.fetch(base.replace('127.0.0.1','localhost')+'/pdf',{credentials:'include'},context);await otherHost.response.text();
   assert.doesNotMatch(requests.at(-1).cookie,/partition=/);
+  const crossRequest=await events.fetch(other+'/pdf',{credentials:'include'},{...context,partitionCookies:cross});await crossRequest.response.text();
+  assert.match(requests.at(-1).cookie,/cross_None_/);assert.doesNotMatch(requests.at(-1).cookie,/cross_(Strict|Lax)_/);
   events.dispose();win.destroy();await new Promise(resolve=>server.close(resolve));
   console.log('PARTITION COOKIE PASS');app.quit();
 }).catch(error=>{console.error(error.stack);app.exit(1);});

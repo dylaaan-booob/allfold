@@ -27,8 +27,9 @@ test('controlled partition cookies supplement the native jar without escaping co
     secure:true,expires:-1,partitionKey:{topLevelSite:'https://publisher.example',hasCrossSiteAncestor:false}};
   const result=await events.fetch('https://publisher.example/doi/pdf',{credentials:'include'},
     {owner:{workflow_id:'owned'},attemptId:'owned',deadline:Date.now()+2000,
-      partitionCookies:[cookie,{...cookie,name:'expired',value:'never-send',expires:1},
-        {...cookie,name:'epoch',value:'never-send',expires:0}]});
+      partitionCookies:{cookies:[cookie,{...cookie,name:'expired',value:'never-send',expires:1},
+        {...cookie,name:'epoch',value:'never-send',expires:0}],metadata:[cookie,
+        {...cookie,name:'regular',value:'kept',path:'/'}]}});
   assert.deepEqual(sent,['partition=test-partition-value; regular=kept','regular=kept','regular=kept','regular=kept',
     'partition=test-partition-value; regular=kept','unrelated=kept']);
   assert.equal(JSON.stringify(result.requests).includes('test-partition-value'),false);

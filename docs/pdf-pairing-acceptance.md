@@ -708,3 +708,19 @@ Workspace remains72Papers/23bodies. New-code independent review,actual source
 startup/access preparation,F18/F17/F19 real retests and latest full PR CI remain
 required. The last evidence-onlyc6c4ac2 Safety run44092406853 passed; it is not CI
 for this pending repair. Workspace Reset has not run.
+
+The submitted9fa independent native review found oneP2: uniformly prefixing
+partitioned cookies could put a root-path credential before an ordinary longer-path
+credential. An actual native regression failed on that wire ordering before the
+correction; both directions now pass. The merge retains ordinary order,uses scoped
+path metadata for longer-path insertion,and leaves ordinary-first ties or unknown
+current ordinary same-name values intact.
+
+Primary-source checking also confirmed the Cookie query is SameSite-inclusive.
+The corrected adapter verifies the native top-level security origin and separately
+restricts cross-origin additions to explicitSameSite=None; no site/PSL guess is
+made. Native controls show CDP reads cross-siteStrict but both Browser fetch and
+controlled supplementation omit it,while None remains usable. Exact corrected
+full checks pass JS64,Python1669/2existingwarnings(36.00s),Electron253/0skips
+(118.895s). These corrections require submitted-delta follow-up review,new latest
+PR CI and actual F18/F17/F19 retests before any real-site fix claim or Reset.
