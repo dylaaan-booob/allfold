@@ -123,6 +123,8 @@ PDF Source Discovery 不运行 Zotero Translator、Zotero Translate 或 Zotero U
 - P1 不适用时，直接进入第一个适用阶段；不对所有平台试探 `/doi/pdf/`。
 - P2 的 Handle、Crossref 和官方 API 不是固定串联步骤。按缺少的信息选择相应来源，前一次结果足够时停止补查。
 - P1 模板先行；已经具备资格的 P2、已有 P3 和稳定 P4 候选中，直达 PDF 先于 Reader、表单动作及可选的缺失输入 API 查询，同类候选保持来源次序。这是所有平台的共用优先级，不为找更多候选而提前请求新页面。partial 快照、可能补出的 P3 或无关刷新线索不强制先重开文章。已有候选失败、缺失或动态入口确需更新时，再按需执行 PDF-only 取页；当前 Document 与因此新获资格的模板也采用直达优先，不重发已试 P1/P2 URL 或重启缺失输入 API，不把动作/刷新定位信息当 GET。原 Paper、候选来源阶段、实际 Service、签名和访问上下文仍保留；P5 仍在后面。
+- API 查询新获资格的候选采用相同稳定排序。普通入口收到 HTML 后，可选的 Reader 取页先让同批其他直达入口尝试；需要回退时沿用原响应及上下文。有效响应/重定向链及已有 ScienceDirect 文章回链恢复保留在原来源内。IEEE `stamp.jsp` 即使来自普通 Meta、没有 Reader 标记也可按既有固定入口识别；ScienceDirect、Optica 和 IEEE `stampPDF` 可能直接返回 PDF 的 URL 不因此被一概判作 Reader。
+- 同一规则、同一 origin/path 的查询参数变体仍是该来源的回退，不为先轮询这些变体而中断其 Reader；该判断不改写任何请求 URL 或参数。其他已合格直达来源仍优先，原生显式动作顺序不重排。
 - 规则在某个阶段取得新的 ID 或明确下载地址，可以就地完成其依赖链。无需为了阶段编号重新开始整个流程。
 
 #### F2.3 中间页面随候选处理

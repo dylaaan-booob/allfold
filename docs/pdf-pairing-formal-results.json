@@ -5426,6 +5426,19 @@
         "2026-11-17T08:57:34.003Z",
         "2026-11-17T08:57:34.010Z"
       ]
+    },
+    {
+      "started_at_utc": "2026-11-17T09:46:54.138Z",
+      "head_sha": "c1c0ed555e111bafcdfa91ae90b634e89ccdf109",
+      "production_code_sha": "c1c0ed555e111bafcdfa91ae90b634e89ccdf109",
+      "frontend_head_sha": "c1c0ed555e111bafcdfa91ae90b634e89ccdf109",
+      "runtime_id": "aac85f2a72eef3ead1f7b90f888856e4",
+      "normal_quit_utc": [
+        "2026-11-17T09:48:44.390Z",
+        "2026-11-17T09:48:44.428Z"
+      ],
+      "formal_downloads": 0,
+      "reason": "Actual shared-entry source launched and API/72Papers/23bodies verified; normal Quit before accepted affected review corrections. No live timing on this intermediate revision."
     }
   ],
   "frontend_head_sha": "21a7e25376baa5459fed346280bb3f52353359ed",
@@ -5617,12 +5630,17 @@
     "scope": "Shared candidate priority across all supported platforms; direct qualified entries before deferred Reader/form work and optional discovery APIs. Existing Atypon Host family shares direct DOI entry viaR039 instead of a SIAM-only P1 rule.",
     "local_checks": {
       "javascript_files": 63,
-      "python_passed": 1638,
+      "python_passed": 1652,
       "python_warnings": 2,
       "electron_passed": 245,
-      "electron_skipped": 0
+      "electron_skipped": 0,
+      "electron_status": "Final complete followup check in progress; actual public Download regression now passes unchanged after preserving same-endpoint variants. Preceding complete run244passed/1failed retained."
     },
     "live_status": "Not yet run at the new production revision. Original F18 mismatch/slow wait retained; F19 still unvisited for post-fix verification.",
-    "diagnostic_correction": "Earlier no-pdf-entry was misread as missing articleDOM. It follows an attempted P4response; native article extraction did discover theePDF entry. Navigation/header/case hypotheses were not used for a patch."
+    "diagnostic_correction": "Earlier no-pdf-entry was misread as missing articleDOM. It follows an attempted P4response; native article extraction did discover theePDF entry. Navigation/header/case hypotheses were not used for a patch.",
+    "review_followup": "Three affected review gaps reproduced: unmarked native IEEE Meta, API-result entry ordering, and HTML-triggered Reader work ahead of other qualified direct entries. Shared batch scheduling preserves settled response/context and existing ScienceDirect backlink chain. Explicit initial/native action order is preserved; terminal/cancel outcomes discard paused Reader work. Real retests remain pending. Qualified Readers also finish before optional identifier APIs; otherwise an old deferred Reader could be mistaken for sufficient new query inputs. Same-rule/same-origin/path query variants remain source fallbacks and do not interrupt Reader; requests are not rewritten.",
+    "limitations": [
+      "An intermediate full test run exposed a collection-planner Run-final-snapshot sidecar race at library_database._validate_paths (not in changed PDF code). The28case focused native/planner check and final1649case full Python run passed; no production persistence protection was weakened or race fix claimed. Initial failed output retained privately."
+    ]
   }
 }

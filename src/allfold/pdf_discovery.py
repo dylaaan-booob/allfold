@@ -6,6 +6,7 @@ IO capabilities are task-owned and are called only at their reached stage.
 """
 from __future__ import annotations
 
+from collections import deque
 from dataclasses import dataclass, field, replace
 import re
 import sys
@@ -349,8 +350,11 @@ class PdfDiscovery:
 
     @staticmethod
     def _reader_entry(candidate):
+        from allfold.pdf_responses import reader_context
         parsed = urlsplit(candidate.url)
+        reader = reader_context(candidate) if parsed.path == '/stamp/stamp.jsp' else None
         return bool(candidate.action or candidate.reader_kind
+            or reader and reader['platform'] == 'ieee'
             or parsed.hostname in ATYPON_HOSTS and re.search(r'/doi/(?:epdf|pdfplus)/', parsed.path))
 
     def _ordered_entries(self, candidates):
@@ -358,17 +362,20 @@ class PdfDiscovery:
         # claim a response is a PDF; the consumer still verifies actual saving.
         return sorted(candidates, key=self._reader_entry)
 
-    def _candidates(self):
+    @staticmethod
+    def _entry_scope(candidate):
+        parsed = urlsplit(candidate.url)
+        return candidate.stage, candidate.rule_id, parsed.scheme, parsed.netloc, parsed.path
+
+    def _candidate_batches(self):
         if self._initial is not None:
-            yield from self._initial
+            yield self._initial
             return
-        yield from self._rules('P1')
+        p1 = tuple(self._rules('P1'))
         existing = tuple(self._rules('P2'))
         saved_p3 = tuple(self._saved('P3'))
         saved_p4 = tuple(self._saved('P4'))
-        ready = [(candidate, self._reader_entry(candidate))
-                 for candidate in (*existing, *saved_p3, *saved_p4)]
-        yield from (candidate for candidate, reader in ready if not reader)
+        yield self._ordered_entries((*p1, *existing, *saved_p3, *saved_p4))
         if (needs_p2_query(self._route, replace(self.inputs, target=self._route), known_refresh=crossref_pdf_refresh_required(self.facts))
                 and self.io is not None and callable(getattr(type(self.io), 'query_missing', None))):
             # IO is an iterator: no second interface is requested until the
@@ -402,12 +409,9 @@ class PdfDiscovery:
                     # path in place rather than restarting the discovery chain.
                     candidates += tuple(replace(c, stage='P2') for c in self._rules('P1'))
                 candidates = tuple(c for c in candidates if (urldefrag(c.url)[0], c.action) not in self._seen)
-                yield from candidates
+                yield self._ordered_entries(candidates)
                 if sufficient_inputs:
                     break
-        # Existing direct entries can finish before optional APIs or Reader
-        # work. Deferred entries remain available if those direct requests fail.
-        yield from (candidate for candidate, reader in ready if reader)
         # Stable body URLs already have authority to be tried. A qualified
         # Reader refreshes its own entry inside the chain, not the article.
         failed_p4 = any(not c.reader_kind and (urldefrag(c.url)[0], c.action) in self._seen for c in saved_p4)
@@ -423,21 +427,25 @@ class PdfDiscovery:
             for stage in ('P1', 'P2'):
                 templates.extend(c for c in self._rules(stage)
                     if (urldefrag(c.url)[0], c.action) not in self._seen)
-        yield from self._ordered_entries((*current_entries, *templates))
+        yield self._ordered_entries((*current_entries, *templates))
         cached = next((f for f in self.facts if f.source == 'openalex'), None)
         refreshed = False
         if cached and cached.status in {'complete', 'partial'}:
+            stable = []
             for item in cached.candidates:
                 if item.refresh and not refreshed:
                     # Refresh at its best-first position, then retain every
                     # stable cached location even if that optional read fails.
+                    yield self._ordered_entries(stable)
+                    stable.clear()
                     refreshed = True
-                    yield from self._openalex_candidates()
+                    yield self._ordered_entries(self._openalex_candidates())
                 if item.url:
-                    yield PdfCandidate(self.target, 'P5', 'OPENALEX', 'openalex', item.url, field=item.field)
+                    stable.append(PdfCandidate(self.target, 'P5', 'OPENALEX', 'openalex', item.url, field=item.field))
+            yield self._ordered_entries(stable)
             if refreshed or cached.status == 'complete':
                 return
-        yield from self._openalex_candidates()
+        yield self._ordered_entries(self._openalex_candidates())
 
     def _openalex_candidates(self):
         if not self.target.identity_doi or self.io is None or not callable(getattr(type(self.io), 'openalex', None)):
@@ -546,11 +554,17 @@ class PdfDiscovery:
                     report=lambda code: self._note(original.stage, original.rule_id, code))
                 reader = reader_context(candidate, response.url)
                 article = urlsplit(self._route.article_url or '')
-                if (reader and reader['platform'] == 'sciencedirect' and article.netloc and following
+                article_backlink = (reader and reader['platform'] == 'sciencedirect' and article.netloc and following
                         and all((urlsplit(item.url).scheme, urlsplit(item.url).netloc, urlsplit(item.url).path)
-                            == (article.scheme, article.netloc, article.path) for item in following)):
+                            == (article.scheme, article.netloc, article.path) for item in following))
+                if article_backlink:
                     following = ()
                 if not following and self.io is not None and callable(getattr(type(self.io), 'reader', None)):
+                    # The response attempt has settled. Suspend only this local
+                    # chain so other qualified direct entries can avoid Reader IO.
+                    if not article_backlink:
+                        yield
+                    self._current_candidate = candidate
                     try:
                         parsed = self._call(self.io.reader, candidate, response)
                     except PdfSourceReadError as error:
@@ -600,6 +614,47 @@ class PdfDiscovery:
                     for index, item in reversed(tuple(enumerate(eligible))))
         return None
 
+    def _run_batch(self, candidates, consume):
+        entries = deque(candidates)
+        deferred = deque()
+        active = None
+        try:
+            while entries or deferred or active is not None:
+                if active is None:
+                    if deferred and (not entries or self._reader_entry(entries[0])):
+                        active = deferred.popleft()
+                    else:
+                        candidate = entries.popleft()
+                        self.check()
+                        if (not _eligible(candidate)
+                                or (urldefrag(candidate.url)[0], candidate.action) in self._seen):
+                            continue
+                        active = (self._chain(candidate, consume), self._consumed)
+                chain, before = active
+                try:
+                    next(chain)
+                except StopIteration as done:
+                    active = None
+                    if done.value is not None:
+                        return done.value
+                    self._failed = self._failed or self._consumed > before
+                    if self._state_full:
+                        return
+                else:
+                    # Query variants of the same rule/endpoint remain that
+                    # source's fallbacks, not a reason to interrupt its Reader.
+                    if self._initial is None and any(not self._reader_entry(item)
+                            and self._entry_scope(item) != self._entry_scope(self._current_candidate)
+                            for item in entries):
+                        deferred.append(active)
+                        active = None
+                        self._failed = self._failed or self._consumed > before
+        finally:
+            if active is not None:
+                active[0].close()
+            for chain, _ in deferred:
+                chain.close()
+
     def run(self, consume):
         if self._used:
             raise RuntimeError('A PDF discovery invocation is single-use')
@@ -607,17 +662,10 @@ class PdfDiscovery:
         self.check()
         if self.target.content_type not in SUPPORTED_PDF_TARGET_TYPES:
             return DiscoveryResult('not-applicable', diagnostics=(('P1', 'SCOPE', 'unsupported-content-type'),))
-        for candidate in self._candidates():
-            self.check()
-            if not _eligible(candidate):
-                continue
-            if (urldefrag(candidate.url)[0], candidate.action) in self._seen:
-                continue
-            before = self._consumed
-            result = self._chain(candidate, consume)
+        for candidates in self._candidate_batches():
+            result = self._run_batch(candidates, consume)
             if result is not None:
                 return result
-            self._failed = self._failed or self._consumed > before
             if self._state_full:
                 break
         self.check()

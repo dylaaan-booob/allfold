@@ -114,7 +114,6 @@ def test_shared_doi_failed_direct_entry_keeps_observed_article_pdf_fallback(host
 @pytest.mark.parametrize('host,reader,kind', [
     ('www.sciencedirect.com', 'https://www.sciencedirect.com/science/article/pii/S014067362400123X/pdfft', 'sciencedirect'),
     ('ieeexplore.ieee.org', 'https://ieeexplore.ieee.org/stamp/stamp.jsp?arnumber=123', 'ieee'),
-    ('opg.optica.org', 'https://opg.optica.org/viewmedia.cfm?uri=ao-63-1-1', 'optica'),
 ])
 def test_available_direct_pdf_precedes_reader_and_optional_io(host, reader, kind):
     paper = target(host)
@@ -170,6 +169,175 @@ def test_current_document_direct_pdf_precedes_its_reader_meta():
         lambda candidate: seen.append(candidate.url) or CandidateResult.pdf(transfer_complete=True))
     assert seen == [direct]
     assert result.pdf_source == 'P4'
+
+
+def ieee_document_entries(paper):
+    from allfold.application.document_metadata import validate_document_pdf_clues
+    return validate_document_pdf_clues({'outcome': 'retrieved', 'pdf_clues': {
+        'status': 'complete', 'landing_url': 'https://ieeexplore.ieee.org/document/123',
+        'observed_at': '2026-11-17T01:02:03.000Z', 'platform': 'ieee',
+        'content_type': 'journal-article', 'identifiers': [], 'diagnostics': [],
+        'candidates': [
+            {'stage': 'P3', 'rule_id': 'R025', 'field': 'citation_pdf_url',
+             'url': 'https://ieeexplore.ieee.org/stamp/stamp.jsp?arnumber=123'},
+            {'stage': 'P4', 'rule_id': 'R025', 'url': 'https://cdn.example.org/current.pdf'},
+        ]}}, target_doi=paper.identity_doi)
+
+
+@pytest.mark.parametrize('cached', [False, True])
+def test_native_meta_without_reader_marker_keeps_direct_pdf_ahead_of_stamp(cached):
+    paper = target('ieeexplore.ieee.org')
+    parsed = ieee_document_entries(paper)
+    assert parsed.current_candidates[0].reader_kind is None
+    class IO:
+        def document(self, _):
+            return parsed
+    seen = []
+    def consume(candidate):
+        seen.append(candidate.url)
+        return (CandidateResult.pdf(transfer_complete=True) if candidate.url.endswith('/current.pdf')
+            else CandidateResult.failed())
+    result = PdfDiscovery(paper, facts=(parsed.facts,) if cached else (), io=IO()).run(consume)
+    assert seen == (['https://ieeexplore.ieee.org/stampPDF/getPDF.jsp?tp=&arnumber=123&ref=']
+        if cached else []) + ['https://cdn.example.org/current.pdf']
+    assert result.pdf_source == 'P4'
+
+
+@pytest.mark.parametrize('direct_succeeds', [True, False])
+def test_html_reader_recovery_waits_for_existing_direct_and_retains_response_context(direct_succeeds):
+    from allfold.application.document_metadata import CurrentPdfClue, DocumentPdfResult
+    paper = target('ieeexplore.ieee.org')
+    parsed = ieee_document_entries(paper)
+    entry = 'https://ieeexplore.ieee.org/stampPDF/getPDF.jsp?tp=&arnumber=123&ref='
+    direct = 'https://cdn.example.org/current.pdf'
+    body = 'https://cdn.example.org/reader-body.pdf'
+    response = CurrentResponse(entry, 'text/html', b'<html><body>Reader</body></html>',
+                               context_key='a' * 64)
+    seen, readers = [], []
+    class IO:
+        def reader(self, candidate, actual):
+            assert seen == [entry, direct]
+            assert candidate.target == paper and actual is response
+            readers.append(candidate.url)
+            return DocumentPdfResult(parsed.facts, (CurrentPdfClue('P4', 'R025', body),))
+    def consume(candidate):
+        seen.append(candidate.url)
+        if candidate.url == entry:
+            return CandidateResult.current(response)
+        if candidate.url == direct and not direct_succeeds:
+            return CandidateResult.failed()
+        return CandidateResult.pdf(transfer_complete=True)
+    result = PdfDiscovery(paper, facts=(parsed.facts,), io=IO()).run(consume)
+    assert seen == [entry, direct] + ([] if direct_succeeds else [body])
+    assert readers == ([] if direct_succeeds else [entry])
+    assert result.status == 'transferred'
+
+
+def test_newly_qualified_query_entries_prefer_direct_over_existing_reader():
+    from allfold.pdf_discovery import P2Resolution
+    paper = target('ieeexplore.ieee.org')
+    reader = KnownPdfUrl('https://ieeexplore.ieee.org/stamp/stamp.jsp?arnumber=123',
+                         'R025', 'citation_pdf_url', reader_kind='ieee_stamp')
+    inputs = PdfRuleInputs(paper)
+    class IO:
+        def query_missing(self, _, current, facts):
+            yield P2Resolution(replace(current, known_pdf_urls=(reader,),
+                                       identifiers=(('article_number', '123'),)))
+        def reader(self, *_):
+            pytest.fail('A newly qualified direct entry precedes the known Reader')
+    seen = []
+    def consume(candidate):
+        seen.append(candidate.url)
+        return (CandidateResult.current(CurrentResponse(reader.url, 'text/html', b'<html>Reader</html>'))
+            if candidate.url == reader.url
+            else CandidateResult.pdf(transfer_complete=True))
+    result = PdfDiscovery(paper, inputs=inputs, io=IO()).run(consume)
+    assert seen == ['https://ieeexplore.ieee.org/stampPDF/getPDF.jsp?tp=&arnumber=123&ref=']
+    assert result.status == 'transferred'
+
+
+def test_qualified_reader_success_needs_no_optional_identifier_query():
+    from allfold.application.document_metadata import CurrentPdfClue, DocumentPdfResult
+    paper = target('ieeexplore.ieee.org')
+    reader = KnownPdfUrl('https://ieeexplore.ieee.org/stamp/stamp.jsp?arnumber=123',
+                         'R025', 'citation_pdf_url', reader_kind='ieee_stamp')
+    body = 'https://cdn.example.org/current.pdf'
+    class IO:
+        def query_missing(self, *_):
+            pytest.fail('A qualified Reader can finish without optional identifier APIs')
+        def reader(self, *_):
+            return DocumentPdfResult(document(paper), (CurrentPdfClue('P4', 'R025', body),))
+    seen = []
+    def consume(candidate):
+        seen.append(candidate.url)
+        return (CandidateResult.current(CurrentResponse(reader.url, 'text/html', b'<html>Reader</html>'))
+            if candidate.url == reader.url else CandidateResult.pdf(transfer_complete=True))
+    result = PdfDiscovery(paper, inputs=PdfRuleInputs(paper, known_pdf_urls=(reader,)), io=IO()).run(consume)
+    assert seen == [reader.url, body]
+    assert result.status == 'transferred' and not result.fallback_used
+
+
+@pytest.mark.parametrize('terminal', ['cancelled', 'stale', 'expired', 'local_failure'])
+def test_terminal_direct_outcome_discards_deferred_reader(terminal):
+    paper = target('ieeexplore.ieee.org')
+    parsed = ieee_document_entries(paper)
+    seen = []
+    class IO:
+        def reader(self, *_):
+            pytest.fail('A terminal outcome must not resume the earlier Reader')
+    def consume(candidate):
+        seen.append(candidate.url)
+        if 'stampPDF' in candidate.url:
+            return CandidateResult.current(CurrentResponse(candidate.url, 'text/html', b'<html>Reader</html>'))
+        return CandidateResult(terminal)
+    result = PdfDiscovery(paper, facts=(parsed.facts,), io=IO()).run(consume)
+    assert seen[-1] == 'https://cdn.example.org/current.pdf'
+    assert result.status == ('local-failure' if terminal == 'local_failure' else terminal)
+
+
+@pytest.mark.parametrize('reader_succeeds', [True, False])
+def test_reader_keeps_same_endpoint_template_variants_as_fallbacks(reader_succeeds):
+    from allfold.application.document_metadata import CurrentPdfClue, DocumentPdfResult
+    article = 'https://www.sciencedirect.com/science/article/pii/S014067362400123X'
+    entry, body = article + '/pdfft', 'https://cdn.example.org/current.pdf'
+    paper = target('www.sciencedirect.com', article_url=article)
+    facts = document(paper, [PdfCandidateFact(stage='P4', rule_id='R024', url=entry,
+                                            reader_kind='sciencedirect')])
+    seen, readers = [], []
+    class IO:
+        def reader(self, candidate, response):
+            readers.append(candidate.url)
+            if reader_succeeds:
+                return DocumentPdfResult(facts, (CurrentPdfClue('P4', 'R024', body),))
+    def consume(candidate):
+        seen.append(candidate.url)
+        if candidate.url == entry:
+            return CandidateResult.current(CurrentResponse(entry, 'text/html', b'<html>Reader</html>'))
+        return CandidateResult.pdf(transfer_complete=True)
+    result = PdfDiscovery(paper, facts=(facts,), io=IO()).run(consume)
+    assert seen == [entry, body if reader_succeeds else entry + '?download=true']
+    assert readers == [entry]
+    assert result.fallback_used is not reader_succeeds
+
+
+@pytest.mark.parametrize('host,landing,entry', [
+    ('www.sciencedirect.com', 'https://www.sciencedirect.com/science/article/pii/S014067362400123X',
+     'https://www.sciencedirect.com/science/article/pii/S014067362400123X/pdfft'),
+    ('opg.optica.org', 'https://opg.optica.org/abstract.cfm?uri=ao-63-1-1',
+     'https://opg.optica.org/viewmedia.cfm?uri=ao-63-1-1'),
+    ('ieeexplore.ieee.org', 'https://ieeexplore.ieee.org/document/123',
+     'https://ieeexplore.ieee.org/stampPDF/getPDF.jsp?tp=&arnumber=123&ref='),
+])
+def test_possible_binary_entries_are_not_declared_readers_from_url(host, landing, entry):
+    paper = target(host, article_url=landing)
+    facts = document(paper, [
+        PdfCandidateFact(stage='P3', rule_id='GENERIC', url=entry, field='citation_pdf_url'),
+        PdfCandidateFact(stage='P4', rule_id='GENERIC', url='https://cdn.example.org/current.pdf'),
+    ])
+    seen = []
+    result = PdfDiscovery(paper, facts=(facts,)).run(lambda c: seen.append(c.url)
+        or CandidateResult.pdf(transfer_complete=True))
+    assert seen == [entry] and result.status == 'transferred'
 
 
 def test_p3_cache_keeps_stage_and_field_order_after_actual_failure():

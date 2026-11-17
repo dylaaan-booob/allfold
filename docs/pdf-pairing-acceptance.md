@@ -315,6 +315,33 @@ ScienceDirect/IEEE/Optica candidate-order cases and multiple Atypon Hosts,not
 real-site proof for every Host. Original F18/F17 retests and untouched F19 at the
 new code revision remain required before claiming the repair effective.
 
+Affected review then identified three gaps: ordinary IEEE Meta has no Reader
+marker, API-result candidates bypassed ranking, and an HTML response immediately
+started Reader work before other qualified direct entries. Native-validated DTO
+and actual HTML-response regressions reproduced them. Shared batches now rank
+query results too and defer optional Reader continuation until other direct
+entries in that batch have been tried. The original response/context is retained;
+valid response chains and existing ScienceDirect article-backlink recovery stay
+within their source. Possible binary ScienceDirect/Optica/stampPDF responses
+are not predeclared Readers. Explicit supplied native/action order remains intact;
+terminal/cancel outcomes discard paused continuations.
+
+The public native fixture exposed one integration regression: same-rule/endpoint
+query variants interrupted their original Reader and changed fallback accounting.
+Its unchanged request/save/association assertions pass after treating these
+variants as that source's fallbacks; request URLs/parameters are not rewritten.
+An already qualified Reader can also finish before optional identifier APIs;
+the next query is reached only if those existing sources fail. The final Python
+check passes1652tests; the focused public native Download check passes. The full
+Electron follow-up is still in progress at this checkpoint.
+
+The follow-up full Python run passed1649tests/2existingwarnings. Its intermediate
+run also exposed a collection-planner Run-final-snapshot SQLite sidecar race in
+unchanged code; the28case focused native/planner run and final full run passed.
+The initial failure log is retained. No race repair or weakened persistence
+protection is claimed. No formal download ran on intermediate c1c0ed5: its actual
+runtime was checked,then normally quit09:48:44UTC before review corrections.
+
 During evidence reconciliation,two optional late-file notes(F04-1/F11-1) were
 found to belong to later fresh parents. They were removed and the original
 parent/Allfold attempt binding made explicit. Every earlier outcome,wait and
