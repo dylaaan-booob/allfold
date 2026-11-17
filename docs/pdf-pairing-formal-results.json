@@ -2193,18 +2193,29 @@
         "F01",
         "F02"
       ],
-      "gap": "Electron normal institutional login awaits local user credentials; same-access IEEE retest incomplete. Chrome PDF success preserved."
+      "gap": "Electron target institutional access has not been re-established after the source relaunch; same-access IEEE retests remain incomplete. Original Allfold failure and Chrome local PDF successes are retained."
+    },
+    {
+      "samples": [
+        "F03"
+      ],
+      "gap": "F03-4 is one comparable low-load slower point in Allfold; two swapped repeats and investigation remain outstanding. Earlier loaded-observer times do not establish parity."
     },
     {
       "samples": [
         "F06"
       ],
-      "gap": "Two CUA click failures lost T0; successful files retained, replacement timed controls pending reliable UI channel."
+      "gap": "Two historical CUA failures lost Zotero T0; files retained. F06-4 now provides one reliable low-load timed pair; two further swapped controls remain outstanding."
     },
     {
       "samples": [
         "F08",
-        "F09",
+        "F09"
+      ],
+      "gap": "Allfold saved verified related arXiv preprints after publisher access challenges; normal Silverchair saves yielded no observed parent/PDF and were operator-interrupted with unknown product terminal states. Publisher access, metadata diagnosis and equivalent-version retests remain outstanding."
+    },
+    {
+      "samples": [
         "F10",
         "F11",
         "F12",
@@ -2228,13 +2239,13 @@
         "F30",
         "F31"
       ],
-      "gap": "Not started; Chrome/CUA input/clock reliability blocks normal paired timing. No sample replaced."
+      "gap": "Not started at this saved checkpoint; continuation records are retained incrementally outside Workspace. No sample replaced."
     },
     {
-      "gap": "Optica/IEEE Reader branch/R059/LWW/OCE/stableP4/extra-recovery coverage only when actually observed; fixtures are not live evidence. ScienceDirect formal cohort not started."
+      "gap": "Optica/IEEE Reader branch/R059/LWW/OCE/stableP4/extra-recovery are covered only when actually observed; fixtures are not live evidence. ScienceDirect formal cohort remains unstarted at this checkpoint."
     },
     {
-      "gap": "Platform tool update subsequently removed mcp__cua_repl; pending explicit user tool choice is required before using the read/discovered AgentDock desktop UI fallback."
+      "gap": "CUA restored, with successful targeted Chrome window/tab operations. Intermittent connection timeouts remain operator interruptions; no AgentDock UI used and no pending alternative-tool choice blocks the recovered channel."
     }
   ],
   "parity_conclusions": "In progress: corrected low-load pairs and original affected measurements retained separately. Platform conclusions await controls and access-matched retests.",
@@ -2278,5 +2289,10 @@
     "new_batch": "after-sleep keys-v2; do not attribute Session/cache changes to source code",
     "old_results_retained": true
   },
-  "chrome_service_preparation": "From user steering: select each new correspondingService in Chrome CARSI resource page before saving, then verify actual target article/Translator. Preparation/manual costs separate; no cookie/auth copying."
+  "chrome_service_preparation": "From user steering: select each new correspondingService in Chrome CARSI resource page before saving, then verify actual target article/Translator. Preparation/manual costs separate; no cookie/auth copying.",
+  "checkpoint_utc": "2026-11-17T00:32:27.021Z",
+  "historical_tool_interruptions": [
+    "Earlier platform update removed mcp__cua_repl and an alternative-tool choice was requested; that question became obsolete when CUA returned.",
+    "Global window enumeration/new-tab calls can time out after recovery; targeted Chrome getApp subsequently succeeded, and an already-created trial tab was reused rather than recreated."
+  ]
 }

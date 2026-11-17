@@ -3,7 +3,7 @@
 Issue: [#140](https://github.com/dylaaan-booob/allfold/issues/140). Baseline:
 `a2e511aa86ab5aa292f224301d6609a59c287fa2`.
 
-**Status: incomplete, resumed after system sleep. Nine of the 31 frozen Papers
+**Status: incomplete; saved checkpoint 17 November 2026, 00:32:27 UTC, resumed after system sleep. Nine of the 31 frozen Papers
 have observations; 22 are unstarted. Two new comparable low-load pairs are timed,
 including one Allfold slower point requiring investigation. No platform is
 confirmed at parity. Computer Use has recovered and can target the acceptance
@@ -81,7 +81,7 @@ product's Reject/delete/Restore flow; metadata and Download availability survive
 
 The immutable [31-paper manifest](pdf-pairing-manifest.json) was committed before
 the first formal click; all original samples remain. The
-[formal result table](pdf-pairing-formal-results.json) currently contains 17 slots
+[formal result table](pdf-pairing-formal-results.json) at that checkpoint contains 17 slots
 across nine distinct Papers. Allfold has 15 verified local-PDF outcomes, one
 failure and one unattempted end. Zotero has 14 local-PDF outcomes and three
 operator interruptions with unknown product terminal state. These are attempt
