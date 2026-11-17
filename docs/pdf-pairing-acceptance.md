@@ -4,7 +4,7 @@ Issue: [#140](https://github.com/dylaaan-booob/allfold/issues/140). Baseline:
 `a2e511aa86ab5aa292f224301d6609a59c287fa2`.
 
 **Status: incomplete; saved checkpoint 17 November 2026. Nineteen
-of the 31 frozen Papers have observations (44 pair slots including repeats);
+of the 31 frozen Papers have observations (45 pair slots including repeats);
 12 Papers have no formal Save/Download. Sixteen same-version low-load pairs have reliable local
 file/association endpoints. Springer has two slower Allfold points and one
 interval overlap; T&F has one slower point requiring swapped repeats. The measured
@@ -86,8 +86,8 @@ product's Reject/delete/Restore flow; metadata and Download availability survive
 The immutable [31-paper manifest](pdf-pairing-manifest.json) was committed before
 the first formal click. The [formal results](pdf-pairing-formal-results.json)
 retain all original samples, failures, preparation, versions and repetitions.
-At this checkpoint Allfold has 41 automatic local-PDF successes, one assisted
-success and two failures. Zotero has 35 local-PDF successes
+At this checkpoint Allfold has 42 automatic local-PDF successes, one assisted
+success and two failures. Zotero has 36 local-PDF successes
 and nine operator interruptions with unknown product terminal state. These are
 attempt counts, not independent-paper success rates. Saving a related preprint
 is a task result but is not a publisher-version success.
@@ -101,23 +101,7 @@ is a task result but is not a publisher-version success.
 | Taylor & Francis | 3 / 3 | Allfold 4 successes: original preprint plus3 publisher Accepted Manuscripts; Zotero 2 publisher Accepted Manuscripts,2 interrupted parent-only saves | Same-version F11 retry faster; first F13 slower. Controls/repeats and F12 retry outstanding. Not confirmed. |
 | Project Euclid | 1 / 3 | Both saved related arXiv v4; Allfold required in-download hCaptcha assistance | First-access recovery reported separately; normal prepared-access controls and2 papers outstanding. Not confirmed. |
 | Wiley | 3 / 3 | Allfold6 publisher OA successes; Zotero4 successes(1preprint,3publisher),2interruptions | F14 normal publisher controls and F15 favorAllfold. F16 default saves remain parent-only; one bounded diagnostic records citation/PDF403,with terminal unknown. Not confirmed. |
-| SIAM | 2 / 3 | Allfold3 related preprints; Zotero2 publisher PDFs,1interruption | F18Allfold39.916–40.219s/preprint versusZotero13.238–13.693s/publisher. Extra path/version disadvantage requires shared repair and real retests; The article-context repair is implemented for ordinary discovery roots,using
-the current qualified article route without extra requests. Explicit context,
-trusted initial candidates,native actions and Reader continuations retain their
-context,including intentional no-referrer policy. The latter's native regression
-caught an intermediate overbroad default and remains unchanged. Final local
-checks passJS63,Python1669/2existingwarnings,Electron245/0skips. Real effect on the
-CF failure remains pending.
-
-The repeated Run-final-snapshot sidecar race was also reproduced in a second
-existing test. Late materialization and final snapshot reads now acquire the
-existing Paper owner gate before the existing Workspace commit boundary. A
-public Run fixture deterministically checks the gate while its background
-collection is active. Path/link checks remain strict; no retrieval or collection
-wait was introduced. Earlier failed logs remain; the repaired scope is these
-late Run boundaries,not a claim about every possible external filesystem race.
-
-F19 remains unvisited. Not met at this checkpoint. |
+| SIAM | 2 / 3 | Allfold4 related preprints; Zotero3 publisher PDFs,1 interruption | F18-3 on3a551ea still differs in version and wait despite normal same-Session Browser publisher success. F19 unvisited. Not met. |
 | INFORMS PubsOnline | 0 / 3 | Not started; configured EBSCO capability is not a platform result | Not confirmed. |
 | ScienceDirect | 0 / 6 | Formal cohort not started; repaired-path pilots remain separate | Not confirmed. |
 
@@ -343,15 +327,16 @@ P2/P3 stage must not distinguish query variants,and a paused source's variants
 must wait for the independent direct source and original Reader. Both have red
 regressions and corrections: endpoint scope excludes stage; the queue leaves
 variants with their pending source. A Reader failure still permits those variants,
-without URL rewriting or new retries. Final targeted native re-review is pending.
+without URL rewriting or new retries. Bounded independent native follow-up at79db7d6 confirmed both fixes with no actionable introduced bug.
 The Oxford eprint safety case remains independently covered; possible binary
 ScienceDirect/Optica/stampPDF responses are not predeclared Readers. Valid
 response chains and existing ScienceDirect article-backlink recovery stay intact.
 
 An intermediate full Python run exposed a collection-planner Run-final-snapshot
 SQLite sidecar race in unchanged code; focused and later full checks passed.
-The initial failed output remains private; no race repair or weakened persistence
-protection is claimed. Intermediate c1c0ed5 and51c3dea runtimes had no formal
+The initial failed output remains private. The same late Run race recurred during
+the article-context check and is addressed below without weakening persistence
+protection. Intermediate c1c0ed5 and51c3dea runtimes had no formal
 Download. The latter's fresh CARSI resource returned404,then normal Login reached
 an unfilled institutional form. No credentials were submitted before normal Quit;
 manual login will be requested on the final tested runtime.
@@ -373,16 +358,42 @@ background Session request context remains defective,not simply a missing licenc
 
 Installed Connector5.0.217 `_setAttachmentReferer`/`_fetchAttachment` supply an
 article referrer(full same-origin,origin cross-origin). Current ordinary Allfold
-candidates may supply none; native streaming only forwards an explicit Referer.
-A shared qualified-article context repair is next,with explicit Referer retained
-and existing strict-origin/downgrade policy unchanged. Its effect on real CF
+candidates could supply none; native streaming only forwards an explicit Referer.
+Commit3a551ea supplies missing qualified article context at normal discovery roots
+across platforms. Explicit Referer,trusted initial/native actions and Reader
+continuations are preserved,including a Reader that intentionally returns none.
+Existing strict-origin/downgrade policy is unchanged. Its effect on the real CF
 failure is not assumed. The installed Connector also contains partition-cookie
 handling,but current-site partition evidence was not obtained; the external CDP
 probe was not executed under the CUA boundary and no Cookie values were read or
 copied. No cookie-policy patch is justified yet. Canonical DOI spelling is already
 preserved from the saved Crossref landing; that path was not changed speculatively.
-F19 remains unvisited. Latest code79db7d6's PR-associated full Safety run44067162599
-passed; this does not replace the unresolved real retest.
+F19 remains unvisited. Exact3a551ea local checks passed JS63,Python1669/2existing
+warnings,Electron245/0skips. A bounded independent native review found no actionable
+introduced bug. ActualSource3a551ea started12:33:22.767UTC(runtime1105f3441769c614134a45c8933b334a),
+72Papers/23bodies/0Trash; the user completed normal independent institution login.
+F18-3 has now completed; controlF17 and unseenF19 remain paused for diagnosis.
+Latest3a551ea PR-associated full [Safety44083751309](https://github.com/dylaaan-booob/allfold/actions/runs/44083751309)
+passed JS63,Python1669/4CIwarnings,Electron245/0skips on actual test merge2f49c00;
+this does not replace unresolved real retests.
+
+F18-3 Z→A on actual3a551ea again differs: Zotero12.713–13.051s for the correct
+publisher28pages/3814861bytes; Allfold23.120–23.480s for the relatedarxivv2
+30pages/4232776bytes. Both new local files/parent or attempt associations and
+actual title/DOI or all4authors+explicitpreprintrelation were checked. R039P1
+returnedaccess-challenge after163ms; article extraction8592ms; R061ePDFresponse
+389ms/access-challenge; P5stream14087ms(request8,response1171,firstbytes1197,
+closed14086ms). These are observed native phases,not a complete stage timeline.
+No improvement is attributed to the Referer change.
+
+The same3a Electron Session then normally opened ViewPDF12:54:15UTC and displayed
+the actual28page publisher body. Its visibleDownloadPDF3.8MB link12:55:11UTC
+saved3814818bytes through normalSaveAs outsideWorkspace; DOI/pages checked.
+No visiblechallenge/Solver occurred. This unassociated diagnostic is not scored.
+It confirms the current Session/background request-context difference; F17/F19
+remain paused while that specific gap is investigated. Installed Atypon Journals
+5af42734-7cd5-4c69-97fc-bc406999bdba,lastUpdated2022-10-25 uses the ordinary
+`/doi/pdf/` entry for SIAM; its specialdownload query is confined to EMBO.
 
 During evidence reconciliation,two optional late-file notes(F04-1/F11-1) were
 found to belong to later fresh parents. They were removed and the original
@@ -661,3 +672,12 @@ merge9e149b89 was associated with head78e7ea0; later evidence commits require th
 own latest-PR check. Production bytes remain identical to the running77dfd67.
 No workflow deadline,necessary assertion,dependency or production safety guard was
 removed. CI success doesnot complete real acceptance or permit early Reset.
+
+The late Run sidecar race recurred in two full offline checks while a background
+collection could close SQLite sidecars during Run materialization/final snapshot.
+Commit3a551ea takes the existing Paper owner gate in those two late commit contexts;
+strict link-count/path checks remain. The existing four-parameter collection test
+now asserts the gate during the affected verification; red/green and the full
+1669-test run are retained. No new retry,scan or production completeness check was
+added. The latest full PR Safety passed in about5min50s; its Electron step took
+about3min24s. A macOS arm64 queue-capacity notice is not a product failure.
