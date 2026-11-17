@@ -320,6 +320,55 @@ def test_reader_keeps_same_endpoint_template_variants_as_fallbacks(reader_succee
     assert result.fallback_used is not reader_succeeds
 
 
+@pytest.mark.parametrize('host,article,entry', [
+    ('www.sciencedirect.com', 'https://www.sciencedirect.com/science/article/pii/S014067362400123X',
+     'https://www.sciencedirect.com/science/article/pii/S014067362400123X/pdfft'),
+    ('ieeexplore.ieee.org', 'https://ieeexplore.ieee.org/document/123',
+     'https://ieeexplore.ieee.org/stampPDF/getPDF.jsp?tp=&arnumber=123&ref='),
+])
+def test_duplicate_meta_is_not_another_direct_source_or_fallback(host, article, entry):
+    from allfold.application.document_metadata import CurrentPdfClue, DocumentPdfResult
+    paper = target(host, article_url=article)
+    facts = document(paper, [PdfCandidateFact(stage='P3', rule_id='GENERIC',
+                                            field='citation_pdf_url', url=entry)])
+    body, seen = 'https://cdn.example.org/current.pdf', []
+    class IO:
+        def reader(self, *_):
+            return DocumentPdfResult(facts, (CurrentPdfClue('P4', 'GENERIC', body),))
+    def consume(candidate):
+        seen.append(candidate.url)
+        if candidate.url == entry:
+            return CandidateResult.current(CurrentResponse(entry, 'text/html', b'<html>Reader</html>'))
+        assert candidate.url == body, 'A duplicate Meta must not interrupt its original Reader'
+        return CandidateResult.pdf(transfer_complete=True)
+    result = PdfDiscovery(paper, facts=(facts,), io=IO()).run(consume)
+    assert seen == [entry, body]
+    assert not result.fallback_used
+
+
+@pytest.mark.parametrize('alternative', ['failed', 'skipped'])
+def test_resumed_reader_retains_original_source_index_and_skips_are_not_fallback(alternative):
+    from allfold.application.document_metadata import CurrentPdfClue, DocumentPdfResult
+    paper = target('ieeexplore.ieee.org')
+    parsed = ieee_document_entries(paper)
+    body, seen = 'https://cdn.example.org/reader-body.pdf', []
+    class IO:
+        def reader(self, *_):
+            assert discovery.source_attempt == 1
+            return DocumentPdfResult(parsed.facts, (CurrentPdfClue('P4', 'R025', body),))
+    def consume(candidate):
+        seen.append(candidate.url)
+        if 'stampPDF' in candidate.url:
+            return CandidateResult.current(CurrentResponse(candidate.url, 'text/html', b'<html>Reader</html>'))
+        if candidate.url.endswith('/current.pdf'):
+            return CandidateResult(alternative)
+        return CandidateResult.pdf(transfer_complete=True)
+    discovery = PdfDiscovery(paper, facts=(parsed.facts,), io=IO())
+    result = discovery.run(consume)
+    assert seen[-1] == body and discovery.source_attempt == 1
+    assert result.fallback_used is (alternative == 'failed')
+
+
 @pytest.mark.parametrize('host,landing,entry', [
     ('www.sciencedirect.com', 'https://www.sciencedirect.com/science/article/pii/S014067362400123X',
      'https://www.sciencedirect.com/science/article/pii/S014067362400123X/pdfft'),

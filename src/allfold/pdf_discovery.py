@@ -186,7 +186,7 @@ class PdfDiscovery:
         self._initial = tuple(candidates) if candidates is not None else None
         self._consumed = 0
         self._observe = observe
-        self._source_attempt, self._lineage = 0, None
+        self._source_attempt, self._attempt_count = 0, 0
         self._current_candidate = None
 
     @property
@@ -473,6 +473,7 @@ class PdfDiscovery:
         # retained response state independently of the captured parent deadline.
         pending = [(original, None, object())]
         edges, responses, state_bytes = set(), set(), 0
+        attempts = {}
         request_context_key, reader_context_key = None, None
         while pending:
             candidate, evidence, lineage = pending.pop()
@@ -511,10 +512,11 @@ class PdfDiscovery:
                 self._note(original.stage, original.rule_id, result.diagnostic or 'condition-unavailable')
                 continue
             self._consumed += retries + 1
-            if lineage is not self._lineage:
-                self._source_attempt += 1
-                self._lineage = lineage
-            if self._failed:
+            if lineage not in attempts:
+                self._attempt_count += 1
+                attempts[lineage] = self._attempt_count
+            self._source_attempt = attempts[lineage]
+            if self._failed or self._attempt_count > 1:
                 self._fallback = True
             if not result.transfer_complete:
                 reason = result.diagnostic or ('access-blocked' if result.response is not None and access_limited(result.response)
@@ -565,6 +567,7 @@ class PdfDiscovery:
                     if not article_backlink:
                         yield
                     self._current_candidate = candidate
+                    self._source_attempt = attempts[lineage]
                     try:
                         parsed = self._call(self.io.reader, candidate, response)
                     except PdfSourceReadError as error:
@@ -644,11 +647,11 @@ class PdfDiscovery:
                     # Query variants of the same rule/endpoint remain that
                     # source's fallbacks, not a reason to interrupt its Reader.
                     if self._initial is None and any(not self._reader_entry(item)
+                            and _eligible(item) and (urldefrag(item.url)[0], item.action) not in self._seen
                             and self._entry_scope(item) != self._entry_scope(self._current_candidate)
                             for item in entries):
                         deferred.append(active)
                         active = None
-                        self._failed = self._failed or self._consumed > before
         finally:
             if active is not None:
                 active[0].close()

@@ -5630,17 +5630,20 @@
     "scope": "Shared candidate priority across all supported platforms; direct qualified entries before deferred Reader/form work and optional discovery APIs. Existing Atypon Host family shares direct DOI entry viaR039 instead of a SIAM-only P1 rule.",
     "local_checks": {
       "javascript_files": 63,
-      "python_passed": 1652,
+      "python_passed": 1656,
       "python_warnings": 2,
       "electron_passed": 245,
       "electron_skipped": 0,
-      "electron_status": "Final complete followup check in progress; actual public Download regression now passes unchanged after preserving same-endpoint variants. Preceding complete run244passed/1failed retained."
+      "electron_status": "Full245/0skips passed at849dddc; final provenance-only corrections passed fullPython1656 and focused actual publicDownload1/1 unchanged safety assertions.",
+      "electron_full_code_sha": "849dddc9a3a72cf2b0a778375e1a8fb8e3d051b6",
+      "final_affected_native_passed": 1
     },
     "live_status": "Not yet run at the new production revision. Original F18 mismatch/slow wait retained; F19 still unvisited for post-fix verification.",
     "diagnostic_correction": "Earlier no-pdf-entry was misread as missing articleDOM. It follows an attempted P4response; native article extraction did discover theePDF entry. Navigation/header/case hypotheses were not used for a patch.",
     "review_followup": "Three affected review gaps reproduced: unmarked native IEEE Meta, API-result entry ordering, and HTML-triggered Reader work ahead of other qualified direct entries. Shared batch scheduling preserves settled response/context and existing ScienceDirect backlink chain. Explicit initial/native action order is preserved; terminal/cancel outcomes discard paused Reader work. Real retests remain pending. Qualified Readers also finish before optional identifier APIs; otherwise an old deferred Reader could be mistaken for sufficient new query inputs. Same-rule/same-origin/path query variants remain source fallbacks and do not interrupt Reader; requests are not rewritten.",
     "limitations": [
       "An intermediate full test run exposed a collection-planner Run-final-snapshot sidecar race at library_database._validate_paths (not in changed PDF code). The28case focused native/planner check and final1649case full Python run passed; no production persistence protection was weakened or race fix claimed. Initial failed output retained privately."
-    ]
+    ],
+    "provenance_followup": "Four red regressions reproduce duplicateMeta counting as a distinct entry, resumed Reader source-index reassignment, and conditional skips inventing fallback. Lookahead now excludes seen/ineligible entries; pausing alone is not failure. Local lineage-to-index mapping retains original index through interleaving; the global allocation count advances only for actual source attempts. Original Service/stream/save interfaces unchanged."
   }
 }

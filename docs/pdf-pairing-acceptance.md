@@ -333,7 +333,16 @@ variants as that source's fallbacks; request URLs/parameters are not rewritten.
 An already qualified Reader can also finish before optional identifier APIs;
 the next query is reached only if those existing sources fail. The final Python
 check passes1652tests; the focused public native Download check passes. The full
-Electron follow-up is still in progress at this checkpoint.
+Electron follow-up passed245tests/0skips at849dddc.
+
+The final provenance follow-up reproduced duplicate Meta entries falsely counting
+as alternatives, conditional skips inventing fallback, and a resumed Reader
+receiving a new source index. Lookahead now excludes seen/ineligible candidates;
+pausing itself is not failure. A chain retains its own lineage/index while the
+allocation count advances only on actual source attempts. Four red regressions
+now pass; final full Python1656tests/2existingwarnings and the actual public native
+Download fixture pass with unchanged safety assertions. The preceding full
+Electron245run remains the full-suite checkpoint; no later JavaScript changed.
 
 The follow-up full Python run passed1649tests/2existingwarnings. Its intermediate
 run also exposed a collection-planner Run-final-snapshot SQLite sidecar race in
