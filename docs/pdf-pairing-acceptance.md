@@ -307,49 +307,37 @@ Service authority,Session streaming and actual file/association completion remai
 P5 remains last. A potential ScienceDirect PDF response is not automatically
 declared a Reader based on its URL.
 
-The shared regression was red before implementation(11failures). Focused378tests,
-full Python1638tests(2existingwarnings),JS63files and Electron245tests/0skips now
-pass. The Oxford eprint safety case remains independently covered; an already
-known PDF now avoids that unnecessary citation lookup. These checks include
-ScienceDirect/IEEE/Optica candidate-order cases and multiple Atypon Hosts,not
-real-site proof for every Host. Original F18/F17 retests and untouched F19 at the
-new code revision remain required before claiming the repair effective.
+The shared regression was red before implementation. The completed current
+Python check passes1661tests/2existingwarnings and JS check covers63files. The complete Electron follow-up passes245tests/0skips; focused public native
+Download checks and earlier failing outputs are retained. These are offline
+regressions,not real-site proof for every Host. Original F18/F17 retests and
+untouched F19 at the new code revision remain required.
 
-Affected review then identified three gaps: ordinary IEEE Meta has no Reader
-marker, API-result candidates bypassed ranking, and an HTML response immediately
-started Reader work before other qualified direct entries. Native-validated DTO
-and actual HTML-response regressions reproduced them. Shared batches now rank
-query results too and defer optional Reader continuation until other direct
-entries in that batch have been tried. The original response/context is retained;
-valid response chains and existing ScienceDirect article-backlink recovery stay
-within their source. Possible binary ScienceDirect/Optica/stampPDF responses
-are not predeclared Readers. Explicit supplied native/action order remains intact;
-terminal/cancel outcomes discard paused continuations.
+Affected review and integration tests covered ordinary IEEE Meta without a
+Reader marker, API-result ranking, HTML-triggered optional Reader work, explicit
+native/action order, and terminal/cancel cleanup. Existing qualified Readers can
+finish before optional identifier APIs. Paused chains keep their response,
+context and source index; seen/ineligible clues and conditional skips cannot
+invent fallback. The actual public native fixture keeps its request,local-save,
+association and resource-cleanup assertions.
 
-The public native fixture exposed one integration regression: same-rule/endpoint
-query variants interrupted their original Reader and changed fallback accounting.
-Its unchanged request/save/association assertions pass after treating these
-variants as that source's fallbacks; request URLs/parameters are not rewritten.
-An already qualified Reader can also finish before optional identifier APIs;
-the next query is reached only if those existing sources fail. The final Python
-check passes1652tests; the focused public native Download check passes. The full
-Electron follow-up passed245tests/0skips at849dddc.
+Independent native review at51c3dea identified two remaining same-endpoint cases:
+P2/P3 stage must not distinguish query variants,and a paused source's variants
+must wait for the independent direct source and original Reader. Both have red
+regressions and corrections: endpoint scope excludes stage; the queue leaves
+variants with their pending source. A Reader failure still permits those variants,
+without URL rewriting or new retries. Final targeted native re-review is pending.
+The Oxford eprint safety case remains independently covered; possible binary
+ScienceDirect/Optica/stampPDF responses are not predeclared Readers. Valid
+response chains and existing ScienceDirect article-backlink recovery stay intact.
 
-The final provenance follow-up reproduced duplicate Meta entries falsely counting
-as alternatives, conditional skips inventing fallback, and a resumed Reader
-receiving a new source index. Lookahead now excludes seen/ineligible candidates;
-pausing itself is not failure. A chain retains its own lineage/index while the
-allocation count advances only on actual source attempts. Four red regressions
-now pass; final full Python1656tests/2existingwarnings and the actual public native
-Download fixture pass with unchanged safety assertions. The preceding full
-Electron245run remains the full-suite checkpoint; no later JavaScript changed.
-
-The follow-up full Python run passed1649tests/2existingwarnings. Its intermediate
-run also exposed a collection-planner Run-final-snapshot SQLite sidecar race in
-unchanged code; the28case focused native/planner run and final full run passed.
-The initial failure log is retained. No race repair or weakened persistence
-protection is claimed. No formal download ran on intermediate c1c0ed5: its actual
-runtime was checked,then normally quit09:48:44UTC before review corrections.
+An intermediate full Python run exposed a collection-planner Run-final-snapshot
+SQLite sidecar race in unchanged code; focused and later full checks passed.
+The initial failed output remains private; no race repair or weakened persistence
+protection is claimed. Intermediate c1c0ed5 and51c3dea runtimes had no formal
+Download. The latter's fresh CARSI resource returned404,then normal Login reached
+an unfilled institutional form. No credentials were submitted before normal Quit;
+manual login will be requested on the final tested runtime.
 
 During evidence reconciliation,two optional late-file notes(F04-1/F11-1) were
 found to belong to later fresh parents. They were removed and the original

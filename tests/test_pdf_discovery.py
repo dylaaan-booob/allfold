@@ -320,17 +320,50 @@ def test_reader_keeps_same_endpoint_template_variants_as_fallbacks(reader_succee
     assert result.fallback_used is not reader_succeeds
 
 
+@pytest.mark.parametrize('winner', ['direct', 'reader', 'variant'])
+def test_paused_reader_variants_wait_for_other_direct_and_their_original_reader(winner):
+    from allfold.application.document_metadata import CurrentPdfClue, DocumentPdfResult
+    article = 'https://www.sciencedirect.com/science/article/pii/S014067362400123X'
+    entry, variant = article + '/pdfft', article + '/pdfft?download=true'
+    direct, body = 'https://cdn.example.org/current.pdf', 'https://cdn.example.org/reader-body.pdf'
+    paper = target('www.sciencedirect.com', article_url=article)
+    facts = document(paper, [
+        PdfCandidateFact(stage='P3', rule_id='R024', field='citation_pdf_url', url=variant),
+        PdfCandidateFact(stage='P4', rule_id='R024', url=direct),
+    ])
+    seen, readers = [], []
+    class IO:
+        def reader(self, candidate, response):
+            assert seen == [entry, direct]
+            readers.append(candidate.url)
+            if winner == 'reader':
+                return DocumentPdfResult(facts, (CurrentPdfClue('P4', 'R024', body),))
+    def consume(candidate):
+        seen.append(candidate.url)
+        if candidate.url == entry:
+            return CandidateResult.current(CurrentResponse(entry, 'text/html', b'<html>Reader</html>'))
+        if candidate.url == direct and winner != 'direct':
+            return CandidateResult.failed()
+        return CandidateResult.pdf(transfer_complete=True)
+    result = PdfDiscovery(paper, facts=(facts,), io=IO()).run(consume)
+    assert seen == [entry, direct] + ([] if winner == 'direct' else [body if winner == 'reader' else variant])
+    assert readers == ([] if winner == 'direct' else [entry])
+    assert result.status == 'transferred' and result.fallback_used
+
+
 @pytest.mark.parametrize('host,article,entry', [
     ('www.sciencedirect.com', 'https://www.sciencedirect.com/science/article/pii/S014067362400123X',
      'https://www.sciencedirect.com/science/article/pii/S014067362400123X/pdfft'),
     ('ieeexplore.ieee.org', 'https://ieeexplore.ieee.org/document/123',
      'https://ieeexplore.ieee.org/stampPDF/getPDF.jsp?tp=&arnumber=123&ref='),
 ])
-def test_duplicate_meta_is_not_another_direct_source_or_fallback(host, article, entry):
+@pytest.mark.parametrize('variant', [False, True])
+def test_duplicate_meta_is_not_another_direct_source_or_fallback(host, article, entry, variant):
     from allfold.application.document_metadata import CurrentPdfClue, DocumentPdfResult
     paper = target(host, article_url=article)
-    facts = document(paper, [PdfCandidateFact(stage='P3', rule_id='GENERIC',
-                                            field='citation_pdf_url', url=entry)])
+    meta = entry + (('&' if '?' in entry else '?') + 'download=true' if variant else '')
+    facts = document(paper, [PdfCandidateFact(stage='P3', rule_id='R024' if 'sciencedirect' in host else 'R025',
+                                            field='citation_pdf_url', url=meta)])
     body, seen = 'https://cdn.example.org/current.pdf', []
     class IO:
         def reader(self, *_):

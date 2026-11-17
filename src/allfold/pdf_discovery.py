@@ -365,7 +365,11 @@ class PdfDiscovery:
     @staticmethod
     def _entry_scope(candidate):
         parsed = urlsplit(candidate.url)
-        return candidate.stage, candidate.rule_id, parsed.scheme, parsed.netloc, parsed.path
+        return candidate.rule_id, parsed.scheme, parsed.netloc, parsed.path
+
+    def _available_direct(self, candidate):
+        return (not self._reader_entry(candidate) and _eligible(candidate)
+            and (urldefrag(candidate.url)[0], candidate.action) not in self._seen)
 
     def _candidate_batches(self):
         if self._initial is not None:
@@ -624,16 +628,24 @@ class PdfDiscovery:
         try:
             while entries or deferred or active is not None:
                 if active is None:
-                    if deferred and (not entries or self._reader_entry(entries[0])):
-                        active = deferred.popleft()
+                    candidate = None
+                    if deferred:
+                        scopes = {scope for _, _, scope in deferred}
+                        candidate = next((item for item in entries if self._available_direct(item)
+                            and self._entry_scope(item) not in scopes), None)
+                        if candidate is None:
+                            active = deferred.popleft()
+                        else:
+                            entries.remove(candidate)
                     else:
                         candidate = entries.popleft()
+                    if candidate is not None:
                         self.check()
                         if (not _eligible(candidate)
                                 or (urldefrag(candidate.url)[0], candidate.action) in self._seen):
                             continue
-                        active = (self._chain(candidate, consume), self._consumed)
-                chain, before = active
+                        active = (self._chain(candidate, consume), self._consumed, self._entry_scope(candidate))
+                chain, before, scope = active
                 try:
                     next(chain)
                 except StopIteration as done:
@@ -646,16 +658,16 @@ class PdfDiscovery:
                 else:
                     # Query variants of the same rule/endpoint remain that
                     # source's fallbacks, not a reason to interrupt its Reader.
-                    if self._initial is None and any(not self._reader_entry(item)
-                            and _eligible(item) and (urldefrag(item.url)[0], item.action) not in self._seen
-                            and self._entry_scope(item) != self._entry_scope(self._current_candidate)
+                    blocked = {scope, *(item[2] for item in deferred)}
+                    if self._initial is None and any(self._available_direct(item)
+                            and self._entry_scope(item) not in blocked
                             for item in entries):
                         deferred.append(active)
                         active = None
         finally:
             if active is not None:
                 active[0].close()
-            for chain, _ in deferred:
+            for chain, _, _ in deferred:
                 chain.close()
 
     def run(self, consume):

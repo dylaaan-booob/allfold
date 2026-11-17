@@ -5439,6 +5439,19 @@
       ],
       "formal_downloads": 0,
       "reason": "Actual shared-entry source launched and API/72Papers/23bodies verified; normal Quit before accepted affected review corrections. No live timing on this intermediate revision."
+    },
+    {
+      "started_at_utc": "2026-11-17T10:23:23.129Z",
+      "head_sha": "51c3dea6acfca894a6021619fee5846cde2ebc14",
+      "production_code_sha": "51c3dea6acfca894a6021619fee5846cde2ebc14",
+      "frontend_head_sha": "51c3dea6acfca894a6021619fee5846cde2ebc14",
+      "runtime_id": "ba016b7ea988812c3f7dec7660b5bd41",
+      "normal_quit_utc": [
+        "2026-11-17T10:29:49.128Z",
+        "2026-11-17T10:29:49.137Z"
+      ],
+      "formal_downloads": 0,
+      "reason": "Actual source verified72Papers/23bodies/0Trash/0Download. Fresh CARSIresource404 then normalinstitutionalLoginform(no prefill/no credentialsubmission). NormalQuit before stage-independent endpoint and deferred-variant final corrections; Chrome/Zotero retained."
     }
   ],
   "frontend_head_sha": "21a7e25376baa5459fed346280bb3f52353359ed",
@@ -5630,13 +5643,13 @@
     "scope": "Shared candidate priority across all supported platforms; direct qualified entries before deferred Reader/form work and optional discovery APIs. Existing Atypon Host family shares direct DOI entry viaR039 instead of a SIAM-only P1 rule.",
     "local_checks": {
       "javascript_files": 63,
-      "python_passed": 1656,
+      "python_passed": 1661,
       "python_warnings": 2,
       "electron_passed": 245,
       "electron_skipped": 0,
-      "electron_status": "Full245/0skips passed at849dddc; final provenance-only corrections passed fullPython1656 and focused actual publicDownload1/1 unchanged safety assertions.",
-      "electron_full_code_sha": "849dddc9a3a72cf2b0a778375e1a8fb8e3d051b6",
-      "final_affected_native_passed": 1
+      "electron_status": "Complete final implementation:245passed/0skips,118.345s; final Python1661/2existingwarnings and JS63 passed. No later production edit before commit.",
+      "final_affected_native_passed": 1,
+      "previous_electron_full_code_sha": "849dddc9a3a72cf2b0a778375e1a8fb8e3d051b6"
     },
     "live_status": "Not yet run at the new production revision. Original F18 mismatch/slow wait retained; F19 still unvisited for post-fix verification.",
     "diagnostic_correction": "Earlier no-pdf-entry was misread as missing articleDOM. It follows an attempted P4response; native article extraction did discover theePDF entry. Navigation/header/case hypotheses were not used for a patch.",
@@ -5644,6 +5657,14 @@
     "limitations": [
       "An intermediate full test run exposed a collection-planner Run-final-snapshot sidecar race at library_database._validate_paths (not in changed PDF code). The28case focused native/planner check and final1649case full Python run passed; no production persistence protection was weakened or race fix claimed. Initial failed output retained privately."
     ],
-    "provenance_followup": "Four red regressions reproduce duplicateMeta counting as a distinct entry, resumed Reader source-index reassignment, and conditional skips inventing fallback. Lookahead now excludes seen/ineligible entries; pausing alone is not failure. Local lineage-to-index mapping retains original index through interleaving; the global allocation count advances only for actual source attempts. Original Service/stream/save interfaces unchanged."
+    "provenance_followup": "Four red regressions reproduce duplicateMeta counting as a distinct entry, resumed Reader source-index reassignment, and conditional skips inventing fallback. Lookahead now excludes seen/ineligible entries; pausing alone is not failure. Local lineage-to-index mapping retains original index through interleaving; the global allocation count advances only for actual source attempts. Original Service/stream/save interfaces unchanged.",
+    "native_review": {
+      "reviewed_sha": "51c3dea6acfca894a6021619fee5846cde2ebc14",
+      "findings": 2,
+      "scope": "Shared production repair; read-only independent native Codex review. Earlier849review was interrupted before completion,not a pass.",
+      "corrections": "Remove stage from same-rule/origin/path identity; queue same-endpoint variants behind other independent direct entries and their pending original Reader. Direct/Reader/variant success paths covered by red-then-green regressions.",
+      "final_followup": "pending",
+      "regression_status": "Stage-variant2cases and deferred direct/Reader/variant3outcomes red-then-green; complete final local checks passed."
+    }
   }
 }
