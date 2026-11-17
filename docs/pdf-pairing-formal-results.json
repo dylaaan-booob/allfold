@@ -2,8 +2,8 @@
   "status": "formal_in_progress",
   "manifest": "pdf-pairing-manifest.json",
   "manifest_frozen_at_utc": "2026-11-16T18:40:53.823107+00:00",
-  "production_code_sha": "a9663f778c920c588414f2e8816b8a962faffcc0",
-  "runtime_head_sha": "e67e13670ffb2524cb3660c25570f87485828fca",
+  "production_code_sha": "77dfd670f1b9f07cddb880688e699620f0a9a9ef",
+  "runtime_head_sha": "77dfd670f1b9f07cddb880688e699620f0a9a9ef",
   "pairs": [
     {
       "pair_id": "F01-1",
@@ -3061,6 +3061,746 @@
         0.7118,
         0.8293
       ]
+    },
+    {
+      "pair_id": "F03-7",
+      "sample_id": "F03",
+      "order": [
+        "allfold",
+        "zotero"
+      ],
+      "production_code_sha": "77dfd670f1b9f07cddb880688e699620f0a9a9ef",
+      "runtime_head_sha": "77dfd670f1b9f07cddb880688e699620f0a9a9ef",
+      "allfold": {
+        "result": "automatic_success",
+        "click_utc": [
+          "2026-11-17T03:00:01.230Z",
+          "2026-11-17T03:00:01.324Z"
+        ],
+        "ui_preparation": "New runtime 97a7ee; first Springer platform access; article/PDF not preopened; prior attempt6 QA, Reject/delete PDF/Restore",
+        "human_intervention": false,
+        "runtime_head_sha": "77dfd670f1b9f07cddb880688e699620f0a9a9ef",
+        "production_code_sha": "77dfd670f1b9f07cddb880688e699620f0a9a9ef",
+        "frontend_head_sha": "77dfd670f1b9f07cddb880688e699620f0a9a9ef",
+        "local_pdf_and_association_utc": [
+          "2026-11-17T03:00:05.211Z",
+          "2026-11-17T03:00:05.470Z"
+        ],
+        "wait_seconds": [
+          3.887,
+          4.24
+        ],
+        "file_bytes": 2636871,
+        "attempt": 7,
+        "source": "P1",
+        "fallback_used": 0,
+        "content_check": {
+          "file_exists": true,
+          "file_bytes": 2636871,
+          "pdf_prefix": true,
+          "page_count": 22,
+          "full_title_match": true,
+          "doi_match": true,
+          "publisher_indicators": {
+            "IEEE": false,
+            "Springer": false,
+            "Scientific Reports": false,
+            "Creative Commons": false,
+            "Accepted Manuscript": false,
+            "arXiv:": false,
+            "All rights reserved": false
+          }
+        },
+        "human_intervention_note": "none",
+        "measurement_revision": "keys-v2",
+        "timing_eligible_for_parity": true
+      },
+      "zotero": {
+        "result": "automatic_success",
+        "click_utc": [
+          "2026-11-17T03:01:24.720Z",
+          "2026-11-17T03:01:24.750Z"
+        ],
+        "ui_preparation": "New article tab, DOI/title matched, open access full access; existing Chrome CARSI Springer warm session; Connector target acceptance collection",
+        "human_intervention": false,
+        "translator": "Springer Link",
+        "local_pdf_and_association_utc": [
+          "2026-11-17T03:01:26.757Z",
+          "2026-11-17T03:01:27.024Z"
+        ],
+        "wait_seconds": [
+          2.007,
+          2.304
+        ],
+        "file_bytes": 2636871,
+        "parent_key": "KZXK6GDG",
+        "attachment_key": "UDLULR6M",
+        "link_mode": "imported_url",
+        "content_check": {
+          "file_exists": true,
+          "file_bytes": 2636871,
+          "pdf_prefix": true,
+          "page_count": 22,
+          "full_title_match": true,
+          "doi_match": true,
+          "publisher_indicators": {
+            "IEEE": false,
+            "Springer": false,
+            "Scientific Reports": false,
+            "Creative Commons": false,
+            "Accepted Manuscript": false,
+            "arXiv:": false,
+            "All rights reserved": false
+          }
+        },
+        "human_intervention_note": "none",
+        "measurement_revision": "keys-v2",
+        "timing_eligible_for_parity": true
+      },
+      "platform": "Springer Link",
+      "configured_service": "Springer Link",
+      "timing_comparison_eligible": false,
+      "cohort": "mechanism_directed",
+      "comparison_stratum": "new_electron_session_first_request",
+      "comparable_body_version": true,
+      "cache_context": "New normal Electron process/Session, first Springer request after restart. Chrome retained warm CARSI/article/Translator context. No cache/cookie clearing; not a matched-cache network benchmark.",
+      "version_comparison": {
+        "version": "Both Springer publisher PDF,22pages,2636871bytes",
+        "evidence": "Both actual files individually checked for exact DOI/title/page count and correct Paper/parent association."
+      },
+      "native_operations": {
+        "response_operations_ms": [
+          1313,
+          1161
+        ],
+        "source_origins": [
+          "https://link.springer.com/",
+          "https://idp.springer.com/",
+          "https://link.springer.com/"
+        ],
+        "pdf_stream_ms": 1492,
+        "relative_marks_ms": {
+          "request": 5,
+          "response": 654,
+          "first_nonempty_bytes": 654,
+          "closed_writer": 1492
+        }
+      },
+      "investigation": "Existing cross-origin response/IdP redirects account for two pre-PDF operations in the new Session. R001 entry matches installed Springer Translator. A same-Electron-session warm control is required; no arbitrary redirect bypass or code-only speedup claim.",
+      "diagnostic_only": true,
+      "difference_seconds_first_session": [
+        1.583,
+        2.233
+      ],
+      "ratio_first_session": [
+        1.6871,
+        2.1126
+      ],
+      "difference_seconds": [
+        1.583,
+        2.233
+      ],
+      "ratio": [
+        1.6871,
+        2.1126
+      ]
+    },
+    {
+      "pair_id": "F03-8",
+      "sample_id": "F03",
+      "order": [
+        "zotero",
+        "allfold"
+      ],
+      "production_code_sha": "77dfd670f1b9f07cddb880688e699620f0a9a9ef",
+      "runtime_head_sha": "77dfd670f1b9f07cddb880688e699620f0a9a9ef",
+      "allfold": {
+        "result": "automatic_success",
+        "click_utc": [
+          "2026-11-17T03:05:06.452Z",
+          "2026-11-17T03:05:06.566Z"
+        ],
+        "ui_preparation": "Same runtime after Springer A7; QA verified A7, Reject/delete PDF/Restore; warm session",
+        "human_intervention": false,
+        "runtime_head_sha": "77dfd670f1b9f07cddb880688e699620f0a9a9ef",
+        "production_code_sha": "77dfd670f1b9f07cddb880688e699620f0a9a9ef",
+        "frontend_head_sha": "77dfd670f1b9f07cddb880688e699620f0a9a9ef",
+        "local_pdf_and_association_utc": [
+          "2026-11-17T03:05:07.186Z",
+          "2026-11-17T03:05:07.442Z"
+        ],
+        "wait_seconds": [
+          0.62,
+          0.99
+        ],
+        "file_bytes": 2636871,
+        "attempt": 8,
+        "source": "P1",
+        "fallback_used": 0,
+        "content_check": {
+          "file_exists": true,
+          "file_bytes": 2636871,
+          "pdf_prefix": true,
+          "page_count": 22,
+          "full_title_match": true,
+          "doi_match": true,
+          "publisher_indicators": {
+            "IEEE": false,
+            "Springer": false,
+            "Scientific Reports": false,
+            "Creative Commons": false,
+            "Accepted Manuscript": false,
+            "arXiv:": false,
+            "All rights reserved": false
+          }
+        },
+        "human_intervention_note": "none",
+        "measurement_revision": "keys-v2",
+        "timing_eligible_for_parity": true
+      },
+      "zotero": {
+        "result": "automatic_success",
+        "click_utc": [
+          "2026-11-17T03:03:42.548Z",
+          "2026-11-17T03:03:42.609Z"
+        ],
+        "ui_preparation": "New article tab, OA full access, selected acceptance collection; Chrome warm session",
+        "human_intervention": false,
+        "translator": "Springer Link",
+        "local_pdf_and_association_utc": [
+          "2026-11-17T03:03:44.448Z",
+          "2026-11-17T03:03:44.723Z"
+        ],
+        "wait_seconds": [
+          1.839,
+          2.175
+        ],
+        "file_bytes": 2636871,
+        "parent_key": "8XKVS3AY",
+        "attachment_key": "TBQ3J5K6",
+        "link_mode": "imported_url",
+        "content_check": {
+          "file_exists": true,
+          "file_bytes": 2636871,
+          "pdf_prefix": true,
+          "page_count": 22,
+          "full_title_match": true,
+          "doi_match": true,
+          "publisher_indicators": {
+            "IEEE": false,
+            "Springer": false,
+            "Scientific Reports": false,
+            "Creative Commons": false,
+            "Accepted Manuscript": false,
+            "arXiv:": false,
+            "All rights reserved": false
+          }
+        },
+        "human_intervention_note": "none",
+        "measurement_revision": "keys-v2",
+        "timing_eligible_for_parity": true
+      },
+      "platform": "Springer Link",
+      "configured_service": "Springer Link",
+      "timing_comparison_eligible": false,
+      "cohort": "mechanism_directed",
+      "comparison_stratum": "warm_same_electron_session_after_idp",
+      "comparable_body_version": true,
+      "diagnostic_only": true,
+      "cache_context": "Warm same Electron Session immediately following the declared first-Session diagnostic F03-7. Both products save new local files. Actual HTTP cache flags were not observed.",
+      "version_comparison": {
+        "version": "Both Springer publisher PDF,22pages,2636871bytes",
+        "evidence": "Both files individually checked for exact title,DOI,page count and original Paper/parent association."
+      },
+      "native_operations": {
+        "response_operations_ms": [],
+        "pdf_stream_ms": 583,
+        "relative_marks_ms": {
+          "request": 12,
+          "response": 573,
+          "first_nonempty_bytes": 573,
+          "closed_writer": 582
+        }
+      },
+      "investigation": "Warm same-Session retry used a single P1 request. The prior IdP redirect operations disappeared. Most of this native duration preceded response; only9ms remained after observed first bytes to closed writer. No cache-hit flag or old outlier phase is inferred.",
+      "difference_seconds_diagnostic": [
+        -1.555,
+        -0.849
+      ],
+      "ratio_diagnostic": [
+        0.2851,
+        0.5383
+      ],
+      "difference_seconds": [
+        -1.555,
+        -0.849
+      ],
+      "ratio": [
+        0.2851,
+        0.5383
+      ]
+    },
+    {
+      "pair_id": "F06-5",
+      "sample_id": "F06",
+      "order": [
+        "allfold",
+        "zotero"
+      ],
+      "production_code_sha": "77dfd670f1b9f07cddb880688e699620f0a9a9ef",
+      "runtime_head_sha": "77dfd670f1b9f07cddb880688e699620f0a9a9ef",
+      "allfold": {
+        "result": "automatic_success",
+        "click_utc": [
+          "2026-11-17T03:06:48.595Z",
+          "2026-11-17T03:06:48.688Z"
+        ],
+        "ui_preparation": "New Source runtime, no preopened article; prior trial PDF QA, Reject/delete PDF/Restore",
+        "human_intervention": false,
+        "runtime_head_sha": "77dfd670f1b9f07cddb880688e699620f0a9a9ef",
+        "production_code_sha": "77dfd670f1b9f07cddb880688e699620f0a9a9ef",
+        "frontend_head_sha": "77dfd670f1b9f07cddb880688e699620f0a9a9ef",
+        "local_pdf_and_association_utc": [
+          "2026-11-17T03:06:50.656Z",
+          "2026-11-17T03:06:50.915Z"
+        ],
+        "wait_seconds": [
+          1.968,
+          2.32
+        ],
+        "file_bytes": 357759,
+        "attempt": 5,
+        "source": "P3",
+        "fallback_used": 0,
+        "content_check": {
+          "file_exists": true,
+          "file_bytes": 357759,
+          "pdf_prefix": true,
+          "page_count": 33,
+          "full_title_match": true,
+          "doi_match": true,
+          "publisher_indicators": {
+            "IEEE": false,
+            "Springer": false,
+            "Scientific Reports": false,
+            "Creative Commons": false,
+            "Accepted Manuscript": false,
+            "arXiv:": false,
+            "All rights reserved": false
+          }
+        },
+        "human_intervention_note": "none",
+        "measurement_revision": "keys-v2",
+        "timing_eligible_for_parity": true
+      },
+      "zotero": {
+        "result": "automatic_success",
+        "timing_eligible_for_parity": true,
+        "click_utc": [
+          "2026-11-17T03:10:53.422Z",
+          "2026-11-17T03:10:53.462Z"
+        ],
+        "ui_preparation": "Prior new trial tab; Chrome warm Cambridge CARSI session; title DOI, configured institution authentication and access confirmed; selected acceptance collection. CUA AX stalled before click and recovered on fresh binding",
+        "human_intervention": false,
+        "translator": "Cambridge Core",
+        "local_pdf_and_association_utc": [
+          "2026-11-17T03:10:57.735Z",
+          "2026-11-17T03:10:58.089Z"
+        ],
+        "wait_seconds": [
+          4.273,
+          4.667
+        ],
+        "file_bytes": 357725,
+        "parent_key": "26GGQ3IN",
+        "attachment_key": "6R25SWJV",
+        "link_mode": "imported_url",
+        "content_check": {
+          "file_exists": true,
+          "file_bytes": 357725,
+          "pdf_prefix": true,
+          "page_count": 33,
+          "full_title_match": true,
+          "doi_match": true,
+          "publisher_indicators": {
+            "IEEE": false,
+            "Springer": false,
+            "Scientific Reports": false,
+            "Creative Commons": false,
+            "Accepted Manuscript": false,
+            "arXiv:": false,
+            "All rights reserved": false
+          }
+        },
+        "human_intervention_note": "none",
+        "measurement_revision": "keys-v2"
+      },
+      "platform": "Cambridge Core",
+      "configured_service": "Cambridge Core",
+      "timing_comparison_eligible": true,
+      "cohort": "measurement_recovery_control",
+      "comparison_stratum": "prepared_access_normal_download",
+      "comparable_body_version": true,
+      "version_comparison": {
+        "version": "Both Cambridge publisher FirstView,33pages,small personalized byte differences",
+        "evidence": "Each actual file independently checked for full title,DOI,33pages and original Paper/parent association."
+      },
+      "difference_seconds": [
+        -2.699,
+        -1.953
+      ],
+      "ratio": [
+        0.4217,
+        0.5429
+      ]
+    },
+    {
+      "pair_id": "F06-6",
+      "sample_id": "F06",
+      "order": [
+        "zotero",
+        "allfold"
+      ],
+      "production_code_sha": "77dfd670f1b9f07cddb880688e699620f0a9a9ef",
+      "runtime_head_sha": "77dfd670f1b9f07cddb880688e699620f0a9a9ef",
+      "allfold": {
+        "result": "automatic_success",
+        "click_utc": [
+          "2026-11-17T03:14:20.288Z",
+          "2026-11-17T03:14:20.389Z"
+        ],
+        "ui_preparation": "Same runtime after Cambridge A5; QA verified A5, Reject/delete PDF/Restore; warm session",
+        "human_intervention": false,
+        "runtime_head_sha": "77dfd670f1b9f07cddb880688e699620f0a9a9ef",
+        "production_code_sha": "77dfd670f1b9f07cddb880688e699620f0a9a9ef",
+        "frontend_head_sha": "77dfd670f1b9f07cddb880688e699620f0a9a9ef",
+        "local_pdf_and_association_utc": [
+          "2026-11-17T03:14:22.706Z",
+          "2026-11-17T03:14:22.966Z"
+        ],
+        "wait_seconds": [
+          2.317,
+          2.678
+        ],
+        "file_bytes": 357759,
+        "attempt": 6,
+        "source": "P3",
+        "fallback_used": 0,
+        "content_check": {
+          "file_exists": true,
+          "file_bytes": 357759,
+          "pdf_prefix": true,
+          "page_count": 33,
+          "full_title_match": true,
+          "doi_match": true,
+          "publisher_indicators": {
+            "IEEE": false,
+            "Springer": false,
+            "Scientific Reports": false,
+            "Creative Commons": false,
+            "Accepted Manuscript": false,
+            "arXiv:": false,
+            "All rights reserved": false
+          }
+        },
+        "human_intervention_note": "none",
+        "measurement_revision": "keys-v2",
+        "timing_eligible_for_parity": true
+      },
+      "zotero": {
+        "result": "automatic_success",
+        "click_utc": [
+          "2026-11-17T03:12:37.794Z",
+          "2026-11-17T03:12:37.876Z"
+        ],
+        "ui_preparation": "New article tab, configured institution authenticated and access visible, acceptance collection selected; existing warm Chrome session",
+        "human_intervention": false,
+        "translator": "Cambridge Core",
+        "local_pdf_and_association_utc": [
+          "2026-11-17T03:12:41.389Z",
+          "2026-11-17T03:12:41.681Z"
+        ],
+        "wait_seconds": [
+          3.513,
+          3.887
+        ],
+        "file_bytes": 357749,
+        "parent_key": "LY988C98",
+        "attachment_key": "2X44V2IQ",
+        "link_mode": "imported_url",
+        "content_check": {
+          "file_exists": true,
+          "file_bytes": 357749,
+          "pdf_prefix": true,
+          "page_count": 33,
+          "full_title_match": true,
+          "doi_match": true,
+          "publisher_indicators": {
+            "IEEE": false,
+            "Springer": false,
+            "Scientific Reports": false,
+            "Creative Commons": false,
+            "Accepted Manuscript": false,
+            "arXiv:": false,
+            "All rights reserved": false
+          }
+        },
+        "human_intervention_note": "none",
+        "measurement_revision": "keys-v2",
+        "timing_eligible_for_parity": true
+      },
+      "platform": "Cambridge Core",
+      "configured_service": "Cambridge Core",
+      "timing_comparison_eligible": true,
+      "cohort": "measurement_recovery_control",
+      "comparison_stratum": "prepared_access_normal_download",
+      "comparable_body_version": true,
+      "version_comparison": {
+        "version": "Both Cambridge publisher FirstView,33pages,personalized byte differences",
+        "evidence": "Both actual files independently checked for full title,DOI,33pages and correct original Paper/parent relation."
+      },
+      "difference_seconds": [
+        -1.57,
+        -0.835
+      ],
+      "ratio": [
+        0.5961,
+        0.7623
+      ]
+    },
+    {
+      "pair_id": "F07-2",
+      "sample_id": "F07",
+      "order": [
+        "allfold",
+        "zotero"
+      ],
+      "production_code_sha": "77dfd670f1b9f07cddb880688e699620f0a9a9ef",
+      "runtime_head_sha": "77dfd670f1b9f07cddb880688e699620f0a9a9ef",
+      "allfold": {
+        "result": "automatic_success",
+        "click_utc": [
+          "2026-11-17T03:16:42.918Z",
+          "2026-11-17T03:16:43.025Z"
+        ],
+        "ui_preparation": "Same Source runtime Cambridge warm, article not preopened; prior A1 QA then Reject/delete PDF/Restore",
+        "human_intervention": false,
+        "runtime_head_sha": "77dfd670f1b9f07cddb880688e699620f0a9a9ef",
+        "production_code_sha": "77dfd670f1b9f07cddb880688e699620f0a9a9ef",
+        "frontend_head_sha": "77dfd670f1b9f07cddb880688e699620f0a9a9ef",
+        "local_pdf_and_association_utc": [
+          "2026-11-17T03:16:55.041Z",
+          "2026-11-17T03:16:55.298Z"
+        ],
+        "wait_seconds": [
+          12.016,
+          12.38
+        ],
+        "file_bytes": 1146058,
+        "attempt": 2,
+        "source": "P5",
+        "fallback_used": 1,
+        "content_check": {
+          "file_exists": true,
+          "file_bytes": 1146058,
+          "pdf_prefix": true,
+          "page_count": 109,
+          "full_title_match": true,
+          "doi_match": false,
+          "publisher_indicators": {
+            "IEEE": false,
+            "Springer": false,
+            "Scientific Reports": false,
+            "Creative Commons": false,
+            "Accepted Manuscript": false,
+            "arXiv:": true,
+            "All rights reserved": false
+          },
+          "manual_identity_verified": true,
+          "authors_match": {
+            "Siddhartha Chib": true,
+            "Minchul Shin": true,
+            "Anna Simoni": true
+          },
+          "actual_arxiv_id": "2603.07780v1",
+          "body_version": "arXiv:2603.07780v1 submitted preprint,109pages,manuscript dated10Mar2026",
+          "alternative_full_text": true,
+          "identity_verification_basis": "Current actual first-page full title,all3authors and arXiv version independently checked. Matches unchanged original Paper explicit preprint relation; no publisher DOI present."
+        },
+        "human_intervention_note": "none",
+        "measurement_revision": "keys-v2",
+        "timing_eligible_for_parity": true
+      },
+      "zotero": {
+        "result": "automatic_success",
+        "timing_eligible_for_parity": true,
+        "click_utc": [
+          "2026-11-17T03:27:44.958Z",
+          "2026-11-17T03:27:44.979Z"
+        ],
+        "ui_preparation": "Existing task tab; configured institution authenticated, You have Access; dedicated collection selected; Chrome restored by user after AX interruption",
+        "human_intervention": null,
+        "translator": "Cambridge Core",
+        "local_pdf_and_association_utc": [
+          "2026-11-17T03:27:49.255Z",
+          "2026-11-17T03:27:49.530Z"
+        ],
+        "wait_seconds": [
+          4.276,
+          4.572
+        ],
+        "file_bytes": 572070,
+        "parent_key": "2UIK9XQ2",
+        "attachment_key": "3LQ86NUG",
+        "link_mode": "imported_url",
+        "content_check": {
+          "file_exists": true,
+          "file_bytes": 572070,
+          "pdf_prefix": true,
+          "page_count": 42,
+          "full_title_match": true,
+          "doi_match": true,
+          "publisher_indicators": {
+            "IEEE": false,
+            "Springer": false,
+            "Scientific Reports": false,
+            "Creative Commons": false,
+            "Accepted Manuscript": false,
+            "arXiv:": false,
+            "All rights reserved": false
+          }
+        },
+        "human_intervention_note": "Chrome window restored by user; no article verification at save",
+        "measurement_revision": "keys-v2"
+      },
+      "platform": "Cambridge Core",
+      "configured_service": "Cambridge Core",
+      "timing_comparison_eligible": false,
+      "cohort": "mechanism_directed",
+      "comparison_stratum": "source_target_access_unconfirmed_after_restart",
+      "diagnostic_only": true,
+      "access_limitation": "Current Electron Session had not completed normal institutional preparation or independently confirmed this target article access before Download. F06 PDF availability did not establish F07 rights. Actual arXiv fallback retained; no matched-access product failure/latency claim.",
+      "comparable_body_version": false,
+      "version_comparison": {
+        "allfold": "arXiv2603.07780v1,109pages,1146058bytes",
+        "zotero": "Cambridge publisher FirstView,42pages,572070bytes",
+        "evidence": "Both actual files individually checked; Allfold current title,all3authors and arXiv version match the Paper explicit relation. Different versions and initial Source access preparation gap prohibit same-version transfer comparison."
+      }
+    },
+    {
+      "pair_id": "F07-3",
+      "sample_id": "F07",
+      "order": [
+        "zotero",
+        "allfold"
+      ],
+      "production_code_sha": "77dfd670f1b9f07cddb880688e699620f0a9a9ef",
+      "runtime_head_sha": "77dfd670f1b9f07cddb880688e699620f0a9a9ef",
+      "allfold": {
+        "result": "automatic_success",
+        "click_utc": [
+          "2026-11-17T03:37:23.460Z",
+          "2026-11-17T03:37:23.571Z"
+        ],
+        "ui_preparation": "Same Source runtime97a7ee; normal institutional Login finished and target F07 article explicitly showed authentication,You have Access and PDF entry before this pair. Prior QA preprint Reject/delete/Restore; no PDF preopen. Actual configured Service unchanged.",
+        "human_intervention": false,
+        "runtime_head_sha": "77dfd670f1b9f07cddb880688e699620f0a9a9ef",
+        "production_code_sha": "77dfd670f1b9f07cddb880688e699620f0a9a9ef",
+        "frontend_head_sha": "77dfd670f1b9f07cddb880688e699620f0a9a9ef",
+        "local_pdf_and_association_utc": [
+          "2026-11-17T03:37:25.402Z",
+          "2026-11-17T03:37:25.659Z"
+        ],
+        "wait_seconds": [
+          1.831,
+          2.199
+        ],
+        "file_bytes": 571863,
+        "attempt": 3,
+        "source": "P3",
+        "fallback_used": 0,
+        "content_check": {
+          "file_exists": true,
+          "file_bytes": 571863,
+          "pdf_prefix": true,
+          "page_count": 42,
+          "full_title_match": true,
+          "doi_match": true,
+          "publisher_indicators": {
+            "IEEE": false,
+            "Springer": false,
+            "Scientific Reports": false,
+            "Creative Commons": false,
+            "Accepted Manuscript": false,
+            "arXiv:": false,
+            "All rights reserved": false
+          }
+        },
+        "human_intervention_note": "none during download",
+        "measurement_revision": "keys-v2",
+        "timing_eligible_for_parity": true
+      },
+      "zotero": {
+        "result": "automatic_success",
+        "click_utc": [
+          "2026-11-17T03:36:07.475Z",
+          "2026-11-17T03:36:07.544Z"
+        ],
+        "ui_preparation": "Existing fresh F07-3 trial tab survived Computer Use restart; institution authenticated,You have Access,Save to Zotero Cambridge Core confirmed; acceptance collection selected. Chrome/Source/Zotero processes unchanged. Source F07 actual publisher access separately confirmed after normal Login before this pair.",
+        "human_intervention": false,
+        "translator": "Cambridge Core",
+        "local_pdf_and_association_utc": [
+          "2026-11-17T03:36:11.290Z",
+          "2026-11-17T03:36:11.556Z"
+        ],
+        "wait_seconds": [
+          3.746,
+          4.081
+        ],
+        "file_bytes": 571863,
+        "parent_key": "N7U3JU6T",
+        "attachment_key": "RL6H4C9E",
+        "link_mode": "imported_url",
+        "content_check": {
+          "file_exists": true,
+          "file_bytes": 571863,
+          "pdf_prefix": true,
+          "page_count": 42,
+          "full_title_match": true,
+          "doi_match": true,
+          "publisher_indicators": {
+            "IEEE": false,
+            "Springer": false,
+            "Scientific Reports": false,
+            "Creative Commons": false,
+            "Accepted Manuscript": false,
+            "arXiv:": false,
+            "All rights reserved": false
+          }
+        },
+        "human_intervention_note": "none during Save; user restored Chrome and restarted Computer Use before Save",
+        "measurement_revision": "keys-v2",
+        "timing_eligible_for_parity": true
+      },
+      "platform": "Cambridge Core",
+      "configured_service": "Cambridge Core",
+      "timing_comparison_eligible": true,
+      "cohort": "representative_retest",
+      "comparison_stratum": "prepared_access_normal_download",
+      "comparable_body_version": true,
+      "version_comparison": {
+        "version": "Both Cambridge publisher FirstView,42pages,571863bytes",
+        "evidence": "Actual native Source article rights confirmed after normal institutional Login,Chrome rights/Translator separately verified. Both actual managed/imported files individually checked for DOI,title,pages and original Paper/parent association."
+      },
+      "access_preparation_relation": "F07-2 Allfold preprint was saved before this target access preparation. This third pair begins after both targets were independently confirmed; no prior result is replaced.",
+      "difference_seconds": [
+        -2.25,
+        -1.547
+      ],
+      "ratio": [
+        0.4487,
+        0.587
+      ]
     }
   ],
   "coverage_gaps": [
@@ -3075,13 +3815,13 @@
       "samples": [
         "F03"
       ],
-      "gap": "Three comparable low-load control pairs now complete. Two Allfold slower points and one overlap; request/first-byte/cache/transport cause remains unresolved. No Springer parity confirmation."
+      "gap": "Original three comparable low-load controls retained, including two slower Allfold points. Predeclared F03-7/8 mechanism diagnostics now distinguish real first-Session IdP redirects from one-stream warm access. No actual HTTP cache flags or retrospective phase for original one-stream4s outlier; representative F04/F05 corrected-load retests remain required before platform parity."
     },
     {
       "samples": [
         "F06"
       ],
-      "gap": "One corrected low-load control pair complete; two exchanged-order controls outstanding. Two earlier Zotero files retain missing click timestamps."
+      "gap": "Three reliable low-load F06 controls and the F07-3 access-matched publisher pair now completed with correct Cambridge FirstView PDFs. All four paired waits favor Allfold in this measured cohort. Earlier F07 version divergence and unprepared Source fallback remain explicit, not silently replaced."
     },
     {
       "samples": [
@@ -3145,7 +3885,7 @@
     "macos": "27.2.1 (26B131)",
     "electron": "45.0.0",
     "chromium": "156.0.8078.48",
-    "chrome": "157.0.8103.51 Default profile",
+    "chrome": "157.0.8103.51 initially; later About/on-disk157.0.8103.79 in same Default profile, exact transition time not observed",
     "zotero_desktop": "10.0.9",
     "zotero_connector": "5.0.217",
     "nominal_endpoint_poll_ms": 250,
@@ -3182,10 +3922,12 @@
     "old_results_retained": true
   },
   "chrome_service_preparation": "From user steering: select each new correspondingService in Chrome CARSI resource page before saving, then verify actual target article/Translator. Preparation/manual costs separate; no cookie/auth copying.",
-  "checkpoint_utc": "2026-11-17T02:46:00Z",
+  "checkpoint_utc": "2026-11-17T03:39:18Z",
   "historical_tool_interruptions": [
     "Earlier platform update removed mcp__cua_repl and an alternative-tool choice was requested; that question became obsolete when CUA returned.",
-    "Global window enumeration/new-tab calls can time out after recovery; targeted Chrome getApp subsequently succeeded, and an already-created trial tab was reused rather than recreated."
+    "Global window enumeration/new-tab calls can time out after recovery; targeted Chrome getApp subsequently succeeded, and an already-created trial tab was reused rather than recreated.",
+    "After F06-5 Allfold completed, Chrome native AX/read/rebind timed out. Fresh binding restored F06 Zotero Save, but F07 Translator read/rebind later again returned -10005 timeoutReached. Source exact-app state still worked0.14s. No F07 Z Save clicked at checkpoint; current Source institutional preparation started03:21:14.169..275UTC independently.",
+    "User completed requested Chrome foreground restoration after native and targeted-tab timeouts; reconnect and pending F07-2Z Save are in progress, no Save inferred from the user action."
   ],
   "operator_interruptions": [
     {
@@ -3221,7 +3963,41 @@
       "frontend_head_sha": "a9663f778c920c588414f2e8816b8a962faffcc0",
       "production_code_sha": "a9663f778c920c588414f2e8816b8a962faffcc0",
       "reason": "Trusted Host UI reloaded; existing native pages/Session retained. Native Python/Electron code is byte-identical between e67e136 and a9663f7; served UI matches new source."
+    },
+    {
+      "started_at_utc": "2026-11-17T02:56:44.904Z",
+      "runtime_id": "97a7ee2badf06ed80594e7f0b80bb712",
+      "head_sha": "77dfd670f1b9f07cddb880688e699620f0a9a9ef",
+      "production_code_sha": "77dfd670f1b9f07cddb880688e699620f0a9a9ef",
+      "frontend_head_sha": "77dfd670f1b9f07cddb880688e699620f0a9a9ef",
+      "reason": "Normal Quit/rebuild/relaunch for four optional native terminal phase marks. No cache/cookie copying; new Session preparation and cache differences retained."
     }
   ],
-  "frontend_head_sha": "a9663f778c920c588414f2e8816b8a962faffcc0"
+  "frontend_head_sha": "77dfd670f1b9f07cddb880688e699620f0a9a9ef",
+  "preparation_sessions": [
+    {
+      "runtime_id": "97a7ee2badf06ed80594e7f0b80bb712",
+      "kind": "normal_source_institutional_batch",
+      "click_utc": [
+        "2026-11-17T03:21:14.169Z",
+        "2026-11-17T03:21:14.275Z"
+      ],
+      "terminal_observation_utc_approx": "2026-11-17 03:22 UTC",
+      "observation_precision": "minute; exact UI completion bounds missing",
+      "result": "5/12 Opened: Taylor & Francis,SIAM,IEEE,EBSCO,WoS; other Services Needs attention; CARSI Opened",
+      "actual_target_confirmation": "Later ordinary Source F07 article visibly showed institutional authentication,You have Access,Save PDF entry without opening PDF. Broker Needs attention was not treated as proof of target denial."
+    }
+  ],
+  "operator_restart_context": {
+    "reported": "User restarted Computer Use and requested restoration",
+    "observed_utc": "2026-11-17T03:35:44Z",
+    "same_processes": {
+      "allfold_main": 62875,
+      "python": 62880,
+      "chrome": 4242,
+      "zotero": 3129,
+      "observer": 52498
+    },
+    "session_cache_effect": "Product PIDs unchanged; no cache/account reset. New CUA targeted Source2.24s/Chrome1.7s reads and actual F07-3 saving succeeded. Global inventory still timed out; task-specific surfaces used."
+  }
 }

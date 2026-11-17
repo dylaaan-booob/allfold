@@ -3,9 +3,9 @@
 Issue: [#140](https://github.com/dylaaan-booob/allfold/issues/140). Baseline:
 `a2e511aa86ab5aa292f224301d6609a59c287fa2`.
 
-**Status: incomplete; saved checkpoint 17 November 2026, 02:46 UTC. Fourteen
-of the 31 frozen Papers have observations (25 pair slots including repeats);
-17 Papers are unstarted. Six same-version low-load pairs now have reliable local
+**Status: incomplete; saved checkpoint 17 November 2026, 03:39 UTC. Fourteen
+of the 31 frozen Papers have observations (31 pair slots including repeats);
+17 Papers are unstarted. Nine same-version low-load pairs now have reliable local
 file/association endpoints. Springer has two slower Allfold points and one
 interval overlap; T&F has one slower point requiring swapped repeats. No platform
 is confirmed at parity. Workspace is retained for required measurements/retests.**
@@ -82,8 +82,8 @@ product's Reject/delete/Restore flow; metadata and Download availability survive
 The immutable [31-paper manifest](pdf-pairing-manifest.json) was committed before
 the first formal click. The [formal results](pdf-pairing-formal-results.json)
 retain all original samples, failures, preparation, versions and repetitions.
-At this checkpoint Allfold has 21 automatic local-PDF successes, one assisted
-success, two failures and one unattempted end. Zotero has 19 local-PDF successes
+At this checkpoint Allfold has 27 automatic local-PDF successes, one assisted
+success, two failures and one unattempted end. Zotero has 25 local-PDF successes
 and six operator interruptions with unknown product terminal state. These are
 attempt counts, not independent-paper success rates. Saving a related preprint
 is a task result but is not a publisher-version success.
@@ -91,8 +91,8 @@ is a task result but is not a publisher-version success.
 | Actual platform | Papers started / planned | Local PDF observations, including repeats | Conclusion |
 | --- | --- | --- | --- |
 | IEEE Xplore | 2 / 2 | Allfold 0 success,1 failure,1 end unattempted; Zotero 2 publisher files | Original extra failure retained. Same-access target retests outstanding. Not confirmed. |
-| Springer Link | 3 / 3 | Allfold 10 successes; Zotero 9 successes,1 interruption | Three corrected low-load controls: two slower points and one overlap. Cause unresolved; not confirmed. |
-| Cambridge Core | 2 / 2 | Both 5 successes; one Zotero body is a preprint | One corrected timed control favors Allfold; two further controls outstanding. Not confirmed. |
+| Springer Link | 3 / 3 | Allfold 12 successes; Zotero 11 successes,1 interruption | Three corrected low-load controls: two slower points and one overlap. Cause unresolved; not confirmed. |
+| Cambridge Core | 2 / 2 | Allfold9 successes; Zotero9 successes; one body on each side is a preprint | F06 three controls plus F07-3 have comparable publisher PDFs; all favor Allfold. No observed disadvantage in these two Papers; earlier access/version differences retained, no broader extrapolation. |
 | Oxford Academic | 3 / 3 | Allfold 2 related preprints,1 access-challenge failure; Zotero 3 interrupted saves without parent/PDF | New native CF Prepare recovery observed; publisher PDF retests outstanding. Not confirmed. |
 | Taylor & Francis | 3 / 3 | Allfold 4 successes: original preprint plus3 publisher Accepted Manuscripts; Zotero 2 publisher Accepted Manuscripts,2 interrupted parent-only saves | Same-version F11 retry faster; first F13 slower. Controls/repeats and F12 retry outstanding. Not confirmed. |
 | Project Euclid | 1 / 3 | Both saved related arXiv v4; Allfold required in-download hCaptcha assistance | First-access recovery reported separately; normal prepared-access controls and2 papers outstanding. Not confirmed. |
@@ -114,7 +114,7 @@ terminal time. A detached observer restarted00:45:25.984 UTC before F11.
 Nine older successful pairs have comparable publisher versions: seven have
 observer-affected times and two Cambridge repeats lack Zotero click timestamps.
 After sleep, corrected low-load controls used unchanged production098288a. The
-current T&F pairs used nativee67e136 and frontenda9663f7; native/Python sources
+first current T&F pairs used nativee67e136 and frontenda9663f7; native/Python sources
 are identical between those two commits. Actual rebuilt source process and
 trusted UI reload were checked. The existing Chrome profile and Electron Session
 were separate; no cache clearing was used. Both files of every following pair
@@ -128,14 +128,20 @@ were individually checked for title, DOI, version, actual file and association.
 | F03-6 / Z→A | Same Springer PDF, new body/save, warm sessions | 0.597–0.970s | 0.734–1.025s | −0.428 to+0.236s | 0.5824–1.3215 |
 | F13-1 / A→Z | T&F OA publisher Accepted Manuscript,34pages,1730654bytes | 5.609–5.996s | 4.760–5.112s | +0.497 to+1.236s | 1.0972–1.2597 |
 | F11-2 / Z→A | T&F institutional publisher Accepted Manuscript,27pages,1251965bytes | 3.630–3.985s | 4.805–5.100s | −1.470 to−0.820s | 0.7118–0.8293 |
+| F06-5 / A→Z | Cambridge publisher FirstView,33pages; actual new body/save | 1.968–2.320s | 4.273–4.667s | −2.699 to−1.953s | 0.4217–0.5429 |
+| F06-6 / Z→A | Same Cambridge version,33pages; actual new body/save | 2.317–2.678s | 3.513–3.887s | −1.570 to−0.835s | 0.5961–0.7623 |
+| F07-3 / Z→A | Cambridge target institutional rights separately confirmed,FirstView42pages,571863bytes | 1.831–2.199s | 3.746–4.081s | −2.250 to−1.547s | 0.4487–0.5870 |
 
 For Springer OA, n=3 paired repeats of **one** Paper: interval median waits are
 2.598–2.952s(Allfold) and1.717–2.109s(Zotero), median paired difference
 +0.489 to+1.235s, median ratio1.2319–1.6079. Raw wait ranges are0.597–4.256s
 and0.734–2.960s respectively. Two slower points exceed measurement precision;
 the third overlaps. This is insufficient to claim parity or isolate a cause.
-The other access strata each have n=1; the raw point is their only median and
-no dispersion estimate is claimed. No pooled daily-load average, p95, tolerance
+Cambridge has n=3 corrected repeats of one Paper: median waits1.968–2.320s
+and3.513–3.887s, median paired difference−1.570 to−0.835s and ratio0.5961–0.7623;
+raw wait ranges1.565–2.678s and2.148–4.667s. No slower point was observed in
+that control. The two T&F access strata each have n=1; each raw point is its
+only median and no dispersion estimate is claimed. No pooled daily-load average, p95, tolerance
 percentage or non-significance argument is used.
 
 Existing F03-4 native observations show two response operations(732+620ms) then
@@ -155,8 +161,24 @@ close-before-terminal and continued saving when the observation callback throws;
 strict Node-to-Python export retains only bounded numbers. Logger/native tests
 were red before implementation and green afterward. Full local checks passed:
 JavaScript63files, Python1622tests(2existing deprecation warnings), Electron244tests
-with no skips. These marks have not yet been observed on the real running process
-at this saved checkpoint; they are not retroactive phase measurements.
+with no skips. The native process was normally restarted at77dfd67, runtime97a7ee2badf06ed80594e7f0b80bb712,
+on17November02:56:44.904UTC; the UI was rebuilt and old process/port absence
+verified. Later7fd16eb is documentation-only, with identical production code.
+Actual phase observations now exist, but do not retroactively fill old gaps.
+
+The predeclared **mechanism** pair F03-7 used the first Springer request of that
+new Electron Session versus existing Chrome context: Allfold3.887–4.240s,
+Zotero2.007–2.304s, difference+1.583 to+2.233s, ratio1.6871–2.1126. Actual source
+observations showed link.springer.com→idp.springer.com→link.springer.com. Two
+response operations took1313+1161ms, then a1492ms PDF stream with relative marks
+(request5,response654,first bytes654,closed1492ms). The following swapped same-
+Electron-session diagnostic F03-8 took Allfold0.620–0.990s versus Zotero1.839–2.175s,
+difference−1.555 to−0.849s, ratio0.2851–0.5383: one583ms stream, marks12/573/573/582ms,
+with no preceding IdP responses. Every file was independently checked. This bounds
+the real first-Session redirect cost and shows no slow local writer in that warm
+copy; actual cache flags and the earlier one-stream4s outlier's phase remain
+unknown. These two declared diagnostic pairs are separate from representative
+scores and do not replace original F03-4/5/6 slower observations.
 
 F03 publisher files are22pages/2636871bytes; F04 are57pages/5103901bytes; F05
 are29pages/7842498bytes. F04's first Zotero save created only a parent; its trial
@@ -168,6 +190,23 @@ F06 publisher FirstView has personalized watermarks/small byte differences.
 F07 differs in version: Allfold publisher FirstView42pages/572214bytes, Zotero
 arXiv2603.07780v1,109pages/1146058bytes. Exact title, all three authors and the
 Paper's explicit preprint relation were verified; no transfer comparison is made.
+
+F07-2 was an access/version recovery check after the restart. Allfold saved the
+same related arXiv2603.07780v1 as the original Zotero trial,109pages/1146058bytes,
+in12.016–12.380s. Current title/all3authors/arXiv version were checked. Electron
+had not completed normal institutional preparation or independently confirmed
+this target before that click; F06 PDF availability did not prove F07 rights.
+This access gap is retained, not treated as an equivalent-permission product
+failure or hidden from task results. Chrome initially timed out during Translator checks; after the user restored
+its foreground, F07-2 Zotero saved the correct publisher FirstView42pages/572070bytes
+in4.276–4.572s. This remains version-divergent. Normal Source Login had begun
+03:21:14.169–.275UTC and later ended5/12Opened; actual F07 Source article showed
+institutional authentication/You have Access/PDF entry despite its broker
+Needs attention. That later preparation is not silently backdated to F07-2.
+F07-3 then completed after both target articles were independently confirmed:
+Allfold1.831–2.199s and Zotero3.746–4.081s, both correct publisher FirstView42pages/
+571863bytes. No PDF was preopened. Normal access preparation changed the outcome;
+no Cambridge code fix or code-only speedup is inferred.
 
 F08 Allfold saved arXiv2502.17741v2,61pages/982280bytes under the earlier title
 *A Unified Framework for Semiparametrically Efficient Semi-Supervised Learning*.
@@ -211,8 +250,15 @@ Each new Chrome Service must first be chosen from the normal CARSI resource page
 actual target rights/Translator are then checked independently. Broker Opened
 is not proof of article access. CUA recovered and targets task windows/tabs without
 acting on unrelated current pages. Intermittent tool timeouts remain operator
-interruptions; no AgentDock UI was used. The obsolete tool-choice question does
-not block the restored channel.
+interruptions; no AgentDock UI was used. Chrome native AX and documented
+focused-tab reads timed out(-10005/kernel reset); the exact Source app still
+responded0.14s. The user restored Chrome foreground, allowing F07-2 to save, but
+its fresh F07-3 tab hit another read timeout before Save. After the user restarted
+Computer Use, targeted Source and Chrome reads succeeded in2.24s/1.7s, with all
+product/observer PIDs and account/cache state preserved. F07-3 then completed real
+new saves on both products. Global inventory still timed out, so task-specific
+surfaces are used. No Save/time is inferred merely from foregrounding/restarting.
+The obsolete alternative-tool question does not block the recovered channel.
 
 At the checkpoint Workspace has72Papers,56Candidates,16Downloaded,0Trash, no
 active download. Diagnostics that lost their configured target earlier refused
@@ -364,8 +410,14 @@ The trusted UI reload preserved existing native pages and Session. Native code i
 unchanged between e67e136 and a9663f7. Full e67 local checks passed JS63, Python1622
 and Electron243/0skips; a966 affected DOM/native checks passed12cases. Full PR-linked
 [Safety run44002168127](https://github.com/dylaaan-booob/allfold/actions/runs/44002168127)
-succeeded for actual PR head a9663f778c920c588414f2e8816b8a962faffcc0. Later commits
-require their own latest-PR check; this earlier success is not a completion claim.
+succeeded for actual PR head a9663f778c920c588414f2e8816b8a962faffcc0. The diagnostic/evidence
+increment then passed separate Standards/Spec reviews; disclosure/control wording
+findings were corrected in7fd16eb and confirmed. An independent native Bug review
+of the committed stream diagnostic increment found0introduced bugs. The latest
+PR-associated [Safety run44006784262](https://github.com/dylaaan-booob/allfold/actions/runs/44006784262)
+succeeded for head7fd16ebb1ac3147e8c828d0f4b085d1862cced1f, including the full
+244-test Electron suite. Subsequent commits require their own latest-PR result;
+CI success does not complete real acceptance or authorize an early Reset.
 
 Raw diagnostics, runtime proofs, click records and local file/association observations
 are outside Workspace in a private evidence directory. Public tables contain no
