@@ -4,14 +4,15 @@ Issue: [#140](https://github.com/dylaaan-booob/allfold/issues/140). Baseline:
 `a2e511aa86ab5aa292f224301d6609a59c287fa2`.
 
 **Status: incomplete; saved checkpoint 17 November 2026. Nineteen
-of the 31 frozen Papers have observations (43 pair slots including repeats);
+of the 31 frozen Papers have observations (44 pair slots including repeats);
 12 Papers have no formal Save/Download. Sixteen same-version low-load pairs have reliable local
 file/association endpoints. Springer has two slower Allfold points and one
 interval overlap; T&F has one slower point requiring swapped repeats. The measured
 Cambridge/IEEE prepared-access cohorts show no observed disadvantage; overall
 coverage and retests remain incomplete. F18 exposed a publisher-version/latency
-gap. The shared direct-entry repair passes offline checks but has not yet been
-retested on real sites. Workspace is retained.**
+gap. The shared direct-entry repair passes offline checks but F18 real retest still
+returned a preprint; normal same-Session Browser saved its publisher PDF. The
+remaining request-context defect is under investigation. Workspace is retained.**
 
 ## Environment and endpoint
 
@@ -85,8 +86,8 @@ product's Reject/delete/Restore flow; metadata and Download availability survive
 The immutable [31-paper manifest](pdf-pairing-manifest.json) was committed before
 the first formal click. The [formal results](pdf-pairing-formal-results.json)
 retain all original samples, failures, preparation, versions and repetitions.
-At this checkpoint Allfold has 40 automatic local-PDF successes, one assisted
-success and two failures. Zotero has 34 local-PDF successes
+At this checkpoint Allfold has 41 automatic local-PDF successes, one assisted
+success and two failures. Zotero has 35 local-PDF successes
 and nine operator interruptions with unknown product terminal state. These are
 attempt counts, not independent-paper success rates. Saving a related preprint
 is a task result but is not a publisher-version success.
@@ -100,7 +101,7 @@ is a task result but is not a publisher-version success.
 | Taylor & Francis | 3 / 3 | Allfold 4 successes: original preprint plus3 publisher Accepted Manuscripts; Zotero 2 publisher Accepted Manuscripts,2 interrupted parent-only saves | Same-version F11 retry faster; first F13 slower. Controls/repeats and F12 retry outstanding. Not confirmed. |
 | Project Euclid | 1 / 3 | Both saved related arXiv v4; Allfold required in-download hCaptcha assistance | First-access recovery reported separately; normal prepared-access controls and2 papers outstanding. Not confirmed. |
 | Wiley | 3 / 3 | Allfold6 publisher OA successes; Zotero4 successes(1preprint,3publisher),2interruptions | F14 normal publisher controls and F15 favorAllfold. F16 default saves remain parent-only; one bounded diagnostic records citation/PDF403,with terminal unknown. Not confirmed. |
-| SIAM | 2 / 3 | Allfold2 related preprints; Zotero1 publisher PDF,1interruption | F18Allfold39.916–40.219s/preprint versusZotero13.238–13.693s/publisher. Extra path/version disadvantage requires shared repair and real retests; F19 remains unvisited. Not met at this checkpoint. |
+| SIAM | 2 / 3 | Allfold3 related preprints; Zotero2 publisher PDFs,1interruption | F18Allfold39.916–40.219s/preprint versusZotero13.238–13.693s/publisher. Extra path/version disadvantage requires shared repair and real retests; F19 remains unvisited. Not met at this checkpoint. |
 | INFORMS PubsOnline | 0 / 3 | Not started; configured EBSCO capability is not a platform result | Not confirmed. |
 | ScienceDirect | 0 / 6 | Formal cohort not started; repaired-path pilots remain separate | Not confirmed. |
 
@@ -338,6 +339,34 @@ protection is claimed. Intermediate c1c0ed5 and51c3dea runtimes had no formal
 Download. The latter's fresh CARSI resource returned404,then normal Login reached
 an unfilled institutional form. No credentials were submitted before normal Quit;
 manual login will be requested on the final tested runtime.
+
+At actual79db7d6(runtime28dc6b2633a27679ad89d3fa026c04d4,ready10:46:37UTC),
+F18-2 A→Z still saved a related preprint: Allfold18.188–18.536s/arxiv30pages,
+Zotero9.194–9.508s/publisher28pages. R039 P1 did run:1101ms/access-challenge;
+then article7297ms,R061 entrance163ms/access-challenge,preprintstream9526ms.
+These observations do not establish a code speedup. A new Chrome tab had lost
+actual rights despite an older cached FullAccess page; a normal CARSI SIAM
+reentry restored rights before its new Save. Preparation/cache changes remain.
+
+A separate non-scoring Source Browser diagnostic followed the visible ViewPDF
+then DownloadPDF links11:11/11:12UTC. Normal SaveAs produced the actual publisher
+28page PDF(3814854bytes,DOI checked),without a visible challenge or Solver. This
+file is private,outside Workspace,unassociated with the Paper,and supplies no
+formal Download timing. Same Electron Session had lawful PDF access; the
+background Session request context remains defective,not simply a missing licence.
+
+Installed Connector5.0.217 `_setAttachmentReferer`/`_fetchAttachment` supply an
+article referrer(full same-origin,origin cross-origin). Current ordinary Allfold
+candidates may supply none; native streaming only forwards an explicit Referer.
+A shared qualified-article context repair is next,with explicit Referer retained
+and existing strict-origin/downgrade policy unchanged. Its effect on real CF
+failure is not assumed. The installed Connector also contains partition-cookie
+handling,but current-site partition evidence was not obtained; the external CDP
+probe was not executed under the CUA boundary and no Cookie values were read or
+copied. No cookie-policy patch is justified yet. Canonical DOI spelling is already
+preserved from the saved Crossref landing; that path was not changed speculatively.
+F19 remains unvisited. Latest code79db7d6's PR-associated full Safety run44067162599
+passed; this does not replace the unresolved real retest.
 
 During evidence reconciliation,two optional late-file notes(F04-1/F11-1) were
 found to belong to later fresh parents. They were removed and the original

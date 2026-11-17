@@ -2,8 +2,8 @@
   "status": "formal_in_progress",
   "manifest": "pdf-pairing-manifest.json",
   "manifest_frozen_at_utc": "2026-11-16T18:40:53.823107+00:00",
-  "production_code_sha": "77dfd670f1b9f07cddb880688e699620f0a9a9ef",
-  "runtime_head_sha": "21a7e25376baa5459fed346280bb3f52353359ed",
+  "production_code_sha": "79db7d63dc1dee8acb4fff74cb9b9e7458a6e9b8",
+  "runtime_head_sha": "79db7d63dc1dee8acb4fff74cb9b9e7458a6e9b8",
   "pairs": [
     {
       "pair_id": "F01-1",
@@ -5244,6 +5244,229 @@
         "zotero": "SIAM/ASA J.UncertaintyQuantification version of record,28pages/3814861bytes",
         "evidence": "Every actual file was checked; exact title/all4authors and explicit preprint relation forAllfold,DOI/publisherheader/pages forZotero. Differentversions; no same-body transfer score."
       }
+    },
+    {
+      "pair_id": "F18-2",
+      "sample_id": "F18",
+      "order": [
+        "allfold",
+        "zotero"
+      ],
+      "production_code_sha": "79db7d63dc1dee8acb4fff74cb9b9e7458a6e9b8",
+      "runtime_head_sha": "79db7d63dc1dee8acb4fff74cb9b9e7458a6e9b8",
+      "allfold": {
+        "result": "automatic_success",
+        "click_utc": [
+          "2026-11-17T10:51:28.470Z",
+          "2026-11-17T10:51:28.564Z"
+        ],
+        "ui_preparation": "FinalSource79db7d6/runtime28dc6b2633a27679ad89d3fa026c04d4 after normal institutional login(usercompleted),independent SIAM CARSI entry and actualtargetDOI/title/FULLACCESS/PDFentry verified in bothproducts. OriginalA1alreadyQA then normalReject/deletePDF/Restore,noPDFpreopen. NewSourceSession/rebuiltUI,Chromeexistingprofile/cache,keys-v2observer. All localtests/builds ended before this Download.",
+        "human_intervention": false,
+        "runtime_head_sha": "79db7d63dc1dee8acb4fff74cb9b9e7458a6e9b8",
+        "production_code_sha": "79db7d63dc1dee8acb4fff74cb9b9e7458a6e9b8",
+        "frontend_head_sha": "79db7d63dc1dee8acb4fff74cb9b9e7458a6e9b8",
+        "local_pdf_and_association_utc": [
+          "2026-11-17T10:51:46.752Z",
+          "2026-11-17T10:51:47.006Z"
+        ],
+        "wait_seconds": [
+          18.188,
+          18.536
+        ],
+        "file_bytes": 4232776,
+        "attempt": 2,
+        "source": "P5",
+        "fallback_used": 1,
+        "content_check": {
+          "file_exists": true,
+          "file_bytes": 4232776,
+          "pdf_prefix": true,
+          "page_count": 30,
+          "full_title_match": true,
+          "doi_match": false,
+          "publisher_indicators": {
+            "IEEE": false,
+            "Springer": false,
+            "Scientific Reports": false,
+            "Creative Commons": false,
+            "Accepted Manuscript": false,
+            "arXiv:": true,
+            "All rights reserved": false
+          },
+          "manual_identity_verified": true,
+          "version": "arXiv2502.20086v2 preprint",
+          "manual_identity_evidence": "ActualA2PDF first2pages: exacttitle/all4authors TiangangCui,KarinaKoval,RolandHerzog,RobertScheichl and arxiv2502.20086v2 confirmed; unchangedPaper metadata_generation1 has previously verified explicit preprint relation.30pages/4232776B."
+        },
+        "human_intervention_note": "none during Download; userinstitutionlogin during preparation",
+        "measurement_revision": "keys-v2",
+        "timing_eligible_for_parity": true,
+        "native_operations": [
+          {
+            "task_id": "3ca3b6439f554035b38f6bcf050e961d",
+            "parent_task_id": "e066d7a7e0fb46a282f4e71f3d4fb232",
+            "action": "stream_paper_body",
+            "duration_ms": 1101,
+            "outcome": "response",
+            "stage": "navigation",
+            "time": "2026-11-17T10:51:29.702Z",
+            "event": "task_finished"
+          },
+          {
+            "task_id": "372b7b8fc465414798ca6fc8b37f5010",
+            "parent_task_id": "e066d7a7e0fb46a282f4e71f3d4fb232",
+            "action": "extract_paper_pdf_clues",
+            "duration_ms": 7297,
+            "outcome": "retrieved",
+            "stage": "navigation",
+            "time": "2026-11-17T10:51:37.053Z",
+            "event": "task_finished"
+          },
+          {
+            "task_id": "dfbeb9a8431044d88b2256197fe1487c",
+            "parent_task_id": "e066d7a7e0fb46a282f4e71f3d4fb232",
+            "action": "stream_paper_body",
+            "duration_ms": 163,
+            "outcome": "response",
+            "stage": "navigation",
+            "time": "2026-11-17T10:51:37.224Z",
+            "event": "task_finished"
+          },
+          {
+            "task_id": "73bcc802f94d4b1e95886c0a1aa520c2",
+            "parent_task_id": "e066d7a7e0fb46a282f4e71f3d4fb232",
+            "action": "stream_paper_body",
+            "duration_ms": 9526,
+            "stream_request_ms": 16,
+            "stream_response_ms": 1723,
+            "stream_first_byte_ms": 1723,
+            "stream_closed_ms": 9525,
+            "outcome": "stream_complete",
+            "stage": "navigation",
+            "time": "2026-11-17T10:51:46.773Z",
+            "event": "task_finished"
+          }
+        ],
+        "source_observations": [
+          {
+            "pdf_stage": "P1",
+            "pdf_rule": "R039",
+            "pdf_reason": "access-challenge",
+            "pdf_attempt": 1,
+            "fallback_used": false,
+            "source_origin": "https://epubs.siam.org/",
+            "subsequent_attempted": true
+          },
+          {
+            "pdf_stage": "P1",
+            "pdf_rule": "R039",
+            "pdf_reason": "access-challenge",
+            "pdf_attempt": 1,
+            "fallback_used": false,
+            "source_origin": "https://epubs.siam.org/",
+            "subsequent_attempted": true
+          },
+          {
+            "pdf_stage": "P1",
+            "pdf_rule": "R039",
+            "pdf_reason": "access-challenge",
+            "pdf_attempt": 1,
+            "fallback_used": false,
+            "source_origin": "https://epubs.siam.org/",
+            "subsequent_attempted": true
+          },
+          {
+            "pdf_stage": "P4",
+            "pdf_rule": "R061",
+            "pdf_reason": "access-challenge",
+            "pdf_attempt": 2,
+            "fallback_used": true,
+            "source_origin": "https://epubs.siam.org/",
+            "subsequent_attempted": true
+          },
+          {
+            "pdf_stage": "P4",
+            "pdf_rule": "R061",
+            "pdf_reason": "access-challenge",
+            "pdf_attempt": 2,
+            "fallback_used": true,
+            "source_origin": "https://epubs.siam.org/",
+            "subsequent_attempted": true
+          },
+          {
+            "pdf_stage": "P4",
+            "pdf_rule": "R061",
+            "pdf_reason": "access-challenge",
+            "pdf_attempt": 2,
+            "fallback_used": true,
+            "source_origin": "https://epubs.siam.org/",
+            "subsequent_attempted": true
+          },
+          {
+            "pdf_stage": "P5",
+            "pdf_rule": "OPENALEX",
+            "pdf_reason": "transferred",
+            "pdf_attempt": 3,
+            "fallback_used": true,
+            "source_origin": "https://arxiv.org/",
+            "subsequent_attempted": false
+          }
+        ]
+      },
+      "zotero": {
+        "result": "automatic_success",
+        "click_utc": [
+          "2026-11-17T10:56:12.556Z",
+          "2026-11-17T10:56:12.576Z"
+        ],
+        "ui_preparation": "FreshChrome article initially Getfullaccess/noinstitutionmarker despite oldtabcachedFullAccess. NormalChromeCARSIresource reselectSIAM restoredactualnewtargetDOI/title/institution/FULLACCESS/Atypon before Save. NoPDFpreopen,newnormalSave/newparent in acceptancecollection; DebugOff. Source79A2had completed P5 before this Save. Chromeaccessrestoration and oldcachedpage difference retained.",
+        "human_intervention": false,
+        "translator": "Atypon Journals",
+        "parent_key": "EF22CYU2",
+        "local_pdf_and_association_utc": [
+          "2026-11-17T10:56:21.770Z",
+          "2026-11-17T10:56:22.064Z"
+        ],
+        "wait_seconds": [
+          9.194,
+          9.508
+        ],
+        "file_bytes": 3814861,
+        "attachment_key": "ALM6RGPS",
+        "link_mode": "imported_url",
+        "content_check": {
+          "file_exists": true,
+          "file_bytes": 3814861,
+          "pdf_prefix": true,
+          "page_count": 28,
+          "full_title_match": true,
+          "doi_match": true,
+          "publisher_indicators": {
+            "IEEE": false,
+            "Springer": false,
+            "Scientific Reports": false,
+            "Creative Commons": false,
+            "Accepted Manuscript": false,
+            "arXiv:": false,
+            "All rights reserved": false
+          }
+        },
+        "human_intervention_note": "none during Save; Sourceinstitutionlogin assistance during earlierpreparation",
+        "measurement_revision": "keys-v2",
+        "timing_eligible_for_parity": true,
+        "actual_file_source": "https://epubs.siam.org/doi/pdf/10.1137/25M1735329"
+      },
+      "platform": "SIAM",
+      "configured_service": "SIAM电子期刊",
+      "timing_comparison_eligible": false,
+      "cohort": "representative_retest",
+      "comparison_stratum": "prepared_access_normal_download_with_chrome_reentry",
+      "comparable_body_version": false,
+      "version_comparison": {
+        "allfold": "arxiv2502.20086v2 preprint,30pages/4232776bytes",
+        "zotero": "SIAM/ASA J.UncertaintyQuantification VoR,28pages/3814861bytes",
+        "evidence": "ActualA2first2pages,title/all4authors/arxivID+unchangedexplicitPaperrelation; actualZ2title/DOI/publisherfile/parent. Differentversions,no transfer-efficiency score."
+      },
+      "repair_outcome": "Publisher-version gap remains after shared entry ordering; actualR039P1access-challenge thenR061P4access-challenge thenP5."
     }
   ],
   "coverage_gaps": [
@@ -5359,7 +5582,7 @@
     "old_results_retained": true
   },
   "chrome_service_preparation": "From user steering: select each new correspondingService in Chrome CARSI resource page before saving, then verify actual target article/Translator. Preparation/manual costs separate; no cookie/auth copying.",
-  "checkpoint_utc": "2026-11-17T09:40:03.866718+00:00",
+  "checkpoint_utc": "2026-11-17T11:55:47.896123+00:00",
   "historical_tool_interruptions": [
     "Earlier platform update removed mcp__cua_repl and an alternative-tool choice was requested; that question became obsolete when CUA returned.",
     "Global window enumeration/new-tab calls can time out after recovery; targeted Chrome getApp subsequently succeeded, and an already-created trial tab was reused rather than recreated.",
@@ -5452,9 +5675,17 @@
       ],
       "formal_downloads": 0,
       "reason": "Actual source verified72Papers/23bodies/0Trash/0Download. Fresh CARSIresource404 then normalinstitutionalLoginform(no prefill/no credentialsubmission). NormalQuit before stage-independent endpoint and deferred-variant final corrections; Chrome/Zotero retained."
+    },
+    {
+      "started_at_utc": "2026-11-17T10:46:37.268Z",
+      "head_sha": "79db7d63dc1dee8acb4fff74cb9b9e7458a6e9b8",
+      "production_code_sha": "79db7d63dc1dee8acb4fff74cb9b9e7458a6e9b8",
+      "frontend_head_sha": "79db7d63dc1dee8acb4fff74cb9b9e7458a6e9b8",
+      "runtime_id": "28dc6b2633a27679ad89d3fa026c04d4",
+      "reason": "Final shared entry implementation; all local checks ended and bounded native followup resolved both findings. Source79 real paired retests not yet begun; currentWorkspace retained."
     }
   ],
-  "frontend_head_sha": "21a7e25376baa5459fed346280bb3f52353359ed",
+  "frontend_head_sha": "79db7d63dc1dee8acb4fff74cb9b9e7458a6e9b8",
   "preparation_sessions": [
     {
       "runtime_id": "97a7ee2badf06ed80594e7f0b80bb712",
@@ -5627,6 +5858,25 @@
         "2026-11-17T05:43:01.758Z"
       ],
       "collection_correction": "ParentM5I37TSV normally added to acceptance collection,APIverified A6XMSETF. Membership time isnot attachment completion."
+    },
+    {
+      "diagnostic_id": "SIAM-F18-Source-Browser-D1",
+      "sample_id": "F18",
+      "product": "Allfold Browser",
+      "view_pdf_click_utc": [
+        "2026-11-17T11:11:04.632Z",
+        "2026-11-17T11:11:04.728Z"
+      ],
+      "download_pdf_click_utc": [
+        "2026-11-17T11:12:42.266Z",
+        "2026-11-17T11:12:42.352Z"
+      ],
+      "entry": "https://epubs.siam.org/doi/epdf/10.1137/25M1735329",
+      "pdf_entry": "https://epubs.siam.org/doi/pdf/10.1137/25M1735329",
+      "result": "NormalBrowserSaveAs producedactualpublisherPDF28pages/3814854B/DOImatch,privateoutsideWorkspace. SameElectronSessionhadnormallegalPDFaccess. Nochallenge/Solvervisible. UnassociatedwithPaper,notformalDownloadendpoint/notincludedinpairedtiming.",
+      "file_verified": true,
+      "associated_to_original_paper": false,
+      "scoring": false
     }
   ],
   "evidence_join_corrections": [
@@ -5651,7 +5901,7 @@
       "final_affected_native_passed": 1,
       "previous_electron_full_code_sha": "849dddc9a3a72cf2b0a778375e1a8fb8e3d051b6"
     },
-    "live_status": "Not yet run at the new production revision. Original F18 mismatch/slow wait retained; F19 still unvisited for post-fix verification.",
+    "live_status": "F18-2actuallyretested79db7d6: A18.188–18.536sP5preprint,Z9.194–9.508spublisher; R039enteredbutaccess-challenge. NormalSourceBrowserlaterlegallysavedpublisherPDFwithoutchallenge. Sharedorderingalonehasnotresolvedcontextfailure. F17/F19retakesheld;F19unvisited.",
     "diagnostic_correction": "Earlier no-pdf-entry was misread as missing articleDOM. It follows an attempted P4response; native article extraction did discover theePDF entry. Navigation/header/case hypotheses were not used for a patch.",
     "review_followup": "Three affected review gaps reproduced: unmarked native IEEE Meta, API-result entry ordering, and HTML-triggered Reader work ahead of other qualified direct entries. Shared batch scheduling preserves settled response/context and existing ScienceDirect backlink chain. Explicit initial/native action order is preserved; terminal/cancel outcomes discard paused Reader work. Real retests remain pending. Qualified Readers also finish before optional identifier APIs; otherwise an old deferred Reader could be mistaken for sufficient new query inputs. Same-rule/same-origin/path query variants remain source fallbacks and do not interrupt Reader; requests are not rewritten.",
     "limitations": [
@@ -5663,8 +5913,13 @@
       "findings": 2,
       "scope": "Shared production repair; read-only independent native Codex review. Earlier849review was interrupted before completion,not a pass.",
       "corrections": "Remove stage from same-rule/origin/path identity; queue same-endpoint variants behind other independent direct entries and their pending original Reader. Direct/Reader/variant success paths covered by red-then-green regressions.",
-      "final_followup": "pending",
+      "final_followup": "79db7d6 bounded native follow-up completed: both findings fixed, no actionable defect directly introduced by corrections; static only, no tests/UI in review.",
       "regression_status": "Stage-variant2cases and deferred direct/Reader/variant3outcomes red-then-green; complete final local checks passed."
+    },
+    "context_diagnosis": {
+      "confirmed": "InstalledConnector5.0.217 setsattachmentreferrer fromactualarticle(originforcrossorigin). CurrentAllfoldP1/P4ordinarycandidates canhaveNoneReferer; nativeSessionstream onlysendsprovidedReferer. SameSourceSessionnormalBrowserPublisherPDFsuccess disprovesoverallabsenceofrights.",
+      "not_assumed": "Cookiepartitionpresenceunknown. ExternalCDPcookieprobe not executed under CUA-only boundary; noCookievalues acquired/copied. DOMarticle/DOIcase hypotheses not patched; savedtarget alreadypreservesCrossrefcanonicaluppercaseDOI.",
+      "next": "MinimalsharedqualifiedarticleReferrercontextrepair,isolatedregressionandrealretest; do notclaimCFcausebeforeevidence."
     }
   }
 }
