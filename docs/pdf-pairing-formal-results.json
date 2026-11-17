@@ -498,7 +498,7 @@
           "2026-11-16T19:03:50.077Z",
           "2026-11-16T19:03:50.138Z"
         ],
-        "ui_preparation": "New Chrome article tab 19:03:31.942Z; Access provided by Xiamen University and PDF link; target dedicated collection",
+        "ui_preparation": "New Chrome article tab 19:03:31.942Z; Access provided by configured institution and PDF link; target dedicated collection",
         "human_intervention": false,
         "translator": "Springer Link",
         "terminal_state": "unknown; no PDF observed",
@@ -2111,7 +2111,7 @@
           "2026-11-16T23:52:17.970Z",
           "2026-11-16T23:52:17.993Z"
         ],
-        "ui_preparation": "New article tab 23:40:12.705Z; human Cloudflare verification; user then CARSI login; selected OXFORD JOURNALS resource 23:48:31.029Z, access 23:48:37.340Z, XMU SSO to Oxford; article title/DOI, PDF link and subscription text visible; dedicated collection",
+        "ui_preparation": "New article tab 23:40:12.705Z; human Cloudflare verification; user then CARSI login; selected OXFORD JOURNALS resource 23:48:31.029Z, access 23:48:37.340Z, configured institution SSO to Oxford; article title/DOI, PDF link and subscription text visible; dedicated collection",
         "human_intervention": null,
         "translator": "Silverchair",
         "human_intervention_note": "Cloudflare verification and CARSI login per user",
@@ -2349,7 +2349,7 @@
       "zotero": {
         "result": "operator_interrupted",
         "timing_eligible_for_parity": false,
-        "ui_preparation": "CARSI T&F journal entry; Xiamen University and Full access shown; title and DOI matched",
+        "ui_preparation": "CARSI T&F journal entry; configured institution and Full access shown; title and DOI matched",
         "human_intervention": null,
         "terminal_state": "unknown",
         "parent_key": "53AGS3SU",
@@ -2750,7 +2750,7 @@
           "2026-11-17T02:31:55.579Z",
           "2026-11-17T02:31:55.689Z"
         ],
-        "ui_preparation": "Source CARSI T&F; article prewarmed, Xiamen Full access; native e67/UI a966",
+        "ui_preparation": "Source CARSI T&F; article prewarmed, configured institution Full access; native e67/UI a966",
         "human_intervention": false,
         "runtime_head_sha": "e67e13670ffb2524cb3660c25570f87485828fca",
         "production_code_sha": "a9663f778c920c588414f2e8816b8a962faffcc0",
@@ -2795,7 +2795,7 @@
           "2026-11-17T02:28:05.416Z",
           "2026-11-17T02:28:05.445Z"
         ],
-        "ui_preparation": "CARSI Taylor & Francis journal resource; Chrome saved credentials; article Full access and Xiamen University; Source article prewarmed Full access",
+        "ui_preparation": "CARSI Taylor & Francis journal resource; Chrome saved credentials; article Full access and configured institution; Source article prewarmed Full access",
         "human_intervention": null,
         "translator": "Taylor and Francis+NEJM",
         "human_intervention_note": "Earlier Cloudflare completed by user",
@@ -2836,7 +2836,7 @@
           "2026-11-17T02:33:39.678Z",
           "2026-11-17T02:33:39.807Z"
         ],
-        "ui_preparation": "Source T&F Xiamen session; this article not preopened",
+        "ui_preparation": "Source T&F configured institution session; this article not preopened",
         "human_intervention": false,
         "runtime_head_sha": "e67e13670ffb2524cb3660c25570f87485828fca",
         "production_code_sha": "a9663f778c920c588414f2e8816b8a962faffcc0",
@@ -3097,7 +3097,7 @@
         "F12",
         "F13"
       ],
-      "gap": "T&F original F11 preprint/parent-only save retained. New native CF detection recovered a real checkbox challenge. Unseen F12/F13 Allfold saves are publisher Accepted Manuscripts. F12 Zotero parent-only save was operator-interrupted and had a collection-target correction. F13 both correct same-version PDFs; initial Allfold slower point requires two swapped repeats/investigation. Original F11 control retest outstanding."
+      "gap": "T&F original F11 preprint/parent-only save retained. New native CF detection recovered a real checkbox challenge. Unseen F12/F13 Allfold saves are publisher Accepted Manuscripts. F12 Zotero parent-only save was operator-interrupted and had a collection-target correction. F13 both correct same-version PDFs; initial Allfold slower point requires two swapped repeats/investigation. F11-2 completed with matching publisher Accepted Manuscripts; two further preselected control repeats remain outstanding."
     },
     {
       "samples": [

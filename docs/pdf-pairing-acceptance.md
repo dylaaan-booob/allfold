@@ -195,7 +195,7 @@ operator interruption are retained; collection appearance is not the save/PDF
 endpoint. F13 and a fresh F11 retry now have valid local PDFs on both products.
 Chrome needed separate CARSI T&F renewal and human Cloudflare before saving.
 These permission/cache differences prevent attributing all body-version changes
-to code. Two swapped F13 repeats, the preselected F11 controls and F12 recovery
+to code. Two swapped F13 repeats, two further preselected F11 controls and F12 recovery
 remain outstanding.
 
 F20 Project Euclid saved arXiv2503.14978v4 on both products,34pages/1719653bytes,
