@@ -3,16 +3,20 @@
 Issue: [#140](https://github.com/dylaaan-booob/allfold/issues/140). Baseline:
 `a2e511aa86ab5aa292f224301d6609a59c287fa2`.
 
-**Status: incomplete; saved checkpoint 17 November 2026. Nineteen
-of the 31 frozen Papers have observations (45 pair slots including repeats);
-12 Papers have no formal Save/Download. Sixteen same-version low-load pairs have reliable local
+**Status: incomplete; saved checkpoint 18 November 2026 (Asia/Shanghai). Twenty
+of the 31 frozen Papers have observations (49 pair slots including repeats);
+11 Papers have no formal Save/Download. Twenty same-version low-load pairs have reliable local
 file/association endpoints. Springer has two slower Allfold points and one
 interval overlap; T&F has one slower point requiring swapped repeats. The measured
 Cambridge/IEEE prepared-access cohorts show no observed disadvantage; overall
 coverage and retests remain incomplete. F18 exposed a publisher-version/latency
-gap. The shared direct-entry repair passes offline checks but F18 real retest still
-returned a preprint; normal same-Session Browser saved its publisher PDF. The
-remaining request-context defect is under investigation. Workspace is retained.**
+gap. Direct-entry and Referer repairs alone still returned a preprint. The first
+real retest of the common native partition-context repair at `69b9a41` saved the
+correct publisher PDF through P1, but was 3.832–4.644 seconds slower than Zotero.
+The control and untouched same-platform Paper also saved correct publisher PDFs,
+but their first paired waits were slower. Swapped repeats and transfer diagnosis
+remain required.
+Workspace is retained.**
 
 ## Environment and endpoint
 
@@ -86,8 +90,8 @@ product's Reject/delete/Restore flow; metadata and Download availability survive
 The immutable [31-paper manifest](pdf-pairing-manifest.json) was committed before
 the first formal click. The [formal results](pdf-pairing-formal-results.json)
 retain all original samples, failures, preparation, versions and repetitions.
-At this checkpoint Allfold has 42 automatic local-PDF successes, one assisted
-success and two failures. Zotero has 36 local-PDF successes
+At this checkpoint Allfold has 46 automatic local-PDF successes, one assisted
+success and two failures. Zotero has 40 local-PDF successes
 and nine operator interruptions with unknown product terminal state. These are
 attempt counts, not independent-paper success rates. Saving a related preprint
 is a task result but is not a publisher-version success.
@@ -101,7 +105,7 @@ is a task result but is not a publisher-version success.
 | Taylor & Francis | 3 / 3 | Allfold 4 successes: original preprint plus3 publisher Accepted Manuscripts; Zotero 2 publisher Accepted Manuscripts,2 interrupted parent-only saves | Same-version F11 retry faster; first F13 slower. Controls/repeats and F12 retry outstanding. Not confirmed. |
 | Project Euclid | 1 / 3 | Both saved related arXiv v4; Allfold required in-download hCaptcha assistance | First-access recovery reported separately; normal prepared-access controls and2 papers outstanding. Not confirmed. |
 | Wiley | 3 / 3 | Allfold6 publisher OA successes; Zotero4 successes(1preprint,3publisher),2interruptions | F14 normal publisher controls and F15 favorAllfold. F16 default saves remain parent-only; one bounded diagnostic records citation/PDF403,with terminal unknown. Not confirmed. |
-| SIAM | 2 / 3 | Allfold4 related preprints; Zotero3 publisher PDFs,1 interruption | F18-3 on3a551ea still differs in version and wait despite normal same-Session Browser publisher success. F19 unvisited. Not met. |
+| SIAM | 3 / 3 | Allfold4 related preprints and4 publisher PDFs; Zotero7 publisher PDFs,1 interruption | F18-4/F17-2/F19-1 on69b9a41 save correct publisher PDFs through P1; all three initial paired waits are slower. F18-5 warm repeat favors Allfold; first/warm variation and remaining repeats need diagnosis. Not confirmed. |
 | INFORMS PubsOnline | 0 / 3 | Not started; configured EBSCO capability is not a platform result | Not confirmed. |
 | ScienceDirect | 0 / 6 | Formal cohort not started; repaired-path pilots remain separate | Not confirmed. |
 
@@ -142,6 +146,10 @@ were individually checked for title, DOI, version, actual file and association.
 | F15-1 / A→Z | Wiley publisher OA,13pages | 1.081–1.504s | 2.167–2.539s | -1.458 to-0.663s | 0.4258–0.6940 |
 | F14-2 / A→Z | Wiley publisherVoR21pages; AllfoldWiley3295222bytes,ZoteroPMC3629614bytes | 1.941–2.323s | 6.382–6.741s | -4.800 to-4.059s | 0.2879–0.3640 |
 | F14-3 / Z→A | Same publisherVoR/source split,new body/new parent; warm visits | 0–0.355s | 5.379–5.800s | -5.800 to-5.024s | 0–0.0660 |
+| F18-4 / A→Z | SIAM institutional publisher PDF,28pages,3814861bytes; first partition-context repair retest | 15.689–16.033s | 11.389–11.857s | +3.832 to+4.644s | 1.3232–1.4078 |
+| F17-2 / Z→A | SIAM institutional publisher PDF,26pages,A487337/Z487368bytes; predeclared control | 7.415–7.760s | 3.481–3.789s | +3.626 to+4.279s | 1.9570–2.2292 |
+| F19-1 / A→Z | SIAM institutional publisher PDF,59pages,A11471779/Z11471788bytes; untouched repair check | 39.579–39.943s | 26.158–26.649s | +12.930 to+13.785s | 1.4852–1.5270 |
+| F18-5 / Z→A | Same SIAM28-page publisher PDF,new body/new parent,warm visits; cache flags missing | 0–0.218s | 3.552–3.875s | −3.875 to−3.334s | 0–0.0614 |
 
 For Springer OA, n=3 paired repeats of **one** Paper: interval median waits are
 2.598–2.952s(Allfold) and1.717–2.109s(Zotero), median paired difference
@@ -394,6 +402,62 @@ It confirms the current Session/background request-context difference; F17/F19
 remain paused while that specific gap is investigated. Installed Atypon Journals
 5af42734-7cd5-4c69-97fc-bc406999bdba,lastUpdated2022-10-25 uses the ordinary
 `/doi/pdf/` entry for SIAM; its specialdownload query is confined to EMBO.
+
+The subsequent common native repair uses the existing qualified source page's
+isolation context to select partitioned Cookies, then supplements only the
+controlled Session request after its normal Cookie jar selection. SameSite,
+origin/path, native page ownership and header ordering remain enforced; values
+stay in Main and no Cookie jar is changed. The [versioned research and isolated
+regressions](partitioned-cookie-research.md) document the mechanism and boundaries.
+Final production `69b9a41` passed local JS64/Python1669/Electron253 checks, its
+bounded independent native follow-up, and the full PR-associated
+[Safety run44114394462](https://github.com/dylaaan-booob/allfold/actions/runs/44114394462).
+
+The rebuilt actual source started17November15:38:03.615UTC at `69b9a41`, runtime
+`3019b48a868edf284bca5258c5803d9b`. After separate normal institutional preparation
+(including user QR login in Electron), both fresh F18 article pages showed actual
+rights; no PDF was preopened. F18-4 used a new Allfold Download after normal trial
+body deletion/Restore and a new Zotero save/parent in the dedicated collection.
+Both local associated PDFs have28pages,3814861bytes and the correct title/DOI.
+Allfold used R039/P1 with no fallback. Its native operation took15741ms: fetch
+call12ms, response/first bytes2859ms, closed writer15739ms, with one eligible
+partitioned Cookie selected. The file/association endpoint was observed at
+15:58:10.011–10.271UTC, after the earlier native terminal event. Zotero's endpoint
+was16:01:00.751–01.192UTC. The corresponding waits and paired difference are in
+the table above. This confirms the repaired request can obtain the publisher
+body; it does not establish parity or isolate a code-only speed benefit across
+the restart/access/cache change. The remaining difference needs exchanged-order
+repeats and request/transfer evidence. No Cookie name or value was recorded.
+
+The predeclared F17 control then also saved the correct publisher body in both
+products:26pages with the exact title/DOI,487337/487368bytes respectively. The
+original83-page preprint and parent-only save remain separate. Allfold's formal
+pair2 uses attempt3 because diagnostic attempt2 was never a scored pair. Its
+native R039/P1 operation took7440ms(request11,response354,first bytes767,closed
+writer7440ms),again with one eligible partitioned Cookie and no fallback. Actual
+local association waits were7.415–7.760s versus3.481–3.789s. Thus a second Paper's
+first point is slower,primarily inside the transfer operation; a second complete
+source-discovery sequence or slow local association is not observed. Version-
+matched repeats and untouched F19 remain required before assigning a cause.
+
+Untouched F19 subsequently saved the same59-page publisher version on both sides,
+11471779/11471788bytes with title/DOI and local associations verified. Allfold
+used one R039/P1 operation39650ms(request9,response611,first bytes723,closed
+writer39647ms),one eligible partitioned Cookie,no fallback. Its39.579–39.943s
+wait exceeded Zotero's26.158–26.649s by12.930–13.785s. These three first paired
+points cover different file sizes and both execution orders,but are insufficient
+to separate network/cache variation from a continuing transport disadvantage.
+The predeclared original/control repeats continue; two exchanged-order F19 repeats
+were added because of its observed slow result. The Paper is not replaced.
+
+F18-5 exchanged the order and used normal body deletion/Restore plus a new normal
+Zotero save/parent. Both actual files again matched28pages/3814861bytes/title/DOI.
+Allfold completed within0–0.218s(the preceding poll overlaps the bounded click),
+Zotero3.552–3.875s. Native R039/P1 took21ms(request10,response/first bytes11,
+closed writer19ms),with one eligible partitioned Cookie and no fallback. This is
+consistent with warm-cache reuse; actual HTTP-cache flags are missing. It also
+shows that streaming and closing this file do not invariably take seconds. It
+does not erase the slower initial point or establish uncached transfer parity.
 
 During evidence reconciliation,two optional late-file notes(F04-1/F11-1) were
 found to belong to later fresh parents. They were removed and the original
@@ -682,7 +746,7 @@ now asserts the gate during the affected verification; red/green and the full
 added. The latest full PR Safety passed in about5min50s; its Electron step took
 about3min24s. A macOS arm64 queue-capacity notice is not a product failure.
 
-## Native partition-context repair awaiting real retest
+## Native partition-context repair and real retests
 
 [Community and fixed-version research](partitioned-cookie-research.md) supports
 missing page-partition cookies as the working cause. The same Electron45 isolated
@@ -704,10 +768,10 @@ Exact local commands pass JavaScript64files,Python1669tests/2existingwarnings,
 Electron251tests/0skips(117.976s). Functional controlled-header regression was red
 before implementation. The original native file/association/cleanup assertions
 remain. ActualSource3a was normally quit13:40:57UTC after evidence export; its
-Workspace remains72Papers/23bodies. New-code independent review,actual source
-startup/access preparation,F18/F17/F19 real retests and latest full PR CI remain
-required. The last evidence-onlyc6c4ac2 Safety run44092406853 passed; it is not CI
-for this pending repair. Workspace Reset has not run.
+Workspace remained72Papers/23bodies at that checkpoint. The evidence-onlyc6c4ac2
+Safety run44092406853 was not CI for the subsequent repair. New-code review,
+startup,CI and first real retests have since completed as recorded below;
+Workspace Reset has not run.
 
 The submitted9fa independent native review found oneP2: uniformly prefixing
 partitioned cookies could put a root-path credential before an ordinary longer-path
@@ -722,8 +786,8 @@ restricts cross-origin additions to explicitSameSite=None; no site/PSL guess is
 made. Native controls show CDP reads cross-siteStrict but both Browser fetch and
 controlled supplementation omit it,while None remains usable. Exact corrected
 full checks pass JS64,Python1669/2existingwarnings(36.00s),Electron253/0skips
-(118.895s). These corrections require submitted-delta follow-up review,new latest
-PR CI and actual F18/F17/F19 retests before any real-site fix claim or Reset.
+(118.895s). The submitted-delta follow-up then identified the separate metadata
+ranking defect below; this intermediate green run did not establish live success.
 
 A second affected native follow-up found that blocked partition metadata could
 still give an ordinary identical name/value a false longer-path rank. The exact
@@ -731,6 +795,11 @@ cross-origin native wire case failed before correction. Only ordinary unpartitio
 metadata now ranks ordinary header pairs; opaque/nonce partition markers are
 excluded, and ambiguous duplicate ordinary descriptors remain unknown. The native
 case now passes. Exact final local JS64,Python1669/2existingwarnings(36.61s),
-Electron253/0skips(118.623s) pass. Final affected review,latest-head CI and actual
-repaired-code pairing remain pending; no Source cookie-repair build has yet been
-used for a formal sample.
+Electron253/0skips(118.623s) pass. The final bounded native review at69b9a41
+confirmed the prior finding resolved and reported no actionable introduced bug.
+The complete PR-associated Safety44114394462 passed JS64,Python1669/4CIwarnings,
+Electron253/0skips on test merge0aab998d34f2b30d9648b0115f30bde087684d0b.
+Actual rebuiltSource69 is used for F18-4/5,F17-2 and untouchedF19-1 above. Publisher
+versions now save successfully,while first-versus-repeat timing variation still
+requires the remaining paired repeats and transport investigation. No overall
+parity or Workspace Reset is claimed.

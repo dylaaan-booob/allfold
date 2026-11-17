@@ -2,8 +2,8 @@
   "status": "formal_in_progress",
   "manifest": "pdf-pairing-manifest.json",
   "manifest_frozen_at_utc": "2026-11-16T18:40:53.823107+00:00",
-  "production_code_sha": "3a551ea87724d789a7d03704618cb3752fc44e86",
-  "runtime_head_sha": "3a551ea87724d789a7d03704618cb3752fc44e86",
+  "production_code_sha": "69b9a41d442c4b5a1ad4c1bce99b3d325332fd6b",
+  "runtime_head_sha": "69b9a41d442c4b5a1ad4c1bce99b3d325332fd6b",
   "pairs": [
     {
       "pair_id": "F01-1",
@@ -5590,6 +5590,506 @@
       "cohort": "repair_retest",
       "comparable_body_version": false,
       "version_comparison": "Allfoldarxiv2502.20086v2/30pages vsZoteroSIAMpublisherVoR/28pages. Correct task files; not comparable transfer versions. Common article Referer did not resolve this real direct-entry access-challenge."
+    },
+    {
+      "pair_id": "F18-4",
+      "sample_id": "F18",
+      "order": [
+        "allfold",
+        "zotero"
+      ],
+      "production_code_sha": "69b9a41d442c4b5a1ad4c1bce99b3d325332fd6b",
+      "runtime_head_sha": "69b9a41d442c4b5a1ad4c1bce99b3d325332fd6b",
+      "allfold": {
+        "result": "automatic_success",
+        "click_utc": [
+          "2026-11-17T15:57:54.238Z",
+          "2026-11-17T15:57:54.322Z"
+        ],
+        "ui_preparation": "ActualSource69b9a41 runtime3019b48a868edf284bca5258c5803d9b; fresh independent institution QR/login→CARSI SIAM, exactF18articleDOI/title/FULLACCESS confirmed without PDF preopen. Chrome fresh target independentlysameaccess. NormalReject/deleteQA A3trialbody/Restore, originalPaper Downloadavailable/no visiblecleanup beforeclick. AfterclickUIcleanup/waiting/Cancel. No localbuild/tests or competingdownload.",
+        "human_intervention": false,
+        "runtime_head_sha": "69b9a41d442c4b5a1ad4c1bce99b3d325332fd6b",
+        "production_code_sha": "69b9a41d442c4b5a1ad4c1bce99b3d325332fd6b",
+        "frontend_head_sha": "69b9a41d442c4b5a1ad4c1bce99b3d325332fd6b",
+        "local_pdf_and_association_utc": [
+          "2026-11-17T15:58:10.011Z",
+          "2026-11-17T15:58:10.271Z"
+        ],
+        "wait_seconds": [
+          15.689,
+          16.033
+        ],
+        "file_bytes": 3814861,
+        "attempt": 4,
+        "source": "P1",
+        "fallback_used": 0,
+        "human_intervention_note": "none during Download; manualSourceQR/institutionlogin preparation recorded separately",
+        "measurement_revision": "keys-v2",
+        "timing_eligible_for_parity": true,
+        "content_check": {
+          "file_exists": true,
+          "file_bytes": 3814861,
+          "pdf_prefix": true,
+          "page_count": 28,
+          "full_title_match": true,
+          "doi_match": true,
+          "publisher_indicators": {
+            "IEEE": false,
+            "Springer": false,
+            "Scientific Reports": false,
+            "Creative Commons": false,
+            "Accepted Manuscript": false,
+            "arXiv:": false,
+            "All rights reserved": false
+          }
+        },
+        "native_observation": {
+          "duration_ms": 15741,
+          "stream_request_ms": 12,
+          "stream_response_ms": 2859,
+          "stream_first_byte_ms": 2859,
+          "stream_closed_ms": 15739,
+          "stream_partition_cookie_count": 1,
+          "pdf_rule": "R039",
+          "pdf_stage": "P1",
+          "reason": "transferred",
+          "fallback_used": false
+        }
+      },
+      "zotero": {
+        "result": "automatic_success",
+        "timing_eligible_for_parity": true,
+        "click_utc": [
+          "2026-11-17T16:00:49.335Z",
+          "2026-11-17T16:00:49.362Z"
+        ],
+        "ui_preparation": "Fresh Chrome article after normal CARSI SIAM resource entry; exact target DOI/title, institution and FULL ACCESS confirmed. Dedicated acceptance collection selected. Existing profile/session/cache, no PDF preopen. Source69 A4 had completed before Save. One normal Save click; popup unavailable in AX, no repeat click.",
+        "human_intervention": false,
+        "translator": "Atypon Journals",
+        "parent_key": "HWNVHEUQ",
+        "local_pdf_and_association_utc": [
+          "2026-11-17T16:01:00.751Z",
+          "2026-11-17T16:01:01.192Z"
+        ],
+        "wait_seconds": [
+          11.389,
+          11.857
+        ],
+        "file_bytes": 3814861,
+        "attachment_key": "TLXU8XJQ",
+        "link_mode": "imported_url",
+        "human_intervention_note": "none during save; Source institution login during preparation recorded separately",
+        "measurement_revision": "keys-v2",
+        "acceptance_collection_membership_verified": true,
+        "content_check": {
+          "file_exists": true,
+          "file_bytes": 3814861,
+          "pdf_prefix": true,
+          "page_count": 28,
+          "full_title_match": true,
+          "doi_match": true,
+          "publisher_indicators": {
+            "IEEE": false,
+            "Springer": false,
+            "Scientific Reports": false,
+            "Creative Commons": false,
+            "Accepted Manuscript": false,
+            "arXiv:": false,
+            "All rights reserved": false
+          }
+        }
+      },
+      "platform": "SIAM",
+      "configured_service": "SIAM电子期刊",
+      "timing_comparison_eligible": true,
+      "cohort": "repair_retest",
+      "comparable_body_version": true,
+      "body_version_comparison": "Both publisher PDFs, 28 pages, 3814861 bytes; title and DOI verified from local PDFs. Allfold P1, no fallback; Zotero Atypon Journals imported local PDF. No human intervention during either measured save; separate institution login preparation retained.",
+      "repair_relation": "Original F18-1/2/3 retained as different-version Allfold arXiv fallback; first real retest of native partition-context repair at69b9a41. Access re-established after restart; single pair is not an isolated code-effect estimate.",
+      "diagnostic_evidence": "Local private diagnostics:69b9a41-f18-fourth-pair.zip",
+      "difference_seconds": [
+        3.832,
+        4.644
+      ],
+      "ratio": [
+        1.3232,
+        1.4078
+      ]
+    },
+    {
+      "pair_id": "F17-2",
+      "sample_id": "F17",
+      "order": [
+        "zotero",
+        "allfold"
+      ],
+      "production_code_sha": "69b9a41d442c4b5a1ad4c1bce99b3d325332fd6b",
+      "runtime_head_sha": "69b9a41d442c4b5a1ad4c1bce99b3d325332fd6b",
+      "allfold": {
+        "result": "automatic_success",
+        "timing_eligible_for_parity": true,
+        "click_utc": [
+          "2026-11-17T16:14:22.081Z",
+          "2026-11-17T16:14:22.170Z"
+        ],
+        "ui_preparation": "ActualSource69 current independently prepared SIAM Session; target DOI/title/institution/FULL ACCESS confirmed without PDF preopen. Normal Reject/delete original QA trial body/Restore, original Paper Download available. Prior diagnostic attempt2 is non-scoring; this measured Download expects attempt3. Z2 actual local imported PDF completed before this click. No builds/tests/competing download.",
+        "human_intervention": false,
+        "runtime_head_sha": "69b9a41d442c4b5a1ad4c1bce99b3d325332fd6b",
+        "production_code_sha": "69b9a41d442c4b5a1ad4c1bce99b3d325332fd6b",
+        "frontend_head_sha": "69b9a41d442c4b5a1ad4c1bce99b3d325332fd6b",
+        "local_pdf_and_association_utc": [
+          "2026-11-17T16:14:29.585Z",
+          "2026-11-17T16:14:29.841Z"
+        ],
+        "wait_seconds": [
+          7.415,
+          7.76
+        ],
+        "file_bytes": 487337,
+        "attempt": 3,
+        "source": "P1",
+        "fallback_used": 0,
+        "human_intervention_note": "none during Download; Source QR login preparation separately recorded",
+        "measurement_revision": "keys-v2",
+        "native_observation": {
+          "duration_ms": 7440,
+          "stream_request_ms": 11,
+          "stream_response_ms": 354,
+          "stream_first_byte_ms": 767,
+          "stream_closed_ms": 7440,
+          "stream_partition_cookie_count": 1,
+          "pdf_rule": "R039",
+          "pdf_stage": "P1",
+          "reason": "transferred",
+          "fallback_used": false
+        },
+        "content_check": {
+          "file_exists": true,
+          "file_bytes": 487337,
+          "pdf_prefix": true,
+          "page_count": 26,
+          "full_title_match": true,
+          "doi_match": true,
+          "publisher_indicators": {
+            "IEEE": false,
+            "Springer": false,
+            "Scientific Reports": false,
+            "Creative Commons": false,
+            "Accepted Manuscript": false,
+            "arXiv:": false,
+            "All rights reserved": false
+          }
+        }
+      },
+      "zotero": {
+        "result": "automatic_success",
+        "click_utc": [
+          "2026-11-17T16:10:59.116Z",
+          "2026-11-17T16:10:59.133Z"
+        ],
+        "ui_preparation": "New Chrome target article after current CARSI SIAM preparation; exact DOI/title/institution/FULL ACCESS and Atypon verified. Source independently same target and rights verified. Dedicated acceptance collection shown in Save popup, no PDF preopen. One Save/new session; original parent-only result retained.",
+        "human_intervention": false,
+        "translator": "Atypon Journals",
+        "parent_key": "YYMSTPYD",
+        "local_pdf_and_association_utc": [
+          "2026-11-17T16:11:02.614Z",
+          "2026-11-17T16:11:02.905Z"
+        ],
+        "wait_seconds": [
+          3.481,
+          3.789
+        ],
+        "file_bytes": 487368,
+        "attachment_key": "A7UBUKVG",
+        "link_mode": "imported_url",
+        "human_intervention_note": "none during save; prior Source institutional login preparation recorded separately",
+        "measurement_revision": "keys-v2",
+        "timing_eligible_for_parity": true,
+        "acceptance_collection_membership_verified": true,
+        "content_check": {
+          "file_exists": true,
+          "file_bytes": 487368,
+          "pdf_prefix": true,
+          "page_count": 26,
+          "full_title_match": true,
+          "doi_match": true,
+          "publisher_indicators": {
+            "IEEE": false,
+            "Springer": false,
+            "Scientific Reports": false,
+            "Creative Commons": false,
+            "Accepted Manuscript": false,
+            "arXiv:": false,
+            "All rights reserved": false
+          }
+        }
+      },
+      "platform": "SIAM",
+      "configured_service": "SIAM电子期刊",
+      "timing_comparison_eligible": true,
+      "cohort": "repair_retest",
+      "comparable_body_version": true,
+      "body_version_comparison": "Both SIAM publisher PDFs,26pages,correct title/DOI verified. Allfold487337bytes andZotero487368bytes; small publisher packaging difference retained, not an identical-byte transfer claim.",
+      "repair_relation": "Predeclared normal SIAM control retest. Original F17-1 Allfold83-page arXiv and Zotero parent-only interruption, and non-scoring Allfold attempt2 retained; formal F17-2 uses actual attempt3.",
+      "diagnostic_evidence": "Local private diagnostics:69b9a41-f17-second-pair.zip",
+      "difference_seconds": [
+        3.626,
+        4.279
+      ],
+      "ratio": [
+        1.957,
+        2.2292
+      ]
+    },
+    {
+      "pair_id": "F19-1",
+      "sample_id": "F19",
+      "order": [
+        "allfold",
+        "zotero"
+      ],
+      "production_code_sha": "69b9a41d442c4b5a1ad4c1bce99b3d325332fd6b",
+      "runtime_head_sha": "69b9a41d442c4b5a1ad4c1bce99b3d325332fd6b",
+      "allfold": {
+        "result": "automatic_success",
+        "click_utc": [
+          "2026-11-17T16:20:23.554Z",
+          "2026-11-17T16:20:23.659Z"
+        ],
+        "ui_preparation": "Untouched frozen SIAM sample, first Download on actualSource69. Source and Chrome new article exact DOI/title/institution/FULL ACCESS confirmed independently without PDF preopen. Current lawful SIAM service access after normal CARSI/login; no PDF URL injected. Chrome Translator not yet ready before A click and must be confirmed before Z. No concurrent build/tests/download.",
+        "human_intervention": false,
+        "runtime_head_sha": "69b9a41d442c4b5a1ad4c1bce99b3d325332fd6b",
+        "production_code_sha": "69b9a41d442c4b5a1ad4c1bce99b3d325332fd6b",
+        "frontend_head_sha": "69b9a41d442c4b5a1ad4c1bce99b3d325332fd6b",
+        "local_pdf_and_association_utc": [
+          "2026-11-17T16:21:03.238Z",
+          "2026-11-17T16:21:03.497Z"
+        ],
+        "wait_seconds": [
+          39.579,
+          39.943
+        ],
+        "file_bytes": 11471779,
+        "attempt": 1,
+        "source": "P1",
+        "fallback_used": 0,
+        "human_intervention_note": "none during Download; Source institution QR login during preparation separately recorded",
+        "measurement_revision": "keys-v2",
+        "timing_eligible_for_parity": true,
+        "native_observation": {
+          "duration_ms": 39650,
+          "stream_request_ms": 9,
+          "stream_response_ms": 611,
+          "stream_first_byte_ms": 723,
+          "stream_closed_ms": 39647,
+          "stream_partition_cookie_count": 1,
+          "pdf_rule": "R039",
+          "pdf_stage": "P1",
+          "reason": "transferred",
+          "fallback_used": false
+        },
+        "content_check": {
+          "file_exists": true,
+          "file_bytes": 11471779,
+          "pdf_prefix": true,
+          "page_count": 59,
+          "full_title_match": true,
+          "doi_match": true,
+          "publisher_indicators": {
+            "IEEE": false,
+            "Springer": false,
+            "Scientific Reports": false,
+            "Creative Commons": false,
+            "Accepted Manuscript": false,
+            "arXiv:": false,
+            "All rights reserved": false
+          }
+        }
+      },
+      "zotero": {
+        "result": "automatic_success",
+        "timing_eligible_for_parity": true,
+        "click_utc": [
+          "2026-11-17T16:22:12.920Z",
+          "2026-11-17T16:22:12.947Z"
+        ],
+        "ui_preparation": "First normal Save of frozen untouched F19 target. New Chrome article exact DOI/title/institution/FULL ACCESS confirmed, Atypon Journals ready before click. Existing lawful SIAM access after normal CARSI resource preparation. No PDF preopen; Source A1 completed before Save. Prior Save target was dedicated acceptance collection; current popup unavailable in AX and actual membership must be independently checked. Single click, no repeat.",
+        "human_intervention": false,
+        "translator": "Atypon Journals",
+        "parent_key": "FRZ5K2UI",
+        "local_pdf_and_association_utc": [
+          "2026-11-17T16:22:39.105Z",
+          "2026-11-17T16:22:39.569Z"
+        ],
+        "wait_seconds": [
+          26.158,
+          26.649
+        ],
+        "file_bytes": 11471788,
+        "attachment_key": "9D9PPEDU",
+        "link_mode": "imported_url",
+        "human_intervention_note": "none during Save; earlier Source login preparation separately recorded",
+        "measurement_revision": "keys-v2",
+        "acceptance_collection_membership_verified": true,
+        "content_check": {
+          "file_exists": true,
+          "file_bytes": 11471788,
+          "pdf_prefix": true,
+          "page_count": 59,
+          "full_title_match": true,
+          "doi_match": true,
+          "publisher_indicators": {
+            "IEEE": false,
+            "Springer": false,
+            "Scientific Reports": false,
+            "Creative Commons": false,
+            "Accepted Manuscript": false,
+            "arXiv:": false,
+            "All rights reserved": false
+          }
+        }
+      },
+      "platform": "SIAM",
+      "configured_service": "SIAM电子期刊",
+      "timing_comparison_eligible": true,
+      "comparable_body_version": true,
+      "body_version_comparison": "Both publisher PDFs,59pages,correct title/DOI verified from local files; Allfold11471779bytes/Zotero11471788bytes, small packaging difference retained. First normal Save/Download of this previously untouched sample, no PDF preopen.",
+      "repair_relation": "Untouched same-platform repair check preselected before implementation outcomes; first result retained.",
+      "diagnostic_evidence": "Local private diagnostics:69b9a41-f19-first-pair.zip",
+      "difference_seconds": [
+        12.93,
+        13.785
+      ],
+      "ratio": [
+        1.4852,
+        1.527
+      ]
+    },
+    {
+      "pair_id": "F18-5",
+      "sample_id": "F18",
+      "order": [
+        "zotero",
+        "allfold"
+      ],
+      "production_code_sha": "69b9a41d442c4b5a1ad4c1bce99b3d325332fd6b",
+      "runtime_head_sha": "69b9a41d442c4b5a1ad4c1bce99b3d325332fd6b",
+      "allfold": {
+        "result": "automatic_success",
+        "timing_eligible_for_parity": true,
+        "click_utc": [
+          "2026-11-17T16:28:04.338Z",
+          "2026-11-17T16:28:04.437Z"
+        ],
+        "ui_preparation": "Exchanged-order normal repeat at unchangedSource69. QA A4 trial body normally Reject/delete PDF/Restore; original Paper Download available, one new Download/attempt5. Existing warm Source Session, no PDF preopen. Z5 actual local PDF completed beforehand. No build/tests/concurrent download.",
+        "human_intervention": false,
+        "runtime_head_sha": "69b9a41d442c4b5a1ad4c1bce99b3d325332fd6b",
+        "production_code_sha": "69b9a41d442c4b5a1ad4c1bce99b3d325332fd6b",
+        "frontend_head_sha": "69b9a41d442c4b5a1ad4c1bce99b3d325332fd6b",
+        "timing_resolution_note": "The preceding observation poll overlaps the click interval; the nonnegative lower wait bound is0. Actual poll/click timestamps are retained.",
+        "local_pdf_and_association_utc": [
+          "2026-11-17T16:28:04.298Z",
+          "2026-11-17T16:28:04.556Z"
+        ],
+        "wait_seconds": [
+          0,
+          0.218
+        ],
+        "file_bytes": 3814861,
+        "attempt": 5,
+        "source": "P1",
+        "fallback_used": 0,
+        "content_check": {
+          "file_exists": true,
+          "file_bytes": 3814861,
+          "pdf_prefix": true,
+          "page_count": 28,
+          "full_title_match": true,
+          "doi_match": true,
+          "publisher_indicators": {
+            "IEEE": false,
+            "Springer": false,
+            "Scientific Reports": false,
+            "Creative Commons": false,
+            "Accepted Manuscript": false,
+            "arXiv:": false,
+            "All rights reserved": false
+          }
+        },
+        "human_intervention_note": "none during Download",
+        "measurement_revision": "keys-v2",
+        "native_observation": {
+          "duration_ms": 21,
+          "stream_request_ms": 10,
+          "stream_response_ms": 11,
+          "stream_first_byte_ms": 11,
+          "stream_closed_ms": 19,
+          "stream_partition_cookie_count": 1,
+          "pdf_rule": "R039",
+          "pdf_stage": "P1",
+          "reason": "transferred",
+          "fallback_used": false
+        }
+      },
+      "zotero": {
+        "result": "automatic_success",
+        "click_utc": [
+          "2026-11-17T16:24:57.832Z",
+          "2026-11-17T16:24:57.849Z"
+        ],
+        "ui_preparation": "Exchanged-order normal repeat on new Chrome article tab. Exact DOI/title/institution/FULL ACCESS and Atypon verified; popup dedicated acceptance collection confirmed. Existing warm Chrome profile/session; no PDF preopen. Fresh Save once, no reuse of prior page save session. Source69 unchanged; no builds/tests/concurrent download.",
+        "human_intervention": false,
+        "translator": "Atypon Journals",
+        "parent_key": "UI76Z8HW",
+        "local_pdf_and_association_utc": [
+          "2026-11-17T16:25:01.401Z",
+          "2026-11-17T16:25:01.707Z"
+        ],
+        "wait_seconds": [
+          3.552,
+          3.875
+        ],
+        "file_bytes": 3814861,
+        "attachment_key": "SGW853D7",
+        "link_mode": "imported_url",
+        "human_intervention_note": "none during Save",
+        "measurement_revision": "keys-v2",
+        "timing_eligible_for_parity": true,
+        "content_check": {
+          "file_exists": true,
+          "file_bytes": 3814861,
+          "pdf_prefix": true,
+          "page_count": 28,
+          "full_title_match": true,
+          "doi_match": true,
+          "publisher_indicators": {
+            "IEEE": false,
+            "Springer": false,
+            "Scientific Reports": false,
+            "Creative Commons": false,
+            "Accepted Manuscript": false,
+            "arXiv:": false,
+            "All rights reserved": false
+          }
+        },
+        "acceptance_collection_membership_verified": true
+      },
+      "platform": "SIAM",
+      "configured_service": "SIAM电子期刊",
+      "timing_comparison_eligible": true,
+      "cohort": "repair_retest",
+      "comparable_body_version": true,
+      "body_version_comparison": "Both correct publisher PDFs,28pages/3814861bytes,title/DOI verified. Actual new body/attempt and fresh Save/parent; warm visits. Native HTTP-cache flag unavailable; rapid response is consistent with cache reuse and not a pure network throughput result.",
+      "repair_relation": "Predeclared exchanged-order original-sample retest at unchanged69b9a41; F18-4 initial prepared-access slow point retained.",
+      "diagnostic_evidence": "Local private diagnostics:69b9a41-f18-fifth-pair.zip",
+      "difference_seconds": [
+        -3.875,
+        -3.334
+      ],
+      "ratio": [
+        0.0,
+        0.0614
+      ]
     }
   ],
   "coverage_gaps": [
@@ -5660,7 +6160,7 @@
         "F18",
         "F19"
       ],
-      "gap": "Both products actualFullAccess individually confirmed. F17Allfold saved correctrelated arxiv83pages; Zoterooriginaltitle/URL-only parent(noDOI/authors/PDF) interruptedafter>10min. One non-scoringAFrepeat samepreprint; observedArticle ePDFanchor inheader/noNav; native-equivalentDOI entry resolvedsamearticle. F18freshnormalCARSI entry: Zotero13.238–13.693s publisher28pages via/doi/pdf/; Allfold39.916–40.219s arxiv30pages viaP5 after P4HTML/access-challenge. no-pdf-entry describes theP4response,not a missingArticleanchor. Shared direct-entry priority implemented/offlinepassed,realretestpending. F19stillunvisited."
+      "gap": "All three frozenSIAM Papers now have version-matched publisher PDFs from normal UI pairs on actual69b9a41, including previously untouchedF19. Original arXiv fallbacks and parent-only interruption retained. Each new first paired point is slower beyond timing precision; exchanged-order repeats/transfer diagnosis outstanding. No SIAM parity claim."
     }
   ],
   "parity_conclusions": "In progress: corrected low-load pairs and original affected measurements retained separately. Platform conclusions await controls and access-matched retests.",
@@ -5705,7 +6205,7 @@
     "old_results_retained": true
   },
   "chrome_service_preparation": "From user steering: select each new correspondingService in Chrome CARSI resource page before saving, then verify actual target article/Translator. Preparation/manual costs separate; no cookie/auth copying.",
-  "checkpoint_utc": "2026-11-17T12:55:11.490Z",
+  "checkpoint_utc": "2026-11-17T16:28:04.556Z",
   "historical_tool_interruptions": [
     "Earlier platform update removed mcp__cua_repl and an alternative-tool choice was requested; that question became obsolete when CUA returned.",
     "Global window enumeration/new-tab calls can time out after recovery; targeted Chrome getApp subsequently succeeded, and an already-created trial tab was reused rather than recreated.",
@@ -5818,9 +6318,17 @@
         "2026-11-17T13:40:57.435Z",
         "2026-11-17T13:40:57.447Z"
       ]
+    },
+    {
+      "head_sha": "69b9a41d442c4b5a1ad4c1bce99b3d325332fd6b",
+      "production_code_sha": "69b9a41d442c4b5a1ad4c1bce99b3d325332fd6b",
+      "frontend_head_sha": "69b9a41d442c4b5a1ad4c1bce99b3d325332fd6b",
+      "runtime_id": "3019b48a868edf284bca5258c5803d9b",
+      "reason": "Final partition-context code after all required local checks, full latest-PR Safety, and bounded independent cookie followup passed. No real repaired-code results yet; current Workspace retained.",
+      "started_at_utc": "2026-11-17T15:38:03.615Z"
     }
   ],
-  "frontend_head_sha": "3a551ea87724d789a7d03704618cb3752fc44e86",
+  "frontend_head_sha": "69b9a41d442c4b5a1ad4c1bce99b3d325332fd6b",
   "preparation_sessions": [
     {
       "runtime_id": "97a7ee2badf06ed80594e7f0b80bb712",
@@ -5855,6 +6363,20 @@
       "human_intervention": "User completed normal institution QR/login in the application; no credentials entered in chat.",
       "result": "Normal CARSI SIAM route returned actual matching F18 article DOI/title/FULL ACCESS; no PDF preopened.",
       "timing": "Exact preparation click/completion bounds unavailable; not backfilled from CUA/tool latency."
+    },
+    {
+      "record_id": "source69_f18_preparation",
+      "runtime_id": "3019b48a868edf284bca5258c5803d9b",
+      "kind": "normal_source_single_service_institutional",
+      "sample_id": "F18",
+      "platform": "SIAM",
+      "human_intervention": "User completed institutional enterprise QR login in Allfold Browser; credentials were not provided in chat.",
+      "known_outer_bounds_utc": [
+        "2026-11-17T15:38:03.615Z",
+        "2026-11-17T15:57:54.238Z"
+      ],
+      "timing": "Login/CARSI start, QR handoff and returned-article times were not clocked. Outer bounds are runtime ready and formal Download click; this whole span includes setup/tool work and is not a measured product or human-login duration.",
+      "result": "Independent normal CARSI SIAM resource entry returned exact article DOI/title/institution/FULL ACCESS before Download; Chrome prepared separately, no PDF preopened."
     }
   ],
   "operator_restart_context": {
@@ -5870,21 +6392,21 @@
     "session_cache_effect": "Product PIDs unchanged; no cache/account reset. New CUA targeted Source2.24s/Chrome1.7s reads and actual F07-3 saving succeeded. Global inventory still timed out; task-specific surfaces used."
   },
   "ci_checkpoint": {
-    "head_sha": "3a551ea87724d789a7d03704618cb3752fc44e86",
+    "head_sha": "69b9a41d442c4b5a1ad4c1bce99b3d325332fd6b",
     "status": "success",
-    "run_id": 44083751309,
-    "job_id": 134040688602,
-    "run_url": "https://github.com/dylaaan-booob/allfold/actions/runs/44083751309",
-    "scope": "Complete cumulative PR Safety checks / safety, pull_request",
-    "tested_merge_sha": "2f49c00fc771697f1c08e4399f6362edb699ee2b",
+    "run_id": 44114394462,
+    "job_id": 134148351757,
+    "run_url": "https://github.com/dylaaan-booob/allfold/actions/runs/44114394462",
+    "scope": "Complete cumulativePR Safety checks / safety, pull_request",
+    "tested_merge_sha": "0aab998d34f2b30d9648b0115f30bde087684d0b",
     "test_evidence": {
-      "javascript_files": 63,
+      "javascript_files": 64,
       "python_passed": 1669,
       "python_warnings": 4,
-      "electron_passed": 245,
+      "electron_passed": 253,
       "electron_skipped": 0
     },
-    "note": "Latest pushed head at this checkpoint; independent newest-delta review completed with no actionable introduced bug. Real new-code retests pending. One GitHub capacity notice concerns macOS arm64 queue times."
+    "note": "Complete latest production-code69 PR check passed; first real repaired-code pair F18-4 complete, remaining retests in progress. Later evidence-only commits require their own latest-PR check."
   },
   "non_scoring_diagnostics": [
     {
@@ -6076,11 +6598,11 @@
       "final_affected_native_passed": 1,
       "previous_electron_full_code_sha": "849dddc9a3a72cf2b0a778375e1a8fb8e3d051b6"
     },
-    "live_status": "F18-3 onactual3a551ea stillP5preprint vsZpublisher; sameSessionBrowserpublisher succeeded. Generic partition-context repair passes all offline checks; independentreview/newactualSource/F18-F17-F19 retests pending. No parity or Reset.",
+    "live_status": "F18-4/F17-2 and untouchedF19-1 on actual69b9a41 now save correct publisher PDFs via P1/no fallback, eligible partition-cookie count1. All three first paired points remain slower than Zotero; repeat/transfer diagnosis pending. No parity or Reset.",
     "diagnostic_correction": "Earlier no-pdf-entry was misread as missing articleDOM. It follows an attempted P4response; native article extraction did discover theePDF entry. Navigation/header/case hypotheses were not used for a patch.",
     "review_followup": "Three affected review gaps reproduced: unmarked native IEEE Meta, API-result entry ordering, and HTML-triggered Reader work ahead of other qualified direct entries. Shared batch scheduling preserves settled response/context and existing ScienceDirect backlink chain. Explicit initial/native action order is preserved; terminal/cancel outcomes discard paused Reader work. Real retests remain pending. Qualified Readers also finish before optional identifier APIs; otherwise an old deferred Reader could be mistaken for sufficient new query inputs. Same-rule/same-origin/path query variants remain source fallbacks and do not interrupt Reader; requests are not rewritten.",
     "limitations": [
-      "An intermediate full test run exposed a collection-planner Run-final-snapshot sidecar race at library_database._validate_paths (not in changed PDF code). The28case focused native/planner check and final1649case full Python run passed; no production persistence protection was weakened or race fix claimed. Initial failed output retained privately."
+      "The recurring late Run final-snapshot sidecar race was subsequently repaired at3a551ea through existing owner-gate boundaries; persistence checks were preserved. Initial failure logs remain private."
     ],
     "provenance_followup": "Four red regressions reproduce duplicateMeta counting as a distinct entry, resumed Reader source-index reassignment, and conditional skips inventing fallback. Lookahead now excludes seen/ineligible entries; pausing alone is not failure. Local lineage-to-index mapping retains original index through interleaving; the global allocation count advances only for actual source attempts. Original Service/stream/save interfaces unchanged.",
     "native_review": {
@@ -6094,7 +6616,7 @@
     "context_diagnosis": {
       "confirmed": "InstalledConnector5.0.217 setsattachmentreferrer fromactualarticle(originforcrossorigin). CurrentAllfoldP1/P4ordinarycandidates canhaveNoneReferer; nativeSessionstream onlysendsprovidedReferer. SameSourceSessionnormalBrowserPublisherPDFsuccess disprovesoverallabsenceofrights.",
       "not_assumed": "Cookiepartitionpresenceunknown. ExternalCDPcookieprobe not executed under CUA-only boundary; noCookievalues acquired/copied. DOMarticle/DOIcase hypotheses not patched; savedtarget alreadypreservesCrossrefcanonicaluppercaseDOI.",
-      "next": "MinimalsharedqualifiedarticleReferrercontextrepair,isolatedregressionandrealretest; do notclaimCFcausebeforeevidence."
+      "next": "Referer-only3a551ea real retest failed to reach publisher PDF. Common native partition-context69b9a41 first real retest succeeds; preserve prior failures and complete controls/new-paper/repeat evidence before final attribution."
     },
     "article_context_repair": {
       "scope": "NormaldiscoveryrootcandidateswithoutexplicitRefererinheritcurrentqualifiedarticleURL; explicit/native/initialandReadercontinuationcontexts(includingNone)retained. NativeSessionorigin/downgradepolicyunchanged.",
@@ -6109,11 +6631,11 @@
       "independent_native_review": "Completed read-only delta review 8986bf4..3a551ea: no actionable introduced bug; real benefit unconfirmed."
     },
     "partition_context_repair": {
-      "status": "Ordinary-only metadata correction implemented; final complete local checks passed. Submitted native follow-up and real retests pending.",
+      "status": "Final69b9a41 implemented, all mandatory local checks and full PR Safety passed; bounded native follow-up resolved prior findings. ActualSource first same-version publisher pair completed, control/new-paper/repeats outstanding.",
       "mechanism": "Existing sameSession/samequalifiedSourceOrigin native page supplies Network.getCookies isolation context. Only its partitioned cookies supplement controlled headers after native jar selection; values remainMain, no jar writes or extraHTTP. No-referrer contexts are not guessed.",
       "regression_evidence": "Functional controlled-header regression red before implementation. Native isolated Chromium fixture verifies current partition vsforeignpartition, preservation of ordinary cookies, origin/path redirects, pluscancel/client-ownership tests.",
       "community_research": "partitioned-cookie-research.md",
-      "real_retests": "F18original, F17control and unvisitedF19 remainrequired. No claimed real fix or parity yet.",
+      "real_retests": "OriginalF18, predeclaredF17control and untouchedF19 all saved correct title/DOI/publisher PDFs on69b9a41. A−Z intervals respectively+3.832..4.644s,+3.626..4.279s,+12.930..13.785s. All singleR039/P1/count1/no fallback; native costs mainly within response/transfer. Exchanged-order repeats and cause remain pending; original failures/versions retained.",
       "local_checks": {
         "javascript_files": 64,
         "python_passed": 1669,
@@ -6128,9 +6650,10 @@
         "run_url": "https://github.com/dylaaan-booob/allfold/actions/runs/44092406853",
         "note": "Evidence-only revision, actualproduction3a551ea. New cookie repair requires its own full latest-PR CI."
       },
-      "review_followup": "First native review: path-orderP2 corrected. Second affected native review: filtered partition metadata could poison an ordinary path rank. Exact native failure reproduced and corrected by ordinary-only metadata; ambiguous duplicate ordinary descriptors do not invent a rank. Final affected verification pending.",
+      "review_followup": "Final bounded native065..69 followup: originalP2resolved/no actionable introduced finding; read-only. Prior red/green controls retained.",
       "policy": "Verified native mainFrame security origin; sameorigin Strict/Lax permitted, crossorigin explicitSameSiteNone only. Native selected-partition metadata preserves ordinary header order and known longer-path priority; ordinary-first ties, unknown current same-name metadata not displaced.",
-      "final_local_evidence": "JS64;Python1669/2existingwarnings36.61s;Electron253/0skips118.623s. Private checks/partition-cookie-metadata-*.log; filtered-metadata native red/green retained."
+      "final_local_evidence": "JS64;Python1669/2existingwarnings36.61s;Electron253/0skips118.623s. Private checks/partition-cookie-metadata-*.log; filtered-metadata native red/green retained.",
+      "commit_sha": "69b9a41d442c4b5a1ad4c1bce99b3d325332fd6b"
     }
   }
 }
