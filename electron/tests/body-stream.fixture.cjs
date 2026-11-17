@@ -70,11 +70,15 @@ app.whenReady().then(async()=>{
   let opened=0;
   const shell={openPath:async filename=>{assert.ok(fs.statSync(filename).isFile());shellCalls.push('open');return ++opened===2?'synthetic no default application':'';},
     showItemInFolder:filename=>{assert.ok(fs.statSync(filename).isFile());shellCalls.push('locate');}};
-  const context=vm.createContext({browser,send,executeBodyStream,executeLocalBody,shell,validateRecovery,operations:new Map(),exiting:false,AbortController,WebSocket,
+  const streamTimings=[];
+  const context=vm.createContext({browser,send,executeBodyStream:(browser,data,options)=>executeBodyStream(browser,data,{...options,observe:timing=>{
+    options.observe(timing);throw Error('synthetic observation failure');
+  }}),executeLocalBody,shell,validateRecovery,operations:new Map(),exiting:false,AbortController,WebSocket,
     CONTROL_ACTIONS:new Set(['cas_credentials','diagnostics_reset']),RESOURCE_ACTIONS:new Set(['invalidate_access','release_workflow_pages']),
     BrowserFailure,diagnosticFor,invocationRecovery,Date,Number,Promise,
     operationAssociation:require('../src/browser/page-association.cjs').operationAssociation,
     associationLogContext:()=>({}),setLogLevel(){},withLogContext:(_context,run)=>run(),log(_level,event,data){
+      if(event==='task_finished'&&data.action==='stream_paper_body'&&data.outcome==='stream_complete')streamTimings.push(data);
       if(event==='task_finished'&&data.request_id===lateMessage?.id){
         // Hold Main synchronously at its terminal diagnostic boundary. The
         // real Python host must finish publication/association and release its
@@ -153,6 +157,13 @@ app.whenReady().then(async()=>{
     if(dispatchError)throw dispatchError;
     assert.equal(code,0,stderr);assert.equal(complete,true,stderr);assert.equal(cases.length,29);assert.equal(slowWitness,true);
     assert.equal(logAcknowledged,true,'Python terminal/owner release must not wait for Main final logging');
+    assert.ok(streamTimings.length>0);
+    for(const event of streamTimings){
+      const marks=['stream_request_ms','stream_response_ms','stream_first_byte_ms','stream_closed_ms'].map(key=>event[key]);
+      assert.ok(marks.every(value=>Number.isSafeInteger(value)&&value>=0),'successful streams retain bounded relative timings');
+      assert.deepEqual(marks,[...marks].sort((a,b)=>a-b));
+      assert.ok(marks.at(-1)<=event.duration_ms+2,'closed writer mark precedes the final diagnostic');
+    }
     assert.deepEqual(pairs,[{type:'fixture_pair',statuses:['cancelled','completed']}]);
     assert.equal(publicCases.length,1);assert.equal(publicCases[0].status,'completed');
     assert.deepEqual(localCases,[{type:'fixture_local',status:'settled',retry_attempt:2}]);

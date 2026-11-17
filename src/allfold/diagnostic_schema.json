@@ -459,6 +459,26 @@
       "minimum": 0,
       "maximum": 2147483647
     },
+    "stream_request_ms": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 2147483647
+    },
+    "stream_response_ms": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 2147483647
+    },
+    "stream_first_byte_ms": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 2147483647
+    },
+    "stream_closed_ms": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 2147483647
+    },
     "omitted_count": {
       "type": "integer",
       "minimum": 0,

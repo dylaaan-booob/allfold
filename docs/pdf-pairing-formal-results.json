@@ -2,8 +2,8 @@
   "status": "formal_in_progress",
   "manifest": "pdf-pairing-manifest.json",
   "manifest_frozen_at_utc": "2026-11-16T18:40:53.823107+00:00",
-  "production_code_sha": "098288ae32e159811b9c49333b386d1533890862",
-  "runtime_head_sha": "fdad2a3a3e04d7bc5f0e915b8d1d0f826f8b9be5",
+  "production_code_sha": "a9663f778c920c588414f2e8816b8a962faffcc0",
+  "runtime_head_sha": "e67e13670ffb2524cb3660c25570f87485828fca",
   "pairs": [
     {
       "pair_id": "F01-1",
@@ -329,7 +329,9 @@
           "metadata_generation": 1,
           "operation_generation": 1,
           "body_generation": 1
-        }
+        },
+        "runtime_head_sha": "7c9be1c5e4487087c4dacf0afebd0e7c19b3435b",
+        "production_code_sha": "098288ae32e159811b9c49333b386d1533890862"
       },
       "zotero": {
         "result": "automatic_success",
@@ -486,7 +488,9 @@
           "metadata_generation": 1,
           "operation_generation": 1,
           "body_generation": 1
-        }
+        },
+        "runtime_head_sha": "7c9be1c5e4487087c4dacf0afebd0e7c19b3435b",
+        "production_code_sha": "098288ae32e159811b9c49333b386d1533890862"
       },
       "zotero": {
         "result": "operator_interrupted",
@@ -614,7 +618,9 @@
           "metadata_generation": 1,
           "operation_generation": 1,
           "body_generation": 1
-        }
+        },
+        "runtime_head_sha": "7c9be1c5e4487087c4dacf0afebd0e7c19b3435b",
+        "production_code_sha": "098288ae32e159811b9c49333b386d1533890862"
       },
       "zotero": {
         "result": "automatic_success",
@@ -755,7 +761,9 @@
           "metadata_generation": 1,
           "operation_generation": 3,
           "body_generation": 3
-        }
+        },
+        "runtime_head_sha": "7c9be1c5e4487087c4dacf0afebd0e7c19b3435b",
+        "production_code_sha": "098288ae32e159811b9c49333b386d1533890862"
       },
       "zotero": {
         "result": "automatic_success",
@@ -897,7 +905,9 @@
           "metadata_generation": 1,
           "operation_generation": 5,
           "body_generation": 5
-        }
+        },
+        "runtime_head_sha": "7c9be1c5e4487087c4dacf0afebd0e7c19b3435b",
+        "production_code_sha": "098288ae32e159811b9c49333b386d1533890862"
       },
       "zotero": {
         "result": "automatic_success",
@@ -1039,7 +1049,9 @@
           "metadata_generation": 1,
           "operation_generation": 3,
           "body_generation": 3
-        }
+        },
+        "runtime_head_sha": "7c9be1c5e4487087c4dacf0afebd0e7c19b3435b",
+        "production_code_sha": "098288ae32e159811b9c49333b386d1533890862"
       },
       "zotero": {
         "result": "automatic_success",
@@ -1181,7 +1193,9 @@
           "metadata_generation": 1,
           "operation_generation": 5,
           "body_generation": 5
-        }
+        },
+        "runtime_head_sha": "7c9be1c5e4487087c4dacf0afebd0e7c19b3435b",
+        "production_code_sha": "098288ae32e159811b9c49333b386d1533890862"
       },
       "zotero": {
         "result": "automatic_success",
@@ -1324,7 +1338,9 @@
           "metadata_generation": 1,
           "operation_generation": 1,
           "body_generation": 1
-        }
+        },
+        "runtime_head_sha": "7c9be1c5e4487087c4dacf0afebd0e7c19b3435b",
+        "production_code_sha": "098288ae32e159811b9c49333b386d1533890862"
       },
       "zotero": {
         "result": "automatic_success",
@@ -1466,7 +1482,9 @@
           "metadata_generation": 1,
           "operation_generation": 1,
           "body_generation": 1
-        }
+        },
+        "runtime_head_sha": "7c9be1c5e4487087c4dacf0afebd0e7c19b3435b",
+        "production_code_sha": "098288ae32e159811b9c49333b386d1533890862"
       },
       "zotero": {
         "result": "automatic_success",
@@ -1603,7 +1621,9 @@
           "metadata_generation": 1,
           "operation_generation": 3,
           "body_generation": 3
-        }
+        },
+        "runtime_head_sha": "7c9be1c5e4487087c4dacf0afebd0e7c19b3435b",
+        "production_code_sha": "098288ae32e159811b9c49333b386d1533890862"
       },
       "zotero": {
         "result": "automatic_success",
@@ -1738,7 +1758,9 @@
           "metadata_generation": 1,
           "operation_generation": 5,
           "body_generation": 5
-        }
+        },
+        "runtime_head_sha": "7c9be1c5e4487087c4dacf0afebd0e7c19b3435b",
+        "production_code_sha": "098288ae32e159811b9c49333b386d1533890862"
       },
       "zotero": {
         "result": "automatic_success",
@@ -1841,7 +1863,9 @@
         },
         "human_intervention_note": "none",
         "measurement_revision": "keys-v2",
-        "timing_eligible_for_parity": true
+        "timing_eligible_for_parity": true,
+        "runtime_head_sha": "fdad2a3a3e04d7bc5f0e915b8d1d0f826f8b9be5",
+        "production_code_sha": "098288ae32e159811b9c49333b386d1533890862"
       },
       "zotero": {
         "result": "automatic_success",
@@ -1953,7 +1977,9 @@
         },
         "human_intervention_note": "none",
         "measurement_revision": "keys-v2",
-        "timing_eligible_for_parity": true
+        "timing_eligible_for_parity": true,
+        "runtime_head_sha": "fdad2a3a3e04d7bc5f0e915b8d1d0f826f8b9be5",
+        "production_code_sha": "098288ae32e159811b9c49333b386d1533890862"
       },
       "zotero": {
         "result": "automatic_success",
@@ -2016,7 +2042,7 @@
         1.2319,
         1.7193
       ],
-      "investigation": "One low-load observation slower beyond interval precision; retained. Two exchanged-order repeats and actual native requests required before cause or platform conclusion."
+      "investigation": "Two swapped repeats completed as F03-5/F03-6: another slower point and one overlapping interval. Native full-stream duration dominates F03-5. First-byte/cache phase missing; cause and parity remain unresolved."
     },
     {
       "pair_id": "F08-1",
@@ -2075,7 +2101,9 @@
         },
         "human_intervention_note": "none on this AF attempt",
         "measurement_revision": "keys-v2",
-        "timing_eligible_for_parity": true
+        "timing_eligible_for_parity": true,
+        "runtime_head_sha": "fdad2a3a3e04d7bc5f0e915b8d1d0f826f8b9be5",
+        "production_code_sha": "098288ae32e159811b9c49333b386d1533890862"
       },
       "zotero": {
         "result": "operator_interrupted",
@@ -2158,7 +2186,9 @@
         },
         "human_intervention_note": "none",
         "measurement_revision": "keys-v2",
-        "timing_eligible_for_parity": true
+        "timing_eligible_for_parity": true,
+        "runtime_head_sha": "fdad2a3a3e04d7bc5f0e915b8d1d0f826f8b9be5",
+        "production_code_sha": "098288ae32e159811b9c49333b386d1533890862"
       },
       "zotero": {
         "result": "operator_interrupted",
@@ -2185,6 +2215,852 @@
       "cohort": "representative",
       "comparable_body_version": false,
       "version_comparison_note": "Allfold saved a verified related arXiv preprint through P5 after publisher access challenge; Zotero did not yield a local PDF on this attempt. No comparable-version timing comparison."
+    },
+    {
+      "pair_id": "F10-1",
+      "sample_id": "F10",
+      "platform": "Oxford Academic",
+      "configured_service": "OXFORD JOURNALS",
+      "order": [
+        "zotero",
+        "allfold"
+      ],
+      "production_code_sha": "098288ae32e159811b9c49333b386d1533890862",
+      "runtime_head_sha": "fdad2a3a3e04d7bc5f0e915b8d1d0f826f8b9be5",
+      "cohort": "representative",
+      "comparable_body_version": false,
+      "timing_comparison_eligible": false,
+      "allfold": {
+        "result": "failure",
+        "attempt": 1,
+        "reason": "access-challenge",
+        "correct_local_pdf": false,
+        "cleanup_complete": true,
+        "terminal_state_verified_at_utc": "2026-11-17T00:55:21.088174+00:00",
+        "terminal_observation_utc": null,
+        "wait_to_failure_seconds": null,
+        "measurement_limitation": "Observer process was absent during this attempt. Current DB and UI establish failure with no body, but native Document end is not the terminal database endpoint; final timing is missing.",
+        "native_operations": [
+          {
+            "action": "stream_paper_body",
+            "outcome": "response",
+            "duration_ms": 203,
+            "time": "2026-11-17T00:43:19.974Z"
+          },
+          {
+            "action": "extract_paper_pdf_clues",
+            "outcome": "no_result",
+            "code": "http_error",
+            "status": 403,
+            "duration_ms": 1937,
+            "time": "2026-11-17T00:43:22.115Z"
+          }
+        ],
+        "click_utc": [
+          "2026-11-17T00:43:19.614Z",
+          "2026-11-17T00:43:19.728Z"
+        ],
+        "ui_preparation": "Oxford broker Not prepared; batch Login available; no Electron article previsit; Chrome article marked open access",
+        "human_intervention": null,
+        "measurement_revision": "keys-v2",
+        "timing_eligible_for_parity": false,
+        "runtime_head_sha": "fdad2a3a3e04d7bc5f0e915b8d1d0f826f8b9be5",
+        "production_code_sha": "098288ae32e159811b9c49333b386d1533890862"
+      },
+      "zotero": {
+        "result": "operator_interrupted",
+        "terminal_state": "unknown",
+        "interruption_utc": [
+          "2026-11-17T00:46:16.383Z",
+          "2026-11-17T00:46:16.410Z"
+        ],
+        "reason": "No parent, PDF or temporary storage observed; no visible save activity. Closed only the trial tab and its task-created temporary single-tab group. No product failure or timeout endpoint established.",
+        "click_utc": [
+          "2026-11-17T00:39:58.216Z",
+          "2026-11-17T00:39:58.244Z"
+        ],
+        "ui_preparation": "Chrome Oxford CARSI previously logged in; article and DOI matched; PDF link visible",
+        "human_intervention": null,
+        "translator": "Silverchair",
+        "human_intervention_note": "User completed Cloudflare prior to save",
+        "measurement_revision": "keys-v2",
+        "timing_eligible_for_parity": false
+      }
+    },
+    {
+      "pair_id": "F11-1",
+      "sample_id": "F11",
+      "order": [
+        "allfold",
+        "zotero"
+      ],
+      "production_code_sha": "098288ae32e159811b9c49333b386d1533890862",
+      "runtime_head_sha": "fdad2a3a3e04d7bc5f0e915b8d1d0f826f8b9be5",
+      "allfold": {
+        "result": "automatic_success",
+        "click_utc": [
+          "2026-11-17T00:46:45.254Z",
+          "2026-11-17T00:46:45.361Z"
+        ],
+        "ui_preparation": "Electron Taylor & Francis access not independently confirmed; no article previsit",
+        "human_intervention": null,
+        "local_pdf_and_association_utc": [
+          "2026-11-17T00:46:47.892Z",
+          "2026-11-17T00:46:48.153Z"
+        ],
+        "wait_seconds": [
+          2.531,
+          2.899
+        ],
+        "file_bytes": 1758603,
+        "attempt": 1,
+        "source": "P5",
+        "fallback_used": 1,
+        "content_check": {
+          "file_exists": true,
+          "file_bytes": 1758603,
+          "pdf_prefix": true,
+          "page_count": 70,
+          "full_title_match": true,
+          "doi_match": false,
+          "publisher_indicators": {
+            "IEEE": false,
+            "Springer": false,
+            "Scientific Reports": false,
+            "Creative Commons": false,
+            "Accepted Manuscript": false,
+            "arXiv:": true,
+            "All rights reserved": false
+          },
+          "manual_identity_verified": true,
+          "authors_match": {
+            "J. Brandon Carter": true,
+            "Catherine A. Calder": true
+          },
+          "actual_arxiv_id": "2406.15700v5",
+          "body_version": "arXiv preprint 2406.15700v5; 70 pages",
+          "identity_verification_basis": "Exact full title and both authors match the saved PDF; original Paper explicitly links arXiv 2406.15700. Publisher DOI is absent in this preprint."
+        },
+        "measurement_revision": "keys-v2",
+        "timing_eligible_for_parity": true,
+        "runtime_head_sha": "fdad2a3a3e04d7bc5f0e915b8d1d0f826f8b9be5",
+        "production_code_sha": "098288ae32e159811b9c49333b386d1533890862"
+      },
+      "zotero": {
+        "result": "operator_interrupted",
+        "timing_eligible_for_parity": false,
+        "ui_preparation": "CARSI T&F journal entry; Xiamen University and Full access shown; title and DOI matched",
+        "human_intervention": null,
+        "terminal_state": "unknown",
+        "parent_key": "53AGS3SU",
+        "interruption_utc": [
+          "2026-11-17T01:20:05.918Z",
+          "2026-11-17T01:20:05.958Z"
+        ],
+        "parent_identity_verification": "Exact title and stable article URL match; DOI and authors missing; no PDF children observed.",
+        "reason": "Parent only, no PDF or temporary file/visible activity; closed only the trial article tab. Product terminal state unknown.",
+        "click_utc": [
+          "2026-11-17T01:14:46.300Z",
+          "2026-11-17T01:14:46.325Z"
+        ],
+        "translator": "Taylor and Francis+NEJM",
+        "human_intervention_note": "Cloudflare completed by user",
+        "measurement_revision": "keys-v2",
+        "post_interruption_file_observation": {
+          "observed_utc": [
+            "2026-11-17T02:43:09.037Z",
+            "2026-11-17T02:43:09.308Z"
+          ],
+          "file_bytes": 1251965
+        }
+      },
+      "platform": "Taylor & Francis",
+      "configured_service": null,
+      "timing_comparison_eligible": false,
+      "cohort": "representative"
+    },
+    {
+      "pair_id": "F03-5",
+      "sample_id": "F03",
+      "order": [
+        "allfold",
+        "zotero"
+      ],
+      "production_code_sha": "098288ae32e159811b9c49333b386d1533890862",
+      "runtime_head_sha": "fdad2a3a3e04d7bc5f0e915b8d1d0f826f8b9be5",
+      "allfold": {
+        "result": "automatic_success",
+        "click_utc": [
+          "2026-11-17T01:03:27.254Z",
+          "2026-11-17T01:03:27.377Z"
+        ],
+        "ui_preparation": "Reject/delete prior QA trial PDF/Restore; source Springer broker not prepared; prior session context",
+        "human_intervention": false,
+        "local_pdf_and_association_utc": [
+          "2026-11-17T01:03:31.250Z",
+          "2026-11-17T01:03:31.510Z"
+        ],
+        "wait_seconds": [
+          3.873,
+          4.256
+        ],
+        "file_bytes": 2636871,
+        "attempt": 5,
+        "source": "P1",
+        "fallback_used": 0,
+        "content_check": {
+          "file_exists": true,
+          "file_bytes": 2636871,
+          "pdf_prefix": true,
+          "page_count": 22,
+          "full_title_match": true,
+          "doi_match": true,
+          "publisher_indicators": {
+            "IEEE": false,
+            "Springer": false,
+            "Scientific Reports": false,
+            "Creative Commons": false,
+            "Accepted Manuscript": false,
+            "arXiv:": false,
+            "All rights reserved": false
+          }
+        },
+        "human_intervention_note": "none",
+        "measurement_revision": "keys-v2",
+        "timing_eligible_for_parity": true,
+        "cache_context": "Repeated normal Download in the same Electron shared Session; prior body removed through product Reject/delete/Restore. HTTP cache response was not observed.",
+        "runtime_head_sha": "fdad2a3a3e04d7bc5f0e915b8d1d0f826f8b9be5",
+        "production_code_sha": "098288ae32e159811b9c49333b386d1533890862"
+      },
+      "zotero": {
+        "result": "automatic_success",
+        "click_utc": [
+          "2026-11-17T01:05:11.495Z",
+          "2026-11-17T01:05:11.525Z"
+        ],
+        "ui_preparation": "new Chrome tab; prior Springer CARSI session; article open access and full access",
+        "human_intervention": false,
+        "translator": "Springer Link",
+        "local_pdf_and_association_utc": [
+          "2026-11-17T01:05:14.172Z",
+          "2026-11-17T01:05:14.455Z"
+        ],
+        "wait_seconds": [
+          2.647,
+          2.96
+        ],
+        "file_bytes": 2636871,
+        "parent_key": "F64A4LXR",
+        "attachment_key": "G5QZQUQA",
+        "link_mode": "imported_url",
+        "content_check": {
+          "file_exists": true,
+          "file_bytes": 2636871,
+          "pdf_prefix": true,
+          "page_count": 22,
+          "full_title_match": true,
+          "doi_match": true,
+          "publisher_indicators": {
+            "IEEE": false,
+            "Springer": false,
+            "Scientific Reports": false,
+            "Creative Commons": false,
+            "Accepted Manuscript": false,
+            "arXiv:": false,
+            "All rights reserved": false
+          }
+        },
+        "human_intervention_note": "none",
+        "measurement_revision": "keys-v2",
+        "timing_eligible_for_parity": true,
+        "cache_context": "Fresh normal save in a new trial tab in the existing Chrome profile, same article/Translator; no old save-session or attachment reuse. HTTP cache response was not observed."
+      },
+      "platform": "Springer Link",
+      "configured_service": "Springer Link",
+      "timing_comparison_eligible": true,
+      "cohort": "measurement_recovery_control",
+      "comparable_body_version": true,
+      "version": "Same Springer publisher PDF;22 pages/2636871 bytes/DOI and title verified in both products",
+      "difference_seconds": [
+        0.913,
+        1.609
+      ],
+      "ratio": [
+        1.3084,
+        1.6079
+      ]
+    },
+    {
+      "pair_id": "F03-6",
+      "sample_id": "F03",
+      "order": [
+        "zotero",
+        "allfold"
+      ],
+      "production_code_sha": "098288ae32e159811b9c49333b386d1533890862",
+      "runtime_head_sha": "fdad2a3a3e04d7bc5f0e915b8d1d0f826f8b9be5",
+      "allfold": {
+        "result": "automatic_success",
+        "click_utc": [
+          "2026-11-17T01:08:34.443Z",
+          "2026-11-17T01:08:34.561Z"
+        ],
+        "ui_preparation": "prior QA trial PDF Reject/delete/Restore; same source session",
+        "human_intervention": false,
+        "local_pdf_and_association_utc": [
+          "2026-11-17T01:08:35.158Z",
+          "2026-11-17T01:08:35.413Z"
+        ],
+        "wait_seconds": [
+          0.597,
+          0.97
+        ],
+        "file_bytes": 2636871,
+        "attempt": 6,
+        "source": "P1",
+        "fallback_used": 0,
+        "content_check": {
+          "file_exists": true,
+          "file_bytes": 2636871,
+          "pdf_prefix": true,
+          "page_count": 22,
+          "full_title_match": true,
+          "doi_match": true,
+          "publisher_indicators": {
+            "IEEE": false,
+            "Springer": false,
+            "Scientific Reports": false,
+            "Creative Commons": false,
+            "Accepted Manuscript": false,
+            "arXiv:": false,
+            "All rights reserved": false
+          }
+        },
+        "human_intervention_note": "none",
+        "measurement_revision": "keys-v2",
+        "timing_eligible_for_parity": true,
+        "cache_context": "Repeated normal Download in the same Electron shared Session; prior body removed through product Reject/delete/Restore. HTTP cache response was not observed.",
+        "runtime_head_sha": "fdad2a3a3e04d7bc5f0e915b8d1d0f826f8b9be5",
+        "production_code_sha": "098288ae32e159811b9c49333b386d1533890862"
+      },
+      "zotero": {
+        "result": "automatic_success",
+        "click_utc": [
+          "2026-11-17T01:06:42.297Z",
+          "2026-11-17T01:06:42.322Z"
+        ],
+        "ui_preparation": "new Chrome article tab, open access full access",
+        "human_intervention": false,
+        "translator": "Springer Link",
+        "local_pdf_and_association_utc": [
+          "2026-11-17T01:06:43.056Z",
+          "2026-11-17T01:06:43.322Z"
+        ],
+        "wait_seconds": [
+          0.734,
+          1.025
+        ],
+        "file_bytes": 2636871,
+        "parent_key": "B8MU66EG",
+        "attachment_key": "EMGABB8M",
+        "link_mode": "imported_url",
+        "content_check": {
+          "file_exists": true,
+          "file_bytes": 2636871,
+          "pdf_prefix": true,
+          "page_count": 22,
+          "full_title_match": true,
+          "doi_match": true,
+          "publisher_indicators": {
+            "IEEE": false,
+            "Springer": false,
+            "Scientific Reports": false,
+            "Creative Commons": false,
+            "Accepted Manuscript": false,
+            "arXiv:": false,
+            "All rights reserved": false
+          }
+        },
+        "human_intervention_note": "none",
+        "measurement_revision": "keys-v2",
+        "timing_eligible_for_parity": true,
+        "cache_context": "Fresh normal save in a new trial tab in the existing Chrome profile, same article/Translator; no old save-session or attachment reuse. HTTP cache response was not observed."
+      },
+      "platform": "Springer Link",
+      "configured_service": "Springer Link",
+      "timing_comparison_eligible": true,
+      "cohort": "measurement_recovery_control",
+      "comparable_body_version": true,
+      "version": "Same Springer publisher PDF;22 pages/2636871 bytes/DOI and title verified in both products",
+      "difference_seconds": [
+        -0.428,
+        0.236
+      ],
+      "ratio": [
+        0.5824,
+        1.3215
+      ]
+    },
+    {
+      "pair_id": "F20-1",
+      "sample_id": "F20",
+      "order": [
+        "zotero",
+        "allfold"
+      ],
+      "production_code_sha": "098288ae32e159811b9c49333b386d1533890862",
+      "runtime_head_sha": "92f6492ac35b118dab55597b42536de4c1dc0a78",
+      "allfold": {
+        "result": "assisted_success",
+        "click_utc": [
+          "2026-11-17T01:21:43.037Z",
+          "2026-11-17T01:21:43.197Z"
+        ],
+        "ui_preparation": "manual Project Euclid broker Needs attention; no Source article previsit",
+        "human_intervention": true,
+        "local_pdf_and_association_utc": [
+          "2026-11-17T01:28:35.789Z",
+          "2026-11-17T01:28:36.052Z"
+        ],
+        "wait_seconds": [
+          412.592,
+          413.015
+        ],
+        "file_bytes": 1719653,
+        "attempt": 1,
+        "source": "P5",
+        "fallback_used": 1,
+        "content_check": {
+          "file_exists": true,
+          "file_bytes": 1719653,
+          "pdf_prefix": true,
+          "page_count": 34,
+          "full_title_match": true,
+          "doi_match": false,
+          "publisher_indicators": {
+            "IEEE": false,
+            "Springer": false,
+            "Scientific Reports": false,
+            "Creative Commons": false,
+            "Accepted Manuscript": false,
+            "arXiv:": true,
+            "All rights reserved": false
+          },
+          "manual_identity_verified": true,
+          "authors_match": {
+            "Richard Nickl": true,
+            "Fanny Seizilles": true
+          },
+          "actual_arxiv_id": "2503.14978v4",
+          "body_version": "arXiv:2503.14978v4;34 pages",
+          "identity_verification_basis": "Exact title and both authors match; original Paper explicitly relates arXiv 2503.14978. Both products saved version v4 with the same page count/byte size. Publisher DOI is absent in this preprint."
+        },
+        "human_intervention_note": "User completed Imperva/hCaptcha in Electron during this active Download; Chrome had already been verified before its save.",
+        "measurement_revision": "keys-v2",
+        "timing_eligible_for_parity": false,
+        "assistance_during_download": true,
+        "assistance_note": "User completed Imperva/hCaptcha in Electron during this active Download; Chrome had already been verified before its save.",
+        "manual_wait": {
+          "started_utc": "2026-11-17T01:21:47.303Z",
+          "cleared_by_utc": "2026-11-17T01:28:33.157Z",
+          "kind": "Imperva/hCaptcha",
+          "limitation": "Actual human input start/end and exact verification-clear time are missing. The span includes operator/tool handoff delay before the prompt; do not count that span as network or machine Solver time."
+        },
+        "runtime_head_sha": "92f6492ac35b118dab55597b42536de4c1dc0a78",
+        "production_code_sha": "098288ae32e159811b9c49333b386d1533890862"
+      },
+      "zotero": {
+        "result": "automatic_success",
+        "click_utc": [
+          "2026-11-17T01:20:36.662Z",
+          "2026-11-17T01:20:36.686Z"
+        ],
+        "ui_preparation": "Project Euclid manual service; article short page title and DOI matched; sign-in/cart shown, subscription not established",
+        "human_intervention": null,
+        "translator": "Euclid",
+        "local_pdf_and_association_utc": [
+          "2026-11-17T01:20:40.979Z",
+          "2026-11-17T01:20:41.245Z"
+        ],
+        "wait_seconds": [
+          4.293,
+          4.583
+        ],
+        "file_bytes": 1719653,
+        "parent_key": "3GR7I6PT",
+        "attachment_key": "DB6QSUI6",
+        "link_mode": "imported_url",
+        "content_check": {
+          "file_exists": true,
+          "file_bytes": 1719653,
+          "pdf_prefix": true,
+          "page_count": 34,
+          "full_title_match": true,
+          "doi_match": false,
+          "publisher_indicators": {
+            "IEEE": false,
+            "Springer": false,
+            "Scientific Reports": false,
+            "Creative Commons": false,
+            "Accepted Manuscript": false,
+            "arXiv:": true,
+            "All rights reserved": false
+          },
+          "manual_identity_verified": true,
+          "authors_match": {
+            "Richard Nickl": true,
+            "Fanny Seizilles": true
+          },
+          "actual_arxiv_id": "2503.14978v4",
+          "body_version": "arXiv:2503.14978v4;34 pages",
+          "identity_verification_basis": "Exact title and both authors match; original Paper explicitly relates arXiv 2503.14978. Both products saved version v4 with the same page count/byte size. Publisher DOI is absent in this preprint."
+        },
+        "human_intervention_note": "user completed hCaptcha",
+        "measurement_revision": "keys-v2",
+        "timing_eligible_for_parity": true
+      },
+      "platform": "Project Euclid",
+      "configured_service": "Project Euclid",
+      "timing_comparison_eligible": false,
+      "comparable_body_version": true,
+      "cohort": "representative",
+      "comparison_stratum": "first_access_challenge_recovery_with_assistance",
+      "version": "Both arXiv:2503.14978v4;34 pages/1719653 bytes;exact title,both authors and explicit Paper relation verified",
+      "difference_seconds_including_assistance": [
+        408.009,
+        408.722
+      ],
+      "ratio_including_assistance": [
+        90.0266,
+        96.2066
+      ]
+    },
+    {
+      "pair_id": "F12-1",
+      "sample_id": "F12",
+      "order": [
+        "zotero",
+        "allfold"
+      ],
+      "production_code_sha": "a9663f778c920c588414f2e8816b8a962faffcc0",
+      "runtime_head_sha": "e67e13670ffb2524cb3660c25570f87485828fca",
+      "allfold": {
+        "result": "automatic_success",
+        "click_utc": [
+          "2026-11-17T02:31:55.579Z",
+          "2026-11-17T02:31:55.689Z"
+        ],
+        "ui_preparation": "Source CARSI T&F; article prewarmed, Xiamen Full access; native e67/UI a966",
+        "human_intervention": false,
+        "runtime_head_sha": "e67e13670ffb2524cb3660c25570f87485828fca",
+        "production_code_sha": "a9663f778c920c588414f2e8816b8a962faffcc0",
+        "frontend_head_sha": "a9663f778c920c588414f2e8816b8a962faffcc0",
+        "local_pdf_and_association_utc": [
+          "2026-11-17T02:32:01.326Z",
+          "2026-11-17T02:32:01.585Z"
+        ],
+        "wait_seconds": [
+          5.637,
+          6.006
+        ],
+        "file_bytes": 1339576,
+        "attempt": 1,
+        "source": "P1",
+        "fallback_used": 0,
+        "content_check": {
+          "file_exists": true,
+          "file_bytes": 1339576,
+          "pdf_prefix": true,
+          "page_count": 35,
+          "full_title_match": true,
+          "doi_match": true,
+          "publisher_indicators": {
+            "IEEE": false,
+            "Springer": false,
+            "Scientific Reports": false,
+            "Creative Commons": false,
+            "Accepted Manuscript": true,
+            "arXiv:": false,
+            "All rights reserved": false
+          }
+        },
+        "human_intervention_note": "none for this click",
+        "measurement_revision": "keys-v2",
+        "timing_eligible_for_parity": true,
+        "body_version": "Publisher Accepted Manuscript, not final typeset Version of Record"
+      },
+      "zotero": {
+        "result": "operator_interrupted",
+        "click_utc": [
+          "2026-11-17T02:28:05.416Z",
+          "2026-11-17T02:28:05.445Z"
+        ],
+        "ui_preparation": "CARSI Taylor & Francis journal resource; Chrome saved credentials; article Full access and Xiamen University; Source article prewarmed Full access",
+        "human_intervention": null,
+        "translator": "Taylor and Francis+NEJM",
+        "human_intervention_note": "Earlier Cloudflare completed by user",
+        "measurement_revision": "keys-v2",
+        "timing_eligible_for_parity": false,
+        "interruption_utc": [
+          "2026-11-17T02:31:06.819Z",
+          "2026-11-17T02:31:06.860Z"
+        ],
+        "parent_key": "QJBDBIAB",
+        "terminal_state": "unknown",
+        "protocol_deviation": "Connector initially saved the new parent to My Library. Ordinary Add to Collection subsequently placed it in the dedicated collection; original save click retained. Collection appearance is not a save or PDF completion endpoint.",
+        "strict_baseline_eligible": false
+      },
+      "platform": "Taylor & Francis",
+      "configured_service": "Taylor & Francis期刊数据库",
+      "timing_comparison_eligible": false,
+      "cohort": "representative",
+      "native_operations": {
+        "allfold_stream_complete_ms": 5763,
+        "first_byte_ms": null,
+        "closed_writer_to_database_ms": null,
+        "limitation": "Existing operation duration covers request/stream/writer. Response/first byte and database phase are not separately observed; stream_complete is not the endpoint."
+      }
+    },
+    {
+      "pair_id": "F13-1",
+      "sample_id": "F13",
+      "order": [
+        "allfold",
+        "zotero"
+      ],
+      "production_code_sha": "a9663f778c920c588414f2e8816b8a962faffcc0",
+      "runtime_head_sha": "e67e13670ffb2524cb3660c25570f87485828fca",
+      "allfold": {
+        "result": "automatic_success",
+        "click_utc": [
+          "2026-11-17T02:33:39.678Z",
+          "2026-11-17T02:33:39.807Z"
+        ],
+        "ui_preparation": "Source T&F Xiamen session; this article not preopened",
+        "human_intervention": false,
+        "runtime_head_sha": "e67e13670ffb2524cb3660c25570f87485828fca",
+        "production_code_sha": "a9663f778c920c588414f2e8816b8a962faffcc0",
+        "frontend_head_sha": "a9663f778c920c588414f2e8816b8a962faffcc0",
+        "local_pdf_and_association_utc": [
+          "2026-11-17T02:33:45.416Z",
+          "2026-11-17T02:33:45.674Z"
+        ],
+        "wait_seconds": [
+          5.609,
+          5.996
+        ],
+        "file_bytes": 1730654,
+        "attempt": 1,
+        "source": "P1",
+        "fallback_used": 0,
+        "content_check": {
+          "file_exists": true,
+          "file_bytes": 1730654,
+          "pdf_prefix": true,
+          "page_count": 34,
+          "full_title_match": true,
+          "doi_match": true,
+          "publisher_indicators": {
+            "IEEE": false,
+            "Springer": false,
+            "Scientific Reports": false,
+            "Creative Commons": false,
+            "Accepted Manuscript": true,
+            "arXiv:": false,
+            "All rights reserved": false
+          }
+        },
+        "human_intervention_note": "none",
+        "measurement_revision": "keys-v2",
+        "timing_eligible_for_parity": true,
+        "body_version": "Publisher Accepted Manuscript, not final typeset Version of Record"
+      },
+      "zotero": {
+        "result": "automatic_success",
+        "click_utc": [
+          "2026-11-17T02:41:06.515Z",
+          "2026-11-17T02:41:06.549Z"
+        ],
+        "ui_preparation": "Selected Allfold PDF acceptance 2026-11-16 before save; Chrome CARSI T&F warm session; article configured institution and Open access, PDF entry visible; normal new article tab",
+        "human_intervention": null,
+        "translator": "Taylor and Francis+NEJM",
+        "local_pdf_and_association_utc": [
+          "2026-11-17T02:41:11.309Z",
+          "2026-11-17T02:41:11.627Z"
+        ],
+        "wait_seconds": [
+          4.76,
+          5.112
+        ],
+        "file_bytes": 1730654,
+        "parent_key": "2TCCZR8U",
+        "attachment_key": "5SVJ75CP",
+        "link_mode": "imported_url",
+        "content_check": {
+          "file_exists": true,
+          "file_bytes": 1730654,
+          "pdf_prefix": true,
+          "page_count": 34,
+          "full_title_match": true,
+          "doi_match": true,
+          "publisher_indicators": {
+            "IEEE": false,
+            "Springer": false,
+            "Scientific Reports": false,
+            "Creative Commons": false,
+            "Accepted Manuscript": true,
+            "arXiv:": false,
+            "All rights reserved": false
+          }
+        },
+        "human_intervention_note": "User completed Cloudflare prior to save",
+        "measurement_revision": "keys-v2",
+        "timing_eligible_for_parity": true,
+        "body_version": "Publisher Accepted Manuscript, not final typeset Version of Record",
+        "preparation_human_assistance": "User completed Chrome Cloudflare before normal Save; preparation not included in timed save."
+      },
+      "platform": "Taylor & Francis",
+      "configured_service": "Taylor & Francis期刊数据库",
+      "timing_comparison_eligible": true,
+      "native_operations": {
+        "allfold_stream_complete_ms": 5597,
+        "first_byte_ms": null,
+        "closed_writer_to_database_ms": null,
+        "limitation": "Existing operation duration covers request/stream/writer. Response/first byte and database phase are not separately observed; stream_complete is not the endpoint."
+      },
+      "comparable_body_version": true,
+      "cohort": "representative",
+      "comparison_stratum": "prepared_access_normal_download",
+      "version_comparison": {
+        "version": "Both publisher Accepted Manuscript,34pages,1730654bytes",
+        "evidence": "Both actual local imported/managed files individually checked for exact title/DOI/pages and original parent/Paper association."
+      },
+      "investigation": "Initial comparable point slower in Allfold beyond interval precision. Two exchanged-order repeats and request/first-byte/transport diagnosis remain required; no causal code timing benefit or parity claimed.",
+      "difference_seconds": [
+        0.497,
+        1.236
+      ],
+      "ratio": [
+        1.0972,
+        1.2597
+      ]
+    },
+    {
+      "pair_id": "F11-2",
+      "sample_id": "F11",
+      "order": [
+        "zotero",
+        "allfold"
+      ],
+      "production_code_sha": "a9663f778c920c588414f2e8816b8a962faffcc0",
+      "runtime_head_sha": "e67e13670ffb2524cb3660c25570f87485828fca",
+      "allfold": {
+        "result": "automatic_success",
+        "timing_eligible_for_parity": true,
+        "click_utc": [
+          "2026-11-17T02:45:19.930Z",
+          "2026-11-17T02:45:20.027Z"
+        ],
+        "ui_preparation": "QA verified prior trial preprint; Reject/delete PDF/Restore; existing Source T&F institution session; Service unassigned and unchanged",
+        "human_intervention": false,
+        "runtime_head_sha": "e67e13670ffb2524cb3660c25570f87485828fca",
+        "production_code_sha": "a9663f778c920c588414f2e8816b8a962faffcc0",
+        "frontend_head_sha": "a9663f778c920c588414f2e8816b8a962faffcc0",
+        "local_pdf_and_association_utc": [
+          "2026-11-17T02:45:23.657Z",
+          "2026-11-17T02:45:23.915Z"
+        ],
+        "wait_seconds": [
+          3.63,
+          3.985
+        ],
+        "file_bytes": 1251965,
+        "attempt": 2,
+        "source": "P1",
+        "fallback_used": 0,
+        "content_check": {
+          "file_exists": true,
+          "file_bytes": 1251965,
+          "pdf_prefix": true,
+          "page_count": 27,
+          "full_title_match": true,
+          "doi_match": true,
+          "publisher_indicators": {
+            "IEEE": false,
+            "Springer": false,
+            "Scientific Reports": false,
+            "Creative Commons": false,
+            "Accepted Manuscript": true,
+            "arXiv:": false,
+            "All rights reserved": false
+          }
+        },
+        "human_intervention_note": "none for this click",
+        "measurement_revision": "keys-v2",
+        "body_version": "Publisher Accepted Manuscript, not final typeset Version of Record"
+      },
+      "zotero": {
+        "result": "automatic_success",
+        "click_utc": [
+          "2026-11-17T02:43:04.208Z",
+          "2026-11-17T02:43:04.232Z"
+        ],
+        "ui_preparation": "New article tab; selected acceptance collection; Chrome CARSI T&F warm session, configured institution Full access",
+        "human_intervention": null,
+        "translator": "Taylor and Francis+NEJM",
+        "local_pdf_and_association_utc": [
+          "2026-11-17T02:43:09.037Z",
+          "2026-11-17T02:43:09.308Z"
+        ],
+        "wait_seconds": [
+          4.805,
+          5.1
+        ],
+        "file_bytes": 1251965,
+        "parent_key": "QMU7Y5UT",
+        "attachment_key": "K4RXC7E8",
+        "link_mode": "imported_url",
+        "human_intervention_note": "Prior service challenge resolved by user; no new challenge",
+        "measurement_revision": "keys-v2",
+        "timing_eligible_for_parity": true,
+        "content_check": {
+          "file_exists": true,
+          "file_bytes": 1251965,
+          "pdf_prefix": true,
+          "page_count": 27,
+          "full_title_match": true,
+          "doi_match": true,
+          "publisher_indicators": {
+            "IEEE": false,
+            "Springer": false,
+            "Scientific Reports": false,
+            "Creative Commons": false,
+            "Accepted Manuscript": true,
+            "arXiv:": false,
+            "All rights reserved": false
+          }
+        },
+        "body_version": "Publisher Accepted Manuscript, not final typeset Version of Record",
+        "preparation_human_assistance": "Earlier Chrome Cloudflare before this save, existing CARSI warm session"
+      },
+      "platform": "Taylor & Francis",
+      "configured_service": null,
+      "timing_comparison_eligible": true,
+      "comparable_body_version": true,
+      "cohort": "preselected_platform_control",
+      "comparison_stratum": "prepared_access_normal_download",
+      "version_comparison": {
+        "version": "Both publisher Accepted Manuscript,27pages,1251965bytes",
+        "evidence": "Both actual files individually checked for full title,DOI,pages,size and correct parent/Paper association."
+      },
+      "difference_seconds": [
+        -1.47,
+        -0.82
+      ],
+      "ratio": [
+        0.7118,
+        0.8293
+      ]
     }
   ],
   "coverage_gaps": [
@@ -2193,40 +3069,50 @@
         "F01",
         "F02"
       ],
-      "gap": "Electron target institutional access has not been re-established after the source relaunch; same-access IEEE retests remain incomplete. Original Allfold failure and Chrome local PDF successes are retained."
+      "gap": "Original IEEE Allfold failure and unattempted end remain; both Zotero publisher files retained. Same-access target retests after the current native CF fix remain outstanding; broker Opened does not itself establish article rights."
     },
     {
       "samples": [
         "F03"
       ],
-      "gap": "F03-4 is one comparable low-load slower point in Allfold; two swapped repeats and investigation remain outstanding. Earlier loaded-observer times do not establish parity."
+      "gap": "Three comparable low-load control pairs now complete. Two Allfold slower points and one overlap; request/first-byte/cache/transport cause remains unresolved. No Springer parity confirmation."
     },
     {
       "samples": [
         "F06"
       ],
-      "gap": "Two historical CUA failures lost Zotero T0; files retained. F06-4 now provides one reliable low-load timed pair; two further swapped controls remain outstanding."
+      "gap": "One corrected low-load control pair complete; two exchanged-order controls outstanding. Two earlier Zotero files retain missing click timestamps."
     },
     {
       "samples": [
         "F08",
-        "F09"
+        "F09",
+        "F10"
       ],
-      "gap": "Allfold saved verified related arXiv preprints after publisher access challenges; normal Silverchair saves yielded no observed parent/PDF and were operator-interrupted with unknown product terminal states. Publisher access, metadata diagnosis and equivalent-version retests remain outstanding."
+      "gap": "Oxford initial Allfold two verified related preprints and one access-challenge failure retained. Three Zotero saves operator-interrupted without parent/PDF. Native Oxford CF recovery now observed during normal Prepare; original same-access PDF retests and metadata diagnosis outstanding."
     },
     {
       "samples": [
-        "F10",
         "F11",
         "F12",
-        "F13",
+        "F13"
+      ],
+      "gap": "T&F original F11 preprint/parent-only save retained. New native CF detection recovered a real checkbox challenge. Unseen F12/F13 Allfold saves are publisher Accepted Manuscripts. F12 Zotero parent-only save was operator-interrupted and had a collection-target correction. F13 both correct same-version PDFs; initial Allfold slower point requires two swapped repeats/investigation. Original F11 control retest outstanding."
+    },
+    {
+      "samples": [
+        "F20"
+      ],
+      "gap": "Both saved verified related arXiv v4. Allfold required in-download human Imperva/hCaptcha with late operator handoff; 412.592–413.015s total retained separately from normal save comparison. Prepared-access control repeats remain outstanding."
+    },
+    {
+      "samples": [
         "F14",
         "F15",
         "F16",
         "F17",
         "F18",
         "F19",
-        "F20",
         "F21",
         "F22",
         "F23",
@@ -2239,13 +3125,19 @@
         "F30",
         "F31"
       ],
-      "gap": "Not started at this saved checkpoint; continuation records are retained incrementally outside Workspace. No sample replaced."
+      "gap": "Not started at this saved checkpoint; all frozen samples retained."
     },
     {
-      "gap": "Optica/IEEE Reader branch/R059/LWW/OCE/stableP4/extra-recovery are covered only when actually observed; fixtures are not live evidence. ScienceDirect formal cohort remains unstarted at this checkpoint."
+      "gap": "Optica/IEEE Reader branch/R059/LWW/OCE/stableP4 and other mechanisms are claimed only when actually observed. Fixtures and configured Services do not supply real-site coverage."
     },
     {
-      "gap": "CUA restored, with successful targeted Chrome window/tab operations. Intermittent connection timeouts remain operator interruptions; no AgentDock UI used and no pending alternative-tool choice blocks the recovered channel."
+      "gap": "CUA recovered and targets trial windows/tabs; intermittent timeouts retained as operator interruptions. No AgentDock UI used. No alternative-tool decision currently blocks the recovered channel."
+    },
+    {
+      "gap": "Observer absent during F10: failure is verified but terminal timing missing. Detached keys-v2 restarted00:45:25.984Z with per-product successful-poll bounds/restart baselines."
+    },
+    {
+      "gap": "Diagnostic target disappeared during old runtime and protected recording refused writes; cause unknown and old exports marked incomplete. Normal relaunch at01:11 restored diagnostics, current e67 export retained outside Workspace. No Logs Reset or guard bypass."
     }
   ],
   "parity_conclusions": "In progress: corrected low-load pairs and original affected measurements retained separately. Platform conclusions await controls and access-matched retests.",
@@ -2290,9 +3182,46 @@
     "old_results_retained": true
   },
   "chrome_service_preparation": "From user steering: select each new correspondingService in Chrome CARSI resource page before saving, then verify actual target article/Translator. Preparation/manual costs separate; no cookie/auth copying.",
-  "checkpoint_utc": "2026-11-17T00:32:27.021Z",
+  "checkpoint_utc": "2026-11-17T02:46:00Z",
   "historical_tool_interruptions": [
     "Earlier platform update removed mcp__cua_repl and an alternative-tool choice was requested; that question became obsolete when CUA returned.",
     "Global window enumeration/new-tab calls can time out after recovery; targeted Chrome getApp subsequently succeeded, and an already-created trial tab was reused rather than recreated."
-  ]
+  ],
+  "operator_interruptions": [
+    {
+      "sample_id": "F10",
+      "kind": "automation_agent_turn_rejected",
+      "reason": "Automatic safety filter returned a generic biology dual-use warning after the software Download had been initiated. No scientific content processing continued; subsequent safe software UI state checks and other statistics platform operations resumed. No download result or time inferred from this interruption."
+    }
+  ],
+  "runtime_sessions": [
+    {
+      "started_at_utc": "2026-11-16T23:25:03.519Z",
+      "head_sha": "fdad2a3a3e04d7bc5f0e915b8d1d0f826f8b9be5",
+      "production_code_sha": "098288ae32e159811b9c49333b386d1533890862"
+    },
+    {
+      "started_at_utc": "2026-11-17T01:11:48.156Z",
+      "runtime_id": "d2eb85378cf64d15ac48b0c3d1e016e2",
+      "head_sha": "92f6492ac35b118dab55597b42536de4c1dc0a78",
+      "production_code_sha": "098288ae32e159811b9c49333b386d1533890862",
+      "reason": "Normal Quit/relaunch after diagnostic target disappeared; no config or production source change. New Session/access preparation recorded separately."
+    },
+    {
+      "started_at_utc": "2026-11-17T02:06:09.066Z",
+      "runtime_id": "5e3ddff56ccdb83d43866d37c0bb8bbf",
+      "head_sha": "e67e13670ffb2524cb3660c25570f87485828fca",
+      "production_code_sha": "e67e13670ffb2524cb3660c25570f87485828fca",
+      "reason": "Normal rebuild/relaunch for committed CF detection and Browser grouping fixes; generated UI compared with source."
+    },
+    {
+      "started_at_utc": "2026-11-17T02:21:59.031Z",
+      "runtime_id": "5e3ddff56ccdb83d43866d37c0bb8bbf",
+      "head_sha": "e67e13670ffb2524cb3660c25570f87485828fca",
+      "frontend_head_sha": "a9663f778c920c588414f2e8816b8a962faffcc0",
+      "production_code_sha": "a9663f778c920c588414f2e8816b8a962faffcc0",
+      "reason": "Trusted Host UI reloaded; existing native pages/Session retained. Native Python/Electron code is byte-identical between e67e136 and a9663f7; served UI matches new source."
+    }
+  ],
+  "frontend_head_sha": "a9663f778c920c588414f2e8816b8a962faffcc0"
 }

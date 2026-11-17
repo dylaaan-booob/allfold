@@ -98,15 +98,16 @@ async function boundedResponse(response,signal) {
 }
 async function sniffBody(body,signal) {
   if(!body)return {pdf:false,body:null};
-  const reader=body.getReader(),chunks=[];let prefix=Buffer.alloc(0),ended=false;
+  const reader=body.getReader(),chunks=[];let prefix=Buffer.alloc(0),ended=false,firstByteAt;
   try {
     while(prefix.length<5) {
       checkCanceled(signal);const {done,value}=await reader.read();
       if(done){ended=true;reader.releaseLock();break;}
+      if(value.length && firstByteAt===undefined)firstByteAt=performance.now();
       chunks.push(value);prefix=Buffer.concat([prefix,Buffer.from(value.subarray(0,5-prefix.length))]);
     }
   }catch(error){try{await reader.cancel();}finally{reader.releaseLock();}throw error;}
-  return {pdf:prefix.equals(Buffer.from('%PDF-')),body:new ReadableStream({
+  return {pdf:prefix.equals(Buffer.from('%PDF-')),firstByteAt,body:new ReadableStream({
     async pull(controller) {
       if(chunks.length){controller.enqueue(chunks.shift());return;}
       if(ended){controller.close();return;}
@@ -116,8 +117,9 @@ async function sniffBody(body,signal) {
     async cancel(){if(!ended){ended=true;try{await reader.cancel();}finally{reader.releaseLock();}}},
   },{highWaterMark:0})};
 }
-async function executeBodyStream(browser,data,{signal,progress=()=>{}}={}) {
+async function executeBodyStream(browser,data,{signal,progress=()=>{},observe=()=>{}}={}) {
   const output=capability(data);
+  const started=performance.now();
   const controller=new AbortController();
   const deadlineController=new AbortController(),bounded=deadlineController.signal;
   const timer=setTimeout(()=>deadlineController.abort(),Math.max(1,Math.ceil(data.deadline_ms-Date.now())));
@@ -155,10 +157,11 @@ async function executeBodyStream(browser,data,{signal,progress=()=>{}}={}) {
       if(!(referrer.protocol==='https:'&&initial.protocol==='http:'))
         headers.Referer=referrer.origin===initial.origin?referrer.href:referrer.origin+'/';
     }
+    const requestAt=performance.now();
     ({response,requests}=await browser.sessionEvents.fetch(data.url,
       {method:'GET',redirect:'follow',credentials:'include',headers,referrerPolicy:'strict-origin-when-cross-origin'},
       {owner,attemptId:data.attempt_id,deadline:data.deadline_ms,signal:stop,validate,validateRequest}));
-    validate();
+    const responseAt=performance.now();validate();
     const facts=requests.flatMap(request=>request.responses),final=facts.at(-1);
     if(!final||!publicClueURL(final.url))throw Error('missing-native-response');
     const contentType=(response.headers.get('content-type')||'').split(';')[0].trim().toLowerCase();
@@ -181,6 +184,10 @@ async function executeBodyStream(browser,data,{signal,progress=()=>{}}={}) {
       }});
       await pipeline(Readable.fromWeb(body),meter,writer,{signal:stop});
       completed=true;clearTimeout(timer);
+      // Relative monotonic marks, published only after the real writer closes.
+      // They neither carry response data nor participate in save settlement.
+      try{observe({stream_request_ms:Math.round(requestAt-started),stream_response_ms:Math.round(responseAt-started),
+        stream_first_byte_ms:Math.round(sniffed.firstByteAt-started),stream_closed_ms:Math.round(performance.now()-started)});}catch(_){}
       try{progress({received_bytes:size});}catch(_){}
       return {outcome:'stream_complete',kind:'pdf',pdf_type:true,transfer_complete:true,
         size_bytes:size,output_file:output.file,final_url:final.url};

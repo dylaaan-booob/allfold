@@ -121,7 +121,7 @@ async function executeOperation(message,current) {
   const started=Date.now(),context={request_id:message.id,action:message.action};
   log('debug','task_started',context);
   let stage='navigation';
-  let data,resultPageId;
+  let data,resultPageId,streamTiming;
   const recovery=invocationRecovery();
   const verifyRecovery=options=>validateRecovery(current,send,options);
   try {
@@ -163,7 +163,7 @@ async function executeOperation(message,current) {
         if(message.action === 'native_paper_body') {
           return await executeBodyNative(browser,message.data,{signal:controller.signal,progress});
         } else if(message.action === 'stream_paper_body') {
-          return await executeBodyStream(browser,message.data,{signal:controller.signal,progress});
+          return await executeBodyStream(browser,message.data,{signal:controller.signal,progress,observe:value=>{streamTiming=value;}});
         } else if(message.action === 'login_carsi') {
           stage='authentication';
           return await loginInstitution(browser,message.data,{signal:controller.signal,progress});
@@ -198,7 +198,7 @@ async function executeOperation(message,current) {
   // can settle its original Future/Paper without depending on that observation.
   send({type:'result',id:message.id,action:message.action,data:{...data,...(summary.length?{recovery:summary}:{}),diagnostics_status:diagnosticsStatus()}});
   try{log(canceled?'info':failed?'warn':'info','task_finished',{...context,page_id:resultPageId,
-    duration_ms:Date.now()-started,outcome:canceled?'canceled':outcome,
+    duration_ms:Date.now()-started,...streamTiming,outcome:canceled?'canceled':outcome,
     stage:diagnostic.stage || stage,
     step:diagnostic.step,code:diagnostic.code || data.reason,net_error:diagnostic.net_error,net_code:diagnostic.net_code,status:diagnostic.status,
     imperva_edet:diagnostic.imperva_edet,imperva_incident_id:diagnostic.imperva_incident_id});}catch(_){}

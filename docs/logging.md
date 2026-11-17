@@ -253,6 +253,17 @@ open/locate/delete retain bounded outcomes and actual maintenance visibility,
 without declaring a shell error to be missing or manufacturing file-manager
 completion.
 
+Successful `stream_paper_body` terminal events may include four relative,
+monotonic integer marks: `stream_request_ms` immediately before the controlled
+Session fetch call (after output/DNS/cookie preflight), `stream_response_ms` when
+that fetch returns a response, `stream_first_byte_ms` when the prefix reader first
+receives nonempty bytes, and `stream_closed_ms` after the pipeline and writer
+close. They share the native stream invocation's start; they are observations of
+these API boundaries, not wire-packet timestamps. Cooldown inside fetch remains
+in the request-to-response interval. These optional marks carry no URL/headers,
+do not enter public download state or the result protocol, and a failed observer
+cannot affect saving. They do not replace the later file/database endpoint.
+
 Main logs successful stream/native/Open/Locate outcomes according to their actual
 result, even when an abort arrives later. Main sends that terminal result before
 the synchronous final diagnostic write, so Python settlement does not wait for it.

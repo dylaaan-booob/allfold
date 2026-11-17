@@ -3,12 +3,12 @@
 Issue: [#140](https://github.com/dylaaan-booob/allfold/issues/140). Baseline:
 `a2e511aa86ab5aa292f224301d6609a59c287fa2`.
 
-**Status: incomplete; saved checkpoint 17 November 2026, 00:32:27 UTC, resumed after system sleep. Nine of the 31 frozen Papers
-have observations; 22 are unstarted. Two new comparable low-load pairs are timed,
-including one Allfold slower point requiring investigation. No platform is
-confirmed at parity. Computer Use has recovered and can target the acceptance
-Chrome window independently of the user's current page. Workspace is retained
-for required access checks, measurements and retests.**
+**Status: incomplete; saved checkpoint 17 November 2026, 02:46 UTC. Fourteen
+of the 31 frozen Papers have observations (25 pair slots including repeats);
+17 Papers are unstarted. Six same-version low-load pairs now have reliable local
+file/association endpoints. Springer has two slower Allfold points and one
+interval overlap; T&F has one slower point requiring swapped repeats. No platform
+is confirmed at parity. Workspace is retained for required measurements/retests.**
 
 ## Environment and endpoint
 
@@ -80,117 +80,148 @@ product's Reject/delete/Restore flow; metadata and Download availability survive
 ## Formal checkpoint and remaining measurements
 
 The immutable [31-paper manifest](pdf-pairing-manifest.json) was committed before
-the first formal click; all original samples remain. The
-[formal result table](pdf-pairing-formal-results.json) at that checkpoint contains 17 slots
-across nine distinct Papers. Allfold has 15 verified local-PDF outcomes, one
-failure and one unattempted end. Zotero has 14 local-PDF outcomes and three
-operator interruptions with unknown product terminal state. These are attempt
-counts, including repeats; they are not independent-paper success estimates.
-The Oxford Allfold outcomes and one Cambridge Zotero outcome are preprints.
+the first formal click. The [formal results](pdf-pairing-formal-results.json)
+retain all original samples, failures, preparation, versions and repetitions.
+At this checkpoint Allfold has 21 automatic local-PDF successes, one assisted
+success, two failures and one unattempted end. Zotero has 19 local-PDF successes
+and six operator interruptions with unknown product terminal state. These are
+attempt counts, not independent-paper success rates. Saving a related preprint
+is a task result but is not a publisher-version success.
 
 | Actual platform | Papers started / planned | Local PDF observations, including repeats | Conclusion |
 | --- | --- | --- | --- |
-| IEEE Xplore | 2 / 2 | Allfold 0 success, 1 failure, 1 end pending; Zotero 2 successes | Original failure retained; Electron target access and retry outstanding. Not confirmed at parity. |
-| Springer Link | 3 / 3 | Allfold 8 successes; Zotero 7 successes, 1 operator interruption | One new comparable low-load pair is slower in Allfold. Swapped repeats/investigation outstanding. |
-| Cambridge Core | 2 / 2 | Both 5 successes; Zotero includes one arXiv submitted version | One new comparable low-load pair favors Allfold; insufficient repeat evidence for parity. |
-| Oxford Academic | 2 / 3 | Allfold 2 related preprints; Zotero 2 interrupted saves without parent/PDF | Publisher access/Translator diagnosis and remaining sample outstanding. Not confirmed. |
-| Taylor & Francis | 0 / 3 | Not started | Not confirmed. |
+| IEEE Xplore | 2 / 2 | Allfold 0 success,1 failure,1 end unattempted; Zotero 2 publisher files | Original extra failure retained. Same-access target retests outstanding. Not confirmed. |
+| Springer Link | 3 / 3 | Allfold 10 successes; Zotero 9 successes,1 interruption | Three corrected low-load controls: two slower points and one overlap. Cause unresolved; not confirmed. |
+| Cambridge Core | 2 / 2 | Both 5 successes; one Zotero body is a preprint | One corrected timed control favors Allfold; two further controls outstanding. Not confirmed. |
+| Oxford Academic | 3 / 3 | Allfold 2 related preprints,1 access-challenge failure; Zotero 3 interrupted saves without parent/PDF | New native CF Prepare recovery observed; publisher PDF retests outstanding. Not confirmed. |
+| Taylor & Francis | 3 / 3 | Allfold 4 successes: original preprint plus3 publisher Accepted Manuscripts; Zotero 2 publisher Accepted Manuscripts,2 interrupted parent-only saves | Same-version F11 retry faster; first F13 slower. Controls/repeats and F12 retry outstanding. Not confirmed. |
+| Project Euclid | 1 / 3 | Both saved related arXiv v4; Allfold required in-download hCaptcha assistance | First-access recovery reported separately; normal prepared-access controls and2 papers outstanding. Not confirmed. |
 | Wiley | 0 / 3 | Not started | Not confirmed. |
 | SIAM | 0 / 3 | Not started | Not confirmed. |
-| Project Euclid | 0 / 3 | Not started | Not confirmed. |
 | INFORMS PubsOnline | 0 / 3 | Not started; configured EBSCO capability is not a platform result | Not confirmed. |
-| ScienceDirect | 0 / 6 | Formal cohort not started; repaired-path pilots retained separately | Not confirmed. |
+| ScienceDirect | 0 / 6 | Formal cohort not started; repaired-path pilots remain separate | Not confirmed. |
 
-**Measurement-load defect:** the original task-local observer requested full JSON
-for the newest 20 Zotero items at nominal 250 ms. A no-download A/B check measured
-Zotero CPU at 20.9–26.6% with the observer and 0% when paused. At 19:40:20 UTC on
-16 November it changed to a keys query and metadata reads for new/pending items;
-steady observations were 1.3% and 1.5%. This changed only the external observer.
-File/association observations remain valid, but earlier timings (including pilots)
-are measurement-affected evidence and do not establish normal-load parity. No
-numerical correction is subtracted. Restart baseline observations are not completion
-timestamps. Tool waits and missing click timestamps are not product wait times.
+**Measurement load:** the original external observer requested full JSON for the
+newest20 Zotero items at nominal250ms. An idle A/B check measured Zotero CPU at
+20.9–26.6% with it and0% paused. At19:40:21 UTC on16 November it changed to a
+keys query and metadata reads only for new/pending items; observations were
+1.3% and1.5%. Earlier file/association results remain valid, but their timings
+(including pilots) cannot establish normal-load parity. No numerical correction
+is subtracted. Restart baselines and missing click timestamps are not completion
+times. The observer was absent during F10: its verified failure has no measured
+terminal time. A detached observer restarted00:45:25.984 UTC before F11.
 
-Nine older successful pairs have comparable publisher versions: seven retain
-raw times affected by the old observer and two Cambridge repeats lack Zotero T0.
-After sleep the source application was relaunched from this checkout at runtime
-head `fdad2a3`, with unchanged production code `098288a`; the low-load observer
-resumed before these new controls. Both files in each new pair were checked for
-correct DOI/title, page count, actual file and parent/Paper association.
+Nine older successful pairs have comparable publisher versions: seven have
+observer-affected times and two Cambridge repeats lack Zotero click timestamps.
+After sleep, corrected low-load controls used unchanged production098288a. The
+current T&F pairs used nativee67e136 and frontenda9663f7; native/Python sources
+are identical between those two commits. Actual rebuilt source process and
+trusted UI reload were checked. The existing Chrome profile and Electron Session
+were separate; no cache clearing was used. Both files of every following pair
+were individually checked for title, DOI, version, actual file and association.
 
-| Pair / order | Actual access/version | Allfold wait | Zotero wait | A−Z | A/Z |
+| Pair / order | Platform / access / version | Allfold wait | Zotero wait | A−Z | A/Z |
 | --- | --- | --- | --- | --- | --- |
-| F06-4 / Z→A | Cambridge, publisher FirstView, 33 pages; warm repeat after restart | 1.565–1.904 s | 2.148–2.443 s | −0.878 to −0.244 s | 0.6406–0.8864 |
-| F03-4 / Z→A | Springer OA, publisher PDF, 22 pages, 2,636,871 bytes; first Springer download after Electron restart | 2.598–2.952 s | 1.717–2.109 s | +0.489 to +1.235 s | 1.2319–1.7193 |
+| F06-4 / Z→A | Cambridge, institutional FirstView,33pages; warm control | 1.565–1.904s | 2.148–2.443s | −0.878 to−0.244s | 0.6406–0.8864 |
+| F03-4 / Z→A | Springer OA publisher PDF,22pages,2636871bytes; first after Electron restart | 2.598–2.952s | 1.717–2.109s | +0.489 to+1.235s | 1.2319–1.7193 |
+| F03-5 / A→Z | Same Springer PDF, new body/save, warm sessions | 3.873–4.256s | 2.647–2.960s | +0.913 to+1.609s | 1.3084–1.6079 |
+| F03-6 / Z→A | Same Springer PDF, new body/save, warm sessions | 0.597–0.970s | 0.734–1.025s | −0.428 to+0.236s | 0.5824–1.3215 |
+| F13-1 / A→Z | T&F OA publisher Accepted Manuscript,34pages,1730654bytes | 5.609–5.996s | 4.760–5.112s | +0.497 to+1.236s | 1.0972–1.2597 |
+| F11-2 / Z→A | T&F institutional publisher Accepted Manuscript,27pages,1251965bytes | 3.630–3.985s | 4.805–5.100s | −1.470 to−0.820s | 0.7118–0.8293 |
 
-These are one eligible pair per platform/access stratum; they do not establish
-stable medians/dispersion or parity. No p95, pooled daily-load average, tolerance
-percentage or non-significance argument is used. The Springer difference exceeds
-timing resolution and requires the planned swapped repeats. Its native log has
-two response operations (732 and 620 ms) followed by a stream-complete operation
-(1,284 ms). These are observed costs, not yet proven redundant requests; final
-file/association was observed after stream completion. The page-loaded Chrome
-and fresh Electron Session are different starting contexts, retained in the data.
+For Springer OA, n=3 paired repeats of **one** Paper: interval median waits are
+2.598–2.952s(Allfold) and1.717–2.109s(Zotero), median paired difference
++0.489 to+1.235s, median ratio1.2319–1.6079. Raw wait ranges are0.597–4.256s
+and0.734–2.960s respectively. Two slower points exceed measurement precision;
+the third overlaps. This is insufficient to claim parity or isolate a cause.
+The other access strata each have n=1; the raw point is their only median and
+no dispersion estimate is claimed. No pooled daily-load average, p95, tolerance
+percentage or non-significance argument is used.
 
-F03's publisher PDF is 22 pages / 2,636,871 bytes; F04's is 57 pages / 5,103,901
-bytes; F05's is 29 pages / 7,842,498 bytes. Titles/DOIs/pages and relations were
-inspected. F04's original Zotero save produced only a parent. After evidence,
-no visible activity and empty temporary storage, only its trial tab was closed
-at 19:11:53 UTC: operator interruption, not an invented failure/timeout. Two
-fresh saves later obtained the publisher PDF. Temporary Connector Debug captured
-zero lines and was restored off; Desktop Debug remained off. No recovery cause
-is inferred from that toggle.
+Existing F03-4 native observations show two response operations(732+620ms) then
+stream/writer1284ms; F03-5 has one stream operation4026ms, F03-6 is fast. The
+installed Springer Translator uses the same direct `/content/pdf/` DOI entry as
+Allfold R001, and also requests citation RIS. No redundant Allfold URL is yet
+proven. F12/F13 Allfold each used one P1 stream,5763/5597ms, without fallback.
+First byte, response wait, cache response and closed-writer subphases are missing
+in these old records; they cannot be invented from the total. Targeted phase
+diagnosis and exchanged-order repeats remain required.
 
-F06 uses publisher FirstView with personalized watermarks and small byte
-differences. F07 is version-divergent: Allfold publisher FirstView, 42 pages /
-572,214 bytes; Zotero arXiv 2603.07780v1, 109 pages / 1,146,058 bytes. Exact title,
-all three authors and the original Paper's explicit preprint relation match.
-No same-version timing/transfer comparison is made.
+To distinguish the observed stream costs, the existing native terminal diagnostic
+now has four optional relative monotonic marks for fetch call, response return,
+first nonempty prefix bytes and closed writer. No new state/result protocol or
+request content is logged. Native regressions verify actual streaming/backpressure,
+close-before-terminal and continued saving when the observation callback throws;
+strict Node-to-Python export retains only bounded numbers. Logger/native tests
+were red before implementation and green afterward. Full local checks passed:
+JavaScript63files, Python1622tests(2existing deprecation warnings), Electron243tests
+with no skips. These marks have not yet been observed on the real running process
+at this saved checkpoint; they are not retroactive phase measurements.
 
-F08 Allfold saved arXiv:2502.17741v2 (18 March 2025), 61 pages / 982,280 bytes,
-under the earlier title *A Unified Framework for Semiparametrically Efficient
-Semi-Supervised Learning*. The original Paper's explicit relation and all three
-authors match. The [coauthor's university homepage](https://faculty.washington.edu/ashojaie/index.html)
-links the accepted Biometrika title directly to [that arXiv record](https://arxiv.org/abs/2502.17741),
-confirming a retitled preprint, not the publisher version. F09 saved
-[arXiv:2504.05240v2](https://arxiv.org/abs/2504.05240), 27 October 2026, 24 pages /
-1,968,189 bytes; exact title, all three authors and explicit preprint relation match.
-Blank journal template fields do not establish a publisher version. Both used
-P5 after publisher access challenges; no comparable publisher timing is claimed.
+F03 publisher files are22pages/2636871bytes; F04 are57pages/5103901bytes; F05
+are29pages/7842498bytes. F04's first Zotero save created only a parent; its trial
+tab was closed19:11:53 UTC after no observed activity/temporary file. Two later
+fresh saves obtained publisher PDFs. Temporary Connector Debug produced zero
+lines and was restored off; no causal recovery claim is made.
 
-Oxford Chrome access was renewed through the configured Service on the CARSI
-resource page; human Cloudflare/verification preparation is recorded separately.
-F08 and F09 normal Silverchair saves still produced neither parent nor PDF.
-Only their trial tabs were closed after no observed activity (00:02:33 and
-00:13:24 UTC on 17 November); exact terminal product states remain unknown.
-Pilot P01 likewise produced no item on a fresh normal save at 00:26:53 UTC and
-was interrupted by closing only its tab at 00:32:27 UTC. Normal publisher Cite
-reached the Connector's RIS import prompt, which was cancelled; this does not
-prove that the Translator's metadata request received valid RIS, and is not a
-Connector PDF baseline. The installed Silverchair Translator (last updated
-2026-08-10 21:08:51, ID `3bae3a55-f021-4b59-8a14-43701f336adf`) requests the
-citation RIS before completing a parent. The failure stage remains under diagnosis.
+F06 publisher FirstView has personalized watermarks/small byte differences.
+F07 differs in version: Allfold publisher FirstView42pages/572214bytes, Zotero
+arXiv2603.07780v1,109pages/1146058bytes. Exact title, all three authors and the
+Paper's explicit preprint relation were verified; no transfer comparison is made.
 
-The user's resumed access instructions apply to every new Chrome Service:
-choose that Service through the existing CARSI resource page and follow normal
-login before saving. Electron access must be established separately; Chrome
-login does not prepare its Session. Equivalent lawful access is still required
-for F01/F02 and Oxford publisher retests. These gaps are retained, not treated
-as site restrictions that erase an Allfold failure.
+F08 Allfold saved arXiv2502.17741v2,61pages/982280bytes under the earlier title
+*A Unified Framework for Semiparametrically Efficient Semi-Supervised Learning*.
+All three authors and the Paper relation match; the
+[coauthor's university page](https://faculty.washington.edu/ashojaie/index.html)
+links the accepted Biometrika title to [that arXiv record](https://arxiv.org/abs/2502.17741).
+F09 saved [arXiv2504.05240v2](https://arxiv.org/abs/2504.05240),24pages/1968189bytes,
+matching title/all3authors/explicit relation. Both are P5 preprints. F10 failed
+access-challenge/Document403 before the latest CF fix, no file. All three normal
+Silverchair saves were operator-interrupted without observed parent/PDF; their
+terminal product states are unknown. PilotP01's fresh save likewise produced no
+item. Normal Cite reached a cancelled RIS import prompt; this is not a PDF
+baseline. The installed Silverchair Translator(ID3bae3a55-f021-4b59-8a14-43701f336adf,
+updated2026-08-10) requests citation RIS before parent completion; the failure
+stage still needs diagnosis.
 
-CUA previously lost windows/click timestamps, was removed, and later recovered.
-After the user's latest re-enable request, window enumeration and a targeted
-Chrome close succeeded. The operator can select known acceptance windows/tabs
-without acting on unrelated current pages. AgentDock was not used for UI; the
-obsolete tool-choice question is no longer a blocker while CUA works.
+F11 originally saved Allfold arXiv2406.15700v5,70pages/1758603bytes before actual
+Electron publisher access was established. Its original Zotero save made only a
+parent with missing DOI/authors. That initial result is retained. F12/F13 are
+previously untreated same-platform repair checks: Allfold P1 saved publisher
+Accepted Manuscripts(35pages/1339576bytes and34pages/1730654bytes). F12 Zotero made
+a parent only, initially in My Library; normal Add to Collection corrected its
+target afterward. Its original save time, collection-target deviation and later
+operator interruption are retained; collection appearance is not the save/PDF
+endpoint. F13 and a fresh F11 retry now have valid local PDFs on both products.
+Chrome needed separate CARSI T&F renewal and human Cloudflare before saving.
+These permission/cache differences prevent attributing all body-version changes
+to code. Two swapped F13 repeats, the preselected F11 controls and F12 recovery
+remain outstanding.
 
-At the latest saved checkpoint the product showed 60 Candidates, 12 Downloaded
-and zero Trash (72 Papers). Private state and diagnostic exports are outside
-Workspace. Workspace Reset has not been attempted because required acceptance
-and retests remain. Original Run inputs/providers were restored; temporary
-Connector debugging is off. Trial windows and the dedicated Zotero collection
-are retained. Annual Reviews had no eligible Paper in the pool. IEEE Reader,
-Optica, R059, LWW/OCE and other unobserved mechanisms are not claimed as covered.
+F20 Project Euclid saved arXiv2503.14978v4 on both products,34pages/1719653bytes,
+exact title/both authors/explicit relation checked. Zotero waited4.293–4.583s.
+Allfold waited412.592–413.015s including an in-download Imperva/hCaptcha handoff.
+Native manual wait began01:21:47.303 UTC and the page had cleared by01:28:33.157;
+actual human input start/end are missing. This span includes late operator/tool
+handoff and cannot be called machine Solver/network time or subtracted as a
+precise human duration. The total is preserved as assisted first-access recovery,
+separate from normal prepared downloads. It does not establish publisher rights.
+
+Each new Chrome Service must first be chosen from the normal CARSI resource page;
+actual target rights/Translator are then checked independently. Broker Opened
+is not proof of article access. CUA recovered and targets task windows/tabs without
+acting on unrelated current pages. Intermittent tool timeouts remain operator
+interruptions; no AgentDock UI was used. The obsolete tool-choice question does
+not block the restored channel.
+
+At the checkpoint Workspace has72Papers,56Candidates,16Downloaded,0Trash, no
+active download. Diagnostics that lost their configured target earlier refused
+writes; cause unknown, exports explicitly incomplete. A normal01:11 relaunch
+restored logging, and the current native export was saved outside Workspace.
+No Logs Reset or guard bypass was performed. Original Run inputs/providers and
+debug settings were restored. Annual Reviews had no eligible Paper; Optica/R059/
+LWW/OCE and unobserved Reader/stableP4 mechanisms remain uncovered. No Reset has
+run because formal measurements and required retests are outstanding.
 
 ## Diagnosed changes and remaining work
 
@@ -270,26 +301,10 @@ NetLog excludes sensitive capture modes and is kept private. This uses
 Electron's existing [supported switch](https://www.electronjs.org/docs/latest/api/command-line-switches#--log-net-logpath)
 and [default capture mode](https://www.electronjs.org/docs/latest/api/net-log).
 
-All 68 configured journals were inventoried by their saved Service. Actual scope
-includes Oxford, Annual Reviews, Taylor & Francis, Wiley, ScienceDirect, Springer,
-SIAM, Cambridge, IEEE, EBSCO-mapped journals, Project Euclid, and unmapped journals.
-EBSCO mapping is an access capability, not proof of the actual full-text platform.
-The [formal manifest](pdf-pairing-manifest.json) froze 31 untreated distinct Papers
-on 2026-11-16 at 18:40:53.823107 UTC, before the first formal click. It records
-specific DOI/URLs, saved discovery state, configured Service versus actual platform,
-OA/access knowledge, caches, declared orders and preselected repeat controls.
-The [formal results](pdf-pairing-formal-results.json) preserve every observation,
-including F01’s first Allfold no-candidate failure and Zotero’s verified 16-page
-local PDF (13.193–13.568 s). Electron’s subsequent ordinary article visit showed
-no PDF rights; the old institutional homepage was insufficient proof. Normal
-CARSI renewal reached the official account page with empty fields/no autofill.
-Actual Electron target access remains to be re-established after restart before
-a comparable Allfold retest. This original failure
-is retained rather than silently excluded. Formal main pairs, controls,
-mechanism coverage and final Workspace Reset remain incomplete. No platform is
-confirmed at parity. At manifest freeze, IEEE and Cambridge each had two eligible untreated Papers;
-ScienceDirect has six; the other seven platforms have three each. Unavailable
-Optica/R059/LWW/OCE paths are not claimed as covered.
+The68journal/12Service inventory drove the frozen31Paper/10platform manifest.
+IEEE and Cambridge each supplied two eligible untreated Papers, ScienceDirect six,
+and the other seven platforms three each. Configured EBSCO is an access capability,
+not proof of INFORMS full-text routing. Unavailable mechanisms are not imputed.
 
 The full PR-linked run for 098288a failed in the isolated native Cancel fixture's
 five-second public-progress wait, after the earlier 603f02f full run had passed.
@@ -316,11 +331,45 @@ History response before measuring the click fixed the replay. The existing shipp
 native fixture now waits on that rendered state and asserts History closes;
 both scrollbar modes pass locally (about 8.2 s). No production code, timeout or
 assertion was weakened. The exact first failure's cause remains unestablished;
-latest full PR CI after this fixture fix still needs verification.
+the full PR-linked run43989863281 succeeded at92f6492 after this fixture fix.
 
-Raw diagnostics, runtime proofs, click records and local association/file
-observations are retained outside Workspace in the task's private evidence
-directory. They are not public inputs: no PDF, credentials, cookie, signed URL,
-institutional page or raw authentication request is included in this report.
-Workspace Reset has **not** run. Zotero acceptance material remains in its dedicated
-collection, and the user's existing library is preserved.
+## Service grouping and real Cloudflare repair
+
+User-reported failed Services disappeared from Browser groups, and manually opened
+publishers remained in CARSI. `e67e136` keeps every configured Service group even
+when its pages failed/closed. An otherwise unassigned CARSI-descended page may be
+displayed under one unique configured publisher access origin. Explicit authority
+associations win; ambiguous/shared CARSI origins remain unassigned. This is display
+grouping only: native association, Service binding and Prepared status are unchanged.
+Real retests showed all12 groups, including failed/empty Oxford and T&F, and both
+manually opened publishers under their proper configured groups.
+
+The original T&F Chinese verification page was visibly blocked but never started
+a Solver. Its native main response carried `cf-mitigated: challenge`, yet localized
+`<main>` text looked like content and vetoed challenge detection. `e67e136` trusts
+that authoritative header before the content heuristic, retaining widget/subframe/
+ordinary-content guards. Isolated regression and normal real Prepare now show
+T&F solver_started02:07:49.960, checkbox_clicked02:07:54.829 and page recovery
+02:08:11.122 UTC. Oxford/Wiley/SIAM also recovered real CF pages automatically.
+Later `not_executed/canceled` child replies followed successful page recovery and
+polling abort; they are not evidence that no checkbox was clicked. hCaptcha still
+required the user and is reported separately. Broker cache eviction can later
+close pages/change Prepared status; it does not negate the observed recovery.
+
+Independent native review found a related focus defect: when a focused CARSI row
+moved into a collapsed Service group it lost focus. `a9663f7` now focuses the
+collapsed group's summary. A red→green DOM regression and actual shipped native
+fixture in both scrollbar modes passed; association/selection stayed unchanged.
+The trusted UI reload preserved existing native pages and Session. Native code is
+unchanged between e67e136 and a9663f7. Full e67 local checks passed JS63, Python1622
+and Electron243/0skips; a966 affected DOM/native checks passed12cases. Full PR-linked
+[Safety run44002168127](https://github.com/dylaaan-booob/allfold/actions/runs/44002168127)
+succeeded for actual PR head a9663f778c920c588414f2e8816b8a962faffcc0. Later commits
+require their own latest-PR check; this earlier success is not a completion claim.
+
+Raw diagnostics, runtime proofs, click records and local file/association observations
+are outside Workspace in a private evidence directory. Public tables contain no
+PDFs, cookies, credentials, signed URLs, sensitive institutional pages or raw auth
+requests. Workspace Reset has **not** run: mandatory acceptance/retests remain.
+The dedicated Zotero collection retains all trial materials and the original
+library is preserved.
