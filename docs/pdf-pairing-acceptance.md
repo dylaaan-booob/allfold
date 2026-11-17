@@ -4,8 +4,8 @@ Issue: [#140](https://github.com/dylaaan-booob/allfold/issues/140). Baseline:
 `a2e511aa86ab5aa292f224301d6609a59c287fa2`.
 
 **Status: incomplete; saved checkpoint 18 November 2026 (Asia/Shanghai). Twenty
-of the 31 frozen Papers have observations (49 pair slots including repeats);
-11 Papers have no formal Save/Download. Twenty same-version low-load pairs have reliable local
+of the 31 frozen Papers have observations (53 pair slots including repeats);
+11 Papers have no formal Save/Download. Twenty-three same-version low-load pairs have reliable local
 file/association endpoints. Springer has two slower Allfold points and one
 interval overlap; T&F has one slower point requiring swapped repeats. The measured
 Cambridge/IEEE prepared-access cohorts show no observed disadvantage; overall
@@ -14,8 +14,11 @@ gap. Direct-entry and Referer repairs alone still returned a preprint. The first
 real retest of the common native partition-context repair at `69b9a41` saved the
 correct publisher PDF through P1, but was 3.832–4.644 seconds slower than Zotero.
 The control and untouched same-platform Paper also saved correct publisher PDFs,
-but their first paired waits were slower. Swapped repeats and transfer diagnosis
-remain required.
+but their first paired waits were slower; F17/F18 warm repeats favor Allfold.
+F19's second pair encountered a new challenge and saved a related preprint. A
+subsequent same-Session ePDF visit denied institutional access. Normal resource
+reentry and actual entitlement confirmation take priority before attributing that
+recurrence to the product. Further coverage/retests remain required.
 Workspace is retained.**
 
 ## Environment and endpoint
@@ -90,8 +93,8 @@ product's Reject/delete/Restore flow; metadata and Download availability survive
 The immutable [31-paper manifest](pdf-pairing-manifest.json) was committed before
 the first formal click. The [formal results](pdf-pairing-formal-results.json)
 retain all original samples, failures, preparation, versions and repetitions.
-At this checkpoint Allfold has 46 automatic local-PDF successes, one assisted
-success and two failures. Zotero has 40 local-PDF successes
+At this checkpoint Allfold has 50 automatic local-PDF successes, one assisted
+success and two failures. Zotero has 44 local-PDF successes
 and nine operator interruptions with unknown product terminal state. These are
 attempt counts, not independent-paper success rates. Saving a related preprint
 is a task result but is not a publisher-version success.
@@ -105,7 +108,7 @@ is a task result but is not a publisher-version success.
 | Taylor & Francis | 3 / 3 | Allfold 4 successes: original preprint plus3 publisher Accepted Manuscripts; Zotero 2 publisher Accepted Manuscripts,2 interrupted parent-only saves | Same-version F11 retry faster; first F13 slower. Controls/repeats and F12 retry outstanding. Not confirmed. |
 | Project Euclid | 1 / 3 | Both saved related arXiv v4; Allfold required in-download hCaptcha assistance | First-access recovery reported separately; normal prepared-access controls and2 papers outstanding. Not confirmed. |
 | Wiley | 3 / 3 | Allfold6 publisher OA successes; Zotero4 successes(1preprint,3publisher),2interruptions | F14 normal publisher controls and F15 favorAllfold. F16 default saves remain parent-only; one bounded diagnostic records citation/PDF403,with terminal unknown. Not confirmed. |
-| SIAM | 3 / 3 | Allfold4 related preprints and4 publisher PDFs; Zotero7 publisher PDFs,1 interruption | F18-4/F17-2/F19-1 on69b9a41 save correct publisher PDFs through P1; all three initial paired waits are slower. F18-5 warm repeat favors Allfold; first/warm variation and remaining repeats need diagnosis. Not confirmed. |
+| SIAM | 3 / 3 | Allfold5 related preprints and7 publisher PDFs; Zotero11 publisher PDFs,1 interruption | F18/F17 each have3 publisher pairs on69b9a41:first slower,two warm faster. F19-1 publisher pair is slower; F19-2 CF→preprint coincides with later denied ePDF rights. Entitlement reentry and further retest pending. Not confirmed. |
 | INFORMS PubsOnline | 0 / 3 | Not started; configured EBSCO capability is not a platform result | Not confirmed. |
 | ScienceDirect | 0 / 6 | Formal cohort not started; repaired-path pilots remain separate | Not confirmed. |
 
@@ -150,6 +153,9 @@ were individually checked for title, DOI, version, actual file and association.
 | F17-2 / Z→A | SIAM institutional publisher PDF,26pages,A487337/Z487368bytes; predeclared control | 7.415–7.760s | 3.481–3.789s | +3.626 to+4.279s | 1.9570–2.2292 |
 | F19-1 / A→Z | SIAM institutional publisher PDF,59pages,A11471779/Z11471788bytes; untouched repair check | 39.579–39.943s | 26.158–26.649s | +12.930 to+13.785s | 1.4852–1.5270 |
 | F18-5 / Z→A | Same SIAM28-page publisher PDF,new body/new parent,warm visits; cache flags missing | 0–0.218s | 3.552–3.875s | −3.875 to−3.334s | 0–0.0614 |
+| F17-3 / A→Z | Same SIAM26-page publisher PDF,new body/new parent,warm visits | 0–0.305s | 3.752–4.033s | −4.033 to−3.447s | 0–0.0813 |
+| F18-6 / A→Z | Same SIAM28-page publisher PDF,new body/new parent,warm visits | 0–0.310s | 2.861–3.187s | −3.187 to−2.551s | 0–0.1084 |
+| F17-4 / Z→A | Same SIAM26-page publisher PDF,new body/new parent,warm visits | 0–0.172s | 6.887–7.170s | −7.170 to−6.715s | 0–0.0250 |
 
 For Springer OA, n=3 paired repeats of **one** Paper: interval median waits are
 2.598–2.952s(Allfold) and1.717–2.109s(Zotero), median paired difference
@@ -458,6 +464,49 @@ closed writer19ms),with one eligible partitioned Cookie and no fallback. This is
 consistent with warm-cache reuse; actual HTTP-cache flags are missing. It also
 shows that streaming and closing this file do not invariably take seconds. It
 does not erase the slower initial point or establish uncached transfer parity.
+
+F17-3/4 and F18-6 completed with individually verified publisher files and new
+attempt/parent associations. Their native operations took18/18/20ms through
+R039/P1,one selected partitioned Cookie,no fallback. The corresponding intervals
+are above; HTTP-cache flags remain unavailable. F17-3's small evidence-only Git
+push might overlap its short Allfold interval and is disclosed in the raw result.
+F18-6's new Chrome article briefly verified automatically before Save; exact
+preparation bounds are missing. Neither is invented as a code-only speedup.
+
+F19-2 Z→A produced a new discrepancy: Zotero saved the59-page publisher PDF in
+6.695–7.188s; Allfold saved related arXiv2505.12836v2,69pages/7656835bytes,in
+86.334–86.690s. Exact title,all5authors and the saved Paper's preprint relation
+were verified. Native P1 encountered access-challenge after4991ms despite one
+selected partitioned Cookie; normal article recovery took21573ms and reached
+page_ready200 after a403 verification page. No subsequent publisher candidate
+attempt was observed; the P5 stream took59933ms(request7,response1117,first1237,
+closed59933ms). No human input occurred during this Download. Intermediate and
+terminal diagnostics were separately retained; the alternative version is not
+eligible for a same-body comparison.
+
+A non-scoring normal Browser ViewPDF click17:06:01.354–01.453UTC reached F19's
+ePDF but displayed “Previews are depleted”/GET ACCESS,without the institution or
+FULL ACCESS label and without a publisher viewer/DownloadPDF. No diagnostic PDF
+was saved. This establishes current missing PDF rights; it does not establish
+the exact expiry time or retrospectively prove rights at the16:55 Download click.
+The older article's FullAccess label is insufficient. Normal CARSI→SIAM resource
+reentry and fresh actual entitlement confirmation are now the first diagnostic
+step. F19-3 is paused; the observed fallback is preserved and has not been
+classified as a confirmed same-access product defect or dismissed as a site limit.
+The same access-first check applies to subsequent403/alternative-body cases.
+
+Normal Source CARSI resource selection17:12:29.068–29.169UTC and VisitResource
+17:13:19.345–19.443UTC required a fresh institutional enterprise QR login. After
+the user completed it,the unchanged69b9a41 returned to SIAM with institution at
+17:16:18.640UTC. A fresh F19 article showed actual title/DOI/institution/FULLACCESS
+at17:16:48.950UTC; its normal ViewPDF click17:17:26.421–26.502UTC yielded the
+publisher reader Page1/59 with correct title/DOI and DownloadPDF11.1MB,observed
+17:17:53.279UTC. No standalone PDF was saved and the A2 preprint was retained.
+Thus normal reauthentication restored actual publisher access without a code
+change,supporting eligibility loss as the working cause of this recurrence.
+Exact expiry and human input duration remain unknown; tool/operator time is not
+reported as product latency. The ePDF diagnosis prewarmed F19; the next paired
+repeat will retain that preparation and independently recheck Chrome rights.
 
 During evidence reconciliation,two optional late-file notes(F04-1/F11-1) were
 found to belong to later fresh parents. They were removed and the original
@@ -803,3 +852,28 @@ Actual rebuiltSource69 is used for F18-4/5,F17-2 and untouchedF19-1 above. Publi
 versions now save successfully,while first-versus-repeat timing variation still
 requires the remaining paired repeats and transport investigation. No overall
 parity or Workspace Reset is claimed.
+
+## Request-priority investigation
+
+Versioned Electron45 `fetchWithSession` does not forward `RequestInit.priority`
+to ClientRequest; its native default is idle. The installed ChromeMV3 Connector
+5.0.217 uses browser fetch and `arrayBuffer()`,rather than its alternateXHR path.
+These are specific implementation differences,not proof of the observed first-
+request throughput cause.[Electron45 implementation](https://github.com/electron/electron/blob/v45.0.0/lib/browser/api/net-fetch.ts#L76)
+
+Eight targeted community queries found the adjacent [Electron46828 report](https://github.com/electron/electron/issues/46828):
+35.2.1/macOS15.1/arm64,`protocol.handle`→`net.fetch` allegedly changes H2 toH1 and
+blocks; it includes a minimal example but no priority-adjustment experiment or
+HTTPS-body before/after measurement,and was closed for inactivity. It neither
+proves an Electron45 defect nor applies directly to Allfold's current request path.
+
+RFC9218 reserves lowest urgency for background work and advises against it for
+responses affecting user interaction; servers may ignore priority signals. Current
+Chromium156 preserves an explicit standard Priority header instead of generating
+one from internal priority. This permits a minimal future verification within the
+existing Session stream,while keeping a server hint distinct from native request
+scheduling. Actual wire priority,H2/H3,cache hits and a causal speed effect have
+not been captured. No priority header,transport replacement,dependency or UA/proxy
+change has been made. Institution eligibility currently takes priority for F19.
+[RFC9218](https://www.rfc-editor.org/rfc/rfc9218.html#section-4.1),
+[Chromium156 header generation](https://github.com/chromium/chromium/blob/156.0.8078.48/net/spdy/spdy_http_utils.cc#L204)
