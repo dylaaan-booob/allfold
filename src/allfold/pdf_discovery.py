@@ -472,6 +472,8 @@ class PdfDiscovery:
 
     def _chain(self, original, consume):
         from allfold.pdf_responses import parse_current_response, reader_context, access_limited
+        if self._initial is None and not original.action and original.referer is None and self._route.article_url:
+            original = replace(original, referer=self._route.article_url)
         # Explicit next-hop relationships, not an expected publisher hop count.
         # Identical response/edge observations stop loops; byte capacity bounds
         # retained response state independently of the captured parent deadline.

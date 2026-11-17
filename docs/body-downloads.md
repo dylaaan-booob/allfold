@@ -75,6 +75,12 @@ The public service builds `PdfTarget` from saved direct identity and validated
 target-bound discovery facts. Arbitrary `MetadataSource` URLs, another Work and
 related Preprint identity cannot become the target. Preserve qualified URL/DOI
 spelling, multiple DOI path segments, signatures and necessary Referer.
+Ordinary discovery entries without an explicit Referer inherit the current
+qualified article URL, including a resolved Document route, without another
+page request. Explicit Referer, native actions and trusted initial candidate
+context remain unchanged. Session transport keeps its existing origin and
+HTTPS downgrade projection. Reader/response continuations retain their supplied
+context, including an intentional absent Referer.
 
 `PdfDiscovery` owns source order, de-duplication, reader/redirect chains and the
 remaining parent budget. P1 templates run first. Among already qualified P2,

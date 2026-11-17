@@ -25,7 +25,7 @@ def test_production_plan_has_independent_api_and_explicit_document_access(tmp_pa
 
 @pytest.mark.parametrize('saved_doi', [None, '10.5555/aaa-original'])
 @pytest.mark.parametrize('positive_crossref', [False, True])
-def test_run_first_collection_uses_new_verified_doi_without_replacing_saved_primary(tmp_path, saved_doi, positive_crossref):
+def test_run_first_collection_uses_new_verified_doi_without_replacing_saved_primary(tmp_path, saved_doi, positive_crossref, monkeypatch):
     from concurrent.futures import Future
     from threading import Event
     from allfold.application.integrated_run import run_integrated
@@ -79,6 +79,14 @@ def test_run_first_collection_uses_new_verified_doi_without_replacing_saved_prim
             if provider == 'crossref' else EmptyLookup(provider, **kwargs))
     host = WorkspaceTaskHost(path, bridge=bridge,
         factory=IndependentClientFactory(path, client_factory=factory))
+    from allfold.application import run_commit
+    verify_snapshot = run_commit._verify_snapshot
+    def verify_with_active_collection(snapshot, lock):
+        registry = host.current()
+        if registry._tasks:
+            assert registry.paper_gate()._is_owned(), 'Run must not inspect sidecars while a collection owner may close them'
+        return verify_snapshot(snapshot, lock)
+    monkeypatch.setattr(run_commit, '_verify_snapshot', verify_with_active_collection)
     try:
         result = run_integrated(path, client_factory=client_for((evidence(),)), lookup_factory=EmptyLookup,
             workspace_tasks=host)

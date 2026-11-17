@@ -77,6 +77,80 @@ def test_t01_p1_confirmation_stops_before_any_later_io():
     assert [item.rule_id for item in seen] == ['R002']
 
 
+@pytest.mark.parametrize('host,path', [
+    ('epubs.siam.org', '/doi/10.1234/AbC'),
+    ('onlinelibrary.wiley.com', '/doi/10.1234/AbC'),
+    ('link.springer.com', '/article/10.1234/AbC'),
+])
+def test_direct_candidates_keep_qualified_article_referrer(host, path):
+    paper = target(host, article_url='https://' + host + path)
+    seen = []
+    result = PdfDiscovery(paper).run(lambda c: seen.append(c)
+        or CandidateResult.pdf(transfer_complete=True))
+    assert len(seen) == 1 and seen[0].referer == paper.article_url
+    assert seen[0].target is paper and result.status == 'transferred'
+
+
+def test_explicit_candidate_referrer_is_not_replaced_by_article():
+    paper = target('unknown.example.org', article_url='https://unknown.example.org/article')
+    explicit = 'https://reader.example.org/current'
+    facts = document(paper, [PdfCandidateFact(stage='P3', rule_id='GENERIC',
+        url='https://cdn.example.org/current.pdf', referer=explicit)])
+    seen = []
+    PdfDiscovery(paper, facts=(facts,)).run(lambda c: seen.append(c)
+        or CandidateResult.pdf(transfer_complete=True))
+    assert seen[0].referer == explicit
+
+
+def test_refreshed_document_referrer_uses_current_route_without_changing_target():
+    from allfold.application.document_metadata import CurrentPdfClue, DocumentPdfResult
+    paper = target('unknown.example.org', article_url='https://doi.org/10.1234/AbC')
+    article = 'https://publisher.example.org/article/10.1234/AbC'
+    class IO:
+        def document(self, _):
+            facts = document(paper).model_copy(update={'landing_url': article})
+            return DocumentPdfResult(facts, (CurrentPdfClue('P3', 'GENERIC', 'https://cdn.example.org/current.pdf'),))
+    seen = []
+    PdfDiscovery(paper, io=IO()).run(lambda c: seen.append(c)
+        or CandidateResult.pdf(transfer_complete=True))
+    assert seen[0].referer == article and seen[0].target is paper
+
+
+def test_missing_article_context_does_not_invent_a_referrer():
+    seen = []
+    PdfDiscovery(target()).run(lambda c: seen.append(c)
+        or CandidateResult.pdf(transfer_complete=True))
+    assert seen[0].referer is None
+
+
+def test_explicit_initial_candidates_keep_their_own_request_context():
+    from allfold.pdf_rules import PdfCandidate
+    paper = target(article_url='https://onlinelibrary.wiley.com/doi/10.1234/AbC')
+    original = PdfCandidate(paper, 'P2', 'GENERIC', 'generic', 'https://cdn.example.org/current.pdf')
+    seen = []
+    PdfDiscovery(paper, candidates=(original,)).run(lambda c: seen.append(c)
+        or CandidateResult.pdf(transfer_complete=True))
+    assert seen == [original] and seen[0] is original and original.referer is None
+
+
+def test_reader_can_explicitly_suppress_referrer_on_its_session_continuation():
+    from allfold.application.document_metadata import CurrentPdfClue, DocumentPdfResult
+    paper = target('ieeexplore.ieee.org', article_url='https://ieeexplore.ieee.org/document/123')
+    body, seen = 'https://cdn.example.org/current.pdf', []
+    class IO:
+        def reader(self, *_):
+            return DocumentPdfResult(document(paper), (CurrentPdfClue('P4', 'R025', body, referer=None),))
+    def consume(candidate):
+        seen.append(candidate)
+        if 'stampPDF' in candidate.url:
+            assert candidate.referer == paper.article_url
+            return CandidateResult.current(CurrentResponse(candidate.url, 'text/html', b'<html>Reader</html>'))
+        assert candidate.url == body and candidate.referer is None
+        return CandidateResult.pdf(transfer_complete=True)
+    result = PdfDiscovery(paper, io=IO()).run(consume)
+    assert len(seen) == 2 and result.status == 'transferred'
+
+
 @pytest.mark.parametrize('host', ['epubs.siam.org', 'www.liebertpub.com'])
 def test_shared_doi_direct_pdf_finishes_before_article_reader_and_oa_requests(host):
     class IO:

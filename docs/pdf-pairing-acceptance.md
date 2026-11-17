@@ -101,7 +101,23 @@ is a task result but is not a publisher-version success.
 | Taylor & Francis | 3 / 3 | Allfold 4 successes: original preprint plus3 publisher Accepted Manuscripts; Zotero 2 publisher Accepted Manuscripts,2 interrupted parent-only saves | Same-version F11 retry faster; first F13 slower. Controls/repeats and F12 retry outstanding. Not confirmed. |
 | Project Euclid | 1 / 3 | Both saved related arXiv v4; Allfold required in-download hCaptcha assistance | First-access recovery reported separately; normal prepared-access controls and2 papers outstanding. Not confirmed. |
 | Wiley | 3 / 3 | Allfold6 publisher OA successes; Zotero4 successes(1preprint,3publisher),2interruptions | F14 normal publisher controls and F15 favorAllfold. F16 default saves remain parent-only; one bounded diagnostic records citation/PDF403,with terminal unknown. Not confirmed. |
-| SIAM | 2 / 3 | Allfold3 related preprints; Zotero2 publisher PDFs,1interruption | F18Allfold39.916–40.219s/preprint versusZotero13.238–13.693s/publisher. Extra path/version disadvantage requires shared repair and real retests; F19 remains unvisited. Not met at this checkpoint. |
+| SIAM | 2 / 3 | Allfold3 related preprints; Zotero2 publisher PDFs,1interruption | F18Allfold39.916–40.219s/preprint versusZotero13.238–13.693s/publisher. Extra path/version disadvantage requires shared repair and real retests; The article-context repair is implemented for ordinary discovery roots,using
+the current qualified article route without extra requests. Explicit context,
+trusted initial candidates,native actions and Reader continuations retain their
+context,including intentional no-referrer policy. The latter's native regression
+caught an intermediate overbroad default and remains unchanged. Final local
+checks passJS63,Python1669/2existingwarnings,Electron245/0skips. Real effect on the
+CF failure remains pending.
+
+The repeated Run-final-snapshot sidecar race was also reproduced in a second
+existing test. Late materialization and final snapshot reads now acquire the
+existing Paper owner gate before the existing Workspace commit boundary. A
+public Run fixture deterministically checks the gate while its background
+collection is active. Path/link checks remain strict; no retrieval or collection
+wait was introduced. Earlier failed logs remain; the repaired scope is these
+late Run boundaries,not a claim about every possible external filesystem race.
+
+F19 remains unvisited. Not met at this checkpoint. |
 | INFORMS PubsOnline | 0 / 3 | Not started; configured EBSCO capability is not a platform result | Not confirmed. |
 | ScienceDirect | 0 / 6 | Formal cohort not started; repaired-path pilots remain separate | Not confirmed. |
 

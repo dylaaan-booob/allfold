@@ -5725,21 +5725,21 @@
     "session_cache_effect": "Product PIDs unchanged; no cache/account reset. New CUA targeted Source2.24s/Chrome1.7s reads and actual F07-3 saving succeeded. Global inventory still timed out; task-specific surfaces used."
   },
   "ci_checkpoint": {
-    "head_sha": "21a7e25376baa5459fed346280bb3f52353359ed",
+    "head_sha": "79db7d63dc1dee8acb4fff74cb9b9e7458a6e9b8",
     "status": "success",
-    "run_id": 44024184876,
-    "job_id": 133840465573,
-    "run_url": "https://github.com/dylaaan-booob/allfold/actions/runs/44024184876",
-    "scope": "Complete cumulative-PR Safety checks / safety",
+    "run_id": 44067162599,
+    "job_id": 133983698208,
+    "run_url": "https://github.com/dylaaan-booob/allfold/actions/runs/44067162599",
+    "scope": "Complete cumulativePR Safety checks / safety, pull_request",
+    "tested_merge_sha": "252c4c4bdf98086d07f49adf4590e07c6b3f2687",
     "test_evidence": {
       "javascript_files": 63,
-      "python_passed": 1622,
+      "python_passed": 1661,
       "python_warnings": 4,
       "electron_passed": 245,
       "electron_skipped": 0
     },
-    "tested_merge_sha": "ce79bea676b21d986503fed1f7a147c2f9a9d865",
-    "note": "Latest pushed head at this observation; later evidence commits require their own associated checks."
+    "note": "Latest pushedheadatthischeckpoint. Newarticle-context/owner-gate code not yetpushedrequiresownlatestPRcheck."
   },
   "non_scoring_diagnostics": [
     {
@@ -5920,6 +5920,16 @@
       "confirmed": "InstalledConnector5.0.217 setsattachmentreferrer fromactualarticle(originforcrossorigin). CurrentAllfoldP1/P4ordinarycandidates canhaveNoneReferer; nativeSessionstream onlysendsprovidedReferer. SameSourceSessionnormalBrowserPublisherPDFsuccess disprovesoverallabsenceofrights.",
       "not_assumed": "Cookiepartitionpresenceunknown. ExternalCDPcookieprobe not executed under CUA-only boundary; noCookievalues acquired/copied. DOMarticle/DOIcase hypotheses not patched; savedtarget alreadypreservesCrossrefcanonicaluppercaseDOI.",
       "next": "MinimalsharedqualifiedarticleReferrercontextrepair,isolatedregressionandrealretest; do notclaimCFcausebeforeevidence."
+    },
+    "article_context_repair": {
+      "scope": "NormaldiscoveryrootcandidateswithoutexplicitRefererinheritcurrentqualifiedarticleURL; explicit/native/initialandReadercontinuationcontexts(includingNone)retained. NativeSessionorigin/downgradepolicyunchanged.",
+      "local_python_passed": 1669,
+      "local_python_warnings": 2,
+      "local_javascript_files": 63,
+      "real_retest": "pending,newproductionbuildnotyetlaunched",
+      "ci_related_repair": "TwoactualunchangedRunfinalsnapshot sidecarraces ledtoowner-gateprotectionofexistinglatematerializationandsnapshotDBreadboundaries. Existingpathchecksunchanged; existingRunfixture nowdeterministicallyrequiresownergatewhenbackgroundcollectionactive.",
+      "local_electron_passed": 245,
+      "local_electron_skipped": 0
     }
   }
 }
