@@ -80,7 +80,10 @@ app.whenReady().then(async()=>{
     assert(await host("document.querySelectorAll('#workspace-search-results [role=option]').length===1"),'command search mixed in other results');
     await key(win.webContents,'Enter');
     await ready(()=>host("document.getElementById('history-dialog').open"),'Search runs a registered command');
+    // The first response changes the centered dialog's height and Close position.
+    await ready(()=>host("!document.getElementById('history-refresh').disabled"),'History response rendered before native input');
     await click(win.webContents,'#history-close');
+    await ready(()=>host("!document.getElementById('history-dialog').open"),'History closed');
     await search('Synthetic Journal 0000-0001');await key(win.webContents,'Enter');
     await ready(()=>host("workspaceNavigation.current()==='journals'&&!document.querySelector('#s-journals-page .functional-sidebar').hidden"),'journal search opens Details');
     await host("window.addEventListener('workflow-service-selected',event=>window.selectedService=event.detail.serviceId)");

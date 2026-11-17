@@ -1,6 +1,6 @@
 {
-  "status": "incomplete_pilot_only",
-  "formal_manifest_frozen": false,
+  "status": "pilot_results_excluded_from_formal",
+  "formal_manifest_frozen": true,
   "baseline_sha": "a2e511aa86ab5aa292f224301d6609a59c287fa2",
   "versions": {
     "macos": "27.2.1 (26B131)",
@@ -63,9 +63,26 @@
             "click_utc_lower": "2026-11-16T14:20:36.210Z",
             "click_utc_upper": "2026-11-16T14:20:36.263Z",
             "result": "Reopened existing save session; not a new save/download measurement."
+          },
+          {
+            "action": "Fresh normal Silverchair save after human challenge and CARSI Oxford resource renewal",
+            "click_utc_lower": "2026-11-17T00:26:53.681Z",
+            "click_utc_upper": "2026-11-17T00:26:53.701Z",
+            "result": "No local parent/PDF observed; popup ended, no visible activity and temporary storage empty; closed only this trial tab. Operator interruption, unknown product terminal state.",
+            "interruption_utc": [
+              "2026-11-17T00:32:26.983Z",
+              "2026-11-17T00:32:27.021Z"
+            ],
+            "measurement_revision": "keys-v2",
+            "formal_score": false
           }
         ],
-        "failure_reason": "Unconfirmed; cumulative extension errors could not be attributed to this save."
+        "failure_reason": "Unconfirmed; cumulative extension errors could not be attributed to this save.",
+        "metadata_diagnostic": {
+          "translator_id": "3bae3a55-f021-4b59-8a14-43701f336adf",
+          "translator_last_updated": "2026-08-10 21:08:51",
+          "finding": "Installed Silverchair code requests citation RIS before completing parent. Normal publisher Cite reached Connector RIS import prompt; cancelled, no RIS contents or successful Translator metadata response proven. No code copied or changed."
+        }
       },
       "formal_score": false,
       "access_method": "OA; no prepared Allfold Service",
@@ -836,5 +853,6 @@
     "head_sha": "7c9be1c5e4487087c4dacf0afebd0e7c19b3435b",
     "production_code_sha": "098288ae32e159811b9c49333b386d1533890862",
     "netlog_flag": false
-  }
+  },
+  "formal_manifest": "pdf-pairing-manifest.json"
 }

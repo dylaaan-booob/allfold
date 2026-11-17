@@ -3,18 +3,23 @@
 Issue: [#140](https://github.com/dylaaan-booob/allfold/issues/140). Baseline:
 `a2e511aa86ab5aa292f224301d6609a59c287fa2`.
 
-**Status: incomplete. The 31-paper representative manifest is now frozen and
-formal pairing has started. Seven Papers have observations; the remaining 24
-are unstarted. Reliable paired timing and the IEEE access retest are blocked on
-manual inputs described below. No platform is confirmed at parity. Workspace is
-retained for required measurements/retests.**
+**Status: incomplete, resumed after system sleep. Nine of the 31 frozen Papers
+have observations; 22 are unstarted. Two new comparable low-load pairs are timed,
+including one Allfold slower point requiring investigation. No platform is
+confirmed at parity. Computer Use has recovered and can target the acceptance
+Chrome window independently of the user's current page. Workspace is retained
+for required access checks, measurements and retests.**
 
 ## Environment and endpoint
 
 The source checkout, rebuilt UI, live process and local API were checked, rather
 than inferring the running version from Git. macOS 27.2.1 (26B131); Electron
 45.0.0 / Chromium 156.0.8078.48; Chrome 157.0.8103.51, existing Default profile;
-Zotero Desktop 10.0.9 / Connector 5.0.217. Connector could reach Desktop and local
+Zotero Desktop 10.0.9 / Connector 5.0.217. After sleep, Chrome About was observed
+first at 157.0.8103.51 and later at 157.0.8103.79 (also the on-disk version); no
+operator-triggered update/restart was performed. The exact running-binary
+transition time is unknown and is not claimed as a performance improvement.
+Connector could reach Desktop and local
 PDF saving was proven with actual imported attachments. A dedicated acceptance
 collection holds the trials. PDF saving was enabled; snapshots and automatic
 sync were disabled. PDFTranslate 2.4.8 and Style 6.0.111 remained enabled.
@@ -72,23 +77,23 @@ Cancel→cleanup→Retry was exercised on P03. P01/P02 Open and Locate pointed t
 same managed file. P02's disposable trial PDF was then removed through the
 product's Reject/delete/Restore flow; metadata and Download availability survived.
 
-## Formal checkpoint, measurement defect and blockers
+## Formal checkpoint and remaining measurements
 
 The immutable [31-paper manifest](pdf-pairing-manifest.json) was committed before
 the first formal click; all original samples remain. The
-[formal result table](pdf-pairing-formal-results.json) contains 13 observation
-slots across seven distinct Papers, including pending/interrupted endpoints.
-Allfold has 11 verified local-PDF successes, one failure, and one unattempted end;
-Zotero has 12 verified local-PDF successes (one submitted preprint), and one
-operator interruption with unknown product terminal state. These are attempt
-counts, not independent-paper success estimates.
+[formal result table](pdf-pairing-formal-results.json) currently contains 17 slots
+across nine distinct Papers. Allfold has 15 verified local-PDF outcomes, one
+failure and one unattempted end. Zotero has 14 local-PDF outcomes and three
+operator interruptions with unknown product terminal state. These are attempt
+counts, including repeats; they are not independent-paper success estimates.
+The Oxford Allfold outcomes and one Cambridge Zotero outcome are preprints.
 
-| Actual platform | Formal Papers started / planned | Local PDF observations, including repeats | Conclusion |
+| Actual platform | Papers started / planned | Local PDF observations, including repeats | Conclusion |
 | --- | --- | --- | --- |
-| IEEE Xplore | 2 / 2 | Allfold 0 success, 1 failure, 1 end pending; Zotero 2 successes | Same-access retry blocked on Electron institution login; no parity confirmation. |
-| Springer Link | 3 / 3 | Allfold 7 successes; Zotero 6 successes, 1 operator interruption | Files verified; timing evidence affected by measurement load, normal-load controls pending. |
-| Cambridge Core | 2 / 2 | Both 4 successes; Zotero includes one arXiv submitted version | One version-divergent pair and two missing Zotero click times; no parity confirmation. |
-| Oxford Academic | 0 / 3 | Not started | Not confirmed. |
+| IEEE Xplore | 2 / 2 | Allfold 0 success, 1 failure, 1 end pending; Zotero 2 successes | Original failure retained; Electron target access and retry outstanding. Not confirmed at parity. |
+| Springer Link | 3 / 3 | Allfold 8 successes; Zotero 7 successes, 1 operator interruption | One new comparable low-load pair is slower in Allfold. Swapped repeats/investigation outstanding. |
+| Cambridge Core | 2 / 2 | Both 5 successes; Zotero includes one arXiv submitted version | One new comparable low-load pair favors Allfold; insufficient repeat evidence for parity. |
+| Oxford Academic | 2 / 3 | Allfold 2 related preprints; Zotero 2 interrupted saves without parent/PDF | Publisher access/Translator diagnosis and remaining sample outstanding. Not confirmed. |
 | Taylor & Francis | 0 / 3 | Not started | Not confirmed. |
 | Wiley | 0 / 3 | Not started | Not confirmed. |
 | SIAM | 0 / 3 | Not started | Not confirmed. |
@@ -96,81 +101,96 @@ counts, not independent-paper success estimates.
 | INFORMS PubsOnline | 0 / 3 | Not started; configured EBSCO capability is not a platform result | Not confirmed. |
 | ScienceDirect | 0 / 6 | Formal cohort not started; repaired-path pilots retained separately | Not confirmed. |
 
-**Measurement-load defect:** the original task-local observer repeatedly requested
-full JSON for the newest 20 Zotero items at nominal 250 ms. A no-download A/B check
-measured Zotero CPU at 20.9–26.6% with this observer and 0% when paused. It was
-replaced at 19:40:20 UTC with a keys query and individual metadata reads only for
-new/pending items; two steady observations were 1.3% and 1.5%. No product setting,
-timeout, source code or outcome criterion changed. File/association observations
-remain valid, but all older timings, including pilots, are retained as
-measurement-affected evidence and **do not establish normal-load parity**. No
-numerical correction is subtracted. Repeated warm controls under the lighter
-observer remain necessary; their cache state must stay explicit.
+**Measurement-load defect:** the original task-local observer requested full JSON
+for the newest 20 Zotero items at nominal 250 ms. A no-download A/B check measured
+Zotero CPU at 20.9–26.6% with the observer and 0% when paused. At 19:40:20 UTC on
+16 November it changed to a keys query and metadata reads for new/pending items;
+steady observations were 1.3% and 1.5%. This changed only the external observer.
+File/association observations remain valid, but earlier timings (including pilots)
+are measurement-affected evidence and do not establish normal-load parity. No
+numerical correction is subtracted. Restart baseline observations are not completion
+timestamps. Tool waits and missing click timestamps are not product wait times.
 
-Nine successful pairs have comparable publisher versions. Seven have raw paired
-timings from the older observer; two Cambridge repeats lack a reliable Zotero T0.
-There is currently **zero** complete same-version, two-sided timed pair eligible
-for a normal-load parity decision after the observer correction. Normal-load
-medians and dispersion are therefore not estimable (N=0). Raw intervals,
-differences and ratios remain in the table, with eligibility false. No p95,
-pooled daily-load average, tolerance percentage or non-significance argument is used.
+Nine older successful pairs have comparable publisher versions: seven retain
+raw times affected by the old observer and two Cambridge repeats lack Zotero T0.
+After sleep the source application was relaunched from this checkout at runtime
+head `fdad2a3`, with unchanged production code `098288a`; the low-load observer
+resumed before these new controls. Both files in each new pair were checked for
+correct DOI/title, page count, actual file and parent/Paper association.
+
+| Pair / order | Actual access/version | Allfold wait | Zotero wait | A−Z | A/Z |
+| --- | --- | --- | --- | --- | --- |
+| F06-4 / Z→A | Cambridge, publisher FirstView, 33 pages; warm repeat after restart | 1.565–1.904 s | 2.148–2.443 s | −0.878 to −0.244 s | 0.6406–0.8864 |
+| F03-4 / Z→A | Springer OA, publisher PDF, 22 pages, 2,636,871 bytes; first Springer download after Electron restart | 2.598–2.952 s | 1.717–2.109 s | +0.489 to +1.235 s | 1.2319–1.7193 |
+
+These are one eligible pair per platform/access stratum; they do not establish
+stable medians/dispersion or parity. No p95, pooled daily-load average, tolerance
+percentage or non-significance argument is used. The Springer difference exceeds
+timing resolution and requires the planned swapped repeats. Its native log has
+two response operations (732 and 620 ms) followed by a stream-complete operation
+(1,284 ms). These are observed costs, not yet proven redundant requests; final
+file/association was observed after stream completion. The page-loaded Chrome
+and fresh Electron Session are different starting contexts, retained in the data.
 
 F03's publisher PDF is 22 pages / 2,636,871 bytes; F04's is 57 pages / 5,103,901
-bytes; F05's is 29 pages / 7,842,498 bytes. Titles/DOIs/pages and parent/Paper
-relations were inspected. F03's rendered publisher first page and normalized
-first-page text in Zotero match. F04's original Zotero save produced only a parent;
-after evidence and no visible activity/temporary storage, only its trial tab was
-closed at 19:11:53 UTC. This is an operator interruption, with no invented failure
-or timeout endpoint. Two fresh saves later obtained the publisher PDF. Connector
-Debug was temporarily enabled for those diagnostic retries, logged zero lines,
-and restored off without clearing or submitting output; Desktop debug stayed off.
-Neither the new session nor the logging toggle is claimed as the cause of recovery.
+bytes; F05's is 29 pages / 7,842,498 bytes. Titles/DOIs/pages and relations were
+inspected. F04's original Zotero save produced only a parent. After evidence,
+no visible activity and empty temporary storage, only its trial tab was closed
+at 19:11:53 UTC: operator interruption, not an invented failure/timeout. Two
+fresh saves later obtained the publisher PDF. Temporary Connector Debug captured
+zero lines and was restored off; Desktop Debug remained off. No recovery cause
+is inferred from that toggle.
 
-F06's publisher FirstView is 33 pages; personalized download-time watermarks and
-small byte differences were retained. F07 differs materially: Allfold obtained
-the Cambridge publisher FirstView, 42 pages / 572,214 bytes, with the correct DOI;
-Zotero obtained arXiv 2603.07780v1, 109 pages / 1,146,058 bytes. The submitted
-version has no publisher DOI in its body, but its exact title, all three authors
-and the original Paper's explicit preprint relationship match. Both are valid
-local full-text outcomes. Their observed access states and versions differ;
-no same-version timing or transfer-efficiency comparison is made.
+F06 uses publisher FirstView with personalized watermarks and small byte
+differences. F07 is version-divergent: Allfold publisher FirstView, 42 pages /
+572,214 bytes; Zotero arXiv 2603.07780v1, 109 pages / 1,146,058 bytes. Exact title,
+all three authors and the original Paper's explicit preprint relation match.
+No same-version timing/transfer comparison is made.
 
-Actual diagnostics show a single P1/R001 native request/stream for successful
-Springer trials (first-pair combined durations 2.117, 4.921 and 2.602 s). These
-figures combine request/transfer handling, not a separately measured transfer
-segment. Cambridge used cached P3 discovery clues. The source-event/operation
-fields retain actual rules and durations; missing first-byte, exact association
-and UI-render times are explicit. Existing collection/Document/API clues and
-article/Translator preparation are part of each starting context, not silently
-claimed to be identical network preprocessing. The representative and warm
-control/anomaly observations remain separately tagged. ScienceDirect's targeted
-Reader/CDN pilots do not enter representative statistics. IEEE Reader, Optica,
-R059, LWW/OCE and other unobserved mechanisms are not treated as covered.
+F08 Allfold saved arXiv:2502.17741v2 (18 March 2025), 61 pages / 982,280 bytes,
+under the earlier title *A Unified Framework for Semiparametrically Efficient
+Semi-Supervised Learning*. The original Paper's explicit relation and all three
+authors match. The [coauthor's university homepage](https://faculty.washington.edu/ashojaie/index.html)
+links the accepted Biometrika title directly to [that arXiv record](https://arxiv.org/abs/2502.17741),
+confirming a retitled preprint, not the publisher version. F09 saved
+[arXiv:2504.05240v2](https://arxiv.org/abs/2504.05240), 27 October 2026, 24 pages /
+1,968,189 bytes; exact title, all three authors and explicit preprint relation match.
+Blank journal template fields do not establish a publisher version. Both used
+P5 after publisher access challenges; no comparable publisher timing is claimed.
 
-Two manual inputs block continued meaningful pairing:
+Oxford Chrome access was renewed through the configured Service on the CARSI
+resource page; human Cloudflare/verification preparation is recorded separately.
+F08 and F09 normal Silverchair saves still produced neither parent nor PDF.
+Only their trial tabs were closed after no observed activity (00:02:33 and
+00:13:24 UTC on 17 November); exact terminal product states remain unknown.
+Pilot P01 likewise produced no item on a fresh normal save at 00:26:53 UTC and
+was interrupted by closing only its tab at 00:32:27 UTC. Normal publisher Cite
+reached the Connector's RIS import prompt, which was cancelled; this does not
+prove that the Translator's metadata request received valid RIS, and is not a
+Connector PDF baseline. The installed Silverchair Translator (last updated
+2026-08-10 21:08:51, ID `3bae3a55-f021-4b59-8a14-43701f336adf`) requests the
+citation RIS before completing a parent. The failure stage remains under diagnosis.
 
-- F01's normal Electron CARSI renewal reached the official institution account
-  page with empty fields and no visible saved autofill. Local user login is
-  pending; Chrome's successful login is not copied to Electron. The original
-  no-candidate/HTTP202 failure remains unresolved until a same-access retry.
-- Chrome/CUA repeatedly returned `noWindowsAvailable`/`timeoutReached` around
-  normal Connector clicks. F06's two later PDFs prove saving occurred, but no
-  accurate click time survived. Tool waits are not product waits. Chrome's high
-  CPU was observed and recovered without restarting it; its cause is not proved.
-  The connected AgentDock `desktop` fallback was found/read but not used for UI:
-  current Computer Use documentation permits other technologies only when
-  specifically requested by the user. A concrete tool-choice request is pending.
-  A subsequent platform tool update removed `mcp__cua_repl` entirely, so that
-  original UI channel is currently unavailable.
+The user's resumed access instructions apply to every new Chrome Service:
+choose that Service through the existing CARSI resource page and follow normal
+login before saving. Electron access must be established separately; Chrome
+login does not prepare its Session. Equivalent lawful access is still required
+for F01/F02 and Oxford publisher retests. These gaps are retained, not treated
+as site restrictions that erase an Allfold failure.
 
-At 20:00:59 UTC the product reported 72 Papers, 10 current bodies, zero active
-Downloads, zero Download cleanup and zero active collection. Original Run inputs
-and providers were restored exactly; temporary Connector debugging is off. This
-idle checkpoint is **not** permission to Reset while required retests remain.
-Workspace Reset has not been attempted, trial data and authentication page remain,
-and temporary trial windows are retained for continuation. Annual Reviews had no
-eligible Paper in the existing/normal-Run pool; unmapped/other absent platforms
-and unavailable mechanisms receive no inferred parity result.
+CUA previously lost windows/click timestamps, was removed, and later recovered.
+After the user's latest re-enable request, window enumeration and a targeted
+Chrome close succeeded. The operator can select known acceptance windows/tabs
+without acting on unrelated current pages. AgentDock was not used for UI; the
+obsolete tool-choice question is no longer a blocker while CUA works.
+
+At the latest saved checkpoint the product showed 60 Candidates, 12 Downloaded
+and zero Trash (72 Papers). Private state and diagnostic exports are outside
+Workspace. Workspace Reset has not been attempted because required acceptance
+and retests remain. Original Run inputs/providers were restored; temporary
+Connector debugging is off. Trial windows and the dedicated Zotero collection
+are retained. Annual Reviews had no eligible Paper in the pool. IEEE Reader,
+Optica, R059, LWW/OCE and other unobserved mechanisms are not claimed as covered.
 
 ## Diagnosed changes and remaining work
 
@@ -262,8 +282,9 @@ The [formal results](pdf-pairing-formal-results.json) preserve every observation
 including F01’s first Allfold no-candidate failure and Zotero’s verified 16-page
 local PDF (13.193–13.568 s). Electron’s subsequent ordinary article visit showed
 no PDF rights; the old institutional homepage was insufficient proof. Normal
-CARSI renewal reached the official account page with empty fields/no autofill;
-user login is pending before a comparable Allfold retest. This original failure
+CARSI renewal reached the official account page with empty fields/no autofill.
+Actual Electron target access remains to be re-established after restart before
+a comparable Allfold retest. This original failure
 is retained rather than silently excluded. Formal main pairs, controls,
 mechanism coverage and final Workspace Reset remain incomplete. No platform is
 confirmed at parity. At manifest freeze, IEEE and Cambridge each had two eligible untreated Papers;
@@ -284,6 +305,18 @@ passed every Safety checks step at head 7c9be1c. The subsequent full PR-linked
 also passed every step for fb7fdbd. Latest-head verification is recorded in the
 PR checks and PR Evidence; earlier green runs are not substitutes for it. The earlier failure’s cause is not
 established, so it is not described as repaired.
+
+Latest head `fdad2a3`'s full PR-linked [run 43976157092](https://github.com/dylaaan-booob/allfold/actions/runs/43976157092)
+failed: attempt 1 reached a DocumentRuntime probe deadline; the isolated same-source
+probe passed locally. One bounded rerun passed that probe but failed Quick Open
+because History remained modal. A controlled isolated response/click replay then
+showed the History Close button moving 17.26 CSS pixels between measuring and
+sending input, leaving the click on the dialog background. Waiting for the initial
+History response before measuring the click fixed the replay. The existing shipped
+native fixture now waits on that rendered state and asserts History closes;
+both scrollbar modes pass locally (about 8.2 s). No production code, timeout or
+assertion was weakened. The exact first failure's cause remains unestablished;
+latest full PR CI after this fixture fix still needs verification.
 
 Raw diagnostics, runtime proofs, click records and local association/file
 observations are retained outside Workspace in the task's private evidence
