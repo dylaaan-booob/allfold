@@ -366,7 +366,7 @@ Existing strict-origin/downgrade policy is unchanged. Its effect on the real CF
 failure is not assumed. The installed Connector also contains partition-cookie
 handling,but current-site partition evidence was not obtained; the external CDP
 probe was not executed under the CUA boundary and no Cookie values were read or
-copied. No cookie-policy patch is justified yet. Canonical DOI spelling is already
+copied. No cookie-policy patch was justified at that checkpoint; the later native probe and community evidence below support the targeted adaptation. Canonical DOI spelling is already
 preserved from the saved Crossref landing; that path was not changed speculatively.
 F19 remains unvisited. Exact3a551ea local checks passed JS63,Python1669/2existing
 warnings,Electron245/0skips. A bounded independent native review found no actionable
@@ -681,3 +681,30 @@ now asserts the gate during the affected verification; red/green and the full
 1669-test run are retained. No new retry,scan or production completeness check was
 added. The latest full PR Safety passed in about5min50s; its Electron step took
 about3min24s. A macOS arm64 queue-capacity notice is not a product failure.
+
+## Native partition-context repair awaiting real retest
+
+[Community and fixed-version research](partitioned-cookie-research.md) supports
+missing page-partition cookies as the working cause. The same Electron45 isolated
+fixture proves ordinary credentials/include and Referer are insufficient, and a
+fetch Cookie header is overwritten. A final controlled beforeSendHeaders addition
+restores the correct partition while retaining ordinary cookies. A foreign-partition
+negative and actual origin/path redirects keep their scope. This is mechanism
+validation,not an additional successful real sample.
+
+The shared body path now obtains only partitioned cookies from an existing
+same-Session native Page matching the qualified source origin. Chromium selects
+its native isolation key; it does not merge every partition or navigate a page.
+The task/Service guards and existing Session stream/writer/file association remain.
+Values stay within Main. Explicit no-referrer continuations do not acquire a
+guessed context. An optional count in the existing terminal diagnostic records
+the selected partition-cookie count,not names/values/headers or a new product state.
+
+Exact local commands pass JavaScript64files,Python1669tests/2existingwarnings,
+Electron251tests/0skips(117.976s). Functional controlled-header regression was red
+before implementation. The original native file/association/cleanup assertions
+remain. ActualSource3a was normally quit13:40:57UTC after evidence export; its
+Workspace remains72Papers/23bodies. New-code independent review,actual source
+startup/access preparation,F18/F17/F19 real retests and latest full PR CI remain
+required. The last evidence-onlyc6c4ac2 Safety run44092406853 passed; it is not CI
+for this pending repair. Workspace Reset has not run.

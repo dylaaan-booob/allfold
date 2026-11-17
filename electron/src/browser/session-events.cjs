@@ -2,6 +2,7 @@
 const {BrowserCooldown}=require('./browser-recovery.cjs');
 const {randomBytes,createHmac}=require('node:crypto');
 const {checkCanceled,timeoutFailure}=require('./browser-task.cjs');
+const {withPartitionCookies}=require('./request-cookies.cjs');
 const {BrowserFailure}=require('./browser-errors.cjs');
 
 const sessions=new WeakMap();
@@ -55,7 +56,12 @@ class SharedSessionEvents {
     let state={};
     try {
       const request=this.observe(event,details);
-      if(event==='beforeSendHeaders')state.requestHeaders=withoutMarkers(details.requestHeaders);
+      if(event==='beforeSendHeaders') {
+        state.requestHeaders=withoutMarkers(details.requestHeaders);
+        if(request?.controlled?.partitionCookies)
+          state.requestHeaders=withPartitionCookies(state.requestHeaders,details.url,
+            request.controlled.initialURL,request.controlled.partitionCookies);
+      }
       if(event==='headersReceived')state.responseHeaders=details.responseHeaders;
       if(event==='headersReceived') {
         for(const entry of this.downloads)if(entry.request?.id===details.id && this.matchesDownload(entry,entry.contents,details.frame))
@@ -123,7 +129,8 @@ class SharedSessionEvents {
     const token=randomBytes(24).toString('hex'),requests=[];
     const identity=Object.freeze({...owner.association || owner,attempt_id:attemptId,
       page_id:document?.pageId,document_id:document?.documentId});
-    const controlled={identity,requests,validate:details=>{check();context.validateRequest?.(details);}};this.fetches.set(token,controlled);
+    const controlled={identity,requests,initialURL:url,partitionCookies:context.partitionCookies,
+      validate:details=>{check();context.validateRequest?.(details);}};this.fetches.set(token,controlled);
     const headers=new Headers(options.headers);headers.set(MARKER,token);
     // The deadline belongs to this physical request, including its response body.
     const bounded=Number.isFinite(deadline)?AbortSignal.timeout(Math.max(1,Math.ceil(deadline-Date.now()))):null;

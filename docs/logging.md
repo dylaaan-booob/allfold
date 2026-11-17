@@ -264,6 +264,12 @@ in the request-to-response interval. These optional marks carry no URL/headers,
 do not enter public download state or the result protocol, and a failed observer
 cannot affect saving. They do not replace the later file/database endpoint.
 
+`stream_partition_cookie_count`, when present on the same native terminal event,
+counts partitioned cookies selected by the qualified native page context. Zero
+means a completed query selected none; absence means no usable query context.
+It contains no Cookie names, values or headers. It may also accompany a non-PDF
+response after resource closure and does not declare a saved body.
+
 Main logs successful stream/native/Open/Locate outcomes according to their actual
 result, even when an abort arrives later. Main sends that terminal result before
 the synchronous final diagnostic write, so Python settlement does not wait for it.

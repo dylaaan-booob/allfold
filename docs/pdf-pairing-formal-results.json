@@ -5813,7 +5813,11 @@
       "frontend_head_sha": "3a551ea87724d789a7d03704618cb3752fc44e86",
       "runtime_id": "1105f3441769c614134a45c8933b334a",
       "started_at_utc": "2026-11-17T12:33:22.767Z",
-      "reason": "Common article context plus existing late Run owner gate; bounded native review complete with no actionable introduced bugs. All tests ended before launch; actual paired retests pending."
+      "reason": "Common article context plus existing late Run owner gate; bounded native review complete with no actionable introduced bugs. All tests ended before launch; actual paired retests pending.",
+      "normal_quit_utc": [
+        "2026-11-17T13:40:57.435Z",
+        "2026-11-17T13:40:57.447Z"
+      ]
     }
   ],
   "frontend_head_sha": "3a551ea87724d789a7d03704618cb3752fc44e86",
@@ -6072,7 +6076,7 @@
       "final_affected_native_passed": 1,
       "previous_electron_full_code_sha": "849dddc9a3a72cf2b0a778375e1a8fb8e3d051b6"
     },
-    "live_status": "F18-2actuallyretested79db7d6: A18.188–18.536sP5preprint,Z9.194–9.508spublisher; R039enteredbutaccess-challenge. NormalSourceBrowserlaterlegallysavedpublisherPDFwithoutchallenge. Sharedorderingalonehasnotresolvedcontextfailure. F17/F19retakesheld;F19unvisited.",
+    "live_status": "F18-3 onactual3a551ea stillP5preprint vsZpublisher; sameSessionBrowserpublisher succeeded. Generic partition-context repair passes all offline checks; independentreview/newactualSource/F18-F17-F19 retests pending. No parity or Reset.",
     "diagnostic_correction": "Earlier no-pdf-entry was misread as missing articleDOM. It follows an attempted P4response; native article extraction did discover theePDF entry. Navigation/header/case hypotheses were not used for a patch.",
     "review_followup": "Three affected review gaps reproduced: unmarked native IEEE Meta, API-result entry ordering, and HTML-triggered Reader work ahead of other qualified direct entries. Shared batch scheduling preserves settled response/context and existing ScienceDirect backlink chain. Explicit initial/native action order is preserved; terminal/cancel outcomes discard paused Reader work. Real retests remain pending. Qualified Readers also finish before optional identifier APIs; otherwise an old deferred Reader could be mistaken for sufficient new query inputs. Same-rule/same-origin/path query variants remain source fallbacks and do not interrupt Reader; requests are not rewritten.",
     "limitations": [
@@ -6103,6 +6107,27 @@
       "local_electron_skipped": 0,
       "commit_sha": "3a551ea87724d789a7d03704618cb3752fc44e86",
       "independent_native_review": "Completed read-only delta review 8986bf4..3a551ea: no actionable introduced bug; real benefit unconfirmed."
+    },
+    "partition_context_repair": {
+      "status": "Implemented and complete local checks passed; real retests pending.",
+      "mechanism": "Existing sameSession/samequalifiedSourceOrigin native page supplies Network.getCookies isolation context. Only its partitioned cookies supplement controlled headers after native jar selection; values remainMain, no jar writes or extraHTTP. No-referrer contexts are not guessed.",
+      "regression_evidence": "Functional controlled-header regression red before implementation. Native isolated Chromium fixture verifies current partition vsforeignpartition, preservation of ordinary cookies, origin/path redirects, pluscancel/client-ownership tests.",
+      "community_research": "partitioned-cookie-research.md",
+      "real_retests": "F18original, F17control and unvisitedF19 remainrequired. No claimed real fix or parity yet.",
+      "local_checks": {
+        "javascript_files": 64,
+        "python_passed": 1669,
+        "python_existing_warnings": 2,
+        "electron_passed": 251,
+        "electron_skipped": 0
+      },
+      "evidence": "Private checks/partition-cookie-{js-check,pytest-full,electron-full}.log; native context/headers/path+hostredirect/cancel/client regressions passed.",
+      "latest_pr_ci_before_this_repair": {
+        "head_sha": "c6c4ac2f5f3a91bc578c4241548c3f859079ab66",
+        "status": "success",
+        "run_url": "https://github.com/dylaaan-booob/allfold/actions/runs/44092406853",
+        "note": "Evidence-only revision, actualproduction3a551ea. New cookie repair requires its own full latest-PR CI."
+      }
     }
   }
 }

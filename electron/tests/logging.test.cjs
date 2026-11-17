@@ -88,10 +88,11 @@ test('body stream terminal survives strict diagnostics and retains transport ver
   const {logger}=fixture(t);
   logger.log('info','task_finished',{request_id:'body_request',task_id:'body_attempt',
     action:'stream_paper_body',outcome:'stream_complete',workspace_root:'/private/managed',
-    stream_request_ms:4,stream_response_ms:12,stream_first_byte_ms:15,stream_closed_ms:80,
+    stream_partition_cookie_count:2,stream_request_ms:4,stream_response_ms:12,stream_first_byte_ms:15,stream_closed_ms:80,
     output:{file:[1,2]},url:'https://publisher.example/body?token=SECRET'});
   const events=logger.readEvents();assert.equal(events.length,1);
   assert.equal(events[0].action,'stream_paper_body');assert.equal(events[0].outcome,'stream_complete');
+  assert.equal(events[0].stream_partition_cookie_count,2);
   assert.deepEqual(['stream_request_ms','stream_response_ms','stream_first_byte_ms','stream_closed_ms'].map(key=>events[0][key]),[4,12,15,80]);
   assert.doesNotMatch(JSON.stringify(events),/SECRET|managed|token|output|downloaded/);
 });

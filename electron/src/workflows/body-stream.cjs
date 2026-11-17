@@ -6,6 +6,7 @@ const {BlockList,isIP}=require('node:net');
 const {Readable,Transform}=require('node:stream');
 const {pipeline}=require('node:stream/promises');
 const {publicClueURL}=require('../browser/pdf-clues.cjs');
+const {readPartitionCookies}=require('../browser/request-cookies.cjs');
 const {checkCanceled,waitFor}=require('../browser/browser-task.cjs');
 const UUID=/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 const same=(info,pair)=>Array.isArray(pair)&&pair.length===2&&info.dev===pair[0]&&info.ino===pair[1];
@@ -124,7 +125,7 @@ async function executeBodyStream(browser,data,{signal,progress=()=>{},observe=()
   const deadlineController=new AbortController(),bounded=deadlineController.signal;
   const timer=setTimeout(()=>deadlineController.abort(),Math.max(1,Math.ceil(data.deadline_ms-Date.now())));
   const stop=AbortSignal.any([signal,controller.signal,bounded].filter(Boolean));
-  let fd,writer,response,body,localError,requests=[],size=0,lastProgress=0,closeError,redirect,completed=false;
+  let fd,writer,response,body,localError,requests=[],size=0,lastProgress=0,closeError,redirect,completed=false,partitionCookies=null;
   try {
     await waitFor(()=>browser.ready,stop,data.deadline_ms);checkCanceled(stop);
     const verify=browser.pinPreparedPaperAccess(data);
@@ -157,10 +158,12 @@ async function executeBodyStream(browser,data,{signal,progress=()=>{},observe=()
       if(!(referrer.protocol==='https:'&&initial.protocol==='http:'))
         headers.Referer=referrer.origin===initial.origin?referrer.href:referrer.origin+'/';
     }
+    partitionCookies=await readPartitionCookies(browser,data.url,data.referer,{signal:stop,validate});
+    validate();
     const requestAt=performance.now();
     ({response,requests}=await browser.sessionEvents.fetch(data.url,
       {method:'GET',redirect:'follow',credentials:'include',headers,referrerPolicy:'strict-origin-when-cross-origin'},
-      {owner,attemptId:data.attempt_id,deadline:data.deadline_ms,signal:stop,validate,validateRequest}));
+      {owner,attemptId:data.attempt_id,deadline:data.deadline_ms,signal:stop,validate,validateRequest,partitionCookies}));
     const responseAt=performance.now();validate();
     const facts=requests.flatMap(request=>request.responses),final=facts.at(-1);
     if(!final||!publicClueURL(final.url))throw Error('missing-native-response');
@@ -186,7 +189,8 @@ async function executeBodyStream(browser,data,{signal,progress=()=>{},observe=()
       completed=true;clearTimeout(timer);
       // Relative monotonic marks, published only after the real writer closes.
       // They neither carry response data nor participate in save settlement.
-      try{observe({stream_request_ms:Math.round(requestAt-started),stream_response_ms:Math.round(responseAt-started),
+      try{observe({...partitionCookies && {stream_partition_cookie_count:partitionCookies.length},
+        stream_request_ms:Math.round(requestAt-started),stream_response_ms:Math.round(responseAt-started),
         stream_first_byte_ms:Math.round(sniffed.firstByteAt-started),stream_closed_ms:Math.round(performance.now()-started)});}catch(_){}
       try{progress({received_bytes:size});}catch(_){}
       return {outcome:'stream_complete',kind:'pdf',pdf_type:true,transfer_complete:true,
@@ -234,6 +238,7 @@ async function executeBodyStream(browser,data,{signal,progress=()=>{},observe=()
         if(fd!==undefined)fs.closeSync(fd);
       }
     }catch(_){return {outcome:'local_failure',kind:'local_failure',diagnostic_code:'resource-close',resource_closed:false};}
+    if(!completed && partitionCookies!==null)try{observe({stream_partition_cookie_count:partitionCookies.length});}catch(_){}
   }
 }
 module.exports={executeBodyStream,openOutput,publicAddress,target,directories,credentialHeaders};

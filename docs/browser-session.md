@@ -35,6 +35,23 @@ or a private Electron Response field. Terminal native events remove request-ID
 references; cancellation and failed dispatch remove unused marker registrations.
 No URL, selected tab, Service label or request ordering supplies ownership.
 
+Ordinary body streams may query an existing same-Session native Page whose
+origin matches the qualified article Referer for partitioned cookies. The fixed
+`Network.getCookies` query uses Chromium's native page isolation key, rather than
+merging all partitions returned by Electron's Cookie API. This supplies Cookie
+partition context only; it does not claim the Page or grant Document/action/output
+authority. Existing task and Service validators run before and after the query.
+No Page navigation or extra HTTP request is introduced. Missing context or an
+intentional no-referrer continuation retains the existing Session path.
+
+Only matching partitioned cookies supplement the browser's ordinary Cookie header
+at the controlled request's `beforeSendHeaders` stage. Additions remain within the
+initial origin and each cookie's path/expiry; Chromium's initial query applies its
+Secure/SameSite/partition policy. Native abort detaches its own pending query and
+waits for it to settle; an already attached client is left untouched. Cookie values
+remain within Main and are neither written back to the jar nor exported/logged.
+See the [versioned mechanism evidence](partitioned-cookie-research.md).
+
 Main-frame `cf-mitigated: challenge` evidence is associated with its native Page
 and request ID through this same event owner, then reset on a new navigation.
 That response header remains authoritative when localized verification copy in

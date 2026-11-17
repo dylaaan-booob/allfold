@@ -119,7 +119,7 @@ logger.log('warn','task_finished',{workflow_id:'workflow_1',task_id:'batch_1',
   code:'site_restricted',status:200,imperva_edet:15,imperva_incident_id:'123-456'});
 logger.log('info','task_finished',{workflow_id:'workflow_1',task_id:'batch_1',
   request_id:'body_request',action:'stream_paper_body',outcome:'stream_complete',
-  stream_request_ms:3,stream_response_ms:20,stream_first_byte_ms:23,stream_closed_ms:100,
+  stream_partition_cookie_count:1,stream_request_ms:3,stream_response_ms:20,stream_first_byte_ms:23,stream_closed_ms:100,
   workspace_root:'/PRIVATE_SENTINEL',output:{file:[1,2]},url:'https://private.invalid/?token=PRIVATE_SENTINEL'});
 logger.log('info','task_finished',{workflow_id:'workflow_1',task_id:'batch_1',
   request_id:'local_body_request',action:'local_paper_body',outcome:'locate_requested',
@@ -150,6 +150,7 @@ other.log('error','task_finished',{workflow_id:'workflow_1',task_id:'batch_1',
         assert native['task_id'] == 'batch_1'
         streamed = next(event for event in events if event.get('request_id') == 'body_request')
         assert streamed['action'] == 'stream_paper_body' and streamed['outcome'] == 'stream_complete'
+        assert streamed['stream_partition_cookie_count'] == 1
         assert [streamed[key] for key in ('stream_request_ms', 'stream_response_ms',
             'stream_first_byte_ms', 'stream_closed_ms')] == [3, 20, 23, 100]
         local = next(event for event in events if event.get('request_id') == 'local_body_request')
