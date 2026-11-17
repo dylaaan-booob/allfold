@@ -563,16 +563,10 @@
         "known_state_before_interruption": "Parent33S8T7EI, zero attachments; no visible activity; Desktop temporary storage empty asof19:06:55.816Z and later UI check. No exact product failure time.",
         "wait_seconds": null,
         "reason": "Final product state could not be confirmed; original save retained separately from failures/timeouts.",
-        "post_interruption_file_observation": {
-          "observed_utc": [
-            "2026-11-16T19:19:55.296Z",
-            "2026-11-16T19:19:55.819Z"
-          ],
-          "file_bytes": 5103901
-        },
         "measurement_revision": "full-json-v1",
         "timing_eligible_for_parity": false,
-        "human_intervention_note": "none"
+        "human_intervention_note": "none",
+        "parent_key": "33S8T7EI"
       },
       "platform": "Springer Link",
       "configured_service": "Springer Link",
@@ -2418,14 +2412,7 @@
         ],
         "translator": "Taylor and Francis+NEJM",
         "human_intervention_note": "Cloudflare completed by user",
-        "measurement_revision": "keys-v2",
-        "post_interruption_file_observation": {
-          "observed_utc": [
-            "2026-11-17T02:43:09.037Z",
-            "2026-11-17T02:43:09.308Z"
-          ],
-          "file_bytes": 1251965
-        }
+        "measurement_revision": "keys-v2"
       },
       "platform": "Taylor & Francis",
       "configured_service": null,
@@ -4364,7 +4351,42 @@
         },
         "human_intervention_note": "none during Download",
         "measurement_revision": "keys-v2",
-        "timing_eligible_for_parity": true
+        "timing_eligible_for_parity": true,
+        "native_operations": [
+          {
+            "time": "2026-11-17T04:24:18.769Z",
+            "action": "stream_paper_body",
+            "duration_ms": 401,
+            "outcome": "response",
+            "stage": "navigation"
+          },
+          {
+            "time": "2026-11-17T04:24:18.893Z",
+            "action": "stream_paper_body",
+            "duration_ms": 88,
+            "outcome": "response",
+            "stage": "navigation"
+          },
+          {
+            "time": "2026-11-17T04:24:31.915Z",
+            "action": "extract_paper_pdf_clues",
+            "duration_ms": 12997,
+            "outcome": "retrieved",
+            "stage": "navigation"
+          },
+          {
+            "time": "2026-11-17T04:24:33.463Z",
+            "action": "stream_paper_body",
+            "duration_ms": 1527,
+            "outcome": "stream_complete",
+            "stage": "navigation",
+            "stream_request_ms": 2,
+            "stream_response_ms": 492,
+            "stream_first_byte_ms": 493,
+            "stream_closed_ms": 1526
+          }
+        ],
+        "native_operations_note": "Seven source observation records are not seven physical HTTP requests. Four native operation completions include12.997s article PDF-clue navigation and1.527s successful stream. Internal HTTP/cache details are not inferred."
       },
       "zotero": {
         "result": "automatic_success",
@@ -4491,7 +4513,20 @@
         },
         "human_intervention_note": "none",
         "measurement_revision": "keys-v2",
-        "timing_eligible_for_parity": true
+        "timing_eligible_for_parity": true,
+        "native_operations": [
+          {
+            "time": "2026-11-17T04:30:27.985Z",
+            "action": "stream_paper_body",
+            "duration_ms": 1073,
+            "outcome": "stream_complete",
+            "stage": "navigation",
+            "stream_request_ms": 17,
+            "stream_response_ms": 656,
+            "stream_first_byte_ms": 656,
+            "stream_closed_ms": 1071
+          }
+        ]
       },
       "zotero": {
         "result": "automatic_success",
@@ -4552,6 +4587,333 @@
       "ratio": [
         0.4258,
         0.694
+      ]
+    },
+    {
+      "pair_id": "F16-1",
+      "sample_id": "F16",
+      "order": [
+        "zotero",
+        "allfold"
+      ],
+      "production_code_sha": "77dfd670f1b9f07cddb880688e699620f0a9a9ef",
+      "runtime_head_sha": "77dfd670f1b9f07cddb880688e699620f0a9a9ef",
+      "allfold": {
+        "result": "automatic_success",
+        "timing_eligible_for_parity": true,
+        "click_utc": [
+          "2026-11-17T05:02:01.633Z",
+          "2026-11-17T05:02:01.771Z"
+        ],
+        "ui_preparation": "First Download on original Paper,Download available,no existing body or running UI task. Source actual DOI/title,Full Access,institutional marker and ePDF previously confirmed; no PDF preopen. Chrome Z1 retained separately as operator-interrupted unknown after parent only. Warm lawful Wiley Session.",
+        "human_intervention": false,
+        "runtime_head_sha": "77dfd670f1b9f07cddb880688e699620f0a9a9ef",
+        "production_code_sha": "77dfd670f1b9f07cddb880688e699620f0a9a9ef",
+        "frontend_head_sha": "77dfd670f1b9f07cddb880688e699620f0a9a9ef",
+        "local_pdf_and_association_utc": [
+          "2026-11-17T05:02:03.855Z",
+          "2026-11-17T05:02:04.116Z"
+        ],
+        "wait_seconds": [
+          2.084,
+          2.483
+        ],
+        "file_bytes": 2195136,
+        "attempt": 1,
+        "source": "P1",
+        "fallback_used": 0,
+        "content_check": {
+          "file_exists": true,
+          "file_bytes": 2195136,
+          "pdf_prefix": true,
+          "page_count": 15,
+          "full_title_match": true,
+          "doi_match": true,
+          "publisher_indicators": {
+            "IEEE": false,
+            "Springer": false,
+            "Scientific Reports": false,
+            "Creative Commons": true,
+            "Accepted Manuscript": false,
+            "arXiv:": false,
+            "All rights reserved": false
+          }
+        },
+        "human_intervention_note": "none during Download",
+        "measurement_revision": "keys-v2",
+        "native_operations": [
+          {
+            "time": "2026-11-17T05:02:03.931Z",
+            "action": "stream_paper_body",
+            "duration_ms": 2092,
+            "outcome": "stream_complete",
+            "stage": "navigation",
+            "stream_request_ms": 21,
+            "stream_response_ms": 1349,
+            "stream_first_byte_ms": 1350,
+            "stream_closed_ms": 2090
+          }
+        ]
+      },
+      "zotero": {
+        "result": "operator_interrupted",
+        "click_utc": [
+          "2026-11-17T04:51:00.981Z",
+          "2026-11-17T04:51:01.027Z"
+        ],
+        "ui_preparation": "New task article tab actual DOI/title,Full Access,institutional marker,ePDF and Wiley translator confirmed after user completed article Cloudflare during preparation. Existing lawful Wiley Session; no PDF preopen; fresh Connector save to acceptance collection. Exact preparation bounds missing.",
+        "human_intervention": false,
+        "translator": "Wiley Online Library",
+        "human_intervention_note": "none during Save; article Cloudflare completed before click",
+        "measurement_revision": "keys-v2",
+        "timing_eligible_for_parity": false,
+        "parent_key": "6X39B8TV",
+        "endpoint_note": "Parent observed; no imported PDF or product terminal endpoint yet. Existing cumulative errors cannot be attributed to this DOI.",
+        "interruption_utc": [
+          "2026-11-17T05:01:43.205Z",
+          "2026-11-17T05:01:43.217Z"
+        ],
+        "reason": "Parent6X39B8TV had no children after more than10min; no visible Save/recovery/helper window and no temporary storage. Product terminal state was not observable, not classified as product failure/timeout."
+      },
+      "platform": "Wiley",
+      "configured_service": "WILEY 电子书、电子期刊数据库",
+      "timing_comparison_eligible": false,
+      "cohort": "representative",
+      "comparison_stratum": "prepared_access_normal_download"
+    },
+    {
+      "pair_id": "F14-2",
+      "sample_id": "F14",
+      "order": [
+        "allfold",
+        "zotero"
+      ],
+      "production_code_sha": "77dfd670f1b9f07cddb880688e699620f0a9a9ef",
+      "runtime_head_sha": "77dfd670f1b9f07cddb880688e699620f0a9a9ef",
+      "allfold": {
+        "result": "automatic_success",
+        "click_utc": [
+          "2026-11-17T05:08:11.220Z",
+          "2026-11-17T05:08:11.345Z"
+        ],
+        "ui_preparation": "Original A1 publisher PDF identity checked,then normal Reject/delete PDF/Restore on original Paper; Download available,new actual download. Current warmed Wiley Session,Chrome diagnostic already ended and Debug restored Off before this formal control. No PDF preopen.",
+        "human_intervention": false,
+        "runtime_head_sha": "77dfd670f1b9f07cddb880688e699620f0a9a9ef",
+        "production_code_sha": "77dfd670f1b9f07cddb880688e699620f0a9a9ef",
+        "frontend_head_sha": "77dfd670f1b9f07cddb880688e699620f0a9a9ef",
+        "local_pdf_and_association_utc": [
+          "2026-11-17T05:08:13.286Z",
+          "2026-11-17T05:08:13.543Z"
+        ],
+        "wait_seconds": [
+          1.941,
+          2.323
+        ],
+        "file_bytes": 3295222,
+        "attempt": 2,
+        "source": "P1",
+        "fallback_used": 0,
+        "content_check": {
+          "file_exists": true,
+          "file_bytes": 3295222,
+          "pdf_prefix": true,
+          "page_count": 21,
+          "full_title_match": true,
+          "doi_match": true,
+          "publisher_indicators": {
+            "IEEE": false,
+            "Springer": false,
+            "Scientific Reports": false,
+            "Creative Commons": true,
+            "Accepted Manuscript": false,
+            "arXiv:": false,
+            "All rights reserved": false
+          }
+        },
+        "human_intervention_note": "none during Download",
+        "measurement_revision": "keys-v2",
+        "timing_eligible_for_parity": true,
+        "actual_file_source": "onlinelibrary.wiley.com, P1 R002"
+      },
+      "zotero": {
+        "result": "automatic_success",
+        "click_utc": [
+          "2026-11-17T05:11:08.353Z",
+          "2026-11-17T05:11:08.386Z"
+        ],
+        "ui_preparation": "Full new article tab,actual DOI/title,OA,institutional marker and real Wiley Translator verified. Debug Off after separate diagnostic,no PDF preopen,new normal Save to acceptance collection; existing warm lawful Session.",
+        "human_intervention": false,
+        "translator": "Wiley Online Library",
+        "parent_key": "GEGIAE8D",
+        "local_pdf_and_association_utc": [
+          "2026-11-17T05:11:14.768Z",
+          "2026-11-17T05:11:15.094Z"
+        ],
+        "wait_seconds": [
+          6.382,
+          6.741
+        ],
+        "file_bytes": 3629614,
+        "attachment_key": "8XDYZQ74",
+        "link_mode": "imported_url",
+        "content_check": {
+          "file_exists": true,
+          "file_bytes": 3629614,
+          "pdf_prefix": true,
+          "page_count": 21,
+          "full_title_match": true,
+          "doi_match": true,
+          "publisher_indicators": {
+            "IEEE": false,
+            "Springer": false,
+            "Scientific Reports": false,
+            "Creative Commons": false,
+            "Accepted Manuscript": false,
+            "arXiv:": false,
+            "All rights reserved": false
+          }
+        },
+        "human_intervention_note": "none during Save",
+        "measurement_revision": "keys-v2",
+        "timing_eligible_for_parity": true,
+        "actual_file_source": "pmc.ncbi.nlm.nih.gov/articles/PMC13673117/pdf/SIM-45-0.pdf"
+      },
+      "platform": "Wiley",
+      "configured_service": "WILEY 电子书、电子期刊数据库",
+      "timing_comparison_eligible": true,
+      "cohort": "representative",
+      "comparison_stratum": "prepared_access_normal_download",
+      "comparable_body_version": true,
+      "transfer_efficiency_comparison_eligible": false,
+      "version_comparison": {
+        "version": "Same publisher version of record,21pages. Allfold from Wiley; Zotero from PMC-hosted publisher copy.",
+        "evidence": "Every actual file has matching precise title/DOI and21pages; first-page Research Article/Open Access layout and original CreationDate were compared. Wiley watermark/packaging differs from PMC copy. Different file sizes and sources are explicit; main user wait is compared,not pure transfer throughput."
+      },
+      "difference_seconds": [
+        -4.8,
+        -4.059
+      ],
+      "ratio": [
+        0.2879,
+        0.364
+      ]
+    },
+    {
+      "pair_id": "F14-3",
+      "sample_id": "F14",
+      "order": [
+        "zotero",
+        "allfold"
+      ],
+      "production_code_sha": "77dfd670f1b9f07cddb880688e699620f0a9a9ef",
+      "runtime_head_sha": "77dfd670f1b9f07cddb880688e699620f0a9a9ef",
+      "allfold": {
+        "result": "automatic_success",
+        "click_utc": [
+          "2026-11-17T05:16:19.986Z",
+          "2026-11-17T05:16:20.102Z"
+        ],
+        "ui_preparation": "A2 actual publisher PDF individually checked then normal Reject/delete PDF/Restore,original Paper Download available,new actual download. Z3 completed and checked; Debug Off; warmed lawful independent Wiley Session,no PDF preopen.",
+        "human_intervention": false,
+        "runtime_head_sha": "77dfd670f1b9f07cddb880688e699620f0a9a9ef",
+        "production_code_sha": "77dfd670f1b9f07cddb880688e699620f0a9a9ef",
+        "frontend_head_sha": "77dfd670f1b9f07cddb880688e699620f0a9a9ef",
+        "timing_resolution_note": "The preceding observation poll overlaps the click interval; the nonnegative lower wait bound is0. Actual poll/click timestamps are retained.",
+        "local_pdf_and_association_utc": [
+          "2026-11-17T05:16:20.082Z",
+          "2026-11-17T05:16:20.341Z"
+        ],
+        "wait_seconds": [
+          0,
+          0.355
+        ],
+        "file_bytes": 3295222,
+        "attempt": 3,
+        "source": "P1",
+        "fallback_used": 0,
+        "content_check": {
+          "file_exists": true,
+          "file_bytes": 3295222,
+          "pdf_prefix": true,
+          "page_count": 21,
+          "full_title_match": true,
+          "doi_match": true,
+          "publisher_indicators": {
+            "IEEE": false,
+            "Springer": false,
+            "Scientific Reports": false,
+            "Creative Commons": true,
+            "Accepted Manuscript": false,
+            "arXiv:": false,
+            "All rights reserved": false
+          }
+        },
+        "human_intervention_note": "none during Download",
+        "measurement_revision": "keys-v2",
+        "timing_eligible_for_parity": true,
+        "actual_file_source": "onlinelibrary.wiley.com, P1 R002"
+      },
+      "zotero": {
+        "result": "automatic_success",
+        "click_utc": [
+          "2026-11-17T05:15:14.793Z",
+          "2026-11-17T05:15:14.838Z"
+        ],
+        "ui_preparation": "New normal article tab with target DOI/title,OA,institutional marker and real Wiley Translator; Debug Off; new save session/parent expected,no PDF preopen. Existing warmed lawful Session; previous diagnostics/control retained.",
+        "human_intervention": false,
+        "translator": "Wiley Online Library",
+        "parent_key": "EEKLQ87X",
+        "local_pdf_and_association_utc": [
+          "2026-11-17T05:15:20.217Z",
+          "2026-11-17T05:15:20.593Z"
+        ],
+        "wait_seconds": [
+          5.379,
+          5.8
+        ],
+        "file_bytes": 3629614,
+        "attachment_key": "G7B4U7I2",
+        "link_mode": "imported_url",
+        "content_check": {
+          "file_exists": true,
+          "file_bytes": 3629614,
+          "pdf_prefix": true,
+          "page_count": 21,
+          "full_title_match": true,
+          "doi_match": true,
+          "publisher_indicators": {
+            "IEEE": false,
+            "Springer": false,
+            "Scientific Reports": false,
+            "Creative Commons": false,
+            "Accepted Manuscript": false,
+            "arXiv:": false,
+            "All rights reserved": false
+          }
+        },
+        "human_intervention_note": "none during Save",
+        "measurement_revision": "keys-v2",
+        "timing_eligible_for_parity": true,
+        "actual_file_source": "pmc.ncbi.nlm.nih.gov/articles/PMC13673117/pdf/SIM-45-0.pdf"
+      },
+      "platform": "Wiley",
+      "configured_service": "WILEY 电子书、电子期刊数据库",
+      "timing_comparison_eligible": true,
+      "cohort": "representative",
+      "comparison_stratum": "prepared_access_normal_download",
+      "comparable_body_version": true,
+      "transfer_efficiency_comparison_eligible": false,
+      "version_comparison": {
+        "version": "Same publisher version of record,21pages. Allfold from Wiley; Zotero from PMC-hosted publisher copy.",
+        "evidence": "Every actual file has matching precise title/DOI and21pages; first-page Research Article/Open Access layout and original CreationDate were compared. Wiley watermark/packaging differs from PMC copy. Different file sizes and sources are explicit; main user wait is compared,not pure transfer throughput."
+      },
+      "difference_seconds": [
+        -5.8,
+        -5.024
+      ],
+      "ratio": [
+        0.0,
+        0.066
       ]
     }
   ],
@@ -4615,7 +4977,15 @@
         "F15",
         "F16"
       ],
-      "gap": "F14 both correct local PDFs but Allfold publisher OA21pages versus Zotero arXiv32pages after Wiley translator error/EmbeddedMetadata fallback. Matching installed2025-06-11 translator inspected; actual error response still needs bounded diagnostic. F15 both same publisher OA13pages. F14 control repeats and F16 first pair outstanding; Chrome F16 waiting human CF before any Save."
+      "gap": "F14 original Allfold publisherOA versus Zotero related arXiv after visible Translator fallback retained. One separately declared Debug-only Save obtained publisher PDF with citationPOST200/PDF200/Desktop201; original error did not reproduce and cumulative403 entries remain unattributed. Matching runtime Translator ID/2025-06-11 revision confirmed. Two new normal swapped F14 controls obtained same publisherVoR from Wiley/PMC with different sizes; both favorAllfold. F15 publisherOA matches. F16Allfold publisherOA15pages saved; originalZ parent-only Save operator-interrupted after>10min with unknown terminal; new same-access pairs outstanding. Debug restoredOff."
+    },
+    {
+      "samples": [
+        "F17",
+        "F18",
+        "F19"
+      ],
+      "gap": "Chrome fresh normal CARSI SIAM entry plus human CF now reachesF17 actualFULLACCESS/AtyponTranslator. Source cached institution homepage didnot grant actualF17 target rights(Getfullaccess); independent fresh Source Service preparation outstanding. No formal SIAM Download/Save yet; no rights inferred from cached homepage."
     }
   ],
   "parity_conclusions": "In progress: corrected low-load pairs and original affected measurements retained separately. Platform conclusions await controls and access-matched retests.",
@@ -4660,7 +5030,7 @@
     "old_results_retained": true
   },
   "chrome_service_preparation": "From user steering: select each new correspondingService in Chrome CARSI resource page before saving, then verify actual target article/Translator. Preparation/manual costs separate; no cookie/auth copying.",
-  "checkpoint_utc": "2026-11-17T04:42:28Z",
+  "checkpoint_utc": "2026-11-17T05:18:23.764331+00:00",
   "historical_tool_interruptions": [
     "Earlier platform update removed mcp__cua_repl and an alternative-tool choice was requested; that question became obsolete when CUA returned.",
     "Global window enumeration/new-tab calls can time out after recovery; targeted Chrome getApp subsequently succeeded, and an already-created trial tab was reused rather than recreated.",
@@ -4757,9 +5127,85 @@
     "session_cache_effect": "Product PIDs unchanged; no cache/account reset. New CUA targeted Source2.24s/Chrome1.7s reads and actual F07-3 saving succeeded. Global inventory still timed out; task-specific surfaces used."
   },
   "ci_checkpoint": {
-    "head_sha": "cbe1b7b70c49f446845c2dd61fec20a56ab235da",
-    "latest_run": "https://github.com/dylaaan-booob/allfold/actions/runs/44017379916",
-    "status": "failed_in_python_before_electron",
-    "evidence": "1621passed/1failed in an existing collection planner fixture reading outside owner gate while collection active. Test synchronization fix prepared; production path checks unchanged. Native timeout cleanup committed/reviewed; its latest full CI result remains unverified."
-  }
+    "head_sha": "78e7ea0ebbb5acdce552eea89e603b1c621bb58c",
+    "status": "success",
+    "run_id": 44019129180,
+    "job_id": 133824133361,
+    "run_url": "https://github.com/dylaaan-booob/allfold/actions/runs/44019129180",
+    "scope": "Complete cumulative-PR Safety checks / safety",
+    "test_evidence": {
+      "javascript_files": 63,
+      "python_passed": 1622,
+      "python_warnings": 4,
+      "electron_passed": 245,
+      "electron_skipped": 0
+    },
+    "tested_merge_sha": "9e149b89fed16841b1fe36bb7518390a17b813ce",
+    "note": "This is the latest pushed code head at this observation; later evidence commits require their own associated latest checks."
+  },
+  "non_scoring_diagnostics": [
+    {
+      "diagnostic_id": "Wiley-F14-D1",
+      "sample_id": "F14",
+      "product": "zotero",
+      "reason": "One bounded normal Save with temporary Connector Debug after original Translator fallback. Excluded from formal controls/parity aggregates.",
+      "click_utc": [
+        "2026-11-17T05:05:47.991Z",
+        "2026-11-17T05:05:48.021Z"
+      ],
+      "preparation": "User completed new article Cloudflare; actual DOI/title,OA,institutional marker confirmed. No PDF preopen. Exactly one normal Save with Debug enabled; excluded from formal controls and parity timing.",
+      "translator_id": "fe728bc9-595a-4f03-98fc-766f1d8d0936",
+      "translator_last_updated": "2025-06-11 15:32:23",
+      "observed_sequence": [
+        {
+          "method": "POST",
+          "host": "onlinelibrary.wiley.com",
+          "path": "/action/downloadCitation",
+          "status": 200
+        },
+        {
+          "method": "GET",
+          "host": "onlinelibrary.wiley.com",
+          "path": "/doi/pdfdirect/10.1002/sim.70757",
+          "status": 200
+        },
+        {
+          "desktop_method": "saveAttachment",
+          "status": 201,
+          "outcome": "succeeded"
+        },
+        {
+          "progress": "done"
+        }
+      ],
+      "parent_key": "CQMFIGCP",
+      "attachment_key": "NM5BUV3K",
+      "local_pdf_and_association_utc": [
+        "2026-11-17T05:05:52.463Z",
+        "2026-11-17T05:05:52.785Z"
+      ],
+      "version": "Wiley publisher OA,21pages; precise title and DOI verified",
+      "file_bytes": 3295222,
+      "result": "automatic_success_diagnostic_only",
+      "debug_restored_off_utc": [
+        "2026-11-17T05:06:52.871Z",
+        "2026-11-17T05:06:53.015Z"
+      ],
+      "limitations": [
+        "Non-scoring one Save with Debug enabled after new article human verification; original F14-1 retained.",
+        "Failure not reproduced; cannot retroactively attribute older cumulative HTTP403 entries.",
+        "Raw Debug contained sensitive Cookie values and was not copied or submitted; only this allowlisted sanitized sequence retained."
+      ]
+    }
+  ],
+  "evidence_join_corrections": [
+    {
+      "recorded_at_utc": "2026-11-17T05:18:23.764139+00:00",
+      "samples": [
+        "F04-1",
+        "F11-1"
+      ],
+      "correction": "Removed two late-file notes that belonged to later fresh Zotero parents. Endpoints bind the original parent,not every later same-DOI save. All existing success/failure/wait/endpoint fields were compared and unchanged; raw observations retained. Original Allfold attempts are also bound so future retests cannot backfill missing historical failure time."
+    }
+  ]
 }
