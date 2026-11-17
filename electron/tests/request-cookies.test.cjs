@@ -14,6 +14,7 @@ function fixture() {
     {name:'regular',value:'native'},
     {name:'partition',value:'private-value',partitionKey:{topLevelSite:'https://publisher.example'}},
     {name:'opaque',value:'never',partitionKeyOpaque:true},
+    {name:'nonce',value:'never',partitionKeyOpaque:false},
   ]};};
   const contents={session:partition,debugger:client,mainFrame:{processId:7,frameToken:'frame',origin:'https://publisher.example'},
     getURL:()=>'https://publisher.example/article',isDestroyed:()=>false,isCrashed:()=>false,isLoadingMainFrame:()=>false};
@@ -24,6 +25,7 @@ test('cookie context reads only the qualified native page partition and releases
   const f=fixture();
   const cookies=await readPartitionCookies(f.browser,'https://publisher.example/pdf','https://publisher.example/article',{validate:()=>{}});
   assert.deepEqual(cookies.cookies.map(c=>c.name),['partition']);
+  assert.deepEqual(cookies.metadata.map(c=>c.name),['regular']);
   assert.deepEqual(f.calls,['attach',['Network.getCookies',{urls:['https://publisher.example/pdf']}],'detach']);
   assert.equal(f.client.isAttached(),false);
 });
@@ -51,6 +53,8 @@ test('an ordinary same-name value changed since the metadata query keeps its pri
   const url='https://publisher.example/pdf',headers={Cookie:'sid=current'};
   const cookie={name:'sid',value:'partition',domain:'publisher.example',path:'/',expires:-1,partitionKey:{}};
   assert.deepEqual(withPartitionCookies(headers,url,url,{cookies:[cookie],metadata:[cookie]}),headers);
+  const ordinary={...cookie,value:'current',partitionKey:undefined};
+  assert.deepEqual(withPartitionCookies(headers,url,url,{cookies:[cookie],metadata:[ordinary,{...ordinary,path:'/pdf'}]}),headers);
 });
 test('native page changes discard the cookie result and concurrent reads serialize their clients',async()=>{
   const f=fixture(),send=f.client.sendCommand;

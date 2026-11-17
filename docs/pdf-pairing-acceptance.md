@@ -724,3 +724,13 @@ controlled supplementation omit it,while None remains usable. Exact corrected
 full checks pass JS64,Python1669/2existingwarnings(36.00s),Electron253/0skips
 (118.895s). These corrections require submitted-delta follow-up review,new latest
 PR CI and actual F18/F17/F19 retests before any real-site fix claim or Reset.
+
+A second affected native follow-up found that blocked partition metadata could
+still give an ordinary identical name/value a false longer-path rank. The exact
+cross-origin native wire case failed before correction. Only ordinary unpartitioned
+metadata now ranks ordinary header pairs; opaque/nonce partition markers are
+excluded, and ambiguous duplicate ordinary descriptors remain unknown. The native
+case now passes. Exact final local JS64,Python1669/2existingwarnings(36.61s),
+Electron253/0skips(118.623s) pass. Final affected review,latest-head CI and actual
+repaired-code pairing remain pending; no Source cookie-repair build has yet been
+used for a formal sample.

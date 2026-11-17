@@ -53,7 +53,9 @@ match the request origin; cross-origin additions require explicit SameSite=None.
 This conservatively skips cross-origin same-site Strict/Lax cases without guessing
 a registrable domain. Ordinary Cookie order is retained, with known longer paths
 inserted first and ordinary-first ties. A changed ordinary same-name credential
-without current path metadata is not displaced. Native abort detaches its own pending query and
+without unambiguous current path metadata is not displaced. Only unpartitioned
+ordinary descriptors rank these existing header pairs; filtered, opaque or nonce
+partition records cannot supply that rank. Native abort detaches its own pending query and
 waits for it to settle; an already attached client is left untouched. Cookie values
 remain within Main and are neither written back to the jar nor exported/logged.
 See the [versioned mechanism evidence](partitioned-cookie-research.md).

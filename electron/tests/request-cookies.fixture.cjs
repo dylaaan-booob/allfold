@@ -40,6 +40,13 @@ app.whenReady().then(async()=>{
       partitionKey:{topLevelSite:'http://127.0.0.1',hasCrossSiteAncestor:ancestor}});
     assert.equal(set.success,true);
   }
+  assert.equal((await contents.debugger.sendCommand('Network.setCookie',{url:other+'/pdf/private',name:'sid',value:'base',
+    path:'/',secure:true,httpOnly:true,sameSite:'None'})).success,true);
+  for(const ancestor of [false,true])for(const [value,path,sameSite] of [
+    ['base','/pdf/private','Strict'],['auth','/pdf','None']]) {
+    assert.equal((await contents.debugger.sendCommand('Network.setCookie',{url:other+'/pdf/private',name:'sid',value,
+      path,secure:true,httpOnly:true,sameSite,partitionKey:{topLevelSite:'http://127.0.0.1',hasCrossSiteAncestor:ancestor}})).success,true);
+  }
   const inclusive=await contents.debugger.sendCommand('Network.getCookies',{urls:[other+'/pdf']});
   assert.ok(inclusive.cookies.some(cookie=>cookie.sameSite==='Strict'),'CDP reads Strict cookies even in this cross-site context');
   contents.debugger.detach();
@@ -71,6 +78,10 @@ app.whenReady().then(async()=>{
   assert.doesNotMatch(requests.at(-1).cookie,/partition=/);
   const crossRequest=await events.fetch(other+'/pdf',{credentials:'include'},{...context,partitionCookies:cross});await crossRequest.response.text();
   assert.match(requests.at(-1).cookie,/cross_None_/);assert.doesNotMatch(requests.at(-1).cookie,/cross_(Strict|Lax)_/);
+  const overlap=await readPartitionCookies({partition,tabs:new Map([[tab.id,tab]])},other+'/pdf/private',base+'/article',{validate:()=>{}});
+  const overlapRequest=await events.fetch(other+'/pdf/private',{credentials:'include'},{...context,partitionCookies:overlap});await overlapRequest.response.text();
+  assert.ok(requests.at(-1).cookie.indexOf('sid=auth')<requests.at(-1).cookie.indexOf('sid=base'),
+    'A filtered Strict partition must not inflate the ordinary cookie path rank');
   events.dispose();win.destroy();await new Promise(resolve=>server.close(resolve));
   console.log('PARTITION COOKIE PASS');app.quit();
 }).catch(error=>{console.error(error.stack);app.exit(1);});

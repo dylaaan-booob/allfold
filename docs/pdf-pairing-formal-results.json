@@ -6109,7 +6109,7 @@
       "independent_native_review": "Completed read-only delta review 8986bf4..3a551ea: no actionable introduced bug; real benefit unconfirmed."
     },
     "partition_context_repair": {
-      "status": "SameSite and native-review path-order corrections implemented; complete local checks passed, live retests pending.",
+      "status": "Ordinary-only metadata correction implemented; final complete local checks passed. Submitted native follow-up and real retests pending.",
       "mechanism": "Existing sameSession/samequalifiedSourceOrigin native page supplies Network.getCookies isolation context. Only its partitioned cookies supplement controlled headers after native jar selection; values remainMain, no jar writes or extraHTTP. No-referrer contexts are not guessed.",
       "regression_evidence": "Functional controlled-header regression red before implementation. Native isolated Chromium fixture verifies current partition vsforeignpartition, preservation of ordinary cookies, origin/path redirects, pluscancel/client-ownership tests.",
       "community_research": "partitioned-cookie-research.md",
@@ -6128,8 +6128,9 @@
         "run_url": "https://github.com/dylaaan-booob/allfold/actions/runs/44092406853",
         "note": "Evidence-only revision, actualproduction3a551ea. New cookie repair requires its own full latest-PR CI."
       },
-      "review_followup": "Independent9fa review identified oneP2 partition-prefix/path ordering. Root primary-source review also found inclusiveCookieAPI does not enforce SameSite. Both corrected with actualnative path-priority and cross-site-send controls; bounded submitted-delta native followup pending.",
-      "policy": "Verified native mainFrame security origin; sameorigin Strict/Lax permitted, crossorigin explicitSameSiteNone only. Native selected-partition metadata preserves ordinary header order and known longer-path priority; ordinary-first ties, unknown current same-name metadata not displaced."
+      "review_followup": "First native review: path-orderP2 corrected. Second affected native review: filtered partition metadata could poison an ordinary path rank. Exact native failure reproduced and corrected by ordinary-only metadata; ambiguous duplicate ordinary descriptors do not invent a rank. Final affected verification pending.",
+      "policy": "Verified native mainFrame security origin; sameorigin Strict/Lax permitted, crossorigin explicitSameSiteNone only. Native selected-partition metadata preserves ordinary header order and known longer-path priority; ordinary-first ties, unknown current same-name metadata not displaced.",
+      "final_local_evidence": "JS64;Python1669/2existingwarnings36.61s;Electron253/0skips118.623s. Private checks/partition-cookie-metadata-*.log; filtered-metadata native red/green retained."
     }
   }
 }

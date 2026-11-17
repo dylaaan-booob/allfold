@@ -43,7 +43,8 @@ async function readPartitionCookies(browser,url,sourceURL,{signal,validate}={}) 
       // top-level document proves Strict/Lax eligibility without a site guess.
       const sameOrigin=new URL(url).origin===source.origin;
       return {cookies:result.cookies.filter(cookie=>cookie.partitionKey && !cookie.partitionKeyOpaque
-        && (sameOrigin || cookie.sameSite==='None')),metadata:result.cookies};
+        && (sameOrigin || cookie.sameSite==='None')),
+        metadata:result.cookies.filter(cookie=>!cookie.partitionKey && !Object.hasOwn(cookie,'partitionKeyOpaque'))};
     }catch(_) {validate();return null;}
     finally {
       signal?.removeEventListener('abort',abort);
@@ -73,8 +74,11 @@ function withPartitionCookies(headers,url,initialURL,context) {
   const paths=new Map();
   for(const cookie of context.metadata)if(applies(cookie,target)) {
     const pair=cookie.name+'='+cookie.value;
-    paths.set(pair,Math.max(paths.get(pair) || 0,(cookie.path || '/').length));
+    paths.set(pair,paths.has(pair)?null:(cookie.path || '/').length);
   }
+  // The wire header omits paths. Multiple ordinary descriptors for an identical
+  // pair do not prove which one was sent; leave that current credential intact.
+  for(const [pair,path] of paths)if(path===null)paths.delete(pair);
   const additions=context.cookies.filter(cookie=>cookie.partitionKey && !cookie.partitionKeyOpaque
       && typeof cookie.name==='string' && typeof cookie.value==='string'
       && !/[\s;=\r\n]/.test(cookie.name) && !/[;\r\n]/.test(cookie.value)
