@@ -3,7 +3,7 @@
   "manifest": "pdf-pairing-manifest.json",
   "manifest_frozen_at_utc": "2026-11-16T18:40:53.823107+00:00",
   "production_code_sha": "77dfd670f1b9f07cddb880688e699620f0a9a9ef",
-  "runtime_head_sha": "77dfd670f1b9f07cddb880688e699620f0a9a9ef",
+  "runtime_head_sha": "21a7e25376baa5459fed346280bb3f52353359ed",
   "pairs": [
     {
       "pair_id": "F01-1",
@@ -4915,6 +4915,335 @@
         0.0,
         0.066
       ]
+    },
+    {
+      "pair_id": "F16-2",
+      "sample_id": "F16",
+      "order": [
+        "allfold",
+        "zotero"
+      ],
+      "production_code_sha": "77dfd670f1b9f07cddb880688e699620f0a9a9ef",
+      "runtime_head_sha": "77dfd670f1b9f07cddb880688e699620f0a9a9ef",
+      "allfold": {
+        "result": "automatic_success",
+        "click_utc": [
+          "2026-11-17T05:18:15.409Z",
+          "2026-11-17T05:18:15.554Z"
+        ],
+        "ui_preparation": "Both targets prepared: new Chrome article tab actual DOI/title,FullAccess,institutional marker and WileyTranslator; Source separately confirmed. A1 publisher PDF verified then normal Reject/deletePDF/Restore,original Paper,new Download. Debug Off,no PDF preopen; originalZ1 unknown terminal retained.",
+        "human_intervention": false,
+        "runtime_head_sha": "77dfd670f1b9f07cddb880688e699620f0a9a9ef",
+        "production_code_sha": "77dfd670f1b9f07cddb880688e699620f0a9a9ef",
+        "frontend_head_sha": "77dfd670f1b9f07cddb880688e699620f0a9a9ef",
+        "local_pdf_and_association_utc": [
+          "2026-11-17T05:18:15.649Z",
+          "2026-11-17T05:18:15.912Z"
+        ],
+        "wait_seconds": [
+          0.095,
+          0.503
+        ],
+        "file_bytes": 2195136,
+        "attempt": 2,
+        "source": "P1",
+        "fallback_used": 0,
+        "content_check": {
+          "file_exists": true,
+          "file_bytes": 2195136,
+          "pdf_prefix": true,
+          "page_count": 15,
+          "full_title_match": true,
+          "doi_match": true,
+          "publisher_indicators": {
+            "IEEE": false,
+            "Springer": false,
+            "Scientific Reports": false,
+            "Creative Commons": true,
+            "Accepted Manuscript": false,
+            "arXiv:": false,
+            "All rights reserved": false
+          }
+        },
+        "human_intervention_note": "none during Download",
+        "measurement_revision": "keys-v2",
+        "timing_eligible_for_parity": true
+      },
+      "zotero": {
+        "result": "operator_interrupted",
+        "click_utc": [
+          "2026-11-17T05:18:48.491Z",
+          "2026-11-17T05:18:48.521Z"
+        ],
+        "ui_preparation": "New article tab target DOI/title,FullAccess,institutional marker and WileyTranslator verified; new normal Save after A2 finished,DebugOff,no PDF preopen,acceptance collection. OriginalZ1 parent-only interrupted record retained.",
+        "human_intervention": false,
+        "translator": "Wiley Online Library",
+        "parent_key": "76BG244L",
+        "human_intervention_note": "none during Save",
+        "measurement_revision": "keys-v2",
+        "timing_eligible_for_parity": false,
+        "interruption_utc": [
+          "2026-11-17T05:34:10.032Z",
+          "2026-11-17T05:34:10.127Z"
+        ],
+        "reason": "Parent76BG244L had no imported children after more than15min; no temporary storage or visible Save/helper window. Product terminal state unknown,not classified as product timeout/failure. Independent SourceSIAM preparation/user login and UI recovery occurred during this observation.",
+        "terminal_state": "unknown",
+        "wait_seconds": null
+      },
+      "platform": "Wiley",
+      "configured_service": "WILEY 电子书、电子期刊数据库",
+      "timing_comparison_eligible": false
+    },
+    {
+      "pair_id": "F17-1",
+      "sample_id": "F17",
+      "order": [
+        "allfold",
+        "zotero"
+      ],
+      "production_code_sha": "77dfd670f1b9f07cddb880688e699620f0a9a9ef",
+      "runtime_head_sha": "77dfd670f1b9f07cddb880688e699620f0a9a9ef",
+      "allfold": {
+        "result": "automatic_success",
+        "click_utc": [
+          "2026-11-17T05:43:30.182Z",
+          "2026-11-17T05:43:30.344Z"
+        ],
+        "ui_preparation": "First Download,original Paper/no body. Both actual SIAM targets confirmed precise DOI/title,institutional marker,FULL ACCESS/PDF entry. Source independently re-entered CARSI SIAM resource and user completed institution login before target rights confirmation; Chrome separately completed CARSI SIAM entry/human CF. No PDF preopen; DebugOff; all Wiley trials ended through UI before this Download. Exact preparation start/human-input bounds missing.",
+        "human_intervention": false,
+        "runtime_head_sha": "77dfd670f1b9f07cddb880688e699620f0a9a9ef",
+        "production_code_sha": "77dfd670f1b9f07cddb880688e699620f0a9a9ef",
+        "frontend_head_sha": "77dfd670f1b9f07cddb880688e699620f0a9a9ef",
+        "local_pdf_and_association_utc": [
+          "2026-11-17T05:43:47.596Z",
+          "2026-11-17T05:43:47.856Z"
+        ],
+        "wait_seconds": [
+          17.252,
+          17.674
+        ],
+        "file_bytes": 1226997,
+        "attempt": 1,
+        "source": "P5",
+        "fallback_used": 1,
+        "content_check": {
+          "file_exists": true,
+          "file_bytes": 1226997,
+          "pdf_prefix": true,
+          "page_count": 83,
+          "full_title_match": true,
+          "doi_match": false,
+          "publisher_indicators": {
+            "IEEE": false,
+            "Springer": false,
+            "Scientific Reports": false,
+            "Creative Commons": false,
+            "Accepted Manuscript": false,
+            "arXiv:": true,
+            "All rights reserved": false
+          },
+          "manual_identity_verified": true,
+          "version": "arXiv2409.18415v3 preprint",
+          "manual_identity_evidence": "Precise full title and all3authors ShaokangZu/JunxiongJia/DeyuMeng match current Paper. First2pages show arXiv2409.18415v3; unchanged Paper has explicit preprint relation to arxiv:2409.18415.83pages/1226997B."
+        },
+        "human_intervention_note": "none during Download; Source institutional login and Chrome CF assistance occurred during preparation",
+        "measurement_revision": "keys-v2",
+        "timing_eligible_for_parity": true,
+        "actual_version": "arxiv2409.18415v3,83pages",
+        "native_operations": [
+          {
+            "time": "2026-11-17T05:43:43.856Z",
+            "action": "extract_paper_pdf_clues",
+            "outcome": "retrieved",
+            "duration_ms": 12913
+          },
+          {
+            "time": "2026-11-17T05:43:46.018Z",
+            "action": "stream_paper_body",
+            "outcome": "response",
+            "duration_ms": 2058
+          },
+          {
+            "time": "2026-11-17T05:43:47.682Z",
+            "action": "stream_paper_body",
+            "outcome": "stream_complete",
+            "duration_ms": 1573,
+            "stream_request_ms": 40,
+            "stream_response_ms": 779,
+            "stream_first_byte_ms": 779,
+            "stream_closed_ms": 1573
+          }
+        ]
+      },
+      "zotero": {
+        "result": "operator_interrupted",
+        "click_utc": [
+          "2026-11-17T05:46:19.660Z",
+          "2026-11-17T05:46:19.694Z"
+        ],
+        "ui_preparation": "ActualSIAM article DOI/title,institutional marker,FULLACCESS and Translator already confirmed after normal independent CARSI entry/ChromeCF during preparation; no PDF preopen,new normal Save. Dedicated acceptance collection explicitly selected in Desktop before click; DebugOff.",
+        "human_intervention": false,
+        "translator": "Atypon Journals",
+        "human_intervention_note": "none during Save; Chrome CF completed during preparation",
+        "measurement_revision": "keys-v2",
+        "timing_eligible_for_parity": false,
+        "parent_key": "7EBJXK9D",
+        "parent_identity_verification": "Precise title and stable articleURL match; DOI/creators missing;0children.",
+        "interruption_utc": [
+          "2026-11-17T05:57:03.436Z",
+          "2026-11-17T05:57:03.549Z"
+        ],
+        "reason": "Parent-only after>10min; no temporary storage or visible Save/helper. Closed onlytrialtab; product terminal unknown.",
+        "terminal_state": "unknown",
+        "wait_seconds": null
+      },
+      "platform": "SIAM",
+      "configured_service": "SIAM电子期刊",
+      "timing_comparison_eligible": false,
+      "cohort": "representative",
+      "comparison_stratum": "prepared_access_normal_download",
+      "comparable_body_version": false
+    },
+    {
+      "pair_id": "F18-1",
+      "sample_id": "F18",
+      "order": [
+        "zotero",
+        "allfold"
+      ],
+      "production_code_sha": "77dfd670f1b9f07cddb880688e699620f0a9a9ef",
+      "runtime_head_sha": "21a7e25376baa5459fed346280bb3f52353359ed",
+      "allfold": {
+        "result": "automatic_success",
+        "click_utc": [
+          "2026-11-17T08:48:24.350Z",
+          "2026-11-17T08:48:24.391Z"
+        ],
+        "ui_preparation": "OriginalPaper attempt0/noBody/Downloadavailable; actualSource targetDOI/title,institutionalFullAccess/ViewPDF independently confirmed through normalSIAM CARSIentry after Source restart. ChromeZ1 correctly saved local28page PDF before this click; no PDF preopen inSource. RebuiltUI/head21a7e25/nativeproduction77dfd67/runtime02408604e5d6b611dc0d2d433f4e7bb0; keys-v2observerready; no builds/tests/exports active.",
+        "human_intervention": false,
+        "runtime_head_sha": "21a7e25376baa5459fed346280bb3f52353359ed",
+        "production_code_sha": "77dfd670f1b9f07cddb880688e699620f0a9a9ef",
+        "frontend_head_sha": "21a7e25376baa5459fed346280bb3f52353359ed",
+        "local_pdf_and_association_utc": [
+          "2026-11-17T08:49:04.307Z",
+          "2026-11-17T08:49:04.569Z"
+        ],
+        "wait_seconds": [
+          39.916,
+          40.219
+        ],
+        "file_bytes": 4232776,
+        "attempt": 1,
+        "source": "P5",
+        "fallback_used": 1,
+        "content_check": {
+          "file_exists": true,
+          "file_bytes": 4232776,
+          "pdf_prefix": true,
+          "page_count": 30,
+          "full_title_match": true,
+          "doi_match": false,
+          "publisher_indicators": {
+            "IEEE": false,
+            "Springer": false,
+            "Scientific Reports": false,
+            "Creative Commons": false,
+            "Accepted Manuscript": false,
+            "arXiv:": true,
+            "All rights reserved": false
+          },
+          "manual_identity_verified": true,
+          "version": "arXiv2502.20086v2 preprint",
+          "manual_identity_evidence": "Precise title/all4authors TiangangCui,KarinaKoval,RolandHerzog,RobertScheichl match current Paper; actualPDF first2pages show2502.20086v2; originalPaper explicitly relates arxiv:2502.20086.30pages/4232776B."
+        },
+        "human_intervention_note": "none during Download; earlier preparation separate",
+        "measurement_revision": "keys-v2",
+        "timing_eligible_for_parity": true,
+        "native_operations": [
+          {
+            "time": "2026-11-17T08:48:40.951Z",
+            "task_id": "2cad9ef7a6904f48a28f346208c9e127",
+            "action": "extract_paper_pdf_clues",
+            "outcome": "retrieved",
+            "duration_ms": 13542,
+            "stage": "navigation"
+          },
+          {
+            "time": "2026-11-17T08:48:42.867Z",
+            "task_id": "1342671a39a049a99062349f40f4f8c1",
+            "action": "stream_paper_body",
+            "outcome": "response",
+            "duration_ms": 1877,
+            "stage": "navigation"
+          },
+          {
+            "time": "2026-11-17T08:49:04.396Z",
+            "task_id": "1857fefd7cb24a4794629dac0ddaeefd",
+            "action": "stream_paper_body",
+            "outcome": "stream_complete",
+            "duration_ms": 21512,
+            "stage": "navigation",
+            "stream_request_ms": 75,
+            "stream_response_ms": 1153,
+            "stream_first_byte_ms": 1153,
+            "stream_closed_ms": 21511
+          }
+        ]
+      },
+      "zotero": {
+        "result": "automatic_success",
+        "click_utc": [
+          "2026-11-17T08:46:53.282Z",
+          "2026-11-17T08:46:53.310Z"
+        ],
+        "ui_preparation": "New Chrome window/tab after userclosedalltabs; originalChromeprocess/profile survived,not an emptycache. NormalCARSIresourceSIAM reentry restored actualtargetDOI/title,institutionalFullAccess; Source separately relaunched and independently reenteredSIAM,actualF18FullAccess/PDFentry confirmed. DedicatedZcollectionselected,DebugOff,no PDFpreopen. Source21a7e25/prod77dfd67; observerkeys-v2restart baselinescompleted before Save.",
+        "human_intervention": false,
+        "translator": "Atypon Journals",
+        "parent_key": "YVU8T2V7",
+        "local_pdf_and_association_utc": [
+          "2026-11-17T08:47:06.548Z",
+          "2026-11-17T08:47:06.975Z"
+        ],
+        "wait_seconds": [
+          13.238,
+          13.693
+        ],
+        "file_bytes": 3814861,
+        "attachment_key": "A48S5XP3",
+        "link_mode": "imported_url",
+        "content_check": {
+          "file_exists": true,
+          "file_bytes": 3814861,
+          "pdf_prefix": true,
+          "page_count": 28,
+          "full_title_match": true,
+          "doi_match": true,
+          "publisher_indicators": {
+            "IEEE": false,
+            "Springer": false,
+            "Scientific Reports": false,
+            "Creative Commons": false,
+            "Accepted Manuscript": false,
+            "arXiv:": false,
+            "All rights reserved": false
+          }
+        },
+        "human_intervention_note": "none during Save; user CARSI login before preparation; exact preparation bounds missing",
+        "measurement_revision": "keys-v2",
+        "timing_eligible_for_parity": true,
+        "actual_file_source": "https://epubs.siam.org/doi/pdf/10.1137/25M1735329"
+      },
+      "platform": "SIAM",
+      "configured_service": "SIAM电子期刊",
+      "timing_comparison_eligible": false,
+      "cohort": "representative",
+      "comparison_stratum": "prepared_access_normal_download",
+      "comparable_body_version": false,
+      "version_comparison": {
+        "allfold": "arxiv2502.20086v2 preprint,30pages/4232776bytes",
+        "zotero": "SIAM/ASA J.UncertaintyQuantification version of record,28pages/3814861bytes",
+        "evidence": "Every actual file was checked; exact title/all4authors and explicit preprint relation forAllfold,DOI/publisherheader/pages forZotero. Differentversions; no same-body transfer score."
+      }
     }
   ],
   "coverage_gaps": [
@@ -4985,7 +5314,7 @@
         "F18",
         "F19"
       ],
-      "gap": "Chrome fresh normal CARSI SIAM entry plus human CF now reachesF17 actualFULLACCESS/AtyponTranslator. Source cached institution homepage didnot grant actualF17 target rights(Getfullaccess); independent fresh Source Service preparation outstanding. No formal SIAM Download/Save yet; no rights inferred from cached homepage."
+      "gap": "Both products actualFullAccess individually confirmed. F17Allfold saved correctrelated arxiv83pages; Zoterooriginaltitle/URL-only parent(noDOI/authors/PDF) interruptedafter>10min. One non-scoringAFrepeat samepreprint; observedArticle ePDFanchor inheader/noNav; native-equivalentDOI entry resolvedsamearticle. F18freshnormalCARSI entry: Zotero13.238–13.693s publisher28pages via/doi/pdf/; Allfold39.916–40.219s arxiv30pages viaP5 after P4HTML/access-challenge. no-pdf-entry describes theP4response,not a missingArticleanchor. Shared direct-entry priority implemented/offlinepassed,realretestpending. F19stillunvisited."
     }
   ],
   "parity_conclusions": "In progress: corrected low-load pairs and original affected measurements retained separately. Platform conclusions await controls and access-matched retests.",
@@ -5030,7 +5359,7 @@
     "old_results_retained": true
   },
   "chrome_service_preparation": "From user steering: select each new correspondingService in Chrome CARSI resource page before saving, then verify actual target article/Translator. Preparation/manual costs separate; no cookie/auth copying.",
-  "checkpoint_utc": "2026-11-17T05:18:23.764331+00:00",
+  "checkpoint_utc": "2026-11-17T09:40:03.866718+00:00",
   "historical_tool_interruptions": [
     "Earlier platform update removed mcp__cua_repl and an alternative-tool choice was requested; that question became obsolete when CUA returned.",
     "Global window enumeration/new-tab calls can time out after recovery; targeted Chrome getApp subsequently succeeded, and an already-created trial tab was reused rather than recreated.",
@@ -5085,9 +5414,21 @@
       "production_code_sha": "77dfd670f1b9f07cddb880688e699620f0a9a9ef",
       "frontend_head_sha": "77dfd670f1b9f07cddb880688e699620f0a9a9ef",
       "reason": "Normal Quit/rebuild/relaunch for four optional native terminal phase marks. No cache/cookie copying; new Session preparation and cache differences retained."
+    },
+    {
+      "started_at_utc": "2026-11-17T08:40:22.388Z",
+      "head_sha": "21a7e25376baa5459fed346280bb3f52353359ed",
+      "production_code_sha": "77dfd670f1b9f07cddb880688e699620f0a9a9ef",
+      "frontend_head_sha": "21a7e25376baa5459fed346280bb3f52353359ed",
+      "runtime_id": "02408604e5d6b611dc0d2d433f4e7bb0",
+      "reason": "Restored actual source after user closed tabs; old Source/Python absent and port free. UI rebuilt; production tree unchanged from77dfd67;72Papers/22bodies/0Trash/0active+cleanup verified. ChromePID4242 survived,not a clean Session.",
+      "normal_quit_utc": [
+        "2026-11-17T08:57:34.003Z",
+        "2026-11-17T08:57:34.010Z"
+      ]
     }
   ],
-  "frontend_head_sha": "77dfd670f1b9f07cddb880688e699620f0a9a9ef",
+  "frontend_head_sha": "21a7e25376baa5459fed346280bb3f52353359ed",
   "preparation_sessions": [
     {
       "runtime_id": "97a7ee2badf06ed80594e7f0b80bb712",
@@ -5127,11 +5468,11 @@
     "session_cache_effect": "Product PIDs unchanged; no cache/account reset. New CUA targeted Source2.24s/Chrome1.7s reads and actual F07-3 saving succeeded. Global inventory still timed out; task-specific surfaces used."
   },
   "ci_checkpoint": {
-    "head_sha": "78e7ea0ebbb5acdce552eea89e603b1c621bb58c",
+    "head_sha": "21a7e25376baa5459fed346280bb3f52353359ed",
     "status": "success",
-    "run_id": 44019129180,
-    "job_id": 133824133361,
-    "run_url": "https://github.com/dylaaan-booob/allfold/actions/runs/44019129180",
+    "run_id": 44024184876,
+    "job_id": 133840465573,
+    "run_url": "https://github.com/dylaaan-booob/allfold/actions/runs/44024184876",
     "scope": "Complete cumulative-PR Safety checks / safety",
     "test_evidence": {
       "javascript_files": 63,
@@ -5140,8 +5481,8 @@
       "electron_passed": 245,
       "electron_skipped": 0
     },
-    "tested_merge_sha": "9e149b89fed16841b1fe36bb7518390a17b813ce",
-    "note": "This is the latest pushed code head at this observation; later evidence commits require their own associated latest checks."
+    "tested_merge_sha": "ce79bea676b21d986503fed1f7a147c2f9a9d865",
+    "note": "Latest pushed head at this observation; later evidence commits require their own associated checks."
   },
   "non_scoring_diagnostics": [
     {
@@ -5196,6 +5537,70 @@
         "Failure not reproduced; cannot retroactively attribute older cumulative HTTP403 entries.",
         "Raw Debug contained sensitive Cookie values and was not copied or submitted; only this allowlisted sanitized sequence retained."
       ]
+    },
+    {
+      "diagnostic_id": "Wiley-F16-D1",
+      "sample_id": "F16",
+      "product": "zotero",
+      "click_utc": [
+        "2026-11-17T05:35:08.742Z",
+        "2026-11-17T05:35:08.773Z"
+      ],
+      "reason": "Single bounded diagnostic after two same-DOI parent-only normal Saves. Excluded from formal controls/parity timing.",
+      "parent_key": "M5I37TSV",
+      "observed_sequence": [
+        {
+          "translator": "Wiley Online Library",
+          "method": "POST",
+          "host": "onlinelibrary.wiley.com",
+          "path": "/action/downloadCitation",
+          "status": 403
+        },
+        {
+          "event": "automatic fallback",
+          "translator": "Embedded Metadata"
+        },
+        {
+          "method": "POST",
+          "host": "local Zotero Desktop",
+          "path": "/connector/saveItems",
+          "status": 201
+        },
+        {
+          "method": "GET",
+          "host": "onlinelibrary.wiley.com",
+          "path": "/doi/pdf/10.1002/sim.70808",
+          "status": 403
+        },
+        {
+          "method": "POST",
+          "host": "local Zotero Desktop",
+          "path": "/connector/hasAttachmentResolvers",
+          "status": 200
+        }
+      ],
+      "result": "operator_interrupted_unknown_terminal_diagnostic_only",
+      "interruption_utc": [
+        "2026-11-17T05:41:17.244Z",
+        "2026-11-17T05:41:17.258Z"
+      ],
+      "debug_restored_off_utc": [
+        "2026-11-17T05:40:47.502Z",
+        "2026-11-17T05:40:47.716Z"
+      ],
+      "limitations": [
+        "No current SaveAttachmentFromResolver request/response/timeout found in the viewed output; absence is not proof none was dispatched.",
+        "Response cause/challenge headers were not established;403 is not attributed to absent institutional login.",
+        "Initial diagnostic parent saved to MyLibrary(collections empty), so collection observer supplied no endpoint. Root found it by read-only DOI/date query; normal Add to acceptance collection completed after diagnostic. Collection membership time is not PDF completion.",
+        "Raw Debug contained sensitive headers and was not copied/submitted; only allowlisted sequence retained.",
+        "Exactly one debug Save; excluded from normal controls,not formalpair3; no installed-code modification."
+      ],
+      "source_comparison": "Installed Wiley2025-06-11 rewrites citation /pdf/ to /pdfdirect/ on its successful scrape path. Installed Embedded Metadata2026-04-27 uses citation_pdf_url unchanged. Observed F16 fallback requested /doi/pdf/; Allfold successfully used existing R002 /doi/pdfdirect/. No cause for the403response itself is inferred.",
+      "collection_correction_utc": [
+        "2026-11-17T05:43:01.731Z",
+        "2026-11-17T05:43:01.758Z"
+      ],
+      "collection_correction": "ParentM5I37TSV normally added to acceptance collection,APIverified A6XMSETF. Membership time isnot attachment completion."
     }
   ],
   "evidence_join_corrections": [
@@ -5207,5 +5612,17 @@
       ],
       "correction": "Removed two late-file notes that belonged to later fresh Zotero parents. Endpoints bind the original parent,not every later same-DOI save. All existing success/failure/wait/endpoint fields were compared and unchanged; raw observations retained. Original Allfold attempts are also bound so future retests cannot backfill missing historical failure time."
     }
-  ]
+  ],
+  "pending_fix": {
+    "scope": "Shared candidate priority across all supported platforms; direct qualified entries before deferred Reader/form work and optional discovery APIs. Existing Atypon Host family shares direct DOI entry viaR039 instead of a SIAM-only P1 rule.",
+    "local_checks": {
+      "javascript_files": 63,
+      "python_passed": 1638,
+      "python_warnings": 2,
+      "electron_passed": 245,
+      "electron_skipped": 0
+    },
+    "live_status": "Not yet run at the new production revision. Original F18 mismatch/slow wait retained; F19 still unvisited for post-fix verification.",
+    "diagnostic_correction": "Earlier no-pdf-entry was misread as missing articleDOM. It follows an attempted P4response; native article extraction did discover theePDF entry. Navigation/header/case hypotheses were not used for a patch."
+  }
 }

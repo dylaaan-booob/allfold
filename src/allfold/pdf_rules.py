@@ -91,6 +91,13 @@ class PdfCandidate:
             normalize_public_http_url(self.referer)
 
 
+# The existing Atypon response-parser family also shares a DOI PDF entry.
+ATYPON_HOSTS = frozenset({
+    'onlinelibrary.wiley.com', 'journals.sagepub.com', 'www.tandfonline.com',
+    'www.annualreviews.org', 'pubs.aiaa.org', 'www.liebertpub.com',
+    'www.worldscientific.com', 'epubs.siam.org',
+})
+
 # Exact content Hosts only. Aliases here are known public site Hosts, never
 # institution/proxy suffix matching. Unrecognised Hosts still permit generic P3.
 HOST_PLATFORMS = {
@@ -123,13 +130,14 @@ def content_host(target: PdfTarget) -> str | None:
     if target.content_host:
         host = target.content_host.lower()
         # Validate hints as Hosts, not arbitrary netlocs with ports or userinfo.
-        if host in HOST_PLATFORMS:
+        if host in HOST_PLATFORMS or host in ATYPON_HOSTS:
             return host
     return None
 
 
 def content_platform(target: PdfTarget) -> str | None:
-    return HOST_PLATFORMS.get(content_host(target))
+    host = content_host(target)
+    return HOST_PLATFORMS.get(host) or ('atypon' if host in ATYPON_HOSTS else None)
 
 
 def _doi(target: PdfTarget) -> str | None:
@@ -186,6 +194,9 @@ def iter_p1_candidates(target: PdfTarget, inputs: PdfRuleInputs | None = None) -
         if platform == 'springer' and inputs and 'springer_in_press' in inputs.conditions:
             yield PdfCandidate(target, 'P1', 'R019', platform,
                                'https://' + host + '/content/pdf/' + _path_doi(doi) + '_reference.pdf')
+    elif platform == 'atypon' and target.content_type == 'journal-article':
+        yield PdfCandidate(target, 'P1', 'R039', platform,
+                           'https://' + host + '/doi/pdf/' + _path_doi(doi))
     elif platform == 'spie':
         journal = target.content_type == 'journal-article'
         yield PdfCandidate(target, 'P1', 'R012' if journal else 'R013', platform,

@@ -3,14 +3,15 @@
 Issue: [#140](https://github.com/dylaaan-booob/allfold/issues/140). Baseline:
 `a2e511aa86ab5aa292f224301d6609a59c287fa2`.
 
-**Status: incomplete; saved checkpoint 17 November 2026, 05:18 UTC. Seventeen
-of the 31 frozen Papers have observations (40 pair slots including repeats);
-14 Papers have no formal Save/Download. Sixteen same-version low-load pairs now have reliable local
+**Status: incomplete; saved checkpoint 17 November 2026. Nineteen
+of the 31 frozen Papers have observations (43 pair slots including repeats);
+12 Papers have no formal Save/Download. Sixteen same-version low-load pairs have reliable local
 file/association endpoints. Springer has two slower Allfold points and one
 interval overlap; T&F has one slower point requiring swapped repeats. The measured
 Cambridge/IEEE prepared-access cohorts show no observed disadvantage; overall
-coverage and retests remain incomplete. Workspace is retained. F16's next pair
-is running after this saved checkpoint.**
+coverage and retests remain incomplete. F18 exposed a publisher-version/latency
+gap. The shared direct-entry repair passes offline checks but has not yet been
+retested on real sites. Workspace is retained.**
 
 ## Environment and endpoint
 
@@ -84,9 +85,9 @@ product's Reject/delete/Restore flow; metadata and Download availability survive
 The immutable [31-paper manifest](pdf-pairing-manifest.json) was committed before
 the first formal click. The [formal results](pdf-pairing-formal-results.json)
 retain all original samples, failures, preparation, versions and repetitions.
-At this checkpoint Allfold has 37 automatic local-PDF successes, one assisted
-success and two failures. Zotero has 33 local-PDF successes
-and seven operator interruptions with unknown product terminal state. These are
+At this checkpoint Allfold has 40 automatic local-PDF successes, one assisted
+success and two failures. Zotero has 34 local-PDF successes
+and nine operator interruptions with unknown product terminal state. These are
 attempt counts, not independent-paper success rates. Saving a related preprint
 is a task result but is not a publisher-version success.
 
@@ -98,8 +99,8 @@ is a task result but is not a publisher-version success.
 | Oxford Academic | 3 / 3 | Allfold 2 related preprints,1 access-challenge failure; Zotero 3 interrupted saves without parent/PDF | New native CF Prepare recovery observed; publisher PDF retests outstanding. Not confirmed. |
 | Taylor & Francis | 3 / 3 | Allfold 4 successes: original preprint plus3 publisher Accepted Manuscripts; Zotero 2 publisher Accepted Manuscripts,2 interrupted parent-only saves | Same-version F11 retry faster; first F13 slower. Controls/repeats and F12 retry outstanding. Not confirmed. |
 | Project Euclid | 1 / 3 | Both saved related arXiv v4; Allfold required in-download hCaptcha assistance | First-access recovery reported separately; normal prepared-access controls and2 papers outstanding. Not confirmed. |
-| Wiley | 3 / 3 | Allfold5 publisher OA successes; Zotero4 successes(1preprint,3publisher),1interruption | F14 original versions differ; two new normal publisher controls and F15 favorAllfold. One non-scoring F14 diagnostic succeeds. F16 publisher saved byAllfold but Zotero original terminal unknown; recovery pending. Not confirmed. |
-| SIAM | 0 / 3 | Not started | Not confirmed. |
+| Wiley | 3 / 3 | Allfold6 publisher OA successes; Zotero4 successes(1preprint,3publisher),2interruptions | F14 normal publisher controls and F15 favorAllfold. F16 default saves remain parent-only; one bounded diagnostic records citation/PDF403,with terminal unknown. Not confirmed. |
+| SIAM | 2 / 3 | Allfold2 related preprints; Zotero1 publisher PDF,1interruption | F18Allfold39.916–40.219s/preprint versusZotero13.238–13.693s/publisher. Extra path/version disadvantage requires shared repair and real retests; F19 remains unvisited. Not met at this checkpoint. |
 | INFORMS PubsOnline | 0 / 3 | Not started; configured EBSCO capability is not a platform result | Not confirmed. |
 | ScienceDirect | 0 / 6 | Formal cohort not started; repaired-path pilots remain separate | Not confirmed. |
 
@@ -246,8 +247,73 @@ After user article verification,F16's first Zotero save produced only parent
 imported attachment,temporary storage or visible helper/progress window; product
 terminal state remains unknown. A network snapshot included local API observation
 traffic and didnot independently prove termination. Allfold then saved correct
-publisher OA15pages/2195136bytes in2.084–2.483s. New same-access pairs are pending;
-the original record is not replaced with a later parent's result.
+publisher OA15pages/2195136bytes in2.084–2.483s. A new Allfold download saved the
+same publisher version in0.095–0.503s; its paired fresh Zotero parent76BG244L still
+had no attachment and was operator-interrupted05:34:10UTC after more than15min.
+Independent SourceSIAM preparation/user login and UI recovery overlapped that
+unresolved observation; it is not a normal latency comparison.
+
+One bounded non-scoring F16 Debug Save then showed citationPOST403→automatic
+Embedded Metadata fallback→GET `/doi/pdf/10.1002/sim.70808`403,saveItems201 and
+hasAttachmentResolvers200. The viewed output didnot establish a final resolver
+request/response/timeout,so terminal state remains unknown. The installed Wiley
+successful path rewrites `/pdf/` to `/pdfdirect/`; generic Embedded Metadata uses
+`citation_pdf_url` unchanged. This identifies a fallback entry difference without
+proving why the server rejected403. No installed code was changed. Debug was
+restoredOff05:40:47UTC and only that diagnostic tab closed05:41:17UTC. Its parent
+M5I37TSV initially went to MyLibrary and was normally added to the trial collection
+05:43:01UTC; that membership time is not an attachment endpoint. Sensitive raw
+Debug was not copied/submitted. Both original unknown saves remain unchanged.
+
+F17 saved verified related arxiv2409.18415v3,83pages/1226997bytes,in17.252–17.674s;
+all3authors/title and the Paper's explicit relation were checked. Its default
+Zotero parent7EBJXK9D had matching title/URL but noDOI,authors orPDF and was
+operator-interrupted05:57:03UTC. One separately declared Allfold diagnostic
+download again saved that preprint. The visible article PDF anchor was in its
+article/header and pointed to ePDF; normal DOI-entry navigation resolved the same
+article. These observations didnot justify changing DOM filters.
+
+After the user's tab closure,Source/Python/Zotero/observer were found exited;
+ChromePID4242 had survived,so this was not a clean profile/cache. The source UI was
+rebuilt and actual head21a7e25 relaunched08:40:22.388UTC,runtime02408604e5d6b611dc0d2d433f4e7bb0,
+with unchanged77dfd67 production bytes. All72Papers/22existingbodies and no active
+download/cleanup were verified. Zotero10.0.9/Connector5.0.217 and the trial collection
+were restored. The keys-v2 observer restarted08:42:23.825UTC; all existing files/items
+were baselines,never new completions. Both products independently re-entered the
+SIAM resource and confirmed actual F18FullAccess before timing.
+
+F18 Zotero saved SIAM/ASA J.UncertaintyQuantification VoR28pages/3814861bytes from
+`/doi/pdf/10.1137/25M1735329` in13.238–13.693s. Allfold instead saved related
+arxiv2502.20086v2,30pages/4232776bytes,in39.916–40.219s; title/all4authors/explicit
+relation were checked. Native operations measured article extraction13542ms,
+an entrance response1877ms,and the final preprint stream21512ms. These are not a
+complete phase decomposition. Three access-challenge source records do not mean
+three physical requests. Different versions prevent a transfer-efficiency score,
+but the original task-level delay and publisher-version disadvantage remain.
+
+The initial reading of `no-pdf-entry` as a missing article anchor was incorrect:
+`response-observed/no-pdf-entry` follows an attempted candidate's HTML response.
+The native article did supply an ePDF entrance. The resulting repair therefore
+uses shared candidate selection rather than a speculative DOM exception.
+
+The user required the repair across all supported platforms. Already qualified
+direct P2/P3/P4 entries now precede Reader/form work and optional discovery APIs;
+current Document entries and newly qualified templates use that same preference.
+Equal kinds retain source order and failed direct requests retain later sources.
+No page is fetched merely to rank candidates. The existing Atypon parser Host set
+also supplies a shared R039 journal DOI entry when no dedicated P1 template exists;
+there is no SIAM-only P1 branch. Dedicated URLs/query parameters,original target,
+Service authority,Session streaming and actual file/association completion remain.
+P5 remains last. A potential ScienceDirect PDF response is not automatically
+declared a Reader based on its URL.
+
+The shared regression was red before implementation(11failures). Focused378tests,
+full Python1638tests(2existingwarnings),JS63files and Electron245tests/0skips now
+pass. The Oxford eprint safety case remains independently covered; an already
+known PDF now avoids that unnecessary citation lookup. These checks include
+ScienceDirect/IEEE/Optica candidate-order cases and multiple Atypon Hosts,not
+real-site proof for every Host. Original F18/F17 retests and untouched F19 at the
+new code revision remain required before claiming the repair effective.
 
 During evidence reconciliation,two optional late-file notes(F04-1/F11-1) were
 found to belong to later fresh parents. They were removed and the original

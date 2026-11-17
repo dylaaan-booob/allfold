@@ -77,12 +77,17 @@ related Preprint identity cannot become the target. Preserve qualified URL/DOI
 spelling, multiple DOI path segments, signatures and necessary Referer.
 
 `PdfDiscovery` owns source order, de-duplication, reader/redirect chains and the
-remaining parent budget. P1 templates precede conditional P2 identifiers/APIs,
-saved P3 Meta and stable saved P4 URLs. Existing P4 URLs need no article reload for
+remaining parent budget. P1 templates run first. Among already qualified P2,
+saved P3 Meta and stable saved P4 entries, direct PDF candidates precede Reader
+or form work and optional missing-input API queries. Equal kinds keep their
+source order; this preference applies to every platform. Existing P4 URLs need no article reload for
 a partial snapshot, missing Meta field or unrelated refresh locator. After
-failure/missing or a dynamic entry requirement, PDF-only refresh supplies its own
-P3 before its P4; exact-target OpenAlex P5 remains last. P1 success makes later
-queries/pages zero. Refresh never repeats tried P1/P2 URLs, restarts the
+failure/missing or a dynamic entry requirement, PDF-only refresh supplies current
+P3/P4 with the same direct-before-Reader preference; exact-target OpenAlex P5 remains last. P1 success makes later
+queries/pages zero. Known Atypon journal Hosts without a dedicated P1 template
+share the R039 direct DOI entry; a failed direct entry retains ordinary later
+sources. Current Document entries and newly qualified templates use the same
+direct-before-Reader preference. Refresh never repeats tried P1/P2 URLs, restarts the
 missing-input API sequence or turns an action/refresh locator into a stable GET.
 It retains the current Document's observed content URL and identifiers. After
 its current P3/P4 clues, these may qualify previously unavailable templates before

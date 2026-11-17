@@ -36,6 +36,9 @@ def test_springer_encodes_complete_doi_but_binds_original_target():
     ('www.pnas.org', 'pnas', 'R015', '/doi/pdf/10.1234/AbC/Part(2)%3Fx=Y'),
     ('pubs.rsna.org', 'rsna', 'R016', '/doi/pdf/10.1234/AbC/Part(2)%3Fx=Y?download=true'),
     ('www.worldscientific.com', 'world_scientific', 'R017', '/doi/pdf/10.1234/AbC/Part(2)%3Fx=Y?download=true'),
+    ('epubs.siam.org', 'atypon', 'R039', '/doi/pdf/10.1234/AbC/Part(2)%3Fx=Y'),
+    ('www.liebertpub.com', 'atypon', 'R039', '/doi/pdf/10.1234/AbC/Part(2)%3Fx=Y'),
+    ('pubs.aiaa.org', 'atypon', 'R039', '/doi/pdf/10.1234/AbC/Part(2)%3Fx=Y'),
 ])
 def test_each_direct_template_is_host_and_content_bound(host, platform, rule, expected):
     paper = target(host, platform)
@@ -54,6 +57,12 @@ def test_spie_never_guesses_between_journal_and_proceedings():
     assert (conference.rule_id, conference.url) == ('R013', 'https://www.spiedigitallibrary.org/Proceedings/Download?urlId=10.1234%2FAbC%2FPart(2)%3Fx%3DY')
     assert list(iter_p1_candidates(replace(paper, content_type='unknown'))) == []
     assert list(iter_p1_candidates(target('projecteuclid.org', 'project_euclid', 'conference-paper'))) == []
+
+
+@pytest.mark.parametrize('host', ['epubs.siam.org', 'www.liebertpub.com', 'pubs.aiaa.org'])
+def test_shared_doi_direct_entry_requires_journal_article(host):
+    paper = target(host, 'atypon', 'conference-paper')
+    assert list(iter_p1_candidates(paper)) == []
 
 
 def test_plos_uses_only_established_journal_slug_and_printable():

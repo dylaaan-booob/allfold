@@ -7,6 +7,7 @@ from urllib.parse import parse_qs, unquote, urljoin, urlsplit
 
 from allfold.http_access import html_access
 from allfold.identifiers import valid_doi
+from allfold.pdf_rules import ATYPON_HOSTS
 from allfold.url_safety import normalize_public_http_url
 
 
@@ -341,8 +342,7 @@ def parse_current_response(candidate, response, *, report=lambda code: None):
     silverchair = host in {'pubs.acs.org', 'pubs.aip.org', 'jamanetwork.com',
         'pubs.geoscienceworld.org', 'academic.oup.com'} or any(host == root or host.endswith('.' + root)
             for root in ('rupress.org', 'ashpublications.org', 'arvojournals.org'))
-    atypon = host in {'onlinelibrary.wiley.com', 'journals.sagepub.com', 'www.tandfonline.com',
-        'www.annualreviews.org', 'pubs.aiaa.org', 'www.liebertpub.com', 'www.worldscientific.com', 'epubs.siam.org'}
+    atypon = host in ATYPON_HOSTS
     for node in nodes:
         tag, attrs = node['tag'], node['attrs']
         label = node['text'] + ' ' + attrs.get('title', '') + ' ' + attrs.get('href', '')

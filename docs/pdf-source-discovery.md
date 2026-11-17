@@ -122,7 +122,7 @@ PDF Source Discovery 不运行 Zotero Translator、Zotero Translate 或 Zotero U
 - P1 下载完成时，本次 PDF 操作不再请求 Handle/Crossref、不额外加载文章 HTML，也不调用 OpenAlex；不否定此前 Run 已完成的网页/API 采集。
 - P1 不适用时，直接进入第一个适用阶段；不对所有平台试探 `/doi/pdf/`。
 - P2 的 Handle、Crossref 和官方 API 不是固定串联步骤。按缺少的信息选择相应来源，前一次结果足够时停止补查。
-- P1/P2 及已有 P3 之后，稳定的已有 P4 URL 可直接进入 Session；partial 快照、可能补出的 P3 或无关刷新线索不强制先重开文章。已有候选失败、缺失或动态入口确需更新时，再按需执行 PDF-only 取页；该次实际读取的 P3 仍先于其 P4，不重发已试 P1/P2 URL 或重启缺失输入的 API 查询，不把动作/刷新定位信息当 GET。保留本次 Document 实际观察的正文 Host 与标识；当前 P3/P4 之后、P5 之前，可尝试因此新获得资格的模板，仍绑定原 Paper。
+- P1 模板先行；已经具备资格的 P2、已有 P3 和稳定 P4 候选中，直达 PDF 先于 Reader、表单动作及可选的缺失输入 API 查询，同类候选保持来源次序。这是所有平台的共用优先级，不为找更多候选而提前请求新页面。partial 快照、可能补出的 P3 或无关刷新线索不强制先重开文章。已有候选失败、缺失或动态入口确需更新时，再按需执行 PDF-only 取页；当前 Document 与因此新获资格的模板也采用直达优先，不重发已试 P1/P2 URL 或重启缺失输入 API，不把动作/刷新定位信息当 GET。原 Paper、候选来源阶段、实际 Service、签名和访问上下文仍保留；P5 仍在后面。
 - 规则在某个阶段取得新的 ID 或明确下载地址，可以就地完成其依赖链。无需为了阶段编号重新开始整个流程。
 
 #### F2.3 中间页面随候选处理
@@ -338,7 +338,7 @@ Meta 值指向 HTML 下载器时进入适用的中间页规则。不能因为 UR
 | ACS | 当前 Silverchair PDF 链接；引用链接提供 `resourceId/resourceType` | [R044](#r044)，不自动推广 OUP 的 BibTeX `eprint` 行为 |
 | Cambridge Core | 期刊 Meta；材料中图书/章节另有 `.actions a[target='_blank'][href*='.pdf']` | [R051](#r051)，期刊与图书分支不混用 |
 | Nature | Meta；`a[data-track-action='download pdf']` | [R037](#r037) |
-| Atypon | 页面确有 `/doi/pdf/`、`/doi/epdf/`、`/doi/pdfplus/` 链接时选择对应变体 | [R039](#r039)、[R061](#r061) |
+| Atypon | 已识别实际期刊 Host 与 DOI 复用通用直达入口；已有专用 P1 模板优先，DOM/Reader 保留为回退 | [R039](#r039)、[R061](#r061) |
 | De Gruyter Brill | `a.downloadPdf[href]` | [R054](#r054)，与 `brill.com` 规则分开 |
 | Emerald | `a.intent_pdf_link[href]` 或已在 `full/pdf?` 的当前 URL | [R055](#r055) |
 | eLife | `.article-download-list a[href]` 中明确 PDF 入口 | [R057](#r057)，不猜文件版本后缀 |
@@ -1414,12 +1414,12 @@ Atypon 共享有条件的路径选择；Silverchair 共享 PDF DOM 读取并保�
 
 #### R039 · Atypon 共用解析器
 
-**本规格采用：** 纳入 P3/P4；只读取目标论文页面及本条明确字段。
+**本规格采用：** 复用已有 Atypon Host 识别。实际 Host、期刊类型与 DOI 确认后，已有专用 P1 模板优先；没有专用模板时，共享 `/doi/pdf/{doi}` 直达入口。P3/P4、Reader 和 P5 保留为后续来源。
 
-**Host：** `依具体 journal Host`  
-**表达式或提取位置：** `在 DOM 确认存在 /doi/pdf/、/doi/epdf/、/doi/pdfplus/ 对应链接，再将文章 DOI 路径替换`
+**Host：** `pdf_rules.ATYPON_HOSTS` 中已有实际期刊 Host，不按 publisher 名称推断。
+**表达式或提取位置：** 通用 P1 为 `/doi/pdf/{doi}`；当前 DOM 中的 `/doi/pdf/`、`/doi/epdf/`、`/doi/pdfplus/` 仍供 P3/P4 使用。
 
-**所需输入与解析：** 文章 DOI URL + 当前 DOM；buildPdfUrl 检查真实 anchor 路径；HTML条件：需要文章HTML、DOM或页面状态。
+**所需输入与解析：** P1 需要已确认 Host、期刊文章类型和 DOI；书籍、章节、会议及未知 Host 不获得这个共享模板。P3/P4 仍只读取目标论文页面。专用模板的 URL、查询参数和 DOI 请求拼写保持原规则。
 
 **已列变体：** `/doi/pdf/{doi}; /doi/epdf/{doi}; /doi/pdfplus/{doi}`
 
@@ -1427,9 +1427,9 @@ Atypon 共享有条件的路径选择；Silverchair 共享 PDF DOM 读取并保�
 
 **访问条件：** PDF 请求依目标站点授权；所读构造函数未规定额外请求头。
 
-**源实现范围：** 这是受 DOM 门控的共享模板，不能把三个变体对所有 Atypon Host 无条件轮询。doWeb 244 接入，scrape 381–387 写入附件。
+**源实现范围：** 源 `buildPdfUrl` 根据 DOM 选择路径。本机版本及现场出版版 PDF 入口对照用于扩展共用直达资格；不轮询三个变体，不复制 Translator 实现。共用优先级还适用于其他平台已有的直达候选与 Reader；不会为了排序提前打开新页面。
 
-**研究证据及模块：** 源码验证；固定 commit 3fb4e794446763ac2053250112890631c428159f；未运行实站下载；函数/模块：buildPdfUrl; doWeb; scrape。**来源：** [S026](#s026)。
+**研究证据及模块：** 历史源码固定 commit `3fb4e794446763ac2053250112890631c428159f`，本机 Atypon Journals 更新日期 `2022-10-25 02:51:38`；具体实站覆盖及未验证 Host 见 [配对验收报告](pdf-pairing-acceptance.md)。**来源：** [S026](#s026)。
 
 
 <a id="r040"></a>
@@ -1898,22 +1898,22 @@ Atypon 共享有条件的路径选择；Silverchair 共享 PDF DOM 读取并保�
 
 #### R061 · SIAM Journals（Atypon 规则线索）
 
-**本规格采用：** 纳入 P3/P4；只读取目标论文页面及本条明确字段。
+**本规格采用：** 本条保留 P3/P4 DOM 线索；直达入口使用共用 [R039](#r039)，不增加 SIAM 专用性能分支。所有候选适用共用直达优先级，失败后仍可进入 Reader 与 P5。
 
 **Host：** `epubs.siam.org`  
-**表达式或提取位置：** `已确认DOM中的/doi/pdf/{doi}、/doi/epdf/{doi}或/doi/pdfplus/{doi}`
+**表达式或提取位置：** 已确认 DOM 中的 `/doi/pdf/{doi}`、`/doi/epdf/{doi}`、`/doi/pdfplus/{doi}`。
 
-**所需输入与解析：** 文章 DOI URL + 页面链接；Atypon buildPdfUrl；测试含SIAM站点；HTML条件：需要文章HTML、DOM或页面状态。
+**所需输入与解析：** 本条读取文章 DOI URL + 目标论文 DOM；已识别 Host 的期刊 DOI 直达资格由 R039 共用规则处理。
 
-**已列变体：** `依实际锚点确定变体`
+**已列变体：** ePDF 可能返回 HTML，与直接 PDF 是不同入口。
 
 **中间页或响应：** 依响应。
 
 **访问条件：** 机构Session或OA。
 
-**源实现范围：** 本记录保留可复用Host映射。源码支持的是DOM确认后的路径转换；未补作当前站点下载实测。
+**源实现范围：** 本机 Atypon Journals `2022-10-25 02:51:38` 的 `buildPdfUrl` 按 DOM 线索选择路径。真实 Connector 已从当前 SIAM `/doi/pdf/` 保存出版版；Allfold 将该证据用于共用入口选择，保留原 Session、Service 与保存终点，未复制 Translator 源码。
 
-**研究证据及模块：** 源码验证；本轮未做授权下载；函数/模块：buildPdfUrl。**来源：** [S026](#s026)。
+**研究证据及模块：** 本轮具体样本、修复前后版本及现场结果见 [配对验收报告](pdf-pairing-acceptance.md)。历史源码依据仍为 `buildPdfUrl`。**来源：** [S026](#s026)。
 
 
 ### A.5 历史候选：默认不启用

@@ -77,6 +77,101 @@ def test_t01_p1_confirmation_stops_before_any_later_io():
     assert [item.rule_id for item in seen] == ['R002']
 
 
+@pytest.mark.parametrize('host', ['epubs.siam.org', 'www.liebertpub.com'])
+def test_shared_doi_direct_pdf_finishes_before_article_reader_and_oa_requests(host):
+    class IO:
+        def document(self, _):
+            pytest.fail('A successful direct PDF must not open the article/ePDF reader')
+
+        def openalex(self, _):
+            pytest.fail('A successful direct PDF must not fall back to another version')
+
+    paper = target(host, article_url='https://' + host + '/doi/10.1234/AbC')
+    seen = []
+    result = PdfDiscovery(paper, io=IO()).run(
+        lambda candidate: seen.append(candidate) or CandidateResult.pdf(transfer_complete=True))
+    assert result.status == 'transferred'
+    assert (result.pdf_source, result.fallback_used) == ('P1', False)
+    assert [(c.rule_id, c.url, c.target) for c in seen] == [
+        ('R039', 'https://' + host + '/doi/pdf/10.1234/AbC', paper)]
+
+
+@pytest.mark.parametrize('host,rule', [('epubs.siam.org', 'R061'), ('www.liebertpub.com', 'R039')])
+def test_shared_doi_failed_direct_entry_keeps_observed_article_pdf_fallback(host, rule):
+    paper = target(host, article_url='https://' + host + '/doi/10.1234/AbC')
+    reader = 'https://' + host + '/doi/epdf/10.1234/AbC'
+    facts = document(paper, [PdfCandidateFact(stage='P4', rule_id=rule, url=reader)])
+    seen = []
+    def consume(candidate):
+        seen.append(candidate)
+        return CandidateResult.failed() if candidate.stage == 'P1' else CandidateResult.pdf(transfer_complete=True)
+    result = PdfDiscovery(paper, facts=(facts,)).run(consume)
+    assert [(c.stage, c.url) for c in seen] == [
+        ('P1', 'https://' + host + '/doi/pdf/10.1234/AbC'), ('P4', reader)]
+    assert (result.pdf_source, result.fallback_used) == ('P4', True)
+
+
+@pytest.mark.parametrize('host,reader,kind', [
+    ('www.sciencedirect.com', 'https://www.sciencedirect.com/science/article/pii/S014067362400123X/pdfft', 'sciencedirect'),
+    ('ieeexplore.ieee.org', 'https://ieeexplore.ieee.org/stamp/stamp.jsp?arnumber=123', 'ieee'),
+    ('opg.optica.org', 'https://opg.optica.org/viewmedia.cfm?uri=ao-63-1-1', 'optica'),
+])
+def test_available_direct_pdf_precedes_reader_and_optional_io(host, reader, kind):
+    paper = target(host)
+    direct = 'https://cdn.example.org/current.pdf'
+    facts = document(paper, [
+        PdfCandidateFact(stage='P3', rule_id='GENERIC', url=reader,
+                         field='citation_pdf_url', reader_kind=kind),
+        PdfCandidateFact(stage='P4', rule_id='GENERIC', url=direct),
+    ])
+    class IO:
+        def query_missing(self, *_):
+            pytest.fail('An available direct PDF precedes optional discovery requests')
+
+        def document(self, _):
+            pytest.fail('An available direct PDF needs no new Document')
+
+    seen = []
+    result = PdfDiscovery(paper, facts=(facts,), io=IO()).run(
+        lambda candidate: seen.append(candidate.url) or CandidateResult.pdf(transfer_complete=True))
+    assert seen == [direct]
+    assert (result.pdf_source, result.fallback_used) == ('P4', False)
+
+
+def test_available_direct_pdf_failure_preserves_reader_recovery():
+    paper = target('ieeexplore.ieee.org')
+    direct = 'https://cdn.example.org/current.pdf'
+    reader = 'https://ieeexplore.ieee.org/stamp/stamp.jsp?arnumber=123'
+    facts = document(paper, [
+        PdfCandidateFact(stage='P3', rule_id='GENERIC', url=reader,
+                         field='citation_pdf_url', reader_kind='ieee'),
+        PdfCandidateFact(stage='P4', rule_id='GENERIC', url=direct),
+    ])
+    seen = []
+    result = PdfDiscovery(paper, facts=(facts,)).run(lambda candidate: seen.append(candidate.url)
+        or (CandidateResult.failed() if candidate.url == direct else CandidateResult.pdf(transfer_complete=True)))
+    assert seen == [direct, reader]
+    assert (result.pdf_source, result.fallback_used) == ('P3', True)
+
+
+def test_current_document_direct_pdf_precedes_its_reader_meta():
+    from allfold.application.document_metadata import CurrentPdfClue, DocumentPdfResult
+    paper = target('ieeexplore.ieee.org')
+    direct = 'https://cdn.example.org/current.pdf'
+    reader = 'https://ieeexplore.ieee.org/stamp/stamp.jsp?arnumber=123'
+    class IO:
+        def document(self, _):
+            return DocumentPdfResult(document(paper), (
+                CurrentPdfClue('P3', 'GENERIC', reader, reader_kind='ieee', field='citation_pdf_url'),
+                CurrentPdfClue('P4', 'GENERIC', direct),
+            ))
+    seen = []
+    result = PdfDiscovery(paper, io=IO()).run(
+        lambda candidate: seen.append(candidate.url) or CandidateResult.pdf(transfer_complete=True))
+    assert seen == [direct]
+    assert result.pdf_source == 'P4'
+
+
 def test_p3_cache_keeps_stage_and_field_order_after_actual_failure():
     paper = target()
     facts = document(paper, [
@@ -337,8 +432,6 @@ def test_t06_t09_t10_unqualified_numeric_suffix_and_volume_guesses_never_dispatc
 
 def test_t07_oup_article_only_eprint_is_not_pdf_success():
     paper = target('academic.oup.com', article_url='https://academic.oup.com/journal/article/1/2/3/123')
-    facts = document(paper, [PdfCandidateFact(stage='P3', rule_id='R020',
-        url='https://cdn.example.org/Explicit.PDF', field='citation_pdf_url')])
     seen = []
     def consume(c):
         seen.append(c)
@@ -346,9 +439,20 @@ def test_t07_oup_article_only_eprint_is_not_pdf_success():
             return CandidateResult.current(CurrentResponse(c.url, 'application/x-bibtex',
                 b'@article{x, eprint={https://academic.oup.com/journal/article/1/2/3/123}}'))
         return CandidateResult.pdf(transfer_complete=True)
-    result = PdfDiscovery(paper, facts=(facts,)).run(consume)
-    assert [c.stage for c in seen] == ['P2', 'P3']
-    assert (result.pdf_source, result.fallback_used) == ('P3', True)
+    result = PdfDiscovery(paper).run(consume)
+    assert [c.stage for c in seen] == ['P2']
+    assert result.status == 'exhausted' and result.pdf_source is None
+
+
+def test_oup_explicit_pdf_precedes_eprint_lookup():
+    paper = target('academic.oup.com', article_url='https://academic.oup.com/journal/article/1/2/3/123')
+    facts = document(paper, [PdfCandidateFact(stage='P3', rule_id='R020',
+        url='https://cdn.example.org/Explicit.PDF', field='citation_pdf_url')])
+    seen = []
+    result = PdfDiscovery(paper, facts=(facts,)).run(lambda c: seen.append(c)
+        or CandidateResult.pdf(transfer_complete=True))
+    assert [(c.stage, c.url) for c in seen] == [('P3', 'https://cdn.example.org/Explicit.PDF')]
+    assert (result.pdf_source, result.fallback_used) == ('P3', False)
 
 
 def test_t08_stable_doi_like_path_survives_but_tdm_uuid_never_dispatches():

@@ -15,7 +15,7 @@ from urllib.parse import parse_qs, urldefrag, urlsplit
 
 from allfold.pdf_facts import PdfDiscoveryFacts, crossref_pdf_refresh_required, discovery_target_matches
 from allfold.pdf_catalog import API_CATALOG, RULE_CATALOG
-from allfold.pdf_rules import (ARTICLE_TYPES, PdfCandidate, PdfRuleInputs, PdfTarget, KnownPdfUrl,
+from allfold.pdf_rules import (ARTICLE_TYPES, ATYPON_HOSTS, PdfCandidate, PdfRuleInputs, PdfTarget, KnownPdfUrl,
     content_platform, iter_p1_candidates, iter_p2_candidates, needs_p2_query)
 from allfold.providers.provider_http import Cancelled, ProviderBudgetExceeded
 from allfold.providers.openalex import OpenAlexNotFoundError, OpenAlexRequestError
@@ -347,13 +347,28 @@ class PdfDiscovery:
             c.reader_kind, c.referer, c.field, action=c.action) for c in values),
             *self._lww_viewer(result.facts))
 
+    @staticmethod
+    def _reader_entry(candidate):
+        parsed = urlsplit(candidate.url)
+        return bool(candidate.action or candidate.reader_kind
+            or parsed.hostname in ATYPON_HOSTS and re.search(r'/doi/(?:epdf|pdfplus)/', parsed.path))
+
+    def _ordered_entries(self, candidates):
+        # Rank only already qualified entries. This does not fetch new clues or
+        # claim a response is a PDF; the consumer still verifies actual saving.
+        return sorted(candidates, key=self._reader_entry)
+
     def _candidates(self):
         if self._initial is not None:
             yield from self._initial
             return
         yield from self._rules('P1')
         existing = tuple(self._rules('P2'))
-        yield from existing
+        saved_p3 = tuple(self._saved('P3'))
+        saved_p4 = tuple(self._saved('P4'))
+        ready = [(candidate, self._reader_entry(candidate))
+                 for candidate in (*existing, *saved_p3, *saved_p4)]
+        yield from (candidate for candidate, reader in ready if not reader)
         if (needs_p2_query(self._route, replace(self.inputs, target=self._route), known_refresh=crossref_pdf_refresh_required(self.facts))
                 and self.io is not None and callable(getattr(type(self.io), 'query_missing', None))):
             # IO is an iterator: no second interface is requested until the
@@ -390,25 +405,25 @@ class PdfDiscovery:
                 yield from candidates
                 if sufficient_inputs:
                     break
-        # An already qualified P3 clue can finish before refreshing missing
-        # fields or a later dynamic P4 entrance in a partial snapshot.
-        yield from self._saved('P3')
-        saved_p4 = tuple(self._saved('P4'))
-        yield from saved_p4
+        # Existing direct entries can finish before optional APIs or Reader
+        # work. Deferred entries remain available if those direct requests fail.
+        yield from (candidate for candidate, reader in ready if reader)
         # Stable body URLs already have authority to be tried. A qualified
         # Reader refreshes its own entry inside the chain, not the article.
         failed_p4 = any(not c.reader_kind and (urldefrag(c.url)[0], c.action) in self._seen for c in saved_p4)
         current = self._document() if self._document_needed() or failed_p4 else ()
-        yield from sorted((c for c in current if c.stage == 'P3'),
-            key=lambda c: 0 if c.field == 'citation_pdf_url' else 1)
-        yield from sorted((c for c in current if c.stage == 'P4'), key=lambda c: c.rule_id == 'GENERIC')
+        current_entries = (*sorted((c for c in current if c.stage == 'P3'),
+            key=lambda c: 0 if c.field == 'citation_pdf_url' else 1),
+            *sorted((c for c in current if c.stage == 'P4'), key=lambda c: c.rule_id == 'GENERIC'))
+        templates = []
         if self._document_attempted:
             # A resolved content page can qualify a previously unavailable
             # template. Keep current links first and never replay a tried URL
             # or restart the missing-input API queries.
             for stage in ('P1', 'P2'):
-                yield from (c for c in self._rules(stage)
+                templates.extend(c for c in self._rules(stage)
                     if (urldefrag(c.url)[0], c.action) not in self._seen)
+        yield from self._ordered_entries((*current_entries, *templates))
         cached = next((f for f in self.facts if f.source == 'openalex'), None)
         refreshed = False
         if cached and cached.status in {'complete', 'partial'}:
