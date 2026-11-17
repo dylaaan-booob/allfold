@@ -154,7 +154,7 @@ request content is logged. Native regressions verify actual streaming/backpressu
 close-before-terminal and continued saving when the observation callback throws;
 strict Node-to-Python export retains only bounded numbers. Logger/native tests
 were red before implementation and green afterward. Full local checks passed:
-JavaScript63files, Python1622tests(2existing deprecation warnings), Electron243tests
+JavaScript63files, Python1622tests(2existing deprecation warnings), Electron244tests
 with no skips. These marks have not yet been observed on the real running process
 at this saved checkpoint; they are not retroactive phase measurements.
 
