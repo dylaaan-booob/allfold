@@ -85,7 +85,9 @@ def test_run_first_collection_uses_new_verified_doi_without_replacing_saved_prim
         assert result.facts.existing_papers == 1 and result.facts.created_papers == 0
         assert bridge.started.wait(2), 'A newly confirmed DOI must enable the first Document collection'
         assert bridge.identities == [{'doi': saved_doi or '10.5555/formal'}]
-        with PaperRepository.open(tmp_path / 'workspace') as repository:
+        # API collection can still commit/close SQLite sidecars while Document
+        # waits. Read through the same owner gate used by the application.
+        with host.current().paper_gate(), PaperRepository.open(tmp_path / 'workspace') as repository:
             queued = repository.get(original.id)
         assert {(item.namespace, item.value) for item in queued.identities} == {
             ('pmid', '42'), ('pmid', '43'), ('doi', '10.5555/formal'),

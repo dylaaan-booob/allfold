@@ -3,9 +3,9 @@
 Issue: [#140](https://github.com/dylaaan-booob/allfold/issues/140). Baseline:
 `a2e511aa86ab5aa292f224301d6609a59c287fa2`.
 
-**Status: incomplete; saved checkpoint 17 November 2026, 03:39 UTC. Fourteen
-of the 31 frozen Papers have observations (31 pair slots including repeats);
-17 Papers are unstarted. Nine same-version low-load pairs now have reliable local
+**Status: incomplete; saved checkpoint 17 November 2026, 04:42 UTC. Sixteen
+of the 31 frozen Papers have observations (37 pair slots including repeats);
+15 Papers have no formal Save/Download. Fourteen same-version low-load pairs now have reliable local
 file/association endpoints. Springer has two slower Allfold points and one
 interval overlap; T&F has one slower point requiring swapped repeats. No platform
 is confirmed at parity. Workspace is retained for required measurements/retests.**
@@ -82,21 +82,21 @@ product's Reject/delete/Restore flow; metadata and Download availability survive
 The immutable [31-paper manifest](pdf-pairing-manifest.json) was committed before
 the first formal click. The [formal results](pdf-pairing-formal-results.json)
 retain all original samples, failures, preparation, versions and repetitions.
-At this checkpoint Allfold has 27 automatic local-PDF successes, one assisted
-success, two failures and one unattempted end. Zotero has 25 local-PDF successes
+At this checkpoint Allfold has 34 automatic local-PDF successes, one assisted
+success and two failures. Zotero has 31 local-PDF successes
 and six operator interruptions with unknown product terminal state. These are
 attempt counts, not independent-paper success rates. Saving a related preprint
 is a task result but is not a publisher-version success.
 
 | Actual platform | Papers started / planned | Local PDF observations, including repeats | Conclusion |
 | --- | --- | --- | --- |
-| IEEE Xplore | 2 / 2 | Allfold 0 success,1 failure,1 end unattempted; Zotero 2 publisher files | Original extra failure retained. Same-access target retests outstanding. Not confirmed. |
+| IEEE Xplore | 2 / 2 | Allfold5 publisher files,1 original failure; Zotero6 publisher files | Current F01 three controls plus F02 paired retest all correct/same-version and Allfold not slower. Old failure retained; no extrapolation beyond these2Papers. |
 | Springer Link | 3 / 3 | Allfold 12 successes; Zotero 11 successes,1 interruption | Three corrected low-load controls: two slower points and one overlap. Cause unresolved; not confirmed. |
 | Cambridge Core | 2 / 2 | Allfold9 successes; Zotero9 successes; one body on each side is a preprint | F06 three controls plus F07-3 have comparable publisher PDFs; all favor Allfold. No observed disadvantage in these two Papers; earlier access/version differences retained, no broader extrapolation. |
 | Oxford Academic | 3 / 3 | Allfold 2 related preprints,1 access-challenge failure; Zotero 3 interrupted saves without parent/PDF | New native CF Prepare recovery observed; publisher PDF retests outstanding. Not confirmed. |
 | Taylor & Francis | 3 / 3 | Allfold 4 successes: original preprint plus3 publisher Accepted Manuscripts; Zotero 2 publisher Accepted Manuscripts,2 interrupted parent-only saves | Same-version F11 retry faster; first F13 slower. Controls/repeats and F12 retry outstanding. Not confirmed. |
 | Project Euclid | 1 / 3 | Both saved related arXiv v4; Allfold required in-download hCaptcha assistance | First-access recovery reported separately; normal prepared-access controls and2 papers outstanding. Not confirmed. |
-| Wiley | 0 / 3 | Not started | Not confirmed. |
+| Wiley | 2 / 3 | Both2 successes; F14 versions differ, F15 publisher OA matches | F14 translator/fallback and control repeats require diagnosis; F16 waiting human CF before Save. Not confirmed. |
 | SIAM | 0 / 3 | Not started | Not confirmed. |
 | INFORMS PubsOnline | 0 / 3 | Not started; configured EBSCO capability is not a platform result | Not confirmed. |
 | ScienceDirect | 0 / 6 | Formal cohort not started; repaired-path pilots remain separate | Not confirmed. |
@@ -131,6 +131,11 @@ were individually checked for title, DOI, version, actual file and association.
 | F06-5 / A→Z | Cambridge publisher FirstView,33pages; actual new body/save | 1.968–2.320s | 4.273–4.667s | −2.699 to−1.953s | 0.4217–0.5429 |
 | F06-6 / Z→A | Same Cambridge version,33pages; actual new body/save | 2.317–2.678s | 3.513–3.887s | −1.570 to−0.835s | 0.5961–0.7623 |
 | F07-3 / Z→A | Cambridge target institutional rights separately confirmed,FirstView42pages,571863bytes | 1.831–2.199s | 3.746–4.081s | −2.250 to−1.547s | 0.4487–0.5870 |
+| F01-2 / Z→A | IEEE institutional Early Access,16pages; actual rights freshly established | 9.826–10.195s | 12.751–13.176s | -3.350 to-2.556s | 0.7457–0.7995 |
+| F01-3 / A→Z | Same IEEE control,new body/save | 10.186–10.558s | 13.652–13.950s | -3.764 to-3.094s | 0.7302–0.7734 |
+| F01-4 / Z→A | Same IEEE control,new body/save | 11.271–11.659s | 11.684–12.016s | -0.745 to-0.025s | 0.9380–0.9979 |
+| F02-2 / A→Z | IEEE institutional Early Access,14pages | 15.527–15.915s | 18.393–18.984s | -3.457 to-2.478s | 0.8179–0.8653 |
+| F15-1 / A→Z | Wiley publisher OA,13pages | 1.081–1.504s | 2.167–2.539s | -1.458 to-0.663s | 0.4258–0.6940 |
 
 For Springer OA, n=3 paired repeats of **one** Paper: interval median waits are
 2.598–2.952s(Allfold) and1.717–2.109s(Zotero), median paired difference
@@ -179,6 +184,31 @@ the real first-Session redirect cost and shows no slow local writer in that warm
 copy; actual cache flags and the earlier one-stream4s outlier's phase remain
 unknown. These two declared diagnostic pairs are separate from representative
 scores and do not replace original F03-4/5/6 slower observations.
+
+IEEE's current F01 control has3paired observations of one Paper: median paired
+difference−3.350 to−2.556s and ratio0.7457–0.7995; raw Allfold waits9.826–11.659s,
+Zotero11.684–13.950s. F02 contributes one independent current paired point.
+Before these retests, a cached institutional homepage contradicted actual target
+no-access text. Separate fresh normal CARSI resource entries/automatic SSO restored
+actual article rights in both products; no PDF was preopened. The original failure
+and loaded-observer Z1 records remain, and access restoration is not a code-only
+benefit. Prepared-source F01 used one P2 stream per successful attempt.
+
+Wiley F14's normal primary Translator reported an error and automatically fell
+back to Embedded Metadata. Zotero ultimately saved verified arXiv2504.12052v3,
+32pages/4362024bytes,13.049–13.372s; exact title/all5authors/version match the
+Paper's explicit preprint relation. Allfold saved Wiley publisher OA21pages/
+3295211bytes,15.075–15.453s,via P5OPENALEX from onlinelibrary.wiley.com after
+challenged P1R002/P2API02 paths. Different versions prohibit a same-body transfer
+score. F15 then saved publisher OA13pages on both products: Allfold P1 direct
+1.081–1.504s versus Zotero2.167–2.539s; no Translator error was observed in its
+normal UI. The installed Wiley Translator(fe728bc9-595a-4f03-98fc-766f1d8d0936,
+updated2025-06-11) POSTs downloadCitation for BibTeX and rejects a non-BibTeX reply.
+That source establishes a possible failure seam,not the actual F14 response;
+a bounded diagnostic must distinguish challenge/network/parse failure. No installed
+Translator/Connector code was changed. Chrome human CF during Wiley preparation
+is separate,exact preparation bounds are missing; F16 currently waits another
+human article challenge before any Save.
 
 F03 publisher files are22pages/2636871bytes; F04 are57pages/5103901bytes; F05
 are29pages/7842498bytes. F04's first Zotero save created only a parent; its trial
@@ -260,7 +290,7 @@ new saves on both products. Global inventory still timed out, so task-specific
 surfaces are used. No Save/time is inferred merely from foregrounding/restarting.
 The obsolete alternative-tool question does not block the recovered channel.
 
-At the checkpoint Workspace has72Papers,56Candidates,16Downloaded,0Trash, no
+At the checkpoint Workspace has72Papers,52Candidates,20Downloaded,0Trash, no
 active download. Diagnostics that lost their configured target earlier refused
 writes; cause unknown, exports explicitly incomplete. A normal01:11 relaunch
 restored logging, and the current native export was saved outside Workspace.
@@ -425,3 +455,23 @@ PDFs, cookies, credentials, signed URLs, sensitive institutional pages or raw au
 requests. Workspace Reset has **not** run: mandatory acceptance/retests remain.
 The dedicated Zotero collection retains all trial materials and the original
 library is preserved.
+
+## CI execution cleanup checkpoint
+
+PR-linked run44012054791 at8aa4b8b failed the body-stream fixture65s timeout,
+then retained Electron/Python processes/output pipes until the20min job limit.
+This was not a20min normal suite runtime. The committed test-only cbe1b7b cleanup
+shares one POSIX process-group runner across existing native wrappers,retains
+all deadlines/output limits/assertions,and streams case stdout once. A synthetic
+SIGTERM-ignoring parent/descendant regression failed before and now confirms
+actual termination and released pipes. Full local Electron245passed; final affected
+UI wrappers/regression3passed; JS63passed. Standards/Spec increment reviews found0.
+Original body-stream's internal intermittent stop point is still unknown; better
+case output and fail-fast cleanup do not prove that internal cause fixed.
+
+The latest cbe1b7b full PR run44017379916 stopped earlier,in Python:1621passed,
+1collection-planner fixture failed opening SQLite while its collection worker
+was active. The test now reads through its normal Workspace owner gate; production
+single-link/path guards remain intact. Focused20tests and full local Python1622
+pass(2existing warnings,39.33s). This new test fix still needs its own committed
+review/latest full PR check. No latest-CI success or whole-task completion is claimed.

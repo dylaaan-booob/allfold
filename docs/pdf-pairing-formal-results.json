@@ -178,16 +178,55 @@
       "pair_id": "F02-1",
       "sample_id": "F02",
       "order": [
-        "Zotero",
-        "Allfold"
+        "zotero",
+        "allfold"
       ],
-      "production_code_sha": "098288ae32e159811b9c49333b386d1533890862",
-      "runtime_head_sha": "7c9be1c5e4487087c4dacf0afebd0e7c19b3435b",
+      "production_code_sha": "77dfd670f1b9f07cddb880688e699620f0a9a9ef",
+      "runtime_head_sha": "77dfd670f1b9f07cddb880688e699620f0a9a9ef",
       "allfold": {
-        "result": "pending",
+        "result": "automatic_success",
         "reason": "Electron institutional local login pending; no Download yet",
-        "measurement_revision": "full-json-v1",
-        "timing_eligible_for_parity": false
+        "measurement_revision": "keys-v2",
+        "timing_eligible_for_parity": true,
+        "click_utc": [
+          "2026-11-17T03:58:07.083Z",
+          "2026-11-17T03:58:07.212Z"
+        ],
+        "ui_preparation": "Original F02 first Allfold Download,no existing body. Both new target article views independently confirmed actual configured-institution IEEE subscription/full text/PDF entry and exact DOI,title; no PDF preopen. Old Z1 retained across long interruption; current A is not time-comparable with old observer-loaded Z1.",
+        "human_intervention": false,
+        "runtime_head_sha": "77dfd670f1b9f07cddb880688e699620f0a9a9ef",
+        "production_code_sha": "77dfd670f1b9f07cddb880688e699620f0a9a9ef",
+        "frontend_head_sha": "77dfd670f1b9f07cddb880688e699620f0a9a9ef",
+        "local_pdf_and_association_utc": [
+          "2026-11-17T03:58:22.060Z",
+          "2026-11-17T03:58:22.322Z"
+        ],
+        "wait_seconds": [
+          14.848,
+          15.239
+        ],
+        "file_bytes": 3732577,
+        "attempt": 1,
+        "source": "P2",
+        "fallback_used": 0,
+        "content_check": {
+          "file_exists": true,
+          "file_bytes": 3732577,
+          "pdf_prefix": true,
+          "page_count": 14,
+          "full_title_match": true,
+          "doi_match": true,
+          "publisher_indicators": {
+            "IEEE": true,
+            "Springer": false,
+            "Scientific Reports": false,
+            "Creative Commons": false,
+            "Accepted Manuscript": false,
+            "arXiv:": false,
+            "All rights reserved": true
+          }
+        },
+        "human_intervention_note": "none"
       },
       "zotero": {
         "result": "automatic_success",
@@ -236,7 +275,21 @@
       "comparison": "AF end pending legal institutional renewal; no parity or matched latency comparison.",
       "platform": "IEEE Xplore",
       "configured_service": "IEEE-IET ELECTRONIC LIBRARY-美国电气电子工程师学会数据库",
-      "timing_comparison_eligible": false
+      "timing_comparison_eligible": false,
+      "comparable_body_version": true,
+      "version_comparison": {
+        "version": "Both IEEE publisher Early Access,14pages,3732577bytes",
+        "evidence": "Original Z1 and actual first A1 individually checked. Long interruption and different observer regimes retained; no same-period timing comparison."
+      },
+      "access_limitation": "Original Z1 was measured with the old full-JSON observer; first Allfold A1 was delayed until current actual target access independently confirmed. Original order/times retained.",
+      "difference_seconds": [
+        -4.042,
+        -3.172
+      ],
+      "ratio": [
+        0.786,
+        0.8277
+      ]
     },
     {
       "pair_id": "F03-1",
@@ -3801,6 +3854,705 @@
         0.4487,
         0.587
       ]
+    },
+    {
+      "pair_id": "F01-2",
+      "sample_id": "F01",
+      "order": [
+        "zotero",
+        "allfold"
+      ],
+      "production_code_sha": "77dfd670f1b9f07cddb880688e699620f0a9a9ef",
+      "runtime_head_sha": "77dfd670f1b9f07cddb880688e699620f0a9a9ef",
+      "allfold": {
+        "result": "automatic_success",
+        "click_utc": [
+          "2026-11-17T03:47:28.102Z",
+          "2026-11-17T03:47:28.213Z"
+        ],
+        "ui_preparation": "Fresh normal Source CARSI IEEE resource entry,automatic SSO and actual target subscription/PDF rights confirmed without PDF preopen; prior A1failed,no local body; normal Download,actual Service binding retained. Chrome independently authenticated via its own resource entry.",
+        "human_intervention": false,
+        "runtime_head_sha": "77dfd670f1b9f07cddb880688e699620f0a9a9ef",
+        "production_code_sha": "77dfd670f1b9f07cddb880688e699620f0a9a9ef",
+        "frontend_head_sha": "77dfd670f1b9f07cddb880688e699620f0a9a9ef",
+        "local_pdf_and_association_utc": [
+          "2026-11-17T03:47:38.039Z",
+          "2026-11-17T03:47:38.297Z"
+        ],
+        "wait_seconds": [
+          9.826,
+          10.195
+        ],
+        "file_bytes": 2420322,
+        "attempt": 2,
+        "source": "P2",
+        "fallback_used": 0,
+        "content_check": {
+          "file_exists": true,
+          "file_bytes": 2420322,
+          "pdf_prefix": true,
+          "page_count": 16,
+          "full_title_match": true,
+          "doi_match": true,
+          "publisher_indicators": {
+            "IEEE": true,
+            "Springer": false,
+            "Scientific Reports": false,
+            "Creative Commons": false,
+            "Accepted Manuscript": false,
+            "arXiv:": false,
+            "All rights reserved": true
+          }
+        },
+        "human_intervention_note": "none during download",
+        "measurement_revision": "keys-v2",
+        "timing_eligible_for_parity": true
+      },
+      "zotero": {
+        "result": "automatic_success",
+        "click_utc": [
+          "2026-11-17T03:45:52.260Z",
+          "2026-11-17T03:45:52.289Z"
+        ],
+        "ui_preparation": "Fresh normal CARSI IEEE resource entry and automatic SSO; target article actual configured-institution access,PDF entry,full text and DOI confirmed without preopening PDF. Dedicated acceptance collection. Source target access independently confirmed after its own fresh CARSI entry.",
+        "human_intervention": false,
+        "translator": "IEEE Xplore",
+        "local_pdf_and_association_utc": [
+          "2026-11-17T03:46:05.040Z",
+          "2026-11-17T03:46:05.436Z"
+        ],
+        "wait_seconds": [
+          12.751,
+          13.176
+        ],
+        "file_bytes": 2420325,
+        "parent_key": "WKKM9KC3",
+        "attachment_key": "A753XUAL",
+        "link_mode": "imported_url",
+        "content_check": {
+          "file_exists": true,
+          "file_bytes": 2420325,
+          "pdf_prefix": true,
+          "page_count": 16,
+          "full_title_match": true,
+          "doi_match": true,
+          "publisher_indicators": {
+            "IEEE": true,
+            "Springer": false,
+            "Scientific Reports": false,
+            "Creative Commons": false,
+            "Accepted Manuscript": false,
+            "arXiv:": false,
+            "All rights reserved": true
+          }
+        },
+        "human_intervention_note": "none during Save; earlier Chrome foreground/restored Computer Use and expired-CARSI informational dialog acknowledged under existing normal-login authorization",
+        "measurement_revision": "keys-v2",
+        "timing_eligible_for_parity": true
+      },
+      "platform": "IEEE Xplore",
+      "configured_service": "IEEE-IET ELECTRONIC LIBRARY-美国电气电子工程师学会数据库",
+      "timing_comparison_eligible": true,
+      "cohort": "preselected_platform_control",
+      "comparison_stratum": "prepared_access_normal_download",
+      "comparable_body_version": true,
+      "version_comparison": {
+        "version": "Both IEEE publisher Early Access,16pages,small personalized byte differences",
+        "evidence": "Both products independently established actual target subscription through fresh normal CARSI resource entry. Each actual file individually checked for title,DOI,pages and original Paper/parent association."
+      },
+      "difference_seconds": [
+        -3.35,
+        -2.556
+      ],
+      "ratio": [
+        0.7457,
+        0.7995
+      ]
+    },
+    {
+      "pair_id": "F01-3",
+      "sample_id": "F01",
+      "order": [
+        "allfold",
+        "zotero"
+      ],
+      "production_code_sha": "77dfd670f1b9f07cddb880688e699620f0a9a9ef",
+      "runtime_head_sha": "77dfd670f1b9f07cddb880688e699620f0a9a9ef",
+      "allfold": {
+        "result": "automatic_success",
+        "click_utc": [
+          "2026-11-17T03:48:50.534Z",
+          "2026-11-17T03:48:50.647Z"
+        ],
+        "ui_preparation": "Same prepared IEEE Session and confirmed target subscription; QA A2 body removed through normal Reject/delete/Restore; original Paper/actual Service unchanged.",
+        "human_intervention": false,
+        "runtime_head_sha": "77dfd670f1b9f07cddb880688e699620f0a9a9ef",
+        "production_code_sha": "77dfd670f1b9f07cddb880688e699620f0a9a9ef",
+        "frontend_head_sha": "77dfd670f1b9f07cddb880688e699620f0a9a9ef",
+        "local_pdf_and_association_utc": [
+          "2026-11-17T03:49:00.833Z",
+          "2026-11-17T03:49:01.092Z"
+        ],
+        "wait_seconds": [
+          10.186,
+          10.558
+        ],
+        "file_bytes": 2420327,
+        "attempt": 3,
+        "source": "P2",
+        "fallback_used": 0,
+        "content_check": {
+          "file_exists": true,
+          "file_bytes": 2420327,
+          "pdf_prefix": true,
+          "page_count": 16,
+          "full_title_match": true,
+          "doi_match": true,
+          "publisher_indicators": {
+            "IEEE": true,
+            "Springer": false,
+            "Scientific Reports": false,
+            "Creative Commons": false,
+            "Accepted Manuscript": false,
+            "arXiv:": false,
+            "All rights reserved": true
+          }
+        },
+        "human_intervention_note": "none",
+        "measurement_revision": "keys-v2",
+        "timing_eligible_for_parity": true
+      },
+      "zotero": {
+        "result": "automatic_success",
+        "click_utc": [
+          "2026-11-17T03:50:04.064Z",
+          "2026-11-17T03:50:04.092Z"
+        ],
+        "ui_preparation": "New trial article tab,matching DOI/title,institutional IEEE access and translator confirmed; dedicated collection shown by Connector save popup; warm normal CARSI Session.",
+        "human_intervention": false,
+        "translator": "IEEE Xplore",
+        "local_pdf_and_association_utc": [
+          "2026-11-17T03:50:17.744Z",
+          "2026-11-17T03:50:18.014Z"
+        ],
+        "wait_seconds": [
+          13.652,
+          13.95
+        ],
+        "file_bytes": 2420311,
+        "parent_key": "VEXY3IQL",
+        "attachment_key": "5TU5Y6TJ",
+        "link_mode": "imported_url",
+        "content_check": {
+          "file_exists": true,
+          "file_bytes": 2420311,
+          "pdf_prefix": true,
+          "page_count": 16,
+          "full_title_match": true,
+          "doi_match": true,
+          "publisher_indicators": {
+            "IEEE": true,
+            "Springer": false,
+            "Scientific Reports": false,
+            "Creative Commons": false,
+            "Accepted Manuscript": false,
+            "arXiv:": false,
+            "All rights reserved": true
+          }
+        },
+        "human_intervention_note": "none",
+        "measurement_revision": "keys-v2",
+        "timing_eligible_for_parity": true
+      },
+      "platform": "IEEE Xplore",
+      "configured_service": "IEEE-IET ELECTRONIC LIBRARY-美国电气电子工程师学会数据库",
+      "timing_comparison_eligible": true,
+      "cohort": "preselected_platform_control",
+      "comparison_stratum": "prepared_access_normal_download",
+      "comparable_body_version": true,
+      "version_comparison": {
+        "version": "Both IEEE publisher Early Access,16pages,small personalized byte differences",
+        "evidence": "Both products independently established actual target subscription through fresh normal CARSI resource entry. Each actual file individually checked for title,DOI,pages and original Paper/parent association."
+      },
+      "difference_seconds": [
+        -3.764,
+        -3.094
+      ],
+      "ratio": [
+        0.7302,
+        0.7734
+      ]
+    },
+    {
+      "pair_id": "F01-4",
+      "sample_id": "F01",
+      "order": [
+        "zotero",
+        "allfold"
+      ],
+      "production_code_sha": "77dfd670f1b9f07cddb880688e699620f0a9a9ef",
+      "runtime_head_sha": "77dfd670f1b9f07cddb880688e699620f0a9a9ef",
+      "allfold": {
+        "result": "automatic_success",
+        "click_utc": [
+          "2026-11-17T03:55:32.874Z",
+          "2026-11-17T03:55:33.002Z"
+        ],
+        "ui_preparation": "Warm same prepared IEEE Session,target subscription confirmed. Prior QA A3 removed via normal Reject/delete/Restore,new Download original Paper/Service.",
+        "human_intervention": false,
+        "runtime_head_sha": "77dfd670f1b9f07cddb880688e699620f0a9a9ef",
+        "production_code_sha": "77dfd670f1b9f07cddb880688e699620f0a9a9ef",
+        "frontend_head_sha": "77dfd670f1b9f07cddb880688e699620f0a9a9ef",
+        "local_pdf_and_association_utc": [
+          "2026-11-17T03:55:44.273Z",
+          "2026-11-17T03:55:44.533Z"
+        ],
+        "wait_seconds": [
+          11.271,
+          11.659
+        ],
+        "file_bytes": 2420325,
+        "attempt": 4,
+        "source": "P2",
+        "fallback_used": 0,
+        "content_check": {
+          "file_exists": true,
+          "file_bytes": 2420325,
+          "pdf_prefix": true,
+          "page_count": 16,
+          "full_title_match": true,
+          "doi_match": true,
+          "publisher_indicators": {
+            "IEEE": true,
+            "Springer": false,
+            "Scientific Reports": false,
+            "Creative Commons": false,
+            "Accepted Manuscript": false,
+            "arXiv:": false,
+            "All rights reserved": true
+          }
+        },
+        "human_intervention_note": "none",
+        "measurement_revision": "keys-v2",
+        "timing_eligible_for_parity": true
+      },
+      "zotero": {
+        "result": "automatic_success",
+        "click_utc": [
+          "2026-11-17T03:54:01.316Z",
+          "2026-11-17T03:54:01.357Z"
+        ],
+        "ui_preparation": "New task article tab after user-confirmed accidental input interruption; correct F01,institutional IEEE access and translator confirmed; dedicated acceptance collection; warm lawful Session.",
+        "human_intervention": false,
+        "translator": "IEEE Xplore",
+        "local_pdf_and_association_utc": [
+          "2026-11-17T03:54:13.041Z",
+          "2026-11-17T03:54:13.332Z"
+        ],
+        "wait_seconds": [
+          11.684,
+          12.016
+        ],
+        "file_bytes": 2420324,
+        "parent_key": "UL7CMBGJ",
+        "attachment_key": "45X2Z9FS",
+        "link_mode": "imported_url",
+        "content_check": {
+          "file_exists": true,
+          "file_bytes": 2420324,
+          "pdf_prefix": true,
+          "page_count": 16,
+          "full_title_match": true,
+          "doi_match": true,
+          "publisher_indicators": {
+            "IEEE": true,
+            "Springer": false,
+            "Scientific Reports": false,
+            "Creative Commons": false,
+            "Accepted Manuscript": false,
+            "arXiv:": false,
+            "All rights reserved": true
+          }
+        },
+        "human_intervention_note": "none during Save; user restored task window before Save",
+        "measurement_revision": "keys-v2",
+        "timing_eligible_for_parity": true
+      },
+      "platform": "IEEE Xplore",
+      "configured_service": "IEEE-IET ELECTRONIC LIBRARY-美国电气电子工程师学会数据库",
+      "timing_comparison_eligible": true,
+      "cohort": "preselected_platform_control",
+      "comparison_stratum": "prepared_access_normal_download",
+      "comparable_body_version": true,
+      "version_comparison": {
+        "version": "Both IEEE publisher Early Access,16pages,personalized byte differences",
+        "evidence": "Both actual local files individually checked for exact DOI,title,pages and correct original Paper/parent association; target rights confirmed independently after normal CARSI entry."
+      },
+      "difference_seconds": [
+        -0.745,
+        -0.025
+      ],
+      "ratio": [
+        0.938,
+        0.9979
+      ]
+    },
+    {
+      "pair_id": "F02-2",
+      "sample_id": "F02",
+      "order": [
+        "allfold",
+        "zotero"
+      ],
+      "production_code_sha": "77dfd670f1b9f07cddb880688e699620f0a9a9ef",
+      "runtime_head_sha": "77dfd670f1b9f07cddb880688e699620f0a9a9ef",
+      "allfold": {
+        "result": "automatic_success",
+        "click_utc": [
+          "2026-11-17T03:59:27.082Z",
+          "2026-11-17T03:59:27.212Z"
+        ],
+        "ui_preparation": "Both F02 target article rights separately confirmed,current warm IEEE Session. QA A1 removed via normal Reject/delete/Restore,new Download on original Paper.",
+        "human_intervention": false,
+        "runtime_head_sha": "77dfd670f1b9f07cddb880688e699620f0a9a9ef",
+        "production_code_sha": "77dfd670f1b9f07cddb880688e699620f0a9a9ef",
+        "frontend_head_sha": "77dfd670f1b9f07cddb880688e699620f0a9a9ef",
+        "local_pdf_and_association_utc": [
+          "2026-11-17T03:59:42.739Z",
+          "2026-11-17T03:59:42.997Z"
+        ],
+        "wait_seconds": [
+          15.527,
+          15.915
+        ],
+        "file_bytes": 3732583,
+        "attempt": 2,
+        "source": "P2",
+        "fallback_used": 0,
+        "content_check": {
+          "file_exists": true,
+          "file_bytes": 3732583,
+          "pdf_prefix": true,
+          "page_count": 14,
+          "full_title_match": true,
+          "doi_match": true,
+          "publisher_indicators": {
+            "IEEE": true,
+            "Springer": false,
+            "Scientific Reports": false,
+            "Creative Commons": false,
+            "Accepted Manuscript": false,
+            "arXiv:": false,
+            "All rights reserved": true
+          }
+        },
+        "human_intervention_note": "none",
+        "measurement_revision": "keys-v2",
+        "timing_eligible_for_parity": true
+      },
+      "zotero": {
+        "result": "automatic_success",
+        "click_utc": [
+          "2026-11-17T04:01:27.319Z",
+          "2026-11-17T04:01:27.353Z"
+        ],
+        "ui_preparation": "New task article tab actual DOI/title,institutional IEEE access and translator confirmed; Connector popup dedicated acceptance collection,Full Text PDF; normal warmed CARSI Session,no PDF preopen.",
+        "human_intervention": false,
+        "translator": "IEEE Xplore",
+        "local_pdf_and_association_utc": [
+          "2026-11-17T04:01:45.746Z",
+          "2026-11-17T04:01:46.303Z"
+        ],
+        "wait_seconds": [
+          18.393,
+          18.984
+        ],
+        "file_bytes": 3732575,
+        "parent_key": "3F5T5PA2",
+        "attachment_key": "ZALH7Z69",
+        "link_mode": "imported_url",
+        "content_check": {
+          "file_exists": true,
+          "file_bytes": 3732575,
+          "pdf_prefix": true,
+          "page_count": 14,
+          "full_title_match": true,
+          "doi_match": true,
+          "publisher_indicators": {
+            "IEEE": true,
+            "Springer": false,
+            "Scientific Reports": false,
+            "Creative Commons": false,
+            "Accepted Manuscript": false,
+            "arXiv:": false,
+            "All rights reserved": true
+          }
+        },
+        "human_intervention_note": "none",
+        "measurement_revision": "keys-v2",
+        "timing_eligible_for_parity": true
+      },
+      "platform": "IEEE Xplore",
+      "configured_service": "IEEE-IET ELECTRONIC LIBRARY-美国电气电子工程师学会数据库",
+      "timing_comparison_eligible": true,
+      "cohort": "representative_retest",
+      "comparison_stratum": "prepared_access_normal_download",
+      "comparable_body_version": true,
+      "version_comparison": {
+        "version": "Both IEEE publisher Early Access,14pages,personalized byte differences",
+        "evidence": "Both target rights independently confirmed; both actual files individually checked for exact DOI,title,pages and original Paper/parent relation."
+      },
+      "difference_seconds": [
+        -3.457,
+        -2.478
+      ],
+      "ratio": [
+        0.8179,
+        0.8653
+      ]
+    },
+    {
+      "pair_id": "F14-1",
+      "sample_id": "F14",
+      "order": [
+        "zotero",
+        "allfold"
+      ],
+      "production_code_sha": "77dfd670f1b9f07cddb880688e699620f0a9a9ef",
+      "runtime_head_sha": "77dfd670f1b9f07cddb880688e699620f0a9a9ef",
+      "allfold": {
+        "result": "automatic_success",
+        "click_utc": [
+          "2026-11-17T04:24:18.173Z",
+          "2026-11-17T04:24:18.291Z"
+        ],
+        "ui_preparation": "First Allfold Download,no existing body; independent normal CARSI Wiley SSO,target Open Access,institutional marker and article/PDF entry confirmed; no PDF preopen; article loaded while CI isolated tests ran,tests fully ended before this pair. Exact preparation bounds missing.",
+        "human_intervention": false,
+        "runtime_head_sha": "77dfd670f1b9f07cddb880688e699620f0a9a9ef",
+        "production_code_sha": "77dfd670f1b9f07cddb880688e699620f0a9a9ef",
+        "frontend_head_sha": "77dfd670f1b9f07cddb880688e699620f0a9a9ef",
+        "local_pdf_and_association_utc": [
+          "2026-11-17T04:24:33.366Z",
+          "2026-11-17T04:24:33.626Z"
+        ],
+        "wait_seconds": [
+          15.075,
+          15.453
+        ],
+        "file_bytes": 3295211,
+        "attempt": 1,
+        "source": "P5",
+        "fallback_used": 1,
+        "content_check": {
+          "file_exists": true,
+          "file_bytes": 3295211,
+          "pdf_prefix": true,
+          "page_count": 21,
+          "full_title_match": true,
+          "doi_match": true,
+          "publisher_indicators": {
+            "IEEE": false,
+            "Springer": false,
+            "Scientific Reports": false,
+            "Creative Commons": true,
+            "Accepted Manuscript": false,
+            "arXiv:": false,
+            "All rights reserved": false
+          },
+          "body_version": "Wiley publisher OA PDF,21pages,3295211bytes",
+          "version_evidence": "Current actual file exact title,DOI,Creative Commons and Wiley first-page marks; actual final source observation onlinelibrary.wiley.com via P5 OPENALEX after challenged P1/P2 entries."
+        },
+        "human_intervention_note": "none during Download",
+        "measurement_revision": "keys-v2",
+        "timing_eligible_for_parity": true
+      },
+      "zotero": {
+        "result": "automatic_success",
+        "click_utc": [
+          "2026-11-17T04:21:43.269Z",
+          "2026-11-17T04:21:43.302Z"
+        ],
+        "ui_preparation": "Both Source and Chrome normal CARSI Wiley SSO,target DOI/title/Open Access,institutional marker and PDF entry confirmed without PDF preopen. Chrome CF completed by user during preparation; exact preparation bounds missing. Article remained loaded while isolated CI tests ran,all tests ended before Save. Acceptance collection confirmed.",
+        "human_intervention": false,
+        "translator": "Wiley Online Library",
+        "translator_chain": [
+          "Wiley Online Library",
+          "Embedded Metadata automatic fallback"
+        ],
+        "local_pdf_and_association_utc": [
+          "2026-11-17T04:21:56.351Z",
+          "2026-11-17T04:21:56.641Z"
+        ],
+        "wait_seconds": [
+          13.049,
+          13.372
+        ],
+        "file_bytes": 4362024,
+        "parent_key": "LUQBBCMU",
+        "attachment_key": "MK8ZCL59",
+        "link_mode": "imported_url",
+        "content_check": {
+          "file_exists": true,
+          "file_bytes": 4362024,
+          "pdf_prefix": true,
+          "page_count": 32,
+          "full_title_match": true,
+          "doi_match": false,
+          "publisher_indicators": {
+            "IEEE": false,
+            "Springer": false,
+            "Scientific Reports": false,
+            "Creative Commons": false,
+            "Accepted Manuscript": false,
+            "arXiv:": true,
+            "All rights reserved": false
+          },
+          "manual_identity_verified": true,
+          "actual_arxiv_id": "2504.12052v3",
+          "body_version": "arXiv2504.12052v3 preprint,32pages",
+          "alternative_full_text": true,
+          "authors_match": {
+            "Haguinet F": true,
+            "Painter JL": true,
+            "Powell GE": true,
+            "Callegaro A": true,
+            "Bate A": true
+          },
+          "identity_verification_basis": "Current actual first-page exact title and all five authors match original Paper; arXiv2504.12052v3 matches its explicit preprint relations. Publisher DOI is absent; this is a preprint,not publisher OA PDF."
+        },
+        "human_intervention_note": "none during Save; Chrome Cloudflare completed before preparation ended",
+        "measurement_revision": "keys-v2",
+        "timing_eligible_for_parity": true
+      },
+      "platform": "Wiley",
+      "configured_service": "WILEY 电子书、电子期刊数据库",
+      "timing_comparison_eligible": false,
+      "comparable_body_version": false,
+      "cohort": "representative",
+      "version_comparison": {
+        "allfold": "Wiley publisher OA PDF,21pages,3295211bytes,onlinelibrary.wiley.com via P5OPENALEX",
+        "zotero": "arXiv2504.12052v3 preprint,32pages,4362024bytes",
+        "evidence": "Both actual files individually checked for exact title/identity and original association. Allfold publisher DOI/Wiley/CC present; Zotero actual first-page five authors+arXiv version match the original Paper explicit relation. Different versions: no same-body transfer-efficiency score."
+      },
+      "mechanism_tags_observed": [
+        "P1R002/P2API02 challenge before P5 publisher OA success",
+        "Zotero Wiley translator error then Embedded Metadata/OA fallback"
+      ],
+      "preparation_bounds": null
+    },
+    {
+      "pair_id": "F15-1",
+      "sample_id": "F15",
+      "order": [
+        "allfold",
+        "zotero"
+      ],
+      "production_code_sha": "77dfd670f1b9f07cddb880688e699620f0a9a9ef",
+      "runtime_head_sha": "77dfd670f1b9f07cddb880688e699620f0a9a9ef",
+      "allfold": {
+        "result": "automatic_success",
+        "click_utc": [
+          "2026-11-17T04:30:26.637Z",
+          "2026-11-17T04:30:26.799Z"
+        ],
+        "ui_preparation": "First Allfold Download,both article targets explicitly matched DOI/title,Open Access,institutional marker/full text/PDF entry; no PDF preopen. Warm current Wiley lawful Session.",
+        "human_intervention": false,
+        "runtime_head_sha": "77dfd670f1b9f07cddb880688e699620f0a9a9ef",
+        "production_code_sha": "77dfd670f1b9f07cddb880688e699620f0a9a9ef",
+        "frontend_head_sha": "77dfd670f1b9f07cddb880688e699620f0a9a9ef",
+        "local_pdf_and_association_utc": [
+          "2026-11-17T04:30:27.880Z",
+          "2026-11-17T04:30:28.141Z"
+        ],
+        "wait_seconds": [
+          1.081,
+          1.504
+        ],
+        "file_bytes": 1346145,
+        "attempt": 1,
+        "source": "P1",
+        "fallback_used": 0,
+        "content_check": {
+          "file_exists": true,
+          "file_bytes": 1346145,
+          "pdf_prefix": true,
+          "page_count": 13,
+          "full_title_match": true,
+          "doi_match": true,
+          "publisher_indicators": {
+            "IEEE": false,
+            "Springer": false,
+            "Scientific Reports": false,
+            "Creative Commons": true,
+            "Accepted Manuscript": false,
+            "arXiv:": false,
+            "All rights reserved": false
+          }
+        },
+        "human_intervention_note": "none",
+        "measurement_revision": "keys-v2",
+        "timing_eligible_for_parity": true
+      },
+      "zotero": {
+        "result": "automatic_success",
+        "click_utc": [
+          "2026-11-17T04:33:00.254Z",
+          "2026-11-17T04:33:00.285Z"
+        ],
+        "ui_preparation": "New task article tab,actual Open Access/institutional marker,DOI/title/full text/PDF entry confirmed; normal warm Wiley Session,acceptance collection selected,no PDF preopen.",
+        "human_intervention": false,
+        "translator": "Wiley Online Library",
+        "local_pdf_and_association_utc": [
+          "2026-11-17T04:33:02.452Z",
+          "2026-11-17T04:33:02.793Z"
+        ],
+        "wait_seconds": [
+          2.167,
+          2.539
+        ],
+        "file_bytes": 1346142,
+        "parent_key": "PYVI7W8F",
+        "attachment_key": "JHAJTGNF",
+        "link_mode": "imported_url",
+        "content_check": {
+          "file_exists": true,
+          "file_bytes": 1346142,
+          "pdf_prefix": true,
+          "page_count": 13,
+          "full_title_match": true,
+          "doi_match": true,
+          "publisher_indicators": {
+            "IEEE": false,
+            "Springer": false,
+            "Scientific Reports": false,
+            "Creative Commons": true,
+            "Accepted Manuscript": false,
+            "arXiv:": false,
+            "All rights reserved": false
+          }
+        },
+        "human_intervention_note": "none",
+        "measurement_revision": "keys-v2",
+        "timing_eligible_for_parity": true
+      },
+      "platform": "Wiley",
+      "configured_service": "WILEY 电子书、电子期刊数据库",
+      "timing_comparison_eligible": true,
+      "comparable_body_version": true,
+      "cohort": "representative",
+      "comparison_stratum": "prepared_access_normal_download",
+      "version_comparison": {
+        "version": "Both Wiley publisher OA,13pages,small personalized byte difference",
+        "evidence": "Both actual files individually checked for precise DOI,title,CC marks,pages and original Paper/parent association. A1P1direct success; no Zotero translator error observed in normal UI."
+      },
+      "difference_seconds": [
+        -1.458,
+        -0.663
+      ],
+      "ratio": [
+        0.4258,
+        0.694
+      ]
     }
   ],
   "coverage_gaps": [
@@ -3809,7 +4561,7 @@
         "F01",
         "F02"
       ],
-      "gap": "Original IEEE Allfold failure and unattempted end remain; both Zotero publisher files retained. Same-access target retests after the current native CF fix remain outstanding; broker Opened does not itself establish article rights."
+      "gap": "Normal fresh CARSI resource entries restored actual IEEE target rights separately in both products; cached homepage/broker flags were insufficient. F01-2/3/4 control pairs and F02-2 same-version pair all saved correct publisher PDFs with Allfold not slower; original F01 failure and older observer-loaded results retained. No code-only benefit inferred from access restoration."
     },
     {
       "samples": [
@@ -3846,28 +4598,6 @@
       "gap": "Both saved verified related arXiv v4. Allfold required in-download human Imperva/hCaptcha with late operator handoff; 412.592–413.015s total retained separately from normal save comparison. Prepared-access control repeats remain outstanding."
     },
     {
-      "samples": [
-        "F14",
-        "F15",
-        "F16",
-        "F17",
-        "F18",
-        "F19",
-        "F21",
-        "F22",
-        "F23",
-        "F24",
-        "F25",
-        "F26",
-        "F27",
-        "F28",
-        "F29",
-        "F30",
-        "F31"
-      ],
-      "gap": "Not started at this saved checkpoint; all frozen samples retained."
-    },
-    {
       "gap": "Optica/IEEE Reader branch/R059/LWW/OCE/stableP4 and other mechanisms are claimed only when actually observed. Fixtures and configured Services do not supply real-site coverage."
     },
     {
@@ -3878,6 +4608,14 @@
     },
     {
       "gap": "Diagnostic target disappeared during old runtime and protected recording refused writes; cause unknown and old exports marked incomplete. Normal relaunch at01:11 restored diagnostics, current e67 export retained outside Workspace. No Logs Reset or guard bypass."
+    },
+    {
+      "samples": [
+        "F14",
+        "F15",
+        "F16"
+      ],
+      "gap": "F14 both correct local PDFs but Allfold publisher OA21pages versus Zotero arXiv32pages after Wiley translator error/EmbeddedMetadata fallback. Matching installed2025-06-11 translator inspected; actual error response still needs bounded diagnostic. F15 both same publisher OA13pages. F14 control repeats and F16 first pair outstanding; Chrome F16 waiting human CF before any Save."
     }
   ],
   "parity_conclusions": "In progress: corrected low-load pairs and original affected measurements retained separately. Platform conclusions await controls and access-matched retests.",
@@ -3922,7 +4660,7 @@
     "old_results_retained": true
   },
   "chrome_service_preparation": "From user steering: select each new correspondingService in Chrome CARSI resource page before saving, then verify actual target article/Translator. Preparation/manual costs separate; no cookie/auth copying.",
-  "checkpoint_utc": "2026-11-17T03:39:18Z",
+  "checkpoint_utc": "2026-11-17T04:42:28Z",
   "historical_tool_interruptions": [
     "Earlier platform update removed mcp__cua_repl and an alternative-tool choice was requested; that question became obsolete when CUA returned.",
     "Global window enumeration/new-tab calls can time out after recovery; targeted Chrome getApp subsequently succeeded, and an already-created trial tab was reused rather than recreated.",
@@ -3934,6 +4672,12 @@
       "sample_id": "F10",
       "kind": "automation_agent_turn_rejected",
       "reason": "Automatic safety filter returned a generic biology dual-use warning after the software Download had been initiated. No scientific content processing continued; subsequent safe software UI state checks and other statistics platform operations resumed. No download result or time inferred from this interruption."
+    },
+    {
+      "sample_id": "F01",
+      "pair_id": "F01-4",
+      "kind": "concurrent_input_before_save",
+      "result": "No Save initiated. Native guard reported Chrome changed and extra address-bar characters. User confirmed accidental touch and restored IEEE acceptance window; existing task tab retained."
     }
   ],
   "runtime_sessions": [
@@ -3986,6 +4730,18 @@
       "observation_precision": "minute; exact UI completion bounds missing",
       "result": "5/12 Opened: Taylor & Francis,SIAM,IEEE,EBSCO,WoS; other Services Needs attention; CARSI Opened",
       "actual_target_confirmation": "Later ordinary Source F07 article visibly showed institutional authentication,You have Access,Save PDF entry without opening PDF. Broker Needs attention was not treated as proof of target denial."
+    },
+    {
+      "kind": "source_ieee_fresh_resource_entry",
+      "started_utc": "2026-11-17T03:40:31.777Z",
+      "target_rights_observed_utc_approx": "2026-11-17 03:41 UTC",
+      "result": "Cached homepage access label did not persist on target. Fresh normal CARSI resource selection/automatic IdP SSO restored actual F01 subscription. No PDF preopen."
+    },
+    {
+      "kind": "chrome_ieee_fresh_resource_entry",
+      "started_utc": "2026-11-17T03:45:03.420Z",
+      "target_rights_confirmed_before_save_utc": "2026-11-17T03:45:52.260Z",
+      "result": "Expired CARSI informational dialog followed by normal new login/resource entry and automatic SSO. Actual IEEE target institutional/PDF access confirmed. No PDF preopen."
     }
   ],
   "operator_restart_context": {
@@ -3999,5 +4755,11 @@
       "observer": 52498
     },
     "session_cache_effect": "Product PIDs unchanged; no cache/account reset. New CUA targeted Source2.24s/Chrome1.7s reads and actual F07-3 saving succeeded. Global inventory still timed out; task-specific surfaces used."
+  },
+  "ci_checkpoint": {
+    "head_sha": "cbe1b7b70c49f446845c2dd61fec20a56ab235da",
+    "latest_run": "https://github.com/dylaaan-booob/allfold/actions/runs/44017379916",
+    "status": "failed_in_python_before_electron",
+    "evidence": "1621passed/1failed in an existing collection planner fixture reading outside owner gate while collection active. Test synchronization fix prepared; production path checks unchanged. Native timeout cleanup committed/reviewed; its latest full CI result remains unverified."
   }
 }
