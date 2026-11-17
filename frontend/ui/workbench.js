@@ -117,18 +117,32 @@ window.allfoldWorkbench=(()=>{
     row.append(select,close);return row;
   }
   function groupPages(tabs) {
-    const groups=new Map(),byId=new Map(tabs.map(page=>[page.id,page]));
+    const groups=new Map(),byId=new Map(tabs.map(page=>[page.id,page])),byOrigin=new Map();
+    const scope=savedServices.scope?.scope_id;
+    const serviceGroup=(scope,id,name)=>({key:scope+':'+id,name,scope,id});
+    const origin=value=>{try{const url=new URL(value);return ['https:','http:'].includes(url.protocol) && !url.username && !url.password?url.origin:null;}catch(_){return null;}};
+    if(scope)for(const service of savedServices.services){
+      const group=serviceGroup(scope,service.id,service.name);
+      groups.set(group.key,{...group,pages:[]});
+      const accessOrigin=origin(service.access_url);
+      if(accessOrigin)byOrigin.set(accessOrigin,byOrigin.has(accessOrigin)?null:group);
+    }
     function groupFor(page) {
-      // Only recorded associations and explicit provenance determine group identity.
+      // Recorded task associations win. URL matching below is display only.
       const seen=new Set();
       for(let entry=page;entry && !seen.has(entry.id);entry=byId.get(entry.association?.source_page_id || entry.openerId)){
         seen.add(entry.id);
         const association=entry.association,scope=association?.service_scope?.scope_id,id=association?.service_id;
         if(scope && id){
           const saved=scope===savedServices.scope?.scope_id?savedServices.services.find(service=>service.id===id):null;
-          return {key:scope+':'+id,name:saved?.name || 'Service '+id,scope,id};
+          return serviceGroup(scope,id,saved?.name || 'Service '+id);
         }
-        if(association?.role==='carsi-portal')return {key:'carsi',name:'CARSI'};
+        if(association?.role==='carsi-portal'){
+          const targetOrigin=origin(page.url);
+          const matched=(!scope || scope===savedServices.scope?.scope_id) && targetOrigin!=='https://ds.carsi.edu.cn' && byOrigin.get(targetOrigin);
+          if(matched)return matched;
+          return {key:'carsi',name:'CARSI'};
+        }
         if(association?.paper_id)return {key:'other',name:'Other'};
       }
       return {key:'other',name:'Other'};

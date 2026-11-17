@@ -37,6 +37,8 @@ No URL, selected tab, Service label or request ordering supplies ownership.
 
 Main-frame `cf-mitigated: challenge` evidence is associated with its native Page
 and request ID through this same event owner, then reset on a new navigation.
+That response header remains authoritative when localized verification copy in
+`main` resembles readable content; it must still dispatch the page solver.
 Subresources never assign that state to the whole page. Every managed Page has
 an independent [challenge observer](browser-documents.md#solver-recovery-and-terminal-ownership),
 including idle retained targets and user popups. Solver uses only this Session's
