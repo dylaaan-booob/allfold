@@ -4,8 +4,8 @@ Issue: [#140](https://github.com/dylaaan-booob/allfold/issues/140). Baseline:
 `a2e511aa86ab5aa292f224301d6609a59c287fa2`.
 
 **Status: incomplete; saved checkpoint 18 November 2026 (Asia/Shanghai). Twenty
-of the 31 frozen Papers have observations (53 pair slots including repeats);
-11 Papers have no formal Save/Download. Twenty-three same-version low-load pairs have reliable local
+of the 31 frozen Papers have observations (55 pair slots including repeats);
+11 Papers have no formal Save/Download. Twenty-five same-version low-load pairs have reliable local
 file/association endpoints. Springer has two slower Allfold points and one
 interval overlap; T&F has one slower point requiring swapped repeats. The measured
 Cambridge/IEEE prepared-access cohorts show no observed disadvantage; overall
@@ -17,8 +17,11 @@ The control and untouched same-platform Paper also saved correct publisher PDFs,
 but their first paired waits were slower; F17/F18 warm repeats favor Allfold.
 F19's second pair encountered a new challenge and saved a related preprint. A
 subsequent same-Session ePDF visit denied institutional access. Normal resource
-reentry and actual entitlement confirmation take priority before attributing that
-recurrence to the product. Further coverage/retests remain required.
+reentry restored actual entitlement and the unchanged code saved its publisher
+PDF in two new pairs. A remaining large-PDF warm-repeat user-wait disadvantage
+has direct cache-reuse evidence and is not declared met. ScienceDirect preparation
+currently awaits the user's actual Chrome institutional QR login. Further coverage
+and affected retests remain required.
 Workspace is retained.**
 
 ## Environment and endpoint
@@ -93,8 +96,8 @@ product's Reject/delete/Restore flow; metadata and Download availability survive
 The immutable [31-paper manifest](pdf-pairing-manifest.json) was committed before
 the first formal click. The [formal results](pdf-pairing-formal-results.json)
 retain all original samples, failures, preparation, versions and repetitions.
-At this checkpoint Allfold has 50 automatic local-PDF successes, one assisted
-success and two failures. Zotero has 44 local-PDF successes
+At this checkpoint Allfold has 52 automatic local-PDF successes, one assisted
+success and two failures. Zotero has 46 local-PDF successes
 and nine operator interruptions with unknown product terminal state. These are
 attempt counts, not independent-paper success rates. Saving a related preprint
 is a task result but is not a publisher-version success.
@@ -108,7 +111,7 @@ is a task result but is not a publisher-version success.
 | Taylor & Francis | 3 / 3 | Allfold 4 successes: original preprint plus3 publisher Accepted Manuscripts; Zotero 2 publisher Accepted Manuscripts,2 interrupted parent-only saves | Same-version F11 retry faster; first F13 slower. Controls/repeats and F12 retry outstanding. Not confirmed. |
 | Project Euclid | 1 / 3 | Both saved related arXiv v4; Allfold required in-download hCaptcha assistance | First-access recovery reported separately; normal prepared-access controls and2 papers outstanding. Not confirmed. |
 | Wiley | 3 / 3 | Allfold6 publisher OA successes; Zotero4 successes(1preprint,3publisher),2interruptions | F14 normal publisher controls and F15 favorAllfold. F16 default saves remain parent-only; one bounded diagnostic records citation/PDF403,with terminal unknown. Not confirmed. |
-| SIAM | 3 / 3 | Allfold5 related preprints and7 publisher PDFs; Zotero11 publisher PDFs,1 interruption | F18/F17 each have3 publisher pairs on69b9a41:first slower,two warm faster. F19-1 publisher pair is slower; F19-2 CF→preprint coincides with later denied ePDF rights. Entitlement reentry and further retest pending. Not confirmed. |
+| SIAM | 3 / 3 | Allfold5 related preprints and9 publisher PDFs; Zotero13 publisher PDFs,1 interruption | F17/F18 each have3 publisher pairs:first slower,two warm faster. Normal reauthentication restored F19 publisher access; its new comparable pair is close/favors Allfold,then a warm repeat favors Zotero. Cache reuse is demonstrated; large-PDF warm user-wait parity is not met. |
 | INFORMS PubsOnline | 0 / 3 | Not started; configured EBSCO capability is not a platform result | Not confirmed. |
 | ScienceDirect | 0 / 6 | Formal cohort not started; repaired-path pilots remain separate | Not confirmed. |
 
@@ -156,6 +159,8 @@ were individually checked for title, DOI, version, actual file and association.
 | F17-3 / A→Z | Same SIAM26-page publisher PDF,new body/new parent,warm visits | 0–0.305s | 3.752–4.033s | −4.033 to−3.447s | 0–0.0813 |
 | F18-6 / A→Z | Same SIAM28-page publisher PDF,new body/new parent,warm visits | 0–0.310s | 2.861–3.187s | −3.187 to−2.551s | 0–0.1084 |
 | F17-4 / Z→A | Same SIAM26-page publisher PDF,new body/new parent,warm visits | 0–0.172s | 6.887–7.170s | −7.170 to−6.715s | 0–0.0250 |
+| F19-3 / A→Z | SIAM59-page publisher PDF,access restored in both products; symmetric ePDF diagnostic prewarming | 24.743–25.102s | 25.164–25.734s | −0.991 to−0.062s | 0.9615–0.9975 |
+| F19-4 / Z→A | Same SIAM59-page publisher version,new body/new parent,warm visits | 21.245–21.626s | 3.865–4.507s | +16.738 to+17.761s | 4.7138–5.5953 |
 
 For Springer OA, n=3 paired repeats of **one** Paper: interval median waits are
 2.598–2.952s(Allfold) and1.717–2.109s(Zotero), median paired difference
@@ -508,6 +513,25 @@ Exact expiry and human input duration remain unknown; tool/operator time is not
 reported as product latency. The ePDF diagnosis prewarmed F19; the next paired
 repeat will retain that preparation and independently recheck Chrome rights.
 
+Chrome's normal SIAM resource reentry likewise required independent institutional
+QR authentication. Returned SIAM/institution was observed17:28:27.780UTC; fresh
+F19 title/DOI/FULLACCESS/Atypon at17:29:01.896UTC; ordinary ViewPDF then showed the
+publisher Page1/59/Download11.1MB at17:30:25.207UTC. Neither product's diagnostic
+ePDF was separately saved. This symmetric prewarming and user preparation are
+recorded separately from the measured Save/Download intervals.
+
+F19-3 then saved the correct59-page publisher PDF on both products,with new
+attempt/parent associations and title/DOI verified. Allfold used R039/P1 with no
+fallback,24879ms(request7,response/first bytes345,closed writer24878ms),one selected
+partitioned Cookie. Its24.743–25.102s wait is close to and below Zotero's
+25.164–25.734s interval. This confirms access restoration at unchanged69b9a41;
+it is not a code-only improvement. The final exchanged-order F19-4 also saved
+correct publisher PDFs,but its warm waits were21.245–21.626s versus3.865–4.507s.
+Allfold again made one R039/P1 operation,21260ms(request9,response/first1151,
+closed21259ms),one selected partitioned Cookie,no fallback. The warm user-wait
+disadvantage remains explicit; the following diagnosis separates cache reuse
+from an equivalent real-body network transfer.
+
 During evidence reconciliation,two optional late-file notes(F04-1/F11-1) were
 found to belong to later fresh parents. They were removed and the original
 parent/Allfold attempt binding made explicit. Every earlier outcome,wait and
@@ -848,10 +872,60 @@ Electron253/0skips(118.623s) pass. The final bounded native review at69b9a41
 confirmed the prior finding resolved and reported no actionable introduced bug.
 The complete PR-associated Safety44114394462 passed JS64,Python1669/4CIwarnings,
 Electron253/0skips on test merge0aab998d34f2b30d9648b0115f30bde087684d0b.
-Actual rebuiltSource69 is used for F18-4/5,F17-2 and untouchedF19-1 above. Publisher
+Actual rebuiltSource69 is used for F18-4/5/6,F17-2/3/4 and F19-1/2/3/4 above. Publisher
 versions now save successfully,while first-versus-repeat timing variation still
 requires the remaining paired repeats and transport investigation. No overall
 parity or Workspace Reset is claimed.
+
+## Large-PDF warm-cache diagnosis
+
+A one-shot90-snapshot,1s OS receive-counter observation accompanied F19-4 without
+another download,UI input or cache/setting change. Browser process input grew
+18057426bytes; subtracting6547989bytes of concurrent local Python UI-server output
+leaves approximately11509437bytes,close to the11471779-byte PDF plus transport/
+control traffic. Ordered counters grow through the transfer window and plateau
+near completion. They do not show a whole body received early followed by many
+seconds of local publication. Counters include incidental background traffic and
+are not exact per-request packet totals.
+
+One additional **non-scoring** normal Zotero Save,D2,used a new article tab,parent
+and imported attachment in the dedicated collection. It saved the same59-page
+11471788-byte publisher PDF in4.901–5.352s; title/DOI/file/parent were individually
+checked. Across its60-snapshot,1s capture Chrome received only51413bytes and sent
+11835464bytes. In the coarse Save window,incoming was about40199bytes while
+outgoing was11482380bytes,consistent with importing the PDF to Desktop without
+receiving a new11.47MB body from the publisher. The sole Chrome network-socket
+owner was checked before and after. Together with the installed normal fetch
+path,this supports warm Browser HTTP-cache reuse rather than reuse of an old
+attachment or Save session. Exact `fromCache` and disk-versus-memory tier were
+not captured; D2 is excluded from ordinary paired aggregates. No cache was cleared.
+
+Both OS tools buffered stdout until exit. Their Python receipt timestamps are
+**not** sample times. Only ordered1s snapshots and approximate offsets from the
+capture span support the network trend; main product times still come from the
+independent bounded click/file/association observations. The initial all22-PID
+Chrome counter invocation returned64 with no samples; that auxiliary failure was
+retained and a supported selection was made only after actual socket ownership
+was checked. It is not a product failure.
+
+The size pattern also has a versioned explanation worth retaining: current
+BrowserRuntime uses a cache-enabled in-memory Session. Electron45 leaves its HTTP
+cache size unspecified; Chromium156 on this24GiB machine defaults to50MiB total
+with ordinary `MaxFileSize = max_size / 8`,6553600bytes. F17/F18 are below this
+ordinary-entry bound and F19's file/observed received body are above it. This is
+a calculated upstream cache budget,not measured resident RAM or a PDF download
+limit; range/sparse and HTTP caching conditions must be distinguished. Final PDF
+size alone was not used to infer a hit or miss.
+[Chromium156 memory backend](https://github.com/chromium/chromium/blob/156.0.8078.48/net/disk_cache/memory/mem_backend_impl.cc)
+
+Electron45 has no public desktop API to change that in-memory budget or entry
+bound. Its cache option is boolean,and `getCacheSize()` queries occupancy;
+`--disk-cache-size` is applied only for `!in_memory`. No persistent partition,
+credential storage,lifecycle,Vendor,dependency or cache-size change was introduced.
+The measured large-PDF warm user-wait gap remains open,while the demonstrated
+cache mismatch cannot serve as a pure network-priority throughput comparison.
+[Electron45 propagation](https://github.com/electron/electron/blob/v45.0.0/shell/browser/net/network_context_service.cc#L81),
+[Session API](https://github.com/electron/electron/blob/v45.0.0/docs/api/session.md#sessionfrompartitionpartition-options)
 
 ## Request-priority investigation
 

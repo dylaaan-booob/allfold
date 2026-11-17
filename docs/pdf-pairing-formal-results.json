@@ -6635,6 +6635,259 @@
         "user_direction": "Prioritize institution/session eligibility for subsequent failed/403/alternative-version cases; do not treat prepared-group/cached article labels as sufficient.",
         "followup": "Normal Source CARSI SIAM reentry required user QR authentication and restored the59-page publisher reader at17:17:53.279UTC without code change. This supports lost eligibility as working cause; precise loss time at the original Save remains unmeasured."
       }
+    },
+    {
+      "pair_id": "F19-3",
+      "sample_id": "F19",
+      "order": [
+        "allfold",
+        "zotero"
+      ],
+      "production_code_sha": "69b9a41d442c4b5a1ad4c1bce99b3d325332fd6b",
+      "runtime_head_sha": "69b9a41d442c4b5a1ad4c1bce99b3d325332fd6b",
+      "allfold": {
+        "result": "automatic_success",
+        "click_utc": [
+          "2026-11-17T17:32:46.479Z",
+          "2026-11-17T17:32:46.577Z"
+        ],
+        "ui_preparation": "Access-restored A→Z retest at unchangedSource69. Independent Source/Chrome normal CARSI SIAM entries required user QR authentication; actual matching article and publisher ePDF Page1/59/Download11.1MB confirmed in both. Symmetric ePDF diagnostic prewarming explicitly retained. QA attempt2 related preprint normally Reject/delete/Restore; original Paper Download available,actual newattempt3. No source code/build/test/other download.",
+        "human_intervention": false,
+        "runtime_head_sha": "69b9a41d442c4b5a1ad4c1bce99b3d325332fd6b",
+        "production_code_sha": "69b9a41d442c4b5a1ad4c1bce99b3d325332fd6b",
+        "frontend_head_sha": "69b9a41d442c4b5a1ad4c1bce99b3d325332fd6b",
+        "local_pdf_and_association_utc": [
+          "2026-11-17T17:33:11.320Z",
+          "2026-11-17T17:33:11.581Z"
+        ],
+        "wait_seconds": [
+          24.743,
+          25.102
+        ],
+        "file_bytes": 11471779,
+        "attempt": 3,
+        "source": "P1",
+        "fallback_used": 0,
+        "human_intervention_note": "none during Download; separate user institutional QR preparation in both products recorded",
+        "measurement_revision": "keys-v2",
+        "timing_eligible_for_parity": true,
+        "content_check": {
+          "file_exists": true,
+          "file_bytes": 11471779,
+          "pdf_prefix": true,
+          "page_count": 59,
+          "full_title_match": true,
+          "doi_match": true,
+          "publisher_indicators": {
+            "IEEE": false,
+            "Springer": false,
+            "Scientific Reports": false,
+            "Creative Commons": false,
+            "Accepted Manuscript": false,
+            "arXiv:": false,
+            "All rights reserved": false
+          }
+        },
+        "native_observation": {
+          "duration_ms": 24879,
+          "stream_request_ms": 7,
+          "stream_response_ms": 345,
+          "stream_first_byte_ms": 345,
+          "stream_closed_ms": 24878,
+          "stream_partition_cookie_count": 1,
+          "pdf_rule": "R039",
+          "pdf_stage": "P1",
+          "reason": "transferred",
+          "fallback_used": false
+        }
+      },
+      "zotero": {
+        "result": "automatic_success",
+        "timing_eligible_for_parity": true,
+        "click_utc": [
+          "2026-11-17T17:36:57.809Z",
+          "2026-11-17T17:36:57.838Z"
+        ],
+        "ui_preparation": "Access-restored A→Z pair on new Chrome article tab after independent normal CARSI SIAM/user QR and actual publisher ePDF Page1/59 entitlement check. Both products symmetrically diagnostically prewarmed,preparation retained. Exact DOI/title/institution/FULL ACCESS confirmed; initially Embedded Metadata changed to Atypon Journals before Save. Fresh normal Save/newparent after SourceA3actual local publisher PDF completion. Recent target dedicated collection; popup not in AX,actual membership checked.",
+        "human_intervention": false,
+        "translator": "Atypon Journals",
+        "parent_key": "IY22Q4E5",
+        "local_pdf_and_association_utc": [
+          "2026-11-17T17:37:23.002Z",
+          "2026-11-17T17:37:23.543Z"
+        ],
+        "wait_seconds": [
+          25.164,
+          25.734
+        ],
+        "file_bytes": 11471788,
+        "attachment_key": "5AJFNGA4",
+        "link_mode": "imported_url",
+        "human_intervention_note": "none during Save; earlier Chrome/Source QR preparation separately recorded",
+        "measurement_revision": "keys-v2",
+        "content_check": {
+          "file_exists": true,
+          "file_bytes": 11471788,
+          "pdf_prefix": true,
+          "page_count": 59,
+          "full_title_match": true,
+          "doi_match": true,
+          "publisher_indicators": {
+            "IEEE": false,
+            "Springer": false,
+            "Scientific Reports": false,
+            "Creative Commons": false,
+            "Accepted Manuscript": false,
+            "arXiv:": false,
+            "All rights reserved": false
+          }
+        },
+        "acceptance_collection_membership_verified": true
+      },
+      "platform": "SIAM",
+      "configured_service": "SIAM电子期刊",
+      "timing_comparison_eligible": true,
+      "cohort": "repair_retest",
+      "measurement_stratum": "access_restored_with_symmetric_epdf_prewarming",
+      "comparable_body_version": true,
+      "body_version_comparison": "Both correct SIAM publisher59-page PDFs,title/DOI verified; A11471779/Z11471788bytes,small packaging difference. Actual newbody/attempt and newSave/parent after independent Source/Chrome reauthentication and diagnostic ePDF prewarming. No pure-throughput or code-only benefit claim.",
+      "repair_relation": "Unchanged production69b9a41. Normal CARSI institutional reauthentication restored publisher entitlement after F19-2 actualePDF GETACCESS. Original slow firstpair and intervening preprint preserved.",
+      "diagnostic_evidence": "Local private diagnostics:69b9a41-f19-third-pair.zip",
+      "difference_seconds": [
+        -0.991,
+        -0.062
+      ],
+      "ratio": [
+        0.9615,
+        0.9975
+      ]
+    },
+    {
+      "pair_id": "F19-4",
+      "sample_id": "F19",
+      "order": [
+        "zotero",
+        "allfold"
+      ],
+      "production_code_sha": "69b9a41d442c4b5a1ad4c1bce99b3d325332fd6b",
+      "runtime_head_sha": "69b9a41d442c4b5a1ad4c1bce99b3d325332fd6b",
+      "allfold": {
+        "result": "automatic_success",
+        "timing_eligible_for_parity": true,
+        "click_utc": [
+          "2026-11-17T17:47:16.055Z",
+          "2026-11-17T17:47:16.174Z"
+        ],
+        "ui_preparation": "Final bounded Z→A publisher-comparison repeat at unchangedSource69,after independent legal CARSI reauthentication and symmetric failed-sample ePDF prewarming. QA attempt3 publisher body normally Reject/delete/Restore,original Paper Download available,no ongoing cleanup before click. Z4 local PDF already completed. One newattempt4,no PDF preopen beyond declared prior diagnosis. No builds/tests/other download. One-shot read-only nettop Source-family byte counters at1s complement existing250ms file/association observer; setup coordination excluded from product wait.",
+        "human_intervention": false,
+        "runtime_head_sha": "69b9a41d442c4b5a1ad4c1bce99b3d325332fd6b",
+        "production_code_sha": "69b9a41d442c4b5a1ad4c1bce99b3d325332fd6b",
+        "frontend_head_sha": "69b9a41d442c4b5a1ad4c1bce99b3d325332fd6b",
+        "local_pdf_and_association_utc": [
+          "2026-11-17T17:47:37.419Z",
+          "2026-11-17T17:47:37.681Z"
+        ],
+        "wait_seconds": [
+          21.245,
+          21.626
+        ],
+        "file_bytes": 11471779,
+        "attempt": 4,
+        "source": "P1",
+        "fallback_used": 0,
+        "human_intervention_note": "none during Download; prior Source/ChromeQR preparation separately recorded",
+        "measurement_revision": "keys-v2",
+        "content_check": {
+          "file_exists": true,
+          "file_bytes": 11471779,
+          "pdf_prefix": true,
+          "page_count": 59,
+          "full_title_match": true,
+          "doi_match": true,
+          "publisher_indicators": {
+            "IEEE": false,
+            "Springer": false,
+            "Scientific Reports": false,
+            "Creative Commons": false,
+            "Accepted Manuscript": false,
+            "arXiv:": false,
+            "All rights reserved": false
+          }
+        },
+        "native_observation": {
+          "duration_ms": 21260,
+          "stream_request_ms": 9,
+          "stream_response_ms": 1151,
+          "stream_first_byte_ms": 1151,
+          "stream_closed_ms": 21259,
+          "stream_partition_cookie_count": 1,
+          "pdf_rule": "R039",
+          "pdf_stage": "P1",
+          "reason": "transferred",
+          "fallback_used": false
+        },
+        "receive_counter_note": "One-shot90ordered1s nettop snapshots; outputbuffered until exit. Approx11.5MB browserreceive after subtracting local UI-serveroutput. See private summary; no exactpacket timestamp/cacheflag inferred."
+      },
+      "zotero": {
+        "result": "automatic_success",
+        "click_utc": [
+          "2026-11-17T17:43:23.604Z",
+          "2026-11-17T17:43:23.626Z"
+        ],
+        "ui_preparation": "Bounded exchanged-order repeat added before outcomes to obtain3publisher-comparable F19 points,keeping access-gap pair2. New Chrome article exact DOI/title/institution/FULL ACCESS and Atypon confirmed after normal independent CARSI reauthentication. Existing access-restored warm session, prior ePDF prewarming disclosed. Fresh normal Save/newparent; dedicated collection recent target, actual membership checked because popup unavailable in AX.",
+        "human_intervention": false,
+        "translator": "Atypon Journals",
+        "parent_key": "Z3QKNMJH",
+        "local_pdf_and_association_utc": [
+          "2026-11-17T17:43:27.491Z",
+          "2026-11-17T17:43:28.111Z"
+        ],
+        "wait_seconds": [
+          3.865,
+          4.507
+        ],
+        "file_bytes": 11471788,
+        "attachment_key": "ZLFT3YTJ",
+        "link_mode": "imported_url",
+        "human_intervention_note": "none during Save; prior QR preparation separately recorded",
+        "measurement_revision": "keys-v2",
+        "timing_eligible_for_parity": true,
+        "content_check": {
+          "file_exists": true,
+          "file_bytes": 11471788,
+          "pdf_prefix": true,
+          "page_count": 59,
+          "full_title_match": true,
+          "doi_match": true,
+          "publisher_indicators": {
+            "IEEE": false,
+            "Springer": false,
+            "Scientific Reports": false,
+            "Creative Commons": false,
+            "Accepted Manuscript": false,
+            "arXiv:": false,
+            "All rights reserved": false
+          }
+        },
+        "acceptance_collection_membership_verified": true
+      },
+      "platform": "SIAM",
+      "configured_service": "SIAM电子期刊",
+      "timing_comparison_eligible": true,
+      "cohort": "repair_retest",
+      "measurement_stratum": "access_restored_repeated_warm_visit",
+      "comparable_body_version": true,
+      "body_version_comparison": "Both correct publisher59-page PDFs,title/DOI verified; A11471779/Z11471788bytes. Actual newbody/attempt and fresh Save/parent. Current independent institutional rights restored; prior symmetric ePDFdiagnosis retained. Warm request/cache behavior needs separate diagnosis,not a pure network comparison.",
+      "repair_relation": "Bounded exchanged-order addition planned before outcome to obtain3publisher-comparable F19points1/3/4; access-gap/preprint2 retained.",
+      "diagnostic_evidence": "Local private69b9a41-f19-fourth-pair.zip,QA and f19-a4-network-counter-summary.json",
+      "difference_seconds": [
+        16.738,
+        17.761
+      ],
+      "ratio": [
+        4.7138,
+        5.5953
+      ]
     }
   ],
   "coverage_gaps": [
@@ -6750,7 +7003,7 @@
     "old_results_retained": true
   },
   "chrome_service_preparation": "From user steering: select each new correspondingService in Chrome CARSI resource page before saving, then verify actual target article/Translator. Preparation/manual costs separate; no cookie/auth copying.",
-  "checkpoint_utc": "2026-11-17T17:17:53.279Z",
+  "checkpoint_utc": "2026-11-17T18:00:32.772Z",
   "historical_tool_interruptions": [
     "Earlier platform update removed mcp__cua_repl and an alternative-tool choice was requested; that question became obsolete when CUA returned.",
     "Global window enumeration/new-tab calls can time out after recovery; targeted Chrome getApp subsequently succeeded, and an already-created trial tab was reused rather than recreated.",
@@ -6955,6 +7208,39 @@
       "target_epdf_rights_observed_utc": "2026-11-17T17:17:53.279Z",
       "result": "Normal institutional reauthentication restored SIAM institution/FULL ACCESS and actual publisher ePDF reader Page1/59 with correct title/DOI and Download PDF11.1MB. No standalone PDF saved or Paper body changed. Previous GETACCESS/Previews depleted resolved with unchanged production69.",
       "measurement_note": "F19 ePDF was diagnostically prewarmed; subsequent pair must record this. Complete wall preparation interval includes human/tool work, not a pure product or human-input duration."
+    },
+    {
+      "record_id": "chrome_f19_eligibility_reentry",
+      "kind": "normal_chrome_single_service_institutional_reentry",
+      "sample_id": "F19",
+      "platform": "SIAM",
+      "original_resource_click_utc": [
+        "2026-11-17T17:21:44.814Z",
+        "2026-11-17T17:21:44.977Z"
+      ],
+      "resource_selection_click_utc": [
+        "2026-11-17T17:22:49.638Z",
+        "2026-11-17T17:22:49.746Z"
+      ],
+      "visit_resource_click_utc": [
+        "2026-11-17T17:23:05.810Z",
+        "2026-11-17T17:23:05.911Z"
+      ],
+      "enterprise_qr_page_observed_utc": "2026-11-17T17:23:26.493Z",
+      "returned_siam_observed_utc": "2026-11-17T17:28:27.780Z",
+      "target_article_navigation_click_utc": [
+        "2026-11-17T17:28:45.474Z",
+        "2026-11-17T17:28:45.483Z"
+      ],
+      "target_article_rights_observed_utc": "2026-11-17T17:29:01.896Z",
+      "target_epdf_click_utc": [
+        "2026-11-17T17:30:01.807Z",
+        "2026-11-17T17:30:01.926Z"
+      ],
+      "target_epdf_rights_observed_utc": "2026-11-17T17:30:25.207Z",
+      "human_intervention": "User completed independent Chrome institutional enterprise QR authentication; exact input duration unavailable.",
+      "result": "Fresh returned SIAM institution,matchingF19title/DOI/FULLACCESS/Atypon,then actualePDF Page1/59/Download11.1MB confirmed. No standalonePDFsaved. Existing saved files/cached article labels were not treated as proof of current rights.",
+      "measurement_note": "Both products now diagnostically prewarmed on the already-tested F19; access-restored pair retains this stratum. Wall preparation spans include user/tool/operator work,not pure product latency."
     }
   ],
   "operator_restart_context": {
@@ -6970,13 +7256,13 @@
     "session_cache_effect": "Product PIDs unchanged; no cache/account reset. New CUA targeted Source2.24s/Chrome1.7s reads and actual F07-3 saving succeeded. Global inventory still timed out; task-specific surfaces used."
   },
   "ci_checkpoint": {
-    "head_sha": "fc1005a725564d0b4acbfa51200625b376c4c5c0",
+    "head_sha": "144fd857797ca8b787c8a0e0334b35b26b513cb7",
     "status": "success",
-    "run_id": 44126992518,
-    "job_id": 134193382009,
-    "run_url": "https://github.com/dylaaan-booob/allfold/actions/runs/44126992518",
-    "scope": "Complete cumulativePR Safety checks / safety,pull_request; associated currentPRhead verified by gh statusCheckRollup. Evidence-only commit; production69b9a41 unchanged.",
-    "tested_merge_sha": "58041b8eb48fdea9f5a7ba176ca837f5a0a30a69",
+    "run_id": 44136241067,
+    "job_id": 134226434876,
+    "run_url": "https://github.com/dylaaan-booob/allfold/actions/runs/44136241067",
+    "scope": "Complete cumulativePR Safety checks / safety,pull_request,latestPRhead/statusCheckRollup verified; evidence-onlycommit,production69unchanged.",
+    "tested_merge_sha": "188ae80e42e31a8e9adcc448051b8560909dc170",
     "test_evidence": {
       "javascript_files": 64,
       "python_passed": 1669,
@@ -6984,7 +7270,7 @@
       "electron_passed": 253,
       "electron_skipped": 0
     },
-    "note": "Completed2026-11-17T16:38:59UTC,job6min05s,Electron3min17s. Local private checks/ci-fc1005a-success.json/log. Later evidence commits require their own latestPRcheck; real acceptance remains incomplete."
+    "note": "Completed17:28:17UTC; allrequiredstepssuccess. Privatechecks/ci-144fd85-success.json/log. Newer evidence commits need own latestPRchecks."
   },
   "non_scoring_diagnostics": [
     {
@@ -7147,6 +7433,43 @@
       "included_in_pairing_score": false,
       "observed_challenge_or_solver": false,
       "note": "Actual3a Session publisher body succeeded; not a formal Download endpoint. SourceBrowser and Z files may differ by watermark bytes."
+    },
+    {
+      "record_id": "F19-Z-D2",
+      "sample_id": "F19",
+      "scoring": false,
+      "purpose": "Distinguish warm Browser cache reuse from real body transfer without cache/setting/session changes.",
+      "production_code_sha": "69b9a41d442c4b5a1ad4c1bce99b3d325332fd6b",
+      "click_utc": [
+        "2026-11-17T18:00:05.217Z",
+        "2026-11-17T18:00:05.276Z"
+      ],
+      "local_pdf_and_parent_endpoint_utc": [
+        "2026-11-17T18:00:10.177Z",
+        "2026-11-17T18:00:10.569Z"
+      ],
+      "wait_seconds": [
+        4.901,
+        5.352
+      ],
+      "parent_key": "TCWBFZYA",
+      "attachment_key": "RNQIY2U9",
+      "file_bytes": 11471788,
+      "page_count": 59,
+      "title_doi_verified": true,
+      "acceptance_collection_verified": true,
+      "network_observation": {
+        "chrome_receive_delta_bytes": 51413,
+        "chrome_send_delta_bytes": 11835464,
+        "source_F19_4_residual_receive_delta_bytes": 11509437,
+        "source_pdf_file_bytes": 11471779,
+        "chrome_network_socket_owner_verified_before_after": 4261,
+        "interval_seconds": 1,
+        "native_csv_stdout_buffered": true,
+        "resolution_note": "Ordered1s snapshots; Python receipt timestamps are buffered delivery,not sample times. Exact product time uses separatefile/association observer."
+      },
+      "finding": "Fresh normalSave/newparent/importedPDF did not receive a corresponding11.47MB body in Chrome network counters,while Source re-received approximately onebody. Installedbackgroundfetch path and counters support warm Browser HTTP-cache reuse; exactfromCache flag and disk-vs-memory tier unobserved. User-wait gap remains; this is not equivalent uncached transport speed.",
+      "private_evidence": "f19-z-cache-diagnostic-result.json,source/Chrome one-shotcounter files and individualPDF QA outsideWorkspace."
     }
   ],
   "evidence_join_corrections": [
@@ -7176,7 +7499,7 @@
       "final_affected_native_passed": 1,
       "previous_electron_full_code_sha": "849dddc9a3a72cf2b0a778375e1a8fb8e3d051b6"
     },
-    "live_status": "F19 actualSource ePDF entitlement restored by normal CARSI SIAM reauthentication with unchanged69b9a41, after user QR login. Current priority: independently verify Chrome rights and complete access-restored F19 pair, preserving earlier CF/preprint result and diagnostic prewarming. No Priority implementation or code-only benefit claimed. Other coverage/retests remain; no Reset.",
+    "live_status": "Both products independently reauthenticated through normal CARSI SIAM resources; actual F19publisher ePDFPage1/59/Download11.1MB rights confirmed,with no code change. Access-restored F19-3A→Z and boundedF19-4Z→A now scheduled; diagnostic prewarming retained. No priority header/transport change,overallparity or Reset.",
     "diagnostic_correction": "Earlier no-pdf-entry was misread as missing articleDOM. It follows an attempted P4response; native article extraction did discover theePDF entry. Navigation/header/case hypotheses were not used for a patch.",
     "review_followup": "Three affected review gaps reproduced: unmarked native IEEE Meta, API-result entry ordering, and HTML-triggered Reader work ahead of other qualified direct entries. Shared batch scheduling preserves settled response/context and existing ScienceDirect backlink chain. Explicit initial/native action order is preserved; terminal/cancel outcomes discard paused Reader work. Real retests remain pending. Qualified Readers also finish before optional identifier APIs; otherwise an old deferred Reader could be mistaken for sufficient new query inputs. Same-rule/same-origin/path query variants remain source fallbacks and do not interrupt Reader; requests are not rewritten.",
     "limitations": [
@@ -7244,6 +7567,19 @@
       "https://github.com/electron/electron/blob/v45.0.0/lib/browser/api/net-fetch.ts#L76",
       "https://github.com/chromium/chromium/blob/156.0.8078.48/net/spdy/spdy_http_utils.cc#L204",
       "https://www.rfc-editor.org/rfc/rfc9218.html#section-10"
+    ],
+    "warm_case_evidence": "F19 warm Z diagnostic saved new11.47MB with only51KB aggregateChrome incoming,versusSourceactualbodyreceive. This cache-reuse comparison does not establish a priority-related network throughput defect. No prioritypatch made."
+  },
+  "cache_investigation": {
+    "status": "network_byte_evidence_supports_warm_cache_mismatch; no_product_cache_change",
+    "source_mode": "Current BrowserRuntime uses in-memory session.fromPartition(allfold),cache enabled; Source PID17001 has no cache-size/disable switches.",
+    "versioned_capacity": "Electron45 leaves in-memory cache size unspecified; Chromium156 on24GiBRAM defaults50MiB total and ordinaryMaxFileSize=max_size/8=6553600bytes. F17/F18below,F19fileandobservedreceivedbodyabove. Range/sparse/HTTPconditions differ; finalPDFsize alone is not cacheproof. This is calculated capacity,not measuredresident RAM.",
+    "public_api_limit": "Electron45 has cache boolean/getCacheSize/clear APIs but no public budget/entry-size setter. --disk-cache-size is applied only for !in_memory. No persist partition,credential storage,lifecycle,Vendor,dependency or size override was introduced.",
+    "result_scope": "Prepared access-restoredF19-3 sameversion wait24.743–25.102 vs25.164–25.734; next warmF19-4 wait21.245–21.626 vs3.865–4.507. Cache reuse explains much of warmdifference; warm user-wait disadvantage is retained and not declared met. Original first slower points remain.",
+    "references": [
+      "https://github.com/electron/electron/blob/v45.0.0/shell/browser/net/network_context_service.cc#L81",
+      "https://github.com/chromium/chromium/blob/156.0.8078.48/net/disk_cache/memory/mem_backend_impl.cc",
+      "https://github.com/electron/electron/blob/v45.0.0/docs/api/session.md#sessionfrompartitionpartition-options"
     ]
   }
 }
