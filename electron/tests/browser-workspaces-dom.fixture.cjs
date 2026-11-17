@@ -62,6 +62,7 @@ async function completeChallenge(){await page('scrollTo(0,0)');const checked=awa
 app.whenReady().then(async()=>{
   try{
     await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));origin=`http://127.0.0.1:${server.address().port}`;
+    services[0].access_url=origin;
     win=new BrowserWindow({width:1200,height:800,show:false,webPreferences:{sandbox:true,contextIsolation:true,backgroundThrottling:false,partition:'browser-workspaces-host',preload:path.join(__dirname,'../src/preload/preload.cjs')}});
     browser=new BrowserRuntime({hostWindow:win,isTaskRunning:()=>loginState.active||runActive});await browser.ready;const update=browser.setPresentation.bind(browser);browser.setPresentation=value=>{nativeUpdates.push({...value});return update(value)};
     win.webContents.session.webRequest.onBeforeRequest({urls:['http://*/*','https://*/*']},(details,callback)=>callback({cancel:new URL(details.url).origin!==origin}));
@@ -119,6 +120,13 @@ app.whenReady().then(async()=>{
     const selectedGroup=`#browser-tabs [data-service-id="${serviceId}"]`;
     await click(win.webContents,selectedGroup+' > summary');
     assert(await host(`!document.querySelector('${selectedGroup}').open`),'Service group did not collapse');
+    const moving=browser.createTab({present:false,user:true},portal);
+    await ready(()=>host(`document.querySelector('#browser-tabs [data-group-key="carsi"] [data-page-id="${moving.id}"] button')!==null`),'CARSI popup row');
+    await host(`document.querySelector('#browser-tabs [data-page-id="${moving.id}"] button').focus()`);
+    await moving.view.webContents.loadURL(origin+'/background-layout');
+    await ready(()=>host(`document.activeElement===document.querySelector('${selectedGroup} > summary') && !document.querySelector('${selectedGroup}').open && document.querySelector('${selectedGroup} [data-page-id="${moving.id}"]')!==null`),'focused row enters collapsed Service group');
+    assert(browser.pageAssociation(moving.id).service_id===null && browser.selected===tab,'display grouping changed native association or selection');
+    await browser.command({action:'close',id:moving.id});
     await key(win.webContents,'Escape');
     await ready(()=>Promise.resolve(!!browser.presentation.mounted),'Tabs dismissal restores native Page');
     assert(await host("document.activeElement.id==='browser-tabs-toggle'"),'Tabs dismissal did not restore trigger focus');

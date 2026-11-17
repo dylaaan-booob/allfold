@@ -182,8 +182,10 @@ window.allfoldWorkbench=(()=>{
       return section;
     }));
     // Moving a focused row between groups can detach it temporarily.
-    if(focused?.isConnected && document.activeElement!==focused && !focused.disabled && tabList.contains(focused))
-      focused.focus({preventScroll:true});
+    if(focused?.isConnected && document.activeElement!==focused && !focused.disabled && tabList.contains(focused)){
+      const collapsed=[...tabList.children].find(group=>!group.open && group.children[1].contains(focused));
+      (collapsed?collapsed.children[0]:focused).focus({preventScroll:true});
+    }
   }
   function render(value) {
     state=value || state;

@@ -10,17 +10,17 @@ function fixture({preferences={},tabs=[],services={scope:{scope_id:'scope-a'},se
     replaceChildren(...children){this.children=children;}
     append(...children){for(const child of children)this.insertBefore(child,null);}
     insertBefore(child,next){child.remove();child.parentElement=this;this.children.splice(next?this.children.indexOf(next):this.children.length,0,child);}
-    remove(){if(this.parentElement)this.parentElement.children=this.parentElement.children.filter(child=>child!==this);this.parentElement=null;}
+    remove(){if(this.parentElement){if(this.contains(document.activeElement))document.activeElement=document.body;this.parentElement.children=this.parentElement.children.filter(child=>child!==this);}this.parentElement=null;}
     contains(node){return node===this || this.children.some(child=>child.contains(node));}
     closest(selector){return selector.includes('[hidden]')?(this.hidden?this:this.parentElement?.closest(selector)):null;}
-    focus(){document.activeElement=this;}
+    focus(){for(let parent=this.parentElement;parent;parent=parent.parentElement)if(parent.localName==='details' && !parent.open && !parent.children[0].contains(this))return;document.activeElement=this;}
     getBoundingClientRect(){return this.id==='browser-body'?{x:0,y:160,left:0,top:160,width:720,height:600,right:720,bottom:760}:{x:0,y:0,left:0,top:0,width:1000,height:600};}
     querySelectorAll(){return [];}
     scrollIntoView(){}
   }
   const document={addEventListener(){},body:new Element('body'),documentElement:new Element('html'),activeElement:null,
     getElementById:id=>{if(!elements.has(id))elements.set(id,new Element(id));return elements.get(id);},
-    createElement:()=>new Element(),
+    createElement:tag=>Object.assign(new Element(),{localName:tag}),
     querySelector:selector=>selector==='.masthead'?document.getElementById('masthead'):document.getElementById('footer'),
     querySelectorAll:selector=>selector==='dialog[open]'?[...elements.values()].filter(node=>node.open):[]};
   const window=new EventTarget();window.window=window;window.workspaceNavigation={current:()=>window.workspace || 'workspace'};
@@ -175,6 +175,20 @@ test('ambiguous configured origins do not infer a Service and recorded scoped as
   const ids=key=>groups.find(group=>group.dataset.groupKey===key).children[1].children.map(row=>row.dataset.pageId);
   assert.deepEqual(ids('carsi'),['1','2','4']);assert.deepEqual(ids('scope-a:unique'),[]);
   assert.deepEqual(ids('old-scope:old-service'),['3']);
+});
+
+test('a focused CARSI row moving into a collapsed Service group focuses its summary without expanding it',async()=>{
+  const f=fixture({services:{scope:{scope_id:'scope-a'},services:[{id:'taylor',name:'Taylor',access_url:'https://taylor.example/'}]}});
+  await f.window.allfoldWorkbench.show();await Promise.resolve();
+  const portal={id:1,url:'https://ds.carsi.edu.cn/resource/resource.php',association:{role:'carsi-portal',service_scope:{scope_id:'scope-a'}}};
+  const target={id:2,url:'https://ds.carsi.edu.cn/resource/resourceDetail.php',openerId:1};
+  f.setState({selected:2,tabs:[portal,target]});
+  const list=f.document.getElementById('browser-tabs'),group=list.children.find(node=>node.dataset.serviceId==='taylor');
+  group.open=false;
+  const row=list.children.find(node=>node.dataset.groupKey==='carsi').children[1].children[1];row.children[0].focus();
+  target.url='https://taylor.example/';f.setState({selected:2,tabs:[portal,target]});
+  assert.equal(group.open,false);assert.equal(group.children[1].children[0],row);
+  assert.equal(f.document.activeElement,group.children[0]);
 });
 
 test('Browser status belongs to the selected page and distinguishes verification from business tasks',async()=>{
