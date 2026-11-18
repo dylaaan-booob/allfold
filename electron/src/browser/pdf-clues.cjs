@@ -65,9 +65,15 @@ function readerDiagnosticFields(reader,result) {
     if(landing.pathname===entry.pathname)relation='reader';
     else if(landing.pathname==='/science/article/pii/'+reader.identifier)relation='article';
   }
+  const fields={reader_entry:entry.searchParams.get('download')==='true'?'download':entry.search?'other-query':'plain',
+    reader_landing:relation,reader_pdf_candidates:result.pdf_clues.candidates.length};
   const navigation=result.reader_result;
-  return {reader_entry:entry.searchParams.get('download')==='true'?'download':entry.search?'other-query':'plain',
-    reader_landing:relation,reader_pdf_candidates:result.pdf_clues.candidates.length,
-    ...(navigation && {reader_request_changed:navigation.url!==reader.url,reader_context_changed:navigation.context_changed})};
+  if(navigation) {
+    const request=new URL(navigation.url);
+    entry.hash='';request.hash='';
+    fields.reader_request_changed=request.href!==entry.href;
+    fields.reader_context_changed=navigation.context_changed;
+  }
+  return fields;
 }
 module.exports={boundedPdfClues,qualifyReader,publicClueURL,readerDiagnosticFields};

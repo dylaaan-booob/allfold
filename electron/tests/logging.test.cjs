@@ -43,7 +43,11 @@ test('ScienceDirect Reader diagnostics retain route and candidate counts without
   logger.log('info','task_finished',{request_id:'download_reader',action:'extract_paper_pdf_clues',
     ...readerDiagnosticFields({...reader,url:reader.url+'?download=true'},
       {pdf_clues:{landing_url:'https://cdn.example/Publisher.PDF?signature=private-signature',candidates:[{}]}})});
-  const [plain,download]=logger.readEvents();
+  const normalizedEntry=reader.url.replace('sciencedirect.com','sciencedirect.com:443')+'#private-fragment';
+  logger.log('info','task_finished',{request_id:'equivalent_reader',action:'extract_paper_pdf_clues',
+    ...readerDiagnosticFields({...reader,url:normalizedEntry},
+      {pdf_clues:{landing_url:reader.url,candidates:[]},reader_result:{...navigation,url:reader.url}})});
+  const [plain,download,equivalent]=logger.readEvents();
   assert.equal(plain.reader_entry,'plain');
   assert.equal(plain.reader_landing,'article');
   assert.equal(plain.reader_pdf_candidates,0);
@@ -53,7 +57,9 @@ test('ScienceDirect Reader diagnostics retain route and candidate counts without
   assert.equal(download.reader_landing,'other-origin');
   assert.equal(download.reader_pdf_candidates,1);
   assert.equal(download.reader_request_changed,undefined);
-  assert.doesNotMatch(JSON.stringify([plain,download]),/private-|sciencedirect\.com|cdn\.example|S1234567812345678/);
+  assert.equal(equivalent.reader_landing,'reader');
+  assert.equal(equivalent.reader_request_changed,false);
+  assert.doesNotMatch(JSON.stringify([plain,download,equivalent]),/private-|sciencedirect\.com|cdn\.example|S1234567812345678/);
 });
 test('bounded rotation persists incompleteness across restart and files are private',t=>{
   const {logger,root}=fixture(t,{maxBytes:512,maxFiles:2});
