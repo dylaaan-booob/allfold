@@ -377,11 +377,11 @@ internal routing decision.
 
 R024 now tries the installed Translator's generated download-query entry
 before the plain fallback. Both still use the normal Reader, Session and
-publication paths. The focused regression verifies that the first entry's
-observed GET can complete the original Paper and that a missing continuation
-allows the existing plain entry to work. A paired repeat on the revised
-order is required to measure the change under fresh, independently verified
-access.
+publication paths. The focused regression verifies that discovery forwards
+the observed GET with the original Paper target and Referer, and advances to
+the plain entry when the first Reader supplies no continuation. A paired
+repeat on the revised order is required to measure the change under fresh,
+independently verified access.
 
 Project Euclid was restricted to public publisher Open Access. F21's normal
 article redirected to the short page after the user completed separate
