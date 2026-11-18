@@ -3,9 +3,10 @@
 Issue: [#140](https://github.com/dylaaan-booob/allfold/issues/140). Baseline:
 `a2e511aa86ab5aa292f224301d6609a59c287fa2`.
 
-**Status: incomplete; saved checkpoint 18 November 2026 (Asia/Shanghai). Twenty
-of the 31 frozen Papers have observations (55 pair slots including repeats);
-11 Papers have no formal Save/Download. Twenty-five same-version low-load pairs have reliable local
+**Status: incomplete. At the 18 November 2026 checkpoint (Asia/Shanghai), 23
+of the 31 frozen Papers have observations (58 pair slots including repeats).
+Eight Papers are unstarted. Twenty-five comparable low-load pairs from earlier
+platforms and one ScienceDirect matched fallback pair have reliable local
 file/association endpoints. Springer has two slower Allfold points and one
 interval overlap; T&F has one slower point requiring swapped repeats. The measured
 Cambridge/IEEE prepared-access cohorts show no observed disadvantage; overall
@@ -19,9 +20,11 @@ F19's second pair encountered a new challenge and saved a related preprint. A
 subsequent same-Session ePDF visit denied institutional access. Normal resource
 reentry restored actual entitlement and the unchanged code saved its publisher
 PDF in two new pairs. A remaining large-PDF warm-repeat user-wait disadvantage
-has direct cache-reuse evidence and is not declared met. ScienceDirect preparation
-currently awaits the user's actual Chrome institutional QR login. Further coverage
-and affected retests remain required.
+has direct cache-reuse evidence and is not declared met. The first formal
+ScienceDirect pair, F26, failed on both products after independent institutional
+preparation. F28 saved the same related preprint on both products. F27's Allfold
+attempt encountered a CDN access challenge and Zotero's terminal state was
+unobserved when its trial tab was closed. Further coverage and affected retests remain required.
 Workspace is retained.**
 
 ## Environment and endpoint
@@ -96,9 +99,10 @@ product's Reject/delete/Restore flow; metadata and Download availability survive
 The immutable [31-paper manifest](pdf-pairing-manifest.json) was committed before
 the first formal click. The [formal results](pdf-pairing-formal-results.json)
 retain all original samples, failures, preparation, versions and repetitions.
-At this checkpoint Allfold has 52 automatic local-PDF successes, one assisted
-success and two failures. Zotero has 46 local-PDF successes
-and nine operator interruptions with unknown product terminal state. These are
+At this checkpoint Allfold has 53 automatic local-PDF successes, one assisted
+success and four failures. Zotero has 47 local-PDF successes, one visible
+attachment failure and ten operator interruptions with unknown product terminal
+state. These are
 attempt counts, not independent-paper success rates. Saving a related preprint
 is a task result but is not a publisher-version success.
 
@@ -113,7 +117,66 @@ is a task result but is not a publisher-version success.
 | Wiley | 3 / 3 | Allfold6 publisher OA successes; Zotero4 successes(1preprint,3publisher),2interruptions | F14 normal publisher controls and F15 favorAllfold. F16 default saves remain parent-only; one bounded diagnostic records citation/PDF403,with terminal unknown. Not confirmed. |
 | SIAM | 3 / 3 | Allfold5 related preprints and9 publisher PDFs; Zotero13 publisher PDFs,1 interruption | F17/F18 each have3 publisher pairs:first slower,two warm faster. Normal reauthentication restored F19 publisher access; its new comparable pair is close/favors Allfold,then a warm repeat favors Zotero. Cache reuse is demonstrated; large-PDF warm user-wait parity is not met. |
 | INFORMS PubsOnline | 0 / 3 | Not started; configured EBSCO capability is not a platform result | Not confirmed. |
-| ScienceDirect | 0 / 6 | Formal cohort not started; repaired-path pilots remain separate | Not confirmed. |
+| ScienceDirect | 3 / 6 | F26 failed on both products. F28 saved matching preprints. F27 Allfold failed and the Zotero trial tab was closed after the common observation horizon. | Publisher retrieval and prepared-control repeats remain under investigation. Not confirmed. |
+
+After the user rebooted and signed into CARSI in Chrome, the checkout was
+launched at `40d4356` with rebuilt UI and the same production code as `69b9a41`.
+The prior instance was absent and its port free. In the new runtime, 72 Papers
+and 24 managed bodies were present with no active collection or download.
+F26 had no body. Zotero 10.0.9 and the dedicated collection were reachable on
+the local API. The restarted keys-v2 observer treated all existing items and
+files as baseline. Chrome 157.0.8103.79 and Connector 5.0.217 were installed.
+
+Chrome entered ScienceDirect from its normal CARSI resource and passed initial
+verification automatically. In Source, the batched Login's ScienceDirect task
+reported Opened after a 19.339 s native operation. Its retained target was then
+evicted from the managed page budget and the final group reported `target_closed`.
+Normal selection of the same CARSI resource in Source re-established the visible
+publisher entry. Both fresh F26 article pages displayed institution access, the
+exact DOI and the View PDF entry before the first formal click. No PDFs were
+opened during that preparation. Preparation times and incomplete observation
+bounds are in the result table.
+
+F26-1 used the frozen Z→A order. Zotero's new parent was in the dedicated
+collection. Inspection observed a red X on `ScienceDirect Full Text PDF` and a
+completed Save popup, with zero attached files. The inspection gives an upper
+bound on the observed error. Allfold attempt 1 reached its failed state in
+18.439–18.784 s with reason `access-challenge` and no file. Its R024 path read
+the article, tried three sources, and reached the assets CDN twice. One Reader
+showed a 403 verification page and subsequently reached status 200. The final
+CDN responses were still access challenges. The native operation sequence and
+both measured outcomes were retained. The later non-scoring normal Source View
+PDF opened the matching 12-page publication. The same normal Chrome action
+reached a human verification checkbox. After the user completed it, Chrome
+returned to the F26 article with institution and Full text access visible. The
+PDF itself had yet to appear in that window. The next normal View PDF action on
+the returned article reached a second human checkbox. After the user passed it,
+the browser subsequently displayed the actual 12-page publisher PDF. The observed
+title and DOI matched the Source viewer. Both products therefore had current
+viewer access before the control retest, and both had viewed the same body.
+Chrome's two manual verification observations remain part of its preparation.
+
+The F26 verification tab was preserved while F28, a frozen open-access sample,
+advanced ahead of F27. F28-1 used its declared Z→A order. Both products stored
+the related arXiv 2507.18488v2, 44 pages and 5,331,394 bytes. Full title, all three
+authors and the saved Paper's explicit preprint relation were confirmed. Allfold
+wait was 18.358–18.700 s. Zotero wait was 134.879–135.188 s. The paired difference
+was −116.830 to −116.179 s and the ratio 0.1358–0.1386. This point compares time to
+the same fallback body. It does not measure publisher attainment or equivalent
+network transfer. Allfold used OpenAlex P5 after four publisher entries reached
+the same assets CDN origin and returned access challenges. Zotero's imported
+attachment origin was arXiv. Its finer resolver phases were not observed.
+
+F27-1 began A→Z with the target article identity, independent institutional
+access and ScienceDirect Translator verified. Allfold reached its failed state in
+10.537–10.885 s. Three R024 Reader paths reached the assets CDN and received
+access challenges. Zotero created the correct parent in the trial collection.
+The save popup subsequently disappeared. After 600 s, the common observation
+horizon based on the normal Allfold deadline, the observer still had no local
+attachment or product terminal state. The operator closed only the trial
+article tab after 633.413–633.468 s. The parent still had zero attachments at
+that check. The result is an operator interruption with product terminal
+state unknown. Neither product opened a full PDF before this pair.
 
 **Measurement load:** the original external observer requested full JSON for the
 newest20 Zotero items at nominal250ms. An idle A/B check measured Zotero CPU at

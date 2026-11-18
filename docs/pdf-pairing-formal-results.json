@@ -3,7 +3,7 @@
   "manifest": "pdf-pairing-manifest.json",
   "manifest_frozen_at_utc": "2026-11-16T18:40:53.823107+00:00",
   "production_code_sha": "69b9a41d442c4b5a1ad4c1bce99b3d325332fd6b",
-  "runtime_head_sha": "69b9a41d442c4b5a1ad4c1bce99b3d325332fd6b",
+  "runtime_head_sha": "40d4356d89959dc559618df21f539e730285cd21",
   "pairs": [
     {
       "pair_id": "F01-1",
@@ -6888,6 +6888,441 @@
         4.7138,
         5.5953
       ]
+    },
+    {
+      "pair_id": "F26-1",
+      "sample_id": "F26",
+      "order": [
+        "zotero",
+        "allfold"
+      ],
+      "production_code_sha": "69b9a41d442c4b5a1ad4c1bce99b3d325332fd6b",
+      "runtime_head_sha": "40d4356d89959dc559618df21f539e730285cd21",
+      "allfold": {
+        "result": "failure",
+        "timing_eligible_for_parity": false,
+        "click_utc": [
+          "2026-11-17T23:35:08.006Z",
+          "2026-11-17T23:35:08.094Z"
+        ],
+        "ui_preparation": "Prepared independent Source Session on actual runtime a011d5af7bad18975c017599e9c88dc2. Batch Login settled then normal CARSI ScienceDirect resource entry and fresh matching target article confirmed institutional access and View PDF. Existing original candidate, no managed body, Download available; retained saved discovery facts. No full PDF preopen. Zotero UI reported failed attachment with completed Save beforehand, its matched parent had zero attachments.",
+        "human_intervention": false,
+        "runtime_head_sha": "40d4356d89959dc559618df21f539e730285cd21",
+        "production_code_sha": "69b9a41d442c4b5a1ad4c1bce99b3d325332fd6b",
+        "frontend_head_sha": "40d4356d89959dc559618df21f539e730285cd21",
+        "human_intervention_note": "none during Download; normal Source authentication and preparation were automatic",
+        "measurement_revision": "keys-v2",
+        "reason": "access-challenge",
+        "terminal_observation_utc": [
+          "2026-11-17T23:35:26.533Z",
+          "2026-11-17T23:35:26.790Z"
+        ],
+        "attempt": 1,
+        "terminal_ui": "Current source needs verification. Later sources were attempted. No remaining F26 waiting task visible after stop.",
+        "terminal_wait_seconds": [
+          18.439,
+          18.784
+        ],
+        "native_operations": [
+          {
+            "action": "extract_paper_pdf_clues",
+            "role": "article",
+            "duration_ms": 3588,
+            "outcome": "retrieved"
+          },
+          {
+            "action": "stream_paper_body",
+            "pdf_stage": "P2",
+            "source_index": 1,
+            "duration_ms": 120,
+            "outcome": "response",
+            "stream_partition_cookie_count": 2
+          },
+          {
+            "action": "extract_paper_pdf_clues",
+            "role": "pdf-reader",
+            "duration_ms": 9855,
+            "outcome": "retrieved",
+            "verification_http_status": 403,
+            "later_ready_http_status": 200
+          },
+          {
+            "action": "stream_paper_body",
+            "pdf_stage": "P2",
+            "source_index": 2,
+            "duration_ms": 226,
+            "outcome": "response",
+            "stream_partition_cookie_count": 2
+          },
+          {
+            "action": "extract_paper_pdf_clues",
+            "role": "pdf-reader",
+            "duration_ms": 1528,
+            "outcome": "retrieved"
+          },
+          {
+            "action": "stream_paper_body",
+            "pdf_stage": "P2",
+            "source_index": 2,
+            "duration_ms": 535,
+            "outcome": "response",
+            "source_origin": "https://pdf.sciencedirectassets.com/",
+            "reason": "access-challenge",
+            "stream_partition_cookie_count": 1
+          },
+          {
+            "action": "stream_paper_body",
+            "pdf_stage": "P4",
+            "source_index": 3,
+            "duration_ms": 124,
+            "outcome": "response",
+            "stream_partition_cookie_count": 2
+          },
+          {
+            "action": "extract_paper_pdf_clues",
+            "role": "pdf-reader",
+            "duration_ms": 1423,
+            "outcome": "retrieved"
+          },
+          {
+            "action": "stream_paper_body",
+            "pdf_stage": "P4",
+            "source_index": 3,
+            "duration_ms": 219,
+            "outcome": "response",
+            "source_origin": "https://pdf.sciencedirectassets.com/",
+            "reason": "access-challenge",
+            "stream_partition_cookie_count": 1
+          }
+        ],
+        "access_preparation_refs": [
+          "source_f26_after_user_reboot"
+        ],
+        "diagnostic_evidence": "Private40d4356-f26-first-pair.zip and selected native/source sequence",
+        "transport_context": "Ordinary shared Session post-CARSI entry; native operation logs carried no retained service-capability ID. Actual published content access checked separately."
+      },
+      "zotero": {
+        "result": "failure",
+        "click_utc": [
+          "2026-11-17T23:33:19.474Z",
+          "2026-11-17T23:33:19.497Z"
+        ],
+        "ui_preparation": "New Chrome article, exact F26 DOI/title, institution and Full text access verified after normal CARSI ScienceDirect resource entry. Automatic verification during preparation, no PDF preopen. Source Session separately prepared through normal Login and direct resource entry; same article access confirmed. Dedicated acceptance collection shown as Save target. Restored keys-v2 observer, no competing build/test/download.",
+        "human_intervention": false,
+        "translator": "ScienceDirect",
+        "parent_key": "HD5DK92B",
+        "human_intervention_note": "none during Save; user Chrome CARSI sign-in before preparation",
+        "measurement_revision": "keys-v2",
+        "timing_eligible_for_parity": false,
+        "reason": "connector_reported_full_text_pdf_attachment_failed",
+        "terminal_observed_ui_utc": [
+          "2026-11-17T23:34:30.296Z",
+          "2026-11-17T23:34:31.389Z"
+        ],
+        "terminal_timing_note": "Red X and Saving is complete observed during this inspection; transition could precede the inspection. Only an observation upper bound is known. Keep observing same parent for any actual late resolver attachment.",
+        "acceptance_collection_membership_verified": true,
+        "parent_file_result": "New matching DOI parent, zero attachments when independently checked. No visible challenge or other save window at the terminal inspection.",
+        "access_preparation_refs": [
+          "chrome_f26_after_user_reboot"
+        ],
+        "total_wait_note": "Explicit UI failure observed by72s, exact terminal time unknown. Parent HD5DK92B still had no attachment. UI progress timestamp is not an attachment time."
+      },
+      "platform": "ScienceDirect",
+      "configured_service": "SCIENCEDIRECT",
+      "timing_comparison_eligible": false,
+      "cohort": "representative",
+      "measurement_stratum": "prepared_institutional_access_after_reboot",
+      "configured_access_method": "CARSI ScienceDirect",
+      "comparison_eligibility_note": "Connector attachment red error with completed save UI and no linked local file at terminal observation. No same-body comparison unless a late imported file is actually observed for this same parent. Exact product failure time unavailable.",
+      "comparable_body_version": false
+    },
+    {
+      "pair_id": "F28-1",
+      "sample_id": "F28",
+      "order": [
+        "zotero",
+        "allfold"
+      ],
+      "production_code_sha": "69b9a41d442c4b5a1ad4c1bce99b3d325332fd6b",
+      "runtime_head_sha": "40d4356d89959dc559618df21f539e730285cd21",
+      "allfold": {
+        "result": "automatic_success",
+        "timing_eligible_for_parity": true,
+        "click_utc": [
+          "2026-11-17T23:45:16.841Z",
+          "2026-11-17T23:45:16.925Z"
+        ],
+        "ui_preparation": "Current lawful independent Source Session. Normal same/article access showed OA, institution, exact DOI and title, with no PDF preopen. Actual original Candidate had no body and Download available. Z local imported PDF plus parent already observed. No build/test/other downloads.",
+        "human_intervention": false,
+        "runtime_head_sha": "40d4356d89959dc559618df21f539e730285cd21",
+        "production_code_sha": "69b9a41d442c4b5a1ad4c1bce99b3d325332fd6b",
+        "frontend_head_sha": "40d4356d89959dc559618df21f539e730285cd21",
+        "local_pdf_and_association_utc": [
+          "2026-11-17T23:45:35.283Z",
+          "2026-11-17T23:45:35.541Z"
+        ],
+        "wait_seconds": [
+          18.358,
+          18.7
+        ],
+        "file_bytes": 5331394,
+        "attempt": 1,
+        "source": "P5",
+        "fallback_used": 1,
+        "human_intervention_note": "none during Download",
+        "measurement_revision": "keys-v2",
+        "actual_file_source": "https://arxiv.org/",
+        "body_version": "arXiv2507.18488v2",
+        "native_operations": [
+          {
+            "article_read_ms": 3603,
+            "reader_reads_ms": [
+              3543,
+              1522,
+              1626,
+              2133
+            ],
+            "publisher_entry_responses_ms": [
+              116,
+              126,
+              123,
+              125
+            ],
+            "cdn_access_challenge_responses_ms": [
+              930,
+              805,
+              675,
+              781
+            ],
+            "note": "Three R024 paths and a P5 publisher candidate reached the same CDN origin and were refused. Exact signed URLs were not exported; repeated origin does not prove identical requests."
+          },
+          {
+            "rule": "OPENALEX",
+            "stage": "P5",
+            "source_index": 5,
+            "outcome": "stream_complete",
+            "duration_ms": 1400,
+            "stream_request_ms": 7,
+            "stream_response_ms": 379,
+            "stream_first_byte_ms": 407,
+            "stream_closed_ms": 1399,
+            "stream_partition_cookie_count": 0
+          }
+        ],
+        "content_check": {
+          "file_exists": true,
+          "file_bytes": 5331394,
+          "pdf_prefix": true,
+          "page_count": 44,
+          "full_title_match": true,
+          "doi_match": false,
+          "publisher_indicators": {
+            "IEEE": false,
+            "Springer": false,
+            "Scientific Reports": false,
+            "Creative Commons": false,
+            "Accepted Manuscript": false,
+            "arXiv:": true,
+            "All rights reserved": false
+          },
+          "manual_identity_verified": true,
+          "manual_identity_basis": "Full title, all saved authors, and actual printed arXiv ID match explicit preprint relation on original Paper. Publisher DOI is absent in both source files.",
+          "actual_preprint_version": [
+            "2507.18488v2"
+          ],
+          "authors_match": {
+            "Mario Figueira": true,
+            "Michela Cameletti": true,
+            "Luca Patelli": true
+          },
+          "body_version": "Related arXiv preprint; not publisher version"
+        },
+        "transport_context": "Ordinary shared Session post-CARSI entry; native operation logs carried no retained service-capability ID. Actual published content access checked separately."
+      },
+      "zotero": {
+        "result": "automatic_success",
+        "click_utc": [
+          "2026-11-17T23:42:43.374Z",
+          "2026-11-17T23:42:43.403Z"
+        ],
+        "ui_preparation": "New ordinary Chrome Default validation window in the reauthenticated ScienceDirect Session. Actual matching article title/DOI, Open access, institution and PDF entry verified in both products, no PDF preopen. Actual Translator ScienceDirect and expected collection in popup confirmed. F26's unrelated manual verification tab is retained idle, no Save or Download in progress there.",
+        "human_intervention": false,
+        "translator": "ScienceDirect",
+        "parent_key": "TZ7UICSU",
+        "human_intervention_note": "none during Save",
+        "measurement_revision": "keys-v2",
+        "timing_eligible_for_parity": true,
+        "last_ui_observation": {
+          "utc": "2026-11-17T23:43:53.707Z",
+          "state": "Saving item, grey ScienceDirect Full Text PDF; no visible completed/failure indication or helper verification in the current window."
+        },
+        "local_pdf_and_association_utc": [
+          "2026-11-17T23:44:58.282Z",
+          "2026-11-17T23:44:58.562Z"
+        ],
+        "wait_seconds": [
+          134.879,
+          135.188
+        ],
+        "file_bytes": 5331394,
+        "attachment_key": "B4MZIC9B",
+        "link_mode": "imported_url",
+        "actual_file_source": "https://arxiv.org/",
+        "acceptance_collection_membership_verified": true,
+        "body_version": "arXiv2507.18488v2",
+        "phase_limitation": "Source Translator identified; attachment later saved from arXiv. Exact Connector vs Desktop resolver selection and latency subphases unavailable.",
+        "content_check": {
+          "file_exists": true,
+          "file_bytes": 5331394,
+          "pdf_prefix": true,
+          "page_count": 44,
+          "full_title_match": true,
+          "doi_match": false,
+          "publisher_indicators": {
+            "IEEE": false,
+            "Springer": false,
+            "Scientific Reports": false,
+            "Creative Commons": false,
+            "Accepted Manuscript": false,
+            "arXiv:": true,
+            "All rights reserved": false
+          },
+          "manual_identity_verified": true,
+          "manual_identity_basis": "Full title, all saved authors, and actual printed arXiv ID match explicit preprint relation on original Paper. Publisher DOI is absent in both source files.",
+          "actual_preprint_version": [
+            "2507.18488v2"
+          ],
+          "authors_match": {
+            "Mario Figueira": true,
+            "Michela Cameletti": true,
+            "Luca Patelli": true
+          },
+          "body_version": "Related arXiv preprint; not publisher version"
+        }
+      },
+      "platform": "ScienceDirect",
+      "configured_service": "SCIENCEDIRECT",
+      "timing_comparison_eligible": true,
+      "cohort": "representative",
+      "measurement_stratum": "open_access_alternative_preprint_both_sides",
+      "sequence_deviation": "F28 moved ahead of F27 while the separate post-failure F26 entitlement check awaited human verification. Same frozen sample and Z→A pair order. OA eligibility confirmed independently and F26 retained.",
+      "access_preparation_note": "Both pages displayed Open access, institution context, exact DOI and PDF entry, without opening the full PDF before measurement.",
+      "comparable_body_version": true,
+      "transfer_efficiency_comparison_eligible": false,
+      "body_version_comparison": "Both new local files are the same related arXiv2507.18488v2 preprint,44 pages/5331394 bytes. Full title/all three authors and the Paper explicit relation were individually checked. This pair records time to a related body through fallback; publisher-version retrieval and network transfer time are separate and remain unmeasured.",
+      "actual_access_comparison": "Article Open access on both products after normal service preparation. Both final stored bodies came from arxiv.org, without publisher access.",
+      "diagnostic_evidence": "Private 40d4356-f28-first-pair.zip and per-file identity verification",
+      "difference_seconds": [
+        -116.83,
+        -116.179
+      ],
+      "ratio": [
+        0.1358,
+        0.1386
+      ]
+    },
+    {
+      "pair_id": "F27-1",
+      "sample_id": "F27",
+      "order": [
+        "allfold",
+        "zotero"
+      ],
+      "production_code_sha": "69b9a41d442c4b5a1ad4c1bce99b3d325332fd6b",
+      "runtime_head_sha": "40d4356d89959dc559618df21f539e730285cd21",
+      "allfold": {
+        "result": "failure",
+        "click_utc": [
+          "2026-11-17T23:48:09.754Z",
+          "2026-11-17T23:48:09.842Z"
+        ],
+        "ui_preparation": "Existing separate legal ScienceDirect Sessions entered via normal CARSI. Chrome target title/DOI, institution, Full text access, View PDF and ScienceDirect Translator confirmed by23:47:30.630Z. Source article independently confirmed same title/DOI, institution and Full text access by23:47:55.564Z. No PDF preopen. Candidate had no linked body and Download available. Prior F28 finished both products. F26 viewer verification remains separately pending.",
+        "human_intervention": false,
+        "runtime_head_sha": "40d4356d89959dc559618df21f539e730285cd21",
+        "production_code_sha": "69b9a41d442c4b5a1ad4c1bce99b3d325332fd6b",
+        "frontend_head_sha": "40d4356d89959dc559618df21f539e730285cd21",
+        "reason": "access-challenge",
+        "terminal_observation_utc": [
+          "2026-11-17T23:48:20.379Z",
+          "2026-11-17T23:48:20.639Z"
+        ],
+        "human_intervention_note": "none during Download",
+        "measurement_revision": "keys-v2",
+        "timing_eligible_for_parity": false,
+        "attempt": 1,
+        "terminal_wait_seconds": [
+          10.537,
+          10.885
+        ],
+        "native_operations": [
+          {
+            "article_read_ms": 2475,
+            "reader_reads_ms": [
+              3040,
+              1427,
+              1324
+            ],
+            "publisher_entry_responses_ms": [
+              117,
+              127,
+              128
+            ],
+            "cdn_access_challenge_responses_ms": [
+              442,
+              335,
+              385
+            ],
+            "publisher_cdn_origin": "https://pdf.sciencedirectassets.com/",
+            "publisher_source_indices": [
+              1,
+              2,
+              3
+            ],
+            "cdn_stream_partition_cookie_count": 1
+          }
+        ],
+        "transport_context": "Ordinary shared Session post-CARSI entry; native operation logs carried no retained service-capability ID. Actual published content access checked separately."
+      },
+      "zotero": {
+        "result": "operator_interrupted",
+        "timing_eligible_for_parity": false,
+        "click_utc": [
+          "2026-11-17T23:48:52.376Z",
+          "2026-11-17T23:48:52.407Z"
+        ],
+        "ui_preparation": "Fresh actual F27 article rights and identity verified just before Save; institution and Full text access, matching DOI/title and ScienceDirect Translator. Normal CARSI resource context, no PDF preopen. Source F27-1 had already failed access-challenge and settled. Popup target confirmed dedicated acceptance collection.",
+        "human_intervention": false,
+        "translator": "ScienceDirect",
+        "parent_key": "KJRDWICM",
+        "human_intervention_note": "none during Save",
+        "measurement_revision": "keys-v2",
+        "reason": "common_observation_horizon_exceeded_without_local_pdf_or_observable_product_terminal",
+        "terminal_state": "unknown_after_normal_trial_tab_close",
+        "interruption_utc": [
+          "2026-11-17T23:59:25.820Z",
+          "2026-11-17T23:59:25.844Z"
+        ],
+        "acceptance_collection_membership_verified": true,
+        "child_count_verified_after_closing_trial_tab": 0,
+        "wait_to_operator_interruption_seconds": [
+          633.413,
+          633.468
+        ],
+        "last_ui_observation": {
+          "utc": "2026-11-17T23:58:40.734Z",
+          "state": "Original task window single F27 article tab, no saving/error/verification helper observed. Window list contained F26 and F27 only."
+        },
+        "observation_horizon_s": 600,
+        "terminal_timing_note": "Right-censored. Normal product failure/timeout transition could not be established. Retain any later attachment observation for this same parent separately."
+      },
+      "platform": "ScienceDirect",
+      "configured_service": "SCIENCEDIRECT",
+      "timing_comparison_eligible": false,
+      "cohort": "representative",
+      "measurement_stratum": "prepared_institutional_access_after_reboot",
+      "access_preparation_note": "Independently prepared Source and Chrome CARSI ScienceDirect Sessions. Actual target article Full text access and PDF entry verified on each. No PDF opened before either attempt.",
+      "diagnostic_evidence": "Private40d4356-f27-first-pair.zip",
+      "comparable_body_version": false
     }
   ],
   "coverage_gaps": [
@@ -7003,7 +7438,7 @@
     "old_results_retained": true
   },
   "chrome_service_preparation": "From user steering: select each new correspondingService in Chrome CARSI resource page before saving, then verify actual target article/Translator. Preparation/manual costs separate; no cookie/auth copying.",
-  "checkpoint_utc": "2026-11-17T18:00:32.772Z",
+  "checkpoint_utc": "2026-11-18T00:01:24.801Z",
   "historical_tool_interruptions": [
     "Earlier platform update removed mcp__cua_repl and an alternative-tool choice was requested; that question became obsolete when CUA returned.",
     "Global window enumeration/new-tab calls can time out after recovery; targeted Chrome getApp subsequently succeeded, and an already-created trial tab was reused rather than recreated.",
@@ -7124,9 +7559,17 @@
       "runtime_id": "3019b48a868edf284bca5258c5803d9b",
       "reason": "Final partition-context code after all required local checks, full latest-PR Safety, and bounded independent cookie followup passed. No real repaired-code results yet; current Workspace retained.",
       "started_at_utc": "2026-11-17T15:38:03.615Z"
+    },
+    {
+      "head_sha": "40d4356d89959dc559618df21f539e730285cd21",
+      "production_code_sha": "69b9a41d442c4b5a1ad4c1bce99b3d325332fd6b",
+      "frontend_head_sha": "40d4356d89959dc559618df21f539e730285cd21",
+      "runtime_id": "a011d5af7bad18975c017599e9c88dc2",
+      "started_at_utc": "2026-11-17T23:26:59.530Z",
+      "reason": "User reported a reboot and signed back into CARSI in Chrome. Port18767 was free; rebuilt UI from the clean checkout and launched the actual source app. Only report/JSON changes separate this checkout from tested production69b9a41. Independent Electron in-memory Session reset by normal process start; Chrome existing profile/cache not cleared. Workspace72Papers/24bodies/0Trash and no active operations confirmed; F26 has no body. Zotero10.0.9 local collection API200, Chrome157.0.8103.79 and Connector5.0.217 bundles verified. Fresh access and actual Translator verification pending UI."
     }
   ],
-  "frontend_head_sha": "69b9a41d442c4b5a1ad4c1bce99b3d325332fd6b",
+  "frontend_head_sha": "40d4356d89959dc559618df21f539e730285cd21",
   "preparation_sessions": [
     {
       "runtime_id": "97a7ee2badf06ed80594e7f0b80bb712",
@@ -7241,19 +7684,68 @@
       "human_intervention": "User completed independent Chrome institutional enterprise QR authentication; exact input duration unavailable.",
       "result": "Fresh returned SIAM institution,matchingF19title/DOI/FULLACCESS/Atypon,then actualePDF Page1/59/Download11.1MB confirmed. No standalonePDFsaved. Existing saved files/cached article labels were not treated as proof of current rights.",
       "measurement_note": "Both products now diagnostically prewarmed on the already-tested F19; access-restored pair retains this stratum. Wall preparation spans include user/tool/operator work,not pure product latency."
+    },
+    {
+      "record_id": "chrome_f26_after_user_reboot",
+      "kind": "normal_chrome_single_service_institutional_reentry",
+      "sample_id": "F26",
+      "platform": "ScienceDirect",
+      "resource_detail_open_utc": [
+        "2026-11-17T23:29:20.263Z",
+        "2026-11-17T23:29:21.327Z"
+      ],
+      "visit_resource_click_utc": [
+        "2026-11-17T23:29:23.825Z",
+        "2026-11-17T23:29:24.350Z"
+      ],
+      "automatic_challenge_observed_utc_approx": "2026-11-17T23:29:27Z",
+      "institutional_home_access_observed_no_later_than_utc": "2026-11-17T23:29:58.668Z",
+      "target_article_usable_observed_no_later_than_utc": "2026-11-17T23:30:31.449Z",
+      "human_intervention": "User reported normal Chrome CARSI sign-in after reboot before this preparation. Resource entry then IdP automatic, and a brief real ScienceDirect challenge elapsed without operator or human input. Exact challenge clearance and target readiness timestamps unavailable.",
+      "result": "Fresh ScienceDirect F26 article visible with matching title and DOI, institution, Full text access and View PDF entry. Connector reported ScienceDirect Translator; Zotero dedicated collection selected. No PDF opened and no Save started during this preparation.",
+      "tool_note": "One initial typing error landed in search; correcting the URL resumed the intended article. Observation upper bounds include tool time, not precise product latency."
+    },
+    {
+      "record_id": "source_f26_after_user_reboot",
+      "kind": "normal_source_single_service_institutional_reentry_after_batched_preparation",
+      "runtime_id": "a011d5af7bad18975c017599e9c88dc2",
+      "sample_id": "F26",
+      "platform": "ScienceDirect",
+      "login_click_utc": [
+        "2026-11-17T23:30:59.472Z",
+        "2026-11-17T23:30:59.882Z"
+      ],
+      "prepare_service_task_id": "8a010dd512da4ec08ec845edfd1f1f28",
+      "prepare_native_opened_utc": "2026-11-17T23:31:24.900Z",
+      "prepare_native_operation_ms": 19339,
+      "retained_page_closed_utc": "2026-11-17T23:31:24.916Z",
+      "retained_page_closure_reason": "access_evicted",
+      "resource_detail_open_utc": [
+        "2026-11-17T23:32:34.067Z",
+        "2026-11-17T23:32:34.494Z"
+      ],
+      "visit_resource_click_utc": [
+        "2026-11-17T23:32:42.507Z",
+        "2026-11-17T23:32:42.928Z"
+      ],
+      "target_article_navigation_utc": [
+        "2026-11-17T23:32:54.282Z",
+        "2026-11-17T23:32:56.871Z"
+      ],
+      "result": "Normal Login used retained credentials and automatic verification during target navigation. Actual native prepare reported Opened before its retained page was evicted under the existing managed-page budget; UI then showed Needs attention / target_closed. After Login settled, normal browser CARSI ScienceDirect resource entry in the same Source Session showed institution access. Fresh F26 article showed matching title/DOI, Full text access, View PDF entry and article body. No PDF opened; no settings, binding or cache changed.",
+      "human_intervention": "No human action during either Source preparation. Exact confirmed article readiness observation time missing; recorded navigation click interval is not product preparation latency.",
+      "diagnostic_evidence": "Local private40d4356-reboot-sciencedirect-prepare.zip and selected sequence"
     }
   ],
   "operator_restart_context": {
-    "reported": "User restarted Computer Use and requested restoration",
-    "observed_utc": "2026-11-17T03:35:44Z",
-    "same_processes": {
-      "allfold_main": 62875,
-      "python": 62880,
-      "chrome": 4242,
-      "zotero": 3129,
-      "observer": 52498
-    },
-    "session_cache_effect": "Product PIDs unchanged; no cache/account reset. New CUA targeted Source2.24s/Chrome1.7s reads and actual F07-3 saving succeeded. Global inventory still timed out; task-specific surfaces used."
+    "reported_restart": "User rebooted and signed in to CARSI again in Chrome. Source process was absent and port18767 free before normal source launch; Chrome and Zotero were already open. New separate Electron Session requires its own normal CARSI preparation. No reset or cache deletion.",
+    "current_runtime_id": "a011d5af7bad18975c017599e9c88dc2",
+    "ready_at_utc": "2026-11-17T23:26:59.530Z",
+    "previous_observer_stopped_utc": "2026-11-17T18:32:25.930Z",
+    "previous_authentication_context": "Pre-reboot Chrome ScienceDirect QR observation is historical; current resource eligibility requires fresh observation.",
+    "observer_restarted_utc": "2026-11-17T23:28:50.654Z",
+    "observer_revision": "keys-v2; prior files and items initial baselines, actual per-side poll bounds",
+    "current_chrome_resource_state": "Fresh normal CARSI ScienceDirect route led to actual institutional access and recognized F26 article. Post-reboot verification was automatic."
   },
   "ci_checkpoint": {
     "head_sha": "144fd857797ca8b787c8a0e0334b35b26b513cb7",
@@ -7470,6 +7962,43 @@
       },
       "finding": "Fresh normalSave/newparent/importedPDF did not receive a corresponding11.47MB body in Chrome network counters,while Source re-received approximately onebody. Installedbackgroundfetch path and counters support warm Browser HTTP-cache reuse; exactfromCache flag and disk-vs-memory tier unobserved. User-wait gap remains; this is not equivalent uncached transport speed.",
       "private_evidence": "f19-z-cache-diagnostic-result.json,source/Chrome one-shotcounter files and individualPDF QA outsideWorkspace."
+    },
+    {
+      "record_id": "F26-D1-reader_entitlement",
+      "sample_id": "F26",
+      "scoring": false,
+      "production_code_sha": "69b9a41d442c4b5a1ad4c1bce99b3d325332fd6b",
+      "runtime_head_sha": "40d4356d89959dc559618df21f539e730285cd21",
+      "reason": "First formal pair had correct institution and access labels on both article pages but both local saves failed. Test existing View PDF access through normal already-tested article UI once on each product. These are entitlement observations, and were not local save operations.",
+      "allfold_browser": {
+        "view_pdf_click_utc": [
+          "2026-11-17T23:36:48.640Z",
+          "2026-11-17T23:36:48.730Z"
+        ],
+        "observed": "Normal Browser path in the same Source Session opened the correct 12-page publisher PDF. First-page title and DOI matched. No separate Save As or Paper association."
+      },
+      "chrome": {
+        "view_pdf_click_utc": [
+          "2026-11-17T23:37:15.731Z",
+          "2026-11-17T23:37:15.834Z"
+        ],
+        "automatic_verification_initially_observed_utc_approx": "2026-11-17T23:37:17Z",
+        "checkbox_observed_utc": "2026-11-17T23:37:52.665Z",
+        "result": "First user verification returned the exact F26 article. A later ordinary View PDF click required a second checkbox. The user reported passing it and initially seeing the article. Subsequent UI inspection confirmed the actual 12-page publisher PDF in Chrome, with exact title and DOI. Both products have now opened the correct publisher viewer through normal UI without a manual file save. Consider each prepared attempt previously viewed; retain first failed pair.",
+        "last_checkbox_observed_utc": "2026-11-17T23:39:24Z",
+        "last_checkbox_observation_note": "Browser still displayed human confirmation during the read-only inspection. Timestamp is the visible verification page time, not measured human input.",
+        "user_intervention_reported": "User reported passing the Cloudflare verification in Chrome. Actual human input duration unknown.",
+        "post_verification_observation_utc": "2026-11-17T23:54:14.732Z",
+        "subsequent_normal_view_pdf_click_utc": [
+          "2026-11-17T23:59:35.162Z",
+          "2026-11-17T23:59:35.253Z"
+        ],
+        "separate_new_checkbox_observed_utc": "2026-11-17T23:59:43.693Z",
+        "second_user_intervention_reported": "User reported second Cloudflare verification passed and returned to the article again. Human action time not individually measured.",
+        "publisher_pdf_view_seen_no_later_than_utc": "2026-11-18T00:01:24.801Z",
+        "page_count": 12,
+        "title_and_doi_verified": true
+      }
     }
   ],
   "evidence_join_corrections": [
