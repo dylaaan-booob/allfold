@@ -7778,6 +7778,920 @@
       "configured_access_method": "CARSI ScienceDirect",
       "comparable_body_version": false,
       "comparison_eligibility_note": "Additional Allfold failure after independent viewer confirmation; Zotero saved the actual publisher PDF. No paired time difference or ratio."
+    },
+    {
+      "pair_id": "F26-3",
+      "sample_id": "F26",
+      "order": [
+        "zotero",
+        "allfold"
+      ],
+      "production_code_sha": "989ad81876c48bb43ba93967b016210b3d4e0ab7",
+      "runtime_head_sha": "989ad81876c48bb43ba93967b016210b3d4e0ab7",
+      "allfold": {
+        "result": "automatic_success",
+        "timing_eligible_for_parity": true,
+        "click_utc": [
+          "2026-11-18T01:17:24.442Z",
+          "2026-11-18T01:17:24.537Z"
+        ],
+        "ui_preparation": "Same final 989ad81 Source runtime and independent legal ScienceDirect Session. The prior F26-D2 verified PDF was deleted only after action-time user confirmation, and the original Paper restored with no body. Reject retry after refreshing the Workspace projection succeeded at 01:14:30.117–30.210Z, delete at 01:17:03.781–03.873Z, Restore at 01:17:08.286–08.380Z. No standalone View PDF before this click. F26-D2 warmed Source. The adjacent Zotero save had already completed after its own human verification. No competing downloads or local tests.",
+        "human_intervention": false,
+        "runtime_head_sha": "989ad81876c48bb43ba93967b016210b3d4e0ab7",
+        "production_code_sha": "989ad81876c48bb43ba93967b016210b3d4e0ab7",
+        "frontend_head_sha": "989ad81876c48bb43ba93967b016210b3d4e0ab7",
+        "local_pdf_and_association_utc": [
+          "2026-11-18T01:17:41.407Z",
+          "2026-11-18T01:17:41.667Z"
+        ],
+        "wait_seconds": [
+          16.87,
+          17.225
+        ],
+        "file_bytes": 4834710,
+        "attempt": 4,
+        "source": "P2",
+        "fallback_used": 0,
+        "measurement_revision": "keys-v2",
+        "content_check": {
+          "file_exists": true,
+          "file_bytes": 4834710,
+          "pdf_prefix": true,
+          "page_count": 12,
+          "full_title_match": true,
+          "doi_match": true,
+          "publisher_indicators": {
+            "IEEE": false,
+            "Springer": false,
+            "Scientific Reports": false,
+            "Creative Commons": false,
+            "Accepted Manuscript": false,
+            "arXiv:": false,
+            "All rights reserved": false
+          }
+        },
+        "pdf_version": "publisher_version",
+        "source_origin": "https://pdf.sciencedirectassets.com/",
+        "source_rule": "R024",
+        "assistance_during_download": false,
+        "diagnostic_evidence": "Private 989ad81-f26-third-pair.zip and f26-allfold-4-file-verification.json",
+        "native_operations": [
+          {
+            "article_extract_ms": 5326,
+            "entry_response_ms": 237,
+            "reader_ms": 3043,
+            "cdn_challenged_response_ms": 1238,
+            "owned_verification_page_ready_utc": "2026-11-18T01:17:36.627Z",
+            "ready_status": 200,
+            "cdn_page_solver_observed": false,
+            "stream_request_ms": 1621,
+            "stream_response_ms": 3287,
+            "stream_first_byte_ms": 3370,
+            "stream_closed_ms": 6457
+          }
+        ],
+        "cloudflare_observation": {
+          "evidence": "challenge_observed",
+          "source_challenge_origins": [
+            "https://pdf.sciencedirectassets.com/"
+          ],
+          "observation_note": "Source classification retained. No Solver event attributable to this attempt in the available trace.",
+          "private_exports": [
+            "989ad81-f22-first-pair.zip"
+          ],
+          "native_recovery": {
+            "outcome": "Owned verification Page reached HTTP 200, closed, and the same native task completed its Session stream. No active challenge or Solver interaction was observed on this Page. No human input during Download.",
+            "ready_utc": "2026-11-18T01:17:36.627Z"
+          }
+        }
+      },
+      "zotero": {
+        "result": "assisted_success",
+        "click_utc": [
+          "2026-11-18T01:09:24.975Z",
+          "2026-11-18T01:09:24.992Z"
+        ],
+        "ui_preparation": "Fresh F26-3 article tab with no prior Save or PDF View. User completed the displayed Chrome verification before timing. Exact DOI and title, institutional Full text access and ScienceDirect Translator rechecked. Target dedicated Zotero collection shown. Both products had already saved the same publisher version in earlier runs; Allfold's separate F26-D2 proof used the new code and may warm its later repeat. No concurrent download, build or full tests.",
+        "human_intervention": true,
+        "translator": "ScienceDirect",
+        "parent_key": "3HXAM636",
+        "measurement_revision": "keys-v2",
+        "timing_eligible_for_parity": false,
+        "local_pdf_and_association_utc": [
+          "2026-11-18T01:10:27.666Z",
+          "2026-11-18T01:10:27.944Z"
+        ],
+        "wait_seconds": [
+          62.674,
+          62.969
+        ],
+        "file_bytes": 4835024,
+        "attachment_key": "ETBRCMB5",
+        "link_mode": "imported_url",
+        "assistance_during_download": true,
+        "assistance_note": "User confirmed manual completion of the Connector-opened separate ScienceDirect verification window. User screenshot shows the Cloudflare checkbox and a site-displayed timestamp of 01:09:34 UTC. Actual input start and end were not measured.",
+        "assistance_duration_seconds": null,
+        "pdf_version": "publisher_version",
+        "source_origin": "https://pdf.sciencedirectassets.com/",
+        "acceptance_collection_membership_verified": true,
+        "private_evidence": "f26-zotero-ETBRCMB5-file-verification.json; formal-ui user report",
+        "content_check": {
+          "file_exists": true,
+          "file_bytes": 4835024,
+          "pdf_prefix": true,
+          "page_count": 12,
+          "full_title_match": true,
+          "doi_match": true,
+          "publisher_indicators": {
+            "IEEE": false,
+            "Springer": false,
+            "Scientific Reports": false,
+            "Creative Commons": false,
+            "Accepted Manuscript": false,
+            "arXiv:": false,
+            "All rights reserved": false
+          }
+        }
+      },
+      "platform": "ScienceDirect",
+      "configured_service": "SCIENCEDIRECT",
+      "timing_comparison_eligible": false,
+      "cohort": "representative",
+      "measurement_stratum": "post_repair_warm_with_in_download_zotero_verification",
+      "configured_access_method": "CARSI ScienceDirect",
+      "comparison_eligibility_note": "Zotero required assistance after Save. Total wait is retained in the assisted stratum.",
+      "comparable_body_version": true,
+      "compared_pdf_version": "12-page publisher version, identical DOI and full title verified",
+      "assisted_wait_comparison": {
+        "difference_seconds": [
+          -46.099,
+          -45.449
+        ],
+        "ratio": [
+          0.2679,
+          0.2748
+        ],
+        "note": "Inclusive user wait. Zotero required human verification during the saved request. No human timing subtracted. Separate from automatic timing."
+      }
+    },
+    {
+      "pair_id": "F29-1",
+      "sample_id": "F29",
+      "order": [
+        "allfold",
+        "zotero"
+      ],
+      "production_code_sha": "989ad81876c48bb43ba93967b016210b3d4e0ab7",
+      "runtime_head_sha": "989ad81876c48bb43ba93967b016210b3d4e0ab7",
+      "allfold": {
+        "result": "automatic_success",
+        "click_utc": [
+          "2026-11-18T01:19:14.397Z",
+          "2026-11-18T01:19:14.490Z"
+        ],
+        "ui_preparation": "Untouched original F29 Candidate, exact DOI and title, no body and normal Download ready. Source and Chrome separately reached the same OA publisher article and normal PDF entry. Chrome user completed an article-page verification in separate preparation and the ScienceDirect Translator was checked. Neither product previewed the PDF. Source uses the warm shared ScienceDirect site Session after F26. Exact code 989ad81. No competing download or local build/test.",
+        "human_intervention": false,
+        "runtime_head_sha": "989ad81876c48bb43ba93967b016210b3d4e0ab7",
+        "production_code_sha": "989ad81876c48bb43ba93967b016210b3d4e0ab7",
+        "frontend_head_sha": "989ad81876c48bb43ba93967b016210b3d4e0ab7",
+        "measurement_revision": "keys-v2",
+        "timing_eligible_for_parity": true,
+        "local_pdf_and_association_utc": [
+          "2026-11-18T01:19:33.195Z",
+          "2026-11-18T01:19:33.458Z"
+        ],
+        "wait_seconds": [
+          18.705,
+          19.061
+        ],
+        "file_bytes": 3342410,
+        "attempt": 1,
+        "source": "P2",
+        "fallback_used": 0,
+        "content_check": {
+          "file_exists": true,
+          "file_bytes": 3342410,
+          "pdf_prefix": true,
+          "page_count": 19,
+          "full_title_match": true,
+          "doi_match": true,
+          "publisher_indicators": {
+            "IEEE": false,
+            "Springer": false,
+            "Scientific Reports": false,
+            "Creative Commons": false,
+            "Accepted Manuscript": false,
+            "arXiv:": false,
+            "All rights reserved": false
+          }
+        },
+        "source_origin": "https://pdf.sciencedirectassets.com/",
+        "source_rule": "R024",
+        "pdf_version": "publisher_version",
+        "diagnostic_evidence": "Private 989ad81-f29-first-pair.zip and f29-allfold-1-file-verification.json",
+        "native_operations": [
+          {
+            "article_extract_ms": 3254,
+            "entry_response_ms": 1129,
+            "reader_ms": 2535,
+            "cdn_challenged_response_ms": 3506,
+            "owned_cdn_verification_ready_status": 200,
+            "owned_cdn_verification_ms": 665,
+            "cdn_page_solver_observed": false,
+            "stream_request_ms": 691,
+            "stream_response_ms": 3079,
+            "stream_first_byte_ms": 3079,
+            "stream_closed_ms": 7332
+          }
+        ],
+        "cloudflare_observation": {
+          "evidence": "challenge_observed",
+          "source_challenge_origins": [
+            "https://pdf.sciencedirectassets.com/"
+          ],
+          "observation_note": "Source classification retained. No Solver event attributable to this attempt in the available trace.",
+          "private_exports": [
+            "989ad81-f22-first-pair.zip"
+          ],
+          "native_recovery": {
+            "outcome": "Owned verification Page reached HTTP 200, closed, and the same native task completed its Session stream. No active challenge or Solver interaction was observed on this Page. No human input during Download.",
+            "load_to_ready_ms": 665
+          }
+        }
+      },
+      "zotero": {
+        "result": "automatic_success",
+        "timing_eligible_for_parity": true,
+        "click_utc": [
+          "2026-11-18T01:21:16.493Z",
+          "2026-11-18T01:21:16.526Z"
+        ],
+        "ui_preparation": "Existing F29 trial tab had user verification completed before timing. Correct DOI/title, OA publisher article and ScienceDirect Translator independently observed. F29 Allfold actual publisher PDF had already completed. No prior Save or PDF preview in this Chrome tab. No competing download or local build/test.",
+        "human_intervention": false,
+        "translator": "ScienceDirect",
+        "parent_key": "NHQEXRMG",
+        "local_pdf_and_association_utc": [
+          "2026-11-18T01:21:30.348Z",
+          "2026-11-18T01:21:30.765Z"
+        ],
+        "wait_seconds": [
+          13.822,
+          14.272
+        ],
+        "file_bytes": 3326247,
+        "attachment_key": "PXU88X3V",
+        "link_mode": "imported_url",
+        "measurement_revision": "keys-v2",
+        "content_check": {
+          "file_exists": true,
+          "file_bytes": 3326247,
+          "pdf_prefix": true,
+          "page_count": 19,
+          "full_title_match": true,
+          "doi_match": true,
+          "publisher_indicators": {
+            "IEEE": false,
+            "Springer": false,
+            "Scientific Reports": false,
+            "Creative Commons": false,
+            "Accepted Manuscript": false,
+            "arXiv:": false,
+            "All rights reserved": false
+          }
+        },
+        "acceptance_collection_membership_verified": true,
+        "source_origin": "https://pdf.sciencedirectassets.com/",
+        "pdf_version": "publisher_version",
+        "diagnostic_evidence": "Private f29-zotero-PXU88X3V-file-verification.json"
+      },
+      "platform": "ScienceDirect",
+      "configured_service": "SCIENCEDIRECT",
+      "timing_comparison_eligible": true,
+      "cohort": "representative",
+      "measurement_stratum": "normal_prepared_access_first_paper_with_warm_site_session",
+      "configured_access_method": "Open access publisher article",
+      "comparable_body_version": true,
+      "compared_pdf_version": "19-page publisher version, exact title and DOI both confirmed",
+      "comparison_eligibility_note": "OA normal task comparison. Chrome preparation verification preceded Save. Neither product needed human intervention during timed actions.",
+      "difference_seconds": [
+        4.433,
+        5.239
+      ],
+      "ratio": [
+        1.3106,
+        1.379
+      ]
+    },
+    {
+      "pair_id": "F30-1",
+      "sample_id": "F30",
+      "order": [
+        "zotero",
+        "allfold"
+      ],
+      "production_code_sha": "989ad81876c48bb43ba93967b016210b3d4e0ab7",
+      "runtime_head_sha": "989ad81876c48bb43ba93967b016210b3d4e0ab7",
+      "allfold": {
+        "result": "automatic_success",
+        "timing_eligible_for_parity": true,
+        "click_utc": [
+          "2026-11-18T01:25:54.270Z",
+          "2026-11-18T01:25:54.381Z"
+        ],
+        "ui_preparation": "Exact F30 original title and DOI with no current body and normal Download ready. Chrome and Allfold independently showed legitimate institutional full text before the pair. Zotero had already finished local PDF and parent association. No Allfold PDF preview or human intervention during the attempt, and no competing downloads or local build/test. Exact running Allfold 989ad81.",
+        "human_intervention": false,
+        "runtime_head_sha": "989ad81876c48bb43ba93967b016210b3d4e0ab7",
+        "production_code_sha": "989ad81876c48bb43ba93967b016210b3d4e0ab7",
+        "frontend_head_sha": "989ad81876c48bb43ba93967b016210b3d4e0ab7",
+        "local_pdf_and_association_utc": [
+          "2026-11-18T01:26:11.718Z",
+          "2026-11-18T01:26:11.980Z"
+        ],
+        "wait_seconds": [
+          17.337,
+          17.71
+        ],
+        "file_bytes": 4078428,
+        "attempt": 1,
+        "source": "P2",
+        "fallback_used": 0,
+        "measurement_revision": "keys-v2",
+        "content_check": {
+          "file_exists": true,
+          "file_bytes": 4078428,
+          "pdf_prefix": true,
+          "page_count": 22,
+          "full_title_match": true,
+          "doi_match": true,
+          "publisher_indicators": {
+            "IEEE": false,
+            "Springer": false,
+            "Scientific Reports": false,
+            "Creative Commons": false,
+            "Accepted Manuscript": false,
+            "arXiv:": false,
+            "All rights reserved": false
+          }
+        },
+        "cloudflare_observation": {
+          "evidence": "challenge_observed",
+          "source_challenge_origins": [
+            "https://pdf.sciencedirectassets.com/"
+          ],
+          "observation_note": "Source classification retained. No Solver event attributable to this attempt in the available trace.",
+          "private_exports": [
+            "989ad81-f22-first-pair.zip"
+          ],
+          "native_recovery": {
+            "outcome": "Owned verification Page reached HTTP 200, closed, and the same native task completed its Session stream. No active challenge or Solver interaction was observed on this Page. No human input during Download.",
+            "ready_utc": "2026-11-18T01:26:08.765Z",
+            "load_to_ready_ms": 1072
+          }
+        },
+        "source_rule": "R024",
+        "source_origin": "https://pdf.sciencedirectassets.com/",
+        "pdf_version": "publisher_version",
+        "native_operations": [
+          {
+            "article_extract_ms": 6730,
+            "entry_response_ms": 254,
+            "reader_ms": 2878,
+            "cdn_challenged_response_ms": 1120,
+            "owned_cdn_verification_ready_status": 200,
+            "owned_cdn_verification_ms": 1072,
+            "cdn_page_solver_observed": false,
+            "stream_request_ms": 1085,
+            "stream_response_ms": 1824,
+            "stream_first_byte_ms": 1824,
+            "stream_closed_ms": 4189
+          }
+        ],
+        "diagnostic_evidence": "Private 989ad81-f30-first-pair.zip and f30-allfold-1-file-verification.json"
+      },
+      "zotero": {
+        "result": "automatic_success",
+        "click_utc": [
+          "2026-11-18T01:24:48.066Z",
+          "2026-11-18T01:24:48.096Z"
+        ],
+        "ui_preparation": "Fresh trial tab for frozen F30. Article title and DOI, independent legal configured institution Full text access, View PDF entry and ScienceDirect Translator were visible. Allfold independently had the same institutional article and an untouched ready Candidate. No preview or prior save. No competing download or local build/test.",
+        "human_intervention": false,
+        "translator": "ScienceDirect",
+        "parent_key": "573TB5Q2",
+        "local_pdf_and_association_utc": [
+          "2026-11-18T01:25:04.523Z",
+          "2026-11-18T01:25:05.066Z"
+        ],
+        "wait_seconds": [
+          16.427,
+          17.0
+        ],
+        "file_bytes": 4079168,
+        "attachment_key": "WM9GCX9X",
+        "link_mode": "imported_url",
+        "measurement_revision": "keys-v2",
+        "timing_eligible_for_parity": true,
+        "acceptance_collection_membership_verified": true,
+        "source_origin": "https://pdf.sciencedirectassets.com/",
+        "pdf_version": "publisher_version",
+        "diagnostic_evidence": "Private f30-zotero-WM9GCX9X-file-verification.json",
+        "content_check": {
+          "file_exists": true,
+          "file_bytes": 4079168,
+          "pdf_prefix": true,
+          "page_count": 22,
+          "full_title_match": true,
+          "doi_match": true,
+          "publisher_indicators": {
+            "IEEE": false,
+            "Springer": false,
+            "Scientific Reports": false,
+            "Creative Commons": false,
+            "Accepted Manuscript": false,
+            "arXiv:": false,
+            "All rights reserved": false
+          }
+        }
+      },
+      "platform": "ScienceDirect",
+      "configured_service": "SCIENCEDIRECT",
+      "timing_comparison_eligible": true,
+      "cohort": "representative",
+      "measurement_stratum": "normal_prepared_access_first_paper_with_warm_site_session",
+      "configured_access_method": "CARSI ScienceDirect institutional Full text",
+      "comparable_body_version": true,
+      "compared_pdf_version": "22-page publisher version, exact title and DOI both confirmed",
+      "comparison_eligibility_note": "Normal prepared institutional Full text in independent sessions. Both products saved with no human actions during timing.",
+      "difference_seconds": [
+        0.337,
+        1.283
+      ],
+      "ratio": [
+        1.0198,
+        1.0781
+      ]
+    },
+    {
+      "pair_id": "F31-1",
+      "sample_id": "F31",
+      "order": [
+        "allfold",
+        "zotero"
+      ],
+      "production_code_sha": "989ad81876c48bb43ba93967b016210b3d4e0ab7",
+      "runtime_head_sha": "989ad81876c48bb43ba93967b016210b3d4e0ab7",
+      "allfold": {
+        "result": "automatic_success",
+        "click_utc": [
+          "2026-11-18T01:33:03.589Z",
+          "2026-11-18T01:33:03.683Z"
+        ],
+        "ui_preparation": "Exact F31 original candidate with normal Download ready and no body. Both products independently loaded the authorized original OA article, with ScienceDirect Translator in Chrome. Source article preparation showed a genuine Cloudflare page. Existing Source Solver clicked and restored normal OA content before Download. No PDF preview, no human input during Source Download, no competing download or local build/test. Exact Source production 989ad81.",
+        "human_intervention": false,
+        "runtime_head_sha": "989ad81876c48bb43ba93967b016210b3d4e0ab7",
+        "production_code_sha": "989ad81876c48bb43ba93967b016210b3d4e0ab7",
+        "frontend_head_sha": "989ad81876c48bb43ba93967b016210b3d4e0ab7",
+        "local_pdf_and_association_utc": [
+          "2026-11-18T01:33:22.206Z",
+          "2026-11-18T01:33:22.466Z"
+        ],
+        "wait_seconds": [
+          18.523,
+          18.877
+        ],
+        "file_bytes": 2471556,
+        "attempt": 1,
+        "source": "P2",
+        "fallback_used": 0,
+        "measurement_revision": "keys-v2",
+        "timing_eligible_for_parity": true,
+        "content_check": {
+          "file_exists": true,
+          "file_bytes": 2471556,
+          "pdf_prefix": true,
+          "page_count": 20,
+          "full_title_match": true,
+          "doi_match": true,
+          "publisher_indicators": {
+            "IEEE": false,
+            "Springer": false,
+            "Scientific Reports": false,
+            "Creative Commons": false,
+            "Accepted Manuscript": false,
+            "arXiv:": false,
+            "All rights reserved": false
+          }
+        },
+        "source_origin": "https://pdf.sciencedirectassets.com/",
+        "pdf_version": "publisher_version",
+        "source_rule": "R024",
+        "diagnostic_evidence": "Private 989ad81-f31-first-pair.zip and f31-allfold-1-file-verification.json",
+        "native_operations": [
+          {
+            "article_extract_ms": 4779,
+            "entry_response_ms": 152,
+            "reader_ms": 3964,
+            "cdn_challenged_response_ms": 4703,
+            "owned_cdn_verification_ready_status": 200,
+            "owned_cdn_verification_ms": 752,
+            "cdn_page_solver_observed": false,
+            "stream_request_ms": 759,
+            "stream_response_ms": 2529,
+            "stream_first_byte_ms": 2529,
+            "stream_closed_ms": 3971
+          }
+        ],
+        "cloudflare_observation": {
+          "evidence": "challenge_observed",
+          "source_challenge_origins": [
+            "https://pdf.sciencedirectassets.com/"
+          ],
+          "observation_note": "Source classification retained. No Solver event attributable to this attempt in the available trace.",
+          "private_exports": [
+            "989ad81-f22-first-pair.zip"
+          ],
+          "native_recovery": {
+            "outcome": "Owned CDN verification Page reached normal HTTP 200 and the same native task then finished a Session stream. Solver was observed separately during article preparation. No human input during Download.",
+            "ready_utc": "2026-11-18T01:33:19.201Z"
+          }
+        }
+      },
+      "zotero": {
+        "result": "automatic_success",
+        "timing_eligible_for_parity": true,
+        "click_utc": [
+          "2026-11-18T01:33:55.850Z",
+          "2026-11-18T01:33:55.876Z"
+        ],
+        "ui_preparation": "Chrome normal F31 OA article title and DOI and ScienceDirect Translator independently verified. No other download underway. Allfold correct local publisher PDF and Paper association already verified. No prior Save or PDF preview in this trial tab.",
+        "human_intervention": false,
+        "translator": "ScienceDirect",
+        "parent_key": "HFPCNQ6H",
+        "local_pdf_and_association_utc": [
+          "2026-11-18T01:34:10.428Z",
+          "2026-11-18T01:34:10.860Z"
+        ],
+        "wait_seconds": [
+          14.552,
+          15.01
+        ],
+        "file_bytes": 2455263,
+        "attachment_key": "K5J47HNP",
+        "link_mode": "imported_url",
+        "measurement_revision": "keys-v2",
+        "content_check": {
+          "file_exists": true,
+          "file_bytes": 2455263,
+          "pdf_prefix": true,
+          "page_count": 20,
+          "full_title_match": true,
+          "doi_match": true,
+          "publisher_indicators": {
+            "IEEE": false,
+            "Springer": false,
+            "Scientific Reports": false,
+            "Creative Commons": false,
+            "Accepted Manuscript": false,
+            "arXiv:": false,
+            "All rights reserved": false
+          }
+        },
+        "pdf_version": "publisher_version",
+        "source_origin": "https://pdf.sciencedirectassets.com/",
+        "acceptance_collection_membership_verified": true,
+        "diagnostic_evidence": "Private f31-zotero-K5J47HNP-file-verification.json",
+        "human_intervention_note": "No user intervention during Save. Observed normal Connector popup and no separate verification window during UI observation."
+      },
+      "platform": "ScienceDirect",
+      "configured_service": "SCIENCEDIRECT",
+      "timing_comparison_eligible": true,
+      "cohort": "representative",
+      "configured_access_method": "Open access publisher article",
+      "measurement_stratum": "normal_prepared_access_first_paper_with_warm_site_session",
+      "comparable_body_version": true,
+      "compared_pdf_version": "20-page publisher version, exact title and DOI both confirmed",
+      "comparison_eligibility_note": "Normal OA comparison after separate preparation. Actual Allfold article-stage Solver interaction was pre-click and recorded as a preparation cost. No human input during either timed Save.",
+      "difference_seconds": [
+        3.513,
+        4.325
+      ],
+      "ratio": [
+        1.234,
+        1.2972
+      ]
+    },
+    {
+      "pair_id": "F27-2",
+      "sample_id": "F27",
+      "order": [
+        "zotero",
+        "allfold"
+      ],
+      "production_code_sha": "989ad81876c48bb43ba93967b016210b3d4e0ab7",
+      "runtime_head_sha": "989ad81876c48bb43ba93967b016210b3d4e0ab7",
+      "allfold": {
+        "result": "automatic_success",
+        "timing_eligible_for_parity": true,
+        "click_utc": [
+          "2026-11-18T01:37:34.646Z",
+          "2026-11-18T01:37:34.753Z"
+        ],
+        "ui_preparation": "Original F27 Paper from failed first pair, same exact DOI/title, no existing file and normal Download ready. Independent actual institutional Full text on the target article in Allfold and Chrome. Zotero imported PDF and original parent already complete. No PDF preview or human input during this Source Download. Order exchanged on exact production 989ad81.",
+        "human_intervention": false,
+        "runtime_head_sha": "989ad81876c48bb43ba93967b016210b3d4e0ab7",
+        "production_code_sha": "989ad81876c48bb43ba93967b016210b3d4e0ab7",
+        "frontend_head_sha": "989ad81876c48bb43ba93967b016210b3d4e0ab7",
+        "measurement_revision": "keys-v2",
+        "local_pdf_and_association_utc": [
+          "2026-11-18T01:38:16.499Z",
+          "2026-11-18T01:38:16.765Z"
+        ],
+        "wait_seconds": [
+          41.746,
+          42.119
+        ],
+        "file_bytes": 3156500,
+        "attempt": 2,
+        "source": "P2",
+        "fallback_used": 1,
+        "content_check": {
+          "file_exists": true,
+          "file_bytes": 3156500,
+          "pdf_prefix": true,
+          "page_count": 12,
+          "full_title_match": true,
+          "doi_match": true,
+          "publisher_indicators": {
+            "IEEE": true,
+            "Springer": false,
+            "Scientific Reports": false,
+            "Creative Commons": false,
+            "Accepted Manuscript": false,
+            "arXiv:": false,
+            "All rights reserved": false
+          }
+        },
+        "source_rule": "R024",
+        "source_origin": "https://pdf.sciencedirectassets.com/",
+        "pdf_version": "publisher_version",
+        "native_operations": [
+          {
+            "article_extract_ms": 4695,
+            "entry_responses_ms": [
+              184,
+              427
+            ],
+            "first_reader_ms": 15773,
+            "first_reader_cloudflare_waiting_utc": "2026-11-18T01:37:47.193Z",
+            "first_reader_solver_clicked_utc": "2026-11-18T01:37:53.947Z",
+            "first_reader_recovered_utc": "2026-11-18T01:37:56.152Z",
+            "first_reader_after_recovery": "no-pdf-entry",
+            "second_reader_ms": 3761,
+            "cdn_challenged_response_ms": 4814,
+            "owned_cdn_verification_ready_status": 200,
+            "cdn_page_solver_observed": false,
+            "stream_request_ms": 751,
+            "stream_response_ms": 5674,
+            "stream_first_byte_ms": 5807,
+            "stream_closed_ms": 11120
+          }
+        ],
+        "diagnostic_evidence": "Private 989ad81-f27-second-pair.zip and f27-allfold-2-file-verification.json",
+        "cloudflare_observation": {
+          "evidence": "challenge_observed",
+          "solver_events": [
+            {
+              "time": "2026-11-18T01:37:47.194Z",
+              "event": "cloudflare_solver_started",
+              "page_id": 46
+            },
+            {
+              "time": "2026-11-18T01:37:53.947Z",
+              "event": "page_access",
+              "page_id": 46,
+              "code": "checkbox_clicked"
+            },
+            {
+              "time": "2026-11-18T01:37:56.153Z",
+              "event": "navigation_ready",
+              "page_id": 46,
+              "code": "page_ready",
+              "status": 200
+            },
+            {
+              "time": "2026-11-18T01:37:56.196Z",
+              "event": "cloudflare_solver_finished",
+              "page_id": 46,
+              "outcome": "not_executed",
+              "code": "canceled"
+            }
+          ],
+          "source_challenge_origins": [
+            "https://pdf.sciencedirectassets.com/"
+          ],
+          "private_exports": [
+            "989ad81-f22-first-pair.zip"
+          ],
+          "native_recovery": {
+            "outcome": "First Reader had an actual Cloudflare challenge. Solver clicked automatically and the same Page recovered; the first reader supplied no PDF entry. Another reader yielded a challenged assets GET. Its owned verification Page reached HTTP 200 automatically without an observed widget, then its Session stream and local save completed.",
+            "ready_utc": "2026-11-18T01:38:06.263Z"
+          }
+        }
+      },
+      "zotero": {
+        "result": "automatic_success",
+        "click_utc": [
+          "2026-11-18T01:36:57.494Z",
+          "2026-11-18T01:36:57.552Z"
+        ],
+        "ui_preparation": "Fresh verified F27 exact article title and DOI, current institutional Full text and ScienceDirect Translator. Source independently displayed the same publisher Full text with correct DOI. No full body preview; fresh Connector save in dedicated trial collection. Exchange first pair order. No local application builds or competing download.",
+        "human_intervention": false,
+        "translator": "ScienceDirect",
+        "parent_key": "I4VNPQRZ",
+        "local_pdf_and_association_utc": [
+          "2026-11-18T01:37:15.271Z",
+          "2026-11-18T01:37:15.544Z"
+        ],
+        "wait_seconds": [
+          17.719,
+          18.05
+        ],
+        "file_bytes": 3140877,
+        "attachment_key": "B6ZPDVF6",
+        "link_mode": "imported_url",
+        "measurement_revision": "keys-v2",
+        "timing_eligible_for_parity": true,
+        "content_check": {
+          "file_exists": true,
+          "file_bytes": 3140877,
+          "pdf_prefix": true,
+          "page_count": 12,
+          "full_title_match": true,
+          "doi_match": true,
+          "publisher_indicators": {
+            "IEEE": true,
+            "Springer": false,
+            "Scientific Reports": false,
+            "Creative Commons": false,
+            "Accepted Manuscript": false,
+            "arXiv:": false,
+            "All rights reserved": false
+          }
+        },
+        "pdf_version": "publisher_version",
+        "source_origin": "https://pdf.sciencedirectassets.com/",
+        "acceptance_collection_membership_verified": true,
+        "diagnostic_evidence": "Private f27-zotero-B6ZPDVF6-file-verification.json",
+        "human_intervention_note": "A separate ScienceDirect window briefly appeared blank during Save. No readable challenge or human intervention observed. Actual imported PDF and association were confirmed."
+      },
+      "platform": "ScienceDirect",
+      "configured_service": "SCIENCEDIRECT",
+      "timing_comparison_eligible": true,
+      "cohort": "representative_retest",
+      "configured_access_method": "CARSI ScienceDirect institutional Full text",
+      "measurement_stratum": "active_reader_cloudflare_after_normal_preparation",
+      "comparable_body_version": true,
+      "compared_pdf_version": "12-page publisher version with original title and DOI",
+      "comparison_eligibility_note": "Original affected sample. Both viewed the authorized article only; exact publisher file version separately verified, no observed manual input during either timed action.",
+      "difference_seconds": [
+        23.696,
+        24.4
+      ],
+      "ratio": [
+        2.3128,
+        2.3771
+      ]
+    },
+    {
+      "pair_id": "F22-1",
+      "sample_id": "F22",
+      "order": [
+        "zotero",
+        "allfold"
+      ],
+      "production_code_sha": "989ad81876c48bb43ba93967b016210b3d4e0ab7",
+      "runtime_head_sha": "989ad81876c48bb43ba93967b016210b3d4e0ab7",
+      "allfold": {
+        "result": "automatic_success",
+        "timing_eligible_for_parity": true,
+        "click_utc": [
+          "2026-11-18T01:43:51.234Z",
+          "2026-11-18T01:43:51.332Z"
+        ],
+        "ui_preparation": "Exact original F22 Candidate title and DOI, no current body, Download ready. Both products confirmed Project Euclid publisher Open Access and normal PDF entry. Earlier F21 hCaptcha was completed separately in Allfold site preparation. No preview or competing download.",
+        "human_intervention": false,
+        "runtime_head_sha": "989ad81876c48bb43ba93967b016210b3d4e0ab7",
+        "production_code_sha": "989ad81876c48bb43ba93967b016210b3d4e0ab7",
+        "frontend_head_sha": "989ad81876c48bb43ba93967b016210b3d4e0ab7",
+        "local_pdf_and_association_utc": [
+          "2026-11-18T01:43:52.792Z",
+          "2026-11-18T01:43:53.050Z"
+        ],
+        "wait_seconds": [
+          1.46,
+          1.816
+        ],
+        "file_bytes": 1199204,
+        "attempt": 1,
+        "source": "P1",
+        "fallback_used": 0,
+        "measurement_revision": "keys-v2",
+        "content_check": {
+          "file_exists": true,
+          "file_bytes": 1199204,
+          "pdf_prefix": true,
+          "page_count": 30,
+          "full_title_match": true,
+          "doi_match": true,
+          "publisher_indicators": {
+            "IEEE": false,
+            "Springer": false,
+            "Scientific Reports": false,
+            "Creative Commons": false,
+            "Accepted Manuscript": false,
+            "arXiv:": false,
+            "All rights reserved": false
+          }
+        },
+        "source_rule": "R009",
+        "source_origin": "https://projecteuclid.org/",
+        "pdf_version": "publisher_version",
+        "native_operations": [
+          {
+            "native_stream_ms": 1527,
+            "stream_request_ms": 8,
+            "stream_response_ms": 354,
+            "stream_first_byte_ms": 354,
+            "stream_closed_ms": 1526
+          }
+        ],
+        "diagnostic_evidence": "Private 989ad81-f22-first-pair.zip and f22-allfold-1-file-verification.json",
+        "cloudflare_observation": {
+          "evidence": "no_cloudflare_evidence_in_retained_trace"
+        }
+      },
+      "zotero": {
+        "result": "automatic_success",
+        "click_utc": [
+          "2026-11-18T01:43:10.438Z",
+          "2026-11-18T01:43:10.463Z"
+        ],
+        "ui_preparation": "Normal new Chrome trial tab. Publisher explicitly Open Access, exact title and DOI, 30-page Project Euclid article and Euclid Translator. Allfold same actual OA after earlier separate Imperva hCaptcha completed for F21 preparation. No PDF preview or previous trial Save. No competing downloads or builds. User narrowed Euclid to OA.",
+        "human_intervention": false,
+        "translator": "Euclid",
+        "parent_key": "BF2R66QF",
+        "local_pdf_and_association_utc": [
+          "2026-11-18T01:43:13.888Z",
+          "2026-11-18T01:43:14.159Z"
+        ],
+        "wait_seconds": [
+          3.425,
+          3.721
+        ],
+        "file_bytes": 1199204,
+        "attachment_key": "J4Y779BG",
+        "link_mode": "imported_url",
+        "measurement_revision": "keys-v2",
+        "timing_eligible_for_parity": true,
+        "content_check": {
+          "file_exists": true,
+          "file_bytes": 1199204,
+          "pdf_prefix": true,
+          "page_count": 30,
+          "full_title_match": true,
+          "doi_match": true,
+          "publisher_indicators": {
+            "IEEE": false,
+            "Springer": false,
+            "Scientific Reports": false,
+            "Creative Commons": false,
+            "Accepted Manuscript": false,
+            "arXiv:": false,
+            "All rights reserved": false
+          }
+        },
+        "pdf_version": "publisher_version",
+        "source_origin": "https://projecteuclid.org/",
+        "acceptance_collection_membership_verified": true,
+        "diagnostic_evidence": "Private f22-zotero-J4Y779BG-file-verification.json"
+      },
+      "platform": "Project Euclid",
+      "configured_service": "Project Euclid",
+      "timing_comparison_eligible": true,
+      "cohort": "representative",
+      "configured_access_method": "Project Euclid publisher Open Access",
+      "measurement_stratum": "normal_open_access_after_preparation",
+      "comparable_body_version": true,
+      "compared_pdf_version": "Same 30-page publisher OA version, 1199204 bytes in each product, exact title/DOI confirmed",
+      "comparison_eligibility_note": "Both normal publisher pages marked Open Access. Earlier Allfold hCaptcha was a separate site preparation while checking the F21 entitlement exclusion. Neither timed action required human intervention.",
+      "difference_seconds": [
+        -2.261,
+        -1.609
+      ],
+      "ratio": [
+        0.3924,
+        0.5302
+      ]
     }
   ],
   "coverage_gaps": [
@@ -7818,9 +8732,11 @@
     },
     {
       "samples": [
-        "F20"
+        "F20",
+        "F21",
+        "F22"
       ],
-      "gap": "Both saved verified related arXiv v4. Allfold required in-download human Imperva/hCaptcha with late operator handoff; 412.592–413.015s total retained separately from normal save comparison. Prepared-access control repeats remain outstanding."
+      "gap": "Project Euclid acceptance limited to public publisher OA at user request. F20 historical assisted preprint pair remains as a fallback observation. F21 exact publisher page required subscription or purchase, so neither save was run. F22 public publisher OA was verified separately in both products; one matching automatic same-version pair favors Allfold. Institutional access and broader platform parity remain unconfirmed."
     },
     {
       "gap": "Optica/IEEE Reader branch/R059/LWW/OCE/stableP4 and other mechanisms are claimed only when actually observed. Fixtures and configured Services do not supply real-site coverage."
@@ -7859,10 +8775,10 @@
         "F30",
         "F31"
       ],
-      "gap": "ScienceDirect F26-2 extra Allfold failure before recovery work is preserved. Final production build has not yet been scored. Original and unseen affected samples require real reruns, with the F26 Chrome verification recorded separately."
+      "gap": "F26-2 extra Allfold failure retained. Final production 989ad81 restored the original F26 publisher PDF twice; F26-3 Zotero used in-Save manual verification. F27-2 was the first corrected paired comparison of the original Paper and both saved the publication. It retained an active Reader challenge solved automatically, a failed first reader entry and a much slower wait. Untouched F29/F30/F31 saved publisher versions with automatic access recovery on Allfold; each first comparable wait was slower. F28 affected retest and normal exchanged-order controls remain needed."
     }
   ],
-  "parity_conclusions": "In progress: corrected low-load pairs and original affected measurements retained separately. Platform conclusions await controls and access-matched retests. ScienceDirect F26-2 has an additional Allfold failure after matched-viewer access preparation. Zotero saved the correct publisher body; no paired time comparison exists.",
+  "parity_conclusions": "In progress: corrected low-load pairs and original affected measurements retained separately. Platform conclusions await controls and access-matched retests.",
   "environment": {
     "macos": "27.2.1 (26B131)",
     "electron": "45.0.0",
@@ -8212,6 +9128,25 @@
       "result": "Normal Login used retained credentials and automatic verification during target navigation. Actual native prepare reported Opened before its retained page was evicted under the existing managed-page budget; UI then showed Needs attention / target_closed. After Login settled, normal browser CARSI ScienceDirect resource entry in the same Source Session showed institution access. Fresh F26 article showed matching title/DOI, Full text access, View PDF entry and article body. No PDF opened; no settings, binding or cache changed.",
       "human_intervention": "No human action during either Source preparation. Exact confirmed article readiness observation time missing; recorded navigation click interval is not product preparation latency.",
       "diagnostic_evidence": "Local private40d4356-reboot-sciencedirect-prepare.zip and selected sequence"
+    },
+    {
+      "record_id": "F31_source_oa_challenge_after_final_repair",
+      "sample_id": "F31",
+      "kind": "normal_source_article_preparation",
+      "platform": "ScienceDirect",
+      "runtime_id": "18e4131259e347bc6924436d358a72d7",
+      "production_code_sha": "989ad81876c48bb43ba93967b016210b3d4e0ab7",
+      "native_page_load_started_utc": "2026-11-18T01:31:49.804Z",
+      "native_challenge_observed_utc": "2026-11-18T01:31:55.068Z",
+      "solver_started_utc": "2026-11-18T01:31:55.069Z",
+      "solver_clicked_utc": "2026-11-18T01:32:00.501Z",
+      "native_access_recovered_utc": "2026-11-18T01:32:03.362Z",
+      "native_solver_drained_utc": "2026-11-18T01:32:03.409Z",
+      "solver_terminal_code": "canceled after page recovery",
+      "native_navigation_to_recovered_ms": 13558,
+      "human_intervention": false,
+      "notes": "Original ScienceDirect article with exact title/DOI, OA and View PDF observed after this same Page showed the genuine challenge. This was before the formal Download; Chrome independently reached normal OA and ScienceDirect Translator. No PDF preview.",
+      "diagnostic_evidence": "Private 989ad81-f31-preparation.zip"
     }
   ],
   "operator_restart_context": {
@@ -8476,6 +9411,71 @@
         "page_count": 12,
         "title_and_doi_verified": true
       }
+    },
+    {
+      "diagnostic_id": "F26-D2",
+      "sample_id": "F26",
+      "side": "allfold",
+      "production_code_sha": "989ad81876c48bb43ba93967b016210b3d4e0ab7",
+      "runtime_id": "18e4131259e347bc6924436d358a72d7",
+      "attempt": 3,
+      "scored": false,
+      "relation_to_pair": "F26-2 failed on Allfold. The post-fix Source-only retest ran while Chrome required human verification before formal F26-3.",
+      "prepared_access": "Normal fresh Electron CARSI ScienceDirect resource and article, DOI and full-text entry verified. No PDF preopen this session. Batch Prepare Solver recovered its page before the retained target was evicted. Manual selection here means the normal resource click, with no credential entry and no manual Solver in the Download.",
+      "click_utc": [
+        "2026-11-18T01:06:19.575Z",
+        "2026-11-18T01:06:19.665Z"
+      ],
+      "local_pdf_and_association_utc": [
+        "2026-11-18T01:06:40.542Z",
+        "2026-11-18T01:06:40.801Z"
+      ],
+      "wait_seconds": [
+        20.877,
+        21.226
+      ],
+      "result": "automatic_success",
+      "human_intervention": false,
+      "source_origin": "https://pdf.sciencedirectassets.com/",
+      "source_stage": "P2",
+      "source_rule": "R024",
+      "fallback_used": true,
+      "file_check": {
+        "version": "publisher_version",
+        "bytes": 4834642,
+        "pages": 12,
+        "exact_title": true,
+        "exact_doi": true,
+        "managed_file_and_original_paper_association": true
+      },
+      "reader_solver": {
+        "challenged_status": 403,
+        "started_utc": "2026-11-18T01:06:29.262Z",
+        "clicked_utc": "2026-11-18T01:06:33.106Z",
+        "page_ready_utc": "2026-11-18T01:06:35.682Z",
+        "page_ready_status": 200,
+        "solver_terminal": "canceled after page reached normal content"
+      },
+      "body_recovery": {
+        "trigger_classification": "access-challenge",
+        "challenged_response_ms": 734,
+        "page_associated_utc": "2026-11-18T01:06:38.274Z",
+        "ready_utc": "2026-11-18T01:06:38.814Z",
+        "page_closed_utc": "2026-11-18T01:06:38.816Z",
+        "ready_status": 200,
+        "solver_dispatch_during_this_cdn_page": false,
+        "native_stream_ms": 2455,
+        "native_request_ms": 551,
+        "native_response_ms": 1546,
+        "first_byte_ms": 1549,
+        "closed_writer_ms": 2455
+      },
+      "private_evidence": [
+        "989ad81-f26-d2-recovery.zip",
+        "f26-d2-source-click.json",
+        "f26-d2-allfold-file-verification.json"
+      ],
+      "comparison_note": "Qualitative restore of publisher retrieval. Earlier asymmetric failure preserved. This is not a paired latency point and will warm the subsequent Allfold repeat."
     }
   ],
   "evidence_join_corrections": [
@@ -8564,7 +9564,7 @@
     },
     "body_challenge_recovery": {
       "production_code_sha": "989ad81876c48bb43ba93967b016210b3d4e0ab7",
-      "status": "Implemented, isolated red/green and scoped reviews complete. Real original and unseen retests outstanding.",
+      "status": "Original F26 now saved the publisher PDF in both a single-side production diagnostic and the new formal paired repeat. Allfold automatic recovery was observed at the challenged CDN. F26-3 Zotero required human verification, so ordinary paired timing and unseen cases remain open.",
       "local_checks": {
         "javascript_files": 64,
         "python_passed": 1670,
@@ -8614,13 +9614,19 @@
     "basis": "Matching Paper and action observation window in retained diagnostics. Source rows show classification and may be duplicated. A Solver terminal marked canceled can follow actual page recovery. Missing or negative trace evidence does not establish that the site presented no challenge.",
     "unstarted_samples": [
       "F21",
-      "F22",
       "F23",
       "F24",
-      "F25",
-      "F29",
-      "F30",
-      "F31"
-    ]
-  }
+      "F25"
+    ],
+    "allfold_criterion": "All real Allfold Cloudflare challenges, including preparation, are checked for automatic passage. Human Cloudflare completion is unmet. Source fallback cannot erase a detected challenge without recovery. If a verified Page arrives with normal access and no challenge remains, record the automatic Page outcome and whether Solver actually ran. Non-Cloudflare authentication and Zotero assistance are separate."
+  },
+  "coverage_exclusions": [
+    {
+      "sample_id": "F21",
+      "status": "excluded_subscription_required",
+      "platform": "Project Euclid",
+      "publisher_access_evidence": "After a separate human Imperva/hCaptcha on Allfold Browser, the target DOI resolved to the article short page. It required subscription or single-article purchase for PDF and HTML. No two-product downloads or PDF preview ran. Chrome CARSI directory returned no Euclid match. User scoped this platform to publisher OA.",
+      "download_started": false
+    }
+  ]
 }

@@ -3,11 +3,13 @@
 Issue: [#140](https://github.com/dylaaan-booob/allfold/issues/140). Baseline:
 `a2e511aa86ab5aa292f224301d6609a59c287fa2`.
 
-**Status: incomplete. At the 18 November 2026 checkpoint (Asia/Shanghai), 23
-of the 31 frozen Papers have observations (59 pair slots including repeats).
-Eight Papers are unstarted. Twenty-five comparable low-load pairs from earlier
-platforms and one ScienceDirect matched fallback pair have reliable local
-file/association endpoints. Springer has two slower Allfold points and one
+**Status: incomplete. At the 18 November 2026 checkpoint (Asia/Shanghai), 27
+of the 31 frozen Papers have paired observations (65 pair slots including repeats).
+One Project Euclid Paper is excluded from saving because it requires a
+subscription. The three INFORMS Papers are pending access checks. Twenty-five
+earlier low-load publisher pairs, four ScienceDirect pairs and one Project Euclid
+pair have reliable local file and association endpoints. Springer has two slower
+Allfold points and one
 interval overlap; T&F has one slower point requiring swapped repeats. The measured
 Cambridge/IEEE prepared-access cohorts show no observed disadvantage; overall
 coverage and retests remain incomplete. F18 exposed a publisher-version/latency
@@ -24,10 +26,15 @@ has direct cache-reuse evidence and is not declared met. The first formal
 ScienceDirect pair, F26, failed on both products after independent institutional
 preparation. In F26-2, both native viewers had already displayed the same
 publication. Zotero saved the correct PDF in 9.741–10.036 s, while Allfold's
-CDN requests encountered challenges and ended without a file. F28 saved the
-same related preprint on both products. F27's Allfold
-attempt encountered a CDN access challenge and Zotero's terminal state was
-unobserved when its trial tab was closed. Further coverage and affected retests remain required.
+CDN requests encountered challenges and ended without a file. After repair,
+F26 saved the publication automatically on Allfold and with user assistance on
+Zotero. All three new ScienceDirect first pairs saved the same publication in both
+products and showed slower Allfold waits. F28 saved the same related preprint on
+both products. F27's original Allfold CDN failure and unobserved Zotero terminal
+remain in the table. Both products saved the publication in its revised pair,
+where Allfold automatically solved a Reader challenge and used a second source.
+That pair was slower on Allfold. Further coverage and affected retests remain
+required.
 Workspace is retained.**
 
 ## Environment and endpoint
@@ -102,10 +109,10 @@ product's Reject/delete/Restore flow; metadata and Download availability survive
 The immutable [31-paper manifest](pdf-pairing-manifest.json) was committed before
 the first formal click. The [formal results](pdf-pairing-formal-results.json)
 retain all original samples, failures, preparation, versions and repetitions.
-At this checkpoint Allfold has 53 automatic local-PDF successes, one assisted
-success and five failures. Zotero has 48 local-PDF successes, one visible
-attachment failure and ten operator interruptions with unknown product terminal
-state. These are
+At this checkpoint Allfold has 59 automatic local-PDF successes, one assisted
+success and five failures. Zotero has 53 automatic and one assisted local-PDF
+successes, one visible attachment failure and ten operator interruptions with
+unknown product terminal state. These are
 attempt counts, not independent-paper success rates. Saving a related preprint
 is a task result but is not a publisher-version success.
 
@@ -116,11 +123,11 @@ is a task result but is not a publisher-version success.
 | Cambridge Core | 2 / 2 | Allfold9 successes; Zotero9 successes; one body on each side is a preprint | F06 three controls plus F07-3 have comparable publisher PDFs; all favor Allfold. No observed disadvantage in these two Papers; earlier access/version differences retained, no broader extrapolation. |
 | Oxford Academic | 3 / 3 | Allfold 2 related preprints,1 access-challenge failure; Zotero 3 interrupted saves without parent/PDF | New native CF Prepare recovery observed; publisher PDF retests outstanding. Not confirmed. |
 | Taylor & Francis | 3 / 3 | Allfold 4 successes: original preprint plus3 publisher Accepted Manuscripts; Zotero 2 publisher Accepted Manuscripts,2 interrupted parent-only saves | Same-version F11 retry faster; first F13 slower. Controls/repeats and F12 retry outstanding. Not confirmed. |
-| Project Euclid | 1 / 3 | Both saved related arXiv v4; Allfold required in-download hCaptcha assistance | First-access recovery reported separately; normal prepared-access controls and2 papers outstanding. Not confirmed. |
+| Project Euclid | 2 / 3 | F20 matching related arXiv v4, with in-download Allfold hCaptcha assistance. F22 matching 30-page publisher OA saved automatically by both products. F21 subscription excluded. | F22 favors Allfold. Only one publisher OA pair measured; institutional access is outside the revised scope. |
 | Wiley | 3 / 3 | Allfold6 publisher OA successes; Zotero4 successes(1preprint,3publisher),2interruptions | F14 normal publisher controls and F15 favorAllfold. F16 default saves remain parent-only; one bounded diagnostic records citation/PDF403,with terminal unknown. Not confirmed. |
 | SIAM | 3 / 3 | Allfold5 related preprints and9 publisher PDFs; Zotero13 publisher PDFs,1 interruption | F17/F18 each have3 publisher pairs:first slower,two warm faster. Normal reauthentication restored F19 publisher access; its new comparable pair is close/favors Allfold,then a warm repeat favors Zotero. Cache reuse is demonstrated; large-PDF warm user-wait parity is not met. |
 | INFORMS PubsOnline | 0 / 3 | Not started; configured EBSCO capability is not a platform result | Not confirmed. |
-| ScienceDirect | 3 / 6 | F26-1 failed on both products. F26-2 saved the correct publication in Zotero only. F28 saved matching preprints. F27 Allfold failed and the Zotero trial tab was closed after the common observation horizon. | The observed extra failure fails the success criterion. Publisher retrieval and prepared controls require retest. |
+| ScienceDirect | 6 / 6 | F26 publication recovered on Allfold after repair and saved with Zotero assistance. F27 retest and unseen F29/F30/F31 published files saved automatically in both products. F26-1/2 and F27-1 failures and the F28 matching preprints are retained. | Original F26/F27 publisher retrieval recovered. F27's challenge-recovery retest and all three new first pairs were slower on Allfold. Other affected paths and normal controls still require retest. |
 
 After the user rebooted and signed into CARSI in Chrome, the checkout was
 launched at `40d4356` with rebuilt UI and the same production code as `69b9a41`.
@@ -195,13 +202,21 @@ and 4,834,588 bytes. Both the parent and file were verified in the acceptance
 collection. There is no time difference or ratio for this asymmetric outcome.
 
 The per-attempt [challenge audit](pdf-pairing-formal-results.json) covers all
-59 recorded slots and marks the eight unstarted samples. The retained traces
-show 11 attempts with Cloudflare evidence, 45 without observed Cloudflare
+65 recorded slots and identifies the four samples without download starts. The
+retained traces show 16 attempts with Cloudflare evidence, 46 without observed Cloudflare
 evidence and three with insufficient time bounds or matching traces. Earlier
 Oxford, Wiley and SIAM source classifications are retained even when a related
 PDF subsequently saved. F20's Imperva/hCaptcha handoff remains separate. An
 absent event cannot establish absence of a real challenge. The pilot table
 retains the same diagnostic fields for its trials.
+
+Allfold's Cloudflare criterion is automatic passage wherever a challenge remains
+active. Check detection, Solver dispatch or the Page's own automatic recovery,
+and clearing of the actual blocking state. Record a missed dispatch, Solver
+failure or human passage as an unmet observation even if a separate source later
+saves. Preserve the attempt and investigate the affected path. Initial access
+preparation is part of this audit as well as the timed Download. Zotero's real
+manual verification and non-Cloudflare authentication remain separate evidence.
 
 The scoped repair sends a challenged ordinary GET to the existing Browser
 observer when it has no fixed Reader route. It keeps the original Service
@@ -217,8 +232,104 @@ Page drains before the stream, and the Cookie context stays in the same native
 task and Session. Cloudflare documents why the partition matters. [Cloudflare
 Cookie documentation](https://developers.cloudflare.com/fundamentals/reference/policies-compliances/cloudflare-cookies/)
 
-Publisher acceptance of the repair remains open until the original and unseen
-real samples complete.
+The rebuilt Source at `989ad81` repeated F26 in the authorized Workspace while
+Chrome's fresh trial awaited manual verification. The non-scoring action F26-D2
+automatically saved and associated the correct 12-page publisher PDF in
+20.877–21.226 s, 4,834,642 bytes. The original Source Paper, exact title, DOI,
+version and local file were verified. One R024 Reader hit HTTP 403. Its Solver
+clicked at 01:06:33.106 UTC, the same Page reached 200, and the Solver drained.
+The next R024 continuation again hit the assets CDN challenge. It now entered an
+owned verification Page. That Page reached a usable response without a second
+Solver interaction and drained before the Session request. The native operation
+took 2.455 s, including the Page and 0.906 s from first byte to writer closure.
+The observer then confirmed permanent file and association on attempt 3.
+No human input was used during this action. The file matches the version and
+page count of the earlier Zotero F26-2 PDF, with a 54-byte difference. Independent
+Session preparation and this separate diagnostic affect later warmth.
+
+F26-3 followed Z→A. Zotero opened a separate Cloudflare verification window
+after the normal Save. The user completed it, and the dedicated collection
+received the correct 12-page publisher PDF and parent in 62.674–62.969 s.
+The human input interval is unknown, so the total remains intact in the
+assisted stratum. Allfold's diagnostic PDF was removed through the product
+after action-time confirmation, then the original Paper was restored. Attempt 4
+saved the same publisher version through R024/P2 in 16.870–17.225 s with no
+human intervention. Its challenged assets request reached a normal response in
+the owned Page and then closed the managed stream. No blocking widget or
+Solver interaction was recorded on that Page. The total-wait difference is
+−46.099 to −45.449 s and the ratio is 0.2679–0.2748 for this assisted-only
+comparison. It does not contribute to ordinary automatic timing. Both prior
+failures remain in the table. The repair recovered the original real F26
+publisher retrieval. The normal unassisted control remains open.
+
+F29/F30/F31 were untouched and saved the corresponding publisher PDFs on
+`989ad81`. Titles, DOIs, page counts, local files and the original associations
+matched. Both products received the PDFs from the ScienceDirect assets CDN.
+The reported byte differences are retained. F29 and F31 were OA; F30 showed
+current institutional Full text separately in both products. F29's earlier
+Chrome verification preceded its Save. F31's Allfold article preparation took
+13.558 s from native navigation start to recovered access. It detected a real
+Cloudflare page, started Solver at 01:31:55.069 UTC, clicked at 01:32:00.501 UTC,
+and recovered access on the same Page at 01:32:03.362 UTC. The valid article and
+PDF entry were visible. This preparation time is separate from Download wait.
+
+| Pair / order | Access / version | Allfold wait | Zotero wait | A−Z | A/Z |
+| --- | --- | --- | --- | --- | --- |
+| F29-1 / A→Z | OA, 19 pages, 3,342,410 / 3,326,247 bytes | 18.705–19.061 s | 13.822–14.272 s | +4.433 to +5.239 s | 1.3106–1.3790 |
+| F30-1 / Z→A | Institutional, 22 pages, 4,078,428 / 4,079,168 bytes | 17.337–17.710 s | 16.427–17.000 s | +0.337 to +1.283 s | 1.0198–1.0781 |
+| F31-1 / A→Z | OA, 20 pages, 2,471,556 / 2,455,263 bytes | 18.523–18.877 s | 14.552–15.010 s | +3.513 to +4.325 s | 1.2340–1.2972 |
+
+The ScienceDirect OA prepared-access stratum has two Papers and two points.
+The interval median paired difference is +3.973 to +4.782 s, and the median
+ratio is 1.2723–1.3381. The raw wait ranges are 18.523–19.061 s for Allfold
+and 13.822–15.010 s for Zotero. The institutional first-paper stratum has one
+point (F30), with its median equal to the row above and no dispersion estimate.
+
+Allfold's CDN responses in these three pairs reported `access-challenge`. Each
+owned Page reached HTTP 200 automatically and closed before the completion of
+its managed Session stream. There was no observed active CF widget or Solver
+interaction on those CDN Pages. Native elapsed time for article extraction was
+3.254, 6.730 and 4.779 s, respectively. Reader work took 2.535, 2.878 and 3.964 s.
+The challenged response took 3.506, 1.120 and 4.703 s. The recovery Pages reached
+HTTP 200 in 0.665, 1.072 and 0.752 s. Actual stream markers and source origins
+are retained in the result table.
+
+The installed ScienceDirect Translator (`b6d0a7a-d076-48ae-b2f0-b6de28b194e`,
+revision 2026-06-05 15:27:44) can use the already loaded article, including
+its PDF link or page metadata, and follows an intermediate page when needed.
+Allfold extracted the article during these timed Download attempts. The actual
+Connector branch, whether it used an intermediate page, and its transfer phase
+are unavailable for these pairs. The observed request costs identify where
+Allfold spent time. Further swapped pairs are needed to attribute the paired
+difference under similar access and cache conditions.
+
+The final-code F27-2 challenge-recovery retest ran in the exchanged order after
+both products independently showed institutional Full text on the target.
+Each obtained the same 12-page publisher version. Allfold took 41.746–42.119 s
+for 3,156,500 bytes. Zotero took 17.719–18.050 s for 3,140,877 bytes. The paired
+difference is +23.696 to +24.400 s and the ratio is 2.3128–2.3771. A separate
+brief blank ScienceDirect window was observed during Zotero Save with no
+observed manual verification. Allfold's first Reader took 15.773 s. The Solver
+clicked and that Page recovered at HTTP 200, then reported no usable PDF entry.
+The second Reader took 3.761 s and led to the assets CDN challenge. The exact
+owned verification Page recovered automatically, and its native stream closed
+after an 11.122 s operation. The first Reader and repeated source work account
+for a substantial part of the actual Allfold wait. The two source URLs' exact
+request forms and the corresponding Connector stages are unavailable in the
+retained traces. This single active Reader challenge point is separate from
+the three prepared first-paper points above.
+
+Project Euclid was restricted to public publisher Open Access. F21's normal
+article redirected to the short page after the user completed separate
+Imperva/hCaptcha preparation. Its full text required subscription or purchase,
+so the frozen sample was excluded from downloads. F22 showed Open Access
+in both products, and the Euclid Translator saved the verified 30-page publication
+to the trial collection in 3.425–3.721 s. Allfold R009/P1 saved and linked the
+same title and DOI in 1.460–1.816 s. Both files are 1,199,204 bytes, with
+paired difference −2.261 to −1.609 s and ratio 0.3924–0.5302. Native elapsed
+stream time was 1.527 s, including 0.354 s from operation start to first byte.
+There was no observed assisted step during the two timed actions. Neither
+F20's fallback nor the single F22 publisher point establishes broader parity.
 
 At `989ad81`, PR run 44211591848 failed in the existing Workspace lifecycle
 fixture. The local field read lacked a `revision` before its response status
