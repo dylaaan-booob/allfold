@@ -2248,5 +2248,53 @@
   "frozen_at_utc": "2026-11-16T18:40:53.823107+00:00",
   "mechanism_queue_policy": "Reuse representative samples tagged by actual observed path, summarize separately without multiplying daily load. R059/Optica/LWW/OCE not in this saved journal/service pool, unconfirmed unless a lawful supported sample is later added with an explicit supplement.",
   "measurement_protocol": "One actual normal-UI pair per sample; no simultaneous downloads/build/full tests/large collection. Correct permanent PDF+original association endpoint, actual poll bounds. Confirm file/DOI/title/version before deleting trial body. Separate first access, challenge, manual waiting and warm repeats; unknown timings remain missing. Preselected normal controls get two further exchanged-order pairs. Anomalies require investigation and two repeats with equivalent access, not replacement.",
-  "sequence_policy": "Execute declared first-pair sequence in order where both sides have usable legal access; if a platform has an actual preparation/verification blocker, retain its entries and gap, continue independent prepared platforms, record deviations. No substitute sample after results."
+  "sequence_policy": "Execute declared first-pair sequence in order where both sides have usable legal access; if a platform has an actual preparation/verification blocker, retain its entries and gap, continue independent prepared platforms, record deviations. No substitute sample after results.",
+  "post_fix_supplement": {
+    "selection_utc": "2026-11-18T03:34:00.006Z",
+    "production_code_sha": "10e5038e36d6e669a3c949f3a57d2362f8d5e098",
+    "selection_basis": "Existing ScienceDirect-mapped original Papers in the same two configured journals as the earlier recovered samples. Candidate, no body/attempt, terminal collection ServiceAccessUnavailable, normal Download available. They were not part of pilot/formal or Reader diagnosis. No extra Run or pre-PDF visit.",
+    "freeze_method": "Freeze each separately after both article entitlements and original candidate readiness are observed, ahead of that sample’s first measured Save or Download.",
+    "scope": "Separate mechanism cohort. Initial frozen representative results remain included.",
+    "samples": [
+      {
+        "sample_id": "R024-Fresh-1",
+        "doi": "10.1016/j.patcog.2026.115130",
+        "paper_id": "3b633620-519a-4112-9cfe-ce52e58238cd",
+        "journal": "Pattern Recognition",
+        "configured_service": "SCIENCEDIRECT",
+        "order": [
+          "allfold",
+          "zotero"
+        ],
+        "article_url": "https://www.sciencedirect.com/science/article/pii/S0031320326020935",
+        "access_at_freeze": "Independently prepared institutional full text on both products. No PDF navigation or preview. Chrome displayed Save to Zotero (ScienceDirect).",
+        "cohort": "postfix_mechanism",
+        "frozen_at_utc": "2026-11-18T07:27:59.578Z",
+        "title": "Unbounded stick-breaking-assisted generalized Dirichlet variational autoencoder",
+        "platform": "ScienceDirect",
+        "configured_access_method": "CARSI institutional ScienceDirect",
+        "resolver_article_url": "https://doi.org/10.1016/j.patcog.2026.115130",
+        "article_identity": "Both normal article pages showed matching title, DOI and institution full-text access.",
+        "access_preparation_layer": {
+          "allfold": "Normal Login prepared CARSI; the earlier target was evicted under managed-page pressure. Opened this Service alone through the retained CARSI Browser resource page. Institution full text verified. No human CAPTCHA or IdP step in the single-resource entry.",
+          "zotero": "Fresh Chrome trial tab from the signed-in CARSI resource portal, selecting the actual ScienceDirect Service. The user completed the article preparation checkbox before timing."
+        },
+        "oa_status_at_selection": "No Open Access label observed; measured as institutional access.",
+        "body_state": "Original Workspace Candidate, Download available in UI, no body or prior attempt, no pending cleanup.",
+        "discovery_facts": {
+          "collection_status": "failed",
+          "prior_attempts_observed": 0,
+          "injection": false
+        },
+        "selection_reason": "Preselected before the original F27 handoff retest. An untouched same-journal Paper checks the repaired ScienceDirect path on another actual PII.",
+        "planned_mechanism_tags": [
+          "ScienceDirect R024",
+          "Reader and PDF handoff when actually observed",
+          "publisher and any OA fallback verified separately"
+        ],
+        "cache_at_selection": "Same normal Chrome profile and Source Session contexts. Article and prior Service pages accessed for preparation; body cache state unknown. No body was opened or saved.",
+        "initial_repetitions": 1
+      }
+    ]
+  }
 }
